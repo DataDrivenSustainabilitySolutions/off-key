@@ -3,6 +3,110 @@ Online Anomaly Detection with Uncertainty Quantification
 
 ---
 
+# Project Setup on macOS
+
+## 1. Prerequisites
+Before starting, ensure you have the following installed on your macOS machine:
+1. **Docker Desktop**: Install Docker Desktop for macOS from [here](https://www.docker.com/products/docker-desktop/).
+2. **Homebrew**: Install Homebrew (a package manager for macOS) if you don’t already have it:
+   /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+3. **Git**: Install Git using Homebrew:
+   brew install git
+4. **Node.js**: Install Node.js using Homebrew:
+   brew install node
+
+## 2. Clone the Project
+Open the Terminal and clone the project repository:
+git clone https://github.com/your-repo/timeflux-dashboard.git
+cd timeflux-dashboard
+
+## 3. Start Docker Desktop
+1. Open Docker Desktop from your Applications folder.
+2. Ensure Docker is running (you should see the Docker icon in the menu bar).
+
+## 4. Run the Project with Docker Compose
+In the Terminal, navigate to the project directory and run:
+docker-compose up --build
+
+This will:
+1. Build the Docker images for the backend and frontend.
+2. Start the TimescaleDB container.
+3. Start the backend and frontend containers.
+
+## 5. Access the Services
+Once the containers are running, you can access the services in your browser:
+- **Frontend Dashboard**: Open http://localhost:3000.
+- **Backend API**: Open http://localhost:8000/data.
+
+## 6. Stopping the Project
+To stop the project, press Ctrl + C in the Terminal where docker-compose is running. Then, run:
+docker-compose down
+This will stop and remove the containers.
+
+## 7. Debugging Tips
+### a. Check Docker Logs
+If a service fails to start, check the logs using:
+docker-compose logs <service_name>
+For example:
+docker-compose logs backend
+
+### b. Port Conflicts
+Ensure no other application is using ports 3000 (frontend), 8000 (backend), or 5432 (TimescaleDB). You can change the ports in the docker-compose.yml file if needed.
+
+### c. Docker Desktop Resource Allocation
+If the containers are slow or unresponsive, increase the resources allocated to Docker Desktop:
+1. Open Docker Desktop.
+2. Go to Settings > Resources.
+3. Increase CPU and memory allocation.
+
+## 8. Running the Backend Outside Docker (Optional)
+If you want to run the backend Python scripts outside Docker (e.g., for debugging), follow these steps:
+1. Navigate to the backend directory:
+   cd backend
+2. Create a virtual environment and install dependencies:
+   python3 -m venv venv
+   source venv/bin/activate
+   pip install -r requirements.txt
+3. Run the backend service:
+   uvicorn api.main:app --reload
+
+## 9. Running the Frontend Outside Docker (Optional)
+If you want to run the frontend React app outside Docker, follow these steps:
+1. Navigate to the frontend directory:
+   cd frontend
+2. Install dependencies:
+   npm install
+3. Run the frontend app:
+   npm run dev
+
+## 10. Project Structure
+Here’s a quick overview of the project structure:
+- **timeflux-dashboard/**
+  - **backend/**
+    - **api/**
+      - `main.py`          # FastAPI app to serve data to frontend
+    - **services/**
+      - `data_fetcher.py`  # Fetches data from external API
+      - `db_client.py`     # Handles TimescaleDB operations
+    - `requirements.txt`
+  - **frontend/**
+    - **src/**
+      - **pages/**
+        - `Dashboard.jsx`  # Main dashboard page
+    - `package.json`
+  - `docker-compose.yml`
+  - `README.md`
+
+## 11. Next Steps
+- Add authentication to the API.
+- Improve error handling and logging.
+- Deploy the project using Kubernetes or a cloud provider.
+
+## 12. Conclusion
+Setting up this project on macOS is straightforward thanks to its native support for Docker and Unix-based tools. If you encounter any issues, feel free to ask for help! 🚀
+
+---
+
 ## Project Structure
 
 - **ev-charger-monitoring/**
@@ -215,12 +319,93 @@ The platform serves as a comprehensive monitoring and anomaly detection system f
 - **Logging & Monitoring:** Use tools like ELK (Elasticsearch, Logstash, Kibana) or Fluentd for structured logging.
 - **Authentication:** JWT-based authentication for users and API clients.
 
-### 5. Frontend
-- **Framework:** [Next.js](https://nextjs.org/) with ShadCN for a React-based design.
-- **Visualization:**
-  - Use [Chart.js](https://www.chartjs.org/) or [D3.js](https://d3js.org/) for line charts and anomaly visualizations.
-- **State Management:** Use [Redux Toolkit](https://redux-toolkit.js.org/) for user-specific configurations.
-- **Responsive Design:** TailwindCSS with Flexbox/Grid layouts for compatibility across devices.
+### **5. Frontend**
+The frontend will be built using modern tools and frameworks to ensure a **responsive**, **scalable**, and **user-friendly** interface. Below are the specific recommendations:
+
+#### **Framework**
+- **[Next.js](https://nextjs.org/)**
+  - A React-based framework that supports server-side rendering (SSR), static site generation (SSG), and API routes.
+  - Perfect for building production-ready applications with SEO and performance in mind.
+  - Integrates seamlessly with **shadcn/ui** for pre-built, customizable React components.
+
+#### **UI Components**
+- **[shadcn/ui](https://ui.shadcn.com/)**
+  - A collection of beautifully designed, accessible, and customizable React components.
+  - Works well with **Tailwind CSS** for rapid styling and theming.
+
+#### **Visualization**
+- **[Chart.js](https://www.chartjs.org/)**
+  - A simple and flexible library for creating basic charts like line charts, bar charts, and pie charts.
+  - Great for quick prototyping and visualizing anomaly detection results.
+- **[D3.js](https://d3js.org/)**
+  - A powerful library for creating complex, interactive, and custom data visualizations.
+  - Ideal for advanced use cases where fine-grained control over visualizations is required.
+- **[Recharts](https://recharts.org/)**
+  - A React-specific charting library that integrates well with React and shadcn/ui.
+  - Offers a balance between simplicity and customization.
+
+#### **State Management**
+- **[Redux Toolkit](https://redux-toolkit.js.org/)**
+  - The official, opinionated toolset for efficient Redux development.
+  - Ideal for managing global state, such as user-specific configurations and application settings.
+- **[Zustand](https://zustand-demo.pmnd.rs/)**
+  - A lightweight alternative to Redux for simpler state management needs.
+  - Perfect for small to medium-sized applications.
+
+#### **Styling and Responsive Design**
+- **[Tailwind CSS](https://tailwindcss.com/)**
+  - A utility-first CSS framework that enables rapid development of responsive and modern UIs.
+  - Works seamlessly with **Flexbox** and **CSS Grid** for creating flexible layouts.
+- **[shadcn/ui](https://ui.shadcn.com/)**
+  - Provides pre-built, responsive components that are easy to customize using Tailwind CSS.
+
+#### **API Integration**
+- **[Axios](https://axios-http.com/)**
+  - A popular HTTP client for making API requests to your FastAPI backend.
+  - Supports features like interceptors, request cancellation, and error handling.
+- **[React Query](https://tanstack.com/query/v3/)**
+  - A powerful library for managing server state, caching, and data synchronization.
+  - Simplifies data fetching and improves performance.
+
+#### **Testing**
+- **[Jest](https://jestjs.io/)**
+  - A JavaScript testing framework for unit and integration testing.
+- **[React Testing Library](https://testing-library.com/docs/react-testing-library/intro/)**
+  - A lightweight solution for testing React components in a way that mimics user behavior.
+- **[Cypress](https://www.cypress.io/)**
+  - An end-to-end testing framework for testing user interactions and workflows.
+
+#### **Deployment**
+- **[Vercel](https://vercel.com/)**
+  - A platform for deploying Next.js applications with zero configuration.
+  - Offers automatic CI/CD, preview deployments, and scalability.
+- **[Netlify](https://www.netlify.com/)**
+  - An alternative to Vercel with similar features for deploying static sites and serverless functions.
+
+---
+
+### **Example Workflow**
+1. **Set up Next.js** with shadcn/ui and Tailwind CSS:
+ ```bash
+ npx create-next-app@latest my-app
+ cd my-app
+ npx shadcn-ui@latest init
+ npm install tailwindcss postcss autoprefixer
+ npx tailwindcss init -p
+ ```
+   
+```bash
+npm install recharts
+```
+
+```bash
+npm install @reduxjs/toolkit react-redux
+```
+
+```bash
+npm install -g vercel
+vercel
+```
 
 ### 6. Alerting
 - **Real-Time Alerts:** WebSocket integration for anomaly alerts displayed on the dashboard.
@@ -245,6 +430,132 @@ The platform serves as a comprehensive monitoring and anomaly detection system f
 | **Authentication**              | FastAPI OAuth2/JWT                                |
 | **Containerization**            | Docker, Kubernetes                                |
 | **Logging & Monitoring**        | ELK Stack, Prometheus/Grafana                     |
+| **Frontend Framework**          | Next.js                                           |
+| **UI Components**               | ShadCN                                            |
+| **Styling**                     | Tailwind CSS                                      |
+| **State Management**            | Redux Toolkit, Zustand                            |
+| **API Integration**             | Axios, React Query                                |
+| **Testing**                     | Jest, React Testing Library, Cypress              |
+| **Deployment**                  | Vercel, Netlify                                   |
+| **CI/CD**                       | GitHub Actions, GitLab CI/CD                      |
+| **Documentation**               | Swagger UI (FastAPI), Storybook (Frontend)        |
+| **Data Visualization Libraries**| Recharts, Plotly.js, ApexCharts                   |
+| **Real-Time Communication**     | WebSockets (FastAPI), Socket.IO                   |
+| **Configuration Management**    | Hydra (Python), dotenv (Node.js)                  |
+| **Security**                    | FastAPI Security Middleware, Helmet (Node.js)     |
+| **Data Validation**             | Pydantic (FastAPI), Zod (Frontend)                |
+| **Error Tracking**              | Sentry, LogRocket                                 |
+| **Performance Optimization**    | Redis Cache, CDN (e.g., Cloudflare)               |
+| **Version Control**             | Git (GitHub, GitLab, or Bitbucket)                |
+| **Infrastructure as Code**      | Terraform, Pulumi                                 |
+| **Cloud Providers**             | AWS, GCP, Azure, or DigitalOcean                  |
+| **Data Pipeline Orchestration** | Apache Airflow, Prefect                           |
+| **Edge Computing**              | FastAPI with ASGI (e.g., Uvicorn)                 |
+| **Data Versioning**             | DVC (Data Version Control)                        |
+| **Model Deployment**            | FastAPI, TensorFlow Serving, or TorchServe        |
+| **API Gateway**                 | NGINX, Traefik                                    |
+| **Data Privacy**                | GDPR Compliance Tools, Anonymization Libraries    |
+| **Data Backup**                 | AWS S3, Google Cloud Storage                      |
+| **Data Transformation**         | Pandas, NumPy, or Polars                          |
+| **Data Governance**             | Apache Atlas, Amundsen                            |
+| **Data Quality**                | Great Expectations, Deequ                         |
+| **Data Lineage**                | OpenLineage, Marquez                              |
+| **Data Catalog**                | DataHub, Amundsen                                 |
+| **Data Exploration**            | Jupyter Notebooks, Streamlit                      |
+| **Data Annotation**             | Label Studio, Prodigy                             |
+| **Data Augmentation**           | Albumentations, Imgaug                            |
+| **Model Monitoring**            | Evidently AI, WhyLabs                             |
+| **Model Explainability**        | SHAP, LIME                                        |
+| **Model Optimization**          | Optuna, Ray Tune                                  |
+| **Model Serving**               | FastAPI, BentoML, or MLflow                       |
+| **Edge AI**                     | TensorFlow Lite, ONNX Runtime                     |
+| **Data Streaming**              | Apache Kafka, Apache Pulsar                       |
+| **Data Warehousing**            | Snowflake, BigQuery                               |
+| **Data Lakes**                  | Apache Iceberg, Delta Lake                        |
+| **Data Integration**            | Apache NiFi, Talend                               |
+| **Data Governance**             | Collibra, Alation                                 |
+| **Data Security**               | Vault by HashiCorp, AWS KMS                       |
+| **Data Compliance**             | Immuta, Privacera                                 |
+| **Data Observability**          | Monte Carlo, Datafold                             |
+| **Data Collaboration**          | Databricks, Snowflake                             |
+| **Data Science Workflow**       | MLflow, Kubeflow                                  |
+| **Data Engineering Workflow**   | Apache Airflow, Prefect                           |
+| **DataOps**                     | DataKitchen, Great Expectations                   |
+| **MLOps**                       | MLflow, Kubeflow, TFX                             |
+| **AIOps**                       | Moogsoft, BigPanda                                |
+| **DevOps**                      | Jenkins, GitLab CI/CD, CircleCI                   |
+| **GitOps**                      | ArgoCD, Flux                                      |
+| **Observability**               | OpenTelemetry, Grafana Tempo                      |
+| **Incident Management**         | PagerDuty, Opsgenie                               |
+| **Collaboration Tools**         | Slack, Microsoft Teams                            |
+| **Project Management**          | Jira, Trello, Asana                               |
+| **Documentation Tools**         | Confluence, Notion, MkDocs                        |
+| **Code Quality**                | SonarQube, CodeClimate                            |
+| **Static Analysis**             | ESLint, Prettier, Black (Python)                  |
+| **Dynamic Analysis**            | Selenium, Cypress                                 |
+| **Performance Testing**         | JMeter, k6                                        |
+| **Load Testing**                | Locust, Gatling                                   |
+| **Security Testing**            | OWASP ZAP, Burp Suite                             |
+| **API Testing**                 | Postman, Insomnia                                 |
+| **Data Testing**                | Great Expectations, Deequ                         |
+| **Model Testing**               | Evidently AI, WhyLabs                             |
+| **Compliance Testing**          | Vault by HashiCorp, AWS Config                    |
+| **Disaster Recovery**           | AWS Backup, Google Cloud DR                       |
+| **High Availability**           | Kubernetes, AWS Elastic Beanstalk                 |
+| **Scalability**                 | Kubernetes, AWS Auto Scaling                      |
+| **Cost Management**             | AWS Cost Explorer, Google Cloud Billing           |
+| **Resource Optimization**       | Spot Instances, Reserved Instances                |
+| **Data Archiving**              | AWS Glacier, Google Coldline                      |
+| **Data Retention**              | Apache Ranger, AWS Lake Formation                 |
+| **Data Governance**             | Apache Atlas, Amundsen                            |
+| **Data Lineage**                | OpenLineage, Marquez                              |
+| **Data Catalog**                | DataHub, Amundsen                                 |
+| **Data Exploration**            | Jupyter Notebooks, Streamlit                      |
+| **Data Annotation**             | Label Studio, Prodigy                             |
+| **Data Augmentation**           | Albumentations, Imgaug                            |
+| **Model Monitoring**            | Evidently AI, WhyLabs                             |
+| **Model Explainability**        | SHAP, LIME                                        |
+| **Model Optimization**          | Optuna, Ray Tune                                  |
+| **Model Serving**               | FastAPI, BentoML, or MLflow                       |
+| **Edge AI**                     | TensorFlow Lite, ONNX Runtime                     |
+| **Data Streaming**              | Apache Kafka, Apache Pulsar                       |
+| **Data Warehousing**            | Snowflake, BigQuery                               |
+| **Data Lakes**                  | Apache Iceberg, Delta Lake                        |
+| **Data Integration**            | Apache NiFi, Talend                               |
+| **Data Governance**             | Collibra, Alation                                 |
+| **Data Security**               | Vault by HashiCorp, AWS KMS                       |
+| **Data Compliance**             | Immuta, Privacera                                 |
+| **Data Observability**          | Monte Carlo, Datafold                             |
+| **Data Collaboration**          | Databricks, Snowflake                             |
+| **Data Science Workflow**       | MLflow, Kubeflow                                  |
+| **Data Engineering Workflow**   | Apache Airflow, Prefect                           |
+| **DataOps**                     | DataKitchen, Great Expectations                   |
+| **MLOps**                       | MLflow, Kubeflow, TFX                             |
+| **AIOps**                       | Moogsoft, BigPanda                                |
+| **DevOps**                      | Jenkins, GitLab CI/CD, CircleCI                   |
+| **GitOps**                      | ArgoCD, Flux                                      |
+| **Observability**               | OpenTelemetry, Grafana Tempo                      |
+| **Incident Management**         | PagerDuty, Opsgenie                               |
+| **Collaboration Tools**         | Slack, Microsoft Teams                            |
+| **Project Management**          | Jira, Trello, Asana                               |
+| **Documentation Tools**         | Confluence, Notion, MkDocs                        |
+| **Code Quality**                | SonarQube, CodeClimate                            |
+| **Static Analysis**             | ESLint, Prettier, Black (Python)                  |
+| **Dynamic Analysis**            | Selenium, Cypress                                 |
+| **Performance Testing**         | JMeter, k6                                        |
+| **Load Testing**                | Locust, Gatling                                   |
+| **Security Testing**            | OWASP ZAP, Burp Suite                             |
+| **API Testing**                 | Postman, Insomnia                                 |
+| **Data Testing**                | Great Expectations, Deequ                         |
+| **Model Testing**               | Evidently AI, WhyLabs                             |
+| **Compliance Testing**          | Vault by HashiCorp, AWS Config                    |
+| **Disaster Recovery**           | AWS Backup, Google Cloud DR                       |
+| **High Availability**           | Kubernetes, AWS Elastic Beanstalk                 |
+| **Scalability**                 | Kubernetes, AWS Auto Scaling                      |
+| **Cost Management**             | AWS Cost Explorer, Google Cloud Billing           |
+| **Resource Optimization**       | Spot Instances, Reserved Instances                |
+| **Data Archiving**              | AWS Glacier, Google Coldline                      |
+| **Data Retention**              | Apache Ranger, AWS Lake Formation                 |
 
 ---
 

@@ -1,3 +1,5 @@
+from typing import Optional
+
 from backend.api.clients.pionix import PionixClient
 from fastapi import FastAPI, HTTPException
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -13,7 +15,7 @@ app = FastAPI()
 
 # Initialize the PionixClient
 pionix_client = PionixClient(
-    api_key="eyJhbGciOiJSUzI1NiIsImtpZCI6IjQwZDg4ZGQ1NWQxYjAwZDg0ZWU4MWQwYjk2M2RlNGNkOGM0ZmFjM2UiLCJ0eXAiOiJKV1QifQ.eyJpc3MiOiJodHRwczovL3NlY3VyZXRva2VuLmdvb2dsZS5jb20vc3VtbWl0ZWVyLWNsb3VkLWRldiIsImF1ZCI6InN1bW1pdGVlci1jbG91ZC1kZXYiLCJhdXRoX3RpbWUiOjE3MzY3ODM5NTIsInVzZXJfaWQiOiI0QkVrY1BVbFdyWE01NGhyMG1ONHc2MFd1eG0yIiwic3ViIjoiNEJFa2NQVWxXclhNNTRocjBtTjR3NjBXdXhtMiIsImlhdCI6MTczNjc4Mzk1MiwiZXhwIjoxNzM2Nzg3NTUyLCJlbWFpbCI6Im9saXZlci5oZW5uaG9lZmVyQGgta2EuZGUiLCJlbWFpbF92ZXJpZmllZCI6ZmFsc2UsImZpcmViYXNlIjp7ImlkZW50aXRpZXMiOnsiZW1haWwiOlsib2xpdmVyLmhlbm5ob2VmZXJAaC1rYS5kZSJdfSwic2lnbl9pbl9wcm92aWRlciI6InBhc3N3b3JkIn19.mf2mqc-MRe-geQdsVL3n3C24Dto4oVOgaS2AvD6P-xLS4kDhwPTCaepz9_n8C2OSSLUZwnPKVsFdgdagkm8E7lZLCiYAkLPrvjkstH5ErIpNX9WOpiWoFkglTNxH8c9vuHSDPkOO1eE-isX3_o9dZPXlLGAmsyXFozb1xlAE6V81_wKjIreQzG0mZjjsivWfLW4b6gG8A7WJUi2QbuVX4R8iZ59LhFyQV2zA0DUBEXLSYP-jHG3U-HVaWieuPAYlq_Om6sjm54QrsWDTfrykVyMs3fZO66NykhBHJ_MgwNYWFnT7wcbDMxbB7lzv72TLF6fDH_fmm8hwsmxO7kMfIw",
+    api_key="eyJhbGciOiJSUzI1NiIsImtpZCI6IjBhYmQzYTQzMTc4YzE0MjlkNWE0NDBiYWUzNzM1NDRjMDlmNGUzODciLCJ0eXAiOiJKV1QifQ.eyJpc3MiOiJodHRwczovL3NlY3VyZXRva2VuLmdvb2dsZS5jb20vc3VtbWl0ZWVyLWNsb3VkLWRldiIsImF1ZCI6InN1bW1pdGVlci1jbG91ZC1kZXYiLCJhdXRoX3RpbWUiOjE3MzY4NjIzODQsInVzZXJfaWQiOiI0QkVrY1BVbFdyWE01NGhyMG1ONHc2MFd1eG0yIiwic3ViIjoiNEJFa2NQVWxXclhNNTRocjBtTjR3NjBXdXhtMiIsImlhdCI6MTczNjg2NjQ5MywiZXhwIjoxNzM2ODcwMDkzLCJlbWFpbCI6Im9saXZlci5oZW5uaG9lZmVyQGgta2EuZGUiLCJlbWFpbF92ZXJpZmllZCI6ZmFsc2UsImZpcmViYXNlIjp7ImlkZW50aXRpZXMiOnsiZW1haWwiOlsib2xpdmVyLmhlbm5ob2VmZXJAaC1rYS5kZSJdfSwic2lnbl9pbl9wcm92aWRlciI6InBhc3N3b3JkIn19.bt2OhGsxkbIsC8EDdHszShyUrHR48Br1lzinEd8Vfnf2qmA4_eT8ZZ4fJozN_G8Xds-0p4aPNTsaiZ5tTDT1qBPDHUxAnu7h6Vw53564zae_VBpTW4WVPzjsxLYBCJu1IWcBam96mZP8pra4dhdzUJ_9cUzEtxcezIsGJ09i3Jg2FjhnckQqT2vuVHa345icb-EpMBEH1P6oAfLRc4lSDByxFKMsyCcH_ET-YEG3amk_jwth8qO128hd1rBwmzL9dvBmd5Mv2Bcyj9psPD2g0dun2z0QxcJ5JaijkbY8gdiOXSGQFdjKn-05nmndzDl42k___CxCtQ_WlOXxCTgVGg",
     user_agent="hka-biflex-pdm/1.0 (oliver.hennhoefer@h-ka.de)",
 )
 
@@ -44,8 +46,9 @@ def fetch_telemetry_data(charger_id):
 
 
 # Schedule tasks
-scheduler.add_job(fetch_chargers_data, "interval", seconds=3)
-#scheduler.add_job(fetch_telemetry_data, "interval", seconds=10, args=[1])
+#scheduler.add_job(fetch_chargers_data, "interval", seconds=3)
+charger_id = "c662a262-f9aa-49b4-8b4f-ea3237948d73"
+#scheduler.add_job(fetch_telemetry_data, "interval", seconds=3, args=[charger_id])
 
 
 # FastAPI endpoints
@@ -59,7 +62,12 @@ def get_chargers():
 
 
 @app.get("/telemetry/{charger_id}")
-def get_telemetry(charger_id: int, start_date: str, end_date: str):
+def get_telemetry(charger_id: str, start_date: Optional[str] = None, end_date: Optional[str] = None,):
+    # Set default values if not provided
+    if not start_date or not end_date:
+        now = datetime.now(timezone.utc)
+        start_date = (now - timedelta(minutes=10)).isoformat()  # Last 10 minutes
+        end_date = now.isoformat()
     try:
         telemetry = pionix_client.get_telemetry(charger_id, start_date, end_date)
         return {"telemetry": telemetry}

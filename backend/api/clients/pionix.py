@@ -1,5 +1,7 @@
 from backend.api.clients.abstract import APIClient
 
+from urllib.parse import quote
+
 
 class PionixClient(APIClient):
     def __init__(self, api_key, user_agent):
@@ -16,5 +18,5 @@ class PionixClient(APIClient):
         endpoint = (
             f"api/chargers/{charger_id}/telemetry/%2FTopLevelPart%2FTelemetryDouble"
         )
-        params = {"StartDate": start_date, "EndDate": end_date}
+        params = f"StartDate={quote(start_date)}&EndDate={quote(end_date)}"
         return self._get(endpoint, params=params)

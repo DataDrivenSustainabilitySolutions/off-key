@@ -1,0 +1,40 @@
+# infrastructure/docker-compose.yml
+version: '3.8'
+
+services:
+  db:
+    image: postgres:13
+    env_file: .env
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./resources/postgres:/docker-entrypoint-initdb.d
+    networks:
+      - app-network
+
+  backend:
+    build:
+      context: ../backend
+      dockerfile: infrastructure/docker/Dockerfile.backend
+    env_file: .env
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+    networks:
+      - app-network
+
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    networks:
+      - app-network
+
+volumes:
+  postgres_data:
+
+networks:
+  app-network:
+    driver: bridge

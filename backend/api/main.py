@@ -46,9 +46,9 @@ def fetch_telemetry_data(charger_id):
 
 
 # Schedule tasks
-#scheduler.add_job(fetch_chargers_data, "interval", seconds=3)
+# scheduler.add_job(fetch_chargers_data, "interval", seconds=3)
 charger_id = "c662a262-f9aa-49b4-8b4f-ea3237948d73"
-#scheduler.add_job(fetch_telemetry_data, "interval", seconds=3, args=[charger_id])
+# scheduler.add_job(fetch_telemetry_data, "interval", seconds=3, args=[charger_id])
 
 
 # FastAPI endpoints
@@ -62,7 +62,11 @@ def get_chargers():
 
 
 @app.get("/telemetry/{charger_id}")
-def get_telemetry(charger_id: str, start_date: Optional[str] = None, end_date: Optional[str] = None,):
+def get_telemetry(
+    charger_id: str,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+):
     # Set default values if not provided
     if not start_date or not end_date:
         now = datetime.now(timezone.utc)
@@ -77,4 +81,5 @@ def get_telemetry(charger_id: str, start_date: Optional[str] = None, end_date: O
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host="0.0.0.0", port=8000)

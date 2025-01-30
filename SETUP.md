@@ -1,2 +1,3 @@
 1. [Install Docker Desktop](https://docs.docker.com/desktop/setup/install/windows-install/)
 2. [PyCharm Docker Integration](https://www.jetbrains.com/help/pycharm/docker-compose.html#scale-service)
+3. [Install Yarn](https://github.com/yarnpkg/yarn/releases/download/v1.22.4/yarn-1.22.4.msi)

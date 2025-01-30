@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   db:
     image: postgres:13
@@ -29,9 +27,13 @@ services:
       - app-network
 
   frontend:
-    build: ../frontend
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile.frontend
     ports:
       - "3000:80"
+    depends_on:
+      - backend
     networks:
       - app-network
 

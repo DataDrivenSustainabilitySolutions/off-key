@@ -9,7 +9,7 @@ from backend.services.security import (
     get_password_hash,
     verify_password,
     create_access_token,
-    decode_token
+    decode_token,
 )
 from schemas import UserCreate, UserLogin, Token
 from models import User
@@ -23,10 +23,7 @@ async def register(user: UserCreate):
     db_session = next(db.get_db())
     existing_user = db_session.query(User).filter(User.email == user.email).first()
     if existing_user:
-        raise HTTPException(
-            status_code=400,
-            detail="Email already registered"
-        )
+        raise HTTPException(status_code=400, detail="Email already registered")
 
     hashed_password = get_password_hash(user.password)
     new_user = User(email=user.email, hashed_password=hashed_password)
@@ -36,6 +33,7 @@ async def register(user: UserCreate):
 
     # Send welcome email
     from backend.tasks.email import send_welcome_email
+
     send_welcome_email(user.email)
 
     return {"message": "User created successfully"}

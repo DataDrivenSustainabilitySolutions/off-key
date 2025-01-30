@@ -22,6 +22,7 @@ db.create_tables()
 # Include routers
 app.include_router(auth_router, prefix="/api/auth", tags=["authentication"])
 
+
 @app.get("/health")
 async def health_check():
     return {"status": "healthy"}

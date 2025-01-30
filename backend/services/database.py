@@ -9,9 +9,7 @@ class Database:
     def __init__(self, db_url: str):
         self.engine = create_engine(db_url)
         self.session_local = sessionmaker(
-            autocommit=False,
-            autoflush=False,
-            bind=self.engine
+            autocommit=False, autoflush=False, bind=self.engine
         )
 
     def get_db(self):

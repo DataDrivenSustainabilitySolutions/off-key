@@ -3,7 +3,7 @@ uvicorn
 psycopg2-binary
 requests
 apscheduler
-
+pydantic
 fastapi
 sqlalchemy
 passlib[bcrypt]

@@ -2,6 +2,13 @@
 .idea
 .env
 
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-error.log*
+.pnp/
+.pnp.js
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

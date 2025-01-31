@@ -3,7 +3,7 @@ from backend.services.database import Base
 
 
 class User(Base):
-    __tablename__ = "users"
+    __tablename__ = "users"  # noqa
 
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String, unique=True, index=True)

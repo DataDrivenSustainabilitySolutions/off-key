@@ -9,4 +9,8 @@ Setup Yarn:
 2. Initialize `yarn` with `yarn init -y`
 3. After the `package.json` was successfully saved install respective packages by `yarn install`
 4. This procedure should create the file `yarn.lock` in `.\frontend\`
-5. Run the `docker-compose.yml`
+5. Run the `docker-compose.yml` or just run the frontend individually with `yarn start` in `.\frontend\`
+
+Changes in the code may result in immediate changes when `yarn start` was used.
+For docker compositions, navigate to `.\infrastructure\` and run `docker-compose up --build`.
+Everytime this is done navigate **before** into `.\frontend\` and run `yarn install`.

@@ -1,9 +1,9 @@
-from backend.api.clients.abstract import APIClient
-
 from urllib.parse import quote
 
+from backend.app.clients.base import BaseClient
 
-class PionixClient(APIClient):
+
+class PionixClient(BaseClient):
     def __init__(self, api_key, user_agent):
         super().__init__(
             base_url="https://sc-production.schoneberg.pionix.net",

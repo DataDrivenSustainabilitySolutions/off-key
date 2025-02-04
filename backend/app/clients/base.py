@@ -1,7 +1,9 @@
+import abc
 import requests
 
 
-class APIClient:
+class BaseClient(abc.ABC):
+
     def __init__(self, base_url, api_key, user_agent):
         self.base_url = base_url
         self.api_key = api_key

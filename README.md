@@ -4,7 +4,8 @@
 Setup Fundamentals:
 1. Set up a virtual environment
 2. Run  `python.exe -m pip install --upgrade pip`
-3. In `.\backend\` run `pip install -r requirements.txt`
+3. Run `uv python install`
+4. In `.\backend\` run `uv sync`. This will create the file `uv.lock`
 
 
 

@@ -1,33 +1,22 @@
-import asyncio
-import datetime
-
-from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
-from apscheduler.schedulers.background import BackgroundScheduler
-from apscheduler.triggers.interval import IntervalTrigger
-
 from .core.config import settings
-from backend.app.clients.pionix import PionixClient
+from .db.database import Base, engine
+from .api.v1.routes import router as v1_router
 
-pionix_client = PionixClient(
-    api_key=settings.PIONIX_KEY, user_agent=settings.PIONIX_USER_AGENT
-)
+app = FastAPI(title=settings.APP_NAME)
 
-def period_tasks():
-    print("Hello")
+# Include versioned API routes
+app.include_router(v1_router, prefix="/v1", tags=["v1"])
 
-scheduler = BackgroundScheduler()
-scheduler.add_job(func=period_tasks, trigger=IntervalTrigger(minutes=10))
+# Automatically create tables if they don't exist
+Base.metadata.create_all(bind=engine)
 
-@asynccontextmanager
-async def lifespan(application: FastAPI):
-    scheduler.start()
-    yield
-    scheduler.shutdown()
-
-app = FastAPI(title="off-key", lifespan=lifespan)
 
 @app.get("/")
 async def root():
     return {"message": "Hello World"}
+
+@app.get("/info")
+async def info():
+    return settings.dict()

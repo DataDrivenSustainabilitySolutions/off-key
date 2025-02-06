@@ -1,12 +1,13 @@
 from fastapi import APIRouter, Depends
-from requests import Session
+from sqlalchemy.orm import Session
 
-from backend.app.db.database import SessionLocal
+#from backend.app.db.models import Chargers
+from backend.app.db.session import SessionLocal
 from backend.app.services.chargers_sync import ChargersSyncService
 
 router = APIRouter()
 
-
+# Dependency for database sessions
 def get_db():
     db = SessionLocal()
     try:
@@ -14,9 +15,19 @@ def get_db():
     finally:
         db.close()
 
-
 @router.get("/sync")
-async def sync_items(db: Session = Depends(get_db)):
+async def sync_chargers(db: Session = Depends(get_db)):
     service = ChargersSyncService(db)
     await service.sync_chargers()
     return {"status": "successful"}
+
+"""@router.get("/active")
+async def get_active_chargers(db: Session = Depends(get_db)):
+    return db.query(Chargers).filter(Chargers.online is True).all()
+
+@router.get("/active/id")
+async def get_active_charger_ids(db: Session = Depends(get_db)):
+    active_ids = db.query(Chargers.charger_id) \
+        .filter(Chargers.online is True) \
+        .all()
+    return {"active": [active_id[1] for active_id in active_ids]}"""

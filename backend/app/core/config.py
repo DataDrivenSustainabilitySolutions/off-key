@@ -3,28 +3,19 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
 
-    # General
-    APP_NAME: str = "off-key"
-
-    # Schedule
-    PERIODIC_INTERVAL: int = 10
-
-    # Persistence (postgres)
+    APP_NAME: str
+    PERIODIC_INTERVAL: int
     POSTGRES_USER: str = "admin"
     POSTGRES_PASSWORD: str = "admin"
     POSTGRES_DB: str = "offkey_pg"  # noqa
     POSTGRES_PORT: int = 5432
-    POSTGRES_HOST: str = (
-        "localhost"  # use 'postgres' if connecting from another container
+    POSTGRES_HOST: str = "localhost"  # 'postgres' if connecting from another container
+    PIONIX_KEY: str
+    PIONIX_USER_AGENT: str
+
+    model_config = SettingsConfigDict(
+        env_file="./../../.env", env_file_encoding="utf-8"
     )
-
-    # External
-    PIONIX_KEY: str = ""
-    PIONIX_USER_AGENT: str = ""
-
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
 
     @property
     def database_url(self):

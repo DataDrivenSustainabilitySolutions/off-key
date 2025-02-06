@@ -14,29 +14,40 @@ class ChargersSyncService:
     async def sync_chargers(self):
         active_chargers = await self.client.get("api/chargers")
 
-        # Fetch all known charger IDs
+        # Extract active charger IDs
+        active_ids = {charger["id"] for charger in active_chargers}
+
+        # Fetch all known chargers from the database
         known_chargers = self.db.execute(select(Chargers)).scalars().all()
         existing_ids = {charger.charger_id for charger in known_chargers}
 
         # Identify new and inactive chargers
-        new_ids = set(active_chargers) - existing_ids
-        inactive_ids = existing_ids - set(active_chargers)
+        new_ids = active_ids - existing_ids
+        inactive_ids = existing_ids - active_ids
 
         # Insert new chargers
-        for charger_id in new_ids:
-            new_charger = Chargers(
-                charger_id=charger_id,
-                is_active=True,
+        new_chargers = [
+            Chargers(
+                charger_id=charger["id"],
+                manufacturer_name=charger.get("manufacturerName"),
+                charger_name=charger.get("chargerName"),
+                firmware_version=charger.get("firmwareVersion"),
+                last_seen=charger.get("lastSeen"),
+                state=charger.get("state"),
+                online=charger.get("online", True),
             )
-            self.db.add(new_charger)
+            for charger in active_chargers
+            if charger["id"] in new_ids
+        ]
+        self.db.add_all(new_chargers)
 
-            # Deactivate chargers not in the provided list
-            if inactive_ids:
-                self.db.execute(
-                    update(Chargers)
-                    .where(Chargers.charger_id.in_(inactive_ids))
-                    .values(is_active=False)
-                )
+        # Deactivate chargers not in the provided list
+        if inactive_ids:
+            self.db.execute(
+                update(Chargers)
+                .where(Chargers.charger_id.in_(inactive_ids))
+                .values(is_active=False)
+            )
 
-            # Commit changes
-            self.db.commit()
+        # Commit changes
+        self.db.commit()

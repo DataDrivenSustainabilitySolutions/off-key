@@ -26,3 +26,15 @@ Setup Yarn:
 Changes in the code may result in immediate changes when `yarn start` was used.
 For docker compositions, navigate to `.\infrastructure\` and run `docker-compose up --build`.
 Everytime this is done navigate **before** into `.\frontend\` and run `yarn install`.
+
+## Query dockerized postgres
+1. Run the respective postgres container (`docker-compose.yml`)
+2. In the local terminal run `docker exec -it postgres_db psql -U admin -d offkey_pg`
+3. The pg-terminal should open. Command should be ended by `;`
+
+## Docker Commands
+`docker stop <container-name>` for stopping a specific container.<br>
+`docker rm <container-name>` for removing a specific container.<br>
+`docker-compose up --build -d` for rebuilding the whole composition.<br>
+`docker volume ls` shows the volume locations (e.g, persistence for the database).<br>
+`docker volume rm <volume_name>` shows the volume locations (e.g, persistence for the database).<br>

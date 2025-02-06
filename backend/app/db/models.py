@@ -1,23 +1,19 @@
-"""
-# SQLAlchemy Models
-"""
-
 from sqlalchemy import Column, Integer, String, Boolean, DateTime, func
+from sqlalchemy.orm import declarative_base
 
-from backend.app.db.database import Base
+Base = declarative_base()
 
 
 class Chargers(Base):
-    """
-    Database model for active chargers.
-    """
 
     __tablename__ = "chargers"  # noqa
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     charger_id = Column(String, unique=True, index=True, nullable=False)
-    is_active = Column(Boolean, default=True, index=True)
+    manufacturer_name = Column(String, unique=False, index=True, nullable=True)
+    charger_name = Column(String, unique=True, index=True, nullable=False)
+    firmware_version = Column(String, unique=False, index=True, nullable=True)
+    last_seen = Column(String, unique=False, index=True, nullable=True)
+    state = Column(String, unique=False, index=True, nullable=True)
+    online = Column(Boolean, default=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
-
-    def __repr__(self):
-        return f"<Charger(id={self.id}, charger_id={self.charger_id}, is_active={self.is_active}, created_at={self.created_at})>"

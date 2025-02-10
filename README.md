@@ -33,8 +33,14 @@ Everytime this is done navigate **before** into `.\frontend\` and run `yarn inst
 3. The pg-terminal should open. Command should be ended by `;`
 
 ## Docker Commands
+`docker ps -a` for listing all docker images.<br>
+`docker logs <container-name> --follow` for seeing logs in real-time.<br>
+`docker-compose down` for disconnecting all containers.<br>
 `docker stop <container-name>` for stopping a specific container.<br>
 `docker rm <container-name>` for removing a specific container.<br>
-`docker-compose up --build -d` for rebuilding the whole composition.<br>
+`docker-compose up --build -d` for rebuilding the whole composition (runs `docker-compose.yml`).<br>
 `docker volume ls` shows the volume locations (e.g, persistence for the database).<br>
+`docker volume ls -qf dangling=true` removes all volumes without respective container.<br>
 `docker volume rm <volume_name>` shows the volume locations (e.g, persistence for the database).<br>
+
+Access under `http://localhost:8000/`

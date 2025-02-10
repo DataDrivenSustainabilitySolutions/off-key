@@ -1,9 +1,9 @@
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
-from backend.app.core.client.pionix import PionixClient
-from backend.app.core.config import settings
-from backend.app.db.models import Chargers
+from ..core.client.pionix import PionixClient
+from ..core.config import settings
+from ..db.models import Chargers
 
 
 class ChargersSyncService:

@@ -1,9 +1,9 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from backend.app.db.models import Chargers
-from backend.app.db.session import SessionLocal
-from backend.app.services.chargers_sync import ChargersSyncService
+from ...db.base import SessionLocal
+from ...db.models import Chargers
+from ...services.chargers_sync import ChargersSyncService
 
 router = APIRouter()
 

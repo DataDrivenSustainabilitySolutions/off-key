@@ -5,11 +5,12 @@ class Settings(BaseSettings):
 
     APP_NAME: str
     PERIODIC_INTERVAL: int
-    POSTGRES_USER: str = "admin"
-    POSTGRES_PASSWORD: str = "admin"
+    POSTGRES_USER: str = "postgres"
+    POSTGRES_PASSWORD: str = "postgres"
     POSTGRES_DB: str = "offkey_pg"  # noqa
     POSTGRES_PORT: int = 5432
-    POSTGRES_HOST: str = "localhost"  # 'postgres' if connecting from another container
+    POSTGRES_HOST: str = "postgres"  # 'postgres' if connecting from another container
+    TIMESCALE_PORT: int = 5433
     PIONIX_KEY: str
     PIONIX_USER_AGENT: str
 

@@ -7,8 +7,8 @@ from ..db.models import Chargers
 
 
 class ChargersSyncService:
-    def __init__(self, db: Session):
-        self.db: Session = db
+    def __init__(self, session: Session):
+        self.session: Session = session
         self.client = PionixClient(settings.PIONIX_KEY, settings.PIONIX_USER_AGENT)
 
     async def sync_chargers(self):
@@ -18,7 +18,7 @@ class ChargersSyncService:
         active_ids = {charger["id"] for charger in active_chargers}
 
         # Fetch all known chargers from the database
-        known_chargers = self.db.execute(select(Chargers)).scalars().all()
+        known_chargers = self.session.execute(select(Chargers)).scalars().all()
         existing_ids = {charger.charger_id for charger in known_chargers}
 
         # Identify new and inactive chargers
@@ -39,15 +39,15 @@ class ChargersSyncService:
             for charger in active_chargers
             if charger["id"] in new_ids
         ]
-        self.db.add_all(new_chargers)
+        self.session.add_all(new_chargers)
 
         # Deactivate chargers not in the provided list
         if inactive_ids:
-            self.db.execute(
+            self.session.execute(
                 update(Chargers)
                 .where(Chargers.charger_id.in_(inactive_ids))
                 .values(is_active=False)
             )
 
         # Commit changes
-        self.db.commit()
+        self.session.commit()

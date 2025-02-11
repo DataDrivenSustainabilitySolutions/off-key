@@ -8,11 +8,11 @@ Setup Fundamentals:
 4. In `.\backend\` run `uv sync`. This will create the file `uv.lock`
 
 
-
-4. [Install Docker Desktop](https://docs.docker.com/desktop/setup/install/windows-install/)
-5. [PyCharm Docker Integration](https://www.jetbrains.com/help/pycharm/docker-compose.html#scale-service)
-6. [Install Yarn](https://github.com/yarnpkg/yarn/releases/download/v1.22.4/yarn-1.22.4.msi)
-7. [Installation Guide (Windows)](https://geekflare.com/dev/how-to-install-yarn-on-windows/)
+Setup Infrastructure:
+1. [Install Docker Desktop](https://docs.docker.com/desktop/setup/install/windows-install/)
+2. [PyCharm Docker Integration](https://www.jetbrains.com/help/pycharm/docker-compose.html#scale-service)
+3. [Install Yarn](https://github.com/yarnpkg/yarn/releases/download/v1.22.4/yarn-1.22.4.msi)
+4. [Installation Guide (Windows)](https://geekflare.com/dev/how-to-install-yarn-on-windows/)
 
 Setup Yarn:
 1. Navigate to the frontend folder `cd .\frontend\`
@@ -29,8 +29,10 @@ Everytime this is done navigate **before** into `.\frontend\` and run `yarn inst
 
 ## Query dockerized postgres
 1. Run the respective postgres container (`docker-compose.yml`)
-2. In the local terminal run `docker exec -it postgres_db psql -U admin -d offkey_pg`
+2. In the local terminal run `docker exec -it postgres_db psql -U postgres -d offkey_pg`
 3. The pg-terminal should open. Command should be ended by `;`
+
+For the timescale database execute `docker exec -it timescale_db psql -U admin -d offkey_pg`.
 
 ## Docker Commands
 `docker ps -a` for listing all docker images.<br>
@@ -42,5 +44,11 @@ Everytime this is done navigate **before** into `.\frontend\` and run `yarn inst
 `docker volume ls` shows the volume locations (e.g, persistence for the database).<br>
 `docker volume ls -qf dangling=true` removes all volumes without respective container.<br>
 `docker volume rm <volume_name>` shows the volume locations (e.g, persistence for the database).<br>
+
+Restart everything:
+1. Stop all docker container
+2. Remove all docker container
+3. Remove all volumes
+4. Rebuild via docker-compose
 
 Access under `http://localhost:8000/`

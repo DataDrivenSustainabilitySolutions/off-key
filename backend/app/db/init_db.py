@@ -8,10 +8,10 @@ def initialize_timescaledb():
     with engine.connect() as conn:
         try:
             conn.execute(
-                "SELECT create_hypertable('sensors', 'timestamp', if_not_exists => TRUE);"
+                "SELECT create_hypertable('telemetry', 'timestamp', if_not_exists => TRUE);"
             )
             conn.execute(
-                "SELECT add_retention_policy('sensors', INTERVAL '14 days', if_not_exists => TRUE);"
+                "SELECT add_retention_policy('telemetry', INTERVAL '14 days', if_not_exists => TRUE);"
             )
             logging.info("TimescaleDB hypertable setup complete.")
         except Exception as e:

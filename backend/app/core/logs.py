@@ -10,9 +10,7 @@ handler = logging.StreamHandler(sys.stdout)
 handler.setLevel(logging.INFO)
 
 # Define log format
-formatter = logging.Formatter(
-    "%(asctime)s - %(levelname)s - %(name)s - %(message)s"
-)
+formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(name)s - %(message)s")
 handler.setFormatter(formatter)
 
 # Avoid duplicate handlers

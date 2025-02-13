@@ -15,6 +15,7 @@ def get_db():
     finally:
         db.close()
 
+
 @router.get("/sync")
 async def sync_chargers(db: Session = Depends(get_db)):
     service = TelemetrySyncService(db)

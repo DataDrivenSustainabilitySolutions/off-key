@@ -1,4 +1,13 @@
-from sqlalchemy import Column, String, Boolean, DateTime, func, TIMESTAMP, Float, Integer
+from sqlalchemy import (
+    Column,
+    String,
+    Boolean,
+    DateTime,
+    func,
+    TIMESTAMP,
+    Float,
+    Integer,
+)
 
 from .base import Base
 
@@ -7,7 +16,9 @@ class Chargers(Base):
 
     __tablename__ = "chargers"  # noqa
 
-    charger_id = Column(String, primary_key=True, unique=True, index=True, nullable=False)
+    charger_id = Column(
+        String, primary_key=True, unique=True, index=True, nullable=False
+    )
     manufacturer_name = Column(String, unique=False, index=True, nullable=True)
     charger_name = Column(String, unique=True, index=True, nullable=False)
     firmware_version = Column(String, unique=False, index=True, nullable=True)

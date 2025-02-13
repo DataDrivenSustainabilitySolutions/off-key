@@ -1,5 +1,7 @@
 import httpx
 
+from ...core.logs import logger
+
 
 class PionixClient:
 
@@ -13,12 +15,17 @@ class PionixClient:
             "User-Agent": self.user_agent,
             "Authorization": f"Bearer {self.api_key}",
         }
-        print(headers)
+        url = f"{self.base_url}/{endpoint}"
+        logger.info(f"GET from {url}")
         async with httpx.AsyncClient() as client:
             response = await client.get(
-                f"{self.base_url}/{endpoint}",
+                url,
                 headers=headers,
                 params=params,
             )
+            logger.info(f"GET response {response}")
+
+            logger.warning(f"Response raw text {response.text}")
+
             response.raise_for_status()
             return response.json()

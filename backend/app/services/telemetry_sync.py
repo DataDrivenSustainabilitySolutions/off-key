@@ -18,17 +18,27 @@ class TelemetrySyncService:
     async def sync_telemetry(self):
 
         # Query all charger_id where online is True
-        online_charger_ids = self.session.query(Chargers.charger_id).filter(Chargers.online).all()
+        online_charger_ids = (
+            self.session.query(Chargers.charger_id).filter(Chargers.online).all()
+        )
         online_charger_ids = [charger_id[0] for charger_id in online_charger_ids]
 
-        logger.info(f"Online charger ids for telemetry synchronization: {online_charger_ids}")
+        logger.info(
+            f"Online charger ids for telemetry synchronization: {online_charger_ids}"
+        )
 
         dr = self._get_date_range()
         logger.info(f"Date range parameter: {dr}")
         for charger_id in online_charger_ids:
-            logger.info(f"Fetching telemetry for {charger_id}.")
 
-            device_model = await self.client.get(f"api/chargers/{charger_id}/deviceModel")
+            dm_url = f"chargers/{charger_id}/deviceModel"
+            logger.info(f"Fetching from {dm_url}")
+
+            try:
+                device_model = await self.client.get(dm_url)
+            except Exception as e:
+                logger.error(f"Failed to fetch {dm_url}: {e}")
+                continue
 
             # Extract telemetries' hierarchy values
             telemetry_hierarchies = [
@@ -54,8 +64,12 @@ class TelemetrySyncService:
                 telemetry_records = [
                     {
                         "charger_id": charger_id,
-                        "timestamp": datetime.fromisoformat(unquote(item["timestamp"]).replace("Z", "+00:00")),
-                        "value": float(item["value"]) if item["value"] != "string" else None,
+                        "timestamp": datetime.fromisoformat(
+                            unquote(item["timestamp"]).replace("Z", "+00:00")
+                        ),
+                        "value": (
+                            float(item["value"]) if item["value"] != "string" else None
+                        ),
                         "type": "some_type",  # Adjust as needed
                         "created": datetime.now(timezone.utc),
                     }
@@ -64,7 +78,6 @@ class TelemetrySyncService:
 
                 self.session.bulk_insert_mappings(Telemetry, telemetry_records)
                 self.session.commit()
-
 
     def _get_date_range(self):
 

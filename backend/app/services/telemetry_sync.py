@@ -1,6 +1,11 @@
 from datetime import datetime, timezone, timedelta
 from urllib.parse import quote, unquote
+from xmlrpc.client import DateTime
+
+from select import select
 from sqlalchemy.orm import Session
+from sqlalchemy import cast, DateTime
+
 
 from ..core.client.pionix import PionixClient
 from ..core.config import settings
@@ -9,7 +14,7 @@ from ..db.models import Chargers, Telemetry
 
 
 class TelemetrySyncService:
-    def __init__(self, session: Session, retention_days: int = 21):
+    def __init__(self, session: Session, retention_days: int = 14):
         self.session: Session = session
         self.client = PionixClient(settings.PIONIX_KEY, settings.PIONIX_USER_AGENT)
 
@@ -17,22 +22,23 @@ class TelemetrySyncService:
 
     async def sync_telemetry(self):
 
+        two_weeks_ago = datetime.now(timezone.utc) - timedelta(weeks=2)
+
         # Query all charger_id where online is True
         online_charger_ids = (
-            self.session.query(Chargers.charger_id).filter(Chargers.online).all()
+            self.session.query(Chargers.charger_id).filter(Chargers.online, cast(Chargers.last_seen, DateTime) >= two_weeks_ago).all()
         )
         online_charger_ids = [charger_id[0] for charger_id in online_charger_ids]
 
         logger.info(
-            f"Online charger ids for telemetry synchronization: {online_charger_ids}"
+            f"Synchronization Charger IDs: {online_charger_ids}"
         )
 
         dr = self._get_date_range()
-        logger.info(f"Date range parameter: {dr}")
         for charger_id in online_charger_ids:
 
-            dm_url = f"chargers/{charger_id}/deviceModel"
-            logger.info(f"Fetching from {dm_url}")
+            dm_url = f"api/chargers/{charger_id}/deviceModel"
+            logger.info(f"Fetching {dm_url}")
 
             try:
                 device_model = await self.client.get(dm_url)
@@ -47,11 +53,13 @@ class TelemetrySyncService:
                 for telemetry in part.get("telemetries", [])
             ]
 
+            logger.info(f"Extracted Hierarchies: {telemetry_hierarchies}")
+
             for hierarchy in telemetry_hierarchies:
                 logger.info(f"Telemetries: {hierarchy} ({charger_id}).")
 
                 hierarchy = hierarchy.replace("/", "%2F")
-                get_url = f"api/chargers/{charger_id}/telemetry/{hierarchy}"  # {dr}
+                get_url = f"api/chargers/{charger_id}/telemetry/{hierarchy}{dr}&Limit=300000"  # {dr}
 
                 logger.info(f"Request URL: {get_url}")
 

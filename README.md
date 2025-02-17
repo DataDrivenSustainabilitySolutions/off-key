@@ -52,3 +52,5 @@ Restart everything:
 4. Rebuild via docker-compose
 
 Access under `http://localhost:8000/`
+
+'https://sc-production.schoneberg.pionix.net

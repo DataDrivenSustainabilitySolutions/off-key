@@ -33,7 +33,7 @@ class Telemetry(Base):
     __tablename__ = "telemetry"  # noqa
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    charger_id = Column(String, unique=True, index=True, nullable=False)
+    charger_id = Column(String, unique=False, index=True, nullable=False)
     timestamp = Column(TIMESTAMP(timezone=True), index=True, nullable=False)
     value = Column(Float, unique=False, index=True, nullable=True)
     type = Column(String, unique=False, index=True, nullable=False)

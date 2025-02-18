@@ -1,12 +1,16 @@
 import axios from 'axios';
 
-const apiUrl = import.meta.env.API_URL;
+// Assuming the API URL is set in the environment variable
+const api = axios.create({
+  baseURL: import.meta.env.VITE_API_URL, // from .env file
+});
 
-export const fetchData = () => {
-  return axios.get(`${apiUrl}/some-endpoint`)
-    .then(response => response.data)
-    .catch(error => {
-      console.error(error);
-      throw error;  // Rethrow or handle error
-    });
+export const fetchData = async () => {
+  try {
+    const response = await api.get('/data');
+    return response.data;  // Returns the data from the API
+  } catch (error) {
+    console.error('Error fetching data:', error);
+    throw error;
+  }
 };

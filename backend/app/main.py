@@ -16,6 +16,7 @@ app = FastAPI(title=settings.APP_NAME)
 
 origins = [
     "http://localhost:3000",  # Add your frontend URL here
+    "http://localhost:5173"
 ]
 
 app.add_middleware(
@@ -50,7 +51,7 @@ async def info():
 async def ping(ping_input: str):
     return {"ping": ping_input}
 
-@app.get("/api/data")
+@app.get("/data")
 async def get_data():
     return [
         {"timestamp": datetime.now().isoformat(), "value": 10},

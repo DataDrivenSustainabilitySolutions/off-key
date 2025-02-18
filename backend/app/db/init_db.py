@@ -8,6 +8,9 @@ def initialize_timescaledb():
     with engine.connect() as conn:
         try:
             conn.execute(
+                "CREATE EXTENSION IF NOT EXISTS timescaledb;"
+            )
+            conn.execute(
                 "SELECT create_hypertable('telemetry', 'timestamp', if_not_exists => TRUE);"
             )
             conn.execute(

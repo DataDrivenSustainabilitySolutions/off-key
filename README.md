@@ -14,12 +14,28 @@ Setup Infrastructure:
 3. [Install Yarn](https://github.com/yarnpkg/yarn/releases/download/v1.22.4/yarn-1.22.4.msi)
 4. [Installation Guide (Windows)](https://geekflare.com/dev/how-to-install-yarn-on-windows/)
 
-Setup Yarn:
-1. Navigate to the frontend folder `cd .\frontend\`
-2. Initialize `yarn` with `yarn init -y`
-3. After the `package.json` was successfully saved install respective packages by `yarn install`
-4. This procedure should create the file `yarn.lock` in `.\frontend\`
-5. Run the `docker-compose.yml` or just run the frontend individually with `yarn start` in `.\frontend\`
+Setup Vue Project with Yarn (see [Vite Guide](https://vite.dev/guide/)):
+1. Run `yarn create vite frontend --template vue`
+2. Follow the instructions after the creation (`cd frontend`, then `yarn` then `yarn dev`)
+3.
+
+# New yarn dependencies
+1. Go to frontend
+2. rm node_modules (J) and rm yarn.lock
+3. E.g. yarn add rollup@latest + yarn add @rollup/rollup-linux-x64-musl and/or yarn install should update package.json
+4. npm i
+5. npm rebuild
+6. run docker-compose
+what i need:
+1. yarn add react react-dom react-router-dom
+2. yarn add @shadcn/ui tailwindcss
+3. yarn add recharts
+4. yarn add axios
+5. yarn add vite sass
+6. yarn install
+
+# Error: Cannot find module @rollup/rollup-linux-x64-musl. npm has a bug related to optional dependencies (https://github.com/npm/cli/issues/4828).
+#Please try `npm i` again after removing both package-lock.json and node_modules directory. 
 
 **The `.env.example` have to be renamed to `.env` with actual values.**
 

@@ -1,14 +1,13 @@
 import axios from 'axios';
 
-// Assuming the API URL is set in the environment variable
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL, // Now this is http://localhost:8000
+  baseURL: import.meta.env.VITE_API_URL,
 });
 
-export const fetchData = async () => {
+export const fetchActiveChargerIDs = async () => {
   try {
-    const response = await api.get('/data');
-    return response.data;  // Returns the data from the API
+    const response = await api.get('/v1/chargers/active/id');
+    return response.data;
   } catch (error) {
     console.error('Error fetching data:', error);
     throw error;

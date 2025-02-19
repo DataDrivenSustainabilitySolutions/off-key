@@ -58,6 +58,9 @@ services:
       - "5173:5173"
     depends_on:
       - api
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules  # Prevent conflicts
 
 
 networks:

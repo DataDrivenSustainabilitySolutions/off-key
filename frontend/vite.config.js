@@ -10,6 +10,9 @@ export default defineConfig({
     },
   },
   server: {
+    host: '0.0.0.0', // Allow connections from Docker network
+    port: 5173,
+    strictPort: true, // Prevents Vite from using a fallback port
     proxy: {
       '/api': {
         target: 'http://localhost:8000',  // FastAPI container's name and port

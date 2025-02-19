@@ -1,24 +1,25 @@
 <script setup>
 import { ref, onMounted } from 'vue';
-import { fetchData } from '@/services/api';  // Adjust the path as necessary
+import {fetchActiveChargerIDs} from '@/services/api';
 
-const data = ref(null); // Declare a reactive reference to store the fetched data
+const activeChargerIDs = ref(null); // Declare a reactive reference to store the fetched data
 
 onMounted(() => {
-  fetchData()  // Call the fetchData function
+  fetchActiveChargerIDs()  // Call the fetchData function
     .then(responseData => {
-      data.value = responseData;  // Set the response data to the data ref
+      activeChargerIDs.value = responseData;  // Set the response data to the data ref
     })
     .catch(error => {
       console.error('Failed to fetch data:', error);
     });
 });
+
 </script>
 
 <template>
   <div>
     <h1>Data from API</h1>
-    <pre>{{ data }}</pre>  <!-- Display the fetched data -->
+    <pre>{{ activeChargerIDs }}</pre>  <!-- Display the fetched data -->
   </div>
 </template>
 

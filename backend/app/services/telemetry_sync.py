@@ -11,6 +11,7 @@ from ..core.client.pionix import PionixClient
 from ..core.config import settings
 from ..core.logs import logger
 from ..db.models import Chargers, Telemetry
+from ..utils.strings import clean_string
 
 
 class TelemetrySyncService:
@@ -78,7 +79,7 @@ class TelemetrySyncService:
                         "value": (
                             float(item["value"]) if item["value"] != "string" else None
                         ),
-                        "type": "some_type",  # Adjust as needed
+                        "type": clean_string(hierarchy),
                         "created": datetime.now(timezone.utc),
                     }
                     for item in items

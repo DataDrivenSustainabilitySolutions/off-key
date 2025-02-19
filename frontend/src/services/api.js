@@ -13,3 +13,23 @@ export const fetchActiveChargerIDs = async () => {
     throw error;
   }
 };
+
+export const fetchAvailableTelemetryTypes = async (id) => {
+  try {
+    const response = await api.get(`/v1/telemetry/${id}/type`);
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching data:', error);
+    throw error;
+  }
+};
+
+export const fetchTelemetryData = async (id, type) => {
+  try {
+    const response = await api.get(`/v1/telemetry/${id}/${type}`);
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching data:', error);
+    throw error;
+  }
+};

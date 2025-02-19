@@ -2,7 +2,6 @@ from datetime import datetime, timezone, timedelta
 from urllib.parse import quote, unquote
 from xmlrpc.client import DateTime
 
-from select import select
 from sqlalchemy.orm import Session
 from sqlalchemy import cast, DateTime
 

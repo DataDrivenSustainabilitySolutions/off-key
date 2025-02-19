@@ -1,5 +1,5 @@
 <script setup>
-import HelloWorld from './components/HelloWorld.vue'  // Import the HelloWorld component
+import LandingPage from './components/LandingPage.vue'  // Import the LandingPage component
 </script>
 
 <template>

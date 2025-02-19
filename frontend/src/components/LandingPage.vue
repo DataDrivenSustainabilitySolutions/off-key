@@ -18,6 +18,7 @@ onMounted(async () => {
 const goToDetail = (id) => {
   router.push(`/details/${id}`);
 };
+
 </script>
 
 <template>
@@ -28,7 +29,7 @@ const goToDetail = (id) => {
         {{ id }}
       </button>
     </div>
-    <p v-else>Loading...</p>
+    <p v-else>No telemetry information available.</p>
   </div>
 </template>
 

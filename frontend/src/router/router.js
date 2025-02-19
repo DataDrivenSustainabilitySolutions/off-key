@@ -1,10 +1,12 @@
 import { createRouter, createWebHistory } from 'vue-router';
-import HelloWorld from "../components/HelloWorld.vue";
+import LandingPage from "../components/LandingPage.vue";
 import Details from "../components/Details.vue";
+import LineChart from "../components/LineChart.vue";
 
 const routes = [
-    { path: '/', component: HelloWorld },
-    { path: '/details/:id', component: Details }
+    { path: '/', component: LandingPage },
+    { path: '/details/:id', component: Details },
+    { path: '/chargers/:id/telemetry/:type', component: LineChart}
 ];
 
 const router = createRouter({

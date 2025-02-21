@@ -20,7 +20,7 @@ class Chargers(Base):
         String, primary_key=True, unique=True, index=True, nullable=False
     )
     manufacturer_name = Column(String, unique=False, index=True, nullable=True)
-    charger_name = Column(String, unique=True, index=True, nullable=False)
+    charger_name = Column(String, unique=False, index=True, nullable=True)
     firmware_version = Column(String, unique=False, index=True, nullable=True)
     last_seen = Column(String, unique=False, index=True, nullable=True)
     state = Column(String, unique=False, index=True, nullable=True)

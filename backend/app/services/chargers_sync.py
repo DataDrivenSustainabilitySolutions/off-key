@@ -1,10 +1,9 @@
-import logging
-
 from sqlalchemy import select, update, delete
 from sqlalchemy.orm import Session
 
 from ..core.client.pionix import PionixClient
 from ..core.config import settings
+from ..core.logs import logger
 from ..db.models import Chargers, Telemetry
 
 
@@ -26,7 +25,7 @@ class ChargersSyncService:
         # Identify new and inactive chargers
         new_ids = active_ids - existing_ids
         inactive_ids = existing_ids - active_ids
-        logging.info(f"Inactive chargers found: {inactive_ids}")
+        logger.info(f"Inactive chargers found: {inactive_ids}")
 
         # Insert new chargers
         new_chargers = [
@@ -47,9 +46,9 @@ class ChargersSyncService:
         # Deactivate chargers not in the provided list
         if inactive_ids:
 
-            logging.info("Initiating clean-up for inactive charger IDs.")
+            logger.info("Initiating clean-up for inactive charger IDs.")
 
-            # Delete chargers data for inactive chargers
+            # Flag inactive chargers
             self.session.execute(
                 update(Chargers)
                 .where(Chargers.charger_id.in_(inactive_ids))
@@ -60,6 +59,11 @@ class ChargersSyncService:
             self.session.execute(
                 delete(Telemetry).where(Telemetry.charger_id.in_(inactive_ids))
             )
+
+        # Delete charges data for inactive chargers
+        self.session.execute(
+            delete(Chargers).where(Chargers.online.is_(False))
+        )
 
         # Commit changes
         self.session.commit()

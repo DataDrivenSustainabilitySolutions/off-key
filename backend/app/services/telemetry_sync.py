@@ -2,9 +2,10 @@ from datetime import datetime, timezone, timedelta
 from urllib.parse import quote, unquote
 from xmlrpc.client import DateTime
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from sqlalchemy import cast, DateTime
-
+from sqlalchemy.dialects.postgresql import insert
 
 from ..core.client.pionix import PionixClient
 from ..core.config import settings
@@ -59,7 +60,7 @@ class TelemetrySyncService:
                 logger.info(f"Telemetries: {hierarchy} ({charger_id}).")
 
                 hierarchy = hierarchy.replace("/", "%2F")
-                get_url = f"api/chargers/{charger_id}/telemetry/{hierarchy}{dr}&Limit=300000"  # {dr}
+                get_url = f"api/chargers/{charger_id}/telemetry/{hierarchy}{dr}&Limit=1000000"
 
                 logger.info(f"Request URL: {get_url}")
 
@@ -67,8 +68,10 @@ class TelemetrySyncService:
                 items = telemetry.get("items", [])
 
                 if not items:
-                    return  # No data to insert
+                    logger.warning(f"No data retrieved from {get_url}")
+                    continue  # No data to insert
 
+                logger.info(f"Preparing database entries for {get_url}")
                 telemetry_records = [
                     {
                         "charger_id": charger_id,
@@ -84,8 +87,18 @@ class TelemetrySyncService:
                     for item in items
                 ]
 
-                self.session.bulk_insert_mappings(Telemetry, telemetry_records)
-                self.session.commit()
+                logger.info("Starting to bulk insert telemetry entries")
+
+                try:
+                    stmt = insert(Telemetry).values(telemetry_records)
+                    stmt = stmt.on_conflict_do_nothing()  # Skip rows that violate unique constraints
+                    self.session.execute(stmt)
+                    self.session.commit()
+                except IntegrityError:
+                    self.session.rollback()
+                    # Log the error or handle it as needed
+                    print("IntegrityError encountered during bulk insert.")
+
 
     def _get_date_range(self):
 

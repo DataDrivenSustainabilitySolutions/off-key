@@ -6,7 +6,7 @@ from sqlalchemy import (
     func,
     TIMESTAMP,
     Float,
-    Integer,
+    Integer, UniqueConstraint,
 )
 
 from .base import Base
@@ -38,3 +38,7 @@ class Telemetry(Base):
     value = Column(Float, unique=False, index=True, nullable=True)
     type = Column(String, unique=False, index=True, nullable=False)
     created = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+    __table_args__ = (
+        UniqueConstraint("charger_id", "timestamp", "type", name="uq_telemetry_entry"),
+    )

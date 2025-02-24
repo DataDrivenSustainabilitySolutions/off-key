@@ -1,5 +1,3 @@
-from datetime import datetime
-
 import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -15,7 +13,7 @@ app = FastAPI(title=settings.APP_NAME)
 
 
 origins = [
-    "http://localhost:3000",  # Add your frontend URL here
+    "http://localhost:3000",
     "http://localhost:5173"
 ]
 
@@ -50,14 +48,6 @@ async def info():
 @app.get("/ping/{ping_input}")
 async def ping(ping_input: str):
     return {"ping": ping_input}
-
-@app.get("/data")
-async def get_data():
-    return [
-        {"timestamp": datetime.now().isoformat(), "value": 10},
-        {"timestamp": datetime.now().isoformat(), "value": 15},
-        {"timestamp": datetime.now().isoformat(), "value": 8},
-    ]
 
 
 if __name__ == "__main__":

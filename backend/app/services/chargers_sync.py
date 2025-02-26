@@ -13,7 +13,7 @@ class ChargersSyncService:
         self.client = PionixClient(settings.PIONIX_KEY, settings.PIONIX_USER_AGENT)
 
     async def sync_chargers(self):
-        active_chargers = await self.client.post("api/chargers")
+        active_chargers = await self.client.get("api/chargers")
 
         # Extract active charger IDs
         active_ids = {charger["id"] for charger in active_chargers}

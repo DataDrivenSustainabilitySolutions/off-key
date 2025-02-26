@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from ...db.base import get_db
+from ...db.base import get_db_sync, get_db_async
 from ...db.models import Telemetry
 from ...services.telemetry_sync import TelemetrySyncService
 
@@ -9,14 +9,16 @@ router = APIRouter()
 
 
 @router.post("/sync")
-async def sync_chargers(db: Session = Depends(get_db)):
+async def sync_chargers(db: Session = Depends(get_db_async)):
     service = TelemetrySyncService(db)
     await service.sync_telemetry()
     return {"status": "successful"}
 
 
 @router.get("/{charger_id}/type")
-async def get_telemetry_types_from_id(charger_id: str, db: Session = Depends(get_db)):
+def get_telemetry_types_from_id(
+    charger_id: str, db: Session = Depends(get_db_sync)
+):
     charger_types = (
         db.query(Telemetry.type)
         .filter(Telemetry.charger_id == charger_id)
@@ -27,10 +29,10 @@ async def get_telemetry_types_from_id(charger_id: str, db: Session = Depends(get
 
 
 @router.get("/{charger_id}/{telemetry_type}")
-async def get_telemetry(
+def get_telemetry(
     charger_id: str,
     telemetry_type: str,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_sync),
     limit: int = 10_000,
 ):
     query = db.query(Telemetry).filter(

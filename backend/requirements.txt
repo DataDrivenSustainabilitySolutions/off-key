@@ -4,3 +4,4 @@ pydantic-settings>=2.7.1
 urllib3>=2.3.0
 SQLAlchemy>=2.0.38
 psycopg2-binary>=2.9.10
+asyncpg>=0.30.0

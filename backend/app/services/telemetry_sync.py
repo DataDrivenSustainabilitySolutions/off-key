@@ -1,10 +1,8 @@
 from datetime import datetime, timezone, timedelta
 from urllib.parse import quote, unquote
-from xmlrpc.client import DateTime
-
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
-from sqlalchemy import cast, DateTime
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, cast, DateTime
 from sqlalchemy.dialects.postgresql import insert
 
 from ..core.client.pionix import PionixClient
@@ -15,30 +13,27 @@ from ..utils.strings import clean_string
 
 
 class TelemetrySyncService:
-    def __init__(self, session: Session, retention_days: int = 14):
-        self.session: Session = session
+    def __init__(self, session: AsyncSession, retention_days: int = 14):
+        self.session: AsyncSession = session
         self.client = PionixClient(settings.PIONIX_KEY, settings.PIONIX_USER_AGENT)
         self.retention_days = retention_days
 
     async def sync_telemetry(self):
-
-        two_weeks_ago = datetime.now(timezone.utc) - timedelta(weeks=2)
+        # Strip timezone from the datetime
+        two_weeks_ago = (datetime.now(timezone.utc) - timedelta(weeks=2)).replace(tzinfo=None)
 
         # Query all charger_id where online is True
-        online_charger_ids = (
-            self.session.query(Chargers.charger_id)
-            .filter(
-                Chargers.online, cast(Chargers.last_seen, DateTime) >= two_weeks_ago
-            )
-            .all()
+        stmt = (
+            select(Chargers.charger_id)
+            .where(Chargers.online, cast(Chargers.last_seen, DateTime) >= two_weeks_ago)
         )
-        online_charger_ids = [charger_id[0] for charger_id in online_charger_ids]
+        result = await self.session.execute(stmt)
+        online_charger_ids = result.scalars().all()
 
         logger.info(f"Synchronization Charger IDs: {online_charger_ids}")
 
         dr = self._get_date_range()
         for charger_id in online_charger_ids:
-
             dm_url = f"api/chargers/{charger_id}/deviceModel"
             logger.info(f"Fetching {dm_url}")
 
@@ -80,12 +75,12 @@ class TelemetrySyncService:
                         "charger_id": charger_id,
                         "timestamp": datetime.fromisoformat(
                             unquote(item["timestamp"]).replace("Z", "+00:00")
-                        ),
+                        ).replace(tzinfo=None),  # Strip timezone for consistency
                         "value": (
                             float(item["value"]) if item["value"] != "string" else None
                         ),
                         "type": clean_string(hierarchy),
-                        "created": datetime.now(timezone.utc),
+                        "created": datetime.now(timezone.utc).replace(tzinfo=None),  # Strip timezone
                     }
                     for item in items
                 ]
@@ -94,18 +89,14 @@ class TelemetrySyncService:
 
                 try:
                     stmt = insert(Telemetry).values(telemetry_records)
-                    stmt = (
-                        stmt.on_conflict_do_nothing()
-                    )  # Skip rows that violate unique constraints
-                    self.session.execute(stmt)
-                    self.session.commit()
+                    stmt = stmt.on_conflict_do_nothing()  # Skip rows that violate unique constraints
+                    await self.session.execute(stmt)
+                    await self.session.commit()
                 except IntegrityError:
-                    self.session.rollback()
-                    # Log the error or handle it as needed
-                    print("IntegrityError encountered during bulk insert.")
+                    await self.session.rollback()
+                    logger.error("IntegrityError encountered during bulk insert.")
 
     def _get_date_range(self):
-
         # Get current UTC time
         now = datetime.now(timezone.utc)
         past = now - timedelta(days=self.retention_days)

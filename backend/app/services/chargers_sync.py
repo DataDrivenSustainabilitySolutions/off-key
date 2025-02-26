@@ -1,5 +1,5 @@
 from sqlalchemy import select, update, delete
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.client.pionix import PionixClient
 from ..core.config import settings
@@ -8,18 +8,19 @@ from ..db.models import Chargers, Telemetry
 
 
 class ChargersSyncService:
-    def __init__(self, session: Session):
-        self.session: Session = session
+    def __init__(self, session: AsyncSession):
+        self.session: AsyncSession = session
         self.client = PionixClient(settings.PIONIX_KEY, settings.PIONIX_USER_AGENT)
 
     async def sync_chargers(self):
-        active_chargers = await self.client.get("api/chargers")
+        active_chargers = await self.client.post("api/chargers")
 
         # Extract active charger IDs
         active_ids = {charger["id"] for charger in active_chargers}
 
         # Fetch all known chargers from the database
-        known_chargers = self.session.execute(select(Chargers)).scalars().all()
+        result = await self.session.execute(select(Chargers))
+        known_chargers = result.scalars().all()
         existing_ids = {charger.charger_id for charger in known_chargers}
 
         # Identify new and inactive chargers
@@ -45,25 +46,22 @@ class ChargersSyncService:
 
         # Deactivate chargers not in the provided list
         if inactive_ids:
-
             logger.info("Initiating clean-up for inactive charger IDs.")
 
             # Flag inactive chargers
-            self.session.execute(
+            await self.session.execute(
                 update(Chargers)
                 .where(Chargers.charger_id.in_(inactive_ids))
                 .values(online=False)
             )
 
             # Delete telemetry data for inactive chargers
-            self.session.execute(
+            await self.session.execute(
                 delete(Telemetry).where(Telemetry.charger_id.in_(inactive_ids))
             )
 
         # Delete charges data for inactive chargers
-        self.session.execute(
-            delete(Chargers).where(Chargers.online.is_(False))
-        )
+        await self.session.execute(delete(Chargers).where(Chargers.online.is_(False)))
 
         # Commit changes
-        self.session.commit()
+        await self.session.commit()  # Use await to commit asynchronously

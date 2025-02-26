@@ -6,7 +6,7 @@ from sqlalchemy import (
     func,
     TIMESTAMP,
     Float,
-    Integer, UniqueConstraint,
+    UniqueConstraint,
 )
 
 from .base import Base
@@ -32,11 +32,14 @@ class Telemetry(Base):
 
     __tablename__ = "telemetry"  # noqa
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    charger_id = Column(String, unique=False, index=True, nullable=False)
-    timestamp = Column(TIMESTAMP(timezone=True), index=True, nullable=False)
+    charger_id = Column(
+        String, primary_key=True, unique=False, index=True, nullable=False
+    )
+    timestamp = Column(
+        TIMESTAMP(timezone=True), primary_key=True, index=True, nullable=False
+    )
     value = Column(Float, unique=False, index=True, nullable=True)
-    type = Column(String, unique=False, index=True, nullable=False)
+    type = Column(String, primary_key=True, unique=False, index=True, nullable=False)
     created = Column(DateTime(timezone=True), server_default=func.now(), index=True)
 
     __table_args__ = (

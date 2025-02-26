@@ -18,7 +18,6 @@ class TelemetrySyncService:
     def __init__(self, session: Session, retention_days: int = 14):
         self.session: Session = session
         self.client = PionixClient(settings.PIONIX_KEY, settings.PIONIX_USER_AGENT)
-
         self.retention_days = retention_days
 
     async def sync_telemetry(self):
@@ -27,13 +26,15 @@ class TelemetrySyncService:
 
         # Query all charger_id where online is True
         online_charger_ids = (
-            self.session.query(Chargers.charger_id).filter(Chargers.online, cast(Chargers.last_seen, DateTime) >= two_weeks_ago).all()
+            self.session.query(Chargers.charger_id)
+            .filter(
+                Chargers.online, cast(Chargers.last_seen, DateTime) >= two_weeks_ago
+            )
+            .all()
         )
         online_charger_ids = [charger_id[0] for charger_id in online_charger_ids]
 
-        logger.info(
-            f"Synchronization Charger IDs: {online_charger_ids}"
-        )
+        logger.info(f"Synchronization Charger IDs: {online_charger_ids}")
 
         dr = self._get_date_range()
         for charger_id in online_charger_ids:
@@ -60,7 +61,9 @@ class TelemetrySyncService:
                 logger.info(f"Telemetries: {hierarchy} ({charger_id}).")
 
                 hierarchy = hierarchy.replace("/", "%2F")
-                get_url = f"api/chargers/{charger_id}/telemetry/{hierarchy}{dr}&Limit=1000000"
+                get_url = (
+                    f"api/chargers/{charger_id}/telemetry/{hierarchy}{dr}&Limit=1000000"
+                )
 
                 logger.info(f"Request URL: {get_url}")
 
@@ -91,14 +94,15 @@ class TelemetrySyncService:
 
                 try:
                     stmt = insert(Telemetry).values(telemetry_records)
-                    stmt = stmt.on_conflict_do_nothing()  # Skip rows that violate unique constraints
+                    stmt = (
+                        stmt.on_conflict_do_nothing()
+                    )  # Skip rows that violate unique constraints
                     self.session.execute(stmt)
                     self.session.commit()
                 except IntegrityError:
                     self.session.rollback()
                     # Log the error or handle it as needed
                     print("IntegrityError encountered during bulk insert.")
-
 
     def _get_date_range(self):
 

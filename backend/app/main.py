@@ -12,10 +12,7 @@ from .db.models import Base
 app = FastAPI(title=settings.APP_NAME)
 
 
-origins = [
-    "http://localhost:3000",
-    "http://localhost:5173"
-]
+origins = ["http://localhost:3000", "http://localhost:5173"]
 
 app.add_middleware(
     CORSMiddleware,
@@ -42,12 +39,10 @@ async def root():
 
 @app.get("/info")
 async def info():
+    """
+    Returns environment variables.
+    """
     return settings.dict()
-
-
-@app.get("/ping/{ping_input}")
-async def ping(ping_input: str):
-    return {"ping": ping_input}
 
 
 if __name__ == "__main__":

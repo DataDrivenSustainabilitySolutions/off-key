@@ -1,24 +1,16 @@
 from fastapi import APIRouter, Depends
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
-from ...db.base import SessionLocal
+from ...db.base import get_db
 from ...db.models import Chargers
 from ...services.chargers_sync import ChargersSyncService
 
 router = APIRouter()
 
 
-# Dependency for database sessions
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
-
-@router.get("/sync")
-async def sync_chargers(db: Session = Depends(get_db)):
+@router.post("/sync")
+async def sync_chargers(db: AsyncSession = Depends(get_db)):
     service = ChargersSyncService(db)
     await service.sync_chargers()
     return {"status": "successful"}

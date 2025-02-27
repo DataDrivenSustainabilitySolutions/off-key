@@ -19,7 +19,9 @@ class PionixClient:
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         await self.client.aclose()
 
-    async def get(self, endpoint: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    async def get(
+        self, endpoint: str, params: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
         """
         Perform an asynchronous GET request.
 
@@ -64,7 +66,9 @@ class PionixClient:
             logger.error(f"Failed to decode JSON response: {e}")
             raise
 
-    async def post(self, endpoint: str, json: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    async def post(
+        self, endpoint: str, json: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
         """
         Perform an asynchronous POST request.
 

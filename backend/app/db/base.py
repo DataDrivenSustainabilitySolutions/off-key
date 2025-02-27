@@ -24,7 +24,7 @@ SyncSessionLocal = sessionmaker(
 # Asynchronous Engine
 async_engine = create_async_engine(
     settings.async_database_url,  # URL for the asynchronous database
-    echo=True,  # Log SQL queries for debugging
+    echo=False,  # Log SQL queries for debugging
     pool_pre_ping=True,  # Enable connection health checks
     pool_size=10,  # Number of connections to keep in the pool
     max_overflow=20,  # Allow additional connections beyond the pool size
@@ -42,6 +42,7 @@ AsyncSessionLocal = sessionmaker(
 # Base class for declarative models
 Base = declarative_base()
 
+
 # Dependency for asynchronous database sessions
 async def get_db_async():
     """
@@ -58,6 +59,7 @@ async def get_db_async():
             raise
         finally:
             await db.close()  # Ensure the session is closed
+
 
 # Dependency for synchronous database sessions
 def get_db_sync():

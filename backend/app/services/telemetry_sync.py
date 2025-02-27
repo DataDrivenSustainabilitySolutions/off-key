@@ -9,7 +9,8 @@ from ..core.client.pionix import PionixClient
 from ..core.config import settings
 from ..core.logs import logger
 from ..db.models import Chargers, Telemetry
-from ..utils.strings import clean_string
+from ..utils.dates import get_date_range
+from ..utils.strings import clean_string, convert_string_to_number
 
 
 class TelemetrySyncService:
@@ -20,19 +21,20 @@ class TelemetrySyncService:
 
     async def sync_telemetry(self):
         # Strip timezone from the datetime
-        two_weeks_ago = (datetime.now(timezone.utc) - timedelta(weeks=2)).replace(tzinfo=None)
+        two_weeks_ago = (datetime.now(timezone.utc) - timedelta(weeks=2)).replace(
+            tzinfo=None
+        )
 
         # Query all charger_id where online is True
-        stmt = (
-            select(Chargers.charger_id)
-            .where(Chargers.online, cast(Chargers.last_seen, DateTime) >= two_weeks_ago)
+        stmt = select(Chargers.charger_id).where(
+            Chargers.online, cast(Chargers.last_seen, DateTime) >= two_weeks_ago
         )
         result = await self.session.execute(stmt)
         online_charger_ids = result.scalars().all()
 
         logger.info(f"Synchronization Charger IDs: {online_charger_ids}")
 
-        dr = self._get_date_range()
+        dr = get_date_range(retention_days=self.retention_days)
         for charger_id in online_charger_ids:
             dm_url = f"api/chargers/{charger_id}/deviceModel"
             logger.info(f"Fetching {dm_url}")
@@ -65,45 +67,45 @@ class TelemetrySyncService:
                 telemetry = await self.client.get(get_url)
                 items = telemetry.get("items", [])
 
-                if not items:
+                if not telemetry.get("items"):
                     logger.warning(f"No data retrieved from {get_url}")
                     continue  # No data to insert
 
-                logger.info(f"Preparing database entries for {get_url}")
-                telemetry_records = [
-                    {
-                        "charger_id": charger_id,
-                        "timestamp": datetime.fromisoformat(
-                            unquote(item["timestamp"]).replace("Z", "+00:00")
-                        ).replace(tzinfo=None),  # Strip timezone for consistency
-                        "value": (
-                            float(item["value"]) if item["value"] != "string" else None
-                        ),
-                        "type": clean_string(hierarchy),
-                        "created": datetime.now(timezone.utc).replace(tzinfo=None),  # Strip timezone
-                    }
-                    for item in items
-                ]
+                logger.info(f"Preparing database entries for {get_url} with {telemetry}")
+
+                try:
+                    telemetry_records = [
+                        {
+                            "charger_id": charger_id,
+                            "timestamp": datetime.fromisoformat(
+                                unquote(item["timestamp"]).replace("Z", "+00:00")
+                            ).replace(
+                                tzinfo=None
+                            ),  # Strip timezone for consistency
+                            "value": (
+                                float(item["value"])
+                            ),
+                            "type": clean_string(hierarchy),
+                            "created": datetime.now(timezone.utc).replace(
+                                tzinfo=None
+                            ),  # Strip timezone
+                        }
+                        for item in items
+                    ]
+                except (KeyError, ValueError, TypeError) as e:
+                    print(f"Error processing telemetry records: {e}")
+                    telemetry_records = []
+                    continue
 
                 logger.info("Starting to bulk insert telemetry entries")
 
                 try:
                     stmt = insert(Telemetry).values(telemetry_records)
-                    stmt = stmt.on_conflict_do_nothing()  # Skip rows that violate unique constraints
+                    stmt = (
+                        stmt.on_conflict_do_nothing()
+                    )  # Skip rows that violate unique constraints
                     await self.session.execute(stmt)
                     await self.session.commit()
                 except IntegrityError:
                     await self.session.rollback()
                     logger.error("IntegrityError encountered during bulk insert.")
-
-    def _get_date_range(self):
-        # Get current UTC time
-        now = datetime.now(timezone.utc)
-        past = now - timedelta(days=self.retention_days)
-
-        # Format as ISO 8601 string with 'Z' for UTC
-        now_iso_ts = now.strftime("%Y-%m-%dT%H:%M:%S.%fZ")[:-3] + "Z"
-        past_iso_ts = past.strftime("%Y-%m-%dT%H:%M:%S.%fZ")[:-3] + "Z"
-
-        # URL encode the timestamps
-        return "?StartDate=" + quote(past_iso_ts) + "&EndDate=" + quote(now_iso_ts)

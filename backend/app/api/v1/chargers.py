@@ -13,7 +13,7 @@ router = APIRouter()
 async def sync_chargers(db: AsyncSession = Depends(get_db_async)):
     service = ChargersSyncService(db)
     await service.sync_chargers()
-    return {}
+    return {"status": "successful"}
 
 
 @router.get("/active", tags=["chargers"])

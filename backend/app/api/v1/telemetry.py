@@ -16,9 +16,7 @@ async def sync_chargers(db: Session = Depends(get_db_async)):
 
 
 @router.get("/{charger_id}/type")
-def get_telemetry_types_from_id(
-    charger_id: str, db: Session = Depends(get_db_sync)
-):
+def get_telemetry_types_from_id(charger_id: str, db: Session = Depends(get_db_sync)):
     charger_types = (
         db.query(Telemetry.type)
         .filter(Telemetry.charger_id == charger_id)

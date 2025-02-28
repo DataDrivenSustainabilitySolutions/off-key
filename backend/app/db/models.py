@@ -36,7 +36,11 @@ class Telemetry(Base):
         String, primary_key=True, unique=False, index=True, nullable=False
     )
     timestamp = Column(
-        TIMESTAMP(timezone=True), primary_key=True, index=True, nullable=False
+        TIMESTAMP(timezone=True),
+        primary_key=True,
+        unique=False,
+        index=True,
+        nullable=False,
     )
     value = Column(Float, unique=False, index=True, nullable=True)
     type = Column(String, primary_key=True, unique=False, index=True, nullable=False)

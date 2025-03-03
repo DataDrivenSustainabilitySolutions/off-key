@@ -2,7 +2,6 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .db.base import engine
-from .db.init_db import initialize_timescaledb
 from .core.config import settings
 from .api.v1.routes import router as v1_router
 from .db.models import Base
@@ -23,9 +22,6 @@ app.add_middleware(
 
 # Create database tables
 Base.metadata.create_all(bind=engine)
-
-# Create timescale hypertable
-initialize_timescaledb()
 
 # Include versioned API routes
 app.include_router(v1_router, prefix="/v1", tags=["v1"])

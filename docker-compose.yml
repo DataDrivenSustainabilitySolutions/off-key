@@ -1,20 +1,7 @@
 services:
 
-  api:
-    build: ./backend/
-    container_name: fastapi_app
-    env_file: .env
-    ports:
-      - "8000:8000"
-    depends_on:
-      postgres:
-        condition: service_healthy
-    networks:
-      - app-network
-    restart: always
-
   postgres:
-    image: postgres:15
+    image: timescale/timescaledb:latest-pg15
     container_name: postgres_db
     env_file: .env
     ports:
@@ -30,29 +17,22 @@ services:
       timeout: 5s
       retries: 5
 
-  timescale:
-    image: timescale/timescaledb:latest-pg15
-    container_name: timescale_db
+  api:
+    build: ./backend/
+    container_name: fastapi_app
     env_file: .env
     ports:
-      - "${TIMESCALE_PORT}:5432"
+      - "8000:8000"
     depends_on:
       postgres:
         condition: service_healthy
-    volumes:
-      - timescale_data:/var/lib/postgresql/data
-    restart: always
     networks:
       - app-network
-    healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
-      interval: 5s
-      timeout: 5s
-      retries: 5
+    restart: always
 
   frontend:
     build: ./frontend
-    container_name: frontend_ui
+    container_name: react_ui
     env_file: .env
     ports:
       - "5173:5173"
@@ -69,4 +49,3 @@ networks:
 
 volumes:
   postgres_data:
-  timescale_data:

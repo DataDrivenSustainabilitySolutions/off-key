@@ -12,7 +12,6 @@ engine = create_engine(
     pool_pre_ping=True,  # Enable connection health checks
     pool_size=10,  # Number of connections to keep in the pool
     max_overflow=20,  # Allow additional connections beyond the pool size
-    logging_name="sqlalchemy.engine",
 )
 
 # Synchronous Session Factory

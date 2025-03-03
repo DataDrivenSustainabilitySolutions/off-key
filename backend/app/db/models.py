@@ -6,7 +6,7 @@ from sqlalchemy import (
     func,
     TIMESTAMP,
     Float,
-    UniqueConstraint,
+    UniqueConstraint, event, DDL,
 )
 
 from .base import Base
@@ -49,3 +49,9 @@ class Telemetry(Base):
     __table_args__ = (
         UniqueConstraint("charger_id", "timestamp", "type", name="uq_telemetry_entry"),
     )
+
+event.listen(
+    Telemetry.__table__,
+    'after_create',
+    DDL(f"SELECT create_hypertable('{Telemetry.__tablename__}', 'timestamp');")
+)

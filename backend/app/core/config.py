@@ -4,13 +4,15 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
 
     APP_NAME: str
+
     PERIODIC_INTERVAL: int
-    POSTGRES_USER: str = "admin"
-    POSTGRES_PASSWORD: str = "admin"
-    POSTGRES_DB: str = "offkey_pg"  # noqa
-    POSTGRES_PORT: int = 5432
-    POSTGRES_HOST: str = "postgres"  # 'postgres' if connecting from another container
-    TIMESCALE_PORT: int = 5433
+
+    POSTGRES_USER: str
+    POSTGRES_PASSWORD: str
+    POSTGRES_DB: str
+    POSTGRES_PORT: str
+    POSTGRES_HOST: str  # 'postgres' if connecting from another container
+
     PIONIX_KEY: str
     PIONIX_USER_AGENT: str
 

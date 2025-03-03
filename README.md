@@ -45,7 +45,7 @@ Everytime this is done navigate **before** into `.\frontend\` and run `yarn inst
 
 ## Query dockerized postgres
 1. Run the respective postgres container (`docker-compose.yml`)
-2. In the local terminal run `docker exec -it postgres_db psql -U postgres -d offkey_pg`
+2. In the local terminal run `docker exec -it postgres_db psql -U postgres -d postgres`
 3. The pg-terminal should open. Command should be ended by `;`
 
 For the timescale database execute `docker exec -it timescale_db psql -U admin -d offkey_pg`.

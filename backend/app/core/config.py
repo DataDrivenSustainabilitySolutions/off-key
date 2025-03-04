@@ -5,6 +5,10 @@ class Settings(BaseSettings):
 
     APP_NAME: str
 
+    JWT_SECRET: str
+    ALGORITHM: str
+    ACCESS_TOKEN_EXPIRE_MINUTES: int
+
     PERIODIC_INTERVAL: int
 
     POSTGRES_USER: str

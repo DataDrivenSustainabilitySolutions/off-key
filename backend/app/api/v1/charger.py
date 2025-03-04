@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 
 from ...db.base import get_db_sync, get_db_async
 from ...db.models import Chargers
-from ...services.chargers_sync import ChargersSyncService
+from ...services.chargers import ChargersSyncService
 
 router = APIRouter()
 

@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 
 from ...db.base import get_db_sync, get_db_async
 from ...db.models import Telemetry
-from ...services.telemetry_sync import TelemetrySyncService
+from ...services.telemetry import TelemetrySyncService
 
 router = APIRouter()
 

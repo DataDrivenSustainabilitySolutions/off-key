@@ -6,10 +6,22 @@ from sqlalchemy import (
     func,
     TIMESTAMP,
     Float,
-    UniqueConstraint, event, DDL,
+    UniqueConstraint,
+    event,
+    DDL,
+    Integer,
 )
 
 from .base import Base
+
+
+class Users(Base):
+
+    __tablename__ = "users"  # noqa
+
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String, unique=True, index=True, nullable=False)
+    hashed_password = Column(String, nullable=False)
 
 
 class Chargers(Base):
@@ -50,8 +62,9 @@ class Telemetry(Base):
         UniqueConstraint("charger_id", "timestamp", "type", name="uq_telemetry_entry"),
     )
 
+
 event.listen(
     Telemetry.__table__,
-    'after_create',
-    DDL(f"SELECT create_hypertable('{Telemetry.__tablename__}', 'timestamp');")
+    "after_create",
+    DDL(f"SELECT create_hypertable('{Telemetry.__tablename__}', 'timestamp');"),
 )

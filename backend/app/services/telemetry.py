@@ -96,7 +96,7 @@ class TelemetrySyncService:
                         for item in items
                     ]
                 except (KeyError, ValueError, TypeError) as e:
-                    #logger.error(f"Error processing telemetry records: {e}")
+                    # logger.error(f"Error processing telemetry records: {e}")
                     logger.error(f"Error processing telemetry records: {e}")
                     continue
 
@@ -105,7 +105,7 @@ class TelemetrySyncService:
                 # Split telemetry_records into chunks of 2000
                 batch_size = 5_000  # Accounts for binding limits
                 for i in range(0, len(telemetry_records), batch_size):
-                    batch = telemetry_records[i:i + batch_size]
+                    batch = telemetry_records[i : i + batch_size]
                     try:
                         stmt = insert(Telemetry).values(batch)
                         stmt = (

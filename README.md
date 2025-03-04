@@ -26,9 +26,12 @@ Setup Vue Project with Yarn (see [Vite Guide](https://vite.dev/guide/)):
 4. npm i
 5. npm rebuild
 6. run docker-compose
+
+
 what i need:
-1. yarn add react react-dom react-router-dom
-2. yarn add @shadcn/ui tailwindcss
+1. yarn add @types/react-router-dom
+2. https://ui.shadcn.com/docs/installation/vite
+3. npx shadcn@latest add input label card to add single components
 3. yarn add recharts
 4. yarn add axios
 5. yarn add vite sass

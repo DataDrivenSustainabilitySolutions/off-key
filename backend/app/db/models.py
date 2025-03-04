@@ -1,3 +1,5 @@
+import uuid
+
 from sqlalchemy import (
     Column,
     String,
@@ -12,6 +14,8 @@ from sqlalchemy import (
     Integer,
 )
 
+from sqlalchemy.dialects.postgresql import UUID
+
 from .base import Base
 
 
@@ -22,6 +26,9 @@ class Users(Base):
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String, unique=True, index=True, nullable=False)
     hashed_password = Column(String, nullable=False)
+    is_active = Column(Boolean, default=False)  # Not active until verified
+    is_superuser = Column(Boolean, default=False)
+    verification_token = Column(UUID(as_uuid=True), nullable=True, default=uuid.uuid4)
 
 
 class Chargers(Base):

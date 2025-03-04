@@ -6,8 +6,19 @@ class Settings(BaseSettings):
     APP_NAME: str
 
     JWT_SECRET: str
+    JWT_VERIFICATION_SECRET: str
     ALGORITHM: str
     ACCESS_TOKEN_EXPIRE_MINUTES: int
+
+    EMAIL_USERNAME: str
+    EMAIL_PASSWORD: str
+    EMAIL_FROM: str
+    SMTP_SERVER: str
+    SMTP_PORT: int
+    ADMIN_EMAIL: str
+    ADMIN_PASSWORD: str
+    MAIL_STARTTLS:bool
+    MAIL_SSL_TLS: bool
 
     PERIODIC_INTERVAL: int
 

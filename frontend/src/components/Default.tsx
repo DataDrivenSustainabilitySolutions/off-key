@@ -1,56 +1,75 @@
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
+import { Routes, Route, Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import Login from './Login';
-import Registration from './Registration';
+import Login from '@/components/Login.tsx';
+import Registration from '@/components/Registration.tsx';
 
 const Default: React.FC = () => {
   return (
-    <Router>
-      <div className="min-h-screen flex flex-col">
-        {/* Navigation Bar */}
-        <nav className="flex justify-between items-center p-6 bg-gray-800 text-white">
-          <div className="text-2xl font-bold">
-            <Link to="/">Off-Key</Link>
-          </div>
-          <div className="space-x-4">
-            <Link to="/login">
-              <Button variant="outline" className="text-white border-white">
-                Login
-              </Button>
-            </Link>
-            <Link to="/register">
-              <Button variant="solid" className="bg-white text-gray-800">
-                Register
-              </Button>
-            </Link>
-          </div>
-        </nav>
-        {/* Main Content */}
-        <main className="flex-grow flex items-center justify-center bg-gray-100">
-          <Routes>
-            <Route
-              path="/"
-              element={
-                <div className="text-center p-6">
-                  <h1 className="text-5xl font-extrabold mb-4">Welcome to Off-Key</h1>
-                  <p className="text-xl text-gray-700">
-                    Discover the unique features of our project and join our community today.
-                  </p>
+    <div className="min-h-screen flex flex-col bg-white text-gray-900">
+      {/* Navigation Bar */}
+      <nav className="flex justify-between items-center p-6 max-w-7xl mx-auto w-full">
+        <div className="text-2xl font-bold">
+          <Link to="/" className="hover:text-gray-700 transition-colors">
+            off-key
+          </Link>
+        </div>
+        <div className="space-x-4">
+          <Link to="/login">
+            <Button variant="ghost" className="text-gray-900 hover:bg-gray-100">
+              Login
+            </Button>
+          </Link>
+          <Link to="/register">
+            <Button className="bg-gray-900 text-white hover:bg-gray-800">
+              Register
+            </Button>
+          </Link>
+        </div>
+      </nav>
+
+      {/* Main Content */}
+      <main className="flex-grow flex items-center justify-center">
+        <Routes>
+          <Route
+            path="/"
+            element={
+              <div className="text-center p-6 max-w-2xl">
+                <h1 className="text-5xl font-extrabold mb-6">
+                  Welcome to{" "}
+                  <span className="bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+                    off-key
+                  </span>
+                </h1>
+                <p className="text-xl text-gray-600 mb-8">
+                  Discover the unique features of our project and join our community today. Let’s create something amazing together.
+                </p>
+                <div className="space-x-4">
+                  <Link to="/login">
+                    <Button variant="outline" className="border-gray-900 text-gray-900 hover:bg-gray-100">
+                      Get Started
+                    </Button>
+                  </Link>
+                  <Link to="/register">
+                    <Button className="bg-gray-900 text-white hover:bg-gray-800">
+                      Join Now
+                    </Button>
+                  </Link>
                 </div>
-              }
-            />
-            <Route path="/login" element={<Login />} />
-            <Route path="/registration" element={<Registration />} />
-          </Routes>
-        </main>
-        {/* Footer */}
-        <footer className="p-4 bg-gray-800 text-white text-center">
-          &copy; {new Date().getFullYear()} Off-Key. All rights reserved.
-        </footer>
-      </div>
-    </Router>
+              </div>
+            }
+          />
+          <Route path="/login" element={<Login />} />
+          <Route path="/register" element={<Registration />} />
+        </Routes>
+      </main>
+
+      {/* Footer */}
+      <footer className="p-6 bg-gray-50 text-center text-gray-600 text-xs">
+        <p>&copy; {new Date().getFullYear()} off-key. All rights reserved.</p>
+      </footer>
+    </div>
   );
 };
 
-export default App;
+export default Default;

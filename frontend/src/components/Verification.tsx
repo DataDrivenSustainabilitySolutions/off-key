@@ -29,4 +29,4 @@ const Verification: React.FC = () => {
     );
 };
 
-export default VerifyEmail;
+export default Verification;

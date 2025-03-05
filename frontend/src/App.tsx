@@ -1,9 +1,9 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
-import Default from './components/Default'
-import Login from './components/Login';
-import Registration from './components/Registration';
-import Verification from './components/Verification';
+import Default from './components/Default.tsx'
+import Login from './components/Login.tsx';
+import Registration from './components/Registration.tsx';
+import Verification from './components/Verification.tsx';
 import './App.css';
 
 const App: React.FC = () => {
@@ -14,7 +14,6 @@ const App: React.FC = () => {
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Registration />} />
         <Route path="/verify" element={<Verification />} />
-        {/* Add other routes (e.g. Registration, Protected Dashboard, etc.) */}
       </Routes>
     </BrowserRouter>
   );

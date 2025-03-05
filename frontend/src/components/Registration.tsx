@@ -103,4 +103,4 @@ const Registration: React.FC = () => {
   );
 };
 
-export default Register;
+export default Registration;

@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     SMTP_PORT: int
     ADMIN_EMAIL: str
     ADMIN_PASSWORD: str
-    MAIL_STARTTLS:bool
+    MAIL_STARTTLS: bool
     MAIL_SSL_TLS: bool
 
     PERIODIC_INTERVAL: int

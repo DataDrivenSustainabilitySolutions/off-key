@@ -1,11 +1,12 @@
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from .core.logs import logger
 from .schemas import users
 from .db.crud import auth
-from .db.base import engine, get_db_async
+from .db.base import engine, AsyncSessionLocal
 from .core.config import settings
 from .api.v1.routes import router as v1_router
 from .db.models import Base
@@ -16,24 +17,31 @@ async def lifespan(application: FastAPI):
     await create_admin_user()
     yield
 
+
 async def create_admin_user():
     admin_email = settings.ADMIN_EMAIL
     admin_password = settings.ADMIN_PASSWORD
     if not admin_email or not admin_password:
-        print("No admin credentials provided.")
+        logger.warning("No admin credentials provided.")
         return
 
-    try:
-        if not await auth.get_user_by_email(admin_email):
-            admin_data = users.UserCreate(email=admin_email, password=admin_password)
-            await auth.create_user(admin_data, is_superuser=True)
-            # Optionally, mark admin as active immediately.
-            await auth.update_user_active_status(admin_email, True)
-            print(f"Admin user created: {admin_email}")
-        else:
-            print("Admin user already exists.")
-    except ValueError:
-        print("ValueError")
+    async with AsyncSessionLocal() as db:
+        try:
+            if not await auth.get_user_by_email(admin_email, db):
+                admin_data = users.UserCreate(
+                    email=admin_email, password=admin_password
+                )
+                await auth.create_user(admin_data, is_superuser=True, db=db)
+                await auth.update_user_active_status(admin_email, True, db=db)
+                logger.info(f"Admin user created: {admin_email}")
+            else:
+                logger.info("Admin user already exists.")
+        except ValueError as e:
+            logger.error(f"ValueError: {e}")
+        except Exception as e:
+            logger.error(f"An error occurred: {e}")
+            await db.rollback()  # Rollback in case of error
+
 
 app = FastAPI(title=settings.APP_NAME, lifespan=lifespan)
 
@@ -53,6 +61,7 @@ Base.metadata.create_all(bind=engine)
 
 # Include versioned API routes
 app.include_router(v1_router, prefix="/v1", tags=["v1"])
+
 
 @app.get("/")
 async def root():

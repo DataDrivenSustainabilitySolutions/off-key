@@ -34,8 +34,10 @@ what i need:
 3. npx shadcn@latest add input label card to add single components
 3. yarn add recharts
 4. yarn add axios
-5. yarn add vite sass
-6. yarn install
+
+# Mailpit
+For Mail verification (local) one needs a SMTP server. Mailpit in a Docker container runs
+a lightweight webserver on the local machine. The UI is accessible under 'http://localhost:8025/'
 
 # Error: Cannot find module @rollup/rollup-linux-x64-musl. npm has a bug related to optional dependencies (https://github.com/npm/cli/issues/4828).
 #Please try `npm i` again after removing both package-lock.json and node_modules directory. 

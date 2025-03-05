@@ -1,14 +1,19 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
-import Login from './components/Login'; // Import your Login component (make sure this path is correct)
-import './App.css'; // Import your CSS file
+import Default from './components/Default'
+import Login from './components/Login';
+import Registration from './components/Registration';
+import Verification from './components/Verification';
+import './App.css';
 
 const App: React.FC = () => {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={<div>Welcome to the Home Page!</div>} /> {/* Default route */}
+        <Route path="/" element={<Default />} />
         <Route path="/login" element={<Login />} />
+        <Route path="/register" element={<Registration />} />
+        <Route path="/verify" element={<Verification />} />
         {/* Add other routes (e.g. Registration, Protected Dashboard, etc.) */}
       </Routes>
     </BrowserRouter>

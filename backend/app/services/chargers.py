@@ -28,7 +28,6 @@ class ChargersSyncService:
         inactive_ids = existing_ids - active_ids
         logger.info(f"Inactive chargers found: {inactive_ids}")
 
-        # Insert new chargers
         new_chargers = [
             Chargers(
                 charger_id=charger["id"],

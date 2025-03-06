@@ -35,6 +35,8 @@ what i need:
 3. yarn add recharts
 4. yarn add axios
 
+https://github.com/leoMirandaa/shadcn-landing-page
+
 # Mailpit
 For Mail verification (local) one needs a SMTP server. Mailpit in a Docker container runs
 a lightweight webserver on the local machine. The UI is accessible under 'http://localhost:8025/'

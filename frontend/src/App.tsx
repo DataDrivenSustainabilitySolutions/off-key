@@ -1,10 +1,10 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
-import Default from './components/Default.tsx'
-import Login from './components/Login.tsx';
-import Registration from './components/Registration.tsx';
-import Verification from './components/Verification.tsx';
-import './App.css';
+import Default from '@/pages/Default'
+import Login from '@/pages/Login';
+import Registration from '@/pages/Registration';
+import Verification from '@/pages/Verification';
+import '@/App.css';
 
 const App: React.FC = () => {
   return (

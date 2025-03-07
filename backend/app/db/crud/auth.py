@@ -2,12 +2,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...db import models
-from ...schemas import users as schemas
+from ...schemas import user as schemas
 from ...services.auth import get_password_hash, verify_password
 
 
 async def get_user_by_email(email: str, db: AsyncSession):
-    result = await db.execute(select(models.Users).filter(models.Users.email == email))
+    result = await db.execute(select(models.User).filter(models.User.email == email))
     return result.scalars().first()
 
 
@@ -15,7 +15,7 @@ async def create_user(
     user: schemas.UserCreate, db: AsyncSession, is_superuser: bool = False
 ):
     hashed_pw = get_password_hash(user.password)
-    db_user = models.Users(
+    db_user = models.User(
         email=user.email,
         hashed_password=hashed_pw,
         is_active=True,

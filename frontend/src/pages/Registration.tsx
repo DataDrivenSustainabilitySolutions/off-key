@@ -15,31 +15,45 @@ const Registration: React.FC = () => {
   const [message, setMessage] = useState<string>('');
 
   const handleRegister = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (password !== confirmPassword) {
-      setMessage('Passwords do not match.');
+  e.preventDefault();
+
+  if (password !== confirmPassword) {
+    setMessage('Passwords do not match.');
+    return;
+  }
+
+  if (password.length < 8) {
+    setMessage('Password should be at least 8 characters long.');
+    return;
+  }
+
+  try {
+    const response = await fetch('http://localhost:8000/v1/auth/register', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ email, password, role: "user"}),
+    });
+    if (!response.ok) {
+      const errorData = await response.json();
+      setMessage(errorData.detail || 'Registration failed');
       return;
     }
-    try {
-      const response = await fetch('http://localhost:8000/register', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ email, password }),
-      });
-      if (!response.ok) {
-        const errorData = await response.json();
-        setMessage(errorData.detail || 'Registration failed');
-        return;
-      }
-      const data: RegistrationResponse = await response.json();
-      setMessage(data.message || 'Registration successful! Please check your email to verify your account.');
-    } catch (error) {
-      console.error(error);
-      setMessage('An error occurred.');
-    }
-  };
+
+    const data: RegistrationResponse = await response.json();
+    setMessage(data.message || 'Registration successful! Please check your email to verify your account.');
+
+    // Redirect after successful registration (optional)
+    setTimeout(() => {
+      window.location.href = '/login'; // Redirect to login page
+    }, 3000);
+  } catch (error) {
+    console.error(error);
+    setMessage('An error occurred.');
+  }
+};
+
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-100">

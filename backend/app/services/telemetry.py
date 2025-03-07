@@ -10,7 +10,7 @@ from sqlalchemy.dialects.postgresql import insert
 from ..core.client.pionix import PionixClient
 from ..core.config import settings
 from ..core.logs import logger
-from ..db.models import Chargers, Telemetry
+from ..db.models import Charger, Telemetry
 from ..utils.date import get_date_range
 from ..utils.string import clean_string, string_to_float
 
@@ -30,8 +30,8 @@ class TelemetrySyncService:
         )
 
         # Query all charger_id where online is True
-        stmt = select(Chargers.charger_id).where(
-            Chargers.online, cast(Chargers.last_seen, DateTime) >= two_weeks_ago
+        stmt = select(Charger.charger_id).where(
+            Charger.online, cast(Charger.last_seen, DateTime) >= two_weeks_ago
         )
         result = await self.session.execute(stmt)
         online_charger_ids = result.scalars().all()

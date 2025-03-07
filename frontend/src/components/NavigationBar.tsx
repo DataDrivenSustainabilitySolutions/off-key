@@ -6,17 +6,11 @@ import {
 } from "@/components/ui/navigation-menu";
 import {
   Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
 
-import { GitHubLogoIcon } from "@radix-ui/react-icons";
 import { buttonVariants } from "./ui/button";
 import { Menu } from "lucide-react";
-import { ModeToggle } from "./mode-toggle";
-import { LogoIcon } from "./Icons";
 
 interface RouteProps {
   href: string;
@@ -24,10 +18,10 @@ interface RouteProps {
 }
 
 const routeList: RouteProps[] = [
-  {
-    href: "#faq",
-    label: "FAQ",
-  },
+  //{
+  //  href: "#faq",
+  //  label: "FAQ",
+  //},
 ];
 
 export const NavigationBar = () => {
@@ -42,15 +36,12 @@ export const NavigationBar = () => {
               href="/"
               className="ml-2 font-bold text-xl flex"
             >
-              <LogoIcon />
               off/key
             </a>
           </NavigationMenuItem>
 
           {/* mobile */}
           <span className="flex md:hidden">
-            <ModeToggle />
-
             <Sheet
               open={isOpen}
               onOpenChange={setIsOpen}
@@ -63,38 +54,6 @@ export const NavigationBar = () => {
                   <span className="sr-only">Menu Icon</span>
                 </Menu>
               </SheetTrigger>
-
-              <SheetContent side={"left"}>
-                <SheetHeader>
-                  <SheetTitle className="font-bold text-xl">
-                    off/key
-                  </SheetTitle>
-                </SheetHeader>
-                <nav className="flex flex-col justify-center items-center gap-2 mt-4">
-                  {routeList.map(({ href, label }: RouteProps) => (
-                    <a
-                      rel="noreferrer noopener"
-                      key={label}
-                      href={href}
-                      onClick={() => setIsOpen(false)}
-                      className={buttonVariants({ variant: "ghost" })}
-                    >
-                      {label}
-                    </a>
-                  ))}
-                  <a
-                    rel="noreferrer noopener"
-                    href="https://github.com/OliverHennhoefer/off-key"
-                    target="_blank"
-                    className={`w-[110px] border ${buttonVariants({
-                      variant: "secondary",
-                    })}`}
-                  >
-                    <GitHubLogoIcon className="mr-2 w-5 h-5" />
-                    Github
-                  </a>
-                </nav>
-              </SheetContent>
             </Sheet>
           </span>
 
@@ -113,20 +72,6 @@ export const NavigationBar = () => {
               </a>
             ))}
           </nav>
-
-          <div className="hidden md:flex gap-2">
-            <a
-              rel="noreferrer noopener"
-              href="https://github.com/OliverHennhoefer/off-key"
-              target="_blank"
-              className={`border ${buttonVariants({ variant: "secondary" })}`}
-            >
-              <GitHubLogoIcon className="mr-2 w-5 h-5" />
-              Github
-            </a>
-
-            <ModeToggle />
-          </div>
         </NavigationMenuList>
       </NavigationMenu>
     </header>

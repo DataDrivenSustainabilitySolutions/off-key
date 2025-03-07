@@ -1,21 +1,20 @@
-import jwt
-
+from jose import JWTError, jwt
 from datetime import datetime, timedelta, timezone
 from passlib.context import CryptContext
 from ..core.config import settings
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+password_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 def get_password_hash(password: str) -> str:
-    return pwd_context.hash(password)
+    return password_context.hash(password)
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return pwd_context.verify(plain_password, hashed_password)
+    return password_context.verify(plain_password, hashed_password)
 
 
-def create_access_token(data: dict, expires_delta: timedelta = None) -> str:
+def create_jwt(data: dict, expires_delta: timedelta = None) -> str:
     to_encode = data.copy()
     expire = datetime.now(timezone.utc) + (
         expires_delta
@@ -27,12 +26,14 @@ def create_access_token(data: dict, expires_delta: timedelta = None) -> str:
 
 
 def create_verification_token(email: str, expires_minutes: int = 15) -> str:
-    # A separate token for email verification; you can use a shorter lifetime.
     to_encode = {
         "sub": email,
         "exp": datetime.now(timezone.utc) + timedelta(minutes=expires_minutes),
+        "token_type": "email_verification",
     }
-    return jwt.encode(to_encode, settings.JWT_VERIFICATION_SECRET, algorithm=settings.ALGORITHM)
+    return jwt.encode(
+        to_encode, settings.JWT_VERIFICATION_SECRET, algorithm=settings.ALGORITHM
+    )
 
 
 def verify_verification_token(token: str) -> str | None:
@@ -41,5 +42,5 @@ def verify_verification_token(token: str) -> str | None:
             token, settings.JWT_VERIFICATION_SECRET, algorithms=[settings.ALGORITHM]
         )
         return payload.get("sub")
-    except jwt.PyJWTError:
+    except JWTError:
         return None

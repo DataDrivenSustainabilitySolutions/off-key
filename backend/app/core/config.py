@@ -13,8 +13,13 @@ class Settings(BaseSettings):
     EMAIL_USERNAME: str
     EMAIL_PASSWORD: str
     EMAIL_FROM: str
+    BASE_URL: str
+    SMTP_FROM_EMAIL: str
     SMTP_SERVER: str
+    SMTP_HOST: str
     SMTP_PORT: int
+    SMTP_USER: str
+    SMTP_PASSWORD: str
     ADMIN_EMAIL: str
     ADMIN_PASSWORD: str
     MAIL_STARTTLS: bool

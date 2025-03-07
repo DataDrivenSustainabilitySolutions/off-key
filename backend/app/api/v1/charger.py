@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from ...db.base import get_db_sync, get_db_async
-from ...db.models import Chargers
+from ...db.models import Charger
 from ...services.chargers import ChargersSyncService
 
 router = APIRouter()
@@ -18,10 +18,10 @@ async def sync_chargers(db: AsyncSession = Depends(get_db_async)):
 
 @router.get("/active", tags=["chargers"])
 def get_active_chargers(db: Session = Depends(get_db_sync)):
-    return db.query(Chargers).filter(Chargers.online).all()
+    return db.query(Charger).filter(Charger.online).all()
 
 
 @router.get("/active/id", tags=["chargers"])
 def get_active_charger_ids(db: Session = Depends(get_db_sync)):
-    active_ids = db.query(Chargers.charger_id).filter(Chargers.online).all()
+    active_ids = db.query(Charger.charger_id).filter(Charger.online).all()
     return {"active": [active_id[0] for active_id in active_ids]}

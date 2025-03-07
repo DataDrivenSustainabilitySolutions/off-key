@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .core.logs import logger
-from .schemas import users
+from .schemas import user
 from .db.crud import auth
 from .db.base import engine, AsyncSessionLocal
 from .core.config import settings
@@ -28,7 +28,7 @@ async def create_admin_user():
     async with AsyncSessionLocal() as db:
         try:
             if not await auth.get_user_by_email(admin_email, db):
-                admin_data = users.UserCreate(
+                admin_data = user.UserCreate(
                     email=admin_email, password=admin_password
                 )
                 await auth.create_user(admin_data, is_superuser=True, db=db)
@@ -48,12 +48,13 @@ app = FastAPI(title=settings.APP_NAME, lifespan=lifespan)
 
 origins = ["http://localhost:8000", "http://localhost:5173"]
 
+# Enable CORS Middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=origins,  # Allow only specified origins
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["*"],  # Allow all HTTP methods (POST, GET, etc.)
+    allow_headers=["*"],  # Allow all headers
 )
 
 # Create database tables

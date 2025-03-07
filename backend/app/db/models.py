@@ -2,6 +2,7 @@ import uuid
 
 from sqlalchemy import (
     Column,
+    Enum,
     String,
     Boolean,
     DateTime,
@@ -17,21 +18,26 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import UUID
 
 from .base import Base
+from ..utils.enum import RoleEnum
 
 
-class Users(Base):
+class User(Base):
 
     __tablename__ = "users"  # noqa
 
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String, unique=True, index=True, nullable=False)
     hashed_password = Column(String, nullable=False)
-    is_active = Column(Boolean, default=False)  # Not active until verified
-    is_superuser = Column(Boolean, default=False)
-    verification_token = Column(UUID(as_uuid=True), nullable=True, default=uuid.uuid4)
+    is_verified = Column(Boolean, default=False)
+    verification_token = Column(String, nullable=True)
+    role = Column(Enum(RoleEnum), default=RoleEnum.user, nullable=False)
+    updated_at = Column(
+        DateTime, default=func.now(), onupdate=func.now(), nullable=False
+    )
+    created_at = Column(DateTime, default=func.now(), nullable=False)
 
 
-class Chargers(Base):
+class Charger(Base):
 
     __tablename__ = "chargers"  # noqa
 

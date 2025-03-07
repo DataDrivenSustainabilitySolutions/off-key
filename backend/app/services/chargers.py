@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..core.client.pionix import PionixClient
 from ..core.config import settings
 from ..core.logs import logger
-from ..db.models import Chargers, Telemetry
+from ..db.models import Charger, Telemetry
 
 
 class ChargersSyncService:
@@ -19,7 +19,7 @@ class ChargersSyncService:
         active_ids = {charger["id"] for charger in active_chargers}
 
         # Fetch all known chargers from the database
-        result = await self.session.execute(select(Chargers))
+        result = await self.session.execute(select(Charger))
         known_chargers = result.scalars().all()
         existing_ids = {charger.charger_id for charger in known_chargers}
 
@@ -29,7 +29,7 @@ class ChargersSyncService:
         logger.info(f"Inactive chargers found: {inactive_ids}")
 
         new_chargers = [
-            Chargers(
+            Charger(
                 charger_id=charger["id"],
                 manufacturer_name=charger.get("manufacturerName"),
                 charger_name=charger.get("chargerName"),
@@ -49,8 +49,8 @@ class ChargersSyncService:
 
             # Flag inactive chargers
             await self.session.execute(
-                update(Chargers)
-                .where(Chargers.charger_id.in_(inactive_ids))
+                update(Charger)
+                .where(Charger.charger_id.in_(inactive_ids))
                 .values(online=False)
             )
 
@@ -60,7 +60,7 @@ class ChargersSyncService:
             )
 
         # Delete charges data for inactive chargers
-        await self.session.execute(delete(Chargers).where(Chargers.online.is_(False)))
+        await self.session.execute(delete(Charger).where(Charger.online.is_(False)))
 
         # Commit changes
         await self.session.commit()  # Use await to commit asynchronously

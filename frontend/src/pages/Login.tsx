@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import { Link } from 'react-router-dom';
 
 interface LoginResponse {
   access_token: string;
@@ -17,17 +18,14 @@ const Login: React.FC = () => {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const formData = new URLSearchParams();
-      // OAuth2PasswordRequestForm expects "username" and "password"
-      formData.append('username', email);
-      formData.append('password', password);
-      const response = await fetch('http://localhost:8000/login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: formData.toString(),
-      });
+    const response = await fetch('http://localhost:8000/v1/auth/login', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',  // JSON format
+      },
+      body: JSON.stringify({ email, password }),  // Correct JSON structure
+    });
+
       if (!response.ok) {
         const errorData = await response.json();
         setMessage(errorData.detail || 'Login failed');
@@ -87,6 +85,14 @@ const Login: React.FC = () => {
               {message}
             </p>
           )}
+          <div className="text-xs mt-4 text-center">
+            <p>
+              Not signed up yet?{' '}
+              <Link to="/register" className="text-blue-600 hover:underline">
+                Register here
+              </Link>
+            </p>
+          </div>
         </CardContent>
       </Card>
     </div>

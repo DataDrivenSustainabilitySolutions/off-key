@@ -13,6 +13,7 @@ from ...db.base import get_db_async
 from ...db.models import User
 from ...schemas.user import UserCreate, UserLogin
 from ...services.auth import create_verification_token, get_password_hash, verify_password, create_jwt
+from ...utils.enum import RoleEnum
 
 router = APIRouter()
 
@@ -29,12 +30,16 @@ async def register(user: UserCreate, db: AsyncSession = Depends(get_db_async)):
 
     # Create user
     verification_token = create_verification_token(user.email)
+
+    user_role = user.role if user.email != settings.SUPERUSER_MAIL else RoleEnum.admin.value
+
     db_user = User(
         email=user.email,
         hashed_password=get_password_hash(user.password),
         verification_token=verification_token,
-        role=user.role
+        role=user_role
     )
+
     db.add(db_user)
     await db.flush()
     await db.commit()

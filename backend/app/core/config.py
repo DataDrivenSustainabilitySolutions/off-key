@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     JWT_VERIFICATION_SECRET: str
     ALGORITHM: str
     ACCESS_TOKEN_EXPIRE_MINUTES: int
+    SUPERUSER_MAIL: str
 
     EMAIL_USERNAME: str
     EMAIL_PASSWORD: str

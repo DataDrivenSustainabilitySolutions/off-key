@@ -1,8 +1,9 @@
-import os
 import smtplib
-from email.message import EmailMessage
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from jose import jwt, JWTError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -38,25 +39,31 @@ async def register(user: UserCreate, db: AsyncSession = Depends(get_db_async)):
     await db.flush()
     await db.commit()
 
-    # Send verification email
-    msg = EmailMessage()
-    msg["Subject"] = "Verify your email"
-    msg["From"] = settings.SMTP_FROM_EMAIL
-    msg["To"] = user.email
-    verification_link = f"{settings.BASE_URL}/verify-email?token={verification_token}"
-    msg.set_content(f"Click to verify: {verification_link}")
+    # Email details
+    sender_email = 'sender@example.com'
+    recipient_email = 'recipient@example.com'
+    subject = 'Test Email'
+    verification_link = f"{settings.BASE_URL}/v1/auth/verify-email?token={verification_token}"
+    body = f"Click to verify: {verification_link}"
+
+    logger.info(f"Sending verification link {verification_link}")
+
+    # Create the email message
+    message = MIMEMultipart()
+    message['From'] = sender_email
+    message['To'] = recipient_email
+    message['Subject'] = subject
+    message.attach(MIMEText(body, 'plain'))
 
     logger.info(f"Sending verification email to {user.email}")
 
     try:
         with smtplib.SMTP(settings.SMTP_SERVER, settings.SMTP_PORT) as server:
             server.starttls()
-            if settings.SMTP_USER and settings.SMTP_PASSWORD:
-                server.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
-            server.send_message(msg)
-        logger.info(f"Email sent to {user.email}")
+            server.send_message(message)
+        print('Email sent successfully.')
     except Exception as e:
-        logger.error(f"Failed to send email: {e}")
+        print(f'Error sending email: {e}')
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to send verification email: {e}"
@@ -85,16 +92,41 @@ async def login(user: UserLogin, db: AsyncSession = Depends(get_db_async)):
     access_token = create_jwt({"sub": db_user.email})
     return {"access_token": access_token, "token_type": "bearer"}
 
+
 @router.get("/verify-email")
 async def verify_email(token: str, db: AsyncSession = Depends(get_db_async)):
-    user = db.query(User).filter(User.verification_token == token).first()
-    if not user:
+    try:
+        payload = jwt.decode(token, settings.JWT_VERIFICATION_SECRET, algorithms=["HS256"])
+        if payload.get("token_type") != "email_verification":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid token type"
+            )
+
+        email = payload.get("sub")
+        if email is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid token"
+            )
+
+        result = await db.execute(select(User).filter(User.email == email))
+        user = result.scalars().first()
+
+        if not user or user.is_verified:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid or already verified token"
+            )
+
+        user.is_verified = True
+        user.verification_token = None
+        await db.commit()
+
+        return {"message": "Email verified successfully"}
+
+    except JWTError:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid token"
+            detail="Invalid or expired token"
         )
-
-    user.is_verified = True
-    user.verification_token = None
-    db.commit()
-    return {"message": "Email verified successfully"}

@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime
 
 from sqlalchemy import (
     Column,
@@ -12,7 +13,7 @@ from sqlalchemy import (
     UniqueConstraint,
     event,
     DDL,
-    Integer,
+    Integer, JSON, ForeignKey,
 )
 
 from sqlalchemy.dialects.postgresql import UUID
@@ -81,3 +82,24 @@ event.listen(
     "after_create",
     DDL(f"SELECT create_hypertable('{Telemetry.__tablename__}', 'timestamp');"),
 )
+
+class Service(Base):
+
+    __tablename__ = "services"
+
+    id = Column(String, primary_key=True)
+    container_id = Column(String, unique=True, nullable=True)  # (for FastAPI + Docker SDK)
+    statefulset_name = Column(String, unique=True, nullable=True)  # (for Kubernetes StatefulSet)
+    mqtt_topic = Column(JSON, nullable=False)
+    created_at = Column(DateTime, default=func.now())
+    status = Column(Boolean, default=True)
+
+class MqttTopic(Base):
+    """
+    Utilized by the MQTT Proxy that distributed the topics to the containers.
+    Stores the mapping between services and the topics they subscribe to.
+    """
+    __tablename__ = "mqtt_topics"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    service_id = Column(String, ForeignKey("services.id"), nullable=False)
+    topic = Column(String, nullable=False)

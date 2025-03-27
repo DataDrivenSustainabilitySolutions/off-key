@@ -28,9 +28,7 @@ async def create_admin_user():
     async with AsyncSessionLocal() as db:
         try:
             if not await auth.get_user_by_email(admin_email, db):
-                admin_data = user.UserCreate(
-                    email=admin_email, password=admin_password
-                )
+                admin_data = user.UserCreate(email=admin_email, password=admin_password)
                 await auth.create_user(admin_data, is_superuser=True, db=db)
                 await auth.update_user_active_status(admin_email, True, db=db)
                 logger.info(f"Admin user created: {admin_email}")

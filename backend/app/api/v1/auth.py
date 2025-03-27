@@ -12,7 +12,12 @@ from ...core.logs import logger
 from ...db.base import get_db_async
 from ...db.models import User
 from ...schemas.user import UserCreate, UserLogin
-from ...services.auth import create_verification_token, get_password_hash, verify_password, create_jwt
+from ...services.auth import (
+    create_verification_token,
+    get_password_hash,
+    verify_password,
+    create_jwt,
+)
 from ...utils.enum import RoleEnum
 
 router = APIRouter()
@@ -24,20 +29,21 @@ async def register(user: UserCreate, db: AsyncSession = Depends(get_db_async)):
     db_user = result.scalars().first()
     if db_user:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email already registered"
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Email already registered"
         )
 
     # Create user
     verification_token = create_verification_token(user.email)
 
-    user_role = user.role if user.email != settings.SUPERUSER_MAIL else RoleEnum.admin.value
+    user_role = (
+        user.role if user.email != settings.SUPERUSER_MAIL else RoleEnum.admin.value
+    )
 
     db_user = User(
         email=user.email,
         hashed_password=get_password_hash(user.password),
         verification_token=verification_token,
-        role=user_role
+        role=user_role,
     )
 
     db.add(db_user)
@@ -45,20 +51,22 @@ async def register(user: UserCreate, db: AsyncSession = Depends(get_db_async)):
     await db.commit()
 
     # Email details
-    sender_email = 'sender@example.com'
-    recipient_email = 'recipient@example.com'
-    subject = 'Test Email'
-    verification_link = f"{settings.BASE_URL}/v1/auth/verify-email?token={verification_token}"
+    sender_email = "sender@example.com"
+    recipient_email = "recipient@example.com"
+    subject = "Test Email"
+    verification_link = (
+        f"{settings.BASE_URL}/v1/auth/verify-email?token={verification_token}"
+    )
     body = f"Click to verify: {verification_link}"
 
     logger.info(f"Sending verification link {verification_link}")
 
     # Create the email message
     message = MIMEMultipart()
-    message['From'] = sender_email
-    message['To'] = recipient_email
-    message['Subject'] = subject
-    message.attach(MIMEText(body, 'plain'))
+    message["From"] = sender_email
+    message["To"] = recipient_email
+    message["Subject"] = subject
+    message.attach(MIMEText(body, "plain"))
 
     logger.info(f"Sending verification email to {user.email}")
 
@@ -66,15 +74,17 @@ async def register(user: UserCreate, db: AsyncSession = Depends(get_db_async)):
         with smtplib.SMTP(settings.SMTP_SERVER, settings.SMTP_PORT) as server:
             server.starttls()
             server.send_message(message)
-        print('Email sent successfully.')
+        print("Email sent successfully.")
     except Exception as e:
-        print(f'Error sending email: {e}')
+        print(f"Error sending email: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to send verification email: {e}"
+            detail=f"Failed to send verification email: {e}",
         )
 
-    return {"message": "Registration successful! Please check your email to verify your account."}
+    return {
+        "message": "Registration successful! Please check your email to verify your account."
+    }
 
 
 @router.post("/login")
@@ -84,14 +94,12 @@ async def login(user: UserLogin, db: AsyncSession = Depends(get_db_async)):
 
     if not db_user or not verify_password(user.password, db_user.hashed_password):
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid credentials"
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials"
         )
 
     if not db_user.is_verified:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Email not verified"
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Email not verified"
         )
 
     access_token = create_jwt({"sub": db_user.email})
@@ -101,18 +109,18 @@ async def login(user: UserLogin, db: AsyncSession = Depends(get_db_async)):
 @router.get("/verify-email")
 async def verify_email(token: str, db: AsyncSession = Depends(get_db_async)):
     try:
-        payload = jwt.decode(token, settings.JWT_VERIFICATION_SECRET, algorithms=["HS256"])
+        payload = jwt.decode(
+            token, settings.JWT_VERIFICATION_SECRET, algorithms=["HS256"]
+        )
         if payload.get("token_type") != "email_verification":
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid token type"
+                status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid token type"
             )
 
         email = payload.get("sub")
         if email is None:
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid token"
+                status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid token"
             )
 
         result = await db.execute(select(User).filter(User.email == email))
@@ -121,7 +129,7 @@ async def verify_email(token: str, db: AsyncSession = Depends(get_db_async)):
         if not user or user.is_verified:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid or already verified token"
+                detail="Invalid or already verified token",
             )
 
         user.is_verified = True
@@ -132,6 +140,5 @@ async def verify_email(token: str, db: AsyncSession = Depends(get_db_async)):
 
     except JWTError:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid or expired token"
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired token"
         )

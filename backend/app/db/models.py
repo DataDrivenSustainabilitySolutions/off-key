@@ -1,6 +1,3 @@
-import uuid
-from datetime import datetime
-
 from sqlalchemy import (
     Column,
     Enum,
@@ -13,10 +10,10 @@ from sqlalchemy import (
     UniqueConstraint,
     event,
     DDL,
-    Integer, JSON, ForeignKey,
+    Integer,
+    JSON,
+    ForeignKey,
 )
-
-from sqlalchemy.dialects.postgresql import UUID
 
 from .base import Base
 from ..utils.enum import RoleEnum
@@ -83,23 +80,72 @@ event.listen(
     DDL(f"SELECT create_hypertable('{Telemetry.__tablename__}', 'timestamp');"),
 )
 
-class Service(Base):
+
+class MonitoringService(Base):
 
     __tablename__ = "services"
 
     id = Column(String, primary_key=True)
-    container_id = Column(String, unique=True, nullable=True)  # (for FastAPI + Docker SDK)
-    statefulset_name = Column(String, unique=True, nullable=True)  # (for Kubernetes StatefulSet)
+    container_id = Column(
+        String, unique=True, nullable=True
+    )  # (for FastAPI + Docker SDK)
+    stateful_set_name = Column(
+        String, unique=True, nullable=True
+    )  # (for Kubernetes StatefulSet)
     mqtt_topic = Column(JSON, nullable=False)
     created_at = Column(DateTime, default=func.now())
     status = Column(Boolean, default=True)
+
 
 class MqttTopic(Base):
     """
     Utilized by the MQTT Proxy that distributed the topics to the containers.
     Stores the mapping between services and the topics they subscribe to.
     """
+
     __tablename__ = "mqtt_topics"
+
     id = Column(Integer, primary_key=True, autoincrement=True)
     service_id = Column(String, ForeignKey("services.id"), nullable=False)
     topic = Column(String, nullable=False)
+
+
+"""class Anomaly(Base):
+    __tablename__ = "anomalies"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    charger_id = Column(String, nullable=False, index=True)
+    timestamp = Column(TIMESTAMP(timezone=True), nullable=False, index=True)
+    telemetry_type = Column(String, nullable=False, index=True)
+    anomaly_type = Column(String, nullable=False, index=True)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "charger_id",
+            "timestamp",
+            "telemetry_type",
+            name="uq_anomaly_telemetry_reference",
+        ),
+        Index("idx_anomaly_lookup", "charger_id", "timestamp", "telemetry_type"),
+    )
+
+    telemetry = relationship(
+        "Telemetry",
+        foreign_keys=[charger_id, timestamp, telemetry_type],
+        primaryjoin=(
+            "and_("
+            "Anomaly.charger_id == Telemetry.charger_id, "
+            "Anomaly.timestamp == Telemetry.timestamp, "
+            "Anomaly.telemetry_type == Telemetry.type"
+            ")"
+        ),
+        backref=backref("anomalies", cascade="all, delete-orphan"),
+    )
+
+
+event.listen(
+    Anomaly.__table__,
+    "after_create",
+    DDL(f"SELECT create_hypertable('{Anomaly.__tablename__}', 'timestamp');"),
+)
+"""

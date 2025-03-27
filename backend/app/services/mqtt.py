@@ -5,7 +5,8 @@ import paho.mqtt.client as mqtt
 import httpx
 from sqlalchemy.orm import Session
 from sqlalchemy import create_engine, sessionmaker
-#from models import MqttTopic, Service  # Assuming DB models are defined
+
+# from models import MqttTopic, Service  # Assuming DB models are defined
 
 # Load ENV variables
 MQTT_BROKER = os.getenv("MQTT_BROKER", "mqtt://localhost")
@@ -16,6 +17,7 @@ WORKER_API_PORT = 8000  # FastAPI inside each worker listens here
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(bind=engine)
 
+
 def get_active_topics():
     """Fetches active MQTT topics from the database."""
     session = SessionLocal()
@@ -24,6 +26,7 @@ def get_active_topics():
         return [t[0] for t in topics]
     finally:
         session.close()
+
 
 def get_workers_for_topic(topic):
     """Returns a list of worker services subscribed to a topic."""
@@ -38,6 +41,7 @@ def get_workers_for_topic(topic):
     finally:
         session.close()
 
+
 def on_message(client, userdata, msg):
     """Routes an MQTT message to the correct worker services."""
     topic = msg.topic
@@ -50,6 +54,7 @@ def on_message(client, userdata, msg):
             httpx.post(worker_url, json={"topic": topic, "data": payload})
         except Exception as e:
             print(f"Failed to send data to {worker_url}: {e}")
+
 
 async def run_mqtt_proxy():
     """Subscribes to topics and routes messages."""
@@ -65,6 +70,7 @@ async def run_mqtt_proxy():
     client.loop_start()
     while True:
         await asyncio.sleep(5)  # Keep the event loop alive
+
 
 if __name__ == "__main__":
     asyncio.run(run_mqtt_proxy())

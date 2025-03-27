@@ -23,12 +23,9 @@ def create_service(mqtt_topic: str):
             "my_ml_worker_image",  # Replace with actual image
             name=container_name,
             detach=True,
-            environment={
-                "MQTT_TOPIC": mqtt_topic,
-                "SERVICE_ID": service_id
-            },
+            environment={"MQTT_TOPIC": mqtt_topic, "SERVICE_ID": service_id},
             network="my_mqtt_network",  # Ensure proper networking setup
-            restart_policy={"Name": "always"}
+            restart_policy={"Name": "always"},
         )
         active_services[service_id] = container.id
         return {"service_id": service_id, "container_id": container.id}

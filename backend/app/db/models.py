@@ -110,38 +110,19 @@ class MqttTopic(Base):
     topic = Column(String, nullable=False)
 
 
-"""class Anomaly(Base):
+"""
+class Anomaly(Base):
     __tablename__ = "anomalies"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
     charger_id = Column(String, nullable=False, index=True)
     timestamp = Column(TIMESTAMP(timezone=True), nullable=False, index=True)
     telemetry_type = Column(String, nullable=False, index=True)
     anomaly_type = Column(String, nullable=False, index=True)
 
     __table_args__ = (
-        UniqueConstraint(
-            "charger_id",
-            "timestamp",
-            "telemetry_type",
-            name="uq_anomaly_telemetry_reference",
-        ),
+        PrimaryKeyConstraint("charger_id", "timestamp", "telemetry_type", name="pk_anomaly"),
         Index("idx_anomaly_lookup", "charger_id", "timestamp", "telemetry_type"),
     )
-
-    telemetry = relationship(
-        "Telemetry",
-        foreign_keys=[charger_id, timestamp, telemetry_type],
-        primaryjoin=(
-            "and_("
-            "Anomaly.charger_id == Telemetry.charger_id, "
-            "Anomaly.timestamp == Telemetry.timestamp, "
-            "Anomaly.telemetry_type == Telemetry.type"
-            ")"
-        ),
-        backref=backref("anomalies", cascade="all, delete-orphan"),
-    )
-
 
 event.listen(
     Anomaly.__table__,

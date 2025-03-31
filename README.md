@@ -45,3 +45,11 @@ Keep in mind that `Docker Desktop` needs to be running for interacting with `Doc
 - Access the `backend` (APIs) under `http://localhost:8000/`
   - Access the API documentation under `http://localhost:8000/docs`
 - Access the `frontend` (UI) under `http://localhost:5173/`
+
+## TODO
+- MQTT Zugriff
+  - MQTT Proxy
+    - Schreibt Daten in Datenbank
+- UI Service Konfiguration (IaaS)
+  - Monitoring Service (ML+Sensoren)
+    - Container dynamisch aufsetzen (DB Vorlage; "MonitoringService Table")

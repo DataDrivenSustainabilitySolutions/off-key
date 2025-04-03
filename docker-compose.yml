@@ -43,8 +43,8 @@ services:
     depends_on:
       - api
     volumes:
-      - ./frontend:/app
-      - /app/node_modules  # Prevent conflicts
+      - ./frontend:/src
+      - /src/node_modules  # Prevent conflicts
 
   mailpit:
     image: axllent/mailpit:latest

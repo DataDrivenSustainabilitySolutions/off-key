@@ -9,9 +9,9 @@ import docker
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from backend.app.core.logs import logger
-from backend.app.db.base import Base
-from backend.app.db.models import MonitoringService
+from backend.src.core.logs import logger
+from backend.src.db.base import Base
+from backend.src.db.models import MonitoringService
 
 
 def create_monitoring_container(
@@ -31,7 +31,7 @@ def create_monitoring_container(
         db_url (str): Database URL for SQLAlchemy
         requirements (list): List of pip packages to install
         dockerfile_path (str): Path to custom Dockerfile
-        app_path (str): Path to custom app.py
+        app_path (str): Path to custom src.py
 
     Returns:
         MonitoringService: The created monitoring service database entry
@@ -41,7 +41,7 @@ def create_monitoring_container(
         os.path.dirname(os.path.abspath(__file__)), "templates"
     )
     default_dockerfile = os.path.join(templates_dir, "Dockerfile")
-    default_app = os.path.join(templates_dir, "app.py")
+    default_app = os.path.join(templates_dir, "src.py")
 
     # Use provided paths or defaults
     dockerfile_path = dockerfile_path or default_dockerfile
@@ -56,9 +56,9 @@ def create_monitoring_container(
     build_context = tempfile.mkdtemp()
 
     try:
-        # Copy Dockerfile and app.py to build context
+        # Copy Dockerfile and src.py to build context
         shutil.copy2(dockerfile_path, os.path.join(build_context, "Dockerfile"))
-        shutil.copy2(app_path, os.path.join(build_context, "app.py"))
+        shutil.copy2(app_path, os.path.join(build_context, "src.py"))
 
         # Create requirements.txt
         with open(os.path.join(build_context, "requirements.txt"), "w") as f:

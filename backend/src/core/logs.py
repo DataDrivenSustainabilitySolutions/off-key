@@ -2,7 +2,7 @@ import logging
 import sys
 
 # Create a logger instance
-logger = logging.getLogger("app")
+logger = logging.getLogger("src")
 logger.setLevel(logging.INFO)  # Change to DEBUG if needed
 
 # Create a stream handler (logs to stdout for Docker compatibility)

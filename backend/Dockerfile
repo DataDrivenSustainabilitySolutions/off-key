@@ -31,16 +31,17 @@ WORKDIR /code
 # This layer is cached until uv.lock or pyproject.toml change, which are
 # only temporarily mounted into the build container since we don't need
 # them in the production one.
+# Inside off-key/backend/Dockerfile
 RUN --mount=type=cache,target=/root/.cache/uv \
-    --mount=type=bind,source=backend/uv.lock,target=uv.lock \
-    --mount=type=bind,source=backend/pyproject.toml,target=pyproject.toml \
+    --mount=type=bind,source=uv.lock,target=uv.lock \
+    --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
     uv sync \
         --frozen \
         --no-dev \
         --no-install-project
 
 # Copy source code (will NOT be copied into the runtime container)
-COPY ./backend /code
+COPY . /code
 
 # Install project itself
 RUN --mount=type=cache,target=/root/.cache/uv \
@@ -74,4 +75,4 @@ EXPOSE 8000
 
 # Command to run the application
 # TODO: Expose proper entrypoint
-CMD ["uvicorn", "off_key.main:app"]
+CMD ["uvicorn", "off_key.main:app", "--host", "0.0.0.0", "--port", "8000"]

@@ -7,11 +7,12 @@ The use of `Python >= 3.12` is recommended.
 ### Infrastructure
 1. [Install Docker Desktop](https://docs.docker.com/desktop/setup/install/windows-install/)
 2. Optional: [PyCharm Docker Integration](https://www.jetbrains.com/help/pycharm/docker-compose.html#scale-service)
-3. [Install uv](https://docs.astral.sh/uv/getting-started/installation/)
+3. [Install uv](https://docs.astral.sh/uv/getting-started/installation/) (Standalone Installer)
 3. [Install Yarn](https://github.com/yarnpkg/yarn/releases/download/v1.22.4/yarn-1.22.4.msi) ([Installation Guide (Windows)](https://geekflare.com/dev/how-to-install-yarn-on-windows/))
-4. \[PYTHON\] Execute `cd /your/project/root/backend && uv sync`. DO NOT CREATE venv with the help of your IDE.
-5. \[PYTHON\] Create a symbolic link from `backend/.venv` to `/your/project/root/.venv` 
-  e.g. `ln -s ~/off-key/backend/.venv/ ~/off-key/`. In your IDE, choose "select an existing venv"
+4. \[PYTHON\] Execute `cd /your/project/root/backend && uv sync`. DO NOT CREATE `.venv` with the help of your IDE.
+   1. **PyCharm:** Set a new interpreter and point to the `.venv` within `/your/project/root/backend` and choose `Select Existing Interpreter`. 
+   2. **Alternatively:** \[PYTHON\] Create a symbolic link from `backend/.venv` to `/your/project/root/.venv` 
+     e.g. `ln -s ~/off-key/backend/.venv/ ~/off-key/` (Linux/macOS) or `mklink /D .venv backend\.venv` (Windows).
 
 ### Frontend Dependencies
 1. Navigate into `frontend`

@@ -41,7 +41,7 @@ class TelemetrySyncService:
         dr = get_date_range(retention_days=self.retention_days)
         for charger_id in online_charger_ids:
 
-            dm_url = f"api/chargers/{charger_id}/deviceModel"
+            dm_url = f"chargers/{charger_id}/deviceModel"
             logger.info(f"Fetching {dm_url}")
             try:
                 device_model = await self.client.get(dm_url)
@@ -64,7 +64,7 @@ class TelemetrySyncService:
 
                 hierarchy = hierarchy.replace("/", "%2F")
                 get_url = (
-                    f"api/chargers/{charger_id}/telemetry/{hierarchy}{dr}&Limit=10000"
+                    f"chargers/{charger_id}/telemetry/{hierarchy}{dr}&Limit=10000"
                 )
 
                 logger.info(f"Request URL: {get_url}")

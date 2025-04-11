@@ -13,7 +13,7 @@ class ChargersSyncService:
         self.client = PionixClient(settings.PIONIX_KEY, settings.PIONIX_USER_AGENT)
 
     async def sync_chargers(self):
-        active_chargers = await self.client.get("api/chargers")
+        active_chargers = await self.client.get("chargers")
 
         # Extract active charger IDs
         active_ids = {charger["id"] for charger in active_chargers}
@@ -35,7 +35,7 @@ class ChargersSyncService:
                 charger_name=charger.get("chargerName"),
                 firmware_version=charger.get("firmwareVersion"),
                 last_seen=charger.get("lastSeen"),
-                state=charger.get("state"),
+                state=str(charger.get("state")),
                 online=charger.get("online", True),
             )
             for charger in active_chargers

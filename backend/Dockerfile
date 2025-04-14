@@ -2,6 +2,8 @@
 FROM ghcr.io/astral-sh/uv:latest AS uv
 FROM python:3.12-slim-bookworm AS builder
 
+# Build context MUST be backend/
+
 # Install system dependencies
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
@@ -31,7 +33,6 @@ WORKDIR /code
 # This layer is cached until uv.lock or pyproject.toml change, which are
 # only temporarily mounted into the build container since we don't need
 # them in the production one.
-# Inside off-key/backend/Dockerfile
 RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=bind,source=uv.lock,target=uv.lock \
     --mount=type=bind,source=pyproject.toml,target=pyproject.toml \

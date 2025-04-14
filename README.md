@@ -31,6 +31,19 @@ The use of `Python >= 3.12` is recommended.
 `docker volume ls -qf dangling=true` removes all volumes without respective container.<br>
 `docker volume rm <volume_name>` shows the volume locations (e.g, persistence for the database).<br>
 
+## Building Docker Images
+```bash
+cd backend/
+docker build --load -t offkey .
+```
+
+# Deploying with Docker Compose
+Execute from project root:
+```bash
+# Add '--build' to force rebuild
+docker docker compose up
+```
+
 #### Complete Container Rebuild
 1. Stop all docker container
 2. Remove all docker container

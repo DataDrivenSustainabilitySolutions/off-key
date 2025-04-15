@@ -1,0 +1,169 @@
+{
+	"info": {
+		"_postman_id": "a650fcf8-991a-4186-b50e-43a1484686b8",
+		"name": "offkey",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "13731368"
+	},
+	"item": [
+		{
+			"name": "Charger",
+			"item": [
+				{
+					"name": "sync_chargers",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "http://localhost:8000/v1/chargers/sync",
+							"protocol": "http",
+							"host": [
+								"localhost"
+							],
+							"port": "8000",
+							"path": [
+								"v1",
+								"chargers",
+								"sync"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "clean_chargers",
+					"request": {
+						"method": "GET",
+						"header": []
+					},
+					"response": []
+				},
+				{
+					"name": "active",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "http://localhost:8000/v1/chargers/active",
+							"protocol": "http",
+							"host": [
+								"localhost"
+							],
+							"port": "8000",
+							"path": [
+								"v1",
+								"chargers",
+								"active"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "active_ids",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "http://localhost:8000/v1/chargers/active/id",
+							"protocol": "http",
+							"host": [
+								"localhost"
+							],
+							"port": "8000",
+							"path": [
+								"v1",
+								"chargers",
+								"active",
+								"id"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "available",
+					"request": {
+						"method": "GET",
+						"header": []
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Telemetry",
+			"item": [
+				{
+					"name": "sync_telemetry",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "http://localhost:8000/v1/telemetry/sync",
+							"protocol": "http",
+							"host": [
+								"localhost"
+							],
+							"port": "8000",
+							"path": [
+								"v1",
+								"telemetry",
+								"sync"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "get_telemetry_types",
+					"request": {
+						"method": "GET",
+						"header": []
+					},
+					"response": []
+				},
+				{
+					"name": "get_telemetry",
+					"request": {
+						"method": "GET",
+						"header": []
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Auth",
+			"item": [
+				{
+					"name": "login",
+					"request": {
+						"method": "GET",
+						"header": []
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "info",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "http://localhost:8000/info",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8000",
+					"path": [
+						"info"
+					]
+				}
+			},
+			"response": []
+		}
+	]
+}

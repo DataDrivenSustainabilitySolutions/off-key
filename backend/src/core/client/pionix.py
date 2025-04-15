@@ -6,9 +6,7 @@ from ...core.logs import logger
 
 class PionixClient:
     def __init__(self, api_key: str, user_agent: str):
-        self.base_url = "https://cloud.pionix.com"
-        if self.base_url.endswith("/"):
-            self.base_url = self.base_url.rstrip("/")
+        self.base_url = "https://cloud.pionix.com/api"
         self.api_key = api_key
         self.user_agent = user_agent
         self.client = httpx.AsyncClient()  # Reuse the client for connection pooling

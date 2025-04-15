@@ -1,3 +1,5 @@
+import zoneinfo
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -34,12 +36,18 @@ class Settings(BaseSettings):
     POSTGRES_PORT: str
     POSTGRES_HOST: str  # 'postgres' if connecting from another container
 
+    TIMEZONE: str = "UTC"
+
     PIONIX_KEY: str
     PIONIX_USER_AGENT: str
 
     model_config = SettingsConfigDict(
         env_file="./../../.env", env_file_encoding="utf-8"
     )
+
+    @property
+    def time_zone(self):
+        return zoneinfo.ZoneInfo(self.TIMEZONE)
 
     @property
     def database_url(self):

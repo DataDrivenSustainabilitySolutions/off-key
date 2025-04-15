@@ -62,11 +62,6 @@ Base.metadata.create_all(bind=engine)
 app.include_router(v1_router, prefix="/v1", tags=["v1"])
 
 
-@app.get("/")
-async def root():
-    return {"message": "Hello World"}
-
-
 @app.get("/info")
 async def info():
     """

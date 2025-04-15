@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...db.base import get_db_sync, get_db_async
 from ...db.models import Telemetry
@@ -9,9 +10,9 @@ router = APIRouter()
 
 
 @router.post("/sync")
-async def sync_chargers(db: Session = Depends(get_db_async)):
+async def sync_chargers(db: AsyncSession = Depends(get_db_async), limit: int = 10_000):
     service = TelemetrySyncService(db)
-    await service.sync_telemetry()
+    await service.sync_telemetry(limit=limit)
     return {"status": "successful"}
 
 
@@ -40,10 +41,7 @@ def get_telemetry(
     if limit:
         query = query.order_by(Telemetry.timestamp.desc()).limit(limit)
 
-    # Execute the query and fetch the results
     results = query.all()
-
-    # Optionally, format the results as a list of dictionaries
     formatted_results = [
         {"timestamp": result.timestamp, "value": result.value} for result in results
     ]

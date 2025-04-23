@@ -1,115 +1,281 @@
 import json
 import os
-import shutil
-import tempfile
 import uuid
 from datetime import datetime
+from typing import List, Dict, Optional, Any
 
 import docker
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, update
 
-from backend.src.core.logs import logger
-from backend.src.db.base import Base
-from backend.src.db.models import MonitoringService
+from ..core.logs import logger
+from ..db.models import MonitoringService
 
 
-def create_monitoring_container(
-    container_name,
-    mqtt_topics,
-    db_url,
-    requirements=None,
-    dockerfile_path=None,
-    app_path=None,
-):
-    """
-    Create and start a Docker container for monitoring service using a Dockerfile
+class MonitoringAsyncService:
+    def __init__(self, session: AsyncSession):
+        self.session: AsyncSession = session
+        self.client = docker.from_env()
+        logger.info("MonitoringAsyncService initialized.")
 
-    Args:
-        container_name (str): Name for the Docker container
-        mqtt_topics (list): List of MQTT topics to monitor
-        db_url (str): Database URL for SQLAlchemy
-        requirements (list): List of pip packages to install
-        dockerfile_path (str): Path to custom Dockerfile
-        app_path (str): Path to custom src.py
+    async def create_monitoring_service(
+            self,
+            container_name: str,
+            mqtt_topics: List[str],
+            requirements: Optional[List[str]] = None,
+            dockerfile_path: Optional[str] = None,
+            app_path: Optional[str] = None,
+            environment_variables: Optional[Dict[str, str]] = None,
+    ) -> MonitoringService:
+        """
+        Create and start a Docker container for monitoring service asynchronously
 
-    Returns:
-        MonitoringService: The created monitoring service database entry
-    """
-    # Check if template files exist
-    templates_dir = os.path.join(
-        os.path.dirname(os.path.abspath(__file__)), "templates"
-    )
-    default_dockerfile = os.path.join(templates_dir, "Dockerfile")
-    default_app = os.path.join(templates_dir, "src.py")
+        Args:
+            container_name (str): Name for the Docker container
+            mqtt_topics (list): List of MQTT topics to monitor
+            requirements (list, optional): List of pip packages to install
+            dockerfile_path (str, optional): Path to custom Dockerfile
+            app_path (str, optional): Path to custom src.py
+            environment_variables (dict, optional): Additional environment variables
 
-    # Use provided paths or defaults
-    dockerfile_path = dockerfile_path or default_dockerfile
-    app_path = app_path or default_app
+        Returns:
+            MonitoringService: The created monitoring service database entry
+        """
+        # Check if service with this name already exists
+        query = select(MonitoringService).where(MonitoringService.container_name == container_name)
+        result = await self.session.execute(query)
+        existing_service = result.scalars().first()
 
-    # Default requirements if none provided
-    if requirements is None:
-        requirements = ["paho-mqtt==1.6.1", "sqlalchemy==1.4.46"]
+        if existing_service and existing_service.status:
+            logger.info(f"Container {container_name} already exists and is running")
+            return existing_service
 
-    # Create a unique build context
-    service_id = str(uuid.uuid4())
-    build_context = tempfile.mkdtemp()
+        # Generate a unique service ID
+        service_id = str(uuid.uuid4())
 
-    try:
-        # Copy Dockerfile and src.py to build context
-        shutil.copy2(dockerfile_path, os.path.join(build_context, "Dockerfile"))
-        shutil.copy2(app_path, os.path.join(build_context, "src.py"))
-
-        # Create requirements.txt
-        with open(os.path.join(build_context, "requirements.txt"), "w") as f:
-            f.write("\n".join(requirements))
-
-        # Connect to Docker
-        client = docker.from_env()
-
-        # Build the Docker image with a unique tag
-        image_tag = f"monitoring-service:{service_id}"
-        image, build_logs = client.images.build(
-            path=build_context, tag=image_tag, rm=True, forcerm=True
+        # Check if template files exist and use defaults if not provided
+        templates_dir = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), "templates"
         )
+        default_dockerfile = os.path.join(templates_dir, "Dockerfile")
+        default_app = os.path.join(templates_dir, "src.py")
 
-        # Run the container
-        container = client.containers.run(
-            image=image_tag,
-            name=container_name,
-            detach=True,
-            restart_policy={"Name": "unless-stopped"},
-            environment={
-                "MQTT_TOPICS": json.dumps(mqtt_topics),
-                "SERVICE_ID": service_id,
-            },
-        )
+        dockerfile_path = dockerfile_path or default_dockerfile
+        app_path = app_path or default_app
 
-        # Create database engine and session
-        engine = create_engine(db_url)
-        Base.metadata.create_all(engine)
-        Session = sessionmaker(bind=engine)
-        session = Session()
+        # Default requirements if none provided
+        if requirements is None:
+            requirements = ["paho-mqtt==1.6.1", "sqlalchemy==1.4.46"]
 
-        # Create monitoring service record
-        service = MonitoringService(
-            id=service_id,
-            container_id=container.id,
-            mqtt_topic=mqtt_topics,
-            created_at=datetime.now(),
-            status=True,
-        )
+        # Set up environment variables
+        env_vars = environment_variables or {}
+        env_vars["MQTT_TOPICS"] = json.dumps(mqtt_topics)
+        env_vars["SERVICE_ID"] = service_id
 
-        # Add and commit to database
-        session.add(service)
-        session.commit()
+        # Create the container using the synchronous method
+        # TODO: Official Docker SDK doesn't have an async API
+        try:
+            container = await self._create_container_sync(
+                container_name=container_name,
+                service_id=service_id,
+                dockerfile_path=dockerfile_path,
+                app_path=app_path,
+                requirements=requirements,
+                environment=env_vars
+            )
 
-        logger.info(f"Container created with ID: {container.id}")
-        logger.info(f"Service added to database with ID: {service.id}")
-        logger.info(f"Installed requirements: {', '.join(requirements)}")
+            # Create monitoring service record
+            service = MonitoringService(
+                id=service_id,
+                container_id=container.id,
+                container_name=container_name,
+                mqtt_topic=mqtt_topics,
+                created_at=datetime.now(),
+                status=True,
+            )
 
-        return service
+            # Add to database
+            self.session.add(service)
+            await self.session.commit()
 
-    finally:
-        # Clean up build context
-        shutil.rmtree(build_context)
+            logger.info(f"Container created with ID: {container.id}")
+            logger.info(f"Service added to database with ID: {service.id}")
+
+            return service
+
+        except Exception as e:
+            await self.session.rollback()
+            logger.error(f"Failed to create monitoring service: {e}")
+            raise
+
+    async def _create_container_sync(
+            self,
+            container_name: str,
+            service_id: str,
+            dockerfile_path: str,
+            app_path: str,
+            requirements: List[str],
+            environment: Dict[str, str]
+    ) -> Any:
+        """
+        Helper method to handle the synchronous Docker operations
+        This would ideally be run in a thread pool if we keep using hte official Docker SDK
+        """
+        import tempfile
+        import shutil
+
+        # Create a unique build context
+        build_context = tempfile.mkdtemp()
+
+        try:
+            # Copy Dockerfile and src.py to build context
+            shutil.copy2(dockerfile_path, os.path.join(build_context, "Dockerfile"))
+            shutil.copy2(app_path, os.path.join(build_context, "src.py"))
+
+            # Create requirements.txt
+            with open(os.path.join(build_context, "requirements.txt"), "w") as f:
+                f.write("\n".join(requirements))
+
+            # Build the Docker image with a unique tag
+            image_tag = f"monitoring-service:{service_id}"
+            image, build_logs = self.client.images.build(
+                path=build_context, tag=image_tag, rm=True, forcerm=True
+            )
+
+            # Run the container
+            container = self.client.containers.run(
+                image=image_tag,
+                name=container_name,
+                detach=True,
+                restart_policy={"Name": "unless-stopped"},
+                environment=environment
+            )
+
+            return container
+
+        finally:
+            # Clean up build context
+            shutil.rmtree(build_context)
+
+    async def stop_monitoring_service(self, container_name: str) -> bool:
+        """
+        Stop and remove a running monitoring service
+
+        Args:
+            container_name (str): Name of the container to stop
+
+        Returns:
+            bool: True if service was stopped, False otherwise
+        """
+        # Find the service in the database
+        query = select(MonitoringService).where(MonitoringService.container_name == container_name)
+        result = await self.session.execute(query)
+        service = result.scalars().first()
+
+        if not service:
+            logger.warning(f"No service found with container name: {container_name}")
+            return False
+
+        try:
+            # Stop and remove the container
+            container = self.client.containers.get(service.container_id)
+            container.stop()
+            container.remove()
+
+            # Update the service status in database
+            update_stmt = (
+                update(MonitoringService)
+                .where(MonitoringService.id == service.id)
+                .values(status=False)
+            )
+            await self.session.execute(update_stmt)
+            await self.session.commit()
+
+            logger.info(f"Container {container_name} stopped and removed")
+            return True
+
+        except docker.errors.NotFound:
+            # Container not found in Docker but exists in DB
+            # Update DB to reflect this
+            update_stmt = (
+                update(MonitoringService)
+                .where(MonitoringService.id == service.id)
+                .values(status=False)
+            )
+            await self.session.execute(update_stmt)
+            await self.session.commit()
+
+            logger.warning(f"Container {container_name} not found in Docker but marked as inactive in DB")
+            return True
+
+        except Exception as e:
+            await self.session.rollback()
+            logger.error(f"Failed to stop container {container_name}: {e}")
+            return False
+
+    async def list_monitoring_services(self, active_only: bool = False) -> List[Dict[str, Any]]:
+        """
+        List all monitoring services
+
+        Args:
+            active_only (bool): If True, only return active services
+
+        Returns:
+            List[Dict]: List of services with their details
+        """
+        query = select(MonitoringService)
+        if active_only:
+            query = query.where(MonitoringService.status == True)
+
+        result = await self.session.execute(query)
+        services = result.scalars().all()
+
+        service_list = []
+        for service in services:
+            service_list.append({
+                "id": service.id,
+                "container_id": service.container_id,
+                "container_name": service.container_name,
+                "mqtt_topics": service.mqtt_topic,
+                "status": service.status,
+                "created_at": service.created_at.isoformat() if service.created_at else None
+            })
+
+        return service_list
+
+    async def get_monitoring_service(self, container_name: str) -> Optional[Dict[str, Any]]:
+        """
+        Get details for a specific monitoring service
+
+        Args:
+            container_name (str): Name of the container
+
+        Returns:
+            Optional[Dict]: Service details or None if not found
+        """
+        query = select(MonitoringService).where(MonitoringService.container_name == container_name)
+        result = await self.session.execute(query)
+        service = result.scalars().first()
+
+        if not service:
+            return None
+
+        # Check actual container status in Docker
+        container_status = "unknown"
+        try:
+            container = self.client.containers.get(service.container_id)
+            container_status = container.status
+        except docker.errors.NotFound:
+            container_status = "not_found"
+        except Exception:
+            pass
+
+        return {
+            "id": service.id,
+            "container_id": service.container_id,
+            "container_name": service.container_name,
+            "mqtt_topics": service.mqtt_topic,
+            "db_status": service.status,
+            "docker_status": container_status,
+            "created_at": service.created_at.isoformat() if service.created_at else None
+        }

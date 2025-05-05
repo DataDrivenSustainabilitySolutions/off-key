@@ -52,7 +52,7 @@ async def register(user: UserCreate, db: AsyncSession = Depends(get_db_async)):
 
     # Email details
     sender_email = "sender@example.com"
-    recipient_email = "recipient@example.com"
+    recipient_email = user.email
     subject = "Test Email"
     verification_link = (
         f"{settings.BASE_URL}/v1/auth/verify-email?token={verification_token}"
@@ -72,7 +72,7 @@ async def register(user: UserCreate, db: AsyncSession = Depends(get_db_async)):
 
     try:
         with smtplib.SMTP(settings.SMTP_SERVER, settings.SMTP_PORT) as server:
-            server.starttls()
+            # server.starttls() ohne tls für mailpit
             server.send_message(message)
         print("Email sent successfully.")
     except Exception as e:

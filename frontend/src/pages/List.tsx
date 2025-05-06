@@ -2,6 +2,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Switch } from "@/components/ui/switch"
 import { useEffect, useState } from "react";
 import axios from "axios";
+import { Link } from "react-router-dom";
 import {NavigationBar} from "@/components/NavigationBar";
 
 interface Charger {
@@ -102,7 +103,8 @@ export default function ChargerTable() {
 
   const filteredData = data
   .filter((c) =>
-    c.charger_id.toLowerCase().includes(searchTerm.toLowerCase())
+    c.charger_id.toLowerCase().includes(searchTerm.toLowerCase()
+  ) || (c.charger_name?.toLowerCase().includes(searchTerm.toLowerCase()) ?? false)
   )
   .filter((c) => {
     if (statusFilter === "all") return true;
@@ -158,13 +160,14 @@ export default function ChargerTable() {
     </label>
   </div>
     <div className="flex items-center gap-2">
+      <span>Table</span>
       <Switch
         onCheckedChange={(checked) => {
           if (checked) {
             window.location.href = "localhost:5173";
           }
         }}
-        className="data-[state=checked]:bg-blue-500"
+        className="bg-gray-300 data-[state=checked]:bg-gray-300"
       />
       <span>Cards</span>
     </div>
@@ -188,8 +191,8 @@ export default function ChargerTable() {
             <TableBody>
             {filteredData.map((c) => (
                 <TableRow key={c.charger_id}>
-                  <TableCell>{c.charger_id}</TableCell>
-                  <TableCell>{c.charger_name || "N/A"}</TableCell>
+                  <TableCell><Link to={`/charger/${c.charger_id}`} className="text-black-600 hover:underline">{c.charger_id}</Link></TableCell>
+                  <TableCell><Link to={`/charger/${c.charger_id}`} className="text-black-600 hover:underline">{c.charger_name || "N/A"}</Link></TableCell>
                   <TableCell>
                   <span className={c.online ? "text-green-600 font-medium" : "text-red-600 font-medium"}>
                     {c.online ? "active" : "offline"}

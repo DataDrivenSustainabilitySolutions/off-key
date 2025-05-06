@@ -2,7 +2,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Switch } from "@/components/ui/switch"
 import { useEffect, useState } from "react";
 import axios from "axios";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import {NavigationBar} from "@/components/NavigationBar";
 
 interface Charger {
@@ -38,7 +38,15 @@ export default function ChargerTable() {
   const countAll = data.length;
   const countOnline = data.filter((c) => c.online).length;
   const countOffline = data.filter((c) => !c.online).length;
+  const [isCardsView, setIsCardsView] = useState(false);
+  const navigate = useNavigate();
 
+  const handleViewToggle = (checked: boolean) => {
+    setIsCardsView(checked);
+    if (checked) {
+      navigate("/cards");
+    }
+  };
 
   useEffect(() => {
     const fetchData = async () => {
@@ -160,16 +168,13 @@ export default function ChargerTable() {
     </label>
   </div>
     <div className="flex items-center gap-2">
-      <span>Table</span>
-      <Switch
-        onCheckedChange={(checked) => {
-          if (checked) {
-            window.location.href = "localhost:5173";
-          }
-        }}
-        className="bg-gray-300 data-[state=checked]:bg-gray-300"
-      />
-      <span>Cards</span>
+    <span>Table</span>
+  <Switch
+    checked={isCardsView}
+    onCheckedChange={handleViewToggle}
+    className="bg-gray-300 data-[state=checked]:bg-gray-300"
+  />
+  <span>Cards</span>
     </div>
 </div>
 

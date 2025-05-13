@@ -22,18 +22,11 @@ dependencies = [
 ]
 
 [build-system]
-requires = ["hatchling >= 1.26"]
+requires = ["hatchling"]
 build-backend = "hatchling.build"
 
-[tool.hatch.build]
-force-include = { "src" = "off_key" }  # Force renaming of src to match package name
-include = [
-    "src/**/*"  # Include all necessary paths
-]
-exclude = [
-    "**/__pycache__",
-    "tests/**/*"
-]
-
 [tool.hatch.build.targets.wheel]
-packages = ["off_key"]  # Virtual package name
+packages = ["src/off_key"]
+
+[tool.hatch.build]
+only-packages = true

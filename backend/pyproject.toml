@@ -8,8 +8,6 @@ authors = [
 maintainers = [
   { name = "Oliver Hennhoefer", email = "oliver.hennhoefer@mail.de" }
 ]
-readme = { file = "../README.md", content-type = "text/markdown" }
-license = { file = "../LICENSE" }
 keywords = ["anomaly detection", "predictive maintenance", "monitoring"]
 requires-python = ">=3.12"
 classifiers = [

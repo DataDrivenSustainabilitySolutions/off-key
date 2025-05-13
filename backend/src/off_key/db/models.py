@@ -120,7 +120,8 @@ class Anomaly(Base):
     anomaly_type = Column(String, nullable=False, index=True)
 
     __table_args__ = (
-        PrimaryKeyConstraint("charger_id", "timestamp", "telemetry_type", name="pk_anomaly"),
+        PrimaryKeyConstraint("charger_id", "timestamp",
+        "telemetry_type", name="pk_anomaly"),
         Index("idx_anomaly_lookup", "charger_id", "timestamp", "telemetry_type"),
     )
 

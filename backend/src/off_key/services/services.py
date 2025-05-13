@@ -9,9 +9,9 @@ import docker
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from backend.src.core.logs import logger
-from backend.src.db.base import Base
-from backend.src.db.models import MonitoringService
+from ..core.logs import logger
+from ..db.base import Base
+from ..db.models import MonitoringService
 
 
 def create_monitoring_container(

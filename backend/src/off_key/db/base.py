@@ -2,7 +2,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 
-from ..core.config import settings
+from off_key.core.config import settings
 
 # Synchronous Engine
 engine = create_engine(

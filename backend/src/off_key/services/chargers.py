@@ -2,9 +2,9 @@ from datetime import datetime, timezone, timedelta
 
 from sqlalchemy import select, delete, cast, DateTime
 from sqlalchemy.ext.asyncio import AsyncSession
+from off_key.core.config import settings
 
 from ..core.client.pionix import PionixClient
-from ..core.config import settings
 from ..core.logs import logger
 from ..db.models import Charger
 
@@ -16,7 +16,7 @@ class ChargersSyncService:
 
     async def sync_chargers(self):
         """
-        Synchronizes the database with the latest list of chargers as received from PIONIX Cloud.
+        Synchronizes the db with the latest chargers as received from PIONIX Cloud.
         Adds chargers not present in the database.
         Updates information for chargers already present in the database.
         """
@@ -29,7 +29,9 @@ class ChargersSyncService:
             logger.error(f"Failed to fetch active chargers: {e}")
             return  # Cannot proceed without active chargers data
 
-        active_chargers_map = {charger["id"]: charger for charger in active_chargers_data}
+        active_chargers_map = {
+            charger["id"]: charger for charger in active_chargers_data
+        }
         active_ids = set(active_chargers_map.keys())
 
         # Fetch existing chargers from the database
@@ -50,8 +52,8 @@ class ChargersSyncService:
                 # --- Update existing charger ---
                 db_charger = existing_chargers_map[charger_id]
                 # Update attributes if they have changed
-                db_charger.manufacturer_name = charger_data.get("manufacturerName")
-                db_charger.charger_name = charger_data.get("chargerName")
+                db_charger.manufacturer_name = charger_data.get("certOrganization")
+                db_charger.charger_name = charger_data.get("customName")
                 db_charger.firmware_version = charger_data.get("firmwareVersion")
                 db_charger.last_seen = charger_data.get("lastSeen")
                 db_charger.state = str(charger_data.get("state"))
@@ -62,8 +64,8 @@ class ChargersSyncService:
                 # --- Add new charger ---
                 new_charger = Charger(
                     charger_id=charger_id,
-                    manufacturer_name=charger_data.get("manufacturerName"),
-                    charger_name=charger_data.get("chargerName"),
+                    manufacturer_name=charger_data.get("certOrganization"),
+                    charger_name=charger_data.get("customName"),
                     firmware_version=charger_data.get("firmwareVersion"),
                     last_seen=charger_data.get("lastSeen"),
                     state=str(charger_data.get("state")),
@@ -100,43 +102,54 @@ class ChargersSyncService:
             days_inactive: The maximum number of days since a charger was last seen,
                            or -1 to delete all chargers.
         """
-        delete_statement = None # Initialize delete_statement
+        delete_statement = None  # Initialize delete_statement
 
         if days_inactive == -1:
             # --- Special case: Delete all chargers ---
-            logger.warning("Received days_inactive=-1. Preparing to delete ALL chargers.")
-            # Create a delete statement targeting the Charger table without any conditions
+            logger.warning(
+                "Received days_inactive=-1. Preparing to delete ALL chargers."
+            )
+            # Delete statement targeting the Charger table without any conditions
             delete_statement = delete(Charger)
 
         elif days_inactive > 0:
             # --- Standard case: Delete chargers older than X days ---
-            logger.info(f"Received days_inactive={days_inactive}. Preparing to delete chargers older than {days_inactive} days.")
+            logger.info(
+                f"Received days_inactive={days_inactive}. "
+                f"Preparing to delete chargers older than {days_inactive} days."
+            )
             try:
-                cutoff_datetime = datetime.now(timezone.utc) - timedelta(days=days_inactive)
-                logger.info(f"Cleaning chargers last seen before {cutoff_datetime.isoformat()} (using string casting)")
+                cutoff_datetime = datetime.now(timezone.utc) - timedelta(
+                    days=days_inactive
+                )
+                logger.info(
+                    f"Cleaning chargers last seen before {cutoff_datetime.isoformat()}."
+                )
 
                 # Prepare the delete statement with explicit CAST for string comparison
-                # WARNING: Still relies on castable string format. DB schema change preferred.
                 delete_statement = delete(Charger).where(
-                    Charger.last_seen != None,
-                    cast(Charger.last_seen, DateTime(timezone=True)) < cutoff_datetime
+                    Charger.last_seen is not None,
+                    cast(Charger.last_seen, DateTime(timezone=True)) < cutoff_datetime,
                 )
             except Exception as e:
-                 # Handle potential errors during date calculation itself
-                 logger.error(f"Error calculating cutoff date: {e}")
-                 return # Cannot proceed if date calculation fails
+                # Handle potential errors during date calculation itself
+                logger.error(f"Error calculating cutoff date: {e}")
+                return  # Cannot proceed if date calculation fails
 
         else:
             # --- Invalid input ---
-            logger.error(f"Invalid input for charger cleaning: days_inactive must be a positive integer or -1, got {days_inactive}")
-            return # Exit if input is not valid
+            logger.error(
+                f"Invalid input for charger cleaning: "
+                f"days_inactive must be a positive integer or -1, got {days_inactive}"
+            )
+            return  # Exit if input is not valid
 
         # --- Proceed only if a valid delete statement was prepared ---
         if delete_statement is not None:
             try:
                 # --- Execute the delete operation ---
                 result = await self.session.execute(delete_statement)
-                deleted_count = result.rowcount # Get the number of rows affected
+                deleted_count = result.rowcount  # Get the number of rows affected
 
                 # --- Commit the changes ---
                 await self.session.commit()
@@ -145,14 +158,21 @@ class ChargersSyncService:
                 if days_inactive == -1:
                     logger.info(f"Successfully deleted ALL {deleted_count} chargers.")
                 else:
-                    logger.info(f"Successfully deleted {deleted_count} inactive chargers (using string casting).")
+                    logger.info(
+                        f"Successfully deleted {deleted_count} inactive chargers."
+                    )
 
             except Exception as e:
                 # Log the specific error, providing context
-                log_context = "deleting all chargers" if days_inactive == -1 else "cleaning inactive chargers (using string casting)"
+                log_context = (
+                    "deleting all chargers"
+                    if days_inactive == -1
+                    else "cleaning inactive chargers (using string casting)"
+                )
                 logger.error(f"Failed during {log_context}: {e}")
                 # Rollback changes on error
                 await self.session.rollback()
         else:
-             # This case should ideally not be reached if logic above is correct, but included for robustness
-             logger.error("Delete statement was not correctly prepared. No action taken.")
+            logger.error(
+                "Delete statement was not correctly prepared. No action taken."
+            )

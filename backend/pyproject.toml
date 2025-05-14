@@ -29,4 +29,6 @@ build-backend = "hatchling.build"
 packages = ["src/off_key"]
 
 [tool.hatch.build]
-only-packages = true
+include = [
+    "src/services/resources/*"
+]

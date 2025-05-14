@@ -89,6 +89,9 @@ class MonitoringService(Base):
     container_id = Column(
         String, unique=True, nullable=True
     )  # (for FastAPI + Docker SDK)
+    container_name = Column(
+        String, unique=True, nullable=False
+    )
     stateful_set_name = Column(
         String, unique=True, nullable=True
     )  # (for Kubernetes StatefulSet)

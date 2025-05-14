@@ -6,7 +6,7 @@ from typing import List, Dict, Optional, Any
 
 import docker
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update
+from sqlalchemy import select, delete
 
 from ..core.logs import logger
 from ..db.models import MonitoringService
@@ -55,7 +55,7 @@ class MonitoringAsyncService:
 
         # Check if template files exist and use defaults if not provided
         templates_dir = os.path.join(
-            os.path.dirname(os.path.abspath(__file__)), "templates"
+            os.path.dirname(os.path.abspath(__file__)), "resources"
         )
         default_dockerfile = os.path.join(templates_dir, "Dockerfile")
         default_app = os.path.join(templates_dir, "src.py")
@@ -157,19 +157,30 @@ class MonitoringAsyncService:
             # Clean up build context
             shutil.rmtree(build_context)
 
-    async def stop_monitoring_service(self, container_name: str) -> bool:
+    async def stop_monitoring_service(
+            self,
+            container_name: Optional[str] = None,
+            container_id: Optional[str] = None
+    ) -> bool:
         """
         Stop and remove a running monitoring service
 
         Args:
             container_name (str): Name of the container to stop
+            container_id (str): ID of the container to stop
 
         Returns:
             bool: True if service was stopped, False otherwise
         """
         # Find the service in the database
-        query = select(MonitoringService).where(MonitoringService.container_name == container_name)
-        result = await self.session.execute(query)
+        stmt = select(MonitoringService)
+
+        if container_name:
+            stmt = stmt.where(MonitoringService.container_name == container_name)
+        elif container_id:
+            stmt = stmt.where(MonitoringService.container_id == container_id)
+
+        result = await self.session.execute(stmt)
         service = result.scalars().first()
 
         if not service:
@@ -182,27 +193,19 @@ class MonitoringAsyncService:
             container.stop()
             container.remove()
 
-            # Update the service status in database
-            update_stmt = (
-                update(MonitoringService)
-                .where(MonitoringService.id == service.id)
-                .values(status=False)
-            )
-            await self.session.execute(update_stmt)
+            # Delete the service from the database
+            delete_stmt = delete(MonitoringService).where(MonitoringService.id == service.id)
+            await self.session.execute(delete_stmt)
             await self.session.commit()
 
-            logger.info(f"Container {container_name} stopped and removed")
+            logger.info(f"Container {container_name} stopped and removed; DB record deleted")
             return True
 
         except docker.errors.NotFound:
             # Container not found in Docker but exists in DB
-            # Update DB to reflect this
-            update_stmt = (
-                update(MonitoringService)
-                .where(MonitoringService.id == service.id)
-                .values(status=False)
-            )
-            await self.session.execute(update_stmt)
+            # Delete the DB record to reflect this
+            delete_stmt = delete(MonitoringService).where(MonitoringService.id == service.id)
+            await self.session.execute(delete_stmt)
             await self.session.commit()
 
             logger.warning(f"Container {container_name} not found in Docker but marked as inactive in DB")
@@ -243,18 +246,29 @@ class MonitoringAsyncService:
 
         return service_list
 
-    async def get_monitoring_service(self, container_name: str) -> Optional[Dict[str, Any]]:
+    async def get_monitoring_service(
+            self,
+            container_name: Optional[str] = None,
+            container_id: Optional[str] = None
+    ) -> Optional[Dict[str, Any]]:
         """
         Get details for a specific monitoring service
 
         Args:
             container_name (str): Name of the container
+            container_id (str): ID of the container
 
         Returns:
             Optional[Dict]: Service details or None if not found
         """
-        query = select(MonitoringService).where(MonitoringService.container_name == container_name)
-        result = await self.session.execute(query)
+        stmt = select(MonitoringService)
+
+        if container_name:
+            stmt = stmt.where(MonitoringService.container_name == container_name)
+        elif container_id:
+            stmt = stmt.where(MonitoringService.container_id == container_id)
+
+        result = await self.session.execute(stmt)
         service = result.scalars().first()
 
         if not service:

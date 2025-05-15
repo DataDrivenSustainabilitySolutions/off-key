@@ -102,13 +102,13 @@ class MonitoringAsyncService:
             )
 
             # Add to database
-            self.session.add(service)
+            self.session.add(service_record)
             await self.session.commit()
 
             logger.info(f"Service created with ID: {service.id}")
             logger.info(f"Service added to database with ID: {service_record.id}")
 
-            return service
+            return service_record
 
         except Exception as e:
             await self.session.rollback()

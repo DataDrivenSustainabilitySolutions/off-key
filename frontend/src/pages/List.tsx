@@ -52,6 +52,10 @@ export default function ChargerTable() {
   useEffect(() => {
     const fetchData = async () => {
       try {
+        await axios.post("http://localhost:8000/v1/chargers/sync", null, {
+          timeout: 1500, // max. 5 Sekunden warten
+        });
+
         // Hole die Basisdaten aller verfügbaren Charger
         const chargerRes = await axios.get<Charger[]>("http://localhost:8000/v1/chargers/available"); // Gibt alle Charger zurück
         const chargers = chargerRes.data;
@@ -131,11 +135,21 @@ export default function ChargerTable() {
     setFavoriteChargerIds(updatedFavorites);
   
     try {
-      await axios.post("http://localhost:8000/v1/userprefs/favorites", {
-        charger_id: chargerId,
-        action: isFavorite ? "remove" : "add",
-        user_id: "1", // z. B. vom Auth-Context
-      });
+      if (isFavorite) {
+        // DELETE request
+        await axios.delete("http://localhost:8000/v1/favorites", {
+          data: {
+            charger_id: chargerId,
+            user_id: 1,
+          },
+        });
+      } else {
+        // POST request
+        await axios.post("http://localhost:8000/v1/favorites", {
+          charger_id: chargerId,
+          user_id: 1,
+        });
+      }
     } catch (err) {
       console.error("Fehler beim Speichern des Favorits:", err);
     }

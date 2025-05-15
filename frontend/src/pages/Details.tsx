@@ -11,39 +11,41 @@ import {
   Legend,
   ResponsiveContainer,
   ReferenceArea,
-  PieChart,
-  Pie,
-  Cell,
-  BarChart,
-  Bar,
-  Rectangle,
+  // PieChart,
+  // Pie,
+  // Cell,
+  // BarChart,
+  // Bar,
+  // Rectangle,
 } from "recharts";
 import { useEffect, useRef, useState } from "react";
 // import { useParams } from "react-router-dom";
 import axios from "axios";
-import {
-  Table,
-  TableBody,
-  TableCaption,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+// import {
+//   Table,
+//   TableBody,
+//   TableCaption,
+//   TableCell,
+//   TableHead,
+//   TableHeader,
+//   TableRow,
+// } from "@/components/ui/table";
 
 const data = mockdata;
-const pieData = [
-  { name: "online", value: 75 },
-  { name: "offline", value: 25 },
-];
-const barData = [
-  { Day: "Monday", UsageCount: 25 },
-  { Day: "Tuesday", UsageCount: 100 },
-  { Day: "Wednesday", UsageCount: 10 },
-  { Day: "Thursday", UsageCount: 50 },
-  { Day: "Friday", UsageCount: 72 },
-  { Day: "Saturday", UsageCount: 122 },
-];
+
+//Mockdate for the short Infos cards
+// const pieData = [
+//   { name: "online", value: 75 },
+//   { name: "offline", value: 25 },
+// ];
+// const barData = [
+//   { Day: "Monday", UsageCount: 25 },
+//   { Day: "Tuesday", UsageCount: 100 },
+//   { Day: "Wednesday", UsageCount: 10 },
+//   { Day: "Thursday", UsageCount: 50 },
+//   { Day: "Friday", UsageCount: 72 },
+//   { Day: "Saturday", UsageCount: 122 },
+// ];
 
 const Details: React.FC = () => {
   const redZones = useRedZones(data, 80);
@@ -52,120 +54,112 @@ const Details: React.FC = () => {
     smallCard2: false,
     smallCard3: false,
     CPUUsageCard: false,
-    RAMUsage: false,
+    RAMUsageCard: false,
   });
   const [, setSearchError] = useState(false);
 
-  // when connected with List and Cards page we use "useParams ()" for the charger_id,
-  // this should allow us to extract the id out of the URI and use it.
-  const charger_id = "7939d75d-2ecc-40c3-aca2-fc6332873a4d";
+  // Hardcoded for now; replace with useParams() when routing
+  const charger_id = "d2d67b85-f56b-4a50-842d-92f210e77076";
 
   const [controllerCpuUsage, setControllerCpuUsage] = useState<string>();
   const [
     controllertemperaturecpu_thermal,
     setControllertemperaturecpu_thermal,
   ] = useState<string>();
-  const [controllerCpuUsageData, setControllerCpuUsageData] = useState<[]>([]);
+  const [controllerCpuUsageData, setControllerCpuUsageData] = useState<
+    unknown[]
+  >([]);
   const [
     controllertemperaturecpu_thermalData,
     setControllertemperaturecpu_thermalData,
-  ] = useState<[]>([]);
+  ] = useState<unknown[]>([]);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // 1) only at mount or when charger_id is changing: get Telemetry types
   useEffect(() => {
-    // if (!charger_id) return;
+    if (!charger_id) return;
 
-    // Function to get the Telemetry Types for the next axios requests
-    //setting the results in the React States
     async function getTelemetryTypes() {
       try {
         const response = await axios.get(
           `http://127.0.0.1:8000/v1/telemetry/${charger_id}/type`
         );
-        const results = response.data;
-        if (!results) {
-          console.warn("Keine Ladesäule mit dieser ID gefunden: ", charger_id);
-          setSearchError(true);
-        } else {
+        const results: string[] = response.data;
+        // Search in results for this 2 keys
+        const cpuUsageKey = results.find(
+          (t) => t.toLowerCase() === "controllercpuusage"
+        );
+        const cpuThermalKey = results.find(
+          (t) => t.toLowerCase() === "controllertemperaturecpu-thermal"
+        );
+
+        if (cpuUsageKey && cpuThermalKey) {
+          setControllerCpuUsage(cpuUsageKey);
+          setControllertemperaturecpu_thermal(cpuThermalKey);
           setSearchError(false);
-          setControllerCpuUsage(results[0]);
-          setControllertemperaturecpu_thermal(results[1]);
+        } else {
+          console.warn(
+            "Telemetrie-Keys nicht gefunden:",
+            { cpuUsageKey, cpuThermalKey },
+            "in",
+            results
+          );
+          setSearchError(true);
         }
       } catch (error) {
-        console.error(error);
+        console.error("Fehler beim Laden der Telemetrie-Typen:", error);
+        setSearchError(true);
       }
     }
 
     getTelemetryTypes();
+  }, [charger_id]);
 
-    //Async function to get CPU Usage Data from the Charger
-    // depends on charger_id and controllerCpuUsage
-    // and also the limit which is fixed atm to 50
-    async function getCpuUsage() {
+  // 2) after charger_id, controllerCpuUsage and controllertemperaturecpu_thermal are set up:
+  //    - first fetch
+  //    - then every 20 seconds repeat
+  useEffect(() => {
+    if (
+      !charger_id ||
+      !controllerCpuUsage ||
+      !controllertemperaturecpu_thermal
+    ) {
+      return;
+    }
+
+    async function fetchTelemetryData() {
       try {
-        const response = await axios.get(
+        // CPU Usage
+        const respUsage = await axios.get(
           `http://127.0.0.1:8000/v1/telemetry/${charger_id}/${controllerCpuUsage}?limit=50`
         );
-        const results = response.data;
-        if (!results) {
-          console.warn(
-            `Keine Daten zu der ID ${charger_id} und dem Telemetrietypen ${controllerCpuUsage} gefunde`
-          );
-          setSearchError(true);
-        } else {
-          setSearchError(false);
-          setControllerCpuUsageData(results);
-        }
-      } catch (error) {
-        console.log(error);
-      }
-    }
+        setControllerCpuUsageData(respUsage.data);
+        console.log("CPU Usage:", respUsage.data);
 
-    //Async function to get CPU Thermal Data from the Charger
-    // depends on charger_id and controllertermeratourecpu_thermal
-    // and also the limit which is fixed atm to 50
-    async function getCpuThermal() {
-      try {
-        const response = await axios.get(
+        // CPU Thermal
+        const respThermal = await axios.get(
           `http://127.0.0.1:8000/v1/telemetry/${charger_id}/${controllertemperaturecpu_thermal}?limit=50`
         );
-        const results = response.data;
-        if (!results) {
-          console.warn(
-            `Keine Daten zu der ID ${charger_id} und dem Telemetrietypen ${controllertemperaturecpu_thermal} gefunde`
-          );
-          setSearchError(true);
-        } else {
-          setSearchError(false);
-          setControllertemperaturecpu_thermalData(results);
-        }
+        setControllertemperaturecpu_thermalData(respThermal.data);
+        console.log("CPU Thermal:", respThermal.data);
       } catch (error) {
-        console.log(error);
+        console.error("Fehler beim Daten-Fetch:", error);
+        setSearchError(true);
       }
     }
 
-    //Series to get the Data with the initial Mount and then within each 20 seconds
-    getCpuUsage();
-    getCpuThermal();
-    intervalRef.current = setInterval(() => {
-      getCpuUsage();
-      getCpuThermal();
+    // initial
+    fetchTelemetryData();
 
-      console.log("CPU USage: ", controllerCpuUsageData);
-      console.log("CPU Heat:", controllertemperaturecpu_thermalData);
-    }, 5000);
+    intervalRef.current = setInterval(fetchTelemetryData, 20000);
 
     return () => {
-      if (intervalRef.current !== null) {
+      if (intervalRef.current) {
         clearInterval(intervalRef.current);
       }
     };
-  }, []);
+  }, [charger_id, controllerCpuUsage, controllertemperaturecpu_thermal]);
 
-  //Log to check if the data is as it is expected
-  // console.log("CPU USage: ", controllerCpuUsageData);
-
-  //Function for minimizing the Cards when someone klicks on the Arrow down
   const minimizeCards = (key: string) => {
     setCollapsedCard((prev) => ({
       ...prev,
@@ -173,13 +167,10 @@ const Details: React.FC = () => {
     }));
   };
 
-  //Function to present timestamps at a proper Format in the Line Charts
   const formatDateMultiline = (value: string) => {
     const date = new Date(value);
     const day = String(date.getDate()).padStart(2, "0");
     const month = String(date.getMonth() + 1).padStart(2, "0");
-    // const hour = String(date.getHours()).padStart(2, "0");
-    // const minute = String(date.getMinutes()).padStart(2, "0");
     return `${day}.${month}`;
   };
 
@@ -189,7 +180,7 @@ const Details: React.FC = () => {
         <CardTitle className="ml-5">Charger 1</CardTitle>
         <CardContent>
           <div className="flex justify-between">
-            <Card
+            {/* <Card
               className={`transition-all duration-300 w-70 ${
                 collapsedCard.card1 ? "h-16" : "h-70"
               }`}
@@ -333,7 +324,7 @@ const Details: React.FC = () => {
                   </TableRow>
                 </TableBody>
               </Table>
-            </Card>
+            </Card> */}
           </div>
           <div className="flex justify-around min-h-1/2 mt-20">
             <Card

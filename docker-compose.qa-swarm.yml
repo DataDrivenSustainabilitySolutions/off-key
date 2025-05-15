@@ -16,11 +16,16 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    deploy:
+      placement:
+        constraints:
+          - node.role == manager
 
   api:
     build: ./backend/
     container_name: fastapi_backend
     env_file: .env
+    user: root
     ports:
       - "${BACKEND_PORT}:8000"
     depends_on:
@@ -37,6 +42,16 @@ services:
       - /etc/docker/ca.pem:/etc/docker/ca.pem
       - /etc/docker/client-cert.pem:/etc/docker/client-cert.pem
       - /etc/docker/client-key.pem:/etc/docker/client-key.pem
+    deploy:
+      mode: replicated
+      replicas: 2
+      placement:
+        preferences:
+          - spread: node.labels.type  # Distribute evenly
+      resources:
+        limits:
+          cpus: '0.2'
+          memory: 256M
 
   frontend:
     build: ./frontend
@@ -49,6 +64,16 @@ services:
     volumes:
       - ./frontend:/src
       - /src/node_modules  # Prevent conflicts
+    deploy:
+      mode: replicated
+      replicas: 2
+      placement:
+        preferences:
+          - spread: node.labels.type  # Distribute evenly
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
 
   mailpit:
     image: axllent/mailpit:latest
@@ -59,6 +84,10 @@ services:
     ports:
       - '8025:8025'  # Web UI
       - '1025:1025'  # SMTP port
+    deploy:
+      placement:
+        constraints:
+          - node.role == manager
 
 networks:
   app-network:

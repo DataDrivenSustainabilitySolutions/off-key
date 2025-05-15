@@ -5,6 +5,8 @@ from datetime import datetime
 from typing import List, Dict, Optional, Any
 
 import docker
+import docker.tls as tls
+from docker.types import EndpointSpec, RestartPolicy, ServiceMode
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete
 
@@ -14,8 +16,13 @@ from ..db.models import MonitoringService
 
 class MonitoringAsyncService:
     def __init__(self, session: AsyncSession):
+        tls_config = tls.TLSConfig(
+            client_cert=('/etc/docker/client-cert.pem', '/etc/docker/client-key.pem'),
+            ca_cert='/etc/docker/ca.pem',
+            verify=True,
+        )
         self.session: AsyncSession = session
-        self.client = docker.from_env()
+        self.client = docker.DockerClient(base_url=f'https://{os.getenv('MANAGER_NODE_IP')}:2376', tls=tls_config)
         logger.info("MonitoringAsyncService initialized.")
 
     async def create_monitoring_service(
@@ -136,19 +143,31 @@ class MonitoringAsyncService:
             with open(os.path.join(build_context, "requirements.txt"), "w") as f:
                 f.write("\n".join(requirements))
 
-            # Build the Docker image with a unique tag
-            image_tag = f"monitoring-service:{service_id}"
-            image, build_logs = self.client.images.build(
-                path=build_context, tag=image_tag, rm=True, forcerm=True
-            )
-
-            # Run the container
-            container = self.client.containers.run(
-                image=image_tag,
-                name=container_name,
-                detach=True,
-                restart_policy={"Name": "unless-stopped"},
-                environment=environment
+            # TODO: replace with monitoring image
+            entrypoint = [
+                "sh",
+                "-c",
+                (
+                    "apk add --no-cache curl;"
+                    "dd if=/dev/zero of=/dev/null bs=1M count=200 & "
+                    "while true; do curl -s https://httpbin.org/get > /dev/null; sleep 5; done"
+                )
+            ]
+            labels = {
+                "owner": 'test_user',
+                "started_at": datetime.utcnow().isoformat() + "Z",
+                "purpose": 'This is a test',
+                "env": 'development'
+            }
+            container = self.client.services.create(
+                name=f"monitoring-service-{service_id}",
+                labels=labels,
+                image="alpine",
+                command=entrypoint,
+                endpoint_spec=EndpointSpec(ports={8080:80}),
+                mode=ServiceMode("replicated", replicas=1),
+                restart_policy=RestartPolicy(condition='on-failure'),
+                constraints=["node.role == worker"]
             )
 
             return container
@@ -188,10 +207,9 @@ class MonitoringAsyncService:
             return False
 
         try:
-            # Stop and remove the container
-            container = self.client.containers.get(service.container_id)
-            container.stop()
-            container.remove()
+            # Stop and remove all instances of the service
+            service = self.client.services.get(service.container_id)
+            service.update(mode={"Replicated": {"Replicas": 0}})
 
             # Delete the service from the database
             delete_stmt = delete(MonitoringService).where(MonitoringService.id == service.id)
@@ -277,7 +295,7 @@ class MonitoringAsyncService:
         # Check actual container status in Docker
         container_status = "unknown"
         try:
-            container = self.client.containers.get(service.container_id)
+            container = self.client.services.get(service.container_id)
             container_status = container.status
         except docker.errors.NotFound:
             container_status = "not_found"

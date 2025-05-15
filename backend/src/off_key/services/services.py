@@ -5,24 +5,20 @@ from datetime import datetime
 from typing import List, Dict, Optional, Any
 
 import docker
-import docker.tls as tls
-from docker.types import EndpointSpec, RestartPolicy, ServiceMode
+from docker.types import RestartPolicy, ServiceMode
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete
 
 from ..core.logs import logger
 from ..db.models import MonitoringService
+from .async_docker import AsyncDocker
 
+async_docker = AsyncDocker()
 
 class MonitoringAsyncService:
     def __init__(self, session: AsyncSession):
-        tls_config = tls.TLSConfig(
-            client_cert=('/etc/docker/client-cert.pem', '/etc/docker/client-key.pem'),
-            ca_cert='/etc/docker/ca.pem',
-            verify=True,
-        )
         self.session: AsyncSession = session
-        self.client = docker.DockerClient(base_url=f'https://{os.getenv('MANAGER_NODE_IP')}:2376', tls=tls_config)
+        self.async_docker: AsyncDocker = async_docker
         logger.info("MonitoringAsyncService initialized.")
 
     async def create_monitoring_service(
@@ -79,8 +75,7 @@ class MonitoringAsyncService:
         env_vars["MQTT_TOPICS"] = json.dumps(mqtt_topics)
         env_vars["SERVICE_ID"] = db_service_id
 
-        # Create the container using the synchronous method
-        # TODO: Official Docker SDK doesn't have an async API
+        # Create the container asynchronously
         try:
             service = await self._create_service_sync(
                 container_name=container_name,
@@ -125,8 +120,7 @@ class MonitoringAsyncService:
             environment: Dict[str, str]
     ) -> Any:
         """
-        Helper method to handle the synchronous Docker operations
-        This would ideally be run in a thread pool if we keep using hte official Docker SDK
+        Helper method to handle Docker operations asynchronously
         """
         import tempfile
         import shutil
@@ -159,7 +153,8 @@ class MonitoringAsyncService:
                 "purpose": 'This is a test',
                 "env": 'development'
             }
-            container = self.client.services.create(
+            container = await self.async_docker.run(
+                self.async_docker.client.services.create,
                 name=f"monitoring-service-{service_id}",
                 labels=labels,
                 image="alpine",
@@ -207,8 +202,8 @@ class MonitoringAsyncService:
 
         try:
             # Stop and remove all instances of the service
-            service = self.client.services.get(service.container_id)
-            service.remove()
+            service = await self.async_docker.run(self.async_docker.client.services.get, service.container_id)
+            await self.async_docker.run(service.remove)
 
             # Delete the service from the database
             delete_stmt = delete(MonitoringService).where(MonitoringService.container_id == service.id)
@@ -294,12 +289,10 @@ class MonitoringAsyncService:
         # Check actual container status in Docker
         container_status = "unknown"
         try:
-            container = self.client.services.get(service.container_id)
+            container = await self.async_docker.run(self.async_docker.client.services.get, service.container_id)
             container_status = container.status
         except docker.errors.NotFound:
             container_status = "not_found"
-        except Exception:
-            pass
 
         return {
             "id": service.id,

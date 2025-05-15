@@ -40,6 +40,7 @@ export default function ChargerTable() {
   const countOffline = data.filter((c) => !c.online).length;
   const [isCardsView, setIsCardsView] = useState(false);
   const navigate = useNavigate();
+  const [favoriteChargerIds, setFavoriteChargerIds] = useState<string[]>([]);
 
   const handleViewToggle = (checked: boolean) => {
     setIsCardsView(checked);
@@ -121,12 +122,32 @@ export default function ChargerTable() {
     return true;
   });
 
+  const handleToggleFavorite = async (chargerId: string) => {
+    const isFavorite = favoriteChargerIds.includes(chargerId);
+    const updatedFavorites = isFavorite
+      ? favoriteChargerIds.filter((id) => id !== chargerId)
+      : [...favoriteChargerIds, chargerId];
+  
+    setFavoriteChargerIds(updatedFavorites);
+  
+    try {
+      await axios.post("http://localhost:8000/v1/userprefs/favorites", {
+        charger_id: chargerId,
+        action: isFavorite ? "remove" : "add",
+        user_id: "1", // z. B. vom Auth-Context
+      });
+    } catch (err) {
+      console.error("Fehler beim Speichern des Favorits:", err);
+    }
+  };
+  
+
 
   return (
     <>
     <NavigationBar /> {/* <-- Direkt ganz oben */}
     <div className="p-6">
-<div className="mb-4 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+<div className="mb-4 flex flex-wrap items-center justify-between gap-4">
   {/* Suchleiste links */}
   <input
     type="text"
@@ -206,6 +227,15 @@ export default function ChargerTable() {
                   <TableCell>{c.value1 !== null ? `${c.value1.toFixed(2)} %` : "-"}</TableCell>
                   <TableCell>{c.value2 !== null ? `${c.value2.toFixed(2)} °C` : "-"}</TableCell>
                   <TableCell>{new Date(c.last_seen).toLocaleString()}</TableCell>
+                  <TableCell>
+                  <button
+                    onClick={() => handleToggleFavorite(c.charger_id)}
+                    className="text-xl"
+                    aria-label="Favorisieren"
+                  >
+                    {favoriteChargerIds.includes(c.charger_id) ? "⭐" : "☆"}
+                  </button>
+                </TableCell>
                 </TableRow>
               ))}
             </TableBody>

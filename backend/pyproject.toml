@@ -1,8 +1,21 @@
 [project]
 name = "off-key"
 version = "0.1.0"
-description = "TBD"
+description = "Real-time Anomaly Detection Platform"
+authors = [
+  { name = "Oliver Hennhoefer", email = "oliver.hennhoefer@mail.de" }
+]
+maintainers = [
+  { name = "Oliver Hennhoefer", email = "oliver.hennhoefer@mail.de" }
+]
+keywords = ["anomaly detection", "predictive maintenance", "monitoring"]
 requires-python = ">=3.12"
+classifiers = [
+    "Programming Language :: Python :: 3.12",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Development Status :: 3 - Alpha"
+]
 dependencies = [
     "apscheduler>=3.11.0",
     "asyncpg>=0.30.0",
@@ -21,19 +34,95 @@ dependencies = [
     "urllib3>=2.3.0",
 ]
 
+[project.optional-dependencies]
+dev = ["black", "ruff", "pre-commit"]
+all = ["black", "ruff", "pre-commit"]
+
 [build-system]
-requires = ["hatchling >= 1.26"]
+requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+[tool.hatch.build.targets.wheel]
+packages = ["src/off_key"]
+
 [tool.hatch.build]
-force-include = { "src" = "off_key" }  # Force renaming of src to match package name
-include = [
-    "src/**/*"  # Include all necessary paths
-]
+only-packages = true
+
+[project.urls]
+"Homepage" = "https://github.com/OliverHennhoefer/off-key"
+"Bugs" = "https://github.com/OliverHennhoefer/off-key/issues"
+
+[tool.black]
+line-length = 88
+target-version = ['py312']
+
+extend-exclude ='''
+/(
+    \.eggs
+  | \.git
+  | \.hg
+  | \.mypy_cache
+  | \.nox
+  | \.pants\.d
+  | \.pytype
+  | \.ruff_cache
+  | \.svn
+  | \.tox
+  | \.venv
+  | __pypackages__
+  | _build
+  | buck-out
+  | build
+  | dist
+  | node_modules
+  | venv
+)/
+'''
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+src = ["."]
+include = ["*.py", "*.pyi", "*.ipynb", "**/pyproject.toml"]
 exclude = [
-    "**/__pycache__",
-    "tests/**/*"
+    ".bzr",
+    ".direnv",
+    ".eggs",
+    ".git",
+    ".git-rewrite",
+    ".hg",
+    ".ipynb_checkpoints",
+    ".mypy_cache",
+    ".nox",
+    ".pants.d",
+    ".pyenv",
+    ".pytest_cache",
+    ".pytype",
+    ".ruff_cache",
+    ".svn",
+    ".tox",
+    ".venv",
+    "__pypackages__",
+    "_build",
+    "buck-out",
+    "build",
+    "dist",
+    "node_modules",
+    "site-packages",
+    "venv",
 ]
 
-[tool.hatch.build.targets.wheel]
-packages = ["off_key"]  # Virtual package name
+[tool.ruff.lint]
+select = [
+    "E",  # pycodestyle errors (excluding some stylistic ones handled by formatters)
+    "F",  # Pyflakes
+]
+ignore = []
+fixable = ["ALL"]
+unfixable = []
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"

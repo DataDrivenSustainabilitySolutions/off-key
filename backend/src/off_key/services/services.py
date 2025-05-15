@@ -58,7 +58,7 @@ class MonitoringAsyncService:
             return existing_service
 
         # Generate a unique service ID
-        service_id = str(uuid.uuid4())
+        db_service_id = str(uuid.uuid4())
 
         # Check if template files exist and use defaults if not provided
         templates_dir = os.path.join(
@@ -77,14 +77,14 @@ class MonitoringAsyncService:
         # Set up environment variables
         env_vars = environment_variables or {}
         env_vars["MQTT_TOPICS"] = json.dumps(mqtt_topics)
-        env_vars["SERVICE_ID"] = service_id
+        env_vars["SERVICE_ID"] = db_service_id
 
         # Create the container using the synchronous method
         # TODO: Official Docker SDK doesn't have an async API
         try:
-            container = await self._create_container_sync(
+            service = await self._create_service_sync(
                 container_name=container_name,
-                service_id=service_id,
+                service_id=db_service_id,
                 dockerfile_path=dockerfile_path,
                 app_path=app_path,
                 requirements=requirements,
@@ -92,9 +92,9 @@ class MonitoringAsyncService:
             )
 
             # Create monitoring service record
-            service = MonitoringService(
-                id=service_id,
-                container_id=container.id,
+            service_record = MonitoringService(
+                id=db_service_id,
+                container_id=service.id,
                 container_name=container_name,
                 mqtt_topic=mqtt_topics,
                 created_at=datetime.now(),
@@ -105,8 +105,8 @@ class MonitoringAsyncService:
             self.session.add(service)
             await self.session.commit()
 
-            logger.info(f"Container created with ID: {container.id}")
-            logger.info(f"Service added to database with ID: {service.id}")
+            logger.info(f"Service created with ID: {service.id}")
+            logger.info(f"Service added to database with ID: {service_record.id}")
 
             return service
 
@@ -115,7 +115,7 @@ class MonitoringAsyncService:
             logger.error(f"Failed to create monitoring service: {e}")
             raise
 
-    async def _create_container_sync(
+    async def _create_service_sync(
             self,
             container_name: str,
             service_id: str,
@@ -164,7 +164,6 @@ class MonitoringAsyncService:
                 labels=labels,
                 image="alpine",
                 command=entrypoint,
-                endpoint_spec=EndpointSpec(ports={8080:80}),
                 mode=ServiceMode("replicated", replicas=1),
                 restart_policy=RestartPolicy(condition='on-failure'),
                 constraints=["node.role == worker"]
@@ -209,10 +208,10 @@ class MonitoringAsyncService:
         try:
             # Stop and remove all instances of the service
             service = self.client.services.get(service.container_id)
-            service.update(mode={"Replicated": {"Replicas": 0}})
+            service.remove()
 
             # Delete the service from the database
-            delete_stmt = delete(MonitoringService).where(MonitoringService.id == service.id)
+            delete_stmt = delete(MonitoringService).where(MonitoringService.container_id == service.id)
             await self.session.execute(delete_stmt)
             await self.session.commit()
 
@@ -222,7 +221,7 @@ class MonitoringAsyncService:
         except docker.errors.NotFound:
             # Container not found in Docker but exists in DB
             # Delete the DB record to reflect this
-            delete_stmt = delete(MonitoringService).where(MonitoringService.id == service.id)
+            delete_stmt = delete(MonitoringService).where(MonitoringService.container_id == service.id)
             await self.session.execute(delete_stmt)
             await self.session.commit()
 

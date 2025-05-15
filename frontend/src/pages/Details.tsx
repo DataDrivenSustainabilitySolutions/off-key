@@ -54,7 +54,7 @@ const Details: React.FC = () => {
     smallCard2: false,
     smallCard3: false,
     CPUUsageCard: false,
-    RAMUsageCard: false,
+    CPUThermalCard: false,
   });
   const [, setSearchError] = useState(false);
 
@@ -171,12 +171,15 @@ const Details: React.FC = () => {
     const date = new Date(value);
     const day = String(date.getDate()).padStart(2, "0");
     const month = String(date.getMonth() + 1).padStart(2, "0");
-    return `${day}.${month}`;
+    const hour = String(date.getHours()).padStart(2, "0");
+    const minute = String(date.getMinutes()).padStart(2, "0");
+    const second = String(date.getSeconds()).padStart(2, "0");
+    return `${day}.${month}, ${hour}:${minute}:${second}`;
   };
 
   return (
-    <div className="flex justify-center items-center mt-5">
-      <Card className=" bg-white shadow-md w-11/12 min-h-11/12">
+    <div className="flex mt-5">
+      <Card className="ml-16 bg-white shadow-md w-11/12 min-h-11/12">
         <CardTitle className="ml-5">Charger 1</CardTitle>
         <CardContent>
           <div className="flex justify-between">
@@ -326,157 +329,159 @@ const Details: React.FC = () => {
               </Table>
             </Card> */}
           </div>
-          <div className="flex justify-around min-h-1/2 mt-20">
-            <Card
-              className={`mr-6 w-6/12 transition-all duration-300 ${
-                collapsedCard.CPUUsageCard ? "h-16" : "h-96"
-              }`}
-            >
-              <div className="flex justify-between">
-                <CardTitle className="ml-5">
-                  CPU Usage of Charger {charger_id}
-                </CardTitle>
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  strokeWidth={1.5}
-                  stroke="currentColor"
-                  onClick={() => minimizeCards("CPUUsageCard")}
-                  className={`size-6 mr-5 cursor-pointer transition-transform" ${
-                    collapsedCard.CPUUsageCard ? "rotate-180" : ""
-                  }`}
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="m19.5 8.25-7.5 7.5-7.5-7.5"
-                  />
-                </svg>
-              </div>
-              <ResponsiveContainer width="90%" height="90%">
-                <LineChart
-                  width={500}
-                  height={300}
-                  data={controllerCpuUsageData}
-                  margin={{
-                    top: 5,
-                    right: 30,
-                    left: 20,
-                    bottom: 5,
-                  }}
-                >
-                  <CartesianGrid strokeDasharray="5 5" />
-                  <XAxis
-                    dataKey="timestamp"
-                    tickFormatter={formatDateMultiline}
-                  />
 
-                  <YAxis dataKey="value" />
-                  <Tooltip />
-                  <Legend />
-                  {redZones.map((zone, index) => (
-                    <ReferenceArea
-                      key={index}
-                      x1={zone.start}
-                      x2={zone.end}
-                      strokeOpacity={0}
-                      fill="red"
-                      fillOpacity={0.1}
-                    />
-                  ))}
-                  <Line
-                    type="monotone"
-                    dataKey="value"
-                    stroke="#8884d8"
-                    activeDot={{ r: 8 }}
-                    dot={({ cx, cy, payload }) => {
-                      const color = payload.value >= 80 ? "red" : "#8884d8";
-                      return (
-                        <circle
-                          cx={cx}
-                          cy={cy}
-                          r={4}
-                          fill={color}
-                          stroke="none"
-                        />
-                      );
-                    }}
+          <Card
+            className={`mr-6 w-full mb-4 transition-all duration-300 ${
+              collapsedCard.CPUUsageCard ? "h-16" : "h-96"
+            }`}
+          >
+            <div className="flex justify-between">
+              <CardTitle className="ml-5">
+                CPU Usage of Charger {charger_id}
+              </CardTitle>
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                strokeWidth={1.5}
+                stroke="currentColor"
+                onClick={() => minimizeCards("CPUUsageCard")}
+                className={`size-6 mr-5 cursor-pointer transition-transform" ${
+                  collapsedCard.CPUUsageCard ? "rotate-180" : ""
+                }`}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="m19.5 8.25-7.5 7.5-7.5-7.5"
+                />
+              </svg>
+            </div>
+            <ResponsiveContainer width="90%" height="90%">
+              <LineChart
+                width={500}
+                height={300}
+                data={controllerCpuUsageData}
+                margin={{
+                  top: 5,
+                  right: 30,
+                  left: 20,
+                  bottom: 5,
+                }}
+              >
+                <CartesianGrid strokeDasharray="5 5" />
+                <XAxis
+                  dataKey="timestamp"
+                  tickFormatter={formatDateMultiline}
+                />
+
+                <YAxis dataKey="value" />
+                <Tooltip />
+                <Legend />
+                {redZones.map((zone, index) => (
+                  <ReferenceArea
+                    key={index}
+                    x1={zone.start}
+                    x2={zone.end}
+                    strokeOpacity={0}
+                    fill="red"
+                    fillOpacity={0.1}
                   />
-                </LineChart>
-              </ResponsiveContainer>
-            </Card>
-            <Card
-              className={` w-6/12 transition-all duration-300 ${
-                collapsedCard.RAMUsageCard ? "h-16" : "h-96"
-              }`}
-            >
-              <div className="flex justify-between">
-                <CardTitle className="ml-5">
-                  CPU Thermal of Charger {charger_id}
-                </CardTitle>
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  strokeWidth={1.5}
-                  stroke="currentColor"
-                  onClick={() => minimizeCards("RAMUsageCard")}
-                  className={`size-6 mr-5 cursor-pointer transition-transform" ${
-                    collapsedCard.RAMUsage ? "rotate-180" : ""
-                  }`}
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="m19.5 8.25-7.5 7.5-7.5-7.5"
-                  />
-                </svg>
-              </div>
-              <ResponsiveContainer width="90%" height="90%">
-                <LineChart
-                  width={500}
-                  height={300}
-                  data={controllertemperaturecpu_thermalData}
-                  margin={{
-                    top: 5,
-                    right: 30,
-                    left: 20,
-                    bottom: 5,
+                ))}
+                <Line
+                  type="monotone"
+                  dataKey="value"
+                  stroke="#8884d8"
+                  activeDot={{ r: 8 }}
+                  dot={({ cx, cy, payload }) => {
+                    const color = payload.value >= 80 ? "red" : "#8884d8";
+                    return (
+                      <circle
+                        cx={cx}
+                        cy={cy}
+                        r={4}
+                        fill={color}
+                        stroke="none"
+                      />
+                    );
                   }}
-                >
-                  <CartesianGrid strokeDasharray="5 5" />
-                  <XAxis dataKey="timestamp" />
-                  <YAxis
-                    dataKey="value"
-                    domain={[30, 80]}
-                    ticks={[40, 50, 60, 70, 80]}
-                  />
-                  <Tooltip />
-                  <Legend />
-                  <Line
-                    type="monotone"
-                    dataKey="value"
-                    stroke="#8884d8"
-                    activeDot={{ r: 8 }}
-                    dot={({ cx, cy, payload }) => {
-                      //wenn value >= 59 dann roter punkt z.b.
-                      const color = payload.value >= 59 ? "red" : "#8884d8";
-                      return (
-                        <circle
-                          cx={cx}
-                          cy={cy}
-                          r={4}
-                          fill={color}
-                          stroke="none"
-                        />
-                      );
-                    }}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            </Card>
-          </div>
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </Card>
+          <Card
+            className={` w-full transition-all duration-300 ${
+              collapsedCard.CPUThermalCard ? "h-16" : "h-96"
+            }`}
+          >
+            <div className="flex justify-between">
+              <CardTitle className="ml-5">
+                CPU Thermal of Charger {charger_id}
+              </CardTitle>
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                strokeWidth={1.5}
+                stroke="currentColor"
+                onClick={() => minimizeCards("CPUThermalCard")}
+                className={`size-6 mr-5 cursor-pointer transition-transform" ${
+                  collapsedCard.CPUThermalCard ? "rotate-180" : ""
+                }`}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="m19.5 8.25-7.5 7.5-7.5-7.5"
+                />
+              </svg>
+            </div>
+            <ResponsiveContainer width="90%" height="90%">
+              <LineChart
+                width={500}
+                height={300}
+                data={controllertemperaturecpu_thermalData}
+                margin={{
+                  top: 5,
+                  right: 30,
+                  left: 20,
+                  bottom: 5,
+                }}
+              >
+                <CartesianGrid strokeDasharray="5 5" />
+                <XAxis
+                  dataKey="timestamp"
+                  tickFormatter={formatDateMultiline}
+                />
+                <YAxis
+                  dataKey="value"
+                  domain={[30, 80]}
+                  ticks={[40, 50, 60, 70, 80]}
+                />
+                <Tooltip />
+                <Legend />
+                <Line
+                  type="monotone"
+                  dataKey="value"
+                  stroke="#8884d8"
+                  activeDot={{ r: 8 }}
+                  dot={({ cx, cy, payload }) => {
+                    //wenn value >= 59 dann roter punkt z.b.
+                    const color = payload.value >= 59 ? "red" : "#8884d8";
+                    return (
+                      <circle
+                        cx={cx}
+                        cy={cy}
+                        r={4}
+                        fill={color}
+                        stroke="none"
+                      />
+                    );
+                  }}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </Card>
         </CardContent>
       </Card>
     </div>

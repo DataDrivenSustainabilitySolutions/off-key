@@ -1,12 +1,16 @@
-from fastapi import APIRouter, HTTPException, Depends, Query
+from fastapi import APIRouter, HTTPException, Depends, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Dict, Optional, Any
 from pydantic import BaseModel, Field
 
 from ...db.base import get_db_async
 from ...services.services import MonitoringAsyncService
+from ..rate_limiter import limiter
 
 router = APIRouter()
+
+shared_limit_fetch = limiter.shared_limit("10/minute", scope="services")
+shared_limit_execute = limiter.shared_limit("5/minute", scope="services")
 
 
 class ContainerConfig(BaseModel):
@@ -25,7 +29,9 @@ class ServiceResponse(BaseModel):
 
 
 @router.get("/all/", response_model=List[Dict[str, Any]])
+@shared_limit_fetch
 async def list_services(
+        request: Request,
         active_only: bool = False,
         db: AsyncSession = Depends(get_db_async)
 ):
@@ -41,7 +47,9 @@ async def list_services(
 
 
 @router.post("/start/", response_model=ServiceResponse)
+@shared_limit_execute
 async def start_monitoring_service(
+        request: Request,
         config: ContainerConfig,
         db: AsyncSession = Depends(get_db_async)
 ):
@@ -71,7 +79,9 @@ async def start_monitoring_service(
 
 
 @router.get("/", response_model=Dict[str, Any])
+@shared_limit_fetch
 async def get_service_details(
+        request: Request,
         container_name: Optional[str] = Query(default=None),
         container_id: Optional[str] = Query(default=None),
         db: AsyncSession = Depends(get_db_async)
@@ -95,7 +105,9 @@ async def get_service_details(
 
 
 @router.delete("/stop/")
+@shared_limit_execute
 async def stop_monitoring_service(
+        request: Request,
         container_name: Optional[str] = Query(default=None),
         container_id: Optional[str] = Query(default=None),
         db: AsyncSession = Depends(get_db_async)

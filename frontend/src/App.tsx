@@ -7,9 +7,12 @@ import Verification from '@/pages/Verification';
 import "@/App.css";
 import {NavigationBar} from "./components/NavigationBar";
 import List from '@/pages/List';
+import { ThemeProvider } from './components/theme-provider'
 
 const App: React.FC = () => {
   return (
+  <ThemeProvider defaultTheme="system" storageKey="vite-ui-theme">
+ 
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<Default />} />
@@ -19,6 +22,7 @@ const App: React.FC = () => {
         <Route path="/list" element={<List />} />
       </Routes>
     </BrowserRouter>
+    </ThemeProvider>
   );
 };
 

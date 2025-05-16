@@ -19,6 +19,7 @@ interface RouteProps {
   href: string;
   label: string;
 }
+import { ModeToggle } from "./mode-toggle";
 
 const routeList: RouteProps[] = [
   //{
@@ -26,6 +27,7 @@ const routeList: RouteProps[] = [
   //  label: "FAQ",
   //},
 ];
+
 
 export const NavigationBar = () => {
   const [isOpen, setIsOpen] = useState<boolean>(false);
@@ -125,6 +127,8 @@ export const NavigationBar = () => {
 
           <NavigationMenuItem className="font-bold flex ml-auto">
             {isLoggedIn ? (
+              <>
+              <ModeToggle />
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <button className="flex items-center justify-center cursor-pointer">
@@ -145,7 +149,8 @@ export const NavigationBar = () => {
                     </svg>
                   </button>
                 </DropdownMenuTrigger>
-
+                
+                
                 <DropdownMenuContent>
                   <DropdownMenuItem>
                     <svg
@@ -205,6 +210,7 @@ export const NavigationBar = () => {
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
+              </>
             ) : (
               <a href="/login">
                 {" "}

@@ -27,29 +27,30 @@ interface telemetry_data {
   value: number;
 }
 
-interface combined_data {
+interface CombinedChargerData {
   charger_id: string;
   charger_name: string | null;
   online: boolean;
   state: string;
   last_seen: string;
-  value1: number | null;
-  value2: number | null;
+  telemetry: { [key: string]: number | null };
 }
 
 export default function ChargerTable() {
-  const [data, setData] = useState<combined_data[]>([]);
+  const [data, setData] = useState<CombinedChargerData[]>([]);
+  const [telemetryTypes, setTelemetryTypes] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<
     "all" | "online" | "offline"
   >("all");
+  const [isCardsView, setIsCardsView] = useState(false);
+  const [favoriteChargerIds, setFavoriteChargerIds] = useState<string[]>([]);
+  const navigate = useNavigate();
+
   const countAll = data.length;
   const countOnline = data.filter((c) => c.online).length;
   const countOffline = data.filter((c) => !c.online).length;
-  const [isCardsView, setIsCardsView] = useState(false);
-  const navigate = useNavigate();
-  const [favoriteChargerIds, setFavoriteChargerIds] = useState<string[]>([]);
 
   // Überprüfe, ob der Benutzer die Kartenansicht aktiviert hat. Wenn ja, navigiere zur Kartenansicht
   const handleViewToggle = (checked: boolean) => {
@@ -64,62 +65,71 @@ export default function ChargerTable() {
       try {
         // Synchronisiere die Charger-Daten
         await axios.post("http://localhost:8000/v1/chargers/sync", null, {
-          timeout: 1500, // max. 5 Sekunden warten
+          timeout: 1500, // max. 1.5 Sekunden warten
         });
 
         // Hole die Basisdaten aller verfügbaren Charger
         const chargerRes = await axios.get<Charger[]>(
           "http://localhost:8000/v1/chargers/available"
-        ); // Gibt alle Charger zurück
+        );
         const chargers = chargerRes.data;
 
+        const allTypesSet = new Set<string>();
+
         // Hole für jeden Charger (anhand der ChargerID) die Telemetriedaten
-        const combined_data = await Promise.all(
+        const combinedData: CombinedChargerData[] = await Promise.all(
           chargers.map(async (charger) => {
             try {
-              const [value1Res, value2Res] = await Promise.all([
-                axios.get<telemetry_data[]>(
-                  `http://localhost:8000/v1/telemetry/${charger.charger_id}/controllerCpuUsage`
-                ),
-                axios.get<telemetry_data[]>(
-                  `http://localhost:8000/v1/telemetry/${charger.charger_id}/controllertemperaturecpu-thermal`
-                ),
-              ]);
+              const typesRes = await axios.get<string[]>(
+                `http://localhost:8000/v1/telemetry/${charger.charger_id}/type`
+              );
+              // Hole die Telemetriedaten für den Charger und erstelle ein Set aller Typen
+              const telemetryTypes = typesRes.data;
+              telemetryTypes.forEach((type) => allTypesSet.add(type));
 
-              // Speichere den neusten Wert oder null, wenn kein Wert vorhanden ist
-              const value1 = value1Res.data[0]?.value ?? null;
-              const value2 = value2Res.data[0]?.value ?? null;
+              // Hole die Telemetriedaten für den Charger und speichere den ersten/neusten Wert
+              const telemetryValues = await Promise.all(
+                telemetryTypes.map(async (type) => {
+                  try {
+                    const res = await axios.get<telemetry_data[]>(
+                      `http://localhost:8000/v1/telemetry/${charger.charger_id}/${type}`
+                    );
+                    return { type, value: res.data[0]?.value ?? null };
+                  } catch {
+                    return { type, value: null };
+                  }
+                })
+              );
+              // Erstellt ein Objekt, das jedem Telemetrie-Typ seinen zugehörigen Wert zuordnet
+              const telemetry: { [key: string]: number | null } = {};
+              telemetryValues.forEach(({ type, value }) => {
+                telemetry[type] = value;
+              });
 
-              // Die Daten zurückgeben
               return {
                 charger_id: charger.charger_id,
                 charger_name: charger.charger_name,
                 online: charger.online,
                 state: charger.state,
                 last_seen: charger.last_seen,
-                value1,
-                value2,
+                telemetry,
               };
             } catch (err) {
-              console.warn(
-                `Fehler bei Werten für Charger ${charger.charger_id}`,
-                err
-              );
+              console.warn(`Fehler bei Charger ${charger.charger_id}`, err);
               return {
                 charger_id: charger.charger_id,
                 charger_name: charger.charger_name,
                 online: charger.online,
                 state: charger.state,
                 last_seen: charger.last_seen,
-                value1: null,
-                value2: null,
+                telemetry: {},
               };
             }
           })
         );
 
-        // Geladene Daten anzeigen
-        setData(combined_data);
+        setData(combinedData);
+        setTelemetryTypes(Array.from(allTypesSet).sort());
       } catch (err) {
         console.error("Fehler beim Laden der Daten:", err);
       } finally {
@@ -183,10 +193,9 @@ export default function ChargerTable() {
 
   return (
     <>
-      <NavigationBar /> 
+      <NavigationBar />
       <div className="p-6">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-4">
-          {/* Suchleiste */}
           <input
             type="text"
             placeholder="Nach Charger ID suchen..."
@@ -194,8 +203,6 @@ export default function ChargerTable() {
             onChange={(e) => setSearchTerm(e.target.value)}
             className="p-2 border rounded w-full md:w-1/2"
           />
-
-          {/* Status-Filter Radio Buttons */}
           <div className="flex items-center gap-4">
             <span className="font-medium whitespace-nowrap">
               Ladesäulen Status:
@@ -228,7 +235,6 @@ export default function ChargerTable() {
               Offline ({countOffline})
             </label>
           </div>
-          {/* Ansichts-Button */}
           <div className="flex items-center gap-2">
             <span>Table</span>
             <Switch
@@ -239,7 +245,6 @@ export default function ChargerTable() {
             <span>Cards</span>
           </div>
         </div>
-        {/* Lade Daten oder zeige Tabelle */}
         {loading ? (
           <p className="text-gray-500">Lade Daten...</p>
         ) : (
@@ -249,8 +254,9 @@ export default function ChargerTable() {
                 <TableHead>Charger ID</TableHead>
                 <TableHead>Name</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead>Latest CPU Usage</TableHead>
-                <TableHead>Latest CPU Temp</TableHead>
+                {telemetryTypes.map((type) => (
+                  <TableHead key={type}>{type}</TableHead>
+                ))}
                 <TableHead>Last Seen</TableHead>
                 <TableHead>Favorit</TableHead>
               </TableRow>
@@ -258,22 +264,8 @@ export default function ChargerTable() {
             <TableBody>
               {filteredData.map((c) => (
                 <TableRow key={c.charger_id}>
-                  <TableCell>
-                    <Link
-                      to={`/charger/${c.charger_id}`}
-                      className="text-black-600 hover:underline"
-                    >
-                      {c.charger_id}
-                    </Link>
-                  </TableCell>
-                  <TableCell>
-                    <Link
-                      to={`/charger/${c.charger_id}`}
-                      className="text-black-600 hover:underline"
-                    >
-                      {c.charger_name || "N/A"}
-                    </Link>
-                  </TableCell>
+                  <TableCell>{c.charger_id}</TableCell>
+                  <TableCell>{c.charger_name || "N/A"}</TableCell>
                   <TableCell>
                     <span
                       className={
@@ -285,12 +277,13 @@ export default function ChargerTable() {
                       {c.online ? "active" : "offline"}
                     </span>
                   </TableCell>
-                  <TableCell>
-                    {c.value1 !== null ? `${c.value1.toFixed(2)} %` : "-"}
-                  </TableCell>
-                  <TableCell>
-                    {c.value2 !== null ? `${c.value2.toFixed(2)} °C` : "-"}
-                  </TableCell>
+                  {telemetryTypes.map((type) => (
+                    <TableCell key={type}>
+                      {c.telemetry[type] !== null
+                        ? c.telemetry[type]?.toFixed(2)
+                        : "-"}
+                    </TableCell>
+                  ))}
                   <TableCell>
                     {new Date(c.last_seen).toLocaleString()}
                   </TableCell>

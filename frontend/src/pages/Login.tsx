@@ -115,7 +115,9 @@ const Login: React.FC = () => {
             {/* Links */}
             <div className="text-sm text-center mt-3 space-y-1">
               <a href="#" className="text-blue-700 hover:underline block">
-                Forgot password?
+                <Link to="/forgot-password" className="text-blue-600 hover:underline">
+                  Forgot password?
+                </Link>
               </a> 
             </div>
             <div className="text-xs mt-4 text-center">

@@ -5,6 +5,8 @@ import Login from '@/pages/Login';
 import Registration from '@/pages/Registration';
 import Verification from '@/pages/Verification';
 import "@/App.css";
+import ForgotPassword from "@/pages/ForgotPassword";
+import ResetPassword from "@/pages/ResetPassword";
 // import {NavigationBar} from "./components/NavigationBar";
 
 const App: React.FC = () => {
@@ -15,6 +17,8 @@ const App: React.FC = () => {
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Registration />} />
         <Route path="/verify" element={<Verification />} /> 
+        <Route path="/forgot-password" element={<ForgotPassword/>}/>
+        <Route path="/reset-password" element={<ResetPassword/>}/>
       </Routes>
     </BrowserRouter>
   );

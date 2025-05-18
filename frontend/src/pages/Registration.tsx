@@ -4,6 +4,7 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Link } from 'react-router-dom';
+import { Eye, EyeOff } from 'lucide-react';
 
 interface RegistrationResponse {
   message: string;
@@ -15,6 +16,7 @@ const Registration: React.FC = () => {
   const [confirmPassword, setConfirmPassword] = useState<string>('');
   const [message, setMessage] = useState<string>('');
   const [isError, setIsError] = useState<boolean>(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -84,29 +86,48 @@ const Registration: React.FC = () => {
             </div>
 
             {/* Password */}
-            <div>
+            <div className="relative">
               <Label htmlFor="password" className="mb-1 block text-sm">Passwort</Label>
               <Input
                 id="password"
-                type="password"
+                type={showPassword ? 'text' : 'password'}
                 placeholder="Passwort"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
+                className="pr-10" 
               />
+              <button
+                type="button"
+                className="absolute right-3 top-9 text-gray-500"
+                onClick={() => setShowPassword(!showPassword)}
+                aria-label="Passwort anzeigen"
+              >
+                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
             </div>
 
+
             {/* Confirm Password */}
-            <div>
+              <div className="relative">
               <Label htmlFor="confirmPassword" className="mb-1 block text-sm">Passwort bestätigen</Label>
               <Input
                 id="confirmPassword"
-                type="password"
+                type={showPassword ? 'text' : 'password'}
                 placeholder="Passwort bestätigen"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 required
+                className="pr-10"
               />
+              <button
+                type="button"
+                className="absolute right-3 top-9 text-gray-500"
+                onClick={() => setShowPassword(!showPassword)}
+                aria-label="Passwort anzeigen"
+              >
+                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
             </div>
 
             {/* Submit */}

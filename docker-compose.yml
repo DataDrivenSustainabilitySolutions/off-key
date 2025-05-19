@@ -34,17 +34,17 @@ services:
       interval: 10s
       retries: 5
 
-  # frontend:
-  #   build: ./frontend
-  #   container_name: react_frontend
-  #   env_file: .env
-  #   ports:
-  #     - "${FRONTEND_PORT}:5173"
-  #   depends_on:
-  #     - api
-  #   volumes:
-  #     - ./frontend:/src
-  #     - /src/node_modules  # Prevent conflicts
+  frontend:
+     build: ./frontend
+     container_name: react_frontend
+     env_file: .env
+     ports:
+       - "${FRONTEND_PORT}:5173"
+     depends_on:
+       - api
+     volumes:
+       - ./frontend:/src
+       - /src/node_modules  # Prevent conflicts
 
   mailpit:
     image: axllent/mailpit:latest

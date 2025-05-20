@@ -3,10 +3,12 @@ name = "off-key"
 version = "0.1.0"
 description = "Real-time Anomaly Detection Platform"
 authors = [
-  { name = "Oliver Hennhoefer", email = "oliver.hennhoefer@mail.de" }
+    { name = "Oliver Hennhoefer", email = "oliver.hennhoefer@mail.de" },
+    { name = "Fernando Saba", email = "fernando.saba@gmx.de" }
 ]
 maintainers = [
-  { name = "Oliver Hennhoefer", email = "oliver.hennhoefer@mail.de" }
+    { name = "Oliver Hennhoefer", email = "oliver.hennhoefer@mail.de" },
+    { name = "Fernando Saba", email = "fernando.saba@gmx.de" }
 ]
 keywords = ["anomaly detection", "predictive maintenance", "monitoring"]
 requires-python = ">=3.12"

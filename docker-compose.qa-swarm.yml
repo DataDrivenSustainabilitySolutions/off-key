@@ -22,22 +22,24 @@ services:
           - node.role == manager
 
   api:
-    build: ./backend/
+#   image: ghcr.io/seffs/off-key-api:latest
     container_name: fastapi_backend
     env_file: .env
     user: root
     ports:
-      - "${BACKEND_PORT}:8000"
+      - target: 8000
+        published: 8000
+        mode: host
     depends_on:
-      postgres:
-        condition: service_healthy
+      - postgres
     networks:
       - app-network
     restart: always
-    healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost:8000/health" ]
-      interval: 10s
-      retries: 5
+#    TODO: This healthcheck doesn't work for now
+#    healthcheck:
+#      test: [ "CMD", "curl", "-f", "http://localhost:8000/health" ]
+#      interval: 10s
+#      retries: 5
     volumes:
       - /etc/docker/ca.pem:/etc/docker/ca.pem
       - /etc/docker/client-cert.pem:/etc/docker/client-cert.pem
@@ -46,15 +48,18 @@ services:
       mode: replicated
       replicas: 2
       placement:
-        preferences:
-          - spread: node.labels.type  # Distribute evenly
-      resources:
-        limits:
-          cpus: '0.2'
-          memory: 256M
+        constraints:
+          - node.role == worker
+#        preferences:
+#          - spread: node.labels.type  # Distribute evenly
+#      TODO: Measure resources with MQTT images
+#      resources:
+#        limits:
+#          cpus: '0.2'
+#          memory: 512M
 
   frontend:
-    build: ./frontend
+#    image: ghcr.io/seffs/off-key-frontend:latest
     container_name: react_frontend
     env_file: .env
     ports:
@@ -68,12 +73,14 @@ services:
       mode: replicated
       replicas: 2
       placement:
-        preferences:
-          - spread: node.labels.type  # Distribute evenly
-      resources:
-        limits:
-          cpus: '1'
-          memory: 512M
+        constraints:
+          - node.role == worker
+#        preferences:
+#          - spread: node.labels.type  # Distribute evenly
+#      resources:
+#        limits:
+#          cpus: '1'
+#          memory: 512M
 
   mailpit:
     image: axllent/mailpit:latest
@@ -91,7 +98,7 @@ services:
 
 networks:
   app-network:
-    driver: bridge
+    driver: overlay
 
 volumes:
   postgres_data:

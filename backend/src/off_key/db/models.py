@@ -1,7 +1,7 @@
 from sqlalchemy import (
     Column,
     Enum,
-    String,
+    Text,
     Boolean,
     DateTime,
     func,
@@ -24,10 +24,10 @@ class User(Base):
     __tablename__ = "users"  # noqa
 
     id = Column(Integer, primary_key=True, index=True)
-    email = Column(String, unique=True, index=True, nullable=False)
-    hashed_password = Column(String, nullable=False)
+    email = Column(Text, unique=True, index=True, nullable=False)
+    hashed_password = Column(Text, nullable=False)
     is_verified = Column(Boolean, default=False)
-    verification_token = Column(String, nullable=True)
+    verification_token = Column(Text, nullable=True)
     role = Column(Enum(RoleEnum), default=RoleEnum.user, nullable=False)
     updated_at = Column(
         DateTime, default=func.now(), onupdate=func.now(), nullable=False
@@ -40,13 +40,13 @@ class Charger(Base):
     __tablename__ = "chargers"  # noqa
 
     charger_id = Column(
-        String, primary_key=True, unique=True, index=True, nullable=False
+        Text, primary_key=True, unique=True, index=True, nullable=False
     )
-    manufacturer_name = Column(String, unique=False, index=True, nullable=True)
-    charger_name = Column(String, unique=False, index=True, nullable=True)
-    firmware_version = Column(String, unique=False, index=True, nullable=True)
-    last_seen = Column(String, unique=False, index=True, nullable=True)
-    state = Column(String, unique=False, index=True, nullable=True)
+    manufacturer_name = Column(Text, unique=False, index=True, nullable=True)
+    charger_name = Column(Text, unique=False, index=True, nullable=True)
+    firmware_version = Column(Text, unique=False, index=True, nullable=True)
+    last_seen = Column(Text, unique=False, index=True, nullable=True)
+    state = Column(Text, unique=False, index=True, nullable=True)
     online = Column(Boolean, unique=False, default=True, index=True, nullable=False)
     created = Column(DateTime(timezone=True), server_default=func.now(), index=True)
 
@@ -56,7 +56,7 @@ class Telemetry(Base):
     __tablename__ = "telemetry"  # noqa
 
     charger_id = Column(
-        String, primary_key=True, unique=False, index=True, nullable=False
+        Text, primary_key=True, unique=False, index=True, nullable=False
     )
     timestamp = Column(
         TIMESTAMP(timezone=True),
@@ -66,7 +66,7 @@ class Telemetry(Base):
         nullable=False,
     )
     value = Column(Float, unique=False, index=True, nullable=True)
-    type = Column(String, primary_key=True, unique=False, index=True, nullable=False)
+    type = Column(Text, primary_key=True, unique=False, index=True, nullable=False)
     created = Column(DateTime(timezone=True), server_default=func.now(), index=True)
 
     __table_args__ = (
@@ -85,15 +85,15 @@ class MonitoringService(Base):
 
     __tablename__ = "services"
 
-    id = Column(String, primary_key=True)
+    id = Column(Text, primary_key=True)
     container_id = Column(
-        String, unique=True, nullable=True
+        Text, unique=True, nullable=True
     )  # (for FastAPI + Docker SDK)
     container_name = Column(
         String, unique=True, nullable=False
     )
     stateful_set_name = Column(
-        String, unique=True, nullable=True
+        Text, unique=True, nullable=True
     )  # (for Kubernetes StatefulSet)
     mqtt_topic = Column(JSON, nullable=False)
     created_at = Column(DateTime, default=func.now())
@@ -109,18 +109,18 @@ class MqttTopic(Base):
     __tablename__ = "mqtt_topics"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    service_id = Column(String, ForeignKey("services.id"), nullable=False)
-    topic = Column(String, nullable=False)
+    service_id = Column(Text, ForeignKey("services.id"), nullable=False)
+    topic = Column(Text, nullable=False)
 
 
 """
 class Anomaly(Base):
     __tablename__ = "anomalies"
 
-    charger_id = Column(String, nullable=False, index=True)
+    charger_id = Column(Text, nullable=False, index=True)
     timestamp = Column(TIMESTAMP(timezone=True), nullable=False, index=True)
-    telemetry_type = Column(String, nullable=False, index=True)
-    anomaly_type = Column(String, nullable=False, index=True)
+    telemetry_type = Column(Text, nullable=False, index=True)
+    anomaly_type = Column(Text, nullable=False, index=True)
 
     __table_args__ = (
         PrimaryKeyConstraint("charger_id", "timestamp",

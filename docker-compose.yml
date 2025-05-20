@@ -39,16 +39,16 @@ services:
       - /etc/docker/client-key.pem:/etc/docker/client-key.pem
 
   frontend:
-    build: ./frontend
-    container_name: react_frontend
-    env_file: .env
-    ports:
-      - "${FRONTEND_PORT}:5173"
-    depends_on:
-      - api
-    volumes:
-      - ./frontend:/src
-      - /src/node_modules  # Prevent conflicts
+     build: ./frontend
+     container_name: react_frontend
+     env_file: .env
+     ports:
+       - "${FRONTEND_PORT}:5173"
+     depends_on:
+       - api
+     volumes:
+       - ./frontend:/src
+       - /src/node_modules  # Prevent conflicts
 
   mailpit:
     image: axllent/mailpit:latest
@@ -59,6 +59,8 @@ services:
     ports:
       - '8025:8025'  # Web UI
       - '1025:1025'  # SMTP port
+    networks:
+    - app-network
 
 networks:
   app-network:

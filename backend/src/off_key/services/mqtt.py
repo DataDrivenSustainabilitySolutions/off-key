@@ -1,12 +1,10 @@
 import asyncio
-import json
 import os
 import paho.mqtt.client as mqtt
 import httpx
-from sqlalchemy.orm import Session
 from sqlalchemy import create_engine, sessionmaker
 
-# from models import MqttTopic, Service  # Assuming DB models are defined
+from ..db.models import MqttTopic, MonitoringService
 
 # Load ENV variables
 MQTT_BROKER = os.getenv("MQTT_BROKER", "mqtt://localhost")
@@ -33,8 +31,8 @@ def get_workers_for_topic(topic):
     session = SessionLocal()
     try:
         return (
-            session.query(Service)
-            .join(MqttTopic, Service.id == MqttTopic.service_id)
+            session.query(MonitoringService)
+            .join(MqttTopic, MonitoringService.id == MqttTopic.service_id)
             .filter(MqttTopic.topic == topic)
             .all()
         )

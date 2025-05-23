@@ -2,12 +2,12 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from off_key.core.config import settings
 
 from .core.logs import logger
 from .schemas import user
 from .db.crud import auth
 from .db.base import engine, AsyncSessionLocal
-from .core.config import settings
 from .api.v1.routes import router as v1_router
 from .db.models import Base
 

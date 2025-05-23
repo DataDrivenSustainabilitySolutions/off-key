@@ -6,8 +6,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from jose import jwt, JWTError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from off_key.core.config import settings
 
-from ...core.config import settings
 from ...core.logs import logger
 from ...db.base import get_db_async
 from ...db.models import User
@@ -83,7 +83,7 @@ async def register(user: UserCreate, db: AsyncSession = Depends(get_db_async)):
         )
 
     return {
-        "message": "Registration successful! Please check your email to verify your account."
+        "message": "Registration successful! Check your email to verify your account."
     }
 
 

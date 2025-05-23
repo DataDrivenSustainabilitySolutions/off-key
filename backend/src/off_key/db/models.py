@@ -109,6 +109,15 @@ class MqttTopic(Base):
     service_id = Column(String, ForeignKey("services.id"), nullable=False)
     topic = Column(String, nullable=False)
 
+class Favorite(Base):
+    __tablename__ = "favorites"
+
+    favorite_id = Column(
+        Integer, primary_key=True, unique=True, index=True, nullable=False
+    )
+
+    charger_id = Column(String, ForeignKey("chargers.charger_id"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
 
 """
 class Anomaly(Base):

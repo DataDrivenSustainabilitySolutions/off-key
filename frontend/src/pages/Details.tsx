@@ -51,6 +51,7 @@ const data = mockdata;
 //   { Day: "Saturday", UsageCount: 122 },
 // ];
 
+//interface for CPU USage and Thermal
 interface Cpu {
   timestamp: string;
   value: number;

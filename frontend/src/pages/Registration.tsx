@@ -4,7 +4,6 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Link } from 'react-router-dom';
-import { Eye, EyeOff } from 'lucide-react';
 
 interface RegistrationResponse {
   message: string;
@@ -16,7 +15,8 @@ const Registration: React.FC = () => {
   const [confirmPassword, setConfirmPassword] = useState<string>('');
   const [message, setMessage] = useState<string>('');
   const [isError, setIsError] = useState<boolean>(false);
-  const [showPassword, setShowPassword] = useState(false);
+  const [showPassword] = useState(false);
+  const [showConfirmPassword,] = useState(false);
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -68,7 +68,7 @@ const Registration: React.FC = () => {
     <div className="min-h-screen flex items-center justify-center bg-gray-100 px-4">
       <Card className="w-full max-w-md p-6">
         <CardHeader>
-          <CardTitle className="text-center text-2xl">Register</CardTitle>
+          <CardTitle className="text-center text-2xl">Registrieren</CardTitle>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleRegister} className="space-y-4">
@@ -95,16 +95,15 @@ const Registration: React.FC = () => {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
-                className="pr-10" 
               />
-              <button
+              {/* <button
                 type="button"
                 className="absolute right-3 top-9 text-gray-500"
                 onClick={() => setShowPassword(!showPassword)}
                 aria-label="Passwort anzeigen"
               >
                 {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-              </button>
+              </button> */}
             </div>
 
 
@@ -113,21 +112,20 @@ const Registration: React.FC = () => {
               <Label htmlFor="confirmPassword" className="mb-1 block text-sm">Passwort bestätigen</Label>
               <Input
                 id="confirmPassword"
-                type={showPassword ? 'text' : 'password'}
+                type={showConfirmPassword ? 'text' : 'password'}
                 placeholder="Passwort bestätigen"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 required
-                className="pr-10"
               />
-              <button
+              {/* <button
                 type="button"
                 className="absolute right-3 top-9 text-gray-500"
-                onClick={() => setShowPassword(!showPassword)}
+                onClick={() => setShowConfirmPassword(!showConfirmPassword)}
                 aria-label="Passwort anzeigen"
               >
-                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-              </button>
+                {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button> */}
             </div>
 
             {/* Submit */}

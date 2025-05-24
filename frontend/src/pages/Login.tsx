@@ -4,8 +4,8 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
-import { Eye, EyeOff } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { useAuth } from "@/auth/AuthContext"; 
 
 interface LoginResponse {
   access_token: string;
@@ -15,9 +15,10 @@ interface LoginResponse {
 const Login: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
+  const [showPassword] = useState(false);
   const [message, setMessage] = useState('');
   const navigate = useNavigate();
+  const { login } = useAuth();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -37,7 +38,7 @@ const Login: React.FC = () => {
       }
 
       const data: LoginResponse = await response.json();
-      localStorage.setItem('token', data.access_token);
+      login(data.access_token);
       setMessage('Login erfolgreich!');
       setTimeout(() => {
         navigate('/');
@@ -69,7 +70,6 @@ const Login: React.FC = () => {
               />
             </div>
 
-            {/* Passwort + Toggle */}
             <div className="relative">
               <Label htmlFor="password" className="mb-1 block text-sm">Passwort</Label>
               <Input
@@ -79,19 +79,17 @@ const Login: React.FC = () => {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
-                className="pr-10"
               />
-              <button
+              {/* <button
                 type="button"
                 className="absolute right-3 top-9 text-gray-500"
                 onClick={() => setShowPassword(!showPassword)}
                 aria-label="Passwort anzeigen"
               >
                 {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-              </button>
+              </button> */}
             </div>
 
-            {/* Angemeldet bleiben (optional) */}
             <div className="flex items-center space-x-2 text-sm">
               <input type="checkbox" id="remember" className="accent-green-600" />
               <label htmlFor="remember">Angemeldet bleiben</label>

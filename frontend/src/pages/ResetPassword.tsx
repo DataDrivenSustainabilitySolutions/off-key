@@ -11,6 +11,7 @@ const ResetPassword: React.FC = () => {
 
   const [token, setToken] = useState<string | null>(null);
   const [newPassword, setNewPassword] = useState('');
+  const [confirmNewPassword, setConfirmNewPassword] = useState('');
   const [message, setMessage] = useState<string>('');
   const [error, setError] = useState<string>('');
 
@@ -85,6 +86,20 @@ const ResetPassword: React.FC = () => {
                   placeholder="Neues Passwort"
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
+                  required
+                  minLength={8}
+                />
+              </div>
+              <div>
+                <Label htmlFor="confirmNewPassword" className="mb-1 block text-sm">
+                  Password bestätigen
+                </Label>
+                <Input
+                  id="confirmNewPassword"
+                  type="password"
+                  placeholder="Password bestätigen"
+                  value={confirmNewPassword}
+                  onChange={(e) => setConfirmNewPassword(e.target.value)}
                   required
                   minLength={8}
                 />

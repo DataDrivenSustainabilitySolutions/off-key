@@ -18,31 +18,48 @@ const ForgotPassword: React.FC = () => {
       });
       const data = await res.json();
       setMessage(data.message);
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     } catch (error) {
       setMessage('Fehler beim Senden der Anfrage.');
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-100">
-      <Card className="w-full max-w-md">
+    <div className="min-h-screen flex items-center justify-center bg-gray-100 px-4">
+      <Card className="w-full max-w-md p-6">
         <CardHeader>
-          <CardTitle className="text-center">Passwort vergessen</CardTitle>
+          <CardTitle className="text-center text-2xl">Passwort vergessen</CardTitle>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
-            <Label htmlFor="email">E-Mail</Label>
-            <Input
-              id="email"
-              type="email"
-              placeholder="Deine E-Mail-Adresse"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-            />
-            <Button type="submit" className="w-full">Zurücksetzen</Button>
+            {/* Email Input */}
+            <div>
+              <Label htmlFor="email" className="mb-1 block text-sm">E-Mail</Label>
+              <Input
+                id="email"
+                type="email"
+                placeholder="Deine E-Mail-Adresse"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+              />
+            </div>
+
+            {/* Submit Button */}
+            <Button
+              type="submit"
+              className="w-full bg-gradient-to-r from-slate-400 to-slate-300 text-white font-semibold rounded-full transition-all duration-200 hover:bg-gradient-to-r hover:from-slate-500 hover:to-slate-400 hover:scale-105 cursor-pointer"
+            >
+              Password zurücksetzen
+            </Button>
+
+            {/* Message */}
+            {message && (
+              <p className={`mt-2 text-center text-sm `}>
+                {message}
+              </p>
+            )}
           </form>
-          {message && <p className="mt-4 text-center text-green-600">{message}</p>}
         </CardContent>
       </Card>
     </div>

@@ -15,6 +15,10 @@ import {
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
 import { Button } from "./ui/button";
+import { useAuth } from "@/auth/AuthContext";
+import { useNavigate } from "react-router-dom";
+
+
 interface RouteProps {
   href: string;
   label: string;
@@ -30,8 +34,27 @@ const routeList: RouteProps[] = [
 export const NavigationBar = () => {
   const [isOpen, setIsOpen] = useState<boolean>(false);
   const [isLoggedIn] = useState<boolean>(true);
+  const { logout } = useAuth();
+  const navigate = useNavigate();
+  const [message, setMessage] = useState<string>('');
+
+  const handleLogout = () => {
+  logout();
+  setMessage('Logout erfolgreich..'); 
+  setTimeout(() => {
+      navigate("/login");
+    }, 1500); 
+  
+};
+
+
   return (
     <header className="sticky border-b-[1px] top-0 z-40 w-full bg-white dark:border-b-slate-700 dark:bg-background">
+      {message && (
+        <div className="bg-green-100 text-green-800 p-2 text-center">
+          {message}
+        </div>
+      )}
       <NavigationMenu className="w-full flex ">
         <NavigationMenuList className="h-14 px-4 w-screen flex items-center justify-start space-x-10">
           <NavigationMenuItem className="font-bold flex">
@@ -186,14 +209,14 @@ export const NavigationBar = () => {
                     </svg>
                     Accountsettings
                   </DropdownMenuItem>
-                  <DropdownMenuItem>
+                  <DropdownMenuItem onClick={handleLogout}>
                     <svg
                       xmlns="http://www.w3.org/2000/svg"
                       fill="none"
                       viewBox="0 0 24 24"
                       strokeWidth={1.5}
                       stroke="currentColor"
-                      className="size-6"
+                      className="size-6 mr-2"
                     >
                       <path
                         strokeLinecap="round"
@@ -205,6 +228,7 @@ export const NavigationBar = () => {
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
+              
             ) : (
               <a href="/login">
                 {" "}

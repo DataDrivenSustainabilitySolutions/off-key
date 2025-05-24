@@ -10,7 +10,7 @@ import { Switch } from "@/components/ui/switch";
 import { useEffect, useState } from "react";
 import axios from "axios";
 import { Link, useNavigate } from "react-router-dom";
-import { NavigationBar } from "@/components/NavigationBar";
+// import { NavigationBar } from "@/components/NavigationBar";
 
 interface Charger {
   charger_name: string | null;
@@ -183,7 +183,7 @@ export default function ChargerTable() {
 
   return (
     <>
-      <NavigationBar />
+      {/* <NavigationBar /> */}
       <div className="p-6">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-4">
           {/* Suchleiste */}
@@ -260,7 +260,7 @@ export default function ChargerTable() {
                 <TableRow key={c.charger_id}>
                   <TableCell>
                     <Link
-                      to={`/charger/${c.charger_id}`}
+                      to={`/details/${c.charger_id}`}
                       className="text-black-600 hover:underline"
                     >
                       {c.charger_id}
@@ -268,7 +268,7 @@ export default function ChargerTable() {
                   </TableCell>
                   <TableCell>
                     <Link
-                      to={`/charger/${c.charger_id}`}
+                      to={`/details/${c.charger_id}`}
                       className="text-black-600 hover:underline"
                     >
                       {c.charger_name || "N/A"}

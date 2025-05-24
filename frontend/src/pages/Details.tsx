@@ -20,7 +20,7 @@ import {
   // Rectangle,
 } from "recharts";
 import { useEffect, useRef, useState } from "react";
-// import { useParams } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import axios from "axios";
 import { format } from "date-fns";
 import { Popover } from "@/components/ui/popover";
@@ -36,21 +36,6 @@ import { Popover } from "@/components/ui/popover";
 // } from "@/components/ui/table";
 
 const data = mockdata;
-
-//Mockdate for the short Infos cards
-// const pieData = [
-//   { name: "online", value: 75 },
-//   { name: "offline", value: 25 },
-// ];
-// const barData = [
-//   { Day: "Monday", UsageCount: 25 },
-//   { Day: "Tuesday", UsageCount: 100 },
-//   { Day: "Wednesday", UsageCount: 10 },
-//   { Day: "Thursday", UsageCount: 50 },
-//   { Day: "Friday", UsageCount: 72 },
-//   { Day: "Saturday", UsageCount: 122 },
-// ];
-
 //interface for CPU USage and Thermal
 interface Cpu {
   timestamp: string;
@@ -67,9 +52,7 @@ const Details: React.FC = () => {
     CpuThermalCard: false,
   });
   const [, setSearchError] = useState(false);
-  // Hardcoded for now; replace with useParams() when routing
-  const charger_id = "d2d67b85-f56b-4a50-842d-92f210e77076";
-
+  const { charger_id } = useParams();
   const [controllerCpuUsage, setControllerCpuUsage] = useState<string>();
   const [
     controllertemperaturecpu_thermal,
@@ -161,7 +144,7 @@ const Details: React.FC = () => {
       }
     }
 
-    // initial
+    // initial fetch
     fetchTelemetryData();
 
     intervalRef.current = setInterval(fetchTelemetryData, 20000);
@@ -180,6 +163,7 @@ const Details: React.FC = () => {
     }));
   };
 
+  //Function to format the Timestamps from the Time Rows
   const formatDateMultiline = (value: string) => {
     const date = new Date(value);
     const day = String(date.getDate()).padStart(2, "0");
@@ -191,8 +175,8 @@ const Details: React.FC = () => {
   };
 
   //function to filter the Cpu Usage with the Dates the user selected in the Navbar for the Diagram
-  const filteredDataCpuUsage = controllerCpuUsageData.filter((d) => {
-    const t = new Date(d.timestamp).getTime();
+  const filteredDataCpuUsage = controllerCpuUsageData.filter((cpu) => {
+    const t = new Date(cpu.timestamp).getTime();
     const f = fromDateUsage?.getTime() ?? -Infinity;
     const u = toDateUsage?.getTime() ?? Infinity;
     return t >= f && t <= u;
@@ -209,7 +193,7 @@ const Details: React.FC = () => {
 
   return (
     <div className="flex mt-5">
-      <Card className="ml-16 bg-white shadow-md w-11/12 min-h-11/12">
+      <Card className="ml-16 bg-white shadow-md w-11/12 min-h-11/12 dark:bg-neutral-950">
         <CardTitle className="ml-5">Charger {charger_id}</CardTitle>
         <CardContent>
           <div className="flex justify-between">
@@ -407,17 +391,17 @@ const Details: React.FC = () => {
                     </div>
                   </Popover>
                   <div>
-                    <div className="flex items-center h-9 ml-5 space-x-2 rounded-lg border bg-white px-3">
+                    <div className="flex items-center h-9 ml-5 space-x-2 rounded-lg border bg-white px-3  dark:bg-transparent">
                       <button
                         // onClick={onLast8h}
-                        className="text-sm text-gray-700 hover:underline focus:outline-none"
+                        className="text-sm text-gray-700 hover:underline focus:outline-none dark:text-white"
                       >
                         Letzte 8 h
                       </button>
-                      <div className="h-6 border-l border-gray-300 mx-2" />
+                      <div className="h-6 border-l border-gray-300 mx-2 " />
                       <button
                         // onClick={onLast24h}
-                        className="text-sm text-gray-700 hover:underline focus:outline-none"
+                        className="text-sm text-gray-700 hover:underline focus:outline-none dark:text-white"
                       >
                         Letzte 24 h
                       </button>
@@ -481,6 +465,7 @@ const Details: React.FC = () => {
                     stroke="#8884d8"
                     activeDot={{ r: 8 }}
                     dot={({ cx, cy, payload }) => {
+                      // point goes red if value is above 80
                       const color = payload.value >= 80 ? "red" : "#8884d8";
                       return (
                         <circle
@@ -549,17 +534,17 @@ const Details: React.FC = () => {
                     </div>
                   </Popover>
                   <div>
-                    <div className="flex items-center h-9 ml-5 space-x-2 rounded-lg border bg-white px-3">
+                    <div className="flex items-center h-9 ml-5 space-x-2 rounded-lg border bg-white px-3 dark:bg-transparent">
                       <button
                         // onClick={onLast8h}
-                        className="text-sm text-gray-700 hover:underline focus:outline-none"
+                        className="text-sm text-gray-700 hover:underline focus:outline-none dark:text-white"
                       >
                         Letzte 8 h
                       </button>
                       <div className="h-6 border-l border-gray-300 mx-2" />
                       <button
                         // onClick={onLast24h}
-                        className="text-sm text-gray-700 hover:underline focus:outline-none"
+                        className="text-sm text-gray-700 hover:underline focus:outline-none dark:text-white"
                       >
                         Letzte 24 h
                       </button>

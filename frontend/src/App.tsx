@@ -13,7 +13,7 @@ import { ThemeProvider } from "./components/theme-provider";
 const App: React.FC = () => {
   return (
     <ThemeProvider defaultTheme="system" storageKey="vite-ui-theme">
-       <NavigationBar />
+      <NavigationBar />
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<Default />} />
@@ -21,11 +21,10 @@ const App: React.FC = () => {
           <Route path="/register" element={<Registration />} />
           <Route path="/verify" element={<Verification />} />
           <Route path="/list" element={<List />} />
-          <Route path="/details" element={<Details />} />
+          <Route path="/details/:charger_id" element={<Details />} />
         </Routes>
       </BrowserRouter>
     </ThemeProvider>
-
   );
 };
 

@@ -1,10 +1,17 @@
-// src/components/ProtectedRoute.tsx
 import { Navigate } from "react-router-dom";
 import { useAuth } from "./AuthContext";
 import { JSX } from "react";
 
 export const ProtectedRoute = ({ children }: { children: JSX.Element }) => {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, isLoading } = useAuth();
+
+  if (isLoading) {
+    return (
+      <div className="text-center mt-10 text-gray-600">
+        Authentifizierung wird geladen...
+      </div>
+    );
+  }
 
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;

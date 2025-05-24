@@ -1,27 +1,26 @@
 import React from "react";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
-import Default from "@/pages/Default";
+// import Default from "@/pages/Default";
 import Login from "@/pages/Login";
 import Details from "./pages/Details";
 import Registration from "@/pages/Registration";
 import Verification from "@/pages/Verification";
 import "@/App.css";
-import { NavigationBar } from "./components/NavigationBar";
-import List from "@/pages/List";
 import { ThemeProvider } from "./components/theme-provider";
 import ForgotPassword from "@/pages/ForgotPassword";
 import ResetPassword from "@/pages/ResetPassword";
 import { AuthProvider } from "@/auth/AuthContext";
 import { ProtectedRoute } from "./auth/ProtectedRoute";
+import Landingpage from "./pages/Landingpage";
+import Favourites from "./pages/Favourites";
 
 const App: React.FC = () => {
   return (
     <ThemeProvider defaultTheme="system" storageKey="vite-ui-theme">
       <AuthProvider>
         <BrowserRouter>
-          <NavigationBar></NavigationBar>
           <Routes>
-            <Route path="/" element={<Default />} />
+            {/* <Route path="/" element={<Default />} /> */}
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Registration />} />
             <Route path="/verify" element={<Verification />} />
@@ -30,18 +29,10 @@ const App: React.FC = () => {
 
             {/* GESCHÜTZTE ROUTE */}
             <Route
-              path="/dashboard"
+              path="/"
               element={
                 <ProtectedRoute>
-                  <div>Dashboard Inhalt</div>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/list"
-              element={
-                <ProtectedRoute>
-                  <List />
+                  <Landingpage />
                 </ProtectedRoute>
               }
             />
@@ -50,6 +41,14 @@ const App: React.FC = () => {
               element={
                 <ProtectedRoute>
                   <Details />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/favourites"
+              element={
+                <ProtectedRoute>
+                  <Favourites />
                 </ProtectedRoute>
               }
             />

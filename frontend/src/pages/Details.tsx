@@ -1,6 +1,5 @@
 import { Card, CardContent, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import mockdata from "../mockData/MockDataDetails.json";
 import { useRedZones } from "../lib/useRedZones";
 import {
   LineChart,
@@ -24,6 +23,7 @@ import { useParams } from "react-router-dom";
 import axios from "axios";
 import { format } from "date-fns";
 import { Popover } from "@/components/ui/popover";
+import { NavigationBar } from "@/components/NavigationBar";
 
 // import {
 //   Table,
@@ -35,7 +35,6 @@ import { Popover } from "@/components/ui/popover";
 //   TableRow,
 // } from "@/components/ui/table";
 
-const data = mockdata;
 //interface for CPU USage and Thermal
 interface Cpu {
   timestamp: string;
@@ -43,7 +42,6 @@ interface Cpu {
 }
 
 const Details: React.FC = () => {
-  const redZones = useRedZones(data, 80);
   const [collapsedCard, setCollapsedCard] = useState<Record<string, boolean>>({
     smallCard1: false,
     smallCard2: false,
@@ -69,6 +67,12 @@ const Details: React.FC = () => {
     controllertemperaturecpu_thermalData,
     setControllertemperaturecpu_thermalData,
   ] = useState<Cpu[]>([]);
+  //redZones in the Diagram Params: 1. Dataarray, 2. value where the Zone gets red
+  const redZonesCpuUsage = useRedZones(controllerCpuUsageData, 7);
+  const redZonesCpuThermal = useRedZones(
+    controllertemperaturecpu_thermalData,
+    43
+  );
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // 1) only at mount or when charger_id is changing: get Telemetry types
@@ -81,7 +85,7 @@ const Details: React.FC = () => {
           `http://127.0.0.1:8000/v1/telemetry/${charger_id}/type`
         );
         const results: string[] = response.data;
-        // Search in results for this 2 keys
+        // Search in results for the 2 CPU Keys
         const cpuUsageKey = results.find(
           (t) => t.toLowerCase() === "controllercpuusage"
         );
@@ -112,8 +116,7 @@ const Details: React.FC = () => {
   }, [charger_id]);
 
   // 2) after charger_id, controllerCpuUsage and controllertemperaturecpu_thermal are set up:
-  //    - first fetch
-  //    - then every 20 seconds repeat
+  // first fetch then every 20 seconds repeat
   useEffect(() => {
     if (
       !charger_id ||
@@ -147,6 +150,7 @@ const Details: React.FC = () => {
     // initial fetch
     fetchTelemetryData();
 
+    //Datafetch every 20 seconds
     intervalRef.current = setInterval(fetchTelemetryData, 20000);
 
     return () => {
@@ -156,6 +160,7 @@ const Details: React.FC = () => {
     };
   }, [charger_id, controllerCpuUsage, controllertemperaturecpu_thermal]);
 
+  //Function to minimize the Cards
   const minimizeCards = (key: string) => {
     setCollapsedCard((prev) => ({
       ...prev,
@@ -182,6 +187,7 @@ const Details: React.FC = () => {
     return t >= f && t <= u;
   });
 
+  //function to filter the Cpu Thermal with the Dates the user selected in the Navbar for the Diagram
   const filteredDataCpuThermal = controllertemperaturecpu_thermalData.filter(
     (d) => {
       const t = new Date(d.timestamp).getTime();
@@ -190,29 +196,285 @@ const Details: React.FC = () => {
       return t >= f && t <= u;
     }
   );
+  //funkction for the buttons to handle last minute and last 10 minuts for CPU Usage and Thermal
+  function handleLastMinutes(
+    dataArray: Cpu[],
+    setFrom: React.Dispatch<React.SetStateAction<Date | undefined>>,
+    setTo: React.Dispatch<React.SetStateAction<Date | undefined>>,
+    minutes: number
+  ) {
+    if (dataArray.length === 0) return;
+    const times = dataArray.map((d) => new Date(d.timestamp).getTime());
+    const maxTime = Math.max(...times);
+    const minTime = maxTime - minutes * 60 * 1000;
+    setFrom(new Date(minTime));
+    setTo(new Date(maxTime));
+  }
+  const usageLastMin = () =>
+    handleLastMinutes(
+      controllerCpuUsageData,
+      setFromDateUsage,
+      setToDateUsage,
+      1
+    );
+  const usageLast10Min = () =>
+    handleLastMinutes(
+      controllerCpuUsageData,
+      setFromDateUsage,
+      setToDateUsage,
+      10
+    );
+
+  const thermalLastMin = () =>
+    handleLastMinutes(
+      controllertemperaturecpu_thermalData,
+      setFromDateThermal,
+      setToDateThermal,
+      1
+    );
+  const thermalLast10Min = () =>
+    handleLastMinutes(
+      controllertemperaturecpu_thermalData,
+      setFromDateThermal,
+      setToDateThermal,
+      10
+    );
 
   return (
-    <div className="flex mt-5">
-      <Card className="ml-16 bg-white shadow-md w-11/12 min-h-11/12 dark:bg-neutral-950">
-        <CardTitle className="ml-5">Charger {charger_id}</CardTitle>
-        <CardContent>
-          <div className="flex justify-between">
-            {/* <Card
-              className={`transition-all duration-300 w-70 ${
-                collapsedCard.card1 ? "h-16" : "h-70"
+    <>
+      <NavigationBar />
+      <div className="flex mt-5">
+        <Card className="ml-16 bg-white shadow-md w-11/12 min-h-11/12 dark:bg-neutral-950">
+          <CardTitle className="ml-5">Charger {charger_id}</CardTitle>
+          <CardContent>
+            <div className="flex justify-between">
+              {/* <Card
+      className={`transition-all duration-300 w-70 ${
+        collapsedCard.card1 ? "h-16" : "h-70"
+      }`}
+    >
+      <div className="flex justify-between">
+        <CardTitle className="ml-5">Activity </CardTitle>
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          fill="none"
+          viewBox="0 0 24 24"
+          strokeWidth={1.5}
+          stroke="currentColor"
+          onClick={() => minimizeCards("card1")}
+          className={`size-6 mr-5 cursor-pointer transition-transform ${
+            collapsedCard.card1 ? "rotate-180" : ""
+          }`}
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            d="m19.5 8.25-7.5 7.5-7.5-7.5"
+          />
+        </svg>
+      </div>
+      <ResponsiveContainer width="100%" height="100%">
+        <PieChart>
+          <Pie
+            dataKey="value"
+            data={pieData}
+            cx="50%"
+            cy="50%"
+            innerRadius={40}
+            outerRadius={80}
+          >
+            {pieData.map((entry, index) => (
+              <Cell
+                key={`cell-${index}`}
+                fill={entry.name === "online" ? "#82ca9d" : "#f87171"}
+              />
+            ))}
+          </Pie>
+          <Tooltip />
+        </PieChart>
+      </ResponsiveContainer>
+    </Card>
+    <Card
+      className={`transition-all duration-300 w-70 ${
+        collapsedCard.card2 ? "h-16" : "h-70"
+      }`}
+    >
+      <div className="flex justify-between">
+        <CardTitle className="ml-5">Usage Count per Day</CardTitle>
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          fill="none"
+          viewBox="0 0 24 24"
+          strokeWidth={1.5}
+          stroke="currentColor"
+          onClick={() => minimizeCards("card2")}
+          className={`size-6 mr-5 cursor-pointer transition-transform ${
+            collapsedCard.card2 ? "rotate-180" : ""
+          }`}
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            d="m19.5 8.25-7.5 7.5-7.5-7.5"
+          />
+        </svg>
+      </div>
+
+      <ResponsiveContainer width="100%" height="100%">
+        <BarChart
+          data={barData}
+          margin={{
+            top: 20,
+            right: 50,
+            bottom: 5,
+          }}
+        >
+          <CartesianGrid strokeDasharray="3 3" />
+          <XAxis dataKey="Day" />
+          <YAxis />
+          <Tooltip />
+          <Legend />
+          <Bar
+            dataKey="UsageCount"
+            fill="#8884d8"
+            activeBar={<Rectangle fill="pink" stroke="blue" />}
+          />
+        </BarChart>
+      </ResponsiveContainer>
+    </Card>
+    <Card
+      className={`transition-all duration-300 w-70 ${
+        collapsedCard.card3 ? "h-16" : "h-70"
+      }`}
+    >
+      <div className="flex justify-between">
+        <CardTitle className="ml-5">CPU Stats </CardTitle>
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          fill="none"
+          viewBox="0 0 24 24"
+          strokeWidth={1.5}
+          stroke="currentColor"
+          onClick={() => minimizeCards("card3")}
+          className={`size-6 mr-5 cursor-pointer transition-transform ${
+            collapsedCard.card3 ? "rotate-180" : ""
+          }`}
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            d="m19.5 8.25-7.5 7.5-7.5-7.5"
+          />
+        </svg>
+      </div>
+      <Table>
+        <TableCaption>
+          Shows the Today's Lowest and Peaks of the CPU Stats like Usage
+          and Temperature
+        </TableCaption>
+        <TableHeader>
+          <TableRow>
+            <TableHead className="w-[100px]"></TableHead>
+            <TableHead>Lowest</TableHead>
+            <TableHead>Peak</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          <TableRow>
+            <TableCell className="font-medium">Usage %</TableCell>
+            <TableCell>45 %</TableCell>
+            <TableCell>78 %</TableCell>
+          </TableRow>
+          <TableRow>
+            <TableCell className="font-medium">Temp °C</TableCell>
+            <TableCell>20°C</TableCell>
+            <TableCell>55°C</TableCell>
+          </TableRow>
+        </TableBody>
+      </Table>
+    </Card> */}
+            </div>
+
+            <Card
+              className={`mr-6 w-full mb-4 transition-all duration-300 overflow-hidden ${
+                collapsedCard.CpuUsageCard ? "h-16" : "h-96"
               }`}
             >
               <div className="flex justify-between">
-                <CardTitle className="ml-5">Activity </CardTitle>
+                <CardTitle className="ml-5">CPU Usage</CardTitle>
+                {!collapsedCard.CpuUsageCard && (
+                  <div className="flex">
+                    <Popover>
+                      <div className="relative">
+                        <Input
+                          type="Date"
+                          className="cursor-pointer"
+                          placeholder="Von"
+                          value={
+                            fromDateUsage
+                              ? format(fromDateUsage, "yyyy-MM-dd")
+                              : ""
+                          }
+                          //empty field befor input for reload
+                          onFocus={() => setFromDateUsage(undefined)}
+                          onChange={(e) => {
+                            const value = e.currentTarget.value;
+                            setFromDateUsage(
+                              value ? new Date(value) : undefined
+                            );
+                          }}
+                        />
+                      </div>
+                    </Popover>
+                    <h2 className="ml-3 mr-3 text-2xl font-semibold tracking-tight transition-colors first:mt-0">
+                      :
+                    </h2>
+                    <Popover>
+                      <div className="relative">
+                        <Input
+                          type="Date"
+                          className="cursor-pointer"
+                          placeholder="Bis"
+                          value={
+                            toDateUsage ? format(toDateUsage, "yyyy-MM-dd") : ""
+                          }
+                          //empty field befor input for reload
+                          onFocus={() => setToDateUsage(undefined)}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            setToDateUsage(value ? new Date(value) : undefined);
+                          }}
+                        />
+                      </div>
+                    </Popover>
+                    <div>
+                      <div className="flex items-center h-9 ml-5 space-x-2 rounded-lg border bg-white px-3  dark:bg-transparent">
+                        <button
+                          onClick={usageLastMin}
+                          className="text-sm text-gray-700 hover:underline focus:outline-none dark:text-white"
+                        >
+                          Letzte Minute
+                        </button>
+                        <div className="h-6 border-l border-gray-300 mx-2 " />
+                        <button
+                          onClick={usageLast10Min}
+                          className="text-sm text-gray-700 hover:underline focus:outline-none dark:text-white"
+                        >
+                          Letzte 10 Minutes
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
                   fill="none"
                   viewBox="0 0 24 24"
                   strokeWidth={1.5}
                   stroke="currentColor"
-                  onClick={() => minimizeCards("card1")}
-                  className={`size-6 mr-5 cursor-pointer transition-transform ${
-                    collapsedCard.card1 ? "rotate-180" : ""
+                  onClick={() => minimizeCards("CpuUsageCard")}
+                  className={`size-6 mr-5 cursor-pointer transition-transform" ${
+                    collapsedCard.CpuUsageCard ? "rotate-180" : ""
                   }`}
                 >
                   <path
@@ -222,407 +484,219 @@ const Details: React.FC = () => {
                   />
                 </svg>
               </div>
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    dataKey="value"
-                    data={pieData}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={40}
-                    outerRadius={80}
+              {!collapsedCard.CpuUsageCard && (
+                <ResponsiveContainer width="90%" height="90%">
+                  <LineChart
+                    width={500}
+                    height={300}
+                    data={filteredDataCpuUsage.slice().reverse()}
+                    margin={{
+                      top: 5,
+                      right: 30,
+                      left: 20,
+                      bottom: 5,
+                    }}
                   >
-                    {pieData.map((entry, index) => (
-                      <Cell
-                        key={`cell-${index}`}
-                        fill={entry.name === "online" ? "#82ca9d" : "#f87171"}
+                    <CartesianGrid strokeDasharray="5 5" />
+                    <XAxis
+                      dataKey="timestamp"
+                      tickFormatter={formatDateMultiline}
+                    />
+
+                    <YAxis dataKey="value" />
+                    <Tooltip />
+                    <Legend />
+                    {redZonesCpuUsage.map((zone, index) => (
+                      <ReferenceArea
+                        key={index}
+                        x1={zone.start}
+                        x2={zone.end}
+                        strokeOpacity={0}
+                        fill="red"
+                        fillOpacity={0.1}
                       />
                     ))}
-                  </Pie>
-                  <Tooltip />
-                </PieChart>
-              </ResponsiveContainer>
-            </Card>
-            <Card
-              className={`transition-all duration-300 w-70 ${
-                collapsedCard.card2 ? "h-16" : "h-70"
-              }`}
-            >
-              <div className="flex justify-between">
-                <CardTitle className="ml-5">Usage Count per Day</CardTitle>
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  strokeWidth={1.5}
-                  stroke="currentColor"
-                  onClick={() => minimizeCards("card2")}
-                  className={`size-6 mr-5 cursor-pointer transition-transform ${
-                    collapsedCard.card2 ? "rotate-180" : ""
-                  }`}
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="m19.5 8.25-7.5 7.5-7.5-7.5"
-                  />
-                </svg>
-              </div>
-
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart
-                  data={barData}
-                  margin={{
-                    top: 20,
-                    right: 50,
-                    bottom: 5,
-                  }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="Day" />
-                  <YAxis />
-                  <Tooltip />
-                  <Legend />
-                  <Bar
-                    dataKey="UsageCount"
-                    fill="#8884d8"
-                    activeBar={<Rectangle fill="pink" stroke="blue" />}
-                  />
-                </BarChart>
-              </ResponsiveContainer>
-            </Card>
-            <Card
-              className={`transition-all duration-300 w-70 ${
-                collapsedCard.card3 ? "h-16" : "h-70"
-              }`}
-            >
-              <div className="flex justify-between">
-                <CardTitle className="ml-5">CPU Stats </CardTitle>
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  strokeWidth={1.5}
-                  stroke="currentColor"
-                  onClick={() => minimizeCards("card3")}
-                  className={`size-6 mr-5 cursor-pointer transition-transform ${
-                    collapsedCard.card3 ? "rotate-180" : ""
-                  }`}
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="m19.5 8.25-7.5 7.5-7.5-7.5"
-                  />
-                </svg>
-              </div>
-              <Table>
-                <TableCaption>
-                  Shows the Today's Lowest and Peaks of the CPU Stats like Usage
-                  and Temperature
-                </TableCaption>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-[100px]"></TableHead>
-                    <TableHead>Lowest</TableHead>
-                    <TableHead>Peak</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  <TableRow>
-                    <TableCell className="font-medium">Usage %</TableCell>
-                    <TableCell>45 %</TableCell>
-                    <TableCell>78 %</TableCell>
-                  </TableRow>
-                  <TableRow>
-                    <TableCell className="font-medium">Temp °C</TableCell>
-                    <TableCell>20°C</TableCell>
-                    <TableCell>55°C</TableCell>
-                  </TableRow>
-                </TableBody>
-              </Table>
-            </Card> */}
-          </div>
-
-          <Card
-            className={`mr-6 w-full mb-4 transition-all duration-300 overflow-hidden ${
-              collapsedCard.CpuUsageCard ? "h-16" : "h-96"
-            }`}
-          >
-            <div className="flex justify-between">
-              <CardTitle className="ml-5">CPU Usage</CardTitle>
-              {!collapsedCard.CpuUsageCard && (
-                <div className="flex">
-                  <Popover>
-                    <div className="relative">
-                      <Input
-                        type="Date"
-                        className="cursor-pointer"
-                        placeholder="Von"
-                        value={
-                          fromDateUsage
-                            ? format(fromDateUsage, "yyyy-MM-dd")
-                            : ""
-                        }
-                        onChange={(e) => {
-                          const value = e.target.value;
-                          setFromDateUsage(value ? new Date(value) : undefined);
-                        }}
-                      />
-                    </div>
-                  </Popover>
-                  <h2 className="ml-3 mr-3 text-2xl font-semibold tracking-tight transition-colors first:mt-0">
-                    :
-                  </h2>
-                  <Popover>
-                    <div className="relative">
-                      <Input
-                        type="Date"
-                        className="cursor-pointer"
-                        placeholder="Bis"
-                        value={
-                          toDateUsage ? format(toDateUsage, "yyyy-MM-dd") : ""
-                        }
-                        onChange={(e) => {
-                          const value = e.target.value;
-                          setToDateUsage(value ? new Date(value) : undefined);
-                        }}
-                      />
-                    </div>
-                  </Popover>
-                  <div>
-                    <div className="flex items-center h-9 ml-5 space-x-2 rounded-lg border bg-white px-3  dark:bg-transparent">
-                      <button
-                        // onClick={onLast8h}
-                        className="text-sm text-gray-700 hover:underline focus:outline-none dark:text-white"
-                      >
-                        Letzte 8 h
-                      </button>
-                      <div className="h-6 border-l border-gray-300 mx-2 " />
-                      <button
-                        // onClick={onLast24h}
-                        className="text-sm text-gray-700 hover:underline focus:outline-none dark:text-white"
-                      >
-                        Letzte 24 h
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 24 24"
-                strokeWidth={1.5}
-                stroke="currentColor"
-                onClick={() => minimizeCards("CpuUsageCard")}
-                className={`size-6 mr-5 cursor-pointer transition-transform" ${
-                  collapsedCard.CpuUsageCard ? "rotate-180" : ""
-                }`}
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="m19.5 8.25-7.5 7.5-7.5-7.5"
-                />
-              </svg>
-            </div>
-            {!collapsedCard.CpuUsageCard && (
-              <ResponsiveContainer width="90%" height="90%">
-                <LineChart
-                  width={500}
-                  height={300}
-                  data={filteredDataCpuUsage.slice().reverse()}
-                  margin={{
-                    top: 5,
-                    right: 30,
-                    left: 20,
-                    bottom: 5,
-                  }}
-                >
-                  <CartesianGrid strokeDasharray="5 5" />
-                  <XAxis
-                    dataKey="timestamp"
-                    tickFormatter={formatDateMultiline}
-                  />
-
-                  <YAxis dataKey="value" />
-                  <Tooltip />
-                  <Legend />
-                  {redZones.map((zone, index) => (
-                    <ReferenceArea
-                      key={index}
-                      x1={zone.start}
-                      x2={zone.end}
-                      strokeOpacity={0}
-                      fill="red"
-                      fillOpacity={0.1}
+                    <Line
+                      type="monotone"
+                      dataKey="value"
+                      stroke="#8884d8"
+                      activeDot={{ r: 8 }}
+                      dot={({ cx, cy, payload }) => {
+                        //if value is >=7 dot is red
+                        const color = payload.value >= 7 ? "red" : "#8884d8";
+                        return (
+                          <circle
+                            key={`dot-${payload.timestamp}`}
+                            cx={cx}
+                            cy={cy}
+                            r={4}
+                            fill={color}
+                            stroke="none"
+                          />
+                        );
+                      }}
                     />
-                  ))}
-                  <Line
-                    type="monotone"
-                    dataKey="value"
-                    stroke="#8884d8"
-                    activeDot={{ r: 8 }}
-                    dot={({ cx, cy, payload }) => {
-                      // point goes red if value is above 80
-                      const color = payload.value >= 80 ? "red" : "#8884d8";
-                      return (
-                        <circle
-                          key={`dot-${payload.timestamp}`}
-                          cx={cx}
-                          cy={cy}
-                          r={4}
-                          fill={color}
-                          stroke="none"
+                  </LineChart>
+                </ResponsiveContainer>
+              )}
+            </Card>
+            <Card
+              className={` w-full transition-all duration-300 overflow-hidden ${
+                collapsedCard.CpuThermalCard ? "h-16" : "h-96"
+              }`}
+            >
+              <div className="flex justify-between">
+                <CardTitle className="ml-5">CPU Thermal</CardTitle>
+                {!collapsedCard.CpuThermalCard && (
+                  <div className="flex">
+                    <Popover>
+                      <div className="relative">
+                        <Input
+                          type="Date"
+                          className="cursor-pointer"
+                          placeholder="Von"
+                          value={
+                            fromDateThermal
+                              ? format(fromDateThermal, "yyyy-MM-dd")
+                              : ""
+                          }
+                          //empty field befor input for reload
+                          onFocus={() => setFromDateThermal(undefined)}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            setFromDateThermal(
+                              value ? new Date(value) : undefined
+                            );
+                          }}
                         />
-                      );
-                    }}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            )}
-          </Card>
-          <Card
-            className={` w-full transition-all duration-300 overflow-hidden ${
-              collapsedCard.CpuThermalCard ? "h-16" : "h-96"
-            }`}
-          >
-            <div className="flex justify-between">
-              <CardTitle className="ml-5">CPU Thermal</CardTitle>
-              {!collapsedCard.CpuThermalCard && (
-                <div className="flex">
-                  <Popover>
-                    <div className="relative">
-                      <Input
-                        type="Date"
-                        className="cursor-pointer"
-                        placeholder="Von"
-                        value={
-                          fromDateThermal
-                            ? format(fromDateThermal, "yyyy-MM-dd")
-                            : ""
-                        }
-                        onChange={(e) => {
-                          const value = e.target.value;
-                          setFromDateThermal(
-                            value ? new Date(value) : undefined
-                          );
-                        }}
-                      />
-                    </div>
-                  </Popover>
-                  <h2 className="ml-3 mr-3 text-2xl font-semibold tracking-tight transition-colors first:mt-0">
-                    :
-                  </h2>
-                  <Popover>
-                    <div className="relative">
-                      <Input
-                        type="Date"
-                        className="cursor-pointer"
-                        placeholder="Bis"
-                        value={
-                          toDateThermal
-                            ? format(toDateThermal, "yyyy-MM-dd")
-                            : ""
-                        }
-                        onChange={(e) => {
-                          const value = e.target.value;
-                          setToDateThermal(value ? new Date(value) : undefined);
-                        }}
-                      />
-                    </div>
-                  </Popover>
-                  <div>
-                    <div className="flex items-center h-9 ml-5 space-x-2 rounded-lg border bg-white px-3 dark:bg-transparent">
-                      <button
-                        // onClick={onLast8h}
-                        className="text-sm text-gray-700 hover:underline focus:outline-none dark:text-white"
-                      >
-                        Letzte 8 h
-                      </button>
-                      <div className="h-6 border-l border-gray-300 mx-2" />
-                      <button
-                        // onClick={onLast24h}
-                        className="text-sm text-gray-700 hover:underline focus:outline-none dark:text-white"
-                      >
-                        Letzte 24 h
-                      </button>
+                      </div>
+                    </Popover>
+                    <h2 className="ml-3 mr-3 text-2xl font-semibold tracking-tight transition-colors first:mt-0">
+                      :
+                    </h2>
+                    <Popover>
+                      <div className="relative">
+                        <Input
+                          type="Date"
+                          className="cursor-pointer"
+                          placeholder="Bis"
+                          value={
+                            toDateThermal
+                              ? format(toDateThermal, "yyyy-MM-dd")
+                              : ""
+                          }
+                          //empty field befor input for reload
+                          onFocus={() => setToDateThermal(undefined)}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            setToDateThermal(
+                              value ? new Date(value) : undefined
+                            );
+                          }}
+                        />
+                      </div>
+                    </Popover>
+                    <div>
+                      <div className="flex items-center h-9 ml-5 space-x-2 rounded-lg border bg-white px-3 dark:bg-transparent">
+                        <button
+                          onClick={thermalLastMin}
+                          className="text-sm text-gray-700 hover:underline focus:outline-none dark:text-white"
+                        >
+                          Letzte minute
+                        </button>
+                        <div className="h-6 border-l border-gray-300 mx-2" />
+                        <button
+                          onClick={thermalLast10Min}
+                          className="text-sm text-gray-700 hover:underline focus:outline-none dark:text-white"
+                        >
+                          Letzte 10 Minutes
+                        </button>
+                      </div>
                     </div>
                   </div>
-                </div>
-              )}
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 24 24"
-                strokeWidth={1.5}
-                stroke="currentColor"
-                onClick={() => minimizeCards("CpuThermalCard")}
-                className={`size-6 mr-5 cursor-pointer transition-transform" ${
-                  collapsedCard.CpuThermalCard ? "rotate-180" : ""
-                }`}
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="m19.5 8.25-7.5 7.5-7.5-7.5"
-                />
-              </svg>
-            </div>
-
-            {!collapsedCard.CpuThermalCard && (
-              <ResponsiveContainer width="90%" height="90%">
-                <LineChart
-                  width={500}
-                  height={300}
-                  data={filteredDataCpuThermal.slice().reverse()}
-                  margin={{
-                    top: 5,
-                    right: 30,
-                    left: 20,
-                    bottom: 5,
-                  }}
+                )}
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  strokeWidth={1.5}
+                  stroke="currentColor"
+                  onClick={() => minimizeCards("CpuThermalCard")}
+                  className={`size-6 mr-5 cursor-pointer transition-transform" ${
+                    collapsedCard.CpuThermalCard ? "rotate-180" : ""
+                  }`}
                 >
-                  <CartesianGrid strokeDasharray="5 5" />
-                  <XAxis
-                    dataKey="timestamp"
-                    tickFormatter={formatDateMultiline}
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="m19.5 8.25-7.5 7.5-7.5-7.5"
                   />
-                  <YAxis
-                    dataKey="value"
-                    domain={[30, 80]}
-                    ticks={[40, 50, 60, 70, 80]}
-                  />
-                  <Tooltip />
-                  <Legend />
-                  <Line
-                    type="monotone"
-                    dataKey="value"
-                    stroke="#8884d8"
-                    activeDot={{ r: 8 }}
-                    dot={({ cx, cy, payload }) => {
-                      //wenn value >= 59 dann roter punkt z.b.
-                      const color = payload.value >= 59 ? "red" : "#8884d8";
-                      return (
-                        <circle
-                          key={`dot-${payload.timestamp}`}
-                          cx={cx}
-                          cy={cy}
-                          r={4}
-                          fill={color}
-                          stroke="none"
-                        />
-                      );
+                </svg>
+              </div>
+
+              {!collapsedCard.CpuThermalCard && (
+                <ResponsiveContainer width="90%" height="90%">
+                  <LineChart
+                    width={500}
+                    height={300}
+                    data={filteredDataCpuThermal.slice().reverse()}
+                    margin={{
+                      top: 5,
+                      right: 30,
+                      left: 20,
+                      bottom: 5,
                     }}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            )}
-          </Card>
-        </CardContent>
-      </Card>
-    </div>
+                  >
+                    <CartesianGrid strokeDasharray="5 5" />
+                    <XAxis
+                      dataKey="timestamp"
+                      tickFormatter={formatDateMultiline}
+                    />
+                    <YAxis
+                      dataKey="value"
+                      domain={[30, 80]}
+                      ticks={[40, 50, 60, 70, 80]}
+                    />
+                    <Tooltip />
+                    <Legend />
+                    {redZonesCpuThermal.map((zone, index) => (
+                      <ReferenceArea
+                        key={index}
+                        x1={zone.start}
+                        x2={zone.end}
+                        strokeOpacity={0}
+                        fill="red"
+                        fillOpacity={0.1}
+                      />
+                    ))}
+                    <Line
+                      type="monotone"
+                      dataKey="value"
+                      stroke="#8884d8"
+                      activeDot={{ r: 8 }}
+                      dot={({ cx, cy, payload }) => {
+                        //if value is >=43 dot is red
+                        const color = payload.value >= 43 ? "red" : "#8884d8";
+                        return (
+                          <circle
+                            key={`dot-${payload.timestamp}`}
+                            cx={cx}
+                            cy={cy}
+                            r={4}
+                            fill={color}
+                            stroke="none"
+                          />
+                        );
+                      }}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              )}
+            </Card>
+          </CardContent>
+        </Card>
+      </div>
+    </>
   );
 };
 export default Details;

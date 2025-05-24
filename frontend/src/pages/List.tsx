@@ -64,16 +64,22 @@ export default function ChargerTable() {
       try {
         // Synchronisiere die Charger-Daten
         await axios.post("http://localhost:8000/v1/chargers/sync", null, {
-          timeout: 1500, // max. 5 Sekunden warten
+          timeout: 1500,
         });
-
+  
         // Hole die Basisdaten aller verfügbaren Charger
         const chargerRes = await axios.get<Charger[]>(
           "http://localhost:8000/v1/chargers/available"
-        ); // Gibt alle Charger zurück
+        );
         const chargers = chargerRes.data;
-
-        // Hole für jeden Charger (anhand der ChargerID) die Telemetriedaten
+  
+        // Hole Favoriten für den Benutzer
+        const favoritesRes = await axios.get<string[]>(
+          "http://localhost:8000/v1/favorites?user_id=1"
+        );
+        setFavoriteChargerIds(favoritesRes.data);
+  
+        // Hole Telemetriedaten für jeden Charger
         const combined_data = await Promise.all(
           chargers.map(async (charger) => {
             try {
@@ -85,12 +91,10 @@ export default function ChargerTable() {
                   `http://localhost:8000/v1/telemetry/${charger.charger_id}/controllertemperaturecpu-thermal`
                 ),
               ]);
-
-              // Speichere den neusten Wert oder null, wenn kein Wert vorhanden ist
+  
               const value1 = value1Res.data[0]?.value ?? null;
               const value2 = value2Res.data[0]?.value ?? null;
-
-              // Die Daten zurückgeben
+  
               return {
                 charger_id: charger.charger_id,
                 charger_name: charger.charger_name,
@@ -117,8 +121,7 @@ export default function ChargerTable() {
             }
           })
         );
-
-        // Geladene Daten anzeigen
+  
         setData(combined_data);
       } catch (err) {
         console.error("Fehler beim Laden der Daten:", err);
@@ -126,12 +129,12 @@ export default function ChargerTable() {
         setLoading(false);
       }
     };
-
+  
     fetchData();
-    const interval = setInterval(fetchData, 10000); // alle 10 Sekunden Daten aktualisieren
-
-    return () => clearInterval(interval); // aufräumen beim Unmounten
+    const interval = setInterval(fetchData, 10000);
+    return () => clearInterval(interval);
   }, []);
+  
 
   const filteredData = data
     // Filtere die Daten basierend auf dem Suchbegriff

@@ -64,11 +64,18 @@ export default function ChargerTable() {
     useEffect(() => {
         const fetchData = async () => {
             try {
+                // Charger-Sync auslösen
                 await axios.post("http://localhost:8000/v1/chargers/sync", null, { timeout: 1500 });
-
+    
+                // Alle Charger laden
                 const chargerRes = await axios.get<Charger[]>("http://localhost:8000/v1/chargers/available");
                 const chargers = chargerRes.data;
-
+    
+                // Favoriten des Nutzers laden
+                const favoritesRes = await axios.get<string[]>("http://localhost:8000/v1/favorites?user_id=1");
+                setFavoriteChargerIds(favoritesRes.data);
+    
+                // Telemetriedaten abrufen
                 const combined_data = await Promise.all(
                     chargers.map(async (charger) => {
                         try {
@@ -76,10 +83,10 @@ export default function ChargerTable() {
                                 axios.get<telemetry_data[]>(`http://localhost:8000/v1/telemetry/${charger.charger_id}/controllerCpuUsage`),
                                 axios.get<telemetry_data[]>(`http://localhost:8000/v1/telemetry/${charger.charger_id}/controllertemperaturecpu-thermal`),
                             ]);
-
+    
                             const value1 = value1Res.data[0]?.value ?? null;
                             const value2 = value2Res.data[0]?.value ?? null;
-
+    
                             return {
                                 charger_id: charger.charger_id,
                                 charger_name: charger.charger_name,
@@ -103,7 +110,7 @@ export default function ChargerTable() {
                         }
                     })
                 );
-
+    
                 setData(combined_data);
             } catch (err) {
                 console.error("Fehler beim Laden der Daten:", err);
@@ -111,11 +118,12 @@ export default function ChargerTable() {
                 setLoading(false);
             }
         };
-
+    
         fetchData();
         const interval = setInterval(fetchData, 10000);
         return () => clearInterval(interval);
     }, []);
+    
 
     const filteredData = data
         .filter(

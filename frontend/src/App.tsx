@@ -8,6 +8,7 @@ import "@/App.css";
 import { NavigationBar } from "./components/NavigationBar";
 import List from "@/pages/List";
 import { ThemeProvider } from "./components/theme-provider";
+import Favorites from "@/pages/favorites";
 
 const App: React.FC = () => {
   return (
@@ -19,6 +20,7 @@ const App: React.FC = () => {
           <Route path="/register" element={<Registration />} />
           <Route path="/verify" element={<Verification />} />
           <Route path="/list" element={<List />} />
+          <Route path="/favorites" element={<Favorites />} />
         </Routes>
       </BrowserRouter>
     </ThemeProvider>

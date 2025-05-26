@@ -44,11 +44,14 @@ def verify_verification_token(token: str) -> str | None:
         return payload.get("sub")
     except JWTError:
         return None
-    
-def create_reset_token(email: str, expires_minutes: int = 15)  -> str:
+
+
+def create_reset_token(email: str, expires_minutes: int = 15) -> str:
     to_encode = {
-            "sub": email,
-            "exp": datetime.now(timezone.utc) + timedelta(minutes=expires_minutes),
-            "token_type": "password_reset",
+        "sub": email,
+        "exp": datetime.now(timezone.utc) + timedelta(minutes=expires_minutes),
+        "token_type": "password_reset",
     }
-    return jwt.encode(to_encode, settings.JWT_VERIFICATION_SECRET, algorithm=settings.ALGORITHM)
+    return jwt.encode(
+        to_encode, settings.JWT_VERIFICATION_SECRET, algorithm=settings.ALGORITHM
+    )

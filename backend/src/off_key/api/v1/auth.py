@@ -11,7 +11,12 @@ from off_key.core.config import settings
 from ...core.logs import logger
 from ...db.base import get_db_async
 from ...db.models import User
-from ...schemas.user import ForgotPasswordRequest, ResetPasswordRequest, UserCreate, UserLogin
+from ...schemas.user import (
+    ForgotPasswordRequest,
+    ResetPasswordRequest,
+    UserCreate,
+    UserLogin,
+)
 from ...services.auth import (
     create_reset_token,
     create_verification_token,
@@ -144,13 +149,15 @@ async def verify_email(token: str, db: AsyncSession = Depends(get_db_async)):
             status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired token"
         )
 
+
 @router.post("/forgot-password")
 async def forgot_password(
-    user: ForgotPasswordRequest,
-    db: AsyncSession = Depends(get_db_async)
+    user: ForgotPasswordRequest, db: AsyncSession = Depends(get_db_async)
 ):
     email = user.email
-    response_message = "Wenn die E-Mail registriert ist, wurde ein Link zum Zurücksetzen gesendet."
+    response_message = (
+        "Wenn die E-Mail registriert ist, wurde ein Link zum Zurücksetzen gesendet."
+    )
 
     result = await db.execute(select(User).filter(User.email == email))
     user = result.scalars().first()
@@ -185,11 +192,12 @@ async def forgot_password(
             logger.error(f"Error sending password reset email: {e}")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Fehler beim Versenden der E-Mail zum Zurücksetzen des Passworts."
+                detail="Error sending the password reset email.",
             )
 
     # Antwort immer gleich, egal ob User existiert (kein User Enumeration Leak)
-    return {"message": response_message} 
+    return {"message": response_message}
+
 
 @router.post("/reset-password")
 async def reset_password(
@@ -197,14 +205,18 @@ async def reset_password(
     db: AsyncSession = Depends(get_db_async),
 ):
     try:
-        payload = jwt.decode(req.token, settings.JWT_VERIFICATION_SECRET, algorithms=["HS256"])
+        payload = jwt.decode(
+            req.token, settings.JWT_VERIFICATION_SECRET, algorithms=["HS256"]
+        )
         if payload.get("token_type") != "password_reset":
             raise HTTPException(status_code=400, detail="Ungültiger Token-Typ")
         email = payload.get("sub")
         if email is None:
             raise HTTPException(status_code=400, detail="Ungültiger Token")
     except JWTError:
-        raise HTTPException(status_code=400, detail="Ungültiger oder abgelaufener Token")
+        raise HTTPException(
+            status_code=400, detail="Ungültiger oder abgelaufener Token"
+        )
 
     # User finden
     result = await db.execute(select(User).filter(User.email == email))

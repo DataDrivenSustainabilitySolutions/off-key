@@ -245,7 +245,18 @@ export default function ChargerTable() {
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <p>Status: {card.online ? "active" : "offline"}</p>
+                  <p>
+                    Status:{" "}
+                    <span
+                      className={
+                        card.online
+                          ? "text-green-600 font-medium"
+                          : "text-red-600 font-medium"
+                      }
+                    >
+                      {card.online ? "active" : "offline"}
+                    </span>
+                  </p>
                   <p>
                     CPU Usage:{" "}
                     {card.value1 !== null ? `${card.value1.toFixed(2)} %` : "-"}

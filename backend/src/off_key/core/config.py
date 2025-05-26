@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     EMAIL_USERNAME: str
     EMAIL_PASSWORD: str
     EMAIL_FROM: str
+    FRONTEND_BASE_URL: str
     BASE_URL: str
     SMTP_FROM_EMAIL: str
     SMTP_SERVER: str

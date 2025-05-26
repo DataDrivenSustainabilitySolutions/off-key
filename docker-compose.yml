@@ -1,5 +1,4 @@
 services:
-
   postgres:
     image: timescale/timescaledb:latest-pg15
     container_name: postgres_database
@@ -12,7 +11,7 @@ services:
     networks:
       - app-network
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -30,21 +29,21 @@ services:
       - app-network
     restart: always
     healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost:8000/health" ]
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 10s
       retries: 5
 
   frontend:
-     build: ./frontend
-     container_name: react_frontend
-     env_file: .env
-     ports:
-       - "${FRONTEND_PORT}:5173"
-     depends_on:
-       - api
-     volumes:
-       - ./frontend:/src
-       - /src/node_modules  # Prevent conflicts
+    build: ./frontend
+    container_name: react_frontend
+    env_file: .env
+    ports:
+      - "${FRONTEND_PORT}:5173"
+    depends_on:
+      - api
+    volumes:
+      - ./frontend:/src
+      - /src/node_modules  # Prevent conflicts
 
   mailpit:
     image: axllent/mailpit:latest
@@ -53,10 +52,15 @@ services:
     volumes:
       - ./data:/data
     ports:
+
+      - "8025:8025" # Web UI
+      - "1025:1025" # SMTP port
+
       - '8025:8025'  # Web UI
       - '1025:1025'  # SMTP port
     networks:
     - app-network
+
 
 networks:
   app-network:

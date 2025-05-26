@@ -1,9 +1,21 @@
-# Yarn
-.lock
-
-# IDE
+# IDE % System
 .idea
 .vscode
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+.DS_Store
+
+# Local environment files
+*.local
+
+# Logs
+logs
+yarn-debug.log*
+pnpm-debug.log*
+lerna-debug.log*
 
 # Node.js
 node_modules/
@@ -11,6 +23,9 @@ npm-debug.log*
 yarn-error.log*
 .pnp/
 .pnp.js
+node_modules
+dist
+dist-ssr
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

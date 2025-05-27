@@ -37,7 +37,7 @@ interface combined_data {
   value2: number | null;
 }
 
-export default function ChargerTable() {
+export default function Favourites() {
   const [data, setData] = useState<combined_data[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
@@ -62,10 +62,18 @@ export default function ChargerTable() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        // Synchronisiere die Charger-Daten
+        // 1. Lade Favoriten von user_id = 1
+        const favoritesRes = await axios.get<string[]>(
+          `http://localhost:8000/v1/favorites?user_id=1`
+        );
+        const favoriteIds = favoritesRes.data;
+        setFavoriteChargerIds(favoriteIds);
+
+        // 2. Synchronisiere Charger-Daten
         await axios.post("http://localhost:8000/v1/chargers/sync", null, {
           timeout: 1500,
         });
+<<<<<<< HEAD:frontend/src/pages/List.tsx
   
         // Hole die Basisdaten aller verfügbaren Charger
         const chargerRes = await axios.get<Charger[]>(
@@ -80,6 +88,21 @@ export default function ChargerTable() {
         setFavoriteChargerIds(favoritesRes.data);
   
         // Hole Telemetriedaten für jeden Charger
+=======
+
+        // 3. Lade ALLE Charger
+        const chargerRes = await axios.get<Charger[]>(
+          "http://localhost:8000/v1/chargers/available"
+        );
+        const allChargers = chargerRes.data;
+
+        // 4. Filtere nur die Charger, die in den Favoriten enthalten sind
+        const chargers = allChargers.filter((c) =>
+          favoriteIds.includes(c.charger_id)
+        );
+
+        // 5. Hole Telemetriedaten für die favorisierten Charger
+>>>>>>> origin/main:frontend/src/pages/Favourites.tsx
         const combined_data = await Promise.all(
           chargers.map(async (charger) => {
             try {
@@ -91,10 +114,17 @@ export default function ChargerTable() {
                   `http://localhost:8000/v1/telemetry/${charger.charger_id}/controllertemperaturecpu-thermal`
                 ),
               ]);
+<<<<<<< HEAD:frontend/src/pages/List.tsx
   
               const value1 = value1Res.data[0]?.value ?? null;
               const value2 = value2Res.data[0]?.value ?? null;
   
+=======
+
+              const value1 = value1Res.data[0]?.value ?? null;
+              const value2 = value2Res.data[0]?.value ?? null;
+
+>>>>>>> origin/main:frontend/src/pages/Favourites.tsx
               return {
                 charger_id: charger.charger_id,
                 charger_name: charger.charger_name,
@@ -121,7 +151,11 @@ export default function ChargerTable() {
             }
           })
         );
+<<<<<<< HEAD:frontend/src/pages/List.tsx
   
+=======
+
+>>>>>>> origin/main:frontend/src/pages/Favourites.tsx
         setData(combined_data);
       } catch (err) {
         console.error("Fehler beim Laden der Daten:", err);

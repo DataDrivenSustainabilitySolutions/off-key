@@ -1,7 +1,7 @@
-import React from 'react';
+import React from "react";
 //import { Routes, Route, Link } from 'react-router-dom';
 //import { Button } from '@/components/ui/button';
-import { NavigationBar } from "@/components/NavigationBar";
+// import { NavigationBar } from "@/components/NavigationBar";
 import { Hero } from "@/components/Hero";
 //import { CallToAction } from "@/components/CallToAction";
 //import { FAQ } from "@/components/FAQ";
@@ -11,7 +11,7 @@ import { Hero } from "@/components/Hero";
 const Default: React.FC = () => {
   return (
     <>
-      <NavigationBar />
+      {/* <NavigationBar /> */}
       <Hero />
     </>
   );

@@ -1,4 +1,5 @@
 services:
+
   postgres:
     image: timescale/timescaledb:latest-pg15
     container_name: postgres_database
@@ -52,15 +53,11 @@ services:
     volumes:
       - ./data:/data
     ports:
-
       - "8025:8025" # Web UI
       - "1025:1025" # SMTP port
 
-      - '8025:8025'  # Web UI
-      - '1025:1025'  # SMTP port
     networks:
     - app-network
-
 
 networks:
   app-network:

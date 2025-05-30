@@ -281,7 +281,7 @@ export default function ChargerTable() {
                     className="ml-auto text-xl"
                     aria-label="Favorisieren"
                   >
-                    {favoriteChargerIds.includes(card.charger_id) ? "⭐" : "☆"}
+                    {favoriteChargerIds.includes(card.charger_id) ? "★" : "✩"}
                   </button>
                 </CardFooter>
               </Card>
@@ -345,7 +345,7 @@ export default function ChargerTable() {
                       className="text-xl"
                       aria-label="Favorisieren"
                     >
-                      {favoriteChargerIds.includes(c.charger_id) ? "⭐" : "☆"}
+                      {favoriteChargerIds.includes(c.charger_id) ? "★" : "✩"}
                     </button>
                   </TableCell>
                 </TableRow>

@@ -13,46 +13,49 @@ import { AuthProvider } from "@/auth/AuthContext";
 import { ProtectedRoute } from "./auth/ProtectedRoute";
 import Landingpage from "./pages/Landingpage";
 import Favourites from "./pages/Favourites";
+import { FetchProvider } from "./dataFetch/FetchContext";
 
 const App: React.FC = () => {
   return (
     <ThemeProvider defaultTheme="system" storageKey="vite-ui-theme">
       <AuthProvider>
         <BrowserRouter>
-          <Routes>
-            {/* <Route path="/" element={<Default />} /> */}
-            <Route path="/login" element={<Login />} />
-            <Route path="/register" element={<Registration />} />
-            <Route path="/verify" element={<Verification />} />
-            <Route path="/forgot-password" element={<ForgotPassword />} />
-            <Route path="/reset-password" element={<ResetPassword />} />
+          <FetchProvider>
+            <Routes>
+              {/* <Route path="/" element={<Default />} /> */}
+              <Route path="/login" element={<Login />} />
+              <Route path="/register" element={<Registration />} />
+              <Route path="/verify" element={<Verification />} />
+              <Route path="/forgot-password" element={<ForgotPassword />} />
+              <Route path="/reset-password" element={<ResetPassword />} />
 
-            {/* GESCHÜTZTE ROUTE */}
-            <Route
-              path="/"
-              element={
-                <ProtectedRoute>
-                  <Landingpage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/details/:charger_id"
-              element={
-                <ProtectedRoute>
-                  <Details />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/favourites"
-              element={
-                <ProtectedRoute>
-                  <Favourites />
-                </ProtectedRoute>
-              }
-            />
-          </Routes>
+              {/* GESCHÜTZTE ROUTE */}
+              <Route
+                path="/"
+                element={
+                  <ProtectedRoute>
+                    <Landingpage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/details/:chargerId"
+                element={
+                  <ProtectedRoute>
+                    <Details />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/favourites"
+                element={
+                  <ProtectedRoute>
+                    <Favourites />
+                  </ProtectedRoute>
+                }
+              />
+            </Routes>
+          </FetchProvider>
         </BrowserRouter>
       </AuthProvider>
     </ThemeProvider>

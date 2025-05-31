@@ -18,28 +18,12 @@ import {
   // Bar,
   // Rectangle,
 } from "recharts";
-import { useEffect, useRef, useState } from "react";
+import { useState, useEffect } from "react";
 import { useParams } from "react-router-dom";
-import axios from "axios";
 import { format } from "date-fns";
 import { Popover } from "@/components/ui/popover";
 import { NavigationBar } from "@/components/NavigationBar";
-
-// import {
-//   Table,
-//   TableBody,
-//   TableCaption,
-//   TableCell,
-//   TableHead,
-//   TableHeader,
-//   TableRow,
-// } from "@/components/ui/table";
-
-//interface for CPU USage and Thermal
-interface Cpu {
-  timestamp: string;
-  value: number;
-}
+import { useFetch, Cpu } from "@/dataFetch/FetchContext";
 
 const Details: React.FC = () => {
   const [collapsedCard, setCollapsedCard] = useState<Record<string, boolean>>({
@@ -49,118 +33,40 @@ const Details: React.FC = () => {
     CpuUsageCard: false,
     CpuThermalCard: false,
   });
-  const [, setSearchError] = useState(false);
-  const { charger_id } = useParams();
-  const [controllerCpuUsageKey, setControllerCpuUsageKey] = useState<string>();
-  const [
-    controllertemperaturecpu_thermalKey,
-    setControllertemperaturecpu_thermalKey,
-  ] = useState<string>();
+  const { chargerId } = useParams<{ chargerId: string }>();
+
   const [fromDateUsage, setFromDateUsage] = useState<Date>();
   const [fromDateThermal, setFromDateThermal] = useState<Date>();
   const [toDateUsage, setToDateUsage] = useState<Date>();
   const [toDateThermal, setToDateThermal] = useState<Date>();
-  const [controllerCpuUsageData, setControllerCpuUsageData] = useState<Cpu[]>(
-    []
-  );
-  const [
-    controllertemperaturecpu_thermalData,
-    setControllertemperaturecpu_thermalData,
-  ] = useState<Cpu[]>([]);
-  //redZones in the Diagram Params: 1. Dataarray, 2. value where the Zone gets red
+
+  const {
+    cpuUsageMap,
+    cpuThermalMap,
+    loadCpuUsage,
+    loadCpuThermal,
+    // searchError,
+  } = useFetch();
+
+  // Wenn chargerId sich ändert, Telemetrie nachladen
+  useEffect(() => {
+    if (!chargerId) return;
+    loadCpuUsage(chargerId);
+    loadCpuThermal(chargerId);
+  }, [chargerId, loadCpuUsage, loadCpuThermal]);
+
+  const controllerCpuUsageData: Cpu[] = cpuUsageMap[chargerId!] || [];
+  const controllertemperaturecpu_thermalData: Cpu[] =
+    cpuThermalMap[chargerId!] || [];
+
+  //redZones in the Diagram Params: 1. Dataarray, 2. value wo Zone rot wird
   const redZonesCpuUsage = useRedZones(controllerCpuUsageData, 7);
   const redZonesCpuThermal = useRedZones(
     controllertemperaturecpu_thermalData,
     43
   );
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // 1) only at mount or when charger_id is changing: get Telemetry types
-  useEffect(() => {
-    if (!charger_id) return;
-
-    async function getTelemetryTypes() {
-      try {
-        const response = await axios.get(
-          `http://127.0.0.1:8000/v1/telemetry/${charger_id}/type`
-        );
-        const results: string[] = response.data;
-        // Search in results for the 2 CPU Keys
-        const cpuUsageKey = results.find(
-          (t) => t.toLowerCase() === "controllercpuusage"
-        );
-        const cpuThermalKey = results.find(
-          (t) => t.toLowerCase() === "controllertemperaturecpu-thermal"
-        );
-
-        if (cpuUsageKey && cpuThermalKey) {
-          setControllerCpuUsageKey(cpuUsageKey);
-          setControllertemperaturecpu_thermalKey(cpuThermalKey);
-          setSearchError(false);
-        } else {
-          console.warn(
-            "Telemetrie-Keys nicht gefunden:",
-            { cpuUsageKey, cpuThermalKey },
-            "in",
-            results
-          );
-          setSearchError(true);
-        }
-      } catch (error) {
-        console.error("Fehler beim Laden der Telemetrie-Typen:", error);
-        setSearchError(true);
-      }
-    }
-
-    getTelemetryTypes();
-  }, [charger_id]);
-
-  // 2) after charger_id, controllerCpuUsage and controllertemperaturecpu_thermal are set up:
-  // first fetch then every 20 seconds repeat
-  useEffect(() => {
-    if (
-      !charger_id ||
-      !controllerCpuUsageKey ||
-      !controllertemperaturecpu_thermalKey
-    ) {
-      return;
-    }
-
-    async function fetchTelemetryData() {
-      try {
-        // CPU Usage
-        const respUsage = await axios.get(
-          `http://127.0.0.1:8000/v1/telemetry/${charger_id}/${controllerCpuUsageKey}?limit=1000`
-        );
-        setControllerCpuUsageData(respUsage.data);
-        console.log("CPU Usage:", respUsage.data);
-
-        // CPU Thermal
-        const respThermal = await axios.get(
-          `http://127.0.0.1:8000/v1/telemetry/${charger_id}/${controllertemperaturecpu_thermalKey}?limit=1000`
-        );
-        setControllertemperaturecpu_thermalData(respThermal.data);
-        console.log("CPU Thermal:", respThermal.data);
-      } catch (error) {
-        console.error("Fehler beim Daten-Fetch:", error);
-        setSearchError(true);
-      }
-    }
-
-    // initial fetch
-    fetchTelemetryData();
-
-    //Datafetch every 20 seconds
-    intervalRef.current = setInterval(fetchTelemetryData, 20000);
-
-    return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-      }
-    };
-  }, [charger_id, controllerCpuUsageKey, controllertemperaturecpu_thermalKey]);
-
-  //Function to minimize the Cards
+  //Function to minimize Karten
   const minimizeCards = (key: string) => {
     setCollapsedCard((prev) => ({
       ...prev,
@@ -168,7 +74,7 @@ const Details: React.FC = () => {
     }));
   };
 
-  //Function to format the Timestamps from the Time Rows
+  //Function, um Timestamps formatiert anzuzeigen
   const formatDateMultiline = (value: string) => {
     const date = new Date(value);
     const day = String(date.getDate()).padStart(2, "0");
@@ -179,7 +85,7 @@ const Details: React.FC = () => {
     return `${day}.${month}, ${hour}:${minute}:${second}`;
   };
 
-  //function to filter the Cpu Usage with the Dates the user selected in the Navbar for the Diagram
+  // Filter für CPU Usage basierend auf von-/bis-Daten
   const filteredDataCpuUsage = controllerCpuUsageData.filter((cpu) => {
     const t = new Date(cpu.timestamp).getTime();
     const f = fromDateUsage?.getTime() ?? -Infinity;
@@ -187,7 +93,7 @@ const Details: React.FC = () => {
     return t >= f && t <= u;
   });
 
-  //function to filter the Cpu Thermal with the Dates the user selected in the Navbar for the Diagram
+  // Filter für CPU Thermal basierend auf von-/bis-Daten
   const filteredDataCpuThermal = controllertemperaturecpu_thermalData.filter(
     (d) => {
       const t = new Date(d.timestamp).getTime();
@@ -196,7 +102,7 @@ const Details: React.FC = () => {
       return t >= f && t <= u;
     }
   );
-  //function for the buttons to handle last minute and last 10 minuts for CPU Usage and Thermal
+  // Hilfsfunktion für "letzte X Minuten"
   function handleLastMinutes(
     dataArray: Cpu[],
     setFrom: React.Dispatch<React.SetStateAction<Date | undefined>>,
@@ -210,7 +116,7 @@ const Details: React.FC = () => {
     setFrom(new Date(minTime));
     setTo(new Date(maxTime));
   }
-  // Use this for last 30 minutes Button in the Usage Card - change the number for another timespan in minutes
+  // Button-Funktionen für letzte 30 Minuten und letzte Stunde
   const usageLast30Min = () =>
     handleLastMinutes(
       controllerCpuUsageData,
@@ -218,7 +124,6 @@ const Details: React.FC = () => {
       setToDateUsage,
       30
     );
-  // Use this for last Hour Button in the Usage Card - change the number for another timespan in minutes
   const usageLastHour = () =>
     handleLastMinutes(
       controllerCpuUsageData,
@@ -226,7 +131,6 @@ const Details: React.FC = () => {
       setToDateUsage,
       60
     );
-  // Use this for last 30 minutes Button in the thermal Card - change the number for another timespan in minutes
   const thermalLast30Min = () =>
     handleLastMinutes(
       controllertemperaturecpu_thermalData,
@@ -234,7 +138,6 @@ const Details: React.FC = () => {
       setToDateThermal,
       30
     );
-  // Use this for last Hour Button in the Thermal Card - change the number for another timespan in minutes
   const thermalLastHour = () =>
     handleLastMinutes(
       controllertemperaturecpu_thermalData,
@@ -248,7 +151,7 @@ const Details: React.FC = () => {
       <NavigationBar />
       <div className="flex mt-5">
         <Card className="ml-16 bg-white shadow-md w-11/12 min-h-11/12 dark:bg-neutral-950">
-          <CardTitle className="ml-5">Charger {charger_id}</CardTitle>
+          <CardTitle className="ml-5">Charger {chargerId}</CardTitle>
           <CardContent>
             <div className="flex justify-between">
               {/* Short Info Cards
@@ -534,7 +437,7 @@ const Details: React.FC = () => {
                             key={`dot-${payload.timestamp}`}
                             cx={cx}
                             cy={cy}
-                            //if value is above the border dots geting 0 radius so they are invisible else they are red
+                            //if value is above the border dots geting 0 radius so they are invisible else sie sind rot
                             r={border ? 2 : 0}
                             fill={border ? "red" : "transparent"}
                             stroke="none"
@@ -687,7 +590,7 @@ const Details: React.FC = () => {
                             key={`dot-${payload.timestamp}`}
                             cx={cx}
                             cy={cy}
-                            //if value is above the border dots geting 0 radius so they are invisible else they are red
+                            //if value is above the border dots geting 0 radius so sie invisible else sie rot
                             r={border ? 2 : 0}
                             fill={border ? "red" : "transparent"}
                             stroke="none"

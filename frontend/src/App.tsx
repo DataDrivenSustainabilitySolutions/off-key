@@ -13,6 +13,8 @@ import { AuthProvider } from "@/auth/AuthContext";
 import { ProtectedRoute } from "./auth/ProtectedRoute";
 import Landingpage from "./pages/Landingpage";
 import Favourites from "./pages/Favourites";
+import Account from "./pages/Account";
+import Anomaly from "./pages/Anomalies";
 
 const App: React.FC = () => {
   return (
@@ -49,6 +51,22 @@ const App: React.FC = () => {
               element={
                 <ProtectedRoute>
                   <Favourites />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/account"
+              element={
+                <ProtectedRoute>
+                  <Account />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/anomalies"
+              element={
+                <ProtectedRoute>
+                  <Anomaly />
                 </ProtectedRoute>
               }
             />

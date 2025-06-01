@@ -1,6 +1,8 @@
 from sqlalchemy import (
     Column,
     Enum,
+    Index,
+    PrimaryKeyConstraint,
     Text,
     Boolean,
     DateTime,
@@ -121,7 +123,7 @@ class Favorite(Base):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
 
 
-"""
+
 class Anomaly(Base):
     __tablename__ = "anomalies"
 
@@ -141,4 +143,3 @@ event.listen(
     "after_create",
     DDL(f"SELECT create_hypertable('{Anomaly.__tablename__}', 'timestamp');"),
 )
-"""

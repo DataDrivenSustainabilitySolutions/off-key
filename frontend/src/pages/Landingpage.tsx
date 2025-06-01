@@ -29,12 +29,6 @@ interface Charger {
   created: string;
 }
 
-interface telemetry_data {
-  charger_id: string;
-  timestamp: string;
-  value: number;
-}
-
 interface combined_data {
   charger_id: string;
   charger_name: string | null;
@@ -66,77 +60,44 @@ export default function ChargerTable() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        // Charger-Sync auslösen
-        await axios.post("http://localhost:8000/v1/chargers/sync", null, {
-          timeout: 1500,
-        });
-
-        // Alle Charger laden
+        //  Telemetry-Sync asynchron im Hintergrund
+        axios
+          .post("http://localhost:8000/v1/chargers/sync", null, { timeout: 1500 })
+          .then(() => console.log("Charger Sync gestartet"))
+          .catch((err) => console.warn("Charger Sync Fehler:", err));
+  
+        // Charger-Daten laden
         const chargerRes = await axios.get<Charger[]>(
           "http://localhost:8000/v1/chargers/available"
         );
         const chargers = chargerRes.data;
-
-        // Favoriten des Nutzers laden
+  
+        // Favoriten laden
         const favoritesRes = await axios.get<string[]>(
           "http://localhost:8000/v1/favorites?user_id=1"
         );
         setFavoriteChargerIds(favoritesRes.data);
-
-        // Telemetriedaten abrufen
-        const combined_data = await Promise.all(
-          chargers.map(async (charger) => {
-            try {
-              const [value1Res, value2Res] = await Promise.all([
-                axios.get<telemetry_data[]>(
-                  `http://localhost:8000/v1/telemetry/${charger.charger_id}/controllerCpuUsage`
-                ),
-                axios.get<telemetry_data[]>(
-                  `http://localhost:8000/v1/telemetry/${charger.charger_id}/controllertemperaturecpu-thermal`
-                ),
-              ]);
-
-              const value1 = value1Res.data[0]?.value ?? null;
-              const value2 = value2Res.data[0]?.value ?? null;
-
-              return {
-                charger_id: charger.charger_id,
-                charger_name: charger.charger_name,
-                online: charger.online,
-                state: charger.state,
-                last_seen: charger.last_seen,
-                value1,
-                value2,
-              };
-            } catch (err) {
-              console.warn(
-                `Fehler bei Werten für Charger ${charger.charger_id}`,
-                err
-              );
-              return {
-                charger_id: charger.charger_id,
-                charger_name: charger.charger_name,
-                online: charger.online,
-                state: charger.state,
-                last_seen: charger.last_seen,
-                value1: null,
-                value2: null,
-              };
-            }
-          })
-        );
-
-        setData(combined_data);
+  
+        // Daten kombinieren (ohne Telemetrie)
+        const combined = chargers.map((charger) => ({
+          charger_id: charger.charger_id,
+          charger_name: charger.charger_name,
+          online: charger.online,
+          state: charger.state,
+          last_seen: charger.last_seen,
+          value1: null,
+          value2: null,
+        }));
+  
+        setData(combined);
       } catch (err) {
         console.error("Fehler beim Laden der Daten:", err);
       } finally {
         setLoading(false);
       }
     };
-
+  
     fetchData();
-    const interval = setInterval(fetchData, 10000);
-    return () => clearInterval(interval);
   }, []);
 
   const filteredData = data
@@ -257,16 +218,6 @@ export default function ChargerTable() {
                       {card.online ? "active" : "offline"}
                     </span>
                   </p>
-                  <p>
-                    CPU Usage:{" "}
-                    {card.value1 !== null ? `${card.value1.toFixed(2)} %` : "-"}
-                  </p>
-                  <p>
-                    CPU Temp:{" "}
-                    {card.value2 !== null
-                      ? `${card.value2.toFixed(2)} °C`
-                      : "-"}
-                  </p>
                   <p>Last Seen: {new Date(card.last_seen).toLocaleString()}</p>
                 </CardContent>
                 <CardFooter>
@@ -294,8 +245,6 @@ export default function ChargerTable() {
                 <TableHead>Charger ID</TableHead>
                 <TableHead>Name</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead>Latest CPU Usage</TableHead>
-                <TableHead>Latest CPU Temp</TableHead>
                 <TableHead>Last Seen</TableHead>
                 <TableHead>Favorit</TableHead>
               </TableRow>
@@ -329,12 +278,6 @@ export default function ChargerTable() {
                     >
                       {c.online ? "active" : "offline"}
                     </span>
-                  </TableCell>
-                  <TableCell>
-                    {c.value1 !== null ? `${c.value1.toFixed(2)} %` : "-"}
-                  </TableCell>
-                  <TableCell>
-                    {c.value2 !== null ? `${c.value2.toFixed(2)} °C` : "-"}
                   </TableCell>
                   <TableCell>
                     {new Date(c.last_seen).toLocaleString()}

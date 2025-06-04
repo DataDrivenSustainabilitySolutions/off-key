@@ -1,6 +1,5 @@
 import React, {
   createContext,
-  useContext,
   useState,
   useCallback,
   ReactNode,
@@ -37,11 +36,9 @@ export interface CombinedData {
   online: boolean;
   state: string;
   last_seen: string;
-  value1: number | null;
-  value2: number | null;
 }
 
-interface FetchContextType {
+export interface FetchContextType {
   //Interface for Axios Functions for direct use in Components
   getTelemetryTypes: (chargerId: string) => Promise<string[]>;
   getTelemetryData: (chargerId: string, telemetryKey: string) => Promise<Cpu[]>;
@@ -71,7 +68,7 @@ interface FetchContextType {
   searchError: boolean;
 }
 
-const FetchContext = createContext<FetchContextType | undefined>(undefined);
+export const FetchContext = createContext<FetchContextType | undefined>(undefined);
 
 export const FetchProvider: React.FC<{ children: ReactNode }> = ({
   children,
@@ -192,7 +189,7 @@ export const FetchProvider: React.FC<{ children: ReactNode }> = ({
   const syncTelemetry = useCallback(async (): Promise<void> => {
     try {
       await axios.post(
-        "http://127.0.0.1:8000/v1/telemetry/sync?limit=1000",
+        "http://127.0.0.1:8000/v1/telemetry/sync?limit=10000",
         null
       );
     } catch (err) {
@@ -217,8 +214,8 @@ export const FetchProvider: React.FC<{ children: ReactNode }> = ({
   const loadCpuUsage = useCallback(
     async (chargerId: string) => {
       try {
-        //Sync Telemetry first
-        await syncTelemetry();
+        // //Sync Telemetry first
+        // await syncTelemetryShort();
 
         // now get the Keys
         const types = await getTelemetryTypes(chargerId);
@@ -254,8 +251,8 @@ export const FetchProvider: React.FC<{ children: ReactNode }> = ({
   const loadCpuThermal = useCallback(
     async (chargerId: string) => {
       try {
-        //Sync Telemetry first
-        await syncTelemetry();
+        // //Sync Telemetry first
+        // await syncTelemetryShort();
 
         // now get the Keys
         const types = await getTelemetryTypes(chargerId);
@@ -314,12 +311,4 @@ export const FetchProvider: React.FC<{ children: ReactNode }> = ({
   );
 };
 
-export const useFetch = (): FetchContextType => {
-  const context = useContext(FetchContext);
-  if (!context) {
-    throw new Error(
-      "useFetch muss innerhalb eines FetchProvider verwendet werden"
-    );
-  }
-  return context;
-};
+

@@ -23,7 +23,8 @@ import { useParams } from "react-router-dom";
 import { format } from "date-fns";
 import { Popover } from "@/components/ui/popover";
 import { NavigationBar } from "@/components/NavigationBar";
-import { useFetch, Cpu } from "@/dataFetch/FetchContext";
+import { Cpu } from "@/dataFetch/FetchContext";
+import { useFetch} from "@/dataFetch/UseFetch";
 
 const Details: React.FC = () => {
   const [collapsedCard, setCollapsedCard] = useState<Record<string, boolean>>({
@@ -45,15 +46,26 @@ const Details: React.FC = () => {
     cpuThermalMap,
     loadCpuUsage,
     loadCpuThermal,
+    syncTelemetryShort
     // searchError,
   } = useFetch();
 
-  // Wenn chargerId sich ändert, Telemetrie nachladen
+// In einem gewissen Intervall neue telemetry daten fetchen
   useEffect(() => {
-    if (!chargerId) return;
+  if (!chargerId) return;
+
+  loadCpuUsage(chargerId);
+  loadCpuThermal(chargerId);
+
+  const interval = setInterval(() => {
+    syncTelemetryShort();
     loadCpuUsage(chargerId);
     loadCpuThermal(chargerId);
-  }, [chargerId, loadCpuUsage, loadCpuThermal]);
+  }, 60 * 1000); // Alle 60s
+
+  // Cleanup bei Unmount oder Änderung
+  return () => clearInterval(interval);
+}, [chargerId, syncTelemetryShort]);
 
   const controllerCpuUsageData: Cpu[] = cpuUsageMap[chargerId!] || [];
   const controllertemperaturecpu_thermalData: Cpu[] =

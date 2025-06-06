@@ -47,10 +47,9 @@ const Details: React.FC = () => {
     loadCpuUsage,
     loadCpuThermal,
     syncTelemetryShort
-    // searchError,
   } = useFetch();
 
-// In einem gewissen Intervall neue telemetry daten fetchen
+// fetch new telemtry data in a set interval
   useEffect(() => {
   if (!chargerId) return;
 
@@ -61,9 +60,9 @@ const Details: React.FC = () => {
     syncTelemetryShort();
     loadCpuUsage(chargerId);
     loadCpuThermal(chargerId);
-  }, 60 * 1000); // Alle 60s
+  }, 60 * 1000); // every 60s
 
-  // Cleanup bei Unmount oder Änderung
+  // Cleanup on unmount or change
   return () => clearInterval(interval);
 }, [chargerId, syncTelemetryShort]);
 
@@ -71,14 +70,14 @@ const Details: React.FC = () => {
   const controllertemperaturecpu_thermalData: Cpu[] =
     cpuThermalMap[chargerId!] || [];
 
-  //redZones in the Diagram Params: 1. Dataarray, 2. value wo Zone rot wird
+  //redZones in the Diagram Params: 1. Dataarray, 2. value where zone becomes red
   const redZonesCpuUsage = useRedZones(controllerCpuUsageData, 7);
   const redZonesCpuThermal = useRedZones(
     controllertemperaturecpu_thermalData,
     43
   );
 
-  //Function to minimize Karten
+  //Function to minimize cards
   const minimizeCards = (key: string) => {
     setCollapsedCard((prev) => ({
       ...prev,
@@ -86,7 +85,7 @@ const Details: React.FC = () => {
     }));
   };
 
-  //Function, um Timestamps formatiert anzuzeigen
+  //Function, to show formatted timestamps
   const formatDateMultiline = (value: string) => {
     const date = new Date(value);
     const day = String(date.getDate()).padStart(2, "0");
@@ -97,7 +96,7 @@ const Details: React.FC = () => {
     return `${day}.${month}, ${hour}:${minute}:${second}`;
   };
 
-  // Filter für CPU Usage basierend auf von-/bis-Daten
+  //filter for cpu usage bades on the set dates
   const filteredDataCpuUsage = controllerCpuUsageData.filter((cpu) => {
     const t = new Date(cpu.timestamp).getTime();
     const f = fromDateUsage?.getTime() ?? -Infinity;
@@ -105,7 +104,7 @@ const Details: React.FC = () => {
     return t >= f && t <= u;
   });
 
-  // Filter für CPU Thermal basierend auf von-/bis-Daten
+  // filter for cpu temp bades on the set dates
   const filteredDataCpuThermal = controllertemperaturecpu_thermalData.filter(
     (d) => {
       const t = new Date(d.timestamp).getTime();
@@ -114,7 +113,7 @@ const Details: React.FC = () => {
       return t >= f && t <= u;
     }
   );
-  // Hilfsfunktion für "letzte X Minuten"
+  // funtion to handle "letzte X Minuten"
   function handleLastMinutes(
     dataArray: Cpu[],
     setFrom: React.Dispatch<React.SetStateAction<Date | undefined>>,
@@ -128,7 +127,7 @@ const Details: React.FC = () => {
     setFrom(new Date(minTime));
     setTo(new Date(maxTime));
   }
-  // Button-Funktionen für letzte 30 Minuten und letzte Stunde
+  // buton function for last 30 minutes and last hour
   const usageLast30Min = () =>
     handleLastMinutes(
       controllerCpuUsageData,

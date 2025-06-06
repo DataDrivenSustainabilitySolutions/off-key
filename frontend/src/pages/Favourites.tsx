@@ -1,155 +1,65 @@
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { Switch } from "@/components/ui/switch";
 import { useEffect, useState } from "react";
-import axios from "axios";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
+import {
+  Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter,
+} from "@/components/ui/card";
 import { NavigationBar } from "@/components/NavigationBar";
+import { useFetch } from "@/dataFetch/UseFetch";
+import type { CombinedData } from "@/dataFetch/FetchContext"; 
 
-interface Charger {
-  charger_name: string | null;
-  last_seen: string;
-  online: boolean;
-  charger_id: string;
-  state: string;
-  created: string;
-}
-
-interface telemetry_data {
-  charger_id: string;
-  timestamp: string;
-  value: number;
-}
-
-interface combined_data {
-  charger_id: string;
-  charger_name: string | null;
-  online: boolean;
-  state: string;
-  last_seen: string;
-  value1: number | null;
-  value2: number | null;
-}
-
-export default function Favourites() {
-  const [data, setData] = useState<combined_data[]>([]);
+export default function ChargerTable() {
+  // State variables for UI and data handling
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState<
-    "all" | "online" | "offline"
-  >("all");
-  const countAll = data.length;
-  const countOnline = data.filter((c) => c.online).length;
-  const countOffline = data.filter((c) => !c.online).length;
+  const [statusFilter, setStatusFilter] = useState<"all" | "online" | "offline">("all");
   const [isCardsView, setIsCardsView] = useState(false);
-  const navigate = useNavigate();
   const [favoriteChargerIds, setFavoriteChargerIds] = useState<string[]>([]);
+  const [data, setData] = useState<CombinedData[]>([]); 
 
-  // Überprüfe, ob der Benutzer die Kartenansicht aktiviert hat. Wenn ja, navigiere zur Kartenansicht
-  const handleViewToggle = (checked: boolean) => {
-    setIsCardsView(checked);
-    if (checked) {
-      navigate("/cards");
-    }
-  };
+  // Fetch functions from FetchContext
+  const {
+    getAllChargers,
+    getCombinedChargerData,
+    toggleFavorite,
+    getFavorites,
+  } = useFetch();
 
+  // Load data on mount
   useEffect(() => {
-    const fetchData = async () => {
+    async function loadData() {
+      setLoading(true);
       try {
-        // 1. Lade Favoriten von user_id = 1
-        const favoritesRes = await axios.get<string[]>(
-          `http://localhost:8000/v1/favorites?user_id=1`
-        );
-        const favoriteIds = favoritesRes.data;
+        // Fetch favorite charger IDs for user 1
+        const favoriteIds = await getFavorites(1);
         setFavoriteChargerIds(favoriteIds);
 
-        // 2. Synchronisiere Charger-Daten
-        await axios.post("http://localhost:8000/v1/chargers/sync", null, {
-          timeout: 1500,
-        });
+        // Fetch all chargers and combine them with additional data
+        const chargers = await getAllChargers();
+        const combined = await getCombinedChargerData(chargers);
 
-        // 3. Lade ALLE Charger
-        const chargerRes = await axios.get<Charger[]>(
-          "http://localhost:8000/v1/chargers/available"
-        );
-        const allChargers = chargerRes.data;
-
-        // 4. Filtere nur die Charger, die in den Favoriten enthalten sind
-        const chargers = allChargers.filter((c) =>
+        // Filter only favorites for display
+        const favs = combined.filter((c) =>
           favoriteIds.includes(c.charger_id)
         );
-
-        // 5. Hole Telemetriedaten für die favorisierten Charger
-        const combined_data = await Promise.all(
-          chargers.map(async (charger) => {
-            try {
-              const [value1Res, value2Res] = await Promise.all([
-                axios.get<telemetry_data[]>(
-                  `http://localhost:8000/v1/telemetry/${charger.charger_id}/controllerCpuUsage`
-                ),
-                axios.get<telemetry_data[]>(
-                  `http://localhost:8000/v1/telemetry/${charger.charger_id}/controllertemperaturecpu-thermal`
-                ),
-              ]);
-
-              const value1 = value1Res.data[0]?.value ?? null;
-              const value2 = value2Res.data[0]?.value ?? null;
-
-              return {
-                charger_id: charger.charger_id,
-                charger_name: charger.charger_name,
-                online: charger.online,
-                state: charger.state,
-                last_seen: charger.last_seen,
-                value1,
-                value2,
-              };
-            } catch (err) {
-              console.warn(
-                `Fehler bei Werten für Charger ${charger.charger_id}`,
-                err
-              );
-              return {
-                charger_id: charger.charger_id,
-                charger_name: charger.charger_name,
-                online: charger.online,
-                state: charger.state,
-                last_seen: charger.last_seen,
-                value1: null,
-                value2: null,
-              };
-            }
-          })
-        );
-
-        setData(combined_data);
-      } catch (err) {
-        console.error("Fehler beim Laden der Daten:", err);
+        setData(favs);
       } finally {
         setLoading(false);
       }
-    };
+    }
+    loadData();
+  }, [getAllChargers, getCombinedChargerData, getFavorites]);
 
-    fetchData();
-    const interval = setInterval(fetchData, 10000);
-    return () => clearInterval(interval);
-  }, []);
-
+  // Filter chargers based on search input and status filter
   const filteredData = data
-    // Filtere die Daten basierend auf dem Suchbegriff
     .filter(
       (c) =>
         c.charger_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (c.charger_name?.toLowerCase().includes(searchTerm.toLowerCase()) ??
-          false)
+        (c.charger_name?.toLowerCase().includes(searchTerm.toLowerCase()) ?? false)
     )
-    // Filtere die Daten basierend auf dem Status-Filter
     .filter((c) => {
       if (statusFilter === "all") return true;
       if (statusFilter === "online") return c.online === true;
@@ -157,35 +67,31 @@ export default function Favourites() {
       return true;
     });
 
-  // Überprüfe ob der Favorit bereits gesetzt ist, wenn ja, entferne ihn. Wenn nicht, füge ihn hinzu
+  // Count filtered items for display in status filter
+  const countAll = filteredData.length;
+  const countOnline = filteredData.filter((c) => c.online).length;
+  const countOffline = filteredData.filter((c) => !c.online).length;
+
+  // Toggle between card and table view
+  const handleViewToggle = (checked: boolean) => {
+    setIsCardsView(checked);
+  };
+
+  // Toggle favorite status for a charger
   const handleToggleFavorite = async (chargerId: string) => {
     const isFavorite = favoriteChargerIds.includes(chargerId);
-    const updatedFavorites = isFavorite
-      ? favoriteChargerIds.filter((id) => id !== chargerId)
-      : [...favoriteChargerIds, chargerId];
-
-    // Aktualisiere den Zustand der Favoriten auf der UI
-    setFavoriteChargerIds(updatedFavorites);
+    setFavoriteChargerIds((prev) =>
+      isFavorite ? prev.filter((id) => id !== chargerId) : [...prev, chargerId]
+    );
 
     try {
-      // Wenn der Charger bereits ein Favorit ist, entferne ihn. Ansonsten füge ihn hinzu
-      if (isFavorite) {
-        // DELETE request
-        await axios.delete("http://localhost:8000/v1/favorites", {
-          data: {
-            charger_id: chargerId,
-            user_id: 1,
-          },
-        });
-      } else {
-        // POST request
-        await axios.post("http://localhost:8000/v1/favorites", {
-          charger_id: chargerId,
-          user_id: 1,
-        });
-      }
+      await toggleFavorite(chargerId, 1, isFavorite);
     } catch (err) {
-      console.error("Fehler beim Speichern des Favorits:", err);
+      console.error("Error saving favorite status:", err);
+      // Revert if API call fails
+      setFavoriteChargerIds((prev) =>
+        isFavorite ? [...prev, chargerId] : prev.filter((id) => id !== chargerId)
+      );
     }
   };
 
@@ -193,21 +99,18 @@ export default function Favourites() {
     <>
       <NavigationBar />
       <div className="p-6">
+        {/* Search + filter + view toggle */}
         <div className="mb-4 flex flex-wrap items-center justify-between gap-4">
-          {/* Suchleiste */}
           <input
             type="text"
-            placeholder="Nach Charger ID suchen..."
+            placeholder="Search for charger ID..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="p-2 border rounded w-full md:w-1/2"
           />
-
-          {/* Status-Filter Radio Buttons */}
           <div className="flex items-center gap-4">
-            <span className="font-medium whitespace-nowrap">
-              Ladesäulen Status:
-            </span>
+            <span className="font-medium whitespace-nowrap">Charger status:</span>
+            {/* Status filter radio buttons */}
             <label className="flex items-center gap-1">
               <input
                 type="radio"
@@ -215,7 +118,7 @@ export default function Favourites() {
                 checked={statusFilter === "all"}
                 onChange={() => setStatusFilter("all")}
               />
-              Alle ({countAll})
+              All ({countAll})
             </label>
             <label className="flex items-center gap-1">
               <input
@@ -224,7 +127,7 @@ export default function Favourites() {
                 checked={statusFilter === "online"}
                 onChange={() => setStatusFilter("online")}
               />
-              Aktiv ({countOnline})
+              Online ({countOnline})
             </label>
             <label className="flex items-center gap-1">
               <input
@@ -236,7 +139,7 @@ export default function Favourites() {
               Offline ({countOffline})
             </label>
           </div>
-          {/* Ansichts-Button */}
+          {/* View toggle switch */}
           <div className="flex items-center gap-2">
             <span>Table</span>
             <Switch
@@ -247,9 +150,51 @@ export default function Favourites() {
             <span>Cards</span>
           </div>
         </div>
-        {/* Lade Daten oder zeige Tabelle */}
+
+        {/* Conditional rendering for loading, cards or table */}
         {loading ? (
-          <p className="text-gray-500">Lade Daten...</p>
+          <p className="text-gray-500">Loading data...</p>
+        ) : isCardsView ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            {filteredData.map((card, index) => (
+              <Card key={index}>
+                <CardHeader>
+                  <CardTitle>{card.charger_id}</CardTitle>
+                  <CardDescription>{card.charger_name || "No name"}</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <p>
+                    Status:{" "}
+                    <span
+                      className={
+                        card.online
+                          ? "text-green-600 font-medium"
+                          : "text-red-600 font-medium"
+                      }
+                    >
+                      {card.online ? "active" : "offline"}
+                    </span>
+                  </p>
+                  <p>Last Seen: {new Date(card.last_seen).toLocaleString()}</p>
+                </CardContent>
+                <CardFooter>
+                  <Link
+                    to={`/details/${card.charger_id}`}
+                    className="text-sm text-primary underline"
+                  >
+                    More details
+                  </Link>
+                  <button
+                    onClick={() => handleToggleFavorite(card.charger_id)}
+                    className="ml-auto text-xl text-black"
+                    aria-label="Toggle favorite"
+                  >
+                    {favoriteChargerIds.includes(card.charger_id) ? "★" : "☆"}
+                  </button>
+                </CardFooter>
+              </Card>
+            ))}
+          </div>
         ) : (
           <Table>
             <TableHeader>
@@ -257,10 +202,8 @@ export default function Favourites() {
                 <TableHead>Charger ID</TableHead>
                 <TableHead>Name</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead>Latest CPU Usage</TableHead>
-                <TableHead>Latest CPU Temp</TableHead>
                 <TableHead>Last Seen</TableHead>
-                <TableHead>Favorit</TableHead>
+                <TableHead>Favorite</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -268,7 +211,7 @@ export default function Favourites() {
                 <TableRow key={c.charger_id}>
                   <TableCell>
                     <Link
-                      to={`/charger/${c.charger_id}`}
+                      to={`/details/${c.charger_id}`}
                       className="text-black-600 hover:underline"
                     >
                       {c.charger_id}
@@ -276,7 +219,7 @@ export default function Favourites() {
                   </TableCell>
                   <TableCell>
                     <Link
-                      to={`/charger/${c.charger_id}`}
+                      to={`/details/${c.charger_id}`}
                       className="text-black-600 hover:underline"
                     >
                       {c.charger_name || "N/A"}
@@ -293,22 +236,14 @@ export default function Favourites() {
                       {c.online ? "active" : "offline"}
                     </span>
                   </TableCell>
-                  <TableCell>
-                    {c.value1 !== null ? `${c.value1.toFixed(2)} %` : "-"}
-                  </TableCell>
-                  <TableCell>
-                    {c.value2 !== null ? `${c.value2.toFixed(2)} °C` : "-"}
-                  </TableCell>
-                  <TableCell>
-                    {new Date(c.last_seen).toLocaleString()}
-                  </TableCell>
+                  <TableCell>{new Date(c.last_seen).toLocaleString()}</TableCell>
                   <TableCell>
                     <button
                       onClick={() => handleToggleFavorite(c.charger_id)}
-                      className="text-xl"
-                      aria-label="Favorisieren"
+                      className="text-xl text-black"
+                      aria-label="Toggle favorite"
                     >
-                      {favoriteChargerIds.includes(c.charger_id) ? "⭐" : "☆"}
+                      {favoriteChargerIds.includes(c.charger_id) ? "★" : "☆"}
                     </button>
                   </TableCell>
                 </TableRow>

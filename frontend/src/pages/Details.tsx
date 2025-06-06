@@ -19,12 +19,13 @@ import {
   // Rectangle,
 } from "recharts";
 import { useState, useEffect } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { format } from "date-fns";
 import { Popover } from "@/components/ui/popover";
 import { NavigationBar } from "@/components/NavigationBar";
 import { Cpu } from "@/dataFetch/FetchContext";
-import { useFetch} from "@/dataFetch/UseFetch";
+import { useFetch } from "@/dataFetch/UseFetch";
+import { Button } from "@/components/ui/button";
 
 const Details: React.FC = () => {
   const [collapsedCard, setCollapsedCard] = useState<Record<string, boolean>>({
@@ -41,30 +42,31 @@ const Details: React.FC = () => {
   const [toDateUsage, setToDateUsage] = useState<Date>();
   const [toDateThermal, setToDateThermal] = useState<Date>();
 
+  //Import functions and Datamaps from FetchContext
   const {
     cpuUsageMap,
     cpuThermalMap,
     loadCpuUsage,
     loadCpuThermal,
-    syncTelemetryShort
+    syncTelemetryShort,
   } = useFetch();
 
-// fetch new telemtry data in a set interval
+  // fetch new telemtry data in a set interval
   useEffect(() => {
-  if (!chargerId) return;
+    if (!chargerId) return;
 
-  loadCpuUsage(chargerId);
-  loadCpuThermal(chargerId);
-
-  const interval = setInterval(() => {
-    syncTelemetryShort();
     loadCpuUsage(chargerId);
     loadCpuThermal(chargerId);
-  }, 60 * 1000); // every 60s
 
-  // Cleanup on unmount or change
-  return () => clearInterval(interval);
-}, [chargerId, syncTelemetryShort]);
+    const interval = setInterval(() => {
+      syncTelemetryShort();
+      loadCpuUsage(chargerId);
+      loadCpuThermal(chargerId);
+    }, 60 * 1000); // every 60s
+
+    // Cleanup on unmount or change
+    return () => clearInterval(interval);
+  }, [chargerId, syncTelemetryShort]);
 
   const controllerCpuUsageData: Cpu[] = cpuUsageMap[chargerId!] || [];
   const controllertemperaturecpu_thermalData: Cpu[] =
@@ -85,7 +87,7 @@ const Details: React.FC = () => {
     }));
   };
 
-  //Function, to show formatted timestamps
+  //Function, to show formatted timestamps in the linechart X Axis
   const formatDateMultiline = (value: string) => {
     const date = new Date(value);
     const day = String(date.getDate()).padStart(2, "0");
@@ -96,7 +98,7 @@ const Details: React.FC = () => {
     return `${day}.${month}, ${hour}:${minute}:${second}`;
   };
 
-  //filter for cpu usage bades on the set dates
+  //function to filter the cpu usage data with the set dates from the datepicker
   const filteredDataCpuUsage = controllerCpuUsageData.filter((cpu) => {
     const t = new Date(cpu.timestamp).getTime();
     const f = fromDateUsage?.getTime() ?? -Infinity;
@@ -104,7 +106,7 @@ const Details: React.FC = () => {
     return t >= f && t <= u;
   });
 
-  // filter for cpu temp bades on the set dates
+  //function to filter the cpu thermal data with the set dates from the datepicker
   const filteredDataCpuThermal = controllertemperaturecpu_thermalData.filter(
     (d) => {
       const t = new Date(d.timestamp).getTime();
@@ -164,6 +166,11 @@ const Details: React.FC = () => {
         <Card className="ml-16 bg-white shadow-md w-11/12 min-h-11/12 dark:bg-neutral-950">
           <CardTitle className="ml-5">Charger {chargerId}</CardTitle>
           <CardContent>
+            <Link to={`/monitoring/${chargerId}`}>
+              <Button className="mb-5 mr-3 float-right bg-indigo-800 hover:bg-indigo-700 cursor-pointer">
+                Monitoring
+              </Button>
+            </Link>
             <div className="flex justify-between">
               {/* Short Info Cards
               /* <Card
@@ -371,14 +378,14 @@ const Details: React.FC = () => {
                       <div className="flex items-center h-9 ml-5 space-x-2 rounded-lg border bg-white px-3  dark:bg-transparent">
                         <button
                           onClick={usageLast30Min}
-                          className="text-sm text-gray-700 hover:underline focus:outline-none dark:text-white"
+                          className="text-sm text-gray-700 hover:underline focus:outline-none dark:text-white cursor-pointer"
                         >
                           last 30 Minutes
                         </button>
                         <div className="h-6 border-l border-gray-300 mx-2 " />
                         <button
                           onClick={usageLastHour}
-                          className="text-sm text-gray-700 hover:underline focus:outline-none dark:text-white"
+                          className="text-sm text-gray-700 hover:underline focus:outline-none dark:text-white cursor-pointer"
                         >
                           last Hour
                         </button>
@@ -520,14 +527,14 @@ const Details: React.FC = () => {
                       <div className="flex items-center h-9 ml-5 space-x-2 rounded-lg border bg-white px-3 dark:bg-transparent">
                         <button
                           onClick={thermalLast30Min}
-                          className="text-sm text-gray-700 hover:underline focus:outline-none dark:text-white"
+                          className="text-sm text-gray-700 hover:underline focus:outline-none dark:text-white cursor-pointer"
                         >
                           last 30 Minutes
                         </button>
                         <div className="h-6 border-l border-gray-300 mx-2" />
                         <button
                           onClick={thermalLastHour}
-                          className="text-sm text-gray-700 hover:underline focus:outline-none dark:text-white"
+                          className="text-sm text-gray-700 hover:underline focus:outline-none dark:text-white cursor-pointer"
                         >
                           last Hour
                         </button>

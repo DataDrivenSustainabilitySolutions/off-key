@@ -1,11 +1,13 @@
 import { useContext } from "react";
-import { FetchContext } from "../dataFetch/FetchContext"; // Pfad anpassen!
+import { FetchContext } from "../dataFetch/FetchContext";
 import type { FetchContextType } from "../dataFetch/FetchContext";
 
 export const useFetch = (): FetchContextType => {
   const context = useContext(FetchContext);
   if (!context) {
-    throw new Error("useFetch muss innerhalb eines FetchProvider verwendet werden");
+    throw new Error(
+      "The useFetch hook must be used within a FetchProvider component."
+    );
   }
   return context;
 };

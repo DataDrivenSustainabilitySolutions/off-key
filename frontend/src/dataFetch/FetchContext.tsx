@@ -1,18 +1,13 @@
-import React, {
-  createContext,
-  useState,
-  useCallback,
-  ReactNode,
-} from "react";
+import React, { createContext, useState, useCallback, ReactNode } from "react";
 import axios from "axios";
 
-// CPU Interface
+// Interface CPU
 export interface Cpu {
   timestamp: string;
   value: number;
 }
 
-// interface Charger
+// Interface Charger
 export interface Charger {
   charger_name: string | null;
   last_seen: string;
@@ -29,7 +24,7 @@ export interface TelemetryData {
   value: number;
 }
 
-//Combination of many Data sources (Value1 = Usage, Value2 = Thermal)
+//Combination of Data
 export interface CombinedData {
   charger_id: string;
   charger_name: string | null;
@@ -39,7 +34,7 @@ export interface CombinedData {
 }
 
 export interface FetchContextType {
-  //Interface for Axios Functions for direct use in Components
+  //Functions for direct use in Components
   getTelemetryTypes: (chargerId: string) => Promise<string[]>;
   getTelemetryData: (chargerId: string, telemetryKey: string) => Promise<Cpu[]>;
   getAllChargers: () => Promise<Charger[]>;
@@ -68,7 +63,9 @@ export interface FetchContextType {
   searchError: boolean;
 }
 
-export const FetchContext = createContext<FetchContextType | undefined>(undefined);
+export const FetchContext = createContext<FetchContextType | undefined>(
+  undefined
+);
 
 export const FetchProvider: React.FC<{ children: ReactNode }> = ({
   children,
@@ -77,7 +74,7 @@ export const FetchProvider: React.FC<{ children: ReactNode }> = ({
   const [cpuThermalMap, setCpuThermalMap] = useState<Record<string, Cpu[]>>({});
   const [searchError, setSearchError] = useState(false);
 
-  // Axios Functions without anything else
+  // Axios Functions to fetch data from API
 
   const getTelemetryTypes = useCallback(
     async (chargerId: string): Promise<string[]> => {
@@ -310,5 +307,3 @@ export const FetchProvider: React.FC<{ children: ReactNode }> = ({
     </FetchContext.Provider>
   );
 };
-
-

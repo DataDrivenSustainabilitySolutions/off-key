@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
 import { Link } from 'react-router-dom';
 import { useAuth } from "@/auth/AuthContext"; 
+import { useFetch } from '@/dataFetch/UseFetch';
 
 interface LoginResponse {
   access_token: string;
@@ -19,6 +20,9 @@ const Login: React.FC = () => {
   const [message, setMessage] = useState('');
   const navigate = useNavigate();
   const { login } = useAuth();
+  const {syncChargers,
+        syncTelemetry
+       } = useFetch();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -39,7 +43,8 @@ const Login: React.FC = () => {
 
       const data: LoginResponse = await response.json();
       login(data.access_token);
-      setMessage('Login erfolgreich!');
+      syncChargers();
+      syncTelemetry();
       setTimeout(() => {
         navigate('/');
       }, 2000);

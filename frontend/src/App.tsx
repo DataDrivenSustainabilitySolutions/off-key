@@ -15,19 +15,21 @@ import Landingpage from "./pages/Landingpage";
 import Favourites from "./pages/Favourites";
 import Account from "./pages/Account";
 import Anomaly from "./pages/Anomalies";
+import { FetchProvider } from "./dataFetch/FetchContext";
 
 const App: React.FC = () => {
   return (
     <ThemeProvider defaultTheme="system" storageKey="vite-ui-theme">
       <AuthProvider>
         <BrowserRouter>
-          <Routes>
-            {/* <Route path="/" element={<Default />} /> */}
-            <Route path="/login" element={<Login />} />
-            <Route path="/register" element={<Registration />} />
-            <Route path="/verify" element={<Verification />} />
-            <Route path="/forgot-password" element={<ForgotPassword />} />
-            <Route path="/reset-password" element={<ResetPassword />} />
+          <FetchProvider>
+            <Routes>
+              {/* <Route path="/" element={<Default />} /> */}
+              <Route path="/login" element={<Login />} />
+              <Route path="/register" element={<Registration />} />
+              <Route path="/verify" element={<Verification />} />
+              <Route path="/forgot-password" element={<ForgotPassword />} />
+              <Route path="/reset-password" element={<ResetPassword />} />
 
             {/* GESCHÜTZTE ROUTE */}
             <Route
@@ -70,7 +72,8 @@ const App: React.FC = () => {
                 </ProtectedRoute>
               }
             />
-          </Routes>
+            </Routes>
+          </FetchProvider>
         </BrowserRouter>
       </AuthProvider>
     </ThemeProvider>

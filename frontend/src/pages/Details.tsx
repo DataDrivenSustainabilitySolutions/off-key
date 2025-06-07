@@ -18,28 +18,14 @@ import {
   // Bar,
   // Rectangle,
 } from "recharts";
-import { useEffect, useRef, useState } from "react";
-import { useParams } from "react-router-dom";
-import axios from "axios";
+import { useState, useEffect } from "react";
+import { Link, useParams } from "react-router-dom";
 import { format } from "date-fns";
 import { Popover } from "@/components/ui/popover";
 import { NavigationBar } from "@/components/NavigationBar";
-
-// import {
-//   Table,
-//   TableBody,
-//   TableCaption,
-//   TableCell,
-//   TableHead,
-//   TableHeader,
-//   TableRow,
-// } from "@/components/ui/table";
-
-//interface for CPU USage and Thermal
-interface Cpu {
-  timestamp: string;
-  value: number;
-}
+import { Cpu } from "@/dataFetch/FetchContext";
+import { useFetch } from "@/dataFetch/UseFetch";
+import { Button } from "@/components/ui/button";
 
 const Details: React.FC = () => {
   const [collapsedCard, setCollapsedCard] = useState<Record<string, boolean>>({
@@ -49,118 +35,51 @@ const Details: React.FC = () => {
     CpuUsageCard: false,
     CpuThermalCard: false,
   });
-  const [, setSearchError] = useState(false);
-  const { charger_id } = useParams();
-  const [controllerCpuUsage, setControllerCpuUsage] = useState<string>();
-  const [
-    controllertemperaturecpu_thermal,
-    setControllertemperaturecpu_thermal,
-  ] = useState<string>();
+  const { chargerId } = useParams<{ chargerId: string }>();
+
   const [fromDateUsage, setFromDateUsage] = useState<Date>();
   const [fromDateThermal, setFromDateThermal] = useState<Date>();
   const [toDateUsage, setToDateUsage] = useState<Date>();
   const [toDateThermal, setToDateThermal] = useState<Date>();
-  const [controllerCpuUsageData, setControllerCpuUsageData] = useState<Cpu[]>(
-    []
-  );
-  const [
-    controllertemperaturecpu_thermalData,
-    setControllertemperaturecpu_thermalData,
-  ] = useState<Cpu[]>([]);
-  //redZones in the Diagram Params: 1. Dataarray, 2. value where the Zone gets red
+
+  //Import functions and Datamaps from FetchContext
+  const {
+    cpuUsageMap,
+    cpuThermalMap,
+    loadCpuUsage,
+    loadCpuThermal,
+    syncTelemetryShort,
+  } = useFetch();
+
+  // fetch new telemtry data in a set interval
+  useEffect(() => {
+    if (!chargerId) return;
+
+    loadCpuUsage(chargerId);
+    loadCpuThermal(chargerId);
+
+    const interval = setInterval(() => {
+      syncTelemetryShort();
+      loadCpuUsage(chargerId);
+      loadCpuThermal(chargerId);
+    }, 60 * 1000); // every 60s
+
+    // Cleanup on unmount or change
+    return () => clearInterval(interval);
+  }, [chargerId, syncTelemetryShort]);
+
+  const controllerCpuUsageData: Cpu[] = cpuUsageMap[chargerId!] || [];
+  const controllertemperaturecpu_thermalData: Cpu[] =
+    cpuThermalMap[chargerId!] || [];
+
+  //redZones in the Diagram Params: 1. Dataarray, 2. value where zone becomes red
   const redZonesCpuUsage = useRedZones(controllerCpuUsageData, 7);
   const redZonesCpuThermal = useRedZones(
     controllertemperaturecpu_thermalData,
     43
   );
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // 1) only at mount or when charger_id is changing: get Telemetry types
-  useEffect(() => {
-    if (!charger_id) return;
-
-    async function getTelemetryTypes() {
-      try {
-        const response = await axios.get(
-          `http://127.0.0.1:8000/v1/telemetry/${charger_id}/type`
-        );
-        const results: string[] = response.data;
-        // Search in results for the 2 CPU Keys
-        const cpuUsageKey = results.find(
-          (t) => t.toLowerCase() === "controllercpuusage"
-        );
-        const cpuThermalKey = results.find(
-          (t) => t.toLowerCase() === "controllertemperaturecpu-thermal"
-        );
-
-        if (cpuUsageKey && cpuThermalKey) {
-          setControllerCpuUsage(cpuUsageKey);
-          setControllertemperaturecpu_thermal(cpuThermalKey);
-          setSearchError(false);
-        } else {
-          console.warn(
-            "Telemetrie-Keys nicht gefunden:",
-            { cpuUsageKey, cpuThermalKey },
-            "in",
-            results
-          );
-          setSearchError(true);
-        }
-      } catch (error) {
-        console.error("Fehler beim Laden der Telemetrie-Typen:", error);
-        setSearchError(true);
-      }
-    }
-
-    getTelemetryTypes();
-  }, [charger_id]);
-
-  // 2) after charger_id, controllerCpuUsage and controllertemperaturecpu_thermal are set up:
-  // first fetch then every 20 seconds repeat
-  useEffect(() => {
-    if (
-      !charger_id ||
-      !controllerCpuUsage ||
-      !controllertemperaturecpu_thermal
-    ) {
-      return;
-    }
-
-    async function fetchTelemetryData() {
-      try {
-        // CPU Usage
-        const respUsage = await axios.get(
-          `http://127.0.0.1:8000/v1/telemetry/${charger_id}/${controllerCpuUsage}?limit=100`
-        );
-        setControllerCpuUsageData(respUsage.data);
-        console.log("CPU Usage:", respUsage.data);
-
-        // CPU Thermal
-        const respThermal = await axios.get(
-          `http://127.0.0.1:8000/v1/telemetry/${charger_id}/${controllertemperaturecpu_thermal}?limit=100`
-        );
-        setControllertemperaturecpu_thermalData(respThermal.data);
-        console.log("CPU Thermal:", respThermal.data);
-      } catch (error) {
-        console.error("Fehler beim Daten-Fetch:", error);
-        setSearchError(true);
-      }
-    }
-
-    // initial fetch
-    fetchTelemetryData();
-
-    //Datafetch every 20 seconds
-    intervalRef.current = setInterval(fetchTelemetryData, 20000);
-
-    return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-      }
-    };
-  }, [charger_id, controllerCpuUsage, controllertemperaturecpu_thermal]);
-
-  //Function to minimize the Cards
+  //Function to minimize cards
   const minimizeCards = (key: string) => {
     setCollapsedCard((prev) => ({
       ...prev,
@@ -168,7 +87,7 @@ const Details: React.FC = () => {
     }));
   };
 
-  //Function to format the Timestamps from the Time Rows
+  //Function, to show formatted timestamps in the linechart X Axis
   const formatDateMultiline = (value: string) => {
     const date = new Date(value);
     const day = String(date.getDate()).padStart(2, "0");
@@ -179,7 +98,7 @@ const Details: React.FC = () => {
     return `${day}.${month}, ${hour}:${minute}:${second}`;
   };
 
-  //function to filter the Cpu Usage with the Dates the user selected in the Navbar for the Diagram
+  //function to filter the cpu usage data with the set dates from the datepicker
   const filteredDataCpuUsage = controllerCpuUsageData.filter((cpu) => {
     const t = new Date(cpu.timestamp).getTime();
     const f = fromDateUsage?.getTime() ?? -Infinity;
@@ -187,7 +106,7 @@ const Details: React.FC = () => {
     return t >= f && t <= u;
   });
 
-  //function to filter the Cpu Thermal with the Dates the user selected in the Navbar for the Diagram
+  //function to filter the cpu thermal data with the set dates from the datepicker
   const filteredDataCpuThermal = controllertemperaturecpu_thermalData.filter(
     (d) => {
       const t = new Date(d.timestamp).getTime();
@@ -196,7 +115,7 @@ const Details: React.FC = () => {
       return t >= f && t <= u;
     }
   );
-  //funkction for the buttons to handle last minute and last 10 minuts for CPU Usage and Thermal
+  // funtion to handle "letzte X Minuten"
   function handleLastMinutes(
     dataArray: Cpu[],
     setFrom: React.Dispatch<React.SetStateAction<Date | undefined>>,
@@ -210,34 +129,34 @@ const Details: React.FC = () => {
     setFrom(new Date(minTime));
     setTo(new Date(maxTime));
   }
-  const usageLastMin = () =>
+  // buton function for last 30 minutes and last hour
+  const usageLast30Min = () =>
     handleLastMinutes(
       controllerCpuUsageData,
       setFromDateUsage,
       setToDateUsage,
-      1
+      30
     );
-  const usageLast10Min = () =>
+  const usageLastHour = () =>
     handleLastMinutes(
       controllerCpuUsageData,
       setFromDateUsage,
       setToDateUsage,
-      10
+      60
     );
-
-  const thermalLastMin = () =>
+  const thermalLast30Min = () =>
     handleLastMinutes(
       controllertemperaturecpu_thermalData,
       setFromDateThermal,
       setToDateThermal,
-      1
+      30
     );
-  const thermalLast10Min = () =>
+  const thermalLastHour = () =>
     handleLastMinutes(
       controllertemperaturecpu_thermalData,
       setFromDateThermal,
       setToDateThermal,
-      10
+      60
     );
 
   return (
@@ -245,10 +164,16 @@ const Details: React.FC = () => {
       <NavigationBar />
       <div className="flex mt-5">
         <Card className="ml-16 bg-white shadow-md w-11/12 min-h-11/12 dark:bg-neutral-950">
-          <CardTitle className="ml-5">Charger {charger_id}</CardTitle>
+          <CardTitle className="ml-5">Charger {chargerId}</CardTitle>
           <CardContent>
+            <Link to={`/monitoring/${chargerId}`}>
+              <Button className="mb-5 mr-3 float-right bg-indigo-800 hover:bg-indigo-700 cursor-pointer">
+                Monitoring
+              </Button>
+            </Link>
             <div className="flex justify-between">
-              {/* <Card
+              {/* Short Info Cards
+              /* <Card
       className={`transition-all duration-300 w-70 ${
         collapsedCard.card1 ? "h-16" : "h-70"
       }`}
@@ -407,12 +332,12 @@ const Details: React.FC = () => {
                     <Popover>
                       <div className="relative">
                         <Input
-                          type="Date"
+                          type="datetime-local"
                           className="cursor-pointer"
                           placeholder="Von"
                           value={
                             fromDateUsage
-                              ? format(fromDateUsage, "yyyy-MM-dd")
+                              ? format(fromDateUsage, "yyyy-MM-dd'T'HH:mm")
                               : ""
                           }
                           //empty field befor input for reload
@@ -432,11 +357,13 @@ const Details: React.FC = () => {
                     <Popover>
                       <div className="relative">
                         <Input
-                          type="Date"
+                          type="datetime-local"
                           className="cursor-pointer"
                           placeholder="Bis"
                           value={
-                            toDateUsage ? format(toDateUsage, "yyyy-MM-dd") : ""
+                            toDateUsage
+                              ? format(toDateUsage, "yyyy-MM-dd'T'HH:mm")
+                              : ""
                           }
                           //empty field befor input for reload
                           onFocus={() => setToDateUsage(undefined)}
@@ -450,17 +377,17 @@ const Details: React.FC = () => {
                     <div>
                       <div className="flex items-center h-9 ml-5 space-x-2 rounded-lg border bg-white px-3  dark:bg-transparent">
                         <button
-                          onClick={usageLastMin}
-                          className="text-sm text-gray-700 hover:underline focus:outline-none dark:text-white"
+                          onClick={usageLast30Min}
+                          className="text-sm text-gray-700 hover:underline focus:outline-none dark:text-white cursor-pointer"
                         >
-                          Letzte Minute
+                          last 30 Minutes
                         </button>
                         <div className="h-6 border-l border-gray-300 mx-2 " />
                         <button
-                          onClick={usageLast10Min}
-                          className="text-sm text-gray-700 hover:underline focus:outline-none dark:text-white"
+                          onClick={usageLastHour}
+                          className="text-sm text-gray-700 hover:underline focus:outline-none dark:text-white cursor-pointer"
                         >
-                          Letzte 10 Minutes
+                          last Hour
                         </button>
                       </div>
                     </div>
@@ -520,17 +447,17 @@ const Details: React.FC = () => {
                       type="monotone"
                       dataKey="value"
                       stroke="#8884d8"
-                      activeDot={{ r: 8 }}
+                      activeDot={false}
                       dot={({ cx, cy, payload }) => {
-                        //if value is >=7 dot is red
-                        const color = payload.value >= 7 ? "red" : "#8884d8";
+                        const border = payload.value >= 7;
                         return (
                           <circle
                             key={`dot-${payload.timestamp}`}
                             cx={cx}
                             cy={cy}
-                            r={4}
-                            fill={color}
+                            //if value is above the border dots geting 0 radius so they are invisible else sie sind rot
+                            r={border ? 2 : 0}
+                            fill={border ? "red" : "transparent"}
                             stroke="none"
                           />
                         );
@@ -552,12 +479,12 @@ const Details: React.FC = () => {
                     <Popover>
                       <div className="relative">
                         <Input
-                          type="Date"
+                          type="datetime-local"
                           className="cursor-pointer"
                           placeholder="Von"
                           value={
                             fromDateThermal
-                              ? format(fromDateThermal, "yyyy-MM-dd")
+                              ? format(fromDateThermal, "yyyy-MM-dd'T'HH:mm")
                               : ""
                           }
                           //empty field befor input for reload
@@ -577,12 +504,12 @@ const Details: React.FC = () => {
                     <Popover>
                       <div className="relative">
                         <Input
-                          type="Date"
+                          type="datetime-local"
                           className="cursor-pointer"
                           placeholder="Bis"
                           value={
                             toDateThermal
-                              ? format(toDateThermal, "yyyy-MM-dd")
+                              ? format(toDateThermal, "yyyy-MM-dd'T'HH:mm")
                               : ""
                           }
                           //empty field befor input for reload
@@ -599,17 +526,17 @@ const Details: React.FC = () => {
                     <div>
                       <div className="flex items-center h-9 ml-5 space-x-2 rounded-lg border bg-white px-3 dark:bg-transparent">
                         <button
-                          onClick={thermalLastMin}
-                          className="text-sm text-gray-700 hover:underline focus:outline-none dark:text-white"
+                          onClick={thermalLast30Min}
+                          className="text-sm text-gray-700 hover:underline focus:outline-none dark:text-white cursor-pointer"
                         >
-                          Letzte minute
+                          last 30 Minutes
                         </button>
                         <div className="h-6 border-l border-gray-300 mx-2" />
                         <button
-                          onClick={thermalLast10Min}
-                          className="text-sm text-gray-700 hover:underline focus:outline-none dark:text-white"
+                          onClick={thermalLastHour}
+                          className="text-sm text-gray-700 hover:underline focus:outline-none dark:text-white cursor-pointer"
                         >
-                          Letzte 10 Minutes
+                          last Hour
                         </button>
                       </div>
                     </div>
@@ -673,17 +600,17 @@ const Details: React.FC = () => {
                       type="monotone"
                       dataKey="value"
                       stroke="#8884d8"
-                      activeDot={{ r: 8 }}
+                      activeDot={false}
                       dot={({ cx, cy, payload }) => {
-                        //if value is >=43 dot is red
-                        const color = payload.value >= 43 ? "red" : "#8884d8";
+                        const border = payload.value >= 43;
                         return (
                           <circle
                             key={`dot-${payload.timestamp}`}
                             cx={cx}
                             cy={cy}
-                            r={4}
-                            fill={color}
+                            //if value is above the border dots geting 0 radius so sie invisible else sie rot
+                            r={border ? 2 : 0}
+                            fill={border ? "red" : "transparent"}
                             stroke="none"
                           />
                         );

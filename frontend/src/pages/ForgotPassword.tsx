@@ -18,7 +18,6 @@ const ForgotPassword: React.FC = () => {
       });
       const data = await res.json();
       setMessage(data.message);
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     } catch (error) {
       setMessage('Fehler beim Senden der Anfrage.');
     }

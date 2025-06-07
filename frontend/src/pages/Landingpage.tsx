@@ -21,26 +21,15 @@ import {
 import { NavigationBar } from "@/components/NavigationBar";
 
 interface Charger {
-  charger_name: string | null;
-  last_seen: string;
-  online: boolean;
-  charger_id: string;
-  state: string;
-  created: string;
-}
-
-interface combined_data {
   charger_id: string;
   charger_name: string | null;
   online: boolean;
   state: string;
   last_seen: string;
-  value1: number | null;
-  value2: number | null;
 }
 
 export default function ChargerTable() {
-  const [data, setData] = useState<combined_data[]>([]);
+  const [data, setData] = useState<Charger[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<
@@ -78,18 +67,16 @@ export default function ChargerTable() {
         );
         setFavoriteChargerIds(favoritesRes.data);
   
-        // Daten kombinieren (ohne Telemetrie)
-        const combined = chargers.map((charger) => ({
+        // Daten kombinieren 
+        const charger = chargers.map((charger) => ({
           charger_id: charger.charger_id,
           charger_name: charger.charger_name,
           online: charger.online,
           state: charger.state,
           last_seen: charger.last_seen,
-          value1: null,
-          value2: null,
         }));
   
-        setData(combined);
+        setData(charger);
       } catch (err) {
         console.error("Fehler beim Laden der Daten:", err);
       } finally {

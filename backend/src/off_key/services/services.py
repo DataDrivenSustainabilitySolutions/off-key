@@ -38,7 +38,7 @@ class MonitoringAsyncService:
             mqtt_topics (list): List of MQTT topics to monitor
             requirements (list, optional): List of pip packages to install
             dockerfile_path (str, optional): Path to custom Dockerfile
-            app_path (str, optional): Path to custom src.py
+            app_path (str, optional): Path to Python script
             environment_variables (dict, optional): Additional environment variables
 
         Returns:
@@ -61,7 +61,7 @@ class MonitoringAsyncService:
             os.path.dirname(os.path.abspath(__file__)), "resources"
         )
         default_dockerfile = os.path.join(templates_dir, "Dockerfile")
-        default_app = os.path.join(templates_dir, "src.py")
+        default_app = os.path.join(templates_dir, "proxy.py")
 
         dockerfile_path = dockerfile_path or default_dockerfile
         app_path = app_path or default_app
@@ -129,9 +129,9 @@ class MonitoringAsyncService:
         build_context = tempfile.mkdtemp()
 
         try:
-            # Copy Dockerfile and src.py to build context
+            # Copy Dockerfile and Python app to build context
             shutil.copy2(dockerfile_path, os.path.join(build_context, "Dockerfile"))
-            shutil.copy2(app_path, os.path.join(build_context, "src.py"))
+            shutil.copy2(app_path, os.path.join(build_context, "proxy.py"))
 
             # Create requirements.txt
             with open(os.path.join(build_context, "requirements.txt"), "w") as f:

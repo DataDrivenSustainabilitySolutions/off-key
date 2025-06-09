@@ -1,9 +1,8 @@
-from contextlib import asynccontextmanager
-
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi.middleware import SlowAPIMiddleware
 
+from .db.base import engine
 from .core.config import settings
 from .api.rate_limiter import limiter, rate_limit_exceeded_handler
 from .core.logs import logger

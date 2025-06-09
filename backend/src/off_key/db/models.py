@@ -39,9 +39,7 @@ class Charger(Base):
 
     __tablename__ = "chargers"  # noqa
 
-    charger_id = Column(
-        Text, primary_key=True, unique=True, index=True, nullable=False
-    )
+    charger_id = Column(Text, primary_key=True, unique=True, index=True, nullable=False)
     manufacturer_name = Column(Text, unique=False, index=True, nullable=True)
     charger_name = Column(Text, unique=False, index=True, nullable=True)
     firmware_version = Column(Text, unique=False, index=True, nullable=True)
@@ -111,6 +109,19 @@ class MqttTopic(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     service_id = Column(Text, ForeignKey("services.id"), nullable=False)
     topic = Column(Text, nullable=False)
+
+
+class Favorite(Base):
+    __tablename__ = "favorites"
+
+    favorite_id = Column(
+        Integer, primary_key=True, unique=True, index=True, nullable=False
+    )
+
+    charger_id = Column(
+        Text, ForeignKey("chargers.charger_id"), nullable=False, index=True
+    )
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
 
 
 """

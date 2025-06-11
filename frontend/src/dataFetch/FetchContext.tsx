@@ -1,5 +1,6 @@
 import React, { createContext, useState, useCallback, ReactNode } from "react";
 import axios from "axios";
+import { time } from "console";
 
 // Interface CPU
 export interface Cpu {
@@ -33,6 +34,14 @@ export interface CombinedData {
   last_seen: string;
 }
 
+export interface Anomaly {
+  charger_id: string;
+  timestamp: string;
+  telemetry_type: string;
+  anomaly_type: string;
+}
+
+
 export interface FetchContextType {
   //Functions for direct use in Components
   getTelemetryTypes: (chargerId: string) => Promise<string[]>;
@@ -45,6 +54,9 @@ export interface FetchContextType {
     isCurrentlyFavorite: boolean
   ) => Promise<void>;
   getCombinedChargerData: (chargers: Charger[]) => Promise<CombinedData[]>;
+  getAnomalies: (chargerId: string) => Promise<Anomaly[]>;
+  deleteAnomaly: (chargerId: string, timestamp: Date, telemetry_type: string) => Promise<void>;
+  addAnomaly: (chargerId: string, timestamp: Date, telemetry_type: string) => Promise<void>;
 
   //Sync Functions
   syncChargers: () => Promise<void>;
@@ -173,6 +185,36 @@ export const FetchProvider: React.FC<{ children: ReactNode }> = ({
     []
   );
 
+    const getAnomalies = useCallback(
+      async (chargerId: string): Promise<Anomaly[]> => {
+        const resp = await axios.get<Anomaly[]>(
+          `http://127.0.0.1:8000/v1/anomalies?charger_id=${chargerId}`
+        );
+        return resp.data;
+      },
+      []
+    );
+
+    const addAnomaly = useCallback(
+      async (chargerId: string, timestamp: Date, telemetry_type: string) => {
+        await axios.post("http://127.0.0.1:8000/v1/anomalies", {
+          charger_id: chargerId,timestamp: timestamp, telemetry_type: telemetry_type
+        });
+      
+    },
+    []
+  );
+
+  const deleteAnomaly = useCallback(
+    async (chargerId: string, timestamp: Date, telemetry_type: string) => {
+
+        await axios.delete("http://127.0.0.1:8000/v1/anomalies", {
+          data: { charger_id: chargerId, timestamp: timestamp, telemetry_type: telemetry_type},
+        });
+      },
+    []
+  );
+
   // Sync functions
 
   const syncChargers = useCallback(async (): Promise<void> => {
@@ -205,7 +247,6 @@ export const FetchProvider: React.FC<{ children: ReactNode }> = ({
     }
   }, []);
 
-  // ─── 3) Neu: Funktionen, um Telemetrie‐Daten in den Context‐State zu schreiben ───
   // Functions to write Telemetry Data in Context State
 
   const loadCpuUsage = useCallback(
@@ -282,7 +323,7 @@ export const FetchProvider: React.FC<{ children: ReactNode }> = ({
     [getTelemetryTypes, getTelemetryData, syncTelemetry]
   );
 
-  // Provider gives alle the functions etc.
+  // Provider gives all the functions etc.
 
   return (
     <FetchContext.Provider
@@ -293,6 +334,9 @@ export const FetchProvider: React.FC<{ children: ReactNode }> = ({
         getFavorites,
         toggleFavorite,
         getCombinedChargerData,
+        getAnomalies,
+        addAnomaly,
+        deleteAnomaly,
         syncChargers,
         syncTelemetry,
         syncTelemetryShort,

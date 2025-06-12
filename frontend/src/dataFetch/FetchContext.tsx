@@ -292,8 +292,9 @@ export const FetchProvider: React.FC<{ children: ReactNode }> = ({
 
   const loadMonitoring = useCallback(async (chargerId: string) => {
     try {
-      // now get the Keys
+      //  get the Keys
       const types = await getTelemetryTypes(chargerId);
+      // filter for keytypes - here all key types without CPU temp and usage
       const keys = types.filter(
         (t) =>
           t.toLowerCase().startsWith("system") ||
@@ -308,7 +309,7 @@ export const FetchProvider: React.FC<{ children: ReactNode }> = ({
         return;
       }
 
-      // then get the Data
+      //  get the Data
       const entries = await Promise.all(
         keys.map(async (key) => {
           const rawData = await getTelemetryData(chargerId, key);

@@ -1,5 +1,4 @@
 import { Card, CardContent, CardTitle } from "@/components/ui/card";
-// import { useState, useEffect } from "react";
 import { NavigationBar } from "@/components/NavigationBar";
 import { useParams } from "react-router-dom";
 import { useFetch } from "@/dataFetch/UseFetch";
@@ -16,8 +15,11 @@ import React, { useEffect, useMemo, useState } from "react";
 
 const Monitoring: React.FC = () => {
   const { chargerId } = useParams<{ chargerId: string }>();
+  //map where keys and the boolean are safed for the dropbox checked or not checked symbole
   const [visibleMap, setVisibleMap] = useState<Record<string, boolean>>({});
+  //Data from useFetch
   const { monitoringMap, loadMonitoring } = useFetch();
+  //Caching mechanism to avoid unneccesary fetches
   const monitoringKeys = useMemo(
     () => Object.keys(monitoringMap),
     [monitoringMap]
@@ -30,9 +32,9 @@ const Monitoring: React.FC = () => {
   }, [loadMonitoring, chargerId]);
 
   useEffect(() => {
-    if (monitoringKeys.length === 0) return; // nichts zu tun, wenn noch keine Keys
-    if (Object.keys(visibleMap).length > 0) return; // schon initialisiert
-    setVisibleMap(Object.fromEntries(monitoringKeys.map((k) => [k, true])));
+    if (monitoringKeys.length === 0) return; // if no keys given do nothing
+    if (Object.keys(visibleMap).length > 0) return; // if keys already initialised also do nothing
+    setVisibleMap(Object.fromEntries(monitoringKeys.map((k) => [k, true]))); //k = keys, bool = should all be shown per default or not
 
     console.log(visibleMap);
   }, [monitoringKeys, visibleMap]);
@@ -74,7 +76,6 @@ const Monitoring: React.FC = () => {
                 </DropdownMenuContent>
               </DropdownMenu>
 
-              {/* für jedes ausgewählte Key eine Zeile mit Wert */}
               <div className="mt-4 space-y-2">
                 {monitoringKeys.map(
                   (key) =>

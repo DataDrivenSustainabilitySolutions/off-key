@@ -13,6 +13,7 @@ import { AuthProvider } from "@/auth/AuthContext";
 import { ProtectedRoute } from "./auth/ProtectedRoute";
 import Landingpage from "./pages/Landingpage";
 import Favourites from "./pages/Favourites";
+import Monitoring from "./pages/Monitoring";
 import { FetchProvider } from "./dataFetch/FetchContext";
 
 const App: React.FC = () => {
@@ -43,6 +44,14 @@ const App: React.FC = () => {
                 element={
                   <ProtectedRoute>
                     <Details />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/monitoring/:chargerId"
+                element={
+                  <ProtectedRoute>
+                    <Monitoring />
                   </ProtectedRoute>
                 }
               />

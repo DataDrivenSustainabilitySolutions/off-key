@@ -7,6 +7,10 @@ export interface Cpu {
   value: number;
 }
 
+export interface Monitoring {
+  type: string;
+  value: number;
+}
 // Interface Charger
 export interface Charger {
   charger_name: string | null;
@@ -53,12 +57,13 @@ export interface FetchContextType {
 
   //Functions to write Telemetry Data in Context-State
   loadCpuUsage: (chargerId: string) => Promise<void>;
+  loadMonitoring: (chargerId: string) => Promise<void>;
   loadCpuThermal: (chargerId: string) => Promise<void>;
 
   // State objects - set Telemetry per chargerId
   cpuUsageMap: Record<string, Cpu[]>;
   cpuThermalMap: Record<string, Cpu[]>;
-
+  monitoringMap: Record<string, Monitoring[]>;
   // Simple Error indicator if needed
   searchError: boolean;
 }
@@ -71,6 +76,9 @@ export const FetchProvider: React.FC<{ children: ReactNode }> = ({
   children,
 }) => {
   const [cpuUsageMap, setCpuUsageMap] = useState<Record<string, Cpu[]>>({});
+  const [monitoringMap, setMonitoringMap] = useState<
+    Record<string, Monitoring[]>
+  >({});
   const [cpuThermalMap, setCpuThermalMap] = useState<Record<string, Cpu[]>>({});
   const [searchError, setSearchError] = useState(false);
 
@@ -282,6 +290,48 @@ export const FetchProvider: React.FC<{ children: ReactNode }> = ({
     [getTelemetryTypes, getTelemetryData, syncTelemetry]
   );
 
+  const loadMonitoring = useCallback(async (chargerId: string) => {
+    try {
+      // now get the Keys
+      const types = await getTelemetryTypes(chargerId);
+      const keys = types.filter(
+        (t) =>
+          t.toLowerCase().startsWith("system") ||
+          t.toLowerCase().startsWith("controllerstate")
+      );
+      if (keys.length === 0) {
+        console.warn(
+          `Schlüssel mit dem Schlüsselwort "system" in Charger ${chargerId}nicht gefunden`,
+          types
+        );
+        setSearchError(true);
+        return;
+      }
+
+      // then get the Data
+      const entries = await Promise.all(
+        keys.map(async (key) => {
+          const rawData = await getTelemetryData(chargerId, key);
+          const data: Monitoring[] = rawData.map((d) => ({
+            type: key,
+            value: d.value,
+          }));
+          return [key, data] as const;
+        })
+      );
+
+      // write the data in the Map
+      setMonitoringMap((prev) => ({
+        ...prev,
+        ...Object.fromEntries(entries),
+      }));
+      setSearchError(false);
+    } catch (err) {
+      console.error("Fehler beim Laden CPU Usage:", err);
+      setSearchError(true);
+    }
+  }, []);
+
   // Provider gives alle the functions etc.
 
   return (
@@ -297,9 +347,11 @@ export const FetchProvider: React.FC<{ children: ReactNode }> = ({
         syncTelemetry,
         syncTelemetryShort,
         loadCpuUsage,
+        loadMonitoring,
         loadCpuThermal,
         cpuUsageMap,
         cpuThermalMap,
+        monitoringMap,
         searchError,
       }}
     >

@@ -115,7 +115,7 @@ const Details: React.FC = () => {
       return t >= f && t <= u;
     }
   );
-  // funtion to handle "letzte X Minuten"
+  // funtion to handle "last X minutes"
   function handleLastMinutes(
     dataArray: Cpu[],
     setFrom: React.Dispatch<React.SetStateAction<Date | undefined>>,

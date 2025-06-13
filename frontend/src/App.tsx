@@ -30,7 +30,7 @@ const App: React.FC = () => {
               <Route path="/forgot-password" element={<ForgotPassword />} />
               <Route path="/reset-password" element={<ResetPassword />} />
 
-              {/* GESCHÜTZTE ROUTE */}
+              {/* Guarded Routes */}
               <Route
                 path="/"
                 element={

@@ -45,17 +45,17 @@ const Monitoring: React.FC = () => {
         <Card className="ml-16 bg-white shadow-md w-11/12 min-h-11/12 dark:bg-neutral-950">
           <div>
             <CardTitle className="ml-5">
-              Monitoring für Charger {chargerId}
+              Monitoring for the Charger {chargerId}
             </CardTitle>
             <CardContent>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button className="mb-5 mr-3 mt-4 bg-indigo-800 hover:bg-indigo-700 cursor-pointer">
-                    Sensortypen
+                    Sensor types
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent className="w100">
-                  <DropdownMenuLabel>Sensoren</DropdownMenuLabel>
+                  <DropdownMenuLabel>Sensors</DropdownMenuLabel>
                   <DropdownMenuSeparator />
 
                   {monitoringKeys.map((key) => (
@@ -85,8 +85,8 @@ const Monitoring: React.FC = () => {
                         {monitoringMap[key]?.length
                           ? monitoringMap[key][0].value != null
                             ? monitoringMap[key][0].value
-                            : "Der Schlüssel hat noch keinen Wert"
-                          : "Der Schlüssel hat noch keinen Wert"}
+                            : "The Key has no value yet"
+                          : "The Key has no value yet"}
                       </div>
                     )
                 )}

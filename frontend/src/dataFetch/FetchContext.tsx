@@ -187,7 +187,7 @@ export const FetchProvider: React.FC<{ children: ReactNode }> = ({
     try {
       await axios.post("http://127.0.0.1:8000/v1/chargers/sync", null);
     } catch (err) {
-      console.warn("syncChargers fehlgeschlagen:", err);
+      console.warn("syncChargers failed:", err);
     }
   }, []);
 
@@ -198,7 +198,7 @@ export const FetchProvider: React.FC<{ children: ReactNode }> = ({
         null
       );
     } catch (err) {
-      console.warn("syncTelemetry fehlgeschlagen:", err);
+      console.warn("syncTelemetry failed:", err);
     }
   }, []);
 
@@ -209,7 +209,7 @@ export const FetchProvider: React.FC<{ children: ReactNode }> = ({
         null
       );
     } catch (err) {
-      console.warn("syncTelemetryShort fehlgeschlagen:", err);
+      console.warn("syncTelemetryShort failed:", err);
     }
   }, []);
 
@@ -228,10 +228,7 @@ export const FetchProvider: React.FC<{ children: ReactNode }> = ({
           t.toLowerCase().includes("controllercpuusage")
         );
         if (!cpuUsageKey) {
-          console.warn(
-            `Usage-Key für Charger ${chargerId} nicht gefunden:`,
-            types
-          );
+          console.warn(`Usage-Key for Charger ${chargerId} not found:`, types);
           setSearchError(true);
           return;
         }
@@ -246,7 +243,7 @@ export const FetchProvider: React.FC<{ children: ReactNode }> = ({
         }));
         setSearchError(false);
       } catch (err) {
-        console.error("Fehler beim Laden CPU Usage:", err);
+        console.error("Error loading CPU Usage:", err);
         setSearchError(true);
       }
     },
@@ -266,7 +263,7 @@ export const FetchProvider: React.FC<{ children: ReactNode }> = ({
         );
         if (!cpuThermalKey) {
           console.warn(
-            `Thermal-Key für Charger ${chargerId} nicht gefunden:`,
+            `Thermal-Key for Charger ${chargerId} not found:`,
             types
           );
           setSearchError(true);
@@ -283,7 +280,7 @@ export const FetchProvider: React.FC<{ children: ReactNode }> = ({
         }));
         setSearchError(false);
       } catch (err) {
-        console.error("Fehler beim Laden CPU Thermal:", err);
+        console.error("Error loading CPU Thermal:", err);
         setSearchError(true);
       }
     },
@@ -302,7 +299,7 @@ export const FetchProvider: React.FC<{ children: ReactNode }> = ({
       );
       if (keys.length === 0) {
         console.warn(
-          `Schlüssel mit dem Schlüsselwort "system" in Charger ${chargerId}nicht gefunden`,
+          `Key with key value "system" in Charger ${chargerId} not found`,
           types
         );
         setSearchError(true);
@@ -328,7 +325,7 @@ export const FetchProvider: React.FC<{ children: ReactNode }> = ({
       }));
       setSearchError(false);
     } catch (err) {
-      console.error("Fehler beim Laden CPU Usage:", err);
+      console.error("Error loading CPU Usage:", err);
       setSearchError(true);
     }
   }, []);

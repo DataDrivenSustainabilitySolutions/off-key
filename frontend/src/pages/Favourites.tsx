@@ -99,6 +99,7 @@ export default function ChargerTable() {
     <>
       <NavigationBar></NavigationBar>
       <div className="p-6">
+        <h1 className="text-xl font-bold mb-4">Favorites</h1>
         {/* Search + filter + view toggle */}
         <div className="mb-4 flex flex-wrap items-center justify-between gap-4">
           <input
@@ -109,7 +110,7 @@ export default function ChargerTable() {
             className="p-2 border rounded w-full md:w-1/2"
           />
           <div className="flex items-center gap-4">
-            <span className="font-medium whitespace-nowrap">Charger status:</span>
+            <span className="font-medium whitespace-nowrap">Charger state:</span>
             {/* Status filter radio buttons */}
             <label className="flex items-center gap-1">
               <input

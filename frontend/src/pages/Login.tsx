@@ -7,6 +7,7 @@ import { useNavigate } from 'react-router-dom';
 import { Link } from 'react-router-dom';
 import { useAuth } from "@/auth/AuthContext"; 
 import { useFetch } from '@/dataFetch/UseFetch';
+import { Eye, EyeOff } from 'lucide-react';
 
 interface LoginResponse {
   access_token: string;
@@ -16,7 +17,7 @@ interface LoginResponse {
 const Login: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [showPassword] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const [message, setMessage] = useState('');
   const navigate = useNavigate();
   const { login } = useAuth();
@@ -37,7 +38,7 @@ const Login: React.FC = () => {
 
       if (!response.ok) {
         const errorData = await response.json();
-        setMessage(errorData.detail || 'Login fehlgeschlagen');
+        setMessage(errorData.detail || 'Login failed');
         return;
       }
 
@@ -50,7 +51,7 @@ const Login: React.FC = () => {
       }, 2000);
     } catch (error) {
       console.error(error);
-      setMessage('Es ist ein Fehler aufgetreten.');
+      setMessage('An error occurred');
     }
   };
 
@@ -85,19 +86,19 @@ const Login: React.FC = () => {
                 onChange={(e) => setPassword(e.target.value)}
                 required
               />
-              {/* <button
+              <button
                 type="button"
                 className="absolute right-3 top-9 text-gray-500"
                 onClick={() => setShowPassword(!showPassword)}
                 aria-label="Passwort anzeigen"
               >
                 {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-              </button> */}
+              </button>
             </div>
 
             <div className="flex items-center space-x-2 text-sm">
               <input type="checkbox" id="remember" className="accent-green-600" />
-              <label htmlFor="remember">Angemeldet bleiben</label>
+              <label htmlFor="remember">Stay logged in</label>
             </div>
 
             {/* Login Button */}
@@ -105,12 +106,12 @@ const Login: React.FC = () => {
               type="submit"
               className="w-full bg-gradient-to-r from-slate-400 to-slate-300 text-white font-semibold rounded-full transition-all duration-200 hover:bg-gradient-to-r hover:from-slate-500 hover:to-slate-400 hover:scale-105 cursor-pointer"
             >
-              EINLOGGEN
+              Log in
             </Button>
 
             {/* Fehlermeldung oder Erfolgsnachricht */}
             {message && (
-              <p className={`mt-2 text-center text-sm ${message === 'Login erfolgreich!' ? 'text-green-600' : 'text-red-600'}`}>
+              <p className={`mt-2 text-center text-sm ${message === 'Login successful!' ? 'text-green-600' : 'text-red-600'}`}>
                 {message}
               </p>
             )}

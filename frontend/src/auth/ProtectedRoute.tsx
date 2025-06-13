@@ -8,7 +8,7 @@ export const ProtectedRoute = ({ children }: { children: JSX.Element }) => {
   if (isLoading) {
     return (
       <div className="text-center mt-10 text-gray-600">
-        Authentifizierung wird geladen...
+        Authentication is loading...
       </div>
     );
   }

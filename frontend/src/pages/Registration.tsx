@@ -4,6 +4,7 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Link } from 'react-router-dom';
+import { Eye, EyeOff } from 'lucide-react';
 
 interface RegistrationResponse {
   message: string;
@@ -15,8 +16,8 @@ const Registration: React.FC = () => {
   const [confirmPassword, setConfirmPassword] = useState<string>('');
   const [message, setMessage] = useState<string>('');
   const [isError, setIsError] = useState<boolean>(false);
-  const [showPassword] = useState(false);
-  const [showConfirmPassword,] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -68,7 +69,7 @@ const Registration: React.FC = () => {
     <div className="min-h-screen flex items-center justify-center bg-gray-100 px-4">
       <Card className="w-full max-w-md p-6">
         <CardHeader>
-          <CardTitle className="text-center text-2xl">Registrieren</CardTitle>
+          <CardTitle className="text-center text-2xl">Register</CardTitle>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleRegister} className="space-y-4">
@@ -96,20 +97,20 @@ const Registration: React.FC = () => {
                 onChange={(e) => setPassword(e.target.value)}
                 required
               />
-              {/* <button
+              <button
                 type="button"
                 className="absolute right-3 top-9 text-gray-500"
                 onClick={() => setShowPassword(!showPassword)}
                 aria-label="Passwort anzeigen"
               >
                 {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-              </button> */}
+              </button>
             </div>
 
 
             {/* Confirm Password */}
               <div className="relative">
-              <Label htmlFor="confirmPassword" className="mb-1 block text-sm">Passwort bestätigen</Label>
+              <Label htmlFor="confirmPassword" className="mb-1 block text-sm">Confirm password</Label>
               <Input
                 id="confirmPassword"
                 type={showConfirmPassword ? 'text' : 'password'}
@@ -118,14 +119,14 @@ const Registration: React.FC = () => {
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 required
               />
-              {/* <button
+              <button
                 type="button"
                 className="absolute right-3 top-9 text-gray-500"
                 onClick={() => setShowConfirmPassword(!showConfirmPassword)}
                 aria-label="Passwort anzeigen"
               >
                 {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-              </button> */}
+              </button>
             </div>
 
             {/* Submit */}
@@ -133,7 +134,7 @@ const Registration: React.FC = () => {
               type="submit"
               className="w-full bg-gradient-to-r from-slate-400 to-slate-300 text-white font-semibold rounded-full transition-all duration-200 hover:bg-gradient-to-r hover:from-slate-500 hover:to-slate-400 hover:scale-105 cursor-pointer"
             >
-              REGISTRIEREN
+              REGISTER
             </Button>
 
             {/* Message */}

@@ -116,7 +116,7 @@ export default function ChargerTable() {
 
           {/* Status filter radio buttons */}
           <div className="flex items-center gap-4">
-            <span className="font-medium whitespace-nowrap">Charger Status:</span>
+            <span className="font-medium whitespace-nowrap">Charger State:</span>
             <label className="flex items-center gap-1">
               <input
                 type="radio"
@@ -172,7 +172,7 @@ export default function ChargerTable() {
                 </CardHeader>
                 <CardContent>
                   <p>
-                    Status:{" "}
+                    State:{" "}
                     <span
                       className={
                         card.online
@@ -212,7 +212,7 @@ export default function ChargerTable() {
               <TableRow>
                 <TableHead>Charger ID</TableHead>
                 <TableHead>Name</TableHead>
-                <TableHead>Status</TableHead>
+                <TableHead>State</TableHead>
                 <TableHead>Last Seen</TableHead>
                 <TableHead>Favorite</TableHead>
               </TableRow>

@@ -13,6 +13,9 @@ import { AuthProvider } from "@/auth/AuthContext";
 import { ProtectedRoute } from "./auth/ProtectedRoute";
 import Landingpage from "./pages/Landingpage";
 import Favourites from "./pages/Favourites";
+import Monitoring from "./pages/Monitoring";
+import Account from "./pages/Account";
+import Anomaly from "./pages/Anomalies";
 import { FetchProvider } from "./dataFetch/FetchContext";
 
 const App: React.FC = () => {
@@ -29,7 +32,7 @@ const App: React.FC = () => {
               <Route path="/forgot-password" element={<ForgotPassword />} />
               <Route path="/reset-password" element={<ResetPassword />} />
 
-              {/* GESCHÜTZTE ROUTE */}
+              {/* Guarded Routes */}
               <Route
                 path="/"
                 element={
@@ -47,10 +50,34 @@ const App: React.FC = () => {
                 }
               />
               <Route
+                path="/monitoring/:chargerId"
+                element={
+                  <ProtectedRoute>
+                    <Monitoring />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
                 path="/favourites"
                 element={
                   <ProtectedRoute>
                     <Favourites />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/account"
+                element={
+                  <ProtectedRoute>
+                    <Account />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/anomalies"
+                element={
+                  <ProtectedRoute>
+                    <Anomaly />
                   </ProtectedRoute>
                 }
               />

@@ -1,18 +1,17 @@
-import React, {
-  createContext,
-  useState,
-  useCallback,
-  ReactNode,
-} from "react";
+import React, { createContext, useState, useCallback, ReactNode } from "react";
 import axios from "axios";
 
-// CPU Interface
+// Interface CPU
 export interface Cpu {
   timestamp: string;
   value: number;
 }
 
-// interface Charger
+export interface Monitoring {
+  type: string;
+  value: number;
+}
+// Interface Charger
 export interface Charger {
   charger_name: string | null;
   last_seen: string;
@@ -29,7 +28,7 @@ export interface TelemetryData {
   value: number;
 }
 
-//Combination of many Data sources (Value1 = Usage, Value2 = Thermal)
+//Combination of Data
 export interface CombinedData {
   charger_id: string;
   charger_name: string | null;
@@ -38,8 +37,16 @@ export interface CombinedData {
   last_seen: string;
 }
 
+export interface Anomaly {
+  charger_id: string;
+  timestamp: string;
+  telemetry_type: string;
+  anomaly_type: string;
+  anomaly_value: number;
+}
+
 export interface FetchContextType {
-  //Interface for Axios Functions for direct use in Components
+  //Functions for direct use in Components
   getTelemetryTypes: (chargerId: string) => Promise<string[]>;
   getTelemetryData: (chargerId: string, telemetryKey: string) => Promise<Cpu[]>;
   getAllChargers: () => Promise<Charger[]>;
@@ -50,6 +57,17 @@ export interface FetchContextType {
     isCurrentlyFavorite: boolean
   ) => Promise<void>;
   getCombinedChargerData: (chargers: Charger[]) => Promise<CombinedData[]>;
+  getAnomalies: (chargerId: string) => Promise<Anomaly[]>;
+  deleteAnomaly: (
+    chargerId: string,
+    timestamp: Date,
+    telemetry_type: string
+  ) => Promise<void>;
+  addAnomaly: (
+    chargerId: string,
+    timestamp: Date,
+    telemetry_type: string
+  ) => Promise<void>;
 
   //Sync Functions
   syncChargers: () => Promise<void>;
@@ -58,26 +76,32 @@ export interface FetchContextType {
 
   //Functions to write Telemetry Data in Context-State
   loadCpuUsage: (chargerId: string) => Promise<void>;
+  loadMonitoring: (chargerId: string) => Promise<void>;
   loadCpuThermal: (chargerId: string) => Promise<void>;
 
   // State objects - set Telemetry per chargerId
   cpuUsageMap: Record<string, Cpu[]>;
   cpuThermalMap: Record<string, Cpu[]>;
-
+  monitoringMap: Record<string, Monitoring[]>;
   // Simple Error indicator if needed
   searchError: boolean;
 }
 
-export const FetchContext = createContext<FetchContextType | undefined>(undefined);
+export const FetchContext = createContext<FetchContextType | undefined>(
+  undefined
+);
 
 export const FetchProvider: React.FC<{ children: ReactNode }> = ({
   children,
 }) => {
   const [cpuUsageMap, setCpuUsageMap] = useState<Record<string, Cpu[]>>({});
+  const [monitoringMap, setMonitoringMap] = useState<
+    Record<string, Monitoring[]>
+  >({});
   const [cpuThermalMap, setCpuThermalMap] = useState<Record<string, Cpu[]>>({});
   const [searchError, setSearchError] = useState(false);
 
-  // Axios Functions without anything else
+  // Axios Functions to fetch data from API
 
   const getTelemetryTypes = useCallback(
     async (chargerId: string): Promise<string[]> => {
@@ -176,13 +200,49 @@ export const FetchProvider: React.FC<{ children: ReactNode }> = ({
     []
   );
 
+  const getAnomalies = useCallback(
+    async (chargerId: string): Promise<Anomaly[]> => {
+      const resp = await axios.get<Anomaly[]>(
+        `http://127.0.0.1:8000/v1/anomalies?charger_id=${chargerId}`
+      );
+      return resp.data;
+    },
+    []
+  );
+
+  const addAnomaly = useCallback(
+    async (chargerId: string, timestamp: Date, telemetry_type: string) => {
+      await axios.post("http://127.0.0.1:8000/v1/anomalies", {
+        charger_id: chargerId,
+        timestamp: timestamp,
+        telemetry_type: telemetry_type,
+      });
+    },
+    []
+  );
+
+  const deleteAnomaly = useCallback(
+    async (chargerId: string, timestamp: Date, telemetry_type: string) => {
+      const params = new URLSearchParams({
+        charger_id: chargerId,
+        timestamp: timestamp.toISOString(), // in ISO-Format
+        telemetry_type: telemetry_type,
+      });
+
+      await axios.delete(
+        `http://127.0.0.1:8000/v1/anomalies?${params.toString()}`
+      );
+    },
+    []
+  );
+
   // Sync functions
 
   const syncChargers = useCallback(async (): Promise<void> => {
     try {
       await axios.post("http://127.0.0.1:8000/v1/chargers/sync", null);
     } catch (err) {
-      console.warn("syncChargers fehlgeschlagen:", err);
+      console.warn("syncChargers failed:", err);
     }
   }, []);
 
@@ -193,7 +253,7 @@ export const FetchProvider: React.FC<{ children: ReactNode }> = ({
         null
       );
     } catch (err) {
-      console.warn("syncTelemetry fehlgeschlagen:", err);
+      console.warn("syncTelemetry failed:", err);
     }
   }, []);
 
@@ -204,11 +264,10 @@ export const FetchProvider: React.FC<{ children: ReactNode }> = ({
         null
       );
     } catch (err) {
-      console.warn("syncTelemetryShort fehlgeschlagen:", err);
+      console.warn("syncTelemetryShort failed:", err);
     }
   }, []);
 
-  // ─── 3) Neu: Funktionen, um Telemetrie‐Daten in den Context‐State zu schreiben ───
   // Functions to write Telemetry Data in Context State
 
   const loadCpuUsage = useCallback(
@@ -223,10 +282,7 @@ export const FetchProvider: React.FC<{ children: ReactNode }> = ({
           t.toLowerCase().includes("controllercpuusage")
         );
         if (!cpuUsageKey) {
-          console.warn(
-            `Usage-Key für Charger ${chargerId} nicht gefunden:`,
-            types
-          );
+          console.warn(`Usage-Key for Charger ${chargerId} not found:`, types);
           setSearchError(true);
           return;
         }
@@ -241,7 +297,7 @@ export const FetchProvider: React.FC<{ children: ReactNode }> = ({
         }));
         setSearchError(false);
       } catch (err) {
-        console.error("Fehler beim Laden CPU Usage:", err);
+        console.error("Error loading CPU Usage:", err);
         setSearchError(true);
       }
     },
@@ -261,7 +317,7 @@ export const FetchProvider: React.FC<{ children: ReactNode }> = ({
         );
         if (!cpuThermalKey) {
           console.warn(
-            `Thermal-Key für Charger ${chargerId} nicht gefunden:`,
+            `Thermal-Key for Charger ${chargerId} not found:`,
             types
           );
           setSearchError(true);
@@ -278,14 +334,58 @@ export const FetchProvider: React.FC<{ children: ReactNode }> = ({
         }));
         setSearchError(false);
       } catch (err) {
-        console.error("Fehler beim Laden CPU Thermal:", err);
+        console.error("Error loading CPU Thermal:", err);
         setSearchError(true);
       }
     },
     [getTelemetryTypes, getTelemetryData, syncTelemetry]
   );
 
+  const loadMonitoring = useCallback(async (chargerId: string) => {
+    try {
+      //  get the Keys
+      const types = await getTelemetryTypes(chargerId);
+      // filter for keytypes - here all key types without CPU temp and usage
+      const keys = types.filter(
+        (t) =>
+          t.toLowerCase().startsWith("system") ||
+          t.toLowerCase().startsWith("controllerstate")
+      );
+      if (keys.length === 0) {
+        console.warn(
+          `Key with key value "system" in Charger ${chargerId} not found`,
+          types
+        );
+        setSearchError(true);
+        return;
+      }
+
+      //  get the Data
+      const entries = await Promise.all(
+        keys.map(async (key) => {
+          const rawData = await getTelemetryData(chargerId, key);
+          const data: Monitoring[] = rawData.map((d) => ({
+            type: key,
+            value: d.value,
+          }));
+          return [key, data] as const;
+        })
+      );
+
+      // write the data in the Map
+      setMonitoringMap((prev) => ({
+        ...prev,
+        ...Object.fromEntries(entries),
+      }));
+      setSearchError(false);
+    } catch (err) {
+      console.error("Error loading CPU Usage:", err);
+      setSearchError(true);
+    }
+  }, []);
+
   // Provider gives alle the functions etc.
+  // Provider gives all the functions etc.
 
   return (
     <FetchContext.Provider
@@ -296,13 +396,18 @@ export const FetchProvider: React.FC<{ children: ReactNode }> = ({
         getFavorites,
         toggleFavorite,
         getCombinedChargerData,
+        getAnomalies,
+        addAnomaly,
+        deleteAnomaly,
         syncChargers,
         syncTelemetry,
         syncTelemetryShort,
         loadCpuUsage,
+        loadMonitoring,
         loadCpuThermal,
         cpuUsageMap,
         cpuThermalMap,
+        monitoringMap,
         searchError,
       }}
     >
@@ -310,5 +415,3 @@ export const FetchProvider: React.FC<{ children: ReactNode }> = ({
     </FetchContext.Provider>
   );
 };
-
-

@@ -15,6 +15,7 @@ interface LoginResponse {
 }
 
 const Login: React.FC = () => {
+  const [rememberMe, setRememberMe] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -30,9 +31,7 @@ const Login: React.FC = () => {
     try {
       const response = await fetch('http://localhost:8000/v1/auth/login', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
       });
 
@@ -43,9 +42,19 @@ const Login: React.FC = () => {
       }
 
       const data: LoginResponse = await response.json();
-      login(data.access_token);
+
+      
+      if (rememberMe) {
+        localStorage.setItem("token", data.access_token);
+      } else {
+        sessionStorage.setItem("token", data.access_token);
+      }
+      
+      login(data.access_token); 
+
       syncChargers();
       syncTelemetry();
+
       setTimeout(() => {
         navigate('/');
       }, 2000);
@@ -97,7 +106,13 @@ const Login: React.FC = () => {
             </div>
 
             <div className="flex items-center space-x-2 text-sm">
-              <input type="checkbox" id="remember" className="accent-green-600" />
+              <input
+                type="checkbox"
+                id="remember"
+                className="accent-green-600"
+                checked={rememberMe}
+                onChange={(e) => setRememberMe(e.target.checked)}
+              />
               <label htmlFor="remember">Stay logged in</label>
             </div>
 

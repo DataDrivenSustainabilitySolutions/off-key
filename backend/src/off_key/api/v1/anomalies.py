@@ -18,6 +18,7 @@ def get_anomalies(charger_id: str, db: Session = Depends(get_db_sync)):
             "timestamp": a.timestamp,
             "telemetry_type": a.telemetry_type,
             "anomaly_type": a.anomaly_type,
+            "anomaly_value": a.anomaly_value
         }
         for a in anomalies
     ]
@@ -28,13 +29,15 @@ def create_anomaly(
     timestamp: datetime,
     telemetry_type: str,
     anomaly_type: str,
+    anomaly_value: float,
     db: Session = Depends(get_db_sync)
 ):
     new_anomaly = Anomaly(
         charger_id=charger_id,
         timestamp=timestamp,
         telemetry_type=telemetry_type,
-        anomaly_type=anomaly_type
+        anomaly_type=anomaly_type,
+        anomaly_value=anomaly_value
     )
     db.add(new_anomaly)
     db.commit()

@@ -10,13 +10,13 @@ const Verification: React.FC = () => {
 
     useEffect(() => {
         if (token) {
-            axios.get(`http://localhost:8000/verify?token=${token}`)
-                .then(response => {
+            axios.get(`http://localhost:8000/v1/auth/verify-email?token=${token}`)
+                .then(_response => {
                     setStatus('Email verified successfully!');
                 })
-                .catch(error => {
-                    setStatus('Verification failed. Please try again.');
-                });
+                // .catch(_error => {
+                //     setStatus('Verification failed. Please try again.');
+                // });
         } else {
             setStatus('Invalid verification link.');
         }

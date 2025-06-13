@@ -63,9 +63,16 @@ groupadd -r app
 useradd -r -d /app -g app -N app
 EOT
 
+# Install PostgreSQL client tools for pg_isready
+RUN apt-get update && apt-get install -y --no-install-recommends postgresql-client && rm -rf /var/lib/apt/lists/*
+
 # Copy the pre-built `/app` directory to the runtime container
 # Change the ownership to user app and group app in one step.
 COPY --from=builder --chown=app:app /app /app
+
+# Copy custom entrypoint
+COPY --chown=app:app entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
 
 USER app
 
@@ -76,4 +83,4 @@ EXPOSE 8000
 
 # Command to run the application
 # TODO: Expose proper entrypoint
-CMD ["uvicorn", "off_key.main:app", "--host", "0.0.0.0", "--port", "8000"]
+ENTRYPOINT ["/app/entrypoint.sh"]

@@ -17,12 +17,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const savedToken = sessionStorage.getItem("token");
-    if (savedToken) {
-      setToken(savedToken);
-    }
-    setIsLoading(false);
-  }, []);
+
+  const savedToken = localStorage.getItem("token") || sessionStorage.getItem("token");
+  if (savedToken) {
+    setToken(savedToken);
+  }
+  setIsLoading(false);
+}, []);
+
+    
 
   const login = (newToken: string) => {
     sessionStorage.setItem("token", newToken);
@@ -30,8 +33,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   };
 
   const logout = () => {
+    
     sessionStorage.removeItem("token");
-    setToken(null);
+    localStorage.removeItem("token");
   };
 
   const isAuthenticated = !!token;

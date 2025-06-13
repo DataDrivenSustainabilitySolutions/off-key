@@ -8,11 +8,7 @@ from off_key.db.models import User
 from off_key.core.config import settings
 from off_key.utils.enum import RoleEnum
 from off_key.services.auth import (
-    create_reset_token,
-    create_verification_token,
     get_password_hash,
-    verify_password,
-    create_jwt,
 )
 
 
@@ -35,7 +31,6 @@ async def create_admin():
         admin_user = User(
             email=email,
             hashed_password=hashed_pw,
-            is_active=True,
             is_verified=True,
             role=RoleEnum.admin.value,
         )

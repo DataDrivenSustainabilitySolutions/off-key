@@ -33,6 +33,10 @@ services:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 10s
       retries: 5
+    volumes:
+      - ./backend/src:/app/src
+    environment:
+      - PYTHONPATH=/app/src
 
   # frontend:
   #   build: ./frontend

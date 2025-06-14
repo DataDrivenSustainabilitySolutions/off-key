@@ -33,7 +33,7 @@ export function ModeToggle() {
                                 </Button>
                             </DropdownMenuTrigger>
                         </TooltipTrigger>
-                        <TooltipContent>Theme wechseln</TooltipContent>
+                        <TooltipContent>Change Theme</TooltipContent>
                     </Tooltip>
                 ) : (
                     <DropdownMenuTrigger asChild>

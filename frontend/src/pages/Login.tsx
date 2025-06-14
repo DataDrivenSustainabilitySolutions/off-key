@@ -6,6 +6,8 @@ import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
 import { Link } from 'react-router-dom';
 import { useAuth } from "@/auth/AuthContext"; 
+import { useFetch } from '@/dataFetch/UseFetch';
+import { Eye, EyeOff } from 'lucide-react';
 
 interface LoginResponse {
   access_token: string;
@@ -13,39 +15,52 @@ interface LoginResponse {
 }
 
 const Login: React.FC = () => {
+  const [rememberMe, setRememberMe] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [showPassword] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const [message, setMessage] = useState('');
   const navigate = useNavigate();
   const { login } = useAuth();
+  const {syncChargers,
+        syncTelemetry
+       } = useFetch();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
       const response = await fetch('http://localhost:8000/v1/auth/login', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
       });
 
       if (!response.ok) {
         const errorData = await response.json();
-        setMessage(errorData.detail || 'Login fehlgeschlagen');
+        setMessage(errorData.detail || 'Login failed');
         return;
       }
 
       const data: LoginResponse = await response.json();
-      login(data.access_token);
-      setMessage('Login erfolgreich!');
+
+      
+      if (rememberMe) {
+        localStorage.setItem("token", data.access_token);
+      } else {
+        sessionStorage.setItem("token", data.access_token);
+      }
+      
+      login(data.access_token); 
+
+      syncChargers();
+      syncTelemetry();
+
       setTimeout(() => {
         navigate('/');
       }, 2000);
     } catch (error) {
       console.error(error);
-      setMessage('Es ist ein Fehler aufgetreten.');
+      setMessage('An error occurred');
     }
   };
 
@@ -80,19 +95,25 @@ const Login: React.FC = () => {
                 onChange={(e) => setPassword(e.target.value)}
                 required
               />
-              {/* <button
+              <button
                 type="button"
                 className="absolute right-3 top-9 text-gray-500"
                 onClick={() => setShowPassword(!showPassword)}
                 aria-label="Passwort anzeigen"
               >
                 {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-              </button> */}
+              </button>
             </div>
 
             <div className="flex items-center space-x-2 text-sm">
-              <input type="checkbox" id="remember" className="accent-green-600" />
-              <label htmlFor="remember">Angemeldet bleiben</label>
+              <input
+                type="checkbox"
+                id="remember"
+                className="accent-green-600"
+                checked={rememberMe}
+                onChange={(e) => setRememberMe(e.target.checked)}
+              />
+              <label htmlFor="remember">Stay logged in</label>
             </div>
 
             {/* Login Button */}
@@ -100,12 +121,12 @@ const Login: React.FC = () => {
               type="submit"
               className="w-full bg-gradient-to-r from-slate-400 to-slate-300 text-white font-semibold rounded-full transition-all duration-200 hover:bg-gradient-to-r hover:from-slate-500 hover:to-slate-400 hover:scale-105 cursor-pointer"
             >
-              EINLOGGEN
+              Log in
             </Button>
 
             {/* Fehlermeldung oder Erfolgsnachricht */}
             {message && (
-              <p className={`mt-2 text-center text-sm ${message === 'Login erfolgreich!' ? 'text-green-600' : 'text-red-600'}`}>
+              <p className={`mt-2 text-center text-sm ${message === 'Login successful!' ? 'text-green-600' : 'text-red-600'}`}>
                 {message}
               </p>
             )}

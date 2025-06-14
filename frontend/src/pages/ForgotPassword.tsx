@@ -18,7 +18,6 @@ const ForgotPassword: React.FC = () => {
       });
       const data = await res.json();
       setMessage(data.message);
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     } catch (error) {
       setMessage('Fehler beim Senden der Anfrage.');
     }
@@ -28,7 +27,7 @@ const ForgotPassword: React.FC = () => {
     <div className="min-h-screen flex items-center justify-center bg-gray-100 px-4">
       <Card className="w-full max-w-md p-6">
         <CardHeader>
-          <CardTitle className="text-center text-2xl">Passwort vergessen</CardTitle>
+          <CardTitle className="text-center text-2xl">Forgot password</CardTitle>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -38,7 +37,7 @@ const ForgotPassword: React.FC = () => {
               <Input
                 id="email"
                 type="email"
-                placeholder="Deine E-Mail-Adresse"
+                placeholder="Your E-Mail"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
@@ -50,7 +49,7 @@ const ForgotPassword: React.FC = () => {
               type="submit"
               className="w-full bg-gradient-to-r from-slate-400 to-slate-300 text-white font-semibold rounded-full transition-all duration-200 hover:bg-gradient-to-r hover:from-slate-500 hover:to-slate-400 hover:scale-105 cursor-pointer"
             >
-              Password zurücksetzen
+              Reset Password
             </Button>
 
             {/* Message */}

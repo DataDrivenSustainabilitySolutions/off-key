@@ -33,18 +33,22 @@ services:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 10s
       retries: 5
-
-  frontend:
-    build: ./frontend
-    container_name: react_frontend
-    env_file: .env
-    ports:
-      - "${FRONTEND_PORT}:5173"
-    depends_on:
-      - api
     volumes:
-      - ./frontend:/src
-      - /src/node_modules  # Prevent conflicts
+      - ./backend/src:/app/src
+    environment:
+      - PYTHONPATH=/app/src
+
+  # frontend:
+  #   build: ./frontend
+  #   container_name: react_frontend
+  #   env_file: .env
+  #   ports:
+  #     - "${FRONTEND_PORT}:5173"
+  #   depends_on:
+  #     - api
+  #   volumes:
+  #     - ./frontend:/src
+  #     - /src/node_modules  # Prevent conflicts
 
   mailpit:
     image: axllent/mailpit:latest

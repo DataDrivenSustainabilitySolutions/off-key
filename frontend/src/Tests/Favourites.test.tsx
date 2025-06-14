@@ -3,8 +3,9 @@ import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import axios from 'axios';
 import { vi } from 'vitest';
+import { FetchProvider } from '../dataFetch/FetchContext';
 
-import Favourites from './Favourites';
+import Favourites from '../pages/Favourites';
 import { AuthProvider } from '../auth/AuthContext';  // Pfad anpassen
 
 vi.mock('axios');
@@ -23,14 +24,15 @@ describe('Favourites', () => {
 
         render(
             <AuthProvider>
-                <MemoryRouter>
-                    <Favourites />
-                </MemoryRouter>
+                <FetchProvider>
+                    <MemoryRouter>
+                        <Favourites />
+                    </MemoryRouter>
+                </FetchProvider>
             </AuthProvider>
         );
 
-        screen.getByPlaceholderText(/Nach Charger ID suchen/i);
-        screen.getByText(/Ladesäulen Status/i);
+        screen.getByPlaceholderText(/Search for charger ID.../i);
         await screen.findByText(/Charger ID/i);
     });
 });

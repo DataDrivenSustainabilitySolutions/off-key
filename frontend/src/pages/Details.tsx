@@ -396,9 +396,8 @@ const Details: React.FC = () => {
             </div>
 
             <Card
-              className={`mr-6 w-full mb-4 transition-all duration-300 overflow-hidden ${
-                collapsedCard.CpuUsageCard ? "h-16" : "h-96"
-              }`}
+              className={`mr-6 w-full mb-4 transition-all duration-300 overflow-hidden ${collapsedCard.CpuUsageCard ? "h-16" : "h-96"
+                }`}
             >
               <div className="flex justify-between">
                 <CardTitle className="ml-5">CPU Usage</CardTitle>
@@ -473,9 +472,8 @@ const Details: React.FC = () => {
                   strokeWidth={1.5}
                   stroke="currentColor"
                   onClick={() => minimizeCards("CpuUsageCard")}
-                  className={`size-6 mr-5 cursor-pointer transition-transform" ${
-                    collapsedCard.CpuUsageCard ? "rotate-180" : ""
-                  }`}
+                  className={`size-6 mr-5 cursor-pointer transition-transform" ${collapsedCard.CpuUsageCard ? "rotate-180" : ""
+                    }`}
                 >
                   <path
                     strokeLinecap="round"
@@ -541,9 +539,8 @@ const Details: React.FC = () => {
               )}
             </Card>
             <Card
-              className={` w-full transition-all duration-300 overflow-hidden ${
-                collapsedCard.CpuThermalCard ? "h-16" : "h-96"
-              }`}
+              className={` w-full transition-all duration-300 overflow-hidden ${collapsedCard.CpuThermalCard ? "h-16" : "h-96"
+                }`}
             >
               <div className="flex justify-between">
                 <CardTitle className="ml-5">CPU Thermal</CardTitle>
@@ -622,9 +619,8 @@ const Details: React.FC = () => {
                   strokeWidth={1.5}
                   stroke="currentColor"
                   onClick={() => minimizeCards("CpuThermalCard")}
-                  className={`size-6 mr-5 cursor-pointer transition-transform" ${
-                    collapsedCard.CpuThermalCard ? "rotate-180" : ""
-                  }`}
+                  className={`size-6 mr-5 cursor-pointer transition-transform" ${collapsedCard.CpuThermalCard ? "rotate-180" : ""
+                    }`}
                 >
                   <path
                     strokeLinecap="round"

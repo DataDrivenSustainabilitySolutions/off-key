@@ -11,14 +11,8 @@ import { NavigationBar } from "@/components/NavigationBar";
 import { useFetch } from "@/dataFetch/UseFetch";
 import type { CombinedData } from "@/dataFetch/FetchContext";
 
-import {
-  Tooltip,
-  TooltipTrigger,
-  TooltipContent,
-  TooltipProvider,
-} from "@/components/ui/tooltip";
-
 export default function ChargerTable() {
+  // State variables for UI and data handling
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "online" | "offline">("all");
@@ -26,6 +20,7 @@ export default function ChargerTable() {
   const [favoriteChargerIds, setFavoriteChargerIds] = useState<string[]>([]);
   const [data, setData] = useState<CombinedData[]>([]);
 
+  // Fetch functions from FetchContext
   const {
     getAllChargers,
     getCombinedChargerData,
@@ -33,16 +28,23 @@ export default function ChargerTable() {
     getFavorites,
   } = useFetch();
 
+  // Load data on mount
   useEffect(() => {
     async function loadData() {
       setLoading(true);
       try {
+        // Fetch favorite charger IDs for user 1
         const favoriteIds = await getFavorites(1);
         setFavoriteChargerIds(favoriteIds);
 
+        // Fetch all chargers and combine them with additional data
         const chargers = await getAllChargers();
         const combined = await getCombinedChargerData(chargers);
-        const favs = combined.filter((c) => favoriteIds.includes(c.charger_id));
+
+        // Filter only favorites for display
+        const favs = combined.filter((c) =>
+          favoriteIds.includes(c.charger_id)
+        );
         setData(favs);
       } finally {
         setLoading(false);
@@ -51,10 +53,12 @@ export default function ChargerTable() {
     loadData();
   }, [getAllChargers, getCombinedChargerData, getFavorites]);
 
+  // Filter chargers based on search input and status filter
   const filteredData = data
-    .filter((c) =>
-      c.charger_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (c.charger_name?.toLowerCase().includes(searchTerm.toLowerCase()) ?? false)
+    .filter(
+      (c) =>
+        c.charger_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (c.charger_name?.toLowerCase().includes(searchTerm.toLowerCase()) ?? false)
     )
     .filter((c) => {
       if (statusFilter === "all") return true;
@@ -63,14 +67,17 @@ export default function ChargerTable() {
       return true;
     });
 
+  // Count filtered items for display in status filter
   const countAll = filteredData.length;
   const countOnline = filteredData.filter((c) => c.online).length;
   const countOffline = filteredData.filter((c) => !c.online).length;
 
+  // Toggle between card and table view
   const handleViewToggle = (checked: boolean) => {
     setIsCardsView(checked);
   };
 
+  // Toggle favorite status for a charger
   const handleToggleFavorite = async (chargerId: string) => {
     const isFavorite = favoriteChargerIds.includes(chargerId);
     setFavoriteChargerIds((prev) =>
@@ -81,6 +88,7 @@ export default function ChargerTable() {
       await toggleFavorite(chargerId, 1, isFavorite);
     } catch (err) {
       console.error("Error saving favorite status:", err);
+      // Revert if API call fails
       setFavoriteChargerIds((prev) =>
         isFavorite ? [...prev, chargerId] : prev.filter((id) => id !== chargerId)
       );
@@ -89,10 +97,10 @@ export default function ChargerTable() {
 
   return (
     <>
-      <NavigationBar />
+      <NavigationBar></NavigationBar>
       <div className="p-6">
         <h1 className="text-xl font-bold mb-4">Favorites</h1>
-
+        {/* Search + filter + view toggle */}
         <div className="mb-4 flex flex-wrap items-center justify-between gap-4">
           <input
             type="text"
@@ -101,9 +109,9 @@ export default function ChargerTable() {
             onChange={(e) => setSearchTerm(e.target.value)}
             className="p-2 border rounded w-full md:w-1/2"
           />
-
           <div className="flex items-center gap-4">
             <span className="font-medium whitespace-nowrap">Charger state:</span>
+            {/* Status filter radio buttons */}
             <label className="flex items-center gap-1">
               <input
                 type="radio"
@@ -132,27 +140,19 @@ export default function ChargerTable() {
               Offline ({countOffline})
             </label>
           </div>
-
-          <TooltipProvider>
-            <div className="flex items-center gap-2">
-              <span>Table</span>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Switch
-                    checked={isCardsView}
-                    onCheckedChange={handleViewToggle}
-                    className="bg-gray-300 data-[state=checked]:bg-gray-300"
-                  />
-                </TooltipTrigger>
-                <TooltipContent>
-                  {isCardsView ? "Switch to table view" : "Switch to card view"}
-                </TooltipContent>
-              </Tooltip>
-              <span>Cards</span>
-            </div>
-          </TooltipProvider>
+          {/* View toggle switch */}
+          <div className="flex items-center gap-2">
+            <span>Table</span>
+            <Switch
+              checked={isCardsView}
+              onCheckedChange={handleViewToggle}
+              className="bg-gray-300 data-[state=checked]:bg-gray-300"
+            />
+            <span>Cards</span>
+          </div>
         </div>
 
+        {/* Conditional rendering for loading, cards or table */}
         {loading ? (
           <p className="text-gray-500">Loading data...</p>
         ) : isCardsView ? (

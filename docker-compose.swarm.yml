@@ -1,0 +1,148 @@
+services:
+
+  postgres:
+    image: timescale/timescaledb:latest-pg15
+    env_file: .env
+    ports:
+      - target: 5432
+        published: "${POSTGRES_PORT}"
+        mode: ingress
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - app-network
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    deploy:
+      placement:
+        constraints:
+          - node.role == manager
+
+  api:
+    image: "${API_IMAGE:-off-key-api:latest}"
+    env_file: .env
+    ports:
+      - target: 8000
+        published: "${BACKEND_PORT}"
+        mode: ingress
+    networks:
+      - public-network
+      - app-network
+      - socket-network
+#    TODO: This healthcheck doesn't work for now
+#    healthcheck:
+#      test: [ "CMD", "curl", "-f", "http://localhost:8000/health" ]
+#      interval: 10s
+#      retries: 5
+    deploy:
+      mode: replicated
+      replicas: 2
+      placement:
+        constraints:
+          - node.role == worker
+#        preferences:
+#          - spread: node.labels.type  # Distribute evenly
+#      TODO: Measure resources with MQTT images
+#      resources:
+#        limits:
+#          cpus: '0.2'
+#          memory: 512M
+
+  socket-proxy:
+    image: tecnativa/docker-socket-proxy
+    networks:
+      - socket-network
+    ports:
+      - target: 2375
+        published: 2375
+        mode: host
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+    environment:
+      - LOG_LEVEL=info # debug,info,notice,warning,err,crit,alert,emerg
+      ## Variables match the URL prefix (i.e. AUTH blocks access to /auth/* parts of the API, etc.).
+      # 0 to revoke access.
+      # 1 to grant access.
+      ## Granted by Default
+      - EVENTS=1
+      - PING=1
+      - VERSION=1
+      ## Revoked by Default
+      # Security critical
+      - AUTH=0
+      - SECRETS=0
+      - POST=1 # Container(s) Lifecycle Management
+      # Not always needed
+      - BUILD=0
+      - COMMIT=0
+      - CONFIGS=0
+      - CONTAINERS=1 # Traefik, portainer, etc.
+      - DISTRIBUTION=0
+      - EXEC=0
+      - IMAGES=1 # Portainer
+      - INFO=1 # Portainer
+      - NETWORKS=1 # Portainer
+      - NODES=0
+      - PLUGINS=0
+      - SERVICES=1 # Portainer
+      - SESSION=0
+      - SWARM=0
+      - SYSTEM=0
+      - TASKS=1 # Portainer
+      - VOLUMES=1 # Portainer
+
+  frontend:
+    image: "${FRONTEND_IMAGE:-off-key-frontend:latest}"
+    env_file: .env
+    ports:
+      - target: 5173
+        published: "${FRONTEND_PORT}"
+        mode: ingress
+    volumes:
+      - ./frontend:/src
+      - /src/node_modules  # Prevent conflicts
+    deploy:
+      mode: replicated
+      replicas: 2
+      placement:
+        constraints:
+          - node.role == worker
+#        preferences:
+#          - spread: node.labels.type  # Distribute evenly
+#      resources:
+#        limits:
+#          cpus: '1'
+#          memory: 512M
+
+  mailpit:
+    image: axllent/mailpit:latest
+    volumes:
+      - ./data:/data
+    ports:
+      - target: 8025
+        published: 8025
+        mode: ingress
+      - target: 1025
+        published: 1025
+        mode: ingress
+    networks:
+      - public-network
+      - app-network
+    deploy:
+      placement:
+        constraints:
+          - node.role == manager
+
+networks:
+  public-network:
+    driver: overlay
+  app-network:
+    driver: overlay
+  socket-network:
+    driver: overlay
+
+volumes:
+  postgres_data:

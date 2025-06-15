@@ -22,6 +22,7 @@
     "@radix-ui/react-popover": "^1.1.13",
     "@radix-ui/react-slot": "^1.2.1",
     "@radix-ui/react-switch": "^1.2.5",
+    "@radix-ui/react-tooltip": "^1.2.7",
     "@tailwindcss/postcss": "^4.0.10",
     "@tailwindcss/vite": "^4.0.9",
     "@types/react-router-dom": "^5.3.3",

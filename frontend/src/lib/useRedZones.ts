@@ -6,7 +6,7 @@ type DataPoint = {
   timestamp: string;
   value: number;
 };
-//Red Zones for the CPU Usage at the Moment with critical Usage at 80 or above
+//Red Zones for the CPU at the Moment with critical Usage at 80 or above
 export function useRedZones(data: DataPoint[], threshold = 80) {
   return useMemo(() => {
     const zones: { start: string; end: string }[] = [];

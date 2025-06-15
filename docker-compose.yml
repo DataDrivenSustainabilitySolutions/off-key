@@ -1,5 +1,4 @@
 services:
-
   postgres:
     image: timescale/timescaledb:latest-pg15
     container_name: postgres_database
@@ -38,17 +37,17 @@ services:
     environment:
       - PYTHONPATH=/app/src
 
-  # frontend:
-  #   build: ./frontend
-  #   container_name: react_frontend
-  #   env_file: .env
-  #   ports:
-  #     - "${FRONTEND_PORT}:5173"
-  #   depends_on:
-  #     - api
-  #   volumes:
-  #     - ./frontend:/src
-  #     - /src/node_modules  # Prevent conflicts
+  frontend:
+    build: ./frontend
+    container_name: react_frontend
+    env_file: .env
+    ports:
+      - "${FRONTEND_PORT}:5173"
+    depends_on:
+      - api
+    volumes:
+      - ./frontend:/src
+      - /src/node_modules # Prevent conflicts
 
   mailpit:
     image: axllent/mailpit:latest
@@ -61,7 +60,7 @@ services:
       - "1025:1025" # SMTP port
 
     networks:
-    - app-network
+      - app-network
 
 networks:
   app-network:

@@ -1,13 +1,13 @@
-import React, { useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Label } from '@/components/ui/label';
-import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
-import { useNavigate } from 'react-router-dom';
-import { Link } from 'react-router-dom';
-import { useAuth } from "@/auth/AuthContext"; 
-import { useFetch } from '@/dataFetch/UseFetch';
-import { Eye, EyeOff } from 'lucide-react';
+import React, { useState } from "react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
+import { useAuth } from "@/auth/AuthContext";
+import { useFetch } from "@/dataFetch/UseFetch";
+import { Eye, EyeOff } from "lucide-react";
 
 interface LoginResponse {
   access_token: string;
@@ -16,51 +16,50 @@ interface LoginResponse {
 
 const Login: React.FC = () => {
   const [rememberMe, setRememberMe] = useState(false);
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [message, setMessage] = useState('');
+  const [message, setMessage] = useState("");
   const navigate = useNavigate();
   const { login } = useAuth();
-  const {syncChargers,
-        syncTelemetry
-       } = useFetch();
+  const { syncChargers, syncTelemetry } = useFetch();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const response = await fetch('http://localhost:8000/v1/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const response = await fetch("http://localhost:8000/v1/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
       });
 
       if (!response.ok) {
         const errorData = await response.json();
-        setMessage(errorData.detail || 'Login failed');
+        setMessage(errorData.detail || "Login failed");
         return;
       }
 
       const data: LoginResponse = await response.json();
 
-      
       if (rememberMe) {
         localStorage.setItem("token", data.access_token);
       } else {
         sessionStorage.setItem("token", data.access_token);
       }
-      
-      login(data.access_token); 
+
+      login(data.access_token);
 
       syncChargers();
+      console.log("Vor SyncTelemetry aufruf");
       syncTelemetry();
+      console.log("nach Auftruf");
 
       setTimeout(() => {
-        navigate('/');
+        navigate("/");
       }, 2000);
     } catch (error) {
       console.error(error);
-      setMessage('An error occurred');
+      setMessage("An error occurred");
     }
   };
 
@@ -74,7 +73,9 @@ const Login: React.FC = () => {
           <form onSubmit={handleLogin} className="space-y-4">
             {/* E-Mail */}
             <div>
-              <Label htmlFor="email" className="mb-1 block text-sm">E-Mail</Label>
+              <Label htmlFor="email" className="mb-1 block text-sm">
+                E-Mail
+              </Label>
               <Input
                 id="email"
                 type="email"
@@ -86,10 +87,12 @@ const Login: React.FC = () => {
             </div>
 
             <div className="relative">
-              <Label htmlFor="password" className="mb-1 block text-sm">Passwort</Label>
+              <Label htmlFor="password" className="mb-1 block text-sm">
+                Passwort
+              </Label>
               <Input
                 id="password"
-                type={showPassword ? 'text' : 'password'}
+                type={showPassword ? "text" : "password"}
                 placeholder="Passwort"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -126,7 +129,13 @@ const Login: React.FC = () => {
 
             {/* Fehlermeldung oder Erfolgsnachricht */}
             {message && (
-              <p className={`mt-2 text-center text-sm ${message === 'Login successful!' ? 'text-green-600' : 'text-red-600'}`}>
+              <p
+                className={`mt-2 text-center text-sm ${
+                  message === "Login successful!"
+                    ? "text-green-600"
+                    : "text-red-600"
+                }`}
+              >
                 {message}
               </p>
             )}
@@ -134,14 +143,17 @@ const Login: React.FC = () => {
             {/* Links */}
             <div className="text-sm text-center mt-3 space-y-1">
               <a href="#" className="text-blue-700 hover:underline block">
-                <Link to="/forgot-password" className="text-blue-600 hover:underline">
+                <Link
+                  to="/forgot-password"
+                  className="text-blue-600 hover:underline"
+                >
                   Forgot password?
                 </Link>
-              </a> 
+              </a>
             </div>
             <div className="text-xs mt-4 text-center">
               <p>
-                Not signed up yet?{' '}
+                Not signed up yet?{" "}
                 <Link to="/register" className="text-blue-600 hover:underline">
                   Register here
                 </Link>

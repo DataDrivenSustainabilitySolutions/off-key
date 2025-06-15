@@ -130,7 +130,7 @@ async (chargerId: string, timestamp: Date, telemetry_type: string, anomaly_type:
     }
 ```
 
-### a. `deleteAnomaly(chargerId: string, timestamp: Date, telemetry_type: string): returntype`
+### c. `deleteAnomaly(chargerId: string, timestamp: Date, telemetry_type: string): returntype`
 
 **Description:**  
 Function deletes a given anomaly entry based on the specified charger_id, timestamp and telemetry_type combination.

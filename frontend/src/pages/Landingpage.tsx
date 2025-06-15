@@ -19,18 +19,23 @@ import {
 } from "@/components/ui/card";
 import { NavigationBar } from "@/components/NavigationBar";
 import { useFetch } from "@/dataFetch/UseFetch";
-import type { CombinedData } from "@/dataFetch/FetchContext"; 
+import type { CombinedData } from "@/dataFetch/FetchContext";
+
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+  TooltipProvider,
+} from "@/components/ui/tooltip";
 
 export default function ChargerTable() {
-  // Local state for various UI and data aspects
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "online" | "offline">("all");
   const [isCardsView, setIsCardsView] = useState(false);
   const [favoriteChargerIds, setFavoriteChargerIds] = useState<string[]>([]);
-  const [data, setData] = useState<CombinedData[]>([]); 
+  const [data, setData] = useState<CombinedData[]>([]);
 
-  // Custom fetch hook functions
   const {
     getAllChargers,
     getCombinedChargerData,
@@ -38,7 +43,6 @@ export default function ChargerTable() {
     getFavorites,
   } = useFetch();
 
-  // Load charger and favorite data on mount
   useEffect(() => {
     async function loadData() {
       setLoading(true);
@@ -52,10 +56,9 @@ export default function ChargerTable() {
         setLoading(false);
       }
     }
-    loadData(); // Fetch data initially
+    loadData();
   }, [getAllChargers, getCombinedChargerData, getFavorites]);
 
-  // Filter data by search term and status
   const filteredData = data
     .filter(
       (c) =>
@@ -69,21 +72,16 @@ export default function ChargerTable() {
       return true;
     });
 
-  // Count chargers by status
   const countAll = filteredData.length;
   const countOnline = filteredData.filter((c) => c.online).length;
   const countOffline = filteredData.filter((c) => !c.online).length;
 
-  // Toggle between table and card view
   const handleViewToggle = (checked: boolean) => {
     setIsCardsView(checked);
   };
 
-  // Toggle favorite state of a charger
   const handleToggleFavorite = async (chargerId: string) => {
     const isFavorite = favoriteChargerIds.includes(chargerId);
-
-    // Update local state optimistically
     setFavoriteChargerIds((prev) =>
       isFavorite ? prev.filter((id) => id !== chargerId) : [...prev, chargerId]
     );
@@ -92,7 +90,6 @@ export default function ChargerTable() {
       await toggleFavorite(chargerId, 1, isFavorite);
     } catch (err) {
       console.error("Error saving favorite:", err);
-      // Revert optimistic update on failure
       setFavoriteChargerIds((prev) =>
         isFavorite ? [...prev, chargerId] : prev.filter((id) => id !== chargerId)
       );
@@ -104,7 +101,6 @@ export default function ChargerTable() {
       <NavigationBar />
 
       <div className="p-6">
-        {/* Search bar, filters and view toggle */}
         <div className="mb-4 flex flex-wrap items-center justify-between gap-4">
           <input
             type="text"
@@ -114,7 +110,6 @@ export default function ChargerTable() {
             className="p-2 border rounded w-full md:w-1/2"
           />
 
-          {/* Status filter radio buttons */}
           <div className="flex items-center gap-4">
             <span className="font-medium whitespace-nowrap">Charger State:</span>
             <label className="flex items-center gap-1">
@@ -146,23 +141,29 @@ export default function ChargerTable() {
             </label>
           </div>
 
-          {/* Switch between table and card views */}
-          <div className="flex items-center gap-2">
-            <span>Table</span>
-            <Switch
-              checked={isCardsView}
-              onCheckedChange={handleViewToggle}
-              className="bg-gray-300 data-[state=checked]:bg-gray-300"
-            />
-            <span>Cards</span>
-          </div>
+          <TooltipProvider>
+            <div className="flex items-center gap-2">
+              <span>Table</span>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Switch
+                    checked={isCardsView}
+                    onCheckedChange={handleViewToggle}
+                    className="bg-gray-300 data-[state=checked]:bg-gray-300"
+                  />
+                </TooltipTrigger>
+                <TooltipContent side="top">
+                  {isCardsView ? "Switch to table view" : "Switch to card view"}
+                </TooltipContent>
+              </Tooltip>
+              <span>Cards</span>
+            </div>
+          </TooltipProvider>
         </div>
 
-        {/* Main content - loading indicator, cards or table */}
         {loading ? (
           <p className="text-gray-500">Loading data...</p>
         ) : isCardsView ? (
-          // Card view layout
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredData.map((card, index) => (
               <Card key={index}>
@@ -186,14 +187,12 @@ export default function ChargerTable() {
                   <p>Last Seen: {new Date(card.last_seen).toLocaleString()}</p>
                 </CardContent>
                 <CardFooter>
-                  {/* Link to detail page */}
                   <Link
                     to={`/details/${card.charger_id}`}
                     className="text-sm text-primary underline"
                   >
                     More details
                   </Link>
-                  {/* Favorite toggle button */}
                   <button
                     onClick={() => handleToggleFavorite(card.charger_id)}
                     className="ml-auto text-xl text-black"
@@ -206,7 +205,6 @@ export default function ChargerTable() {
             ))}
           </div>
         ) : (
-          // Table view layout
           <Table>
             <TableHeader>
               <TableRow>

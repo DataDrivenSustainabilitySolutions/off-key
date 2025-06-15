@@ -9,7 +9,7 @@ import {
 } from "@/components/ui/card";
 import { NavigationBar } from "@/components/NavigationBar";
 import { useFetch } from "@/dataFetch/UseFetch";
-import type { CombinedData } from "@/dataFetch/FetchContext"; 
+import type { CombinedData } from "@/dataFetch/FetchContext";
 
 export default function ChargerTable() {
   // State variables for UI and data handling
@@ -18,7 +18,7 @@ export default function ChargerTable() {
   const [statusFilter, setStatusFilter] = useState<"all" | "online" | "offline">("all");
   const [isCardsView, setIsCardsView] = useState(false);
   const [favoriteChargerIds, setFavoriteChargerIds] = useState<string[]>([]);
-  const [data, setData] = useState<CombinedData[]>([]); 
+  const [data, setData] = useState<CombinedData[]>([]);
 
   // Fetch functions from FetchContext
   const {

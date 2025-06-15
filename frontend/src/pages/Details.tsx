@@ -7,7 +7,6 @@ import {
   XAxis,
   YAxis,
   CartesianGrid,
-  Tooltip,
   Legend,
   ResponsiveContainer,
   ReferenceArea,
@@ -26,6 +25,11 @@ import { NavigationBar } from "@/components/NavigationBar";
 import { Cpu } from "@/dataFetch/FetchContext";
 import { useFetch } from "@/dataFetch/UseFetch";
 import { Button } from "@/components/ui/button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 const Details: React.FC = () => {
   const [collapsedCard, setCollapsedCard] = useState<Record<string, boolean>>({
@@ -167,10 +171,19 @@ const Details: React.FC = () => {
           <CardTitle className="ml-5">Charger {chargerId}</CardTitle>
           <CardContent>
             <Link to={`/monitoring/${chargerId}`}>
-              <Button className="mb-5 mr-3 float-right bg-indigo-800 hover:bg-indigo-700 cursor-pointer">
-                Monitoring
-              </Button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button className="mb-5 mr-3 float-right bg-indigo-800 hover:bg-indigo-700 cursor-pointer">
+                    Monitoring
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="top" align="center">
+                  Open Live Monitoring
+                </TooltipContent>
+              </Tooltip>
             </Link>
+
+
             <div className="flex justify-between">
               {/* Short Info Cards
               /* <Card
@@ -321,9 +334,8 @@ const Details: React.FC = () => {
             </div>
 
             <Card
-              className={`mr-6 w-full mb-4 transition-all duration-300 overflow-hidden ${
-                collapsedCard.CpuUsageCard ? "h-16" : "h-96"
-              }`}
+              className={`mr-6 w-full mb-4 transition-all duration-300 overflow-hidden ${collapsedCard.CpuUsageCard ? "h-16" : "h-96"
+                }`}
             >
               <div className="flex justify-between">
                 <CardTitle className="ml-5">CPU Usage</CardTitle>
@@ -331,24 +343,29 @@ const Details: React.FC = () => {
                   <div className="flex">
                     <Popover>
                       <div className="relative">
-                        <Input
-                          type="datetime-local"
-                          className="cursor-pointer"
-                          placeholder="Von"
-                          value={
-                            fromDateUsage
-                              ? format(fromDateUsage, "yyyy-MM-dd'T'HH:mm")
-                              : ""
-                          }
-                          //empty field befor input for reload
-                          onFocus={() => setFromDateUsage(undefined)}
-                          onChange={(e) => {
-                            const value = e.currentTarget.value;
-                            setFromDateUsage(
-                              value ? new Date(value) : undefined
-                            );
-                          }}
-                        />
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Input
+                              type="datetime-local"
+                              className="cursor-pointer"
+                              placeholder="Von"
+                              value={
+                                fromDateUsage
+                                  ? format(fromDateUsage, "yyyy-MM-dd'T'HH:mm")
+                                  : ""
+                              }
+                              //empty field befor input for reload
+                              onFocus={() => setFromDateUsage(undefined)}
+                              onChange={(e) => {
+                                const value = e.currentTarget.value;
+                                setFromDateUsage(
+                                  value ? new Date(value) : undefined
+                                );
+                              }}
+                            />
+                          </TooltipTrigger>
+                          <TooltipContent>Enter Start Date here</TooltipContent>
+                        </Tooltip>
                       </div>
                     </Popover>
                     <h2 className="ml-3 mr-3 text-2xl font-semibold tracking-tight transition-colors first:mt-0">
@@ -356,22 +373,27 @@ const Details: React.FC = () => {
                     </h2>
                     <Popover>
                       <div className="relative">
-                        <Input
-                          type="datetime-local"
-                          className="cursor-pointer"
-                          placeholder="Bis"
-                          value={
-                            toDateUsage
-                              ? format(toDateUsage, "yyyy-MM-dd'T'HH:mm")
-                              : ""
-                          }
-                          //empty field befor input for reload
-                          onFocus={() => setToDateUsage(undefined)}
-                          onChange={(e) => {
-                            const value = e.target.value;
-                            setToDateUsage(value ? new Date(value) : undefined);
-                          }}
-                        />
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Input
+                              type="datetime-local"
+                              className="cursor-pointer"
+                              placeholder="From"
+                              value={
+                                toDateUsage
+                                  ? format(toDateUsage, "yyyy-MM-dd'T'HH:mm")
+                                  : ""
+                              }
+                              onFocus={() => setToDateUsage(undefined)}
+                              onChange={(e) => {
+                                const value = e.target.value;
+                                setToDateUsage(value ? new Date(value) : undefined);
+                              }}
+                            />
+                          </TooltipTrigger>
+                          <TooltipContent>Enter End Date here</TooltipContent>
+                        </Tooltip>
+
                       </div>
                     </Popover>
                     <div>
@@ -400,9 +422,8 @@ const Details: React.FC = () => {
                   strokeWidth={1.5}
                   stroke="currentColor"
                   onClick={() => minimizeCards("CpuUsageCard")}
-                  className={`size-6 mr-5 cursor-pointer transition-transform" ${
-                    collapsedCard.CpuUsageCard ? "rotate-180" : ""
-                  }`}
+                  className={`size-6 mr-5 cursor-pointer transition-transform" ${collapsedCard.CpuUsageCard ? "rotate-180" : ""
+                    }`}
                 >
                   <path
                     strokeLinecap="round"
@@ -468,9 +489,8 @@ const Details: React.FC = () => {
               )}
             </Card>
             <Card
-              className={` w-full transition-all duration-300 overflow-hidden ${
-                collapsedCard.CpuThermalCard ? "h-16" : "h-96"
-              }`}
+              className={` w-full transition-all duration-300 overflow-hidden ${collapsedCard.CpuThermalCard ? "h-16" : "h-96"
+                }`}
             >
               <div className="flex justify-between">
                 <CardTitle className="ml-5">CPU Thermal</CardTitle>
@@ -478,24 +498,27 @@ const Details: React.FC = () => {
                   <div className="flex">
                     <Popover>
                       <div className="relative">
-                        <Input
-                          type="datetime-local"
-                          className="cursor-pointer"
-                          placeholder="Von"
-                          value={
-                            fromDateThermal
-                              ? format(fromDateThermal, "yyyy-MM-dd'T'HH:mm")
-                              : ""
-                          }
-                          //empty field befor input for reload
-                          onFocus={() => setFromDateThermal(undefined)}
-                          onChange={(e) => {
-                            const value = e.target.value;
-                            setFromDateThermal(
-                              value ? new Date(value) : undefined
-                            );
-                          }}
-                        />
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Input
+                              type="datetime-local"
+                              className="cursor-pointer"
+                              placeholder="Von"
+                              value={
+                                fromDateThermal
+                                  ? format(fromDateThermal, "yyyy-MM-dd'T'HH:mm")
+                                  : ""
+                              }
+                              onFocus={() => setFromDateThermal(undefined)}
+                              onChange={(e) => {
+                                const value = e.target.value;
+                                setFromDateThermal(value ? new Date(value) : undefined);
+                              }}
+                            />
+                          </TooltipTrigger>
+                          <TooltipContent>Enter Start Date here</TooltipContent>
+                        </Tooltip>
+
                       </div>
                     </Popover>
                     <h2 className="ml-3 mr-3 text-2xl font-semibold tracking-tight transition-colors first:mt-0">
@@ -503,24 +526,27 @@ const Details: React.FC = () => {
                     </h2>
                     <Popover>
                       <div className="relative">
-                        <Input
-                          type="datetime-local"
-                          className="cursor-pointer"
-                          placeholder="Bis"
-                          value={
-                            toDateThermal
-                              ? format(toDateThermal, "yyyy-MM-dd'T'HH:mm")
-                              : ""
-                          }
-                          //empty field befor input for reload
-                          onFocus={() => setToDateThermal(undefined)}
-                          onChange={(e) => {
-                            const value = e.target.value;
-                            setToDateThermal(
-                              value ? new Date(value) : undefined
-                            );
-                          }}
-                        />
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Input
+                              type="datetime-local"
+                              className="cursor-pointer"
+                              placeholder="Bis"
+                              value={
+                                toDateThermal
+                                  ? format(toDateThermal, "yyyy-MM-dd'T'HH:mm")
+                                  : ""
+                              }
+                              onFocus={() => setToDateThermal(undefined)}
+                              onChange={(e) => {
+                                const value = e.target.value;
+                                setToDateThermal(value ? new Date(value) : undefined);
+                              }}
+                            />
+                          </TooltipTrigger>
+                          <TooltipContent>Enter End Date here</TooltipContent>
+                        </Tooltip>
+
                       </div>
                     </Popover>
                     <div>
@@ -549,9 +575,8 @@ const Details: React.FC = () => {
                   strokeWidth={1.5}
                   stroke="currentColor"
                   onClick={() => minimizeCards("CpuThermalCard")}
-                  className={`size-6 mr-5 cursor-pointer transition-transform" ${
-                    collapsedCard.CpuThermalCard ? "rotate-180" : ""
-                  }`}
+                  className={`size-6 mr-5 cursor-pointer transition-transform" ${collapsedCard.CpuThermalCard ? "rotate-180" : ""
+                    }`}
                 >
                   <path
                     strokeLinecap="round"
@@ -621,8 +646,8 @@ const Details: React.FC = () => {
               )}
             </Card>
           </CardContent>
-        </Card>
-      </div>
+        </Card >
+      </div >
     </>
   );
 };

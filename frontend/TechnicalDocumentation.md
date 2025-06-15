@@ -1,4 +1,4 @@
-# 📘 Tecnical Documentation
+# 📘 Technical Documentation
 
 ## 📁 `FileName.ts(x)`
 

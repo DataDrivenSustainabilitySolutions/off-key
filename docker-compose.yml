@@ -19,6 +19,7 @@ services:
 
   api:
     build: ./backend/
+    image: "${API_IMAGE:-off-key-api:latest}"
     container_name: fastapi_backend
     env_file: .env
     ports:
@@ -28,24 +29,70 @@ services:
         condition: service_healthy
     networks:
       - app-network
+      - socket-network
     restart: always
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 10s
       retries: 5
+
+  socket-proxy:
+    container_name: socket-proxy
+    image: tecnativa/docker-socket-proxy
+    restart: always
+    networks:
+      - socket-network
+    privileged: true # true for VM. False for unprivileged LXC container/podman
+    ports:
+    #  - "127.0.0.1:2375:2375" # Port 2375 should only ever get exposed to the internal network. When possible use this line.
+    # To manage multiple docker endpoints within a network, use the following line:
+     - "2375:2375"
     volumes:
-      - /etc/docker/ca.pem:/etc/docker/ca.pem
-      - /etc/docker/client-cert.pem:/etc/docker/client-cert.pem
-      - /etc/docker/client-key.pem:/etc/docker/client-key.pem
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+    environment:
+      - LOG_LEVEL=info # debug,info,notice,warning,err,crit,alert,emerg
+      ## Variables match the URL prefix (i.e. AUTH blocks access to /auth/* parts of the API, etc.).
+      # 0 to revoke access.
+      # 1 to grant access.
+      ## Granted by Default
+      - EVENTS=1
+      - PING=1
+      - VERSION=1
+      ## Revoked by Default
+      # Security critical
+      - AUTH=0
+      - SECRETS=0
+      - POST=1 # Container(s) Lifecycle Management
+      # Not always needed
+      - BUILD=0
+      - COMMIT=0
+      - CONFIGS=0
+      - CONTAINERS=1 # Traefik, portainer, etc.
+      - DISTRIBUTION=0
+      - EXEC=0
+      - IMAGES=1 # Portainer
+      - INFO=1 # Portainer
+      - NETWORKS=1 # Portainer
+      - NODES=0
+      - PLUGINS=0
+      - SERVICES=1 # Portainer
+      - SESSION=0
+      - SWARM=0
+      - SYSTEM=0
+      - TASKS=1 # Portainer
+      - VOLUMES=1 # Portainer
 
   frontend:
     build: ./frontend
+    image: "${FRONTEND_IMAGE:-off-key-frontend:latest}"
     container_name: react_frontend
     env_file: .env
     ports:
       - "${FRONTEND_PORT}:5173"
     depends_on:
       - api
+    networks:
+      - app-network
     volumes:
       - ./frontend:/src
       - /src/node_modules  # Prevent conflicts
@@ -65,6 +112,8 @@ services:
 
 networks:
   app-network:
+    driver: bridge
+  socket-network:
     driver: bridge
 
 volumes:

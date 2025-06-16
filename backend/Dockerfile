@@ -63,24 +63,28 @@ groupadd -r app
 useradd -r -d /app -g app -N app
 EOT
 
-# Install PostgreSQL client tools for pg_isready
-RUN apt-get update && apt-get install -y --no-install-recommends postgresql-client && rm -rf /var/lib/apt/lists/*
-
 # Copy the pre-built `/app` directory to the runtime container
 # Change the ownership to user app and group app in one step.
 COPY --from=builder --chown=app:app /app /app
 
-# Copy custom entrypoint
-COPY --chown=app:app entrypoint.sh /app/entrypoint.sh
-RUN chmod +x /app/entrypoint.sh
+# Install PostgreSQL client tools for pg_isready
+RUN apt-get update && apt-get install -y --no-install-recommends postgresql-client && rm -rf /var/lib/apt/lists/*
 
 USER app
 
 WORKDIR /app
 
-# Expose port
 EXPOSE 8000
 
-# Command to run the application
-# TODO: Expose proper entrypoint
-ENTRYPOINT ["/app/entrypoint.sh"]
+ENTRYPOINT ["sh", "-c", "\
+  echo 'Waiting for PostgreSQL to be ready...'; \
+  until pg_isready -h postgres -p 5432 -U postgres; do \
+    sleep 1; \
+  done; \
+  echo 'PostgreSQL is available, running admin creation script...'; \
+  /app/bin/python -c 'import off_key.scripts.create_admin' || echo 'Import failed'; \
+  /app/bin/python -m off_key.scripts.create_admin || echo 'Admin might already exist.'; \
+  echo 'Starting FastAPI server...'; \
+  uvicorn off_key.main:app --host 0.0.0.0 --port 8000 \
+"]
+

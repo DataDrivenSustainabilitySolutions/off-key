@@ -19,7 +19,7 @@ const ForgotPassword: React.FC = () => {
       const data = await res.json();
       setMessage(data.message);
     } catch (error) {
-      setMessage('Fehler beim Senden der Anfrage.');
+      setMessage('An error occurred while sending the request.');
     }
   };
 

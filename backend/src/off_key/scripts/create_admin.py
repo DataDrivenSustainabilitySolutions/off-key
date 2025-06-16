@@ -17,13 +17,13 @@ async def create_admin():
         email = settings.ADMIN_EMAIL
         password = settings.ADMIN_PASSWORD
 
-        print(f" Prüfe, ob Benutzer {email} existiert...")
+        print(f"Checking if admin already exists...")
 
         result = await db.execute(select(User).where(User.email == email))
         existing_user = result.scalars().first()
 
         if existing_user:
-            print(" Admin-Benutzer existiert bereits.")
+            print("Admin already exists.")
             return
 
         hashed_pw = get_password_hash(password)
@@ -37,7 +37,7 @@ async def create_admin():
 
         db.add(admin_user)
         await db.commit()
-        print(" Admin-Benutzer erfolgreich erstellt.")
+        print(" Admin successfully created.")
 
 
 if __name__ == "__main__":

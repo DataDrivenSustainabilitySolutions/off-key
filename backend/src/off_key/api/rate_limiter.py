@@ -5,5 +5,6 @@ from fastapi import Request, Response
 
 limiter = Limiter(key_func=get_remote_address)
 
+
 def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded) -> Response:
     return _rate_limit_exceeded_handler(request, exc)

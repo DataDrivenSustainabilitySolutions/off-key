@@ -15,6 +15,7 @@ from .async_docker import AsyncDocker
 
 async_docker = AsyncDocker()
 
+
 class MonitoringAsyncService:
     def __init__(self, session: AsyncSession):
         self.session: AsyncSession = session
@@ -22,13 +23,13 @@ class MonitoringAsyncService:
         logger.info("MonitoringAsyncService initialized.")
 
     async def create_monitoring_service(
-            self,
-            container_name: str,
-            mqtt_topics: List[str],
-            requirements: Optional[List[str]] = None,
-            dockerfile_path: Optional[str] = None,
-            app_path: Optional[str] = None,
-            environment_variables: Optional[Dict[str, str]] = None,
+        self,
+        container_name: str,
+        mqtt_topics: List[str],
+        requirements: Optional[List[str]] = None,
+        dockerfile_path: Optional[str] = None,
+        app_path: Optional[str] = None,
+        environment_variables: Optional[Dict[str, str]] = None,
     ) -> MonitoringService:
         """
         Create and start a Docker container for monitoring service asynchronously
@@ -45,7 +46,9 @@ class MonitoringAsyncService:
             MonitoringService: The created monitoring service database entry
         """
         # Check if service with this name already exists
-        query = select(MonitoringService).where(MonitoringService.container_name == container_name)
+        query = select(MonitoringService).where(
+            MonitoringService.container_name == container_name
+        )
         result = await self.session.execute(query)
         existing_service = result.scalars().first()
 
@@ -83,7 +86,7 @@ class MonitoringAsyncService:
                 dockerfile_path=dockerfile_path,
                 app_path=app_path,
                 requirements=requirements,
-                environment=env_vars
+                environment=env_vars,
             )
 
             # Create monitoring service record
@@ -111,13 +114,13 @@ class MonitoringAsyncService:
             raise
 
     async def _create_service_sync(
-            self,
-            container_name: str,
-            service_id: str,
-            dockerfile_path: str,
-            app_path: str,
-            requirements: List[str],
-            environment: Dict[str, str]
+        self,
+        container_name: str,
+        service_id: str,
+        dockerfile_path: str,
+        app_path: str,
+        requirements: List[str],
+        environment: Dict[str, str],
     ) -> Any:
         """
         Helper method to handle Docker operations asynchronously
@@ -144,14 +147,16 @@ class MonitoringAsyncService:
                 (
                     "apk add --no-cache curl;"
                     "dd if=/dev/zero of=/dev/null bs=1M count=200 & "
-                    "while true; do curl -s https://httpbin.org/get > /dev/null; sleep 5; done"
-                )
+                    "while true; "
+                    "do curl -s https://httpbin.org/get > /dev/null; "
+                    "sleep 5; done"
+                ),
             ]
             labels = {
-                "owner": 'test_user',
+                "owner": "test_user",
                 "started_at": datetime.utcnow().isoformat() + "Z",
-                "purpose": 'This is a test',
-                "env": 'development'
+                "purpose": "This is a test",
+                "env": "development",
             }
             container = await self.async_docker.run(
                 self.async_docker.client.services.create,
@@ -160,8 +165,8 @@ class MonitoringAsyncService:
                 image="alpine",
                 command=entrypoint,
                 mode=ServiceMode("replicated", replicas=1),
-                restart_policy=RestartPolicy(condition='on-failure'),
-                constraints=["node.role == worker"]
+                restart_policy=RestartPolicy(condition="on-failure"),
+                constraints=["node.role == worker"],
             )
 
             return container
@@ -171,9 +176,7 @@ class MonitoringAsyncService:
             shutil.rmtree(build_context)
 
     async def stop_monitoring_service(
-            self,
-            container_name: Optional[str] = None,
-            container_id: Optional[str] = None
+        self, container_name: Optional[str] = None, container_id: Optional[str] = None
     ) -> bool:
         """
         Stop and remove a running monitoring service
@@ -202,25 +205,36 @@ class MonitoringAsyncService:
 
         try:
             # Stop and remove all instances of the service
-            service = await self.async_docker.run(self.async_docker.client.services.get, service.container_id)
+            service = await self.async_docker.run(
+                self.async_docker.client.services.get, service.container_id
+            )
             await self.async_docker.run(service.remove)
 
             # Delete the service from the database
-            delete_stmt = delete(MonitoringService).where(MonitoringService.container_id == service.id)
+            delete_stmt = delete(MonitoringService).where(
+                MonitoringService.container_id == service.id
+            )
             await self.session.execute(delete_stmt)
             await self.session.commit()
 
-            logger.info(f"Container {container_name} stopped and removed; DB record deleted")
+            logger.info(
+                f"Container {container_name} stopped and removed; DB record deleted"
+            )
             return True
 
         except docker.errors.NotFound:
             # Container not found in Docker but exists in DB
             # Delete the DB record to reflect this
-            delete_stmt = delete(MonitoringService).where(MonitoringService.container_id == service.id)
+            delete_stmt = delete(MonitoringService).where(
+                MonitoringService.container_id == service.id
+            )
             await self.session.execute(delete_stmt)
             await self.session.commit()
 
-            logger.warning(f"Container {container_name} not found in Docker but marked as inactive in DB")
+            logger.warning(
+                f"Container {container_name} not found in Docker "
+                f"but marked as inactive in DB"
+            )
             return True
 
         except Exception as e:
@@ -228,7 +242,9 @@ class MonitoringAsyncService:
             logger.error(f"Failed to stop container {container_name}: {e}")
             return False
 
-    async def list_monitoring_services(self, active_only: bool = False) -> List[Dict[str, Any]]:
+    async def list_monitoring_services(
+        self, active_only: bool = False
+    ) -> List[Dict[str, Any]]:
         """
         List all monitoring services
 
@@ -240,28 +256,30 @@ class MonitoringAsyncService:
         """
         query = select(MonitoringService)
         if active_only:
-            query = query.where(MonitoringService.status == True)
+            query = query.where(MonitoringService.status is True)
 
         result = await self.session.execute(query)
         services = result.scalars().all()
 
         service_list = []
         for service in services:
-            service_list.append({
-                "id": service.id,
-                "container_id": service.container_id,
-                "container_name": service.container_name,
-                "mqtt_topics": service.mqtt_topic,
-                "status": service.status,
-                "created_at": service.created_at.isoformat() if service.created_at else None
-            })
+            service_list.append(
+                {
+                    "id": service.id,
+                    "container_id": service.container_id,
+                    "container_name": service.container_name,
+                    "mqtt_topics": service.mqtt_topic,
+                    "status": service.status,
+                    "created_at": (
+                        service.created_at.isoformat() if service.created_at else None
+                    ),
+                }
+            )
 
         return service_list
 
     async def get_monitoring_service(
-            self,
-            container_name: Optional[str] = None,
-            container_id: Optional[str] = None
+        self, container_name: Optional[str] = None, container_id: Optional[str] = None
     ) -> Optional[Dict[str, Any]]:
         """
         Get details for a specific monitoring service
@@ -289,7 +307,9 @@ class MonitoringAsyncService:
         # Check actual container status in Docker
         container_status = "unknown"
         try:
-            container = await self.async_docker.run(self.async_docker.client.services.get, service.container_id)
+            container = await self.async_docker.run(
+                self.async_docker.client.services.get, service.container_id
+            )
             container_status = container.status
         except docker.errors.NotFound:
             container_status = "not_found"
@@ -301,5 +321,7 @@ class MonitoringAsyncService:
             "mqtt_topics": service.mqtt_topic,
             "db_status": service.status,
             "docker_status": container_status,
-            "created_at": service.created_at.isoformat() if service.created_at else None
+            "created_at": (
+                service.created_at.isoformat() if service.created_at else None
+            ),
         }

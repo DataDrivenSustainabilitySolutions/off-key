@@ -10,7 +10,7 @@ const Verification: React.FC = () => {
 
     useEffect(() => {
         if (token) {
-            axios.get(`http://localhost:8000/verify?token=${token}`)
+            axios.get(`/api/verify?token=${token}`)
                 .then(response => {
                     setStatus('Email verified successfully!');
                 })

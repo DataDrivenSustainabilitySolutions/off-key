@@ -64,19 +64,19 @@ export default function Favourites() {
       try {
         // 1. Lade Favoriten von user_id = 1
         const favoritesRes = await axios.get<string[]>(
-          `http://localhost:8000/v1/favorites?user_id=1`
+          `/api/v1/favorites?user_id=1`
         );
         const favoriteIds = favoritesRes.data;
         setFavoriteChargerIds(favoriteIds);
 
         // 2. Synchronisiere Charger-Daten
-        await axios.post("http://localhost:8000/v1/chargers/sync", null, {
+        await axios.post("/api/v1/chargers/sync", null, {
           timeout: 1500,
         });
 
         // 3. Lade ALLE Charger
         const chargerRes = await axios.get<Charger[]>(
-          "http://localhost:8000/v1/chargers/available"
+          "/api/v1/chargers/available"
         );
         const allChargers = chargerRes.data;
 
@@ -91,10 +91,10 @@ export default function Favourites() {
             try {
               const [value1Res, value2Res] = await Promise.all([
                 axios.get<telemetry_data[]>(
-                  `http://localhost:8000/v1/telemetry/${charger.charger_id}/controllerCpuUsage`
+                  `/api/v1/telemetry/${charger.charger_id}/controllerCpuUsage`
                 ),
                 axios.get<telemetry_data[]>(
-                  `http://localhost:8000/v1/telemetry/${charger.charger_id}/controllertemperaturecpu-thermal`
+                  `/api/v1/telemetry/${charger.charger_id}/controllertemperaturecpu-thermal`
                 ),
               ]);
 
@@ -171,7 +171,7 @@ export default function Favourites() {
       // Wenn der Charger bereits ein Favorit ist, entferne ihn. Ansonsten füge ihn hinzu
       if (isFavorite) {
         // DELETE request
-        await axios.delete("http://localhost:8000/v1/favorites", {
+        await axios.delete("/api/v1/favorites", {
           data: {
             charger_id: chargerId,
             user_id: 1,
@@ -179,7 +179,7 @@ export default function Favourites() {
         });
       } else {
         // POST request
-        await axios.post("http://localhost:8000/v1/favorites", {
+        await axios.post("/api/v1/favorites", {
           charger_id: chargerId,
           user_id: 1,
         });

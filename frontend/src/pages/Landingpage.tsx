@@ -67,19 +67,19 @@ export default function ChargerTable() {
     const fetchData = async () => {
       try {
         // Charger-Sync auslösen
-        await axios.post("http://localhost:8000/v1/chargers/sync", null, {
+        await axios.post("/api/v1/chargers/sync", null, {
           timeout: 1500,
         });
 
         // Alle Charger laden
         const chargerRes = await axios.get<Charger[]>(
-          "http://localhost:8000/v1/chargers/available"
+          "/api/v1/chargers/available"
         );
         const chargers = chargerRes.data;
 
         // Favoriten des Nutzers laden
         const favoritesRes = await axios.get<string[]>(
-          "http://localhost:8000/v1/favorites?user_id=1"
+          "/api/v1/favorites?user_id=1"
         );
         setFavoriteChargerIds(favoritesRes.data);
 
@@ -89,10 +89,10 @@ export default function ChargerTable() {
             try {
               const [value1Res, value2Res] = await Promise.all([
                 axios.get<telemetry_data[]>(
-                  `http://localhost:8000/v1/telemetry/${charger.charger_id}/controllerCpuUsage`
+                  `/api/v1/telemetry/${charger.charger_id}/controllerCpuUsage`
                 ),
                 axios.get<telemetry_data[]>(
-                  `http://localhost:8000/v1/telemetry/${charger.charger_id}/controllertemperaturecpu-thermal`
+                  `/api/v1/telemetry/${charger.charger_id}/controllertemperaturecpu-thermal`
                 ),
               ]);
 
@@ -163,11 +163,11 @@ export default function ChargerTable() {
 
     try {
       if (isFavorite) {
-        await axios.delete("http://localhost:8000/v1/favorites", {
+        await axios.delete("/api/v1/favorites", {
           data: { charger_id: chargerId, user_id: 1 },
         });
       } else {
-        await axios.post("http://localhost:8000/v1/favorites", {
+        await axios.post("/api/v1/favorites", {
           charger_id: chargerId,
           user_id: 1,
         });

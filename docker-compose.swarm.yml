@@ -29,7 +29,6 @@ services:
         published: "${BACKEND_PORT}"
         mode: ingress
     networks:
-      - public-network
       - app-network
       - socket-network
 #    TODO: This healthcheck doesn't work for now
@@ -101,6 +100,9 @@ services:
       - target: 5173
         published: "${FRONTEND_PORT}"
         mode: ingress
+    networks:
+      - public-network
+      - app-network
     volumes:
       - type: bind
         source: ./frontend

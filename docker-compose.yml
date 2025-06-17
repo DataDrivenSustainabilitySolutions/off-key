@@ -94,8 +94,13 @@ services:
     networks:
       - app-network
     volumes:
-      - ./frontend:/src
-      - /src/node_modules  # Prevent conflicts
+      - type: bind
+        source: ./frontend
+        target: /src
+      - frontend_node_modules:/src/node_modules
+      - type: volume
+        source: vite_cache
+        target: /src/node_modules/.vite
 
   mailpit:
     image: axllent/mailpit:latest
@@ -118,3 +123,6 @@ networks:
 
 volumes:
   postgres_data:
+  vite_cache:
+    driver: local
+  frontend_node_modules:

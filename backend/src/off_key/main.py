@@ -20,11 +20,7 @@ app = FastAPI(title=settings.APP_NAME)
 app.state.limiter = limiter
 app.add_exception_handler(429, rate_limit_exceeded_handler)
 
-origins = [
-    "http://localhost:8000",
-    "http://localhost:5173",
-    "http://172.26.83.239:8000",
-]
+origins = ["http://localhost:8000", "http://localhost:5173"]
 
 # Enable SlowApi Middleware
 app.add_middleware(SlowAPIMiddleware)
@@ -32,7 +28,7 @@ app.add_middleware(SlowAPIMiddleware)
 # Enable CORS Middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow only specified origins
+    allow_origins=origins,  # Allow only specified origins
     allow_credentials=True,
     allow_methods=["*"],  # Allow all HTTP methods (POST, GET, etc.)
     allow_headers=["*"],  # Allow all headers

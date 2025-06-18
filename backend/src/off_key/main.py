@@ -28,7 +28,7 @@ app.add_middleware(SlowAPIMiddleware)
 # Enable CORS Middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,  # Allow only specified origins
+    allow_origins=["*"],  # Allow only specified origins
     allow_credentials=True,
     allow_methods=["*"],  # Allow all HTTP methods (POST, GET, etc.)
     allow_headers=["*"],  # Allow all headers

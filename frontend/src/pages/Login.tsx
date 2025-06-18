@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
 import { Link } from 'react-router-dom';
-import { useAuth } from "@/auth/AuthContext"; 
+import { useAuth } from "@/auth/AuthContext";
 
 interface LoginResponse {
   access_token: string;
@@ -112,11 +112,9 @@ const Login: React.FC = () => {
 
             {/* Links */}
             <div className="text-sm text-center mt-3 space-y-1">
-              <a href="#" className="text-blue-700 hover:underline block">
-                <Link to="/forgot-password" className="text-blue-600 hover:underline">
-                  Forgot password?
-                </Link>
-              </a> 
+              <Link to="/forgot-password" className="text-blue-700 hover:underline block">
+                Forgot password?
+              </Link>
             </div>
             <div className="text-xs mt-4 text-center">
               <p>

@@ -59,11 +59,15 @@ async def register(user: UserCreate, db: AsyncSession = Depends(get_db_async)):
     # Email details
     sender_email = "sender@example.com"
     recipient_email = user.email
-    subject = "Test Email"
+    subject = "Email Verification"
     verification_link = (
-        f"{settings.BACKEND_BASE_URL}/v1/auth/verify-email?token={verification_token}"
+        f"{settings.FRONTEND_BASE_URL}/verification?token={verification_token}"
     )
-    body = f"Click to verify: {verification_link}"
+    body = (
+        f"Please click the following link to verify your email address:"
+        f"\n\n{verification_link}\n\nIf you didn't request this verification,"
+        f" please ignore this email."
+    )
 
     logger.info(f"Sending verification link {verification_link}")
 
@@ -116,7 +120,7 @@ async def login(user: UserLogin, db: AsyncSession = Depends(get_db_async)):
 async def verify_email(token: str, db: AsyncSession = Depends(get_db_async)):
     try:
         payload = jwt.decode(
-            token, settings.JWT_VERIFICATION_SECRET, algorithms=["HS256"]
+            token, settings.JWT_VERIFICATION_SECRET, algorithms=[settings.ALGORITHM]
         )
         if payload.get("token_type") != "email_verification":
             raise HTTPException(
@@ -129,14 +133,21 @@ async def verify_email(token: str, db: AsyncSession = Depends(get_db_async)):
                 status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid token"
             )
 
+        logger.info(f"Verifying email: {email}")
         result = await db.execute(select(User).filter(User.email == email))
         user = result.scalars().first()
 
-        if not user or user.is_verified:
+        if not user:
+            logger.error(f"User not found for email: {email}")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid or already verified token",
+                detail="User not found",
             )
+
+        if user.is_verified:
+            logger.info(f"User {email} is already verified")
+            # Return success for already verified users (idempotent)
+            return {"message": "Email verified successfully"}
 
         user.is_verified = True
         user.verification_token = None

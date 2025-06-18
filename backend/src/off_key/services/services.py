@@ -304,15 +304,27 @@ class MonitoringAsyncService:
         if not service:
             return None
 
-        # Check actual container status in Docker
-        container_status = "unknown"
+        # Check actual service status in Docker
+        docker_service_status = "unknown"
         try:
-            container = await self.async_docker.run(
+            docker_service = await self.async_docker.run(
                 self.async_docker.client.services.get, service.container_id
             )
-            container_status = container.status
+            # For Docker services, we need to check tasks to get the actual status
+            tasks = await self.async_docker.run(docker_service.tasks)
+            if tasks:
+                # Get the status of the most recent task
+                latest_task = max(tasks, key=lambda t: t.get("CreatedAt", ""))
+                docker_service_status = latest_task.get("Status", {}).get(
+                    "State", "unknown"
+                )
+            else:
+                docker_service_status = "no_tasks"
         except docker.errors.NotFound:
-            container_status = "not_found"
+            docker_service_status = "not_found"
+        except Exception as e:
+            logger.error(f"Error checking Docker service status: {e}")
+            docker_service_status = "error"
 
         return {
             "id": service.id,
@@ -320,7 +332,7 @@ class MonitoringAsyncService:
             "container_name": service.container_name,
             "mqtt_topics": service.mqtt_topic,
             "db_status": service.status,
-            "docker_status": container_status,
+            "docker_status": docker_service_status,
             "created_at": (
                 service.created_at.isoformat() if service.created_at else None
             ),

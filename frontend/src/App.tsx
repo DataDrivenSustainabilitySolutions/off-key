@@ -23,7 +23,7 @@ const App: React.FC = () => {
             {/* <Route path="/" element={<Default />} /> */}
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Registration />} />
-            <Route path="/verify" element={<Verification />} />
+            <Route path="/verification" element={<Verification />} />
             <Route path="/forgot-password" element={<ForgotPassword />} />
             <Route path="/reset-password" element={<ResetPassword />} />
 

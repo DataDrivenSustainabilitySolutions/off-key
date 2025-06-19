@@ -27,6 +27,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      socket-proxy:
+        condition: service_started
     networks:
       - app-network
       - socket-network
@@ -48,7 +50,7 @@ services:
     # To manage multiple docker endpoints within a network, use the following line:
      - "2375:2375"
     volumes:
-      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+      - "/run/user/1001/podman/podman.sock:/var/run/docker.sock:ro"
     environment:
       - LOG_LEVEL=info # debug,info,notice,warning,err,crit,alert,emerg
       ## Variables match the URL prefix (i.e. AUTH blocks access to /auth/* parts of the API, etc.).

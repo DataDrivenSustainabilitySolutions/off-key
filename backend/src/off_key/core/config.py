@@ -1,5 +1,13 @@
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings
+from dotenv import find_dotenv, load_dotenv
 
+# Load default ".env" file from upper project tree
+load_dotenv()
+
+# Override with dev.env values if present
+dev_env = find_dotenv("dev.env")
+if dev_env:
+    load_dotenv(dev_env, override=True)
 
 class Settings(BaseSettings):
 
@@ -28,10 +36,6 @@ class Settings(BaseSettings):
 
     PIONIX_KEY: str
     PIONIX_USER_AGENT: str
-
-    model_config = SettingsConfigDict(
-        env_file="./../../.env", env_file_encoding="utf-8"
-    )
 
     @property
     def database_url(self):

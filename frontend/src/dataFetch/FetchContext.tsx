@@ -66,7 +66,9 @@ export interface FetchContextType {
   addAnomaly: (
     chargerId: string,
     timestamp: Date,
-    telemetry_type: string
+    telemetry_type: string,
+    anomaly_type: string,
+    anomaly_value: number
   ) => Promise<void>;
 
   //Sync Functions
@@ -211,7 +213,13 @@ export const FetchProvider: React.FC<{ children: ReactNode }> = ({
   );
 
   const addAnomaly = useCallback(
-    async (chargerId: string, timestamp: Date, telemetry_type: string, anomaly_type: string, anomaly_value: number) => {
+    async (
+      chargerId: string,
+      timestamp: Date,
+      telemetry_type: string,
+      anomaly_type: string,
+      anomaly_value: number
+    ) => {
       await axios.post("http://127.0.0.1:8000/v1/anomalies", {
         charger_id: chargerId,
         timestamp: timestamp,

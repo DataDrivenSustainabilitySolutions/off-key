@@ -49,7 +49,7 @@ const Login: React.FC = () => {
 
       login(data.access_token);
 
-      syncChargers();
+      await syncChargers();
       console.log("Vor SyncTelemetry aufruf");
       syncTelemetry();
       console.log("nach Auftruf");

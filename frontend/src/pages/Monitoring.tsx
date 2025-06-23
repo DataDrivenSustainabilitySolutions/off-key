@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import React, { useEffect, useMemo, useState } from "react";
+import axios from "axios";
 
 const Monitoring: React.FC = () => {
   const { chargerId } = useParams<{ chargerId: string }>();
@@ -24,6 +25,17 @@ const Monitoring: React.FC = () => {
     () => Object.keys(monitoringMap),
     [monitoringMap]
   );
+  const activeKeys = useMemo(
+    () =>
+      Object.entries(visibleMap)
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        .filter(([_, visible]) => visible)
+        .map(([key]) => key),
+    [visibleMap]
+  );
+  const [selectedAlgorithm, setSelectedAlgorithm] = useState<string | null>(
+    null
+  );
 
   useEffect(() => {
     if (!chargerId) return;
@@ -34,10 +46,32 @@ const Monitoring: React.FC = () => {
   useEffect(() => {
     if (monitoringKeys.length === 0) return; // if no keys given do nothing
     if (Object.keys(visibleMap).length > 0) return; // if keys already initialised also do nothing
-    setVisibleMap(Object.fromEntries(monitoringKeys.map((k) => [k, true]))); //k = keys, bool = should all be shown per default or not
+    setVisibleMap(Object.fromEntries(monitoringKeys.map((k) => [k, false]))); //k = keys, bool = should all be shown per default or not
 
     console.log(visibleMap);
   }, [monitoringKeys, visibleMap]);
+
+  const submitAnomalyDetection = async () => {
+    if (!selectedAlgorithm || activeKeys.length === 0) {
+      alert("Please select at least one sensor and an algorithm.");
+      return;
+    }
+    try {
+      const response = await axios.post(
+        `http://127.0.0.1:8000/v1/anomalyDetection/`,
+        {
+          chargerId,
+          selectedAlgorithm,
+          selectedSensors: activeKeys,
+        }
+      );
+
+      console.log("Successfully submitted:", response.data);
+    } catch (error) {
+      console.error("Failed to submit configuration:", error);
+    }
+  };
+
   return (
     <>
       <NavigationBar />
@@ -48,49 +82,91 @@ const Monitoring: React.FC = () => {
               Monitoring for the Charger {chargerId}
             </CardTitle>
             <CardContent>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button className="mb-5 mr-3 mt-4 bg-indigo-800 hover:bg-indigo-700 cursor-pointer">
-                    Sensor types
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent className="w100">
-                  <DropdownMenuLabel>Sensors</DropdownMenuLabel>
-                  <DropdownMenuSeparator />
+              <div className="flex items-start gap-6">
+                {/* Linke Seite */}
+                <div className="flex flex-col w-2/5">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button className="w-30 mb-5 mr-3 mt-4 bg-indigo-800 hover:bg-indigo-700 cursor-pointer">
+                        Sensor types
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent className="w100">
+                      <DropdownMenuLabel>Sensors</DropdownMenuLabel>
+                      <DropdownMenuSeparator />
+                      {monitoringKeys.map((key) => (
+                        <DropdownMenuCheckboxItem
+                          key={key}
+                          checked={visibleMap[key]}
+                          onCheckedChange={() =>
+                            setVisibleMap((prev) => ({
+                              ...prev,
+                              [key]: !prev[key],
+                            }))
+                          }
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          {key}
+                        </DropdownMenuCheckboxItem>
+                      ))}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
 
-                  {monitoringKeys.map((key) => (
-                    <DropdownMenuCheckboxItem
-                      key={key}
-                      checked={visibleMap[key]}
-                      onCheckedChange={() =>
-                        setVisibleMap((prev) => ({
-                          ...prev,
-                          [key]: !prev[key],
-                        }))
-                      }
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      {key}
-                    </DropdownMenuCheckboxItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
+                  <div className="mt-6">
+                    <h2 className="text-lg font-bold mb-2">
+                      Picked values for the Anomaly Detection:
+                    </h2>
+                    <ul className="list-disc list-inside space-y-1">
+                      {activeKeys.map((key) => (
+                        <li key={key} className="ml-2">
+                          {key}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+                <div className="h-80 border-l border-gray-300 ml-4 mr-4"></div>
+                <div className="flex flex-col w-2/5">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button className="w-30 mt-4 bg-indigo-800 hover:bg-indigo-700 cursor-pointer">
+                        Algorithm
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent className="w-48">
+                      <DropdownMenuCheckboxItem
+                        checked={selectedAlgorithm === "Algorithm A"}
+                        onCheckedChange={() =>
+                          setSelectedAlgorithm("Algorithm A")
+                        }
+                      >
+                        Algorithm A
+                      </DropdownMenuCheckboxItem>
+                      <DropdownMenuCheckboxItem
+                        checked={selectedAlgorithm === "Algorithm B"}
+                        onCheckedChange={() =>
+                          setSelectedAlgorithm("Algorithm B")
+                        }
+                      >
+                        Algorithm B
+                      </DropdownMenuCheckboxItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
 
-              <div className="mt-4 space-y-2">
-                {monitoringKeys.map(
-                  (key) =>
-                    visibleMap[key] && (
-                      <div key={key} className="p-2 border rounded">
-                        <span className="font-semibold">{key}</span>:{" "}
-                        {monitoringMap[key]?.length
-                          ? monitoringMap[key][0].value != null
-                            ? monitoringMap[key][0].value
-                            : "The Key has no value yet"
-                          : "The Key has no value yet"}
-                      </div>
-                    )
-                )}
+                  <div className="mt-10">
+                    <h2 className="text-lg font-bold mb-2">
+                      Picked Algorithm:
+                    </h2>
+                    <p>{selectedAlgorithm}</p>
+                  </div>
+                </div>
               </div>
+              <Button
+                className="w-30 mt-4 bg-indigo-800 hover:bg-indigo-700 cursor-pointer"
+                onClick={submitAnomalyDetection}
+              >
+                Send
+              </Button>
             </CardContent>
           </div>
         </Card>

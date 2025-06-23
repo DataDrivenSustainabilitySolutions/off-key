@@ -27,6 +27,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      socket-proxy:
+        condition: service_started
     networks:
       - app-network
       - socket-network

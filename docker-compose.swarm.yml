@@ -1,53 +1,63 @@
 services:
+
   postgres:
     image: timescale/timescaledb:latest-pg15
-    container_name: postgres_database
     env_file: .env
     ports:
-      - "${POSTGRES_PORT}:5432"
+      - target: 5432
+        published: "${POSTGRES_PORT}"
+        mode: ingress
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    restart: always
     networks:
       - app-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
       interval: 5s
       timeout: 5s
       retries: 5
+    deploy:
+      placement:
+        constraints:
+          - node.role == manager
 
   api:
-    build: ./backend/
     image: "${API_IMAGE:-off-key-api:latest}"
-    container_name: fastapi_backend
     env_file: .env
     ports:
-      - "${BACKEND_PORT}:8000"
-    depends_on:
-      postgres:
-        condition: service_healthy
-      socket-proxy:
-        condition: service_started
+      - target: 8000
+        published: "${BACKEND_PORT}"
+        mode: ingress
     networks:
       - app-network
       - socket-network
-    restart: always
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 10s
-      retries: 5
+#    TODO: This healthcheck doesn't work for now
+#    healthcheck:
+#      test: [ "CMD", "curl", "-f", "http://localhost:8000/health" ]
+#      interval: 10s
+#      retries: 5
+    deploy:
+      mode: replicated
+      replicas: 2
+      placement:
+        constraints:
+          - node.role == worker
+#        preferences:
+#          - spread: node.labels.type  # Distribute evenly
+#      TODO: Measure resources with MQTT images
+#      resources:
+#        limits:
+#          cpus: '0.2'
+#          memory: 512M
 
   socket-proxy:
-    container_name: socket-proxy
     image: tecnativa/docker-socket-proxy
-    restart: always
     networks:
       - socket-network
-    privileged: true # true for VM. False for unprivileged LXC container/podman
     ports:
-    #  - "127.0.0.1:2375:2375" # Port 2375 should only ever get exposed to the internal network. When possible use this line.
-    # To manage multiple docker endpoints within a network, use the following line:
-     - "2375:2375"
+      - target: 2375
+        published: 2375
+        mode: host
     volumes:
       - "/var/run/docker.sock:/var/run/docker.sock:ro"
     environment:
@@ -84,15 +94,14 @@ services:
       - VOLUMES=1 # Portainer
 
   frontend:
-    build: ./frontend
     image: "${FRONTEND_IMAGE:-off-key-frontend:latest}"
-    container_name: react_frontend
     env_file: .env
     ports:
-      - "${FRONTEND_PORT}:5173"
-    depends_on:
-      - api
+      - target: 5173
+        published: "${FRONTEND_PORT}"
+        mode: ingress
     networks:
+      - public-network
       - app-network
     volumes:
       - type: bind
@@ -102,27 +111,45 @@ services:
       - type: volume
         source: vite_cache
         target: /src/node_modules/.vite
-      - ./frontend:/src
-      - /src/node_modules # Prevent conflicts
+    deploy:
+      mode: replicated
+      replicas: 2
+      placement:
+        constraints:
+          - node.role == worker
+#        preferences:
+#          - spread: node.labels.type  # Distribute evenly
+#      resources:
+#        limits:
+#          cpus: '1'
+#          memory: 512M
 
   mailpit:
     image: axllent/mailpit:latest
-    container_name: mailpit
-    restart: unless-stopped
     volumes:
       - ./data:/data
     ports:
-      - "8025:8025" # Web UI
-      - "1025:1025" # SMTP port
-
+      - target: 8025
+        published: 8025
+        mode: ingress
+      - target: 1025
+        published: 1025
+        mode: ingress
     networks:
+      - public-network
       - app-network
+    deploy:
+      placement:
+        constraints:
+          - node.role == manager
 
 networks:
+  public-network:
+    driver: overlay
   app-network:
-    driver: bridge
+    driver: overlay
   socket-network:
-    driver: bridge
+    driver: overlay
 
 volumes:
   postgres_data:

@@ -3,10 +3,12 @@ name = "off-key"
 version = "0.1.0"
 description = "Real-time Anomaly Detection Platform"
 authors = [
-  { name = "Oliver Hennhoefer", email = "oliver.hennhoefer@mail.de" }
+    { name = "Oliver Hennhoefer", email = "oliver.hennhoefer@mail.de" },
+    { name = "Fernando Saba", email = "fernando.saba@gmx.de" }
 ]
 maintainers = [
-  { name = "Oliver Hennhoefer", email = "oliver.hennhoefer@mail.de" }
+    { name = "Oliver Hennhoefer", email = "oliver.hennhoefer@mail.de" },
+    { name = "Fernando Saba", email = "fernando.saba@gmx.de" }
 ]
 keywords = ["anomaly detection", "predictive maintenance", "monitoring"]
 requires-python = ">=3.12"
@@ -19,6 +21,7 @@ classifiers = [
 dependencies = [
     "apscheduler>=3.11.0",
     "asyncpg>=0.30.0",
+    "bcrypt>=4.3.0",
     "docker>=7.1.0",
     "email-validator>=2.2.0",
     "fastapi-mail>=1.4.2",
@@ -30,6 +33,7 @@ dependencies = [
     "pydantic-settings>=2.7.1",
     "python-jose>=3.4.0",
     "requests>=2.32.3",
+    "slowapi>=0.1.9",
     "sqlalchemy>=2.0.38",
     "urllib3>=2.3.0",
 ]
@@ -46,7 +50,9 @@ build-backend = "hatchling.build"
 packages = ["src/off_key"]
 
 [tool.hatch.build]
-only-packages = true
+include = [
+    "src/services/resources/*"
+]
 
 [project.urls]
 "Homepage" = "https://github.com/OliverHennhoefer/off-key"

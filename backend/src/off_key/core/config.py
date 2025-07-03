@@ -1,7 +1,13 @@
-import zoneinfo
+from pydantic_settings import BaseSettings
+from dotenv import find_dotenv, load_dotenv
 
-from pydantic_settings import BaseSettings, SettingsConfigDict
+# Load default ".env" file from upper project tree
+load_dotenv()
 
+# Override with dev.env values if present
+dev_env = find_dotenv("dev.env")
+if dev_env:
+    load_dotenv(dev_env, override=True)
 
 class Settings(BaseSettings):
 
@@ -17,19 +23,10 @@ class Settings(BaseSettings):
     EMAIL_PASSWORD: str
     EMAIL_FROM: str
     FRONTEND_BASE_URL: str
-    BASE_URL: str
-    SMTP_FROM_EMAIL: str
     SMTP_SERVER: str
-    SMTP_HOST: str
     SMTP_PORT: int
-    SMTP_USER: str
-    SMTP_PASSWORD: str
-    ADMIN_EMAIL: str
-    ADMIN_PASSWORD: str
     MAIL_STARTTLS: bool
     MAIL_SSL_TLS: bool
-
-    PERIODIC_INTERVAL: int
 
     POSTGRES_USER: str
     POSTGRES_PASSWORD: str
@@ -37,18 +34,8 @@ class Settings(BaseSettings):
     POSTGRES_PORT: str
     POSTGRES_HOST: str  # 'postgres' if connecting from another container
 
-    TIMEZONE: str = "UTC"
-
     PIONIX_KEY: str
     PIONIX_USER_AGENT: str
-
-    model_config = SettingsConfigDict(
-        env_file="./../../.env", env_file_encoding="utf-8", extra="ignore"
-    )
-
-    @property
-    def time_zone(self):
-        return zoneinfo.ZoneInfo(self.TIMEZONE)
 
     @property
     def database_url(self):

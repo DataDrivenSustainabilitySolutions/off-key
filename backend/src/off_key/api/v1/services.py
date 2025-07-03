@@ -1,52 +1,154 @@
-from fastapi import FastAPI, HTTPException
-import docker
-import uuid
-from typing import Dict
+from fastapi import APIRouter, HTTPException, Depends, Query, Request
+from sqlalchemy.ext.asyncio import AsyncSession
+from typing import List, Dict, Optional, Any
+from pydantic import BaseModel, Field
 
-app = FastAPI()
-client = docker.from_env()
+from ...db.base import get_db_async
+from ...services.services import MonitoringAsyncService
+from ..rate_limiter import limiter
 
-# Store active services
-active_services: Dict[str, str] = {}
+router = APIRouter()
+
+shared_limit_fetch = limiter.shared_limit("10/minute", scope="services")
+shared_limit_execute = limiter.shared_limit("5/minute", scope="services")
 
 
-@app.post("/services/")
-def create_service(mqtt_topic: str):
+class ContainerConfig(BaseModel):
+    container_name: str = Field(..., description="Name for the Docker container")
+    mqtt_topics: List[str] = Field(..., description="List of MQTT topics to monitor")
+    requirements: Optional[List[str]] = Field(
+        None, description="List of pip packages to install"
+    )
+    environment_variables: Optional[Dict[str, str]] = Field(
+        None, description="Additional environment variables"
+    )
+
+
+class ServiceResponse(BaseModel):
+    service_id: str
+    container_id: str
+    container_name: str
+    status: str
+    mqtt_topics: List[str]
+
+
+@router.get("/all/", response_model=List[Dict[str, Any]])
+@shared_limit_fetch
+async def list_services(
+    request: Request,
+    active_only: bool = False,
+    db: AsyncSession = Depends(get_db_async),
+):
     """
-    Starts a new Docker container running an ML worker for the given MQTT topic.
+    Lists all monitoring services.
+
+    Parameters:
+    - active_only: If true, only return active services
     """
-    service_id = str(uuid.uuid4())
-    container_name = f"ml_service_{service_id}"
+    service = MonitoringAsyncService(db)
+    services = await service.list_monitoring_services(active_only)
+    return services
+
+
+@router.post("/start/", response_model=ServiceResponse)
+@shared_limit_execute
+async def start_monitoring_service(
+    request: Request, config: ContainerConfig, db: AsyncSession = Depends(get_db_async)
+):
+    """
+    Starts a new Docker container running a monitoring service for given MQTT topics.
+    Configuration details are stored in the MonitoringServices database.
+    """
+    service = MonitoringAsyncService(db)
 
     try:
-        container = client.containers.run(
-            "my_ml_worker_image",  # Replace with actual image
-            name=container_name,
-            detach=True,
-            environment={"MQTT_TOPIC": mqtt_topic, "SERVICE_ID": service_id},
-            network="my_mqtt_network",  # Ensure proper networking setup
-            restart_policy={"Name": "always"},
+        monitoring_service = await service.create_monitoring_service(
+            container_name=config.container_name,
+            mqtt_topics=config.mqtt_topics,
+            requirements=config.requirements,
+            environment_variables=config.environment_variables,
         )
-        active_services[service_id] = container.id
-        return {"service_id": service_id, "container_id": container.id}
+
+        return {
+            "service_id": monitoring_service.id,
+            "container_id": monitoring_service.container_id,
+            "container_name": monitoring_service.container_name,
+            "status": "running" if monitoring_service.status else "stopped",
+            "mqtt_topics": monitoring_service.mqtt_topic,
+        }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(
+            status_code=500, detail=f"Failed to start monitoring service: {str(e)}"
+        )
 
 
-@app.delete("/services/{service_id}")
-def stop_service(service_id: str):
+@router.get("/", response_model=Dict[str, Any])
+@shared_limit_fetch
+async def get_service_details(
+    request: Request,
+    container_name: Optional[str] = Query(default=None),
+    container_id: Optional[str] = Query(default=None),
+    db: AsyncSession = Depends(get_db_async),
+):
     """
-    Stops and removes a running ML worker container.
+    Gets details for a specific monitoring service by container name or ID.
     """
-    container_id = active_services.get(service_id)
-    if not container_id:
+    if not container_name and not container_id:
+        raise HTTPException(
+            status_code=400,
+            detail="You must provide either container_name or container_id.",
+        )
+
+    if container_name and container_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Provide only one of container_name or container_id.",
+        )
+
+    service = MonitoringAsyncService(db)
+    service_detail = await service.get_monitoring_service(container_name, container_id)
+
+    if not service_detail:
         raise HTTPException(status_code=404, detail="Service not found")
 
-    try:
-        container = client.containers.get(container_id)
-        container.stop()
-        container.remove()
-        del active_services[service_id]
-        return {"message": "Service stopped and removed"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    return service_detail
+
+
+@router.delete("/stop/")
+@shared_limit_execute
+async def stop_monitoring_service(
+    request: Request,
+    container_name: Optional[str] = Query(default=None),
+    container_id: Optional[str] = Query(default=None),
+    db: AsyncSession = Depends(get_db_async),
+):
+    """
+    Stops and removes a running Docker container with the specified name.
+    Updates the corresponding record in the MonitoringServices database.
+    """
+    if not container_name and not container_id:
+        raise HTTPException(
+            status_code=400,
+            detail="You must provide either container_name or container_id.",
+        )
+
+    if container_name and container_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Provide only one of container_name or container_id.",
+        )
+
+    service = MonitoringAsyncService(db)
+
+    success = await service.stop_monitoring_service(container_name, container_id)
+
+    if not success:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Container '{container_name}' not found or could not be stopped",
+        )
+
+    return {
+        "status": "stopped",
+        "message": f"Container '{container_name}' stopped and deleted successfully",
+    }

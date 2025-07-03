@@ -24,11 +24,18 @@ export default defineConfig({
     strictPort: true, // Prevents Vite from using a fallback port
     proxy: {
       '/api': {
-        target: 'http://localhost:8000',  // FastAPI container's name and port
+        target: process.env.VITE_API_URL || 'http://localhost:8000',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, ''),
       },
     },
+    hmr: {
+      clientPort: 5173,
+    },
+    watch: {
+      usePolling: true, // Needed for Docker environments
+      interval: 1000,
+    }
   },
   test: {
     globals: true,

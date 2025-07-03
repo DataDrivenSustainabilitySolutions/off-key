@@ -24,3 +24,22 @@ async def send_verification_email(email: str, token: str):
     )
     fm = FastMail(conf)
     await fm.send_message(message)
+
+async def send_anomaly_alert_email(anomaly: dict):
+    body = f"""
+    Anomaly Detected 
+
+    Charger ID: {anomaly['charger_id']}
+    Timestamp: {anomaly['timestamp']}
+    Telemetry Type: {anomaly['telemetry_type']}
+    Anomaly Type: {anomaly['anomaly_type']}
+    Anomaly Value: {anomaly['anomaly_value']}
+    """
+    message = MessageSchema(
+        subject=f"Anomaly Detected - Charger {anomaly['charger_id']}",
+        recipients=["admin@example.com"],  # anpassen nach Bedarf
+        body=body,
+        subtype="plain",
+    )
+    fm = FastMail(conf)
+    await fm.send_message(message)

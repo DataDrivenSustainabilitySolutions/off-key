@@ -2,6 +2,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from datetime import datetime
 
+from ...utils.mail import send_anomaly_alert_email
+
 from ...db.base import get_db_sync
 from ...db.models import Anomaly
 from ...schemas.anomalies import AnomalyCreate
@@ -24,7 +26,7 @@ def get_anomalies(charger_id: str, db: Session = Depends(get_db_sync)):
     ]
 
 @router.post("/")
-def create_anomaly(
+async def create_anomaly(
     charger_id: str,
     timestamp: datetime,
     telemetry_type: str,
@@ -42,6 +44,16 @@ def create_anomaly(
     db.add(new_anomaly)
     db.commit()
     db.refresh(new_anomaly)
+
+    await send_anomaly_alert_email({
+        "charger_id": new_anomaly.charger_id,
+        "timestamp": new_anomaly.timestamp,
+        "telemetry_type": new_anomaly.telemetry_type,
+        "anomaly_type": new_anomaly.anomaly_type,
+        "anomaly_value": new_anomaly.anomaly_value,
+    })
+
+
     return {"message": "Anomaly added"}
 
 @router.delete("/")

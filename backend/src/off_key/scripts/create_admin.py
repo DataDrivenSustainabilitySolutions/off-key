@@ -14,8 +14,8 @@ from off_key.services.auth import (
 
 async def create_admin():
     async for db in get_db_async():  
-        email = settings.ADMIN_EMAIL
-        password = settings.ADMIN_PASSWORD
+        email = settings.EMAIL_USERNAME
+        password = settings.EMAIL_PASSWORD
 
         print(f"Checking if admin already exists...")
 

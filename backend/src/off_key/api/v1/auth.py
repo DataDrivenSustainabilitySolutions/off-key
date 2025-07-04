@@ -61,7 +61,7 @@ async def register(user: UserCreate, db: AsyncSession = Depends(get_db_async)):
     recipient_email = user.email
     subject = "Email Verification"
     verification_link = (
-        f"{settings.FRONTEND_BASE_URL}/verification?token={verification_token}"
+        f"{settings.FRONTEND_BASE_URL}/verify?token={verification_token}"
     )
     body = (
         f"Please click the following link to verify your email address:"

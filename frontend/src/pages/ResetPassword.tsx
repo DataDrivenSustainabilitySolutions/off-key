@@ -20,7 +20,7 @@ const ResetPassword: React.FC = () => {
     if (t) {
       setToken(t);
     } else {
-      setError('Kein Token in der URL gefunden.');
+      setError('No token found');
     }
   }, [searchParams]);
 
@@ -30,12 +30,12 @@ const ResetPassword: React.FC = () => {
     setError('');
 
     if (!token) {
-      setError('Token fehlt.');
+      setError('Token is missing.');
       return;
     }
 
     if (newPassword.length < 8) {
-      setError('Das Passwort muss mindestens 8 Zeichen lang sein.');
+      setError('The password must be at least 8 characters long.');
       return;
     }
 
@@ -48,14 +48,14 @@ const ResetPassword: React.FC = () => {
 
       if (!response.ok) {
         const data = await response.json();
-        setError(data.detail || 'Fehler beim Zurücksetzen des Passworts.');
+        setError(data.detail || 'Error while resetting the password.');
         return;
       }
 
-      setMessage('Passwort erfolgreich zurückgesetzt. Du wirst weitergeleitet...');
+      setMessage('Password successfully reset. You will be redirected...');
       setTimeout(() => navigate('/login'), 3000); // nach 3 Sekunden zur Login-Seite
     } catch (err) {
-      setError('Serverfehler. Bitte versuche es später erneut.');
+      setError('Server error. Please try again later.');
       console.error(err);
     }
   };
@@ -64,7 +64,7 @@ const ResetPassword: React.FC = () => {
     <div className="min-h-screen flex items-center justify-center bg-gray-100 px-4">
       <Card className="w-full max-w-md p-6">
         <CardHeader>
-          <CardTitle className="text-center text-2xl">Passwort zurücksetzen</CardTitle>
+          <CardTitle className="text-center text-2xl">Reset password</CardTitle>
         </CardHeader>
         <CardContent>
           {error && (
@@ -78,7 +78,7 @@ const ResetPassword: React.FC = () => {
               {/* Neues Passwort */}
               <div>
                 <Label htmlFor="newPassword" className="mb-1 block text-sm">
-                  Neues Passwort
+                  New passwort
                 </Label>
                 <Input
                   id="newPassword"
@@ -92,7 +92,7 @@ const ResetPassword: React.FC = () => {
               </div>
               <div>
                 <Label htmlFor="confirmNewPassword" className="mb-1 block text-sm">
-                  Password bestätigen
+                  Confirm password
                 </Label>
                 <Input
                   id="confirmNewPassword"
@@ -110,7 +110,7 @@ const ResetPassword: React.FC = () => {
                 type="submit"
                 className="w-full bg-gradient-to-r from-slate-400 to-slate-300 text-white font-semibold rounded-full transition-all duration-200 hover:bg-gradient-to-r hover:from-slate-500 hover:to-slate-400 hover:scale-105 cursor-pointer"
               >
-                Passwort zurücksetzen
+                Reset password
               </Button>
             </form>
           )}

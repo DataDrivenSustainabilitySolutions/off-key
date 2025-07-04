@@ -1,6 +1,8 @@
 from sqlalchemy import (
     Column,
     Enum,
+    Index,
+    PrimaryKeyConstraint,
     Text,
     Boolean,
     DateTime,
@@ -122,7 +124,7 @@ class Favorite(Base):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
 
 
-"""
+
 class Anomaly(Base):
     __tablename__ = "anomalies"
 
@@ -130,6 +132,7 @@ class Anomaly(Base):
     timestamp = Column(TIMESTAMP(timezone=True), nullable=False, index=True)
     telemetry_type = Column(Text, nullable=False, index=True)
     anomaly_type = Column(Text, nullable=False, index=True)
+    anomaly_value = Column(Float, nullable=False, index=True)
 
     __table_args__ = (
         PrimaryKeyConstraint("charger_id", "timestamp",
@@ -142,4 +145,3 @@ event.listen(
     "after_create",
     DDL(f"SELECT create_hypertable('{Anomaly.__tablename__}', 'timestamp');"),
 )
-"""

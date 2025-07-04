@@ -14,23 +14,15 @@ const Verification: React.FC = () => {
     const token = queryParams.get('token');
 
     useEffect(() => {
-        if (token && !hasVerified.current) {
-            hasVerified.current = true;
-            axios.get(`/api/v1/auth/verify-email?token=${token}`)
-                .then(response => {
-                    setStatus('Email verified successfully! You can now log in.');
-                    setIsSuccess(true);
+        if (token) {
+            axios.get(`http://localhost:8000/v1/auth/verify-email?token=${token}`)
+                .then(_response => {
+                    setStatus('Email verified successfully!');
                 })
-                .catch(error => {
-                    console.log('Verification error:', error);
-                    const errorMessage = error.response?.data?.detail || 'Verification failed. The link may be expired or invalid.';
-                    setStatus(errorMessage);
-                    setIsSuccess(false);
-                })
-                .finally(() => {
-                    setIsLoading(false);
-                });
-        } else if (!token) {
+                // .catch(_error => {
+                //     setStatus('Verification failed. Please try again.');
+                // });
+        } else {
             setStatus('Invalid verification link.');
             setIsSuccess(false);
             setIsLoading(false);

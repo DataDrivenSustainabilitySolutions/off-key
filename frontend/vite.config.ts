@@ -1,15 +1,15 @@
-import path from "path"
-import tailwindcss from "@tailwindcss/vite"
-import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
-import autoprefixer from "autoprefixer"
+import path from "path";
+import tailwindcss from "@tailwindcss/vite";
+import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
+import autoprefixer from "autoprefixer";
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   css: {
     postcss: {
       plugins: [
-          autoprefixer({})
+        autoprefixer({})
       ],
     },
   },
@@ -37,4 +37,8 @@ export default defineConfig({
       interval: 1000,
     }
   },
+  test: {
+    globals: true,
+    environment: 'jsdom'
+  }
 })

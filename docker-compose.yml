@@ -1,5 +1,4 @@
 services:
-
   postgres:
     image: timescale/timescaledb:latest-pg15
     container_name: postgres_database
@@ -103,6 +102,8 @@ services:
       - type: volume
         source: vite_cache
         target: /src/node_modules/.vite
+      - ./frontend:/src
+      - /src/node_modules # Prevent conflicts
 
   mailpit:
     image: axllent/mailpit:latest
@@ -115,7 +116,7 @@ services:
       - "1025:1025" # SMTP port
 
     networks:
-    - app-network
+      - app-network
 
 networks:
   app-network:

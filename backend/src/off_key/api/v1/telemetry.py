@@ -31,19 +31,40 @@ async def get_telemetry(
     charger_id: str,
     telemetry_type: str,
     db: AsyncSession = Depends(get_db_async),
-    limit: int = 10_000,
+    limit: int = 1000,  # Reduced default limit for better performance
+    after_timestamp: str = None,  # Cursor for pagination
+    paginated: bool = False,  # Enable paginated response format
 ):
     query = select(Telemetry).filter(
         Telemetry.charger_id == charger_id, Telemetry.type == telemetry_type
     )
 
-    if limit:
-        query = query.order_by(Telemetry.timestamp.desc()).limit(limit)
+    # Cursor-based pagination for time-series data
+    if after_timestamp:
+        query = query.filter(Telemetry.timestamp < after_timestamp)
+    
+    # Always order by timestamp DESC for time-series data
+    query = query.order_by(Telemetry.timestamp.desc()).limit(limit)
 
     result = await db.execute(query)
     results = result.scalars().all()
+    
+    # Format results to match frontend expectations exactly
     formatted_results = [
-        {"timestamp": result.timestamp, "value": result.value} for result in results
+        {"timestamp": str(result.timestamp), "value": result.value} 
+        for result in results
     ]
 
+    # Return paginated response only if explicitly requested
+    if paginated:
+        return {
+            "data": formatted_results,
+            "pagination": {
+                "limit": limit,
+                "has_more": len(formatted_results) == limit,
+                "next_cursor": formatted_results[-1]["timestamp"] if formatted_results else None
+            }
+        }
+    
+    # Default: return simple array for backward compatibility
     return formatted_results

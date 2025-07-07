@@ -211,8 +211,20 @@ class TelemetrySyncService:
                     f"Inserting {len(telemetry_records_to_insert)} processed "
                     f"records for {charger_id} / {hierarchy_raw}."
                 )
-                batch_size = 5000
+                
+                # Dynamic batch size based on record count for better performance
+                record_count = len(telemetry_records_to_insert)
+                if record_count < 1000:
+                    batch_size = record_count  # Single batch for small datasets
+                elif record_count < 10000:
+                    batch_size = 2000  # Smaller batches for medium datasets
+                else:
+                    batch_size = 5000  # Larger batches for big datasets
+                
                 batch_num = 0
+                successful_batches = 0
+                failed_batches = 0
+                
                 for i in range(0, len(telemetry_records_to_insert), batch_size):
                     batch_num += 1
                     batch = telemetry_records_to_insert[i : i + batch_size]
@@ -223,14 +235,16 @@ class TelemetrySyncService:
                     try:
                         stmt = insert(Telemetry).values(batch)
                         stmt = stmt.on_conflict_do_nothing()
-                        await self.session.execute(stmt)
+                        result = await self.session.execute(stmt)
                         await self.session.commit()
+                        successful_batches += 1
                         logger.debug(
                             f"Committed batch {batch_num} for "
                             f"{charger_id} / {hierarchy_raw}."
                         )
                     except IntegrityError as ie:
                         await self.session.rollback()
+                        failed_batches += 1
                         logger.error(
                             f"IntegrityError during batch {batch_num} insert for "
                             f"{charger_id}/{hierarchy_raw}: {ie}. "
@@ -238,11 +252,17 @@ class TelemetrySyncService:
                         )
                     except Exception as e:
                         await self.session.rollback()
+                        failed_batches += 1
                         logger.error(
                             f"Error during batch {batch_num} insert for "
                             f"{charger_id}/{hierarchy_raw}: {e}. "
                             f"Rolling back batch."
                         )
+                
+                logger.info(
+                    f"Batch processing completed for {charger_id}/{hierarchy_raw}: "
+                    f"{successful_batches} successful, {failed_batches} failed"
+                )
 
             logger.info(
                 f"Finished processing {hierarchies_processed_count} hierarchies "

@@ -50,6 +50,12 @@ class Charger(Base):
     online = Column(Boolean, unique=False, default=True, index=True, nullable=False)
     created = Column(DateTime(timezone=True), server_default=func.now(), index=True)
 
+    # Composite indexes for common query patterns
+    __table_args__ = (
+        Index('ix_charger_online_state', 'online', 'state'),
+        Index('ix_charger_online_created', 'online', 'created'),
+    )
+
 
 class Telemetry(Base):
 
@@ -71,6 +77,10 @@ class Telemetry(Base):
 
     __table_args__ = (
         UniqueConstraint("charger_id", "timestamp", "type", name="uq_telemetry_entry"),
+        # Composite indexes for common query patterns
+        Index('ix_telemetry_charger_timestamp', 'charger_id', 'timestamp'),
+        Index('ix_telemetry_charger_type', 'charger_id', 'type'),
+        Index('ix_telemetry_timestamp_desc', 'timestamp', postgresql_using='btree', postgresql_ops={'timestamp': 'DESC'}),
     )
 
 
@@ -123,6 +133,11 @@ class Favorite(Base):
     )
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
 
+    # Composite index for user favorites lookup
+    __table_args__ = (
+        Index('ix_favorite_user_charger', 'user_id', 'charger_id'),
+    )
+
 
 
 class Anomaly(Base):
@@ -137,7 +152,10 @@ class Anomaly(Base):
     __table_args__ = (
         PrimaryKeyConstraint("charger_id", "timestamp",
         "telemetry_type", name="pk_anomaly"),
+        # Composite indexes for common query patterns
         Index("idx_anomaly_lookup", "charger_id", "timestamp", "telemetry_type"),
+        Index("idx_anomaly_charger_timestamp", "charger_id", "timestamp"),
+        Index("idx_anomaly_timestamp_desc", "timestamp", postgresql_using='btree', postgresql_ops={'timestamp': 'DESC'}),
     )
 
 event.listen(

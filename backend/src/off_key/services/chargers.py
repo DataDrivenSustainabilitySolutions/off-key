@@ -126,10 +126,14 @@ class ChargersSyncService:
                     f"Cleaning chargers last seen before {cutoff_datetime.isoformat()}."
                 )
 
-                # Prepare the delete statement with explicit CAST for string comparison
+                # Convert cutoff datetime to ISO string format for efficient string comparison
+                # This avoids expensive CAST operations and can use string indexes
+                cutoff_iso_string = cutoff_datetime.isoformat()
+                
+                # Use string comparison which is much more efficient than casting
                 delete_statement = delete(Charger).where(
                     Charger.last_seen is not None,
-                    cast(Charger.last_seen, DateTime(timezone=True)) < cutoff_datetime,
+                    Charger.last_seen < cutoff_iso_string,
                 )
             except Exception as e:
                 # Handle potential errors during date calculation itself

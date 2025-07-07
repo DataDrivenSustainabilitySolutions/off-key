@@ -183,3 +183,6 @@ cython_debug/
 
 # Swarm Mode - Local Deployment
 docker-compose.local-swarm.yml
+
+# Coding Assistant
+CLAUDE.md

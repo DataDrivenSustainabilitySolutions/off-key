@@ -13,7 +13,12 @@ router = APIRouter()
 
 @router.get("/")
 async def get_anomalies(charger_id: str, db: AsyncSession = Depends(get_db_async)):
-    result = await db.execute(select(Anomaly).filter(Anomaly.charger_id == charger_id))
+    result = await db.execute(
+        select(Anomaly)
+        .filter(Anomaly.charger_id == charger_id)
+        .order_by(Anomaly.timestamp.desc())
+        .limit(500)  # Safety limit for anomalies
+    )
     anomalies = result.scalars().all()
     return [
         {

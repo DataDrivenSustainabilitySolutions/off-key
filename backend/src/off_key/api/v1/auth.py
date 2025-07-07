@@ -1,7 +1,3 @@
-import smtplib
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
-
 from fastapi import APIRouter, Depends, HTTPException, status
 from jose import jwt, JWTError
 from sqlalchemy import select
@@ -25,6 +21,7 @@ from ...services.auth import (
     create_jwt,
 )
 from ...utils.enum import RoleEnum
+from ...utils.mail import send_verification_email, send_password_reset_email
 
 router = APIRouter()
 
@@ -56,37 +53,14 @@ async def register(user: UserCreate, db: AsyncSession = Depends(get_db_async)):
     await db.flush()
     await db.commit()
 
-    # Email details
-    sender_email = "sender@example.com"
-    recipient_email = user.email
-    subject = "Email Verification"
-    verification_link = (
-        f"{settings.FRONTEND_BASE_URL}/verify?token={verification_token}"
-    )
-    body = (
-        f"Please click the following link to verify your email address:"
-        f"\n\n{verification_link}\n\nIf you didn't request this verification,"
-        f" please ignore this email."
-    )
-
-    logger.info(f"Sending verification link {verification_link}")
-
-    # Create the email message
-    message = MIMEMultipart()
-    message["From"] = sender_email
-    message["To"] = recipient_email
-    message["Subject"] = subject
-    message.attach(MIMEText(body, "plain"))
-
+    # Send verification email
     logger.info(f"Sending verification email to {user.email}")
-
+    
     try:
-        with smtplib.SMTP(settings.SMTP_SERVER, settings.SMTP_PORT) as server:
-            # server.starttls() ohne tls für mailpit
-            server.send_message(message)
-        print("Email sent successfully.")
+        await send_verification_email(user.email, verification_token)
+        logger.info("Verification email sent successfully.")
     except Exception as e:
-        print(f"Error sending email: {e}")
+        logger.error(f"Error sending verification email: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to send verification email: {e}",
@@ -167,7 +141,7 @@ async def forgot_password(
 ):
     email = user.email
     response_message = (
-        "Wenn die E-Mail registriert ist, wurde ein Link zum Zurücksetzen gesendet."
+        "If the email is registered, a password reset link has been sent."
     )
 
     result = await db.execute(select(User).filter(User.email == email))
@@ -175,30 +149,10 @@ async def forgot_password(
 
     if user:
         reset_token = create_reset_token(user.email)
-        reset_link = f"{settings.FRONTEND_BASE_URL}/reset-password?token={reset_token}"
-        # Email vorbereiten
-        sender_email = "noreply@example.com"
-        recipient_email = email
-        subject = "Passwort zurücksetzen"
-        body = (
-            f"Hallo,\n\n"
-            f"um dein Passwort zurückzusetzen, klicke bitte auf folgenden Link:\n\n"
-            f"{reset_link}\n\n"
-            f"Wenn du das nicht angefordert hast, kannst du diese Mail ignorieren."
-        )
-
-        message = MIMEMultipart()
-        message["From"] = sender_email
-        message["To"] = recipient_email
-        message["Subject"] = subject
-        message.attach(MIMEText(body, "plain"))
-
         logger.info(f"Sending password reset email to {email}")
 
         try:
-            with smtplib.SMTP(settings.SMTP_SERVER, settings.SMTP_PORT) as server:
-                # kein TLS für Mailpit nötig
-                server.send_message(message)
+            await send_password_reset_email(email, reset_token)
         except Exception as e:
             logger.error(f"Error sending password reset email: {e}")
             raise HTTPException(
@@ -206,7 +160,7 @@ async def forgot_password(
                 detail="Error sending the password reset email.",
             )
 
-    # Antwort immer gleich, egal ob User existiert (kein User Enumeration Leak)
+    # Always return the same response, regardless of whether user exists (no user enumeration leak)
     return {"message": response_message}
 
 
@@ -220,25 +174,25 @@ async def reset_password(
             req.token, settings.JWT_VERIFICATION_SECRET, algorithms=["HS256"]
         )
         if payload.get("token_type") != "password_reset":
-            raise HTTPException(status_code=400, detail="Ungültiger Token-Typ")
+            raise HTTPException(status_code=400, detail="Invalid token type")
         email = payload.get("sub")
         if email is None:
-            raise HTTPException(status_code=400, detail="Ungültiger Token")
+            raise HTTPException(status_code=400, detail="Invalid token")
     except JWTError:
         raise HTTPException(
-            status_code=400, detail="Ungültiger oder abgelaufener Token"
+            status_code=400, detail="Invalid or expired token"
         )
 
-    # User finden
+    # Find user
     result = await db.execute(select(User).filter(User.email == email))
     user = result.scalars().first()
     if not user:
-        raise HTTPException(status_code=404, detail="Benutzer nicht gefunden")
+        raise HTTPException(status_code=404, detail="User not found")
 
-    # Passwort updaten
+    # Update password
     user.hashed_password = get_password_hash(req.new_password)
     await db.commit()
 
-    logger.info(f"Passwort erfolgreich zurückgesetzt für {email}")
+    logger.info(f"Password successfully reset for {email}")
 
-    return {"message": "Passwort wurde erfolgreich zurückgesetzt"}
+    return {"message": "Password has been successfully reset"}

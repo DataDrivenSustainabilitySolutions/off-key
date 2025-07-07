@@ -1,8 +1,8 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Session
+from sqlalchemy import select
 
-from ...db.base import get_db_sync, get_db_async
+from ...db.base import get_db_async
 from ...db.models import Charger
 from ...services.chargers import ChargersSyncService
 
@@ -24,16 +24,19 @@ async def clean_chargers(older_n_days: int, db: AsyncSession = Depends(get_db_as
 
 
 @router.get("/available", tags=["chargers"])
-def get_all_chargers(db: Session = Depends(get_db_sync)):
-    return db.query(Charger).all()
+async def get_all_chargers(db: AsyncSession = Depends(get_db_async)):
+    result = await db.execute(select(Charger))
+    return result.scalars().all()
 
 
 @router.get("/active", tags=["chargers"])
-def get_active_chargers(db: Session = Depends(get_db_sync)):
-    return db.query(Charger).filter(Charger.online).all()
+async def get_active_chargers(db: AsyncSession = Depends(get_db_async)):
+    result = await db.execute(select(Charger).filter(Charger.online))
+    return result.scalars().all()
 
 
 @router.get("/active/id", tags=["chargers"])
-def get_active_charger_ids(db: Session = Depends(get_db_sync)):
-    active_ids = db.query(Charger.charger_id).filter(Charger.online).all()
-    return {"active": [active_id[0] for active_id in active_ids]}
+async def get_active_charger_ids(db: AsyncSession = Depends(get_db_async)):
+    result = await db.execute(select(Charger.charger_id).filter(Charger.online))
+    active_ids = result.scalars().all()
+    return {"active": list(active_ids)}

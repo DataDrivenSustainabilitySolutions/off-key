@@ -1,7 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 
-from ...db.base import get_db_sync
+from ...db.base import get_db_async
 from ...db.models import Favorite
 from ...schemas.favorites import FavoriteCreate
 
@@ -9,41 +10,42 @@ router = APIRouter()
 
 
 @router.get("/")
-def get_favorites(user_id: int, db: Session = Depends(get_db_sync)):
-    favorites = db.query(Favorite).filter(Favorite.user_id == user_id).all()
+async def get_favorites(user_id: int, db: AsyncSession = Depends(get_db_async)):
+    result = await db.execute(select(Favorite).filter(Favorite.user_id == user_id))
+    favorites = result.scalars().all()
     return [f.charger_id for f in favorites]
 
 
 @router.post("/")
-def add_favorite(fav: FavoriteCreate, db: Session = Depends(get_db_sync)):
-    # Prüfen, ob bereits existiert
-    exists = (
-        db.query(Favorite)
+async def add_favorite(fav: FavoriteCreate, db: AsyncSession = Depends(get_db_async)):
+    # Check if already exists
+    result = await db.execute(
+        select(Favorite)
         .filter(Favorite.user_id == fav.user_id, Favorite.charger_id == fav.charger_id)
-        .first()
     )
+    exists = result.scalars().first()
 
     if exists:
         raise HTTPException(status_code=400, detail="Charger already favorited")
 
     new_fav = Favorite(user_id=fav.user_id, charger_id=fav.charger_id)
     db.add(new_fav)
-    db.commit()
-    db.refresh(new_fav)
+    await db.commit()
+    await db.refresh(new_fav)
     return {"message": "Favorite added"}
 
 
 @router.delete("/")
-def remove_favorite(fav: FavoriteCreate, db: Session = Depends(get_db_sync)):
-    existing = (
-        db.query(Favorite)
+async def remove_favorite(fav: FavoriteCreate, db: AsyncSession = Depends(get_db_async)):
+    result = await db.execute(
+        select(Favorite)
         .filter(Favorite.user_id == fav.user_id, Favorite.charger_id == fav.charger_id)
-        .first()
     )
+    existing = result.scalars().first()
 
     if not existing:
         raise HTTPException(status_code=404, detail="Favorite not found")
 
-    db.delete(existing)
-    db.commit()
+    await db.delete(existing)
+    await db.commit()
     return {"message": "Favorite removed"}

@@ -1,10 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 from datetime import datetime
 
 from ...utils.mail import send_anomaly_alert_email
-
-from ...db.base import get_db_sync
+from ...db.base import get_db_async
 from ...db.models import Anomaly
 from ...schemas.anomalies import AnomalyCreate
 
@@ -12,8 +12,9 @@ router = APIRouter()
 
 
 @router.get("/")
-def get_anomalies(charger_id: str, db: Session = Depends(get_db_sync)):
-    anomalies = db.query(Anomaly).filter(Anomaly.charger_id == charger_id).all()
+async def get_anomalies(charger_id: str, db: AsyncSession = Depends(get_db_async)):
+    result = await db.execute(select(Anomaly).filter(Anomaly.charger_id == charger_id))
+    anomalies = result.scalars().all()
     return [
         {
             "charger_id": a.charger_id,
@@ -32,7 +33,7 @@ async def create_anomaly(
     telemetry_type: str,
     anomaly_type: str,
     anomaly_value: float,
-    db: Session = Depends(get_db_sync)
+    db: AsyncSession = Depends(get_db_async)
 ):
     new_anomaly = Anomaly(
         charger_id=charger_id,
@@ -42,8 +43,8 @@ async def create_anomaly(
         anomaly_value=anomaly_value
     )
     db.add(new_anomaly)
-    db.commit()
-    db.refresh(new_anomaly)
+    await db.commit()
+    await db.refresh(new_anomaly)
 
     await send_anomaly_alert_email({
         "charger_id": new_anomaly.charger_id,
@@ -57,21 +58,24 @@ async def create_anomaly(
     return {"message": "Anomaly added"}
 
 @router.delete("/")
-def delete_anomaly_by_fields(
+async def delete_anomaly_by_fields(
     charger_id: str,
     timestamp: datetime,
     telemetry_type: str,
-    db: Session = Depends(get_db_sync)
+    db: AsyncSession = Depends(get_db_async)
 ):
-    anomaly = db.query(Anomaly).filter(
-        Anomaly.charger_id == charger_id,
-        Anomaly.timestamp == timestamp,
-        Anomaly.telemetry_type == telemetry_type
-    ).first()
+    result = await db.execute(
+        select(Anomaly).filter(
+            Anomaly.charger_id == charger_id,
+            Anomaly.timestamp == timestamp,
+            Anomaly.telemetry_type == telemetry_type
+        )
+    )
+    anomaly = result.scalars().first()
 
     if not anomaly:
-        return {"error": "Anomaly not found with given parameters"}
+        raise HTTPException(status_code=404, detail="Anomaly not found with given parameters")
     
-    db.delete(anomaly)
-    db.commit()
+    await db.delete(anomaly)
+    await db.commit()
     return {"message": "Anomaly deleted successfully"}

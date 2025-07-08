@@ -9,9 +9,11 @@ dev_env = find_dotenv("dev.env")
 if dev_env:
     load_dotenv(dev_env, override=True)
 
+
 class Settings(BaseSettings):
 
     APP_NAME: str
+    DEBUG: bool = False  # Set to True in development for SQL logging
 
     JWT_SECRET: str
     JWT_VERIFICATION_SECRET: str
@@ -27,6 +29,8 @@ class Settings(BaseSettings):
     SMTP_PORT: int
     MAIL_STARTTLS: bool
     MAIL_SSL_TLS: bool
+    USE_CREDENTIALS: bool
+    VALIDATE_CERTS: bool
 
     POSTGRES_USER: str
     POSTGRES_PASSWORD: str
@@ -36,6 +40,8 @@ class Settings(BaseSettings):
 
     PIONIX_KEY: str
     PIONIX_USER_AGENT: str
+
+    ANOMALY_ALERT_RECIPIENTS: str = "admin@example.com"  # Comma-separated list
 
     @property
     def database_url(self):
@@ -50,6 +56,15 @@ class Settings(BaseSettings):
             f"postgresql+asyncpg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}"
             f"@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
         )
+
+    @property
+    def anomaly_alert_recipients_list(self) -> list[str]:
+        """Parse comma-separated recipients into a list."""
+        return [
+            email.strip()
+            for email in self.ANOMALY_ALERT_RECIPIENTS.split(",")
+            if email.strip()
+        ]
 
 
 settings = Settings()  # noqa

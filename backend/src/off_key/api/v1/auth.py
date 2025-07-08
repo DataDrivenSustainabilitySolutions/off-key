@@ -55,7 +55,7 @@ async def register(user: UserCreate, db: AsyncSession = Depends(get_db_async)):
 
     # Send verification email
     logger.info(f"Sending verification email to {user.email}")
-    
+
     try:
         await send_verification_email(user.email, verification_token)
         logger.info("Verification email sent successfully.")
@@ -160,7 +160,8 @@ async def forgot_password(
                 detail="Error sending the password reset email.",
             )
 
-    # Always return the same response, regardless of whether user exists (no user enumeration leak)
+    # Always return the same response
+    # Regardless of whether user exists (no user enumeration leak)
     return {"message": response_message}
 
 
@@ -171,7 +172,7 @@ async def reset_password(
 ):
     try:
         payload = jwt.decode(
-            req.token, settings.JWT_VERIFICATION_SECRET, algorithms=["HS256"]
+            req.token, settings.JWT_VERIFICATION_SECRET, algorithms=[settings.ALGORITHM]
         )
         if payload.get("token_type") != "password_reset":
             raise HTTPException(status_code=400, detail="Invalid token type")
@@ -179,9 +180,7 @@ async def reset_password(
         if email is None:
             raise HTTPException(status_code=400, detail="Invalid token")
     except JWTError:
-        raise HTTPException(
-            status_code=400, detail="Invalid or expired token"
-        )
+        raise HTTPException(status_code=400, detail="Invalid or expired token")
 
     # Find user
     result = await db.execute(select(User).filter(User.email == email))

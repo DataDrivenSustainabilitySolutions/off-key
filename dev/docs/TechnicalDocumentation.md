@@ -83,7 +83,7 @@
 **Returntype:**
 string
 
-**Description:**  
+**Description:**
 This is a function to format the Timestamps which are given from the
 Datapoints for CPU Usage and CPU Thermal for the Linecharts to show
 in the X Axis. The function filters the Timestamp and sets it up in the format day:month, hour:minute:second
@@ -107,7 +107,7 @@ const formatDateMultiline = (value: string) => {
 **Returntype:**
 number
 
-**Description:**  
+**Description:**
 Filters The Timestamp and matches it with the input from the user.
 Its the function for the Datepicker from and to date and the time.
 The same is done with "const filteredDataCpuThermal".
@@ -125,7 +125,7 @@ const filteredDataCpuUsage = controllerCpuUsageData.filter((cpu) => {
 
 ### 1.3. `handleLastMinutes(dataArray:CPU[], setFrom: Date|undefined, setTo: Date|undefined, minutes: number): `
 
-**Description:**  
+**Description:**
 This function takes the data from dataArray and the sets 2 react states "from" and "to". First it calculates the maxTime and o this basis it calculates the minTime. With those 2 it sets a Timespan in which the matching Datapoints will be shown.
 
 **Code:**
@@ -190,7 +190,7 @@ You can also add more if you want just like "thermalLastHour" for example.
 zones: start
 end
 
-**Description:**  
+**Description:**
 Is used to mark red Zones in the Linecharts whenever the value is above the treshold.
 
 **Code:**
@@ -225,7 +225,7 @@ export function useRedZones(data: DataPoint[], threshold = 80) {
 
 ### 3.1. `getAllChargers(): JSON Array`
 
-**Description:**  
+**Description:**
 Function sends GET request API call to get all available chargers with their base information: (_"charger_name", "last_seen", "online", "manufacturer_name", "charger_id", "firmware_version", "state" and "created"_).
 
 **Code:**
@@ -239,7 +239,7 @@ return resp.data;
 
 ### b. `getCombinedChargerData(charger_id: string): Object`
 
-**Description:**  
+**Description:**
 Function sends GET requests API calls to get the specified telemetry data (here: CPU Usage and CPU Temperature). It combines the telemetry data with the base charger data and returns it as an object.
 
 **Code:**
@@ -269,7 +269,7 @@ return {
 
 ### 4.1. `getFavorites(user_id: number): JSON Array`
 
-**Description:**  
+**Description:**
 Function sends GET request API call to retrieve all favoured charger ids of the current user (based on the transferred user id).
 
 **Code:**
@@ -283,7 +283,7 @@ return resp.data;
 
 ### 4.2. `toggleFavorites(charger_id: string, user_id: number): `
 
-**Description:**  
+**Description:**
 Function that is called when a user clicks on the favorite/star icon. The favourites entry for the selected charger is deleted if it was already a favourite. Otherwise, a favourites entry is created.
 
 **Code:**
@@ -308,7 +308,7 @@ async (chargerId: string, userId: number, isCurrentlyFavorite: boolean) => {
 
 ### 5.1. `getAnomalies(charger_id: string): JSON Array`
 
-**Description:**  
+**Description:**
 Function sends GET requests API calls to get all the anomaly data from a specific charger. It returns the "charger_id", "timestamp", "telemetry_type", "anomaly_type" and "anomaly_value".
 
 **Code:**
@@ -324,7 +324,7 @@ async (chargerId: string): Promise<Anomaly[]> => {
 
 ### 5.2. `addAnomaly(chargerId: string, timestamp: Date, telemetry_type: string, anomaly_type: string, anomaly_value: number):`
 
-**Description:**  
+**Description:**
 Function needs to be called with a charger_id, timestamp, telemtry_type, anomaly_type and an anomaly_value to add an anomaly to the database.
 
 **Code:**
@@ -349,7 +349,7 @@ async (
 
 ### 5.3. `deleteAnomaly(chargerId: string, timestamp: Date, telemetry_type: string): returntype`
 
-**Description:**  
+**Description:**
 Function deletes a given anomaly entry based on the specified charger_id, timestamp and telemetry_type combination.
 
 **Code:**
@@ -372,7 +372,7 @@ async (chargerId: string, timestamp: Date, telemetry_type: string) => {
 
 ### 6.1. `handleLogin(e: React.FormEvent): Promise<void>`
 
-**Description:**  
+**Description:**
 Handles the login form submission. Sends a `POST` request to the backend with email and password. Based on `rememberMe`, it stores the token in `localStorage` or `sessionStorage`, logs the user in via context, triggers charger and telemetry data sync, and navigates to the home page after a delay.
 
 **Code:**
@@ -482,7 +482,7 @@ const handleRegister = async (e: React.FormEvent) => {
 
 ### 8.1. `Verification: React.FC`
 
-**Description:**  
+**Description:**
 Handles the email verification process. It extracts a token from the URL query parameters and sends a `GET` request to the backend to verify the user’s email address. Based on the API response, it updates the status message shown to the user.
 
 **Code:**
@@ -556,7 +556,7 @@ const handleSubmit = async (e: React.FormEvent) => {
 
 ### 10.1. `useEffect(() => { ... }, [])`
 
-**Description:**  
+**Description:**
 On component mount, this effect checks both `localStorage` and `sessionStorage` for a previously saved token. If found, it updates the `token` state and stops the loading state.
 
 **Code:**
@@ -576,7 +576,7 @@ useEffect(() => {
 
 ### 10.2. `login(newToken: string): void`
 
-**Description:**  
+**Description:**
 Stores a new authentication token into `sessionStorage` and updates the React state to authenticate the user.
 
 **Code:**
@@ -592,7 +592,7 @@ const login = (newToken: string) => {
 
 ### 10.3. `logout(): void`
 
-**Description:**  
+**Description:**
 Removes the authentication token from both `sessionStorage` and `localStorage` to log the user out of the session.
 
 **Code:**
@@ -608,7 +608,7 @@ const logout = () => {
 
 ### 10.4. `isAuthenticated: boolean`
 
-**Description:**  
+**Description:**
 Boolean value that indicates if the user is currently authenticated, based on the presence of a valid token.
 
 **Code:**
@@ -621,7 +621,7 @@ const isAuthenticated = !!token;
 
 ### 10.5. `useAuth(): AuthContextType`
 
-**Description:**  
+**Description:**
 Custom React hook that allows components to access the authentication context. Will throw an error if used outside of the `AuthProvider`.
 
 **Code:**
@@ -640,7 +640,7 @@ export const useAuth = () => {
 
 ### 10.6. `<AuthProvider>{children}</AuthProvider>`
 
-**Description:**  
+**Description:**
 Component that provides authentication context (token, login/logout, state) to its children.
 
 **Code:**
@@ -659,7 +659,7 @@ Component that provides authentication context (token, login/logout, state) to i
 
 ### 11.1. `ProtectedRoute({ children }: { children: JSX.Element }): JSX.Element`
 
-**Description:**  
+**Description:**
 This component serves as a route guard. It ensures that only authenticated users can access certain routes. If authentication is still loading, it shows a loading message. If the user is not authenticated, it redirects to the login page. If authenticated, it renders the protected component (`children`).
 
 **Code:**
@@ -694,7 +694,7 @@ export const ProtectedRoute = ({ children }: { children: JSX.Element }) => {
 
 ### 12.1. `getTelemetryTypes(chargerId: string): Promise<string[]>`
 
-**Description:**  
+**Description:**
 Fetches all available telemetry types (keys) for a given charger by its ID.
 
 **Code:**
@@ -715,7 +715,7 @@ const getTelemetryTypes = useCallback(
 
 ### 12.2. `getTelemetryData(chargerId: string, telemetryKey: string): Promise<Cpu[]>`
 
-**Description:**  
+**Description:**
 Retrieves telemetry data for a specific charger and telemetry key (e.g., CPU usage or temperature).
 
 **Code:**
@@ -736,7 +736,7 @@ const getTelemetryData = useCallback(
 
 ### 12.3. `getAllChargers(): Promise<Charger[]>`
 
-**Description:**  
+**Description:**
 Fetches the list of all currently available chargers.
 
 **Code:**
@@ -754,7 +754,7 @@ const getAllChargers = useCallback(async (): Promise<Charger[]> => {
 
 ### 12.4. `getFavorites(userId: number): Promise<string[]>`
 
-**Description:**  
+**Description:**
 Returns a list of charger IDs that are marked as favorites for the given user.
 
 **Code:**
@@ -772,7 +772,7 @@ const getFavorites = useCallback(async (userId: number): Promise<string[]> => {
 
 ### 12.5. `toggleFavorite(chargerId: string, userId: number, isCurrentlyFavorite: boolean): Promise<void>`
 
-**Description:**  
+**Description:**
 Adds or removes a charger from the user's favorites, depending on whether it's already marked.
 
 **Code:**
@@ -799,7 +799,7 @@ const toggleFavorite = useCallback(
 
 ### 12.6. `getCombinedChargerData(chargers: Charger[]): Promise<CombinedData[]>`
 
-**Description:**  
+**Description:**
 Combines basic charger information with selected telemetry data (CPU usage & temperature) for each charger.
 
 **Code:**
@@ -854,7 +854,7 @@ const getCombinedChargerData = useCallback(
 
 ### 12.7. `getAnomalies(chargerId: string): Promise<Anomaly[]>`
 
-**Description:**  
+**Description:**
 Fetches telemetry anomalies associated with the specified charger.
 
 **Code:**
@@ -875,7 +875,7 @@ const getAnomalies = useCallback(
 
 ### 12.8. `addAnomaly(chargerId: string, timestamp: Date, telemetry_type: string): Promise<void>`
 
-**Description:**  
+**Description:**
 Adds an anomaly entry for a specific charger and telemetry type.
 
 **Code:**
@@ -897,7 +897,7 @@ const addAnomaly = useCallback(
 
 ### 12.9. `deleteAnomaly(chargerId: string, timestamp: Date, telemetry_type: string): Promise<void>`
 
-**Description:**  
+**Description:**
 Deletes an anomaly for a specific charger based on telemetry type and timestamp.
 
 **Code:**
@@ -923,7 +923,7 @@ const deleteAnomaly = useCallback(
 
 ### 12.10. `syncChargers(): Promise<void>`
 
-**Description:**  
+**Description:**
 Triggers server-side synchronization for charger data.
 
 **Code:**
@@ -942,7 +942,7 @@ const syncChargers = useCallback(async (): Promise<void> => {
 
 ### 12.11. `syncTelemetry(): Promise<void>`
 
-**Description:**  
+**Description:**
 Triggers full telemetry data sync (up to 10,000 records)
 
 **Code:**
@@ -964,7 +964,7 @@ const syncTelemetry = useCallback(async (): Promise<void> => {
 
 ### 12.12. `syncTelemetryShort(): Promise<void>`
 
-**Description:**  
+**Description:**
 Triggers a short sync for recent telemetry data (100 records).
 
 **Code:**
@@ -983,7 +983,7 @@ const syncTelemetryShort = useCallback(async (): Promise<void> => {
 
 ### 12.13. `loadCpuUsage(chargerId: string): Promise<void>`
 
-**Description:**  
+**Description:**
 Loads CPU usage telemetry for a charger and saves it in state.
 
 **Code:**
@@ -1028,7 +1028,7 @@ const loadCpuUsage = useCallback(
 
 ### 12.14. `loadCpuThermal(chargerId: string): Promise<void>`
 
-**Description:**  
+**Description:**
 Loads CPU temperature telemetry for a charger and updates context state.
 
 **Code:**
@@ -1073,7 +1073,7 @@ const loadCpuThermal = useCallback(
 
 ### 12.15. `loadMonitoring(chargerId: string): Promise<void>`
 
-**Description:**  
+**Description:**
 Loads monitoring data (e.g., system and controller state) and stores it in context state.
 
 **Code:**

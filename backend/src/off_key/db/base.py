@@ -7,7 +7,7 @@ from off_key.core.config import settings
 # Synchronous Engine
 engine = create_engine(
     settings.database_url,  # URL for the synchronous database
-    echo=True,  # Log SQL queries for debugging
+    echo=settings.DEBUG,  # Log SQL queries only in debug mode
     echo_pool=False,
     pool_pre_ping=True,  # Enable connection health checks
     pool_size=10,  # Number of connections to keep in the pool
@@ -25,7 +25,7 @@ SyncSessionLocal = sessionmaker(
 # Asynchronous Engine
 async_engine = create_async_engine(
     settings.async_database_url,  # URL for the asynchronous database
-    echo=False,  # Log SQL queries for debugging
+    echo=settings.DEBUG,  # Log SQL queries only in debug mode
     pool_pre_ping=True,  # Enable connection health checks
     pool_size=10,  # Number of connections to keep in the pool
     max_overflow=20,  # Allow additional connections beyond the pool size
@@ -78,3 +78,31 @@ def get_db_sync():
         raise
     finally:
         db.close()  # Ensure the session is closed
+
+
+# Dependency for asynchronous database sessions without auto-commit
+async def get_db_transactional():
+    """
+    Provides an asynchronous database session without auto-commit.
+    Useful for complex transactions where manual commit/rollback control is needed.
+    The caller is responsible for committing or rolling back the transaction.
+    """
+    async with AsyncSessionLocal() as db:
+        try:
+            yield db
+        finally:
+            await db.close()  # Just close, don't commit
+
+
+# Dependency for synchronous database sessions without auto-commit
+def get_db_sync_transactional():
+    """
+    Provides a synchronous database session without auto-commit.
+    Useful for complex transactions where manual commit/rollback control is needed.
+    The caller is responsible for committing or rolling back the transaction.
+    """
+    db = SyncSessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()  # Just close, don't commit

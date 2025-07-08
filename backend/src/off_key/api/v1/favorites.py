@@ -20,8 +20,9 @@ async def get_favorites(user_id: int, db: AsyncSession = Depends(get_db_async)):
 async def add_favorite(fav: FavoriteCreate, db: AsyncSession = Depends(get_db_async)):
     # Check if already exists
     result = await db.execute(
-        select(Favorite)
-        .filter(Favorite.user_id == fav.user_id, Favorite.charger_id == fav.charger_id)
+        select(Favorite).filter(
+            Favorite.user_id == fav.user_id, Favorite.charger_id == fav.charger_id
+        )
     )
     exists = result.scalars().first()
 
@@ -36,10 +37,13 @@ async def add_favorite(fav: FavoriteCreate, db: AsyncSession = Depends(get_db_as
 
 
 @router.delete("/")
-async def remove_favorite(fav: FavoriteCreate, db: AsyncSession = Depends(get_db_async)):
+async def remove_favorite(
+    fav: FavoriteCreate, db: AsyncSession = Depends(get_db_async)
+):
     result = await db.execute(
-        select(Favorite)
-        .filter(Favorite.user_id == fav.user_id, Favorite.charger_id == fav.charger_id)
+        select(Favorite).filter(
+            Favorite.user_id == fav.user_id, Favorite.charger_id == fav.charger_id
+        )
     )
     existing = result.scalars().first()
 

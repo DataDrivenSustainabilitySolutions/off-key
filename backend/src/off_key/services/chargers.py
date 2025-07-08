@@ -1,6 +1,6 @@
 from datetime import datetime, timezone, timedelta
 
-from sqlalchemy import select, delete, cast, DateTime
+from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from off_key.core.config import settings
 
@@ -126,10 +126,10 @@ class ChargersSyncService:
                     f"Cleaning chargers last seen before {cutoff_datetime.isoformat()}."
                 )
 
-                # Convert cutoff datetime to ISO string format for efficient string comparison
+                # Convert cutoff datetime to ISO string format for efficient comparison
                 # This avoids expensive CAST operations and can use string indexes
                 cutoff_iso_string = cutoff_datetime.isoformat()
-                
+
                 # Use string comparison which is much more efficient than casting
                 delete_statement = delete(Charger).where(
                     Charger.last_seen is not None,

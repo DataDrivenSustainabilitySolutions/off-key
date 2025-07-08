@@ -1,6 +1,4 @@
-
 import asyncio
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from off_key.db.base import get_db_async
@@ -13,11 +11,12 @@ from off_key.services.auth import (
 
 
 async def create_admin():
-    async for db in get_db_async():  
-        email = settings.EMAIL_USERNAME
-        password = settings.EMAIL_PASSWORD
+    """Create admin user if it doesn't exist"""
+    async for db in get_db_async():
+        email = settings.SUPERUSER_MAIL
+        password = "admin"  # Default password - change after first login
 
-        print(f"Checking if admin already exists...")
+        print("Checking if admin already exists...")
 
         result = await db.execute(select(User).where(User.email == email))
         existing_user = result.scalars().first()
@@ -37,7 +36,7 @@ async def create_admin():
 
         db.add(admin_user)
         await db.commit()
-        print(" Admin successfully created.")
+        print(f"Admin successfully created with email: {email}")
 
 
 if __name__ == "__main__":

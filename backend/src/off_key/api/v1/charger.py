@@ -24,19 +24,28 @@ async def clean_chargers(older_n_days: int, db: AsyncSession = Depends(get_db_as
 
 
 @router.get("/available", tags=["chargers"])
-async def get_all_chargers(db: AsyncSession = Depends(get_db_async)):
-    result = await db.execute(select(Charger))
+async def get_all_chargers(
+    skip: int = 0, limit: int = 100, db: AsyncSession = Depends(get_db_async)
+):
+    query = select(Charger).offset(skip).limit(limit)
+    result = await db.execute(query)
     return result.scalars().all()
 
 
 @router.get("/active", tags=["chargers"])
-async def get_active_chargers(db: AsyncSession = Depends(get_db_async)):
-    result = await db.execute(select(Charger).filter(Charger.online))
+async def get_active_chargers(
+    skip: int = 0, limit: int = 100, db: AsyncSession = Depends(get_db_async)
+):
+    query = select(Charger).filter(Charger.online).offset(skip).limit(limit)
+    result = await db.execute(query)
     return result.scalars().all()
 
 
 @router.get("/active/id", tags=["chargers"])
-async def get_active_charger_ids(db: AsyncSession = Depends(get_db_async)):
-    result = await db.execute(select(Charger.charger_id).filter(Charger.online))
+async def get_active_charger_ids(
+    skip: int = 0, limit: int = 100, db: AsyncSession = Depends(get_db_async)
+):
+    query = select(Charger.charger_id).filter(Charger.online).offset(skip).limit(limit)
+    result = await db.execute(query)
     active_ids = result.scalars().all()
     return {"active": list(active_ids)}

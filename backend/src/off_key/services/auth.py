@@ -22,10 +22,10 @@ def create_jwt(data: dict, expires_delta: timedelta = None) -> str:
         else timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     )
     to_encode.update({"exp": expire})
-    return jwt.encode(to_encode, settings.JWT_SECRET, algorithm="HS256")
+    return jwt.encode(to_encode, settings.JWT_SECRET, algorithm=settings.ALGORITHM)
 
 
-def create_verification_token(email: str, expires_minutes: int = 15) -> str:
+def create_verification_token(email: str, expires_minutes: int = 120) -> str:
     to_encode = {
         "sub": email,
         "exp": datetime.now(timezone.utc) + timedelta(minutes=expires_minutes),
@@ -46,7 +46,7 @@ def verify_verification_token(token: str) -> str | None:
         return None
 
 
-def create_reset_token(email: str, expires_minutes: int = 15) -> str:
+def create_reset_token(email: str, expires_minutes: int = 120) -> str:
     to_encode = {
         "sub": email,
         "exp": datetime.now(timezone.utc) + timedelta(minutes=expires_minutes),

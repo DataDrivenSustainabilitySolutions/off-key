@@ -211,7 +211,7 @@ class TelemetrySyncService:
                     f"Inserting {len(telemetry_records_to_insert)} processed "
                     f"records for {charger_id} / {hierarchy_raw}."
                 )
-                
+
                 # Dynamic batch size based on record count for better performance
                 record_count = len(telemetry_records_to_insert)
                 if record_count < 1000:
@@ -220,11 +220,11 @@ class TelemetrySyncService:
                     batch_size = 2000  # Smaller batches for medium datasets
                 else:
                     batch_size = 5000  # Larger batches for big datasets
-                
+
                 batch_num = 0
                 successful_batches = 0
                 failed_batches = 0
-                
+
                 for i in range(0, len(telemetry_records_to_insert), batch_size):
                     batch_num += 1
                     batch = telemetry_records_to_insert[i : i + batch_size]
@@ -258,7 +258,7 @@ class TelemetrySyncService:
                             f"{charger_id}/{hierarchy_raw}: {e}. "
                             f"Rolling back batch."
                         )
-                
+
                 logger.info(
                     f"Batch processing completed for {charger_id}/{hierarchy_raw}: "
                     f"{successful_batches} successful, {failed_batches} failed"

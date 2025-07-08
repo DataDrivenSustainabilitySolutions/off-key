@@ -17,11 +17,11 @@ async def sync_chargers(db: AsyncSession = Depends(get_db_async), limit: int = 1
 
 
 @router.get("/{charger_id}/type")
-async def get_telemetry_types_from_id(charger_id: str, db: AsyncSession = Depends(get_db_async)):
+async def get_telemetry_types_from_id(
+    charger_id: str, db: AsyncSession = Depends(get_db_async)
+):
     result = await db.execute(
-        select(Telemetry.type)
-        .filter(Telemetry.charger_id == charger_id)
-        .distinct()
+        select(Telemetry.type).filter(Telemetry.charger_id == charger_id).distinct()
     )
     return result.scalars().all()
 
@@ -42,16 +42,16 @@ async def get_telemetry(
     # Cursor-based pagination for time-series data
     if after_timestamp:
         query = query.filter(Telemetry.timestamp < after_timestamp)
-    
+
     # Always order by timestamp DESC for time-series data
     query = query.order_by(Telemetry.timestamp.desc()).limit(limit)
 
     result = await db.execute(query)
     results = result.scalars().all()
-    
+
     # Format results to match frontend expectations exactly
     formatted_results = [
-        {"timestamp": str(result.timestamp), "value": result.value} 
+        {"timestamp": str(result.timestamp), "value": result.value}
         for result in results
     ]
 
@@ -62,9 +62,11 @@ async def get_telemetry(
             "pagination": {
                 "limit": limit,
                 "has_more": len(formatted_results) == limit,
-                "next_cursor": formatted_results[-1]["timestamp"] if formatted_results else None
-            }
+                "next_cursor": (
+                    formatted_results[-1]["timestamp"] if formatted_results else None
+                ),
+            },
         }
-    
+
     # Default: return simple array for backward compatibility
     return formatted_results

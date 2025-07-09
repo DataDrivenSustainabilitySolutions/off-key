@@ -2,7 +2,6 @@ import asyncio
 import os
 import paho.mqtt.client as mqtt
 import httpx
-from sqlalchemy.orm import Session
 from sqlalchemy import create_engine, sessionmaker
 
 # Load ENV variables

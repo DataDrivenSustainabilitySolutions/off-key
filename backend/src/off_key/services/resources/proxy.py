@@ -3,6 +3,11 @@ import os
 import paho.mqtt.client as mqtt
 import httpx
 from sqlalchemy import create_engine, sessionmaker
+import logging
+
+# Set up logging
+logger = logging.getLogger("off_key.mqtt_proxy")
+logger.setLevel(logging.INFO)
 
 # Load ENV variables
 MQTT_BROKER = os.getenv("MQTT_BROKER", "mqtt://localhost")
@@ -55,21 +60,21 @@ def on_message(client, userdata, msg):
     topic = msg.topic
     payload = msg.payload.decode()
 
-    print(f"Received message on topic '{topic}': {payload}")
+    logger.info(f"Received message on topic '{topic}': {payload}")
 
     # Get the workers subscribed to this topic
     workers = get_workers_for_topic(topic)
 
     if not workers:
-        print(f"No workers found for topic '{topic}'")
+        logger.warning(f"No workers found for topic '{topic}'")
 
     for worker in workers:
         worker_url = f"http://{worker.container_id}:{WORKER_API_PORT}/process"
         try:
             response = httpx.post(worker_url, json={"topic": topic, "data": payload})
-            print(f"Sent data to {worker_url}, Status: {response.status_code}")
+            logger.info(f"Sent data to {worker_url}, Status: {response.status_code}")
         except Exception as e:
-            print(f"Failed to send data to {worker_url}: {e}")
+            logger.error(f"Failed to send data to {worker_url}: {e}")
 
 
 async def run_mqtt_proxy():
@@ -81,11 +86,11 @@ async def run_mqtt_proxy():
     # Fetch the active topics from the database
     topics = get_active_topics()
     if not topics:
-        print("No active topics found in the database.")
+        logger.warning("No active topics found in the database.")
     else:
         for topic in topics:
             client.subscribe(topic)
-            print(f"Subscribed to {topic}")
+            logger.info(f"Subscribed to {topic}")
 
     client.loop_start()
 

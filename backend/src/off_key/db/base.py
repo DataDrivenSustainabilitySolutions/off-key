@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 
 from off_key.core.config import settings
+from off_key.core.logs import logger
 
 # Synchronous Engine
 engine = create_engine(
@@ -55,8 +56,9 @@ async def get_db_async():
         try:
             yield db
             await db.commit()  # Commit changes if no exceptions occur
-        except Exception:
+        except Exception as e:
             await db.rollback()  # Rollback on errors
+            logger.warning(f"Database transaction rolled back: {str(e)}")
             raise
         finally:
             await db.close()  # Ensure the session is closed
@@ -73,8 +75,9 @@ def get_db_sync():
     try:
         yield db
         db.commit()  # Commit changes if no exceptions occur
-    except Exception:
+    except Exception as e:
         db.rollback()  # Rollback on errors
+        logger.warning(f"Database transaction rolled back: {str(e)}")
         raise
     finally:
         db.close()  # Ensure the session is closed

@@ -43,6 +43,13 @@ class Settings(BaseSettings):
 
     ANOMALY_ALERT_RECIPIENTS: str = "admin@example.com"  # Comma-separated list
 
+    # Logging Configuration
+    LOG_LEVEL: str = "INFO"  # DEBUG, INFO, WARNING, ERROR, CRITICAL
+    LOG_FORMAT: str = "simple"  # simple or json
+    LOG_CORRELATION_HEADER: str = "X-Correlation-ID"  # Header for correlation IDs
+    ENABLE_REQUEST_LOGGING: bool = True  # Log all API requests/responses
+    ENABLE_PERFORMANCE_LOGGING: bool = True  # Log timing information
+
     @property
     def database_url(self):
         return (

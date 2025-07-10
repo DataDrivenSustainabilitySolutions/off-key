@@ -4,7 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from off_key.core.config import settings
 
-from ...core.logs import logger
+from ...core.logs import logger, log_security_event
 from ...db.base import get_db_async
 from ...db.models import User
 from ...schemas.user import (
@@ -53,6 +53,10 @@ async def register(user: UserCreate, db: AsyncSession = Depends(get_db_async)):
     await db.flush()
     await db.commit()
 
+    # Log user registration
+    logger.info(f"User registered successfully: {user.email}")
+    log_security_event("user_registration", user.email, {"role": user_role})
+
     # Send verification email
     logger.info(f"Sending verification email to {user.email}")
 
@@ -87,6 +91,11 @@ async def login(user: UserLogin, db: AsyncSession = Depends(get_db_async)):
         )
 
     access_token = create_jwt({"sub": db_user.email})
+
+    # Log successful login
+    logger.info(f"User logged in successfully: {db_user.email}")
+    log_security_event("user_login_success", db_user.email, {"role": db_user.role})
+
     return {"access_token": access_token, "token_type": "bearer"}
 
 
@@ -126,6 +135,12 @@ async def verify_email(token: str, db: AsyncSession = Depends(get_db_async)):
         user.is_verified = True
         user.verification_token = None
         await db.commit()
+
+        # Log successful email verification
+        logger.info(f"Email verified successfully: {email}")
+        log_security_event(
+            "email_verification_success", email, {"verification_method": "email_token"}
+        )
 
         return {"message": "Email verified successfully"}
 
@@ -193,5 +208,6 @@ async def reset_password(
     await db.commit()
 
     logger.info(f"Password successfully reset for {email}")
+    log_security_event("password_reset_success", email, {"reset_method": "email_token"})
 
     return {"message": "Password has been successfully reset"}

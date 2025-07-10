@@ -9,9 +9,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from .db.base import async_engine, get_db_async
 from .core.config import settings
-from .core.logs import logger
+from .core.logs import setup_logging, LogFormat
 from .api.rate_limiter import limiter, rate_limit_exceeded_handler
 from .api.v1.routes import router as v1_router
+from .api.middleware import LoggingMiddleware, SecurityLoggingMiddleware
 from .db.models import Base
 
 # See https://github.com/pyca/bcrypt/issues/684#issuecomment-2465572106
@@ -20,6 +21,17 @@ import bcrypt
 if not hasattr(bcrypt, "__about__"):
     bcrypt.__about__ = type("about", (object,), {"__version__": bcrypt.__version__})
 
+# Initialize logging with configuration
+log_format = (
+    LogFormat.JSON if settings.LOG_FORMAT.lower() == "json" else LogFormat.SIMPLE
+)
+logger = setup_logging(
+    app_name=settings.APP_NAME,
+    log_level=settings.LOG_LEVEL,
+    log_format=log_format,
+    enable_correlation=True,
+)
+
 app = FastAPI(title=settings.APP_NAME)
 
 app.state.limiter = limiter
@@ -27,10 +39,14 @@ app.add_exception_handler(429, rate_limit_exceeded_handler)
 
 origins = ["http://localhost:8000", "http://localhost:5173"]
 
+# Add custom logging middleware first (innermost)
+app.add_middleware(LoggingMiddleware)
+app.add_middleware(SecurityLoggingMiddleware)
+
 # Enable SlowApi Middleware
 app.add_middleware(SlowAPIMiddleware)
 
-# Enable CORS Middleware
+# Enable CORS Middleware (outermost)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # Allow only specified origins

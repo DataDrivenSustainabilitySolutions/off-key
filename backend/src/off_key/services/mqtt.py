@@ -4,6 +4,7 @@ import paho.mqtt.client as mqtt
 import httpx
 from sqlalchemy import create_engine, sessionmaker
 
+from ..core.logs import logger
 from ..db.models import MqttTopic, MonitoringService
 
 # Load ENV variables
@@ -51,7 +52,7 @@ def on_message(client, userdata, msg):
         try:
             httpx.post(worker_url, json={"topic": topic, "data": payload})
         except Exception as e:
-            print(f"Failed to send data to {worker_url}: {e}")
+            logger.error(f"Failed to send data to {worker_url}: {e}")
 
 
 async def run_mqtt_proxy():
@@ -63,7 +64,7 @@ async def run_mqtt_proxy():
     topics = get_active_topics()
     for topic in topics:
         client.subscribe(topic)
-        print(f"Subscribed to {topic}")
+        logger.info(f"Subscribed to {topic}")
 
     client.loop_start()
     while True:

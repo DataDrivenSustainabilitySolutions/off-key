@@ -5,7 +5,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from off_key.core.config import settings
 
 from ..core.client.pionix import PionixClient
-from ..core.logs import logger
+from ..core.logs import logger, log_performance
+import time
 from ..db.models import Charger
 
 
@@ -20,6 +21,9 @@ class ChargersSyncService:
         Adds chargers not present in the database.
         Updates information for chargers already present in the database.
         """
+        start_time = time.time()
+        logger.info("Starting charger synchronization")
+
         try:
             active_chargers_data = await self.client.get("chargers")
             if not active_chargers_data:
@@ -85,7 +89,13 @@ class ChargersSyncService:
         # Commit additions and updates
         try:
             await self.session.commit()
-            logger.info("Charger synchronization complete.")
+            logger.info(
+                f"Charger synchronization complete | "
+                f"Total processed: {len(active_chargers_data)} | "
+                f"Added: {len(chargers_to_add)} | "
+                f"Updated: {chargers_updated_count}"
+            )
+            log_performance("charger_sync", start_time)
         except Exception as e:
             logger.error(f"Database commit failed during charger sync: {e}")
             await self.session.rollback()  # Rollback changes on error

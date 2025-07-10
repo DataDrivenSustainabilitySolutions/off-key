@@ -6,6 +6,7 @@ from datetime import datetime
 from ...utils.mail import send_anomaly_alert_email
 from ...db.base import get_db_async
 from ...db.models import Anomaly
+from ...core.logs import logger
 
 router = APIRouter()
 
@@ -51,15 +52,28 @@ async def create_anomaly(
     await db.commit()
     await db.refresh(new_anomaly)
 
-    await send_anomaly_alert_email(
-        {
-            "charger_id": new_anomaly.charger_id,
-            "timestamp": new_anomaly.timestamp,
-            "telemetry_type": new_anomaly.telemetry_type,
-            "anomaly_type": new_anomaly.anomaly_type,
-            "anomaly_value": new_anomaly.anomaly_value,
-        }
+    # Log anomaly detection
+    logger.warning(
+        f"Anomaly detected and recorded | "
+        f"Charger: {charger_id} | Type: {anomaly_type} | "
+        f"Telemetry: {telemetry_type} | Value: {anomaly_value}"
     )
+
+    try:
+        await send_anomaly_alert_email(
+            {
+                "charger_id": new_anomaly.charger_id,
+                "timestamp": new_anomaly.timestamp,
+                "telemetry_type": new_anomaly.telemetry_type,
+                "anomaly_type": new_anomaly.anomaly_type,
+                "anomaly_value": new_anomaly.anomaly_value,
+            }
+        )
+    except Exception as e:
+        logger.error(
+            f"Failed to send anomaly alert email for charger {charger_id}: {str(e)}"
+        )
+        # Don't fail the anomaly creation if email fails
 
     return {"message": "Anomaly added"}
 
@@ -87,4 +101,10 @@ async def delete_anomaly_by_fields(
 
     await db.delete(anomaly)
     await db.commit()
+
+    logger.info(
+        f"Anomaly deleted | Charger: {charger_id} | "
+        f"Type: {anomaly.anomaly_type} | Timestamp: {timestamp}"
+    )
+
     return {"message": "Anomaly deleted successfully"}

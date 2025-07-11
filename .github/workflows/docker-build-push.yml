@@ -15,6 +15,12 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: set lower case owner name
+        run: |
+            echo "OWNER_LC=${OWNER,,}" >>${GITHUB_ENV}
+        env:
+            OWNER: '${{ github.repository_owner }}'
+
       - name: Check out code
         uses: actions/checkout@v4
 
@@ -30,8 +36,8 @@ jobs:
 
       - name: Override image tags to “latest”
         run: |
-          echo "API_IMAGE=ghcr.io/${{ github.repository_owner }}/off-key-api:latest" >> $GITHUB_ENV
-          echo "FRONTEND_IMAGE=ghcr.io/${{ github.repository_owner }}/off-key-frontend:latest" >> $GITHUB_ENV
+          echo "API_IMAGE=ghcr.io/${{ env.OWNER_LC }}/off-key-api:latest" >> $GITHUB_ENV
+          echo "FRONTEND_IMAGE=ghcr.io/${{ env.OWNER_LC }}/off-key-frontend:latest" >> $GITHUB_ENV
 
       - name: Build all services via Compose
         run: docker compose build --parallel

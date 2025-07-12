@@ -1,0 +1,182 @@
+name: Check Lock File Updates
+
+on:
+  pull_request:
+    branches: [ main ]
+    types: [ opened, synchronize ]
+
+jobs:
+  check-lock-file:
+    runs-on: ubuntu-latest
+    
+    permissions:
+      contents: read
+      pull-requests: write
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    
+    - name: Check lock file changes
+      id: check_lock
+      run: |
+        echo "Event: ${{ github.event.action }}"
+        
+        if [ "${{ github.event.action }}" = "opened" ]; then
+          echo "Checking for lock file changes in newly opened MR..."
+          
+          uv_changed=false
+          yarn_changed=false
+          
+          # Check uv.lock
+          if [ -f "uv.lock" ]; then
+            if git diff origin/main HEAD -- uv.lock | grep -q .; then
+              uv_changed=true
+              echo "uv.lock differs from main branch"
+            fi
+          fi
+          
+          # Check yarn.lock
+          if [ -f "yarn.lock" ]; then
+            if git diff origin/main HEAD -- yarn.lock | grep -q .; then
+              yarn_changed=true
+              echo "yarn.lock differs from main branch"
+            fi
+          fi
+          
+          if [ "$uv_changed" = true ] || [ "$yarn_changed" = true ]; then
+            echo "lock_modified=true" >> $GITHUB_OUTPUT
+            echo "check_type=initial" >> $GITHUB_OUTPUT
+            echo "uv_changed=$uv_changed" >> $GITHUB_OUTPUT
+            echo "yarn_changed=$yarn_changed" >> $GITHUB_OUTPUT
+          else
+            echo "lock_modified=false" >> $GITHUB_OUTPUT
+            echo "No lock files differ from main branch"
+          fi
+          
+        elif [ "${{ github.event.action }}" = "synchronize" ]; then
+          echo "Checking if latest commit modified lock files..."
+          
+          uv_in_commit=false
+          yarn_in_commit=false
+          uv_differs=false
+          yarn_differs=false
+          
+          # Check if lock files were modified in the latest commit
+          if git diff --name-only HEAD~1 HEAD | grep -q "^uv\.lock$"; then
+            uv_in_commit=true
+            echo "Latest commit modified uv.lock"
+          fi
+          
+          if git diff --name-only HEAD~1 HEAD | grep -q "^yarn\.lock$"; then
+            yarn_in_commit=true
+            echo "Latest commit modified yarn.lock"
+          fi
+          
+          # If either was modified, check against main
+          if [ "$uv_in_commit" = true ] || [ "$yarn_in_commit" = true ]; then
+            if [ "$uv_in_commit" = true ] && [ -f "uv.lock" ]; then
+              if git diff origin/main HEAD -- uv.lock | grep -q .; then
+                uv_differs=true
+                echo "uv.lock differs from main branch after latest commit"
+              fi
+            fi
+            
+            if [ "$yarn_in_commit" = true ] && [ -f "yarn.lock" ]; then
+              if git diff origin/main HEAD -- yarn.lock | grep -q .; then
+                yarn_differs=true
+                echo "yarn.lock differs from main branch after latest commit"
+              fi
+            fi
+            
+            if [ "$uv_differs" = true ] || [ "$yarn_differs" = true ]; then
+              echo "lock_modified=true" >> $GITHUB_OUTPUT
+              echo "check_type=update" >> $GITHUB_OUTPUT
+              echo "uv_changed=$uv_differs" >> $GITHUB_OUTPUT
+              echo "yarn_changed=$yarn_differs" >> $GITHUB_OUTPUT
+            else
+              echo "lock_modified=false" >> $GITHUB_OUTPUT
+              echo "Modified lock files match main branch"
+            fi
+          else
+            echo "lock_modified=false" >> $GITHUB_OUTPUT
+            echo "Latest commit did not modify any lock files"
+          fi
+        fi
+    
+    - name: Comment on PR
+      if: steps.check_lock.outputs.lock_modified == 'true'
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const { owner, repo } = context.repo;
+          const issue_number = context.issue.number;
+          const checkType = '${{ steps.check_lock.outputs.check_type }}';
+          const uvChanged = '${{ steps.check_lock.outputs.uv_changed }}' === 'true';
+          const yarnChanged = '${{ steps.check_lock.outputs.yarn_changed }}' === 'true';
+          
+          let files = [];
+          if (uvChanged) files.push('`uv.lock`');
+          if (yarnChanged) files.push('`yarn.lock`');
+          
+          const fileList = files.join(' and ');
+          const fileWord = files.length > 1 ? 'files' : 'file';
+          const hasHave = files.length > 1 ? 'have' : 'has';
+          
+          let commentBody;
+          
+          if (checkType === 'initial') {
+            commentBody = `⚠️ **Lock File Warning**
+            
+            The ${fileList} ${fileWord} in this MR ${hasHave} differences from the version in the \`main\` branch. Please ensure that:
+            
+            - The lock file changes are intentional and necessary
+            - Dependencies have been properly updated using the appropriate package manager
+            - The lock ${fileWord} match${files.length > 1 ? '' : 'es'} the current state of your dependency files
+            - You have tested the changes with the updated dependencies
+            
+            If the lock file changes are unintentional, please revert them and regenerate the lock ${fileWord} from a clean state.`;
+          } else {
+            commentBody = `⚠️ **Lock File Warning**
+            
+            The ${fileList} ${fileWord} ${files.length > 1 ? 'were' : 'was'} modified in the latest commit and ${hasHave} differences from the \`main\` branch. Please ensure that:
+            
+            - The lock file changes are intentional and necessary
+            - Dependencies have been properly updated using the appropriate package manager
+            - The lock ${fileWord} match${files.length > 1 ? '' : 'es'} the current state of your dependency files
+            - You have tested the changes with the updated dependencies
+            
+            If the lock file changes are unintentional, please revert them and regenerate the lock ${fileWord} from a clean state.
+            
+            _Commit: ${context.sha.substring(0, 7)}_`;
+          }
+          
+          await github.rest.issues.createComment({
+            owner,
+            repo,
+            issue_number,
+            body: commentBody
+          });
+          console.log(`Warning comment added to PR (${checkType})`);
+          console.log(`Files: ${fileList}`);
+    
+    - name: Summary
+      if: steps.check_lock.outputs.lock_modified == 'true'
+      run: |
+        echo "## Lock File Check Results" >> $GITHUB_STEP_SUMMARY
+        if [ "${{ steps.check_lock.outputs.check_type }}" = "initial" ]; then
+          echo "- ⚠️ Lock files differ from main branch in newly opened MR" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "- ⚠️ Lock files were modified in latest commit and differ from main" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        if [ "${{ steps.check_lock.outputs.uv_changed }}" = "true" ]; then
+          echo "  - uv.lock has changes" >> $GITHUB_STEP_SUMMARY
+        fi
+        if [ "${{ steps.check_lock.outputs.yarn_changed }}" = "true" ]; then
+          echo "  - yarn.lock has changes" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        echo "- Warning comment has been added to the PR" >> $GITHUB_STEP_SUMMARY

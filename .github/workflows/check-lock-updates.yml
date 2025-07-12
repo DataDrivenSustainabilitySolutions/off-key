@@ -13,6 +13,10 @@ jobs:
       contents: read
       pull-requests: write
     
+    env:
+      UV_LOCK_PATH: "backend/uv.lock"
+      YARN_LOCK_PATH: "frontend/yarn.lock"
+    
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
@@ -23,6 +27,7 @@ jobs:
       id: check_lock
       run: |
         echo "Event: ${{ github.event.action }}"
+        echo "Checking paths: UV_LOCK_PATH=$UV_LOCK_PATH, YARN_LOCK_PATH=$YARN_LOCK_PATH"
         
         if [ "${{ github.event.action }}" = "opened" ]; then
           echo "Checking for lock file changes in newly opened MR..."
@@ -30,20 +35,28 @@ jobs:
           uv_changed=false
           yarn_changed=false
           
-          # Check uv.lock
-          if [ -f "uv.lock" ]; then
-            if git diff origin/main HEAD -- uv.lock | grep -q .; then
+          # Check UV lock file
+          if [ -f "$UV_LOCK_PATH" ]; then
+            if git diff origin/main HEAD -- "$UV_LOCK_PATH" | grep -q .; then
               uv_changed=true
-              echo "uv.lock differs from main branch"
+              echo "$UV_LOCK_PATH differs from main branch"
+            else
+              echo "$UV_LOCK_PATH exists but matches main branch"
             fi
+          else
+            echo "$UV_LOCK_PATH does not exist, skipping"
           fi
           
-          # Check yarn.lock
-          if [ -f "yarn.lock" ]; then
-            if git diff origin/main HEAD -- yarn.lock | grep -q .; then
+          # Check Yarn lock file
+          if [ -f "$YARN_LOCK_PATH" ]; then
+            if git diff origin/main HEAD -- "$YARN_LOCK_PATH" | grep -q .; then
               yarn_changed=true
-              echo "yarn.lock differs from main branch"
+              echo "$YARN_LOCK_PATH differs from main branch"
+            else
+              echo "$YARN_LOCK_PATH exists but matches main branch"
             fi
+          else
+            echo "$YARN_LOCK_PATH does not exist, skipping"
           fi
           
           if [ "$uv_changed" = true ] || [ "$yarn_changed" = true ]; then
@@ -64,30 +77,46 @@ jobs:
           uv_differs=false
           yarn_differs=false
           
+          # Escape paths for grep regex
+          uv_pattern="^$(echo "$UV_LOCK_PATH" | sed 's/\./\\./g')$"
+          yarn_pattern="^$(echo "$YARN_LOCK_PATH" | sed 's/\./\\./g')$"
+          
           # Check if lock files were modified in the latest commit
-          if git diff --name-only HEAD~1 HEAD | grep -q "^uv\.lock$"; then
+          if git diff --name-only HEAD~1 HEAD | grep -q "$uv_pattern"; then
             uv_in_commit=true
-            echo "Latest commit modified uv.lock"
+            echo "Latest commit modified $UV_LOCK_PATH"
           fi
           
-          if git diff --name-only HEAD~1 HEAD | grep -q "^yarn\.lock$"; then
+          if git diff --name-only HEAD~1 HEAD | grep -q "$yarn_pattern"; then
             yarn_in_commit=true
-            echo "Latest commit modified yarn.lock"
+            echo "Latest commit modified $YARN_LOCK_PATH"
           fi
           
           # If either was modified, check against main
           if [ "$uv_in_commit" = true ] || [ "$yarn_in_commit" = true ]; then
-            if [ "$uv_in_commit" = true ] && [ -f "uv.lock" ]; then
-              if git diff origin/main HEAD -- uv.lock | grep -q .; then
-                uv_differs=true
-                echo "uv.lock differs from main branch after latest commit"
+            if [ "$uv_in_commit" = true ]; then
+              if [ -f "$UV_LOCK_PATH" ]; then
+                if git diff origin/main HEAD -- "$UV_LOCK_PATH" | grep -q .; then
+                  uv_differs=true
+                  echo "$UV_LOCK_PATH differs from main branch after latest commit"
+                else
+                  echo "$UV_LOCK_PATH matches main branch after latest commit"
+                fi
+              else
+                echo "$UV_LOCK_PATH was modified but no longer exists"
               fi
             fi
             
-            if [ "$yarn_in_commit" = true ] && [ -f "yarn.lock" ]; then
-              if git diff origin/main HEAD -- yarn.lock | grep -q .; then
-                yarn_differs=true
-                echo "yarn.lock differs from main branch after latest commit"
+            if [ "$yarn_in_commit" = true ]; then
+              if [ -f "$YARN_LOCK_PATH" ]; then
+                if git diff origin/main HEAD -- "$YARN_LOCK_PATH" | grep -q .; then
+                  yarn_differs=true
+                  echo "$YARN_LOCK_PATH differs from main branch after latest commit"
+                else
+                  echo "$YARN_LOCK_PATH matches main branch after latest commit"
+                fi
+              else
+                echo "$YARN_LOCK_PATH was modified but no longer exists"
               fi
             fi
             
@@ -118,8 +147,8 @@ jobs:
           const yarnChanged = '${{ steps.check_lock.outputs.yarn_changed }}' === 'true';
           
           let files = [];
-          if (uvChanged) files.push('`uv.lock`');
-          if (yarnChanged) files.push('`yarn.lock`');
+          if (uvChanged) files.push('`${{ env.UV_LOCK_PATH }}`');
+          if (yarnChanged) files.push('`${{ env.YARN_LOCK_PATH }}`');
           
           const fileList = files.join(' and ');
           const fileWord = files.length > 1 ? 'files' : 'file';
@@ -173,10 +202,10 @@ jobs:
         fi
         
         if [ "${{ steps.check_lock.outputs.uv_changed }}" = "true" ]; then
-          echo "  - uv.lock has changes" >> $GITHUB_STEP_SUMMARY
+          echo "  - ${{ env.UV_LOCK_PATH }} has changes" >> $GITHUB_STEP_SUMMARY
         fi
         if [ "${{ steps.check_lock.outputs.yarn_changed }}" = "true" ]; then
-          echo "  - yarn.lock has changes" >> $GITHUB_STEP_SUMMARY
+          echo "  - ${{ env.YARN_LOCK_PATH }} has changes" >> $GITHUB_STEP_SUMMARY
         fi
         
         echo "- Warning comment has been added to the PR" >> $GITHUB_STEP_SUMMARY

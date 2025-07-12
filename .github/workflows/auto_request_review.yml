@@ -16,6 +16,5 @@ jobs:
         uses: necojackarc/auto-request-review@v0.13.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          config: .github/auto_request_review.yml # Config file location override
+          # config: .github/auto_request_review.yml # Config file location override
           use_local: true
-

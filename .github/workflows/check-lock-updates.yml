@@ -80,6 +80,7 @@ jobs:
           # Check if lock files were modified in the latest commit
           if git diff --name-only HEAD~1 HEAD | grep -Fxq "$UV_LOCK_PATH"; then
             echo "$(git diff --name-only HEAD~1 HEAD)"
+            echo "$(git show --name-only --pretty=format: HEAD | grep -v '^)"
             uv_in_commit=true
             echo "Latest commit modified $UV_LOCK_PATH"
           fi

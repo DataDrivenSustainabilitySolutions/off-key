@@ -14,4 +14,4 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           config: .github/auto_request_review.yml # Config file location override
-          use_local: true
+

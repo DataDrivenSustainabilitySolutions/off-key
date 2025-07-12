@@ -51,7 +51,7 @@ jobs:
         uses: mheap/github-action-required-labels@v5.5.0
         with:
           use_regex: true
-          labels: "*"
+          labels: ".*"
           mode: minimum
           count: 1
           add_comment: true

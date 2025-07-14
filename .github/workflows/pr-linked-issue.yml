@@ -14,7 +14,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Issue Validator
-        uses: HarshCasper/validate-issues-over-pull-requests@v0.1.1
+        uses: HarshCasper/validate-issues-over-pull-requests@v0.1.2
         id: validator
         with:
           prbody: ${{ github.event.pull_request.body }}
@@ -33,11 +33,11 @@ jobs:
               -X PATCH \
               -f body="✅ PR is now linked to a valid issue. Thank you!"
           fi
-          
+
           # Check if the label exists before trying to remove it
-          LABEL_EXISTS=$(gh pr view $PRNUM --json labels --jq '.labels[] | select(.name == "PR:No-Issue") | .name')
+          LABEL_EXISTS=$(gh pr view $PRNUM --json labels --jq '.labels[] | select(.name == "PR:issue-missing") | .name')
           if [ -n "$LABEL_EXISTS" ]; then
-            gh pr edit $PRNUM --remove-label "PR:No-Issue"
+            gh pr edit $PRNUM --remove-label "PR:issue-missing"
           fi
       - name: PR has no valid Issue
         if: ${{ steps.validator.outputs.valid == 0 }}
@@ -54,7 +54,7 @@ jobs:
           fi
           
           # Check if the label already exists before trying to add it
-          LABEL_EXISTS=$(gh pr view $PRNUM --json labels --jq '.labels[] | select(.name == "PR:No-Issue") | .name')
+          LABEL_EXISTS=$(gh pr view $PRNUM --json labels --jq '.labels[] | select(.name == "PR:issue-missing") | .name')
           if [ -z "$LABEL_EXISTS" ]; then
-            gh pr edit $PRNUM --add-label "PR:No-Issue"
+            gh pr edit $PRNUM --add-label "PR:issue-missing"
           fi

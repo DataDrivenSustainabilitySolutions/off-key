@@ -39,6 +39,7 @@ jobs:
               -X PATCH \
               -f body="✅ PR is now linked to a valid issue. Thank you!"
           fi
+          gh pr edit $PRNUM --remove-label "PR:No-Issue"
 
       - name: PR has no valid Issue
         if: ${{ steps.validator.outputs.valid == 0 }}
@@ -46,4 +47,5 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PRNUM: ${{ github.event.pull_request.number }}
         run: |
-          gh pr comment $PRNUM --body "PR is not linked to any issue, please make the corresponding changes in the body."
+          gh pr comment $PRNUM --body "PR is not linked to any issue, please select/create an issue and remove the `no-issue` label."
+          gh pr edit $PRNUM --add-label "PR:No-Issue"

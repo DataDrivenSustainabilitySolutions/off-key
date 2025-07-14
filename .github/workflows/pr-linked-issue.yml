@@ -3,7 +3,7 @@ on:
   pull_request:
     branches:
       - main
-    types: [ edited, synchronize, opened, reopened ]
+    types: [ edited, synchronize, opened, labeled, unlabeled, reopened ]
 jobs:
   linked-issue-checker:
     runs-on: ubuntu-latest
@@ -58,3 +58,6 @@ jobs:
           if [ -z "$LABEL_EXISTS" ]; then
             gh pr edit $PRNUM --add-label "PR:issue-missing"
           fi
+
+          echo "❌ PR validation failed: No linked issue found"
+          exit 1

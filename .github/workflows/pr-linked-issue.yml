@@ -1,0 +1,43 @@
+name: PR has a valid Issue?
+
+on:
+  pull_request_target:
+    types: [ edited, synchronize, opened, reopened ]
+
+jobs:
+  checker:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Issue Validator
+        uses: HarshCasper/validate-issues-over-pull-requests@v0.1.1
+        id: validator
+        with:
+          prbody: ${{ github.event.pull_request.body }}
+          prurl: ${{ github.event.pull_request.url }}
+
+      - name: PR has a valid Issue
+        if: ${{ steps.validator.outputs.valid == 1 }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PRNUM: ${{ github.event.pull_request.number }}
+        run: |
+          # Update existing comment if it exists
+          EXISTING_COMMENT=$(gh api repos/${{ github.repository }}/issues/$PRNUM/comments \
+            --jq '.[] | select(.body | contains("PR is not linked to any issue")) | .id' | head -1)
+
+          if [ -n "$EXISTING_COMMENT" ]; then
+            gh api repos/${{ github.repository }}/issues/comments/$EXISTING_COMMENT \
+              -X PATCH \
+              -f body="✅ PR is now linked to a valid issue. Thank you!"
+          fi
+
+      - name: PR has no valid Issue
+        if: ${{ steps.validator.outputs.valid == 0 }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PRNUM: ${{ github.event.pull_request.number }}
+        run: |
+          gh pr comment $PRNUM --body "PR is not linked to any issue, please make the corresponding changes in the body."

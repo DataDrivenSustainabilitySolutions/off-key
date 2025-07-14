@@ -1,11 +1,9 @@
 name: PR has a valid Issue?
-
 on:
   pull_request:
     branches:
       - main
     types: [ edited, synchronize, opened, reopened ]
-
 jobs:
   linked-issue-checker:
     runs-on: ubuntu-latest
@@ -13,17 +11,14 @@ jobs:
       issues: write           # needed to post comments
       pull-requests: write    # needed to fail the PR check
       contents: read          # needed to check repository permissions
-
     steps:
       - uses: actions/checkout@v4
-
       - name: Issue Validator
         uses: HarshCasper/validate-issues-over-pull-requests@v0.1.1
         id: validator
         with:
           prbody: ${{ github.event.pull_request.body }}
           prurl: ${{ github.event.pull_request.url }}
-
       - name: PR has a valid Issue
         if: ${{ steps.validator.outputs.valid == 1 }}
         env:
@@ -33,19 +28,33 @@ jobs:
           # Update existing comment if it exists
           EXISTING_COMMENT=$(gh api repos/${{ github.repository }}/issues/$PRNUM/comments \
             --jq '.[] | select(.body | contains("PR is not linked to any issue")) | .id' | head -1)
-
           if [ -n "$EXISTING_COMMENT" ]; then
             gh api repos/${{ github.repository }}/issues/comments/$EXISTING_COMMENT \
               -X PATCH \
               -f body="✅ PR is now linked to a valid issue. Thank you!"
           fi
-          gh pr edit $PRNUM --remove-label "PR:No-Issue"
-
+          
+          # Check if the label exists before trying to remove it
+          LABEL_EXISTS=$(gh pr view $PRNUM --json labels --jq '.labels[] | select(.name == "PR:No-Issue") | .name')
+          if [ -n "$LABEL_EXISTS" ]; then
+            gh pr edit $PRNUM --remove-label "PR:No-Issue"
+          fi
       - name: PR has no valid Issue
         if: ${{ steps.validator.outputs.valid == 0 }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PRNUM: ${{ github.event.pull_request.number }}
         run: |
-          gh pr comment $PRNUM --body "PR is not linked to any issue, please select/create an issue and remove the `no-issue` label."
-          gh pr edit $PRNUM --add-label "PR:No-Issue"
+          # Check if comment already exists to avoid duplicates
+          EXISTING_COMMENT=$(gh api repos/${{ github.repository }}/issues/$PRNUM/comments \
+            --jq '.[] | select(.body | contains("PR is not linked to any issue")) | .id' | head -1)
+          
+          if [ -z "$EXISTING_COMMENT" ]; then
+            gh pr comment $PRNUM --body "PR is not linked to any issue, please select/create an issue and remove the \`no-issue\` label."
+          fi
+          
+          # Check if the label already exists before trying to add it
+          LABEL_EXISTS=$(gh pr view $PRNUM --json labels --jq '.labels[] | select(.name == "PR:No-Issue") | .name')
+          if [ -z "$LABEL_EXISTS" ]; then
+            gh pr edit $PRNUM --add-label "PR:No-Issue"
+          fi

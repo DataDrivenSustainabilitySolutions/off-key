@@ -7,8 +7,12 @@ on:
     types: [ edited, synchronize, opened, reopened ]
 
 jobs:
-  checker:
+  linked-issue-checker:
     runs-on: ubuntu-latest
+    permissions:
+      issues: write           # needed to post comments
+      pull-requests: write    # needed to fail the PR check
+      contents: read          # needed to check repository permissions
 
     steps:
       - uses: actions/checkout@v4

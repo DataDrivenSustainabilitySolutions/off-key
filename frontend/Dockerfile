@@ -2,7 +2,7 @@
 ###################################################
 # Builder stage which pulls in all dependencies   #
 ###################################################
-FROM node:23-alpine3.20 as builder
+FROM node:22-alpine3.20 as builder
 
 ENV YARN_CACHE_FOLDER=/root/.yarn
 
@@ -15,7 +15,7 @@ RUN --mount=type=cache,target=/root/.yarn \
 ###################################################
 # Create runner                                   #
 ###################################################
-FROM node:23-alpine3.20 as runner
+FROM node:22-alpine3.20 as runner
 
 WORKDIR /src
 

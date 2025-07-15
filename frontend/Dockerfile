@@ -2,18 +2,20 @@
 ###################################################
 # Builder stage which pulls in all dependencies   #
 ###################################################
-FROM node:22-alpine3.20 as builder
+FROM node:23-alpine3.20 as builder
 
 ENV YARN_CACHE_FOLDER=/root/.yarn
 
-COPY package.json yarn.lock ./
+# TODO: yarn install --immutable --production
 RUN --mount=type=cache,target=/root/.yarn \
-    yarn install --frozen-lockfile
+    --mount=type=bind,source=yarn.lock,target=yarn.lock \
+    --mount=type=bind,source=package.json,target=package.json \
+    yarn install
 
 ###################################################
 # Create runner                                   #
 ###################################################
-FROM node:22-alpine3.20 as runner
+FROM node:23-alpine3.20 as runner
 
 WORKDIR /src
 

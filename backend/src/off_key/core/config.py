@@ -43,6 +43,19 @@ class Settings(BaseSettings):
 
     ANOMALY_ALERT_RECIPIENTS: str = "admin@example.com"  # Comma-separated list
 
+    # MQTT Configuration
+    MQTT_TELEMETRY_ENABLED: bool = True  # Enable MQTT telemetry service
+    MQTT_HEALTH_CHECK_INTERVAL: int = 30  # Health check interval in seconds
+    MQTT_BATCH_SIZE: int = 100  # Database batch size for MQTT messages
+    MQTT_RECONNECT_DELAY: int = 5  # Reconnection delay in seconds
+
+    # Background Sync Configuration
+    SYNC_ENABLED: bool = True  # Enable background sync service
+    SYNC_ON_STARTUP: bool = True  # Run sync immediately on startup
+    SYNC_CHARGERS_INTERVAL: int = 3600  # Charger sync interval in seconds (1 hour)
+    SYNC_TELEMETRY_INTERVAL: int = 21600  # Telemetry sync interval in seconds (6 hours)
+    SYNC_TELEMETRY_LIMIT: int = 1000  # Maximum telemetry records to sync per run
+
     # Logging Configuration
     LOG_LEVEL: str = "INFO"  # DEBUG, INFO, WARNING, ERROR, CRITICAL
     LOG_FORMAT: str = "simple"  # simple or json

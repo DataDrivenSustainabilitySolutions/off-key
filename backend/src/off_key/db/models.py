@@ -50,10 +50,20 @@ class Charger(Base):
     online = Column(Boolean, unique=False, default=True, index=True, nullable=False)
     created = Column(DateTime(timezone=True), server_default=func.now(), index=True)
 
+    # MQTT status fields
+    mqtt_connected = Column(Boolean, default=False, index=True, nullable=False)
+    mqtt_last_message = Column(DateTime(timezone=True), nullable=True, index=True)
+    mqtt_subscription_status = Column(
+        JSON, nullable=True
+    )  # Track subscription status per hierarchy
+    mqtt_error_count = Column(Integer, default=0, nullable=False)
+    mqtt_last_error = Column(Text, nullable=True)
+
     # Composite indexes for common query patterns
     __table_args__ = (
         Index("ix_charger_online_state", "online", "state"),
         Index("ix_charger_online_created", "online", "created"),
+        Index("ix_charger_mqtt_status", "mqtt_connected", "mqtt_last_message"),
     )
 
 

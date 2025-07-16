@@ -14,6 +14,7 @@ from .api.rate_limiter import limiter, rate_limit_exceeded_handler
 from .api.v1.routes import router as v1_router
 from .api.middleware import LoggingMiddleware, SecurityLoggingMiddleware
 from .db.models import Base
+from .services.background_sync import BackgroundSyncService
 
 # See https://github.com/pyca/bcrypt/issues/684#issuecomment-2465572106
 import bcrypt
@@ -37,6 +38,9 @@ app = FastAPI(title=settings.APP_NAME)
 app.state.limiter = limiter
 app.add_exception_handler(429, rate_limit_exceeded_handler)
 
+# Initialize background sync service
+background_sync = BackgroundSyncService()
+
 origins = ["http://localhost:8000", "http://localhost:5173"]
 
 # Add custom logging middleware first (innermost)
@@ -56,13 +60,25 @@ app.add_middleware(
 )
 
 
-# Create database tables on startup
+# Create database tables and start background services on startup
 @app.on_event("startup")
 async def startup_event():
-    """Create database tables on application startup"""
+    """Create database tables and start background services on application startup"""
     async with async_engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     logger.info("Database tables created successfully")
+
+    # Start background sync service
+    await background_sync.start()
+    logger.info("Background sync service started")
+
+
+# Stop background services on shutdown
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Stop background services on application shutdown"""
+    await background_sync.stop()
+    logger.info("Background sync service stopped")
 
 
 # Include versioned API routes
@@ -79,7 +95,11 @@ async def health_check(db: AsyncSession = Depends(get_db_async)):
         "status": "healthy",
         "timestamp": datetime.utcnow().isoformat(),
         "service": settings.APP_NAME,
-        "checks": {"api": "healthy", "database": "unhealthy"},
+        "checks": {
+            "api": "healthy",
+            "database": "unhealthy",
+            "background_sync": "healthy",
+        },
     }
 
     # Check database connectivity
@@ -91,6 +111,19 @@ async def health_check(db: AsyncSession = Depends(get_db_async)):
         health_status["status"] = "unhealthy"
         health_status["checks"]["database"] = "unhealthy"
         logger.error(f"Database health check failed: {str(e)}")
+
+    # Check background sync service
+    try:
+        sync_status = background_sync.get_status()
+        if sync_status["enabled"] and not sync_status["running"]:
+            health_status["checks"]["background_sync"] = "unhealthy"
+            health_status["status"] = "unhealthy"
+        elif not sync_status["enabled"]:
+            health_status["checks"]["background_sync"] = "disabled"
+    except Exception as e:
+        health_status["checks"]["background_sync"] = "unhealthy"
+        health_status["status"] = "unhealthy"
+        logger.error(f"Background sync health check failed: {str(e)}")
 
     # Return appropriate status code based on overall health
     status_code = 200 if health_status["status"] == "healthy" else 503

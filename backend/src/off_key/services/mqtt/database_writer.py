@@ -515,11 +515,7 @@ class DatabaseWriter:
             log_performance(
                 "telemetry_batch_write",
                 start_time,
-                {
-                    "batch_size": records_written,
-                    "charger_count": len(batch.get_charger_ids()),
-                    "component": "database_writer",
-                },
+                logger,
             )
 
             return True

@@ -9,7 +9,7 @@ import asyncio
 import json
 import ssl
 from datetime import datetime
-from typing import Optional, Dict, Any, Callable, List, Set
+from typing import Optional, Dict, Any, Callable, List, Set, Awaitable, Union
 from dataclasses import dataclass
 from enum import Enum
 
@@ -91,7 +91,11 @@ class MQTTClient:
         self.pending_subscriptions: Set[str] = set()
 
         # Message handling
-        self.message_handler: Optional[Callable[[MQTTMessage], None]] = None
+        self.message_handler: Optional[
+            Union[
+                Callable[[MQTTMessage], None], Callable[[MQTTMessage], Awaitable[None]]
+            ]
+        ] = None
         self.message_queue: List[MQTTMessage] = []
         self.max_queue_size = config.max_message_queue_size
 
@@ -113,8 +117,13 @@ class MQTTClient:
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         await self.disconnect()
 
-    def set_message_handler(self, handler: Callable[[MQTTMessage], None]):
-        """Set message handler callback"""
+    def set_message_handler(
+        self,
+        handler: Union[
+            Callable[[MQTTMessage], None], Callable[[MQTTMessage], Awaitable[None]]
+        ],
+    ):
+        """Set message handler callback (sync or async)"""
         self.message_handler = handler
 
     async def connect(self) -> bool:
@@ -375,7 +384,20 @@ class MQTTClient:
             # Handle message
             if self.message_handler:
                 try:
-                    self.message_handler(message)
+                    if asyncio.iscoroutinefunction(self.message_handler):
+                        # Schedule async handler in the main event loop
+                        if self._event_loop and not self._event_loop.is_closed():
+                            future = asyncio.run_coroutine_threadsafe(  # noqa
+                                self.message_handler(message), self._event_loop  # noqa
+                            )  # noqa
+                            # Don't wait for completion to avoid blocking MQTT thread
+                        else:
+                            logger.error(
+                                "Event loop not available for async message handler"
+                            )
+                    else:
+                        # Handle sync callback normally
+                        self.message_handler(message)
                 except Exception as e:
                     logger.error(f"Error in message handler: {e}")
             else:

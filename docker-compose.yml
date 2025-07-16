@@ -36,6 +36,16 @@ services:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 10s
       retries: 5
+    command: ["uvicorn", "off_key.main:app",
+              "--reload", "--reload-dir", "/app/lib/python3.12/site-packages/off_key",
+              "--host", "0.0.0.0", "--port", "8000"]
+    develop:
+      watch:
+        - action: sync
+          path: ./backend/src
+          target: /app/lib/python3.12/site-packages/off_key
+        - action: rebuild
+          path: ./backend/uv.lock
 
   socket-proxy:
     container_name: socket-proxy
@@ -94,16 +104,17 @@ services:
       - api
     networks:
       - app-network
-    volumes:
-      - type: bind
-        source: ./frontend
-        target: /src
-      - frontend_node_modules:/src/node_modules
-      - type: volume
-        source: vite_cache
-        target: /src/node_modules/.vite
-      - ./frontend:/src
-      - /src/node_modules # Prevent conflicts
+    develop:
+      watch:
+        - action: sync
+          path: ./frontend
+          target: /src
+          ignore:
+            - node_modules/
+        - action: rebuild
+          path: ./frontend/package.json
+        - action: rebuild
+          path: ./frontend/yarn.lock
 
   mailpit:
     image: axllent/mailpit:latest

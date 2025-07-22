@@ -54,7 +54,7 @@ jobs:
 
           1. At least one relevant issue exists.
           2. The issue gets linked from the GH sidebar OR by a comment using GH's [syntax](https://docs.github.com/en/issues/tracking-your-work-with-issues/using-issues/linking-a-pull-request-to-an-issue#linking-a-pull-request-to-an-issue-using-a-keyword).
-          3. The 'PR:issue-missing' label gets removed afterwards."
+          3. The \`PR:issue-missing\` label gets removed afterwards."
           fi
           
           # Check if the label already exists before trying to add it

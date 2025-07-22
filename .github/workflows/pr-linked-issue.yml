@@ -50,12 +50,11 @@ jobs:
             --jq '.[] | select(.body | contains("PR is not linked to any issue")) | .id' | head -1)
           
           if [ -z "$EXISTING_COMMENT" ]; then
-            gh pr comment $PRNUM --body "\
-            PR is not linked to any issue. Please make sure that:
+            gh pr comment $PRNUM --body "PR is not linked to any issue. Please make sure that:
 
-            1. At least one relevant issue exists.
-            2. The issue gets linked from the GH sidebar OR by a comment using GH's [syntax](https://docs.github.com/en/issues/tracking-your-work-with-issues/using-issues/linking-a-pull-request-to-an-issue#linking-a-pull-request-to-an-issue-using-a-keyword).
-            3. The 'PR:issue-missing' label gets removed afterwards."
+          1. At least one relevant issue exists.
+          2. The issue gets linked from the GH sidebar OR by a comment using GH's [syntax](https://docs.github.com/en/issues/tracking-your-work-with-issues/using-issues/linking-a-pull-request-to-an-issue#linking-a-pull-request-to-an-issue-using-a-keyword).
+          3. The 'PR:issue-missing' label gets removed afterwards."
           fi
           
           # Check if the label already exists before trying to add it

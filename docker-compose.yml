@@ -36,7 +36,9 @@ services:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 10s
       retries: 5
-    command: ["uvicorn", "off_key.main:app", "--reload", "--host", "0.0.0.0", "--port", "8000"]
+    command: ["uvicorn", "off_key.main:app",
+              "--reload", "--reload-dir", "/app/lib/python3.12/site-packages/off_key",
+              "--host", "0.0.0.0", "--port", "8000"]
     develop:
       watch:
         - action: sync

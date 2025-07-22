@@ -147,8 +147,8 @@ class MQTTClient:
         )
 
         try:
-            # Get Firebase credentials
-            username, password = self.auth_handler.get_mqtt_credentials()
+            # Get Firebase credentials (with automatic token refresh)
+            username, password = await self.auth_handler.get_mqtt_credentials()
 
             # Create MQTT client
             client_id = self.config.get_client_id()
@@ -272,7 +272,8 @@ class MQTTClient:
                 logger.info(f"Successfully subscribed to {topic}")
                 return True
             else:
-                logger.error(f"Failed to subscribe to {topic}: {result}")
+                error_msg = self._get_subscription_error_message(result)
+                logger.error(f"Failed to subscribe to {topic}: {result} - {error_msg}")
                 return False
 
         except Exception as e:
@@ -500,6 +501,20 @@ class MQTTClient:
         }
 
         return error_messages.get(rc, f"Unknown error code {rc}")
+
+    def _get_subscription_error_message(self, rc: int) -> str:
+        """Get human-readable subscription error message"""
+        error_messages = {
+            1: "Out of memory",
+            2: "Invalid parameter",
+            3: "No connection to broker",
+            4: "Connection refused - bad username/password (likely expired JWT token)",
+            5: "Connection refused - not authorized",
+            6: "Connection refused - server unavailable",
+            7: "Connection lost",
+        }
+
+        return error_messages.get(rc, f"Unknown subscription error code {rc}")
 
     def get_connection_info(self) -> Dict[str, Any]:
         """Get current connection information"""

@@ -281,9 +281,10 @@ class FirebaseAuthHandler:
             logger.error(f"Error validating Firebase connection: {e}")
             return False
 
-    def get_mqtt_credentials(self) -> tuple[str, str]:
+    async def get_mqtt_credentials(self) -> tuple[str, str]:
         """
         Get MQTT credentials for Pionix Cloud broker
+        Automatically refreshes token if expired.
 
         Returns:
             Tuple of (username, password) for MQTT authentication
@@ -294,10 +295,10 @@ class FirebaseAuthHandler:
         if not self.credentials:
             raise FirebaseAuthError("No credentials available for MQTT authentication")
 
+        # Automatically refresh if expired
         if self.credentials.is_expired:
-            raise FirebaseAuthError(
-                "Credentials expired. Please refresh or re-authenticate."
-            )
+            logger.info("MQTT credentials expired, refreshing token...")
+            await self.refresh_token()
 
         # For Pionix Cloud MQTT: username = Firebase UID, password = Firebase ID token
         return self.credentials.uid, self.credentials.id_token

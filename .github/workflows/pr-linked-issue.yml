@@ -15,8 +15,10 @@ jobs:
       - uses: actions/checkout@v4
       - uses: nearform-actions/github-action-check-linked-issues@v1.8.3
         id: check-linked-issues
+        continue-on-error: true
         with:
           exclude-branches: "release/**, dependabot/**"
+          comment: false
       - name: PR has a valid Issue
         if: ${{ steps.check-linked-issues.outputs.linked_issues_count > 0 }}
         env:
@@ -48,7 +50,12 @@ jobs:
             --jq '.[] | select(.body | contains("PR is not linked to any issue")) | .id' | head -1)
           
           if [ -z "$EXISTING_COMMENT" ]; then
-            gh pr comment $PRNUM --body "PR is not linked to any issue, please select/create an issue and remove the \`no-issue\` label."
+            gh pr comment $PRNUM --body "\
+              PR is not linked to any issue. Please make sure that:
+
+              1. At least one relevant issue exists.
+              2. The issue gets linked from the GH sidebar OR by a comment using GH's [syntax](https://docs.github.com/en/issues/tracking-your-work-with-issues/using-issues/linking-a-pull-request-to-an-issue#linking-a-pull-request-to-an-issue-using-a-keyword).
+              3. The 'PR:issue-missing' label gets removed afterwards."
           fi
           
           # Check if the label already exists before trying to add it

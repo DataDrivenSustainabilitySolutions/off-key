@@ -44,6 +44,7 @@ class TelemetryRecord:
     value: Optional[float]
     telemetry_type: str
     created: datetime
+    data_source: str = "mqtt"
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for database insertion"""
@@ -52,6 +53,7 @@ class TelemetryRecord:
             "timestamp": self.timestamp,
             "value": self.value,
             "type": self.telemetry_type,
+            "data_source": self.data_source,
             "created": self.created,
         }
 

@@ -181,6 +181,7 @@ class TelemetrySyncService:
                                 "timestamp": timestamp_naive,
                                 "value": value_float,
                                 "type": hierarchy_db_type,
+                                "data_source": "api_sync",
                                 "created": created_naive,
                             }
                         )

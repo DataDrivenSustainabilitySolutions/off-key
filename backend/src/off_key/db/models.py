@@ -83,6 +83,7 @@ class Telemetry(Base):
     )
     value = Column(Float, unique=False, index=True, nullable=True)
     type = Column(Text, primary_key=True, unique=False, index=True, nullable=False)
+    data_source = Column(Text, nullable=False, index=True)
     created = Column(DateTime(timezone=True), server_default=func.now(), index=True)
 
     __table_args__ = (

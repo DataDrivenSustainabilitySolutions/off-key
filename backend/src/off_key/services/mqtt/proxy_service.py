@@ -15,7 +15,7 @@ from ...core.config import settings
 from ...core.logs import logger
 from ...db.base import AsyncSessionLocal
 from .config import MQTTConfig
-from .firebase_auth import FirebaseAuthHandler
+from .api_key_auth import ApiKeyAuthHandler
 from .mqtt_client import MQTTClient
 from .charger_discovery import ChargerDiscoveryService
 from .database_writer import DatabaseWriter
@@ -40,7 +40,7 @@ class MQTTProxyService:
         self.db_session: Optional[AsyncSession] = None
 
         # Core components
-        self.auth_handler: Optional[FirebaseAuthHandler] = None
+        self.auth_handler: Optional[ApiKeyAuthHandler] = None
         self.mqtt_client: Optional[MQTTClient] = None
         self.charger_discovery: Optional[ChargerDiscoveryService] = None
         self.database_writer: Optional[DatabaseWriter] = None
@@ -72,19 +72,22 @@ class MQTTProxyService:
             self.health_monitor = HealthMonitor(self.config)
             await self.health_monitor.start()
 
-            # Initialize Firebase authentication
-            self.auth_handler = FirebaseAuthHandler(self.config.firebase_config)
-
-            # Authenticate with Firebase
-            await self.auth_handler.authenticate(
-                self.config.firebase_email, self.config.firebase_password
+            # Initialize API-Key authentication
+            self.auth_handler = ApiKeyAuthHandler(
+                self.config.mqtt_username, self.config.mqtt_api_key
             )
+
+            # Authenticate with API-Key (simple validation)
+            await self.auth_handler.authenticate()
 
             # Update health status
             self.health_monitor.update_component_health(
-                "firebase_auth",
+                "api_key_auth",
                 HealthStatus.HEALTHY,
-                {"authentication_status": "authenticated"},
+                {
+                    "authentication_status": "authenticated",
+                    "credentials_info": self.auth_handler.get_credentials_info(),
+                },
             )
 
             # Initialize MQTT client

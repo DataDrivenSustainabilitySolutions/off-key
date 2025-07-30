@@ -1,35 +1,12 @@
 """
 MQTT Service Configuration
 
-Handles configuration for the MQTT proxy service including Firebase settings,
+Handles configuration for the MQTT proxy service including API-Key authentication,
 MQTT broker configuration, and service-specific parameters.
 """
 
 from pydantic import BaseModel, Field
 import os
-
-
-class FirebaseConfig(BaseModel):
-    """Firebase authentication configuration"""
-
-    api_key: str = Field(..., description="Firebase API key")
-    auth_domain: str = Field(..., description="Firebase auth domain")
-    project_id: str = Field(..., description="Firebase project ID")
-    storage_bucket: str = Field(..., description="Firebase storage bucket")
-    messaging_sender_id: str = Field(..., description="Firebase messaging sender ID")
-    app_id: str = Field(..., description="Firebase app ID")
-
-    @classmethod
-    def from_env(cls) -> "FirebaseConfig":
-        """Create Firebase config from environment variables"""
-        return cls(
-            api_key=os.getenv("FIREBASE_API_KEY", ""),
-            auth_domain=os.getenv("FIREBASE_AUTH_DOMAIN", ""),
-            project_id=os.getenv("FIREBASE_PROJECT_ID", ""),
-            storage_bucket=os.getenv("FIREBASE_STORAGE_BUCKET", ""),
-            messaging_sender_id=os.getenv("FIREBASE_MESSAGING_SENDER_ID", ""),
-            app_id=os.getenv("FIREBASE_APP_ID", ""),
-        )
 
 
 class MQTTConfig(BaseModel):
@@ -43,10 +20,9 @@ class MQTTConfig(BaseModel):
         default="offkey-backend", description="MQTT client ID prefix"
     )
 
-    # Firebase Authentication
-    firebase_email: str = Field(..., description="Firebase authentication email")
-    firebase_password: str = Field(..., description="Firebase authentication password")
-    firebase_config: FirebaseConfig = Field(..., description="Firebase configuration")
+    # API-Key Authentication
+    mqtt_username: str = Field(..., description="MQTT authentication username")
+    mqtt_api_key: str = Field(..., description="API key for MQTT authentication")
 
     # Service Configuration
     enabled: bool = Field(default=True, description="Enable MQTT telemetry service")
@@ -79,16 +55,13 @@ class MQTTConfig(BaseModel):
     @classmethod
     def from_env(cls) -> "MQTTConfig":
         """Create MQTT config from environment variables"""
-        firebase_config = FirebaseConfig.from_env()
-
         return cls(
             broker_host=os.getenv("MQTT_BROKER_HOST", "cloud.pionix.com"),
             broker_port=int(os.getenv("MQTT_BROKER_PORT", "443")),
             use_tls=os.getenv("MQTT_USE_TLS", "true").lower() == "true",
             client_id_prefix=os.getenv("MQTT_CLIENT_ID_PREFIX", "offkey-backend"),
-            firebase_email=os.getenv("FIREBASE_EMAIL", ""),
-            firebase_password=os.getenv("FIREBASE_PASSWORD", ""),
-            firebase_config=firebase_config,
+            mqtt_username=os.getenv("MQTT_USERNAME", ""),
+            mqtt_api_key=os.getenv("MQTT_APIKEY", os.getenv("PIONIX_KEY", "")),
             enabled=os.getenv("MQTT_TELEMETRY_ENABLED", "true").lower() == "true",
             reconnect_delay=int(os.getenv("MQTT_RECONNECT_DELAY", "5")),
             max_reconnect_attempts=int(os.getenv("MQTT_MAX_RECONNECT_ATTEMPTS", "10")),

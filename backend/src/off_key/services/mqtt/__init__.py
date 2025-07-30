@@ -5,7 +5,7 @@ This package provides a complete MQTT proxy service that connects to the Pionix 
 MQTT broker and processes real-time telemetry data from EV chargers.
 
 Components:
-- Firebase authentication for Pionix Cloud access
+- API-Key authentication for Pionix Cloud access
 - MQTT client with WebSocket/TLS support
 - Message routing to multiple destinations
 - Optimized database writer for telemetry data

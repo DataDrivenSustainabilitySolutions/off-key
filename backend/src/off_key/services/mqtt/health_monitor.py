@@ -213,7 +213,7 @@ class HealthMonitor:
     def _initialize_components(self):
         """Initialize component health tracking"""
         components = [
-            "firebase_auth",
+            "api_key_auth",
             "mqtt_client",
             "database_writer",
             "message_router",

@@ -16,7 +16,7 @@ from enum import Enum
 import paho.mqtt.client as mqtt
 from ...core.logs import logger
 from .config import MQTTConfig
-from .firebase_auth import FirebaseAuthHandler, FirebaseAuthError
+from .api_key_auth import ApiKeyAuthHandler, ApiKeyAuthError
 
 
 class ConnectionState(Enum):
@@ -69,14 +69,14 @@ class MQTTClient:
 
     Features:
     - WebSocket transport with TLS encryption
-    - Firebase-based authentication
+    - API-Key based authentication
     - Automatic reconnection with exponential backoff
     - Message queuing during disconnections
     - Comprehensive error handling and logging
     - Performance monitoring
     """
 
-    def __init__(self, config: MQTTConfig, auth_handler: FirebaseAuthHandler):
+    def __init__(self, config: MQTTConfig, auth_handler: ApiKeyAuthHandler):
         self.config = config
         self.auth_handler = auth_handler
 
@@ -147,7 +147,7 @@ class MQTTClient:
         )
 
         try:
-            # Get Firebase credentials (with automatic token refresh)
+            # Get API-Key credentials
             username, password = await self.auth_handler.get_mqtt_credentials()
 
             # Create MQTT client
@@ -207,8 +207,8 @@ class MQTTClient:
                 self.state = ConnectionState.FAILED
                 return False
 
-        except FirebaseAuthError as e:
-            logger.error(f"Firebase authentication error: {e}")
+        except ApiKeyAuthError as e:
+            logger.error(f"API-Key authentication error: {e}")
             self.state = ConnectionState.FAILED
             return False
         except Exception as e:
@@ -496,7 +496,7 @@ class MQTTClient:
             1: "Connection refused - incorrect protocol version",
             2: "Connection refused - invalid client identifier",
             3: "Connection refused - server unavailable",
-            4: "Connection refused - bad username or password (check Firebase JWT)",
+            4: "Connection refused - bad username or password (check API key)",
             5: "Connection refused - not authorized (check permissions)",
         }
 
@@ -508,7 +508,7 @@ class MQTTClient:
             1: "Out of memory",
             2: "Invalid parameter",
             3: "No connection to broker",
-            4: "Connection refused - bad username/password (likely expired JWT token)",
+            4: "Connection refused - bad username/password (check API key)",
             5: "Connection refused - not authorized",
             6: "Connection refused - server unavailable",
             7: "Connection lost",

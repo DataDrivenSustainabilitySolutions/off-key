@@ -1,5 +1,11 @@
 from pydantic_settings import BaseSettings
+from pydantic import field_validator, FieldValidationInfo
 from dotenv import find_dotenv, load_dotenv
+from typing import Literal, TYPE_CHECKING
+from urllib.parse import quote
+
+if TYPE_CHECKING:
+    from ..services.mqtt.config import MQTTConfig
 
 # Load default ".env" file from upper project tree
 load_dotenv()
@@ -41,13 +47,36 @@ class Settings(BaseSettings):
     PIONIX_KEY: str
     PIONIX_USER_AGENT: str
 
+    # Pionix API Endpoint Templates
+    PIONIX_CHARGERS_ENDPOINT: str = "chargers"
+    PIONIX_DEVICE_MODEL_ENDPOINT: str = "chargers/{charger_id}/deviceModel"
+    PIONIX_TELEMETRY_ENDPOINT: str = "chargers/{charger_id}/telemetry/{hierarchy}"
+
     ANOMALY_ALERT_RECIPIENTS: str = "admin@example.com"  # Comma-separated list
 
     # MQTT Configuration
     MQTT_TELEMETRY_ENABLED: bool = True  # Enable MQTT telemetry service
+    MQTT_BROKER_HOST: str = "cloud.pionix.com"  # MQTT broker host
+    MQTT_BROKER_PORT: int = 443  # MQTT broker port
+    MQTT_USE_TLS: bool = True  # Use TLS for MQTT connection
+    MQTT_CLIENT_ID_PREFIX: str = "offkey-backend"  # MQTT client ID prefix
+    MQTT_USERNAME: str  # MQTT authentication username (required)
+    MQTT_APIKEY: str = ""  # API key for MQTT authentication (falls back to PIONIX_KEY)
     MQTT_HEALTH_CHECK_INTERVAL: int = 30  # Health check interval in seconds
     MQTT_BATCH_SIZE: int = 100  # Database batch size for MQTT messages
     MQTT_RECONNECT_DELAY: int = 5  # Reconnection delay in seconds
+    MQTT_MAX_RECONNECT_ATTEMPTS: int = 10  # Maximum reconnection attempts
+    MQTT_BATCH_TIMEOUT: float = 5.0  # Batch timeout in seconds
+    MQTT_SUBSCRIPTION_QOS: int = 1  # MQTT subscription QoS level
+    MQTT_HEALTH_LOG_REMINDER_INTERVAL: int = (
+        10  # Re-log persistent unhealthy states every N health checks
+    )
+    MQTT_CONNECTION_TIMEOUT: float = 30.0  # Connection timeout in seconds
+    MQTT_MAX_MESSAGE_QUEUE_SIZE: int = 10000  # Maximum message queue size
+    MQTT_WORKER_THREADS: int = 4  # Number of worker threads
+
+    # Pionix MQTT Topic Templates
+    PIONIX_MQTT_TELEMETRY_TOPIC: str = "charger/{charger_id}/live-telemetry/{hierarchy}"
 
     # Background Sync Configuration
     SYNC_ENABLED: bool = True  # Enable background sync service
@@ -85,6 +114,152 @@ class Settings(BaseSettings):
             for email in self.ANOMALY_ALERT_RECIPIENTS.split(",")
             if email.strip()
         ]
+
+    @field_validator(
+        "PIONIX_DEVICE_MODEL_ENDPOINT",
+        "PIONIX_TELEMETRY_ENDPOINT",
+        "PIONIX_MQTT_TELEMETRY_TOPIC",
+    )
+    @classmethod
+    def validate_endpoint_templates(cls, v: str, info: FieldValidationInfo) -> str:
+        """Validate that endpoint templates contain expected placeholders."""
+        required_placeholders = {
+            "PIONIX_DEVICE_MODEL_ENDPOINT": ["{charger_id}"],
+            "PIONIX_TELEMETRY_ENDPOINT": ["{charger_id}", "{hierarchy}"],
+            "PIONIX_MQTT_TELEMETRY_TOPIC": ["{charger_id}", "{hierarchy}"],
+        }
+
+        field_name = info.field_name
+
+        if field_name in required_placeholders:
+            for placeholder in required_placeholders[field_name]:
+                if placeholder not in v:
+                    raise ValueError(
+                        f"Field '{field_name}' template must contain {placeholder}"
+                    )
+
+        return v
+
+    def build_pionix_url(
+        self, endpoint_name: Literal["chargers", "device_model", "telemetry"], **params
+    ) -> str:
+        """
+        Build Pionix API URL with parameter substitution.
+
+        Args:
+            endpoint_name: Name of the endpoint template to use
+            **params: Parameters to substitute in template
+
+        Returns:
+            Formatted URL string with parameters substituted
+
+        Raises:
+            ValueError: If required parameters are missing or endpoint doesn't exist
+        """
+        endpoint_mapping = {
+            "chargers": self.PIONIX_CHARGERS_ENDPOINT,
+            "device_model": self.PIONIX_DEVICE_MODEL_ENDPOINT,
+            "telemetry": self.PIONIX_TELEMETRY_ENDPOINT,
+        }
+
+        if endpoint_name not in endpoint_mapping:
+            raise ValueError(f"Unknown endpoint: {endpoint_name}")
+
+        template = endpoint_mapping[endpoint_name]
+
+        # URL encode parameters that may contain special characters
+        encoded_params = {}
+        for key, value in params.items():
+            if key == "hierarchy" and "/" in str(value):
+                # Special handling for hierarchy paths - URL encode forward slashes
+                encoded_params[key] = quote(str(value), safe="")
+            else:
+                encoded_params[key] = str(value)
+
+        try:
+            return template.format(**encoded_params)
+        except KeyError as e:
+            raise ValueError(
+                f"Missing required parameter {e} for endpoint {endpoint_name}"
+            )
+
+    def build_pionix_telemetry_url(
+        self, charger_id: str, hierarchy: str, limit: int = None
+    ) -> str:
+        """
+        Build telemetry URL with optional query parameters.
+
+        Args:
+            charger_id: Charger ID
+            hierarchy: Telemetry hierarchy path
+            limit: Optional limit parameter
+
+        Returns:
+            Complete telemetry URL with query parameters
+        """
+        base_url = self.build_pionix_url(
+            "telemetry", charger_id=charger_id, hierarchy=hierarchy
+        )
+
+        if limit is not None:
+            base_url += f"?Limit={limit}"
+
+        return base_url
+
+    def build_mqtt_topic(self, charger_id: str, hierarchy: str) -> str:
+        """
+        Build MQTT topic with parameter substitution.
+
+        Args:
+            charger_id: Charger ID
+            hierarchy: Telemetry hierarchy path
+
+        Returns:
+            Formatted MQTT topic string with parameters substituted
+
+        Raises:
+            ValueError: If required parameters are missing
+        """
+        try:
+            return self.PIONIX_MQTT_TELEMETRY_TOPIC.format(
+                charger_id=charger_id, hierarchy=hierarchy
+            )
+        except KeyError as e:
+            raise ValueError(f"Missing required parameter {e} for MQTT topic template")
+
+    @property
+    def mqtt_config(self) -> "MQTTConfig":
+        """
+        Create MQTTConfig instance from centralized settings.
+
+        Returns:
+            MQTTConfig instance populated with environment variables
+        """
+        # Import here to avoid circular imports
+        from ..services.mqtt.config import MQTTConfig
+
+        # Use PIONIX_KEY as fallback for MQTT_APIKEY if empty
+        mqtt_api_key = self.MQTT_APIKEY or self.PIONIX_KEY
+
+        return MQTTConfig(
+            broker_host=self.MQTT_BROKER_HOST,
+            broker_port=self.MQTT_BROKER_PORT,
+            use_tls=self.MQTT_USE_TLS,
+            client_id_prefix=self.MQTT_CLIENT_ID_PREFIX,
+            mqtt_username=self.MQTT_USERNAME,
+            mqtt_api_key=mqtt_api_key,
+            enabled=self.MQTT_TELEMETRY_ENABLED,
+            reconnect_delay=self.MQTT_RECONNECT_DELAY,
+            max_reconnect_attempts=self.MQTT_MAX_RECONNECT_ATTEMPTS,
+            batch_size=self.MQTT_BATCH_SIZE,
+            batch_timeout=self.MQTT_BATCH_TIMEOUT,
+            subscription_qos=self.MQTT_SUBSCRIPTION_QOS,
+            health_check_interval=self.MQTT_HEALTH_CHECK_INTERVAL,
+            health_log_reminder_interval=self.MQTT_HEALTH_LOG_REMINDER_INTERVAL,
+            connection_timeout=self.MQTT_CONNECTION_TIMEOUT,
+            max_message_queue_size=self.MQTT_MAX_MESSAGE_QUEUE_SIZE,
+            worker_threads=self.MQTT_WORKER_THREADS,
+        )
 
 
 settings = Settings()  # noqa

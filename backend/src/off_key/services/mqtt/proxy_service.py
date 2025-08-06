@@ -1,7 +1,7 @@
 """
 Main MQTT Proxy Service Orchestrator
 
-Orchestrates all MQTT proxy service components including Firebase authentication,
+Orchestrates all MQTT proxy service components including API-Key authentication,
 MQTT client, charger discovery, database writer, message router, and health monitoring.
 """
 
@@ -14,7 +14,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ...core.config import settings
 from ...core.logs import logger
 from ...db.base import AsyncSessionLocal
-from .config import MQTTConfig
 from .api_key_auth import ApiKeyAuthHandler
 from .mqtt_client import MQTTClient
 from .charger_discovery import ChargerDiscoveryService
@@ -36,7 +35,7 @@ class MQTTProxyService:
     """
 
     def __init__(self):
-        self.config = MQTTConfig.from_env()
+        self.config = settings.mqtt_config
         self.db_session: Optional[AsyncSession] = None
 
         # Core components
@@ -81,9 +80,10 @@ class MQTTProxyService:
             await self.auth_handler.authenticate()
 
             # Update health status
-            self.health_monitor.update_component_health(
+            await self.health_monitor.update_component_health(
                 "api_key_auth",
                 HealthStatus.HEALTHY,
+                "AUTH",
                 {
                     "authentication_status": "authenticated",
                     "credentials_info": self.auth_handler.get_credentials_info(),
@@ -100,18 +100,19 @@ class MQTTProxyService:
                 raise RuntimeError("Failed to connect to MQTT broker")
 
             # Update health status
-            self.health_monitor.update_component_health(
+            await self.health_monitor.update_component_health(
                 "mqtt_client",
                 HealthStatus.HEALTHY,
+                "CLIENT",
                 self.mqtt_client.get_health_status(),
             )
 
             # Initialize charger discovery
             self.charger_discovery = ChargerDiscoveryService(
-                self.config, self.db_session
-            )
-            await self.charger_discovery.initialize(
-                settings.PIONIX_KEY, settings.PIONIX_USER_AGENT
+                self.config,
+                self.db_session,
+                settings.PIONIX_KEY,
+                settings.PIONIX_USER_AGENT,
             )
 
             # Discover chargers and subscribe to topics
@@ -128,9 +129,10 @@ class MQTTProxyService:
                 )
 
             # Update health status
-            self.health_monitor.update_component_health(
+            await self.health_monitor.update_component_health(
                 "charger_discovery",
                 HealthStatus.HEALTHY,
+                "SERVICE",
                 self.charger_discovery.get_discovery_metrics(),
             )
 
@@ -139,9 +141,10 @@ class MQTTProxyService:
             await self.database_writer.start()
 
             # Update health status
-            self.health_monitor.update_component_health(
+            await self.health_monitor.update_component_health(
                 "database_writer",
                 HealthStatus.HEALTHY,
+                "DATABASE",
                 self.database_writer.get_performance_metrics(),
             )
 
@@ -154,9 +157,10 @@ class MQTTProxyService:
             self.message_router.add_destination(db_destination, is_default=True)
 
             # Update health status
-            self.health_monitor.update_component_health(
+            await self.health_monitor.update_component_health(
                 "message_router",
                 HealthStatus.HEALTHY,
+                "ROUTER",
                 self.message_router.get_performance_metrics(),
             )
 
@@ -184,8 +188,11 @@ class MQTTProxyService:
 
             # Update health status
             if self.health_monitor:
-                self.health_monitor.update_component_health(
-                    "proxy_service", HealthStatus.CRITICAL, error_message=str(e)
+                await self.health_monitor.update_component_health(
+                    "proxy_service",
+                    HealthStatus.CRITICAL,
+                    "SERVICE",
+                    error_message=str(e),
                 )
 
             # Cleanup on failure
@@ -271,13 +278,14 @@ class MQTTProxyService:
 
                 # Update component health statuses
                 if self.mqtt_client:
-                    self.health_monitor.update_component_health(
+                    await self.health_monitor.update_component_health(
                         "mqtt_client",
                         (
                             HealthStatus.HEALTHY
                             if self.mqtt_client.state.value == "connected"
                             else HealthStatus.UNHEALTHY
                         ),
+                        "CLIENT",
                         self.mqtt_client.get_health_status(),
                     )
 
@@ -289,9 +297,10 @@ class MQTTProxyService:
                     elif writer_health["status"] == "degraded":
                         status = HealthStatus.DEGRADED
 
-                    self.health_monitor.update_component_health(
+                    await self.health_monitor.update_component_health(
                         "database_writer",
                         status,
+                        "DATABASE",
                         self.database_writer.get_performance_metrics(),
                     )
 
@@ -303,9 +312,10 @@ class MQTTProxyService:
                     elif router_health["status"] == "degraded":
                         status = HealthStatus.DEGRADED
 
-                    self.health_monitor.update_component_health(
+                    await self.health_monitor.update_component_health(
                         "message_router",
                         status,
+                        "ROUTER",
                         self.message_router.get_performance_metrics(),
                     )
 
@@ -317,9 +327,10 @@ class MQTTProxyService:
                     elif discovery_health["status"] == "degraded":
                         status = HealthStatus.DEGRADED
 
-                    self.health_monitor.update_component_health(
+                    await self.health_monitor.update_component_health(
                         "charger_discovery",
                         status,
+                        "SERVICE",
                         self.charger_discovery.get_discovery_metrics(),
                     )
 

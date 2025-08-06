@@ -25,7 +25,8 @@ class ChargersSyncService:
         logger.info("Starting charger synchronization")
 
         try:
-            active_chargers_data = await self.client.get("chargers")
+            chargers_url = settings.build_pionix_url("chargers")
+            active_chargers_data = await self.client.get(chargers_url)
             if not active_chargers_data:
                 logger.warning("Received empty list of active chargers.")
                 return  # Nothing to sync

@@ -6,13 +6,14 @@ intelligent logging and performance tracking.
 """
 
 import asyncio
-from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Any, Callable
+from datetime import datetime, timedelta, timezone
+from typing import Dict, List, Optional, Any, Callable, Protocol
 from dataclasses import dataclass, field
 from enum import Enum
 from collections import deque, defaultdict
 
 from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
 
 from ...core.logs import logger
 from .config import MQTTConfig
@@ -25,6 +26,26 @@ class HealthStatus(Enum):
     DEGRADED = "degraded"
     UNHEALTHY = "unhealthy"
     CRITICAL = "critical"
+
+
+class AlertData(BaseModel):
+    """Pydantic model for structured alert data"""
+
+    component_type: str
+    component_name: str
+    status: HealthStatus
+    old_status: HealthStatus
+    timestamp: datetime
+    message: str
+    metrics: Optional[Dict[str, Any]] = None
+
+
+class AlertHandler(Protocol):
+    """Protocol for alert handler functions"""
+
+    async def __call__(self, alert: AlertData) -> None:
+        """Handle an alert"""
+        ...
 
 
 @dataclass
@@ -105,6 +126,9 @@ class HealthMonitor:
         self.alert_handlers: List[Callable] = []
         self.alert_cooldown: Dict[str, datetime] = {}
         self.alert_cooldown_duration = timedelta(minutes=5)
+
+        # Intelligent logging state tracking
+        self._log_counters = defaultdict(int)
 
         # Background tasks
         self._monitor_task: Optional[asyncio.Task] = None
@@ -225,27 +249,38 @@ class HealthMonitor:
                 component_name=component, status=HealthStatus.HEALTHY
             )
 
-    def register_component(self, component_name: str, health_checker: Callable = None):
-        """Register a new component for health monitoring"""
+    async def register_component(
+        self,
+        component_name: str,
+        component_type: str = "UNKNOWN",
+        health_checker: Callable = None,
+    ):
+        """Register a new component for health monitoring (async for proper hygiene)"""
         self.components[component_name] = ComponentHealth(
             component_name=component_name, status=HealthStatus.HEALTHY
         )
 
         logger.info(
-            f"Registered component for health monitoring: {component_name}",
-            extra={**self._log_context, "component_name": component_name},
+            f"Registered component for health monitoring:"
+            f" {component_type}:{component_name}",
+            extra={
+                **self._log_context,
+                "component_name": component_name,
+                "component_type": component_type,
+            },
         )
 
-    def update_component_health(
+    async def update_component_health(
         self,
         component_name: str,
         status: HealthStatus,
+        component_type: str,
         metrics: Dict[str, Any] = None,
         error_message: str = None,
     ):
         """Update health status for a component"""
         if component_name not in self.components:
-            self.register_component(component_name)
+            await self.register_component(component_name, component_type)
 
         component = self.components[component_name]
         old_status = component.status
@@ -294,8 +329,27 @@ class HealthMonitor:
         # Update overall status
         self._update_overall_status()
 
+        # Intelligent logging with per-component state tracking
+        component_key = f"{component_type}:{component_name}"
+        self._log_counters[component_key] += 1
+
         # Log status changes with intelligent frequency
-        if old_status != status or status != HealthStatus.HEALTHY:
+        log_this_update = False
+        if old_status != status:
+            # Always log when status changes
+            log_this_update = True
+        elif (
+            status != HealthStatus.HEALTHY
+            and self._log_counters[component_key]
+            >= self.config.health_log_reminder_interval
+        ):
+            # Also log if status remains unhealthy and reminder interval reached
+            log_this_update = True
+
+        if log_this_update:
+            # Reset counter whenever we log
+            self._log_counters[component_key] = 0
+
             if status == HealthStatus.HEALTHY:
                 logger.info(
                     f"Component health updated: {component_name} -> {status.value}",
@@ -321,8 +375,18 @@ class HealthMonitor:
                     },
                 )
 
-        # Check for alerts
-        self._check_alerts(component_name, status, error_message)
+        # Create alert data and check for alerts
+        alert_event = AlertData(
+            component_type=component_type,
+            component_name=component_name,
+            status=status,
+            old_status=old_status,
+            timestamp=datetime.now(timezone.utc),
+            message=error_message
+            or f"Component health changed from {old_status.value} to {status.value}",
+            metrics=metrics,
+        )
+        await self._check_and_alert_on_status_change(alert_event)
 
     def add_performance_counter(self, counter_name: str, increment: int = 1):
         """Add to performance counter"""
@@ -336,8 +400,9 @@ class HealthMonitor:
         if len(self.timing_data[operation_name]) > 1000:
             self.timing_data[operation_name] = self.timing_data[operation_name][-1000:]
 
-    def add_alert_handler(self, handler: Callable):
-        """Add alert handler function"""
+    def add_alert_handler(self, handler: AlertHandler):
+        """Add alert handler function that will be called
+        with AlertData when health issues occur"""
         self.alert_handlers.append(handler)
 
     def _update_overall_status(self):
@@ -358,38 +423,28 @@ class HealthMonitor:
         else:
             self.overall_status = HealthStatus.HEALTHY
 
-    def _check_alerts(
-        self, component_name: str, status: HealthStatus, error_message: str = None
-    ):
-        """Check if alerts should be triggered"""
+    async def _check_and_alert_on_status_change(self, alert: AlertData):
+        """Check if alerts should be triggered and dispatch to handlers"""
         # Only alert on unhealthy or critical status
-        if status not in [HealthStatus.UNHEALTHY, HealthStatus.CRITICAL]:
+        if alert.status not in [HealthStatus.UNHEALTHY, HealthStatus.CRITICAL]:
             return
 
         # Check cooldown
-        alert_key = f"{component_name}_{status.value}"
+        alert_key = f"{alert.component_name}_{alert.status.value}"
         now = datetime.now()
 
         if alert_key in self.alert_cooldown:
             if now - self.alert_cooldown[alert_key] < self.alert_cooldown_duration:
                 return
 
-        # Trigger alerts
-        alert_data = {
-            "component": component_name,
-            "status": status.value,
-            "timestamp": now.isoformat(),
-            "error_message": error_message,
-            "service": "mqtt_proxy",
-        }
-
+        # Dispatch to alert handlers
         for handler in self.alert_handlers:
             try:
-                asyncio.create_task(handler(alert_data))
+                asyncio.create_task(handler(alert))
             except Exception as e:
                 logger.error(
                     f"Error in alert handler: {e}",
-                    extra={**self._log_context, "alert_data": alert_data},
+                    extra={**self._log_context, "alert": alert.model_dump()},
                     exc_info=True,
                 )
 
@@ -397,8 +452,8 @@ class HealthMonitor:
         self.alert_cooldown[alert_key] = now
 
         logger.warning(
-            f"Health alert triggered for {component_name}: {status.value}",
-            extra={**self._log_context, "alert_data": alert_data},
+            f"Health alert triggered for {alert.component_name}: {alert.status.value}",
+            extra={**self._log_context, "alert": alert.model_dump()},
         )
 
     def _get_warning_threshold(self, metric_name: str, value: float) -> float:
@@ -527,8 +582,8 @@ class HealthMonitor:
                 system_metrics = self._collect_system_metrics()
 
                 # Update system component health
-                self.update_component_health(
-                    "system", HealthStatus.HEALTHY, system_metrics
+                await self.update_component_health(
+                    "system", HealthStatus.HEALTHY, "SYSTEM", system_metrics
                 )
 
         except asyncio.CancelledError:

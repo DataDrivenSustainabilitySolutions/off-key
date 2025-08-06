@@ -6,9 +6,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
-from off_key.core.config import settings
-
 from ..core.client.pionix import PionixClient
+from ..core.config import settings
 from ..core.logs import logger
 from ..db.models import Charger, Telemetry
 from ..utils.string import clean_string, string_to_float
@@ -64,7 +63,7 @@ class TelemetrySyncService:
             )
 
             # 3a. Fetch Device Model to discover telemetry hierarchies
-            dm_url = f"chargers/{charger_id}/deviceModel"
+            dm_url = settings.build_pionix_url("device_model", charger_id=charger_id)
             logger.debug(f"Fetching device model: {dm_url}")
             try:
                 device_model = await self.client.get(dm_url)
@@ -104,7 +103,6 @@ class TelemetrySyncService:
                     f"'{hierarchy_raw}' for {charger_id}."
                 )
 
-                hierarchy_url_part = hierarchy_raw.replace("/", "%2F")
                 hierarchy_db_type = clean_string(hierarchy_raw)
 
                 if not hierarchy_db_type:
@@ -114,9 +112,8 @@ class TelemetrySyncService:
                     )
                     continue
 
-                get_url = (
-                    f"chargers/{charger_id}/"
-                    f"telemetry/{hierarchy_url_part}?Limit={limit}"
+                get_url = settings.build_pionix_telemetry_url(
+                    charger_id, hierarchy_raw, limit
                 )
                 logger.info(
                     f"Fetching ALL telemetry data points: {get_url}"

@@ -5,76 +5,40 @@ Handles configuration for the MQTT proxy service including API-Key authenticatio
 MQTT broker configuration, and service-specific parameters.
 """
 
-from pydantic import BaseModel, Field
-import os
+from pydantic import BaseModel
 
 
 class MQTTConfig(BaseModel):
     """MQTT service configuration"""
 
     # MQTT Broker Configuration
-    broker_host: str = Field(default="cloud.pionix.com", description="MQTT broker host")
-    broker_port: int = Field(default=443, description="MQTT broker port")
-    use_tls: bool = Field(default=True, description="Use TLS for MQTT connection")
-    client_id_prefix: str = Field(
-        default="offkey-backend", description="MQTT client ID prefix"
-    )
+    broker_host: str
+    broker_port: int
+    use_tls: bool
+    client_id_prefix: str
 
     # API-Key Authentication
-    mqtt_username: str = Field(..., description="MQTT authentication username")
-    mqtt_api_key: str = Field(..., description="API key for MQTT authentication")
+    mqtt_username: str
+    mqtt_api_key: str
 
     # Service Configuration
-    enabled: bool = Field(default=True, description="Enable MQTT telemetry service")
-    reconnect_delay: int = Field(default=5, description="Reconnection delay in seconds")
-    max_reconnect_attempts: int = Field(
-        default=10, description="Maximum reconnection attempts"
-    )
+    enabled: bool
+    reconnect_delay: int
+    max_reconnect_attempts: int
 
     # Message Processing
-    batch_size: int = Field(
-        default=100, description="Database batch size for telemetry data"
-    )
-    batch_timeout: float = Field(default=5.0, description="Batch timeout in seconds")
-    subscription_qos: int = Field(default=1, description="MQTT subscription QoS level")
+    batch_size: int
+    batch_timeout: float
+    subscription_qos: int
 
     # Health Monitoring
-    health_check_interval: int = Field(
-        default=30, description="Health check interval in seconds"
-    )
-    connection_timeout: float = Field(
-        default=30.0, description="Connection timeout in seconds"
-    )
+    health_check_interval: int
+    health_log_reminder_interval: int
+    connection_timeout: float
 
     # Performance Tuning
-    max_message_queue_size: int = Field(
-        default=10000, description="Maximum message queue size"
-    )
-    worker_threads: int = Field(default=4, description="Number of worker threads")
-
-    @classmethod
-    def from_env(cls) -> "MQTTConfig":
-        """Create MQTT config from environment variables"""
-        return cls(
-            broker_host=os.getenv("MQTT_BROKER_HOST", "cloud.pionix.com"),
-            broker_port=int(os.getenv("MQTT_BROKER_PORT", "443")),
-            use_tls=os.getenv("MQTT_USE_TLS", "true").lower() == "true",
-            client_id_prefix=os.getenv("MQTT_CLIENT_ID_PREFIX", "offkey-backend"),
-            mqtt_username=os.getenv("MQTT_USERNAME", ""),
-            mqtt_api_key=os.getenv("MQTT_APIKEY", os.getenv("PIONIX_KEY", "")),
-            enabled=os.getenv("MQTT_TELEMETRY_ENABLED", "true").lower() == "true",
-            reconnect_delay=int(os.getenv("MQTT_RECONNECT_DELAY", "5")),
-            max_reconnect_attempts=int(os.getenv("MQTT_MAX_RECONNECT_ATTEMPTS", "10")),
-            batch_size=int(os.getenv("MQTT_BATCH_SIZE", "100")),
-            batch_timeout=float(os.getenv("MQTT_BATCH_TIMEOUT", "5.0")),
-            subscription_qos=int(os.getenv("MQTT_SUBSCRIPTION_QOS", "1")),
-            health_check_interval=int(os.getenv("MQTT_HEALTH_CHECK_INTERVAL", "30")),
-            connection_timeout=float(os.getenv("MQTT_CONNECTION_TIMEOUT", "30.0")),
-            max_message_queue_size=int(
-                os.getenv("MQTT_MAX_MESSAGE_QUEUE_SIZE", "10000")
-            ),
-            worker_threads=int(os.getenv("MQTT_WORKER_THREADS", "4")),
-        )
+    max_message_queue_size: int
+    worker_threads: int
 
     def get_websocket_url(self) -> str:
         """Get WebSocket URL for MQTT connection"""

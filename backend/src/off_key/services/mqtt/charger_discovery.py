@@ -7,13 +7,14 @@ then manages MQTT topic subscriptions for real-time telemetry data.
 """
 
 from datetime import datetime
-from typing import Dict, List, Set, Optional
+from typing import Dict, List, Set, Optional, Iterable, Tuple, AsyncGenerator
 from dataclasses import dataclass
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...core.client.pionix import PionixClient
+from ...core.config import settings
 from ...core.logs import logger
 from ...db.models import Charger
 from .config import MQTTConfig
@@ -54,12 +55,18 @@ class ChargerDiscoveryService:
     - Handling discovery errors and retries
     """
 
-    def __init__(self, config: MQTTConfig, db_session: AsyncSession):
+    def __init__(
+        self,
+        config: MQTTConfig,
+        db_session: AsyncSession,
+        pionix_key: str,
+        pionix_user_agent: str,
+    ):
         self.config = config
         self.db_session = db_session
         self.pionix_client = PionixClient(
-            api_key="",  # Will be set from settings
-            user_agent="",  # Will be set from settings
+            api_key=pionix_key,
+            user_agent=pionix_user_agent,
         )
 
         # Discovery state
@@ -72,12 +79,6 @@ class ChargerDiscoveryService:
         self.total_hierarchies_discovered = 0
         self.total_subscriptions_attempted = 0
         self.total_subscriptions_successful = 0
-
-    async def initialize(self, pionix_key: str, pionix_user_agent: str):
-        """Initialize the discovery service with Pionix API credentials"""
-        self.pionix_client.api_key = pionix_key
-        self.pionix_client.user_agent = pionix_user_agent
-        logger.info("Charger discovery service initialized")
 
     async def discover_chargers(self) -> List[ChargerTelemetryInfo]:
         """
@@ -95,10 +96,6 @@ class ChargerDiscoveryService:
         try:
             # Get all chargers from database
             charger_ids = await self._get_chargers_from_database()
-
-            if not charger_ids:
-                logger.warning("No chargers found in database")
-                return []
 
             logger.info(f"Found {len(charger_ids)} chargers in database")
 
@@ -145,7 +142,12 @@ class ChargerDiscoveryService:
             stmt = select(Charger.charger_id)
             result = await self.db_session.execute(stmt)
             charger_ids = result.scalars().all()
-            return list(charger_ids)
+            charger_list = list(charger_ids)
+
+            if not charger_list:
+                logger.warning("No chargers found in database")
+
+            return charger_list
 
         except Exception as e:
             logger.error(f"Failed to query chargers from database: {e}")
@@ -167,22 +169,19 @@ class ChargerDiscoveryService:
 
         try:
             # Fetch device model from Pionix API
-            device_model_url = f"chargers/{charger_id}/deviceModel"
+            device_model_url = settings.build_pionix_url(
+                "device_model", charger_id=charger_id
+            )
             device_model = await self.pionix_client.get(device_model_url)
 
-            if not isinstance(device_model, dict):
-                logger.warning(f"Invalid device model format for charger {charger_id}")
-                return None
-
             # Extract telemetry hierarchies
-            hierarchies = []
-            for part in device_model.get("parts", []):
-                if isinstance(part, dict):
-                    for telemetry in part.get("telemetries", []):
-                        if isinstance(telemetry, dict) and "hierarchy" in telemetry:
-                            hierarchy = telemetry["hierarchy"]
-                            if hierarchy:
-                                hierarchies.append(hierarchy)
+            hierarchies = [
+                hierarchy
+                for part in device_model.get("parts", [])
+                if isinstance(part, dict)
+                for telemetry in part.get("telemetries", [])
+                if (hierarchy := telemetry.get("hierarchy"))
+            ]
 
             if not hierarchies:
                 logger.warning(
@@ -191,10 +190,10 @@ class ChargerDiscoveryService:
                 return None
 
             # Generate MQTT topics
-            mqtt_topics = []
-            for hierarchy in hierarchies:
-                topic = f"charger/{charger_id}/live-telemetry/{hierarchy}"
-                mqtt_topics.append(topic)
+            mqtt_topics = [
+                settings.build_mqtt_topic(charger_id=charger_id, hierarchy=hierarchy)
+                for hierarchy in hierarchies
+            ]
 
             self.total_hierarchies_discovered += len(hierarchies)
 
@@ -216,6 +215,29 @@ class ChargerDiscoveryService:
             )
             return None
 
+    async def _subscription_generator(
+        self, mqtt_client, topics_to_try: Iterable[str]
+    ) -> AsyncGenerator[Tuple[str, bool], None]:
+        """
+        Generator that yields subscription attempts for topics
+
+        Args:
+            mqtt_client: The MQTT client instance
+            topics_to_try: Iterable of topic strings to attempt subscription
+
+        Yields:
+            Tuple of (topic, success_bool) for each subscription attempt
+        """
+        for topic in topics_to_try:
+            try:
+                success = await mqtt_client.subscribe(
+                    topic, qos=self.config.subscription_qos
+                )
+                yield topic, success
+            except Exception as e:
+                logger.error(f"Error subscribing to {topic}: {e}")
+                yield topic, False
+
     async def subscribe_to_charger_topics(
         self, mqtt_client, charger_info: ChargerTelemetryInfo
     ) -> bool:
@@ -236,25 +258,22 @@ class ChargerDiscoveryService:
 
         success_count = 0
 
-        for topic in charger_info.mqtt_topics:
-            try:
-                self.total_subscriptions_attempted += 1
-                success = await mqtt_client.subscribe(
-                    topic, qos=self.config.subscription_qos
-                )
+        async for topic, success in self._subscription_generator(
+            mqtt_client, charger_info.mqtt_topics
+        ):
+            # Update global metrics
+            self.total_subscriptions_attempted += 1
 
-                charger_info.subscription_status[topic] = success
+            # Update subscription status
+            charger_info.subscription_status[topic] = success
 
-                if success:
-                    success_count += 1
-                    self.total_subscriptions_successful += 1
-                    logger.debug(f"Successfully subscribed to {topic}")
-                else:
-                    logger.warning(f"Failed to subscribe to {topic}")
-
-            except Exception as e:
-                logger.error(f"Error subscribing to {topic}: {e}")
-                charger_info.subscription_status[topic] = False
+            # Handle success/failure with context-specific logging
+            if success:
+                success_count += 1
+                self.total_subscriptions_successful += 1
+                logger.debug(f"Successfully subscribed to {topic}")
+            else:
+                logger.warning(f"Failed to subscribe to {topic}")
 
         all_successful = success_count == len(charger_info.mqtt_topics)
 
@@ -301,22 +320,18 @@ class ChargerDiscoveryService:
 
         success_count = 0
 
-        for topic in failed_topics:
-            try:
-                success = await mqtt_client.subscribe(
-                    topic, qos=self.config.subscription_qos
-                )
-                charger_info.subscription_status[topic] = success
+        async for topic, success in self._subscription_generator(
+            mqtt_client, failed_topics
+        ):
+            # Update subscription status (no global metrics for retries)
+            charger_info.subscription_status[topic] = success
 
-                if success:
-                    success_count += 1
-                    logger.debug(f"Successfully retried subscription to {topic}")
-                else:
-                    logger.warning(f"Failed to retry subscription to {topic}")
-
-            except Exception as e:
-                logger.error(f"Error retrying subscription to {topic}: {e}")
-                charger_info.subscription_status[topic] = False
+            # Handle success/failure with retry-specific logging
+            if success:
+                success_count += 1
+                logger.debug(f"Successfully retried subscription to {topic}")
+            else:
+                logger.warning(f"Failed to retry subscription to {topic}")
 
         all_successful = success_count == len(failed_topics)
 

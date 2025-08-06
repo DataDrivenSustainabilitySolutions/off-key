@@ -496,22 +496,24 @@ class DatabaseWriter:
 
             # Log batch processing with intelligent frequency
             if self.total_batches_processed % 10 == 0 or write_latency > 1.0:
-                log_level = "info" if write_latency <= 1.0 else "warning"
-                logger.log(
-                    logger.INFO if log_level == "info" else logger.WARNING,
+                message = (
                     f"Batch processed: {records_written} "
-                    f"records in {write_latency:.3f}s",
-                    extra={
-                        **self._log_context,
-                        "batch_size": records_written,
-                        "write_latency": write_latency,
-                        "total_batches": self.total_batches_processed,
-                        "total_records": self.total_records_written,
-                        "avg_latency": self.write_latency_sum
-                        / self.write_latency_count,
-                        "charger_count": len(batch.get_charger_ids()),
-                    },
+                    f"records in {write_latency:.3f}s"
                 )
+                extra_data = {
+                    **self._log_context,
+                    "batch_size": records_written,
+                    "write_latency": write_latency,
+                    "total_batches": self.total_batches_processed,
+                    "total_records": self.total_records_written,
+                    "avg_latency": self.write_latency_sum / self.write_latency_count,
+                    "charger_count": len(batch.get_charger_ids()),
+                }
+
+                if write_latency <= 1.0:
+                    logger.info(message, extra=extra_data)
+                else:
+                    logger.warning(message, extra=extra_data)
 
             # Performance logging
             log_performance(

@@ -560,26 +560,25 @@ class MessageRouter:
             or route_info.get_success_count() < len(enabled_destinations)
         ):
 
-            log_level = (
-                "info"
-                if route_info.get_success_count() == len(enabled_destinations)
-                else "warning"
-            )
-            logger.log(
-                logger.INFO if log_level == "info" else logger.WARNING,
+            message_text = (
                 f"Message routed: {route_info.get_success_count()}/"
-                f"{len(enabled_destinations)} successful",
-                extra={
-                    **self._log_context,
-                    "message_id": route_info.message_id,
-                    "topic": message.topic,
-                    "destinations": enabled_destinations,
-                    "success_count": route_info.get_success_count(),
-                    "failed_destinations": route_info.get_failed_destinations(),
-                    "processing_time": route_info.get_processing_time(),
-                    "total_routed": self.total_messages_routed,
-                },
+                f"{len(enabled_destinations)} successful"
             )
+            extra_data = {
+                **self._log_context,
+                "message_id": route_info.message_id,
+                "topic": message.topic,
+                "destinations": enabled_destinations,
+                "success_count": route_info.get_success_count(),
+                "failed_destinations": route_info.get_failed_destinations(),
+                "processing_time": route_info.get_processing_time(),
+                "total_routed": self.total_messages_routed,
+            }
+
+            if route_info.get_success_count() == len(enabled_destinations):
+                logger.info(message_text, extra=extra_data)
+            else:
+                logger.warning(message_text, extra=extra_data)
 
         return route_info
 

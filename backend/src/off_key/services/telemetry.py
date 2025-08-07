@@ -6,8 +6,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
-from ..core.client.pionix import PionixClient
-from ..core.config import settings
+from ..core.client.base_client import ChargerAPIClient
 from ..core.logs import logger
 from ..db.models import Charger, Telemetry
 from ..utils.string import clean_string, string_to_float
@@ -16,9 +15,9 @@ logging.getLogger("sqlalchemy.engine").setLevel(logging.CRITICAL)
 
 
 class TelemetrySyncService:
-    def __init__(self, session: AsyncSession):
+    def __init__(self, session: AsyncSession, client: ChargerAPIClient):
         self.session: AsyncSession = session
-        self.client = PionixClient(settings.PIONIX_KEY, settings.PIONIX_USER_AGENT)
+        self.client = client
         logger.info("TelemetrySyncService initialized (retention logic removed).")
 
     async def sync_telemetry(self, limit: int):
@@ -63,10 +62,9 @@ class TelemetrySyncService:
             )
 
             # 3a. Fetch Device Model to discover telemetry hierarchies
-            dm_url = settings.build_pionix_url("device_model", charger_id=charger_id)
-            logger.debug(f"Fetching device model: {dm_url}")
+            logger.debug(f"Fetching device model for charger: {charger_id}")
             try:
-                device_model = await self.client.get(dm_url)
+                device_model = await self.client.get_device_info(charger_id)
                 if not isinstance(device_model, dict):
                     logger.warning(
                         f"Received unexpected device model format for {charger_id}. "
@@ -112,28 +110,31 @@ class TelemetrySyncService:
                     )
                     continue
 
-                get_url = settings.build_pionix_telemetry_url(
-                    charger_id, hierarchy_raw, limit
-                )
                 logger.info(
-                    f"Fetching ALL telemetry data points: {get_url}"
+                    f"Fetching ALL telemetry data points for "
+                    f"{charger_id}/{hierarchy_raw} with limit {limit}"
                 )  # Log change
 
                 try:
-                    telemetry_api_response = await self.client.get(get_url)
+                    telemetry_api_response = await self.client.get_telemetry_data(
+                        charger_id, hierarchy_raw, limit
+                    )
                     items = (
                         telemetry_api_response.get("items", [])
                         if isinstance(telemetry_api_response, dict)
                         else []
                     )
                 except Exception as e:
-                    logger.error(f"Failed to fetch telemetry from {get_url}: {e}")
+                    logger.error(
+                        f"Failed to fetch telemetry for "
+                        f"{charger_id}/{hierarchy_raw}: {e}"
+                    )
                     continue
 
                 if not items:
                     logger.info(
                         f"No telemetry items retrieved for "
-                        f"{charger_id} / {hierarchy_raw} from {get_url}"
+                        f"{charger_id} / {hierarchy_raw}"
                     )
                     continue
 

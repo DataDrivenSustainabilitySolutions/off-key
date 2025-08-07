@@ -2,18 +2,17 @@ from datetime import datetime, timezone, timedelta
 
 from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
-from off_key.core.config import settings
 
-from ..core.client.pionix import PionixClient
+from ..core.client.base_client import ChargerAPIClient
 from ..core.logs import logger, log_performance
 import time
 from ..db.models import Charger
 
 
 class ChargersSyncService:
-    def __init__(self, session: AsyncSession):
+    def __init__(self, session: AsyncSession, client: ChargerAPIClient):
         self.session: AsyncSession = session
-        self.client = PionixClient(settings.PIONIX_KEY, settings.PIONIX_USER_AGENT)
+        self.client = client
 
     async def sync_chargers(self):
         """
@@ -25,8 +24,7 @@ class ChargersSyncService:
         logger.info("Starting charger synchronization")
 
         try:
-            chargers_url = settings.build_pionix_url("chargers")
-            active_chargers_data = await self.client.get(chargers_url)
+            active_chargers_data = await self.client.get_chargers()
             if not active_chargers_data:
                 logger.warning("Received empty list of active chargers.")
                 return  # Nothing to sync

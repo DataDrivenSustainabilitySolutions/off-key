@@ -5,20 +5,29 @@ from sqlalchemy import select
 from ...db.base import get_db_async
 from ...db.models import Charger
 from ...services.chargers import ChargersSyncService
+from ...core.dependencies import get_charger_api_client
+from ...core.client.base_client import ChargerAPIClient
 
 router = APIRouter()
 
 
 @router.post("/sync", tags=["chargers"])
-async def sync_chargers(db: AsyncSession = Depends(get_db_async)):
-    service = ChargersSyncService(db)
+async def sync_chargers(
+    db: AsyncSession = Depends(get_db_async),
+    client: ChargerAPIClient = Depends(get_charger_api_client),
+):
+    service = ChargersSyncService(db, client)
     await service.sync_chargers()
     return {"status": "successful"}
 
 
 @router.post("/clean", tags=["chargers"])
-async def clean_chargers(older_n_days: int, db: AsyncSession = Depends(get_db_async)):
-    service = ChargersSyncService(db)
+async def clean_chargers(
+    older_n_days: int,
+    db: AsyncSession = Depends(get_db_async),
+    client: ChargerAPIClient = Depends(get_charger_api_client),
+):
+    service = ChargersSyncService(db, client)
     await service.clean_chargers(days_inactive=older_n_days)
     return {"status": "successful"}
 

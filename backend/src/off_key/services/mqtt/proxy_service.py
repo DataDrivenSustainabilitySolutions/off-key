@@ -17,6 +17,7 @@ from ...db.base import AsyncSessionLocal
 from .api_key_auth import ApiKeyAuthHandler
 from .mqtt_client import MQTTClient
 from .charger_discovery import ChargerDiscoveryService
+from ...core.client.base_client import ChargerAPIClient
 from .database_writer import DatabaseWriter
 from .message_router import MessageRouter, DatabaseDestination
 from .health_monitor import HealthMonitor, HealthStatus
@@ -34,7 +35,8 @@ class MQTTProxyService:
     5. Monitors health status
     """
 
-    def __init__(self):
+    def __init__(self, api_client: ChargerAPIClient):
+        self.api_client = api_client
         self.config = settings.mqtt_config
         self.db_session: Optional[AsyncSession] = None
 
@@ -111,8 +113,7 @@ class MQTTProxyService:
             self.charger_discovery = ChargerDiscoveryService(
                 self.config,
                 self.db_session,
-                settings.PIONIX_KEY,
-                settings.PIONIX_USER_AGENT,
+                self.api_client,
             )
 
             # Discover chargers and subscribe to topics
@@ -408,7 +409,11 @@ class MQTTProxyService:
 # Entry point for standalone execution
 async def main():
     """Main entry point for MQTT proxy service"""
-    service = MQTTProxyService()
+    # Import here to avoid circular imports in standalone mode
+    from ...core.dependencies import get_charger_api_client
+
+    api_client = get_charger_api_client()
+    service = MQTTProxyService(api_client)
     await service.run()
 
 

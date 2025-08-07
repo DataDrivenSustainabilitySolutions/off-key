@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ...core.client.pionix import PionixClient
+from ...core.client.base_client import ChargerAPIClient
 from ...core.config import settings
 from ...core.logs import logger
 from ...db.models import Charger
@@ -59,15 +59,11 @@ class ChargerDiscoveryService:
         self,
         config: MQTTConfig,
         db_session: AsyncSession,
-        pionix_key: str,
-        pionix_user_agent: str,
+        api_client: ChargerAPIClient,
     ):
         self.config = config
         self.db_session = db_session
-        self.pionix_client = PionixClient(
-            api_key=pionix_key,
-            user_agent=pionix_user_agent,
-        )
+        self.api_client = api_client
 
         # Discovery state
         self.chargers: Dict[str, ChargerTelemetryInfo] = {}
@@ -168,11 +164,8 @@ class ChargerDiscoveryService:
         logger.debug(f"Discovering hierarchies for charger: {charger_id}")
 
         try:
-            # Fetch device model from Pionix API
-            device_model_url = settings.build_pionix_url(
-                "device_model", charger_id=charger_id
-            )
-            device_model = await self.pionix_client.get(device_model_url)
+            # Fetch device model from API
+            device_model = await self.api_client.get_device_info(charger_id)
 
             # Extract telemetry hierarchies
             hierarchies = [

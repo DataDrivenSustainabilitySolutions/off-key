@@ -17,6 +17,7 @@ from ..core.logs import logger
 from ..db.base import AsyncSessionLocal
 from .chargers import ChargersSyncService
 from .telemetry import TelemetrySyncService
+from ..core.client.base_client import ChargerAPIClient
 
 
 class BackgroundSyncService:
@@ -31,7 +32,8 @@ class BackgroundSyncService:
     - Health monitoring integration
     """
 
-    def __init__(self):
+    def __init__(self, api_client: ChargerAPIClient):
+        self.api_client = api_client
         self.scheduler: Optional[AsyncIOScheduler] = None
         self.is_running = False
 
@@ -147,7 +149,7 @@ class BackgroundSyncService:
 
             # Create database session
             async with AsyncSessionLocal() as session:
-                sync_service = ChargersSyncService(session)
+                sync_service = ChargersSyncService(session, self.api_client)
                 await sync_service.sync_chargers()
 
             sync_duration = (datetime.now() - sync_start).total_seconds()
@@ -182,7 +184,7 @@ class BackgroundSyncService:
 
             # Create database session
             async with AsyncSessionLocal() as session:
-                sync_service = TelemetrySyncService(session)
+                sync_service = TelemetrySyncService(session, self.api_client)
                 await sync_service.sync_telemetry(limit=settings.SYNC_TELEMETRY_LIMIT)
 
             sync_duration = (datetime.now() - sync_start).total_seconds()

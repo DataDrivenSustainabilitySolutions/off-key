@@ -5,13 +5,19 @@ from sqlalchemy import select
 from ...db.base import get_db_async
 from ...db.models import Telemetry
 from ...services.telemetry import TelemetrySyncService
+from ...core.dependencies import get_charger_api_client
+from ...core.client.base_client import ChargerAPIClient
 
 router = APIRouter()
 
 
 @router.post("/sync")
-async def sync_chargers(db: AsyncSession = Depends(get_db_async), limit: int = 10_000):
-    service = TelemetrySyncService(db)
+async def sync_chargers(
+    db: AsyncSession = Depends(get_db_async),
+    client: ChargerAPIClient = Depends(get_charger_api_client),
+    limit: int = 10_000,
+):
+    service = TelemetrySyncService(db, client)
     await service.sync_telemetry(limit=limit)
     return {"status": "successful"}
 

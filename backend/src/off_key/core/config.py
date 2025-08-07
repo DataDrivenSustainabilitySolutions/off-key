@@ -1,11 +1,11 @@
 from pydantic_settings import BaseSettings
 from pydantic import field_validator, FieldValidationInfo
 from dotenv import find_dotenv, load_dotenv
-from typing import Literal, TYPE_CHECKING
-from urllib.parse import quote
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from ..services.mqtt.config import MQTTConfig
+    from .client.pionix_config import PionixConfig
 
 # Load default ".env" file from upper project tree
 load_dotenv()
@@ -20,6 +20,9 @@ class Settings(BaseSettings):
 
     APP_NAME: str
     DEBUG: bool = False  # Set to True in development for SQL logging
+
+    # API Provider Configuration
+    CHARGER_API_PROVIDER: str = "pionix"  # Default to pionix, can be overridden
 
     JWT_SECRET: str
     JWT_VERIFICATION_SECRET: str
@@ -140,72 +143,6 @@ class Settings(BaseSettings):
 
         return v
 
-    def build_pionix_url(
-        self, endpoint_name: Literal["chargers", "device_model", "telemetry"], **params
-    ) -> str:
-        """
-        Build Pionix API URL with parameter substitution.
-
-        Args:
-            endpoint_name: Name of the endpoint template to use
-            **params: Parameters to substitute in template
-
-        Returns:
-            Formatted URL string with parameters substituted
-
-        Raises:
-            ValueError: If required parameters are missing or endpoint doesn't exist
-        """
-        endpoint_mapping = {
-            "chargers": self.PIONIX_CHARGERS_ENDPOINT,
-            "device_model": self.PIONIX_DEVICE_MODEL_ENDPOINT,
-            "telemetry": self.PIONIX_TELEMETRY_ENDPOINT,
-        }
-
-        if endpoint_name not in endpoint_mapping:
-            raise ValueError(f"Unknown endpoint: {endpoint_name}")
-
-        template = endpoint_mapping[endpoint_name]
-
-        # URL encode parameters that may contain special characters
-        encoded_params = {}
-        for key, value in params.items():
-            if key == "hierarchy" and "/" in str(value):
-                # Special handling for hierarchy paths - URL encode forward slashes
-                encoded_params[key] = quote(str(value), safe="")
-            else:
-                encoded_params[key] = str(value)
-
-        try:
-            return template.format(**encoded_params)
-        except KeyError as e:
-            raise ValueError(
-                f"Missing required parameter {e} for endpoint {endpoint_name}"
-            )
-
-    def build_pionix_telemetry_url(
-        self, charger_id: str, hierarchy: str, limit: int = None
-    ) -> str:
-        """
-        Build telemetry URL with optional query parameters.
-
-        Args:
-            charger_id: Charger ID
-            hierarchy: Telemetry hierarchy path
-            limit: Optional limit parameter
-
-        Returns:
-            Complete telemetry URL with query parameters
-        """
-        base_url = self.build_pionix_url(
-            "telemetry", charger_id=charger_id, hierarchy=hierarchy
-        )
-
-        if limit is not None:
-            base_url += f"?Limit={limit}"
-
-        return base_url
-
     def build_mqtt_topic(self, charger_id: str, hierarchy: str) -> str:
         """
         Build MQTT topic with parameter substitution.
@@ -226,6 +163,25 @@ class Settings(BaseSettings):
             )
         except KeyError as e:
             raise ValueError(f"Missing required parameter {e} for MQTT topic template")
+
+    @property
+    def pionix_config(self) -> "PionixConfig":
+        """
+        Create PionixConfig instance from centralized settings.
+
+        Returns:
+            PionixConfig instance populated with environment variables
+        """
+        # Import here to avoid circular imports
+        from ..core.client.pionix_config import PionixConfig
+
+        return PionixConfig(
+            api_key=self.PIONIX_KEY,
+            user_agent=self.PIONIX_USER_AGENT,
+            chargers_endpoint=self.PIONIX_CHARGERS_ENDPOINT,
+            device_model_endpoint=self.PIONIX_DEVICE_MODEL_ENDPOINT,
+            telemetry_endpoint=self.PIONIX_TELEMETRY_ENDPOINT,
+        )
 
     @property
     def mqtt_config(self) -> "MQTTConfig":

@@ -15,6 +15,7 @@ from .api.v1.routes import router as v1_router
 from .api.middleware import LoggingMiddleware, SecurityLoggingMiddleware
 from .db.models import Base
 from .services.background_sync import BackgroundSyncService
+from .core.dependencies import get_charger_api_client, get_background_sync_service
 
 # See https://github.com/pyca/bcrypt/issues/684#issuecomment-2465572106
 import bcrypt
@@ -38,8 +39,7 @@ app = FastAPI(title=settings.APP_NAME)
 app.state.limiter = limiter
 app.add_exception_handler(429, rate_limit_exceeded_handler)
 
-# Initialize background sync service
-background_sync = BackgroundSyncService()
+# Background sync service will be initialized in startup_event with dependency injection
 
 origins = ["http://localhost:8000", "http://localhost:5173"]
 
@@ -68,6 +68,14 @@ async def startup_event():
         await conn.run_sync(Base.metadata.create_all)
     logger.info("Database tables created successfully")
 
+    # Composition Root - Resolve dependencies ONCE
+    api_client = get_charger_api_client()
+    logger.info(f"Initialized API client: {type(api_client).__name__}")
+
+    # Inject dependencies into services
+    background_sync = BackgroundSyncService(api_client)
+    app.state.background_sync = background_sync  # Store for shutdown
+
     # Start background sync service
     await background_sync.start()
     logger.info("Background sync service started")
@@ -77,8 +85,9 @@ async def startup_event():
 @app.on_event("shutdown")
 async def shutdown_event():
     """Stop background services on application shutdown"""
-    await background_sync.stop()
-    logger.info("Background sync service stopped")
+    if hasattr(app.state, "background_sync"):
+        await app.state.background_sync.stop()
+        logger.info("Background sync service stopped")
 
 
 # Include versioned API routes
@@ -86,7 +95,10 @@ app.include_router(v1_router, prefix="/v1", tags=["v1"])
 
 
 @app.get("/health")
-async def health_check(db: AsyncSession = Depends(get_db_async)):
+async def health_check(
+    db: AsyncSession = Depends(get_db_async),
+    sync_service: BackgroundSyncService = Depends(get_background_sync_service),
+):
     """
     Health check endpoint that verifies the app and its dependencies are running.
     Returns status of various components without exposing sensitive information.
@@ -112,9 +124,9 @@ async def health_check(db: AsyncSession = Depends(get_db_async)):
         health_status["checks"]["database"] = "unhealthy"
         logger.error(f"Database health check failed: {str(e)}")
 
-    # Check background sync service
+    # Check background sync service (clean, explicit dependency)
     try:
-        sync_status = background_sync.get_status()
+        sync_status = sync_service.get_status()
         if sync_status["enabled"] and not sync_status["running"]:
             health_status["checks"]["background_sync"] = "unhealthy"
             health_status["status"] = "unhealthy"

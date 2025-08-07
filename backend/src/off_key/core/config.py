@@ -17,19 +17,38 @@ if dev_env:
 
 
 class Settings(BaseSettings):
+    """
+    Centralized app settings with environment variable parsing.
 
+    This class manages all environment variables. It follows the dual-config pattern
+    where this class handles environment parsing and validation, while service-specific
+    config classes (MQTTConfig, PionixConfig) handle business logic validation.
+
+    Environment Variable Naming Convention:
+    - Use uppercase with underscores: MQTT_BROKER_HOST
+    - Group by service prefix: MQTT_, PIONIX_, SYNC_
+    - Use descriptive names: HEALTH_CHECK_INTERVAL vs INTERVAL
+
+    Usage:
+        settings = Settings()  # Loads from environment
+        mqtt_config = settings.mqtt_config  # Service-specific config
+    """
+
+    # Application Configuration
     APP_NAME: str
     DEBUG: bool = False  # Set to True in development for SQL logging
 
     # API Provider Configuration
     CHARGER_API_PROVIDER: str = "pionix"  # Default to pionix, can be overridden
 
+    # Authentication & Security Configuration
     JWT_SECRET: str
     JWT_VERIFICATION_SECRET: str
     ALGORITHM: str
     ACCESS_TOKEN_EXPIRE_MINUTES: int
     SUPERUSER_MAIL: str
 
+    # Email Service Configuration
     EMAIL_USERNAME: str
     EMAIL_PASSWORD: str
     EMAIL_FROM: str
@@ -41,12 +60,14 @@ class Settings(BaseSettings):
     USE_CREDENTIALS: bool
     VALIDATE_CERTS: bool
 
+    # Database Configuration
     POSTGRES_USER: str
     POSTGRES_PASSWORD: str
     POSTGRES_DB: str
     POSTGRES_PORT: str
     POSTGRES_HOST: str  # 'postgres' if connecting from another container
 
+    # Pionix API Configuration
     PIONIX_KEY: str
     PIONIX_USER_AGENT: str
 
@@ -55,30 +76,42 @@ class Settings(BaseSettings):
     PIONIX_DEVICE_MODEL_ENDPOINT: str = "chargers/{charger_id}/deviceModel"
     PIONIX_TELEMETRY_ENDPOINT: str = "chargers/{charger_id}/telemetry/{hierarchy}"
 
+    # Alerting Configuration
     ANOMALY_ALERT_RECIPIENTS: str = "admin@example.com"  # Comma-separated list
 
-    # MQTT Configuration
+    # MQTT Service Configuration
+    # Service Control
     MQTT_TELEMETRY_ENABLED: bool = True  # Enable MQTT telemetry service
+
+    # Broker Connection
     MQTT_BROKER_HOST: str = "cloud.pionix.com"  # MQTT broker host
     MQTT_BROKER_PORT: int = 443  # MQTT broker port
     MQTT_USE_TLS: bool = True  # Use TLS for MQTT connection
+    MQTT_CONNECTION_TIMEOUT: float = 30.0  # Connection timeout in seconds
+
+    # Authentication
     MQTT_CLIENT_ID_PREFIX: str = "offkey-backend"  # MQTT client ID prefix
     MQTT_USERNAME: str  # MQTT authentication username (required)
     MQTT_APIKEY: str = ""  # API key for MQTT authentication (falls back to PIONIX_KEY)
-    MQTT_HEALTH_CHECK_INTERVAL: int = 30  # Health check interval in seconds
-    MQTT_BATCH_SIZE: int = 100  # Database batch size for MQTT messages
+
+    # Connection Management
     MQTT_RECONNECT_DELAY: int = 5  # Reconnection delay in seconds
     MQTT_MAX_RECONNECT_ATTEMPTS: int = 10  # Maximum reconnection attempts
+
+    # Message Processing
+    MQTT_BATCH_SIZE: int = 100  # Database batch size for MQTT messages
     MQTT_BATCH_TIMEOUT: float = 5.0  # Batch timeout in seconds
     MQTT_SUBSCRIPTION_QOS: int = 1  # MQTT subscription QoS level
-    MQTT_HEALTH_LOG_REMINDER_INTERVAL: int = (
-        10  # Re-log persistent unhealthy states every N health checks
-    )
-    MQTT_CONNECTION_TIMEOUT: float = 30.0  # Connection timeout in seconds
     MQTT_MAX_MESSAGE_QUEUE_SIZE: int = 10000  # Maximum message queue size
     MQTT_WORKER_THREADS: int = 4  # Number of worker threads
 
-    # Pionix MQTT Topic Templates
+    # Health Monitoring
+    MQTT_HEALTH_CHECK_INTERVAL: int = 35  # Health check interval in seconds
+    MQTT_HEALTH_LOG_REMINDER_INTERVAL: int = (
+        10  # Re-log persistent unhealthy states every N health checks
+    )
+
+    # MQTT Topic Templates
     PIONIX_MQTT_TELEMETRY_TOPIC: str = "charger/{charger_id}/live-telemetry/{hierarchy}"
 
     # Background Sync Configuration
@@ -188,8 +221,16 @@ class Settings(BaseSettings):
         """
         Create MQTTConfig instance from centralized settings.
 
+        This property demonstrates the dual-config pattern: environment parsing
+        happens here, while business logic validation occurs in MQTTConfig.
+
+        Features:
+        - Fallback logic for MQTT_APIKEY (uses PIONIX_KEY if empty)
+        - Centralized mapping from environment variables to config objects
+        - Late import to avoid circular dependencies
+
         Returns:
-            MQTTConfig instance populated with environment variables
+            MQTTConfig: Validated MQTT service config with business logic constraints
         """
         # Import here to avoid circular imports
         from ..services.mqtt.config import MQTTConfig

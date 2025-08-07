@@ -4,7 +4,6 @@ from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from slowapi.middleware import SlowAPIMiddleware
-from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .db.base import async_engine, get_db_async
@@ -16,6 +15,7 @@ from .api.middleware import LoggingMiddleware, SecurityLoggingMiddleware
 from .db.models import Base
 from .services.background_sync import BackgroundSyncService
 from .core.dependencies import get_charger_api_client, get_background_sync_service
+from .core import health_checks
 
 # See https://github.com/pyca/bcrypt/issues/684#issuecomment-2465572106
 import bcrypt
@@ -103,42 +103,28 @@ async def health_check(
     Health check endpoint that verifies the app and its dependencies are running.
     Returns status of various components without exposing sensitive information.
     """
-    health_status = {
-        "status": "healthy",
-        "timestamp": datetime.utcnow().isoformat(),
-        "service": settings.APP_NAME,
-        "checks": {
-            "api": "healthy",
-            "database": "unhealthy",
-            "background_sync": "healthy",
-        },
+    # Run all checks using encapsulated helper functions
+    checks = {
+        "api": "healthy",  # Assuming API is healthy if this endpoint is reachable
+        "database": await health_checks.check_database(db),
+        "background_sync": health_checks.check_background_sync(sync_service),
     }
 
-    # Check database connectivity
-    try:
-        # Simple query to verify database connection
-        await db.execute(text("SELECT 1"))
-        health_status["checks"]["database"] = "healthy"
-    except Exception as e:
-        health_status["status"] = "unhealthy"
-        health_status["checks"]["database"] = "unhealthy"
-        logger.error(f"Database health check failed: {str(e)}")
+    # Derive overall status declaratively from check results
+    overall_status = "healthy"
+    if "unhealthy" in checks.values():
+        overall_status = "unhealthy"
 
-    # Check background sync service (clean, explicit dependency)
-    try:
-        sync_status = sync_service.get_status()
-        if sync_status["enabled"] and not sync_status["running"]:
-            health_status["checks"]["background_sync"] = "unhealthy"
-            health_status["status"] = "unhealthy"
-        elif not sync_status["enabled"]:
-            health_status["checks"]["background_sync"] = "disabled"
-    except Exception as e:
-        health_status["checks"]["background_sync"] = "unhealthy"
-        health_status["status"] = "unhealthy"
-        logger.error(f"Background sync health check failed: {str(e)}")
+    # Construct final response
+    health_status = {
+        "status": overall_status,
+        "timestamp": datetime.utcnow().isoformat(),
+        "service": settings.APP_NAME,
+        "checks": checks,
+    }
 
     # Return appropriate status code based on overall health
-    status_code = 200 if health_status["status"] == "healthy" else 503
+    status_code = 200 if overall_status == "healthy" else 503
     return JSONResponse(content=health_status, status_code=status_code)
 
 

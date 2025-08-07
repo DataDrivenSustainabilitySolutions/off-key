@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
@@ -72,8 +72,22 @@ async def startup_event():
     api_client = get_charger_api_client()
     logger.info(f"Initialized API client: {type(api_client).__name__}")
 
-    # Inject dependencies into services
-    background_sync = BackgroundSyncService(api_client)
+    # Create factories that close over the api_client
+    def charger_sync_factory(session):
+        from .services.chargers import ChargersSyncService
+
+        return ChargersSyncService(session, api_client)
+
+    def telemetry_sync_factory(session):
+        from .services.telemetry import TelemetrySyncService
+
+        return TelemetrySyncService(session, api_client)
+
+    # Inject factories into BackgroundSyncService
+    background_sync = BackgroundSyncService(
+        charger_sync_factory=charger_sync_factory,
+        telemetry_sync_factory=telemetry_sync_factory,
+    )
     app.state.background_sync = background_sync  # Store for shutdown
 
     # Start background sync service
@@ -111,14 +125,13 @@ async def health_check(
     }
 
     # Derive overall status declaratively from check results
-    overall_status = "healthy"
-    if "unhealthy" in checks.values():
-        overall_status = "unhealthy"
+    is_fully_healthy = all(status == "healthy" for status in checks.values())
+    overall_status = "healthy" if is_fully_healthy else "unhealthy"
 
     # Construct final response
     health_status = {
         "status": overall_status,
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "service": settings.APP_NAME,
         "checks": checks,
     }

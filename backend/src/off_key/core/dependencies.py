@@ -1,20 +1,18 @@
-"""
-Dependency Injection Providers
-
-Central location for all dependency providers used in the FastAPI application.
-These functions are used with FastAPI's Depends() to inject dependencies.
-"""
-
 from functools import lru_cache
 from typing import Optional, TYPE_CHECKING
 
-from fastapi import Request
+from fastapi import Request, Depends
+from sqlalchemy.ext.asyncio import AsyncSession
 from .client.base_client import ChargerAPIClient
 from .client.pionix import PionixClient
 from .config import settings
+from ..db.base import get_db_async
 
 if TYPE_CHECKING:
     from ..services.background_sync import BackgroundSyncService
+    from ..services.services import MonitoringAsyncService
+    from ..services.chargers import ChargersSyncService
+    from ..services.telemetry import TelemetrySyncService
 
 
 @lru_cache()
@@ -90,3 +88,58 @@ def get_background_sync_service(request: Request) -> "BackgroundSyncService":
         raise ValueError("BackgroundSyncService not properly initialized in app state")
 
     return service
+
+
+def get_monitoring_service(
+    db: AsyncSession = Depends(get_db_async),
+) -> "MonitoringAsyncService":
+    """
+    Dependency provider for the MonitoringAsyncService.
+
+    Args:
+        db: AsyncSession injected by FastAPI dependency system
+
+    Returns:
+        MonitoringAsyncService instance configured with the database session
+    """
+    from ..services.services import MonitoringAsyncService
+
+    return MonitoringAsyncService(db)
+
+
+def get_chargers_sync_service(
+    db: AsyncSession = Depends(get_db_async),
+    client: ChargerAPIClient = Depends(get_charger_api_client),
+) -> "ChargersSyncService":
+    """
+    Dependency provider for ChargersSyncService.
+
+    Args:
+        db: AsyncSession injected by FastAPI dependency system
+        client: ChargerAPIClient injected by FastAPI dependency system
+
+    Returns:
+        ChargersSyncService instance configured with database session and API client
+    """
+    from ..services.chargers import ChargersSyncService
+
+    return ChargersSyncService(db, client)
+
+
+def get_telemetry_sync_service(
+    db: AsyncSession = Depends(get_db_async),
+    client: ChargerAPIClient = Depends(get_charger_api_client),
+) -> "TelemetrySyncService":
+    """
+    Dependency provider for TelemetrySyncService.
+
+    Args:
+        db: AsyncSession injected by FastAPI dependency system
+        client: ChargerAPIClient injected by FastAPI dependency system
+
+    Returns:
+        TelemetrySyncService instance configured with database session and API client
+    """
+    from ..services.telemetry import TelemetrySyncService
+
+    return TelemetrySyncService(db, client)

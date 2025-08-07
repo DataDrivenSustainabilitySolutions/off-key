@@ -12,9 +12,6 @@ from ..core.config import settings
 class LoggingMiddleware(BaseHTTPMiddleware):
     """Middleware for request/response logging and correlation ID tracking."""
 
-    def __init__(self, app: ASGIApp):
-        super().__init__(app)
-
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         start_time = time.time()
 

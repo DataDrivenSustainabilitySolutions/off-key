@@ -7,7 +7,8 @@ using APScheduler. Runs in the background of the main API service.
 
 import asyncio
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Callable
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
@@ -17,7 +18,10 @@ from ..core.logs import logger
 from ..db.base import AsyncSessionLocal
 from .chargers import ChargersSyncService
 from .telemetry import TelemetrySyncService
-from ..core.client.base_client import ChargerAPIClient
+
+# Factory type definitions
+ChargerSyncFactory = Callable[[AsyncSession], ChargersSyncService]
+TelemetrySyncFactory = Callable[[AsyncSession], TelemetrySyncService]
 
 
 class BackgroundSyncService:
@@ -32,8 +36,13 @@ class BackgroundSyncService:
     - Health monitoring integration
     """
 
-    def __init__(self, api_client: ChargerAPIClient):
-        self.api_client = api_client
+    def __init__(
+        self,
+        charger_sync_factory: ChargerSyncFactory,
+        telemetry_sync_factory: TelemetrySyncFactory,
+    ):
+        self.charger_sync_factory = charger_sync_factory
+        self.telemetry_sync_factory = telemetry_sync_factory
         self.scheduler: Optional[AsyncIOScheduler] = None
         self.is_running = False
 
@@ -149,7 +158,7 @@ class BackgroundSyncService:
 
             # Create database session
             async with AsyncSessionLocal() as session:
-                sync_service = ChargersSyncService(session, self.api_client)
+                sync_service = self.charger_sync_factory(session)
                 await sync_service.sync_chargers()
 
             sync_duration = (datetime.now() - sync_start).total_seconds()
@@ -184,7 +193,7 @@ class BackgroundSyncService:
 
             # Create database session
             async with AsyncSessionLocal() as session:
-                sync_service = TelemetrySyncService(session, self.api_client)
+                sync_service = self.telemetry_sync_factory(session)
                 await sync_service.sync_telemetry(limit=settings.SYNC_TELEMETRY_LIMIT)
 
             sync_duration = (datetime.now() - sync_start).total_seconds()

@@ -1,10 +1,9 @@
 from fastapi import APIRouter, HTTPException, Depends, Query, Request
-from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Dict, Optional, Any
 from pydantic import BaseModel, Field
 
-from ...db.base import get_db_async
 from ...services.services import MonitoringAsyncService
+from ...core.dependencies import get_monitoring_service
 from ..rate_limiter import limiter
 
 router = APIRouter()
@@ -37,7 +36,7 @@ class ServiceResponse(BaseModel):
 async def list_services(
     request: Request,
     active_only: bool = False,
-    db: AsyncSession = Depends(get_db_async),
+    service: MonitoringAsyncService = Depends(get_monitoring_service),
 ):
     """
     Lists all monitoring services.
@@ -45,7 +44,6 @@ async def list_services(
     Parameters:
     - active_only: If true, only return active services
     """
-    service = MonitoringAsyncService(db)
     services = await service.list_monitoring_services(active_only)
     return services
 
@@ -53,13 +51,14 @@ async def list_services(
 @router.post("/start/", response_model=ServiceResponse)
 @shared_limit_execute
 async def start_monitoring_service(
-    request: Request, config: ContainerConfig, db: AsyncSession = Depends(get_db_async)
+    request: Request,
+    config: ContainerConfig,
+    service: MonitoringAsyncService = Depends(get_monitoring_service),
 ):
     """
     Starts a new Docker container running a monitoring service for given MQTT topics.
     Configuration details are stored in the MonitoringServices database.
     """
-    service = MonitoringAsyncService(db)
 
     try:
         monitoring_service = await service.create_monitoring_service(
@@ -88,7 +87,7 @@ async def get_service_details(
     request: Request,
     container_name: Optional[str] = Query(default=None),
     container_id: Optional[str] = Query(default=None),
-    db: AsyncSession = Depends(get_db_async),
+    service: MonitoringAsyncService = Depends(get_monitoring_service),
 ):
     """
     Gets details for a specific monitoring service by container name or ID.
@@ -104,8 +103,6 @@ async def get_service_details(
             status_code=400,
             detail="Provide only one of container_name or container_id.",
         )
-
-    service = MonitoringAsyncService(db)
     service_detail = await service.get_monitoring_service(container_name, container_id)
 
     if not service_detail:
@@ -120,7 +117,7 @@ async def stop_monitoring_service(
     request: Request,
     container_name: Optional[str] = Query(default=None),
     container_id: Optional[str] = Query(default=None),
-    db: AsyncSession = Depends(get_db_async),
+    service: MonitoringAsyncService = Depends(get_monitoring_service),
 ):
     """
     Stops and removes a running Docker container with the specified name.
@@ -137,8 +134,6 @@ async def stop_monitoring_service(
             status_code=400,
             detail="Provide only one of container_name or container_id.",
         )
-
-    service = MonitoringAsyncService(db)
 
     success = await service.stop_monitoring_service(container_name, container_id)
 

@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
@@ -34,14 +35,69 @@ logger = setup_logging(
     enable_correlation=True,
 )
 
-app = FastAPI(title=settings.APP_NAME)
+
+# Helper functions for startup tasks
+async def _initialize_database():
+    """Creates all database tables."""
+    async with async_engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    logger.info("Database tables created successfully")
+
+
+def _create_service_dependencies() -> dict:
+    """Resolves and creates all service dependencies."""
+    api_client = get_charger_api_client()
+    logger.info(f"Initialized API client: {type(api_client).__name__}")
+
+    def charger_sync_factory(session):
+        from .services.chargers import ChargersSyncService
+
+        return ChargersSyncService(session, api_client)
+
+    def telemetry_sync_factory(session):
+        from .services.telemetry import TelemetrySyncService
+
+        return TelemetrySyncService(session, api_client)
+
+    return {
+        "charger_sync_factory": charger_sync_factory,
+        "telemetry_sync_factory": telemetry_sync_factory,
+    }
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Manages application startup and shutdown events."""
+    logger.info("Application startup...")
+
+    # Initialize database
+    await _initialize_database()
+
+    # Create service dependencies
+    service_deps = _create_service_dependencies()
+
+    # Initialize background sync service
+    background_sync = BackgroundSyncService(**service_deps)
+    await background_sync.start()
+    logger.info("Background sync service started")
+
+    # Store in app state for access in endpoints
+    app.state.background_sync = background_sync
+
+    # Application is now running
+    yield
+
+    # Shutdown logic
+    logger.info("Application shutdown...")
+    await background_sync.stop()
+    logger.info("Background sync service stopped")
+
+
+# Initialize FastAPI with lifespan manager
+app = FastAPI(title=settings.APP_NAME, lifespan=lifespan)
 
 app.state.limiter = limiter
 app.add_exception_handler(429, rate_limit_exceeded_handler)
-
-# Background sync service will be initialized in startup_event with dependency injection
-
-origins = ["http://localhost:8000", "http://localhost:5173"]
 
 # Add custom logging middleware first (innermost)
 app.add_middleware(LoggingMiddleware)
@@ -53,55 +109,11 @@ app.add_middleware(SlowAPIMiddleware)
 # Enable CORS Middleware (outermost)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow only specified origins
+    allow_origins=settings.CORS_ALLOWED_ORIGINS,  # Use configured origins
     allow_credentials=True,
     allow_methods=["*"],  # Allow all HTTP methods (POST, GET, etc.)
     allow_headers=["*"],  # Allow all headers
 )
-
-
-# Create database tables and start background services on startup
-@app.on_event("startup")
-async def startup_event():
-    """Create database tables and start background services on application startup"""
-    async with async_engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    logger.info("Database tables created successfully")
-
-    # Composition Root - Resolve dependencies ONCE
-    api_client = get_charger_api_client()
-    logger.info(f"Initialized API client: {type(api_client).__name__}")
-
-    # Create factories that close over the api_client
-    def charger_sync_factory(session):
-        from .services.chargers import ChargersSyncService
-
-        return ChargersSyncService(session, api_client)
-
-    def telemetry_sync_factory(session):
-        from .services.telemetry import TelemetrySyncService
-
-        return TelemetrySyncService(session, api_client)
-
-    # Inject factories into BackgroundSyncService
-    background_sync = BackgroundSyncService(
-        charger_sync_factory=charger_sync_factory,
-        telemetry_sync_factory=telemetry_sync_factory,
-    )
-    app.state.background_sync = background_sync  # Store for shutdown
-
-    # Start background sync service
-    await background_sync.start()
-    logger.info("Background sync service started")
-
-
-# Stop background services on shutdown
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Stop background services on application shutdown"""
-    if hasattr(app.state, "background_sync"):
-        await app.state.background_sync.stop()
-        logger.info("Background sync service stopped")
 
 
 # Include versioned API routes

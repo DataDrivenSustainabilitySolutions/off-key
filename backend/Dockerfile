@@ -191,7 +191,7 @@ USER mqtt
 WORKDIR /app
 
 # Run the MQTT proxy service
-CMD ["/app/bin/python", "-m", "off_key.services.mqtt.proxy_service"]
+CMD ["/app/bin/python", "-m", "off_key.services.mqtt"]
 
 ########################################################################################################################
 # Production worker runtime

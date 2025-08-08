@@ -128,6 +128,12 @@ class Settings(BaseSettings):
     ENABLE_REQUEST_LOGGING: bool = True  # Log all API requests/responses
     ENABLE_PERFORMANCE_LOGGING: bool = True  # Log timing information
 
+    # CORS Configuration
+    CORS_ALLOWED_ORIGINS: list[str] = [
+        "http://localhost:8000",
+        "http://localhost:5173",
+    ]  # List of allowed origins for CORS
+
     @property
     def database_url(self):
         return (

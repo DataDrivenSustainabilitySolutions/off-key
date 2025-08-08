@@ -279,18 +279,3 @@ class MQTTProxyService:
             )
 
         return metrics
-
-
-# Entry point for standalone execution
-async def main():
-    """Main entry point for MQTT proxy service"""
-    # Import here to avoid circular imports in standalone mode
-    from ...core.dependencies import get_charger_api_client
-
-    api_client = get_charger_api_client()
-    service = MQTTProxyService(api_client)
-    await service.run()
-
-
-if __name__ == "__main__":
-    asyncio.run(main())

@@ -190,12 +190,6 @@ COPY --from=mqtt-builder --chown=mqtt:mqtt /app /app
 USER mqtt
 WORKDIR /app
 
-EXPOSE 8001
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD curl -f http://localhost:8001/health || exit 1
-
 # Run the MQTT proxy service
 CMD ["/app/bin/python", "-m", "off_key.services.mqtt.proxy_service"]
 

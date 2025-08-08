@@ -1,10 +1,3 @@
-"""
-Health Check Functions for Application Components
-
-Encapsulated health check logic with consistent fail-safe patterns for
-database, background sync, and other system components.
-"""
-
 from typing import TYPE_CHECKING
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession

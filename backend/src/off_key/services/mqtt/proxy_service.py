@@ -2,7 +2,7 @@
 Main MQTT Proxy Service Orchestrator
 
 Orchestrates all MQTT proxy service components including API-Key authentication,
-MQTT client, charger discovery, database writer, message router, and health monitoring.
+MQTT client, charger discovery, database writer, and message router.
 """
 
 import asyncio
@@ -20,7 +20,6 @@ from .charger_discovery import ChargerDiscoveryService
 from ...core.client.base_client import ChargerAPIClient
 from .database_writer import DatabaseWriter
 from .message_router import MessageRouter, DatabaseDestination
-from .health_monitor import HealthMonitor, HealthStatus
 
 
 class MQTTProxyService:
@@ -32,7 +31,6 @@ class MQTTProxyService:
     2. Manages component lifecycle
     3. Handles graceful shutdown
     4. Coordinates message flow
-    5. Monitors health status
     """
 
     def __init__(self, api_client: ChargerAPIClient):
@@ -46,7 +44,6 @@ class MQTTProxyService:
         self.charger_discovery: Optional[ChargerDiscoveryService] = None
         self.database_writer: Optional[DatabaseWriter] = None
         self.message_router: Optional[MessageRouter] = None
-        self.health_monitor: Optional[HealthMonitor] = None
 
         # Service state
         self.is_running = False
@@ -69,10 +66,6 @@ class MQTTProxyService:
             # Initialize database session
             self.db_session = AsyncSessionLocal()
 
-            # Initialize health monitor first
-            self.health_monitor = HealthMonitor(self.config)
-            await self.health_monitor.start()
-
             # Initialize API-Key authentication
             self.auth_handler = ApiKeyAuthHandler(
                 self.config.mqtt_username, self.config.mqtt_api_key
@@ -80,17 +73,6 @@ class MQTTProxyService:
 
             # Authenticate with API-Key (simple validation)
             await self.auth_handler.authenticate()
-
-            # Update health status
-            await self.health_monitor.update_component_health(
-                "api_key_auth",
-                HealthStatus.HEALTHY,
-                "AUTH",
-                {
-                    "authentication_status": "authenticated",
-                    "credentials_info": self.auth_handler.get_credentials_info(),
-                },
-            )
 
             # Initialize MQTT client
             self.mqtt_client = MQTTClient(self.config, self.auth_handler)
@@ -100,14 +82,6 @@ class MQTTProxyService:
             connected = await self.mqtt_client.connect()
             if not connected:
                 raise RuntimeError("Failed to connect to MQTT broker")
-
-            # Update health status
-            await self.health_monitor.update_component_health(
-                "mqtt_client",
-                HealthStatus.HEALTHY,
-                "CLIENT",
-                self.mqtt_client.get_health_status(),
-            )
 
             # Initialize charger discovery
             self.charger_discovery = ChargerDiscoveryService(
@@ -129,25 +103,9 @@ class MQTTProxyService:
                     self.mqtt_client, charger_info
                 )
 
-            # Update health status
-            await self.health_monitor.update_component_health(
-                "charger_discovery",
-                HealthStatus.HEALTHY,
-                "SERVICE",
-                self.charger_discovery.get_discovery_metrics(),
-            )
-
             # Initialize database writer
             self.database_writer = DatabaseWriter(self.config, self.db_session)
             await self.database_writer.start()
-
-            # Update health status
-            await self.health_monitor.update_component_health(
-                "database_writer",
-                HealthStatus.HEALTHY,
-                "DATABASE",
-                self.database_writer.get_performance_metrics(),
-            )
 
             # Initialize message router
             self.message_router = MessageRouter(self.config)
@@ -157,17 +115,6 @@ class MQTTProxyService:
             db_destination = DatabaseDestination(self.database_writer)
             self.message_router.add_destination(db_destination, is_default=True)
 
-            # Update health status
-            await self.health_monitor.update_component_health(
-                "message_router",
-                HealthStatus.HEALTHY,
-                "ROUTER",
-                self.message_router.get_performance_metrics(),
-            )
-
-            # Start periodic health updates
-            asyncio.create_task(self._health_update_loop())
-
             self.is_running = True
 
             logger.info(
@@ -176,7 +123,6 @@ class MQTTProxyService:
                     **self._log_context,
                     "chargers_discovered": len(chargers),
                     "subscribed_topics": len(self.charger_discovery.get_all_topics()),
-                    "health_status": self.health_monitor.get_health_status(),
                 },
             )
 
@@ -186,15 +132,6 @@ class MQTTProxyService:
                 extra=self._log_context,
                 exc_info=True,
             )
-
-            # Update health status
-            if self.health_monitor:
-                await self.health_monitor.update_component_health(
-                    "proxy_service",
-                    HealthStatus.CRITICAL,
-                    "SERVICE",
-                    error_message=str(e),
-                )
 
             # Cleanup on failure
             await self.stop()
@@ -218,7 +155,6 @@ class MQTTProxyService:
             ("database_writer", self.database_writer),
             ("mqtt_client", self.mqtt_client),
             ("auth_handler", self.auth_handler),
-            ("health_monitor", self.health_monitor),
         ]
 
         for component_name, component in components:
@@ -256,91 +192,10 @@ class MQTTProxyService:
             if self.message_router:
                 await self.message_router.route_message(message)
 
-            # Update health counters
-            if self.health_monitor:
-                self.health_monitor.add_performance_counter("messages_processed")
-
         except Exception as e:
             logger.error(
                 f"Error handling MQTT message: {e}",
                 extra={**self._log_context, "topic": message.topic, "error": str(e)},
-                exc_info=True,
-            )
-
-            # Update health status
-            if self.health_monitor:
-                self.health_monitor.add_performance_counter("message_errors")
-
-    async def _health_update_loop(self):
-        """Periodic health status updates"""
-        try:
-            while not self.shutdown_event.is_set():
-                await asyncio.sleep(30)  # Update every 30 seconds
-
-                # Update component health statuses
-                if self.mqtt_client:
-                    await self.health_monitor.update_component_health(
-                        "mqtt_client",
-                        (
-                            HealthStatus.HEALTHY
-                            if self.mqtt_client.state.value == "connected"
-                            else HealthStatus.UNHEALTHY
-                        ),
-                        "CLIENT",
-                        self.mqtt_client.get_health_status(),
-                    )
-
-                if self.database_writer:
-                    writer_health = self.database_writer.get_health_status()
-                    status = HealthStatus.HEALTHY
-                    if writer_health["status"] == "unhealthy":
-                        status = HealthStatus.UNHEALTHY
-                    elif writer_health["status"] == "degraded":
-                        status = HealthStatus.DEGRADED
-
-                    await self.health_monitor.update_component_health(
-                        "database_writer",
-                        status,
-                        "DATABASE",
-                        self.database_writer.get_performance_metrics(),
-                    )
-
-                if self.message_router:
-                    router_health = self.message_router.get_health_status()
-                    status = HealthStatus.HEALTHY
-                    if router_health["status"] == "unhealthy":
-                        status = HealthStatus.UNHEALTHY
-                    elif router_health["status"] == "degraded":
-                        status = HealthStatus.DEGRADED
-
-                    await self.health_monitor.update_component_health(
-                        "message_router",
-                        status,
-                        "ROUTER",
-                        self.message_router.get_performance_metrics(),
-                    )
-
-                if self.charger_discovery:
-                    discovery_health = self.charger_discovery.get_health_status()
-                    status = HealthStatus.HEALTHY
-                    if discovery_health["status"] == "unhealthy":
-                        status = HealthStatus.UNHEALTHY
-                    elif discovery_health["status"] == "degraded":
-                        status = HealthStatus.DEGRADED
-
-                    await self.health_monitor.update_component_health(
-                        "charger_discovery",
-                        status,
-                        "SERVICE",
-                        self.charger_discovery.get_discovery_metrics(),
-                    )
-
-        except asyncio.CancelledError:
-            logger.info("Health update loop cancelled", extra=self._log_context)
-        except Exception as e:
-            logger.error(
-                f"Error in health update loop: {e}",
-                extra=self._log_context,
                 exc_info=True,
             )
 
@@ -378,9 +233,32 @@ class MQTTProxyService:
 
     def get_health_status(self):
         """Get current health status"""
-        if self.health_monitor:
-            return self.health_monitor.get_health_status()
-        return {"status": "unknown"}
+        status = {
+            "status": "healthy" if self.is_running else "stopped",
+            "components": {},
+        }
+
+        if self.mqtt_client:
+            status["components"]["mqtt_client"] = {
+                "connected": self.mqtt_client.state.value == "connected"
+            }
+
+        if self.database_writer:
+            status["components"][
+                "database_writer"
+            ] = self.database_writer.get_health_status()
+
+        if self.message_router:
+            status["components"][
+                "message_router"
+            ] = self.message_router.get_health_status()
+
+        if self.charger_discovery:
+            status["components"][
+                "charger_discovery"
+            ] = self.charger_discovery.get_health_status()
+
+        return status
 
     def get_performance_metrics(self):
         """Get performance metrics"""
@@ -399,9 +277,6 @@ class MQTTProxyService:
             metrics["charger_discovery"] = (
                 self.charger_discovery.get_discovery_metrics()
             )
-
-        if self.health_monitor:
-            metrics["health_monitor"] = self.health_monitor.get_detailed_metrics()
 
         return metrics
 

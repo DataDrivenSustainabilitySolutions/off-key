@@ -150,7 +150,7 @@ async def liveness_check():
     return JSONResponse(
         content={
             "status": "alive",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "service": settings.APP_NAME,
         },
         status_code=200,

@@ -9,7 +9,6 @@ Components:
 - MQTT client with WebSocket/TLS support
 - Message routing to multiple destinations
 - Optimized database writer for telemetry data
-- Health monitoring and metrics
 - Charger discovery and subscription management
 """
 

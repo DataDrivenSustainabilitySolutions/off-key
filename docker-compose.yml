@@ -136,20 +136,12 @@ services:
     image: "${MQTT_PROXY_IMAGE:-off-key-mqtt-proxy:latest}"
     container_name: mqtt_proxy
     env_file: .env
-    ports:
-      - "8001:8001"  # Health/metrics endpoint
     depends_on:
       postgres:
         condition: service_healthy
     networks:
       - app-network
     restart: always
-    healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost:8001/health" ]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
     environment:
       - SERVICE_TYPE=mqtt_proxy
       - MQTT_TELEMETRY_ENABLED=true

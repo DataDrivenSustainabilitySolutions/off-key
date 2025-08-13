@@ -459,3 +459,25 @@ class ChargerDiscoveryService:
                 else None
             ),
         }
+
+    async def stop(self):
+        """
+        Stop charger discovery service (implements Stoppable protocol)
+
+        The ChargerDiscoveryService is stateless and doesn't maintain background
+        tasks or persistent connections, so stopping just clears the discovery state.
+        """
+        logger.debug("Stopping charger discovery service")
+
+        # Clear discovery state
+        self.chargers.clear()
+        self.failed_chargers.clear()
+        self.last_discovery_time = None
+
+        # Reset metrics
+        self.total_chargers_discovered = 0
+        self.total_hierarchies_discovered = 0
+        self.total_subscriptions_attempted = 0
+        self.total_subscriptions_successful = 0
+
+        logger.debug("Charger discovery service stopped")

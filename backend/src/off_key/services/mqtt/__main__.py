@@ -7,7 +7,7 @@ occur when a module is both imported as a package component and executed as a sc
 """
 
 import asyncio
-from ...core.dependencies import get_charger_api_client
+from ...core.provider import get_charger_api_client
 from .proxy_service import MQTTProxyService
 
 

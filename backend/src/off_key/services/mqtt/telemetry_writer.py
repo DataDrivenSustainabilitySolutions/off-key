@@ -113,7 +113,6 @@ class DatabaseWriter:
         self.batch_size = config.batch_size
         self.batch_timeout = config.batch_timeout
         self.max_retries = 3
-        self.retry_delay = 1.0
 
         # Write queues
         self.pending_batch = WriteBatch()
@@ -137,6 +136,7 @@ class DatabaseWriter:
         self._writer_task: Optional[asyncio.Task] = None
         self._health_task: Optional[asyncio.Task] = None
         self._shutdown_event = asyncio.Event()
+        self._batch_ready_event = asyncio.Event()
 
         # Logging context
         self._log_context = {"component": "database_writer", "service": "mqtt_proxy"}
@@ -233,12 +233,9 @@ class DatabaseWriter:
                     },
                 )
 
-            # Check if batch is ready for processing
-            if (
-                self.pending_batch.size() >= self.batch_size
-                or self.pending_batch.get_age_seconds() >= self.batch_timeout
-            ):
-                await self._trigger_batch_processing()
+            # Check if batch is ready for processing due to size
+            if self.pending_batch.size() >= self.batch_size:
+                self._batch_ready_event.set()
 
         except Exception as e:
             logger.error(
@@ -353,25 +350,34 @@ class DatabaseWriter:
         """Background loop for batch processing"""
         try:
             while not self._shutdown_event.is_set():
-                # Check if batch timeout has been reached
-                if (
-                    self.pending_batch.size() > 0
-                    and self.pending_batch.get_age_seconds() >= self.batch_timeout
-                ):
-
-                    logger.debug(
-                        f"Batch timeout reached, "
-                        f"processing {self.pending_batch.size()} records",
-                        extra={
-                            **self._log_context,
-                            "batch_size": self.pending_batch.size(),
-                            "batch_age": self.pending_batch.get_age_seconds(),
-                        },
+                try:
+                    # Wait for batch ready event OR timeout
+                    await asyncio.wait_for(
+                        self._batch_ready_event.wait(), timeout=self.batch_timeout
                     )
+                    # Batch ready due to size - process immediately
                     await self._trigger_batch_processing()
 
-                # Sleep for a short interval
-                await asyncio.sleep(0.1)
+                except asyncio.TimeoutError:
+                    # Timeout reached - check for aged batch
+                    if (
+                        self.pending_batch.size() > 0
+                        and self.pending_batch.get_age_seconds() >= self.batch_timeout
+                    ):
+                        logger.debug(
+                            f"Batch timeout reached, "
+                            f"processing {self.pending_batch.size()} records",
+                            extra={
+                                **self._log_context,
+                                "batch_size": self.pending_batch.size(),
+                                "batch_age": self.pending_batch.get_age_seconds(),
+                            },
+                        )
+                        await self._trigger_batch_processing()
+
+                finally:
+                    # Always clear the event for next iteration
+                    self._batch_ready_event.clear()
 
         except asyncio.CancelledError:
             logger.info("Writer loop cancelled", extra=self._log_context)
@@ -398,7 +404,7 @@ class DatabaseWriter:
                 batch.retry_count = attempt
 
                 if attempt > 0:
-                    delay = self.retry_delay * (2 ** (attempt - 1))
+                    delay = self.config.get_jittered_backoff_delay(attempt - 1)
                     logger.info(
                         f"Retrying batch processing "
                         f"(attempt {attempt + 1}/{max_attempts}) in {delay}s",
@@ -595,7 +601,7 @@ class DatabaseWriter:
         """Background health monitoring loop"""
         try:
             while not self._shutdown_event.is_set():
-                await asyncio.sleep(30)  # Check every 30 seconds
+                await asyncio.sleep(self.config.health_monitor_interval)
 
                 # Log health metrics periodically
                 metrics = self.get_performance_metrics()

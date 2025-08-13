@@ -15,8 +15,9 @@ from .api.v1.routes import router as v1_router
 from .api.middleware import LoggingMiddleware, SecurityLoggingMiddleware
 from .db.models import Base
 from .services.background_sync import BackgroundSyncService
-from .core.dependencies import get_charger_api_client, get_background_sync_service
+from .core.provider import get_charger_api_client, get_background_sync_service
 from .core import health_checks
+from .utils.enum import HealthStatus
 
 # See https://github.com/pyca/bcrypt/issues/684#issuecomment-2465572106
 import bcrypt
@@ -131,14 +132,16 @@ async def health_check(
     """
     # Run all checks using encapsulated helper functions
     checks = {
-        "api": "healthy",  # Assuming API is healthy if this endpoint is reachable
+        "api": HealthStatus.HEALTHY,  # Assuming healthy if this endpoint is reachable
         "database": await health_checks.check_database(db),
         "background_sync": health_checks.check_background_sync(sync_service),
     }
 
     # Derive overall status declaratively from check results
-    is_fully_healthy = all(status == "healthy" for status in checks.values())
-    overall_status = "healthy" if is_fully_healthy else "unhealthy"
+    is_fully_healthy = all(status == HealthStatus.HEALTHY for status in checks.values())
+    overall_status = (
+        HealthStatus.HEALTHY if is_fully_healthy else HealthStatus.UNHEALTHY
+    )
 
     # Construct final response
     health_status = {
@@ -149,7 +152,7 @@ async def health_check(
     }
 
     # Return appropriate status code based on overall health
-    status_code = 200 if overall_status == "healthy" else 503
+    status_code = 200 if overall_status == HealthStatus.HEALTHY else 503
     return JSONResponse(content=health_status, status_code=status_code)
 
 

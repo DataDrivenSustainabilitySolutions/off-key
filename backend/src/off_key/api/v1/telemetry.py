@@ -5,7 +5,7 @@ from sqlalchemy import select
 from ...db.base import get_db_async
 from ...db.models import Telemetry
 from ...services.telemetry import TelemetrySyncService
-from ...core.dependencies import get_telemetry_sync_service
+from ...core.provider import get_telemetry_sync_service
 
 router = APIRouter()
 

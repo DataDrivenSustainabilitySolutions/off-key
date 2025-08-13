@@ -3,7 +3,7 @@ from typing import List, Dict, Optional, Any
 from pydantic import BaseModel, Field
 
 from ...services.services import MonitoringAsyncService
-from ...core.dependencies import get_monitoring_service
+from ...core.provider import get_monitoring_service
 from ..rate_limiter import limiter
 
 router = APIRouter()

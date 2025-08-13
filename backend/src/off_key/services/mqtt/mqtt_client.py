@@ -16,7 +16,7 @@ from enum import Enum
 import paho.mqtt.client as mqtt
 from ...core.logs import logger
 from .config import MQTTConfig
-from .api_key_auth import ApiKeyAuthHandler, ApiKeyAuthError
+from .auth import ApiKeyAuthHandler, ApiKeyAuthError
 
 
 class ConnectionState(Enum):
@@ -215,6 +215,10 @@ class MQTTClient:
             logger.error(f"Unexpected error during MQTT connection: {e}")
             self.state = ConnectionState.FAILED
             return False
+
+    async def stop(self):
+        """Stop MQTT client (implements Stoppable protocol)"""
+        await self.disconnect()
 
     async def disconnect(self):
         """Disconnect from MQTT broker"""
@@ -458,10 +462,8 @@ class MQTTClient:
             self.reconnect_attempts += 1
             self.state = ConnectionState.RECONNECTING
 
-            # Exponential backoff
-            delay = min(
-                self.config.reconnect_delay * (2 ** (self.reconnect_attempts - 1)), 300
-            )
+            # Exponential backoff with jitter
+            delay = self.config.get_jittered_backoff_delay(self.reconnect_attempts - 1)
             logger.info(
                 f"Reconnecting in {delay} seconds (attempt {self.reconnect_attempts})"
             )

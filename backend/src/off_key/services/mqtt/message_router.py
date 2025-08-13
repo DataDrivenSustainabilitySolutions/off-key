@@ -330,6 +330,7 @@ class MessageRouter:
         self._cleanup_task: Optional[asyncio.Task] = None
         self._metrics_task: Optional[asyncio.Task] = None
         self._shutdown_event = asyncio.Event()
+        self._all_routes_completed_event = asyncio.Event()
 
         # Logging context
         self._log_context = {"component": "message_router", "service": "mqtt_proxy"}
@@ -381,18 +382,37 @@ class MessageRouter:
             except asyncio.CancelledError:
                 pass
 
-        # Wait for active routes to complete
-        if self.active_routes:
+        # Wait for active routes to complete (race-condition-free)
+        # First: Handle already-complete case atomically
+        if not self.active_routes:
+            logger.debug("All active routes already completed", extra=self._log_context)
+            self._all_routes_completed_event.set()  # Ensure consistent event state
+
+        # Second: Only wait if event is not already set (prevents race condition)
+        if not self._all_routes_completed_event.is_set():
             logger.info(
                 f"Waiting for {len(self.active_routes)} active routes to complete",
                 extra={**self._log_context, "active_routes": len(self.active_routes)},
             )
 
-            # Wait up to 30 seconds for completion
-            for _ in range(300):  # 30 seconds with 0.1s intervals
-                if not self.active_routes:
-                    break
-                await asyncio.sleep(0.1)
+            try:
+                await asyncio.wait_for(
+                    self._all_routes_completed_event.wait(),
+                    timeout=self.config.graceful_shutdown_timeout,
+                )
+                logger.info(
+                    "All active routes completed successfully", extra=self._log_context
+                )
+            except asyncio.TimeoutError:
+                logger.warning(
+                    f"Graceful shutdown timeout: "
+                    f"{len(self.active_routes)} routes did not complete",
+                    extra={
+                        **self._log_context,
+                        "remaining_routes": len(self.active_routes),
+                        "timeout": self.config.graceful_shutdown_timeout,
+                    },
+                )
 
         logger.info("Message router stopped", extra=self._log_context)
 
@@ -540,6 +560,10 @@ class MessageRouter:
         route_info.completed_at = datetime.now()
         self.active_routes.pop(route_info.message_id, None)
 
+        # Signal completion if all routes are done (for graceful shutdown)
+        if not self.active_routes:
+            self._all_routes_completed_event.set()
+
         # Update metrics
         self.total_messages_routed += 1
         self.total_routing_time += route_info.get_processing_time()
@@ -624,7 +648,9 @@ class MessageRouter:
                                 "message_id": route_info.message_id,
                             },
                         )
-                        await asyncio.sleep(0.1 * (2**attempt))  # Exponential backoff
+                        await asyncio.sleep(
+                            self.config.get_jittered_backoff_delay(attempt)
+                        )
                     else:
                         route_info.results[dest_name] = RouteResult(
                             destination=dest_name,
@@ -650,7 +676,7 @@ class MessageRouter:
                             "error": str(e),
                         },
                     )
-                    await asyncio.sleep(0.1 * (2**attempt))
+                    await asyncio.sleep(self.config.get_jittered_backoff_delay(attempt))
                 else:
                     route_info.results[dest_name] = RouteResult(
                         destination=dest_name,
@@ -673,7 +699,7 @@ class MessageRouter:
         """Background cleanup loop"""
         try:
             while not self._shutdown_event.is_set():
-                await asyncio.sleep(60)  # Run every minute
+                await asyncio.sleep(self.config.cleanup_interval)
 
                 # Clean up old completed routes
                 if len(self.completed_routes) > self.max_completed_routes:
@@ -700,7 +726,7 @@ class MessageRouter:
         """Background metrics loop"""
         try:
             while not self._shutdown_event.is_set():
-                await asyncio.sleep(300)  # Run every 5 minutes
+                await asyncio.sleep(self.config.metrics_interval)
 
                 # Log performance metrics
                 metrics = self.get_performance_metrics()

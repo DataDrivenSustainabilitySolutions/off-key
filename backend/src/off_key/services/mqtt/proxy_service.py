@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ...core.config import settings
 from ...core.logs import logger
 from ...db.base import AsyncSessionLocal
+from ...utils.enum import HealthStatus
 from .auth import ApiKeyAuthHandler
 from .facade import MQTTClient
 from .charger_discovery import ChargerDiscoveryService
@@ -369,7 +370,9 @@ class MQTTProxyService:
     def get_health_status(self):
         """Get current health status"""
         status = {
-            "status": "healthy" if self.is_running else "stopped",
+            "status": (
+                HealthStatus.HEALTHY if self.is_running else HealthStatus.DISABLED
+            ),
             "components": {},
         }
 

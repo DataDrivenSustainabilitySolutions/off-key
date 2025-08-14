@@ -12,6 +12,7 @@ from typing import Optional, Dict, Any, Callable, Union, Awaitable
 
 import paho.mqtt.client as mqtt
 from ...core.logs import logger
+from ...utils.enum import HealthStatus
 from .config import MQTTConfig
 from .auth import ApiKeyAuthHandler
 from .client.models import ConnectionState, MQTTMessage
@@ -214,7 +215,9 @@ class MQTTClient:
 
         return {
             "status": (
-                "healthy" if self.state == ConnectionState.CONNECTED else "unhealthy"
+                HealthStatus.HEALTHY
+                if self.state == ConnectionState.CONNECTED
+                else HealthStatus.UNHEALTHY
             ),
             "state": self.state.value,
             "uptime_seconds": uptime_seconds,

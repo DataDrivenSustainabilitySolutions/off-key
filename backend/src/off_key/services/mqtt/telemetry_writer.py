@@ -21,6 +21,7 @@ from sqlalchemy import update
 from ...core.logs import logger, log_performance
 from ...db.models import Telemetry, Charger
 from ...utils.string import clean_string, string_to_float
+from ...utils.enum import HealthStatus
 from .config import MQTTConfig
 from .client.models import MQTTMessage
 
@@ -607,7 +608,7 @@ class DatabaseWriter:
                 metrics = self.get_performance_metrics()
                 health = self.get_health_status()
 
-                if health["status"] != "healthy":
+                if health["status"] != HealthStatus.HEALTHY:
                     logger.warning(
                         f"Database writer health check: {health['status']}",
                         extra={
@@ -668,25 +669,25 @@ class DatabaseWriter:
         metrics = self.get_performance_metrics()
 
         # Determine health status
-        status = "healthy"
+        status = HealthStatus.HEALTHY
 
         # Check for high failure rate
         if metrics["batch_success_rate"] < 95:
-            status = "unhealthy"
+            status = HealthStatus.UNHEALTHY
         elif metrics["batch_success_rate"] < 98:
-            status = "degraded"
+            status = HealthStatus.DEGRADED
 
         # Check for high latency
         if metrics["average_write_latency"] > 5.0:
-            status = "unhealthy"
+            status = HealthStatus.UNHEALTHY
         elif metrics["average_write_latency"] > 2.0:
-            status = "degraded"
+            status = HealthStatus.DEGRADED
 
         # Check for too many pending batches
         if metrics["processing_batches_count"] > 10:
-            status = "unhealthy"
+            status = HealthStatus.UNHEALTHY
         elif metrics["processing_batches_count"] > 5:
-            status = "degraded"
+            status = HealthStatus.DEGRADED
 
         return {
             "status": status,

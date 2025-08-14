@@ -8,5 +8,6 @@ class RoleEnum(str, Enum):
 
 class HealthStatus(str, Enum):
     HEALTHY = "healthy"
+    DEGRADED = "degraded"
     UNHEALTHY = "unhealthy"
     DISABLED = "disabled"

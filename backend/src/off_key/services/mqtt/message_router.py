@@ -14,6 +14,7 @@ from enum import Enum
 from abc import ABC, abstractmethod
 
 from ...core.logs import logger
+from ...utils.enum import HealthStatus
 from .config import MQTTConfig
 from .client.models import MQTTMessage
 
@@ -135,13 +136,13 @@ class MessageDestination(ABC):
         metrics = self.get_metrics()
 
         # Determine health status
-        status = "healthy"
+        status = HealthStatus.HEALTHY
         if not self.enabled:
-            status = "disabled"
+            status = HealthStatus.DISABLED
         elif metrics["success_rate"] < 95:
-            status = "unhealthy"
+            status = HealthStatus.UNHEALTHY
         elif metrics["success_rate"] < 98:
-            status = "degraded"
+            status = HealthStatus.DEGRADED
 
         return {"destination": self.name, "status": status, **metrics}
 
@@ -784,31 +785,31 @@ class MessageRouter:
         metrics = self.get_performance_metrics()
 
         # Determine overall health
-        status = "healthy"
+        status = HealthStatus.HEALTHY
 
         # Check routing success rate (only if messages have been processed)
         if self.total_messages_routed == 0:
-            status = "healthy"  # No messages yet - normal bootstrap state
+            status = HealthStatus.HEALTHY  # No messages yet - normal bootstrap state
         elif metrics["routing_success_rate"] < 95:
-            status = "unhealthy"
+            status = HealthStatus.UNHEALTHY
         elif metrics["routing_success_rate"] < 98:
-            status = "degraded"
+            status = HealthStatus.DEGRADED
 
         # Check for too many active routes
         if metrics["active_routes"] > self.max_concurrent_routes * 0.8:
-            status = "unhealthy"
+            status = HealthStatus.UNHEALTHY
         elif metrics["active_routes"] > self.max_concurrent_routes * 0.5:
-            status = "degraded"
+            status = HealthStatus.DEGRADED
 
         # Check destination health
         unhealthy_destinations = [
             dest.name
             for dest in self.destinations.values()
-            if dest.get_health_status()["status"] == "unhealthy"
+            if dest.get_health_status()["status"] == HealthStatus.UNHEALTHY
         ]
 
         if unhealthy_destinations:
-            status = "degraded"
+            status = HealthStatus.DEGRADED
 
         return {
             "status": status,

@@ -17,6 +17,7 @@ from ...core.client.base_client import ChargerAPIClient
 from ...core.config import settings
 from ...core.logs import logger
 from ...db.models import Charger
+from ...utils.enum import HealthStatus
 from .config import MQTTConfig
 
 
@@ -444,9 +445,13 @@ class ChargerDiscoveryService:
 
         return {
             "status": (
-                "healthy"
+                HealthStatus.HEALTHY
                 if health_score >= 95
-                else "degraded" if health_score >= 80 else "unhealthy"
+                else (
+                    HealthStatus.DEGRADED
+                    if health_score >= 80
+                    else HealthStatus.UNHEALTHY
+                )
             ),
             "health_score": round(health_score, 2),
             "total_chargers": total_chargers,

@@ -22,7 +22,7 @@ from ...core.logs import logger, log_performance
 from ...db.models import Telemetry, Charger
 from ...utils.string import clean_string, string_to_float
 from .config import MQTTConfig
-from .mqtt_client import MQTTMessage
+from .client.models import MQTTMessage
 
 
 class WriteStatus(Enum):

@@ -15,7 +15,7 @@ from ...core.config import settings
 from ...core.logs import logger
 from ...db.base import AsyncSessionLocal
 from .auth import ApiKeyAuthHandler
-from .mqtt_client import MQTTClient
+from .facade import MQTTClient
 from .charger_discovery import ChargerDiscoveryService
 from ...core.client.base_client import ChargerAPIClient
 from .telemetry_writer import DatabaseWriter

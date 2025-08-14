@@ -15,7 +15,7 @@ from abc import ABC, abstractmethod
 
 from ...core.logs import logger
 from .config import MQTTConfig
-from .mqtt_client import MQTTMessage
+from .client.models import MQTTMessage
 
 
 class RouteStatus(Enum):

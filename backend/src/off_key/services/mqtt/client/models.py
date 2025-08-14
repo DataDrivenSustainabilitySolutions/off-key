@@ -8,10 +8,11 @@ import json
 from datetime import datetime
 from dataclasses import dataclass
 from enum import Enum
-from typing import Dict, Any
+from typing import Dict, Any, List, Optional
 
 import paho.mqtt.client as mqtt
 from ....core.logs import logger
+from ....utils.enum import HealthStatus
 
 
 class ConnectionState(Enum):
@@ -50,6 +51,38 @@ class MQTTMessage:
             qos=msg.qos,
             retain=msg.retain,
         )
+
+
+@dataclass
+class ClientConnectionInfo:
+    """MQTT client connection information"""
+
+    state: str
+    broker_host: str
+    broker_port: int
+    client_id: Optional[str]
+    connection_start_time: Optional[str]
+    reconnect_attempts: int
+    subscriptions: List[str]
+    pending_subscriptions: List[str]
+    messages_sent: int
+
+
+@dataclass
+class ClientHealthStatus:
+    """MQTT client health status"""
+
+    status: HealthStatus
+    state: str
+    uptime_seconds: float
+    messages_received: int
+    messages_sent: int
+    message_rate: float
+    active_subscriptions: int
+    reconnect_attempts: int
+    queue_size: int
+    last_message_time: Optional[str]
+    last_message_age_seconds: Optional[float]
 
 
 class MQTTClientError(Exception):

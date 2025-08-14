@@ -26,6 +26,34 @@ from .config import MQTTConfig
 from .client.models import MQTTMessage
 
 
+@dataclass
+class WriterPerformanceMetrics:
+    """Database writer performance metrics"""
+
+    total_records_received: int
+    total_records_written: int
+    total_records_failed: int
+    total_batches_processed: int
+    total_batches_failed: int
+    batch_success_rate: float
+    average_write_latency: float
+    pending_batch_size: int
+    processing_batches_count: int
+    failed_batches_count: int
+    unique_chargers_seen: int
+    total_messages_by_charger: Dict[str, int]
+
+
+@dataclass
+class WriterHealthStatus:
+    """Database writer health status"""
+
+    status: HealthStatus
+    records_per_second: float
+    batches_per_minute: float
+    performance: WriterPerformanceMetrics
+
+
 class WriteStatus(Enum):
     """Database write status"""
 
@@ -608,9 +636,9 @@ class DatabaseWriter:
                 metrics = self.get_performance_metrics()
                 health = self.get_health_status()
 
-                if health["status"] != HealthStatus.HEALTHY:
+                if health.status != HealthStatus.HEALTHY:
                     logger.warning(
-                        f"Database writer health check: {health['status']}",
+                        f"Database writer health check: {health.status}",
                         extra={
                             **self._log_context,
                             "health_status": health,
@@ -619,7 +647,7 @@ class DatabaseWriter:
                     )
                 elif self.total_batches_processed % 100 == 0:
                     logger.info(
-                        f"Database writer health check: {health['status']}",
+                        f"Database writer health check: {health.status}",
                         extra={
                             **self._log_context,
                             "health_status": health,
@@ -636,7 +664,7 @@ class DatabaseWriter:
                 exc_info=True,
             )
 
-    def get_performance_metrics(self) -> Dict[str, Any]:
+    def get_performance_metrics(self) -> WriterPerformanceMetrics:
         """Get performance metrics"""
         avg_latency = 0
         if self.write_latency_count > 0:
@@ -649,22 +677,22 @@ class DatabaseWriter:
                 / (self.total_batches_processed + self.total_batches_failed)
             ) * 100
 
-        return {
-            "total_records_received": self.total_records_received,
-            "total_records_written": self.total_records_written,
-            "total_records_failed": self.total_records_failed,
-            "total_batches_processed": self.total_batches_processed,
-            "total_batches_failed": self.total_batches_failed,
-            "batch_success_rate": round(success_rate, 2),
-            "average_write_latency": round(avg_latency, 3),
-            "pending_batch_size": self.pending_batch.size(),
-            "processing_batches_count": len(self.processing_batches),
-            "failed_batches_count": len(self.failed_batches),
-            "unique_chargers_seen": len(self.charger_last_seen),
-            "total_messages_by_charger": dict(self.charger_message_counts),
-        }
+        return WriterPerformanceMetrics(
+            total_records_received=self.total_records_received,
+            total_records_written=self.total_records_written,
+            total_records_failed=self.total_records_failed,
+            total_batches_processed=self.total_batches_processed,
+            total_batches_failed=self.total_batches_failed,
+            batch_success_rate=round(success_rate, 2),
+            average_write_latency=round(avg_latency, 3),
+            pending_batch_size=self.pending_batch.size(),
+            processing_batches_count=len(self.processing_batches),
+            failed_batches_count=len(self.failed_batches),
+            unique_chargers_seen=len(self.charger_last_seen),
+            total_messages_by_charger=dict(self.charger_message_counts),
+        )
 
-    def get_health_status(self) -> Dict[str, Any]:
+    def get_health_status(self) -> WriterHealthStatus:
         """Get health status for monitoring"""
         metrics = self.get_performance_metrics()
 
@@ -672,29 +700,29 @@ class DatabaseWriter:
         status = HealthStatus.HEALTHY
 
         # Check for high failure rate
-        if metrics["batch_success_rate"] < 95:
+        if metrics.batch_success_rate < 95:
             status = HealthStatus.UNHEALTHY
-        elif metrics["batch_success_rate"] < 98:
+        elif metrics.batch_success_rate < 98:
             status = HealthStatus.DEGRADED
 
         # Check for high latency
-        if metrics["average_write_latency"] > 5.0:
+        if metrics.average_write_latency > 5.0:
             status = HealthStatus.UNHEALTHY
-        elif metrics["average_write_latency"] > 2.0:
+        elif metrics.average_write_latency > 2.0:
             status = HealthStatus.DEGRADED
 
         # Check for too many pending batches
-        if metrics["processing_batches_count"] > 10:
+        if metrics.processing_batches_count > 10:
             status = HealthStatus.UNHEALTHY
-        elif metrics["processing_batches_count"] > 5:
+        elif metrics.processing_batches_count > 5:
             status = HealthStatus.DEGRADED
 
-        return {
-            "status": status,
-            "records_per_second": self._calculate_records_per_second(),
-            "batches_per_minute": self._calculate_batches_per_minute(),
-            **metrics,
-        }
+        return WriterHealthStatus(
+            status=status,
+            records_per_second=self._calculate_records_per_second(),
+            batches_per_minute=self._calculate_batches_per_minute(),
+            performance=metrics,
+        )
 
     def _calculate_records_per_second(self) -> float:
         """Calculate records per second rate"""

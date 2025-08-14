@@ -19,6 +19,53 @@ from .config import MQTTConfig
 from .client.models import MQTTMessage
 
 
+@dataclass
+class DestinationMetrics:
+    """Message destination metrics"""
+
+    name: str
+    enabled: bool
+    message_count: int
+    success_count: int
+    failure_count: int
+    success_rate: float
+    average_processing_time: float
+
+
+@dataclass
+class DestinationHealthStatus:
+    """Message destination health status"""
+
+    destination: str
+    status: HealthStatus
+    metrics: DestinationMetrics
+
+
+@dataclass
+class RouterPerformanceMetrics:
+    """Message router performance metrics"""
+
+    total_messages_routed: int
+    total_successful_routes: int
+    total_failed_routes: int
+    routing_success_rate: float
+    average_routing_time: float
+    active_routes: int
+    total_destinations: int
+    enabled_destinations: int
+    destination_metrics: List[DestinationMetrics]
+
+
+@dataclass
+class RouterHealthStatus:
+    """Message router health status"""
+
+    status: HealthStatus
+    messages_per_second: float
+    unhealthy_destinations: List[str]
+    performance: RouterPerformanceMetrics
+
+
 class RouteStatus(Enum):
     """Message routing status"""
 
@@ -112,7 +159,7 @@ class MessageDestination(ABC):
         """
         pass
 
-    def get_metrics(self) -> Dict[str, Any]:
+    def get_metrics(self) -> DestinationMetrics:
         """Get destination metrics"""
         success_rate = 0
         avg_processing_time = 0
@@ -121,17 +168,17 @@ class MessageDestination(ABC):
             success_rate = (self.success_count / self.message_count) * 100
             avg_processing_time = self.total_processing_time / self.message_count
 
-        return {
-            "name": self.name,
-            "enabled": self.enabled,
-            "message_count": self.message_count,
-            "success_count": self.success_count,
-            "failure_count": self.failure_count,
-            "success_rate": round(success_rate, 2),
-            "average_processing_time": round(avg_processing_time, 3),
-        }
+        return DestinationMetrics(
+            name=self.name,
+            enabled=self.enabled,
+            message_count=self.message_count,
+            success_count=self.success_count,
+            failure_count=self.failure_count,
+            success_rate=round(success_rate, 2),
+            average_processing_time=round(avg_processing_time, 3),
+        )
 
-    def get_health_status(self) -> Dict[str, Any]:
+    def get_health_status(self) -> DestinationHealthStatus:
         """Get destination health status"""
         metrics = self.get_metrics()
 
@@ -139,12 +186,16 @@ class MessageDestination(ABC):
         status = HealthStatus.HEALTHY
         if not self.enabled:
             status = HealthStatus.DISABLED
-        elif metrics["success_rate"] < 95:
+        elif metrics.success_rate < 95:
             status = HealthStatus.UNHEALTHY
-        elif metrics["success_rate"] < 98:
+        elif metrics.success_rate < 98:
             status = HealthStatus.DEGRADED
 
-        return {"destination": self.name, "status": status, **metrics}
+        return DestinationHealthStatus(
+            destination=self.name,
+            status=status,
+            metrics=metrics,
+        )
 
 
 class DatabaseDestination(MessageDestination):
@@ -753,7 +804,7 @@ class MessageRouter:
                 exc_info=True,
             )
 
-    def get_performance_metrics(self) -> Dict[str, Any]:
+    def get_performance_metrics(self) -> RouterPerformanceMetrics:
         """Get performance metrics"""
         success_rate = 0
         avg_routing_time = 0
@@ -764,23 +815,23 @@ class MessageRouter:
             ) * 100
             avg_routing_time = self.total_routing_time / self.total_messages_routed
 
-        return {
-            "total_messages_routed": self.total_messages_routed,
-            "total_successful_routes": self.total_successful_routes,
-            "total_failed_routes": self.total_failed_routes,
-            "routing_success_rate": round(success_rate, 2),
-            "average_routing_time": round(avg_routing_time, 3),
-            "active_routes": len(self.active_routes),
-            "total_destinations": len(self.destinations),
-            "enabled_destinations": len(
+        return RouterPerformanceMetrics(
+            total_messages_routed=self.total_messages_routed,
+            total_successful_routes=self.total_successful_routes,
+            total_failed_routes=self.total_failed_routes,
+            routing_success_rate=round(success_rate, 2),
+            average_routing_time=round(avg_routing_time, 3),
+            active_routes=len(self.active_routes),
+            total_destinations=len(self.destinations),
+            enabled_destinations=len(
                 [d for d in self.destinations.values() if d.enabled]
             ),
-            "destination_metrics": [
+            destination_metrics=[
                 dest.get_metrics() for dest in self.destinations.values()
             ],
-        }
+        )
 
-    def get_health_status(self) -> Dict[str, Any]:
+    def get_health_status(self) -> RouterHealthStatus:
         """Get health status for monitoring"""
         metrics = self.get_performance_metrics()
 
@@ -790,33 +841,33 @@ class MessageRouter:
         # Check routing success rate (only if messages have been processed)
         if self.total_messages_routed == 0:
             status = HealthStatus.HEALTHY  # No messages yet - normal bootstrap state
-        elif metrics["routing_success_rate"] < 95:
+        elif metrics.routing_success_rate < 95:
             status = HealthStatus.UNHEALTHY
-        elif metrics["routing_success_rate"] < 98:
+        elif metrics.routing_success_rate < 98:
             status = HealthStatus.DEGRADED
 
         # Check for too many active routes
-        if metrics["active_routes"] > self.max_concurrent_routes * 0.8:
+        if metrics.active_routes > self.max_concurrent_routes * 0.8:
             status = HealthStatus.UNHEALTHY
-        elif metrics["active_routes"] > self.max_concurrent_routes * 0.5:
+        elif metrics.active_routes > self.max_concurrent_routes * 0.5:
             status = HealthStatus.DEGRADED
 
         # Check destination health
         unhealthy_destinations = [
             dest.name
             for dest in self.destinations.values()
-            if dest.get_health_status()["status"] == HealthStatus.UNHEALTHY
+            if dest.get_health_status().status == HealthStatus.UNHEALTHY
         ]
 
         if unhealthy_destinations:
             status = HealthStatus.DEGRADED
 
-        return {
-            "status": status,
-            "messages_per_second": self._calculate_messages_per_second(),
-            "unhealthy_destinations": unhealthy_destinations,
-            **metrics,
-        }
+        return RouterHealthStatus(
+            status=status,
+            messages_per_second=self._calculate_messages_per_second(),
+            unhealthy_destinations=unhealthy_destinations,
+            performance=metrics,
+        )
 
     def _calculate_messages_per_second(self) -> float:
         """Calculate messages per second rate"""

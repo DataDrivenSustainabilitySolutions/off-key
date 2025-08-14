@@ -15,7 +15,12 @@ from ...core.logs import logger
 from ...utils.enum import HealthStatus
 from .config import MQTTConfig
 from .auth import ApiKeyAuthHandler
-from .client.models import ConnectionState, MQTTMessage
+from .client.models import (
+    ConnectionState,
+    MQTTMessage,
+    ClientConnectionInfo,
+    ClientHealthStatus,
+)
 from .client.connection import ConnectionManager
 from .client.subscriptions import SubscriptionManager
 from .client.messaging import MessageHandler
@@ -186,22 +191,25 @@ class MQTTClient:
             logger.error(f"Error publishing to {topic}: {e}")
             return False
 
-    def get_connection_info(self) -> Dict[str, Any]:
+    def get_connection_info(self) -> ClientConnectionInfo:
         """Get current connection information"""
         base_info = self.connection_manager.get_connection_info()
-        subscription_info = {
-            "subscriptions": list(self.subscription_manager.get_subscriptions()),
-            "pending_subscriptions": list(
+
+        return ClientConnectionInfo(
+            state=base_info["state"],
+            broker_host=base_info["broker_host"],
+            broker_port=base_info["broker_port"],
+            client_id=base_info["client_id"],
+            connection_start_time=base_info["connection_start_time"],
+            reconnect_attempts=base_info["reconnect_attempts"],
+            subscriptions=list(self.subscription_manager.get_subscriptions()),
+            pending_subscriptions=list(
                 self.subscription_manager.get_pending_subscriptions()
             ),
-        }
-        message_info = {
-            "messages_sent": self.messages_sent,
-        }
+            messages_sent=self.messages_sent,
+        )
 
-        return {**base_info, **subscription_info, **message_info}
-
-    def get_health_status(self) -> Dict[str, Any]:
+    def get_health_status(self) -> ClientHealthStatus:
         """Get health status for monitoring"""
         # Get metrics from components
         connection_info = self.connection_manager.get_connection_info()
@@ -213,29 +221,29 @@ class MQTTClient:
             self.connection_manager.connection_start_time
         )
 
-        return {
-            "status": (
+        return ClientHealthStatus(
+            status=(
                 HealthStatus.HEALTHY
                 if self.state == ConnectionState.CONNECTED
                 else HealthStatus.UNHEALTHY
             ),
-            "state": self.state.value,
-            "uptime_seconds": uptime_seconds,
-            "messages_received": message_metrics["messages_received"],
-            "messages_sent": self.messages_sent,
-            "message_rate": round(message_rate, 2),
-            "active_subscriptions": self.subscription_manager.get_subscription_count(),
-            "reconnect_attempts": connection_info["reconnect_attempts"],
-            "queue_size": message_metrics["queue_size"],
-            "last_message_time": message_metrics["last_message_time"],
-            "last_message_age_seconds": (
+            state=self.state.value,
+            uptime_seconds=uptime_seconds,
+            messages_received=message_metrics["messages_received"],
+            messages_sent=self.messages_sent,
+            message_rate=round(message_rate, 2),
+            active_subscriptions=self.subscription_manager.get_subscription_count(),
+            reconnect_attempts=connection_info["reconnect_attempts"],
+            queue_size=message_metrics["queue_size"],
+            last_message_time=message_metrics["last_message_time"],
+            last_message_age_seconds=(
                 (
                     datetime.now() - self.message_handler.last_message_time
                 ).total_seconds()
                 if self.message_handler.last_message_time
                 else None
             ),
-        }
+        )
 
     def get_queued_messages(self, count: Optional[int] = None):
         """Get messages from the message queue"""

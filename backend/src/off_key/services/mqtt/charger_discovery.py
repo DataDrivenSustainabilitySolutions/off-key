@@ -22,6 +22,33 @@ from .config import MQTTConfig
 
 
 @dataclass
+class DiscoveryMetrics:
+    """Charger discovery performance metrics"""
+
+    total_chargers_discovered: int
+    total_hierarchies_discovered: int
+    total_subscriptions_attempted: int
+    total_subscriptions_successful: int
+    subscription_success_rate: float
+    failed_chargers_count: int
+    last_discovery_time: Optional[str]
+    chargers_with_partial_subscriptions: int
+
+
+@dataclass
+class DiscoveryHealthStatus:
+    """Charger discovery health status"""
+
+    status: HealthStatus
+    health_score: float
+    total_chargers: int
+    healthy_chargers: int
+    failed_chargers: int
+    total_topics: int
+    last_discovery_time: Optional[str]
+
+
+@dataclass
 class ChargerTelemetryInfo:
     """Information about a charger's telemetry hierarchies"""
 
@@ -399,7 +426,7 @@ class ChargerDiscoveryService:
             status[charger_id] = charger_info.subscription_status.copy()
         return status
 
-    def get_discovery_metrics(self) -> Dict[str, any]:
+    def get_discovery_metrics(self) -> DiscoveryMetrics:
         """Get discovery performance metrics"""
         success_rate = 0
         if self.total_subscriptions_attempted > 0:
@@ -407,28 +434,28 @@ class ChargerDiscoveryService:
                 self.total_subscriptions_successful / self.total_subscriptions_attempted
             ) * 100
 
-        return {
-            "total_chargers_discovered": self.total_chargers_discovered,
-            "total_hierarchies_discovered": self.total_hierarchies_discovered,
-            "total_subscriptions_attempted": self.total_subscriptions_attempted,
-            "total_subscriptions_successful": self.total_subscriptions_successful,
-            "subscription_success_rate": round(success_rate, 2),
-            "failed_chargers_count": len(self.failed_chargers),
-            "last_discovery_time": (
+        return DiscoveryMetrics(
+            total_chargers_discovered=self.total_chargers_discovered,
+            total_hierarchies_discovered=self.total_hierarchies_discovered,
+            total_subscriptions_attempted=self.total_subscriptions_attempted,
+            total_subscriptions_successful=self.total_subscriptions_successful,
+            subscription_success_rate=round(success_rate, 2),
+            failed_chargers_count=len(self.failed_chargers),
+            last_discovery_time=(
                 self.last_discovery_time.isoformat()
                 if self.last_discovery_time
                 else None
             ),
-            "chargers_with_partial_subscriptions": len(
+            chargers_with_partial_subscriptions=len(
                 [
                     c
                     for c in self.chargers.values()
                     if len(c.get_failed_subscriptions()) > 0
                 ]
             ),
-        }
+        )
 
-    def get_health_status(self) -> Dict[str, any]:
+    def get_health_status(self) -> DiscoveryHealthStatus:
         """Get health status for monitoring"""
         total_chargers = len(self.chargers)
         healthy_chargers = len(
@@ -443,8 +470,8 @@ class ChargerDiscoveryService:
         if total_chargers > 0:
             health_score = (healthy_chargers / total_chargers) * 100
 
-        return {
-            "status": (
+        return DiscoveryHealthStatus(
+            status=(
                 HealthStatus.HEALTHY
                 if health_score >= 95
                 else (
@@ -453,17 +480,17 @@ class ChargerDiscoveryService:
                     else HealthStatus.UNHEALTHY
                 )
             ),
-            "health_score": round(health_score, 2),
-            "total_chargers": total_chargers,
-            "healthy_chargers": healthy_chargers,
-            "failed_chargers": len(self.failed_chargers),
-            "total_topics": len(self.get_all_topics()),
-            "last_discovery_time": (
+            health_score=round(health_score, 2),
+            total_chargers=total_chargers,
+            healthy_chargers=healthy_chargers,
+            failed_chargers=len(self.failed_chargers),
+            total_topics=len(self.get_all_topics()),
+            last_discovery_time=(
                 self.last_discovery_time.isoformat()
                 if self.last_discovery_time
                 else None
             ),
-        }
+        )
 
     async def stop(self):
         """

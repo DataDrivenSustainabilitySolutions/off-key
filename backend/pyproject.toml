@@ -26,7 +26,6 @@ dependencies = [
     "email-validator>=2.2.0",
     "fastapi-mail>=1.4.2",
     "fastapi[all]>=0.115.8",
-    "paho-mqtt>=2.1.0",
     "passlib>=1.7.4",
     "psycopg2-binary>=2.9.10",
     "pydantic-settings>=2.7.1",
@@ -39,6 +38,17 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["black", "ruff", "pre-commit"]
+mqtt = [
+    "paho-mqtt>=2.1.0",
+    "asyncio-mqtt>=0.16.1",
+    "websockets>=12.0",
+    "httpx>=0.26.0",
+    "structlog>=23.2.0",
+    "psutil>=5.9.8",
+    "uvicorn>=0.25.0",
+    "python-dateutil>=2.8.2",
+    "python-dotenv>=1.0.0",
+]
 all = ["black", "ruff", "pre-commit"]
 
 [build-system]

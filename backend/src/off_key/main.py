@@ -1,10 +1,10 @@
-from datetime import datetime
+from datetime import datetime, timezone
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from slowapi.middleware import SlowAPIMiddleware
-from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .db.base import async_engine, get_db_async
@@ -14,6 +14,10 @@ from .api.rate_limiter import limiter, rate_limit_exceeded_handler
 from .api.v1.routes import router as v1_router
 from .api.middleware import LoggingMiddleware, SecurityLoggingMiddleware
 from .db.models import Base
+from .services.background_sync import BackgroundSyncService
+from .core.provider import get_charger_api_client, get_background_sync_service
+from .core import health_checks
+from .utils.enum import HealthStatus
 
 # See https://github.com/pyca/bcrypt/issues/684#issuecomment-2465572106
 import bcrypt
@@ -32,12 +36,69 @@ logger = setup_logging(
     enable_correlation=True,
 )
 
-app = FastAPI(title=settings.APP_NAME)
+
+# Helper functions for startup tasks
+async def _initialize_database():
+    """Creates all database tables."""
+    async with async_engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    logger.info("Database tables created successfully")
+
+
+def _create_service_dependencies() -> dict:
+    """Resolves and creates all service dependencies."""
+    api_client = get_charger_api_client()
+    logger.info(f"Initialized API client: {type(api_client).__name__}")
+
+    def charger_sync_factory(session):
+        from .services.chargers import ChargersSyncService
+
+        return ChargersSyncService(session, api_client)
+
+    def telemetry_sync_factory(session):
+        from .services.telemetry import TelemetrySyncService
+
+        return TelemetrySyncService(session, api_client)
+
+    return {
+        "charger_sync_factory": charger_sync_factory,
+        "telemetry_sync_factory": telemetry_sync_factory,
+    }
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Manages application startup and shutdown events."""
+    logger.info("Application startup...")
+
+    # Initialize database
+    await _initialize_database()
+
+    # Create service dependencies
+    service_deps = _create_service_dependencies()
+
+    # Initialize background sync service
+    background_sync = BackgroundSyncService(**service_deps)
+    await background_sync.start()
+    logger.info("Background sync service started")
+
+    # Store in app state for access in endpoints
+    app.state.background_sync = background_sync
+
+    # Application is now running
+    yield
+
+    # Shutdown logic
+    logger.info("Application shutdown...")
+    await background_sync.stop()
+    logger.info("Background sync service stopped")
+
+
+# Initialize FastAPI with lifespan manager
+app = FastAPI(title=settings.APP_NAME, lifespan=lifespan)
 
 app.state.limiter = limiter
 app.add_exception_handler(429, rate_limit_exceeded_handler)
-
-origins = ["http://localhost:8000", "http://localhost:5173"]
 
 # Add custom logging middleware first (innermost)
 app.add_middleware(LoggingMiddleware)
@@ -49,20 +110,11 @@ app.add_middleware(SlowAPIMiddleware)
 # Enable CORS Middleware (outermost)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow only specified origins
+    allow_origins=settings.CORS_ALLOWED_ORIGINS,  # Use configured origins
     allow_credentials=True,
     allow_methods=["*"],  # Allow all HTTP methods (POST, GET, etc.)
     allow_headers=["*"],  # Allow all headers
 )
-
-
-# Create database tables on startup
-@app.on_event("startup")
-async def startup_event():
-    """Create database tables on application startup"""
-    async with async_engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    logger.info("Database tables created successfully")
 
 
 # Include versioned API routes
@@ -70,30 +122,37 @@ app.include_router(v1_router, prefix="/v1", tags=["v1"])
 
 
 @app.get("/health")
-async def health_check(db: AsyncSession = Depends(get_db_async)):
+async def health_check(
+    db: AsyncSession = Depends(get_db_async),
+    sync_service: BackgroundSyncService = Depends(get_background_sync_service),
+):
     """
     Health check endpoint that verifies the app and its dependencies are running.
     Returns status of various components without exposing sensitive information.
     """
-    health_status = {
-        "status": "healthy",
-        "timestamp": datetime.utcnow().isoformat(),
-        "service": settings.APP_NAME,
-        "checks": {"api": "healthy", "database": "unhealthy"},
+    # Run all checks using encapsulated helper functions
+    checks = {
+        "api": HealthStatus.HEALTHY,  # Assuming healthy if this endpoint is reachable
+        "database": await health_checks.check_database(db),
+        "background_sync": health_checks.check_background_sync(sync_service),
     }
 
-    # Check database connectivity
-    try:
-        # Simple query to verify database connection
-        await db.execute(text("SELECT 1"))
-        health_status["checks"]["database"] = "healthy"
-    except Exception as e:
-        health_status["status"] = "unhealthy"
-        health_status["checks"]["database"] = "unhealthy"
-        logger.error(f"Database health check failed: {str(e)}")
+    # Derive overall status declaratively from check results
+    is_fully_healthy = all(status == HealthStatus.HEALTHY for status in checks.values())
+    overall_status = (
+        HealthStatus.HEALTHY if is_fully_healthy else HealthStatus.UNHEALTHY
+    )
+
+    # Construct final response
+    health_status = {
+        "status": overall_status,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "service": settings.APP_NAME,
+        "checks": checks,
+    }
 
     # Return appropriate status code based on overall health
-    status_code = 200 if health_status["status"] == "healthy" else 503
+    status_code = 200 if overall_status == HealthStatus.HEALTHY else 503
     return JSONResponse(content=health_status, status_code=status_code)
 
 
@@ -106,7 +165,7 @@ async def liveness_check():
     return JSONResponse(
         content={
             "status": "alive",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "service": settings.APP_NAME,
         },
         status_code=200,

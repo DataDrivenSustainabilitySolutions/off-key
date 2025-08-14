@@ -5,13 +5,16 @@ from sqlalchemy import select
 from ...db.base import get_db_async
 from ...db.models import Telemetry
 from ...services.telemetry import TelemetrySyncService
+from ...core.provider import get_telemetry_sync_service
 
 router = APIRouter()
 
 
 @router.post("/sync")
-async def sync_chargers(db: AsyncSession = Depends(get_db_async), limit: int = 10_000):
-    service = TelemetrySyncService(db)
+async def sync_chargers(
+    service: TelemetrySyncService = Depends(get_telemetry_sync_service),
+    limit: int = 10_000,
+):
     await service.sync_telemetry(limit=limit)
     return {"status": "successful"}
 

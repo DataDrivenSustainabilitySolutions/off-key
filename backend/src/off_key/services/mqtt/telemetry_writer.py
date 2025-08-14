@@ -1,14 +1,11 @@
 """
-Optimized Database Writer for MQTT Telemetry Data
-
-High-performance, batched database writer for real-time telemetry data with
-intelligent logging, error handling, and performance optimization.
+Database Writer for MQTT Telemetry Data
 """
 
 import asyncio
 import time
 from datetime import datetime
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Union
 from dataclasses import dataclass, field
 from collections import defaultdict
 from enum import Enum
@@ -54,16 +51,6 @@ class WriterHealthStatus:
     performance: WriterPerformanceMetrics
 
 
-class WriteStatus(Enum):
-    """Database write status"""
-
-    PENDING = "pending"
-    PROCESSING = "processing"
-    SUCCESS = "success"
-    FAILED = "failed"
-    RETRYING = "retrying"
-
-
 @dataclass
 class TelemetryRecord:
     """Telemetry record for database insertion"""
@@ -85,6 +72,36 @@ class TelemetryRecord:
             "data_source": self.data_source,
             "created": self.created,
         }
+
+
+@dataclass
+class ParseSuccess:
+    """Represents a successfully parsed telemetry record"""
+
+    record: TelemetryRecord
+
+
+@dataclass
+class ParseFailure:
+    """Represents a failed parsing attempt, with context"""
+
+    reason: str
+    is_error: bool  # True for unexpected errors, False for safe skips
+    log_message: str
+    context: Dict[str, Any]
+
+
+ParseResult = Union[ParseSuccess, ParseFailure]
+
+
+class WriteStatus(Enum):
+    """Database write status"""
+
+    PENDING = "pending"
+    PROCESSING = "processing"
+    SUCCESS = "success"
+    FAILED = "failed"
+    RETRYING = "retrying"
 
 
 @dataclass
@@ -235,58 +252,65 @@ class DatabaseWriter:
         Args:
             message: MQTT message containing telemetry data
         """
-        try:
-            # Parse message
-            record = await self._parse_telemetry_message(message)
-            if not record:
-                return
+        # Parse message with explicit result handling
+        parse_result = await self._parse_telemetry_message(message)
 
-            # Add to batch
-            self.pending_batch.add_record(record)
-            self.total_records_received += 1
-
-            # Update charger tracking
-            self.charger_last_seen[record.charger_id] = record.timestamp
-            self.charger_message_counts[record.charger_id] += 1
-
-            # Log high-frequency messages intelligently
-            if self.total_records_received % 100 == 0:
-                logger.debug(
-                    f"Queued telemetry record (total: {self.total_records_received})",
-                    extra={
-                        **self._log_context,
-                        "charger_id": record.charger_id,
-                        "telemetry_type": record.telemetry_type,
-                        "batch_size": self.pending_batch.size(),
-                        "total_received": self.total_records_received,
-                    },
+        if isinstance(parse_result, ParseFailure):
+            # Handle failure with centralized logging
+            if parse_result.is_error:
+                logger.error(
+                    parse_result.log_message,
+                    extra={**self._log_context, **parse_result.context},
+                    exc_info=True,
                 )
+            else:
+                logger.warning(
+                    parse_result.log_message,
+                    extra={**self._log_context, **parse_result.context},
+                )
+            return
 
-            # Check if batch is ready for processing due to size
-            if self.pending_batch.size() >= self.batch_size:
-                self._batch_ready_event.set()
+        # Extract record from success
+        record = parse_result.record
 
-        except Exception as e:
-            logger.error(
-                f"Error processing telemetry message: {e}",
-                extra={**self._log_context, "topic": message.topic, "error": str(e)},
-                exc_info=True,
+        # Add to batch
+        self.pending_batch.add_record(record)
+        self.total_records_received += 1
+
+        # Update charger tracking
+        self.charger_last_seen[record.charger_id] = record.timestamp
+        self.charger_message_counts[record.charger_id] += 1
+
+        # Log high-frequency messages intelligently
+        if self.total_records_received % 100 == 0:
+            logger.debug(
+                f"Queued telemetry record (total: {self.total_records_received})",
+                extra={
+                    **self._log_context,
+                    "charger_id": record.charger_id,
+                    "telemetry_type": record.telemetry_type,
+                    "batch_size": self.pending_batch.size(),
+                    "total_received": self.total_records_received,
+                },
             )
 
-    async def _parse_telemetry_message(
-        self, message: MQTTMessage
-    ) -> Optional[TelemetryRecord]:
-        """Parse MQTT message into telemetry record"""
+        # Check if batch is ready for processing due to size
+        if self.pending_batch.size() >= self.batch_size:
+            self._batch_ready_event.set()
+
+    async def _parse_telemetry_message(self, message: MQTTMessage) -> ParseResult:
+        """Parse MQTT message and return an explicit success or failure object"""
         try:
             # Extract charger ID from topic
             # Topic format: charger/{charger_id}/live-telemetry/{hierarchy}
             topic_parts = message.topic.split("/")
             if len(topic_parts) < 4 or topic_parts[0] != "charger":
-                logger.warning(
-                    f"Invalid topic format: {message.topic}",
-                    extra={**self._log_context, "topic": message.topic},
+                return ParseFailure(
+                    reason="Invalid topic format",
+                    is_error=False,
+                    log_message=f"Invalid topic format: {message.topic}",
+                    context={"topic": message.topic},
                 )
-                return None
 
             charger_id = topic_parts[1]
             hierarchy = "/".join(topic_parts[3:])  # Reconstruct hierarchy
@@ -294,15 +318,15 @@ class DatabaseWriter:
             # Clean hierarchy for database storage
             telemetry_type = clean_string(hierarchy)
             if not telemetry_type:
-                logger.warning(
-                    f"Invalid hierarchy after cleaning: {hierarchy}",
-                    extra={
-                        **self._log_context,
+                return ParseFailure(
+                    reason="Invalid hierarchy after cleaning",
+                    is_error=False,
+                    log_message=f"Invalid hierarchy after cleaning: {hierarchy}",
+                    context={
                         "charger_id": charger_id,
                         "hierarchy": hierarchy,
                     },
                 )
-                return None
 
             # Extract value and timestamp from payload
             payload = message.payload
@@ -322,16 +346,16 @@ class DatabaseWriter:
                     if timestamp.tzinfo:
                         timestamp = timestamp.replace(tzinfo=None)
                 except (ValueError, TypeError) as e:
-                    logger.warning(
-                        f"Invalid timestamp format: {timestamp_str}",
-                        extra={
-                            **self._log_context,
+                    return ParseFailure(
+                        reason="Invalid timestamp format",
+                        is_error=False,
+                        log_message=f"Invalid timestamp format: {timestamp_str}",
+                        context={
                             "charger_id": charger_id,
                             "timestamp": timestamp_str,
                             "error": str(e),
                         },
                     )
-                    timestamp = datetime.now()
             else:
                 timestamp = datetime.now()
 
@@ -347,20 +371,19 @@ class DatabaseWriter:
                 created=datetime.now(),
             )
 
-            return record
+            return ParseSuccess(record=record)
 
         except Exception as e:
-            logger.error(
-                f"Error parsing telemetry message: {e}",
-                extra={
-                    **self._log_context,
+            return ParseFailure(
+                reason="Unexpected parsing error",
+                is_error=True,
+                log_message=f"Error parsing telemetry message: {e}",
+                context={
                     "topic": message.topic,
                     "payload": message.payload,
                     "error": str(e),
                 },
-                exc_info=True,
             )
-            return None
 
     async def _trigger_batch_processing(self):
         """Trigger processing of current batch"""

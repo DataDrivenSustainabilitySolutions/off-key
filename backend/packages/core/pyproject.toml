@@ -1,0 +1,55 @@
+[project]
+name = "off-key-core"
+version = "0.1.0"
+description = "Shared core components for off-Key platform"
+authors = [
+    { name = "Oliver Hennhoefer", email = "oliver.hennhoefer@mail.de" },
+    { name = "Fernando Saba", email = "fernando.saba@gmx.de" }
+]
+maintainers = [
+    { name = "Oliver Hennhoefer", email = "oliver.hennhoefer@mail.de" },
+    { name = "Fernando Saba", email = "fernando.saba@gmx.de" }
+]
+keywords = ["off-key", "shared", "core", "telemetry"]
+requires-python = ">=3.12"
+classifiers = [
+    "Programming Language :: Python :: 3.12",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Development Status :: 3 - Alpha"
+]
+dependencies = [
+    "asyncpg>=0.30.0",
+    "pydantic-settings>=2.7.1",
+    "requests>=2.32.3",
+    "sqlalchemy>=2.0.38",
+    "email-validator>=2.2.0",
+    "python-dateutil>=2.8.2",
+]
+
+[project.optional-dependencies]
+mqtt = [
+    "paho-mqtt>=2.1.0",
+    "asyncio-mqtt>=0.16.1",
+    "httpx>=0.26.0",
+]
+auth = [
+    "bcrypt==4.0.1",
+    "passlib>=1.7.4",
+    "python-jose>=3.4.0",
+]
+all = [
+    "paho-mqtt>=2.1.0",
+    "asyncio-mqtt>=0.16.1",
+    "httpx>=0.26.0",
+    "bcrypt==4.0.1",
+    "passlib>=1.7.4",
+    "python-jose>=3.4.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/off_key_core"]

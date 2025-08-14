@@ -42,7 +42,7 @@ services:
     develop:
       watch:
         - action: sync
-          path: ./backend/src
+          path: backend/old/src
           target: /app/lib/python3.12/site-packages/off_key
         - action: rebuild
           path: ./backend/uv.lock

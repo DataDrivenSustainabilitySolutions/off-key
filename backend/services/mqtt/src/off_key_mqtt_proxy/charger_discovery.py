@@ -71,6 +71,7 @@ class ChargerDiscoveryService:
         self.last_discovery_time: Optional[datetime] = None
 
         # Performance metrics
+        # TODO: Define data scope (stateful?)
         self.total_chargers_discovered = 0
         self.total_hierarchies_discovered = 0
         self.total_subscriptions_attempted = 0

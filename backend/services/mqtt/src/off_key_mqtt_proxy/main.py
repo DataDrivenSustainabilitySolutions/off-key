@@ -11,16 +11,17 @@ from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ...core.config import settings
+from off_key.config import settings
 from ...core.logs import logger
 from ...db.base import AsyncSessionLocal
-from .api_key_auth import ApiKeyAuthHandler
-from .mqtt_client import MQTTClient
+from ...utils.enum import HealthStatus
+from .auth import ApiKeyAuthHandler
+from .facade import MQTTClient
 from .charger_discovery import ChargerDiscoveryService
 from ...core.client.base_client import ChargerAPIClient
-from .database_writer import DatabaseWriter
-from .message_router import MessageRouter, DatabaseDestination
-
+from .telemetry import DatabaseWriter
+from .router import MessageRouter, DatabaseDestination
+from .interfaces import Stoppable, ShutdownFailedError
 
 class MQTTProxyService:
     """
@@ -137,19 +138,69 @@ class MQTTProxyService:
             await self.stop()
             raise
 
-    async def stop(self):
-        """Stop the MQTT proxy service"""
-        if not self.is_running:
-            logger.info("MQTT proxy service already stopped", extra=self._log_context)
-            return
+    async def _safe_component_shutdown(
+        self, name: str, component: Stoppable, timeout: float = None
+    ) -> Optional[Exception]:
+        """
+        Safely shutdown a component with timeout protection.
 
-        logger.info("Stopping MQTT proxy service", extra=self._log_context)
+        Args:
+            name: Component name for logging
+            component: Component to shut down
+            timeout: Shutdown timeout in seconds (uses config default if None)
 
-        # Signal shutdown
-        self.shutdown_event.set()
-        self.is_running = False
+        Returns:
+            Exception if shutdown failed, None if successful
+        """
+        if timeout is None:
+            timeout = self.config.shutdown_timeout
 
-        # Stop components in reverse order
+        try:
+            await asyncio.wait_for(component.stop(), timeout=timeout)
+            logger.debug(
+                f"Component {name} stopped successfully",
+                extra={**self._log_context, "component": name, "timeout": timeout},
+            )
+            return None
+
+        except asyncio.TimeoutError:
+            error = TimeoutError(
+                f"Component {name} shutdown timed out after {timeout}s"
+            )
+            logger.error(
+                f"Component {name} shutdown timed out",
+                extra={
+                    **self._log_context,
+                    "component": name,
+                    "timeout": timeout,
+                    "error": "timeout",
+                },
+            )
+            return error
+
+        except Exception as e:
+            logger.error(
+                f"Component {name} shutdown failed: {e}",
+                extra={**self._log_context, "component": name, "error": str(e)},
+                exc_info=True,
+            )
+            return e
+
+    async def _graceful_shutdown_with_timeout(self) -> list[Exception]:
+        """
+        Perform graceful shutdown with total timeout protection.
+
+        Multi-stage shutdown strategy:
+        1. Graceful component shutdown (with individual timeouts)
+        2. Critical resource cleanup (database session)
+        3. Log results and return errors
+
+        Returns:
+            List of exceptions that occurred during shutdown
+        """
+        shutdown_errors = []
+
+        # Components to stop in reverse order (dependency order)
         components = [
             ("message_router", self.message_router),
             ("database_writer", self.database_writer),
@@ -157,33 +208,117 @@ class MQTTProxyService:
             ("auth_handler", self.auth_handler),
         ]
 
-        for component_name, component in components:
-            if component:
-                try:
-                    if hasattr(component, "stop"):
-                        await component.stop()
-                    elif hasattr(component, "close"):
-                        await component.close()
-                    elif hasattr(component, "disconnect"):
-                        await component.disconnect()
+        try:
+            # Stage 1: Graceful component shutdown
+            logger.debug(
+                "Starting graceful component shutdown",
+                extra={**self._log_context, "stage": "component_shutdown"},
+            )
 
-                    logger.debug(
-                        f"Stopped component: {component_name}",
-                        extra={**self._log_context, "component": component_name},
+            for component_name, component in components:
+                if component:
+                    error = await self._safe_component_shutdown(
+                        component_name, component
                     )
+                    if error:
+                        shutdown_errors.append(error)
 
+        except Exception as e:
+            # Shouldn't happen since _safe_component_shutdown catches all exceptions
+            logger.critical(
+                f"Unexpected error during component shutdown: {e}",
+                extra=self._log_context,
+                exc_info=True,
+            )
+            shutdown_errors.append(e)
+
+        finally:
+            # Stage 2: Critical resource cleanup (GUARANTEED)
+            logger.debug(
+                "Starting critical resource cleanup",
+                extra={**self._log_context, "stage": "critical_cleanup"},
+            )
+
+            if self.db_session:
+                try:
+                    await self.db_session.close()
+                    logger.info("Database session closed", extra=self._log_context)
                 except Exception as e:
                     logger.error(
-                        f"Error stopping component {component_name}: {e}",
-                        extra={**self._log_context, "component": component_name},
+                        f"Failed to close database session: {e}",
+                        extra=self._log_context,
                         exc_info=True,
                     )
+                    shutdown_errors.append(e)
 
-        # Close database session
-        if self.db_session:
-            await self.db_session.close()
+        return shutdown_errors
 
-        logger.info("MQTT proxy service stopped", extra=self._log_context)
+    async def stop(self):
+        """Stop the MQTT proxy service with robust multi-stage shutdown"""
+        if not self.is_running:
+            logger.info("MQTT proxy service already stopped", extra=self._log_context)
+            return
+
+        logger.info("Stopping MQTT proxy service", extra=self._log_context)
+        shutdown_start_time = asyncio.get_event_loop().time()
+
+        # Signal shutdown immediately
+        self.shutdown_event.set()
+        self.is_running = False
+
+        try:
+            # Perform graceful shutdown with total timeout protection
+            shutdown_errors = await asyncio.wait_for(
+                self._graceful_shutdown_with_timeout(),
+                timeout=self.config.graceful_shutdown_timeout,
+            )
+
+            # Stage 3: Log results and handle errors
+            shutdown_duration = asyncio.get_event_loop().time() - shutdown_start_time
+
+            if shutdown_errors:
+                logger.warning(
+                    f"MQTT proxy service stopped with {len(shutdown_errors)} errors "
+                    f"in {shutdown_duration:.2f}s",
+                    extra={
+                        **self._log_context,
+                        "error_count": len(shutdown_errors),
+                        "shutdown_duration": shutdown_duration,
+                    },
+                )
+                # Raise aggregated exception with all shutdown errors
+                raise ShutdownFailedError(
+                    "MQTT proxy service shutdown failed for some components",
+                    errors=shutdown_errors,
+                )
+            else:
+                logger.info(
+                    f"MQTT proxy service stopped successfully "
+                    f"in {shutdown_duration:.2f}s",
+                    extra={**self._log_context, "shutdown_duration": shutdown_duration},
+                )
+
+        except asyncio.TimeoutError:
+            # Graceful shutdown timed out - log critical failure and exit
+            shutdown_duration = asyncio.get_event_loop().time() - shutdown_start_time
+            logger.critical(
+                f"MQTT proxy service graceful shutdown timed out after "
+                f"{self.config.graceful_shutdown_timeout}s "
+                f"(total: {shutdown_duration:.2f}s). "
+                "Exiting without further cleanup. "
+                "Orchestrator should handle process termination.",
+                extra={
+                    **self._log_context,
+                    "shutdown_timeout": self.config.graceful_shutdown_timeout,
+                    "actual_duration": shutdown_duration,
+                    "stage": "timeout_critical_failure",
+                },
+            )
+            # Don't attempt further cleanup - let the orchestrator handle it
+            raise TimeoutError(
+                f"MQTT proxy service shutdown timed out after "
+                f"{self.config.graceful_shutdown_timeout}s"
+            )
 
     async def _handle_mqtt_message(self, message):
         """Handle incoming MQTT messages"""
@@ -234,7 +369,9 @@ class MQTTProxyService:
     def get_health_status(self):
         """Get current health status"""
         status = {
-            "status": "healthy" if self.is_running else "stopped",
+           "status": (
+                HealthStatus.HEALTHY if self.is_running else HealthStatus.DISABLED
+            ),
             "components": {},
         }
 

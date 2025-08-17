@@ -86,9 +86,12 @@ app.include_router(api_router, prefix="/v1")
 
 @app.get("/health", tags=["Health"])
 async def health_check():
-    """Health check endpoint for load balancers and monitoring."""
-    return {"status": "healthy", "service": "api-gateway"}
-
+    """
+    Health check endpoint that verifies the app and its dependencies are running.
+    Returns status of various components without exposing sensitive information.
+    """
+    # TODO What is considered "healthy" now?
+    ...
 
 if __name__ == "__main__":
     import uvicorn

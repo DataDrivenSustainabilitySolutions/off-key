@@ -11,7 +11,7 @@ from sqlalchemy import select, delete
 
 from ..core.logs import logger
 from ..db.models import MonitoringService
-from .async_docker import AsyncDocker
+from .docker import AsyncDocker
 
 async_docker = AsyncDocker()
 

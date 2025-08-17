@@ -4,7 +4,7 @@ MQTT Service Configuration
 Handles configuration for the MQTT proxy service including API-Key authentication,
 MQTT broker configuration, and service-specific parameters.
 """
-
+import random
 from pydantic import BaseModel, field_validator, model_validator
 from typing import Self
 
@@ -45,6 +45,22 @@ class MQTTConfig(BaseModel):
     # Performance Tuning
     max_message_queue_size: int
     worker_threads: int
+
+    # Retry Configuration
+    retry_base_delay: float = 0.1  # Base delay for exponential backoff
+    retry_max_delay: float = 5.0  # Maximum delay cap for retries
+    retry_exponential_base: float = 2.0  # Exponential backoff base (standard is 2.0)
+    retry_jitter_enabled: bool = True  # Enable jitter to prevent thundering herd
+    retry_jitter_magnitude: float = 0.2  # Jitter magnitude (±20% range)
+
+    # Background Task Intervals
+    cleanup_interval: float = 60.0  # Cleanup task interval in seconds
+    metrics_interval: float = 300.0  # Metrics reporting interval in seconds
+    health_monitor_interval: float = 30.0  # Health monitoring interval in seconds
+
+    # Shutdown Configuration
+    shutdown_timeout: float = 10.0  # Default timeout for component shutdown
+    graceful_shutdown_timeout: float = 30.0  # Total graceful shutdown timeout
 
     class Config:
         # Prevent extra fields
@@ -146,6 +162,84 @@ class MQTTConfig(BaseModel):
             raise ValueError("Max message queue size must be between 100 and 100000")
         return v
 
+    @field_validator("shutdown_timeout")
+    @classmethod
+    def validate_shutdown_timeout(cls, v: float) -> float:
+        """Validate component shutdown timeout"""
+        if not 1.0 <= v <= 60.0:
+            raise ValueError("Shutdown timeout must be between 1.0 and 60.0 seconds")
+        return v
+
+    @field_validator("graceful_shutdown_timeout")
+    @classmethod
+    def validate_graceful_shutdown_timeout(cls, v: float) -> float:
+        """Validate total graceful shutdown timeout"""
+        if not 5.0 <= v <= 300.0:
+            raise ValueError(
+                "Graceful shutdown timeout must be between 5.0 and 300.0 seconds"
+            )
+        return v
+
+    @field_validator("retry_base_delay")
+    @classmethod
+    def validate_retry_base_delay(cls, v: float) -> float:
+        """Validate retry base delay"""
+        if not 0.01 <= v <= 10.0:
+            raise ValueError("Retry base delay must be between 0.01 and 10.0 seconds")
+        return v
+
+    @field_validator("retry_max_delay")
+    @classmethod
+    def validate_retry_max_delay(cls, v: float) -> float:
+        """Validate retry maximum delay"""
+        if not 0.1 <= v <= 60.0:
+            raise ValueError("Retry max delay must be between 0.1 and 60.0 seconds")
+        return v
+
+    @field_validator("retry_exponential_base")
+    @classmethod
+    def validate_retry_exponential_base(cls, v: float) -> float:
+        """Validate retry exponential base"""
+        if not 1.1 <= v <= 10.0:
+            raise ValueError("Retry exponential base must be between 1.1 and 10.0")
+        return v
+
+    @field_validator("retry_jitter_magnitude")
+    @classmethod
+    def validate_retry_jitter_magnitude(cls, v: float) -> float:
+        """Validate retry jitter magnitude"""
+        if not 0.0 <= v <= 0.5:
+            raise ValueError(
+                "Retry jitter magnitude must be between 0.0 (0%) and 0.5 (50%)"
+            )
+        return v
+
+    @field_validator("cleanup_interval")
+    @classmethod
+    def validate_cleanup_interval(cls, v: float) -> float:
+        """Validate cleanup interval"""
+        if not 10.0 <= v <= 3600.0:
+            raise ValueError("Cleanup interval must be between 10.0 and 3600.0 seconds")
+        return v
+
+    @field_validator("metrics_interval")
+    @classmethod
+    def validate_metrics_interval(cls, v: float) -> float:
+        """Validate metrics interval"""
+        if not 30.0 <= v <= 7200.0:
+            raise ValueError("Metrics interval must be between 30.0 and 7200.0 seconds")
+        return v
+
+    @field_validator("health_monitor_interval")
+    @classmethod
+    def validate_health_monitor_interval(cls, v: float) -> float:
+        """Validate health monitor interval"""
+        if not 5.0 <= v <= 300.0:
+            raise ValueError(
+                "Health monitor interval must be between 5.0 and 300.0 seconds"
+            )
+        return v
+
     @field_validator("client_id_prefix")
     @classmethod
     def validate_client_id_prefix(cls, v: str) -> str:
@@ -216,3 +310,27 @@ class MQTTConfig(BaseModel):
         import uuid
 
         return f"{self.client_id_prefix}_{uuid.uuid4().hex[:8]}"
+
+    def get_jittered_backoff_delay(self, attempt: int) -> float:
+        """
+        Calculates exponential backoff delay with cap and optional jitter.
+        Zero magic numbers - fully self-documenting implementation.
+        Args:
+            attempt: Retry attempt number (0-based)
+        Returns:
+            Calculated delay in seconds, guaranteed non-negative
+        """
+        # Capped exponential backoff using configurable base
+        delay = min(
+            self.retry_base_delay * (self.retry_exponential_base**attempt),
+            self.retry_max_delay,
+        )
+
+        # Add symmetric jitter if enabled
+        if self.retry_jitter_enabled:
+            jitter_amount = delay * self.retry_jitter_magnitude
+            jitter = random.uniform(-jitter_amount, jitter_amount)  # Clear intent
+            delay += jitter
+
+        # Ensure non-negative delay
+        return max(0.0, delay)

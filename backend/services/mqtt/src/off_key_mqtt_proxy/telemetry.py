@@ -1,14 +1,11 @@
 """
-Optimized Database Writer for MQTT Telemetry Data
-
-High-performance, batched database writer for real-time telemetry data with
-intelligent logging, error handling, and performance optimization.
+Database Writer for MQTT Telemetry Data
 """
 
 import asyncio
 import time
 from datetime import datetime
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Union
 from dataclasses import dataclass, field
 from collections import defaultdict
 from enum import Enum
@@ -21,8 +18,37 @@ from sqlalchemy import update
 from ...core.logs import logger, log_performance
 from ...db.models import Telemetry, Charger
 from ...utils.string import clean_string, string_to_float
+from ...utils.enum import HealthStatus
 from .config import MQTTConfig
-from .mqtt_client import MQTTMessage
+from .client.models import MQTTMessage
+
+
+@dataclass
+class WriterPerformanceMetrics:
+    """Database writer performance metrics"""
+
+    total_records_received: int
+    total_records_written: int
+    total_records_failed: int
+    total_batches_processed: int
+    total_batches_failed: int
+    batch_success_rate: float
+    average_write_latency: float
+    pending_batch_size: int
+    processing_batches_count: int
+    failed_batches_count: int
+    unique_chargers_seen: int
+    total_messages_by_charger: Dict[str, int]
+
+
+@dataclass
+class WriterHealthStatus:
+    """Database writer health status"""
+
+    status: HealthStatus
+    records_per_second: float
+    batches_per_minute: float
+    performance: WriterPerformanceMetrics
 
 
 class WriteStatus(Enum):
@@ -56,6 +82,36 @@ class TelemetryRecord:
             "data_source": self.data_source,
             "created": self.created,
         }
+
+
+@dataclass
+class ParseSuccess:
+    """Represents a successfully parsed telemetry record"""
+
+    record: TelemetryRecord
+
+
+@dataclass
+class ParseFailure:
+    """Represents a failed parsing attempt, with context"""
+
+    reason: str
+    is_error: bool  # True for unexpected errors, False for safe skips
+    log_message: str
+    context: Dict[str, Any]
+
+
+ParseResult = Union[ParseSuccess, ParseFailure]
+
+
+class WriteStatus(Enum):
+    """Database write status"""
+
+    PENDING = "pending"
+    PROCESSING = "processing"
+    SUCCESS = "success"
+    FAILED = "failed"
+    RETRYING = "retrying"
 
 
 @dataclass
@@ -137,6 +193,7 @@ class DatabaseWriter:
         self._writer_task: Optional[asyncio.Task] = None
         self._health_task: Optional[asyncio.Task] = None
         self._shutdown_event = asyncio.Event()
+        self._batch_ready_event = asyncio.Event()
 
         # Logging context
         self._log_context = {"component": "database_writer", "service": "mqtt_proxy"}
@@ -206,61 +263,65 @@ class DatabaseWriter:
         Args:
             message: MQTT message containing telemetry data
         """
-        try:
-            # Parse message
-            record = await self._parse_telemetry_message(message)
-            if not record:
-                return
+        # Parse message with explicit result handling
+        parse_result = await self._parse_telemetry_message(message)
 
-            # Add to batch
-            self.pending_batch.add_record(record)
-            self.total_records_received += 1
-
-            # Update charger tracking
-            self.charger_last_seen[record.charger_id] = record.timestamp
-            self.charger_message_counts[record.charger_id] += 1
-
-            # Log high-frequency messages intelligently
-            if self.total_records_received % 100 == 0:
-                logger.debug(
-                    f"Queued telemetry record (total: {self.total_records_received})",
-                    extra={
-                        **self._log_context,
-                        "charger_id": record.charger_id,
-                        "telemetry_type": record.telemetry_type,
-                        "batch_size": self.pending_batch.size(),
-                        "total_received": self.total_records_received,
-                    },
+        if isinstance(parse_result, ParseFailure):
+            # Handle failure with centralized logging
+            if parse_result.is_error:
+                logger.error(
+                    parse_result.log_message,
+                    extra={**self._log_context, **parse_result.context},
+                    exc_info=True,
                 )
+            else:
+                logger.warning(
+                    parse_result.log_message,
+                    extra={**self._log_context, **parse_result.context},
+                )
+            return
 
-            # Check if batch is ready for processing
-            if (
-                self.pending_batch.size() >= self.batch_size
-                or self.pending_batch.get_age_seconds() >= self.batch_timeout
-            ):
-                await self._trigger_batch_processing()
+        # Extract record from success
+        record = parse_result.record
 
-        except Exception as e:
-            logger.error(
-                f"Error processing telemetry message: {e}",
-                extra={**self._log_context, "topic": message.topic, "error": str(e)},
-                exc_info=True,
+        # Add to batch
+        self.pending_batch.add_record(record)
+        self.total_records_received += 1
+
+        # Update charger tracking
+        self.charger_last_seen[record.charger_id] = record.timestamp
+        self.charger_message_counts[record.charger_id] += 1
+
+        # Log high-frequency messages intelligently
+        if self.total_records_received % 100 == 0:
+            logger.debug(
+                f"Queued telemetry record (total: {self.total_records_received})",
+                extra={
+                    **self._log_context,
+                    "charger_id": record.charger_id,
+                    "telemetry_type": record.telemetry_type,
+                    "batch_size": self.pending_batch.size(),
+                    "total_received": self.total_records_received,
+                },
             )
 
-    async def _parse_telemetry_message(
-        self, message: MQTTMessage
-    ) -> Optional[TelemetryRecord]:
-        """Parse MQTT message into telemetry record"""
+        # Check if batch is ready for processing due to size
+        if self.pending_batch.size() >= self.batch_size:
+            self._batch_ready_event.set()
+
+    async def _parse_telemetry_message(self, message: MQTTMessage) -> ParseResult:
+        """Parse MQTT message and return an explicit success or failure object"""
         try:
             # Extract charger ID from topic
             # Topic format: charger/{charger_id}/live-telemetry/{hierarchy}
             topic_parts = message.topic.split("/")
             if len(topic_parts) < 4 or topic_parts[0] != "charger":
-                logger.warning(
-                    f"Invalid topic format: {message.topic}",
-                    extra={**self._log_context, "topic": message.topic},
+                return ParseFailure(
+                    reason="Invalid topic format",
+                    is_error=False,
+                    log_message=f"Invalid topic format: {message.topic}",
+                    context={"topic": message.topic},
                 )
-                return None
 
             charger_id = topic_parts[1]
             hierarchy = "/".join(topic_parts[3:])  # Reconstruct hierarchy
@@ -268,15 +329,15 @@ class DatabaseWriter:
             # Clean hierarchy for database storage
             telemetry_type = clean_string(hierarchy)
             if not telemetry_type:
-                logger.warning(
-                    f"Invalid hierarchy after cleaning: {hierarchy}",
-                    extra={
-                        **self._log_context,
+                return ParseFailure(
+                    reason="Invalid hierarchy after cleaning",
+                    is_error=False,
+                    log_message=f"Invalid hierarchy after cleaning: {hierarchy}",
+                    context={
                         "charger_id": charger_id,
                         "hierarchy": hierarchy,
                     },
                 )
-                return None
 
             # Extract value and timestamp from payload
             payload = message.payload
@@ -296,16 +357,16 @@ class DatabaseWriter:
                     if timestamp.tzinfo:
                         timestamp = timestamp.replace(tzinfo=None)
                 except (ValueError, TypeError) as e:
-                    logger.warning(
-                        f"Invalid timestamp format: {timestamp_str}",
-                        extra={
-                            **self._log_context,
+                    return ParseFailure(
+                        reason="Invalid timestamp format",
+                        is_error=False,
+                        log_message=f"Invalid timestamp format: {timestamp_str}",
+                        context={
                             "charger_id": charger_id,
                             "timestamp": timestamp_str,
                             "error": str(e),
                         },
                     )
-                    timestamp = datetime.now()
             else:
                 timestamp = datetime.now()
 
@@ -324,17 +385,16 @@ class DatabaseWriter:
             return record
 
         except Exception as e:
-            logger.error(
-                f"Error parsing telemetry message: {e}",
-                extra={
-                    **self._log_context,
+            return ParseFailure(
+                reason="Unexpected parsing error",
+                is_error=True,
+                log_message=f"Error parsing telemetry message: {e}",
+                context={
                     "topic": message.topic,
                     "payload": message.payload,
                     "error": str(e),
                 },
-                exc_info=True,
             )
-            return None
 
     async def _trigger_batch_processing(self):
         """Trigger processing of current batch"""
@@ -353,25 +413,34 @@ class DatabaseWriter:
         """Background loop for batch processing"""
         try:
             while not self._shutdown_event.is_set():
-                # Check if batch timeout has been reached
-                if (
-                    self.pending_batch.size() > 0
-                    and self.pending_batch.get_age_seconds() >= self.batch_timeout
-                ):
-
-                    logger.debug(
-                        f"Batch timeout reached, "
-                        f"processing {self.pending_batch.size()} records",
-                        extra={
-                            **self._log_context,
-                            "batch_size": self.pending_batch.size(),
-                            "batch_age": self.pending_batch.get_age_seconds(),
-                        },
+                try:
+                    # Wait for batch ready event OR timeout
+                    await asyncio.wait_for(
+                        self._batch_ready_event.wait(), timeout=self.batch_timeout
                     )
+                    # Batch ready due to size - process immediately
                     await self._trigger_batch_processing()
 
-                # Sleep for a short interval
-                await asyncio.sleep(0.1)
+                except asyncio.TimeoutError:
+                    # Timeout reached - check for aged batch
+                    if (
+                            self.pending_batch.size() > 0
+                            and self.pending_batch.get_age_seconds() >= self.batch_timeout
+                    ):
+                        logger.debug(
+                            f"Batch timeout reached, "
+                            f"processing {self.pending_batch.size()} records",
+                            extra={
+                                **self._log_context,
+                                "batch_size": self.pending_batch.size(),
+                                "batch_age": self.pending_batch.get_age_seconds(),
+                            },
+                        )
+                        await self._trigger_batch_processing()
+
+                finally:
+                    # Always clear the event for next iteration
+                    self._batch_ready_event.clear()
 
         except asyncio.CancelledError:
             logger.info("Writer loop cancelled", extra=self._log_context)
@@ -398,7 +467,7 @@ class DatabaseWriter:
                 batch.retry_count = attempt
 
                 if attempt > 0:
-                    delay = self.retry_delay * (2 ** (attempt - 1))
+                    delay = self.config.get_jittered_backoff_delay(attempt - 1)
                     logger.info(
                         f"Retrying batch processing "
                         f"(attempt {attempt + 1}/{max_attempts}) in {delay}s",
@@ -595,15 +664,15 @@ class DatabaseWriter:
         """Background health monitoring loop"""
         try:
             while not self._shutdown_event.is_set():
-                await asyncio.sleep(30)  # Check every 30 seconds
+                await asyncio.sleep(self.config.health_monitor_interval)
 
                 # Log health metrics periodically
                 metrics = self.get_performance_metrics()
                 health = self.get_health_status()
 
-                if health["status"] != "healthy":
+                if health.status != HealthStatus.HEALTHY:
                     logger.warning(
-                        f"Database writer health check: {health['status']}",
+                        f"Database writer health check: {health.status}",
                         extra={
                             **self._log_context,
                             "health_status": health,
@@ -612,7 +681,7 @@ class DatabaseWriter:
                     )
                 elif self.total_batches_processed % 100 == 0:
                     logger.info(
-                        f"Database writer health check: {health['status']}",
+                        f"Database writer health check: {health.status}",
                         extra={
                             **self._log_context,
                             "health_status": health,
@@ -629,7 +698,7 @@ class DatabaseWriter:
                 exc_info=True,
             )
 
-    def get_performance_metrics(self) -> Dict[str, Any]:
+    def get_performance_metrics(self) -> WriterPerformanceMetrics:
         """Get performance metrics"""
         avg_latency = 0
         if self.write_latency_count > 0:
@@ -642,52 +711,52 @@ class DatabaseWriter:
                 / (self.total_batches_processed + self.total_batches_failed)
             ) * 100
 
-        return {
-            "total_records_received": self.total_records_received,
-            "total_records_written": self.total_records_written,
-            "total_records_failed": self.total_records_failed,
-            "total_batches_processed": self.total_batches_processed,
-            "total_batches_failed": self.total_batches_failed,
-            "batch_success_rate": round(success_rate, 2),
-            "average_write_latency": round(avg_latency, 3),
-            "pending_batch_size": self.pending_batch.size(),
-            "processing_batches_count": len(self.processing_batches),
-            "failed_batches_count": len(self.failed_batches),
-            "unique_chargers_seen": len(self.charger_last_seen),
-            "total_messages_by_charger": dict(self.charger_message_counts),
-        }
+        return WriterPerformanceMetrics(
+            total_records_received=self.total_records_received,
+            total_records_written=self.total_records_written,
+            total_records_failed=self.total_records_failed,
+            total_batches_processed=self.total_batches_processed,
+            total_batches_failed=self.total_batches_failed,
+            batch_success_rate=round(success_rate, 2),
+            average_write_latency=round(avg_latency, 3),
+            pending_batch_size=self.pending_batch.size(),
+            processing_batches_count=len(self.processing_batches),
+            failed_batches_count=len(self.failed_batches),
+            unique_chargers_seen=len(self.charger_last_seen),
+            total_messages_by_charger=dict(self.charger_message_counts),
+        )
 
-    def get_health_status(self) -> Dict[str, Any]:
+    def get_health_status(self) -> WriterHealthStatus:
         """Get health status for monitoring"""
         metrics = self.get_performance_metrics()
 
         # Determine health status
-        status = "healthy"
+        status = HealthStatus.HEALTHY
 
         # Check for high failure rate
-        if metrics["batch_success_rate"] < 95:
-            status = "unhealthy"
-        elif metrics["batch_success_rate"] < 98:
-            status = "degraded"
+        if metrics.batch_success_rate < 95:
+            status = HealthStatus.UNHEALTHY
+        elif metrics.batch_success_rate < 98:
+            status = HealthStatus.DEGRADED
 
         # Check for high latency
-        if metrics["average_write_latency"] > 5.0:
-            status = "unhealthy"
-        elif metrics["average_write_latency"] > 2.0:
-            status = "degraded"
+        if metrics.average_write_latency > 5.0:
+            status = HealthStatus.UNHEALTHY
+        elif metrics.average_write_latency > 2.0:
+            status = HealthStatus.DEGRADED
 
         # Check for too many pending batches
-        if metrics["processing_batches_count"] > 10:
-            status = "unhealthy"
-        elif metrics["processing_batches_count"] > 5:
-            status = "degraded"
+        if metrics.processing_batches_count > 10:
+            status = HealthStatus.UNHEALTHY
+        elif metrics.processing_batches_count > 5:
+            status = HealthStatus.DEGRADED
 
-        return {
-            "status": status,
-            "records_per_second": self._calculate_records_per_second(),
-            "batches_per_minute": self._calculate_batches_per_minute(),
-            **metrics,
-        }
+        return WriterHealthStatus(
+            status=status,
+            records_per_second=self._calculate_records_per_second(),
+            batches_per_minute=self._calculate_batches_per_minute(),
+            performance=metrics,
+        )
 
     def _calculate_records_per_second(self) -> float:
         """Calculate records per second rate"""

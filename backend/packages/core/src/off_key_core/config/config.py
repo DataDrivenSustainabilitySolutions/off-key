@@ -111,6 +111,10 @@ class Settings(BaseSettings):
         10  # Re-log persistent unhealthy states every N health checks
     )
 
+    # Shutdown Configuration
+    MQTT_SHUTDOWN_TIMEOUT: float = 10.0  # Component shutdown timeout in seconds
+    MQTT_GRACEFUL_SHUTDOWN_TIMEOUT: float = 30.0  # Total graceful shutdown timeout
+
     # MQTT Topic Templates
     PIONIX_MQTT_TELEMETRY_TOPIC: str = "charger/{charger_id}/live-telemetry/{hierarchy}"
 
@@ -262,6 +266,8 @@ class Settings(BaseSettings):
             connection_timeout=self.MQTT_CONNECTION_TIMEOUT,
             max_message_queue_size=self.MQTT_MAX_MESSAGE_QUEUE_SIZE,
             worker_threads=self.MQTT_WORKER_THREADS,
+            shutdown_timeout=self.MQTT_SHUTDOWN_TIMEOUT,
+            graceful_shutdown_timeout = self.MQTT_GRACEFUL_SHUTDOWN_TIMEOUT,
         )
 
 

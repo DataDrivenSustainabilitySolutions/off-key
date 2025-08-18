@@ -40,14 +40,14 @@ services:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 10s
       retries: 5
-    command: ["uvicorn", "off_key.main:app",
-              "--reload", "--reload-dir", "/app/lib/python3.12/site-packages/off_key",
+    command: ["uvicorn", "off_key_api_gateway.main:app",
+              "--reload", "--reload-dir", "/app/lib/python3.12/site-packages/off_key_api_gateway",
               "--host", "0.0.0.0", "--port", "8000"]
     develop:
       watch:
         - action: sync
-          path: backend/old/src
-          target: /app/lib/python3.12/site-packages/off_key
+          path: backend/services/api/src/off_key_api_gateway
+          target: /app/lib/python3.12/site-packages/off_key_api_gateway
         - action: rebuild
           path: ./backend/uv.lock
 
@@ -142,6 +142,7 @@ services:
     image: "${MQTT_PROXY_IMAGE:-off-key-mqtt-proxy:latest}"
     container_name: mqtt_proxy
     env_file: .env
+    command: ["/app/bin/python", "-m", "off_key_mqtt_proxy"]
     depends_on:
       postgres:
         condition: service_healthy

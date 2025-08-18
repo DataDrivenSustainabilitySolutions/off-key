@@ -51,7 +51,6 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 COPY pyproject.toml uv.lock /code/
 COPY libs/ /code/libs/
 COPY ${SERVICE_ROOT} /code/${SERVICE_ROOT}
-RUN tree .
 
 # Install project itself
 RUN --mount=type=cache,target=/root/.cache/uv \

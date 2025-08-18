@@ -2,10 +2,10 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
-from ...db.base import get_db_async
-from ...db.models import Charger
+from off_key_core.db.base import get_db_async
+from off_key_core.db.models import Charger
 from ...services.chargers import ChargersSyncService
-from ...core.dependencies import get_chargers_sync_service
+from ...provider import get_chargers_sync_service
 
 router = APIRouter()
 

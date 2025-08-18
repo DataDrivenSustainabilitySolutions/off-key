@@ -11,8 +11,8 @@ from enum import Enum
 from typing import Dict, Any, List, Optional
 
 import paho.mqtt.client as mqtt
-from ....core.logs import logger
-from ....utils.enum import HealthStatus
+from off_key_core.config.logs import logger
+from off_key_core.utils.enum import HealthStatus
 
 
 class ConnectionState(Enum):

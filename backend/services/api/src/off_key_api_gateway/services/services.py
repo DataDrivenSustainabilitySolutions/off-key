@@ -9,8 +9,8 @@ from docker.types import RestartPolicy, ServiceMode
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete
 
-from ..core.logs import logger
-from ..db.models import MonitoringService
+from off_key_core.config.logs import logger
+from off_key_core.db.models import MonitoringService
 from .docker import AsyncDocker
 
 async_docker = AsyncDocker()

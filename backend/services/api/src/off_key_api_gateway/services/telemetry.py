@@ -6,10 +6,10 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
-from ..core.client.base_client import ChargerAPIClient
-from ..core.logs import logger
-from ..db.models import Charger, Telemetry
-from ..utils.string import clean_string, string_to_float
+from off_key_core.clients.base_client import ChargerAPIClient
+from off_key_core.config.logs import logger
+from off_key_core.db.models import Charger, Telemetry
+from off_key_core.utils.string import clean_string, string_to_float
 
 logging.getLogger("sqlalchemy.engine").setLevel(logging.CRITICAL)
 

@@ -2,10 +2,10 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
-from ...db.base import get_db_async
-from ...db.models import Telemetry
+from off_key_core.db.base import get_db_async
+from off_key_core.db.models import Telemetry
 from ...services.telemetry import TelemetrySyncService
-from ...core.dependencies import get_telemetry_sync_service
+from ...provider import get_telemetry_sync_service
 
 router = APIRouter()
 

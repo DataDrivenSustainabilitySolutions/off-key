@@ -4,7 +4,7 @@ import time
 
 from docker import DockerClient
 from typing import Callable, Any
-from ..core.logs import logger, log_performance
+from off_key_core.config.logs import logger, log_performance
 
 MAX_CONCURRENT_CALLS = int(os.getenv("DOCKER_MAX_CONCURRENT_CALLS", "5"))
 

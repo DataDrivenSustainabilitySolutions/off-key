@@ -5,8 +5,8 @@ from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp
 
-from ..core.logs import set_correlation_id, log_performance, logger
-from ..core.config import settings
+from off_key_core.config.logs import set_correlation_id, log_performance, logger
+from off_key_core.config.config import settings
 
 
 class LoggingMiddleware(BaseHTTPMiddleware):

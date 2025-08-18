@@ -9,8 +9,8 @@ import httpx
 from typing import Optional, Dict, Any, List
 from urllib.parse import quote
 
-from .pionix_config import PionixConfig
-from ...core.logs import logger
+from ..config.config import PionixConfig
+from ..config.logs import logger
 
 
 class PionixClient:
@@ -242,3 +242,4 @@ class PionixClient:
         )
         url = self._build_telemetry_url(charger_id, hierarchy, limit)
         return await self.get(url)
+

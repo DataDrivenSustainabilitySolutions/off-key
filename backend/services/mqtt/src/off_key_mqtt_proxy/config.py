@@ -6,6 +6,7 @@ MQTT broker configuration, and service-specific parameters.
 """
 import random
 from pydantic import BaseModel, field_validator, model_validator
+from off_key_core.config.config import settings
 from typing import Self
 
 
@@ -334,3 +335,46 @@ class MQTTConfig(BaseModel):
 
         # Ensure non-negative delay
         return max(0.0, delay)
+
+    @property
+    def mqtt_config(self) -> "MQTTConfig":
+        """
+        Create MQTTConfig instance from centralized settings.
+
+        This property demonstrates the dual-config pattern: environment parsing
+        happens here, while business logic validation occurs in MQTTConfig.
+
+        Features:
+        - Fallback logic for MQTT_APIKEY (uses PIONIX_KEY if empty)
+        - Centralized mapping from environment variables to config objects
+        - Late import to avoid circular dependencies
+
+        Returns:
+            MQTTConfig: Validated MQTT service config with business logic constraints
+        """
+
+        # Use PIONIX_KEY as fallback for MQTT_APIKEY if empty
+        mqtt_api_key = self.mqtt_api_key or settings.PIONIX_KEY
+
+        # TODO: (Re)define default values
+        return MQTTConfig(
+            broker_host=self.broker_host,
+            broker_port=self.broker_port,
+            use_tls=self.use_tls,
+            client_id_prefix=self.client_id_prefix,
+            mqtt_username=self.mqtt_username,
+            mqtt_api_key=mqtt_api_key,
+            enabled=self.enabled,
+            reconnect_delay=self.reconnect_delay,
+            max_reconnect_attempts=self.max_reconnect_attempts,
+            batch_size=self.batch_size,
+            batch_timeout=self.batch_timeout,
+            subscription_qos=self.subscription_qos,
+            health_check_interval=self.health_check_interval,
+            health_log_reminder_interval=self.health_log_reminder_interval,
+            connection_timeout=self.connection_timeout,
+            max_message_queue_size=self.max_message_queue_size,
+            worker_threads=self.worker_threads,
+            shutdown_timeout=self.shutdown_timeout,
+            graceful_shutdown_timeout = self.graceful_shutdown_timeout,
+        )

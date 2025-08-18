@@ -11,14 +11,14 @@ from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from off_key.config import settings
-from ...core.logs import logger
-from ...db.base import AsyncSessionLocal
-from ...utils.enum import HealthStatus
+from off_key_core.config.config import settings
+from off_key_core.config.logs import logger
+from off_key_core.db.base import AsyncSessionLocal
+from off_key_core.utils.enum import HealthStatus
 from .auth import ApiKeyAuthHandler
 from .facade import MQTTClient
 from .charger_discovery import ChargerDiscoveryService
-from ...core.client.base_client import ChargerAPIClient
+from off_key_core.clients.base_client import ChargerAPIClient
 from .telemetry import DatabaseWriter
 from .router import MessageRouter, DatabaseDestination
 from .interfaces import Stoppable, ShutdownFailedError

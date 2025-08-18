@@ -1,7 +1,7 @@
 import time
 from fastapi_mail import FastMail, MessageSchema, ConnectionConfig
-from off_key.core.config import settings
-from off_key.core.logs import logger, log_performance, log_security_event
+from ..config.config import settings
+from ..config.logs import logger, log_performance, log_security_event
 
 conf = ConnectionConfig(
     MAIL_USERNAME=settings.EMAIL_USERNAME,

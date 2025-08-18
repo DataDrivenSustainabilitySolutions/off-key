@@ -3,10 +3,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from datetime import datetime
 
-from ...utils.mail import send_anomaly_alert_email
-from ...db.base import get_db_async
-from ...db.models import Anomaly
-from ...core.logs import logger
+from off_key_core.utils.mail import send_anomaly_alert_email
+from off_key_core.db.base import get_db_async
+from off_key_core.db.models import Anomaly
+from off_key_core.config.logs import logger
 
 router = APIRouter()
 

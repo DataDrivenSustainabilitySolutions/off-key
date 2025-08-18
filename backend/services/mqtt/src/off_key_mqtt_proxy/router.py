@@ -13,8 +13,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from abc import ABC, abstractmethod
 
-from ...core.logs import logger
-from ...utils.enum import HealthStatus
+from off_key_core.config.logs import logger
+from off_key_core.utils.enum import HealthStatus
 from .config import MQTTConfig
 from .client.models import MQTTMessage
 
@@ -785,8 +785,8 @@ class MessageRouter:
 
                 logger.info(
                     f"Message router metrics: "
-                    f"{metrics['total_messages_routed']} routed, "
-                    f"{metrics['routing_success_rate']}% success rate",
+                    f"{metrics.total_messages_routed} routed, "
+                    f"{metrics.routing_success_rate}% success rate",
                     extra={
                         **self._log_context,
                         "performance_metrics": metrics,

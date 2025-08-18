@@ -2,9 +2,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
-from ...db.base import get_db_async
-from ...db.models import Favorite
-from ...schemas.favorites import FavoriteCreate
+from off_key_core.db.base import get_db_async
+from off_key_core.db.models import Favorite
+from off_key_core.schemas.favorites import FavoriteCreate
 
 router = APIRouter()
 

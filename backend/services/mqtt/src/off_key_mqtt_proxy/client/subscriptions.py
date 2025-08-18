@@ -8,7 +8,7 @@ pending subscriptions, and resubscription after reconnection.
 from typing import Set, Optional
 
 import paho.mqtt.client as mqtt
-from ....core.logs import logger
+from off_key_core.config.logs import logger
 
 
 class SubscriptionManager:

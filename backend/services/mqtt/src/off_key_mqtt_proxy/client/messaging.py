@@ -10,7 +10,7 @@ from datetime import datetime
 from typing import Optional, Callable, List, Union, Awaitable
 
 import paho.mqtt.client as mqtt
-from ....core.logs import logger
+from off_key_core.config.logs import logger
 from .models import MQTTMessage
 
 

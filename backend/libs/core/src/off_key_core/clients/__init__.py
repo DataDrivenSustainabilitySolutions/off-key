@@ -2,6 +2,5 @@
 
 from .base_client import ChargerAPIClient
 from .pionix import PionixClient
-from .pionix_config import PionixConfig
 
-__all__ = ["ChargerAPIClient", "PionixClient", "PionixConfig"]
+__all__ = ["ChargerAPIClient", "PionixClient"]

@@ -3,10 +3,10 @@ from datetime import datetime, timezone, timedelta
 from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..core.client.base_client import ChargerAPIClient
-from ..core.logs import logger, log_performance
+from off_key_core.clients.base_client import ChargerAPIClient
+from off_key_core.config.logs import logger, log_performance
 import time
-from ..db.models import Charger
+from off_key_core.db.models import Charger
 
 
 class ChargersSyncService:

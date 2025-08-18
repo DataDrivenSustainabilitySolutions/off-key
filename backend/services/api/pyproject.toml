@@ -1,7 +1,7 @@
 [project]
 name = "off-key-api-gateway"
 version = "0.1.0"
-description = "API Gateway for off-Key platform"
+description = "API Gateway for off-key platform"
 authors = [
     { name = "Oliver Hennhoefer", email = "oliver.hennhoefer@mail.de" },
     { name = "Fernando Saba", email = "fernando.saba@gmx.de" }
@@ -19,9 +19,12 @@ classifiers = [
     "Development Status :: 3 - Alpha"
 ]
 dependencies = [
-    "off-key-core[auth]",
+    "off-key-core",
+    "bcrypt==4.0.1",
+    "python-jose>=3.4.0",
     "apscheduler>=3.11.0",
     "docker>=7.1.0",
+    "passlib>=1.7.4",
     "fastapi[all]>=0.115.8",
     "fastapi-mail>=1.4.2",
     "slowapi>=0.1.9",
@@ -29,8 +32,8 @@ dependencies = [
 ]
 
 [build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
+requires = ["uv_build>=0.8.11,<0.9.0"]
+build-backend = "uv_build"
 
-[tool.hatch.build.targets.wheel]
-packages = ["src/off_key_api_gateway"]
+[tool.uv.sources]
+off-key-core = { workspace = true }

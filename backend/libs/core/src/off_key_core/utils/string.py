@@ -1,6 +1,6 @@
 from urllib.parse import unquote
 
-from ..core.logs import logger
+from ..config.logs import logger
 
 
 def clean_string(input_string: str) -> None | str:

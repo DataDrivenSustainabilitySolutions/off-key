@@ -13,9 +13,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 
-from ..core.config import settings
-from ..core.logs import logger
-from ..db.base import AsyncSessionLocal
+from off_key_core.config.config import settings
+from off_key_core.config.logs import logger
+from off_key_core.db.base import AsyncSessionLocal
 from .chargers import ChargersSyncService
 from .telemetry import TelemetrySyncService
 

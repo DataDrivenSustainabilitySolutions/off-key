@@ -15,10 +15,10 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy import update
 
-from ...core.logs import logger, log_performance
-from ...db.models import Telemetry, Charger
-from ...utils.string import clean_string, string_to_float
-from ...utils.enum import HealthStatus
+from off_key_core.config.logs import logger, log_performance
+from off_key_core.db.models import Telemetry, Charger
+from off_key_core.utils.string import clean_string, string_to_float
+from off_key_core.utils.enum import HealthStatus
 from .config import MQTTConfig
 from .client.models import MQTTMessage
 

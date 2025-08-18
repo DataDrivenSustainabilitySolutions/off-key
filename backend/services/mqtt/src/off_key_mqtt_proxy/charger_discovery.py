@@ -13,11 +13,11 @@ from dataclasses import dataclass
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ...core.client.base_client import ChargerAPIClient
-from ...core.config import settings
-from ...core.logs import logger
-from ...db.models import Charger
-from ...utils.enum import HealthStatus
+from off_key_core.clients.base_client import ChargerAPIClient
+from off_key_core.config.config import settings
+from off_key_core.config.logs import logger
+from off_key_core.db.models import Charger
+from off_key_core.utils.enum import HealthStatus
 from .config import MQTTConfig
 
 

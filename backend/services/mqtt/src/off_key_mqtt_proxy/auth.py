@@ -8,7 +8,7 @@ replacing the complex Firebase authentication system.
 from typing import Optional, Tuple
 from dataclasses import dataclass
 
-from ...core.logs import logger
+from off_key_core.config.logs import logger
 
 
 @dataclass

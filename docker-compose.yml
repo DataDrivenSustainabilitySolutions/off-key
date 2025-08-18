@@ -23,7 +23,7 @@ services:
         SERVICE_NAME: off-key-api-gateway
         SERVICE_ROOT: services/api
     image: "${API_IMAGE:-off-key-api-gateway:latest}"
-    container_name: fastapi_backend
+    container_name: api_gateway
     env_file: .env
     ports:
       - "${BACKEND_PORT}:8000"
@@ -100,7 +100,7 @@ services:
   frontend:
     build: ./frontend
     image: "${FRONTEND_IMAGE:-off-key-frontend:latest}"
-    container_name: react_frontend
+    container_name: react_client
     env_file: .env
     ports:
       - "${FRONTEND_PORT}:5173"

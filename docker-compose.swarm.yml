@@ -22,7 +22,7 @@ services:
           - node.role == manager
 
   api:
-    image: "${API_IMAGE:-off-key-api:latest}"
+    image: "${API_IMAGE:-off-key-api-gateway:latest}"
     env_file: .env
     ports:
       - target: 8000
@@ -142,6 +142,30 @@ services:
       placement:
         constraints:
           - node.role == manager
+
+  mqtt-proxy:
+    image: "${API_IMAGE:-off-key-mqtt-proxy:latest}"
+    env_file: .env
+    networks:
+      - app-network
+    environment:
+      - SERVICE_TYPE=mqtt_proxy
+      - MQTT_TELEMETRY_ENABLED=true
+    volumes:
+      - ./logs:/app/logs  # For log persistence
+    deploy:
+      mode: replicated
+      replicas: 2
+      placement:
+        constraints:
+          - node.role == worker
+  #        preferences:
+  #          - spread: node.labels.type  # Distribute evenly
+  #      TODO: Measure resources with MQTT images
+  #      resources:
+  #        limits:
+  #          cpus: '0.2'
+  #          memory: 512M
 
 networks:
   public-network:

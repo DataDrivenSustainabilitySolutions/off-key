@@ -22,7 +22,7 @@ services:
       args:
         SERVICE_NAME: off-key-api-gateway
         SERVICE_ROOT: services/api
-    image: "${API_IMAGE:-off-key-api:latest}"
+    image: "${API_IMAGE:-off-key-api-gateway:latest}"
     container_name: fastapi_backend
     env_file: .env
     ports:

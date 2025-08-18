@@ -144,7 +144,7 @@ services:
           - node.role == manager
 
   mqtt-proxy:
-    image: "${API_IMAGE:-off-key-mqtt-proxy:latest}"
+    image: "${MQTT_PROXY_IMAGE:-off-key-mqtt-proxy:latest}"
     env_file: .env
     networks:
       - app-network

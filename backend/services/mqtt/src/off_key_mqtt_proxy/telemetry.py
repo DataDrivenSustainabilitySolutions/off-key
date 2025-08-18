@@ -15,7 +15,6 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy import update
 
-<<<<<<<< HEAD:backend/services/mqtt/src/off_key_mqtt_proxy/telemetry.py
 from off_key_core.config.logs import logger, log_performance
 from off_key_core.db.models import Telemetry, Charger
 from off_key_core.utils.string import clean_string, string_to_float
@@ -50,42 +49,16 @@ class WriterHealthStatus:
     records_per_second: float
     batches_per_minute: float
     performance: WriterPerformanceMetrics
-========
-from ...core.logs import logger, log_performance
-from ...db.models import Telemetry, Charger
-from ...utils.string import clean_string, string_to_float
-from ...utils.enum import HealthStatus
-from .config import MQTTConfig
-from .client.models import MQTTMessage
->>>>>>>> main:backend/services/mqtt/src/off_key_mqtt_proxy/telemetry_writer.py
 
 
-@dataclass
-class WriterPerformanceMetrics:
-    """Database writer performance metrics"""
+class WriteStatus(Enum):
+    """Database write status"""
 
-    total_records_received: int
-    total_records_written: int
-    total_records_failed: int
-    total_batches_processed: int
-    total_batches_failed: int
-    batch_success_rate: float
-    average_write_latency: float
-    pending_batch_size: int
-    processing_batches_count: int
-    failed_batches_count: int
-    unique_chargers_seen: int
-    total_messages_by_charger: Dict[str, int]
-
-
-@dataclass
-class WriterHealthStatus:
-    """Database writer health status"""
-
-    status: HealthStatus
-    records_per_second: float
-    batches_per_minute: float
-    performance: WriterPerformanceMetrics
+    PENDING = "pending"
+    PROCESSING = "processing"
+    SUCCESS = "success"
+    FAILED = "failed"
+    RETRYING = "retrying"
 
 
 @dataclass
@@ -196,6 +169,7 @@ class DatabaseWriter:
         self.batch_size = config.batch_size
         self.batch_timeout = config.batch_timeout
         self.max_retries = 3
+        self.retry_delay = 1.0
 
         # Write queues
         self.pending_batch = WriteBatch()
@@ -450,13 +424,8 @@ class DatabaseWriter:
                 except asyncio.TimeoutError:
                     # Timeout reached - check for aged batch
                     if (
-<<<<<<<< HEAD:backend/services/mqtt/src/off_key_mqtt_proxy/telemetry.py
                             self.pending_batch.size() > 0
                             and self.pending_batch.get_age_seconds() >= self.batch_timeout
-========
-                        self.pending_batch.size() > 0
-                        and self.pending_batch.get_age_seconds() >= self.batch_timeout
->>>>>>>> main:backend/services/mqtt/src/off_key_mqtt_proxy/telemetry_writer.py
                     ):
                         logger.debug(
                             f"Batch timeout reached, "

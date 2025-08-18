@@ -310,6 +310,13 @@ class MQTTConfig(BaseModel):
                 f" to prevent processing delays"
             )
 
+        # Retry max delay must be greater than base delay
+        if self.retry_max_delay <= self.retry_base_delay:
+            raise ValueError(
+                f"Retry max delay ({self.retry_max_delay}s) must be greater than "
+                f"retry base delay ({self.retry_base_delay}s)"
+            )
+
         return self
 
     def get_websocket_url(self) -> str:
@@ -327,8 +334,10 @@ class MQTTConfig(BaseModel):
         """
         Calculates exponential backoff delay with cap and optional jitter.
         Zero magic numbers - fully self-documenting implementation.
+
         Args:
             attempt: Retry attempt number (0-based)
+
         Returns:
             Calculated delay in seconds, guaranteed non-negative
         """

@@ -382,7 +382,7 @@ class DatabaseWriter:
                 created=datetime.now(),
             )
 
-            return record
+            return ParseSuccess(record=record)
 
         except Exception as e:
             return ParseFailure(

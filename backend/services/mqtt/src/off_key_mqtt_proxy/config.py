@@ -6,8 +6,19 @@ MQTT broker configuration, and service-specific parameters.
 """
 import random
 from pydantic import BaseModel, field_validator, model_validator
+from pydantic_settings import BaseSettings
+
 from off_key_core.config.config import settings
 from typing import Self
+from dotenv import find_dotenv, load_dotenv
+
+# Load default ".env" file from upper project tree
+load_dotenv()
+
+# Override with dev.env values if present
+dev_env = find_dotenv("dev.env")
+if dev_env:
+    load_dotenv(dev_env, override=True)
 
 
 class MQTTConfig(BaseModel):
@@ -336,8 +347,46 @@ class MQTTConfig(BaseModel):
         # Ensure non-negative delay
         return max(0.0, delay)
 
+
+class MQTTSettings(BaseSettings):
+    # MQTT Service Configuration
+    # Service Control
+    MQTT_TELEMETRY_ENABLED: bool = True  # Enable MQTT telemetry service
+
+    # Broker Connection
+    MQTT_BROKER_HOST: str = "cloud.pionix.com"  # MQTT broker host
+    MQTT_BROKER_PORT: int = 443  # MQTT broker port
+    MQTT_USE_TLS: bool = True  # Use TLS for MQTT connection
+    MQTT_CONNECTION_TIMEOUT: float = 30.0  # Connection timeout in seconds
+
+    # Authentication
+    MQTT_CLIENT_ID_PREFIX: str = "offkey-backend"  # MQTT client ID prefix
+    MQTT_USERNAME: str  # MQTT authentication username (required)
+    MQTT_APIKEY: str = ""  # API key for MQTT authentication (falls back to PIONIX_KEY)
+
+    # Connection Management
+    MQTT_RECONNECT_DELAY: int = 5  # Reconnection delay in seconds
+    MQTT_MAX_RECONNECT_ATTEMPTS: int = 10  # Maximum reconnection attempts
+
+    # Message Processing
+    MQTT_BATCH_SIZE: int = 100  # Database batch size for MQTT messages
+    MQTT_BATCH_TIMEOUT: float = 5.0  # Batch timeout in seconds
+    MQTT_SUBSCRIPTION_QOS: int = 1  # MQTT subscription QoS level
+    MQTT_MAX_MESSAGE_QUEUE_SIZE: int = 10000  # Maximum message queue size
+    MQTT_WORKER_THREADS: int = 4  # Number of worker threads
+
+    # Health Monitoring
+    MQTT_HEALTH_CHECK_INTERVAL: int = 35  # Health check interval in seconds
+    MQTT_HEALTH_LOG_REMINDER_INTERVAL: int = (
+        10  # Re-log persistent unhealthy states every N health checks
+    )
+
+    # Shutdown Configuration
+    MQTT_SHUTDOWN_TIMEOUT: float = 10.0  # Component shutdown timeout in seconds
+    MQTT_GRACEFUL_SHUTDOWN_TIMEOUT: float = 30.0  # Total graceful shutdown timeout
+
     @property
-    def mqtt_config(self) -> "MQTTConfig":
+    def config(self) -> "MQTTConfig":
         """
         Create MQTTConfig instance from centralized settings.
 
@@ -352,29 +401,26 @@ class MQTTConfig(BaseModel):
         Returns:
             MQTTConfig: Validated MQTT service config with business logic constraints
         """
-
-        # Use PIONIX_KEY as fallback for MQTT_APIKEY if empty
-        mqtt_api_key = self.mqtt_api_key or settings.PIONIX_KEY
-
-        # TODO: (Re)define default values
         return MQTTConfig(
-            broker_host=self.broker_host,
-            broker_port=self.broker_port,
-            use_tls=self.use_tls,
-            client_id_prefix=self.client_id_prefix,
-            mqtt_username=self.mqtt_username,
-            mqtt_api_key=mqtt_api_key,
-            enabled=self.enabled,
-            reconnect_delay=self.reconnect_delay,
-            max_reconnect_attempts=self.max_reconnect_attempts,
-            batch_size=self.batch_size,
-            batch_timeout=self.batch_timeout,
-            subscription_qos=self.subscription_qos,
-            health_check_interval=self.health_check_interval,
-            health_log_reminder_interval=self.health_log_reminder_interval,
-            connection_timeout=self.connection_timeout,
-            max_message_queue_size=self.max_message_queue_size,
-            worker_threads=self.worker_threads,
-            shutdown_timeout=self.shutdown_timeout,
-            graceful_shutdown_timeout = self.graceful_shutdown_timeout,
+            broker_host=self.MQTT_BROKER_HOST,
+            broker_port=self.MQTT_BROKER_PORT,
+            use_tls=self.MQTT_USE_TLS,
+            client_id_prefix=self.MQTT_CLIENT_ID_PREFIX,
+            mqtt_username=self.MQTT_USERNAME,
+            mqtt_api_key=self.MQTT_APIKEY or settings.PIONIX_KEY.get_secret_value(),
+            enabled=self.MQTT_TELEMETRY_ENABLED,
+            reconnect_delay=self.MQTT_RECONNECT_DELAY,
+            max_reconnect_attempts=self.MQTT_MAX_RECONNECT_ATTEMPTS,
+            batch_size=self.MQTT_BATCH_SIZE,
+            batch_timeout=self.MQTT_BATCH_TIMEOUT,
+            subscription_qos=self.MQTT_SUBSCRIPTION_QOS,
+            health_check_interval=self.MQTT_HEALTH_CHECK_INTERVAL,
+            health_log_reminder_interval=self.MQTT_HEALTH_LOG_REMINDER_INTERVAL,
+            connection_timeout=self.MQTT_CONNECTION_TIMEOUT,
+            max_message_queue_size=self.MQTT_MAX_MESSAGE_QUEUE_SIZE,
+            worker_threads=self.MQTT_WORKER_THREADS,
+            shutdown_timeout=self.MQTT_SHUTDOWN_TIMEOUT,
+            graceful_shutdown_timeout=self.MQTT_GRACEFUL_SHUTDOWN_TIMEOUT,
         )
+
+mqtt_settings = MQTTSettings()

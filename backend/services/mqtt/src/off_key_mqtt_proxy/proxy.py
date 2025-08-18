@@ -11,10 +11,10 @@ from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from off_key_core.config.config import settings
 from off_key_core.config.logs import logger
 from off_key_core.db.base import AsyncSessionLocal
 from off_key_core.utils.enum import HealthStatus
+from .config import mqtt_settings
 from .auth import ApiKeyAuthHandler
 from .facade import MQTTClient
 from .charger_discovery import ChargerDiscoveryService
@@ -36,7 +36,7 @@ class MQTTProxyService:
 
     def __init__(self, api_client: ChargerAPIClient):
         self.api_client = api_client
-        self.config = settings.mqtt_config
+        self.config = mqtt_settings.config
         self.db_session: Optional[AsyncSession] = None
 
         # Core components

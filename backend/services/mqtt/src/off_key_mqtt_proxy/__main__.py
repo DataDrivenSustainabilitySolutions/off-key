@@ -8,7 +8,7 @@ occur when a module is both imported as a package component and executed as a sc
 
 import asyncio
 from off_key_core.clients.provider import get_charger_api_client
-from .main import MQTTProxyService
+from .proxy import MQTTProxyService
 
 
 async def main():

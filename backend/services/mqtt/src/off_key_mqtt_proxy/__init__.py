@@ -12,9 +12,9 @@ Components:
 - Charger discovery and subscription management
 """
 
-from .main import MQTTProxyService
+from .proxy import MQTTProxyService
 from .config import MQTTConfig
 from .facade import MQTTClient
 from .client.models import MQTTMessage
 
-__all__ = ["MQTTProxyService", "MQTTConfig"]
+__all__ = ["MQTTProxyService", "MQTTConfig", "MQTTClient", "MQTTMessage"]

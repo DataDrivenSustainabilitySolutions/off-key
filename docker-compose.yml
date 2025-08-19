@@ -17,9 +17,13 @@ services:
       retries: 5
 
   api:
-    build: ./backend/
-    image: "${API_IMAGE:-off-key-api:latest}"
-    container_name: fastapi_backend
+    build:
+      context: ./backend/
+      args:
+        SERVICE_NAME: off-key-api-gateway
+        SERVICE_ROOT: services/api
+    image: "${API_IMAGE:-off-key-api-gateway:latest}"
+    container_name: api_gateway
     env_file: .env
     ports:
       - "${BACKEND_PORT}:8000"
@@ -36,14 +40,14 @@ services:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 10s
       retries: 5
-    command: ["uvicorn", "off_key.main:app",
-              "--reload", "--reload-dir", "/app/lib/python3.12/site-packages/off_key",
+    command: ["uvicorn", "off_key_api_gateway.main:app",
+              "--reload", "--reload-dir", "/app/lib/python3.12/site-packages/off_key_api_gateway",
               "--host", "0.0.0.0", "--port", "8000"]
     develop:
       watch:
         - action: sync
-          path: ./backend/src
-          target: /app/lib/python3.12/site-packages/off_key
+          path: backend/services/api/src/off_key_api_gateway
+          target: /app/lib/python3.12/site-packages/off_key_api_gateway
         - action: rebuild
           path: ./backend/uv.lock
 
@@ -96,7 +100,7 @@ services:
   frontend:
     build: ./frontend
     image: "${FRONTEND_IMAGE:-off-key-frontend:latest}"
-    container_name: react_frontend
+    container_name: react_client
     env_file: .env
     ports:
       - "${FRONTEND_PORT}:5173"
@@ -132,10 +136,13 @@ services:
   mqtt-proxy:
     build:
       context: ./backend/
-      target: mqtt
+      args:
+        SERVICE_NAME: off-key-mqtt-proxy
+        SERVICE_ROOT: services/mqtt
     image: "${MQTT_PROXY_IMAGE:-off-key-mqtt-proxy:latest}"
     container_name: mqtt_proxy
     env_file: .env
+    command: ["/app/bin/python", "-m", "off_key_mqtt_proxy"]
     depends_on:
       postgres:
         condition: service_healthy

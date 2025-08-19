@@ -36,9 +36,9 @@ jobs:
 
       - name: Override image tags to “latest”
         run: |
-          echo "API_IMAGE=ghcr.io/${{ env.OWNER_LC }}/off-key-api:latest" >> $GITHUB_ENV
+          echo "API_IMAGE=ghcr.io/${{ env.OWNER_LC }}/off-key-api-gateway:latest" >> $GITHUB_ENV
           echo "FRONTEND_IMAGE=ghcr.io/${{ env.OWNER_LC }}/off-key-frontend:latest" >> $GITHUB_ENV
-
+          echo "MQTT_PROXY_IMAGE=ghcr.io/${{ env.OWNER_LC }}/off-key-mqtt-proxy:latest" >> $GITHUB_ENV
       - name: Build all services via Compose
         run: docker compose build --parallel
 

@@ -1,0 +1,35 @@
+[project]
+name = "off-key-core"
+version = "0.1.0"
+description = "Shared core components for off-key platform"
+authors = [
+    { name = "Oliver Hennhoefer", email = "oliver.hennhoefer@mail.de" },
+    { name = "Fernando Saba", email = "fernando.saba@gmx.de" }
+]
+maintainers = [
+    { name = "Oliver Hennhoefer", email = "oliver.hennhoefer@mail.de" },
+    { name = "Fernando Saba", email = "fernando.saba@gmx.de" }
+]
+keywords = ["off-key", "shared", "core"]
+requires-python = ">=3.12"
+classifiers = [
+    "Programming Language :: Python :: 3.12",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Development Status :: 3 - Alpha"
+]
+dependencies = [
+    "asyncpg>=0.30.0",
+    "httpx>=0.26.0",
+    "pydantic-settings>=2.7.1",
+    "requests>=2.32.3",
+    "sqlalchemy>=2.0.38",
+    "email-validator>=2.2.0",
+    "python-dateutil>=2.8.2",
+    "psycopg2-binary>=2.9.10",
+
+]
+
+[build-system]
+requires = ["uv_build>=0.8.11,<0.9.0"]
+build-backend = "uv_build"

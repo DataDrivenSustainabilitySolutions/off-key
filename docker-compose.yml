@@ -168,6 +168,7 @@ services:
     image: ghcr.io/mszabo-wikia/mcrouter-debian-bookworm:20250621-a099b76
     environment:
       - MC_LOCAL=memcached
+      - MC_SERVICE=memcached
     ports:
       - "11210:11211"
     volumes:

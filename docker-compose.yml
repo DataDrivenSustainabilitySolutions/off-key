@@ -138,7 +138,7 @@ services:
       context: ./backend/
       args:
         SERVICE_NAME: off-key-mqtt-proxy
-        SERVICE_ROOT: services/mqtt
+        SERVICE_ROOT: services/mqtt/proxy
     image: "${MQTT_PROXY_IMAGE:-off-key-mqtt-proxy:latest}"
     container_name: mqtt_proxy
     env_file: .env

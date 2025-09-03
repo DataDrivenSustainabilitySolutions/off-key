@@ -16,12 +16,12 @@ from off_key_core.db.base import AsyncSessionLocal
 from off_key_core.utils.enum import HealthStatus
 from .config import mqtt_settings
 from .auth import ApiKeyAuthHandler
-from .facade import MQTTClient
+from .client.facade import MQTTClient
 from .charger_discovery import ChargerDiscoveryService
 from off_key_core.clients.base_client import ChargerAPIClient
 from .telemetry import DatabaseWriter
 from .router import MessageRouter, DatabaseDestination
-from .interfaces import Stoppable, ShutdownFailedError
+from .core.interfaces import Stoppable, ShutdownFailedError
 
 class MQTTProxyService:
     """

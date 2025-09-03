@@ -1,0 +1,28 @@
+[project]
+name = "off-key-mqtt-radar"
+version = "0.1.0"
+description = "MQTT Real-Time Anomaly Detector for Analysis and Reporting in off-key platform"
+authors = [
+    { name = "Oliver Hennhoefer", email = "oliver.hennhoefer@mail.de" },
+    { name = "Fernando Saba", email = "fernando.saba@gmx.de" }
+]
+maintainers = [
+    { name = "Oliver Hennhoefer", email = "oliver.hennhoefer@mail.de" },
+    { name = "Fernando Saba", email = "fernando.saba@gmx.de" }
+]
+keywords = ["off-key", "mqtt", "anomaly", "detector", "telemetry", "analysis"]
+requires-python = ">=3.12"
+classifiers = [
+    "Programming Language :: Python :: 3.12",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Development Status :: 3 - Alpha"
+]
+dependencies = []
+
+[build-system]
+requires = ["uv_build>=0.8.11,<0.9.0"]
+build-backend = "uv_build"
+
+[tool.uv.sources]
+off-key-core = { workspace = true }

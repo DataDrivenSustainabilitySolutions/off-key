@@ -1,7 +1,7 @@
 [project]
-name = "off-key-mqtt-proxy"
+name = "off-key-mqtt-bridge"
 version = "0.1.0"
-description = "MQTT Proxy service for off-key platform"
+description = "MQTT Bridge service for off-key platform"
 authors = [
     { name = "Oliver Hennhoefer", email = "oliver.hennhoefer@mail.de" },
     { name = "Fernando Saba", email = "fernando.saba@gmx.de" }
@@ -10,7 +10,7 @@ maintainers = [
     { name = "Oliver Hennhoefer", email = "oliver.hennhoefer@mail.de" },
     { name = "Fernando Saba", email = "fernando.saba@gmx.de" }
 ]
-keywords = ["off-key", "mqtt", "proxy", "telemetry"]
+keywords = ["off-key", "mqtt", "bridge", "charger", "discovery"]
 requires-python = ">=3.12"
 classifiers = [
     "Programming Language :: Python :: 3.12",
@@ -20,17 +20,14 @@ classifiers = [
 ]
 dependencies = [
     "off-key-core",
-    "paho-mqtt>=2.1.0",
-    "asyncio-mqtt>=0.16.1",
-    "structlog>=23.2.0",
-    "psutil>=5.9.8",
-    "uvicorn>=0.25.0",
+    "aiomqtt>=2.4.0",
     "websockets>=12.0",
 ]
 
-#[build-system]
-#requires = ["uv_build>=0.8.11,<0.9.0"]
-#build-backend = "uv_build"
+
+[build-system]
+requires = ["uv_build>=0.8.11,<0.9.0"]
+build-backend = "uv_build"
 
 [tool.uv.sources]
 off-key-core = { workspace = true }

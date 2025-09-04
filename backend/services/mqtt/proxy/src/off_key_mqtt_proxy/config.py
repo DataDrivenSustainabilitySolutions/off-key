@@ -1,5 +1,5 @@
 """
-MQTT Service Configuration
+MQTT Proxy Configuration
 
 Handles configuration for the MQTT proxy service including API-Key authentication,
 MQTT broker configuration, and service-specific parameters.
@@ -369,6 +369,7 @@ class MQTTSettings(BaseSettings):
     MQTT_CONNECTION_TIMEOUT: float = 30.0  # Connection timeout in seconds
 
     # Authentication
+    MQTT_CLIENT_ID: str = "" # MQTT Client ID
     MQTT_CLIENT_ID_PREFIX: str = "offkey-backend"  # MQTT client ID prefix
     MQTT_USERNAME: str  # MQTT authentication username (required)
     MQTT_APIKEY: str = ""  # API key for MQTT authentication (falls back to PIONIX_KEY)

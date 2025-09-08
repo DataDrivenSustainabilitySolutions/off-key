@@ -12,7 +12,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import React, { useEffect, useMemo, useState } from "react";
-import axios from "axios";
+import { apiUtils } from "@/lib/api-client";
+import { API_CONFIG } from "@/lib/api-config";
 
 const Monitoring: React.FC = () => {
   const { chargerId } = useParams<{ chargerId: string }>();
@@ -57,8 +58,11 @@ const Monitoring: React.FC = () => {
       return;
     }
     try {
-      const response = await axios.post(
-        `http://127.0.0.1:8000/v1/anomalyDetection/`,
+      // Note: This endpoint may not exist yet. This is a placeholder for future implementation.
+      // When anomaly detection service is implemented, this will trigger anomaly detection
+      // and write results to the anomalies table.
+      const response = await apiUtils.post(
+        API_CONFIG.ENDPOINTS.ANOMALY_DETECTION.DETECT,
         {
           chargerId,
           selectedAlgorithm,
@@ -66,9 +70,11 @@ const Monitoring: React.FC = () => {
         }
       );
 
-      console.log("Successfully submitted:", response.data);
+      console.log("Successfully submitted anomaly detection:", response.data);
+      alert("Anomaly detection started. Results will appear in charts and anomaly table.");
     } catch (error) {
-      console.error("Failed to submit configuration:", error);
+      console.error("Failed to submit anomaly detection:", error);
+      alert("Error: Anomaly detection service may not be available yet.");
     }
   };
 
@@ -83,7 +89,7 @@ const Monitoring: React.FC = () => {
             </CardTitle>
             <CardContent>
               <div className="flex items-start gap-6">
-                {/* Linke Seite */}
+                {/* Left Side */}
                 <div className="flex flex-col w-2/5">
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>

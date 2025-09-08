@@ -24,10 +24,5 @@ dependencies = [
     "websockets>=12.0",
 ]
 
-
-[build-system]
-requires = ["uv_build>=0.8.11,<0.9.0"]
-build-backend = "uv_build"
-
 [tool.uv.sources]
 off-key-core = { workspace = true }

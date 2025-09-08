@@ -133,44 +133,44 @@ services:
     networks:
       - app-network
 
-#  mqtt-proxy:
-#    build:
-#      context: ./backend/
-#      args:
-#        SERVICE_NAME: off-key-mqtt-proxy
-#        SERVICE_ROOT: services/mqtt/proxy
-#    image: "${MQTT_PROXY_IMAGE:-off-key-mqtt-proxy:latest}"
-#    container_name: mqtt_proxy
-#    env_file: .env
-#    command: ["/app/bin/python", "-m", "off_key_mqtt_proxy"]
-#    depends_on:
-#      postgres:
-#        condition: service_healthy
-#    networks:
-#      - app-network
-#    restart: always
-#    environment:
-#      - SERVICE_TYPE=mqtt_proxy
-#      - MQTT_TELEMETRY_ENABLED=true
-#    volumes:
-#      - ./logs:/app/logs  # For log persistence
-
-  mqtt-bridge:
+  mqtt-proxy:
     build:
       context: ./backend/
       args:
-        SERVICE_NAME: off-key-mqtt-bridge
-        SERVICE_ROOT: services/mqtt/bridge
-    image: "${MQTT_PROXY_IMAGE:-off-key-mqtt-bridge:latest}"
-    container_name: mqtt_bridge
+        SERVICE_NAME: off-key-mqtt-proxy
+        SERVICE_ROOT: services/mqtt/proxy
+    image: "${MQTT_PROXY_IMAGE:-off-key-mqtt-proxy:latest}"
+    container_name: mqtt_proxy
     env_file: .env
-    command: [ "/app/bin/python", "-m", "off_key_mqtt_bridge" ]
+    command: ["/app/bin/python", "-m", "off_key_mqtt_proxy"]
     depends_on:
       postgres:
         condition: service_healthy
     networks:
       - app-network
     restart: always
+    environment:
+      - SERVICE_TYPE=mqtt_proxy
+      - MQTT_TELEMETRY_ENABLED=true
+    volumes:
+      - ./logs:/app/logs  # For log persistence
+
+#  mqtt-bridge:
+#    build:
+#      context: ./backend/
+#      args:
+#        SERVICE_NAME: off-key-mqtt-bridge
+#        SERVICE_ROOT: services/mqtt/bridge
+#    image: "${MQTT_PROXY_IMAGE:-off-key-mqtt-bridge:latest}"
+#    container_name: mqtt_bridge
+#    env_file: .env
+#    command: [ "/app/bin/python", "-m", "off_key_mqtt_bridge" ]
+#    depends_on:
+#      postgres:
+#        condition: service_healthy
+#    networks:
+#      - app-network
+#    restart: always
 #    environment:
 #      - SERVICE_TYPE=mqtt_proxy
 #      - MQTT_TELEMETRY_ENABLED=true

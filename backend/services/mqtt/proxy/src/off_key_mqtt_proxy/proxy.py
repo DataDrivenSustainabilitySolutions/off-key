@@ -20,7 +20,7 @@ from .client.facade import MQTTClient
 from .charger_discovery import ChargerDiscoveryService
 from off_key_core.clients.base_client import ChargerAPIClient
 from .telemetry import DatabaseWriter
-from .router import MessageRouter, DatabaseDestination
+from .router import MessageRouter, DatabaseDestination, BridgeDestination
 from .core.interfaces import Stoppable, ShutdownFailedError
 
 class MQTTProxyService:
@@ -45,6 +45,10 @@ class MQTTProxyService:
         self.charger_discovery: Optional[ChargerDiscoveryService] = None
         self.database_writer: Optional[DatabaseWriter] = None
         self.message_router: Optional[MessageRouter] = None
+
+        # Bridge components
+        self.bridge_auth_handler: Optional[ApiKeyAuthHandler] = None
+        self.bridge_client: Optional[MQTTClient] = None
 
         # Service state
         self.is_running = False
@@ -116,6 +120,10 @@ class MQTTProxyService:
             db_destination = DatabaseDestination(self.database_writer)
             self.message_router.add_destination(db_destination, is_default=True)
 
+            # Initialize bridge if enabled
+            if self.config.enable_bridge:
+                await self._setup_bridge()
+
             self.is_running = True
 
             logger.info(
@@ -136,6 +144,99 @@ class MQTTProxyService:
 
             # Cleanup on failure
             await self.stop()
+            raise
+
+    async def _setup_bridge(self):
+        """Set up MQTT bridge to target broker"""
+        logger.info("Setting up MQTT bridge", extra=self._log_context)
+
+        try:
+            # Validate bridge configuration
+            if not self.config.bridge_broker_host:
+                raise ValueError("Bridge broker host is required when bridge is enabled")
+            
+            # Initialize bridge authentication if enabled
+            if self.config.bridge_use_auth:
+                if not self.config.bridge_username:
+                    raise ValueError("Bridge username is required when bridge authentication is enabled")
+                    
+                self.bridge_auth_handler = ApiKeyAuthHandler(
+                    self.config.bridge_username,
+                    self.config.bridge_api_key
+                )
+
+                # Authenticate bridge credentials
+                await self.bridge_auth_handler.authenticate()
+            else:
+                # No authentication for anonymous connections
+                self.bridge_auth_handler = None
+
+            # Create bridge configuration
+            from .config import MQTTConfig
+            bridge_config = MQTTConfig(
+                broker_host=self.config.bridge_broker_host,
+                broker_port=self.config.bridge_broker_port,
+                use_tls=self.config.bridge_use_tls,
+                client_id_prefix=self.config.bridge_client_id_prefix,
+                mqtt_username=self.config.bridge_username if self.config.bridge_use_auth else "anonymous",
+                mqtt_api_key=self.config.bridge_api_key if self.config.bridge_use_auth else "anonymousanonymousanonymousanonymousanonymous",
+                enabled=True,
+                reconnect_delay=self.config.reconnect_delay,
+                max_reconnect_attempts=self.config.max_reconnect_attempts,
+                batch_size=self.config.batch_size,
+                batch_timeout=self.config.batch_timeout,
+                subscription_qos=self.config.subscription_qos,
+                health_check_interval=self.config.health_check_interval,
+                health_log_reminder_interval=self.config.health_log_reminder_interval,
+                connection_timeout=self.config.connection_timeout,
+                max_message_queue_size=self.config.max_message_queue_size,
+                worker_threads=self.config.worker_threads,
+                shutdown_timeout=self.config.shutdown_timeout,
+                graceful_shutdown_timeout=self.config.graceful_shutdown_timeout,
+                enable_bridge=False,  # Prevent recursive bridging
+                bridge_broker_host=self.config.bridge_broker_host,
+                bridge_broker_port=self.config.bridge_broker_port,
+                bridge_use_tls=self.config.bridge_use_tls,
+                bridge_client_id_prefix=self.config.bridge_client_id_prefix,
+                bridge_use_auth=self.config.bridge_use_auth,
+                bridge_username=self.config.bridge_username,
+                bridge_api_key=self.config.bridge_api_key,
+                bridge_topic_mapping={},
+            )
+
+            # Initialize bridge MQTT client
+            self.bridge_client = MQTTClient(bridge_config, self.bridge_auth_handler)
+
+            # Connect to bridge broker
+            connected = await self.bridge_client.connect()
+            if not connected:
+                raise RuntimeError("Failed to connect to bridge broker")
+
+            # Create bridge destination
+            bridge_destination = BridgeDestination(
+                self.bridge_client,
+                self.config.bridge_topic_mapping
+            )
+
+            # Add bridge destination to message router
+            self.message_router.add_destination(bridge_destination, is_default=True)
+
+            logger.info(
+                f"MQTT bridge established successfully to {self.config.bridge_broker_host}:{self.config.bridge_broker_port}",
+                extra={
+                    **self._log_context,
+                    "bridge_host": self.config.bridge_broker_host,
+                    "bridge_port": self.config.bridge_broker_port,
+                    "topic_mappings": len(self.config.bridge_topic_mapping),
+                }
+            )
+
+        except Exception as e:
+            logger.error(
+                f"Failed to setup MQTT bridge: {e}",
+                extra=self._log_context,
+                exc_info=True,
+            )
             raise
 
     async def _safe_component_shutdown(
@@ -204,7 +305,9 @@ class MQTTProxyService:
         components = [
             ("message_router", self.message_router),
             ("database_writer", self.database_writer),
+            ("bridge_client", self.bridge_client),
             ("mqtt_client", self.mqtt_client),
+            ("bridge_auth_handler", self.bridge_auth_handler),
             ("auth_handler", self.auth_handler),
         ]
 
@@ -395,6 +498,11 @@ class MQTTProxyService:
                 "charger_discovery"
             ] = self.charger_discovery.get_health_status()
 
+        if self.bridge_client:
+            status["components"]["bridge_client"] = {
+                "connected": self.bridge_client.state.value == "connected"
+            }
+
         return status
 
     def get_performance_metrics(self):
@@ -414,5 +522,8 @@ class MQTTProxyService:
             metrics["charger_discovery"] = (
                 self.charger_discovery.get_discovery_metrics()
             )
+
+        if self.bridge_client:
+            metrics["bridge_client"] = self.bridge_client.get_connection_info()
 
         return metrics

@@ -857,6 +857,7 @@ source = { editable = "services/mqtt/radar" }
 dependencies = [
     { name = "asyncpg" },
     { name = "numpy" },
+    { name = "off-key-core" },
     { name = "onad" },
     { name = "paho-mqtt" },
     { name = "psutil" },
@@ -871,6 +872,7 @@ dependencies = [
 requires-dist = [
     { name = "asyncpg", specifier = ">=0.28.0" },
     { name = "numpy", specifier = ">=1.24.0" },
+    { name = "off-key-core", editable = "libs/core" },
     { name = "onad", specifier = "==0.0.12" },
     { name = "paho-mqtt", specifier = ">=1.6.0" },
     { name = "psutil", specifier = ">=5.9.0" },

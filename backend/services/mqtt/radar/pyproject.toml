@@ -18,8 +18,10 @@ classifiers = [
     "Operating System :: OS Independent",
     "Development Status :: 3 - Alpha"
 ]
+
 dependencies = [
-    "onad[all]==0.0.12",
+    "off-key-core",
+    "onad==0.0.12",
     "paho-mqtt>=1.6.0",
     "psutil>=5.9.0",
     "numpy>=1.24.0",

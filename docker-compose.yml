@@ -211,7 +211,7 @@ services:
     ports:
       - "11210:11211"
     volumes:
-      - "./backend/services/mcrouter/config.json:/usr/local/mcrouter/config/config.json.template"
+      - "./backend/services/cache/mcrouter/config.json:/usr/local/mcrouter/config/config.json.template"
     command:
       - /bin/bash
       - -c

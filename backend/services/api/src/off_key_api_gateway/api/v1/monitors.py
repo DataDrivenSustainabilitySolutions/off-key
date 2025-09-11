@@ -1,9 +1,8 @@
-from fastapi import APIRouter, HTTPException, Depends, Query, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from typing import List, Dict, Optional, Any
 from pydantic import BaseModel, Field
 
-from ...services.services import MonitoringAsyncService
-from ...provider import get_monitoring_service
+from ...facades.tactic import tactic
 from ..rate_limiter import limiter
 
 router = APIRouter()
@@ -12,8 +11,9 @@ shared_limit_fetch = limiter.shared_limit("10/minute", scope="services")
 shared_limit_execute = limiter.shared_limit("5/minute", scope="services")
 
 
-class ContainerConfig(BaseModel):
-    container_name: str = Field(..., description="Name for the Docker container")
+class MonitoringServiceConfig(BaseModel):
+    container_name: str = Field(..., description="Name for the monitoring service container")
+    service_type: str = Field(default="radar", description="Type of monitoring service (radar, custom, etc.)")
     mqtt_topics: List[str] = Field(..., description="List of MQTT topics to monitor")
     requirements: Optional[List[str]] = Field(
         None, description="List of pip packages to install"
@@ -36,7 +36,6 @@ class ServiceResponse(BaseModel):
 async def list_services(
     request: Request,
     active_only: bool = False,
-    service: MonitoringAsyncService = Depends(get_monitoring_service),
 ):
     """
     Lists all monitoring services.
@@ -44,37 +43,41 @@ async def list_services(
     Parameters:
     - active_only: If true, only return active services
     """
-    services = await service.list_monitoring_services(active_only)
-    return services
+    try:
+        services = await tactic.list_radar_services(active_only=active_only)
+        return services
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to list monitoring services: {str(e)}"
+        )
 
 
 @router.post("/start/", response_model=ServiceResponse)
 @shared_limit_execute
 async def start_monitoring_service(
     request: Request,
-    config: ContainerConfig,
-    service: MonitoringAsyncService = Depends(get_monitoring_service),
+    config: MonitoringServiceConfig,
 ):
     """
-    Starts a new Docker container running a monitoring service for given MQTT topics.
-    Configuration details are stored in the MonitoringServices database.
+    Starts a new monitoring service container via TACTIC orchestration.
     """
-
     try:
-        monitoring_service = await service.create_monitoring_service(
-            container_name=config.container_name,
-            mqtt_topics=config.mqtt_topics,
-            requirements=config.requirements,
-            environment_variables=config.environment_variables,
-        )
-
-        return {
-            "service_id": monitoring_service.id,
-            "container_id": monitoring_service.container_id,
-            "container_name": monitoring_service.container_name,
-            "status": "running" if monitoring_service.status else "stopped",
-            "mqtt_topics": monitoring_service.mqtt_topic,
-        }
+        if config.service_type == "radar":
+            response = await tactic.start_radar_service(
+                container_name=config.container_name,
+                mqtt_topics=config.mqtt_topics,
+                model_type="isolation_forest",
+                model_params=None,
+                mqtt_config=None,
+                anomaly_thresholds=None,
+                performance_config=None,
+            )
+        else:
+            raise HTTPException(
+                status_code=400, detail=f"Unsupported service type: {config.service_type}"
+            )
+        
+        return response
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to start monitoring service: {str(e)}"
@@ -87,7 +90,6 @@ async def get_service_details(
     request: Request,
     container_name: Optional[str] = Query(default=None),
     container_id: Optional[str] = Query(default=None),
-    service: MonitoringAsyncService = Depends(get_monitoring_service),
 ):
     """
     Gets details for a specific monitoring service by container name or ID.
@@ -103,12 +105,21 @@ async def get_service_details(
             status_code=400,
             detail="Provide only one of container_name or container_id.",
         )
-    service_detail = await service.get_monitoring_service(container_name, container_id)
-
-    if not service_detail:
-        raise HTTPException(status_code=404, detail="Service not found")
-
-    return service_detail
+    
+    try:
+        service_detail = await tactic.get_radar_service_details(
+            container_name=container_name,
+            container_id=container_id,
+        )
+        
+        if not service_detail:
+            raise HTTPException(status_code=404, detail="Service not found")
+        
+        return service_detail
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get service details: {str(e)}"
+        )
 
 
 @router.delete("/stop/")
@@ -117,11 +128,9 @@ async def stop_monitoring_service(
     request: Request,
     container_name: Optional[str] = Query(default=None),
     container_id: Optional[str] = Query(default=None),
-    service: MonitoringAsyncService = Depends(get_monitoring_service),
 ):
     """
-    Stops and removes a running Docker container with the specified name.
-    Updates the corresponding record in the MonitoringServices database.
+    Stops and removes a running monitoring service container via TACTIC.
     """
     if not container_name and not container_id:
         raise HTTPException(
@@ -135,15 +144,25 @@ async def stop_monitoring_service(
             detail="Provide only one of container_name or container_id.",
         )
 
-    success = await service.stop_monitoring_service(container_name, container_id)
-
-    if not success:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Container '{container_name}' not found or could not be stopped",
+    try:
+        response = await tactic.stop_radar_service(
+            container_name=container_name,
+            container_id=container_id,
         )
+        
+        success = response.get("status") == "stopped"
+        
+        if not success:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Container '{container_name or container_id}' not found or could not be stopped",
+            )
 
-    return {
-        "status": "stopped",
-        "message": f"Container '{container_name}' stopped and deleted successfully",
-    }
+        return {
+            "status": "stopped",
+            "message": f"Container '{container_name or container_id}' stopped successfully",
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to stop monitoring service: {str(e)}"
+        )

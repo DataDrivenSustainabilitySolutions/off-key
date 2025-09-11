@@ -40,6 +40,8 @@ services:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 10s
       retries: 5
+    environment:
+      - SYNC_ENABLED=false
     command: ["uvicorn", "off_key_api_gateway.main:app",
               "--reload", "--reload-dir", "/app/lib/python3.12/site-packages/off_key_api_gateway",
               "--host", "0.0.0.0", "--port", "8000"]
@@ -50,6 +52,30 @@ services:
           target: /app/lib/python3.12/site-packages/off_key_api_gateway
         - action: rebuild
           path: ./backend/uv.lock
+
+  tactic:
+    build:
+      context: ./backend/
+      args:
+        SERVICE_NAME: off-key-tactic-middleware
+        SERVICE_ROOT: services/middleware/tactic
+    image: "${TACTIC_IMAGE:-off-key-tactic-middleware:latest}"
+    container_name: tactic_middleware
+    env_file: .env
+    ports:
+      - "8001:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      socket-proxy:
+        condition: service_started
+    networks:
+      - app-network
+      - socket-network
+    environment:
+      - TACTIC_DOCKER_DEFAULT_NETWORK=off-key_emqx-network
+    restart: always
+    command: [ "/app/bin/python", "-m", "off_key_tactic_middleware" ]
 
   socket-proxy:
     container_name: socket-proxy
@@ -162,7 +188,7 @@ services:
       args:
         SERVICE_NAME: off-key-mqtt-radar
         SERVICE_ROOT: services/mqtt/radar
-    image: "${MQTT_PROXY_IMAGE:-off-key-mqtt-radar:latest}"
+    image: "${MQTT_RADAR_IMAGE:-off-key-mqtt-radar:latest}"
     container_name: mqtt_radar
     env_file: .env
     command: [ "/app/bin/python", "-m", "off_key_mqtt_radar" ]
@@ -289,7 +315,8 @@ networks:
   socket-network:
     driver: bridge
   emqx-network:
-    driver: bridge
+    driver: overlay
+    attachable: true
 
 volumes:
   postgres_data:

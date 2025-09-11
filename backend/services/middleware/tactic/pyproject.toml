@@ -18,6 +18,16 @@ classifiers = [
     "Operating System :: OS Independent",
     "Development Status :: 3 - Alpha"
 ]
+dependencies = [
+    "off-key-core",
+    "fastapi>=0.104.0",
+    "uvicorn[standard]>=0.24.0",
+    "docker>=7.0.0",
+    "sqlalchemy>=2.0.0",
+    "pydantic>=2.0.0",
+    "pydantic-settings>=2.0.0",
+    "python-dotenv>=1.0.0"
+]
 
 [build-system]
 requires = ["uv_build>=0.8.11,<0.9.0"]

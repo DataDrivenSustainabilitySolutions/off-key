@@ -1,7 +1,7 @@
 [project]
-name = "off-key-api-gateway"
+name = "off-key-tactic-middleware"
 version = "0.1.0"
-description = "API Gateway for off-key platform"
+description = "Timely Anomaly Communication / Task Instance Control for off-key platform"
 authors = [
     { name = "Oliver Hennhoefer", email = "oliver.hennhoefer@mail.de" },
     { name = "Fernando Saba", email = "fernando.saba@gmx.de" }
@@ -10,7 +10,7 @@ maintainers = [
     { name = "Oliver Hennhoefer", email = "oliver.hennhoefer@mail.de" },
     { name = "Fernando Saba", email = "fernando.saba@gmx.de" }
 ]
-keywords = ["off-key", "api", "gateway", "fastapi"]
+keywords = ["off-key", "anomaly", "communication", "container", "management"]
 requires-python = ">=3.12"
 classifiers = [
     "Programming Language :: Python :: 3.12",
@@ -20,16 +20,13 @@ classifiers = [
 ]
 dependencies = [
     "off-key-core",
-    "bcrypt==4.0.1",
-    "python-jose>=3.4.0",
-    "apscheduler>=3.11.0",
-    "docker>=7.1.0",
-    "passlib>=1.7.4",
-    "fastapi[all]>=0.115.8",
-    "fastapi-mail>=1.4.2",
-    "slowapi>=0.1.9",
-    "uvicorn>=0.25.0",
-    "aiohttp>=3.9.0",
+    "fastapi>=0.104.0",
+    "uvicorn[standard]>=0.24.0",
+    "docker>=7.0.0",
+    "sqlalchemy>=2.0.0",
+    "pydantic>=2.0.0",
+    "pydantic-settings>=2.0.0",
+    "python-dotenv>=1.0.0"
 ]
 
 [build-system]

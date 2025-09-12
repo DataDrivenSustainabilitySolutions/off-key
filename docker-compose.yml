@@ -40,6 +40,8 @@ services:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 10s
       retries: 5
+    environment:
+      - SYNC_ENABLED=false
     command: ["uvicorn", "off_key_api_gateway.main:app",
               "--reload", "--reload-dir", "/app/lib/python3.12/site-packages/off_key_api_gateway",
               "--host", "0.0.0.0", "--port", "8000"]
@@ -50,6 +52,30 @@ services:
           target: /app/lib/python3.12/site-packages/off_key_api_gateway
         - action: rebuild
           path: ./backend/uv.lock
+
+  tactic:
+    build:
+      context: ./backend/
+      args:
+        SERVICE_NAME: off-key-tactic-middleware
+        SERVICE_ROOT: services/middleware/tactic
+    image: "${TACTIC_IMAGE:-off-key-tactic-middleware:latest}"
+    container_name: tactic_middleware
+    env_file: .env
+    ports:
+      - "8001:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      socket-proxy:
+        condition: service_started
+    networks:
+      - app-network
+      - socket-network
+    environment:
+      - TACTIC_DOCKER_DEFAULT_NETWORK=off-key_emqx-network
+    restart: always
+    command: [ "/app/bin/python", "-m", "off_key_tactic_middleware" ]
 
   socket-proxy:
     container_name: socket-proxy
@@ -138,7 +164,7 @@ services:
       context: ./backend/
       args:
         SERVICE_NAME: off-key-mqtt-proxy
-        SERVICE_ROOT: services/mqtt
+        SERVICE_ROOT: services/mqtt/proxy
     image: "${MQTT_PROXY_IMAGE:-off-key-mqtt-proxy:latest}"
     container_name: mqtt_proxy
     env_file: .env
@@ -148,6 +174,7 @@ services:
         condition: service_healthy
     networks:
       - app-network
+      - emqx-network
     restart: always
     environment:
       - SERVICE_TYPE=mqtt_proxy
@@ -155,14 +182,146 @@ services:
     volumes:
       - ./logs:/app/logs  # For log persistence
 
+  mqtt-radar:
+    build:
+      context: ./backend/
+      args:
+        SERVICE_NAME: off-key-mqtt-radar
+        SERVICE_ROOT: services/mqtt/radar
+    image: "${MQTT_RADAR_IMAGE:-off-key-mqtt-radar:latest}"
+    container_name: mqtt_radar
+    env_file: .env
+    command: [ "/app/bin/python", "-m", "off_key_mqtt_radar" ]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - app-network
+      - emqx-network
+    restart: always
+
+#  mqtt-bridge:
+#    build:
+#      context: ./backend/
+#      args:
+#        SERVICE_NAME: off-key-mqtt-bridge
+#        SERVICE_ROOT: services/mqtt/bridge
+#    image: "${MQTT_PROXY_IMAGE:-off-key-mqtt-bridge:latest}"
+#    container_name: mqtt_bridge
+#    env_file: .env
+#    command: [ "/app/bin/python", "-m", "off_key_mqtt_bridge" ]
+#    depends_on:
+#      postgres:
+#        condition: service_healthy
+#    networks:
+#      - app-network
+#    restart: always
+#    environment:
+#      - SERVICE_TYPE=mqtt_proxy
+#      - MQTT_TELEMETRY_ENABLED=true
+#    volumes:
+#      - ./logs:/app/logs  # For log persistence
+
+  memcached:
+    image: memcached:latest
+    # command: memcached -vv
+    ports:
+      - "11211:11211"
+    # hostname: "memcached-alpha"
+    networks:
+      - app-network
+
+  mcrouter:
+    image: ghcr.io/mszabo-wikia/mcrouter-debian-bookworm:20250621-a099b76
+    environment:
+      - MC_LOCAL=memcached
+      - MC_SERVICE=memcached
+    ports:
+      - "11210:11211"
+    volumes:
+      - "./backend/services/cache/mcrouter/config.json:/usr/local/mcrouter/config/config.json.template"
+    command:
+      - /bin/bash
+      - -c
+      - |
+        sed "s|\$${MC_LOCAL}|$${MC_LOCAL}|g" /usr/local/mcrouter/config/config.json.template | \
+        sed "s|\$${MC_SERVICE}|$${MC_SERVICE}|g" > /usr/local/mcrouter/config/config.json && \
+        /usr/bin/mcrouter --config-file=/usr/local/mcrouter/config/config.json \
+        -p 11211 \
+        --num-proxies=1 \
+        --stats-logging-interval=0 \
+        --asynclog-disable \
+        --probe-timeout-initial=1000 \
+        --probe-timeout-max=15000 \
+        --reset-inactive-connection-interval=900000 \
+        --keepalive-count=6 \
+        --keepalive-interval=4 \
+        --keepalive-idle=30 \
+        --timeouts-until-tko=6
+    depends_on:
+      - memcached
+    networks:
+      - app-network
+
+  emqx-main:
+    image: emqx/emqx:5.8.7 # BSL license starting at 5.9!
+    environment:
+    - "EMQX_NODE_NAME=emqx@emqx-main.ddss.local"
+    - "EMQX_CLUSTER__DISCOVERY_STRATEGY=static"
+    # Docker Swarm: Use service name / "tasks.service_name" to leverage docker DNS resolver
+    # Docker Swarm: Use template holders for hostnames
+    - "EMQX_CLUSTER__STATIC__SEEDS=[emqx@emqx-main.ddss.local,emqx@emqx-worker.ddss.local]"
+    healthcheck:
+      test: ["CMD", "/opt/emqx/bin/emqx", "ctl", "status"]
+      interval: 5s
+      timeout: 25s
+      retries: 5
+    networks:
+      emqx-network:
+        aliases:
+        - emqx-main.ddss.local
+    ports:
+      - 1883:1883
+      - 8083:8083
+      - 8084:8084
+      - 8883:8883
+      - 18083:18083
+    # volumes:
+    #   - $PWD/emqx1_data:/opt/emqx/data
+
+  emqx-worker:
+    image: emqx/emqx:5.8.7 # BSL license starting at 5.9!
+    environment:
+    - "EMQX_NODE_NAME=emqx@emqx-worker.ddss.local"
+    - "EMQX_CLUSTER__DISCOVERY_STRATEGY=static"
+    # Docker Swarm: Use service name / "tasks.service_name" to leverage docker DNS resolver
+    # Docker Swarm: Use template holders for hostnames
+    - "EMQX_CLUSTER__STATIC__SEEDS=[emqx@emqx-main.ddss.local,emqx@emqx-worker.ddss.local]"
+    healthcheck:
+      test: ["CMD", "/opt/emqx/bin/emqx", "ctl", "status"]
+      interval: 5s
+      timeout: 25s
+      retries: 5
+    networks:
+      emqx-network:
+        aliases:
+        - emqx-worker.ddss.local
+    # volumes:
+    #   - $PWD/emqx2_data:/opt/emqx/data
+
 networks:
   app-network:
     driver: bridge
   socket-network:
     driver: bridge
+  emqx-network:
+    driver: overlay
+    attachable: true
 
 volumes:
   postgres_data:
   vite_cache:
     driver: local
   frontend_node_modules:
+  # mcrouter_data:
+    # external: true

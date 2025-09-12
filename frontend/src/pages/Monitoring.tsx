@@ -107,6 +107,14 @@ const Monitoring: React.FC = () => {
     return match ? match[1] : "Unknown";
   };
 
+  // Filter services to only show ones for the current charger
+  const chargerSpecificServices = useMemo(() => {
+    if (!chargerId) return [];
+    return activeServices.filter(service =>
+      extractChargerIdFromContainer(service.container_name) === chargerId
+    );
+  }, [activeServices, chargerId]);
+
   // Load services on component mount and set up refresh interval
   useEffect(() => {
     loadActiveServices();
@@ -261,16 +269,16 @@ const Monitoring: React.FC = () => {
       {/* Active Services Management Section */}
       <div className="flex mt-5">
         <Card className="ml-16 bg-white shadow-md w-11/12 min-h-96 dark:bg-neutral-950">
-          <CardTitle className="ml-5 mt-4">Active Monitoring Services</CardTitle>
+          <CardTitle className="ml-5 mt-4">Active Monitoring Services for Charger {chargerId}</CardTitle>
           <CardContent>
             <div className="mt-4">
               {isLoadingServices ? (
                 <div className="flex justify-center items-center py-8">
                   <div className="text-gray-500">Loading active services...</div>
                 </div>
-              ) : activeServices.length === 0 ? (
+              ) : chargerSpecificServices.length === 0 ? (
                 <div className="flex justify-center items-center py-8">
-                  <div className="text-gray-500">No active monitoring services found</div>
+                  <div className="text-gray-500">No active monitoring services found for charger {chargerId}</div>
                 </div>
               ) : (
                 <div className="overflow-x-auto">
@@ -286,7 +294,7 @@ const Monitoring: React.FC = () => {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {activeServices.map((service) => (
+                      {chargerSpecificServices.map((service) => (
                         <TableRow key={service.id}>
                           <TableCell className="font-medium">
                             {service.container_name}

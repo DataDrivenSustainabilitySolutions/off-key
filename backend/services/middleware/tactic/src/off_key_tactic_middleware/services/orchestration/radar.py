@@ -37,21 +37,23 @@ def _parse_memory_string(memory_str: str) -> int:
 
     # Parse with suffixes
     multipliers = {
-        'k': 1024,
-        'm': 1024 * 1024,
-        'g': 1024 * 1024 * 1024,
-        'kb': 1024,
-        'mb': 1024 * 1024,
-        'gb': 1024 * 1024 * 1024,
+        "k": 1024,
+        "m": 1024 * 1024,
+        "g": 1024 * 1024 * 1024,
+        "kb": 1024,
+        "mb": 1024 * 1024,
+        "gb": 1024 * 1024 * 1024,
     }
 
     for suffix, multiplier in multipliers.items():
         if memory_str.endswith(suffix):
-            number_part = memory_str[:-len(suffix)].strip()
+            number_part = memory_str[: -len(suffix)].strip()
             try:
                 return int(float(number_part) * multiplier)
             except ValueError:
-                logger.warning(f"Invalid memory format: {memory_str}, using default 512MB")
+                logger.warning(
+                    f"Invalid memory format: {memory_str}, using default 512MB"
+                )
                 return 536870912
 
     logger.warning(f"Unknown memory format: {memory_str}, using default 512MB")
@@ -60,7 +62,8 @@ def _parse_memory_string(memory_str: str) -> int:
 
 class RadarOrchestrationService:
     """
-    Service responsible for orchestrating RADAR (MQTT Real-Time Anomaly Detector) containers.
+    Service responsible for orchestrating RADAR
+    (MQTT Real-Time Anomaly Detector) containers.
 
     This service handles:
     - Creating RADAR containers with specific model and parameters
@@ -74,14 +77,14 @@ class RadarOrchestrationService:
         logger.info("RadarOrchestrationService initialized.")
 
     async def create_radar_service(
-            self,
-            container_name: str,
-            mqtt_topics: List[str],
-            model_type: str = "isolation_forest",
-            model_params: Optional[Dict[str, Any]] = None,
-            mqtt_config: Optional[Dict[str, Any]] = None,
-            anomaly_thresholds: Optional[Dict[str, float]] = None,
-            performance_config: Optional[Dict[str, Any]] = None,
+        self,
+        container_name: str,
+        mqtt_topics: List[str],
+        model_type: str = "isolation_forest",
+        model_params: Optional[Dict[str, Any]] = None,
+        mqtt_config: Optional[Dict[str, Any]] = None,
+        anomaly_thresholds: Optional[Dict[str, float]] = None,
+        performance_config: Optional[Dict[str, Any]] = None,
     ) -> MonitoringService:
         """
         Create and start a RADAR Docker service for anomaly detection.
@@ -106,7 +109,9 @@ class RadarOrchestrationService:
         existing_service = result.scalars().first()
 
         if existing_service and existing_service.status:
-            logger.info(f"RADAR container {container_name} already exists and is running")
+            logger.info(
+                f"RADAR container {container_name} already exists and is running"
+            )
             return existing_service
 
         # Generate a unique service ID
@@ -156,14 +161,14 @@ class RadarOrchestrationService:
             raise
 
     def _build_radar_environment(
-            self,
-            service_id: str,
-            mqtt_topics: List[str],
-            model_type: str,
-            model_params: Dict[str, Any],
-            mqtt_config: Dict[str, Any],
-            anomaly_thresholds: Dict[str, float],
-            performance_config: Dict[str, Any],
+        self,
+        service_id: str,
+        mqtt_topics: List[str],
+        model_type: str,
+        model_params: Dict[str, Any],
+        mqtt_config: Dict[str, Any],
+        anomaly_thresholds: Dict[str, float],
+        performance_config: Dict[str, Any],
     ) -> Dict[str, str]:
         """
         Build environment variables for RADAR service based on configuration.
@@ -176,48 +181,76 @@ class RadarOrchestrationService:
 
         env_vars = {
             "SERVICE_ID": service_id,
-
             # MQTT Configuration
-            "RADAR_MQTT_BROKER_HOST": mqtt_config.get("host", defaults.mqtt_broker_host),
-            "RADAR_MQTT_BROKER_PORT": str(mqtt_config.get("port", defaults.mqtt_broker_port)),
-            "RADAR_MQTT_USE_TLS": str(mqtt_config.get("use_tls", defaults.mqtt_use_tls)).lower(),
-            "RADAR_MQTT_CLIENT_ID_PREFIX": mqtt_config.get("client_id_prefix", defaults.mqtt_client_id_prefix),
-            "RADAR_MQTT_USE_AUTH": str(mqtt_config.get("use_auth", defaults.mqtt_use_auth)).lower(),
+            "RADAR_MQTT_BROKER_HOST": mqtt_config.get(
+                "host", defaults.mqtt_broker_host
+            ),
+            "RADAR_MQTT_BROKER_PORT": str(
+                mqtt_config.get("port", defaults.mqtt_broker_port)
+            ),
+            "RADAR_MQTT_USE_TLS": str(
+                mqtt_config.get("use_tls", defaults.mqtt_use_tls)
+            ).lower(),
+            "RADAR_MQTT_CLIENT_ID_PREFIX": mqtt_config.get(
+                "client_id_prefix", defaults.mqtt_client_id_prefix
+            ),
+            "RADAR_MQTT_USE_AUTH": str(
+                mqtt_config.get("use_auth", defaults.mqtt_use_auth)
+            ).lower(),
             "RADAR_MQTT_USERNAME": mqtt_config.get("username", ""),
             "RADAR_MQTT_API_KEY": mqtt_config.get("api_key", ""),
-
             # Subscription Topics
             "RADAR_SUBSCRIPTION_TOPICS": ",".join(mqtt_topics),
             "RADAR_SUBSCRIPTION_QOS": str(mqtt_config.get("qos", defaults.mqtt_qos)),
-
             # Model Configuration
             "RADAR_MODEL_TYPE": model_type or defaults.model_type,
-
             # Anomaly Thresholds
-            "RADAR_ANOMALY_THRESHOLD_MEDIUM": str(anomaly_thresholds.get("medium", defaults.anomaly_threshold_medium)),
-            "RADAR_ANOMALY_THRESHOLD_HIGH": str(anomaly_thresholds.get("high", defaults.anomaly_threshold_high)),
+            "RADAR_ANOMALY_THRESHOLD_MEDIUM": str(
+                anomaly_thresholds.get("medium", defaults.anomaly_threshold_medium)
+            ),
+            "RADAR_ANOMALY_THRESHOLD_HIGH": str(
+                anomaly_thresholds.get("high", defaults.anomaly_threshold_high)
+            ),
             "RADAR_ANOMALY_THRESHOLD_CRITICAL": str(
-                anomaly_thresholds.get("critical", defaults.anomaly_threshold_critical)),
-
+                anomaly_thresholds.get("critical", defaults.anomaly_threshold_critical)
+            ),
             # Performance Settings
-            "RADAR_BATCH_SIZE": str(performance_config.get("batch_size", defaults.batch_size)),
-            "RADAR_BATCH_TIMEOUT": str(performance_config.get("batch_timeout", defaults.batch_timeout)),
-            "RADAR_MEMORY_LIMIT_MB": str(performance_config.get("memory_limit_mb", defaults.memory_limit_mb)),
+            "RADAR_BATCH_SIZE": str(
+                performance_config.get("batch_size", defaults.batch_size)
+            ),
+            "RADAR_BATCH_TIMEOUT": str(
+                performance_config.get("batch_timeout", defaults.batch_timeout)
+            ),
+            "RADAR_MEMORY_LIMIT_MB": str(
+                performance_config.get("memory_limit_mb", defaults.memory_limit_mb)
+            ),
             "RADAR_CHECKPOINT_INTERVAL": str(
-                performance_config.get("checkpoint_interval", defaults.checkpoint_interval)),
-
+                performance_config.get(
+                    "checkpoint_interval", defaults.checkpoint_interval
+                )
+            ),
             # Database Settings
             "RADAR_DB_WRITE_ENABLED": str(
-                performance_config.get("db_write_enabled", defaults.db_write_enabled)).lower(),
-            "RADAR_DB_BATCH_SIZE": str(performance_config.get("db_batch_size", defaults.db_batch_size)),
-            "RADAR_DB_BATCH_TIMEOUT": str(performance_config.get("db_batch_timeout", defaults.db_batch_timeout)),
-
+                performance_config.get("db_write_enabled", defaults.db_write_enabled)
+            ).lower(),
+            "RADAR_DB_BATCH_SIZE": str(
+                performance_config.get("db_batch_size", defaults.db_batch_size)
+            ),
+            "RADAR_DB_BATCH_TIMEOUT": str(
+                performance_config.get("db_batch_timeout", defaults.db_batch_timeout)
+            ),
             # Health and Monitoring
             "RADAR_HEALTH_CHECK_INTERVAL": str(
-                performance_config.get("health_check_interval", defaults.health_check_interval)),
+                performance_config.get(
+                    "health_check_interval", defaults.health_check_interval
+                )
+            ),
             "RADAR_LOG_LEVEL": performance_config.get("log_level", defaults.log_level),
             "RADAR_RATE_LIMIT_PER_MINUTE": str(
-                performance_config.get("rate_limit_per_minute", defaults.rate_limit_per_minute)),
+                performance_config.get(
+                    "rate_limit_per_minute", defaults.rate_limit_per_minute
+                )
+            ),
         }
 
         # Add model-specific parameters if provided
@@ -228,10 +261,10 @@ class RadarOrchestrationService:
         return env_vars
 
     async def _create_radar_service_sync(
-            self,
-            container_name: str,
-            service_id: str,
-            environment: Dict[str, str],
+        self,
+        container_name: str,
+        service_id: str,
+        environment: Dict[str, str],
     ) -> Any:
         """
         Helper method to create RADAR Docker service using Pydantic configuration.
@@ -257,20 +290,20 @@ class RadarOrchestrationService:
             mode=ServiceMode("replicated", replicas=1),
             restart_policy=RestartPolicy(
                 condition=docker_config.default_restart_policy,
-                max_attempts=docker_config.default_restart_max_attempts
+                max_attempts=docker_config.default_restart_max_attempts,
             ),
             constraints=["node.role == worker"],
             networks=[docker_config.default_network],
             resources=Resources(
                 cpu_limit=int(float(docker_config.default_cpu_limit) * 1_000_000_000),
-                mem_limit=_parse_memory_string(docker_config.default_memory_limit)
-            )
+                mem_limit=_parse_memory_string(docker_config.default_memory_limit),
+            ),
         )
 
         return container
 
     async def stop_radar_service(
-            self, container_name: Optional[str] = None, container_id: Optional[str] = None
+        self, container_name: Optional[str] = None, container_id: Optional[str] = None
     ) -> bool:
         """
         Stop and remove a running RADAR service.
@@ -294,7 +327,9 @@ class RadarOrchestrationService:
         service = result.scalars().first()
 
         if not service:
-            logger.warning(f"No RADAR service found with container name: {container_name}")
+            logger.warning(
+                f"No RADAR service found with container name: {container_name}"
+            )
             return False
 
         try:
@@ -312,7 +347,8 @@ class RadarOrchestrationService:
             await self.session.commit()
 
             logger.info(
-                f"RADAR container {container_name} stopped and removed; DB record deleted"
+                f"RADAR container {container_name} "
+                f"stopped and removed; DB record deleted"
             )
             return True
 
@@ -335,7 +371,9 @@ class RadarOrchestrationService:
             logger.error(f"Failed to stop RADAR container {container_name}: {e}")
             return False
 
-    async def list_radar_services(self, active_only: bool = False) -> List[Dict[str, Any]]:
+    async def list_radar_services(
+        self, active_only: bool = False
+    ) -> List[Dict[str, Any]]:
         """
         List all RADAR services.
 
@@ -370,7 +408,7 @@ class RadarOrchestrationService:
         return service_list
 
     async def get_radar_service(
-            self, container_name: Optional[str] = None, container_id: Optional[str] = None
+        self, container_name: Optional[str] = None, container_id: Optional[str] = None
     ) -> Optional[Dict[str, Any]]:
         """
         Get details for a specific RADAR service.

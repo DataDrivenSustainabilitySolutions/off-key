@@ -242,4 +242,3 @@ class PionixClient:
         )
         url = self._build_telemetry_url(charger_id, hierarchy, limit)
         return await self.get(url)
-

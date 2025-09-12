@@ -20,11 +20,14 @@ const Monitoring: React.FC = () => {
   //map where keys and the boolean are safed for the dropbox checked or not checked symbole
   const [visibleMap, setVisibleMap] = useState<Record<string, boolean>>({});
   //Data from useFetch
-  const { monitoringMap, loadMonitoring } = useFetch();
+  const { allTelemetryMap, loadAllTelemetryTypes } = useFetch();
   //Caching mechanism to avoid unneccesary fetches
   const monitoringKeys = useMemo(
-    () => Object.keys(monitoringMap),
-    [monitoringMap]
+    () => {
+      const telemetryData = allTelemetryMap[chargerId!] || [];
+      return telemetryData.map(item => item.type);
+    },
+    [allTelemetryMap, chargerId]
   );
   const activeKeys = useMemo(
     () =>
@@ -41,8 +44,8 @@ const Monitoring: React.FC = () => {
   useEffect(() => {
     if (!chargerId) return;
 
-    loadMonitoring(chargerId);
-  }, [loadMonitoring, chargerId]);
+    loadAllTelemetryTypes(chargerId);
+  }, [loadAllTelemetryTypes, chargerId]);
 
   useEffect(() => {
     if (monitoringKeys.length === 0) return; // if no keys given do nothing
@@ -53,28 +56,33 @@ const Monitoring: React.FC = () => {
   }, [monitoringKeys, visibleMap]);
 
   const submitAnomalyDetection = async () => {
-    if (!selectedAlgorithm || activeKeys.length === 0) {
+    if (!selectedAlgorithm || activeKeys.length === 0 || !chargerId) {
       alert("Please select at least one sensor and an algorithm.");
       return;
     }
+
     try {
-      // Note: This endpoint may not exist yet. This is a placeholder for future implementation.
-      // When anomaly detection service is implemented, this will trigger anomaly detection
-      // and write results to the anomalies table.
+      // Build MQTT topics using charger ID and selected sensors
+      const mqttTopics = activeKeys.map(sensorType => `charger/${chargerId}/${sensorType}`);
+
+      // Generate unique container name
+      const containerName = `radar-${chargerId}-${Date.now()}`;
+
       const response = await apiUtils.post(
-        API_CONFIG.ENDPOINTS.ANOMALY_DETECTION.DETECT,
+        API_CONFIG.ENDPOINTS.MONITORING.START,
         {
-          chargerId,
-          selectedAlgorithm,
-          selectedSensors: activeKeys,
+          container_name: containerName,
+          service_type: "radar",
+          mqtt_topics: mqttTopics,
+          model_type: selectedAlgorithm,
         }
       );
 
-      console.log("Successfully submitted anomaly detection:", response.data);
-      alert("Anomaly detection started. Results will appear in charts and anomaly table.");
+      console.log("Successfully started monitoring service:", response);
+      alert(`Monitoring service started successfully! Container: ${containerName}`);
     } catch (error) {
-      console.error("Failed to submit anomaly detection:", error);
-      alert("Error: Anomaly detection service may not be available yet.");
+      console.error("Failed to start monitoring service:", error);
+      alert(`Error: ${error.message || "Failed to start monitoring service"}`);
     }
   };
 
@@ -141,20 +149,28 @@ const Monitoring: React.FC = () => {
                     </DropdownMenuTrigger>
                     <DropdownMenuContent className="w-48">
                       <DropdownMenuCheckboxItem
-                        checked={selectedAlgorithm === "Algorithm A"}
+                        checked={selectedAlgorithm === "isolation_forest"}
                         onCheckedChange={() =>
-                          setSelectedAlgorithm("Algorithm A")
+                          setSelectedAlgorithm("isolation_forest")
                         }
                       >
-                        Algorithm A
+                        Isolation Forest
                       </DropdownMenuCheckboxItem>
                       <DropdownMenuCheckboxItem
-                        checked={selectedAlgorithm === "Algorithm B"}
+                        checked={selectedAlgorithm === "adaptive_svm"}
                         onCheckedChange={() =>
-                          setSelectedAlgorithm("Algorithm B")
+                          setSelectedAlgorithm("adaptive_svm")
                         }
                       >
-                        Algorithm B
+                        Adaptive SVM
+                      </DropdownMenuCheckboxItem>
+                      <DropdownMenuCheckboxItem
+                        checked={selectedAlgorithm === "knn"}
+                        onCheckedChange={() =>
+                          setSelectedAlgorithm("knn")
+                        }
+                      >
+                        K-Nearest Neighbors
                       </DropdownMenuCheckboxItem>
                     </DropdownMenuContent>
                   </DropdownMenu>

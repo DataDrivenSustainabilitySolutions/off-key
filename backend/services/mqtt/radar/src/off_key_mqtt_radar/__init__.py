@@ -15,7 +15,7 @@ from .models import AnomalyResult, MQTTMessage, HealthStatus
 
 __all__ = [
     "RadarService",
-    "get_radar_service", 
+    "get_radar_service",
     "radar_settings",
     "AnomalyResult",
     "MQTTMessage",

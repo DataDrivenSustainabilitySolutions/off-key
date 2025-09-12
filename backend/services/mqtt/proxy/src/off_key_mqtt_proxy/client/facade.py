@@ -209,7 +209,6 @@ class MQTTClient:
             messages_sent=self.messages_sent,
         )
 
-
     def get_health_status(self) -> ClientHealthStatus:
         """Get health status for monitoring"""
         # Get metrics from components

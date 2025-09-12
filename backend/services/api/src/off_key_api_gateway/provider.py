@@ -36,8 +36,6 @@ def get_background_sync_service(request: Request) -> "BackgroundSyncService":
     return service
 
 
-
-
 def get_chargers_sync_service(
     db: AsyncSession = Depends(get_db_async),
     client: ChargerAPIClient = Depends(get_charger_api_client),

@@ -4,6 +4,7 @@ MQTT Bridge Configuration
 Handles configuration for the MQTT bridge service including API-Key authentication,
 MQTT broker configuration, and service-specific parameters.
 """
+
 from pydantic import SecretStr
 from pydantic_settings import BaseSettings
 from dotenv import find_dotenv, load_dotenv
@@ -37,10 +38,12 @@ class MQTTBridgeSettings(BaseSettings):
     MQTT_INTERNAL_CONNECTION_TIMEOUT: float = 30.0  # Connection timeout in seconds
 
     # External Authentication
-    MQTT_EXTERNAL_CLIENT_ID: str = "" # MQTT Client ID
+    MQTT_EXTERNAL_CLIENT_ID: str = ""  # MQTT Client ID
     MQTT_EXTERNAL_CLIENT_ID_PREFIX: str = "offkey-backend"  # MQTT client ID prefix
     MQTT_EXTERNAL_USERNAME: str = ""  # MQTT authentication username (required)
-    MQTT_EXTERNAL_APIKEY: SecretStr = "" or base_settings.PIONIX_KEY.get_secret_value() # API key for MQTT authentication (falls back to PIONIX_KEY)
+    MQTT_EXTERNAL_APIKEY: SecretStr = (
+        "" or base_settings.PIONIX_KEY.get_secret_value()
+    )  # API key for MQTT authentication (falls back to PIONIX_KEY)
 
     # Connection Management
     MQTT_RECONNECT_DELAY: int = 5  # Reconnection delay in seconds
@@ -62,5 +65,6 @@ class MQTTBridgeSettings(BaseSettings):
     # Shutdown Configuration
     MQTT_SHUTDOWN_TIMEOUT: float = 10.0  # Component shutdown timeout in seconds
     MQTT_GRACEFUL_SHUTDOWN_TIMEOUT: float = 30.0  # Total graceful shutdown timeout
+
 
 mqtt_settings = MQTTBridgeSettings()

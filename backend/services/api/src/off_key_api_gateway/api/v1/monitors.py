@@ -12,9 +12,19 @@ shared_limit_execute = limiter.shared_limit("5/minute", scope="services")
 
 
 class MonitoringServiceConfig(BaseModel):
-    container_name: str = Field(..., description="Name for the monitoring service container")
-    service_type: str = Field(default="radar", description="Type of monitoring service (radar, custom, etc.)")
+    container_name: str = Field(
+        ..., description="Name for the monitoring service container"
+    )
+    service_type: str = Field(
+        default="radar", description="Type of monitoring service (radar, custom, etc.)"
+    )
     mqtt_topics: List[str] = Field(..., description="List of MQTT topics to monitor")
+    model_type: str = Field(
+        ..., description="ML model type: isolation_forest, adaptive_svm, knn"
+    )
+    model_params: Optional[Dict[str, Any]] = Field(
+        default=None, description="Model-specific parameters"
+    )
     requirements: Optional[List[str]] = Field(
         None, description="List of pip packages to install"
     )
@@ -66,17 +76,18 @@ async def start_monitoring_service(
             response = await tactic.start_radar_service(
                 container_name=config.container_name,
                 mqtt_topics=config.mqtt_topics,
-                model_type="isolation_forest",
-                model_params=None,
+                model_type=config.model_type,
+                model_params=config.model_params,
                 mqtt_config=None,
                 anomaly_thresholds=None,
                 performance_config=None,
             )
         else:
             raise HTTPException(
-                status_code=400, detail=f"Unsupported service type: {config.service_type}"
+                status_code=400,
+                detail=f"Unsupported service type: {config.service_type}",
             )
-        
+
         return response
     except Exception as e:
         raise HTTPException(
@@ -105,16 +116,16 @@ async def get_service_details(
             status_code=400,
             detail="Provide only one of container_name or container_id.",
         )
-    
+
     try:
         service_detail = await tactic.get_radar_service_details(
             container_name=container_name,
             container_id=container_id,
         )
-        
+
         if not service_detail:
             raise HTTPException(status_code=404, detail="Service not found")
-        
+
         return service_detail
     except Exception as e:
         raise HTTPException(
@@ -149,18 +160,20 @@ async def stop_monitoring_service(
             container_name=container_name,
             container_id=container_id,
         )
-        
+
         success = response.get("status") == "stopped"
-        
+
         if not success:
             raise HTTPException(
                 status_code=404,
-                detail=f"Container '{container_name or container_id}' not found or could not be stopped",
+                detail=f"Container '{container_name or container_id}'"
+                f" not found or could not be stopped",
             )
 
         return {
             "status": "stopped",
-            "message": f"Container '{container_name or container_id}' stopped successfully",
+            "message": f"Container '{container_name or container_id}'"
+            f" stopped successfully",
         }
     except Exception as e:
         raise HTTPException(

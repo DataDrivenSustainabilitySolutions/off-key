@@ -17,7 +17,8 @@ class AsyncDocker:
             self.config = config
             logger.info(
                 f"Docker client initialized successfully |"
-                f" URL: {config.base_url} | Max concurrent: {config.max_concurrent_calls}"
+                f" URL: {config.base_url} | "
+                f"Max concurrent: {config.max_concurrent_calls}"
             )
         except Exception as e:
             logger.error(

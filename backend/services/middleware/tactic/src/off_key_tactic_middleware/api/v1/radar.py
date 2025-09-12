@@ -2,7 +2,9 @@ from fastapi import APIRouter, HTTPException, Depends, Query, Request
 from typing import List, Dict, Optional, Any
 from pydantic import BaseModel, Field
 
-from off_key_tactic_middleware.services.orchestration.radar import RadarOrchestrationService
+from off_key_tactic_middleware.services.orchestration.radar import (
+    RadarOrchestrationService,
+)
 from ...provider import get_radar_orchestration_service
 
 router = APIRouter()
@@ -17,29 +19,26 @@ class RadarConfig(BaseModel):
     # Model Configuration
     model_type: str = Field(
         default="isolation_forest",
-        description="ML model type: isolation_forest, adaptive_svm, knn"
+        description="ML model type: isolation_forest, adaptive_svm, knn",
     )
     model_params: Optional[Dict[str, Any]] = Field(
-        default=None,
-        description="Model-specific parameters"
+        default=None, description="Model-specific parameters"
     )
 
     # MQTT Configuration
     mqtt_config: Optional[Dict[str, Any]] = Field(
-        default=None,
-        description="MQTT connection settings"
+        default=None, description="MQTT connection settings"
     )
 
     # Anomaly Detection Configuration
     anomaly_thresholds: Optional[Dict[str, float]] = Field(
         default=None,
-        description="Anomaly detection thresholds (medium, high, critical)"
+        description="Anomaly detection thresholds (medium, high, critical)",
     )
 
     # Performance Configuration
     performance_config: Optional[Dict[str, Any]] = Field(
-        default=None,
-        description="Performance and resource settings"
+        default=None, description="Performance and resource settings"
     )
 
 
@@ -55,9 +54,9 @@ class RadarServiceResponse(BaseModel):
 
 @router.get("/radar/services/", response_model=List[Dict[str, Any]])
 async def list_radar_services(
-        request: Request,
-        active_only: bool = False,
-        service: RadarOrchestrationService = Depends(get_radar_orchestration_service),
+    request: Request,
+    active_only: bool = False,
+    service: RadarOrchestrationService = Depends(get_radar_orchestration_service),
 ):
     """
     Lists all RADAR anomaly detection services.
@@ -76,9 +75,9 @@ async def list_radar_services(
 
 @router.post("/radar/services/start/", response_model=RadarServiceResponse)
 async def start_radar_service(
-        request: Request,
-        config: RadarConfig,
-        service: RadarOrchestrationService = Depends(get_radar_orchestration_service),
+    request: Request,
+    config: RadarConfig,
+    service: RadarOrchestrationService = Depends(get_radar_orchestration_service),
 ):
     """
     Starts a new RADAR Docker service for anomaly detection on specified MQTT topics.
@@ -115,10 +114,10 @@ async def start_radar_service(
 
 @router.get("/radar/services/details/", response_model=Dict[str, Any])
 async def get_radar_service_details(
-        request: Request,
-        container_name: Optional[str] = Query(default=None),
-        container_id: Optional[str] = Query(default=None),
-        service: RadarOrchestrationService = Depends(get_radar_orchestration_service),
+    request: Request,
+    container_name: Optional[str] = Query(default=None),
+    container_id: Optional[str] = Query(default=None),
+    service: RadarOrchestrationService = Depends(get_radar_orchestration_service),
 ):
     """
     Gets details for a specific RADAR service by container name or ID.
@@ -152,10 +151,10 @@ async def get_radar_service_details(
 
 @router.delete("/radar/services/stop/")
 async def stop_radar_service(
-        request: Request,
-        container_name: Optional[str] = Query(default=None),
-        container_id: Optional[str] = Query(default=None),
-        service: RadarOrchestrationService = Depends(get_radar_orchestration_service),
+    request: Request,
+    container_name: Optional[str] = Query(default=None),
+    container_id: Optional[str] = Query(default=None),
+    service: RadarOrchestrationService = Depends(get_radar_orchestration_service),
 ):
     """
     Stops and removes a running RADAR Docker service.
@@ -179,12 +178,14 @@ async def stop_radar_service(
         if not success:
             raise HTTPException(
                 status_code=404,
-                detail=f"RADAR service '{container_name}' not found or could not be stopped",
+                detail=f"RADAR service '{container_name}'"
+                f" not found or could not be stopped",
             )
 
         return {
             "status": "stopped",
-            "message": f"RADAR service '{container_name}' stopped and deleted successfully",
+            "message": f"RADAR service '{container_name}'"
+            f" stopped and deleted successfully",
         }
     except HTTPException:
         raise

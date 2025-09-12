@@ -1,13 +1,15 @@
 """
 TACTIC Middleware Configuration
 
-Configuration for the TACTIC (Timely Anomaly Communication / Task Instance Control) service
-including Docker API configuration, RADAR orchestration settings, and service-specific parameters.
+Configuration for the TACTIC
+(Timely Anomaly Communication / Task Instance Control) service
+including Docker API configuration,
+RADAR orchestration settings, and service-specific parameters.
 """
 
 from pydantic import BaseModel, field_validator, model_validator
 from pydantic_settings import BaseSettings
-from typing import Self, Dict, Optional, List
+from typing import Self, Optional
 from dotenv import find_dotenv, load_dotenv
 
 # Load default ".env" file from upper project tree
@@ -23,25 +25,25 @@ class DockerConfig(BaseModel):
     """
     Docker API configuration for container orchestration.
     """
-    
+
     # Docker API Connection
     api_url: str = "http://socket-proxy"
     api_port: int = 2375
     max_concurrent_calls: int = 5
-    
+
     # Container Defaults
     default_network: str = "emqx-network"
     default_restart_policy: str = "on-failure"
     default_restart_max_attempts: int = 3
-    
+
     # Resource Limits
     default_memory_limit: str = "512m"
     default_cpu_limit: str = "0.5"
-    
+
     class Config:
         extra = "forbid"
         validate_assignment = True
-    
+
     @field_validator("api_port")
     @classmethod
     def validate_api_port(cls, v: int) -> int:
@@ -49,7 +51,7 @@ class DockerConfig(BaseModel):
         if not 1 <= v <= 65535:
             raise ValueError("Docker API port must be between 1 and 65535")
         return v
-    
+
     @field_validator("max_concurrent_calls")
     @classmethod
     def validate_max_concurrent_calls(cls, v: int) -> int:
@@ -57,7 +59,7 @@ class DockerConfig(BaseModel):
         if not 1 <= v <= 100:
             raise ValueError("Max concurrent calls must be between 1 and 100")
         return v
-    
+
     @field_validator("default_restart_max_attempts")
     @classmethod
     def validate_restart_max_attempts(cls, v: int) -> int:
@@ -65,7 +67,7 @@ class DockerConfig(BaseModel):
         if not 0 <= v <= 10:
             raise ValueError("Restart max attempts must be between 0 and 10")
         return v
-    
+
     @property
     def base_url(self) -> str:
         """Get Docker API base URL"""
@@ -76,7 +78,7 @@ class RadarDefaultsConfig(BaseModel):
     """
     Default configuration values for RADAR services.
     """
-    
+
     # Default MQTT Settings
     mqtt_broker_host: str = "localhost"
     mqtt_broker_port: int = 1883
@@ -84,35 +86,35 @@ class RadarDefaultsConfig(BaseModel):
     mqtt_client_id_prefix: str = "radar"
     mqtt_use_auth: bool = False
     mqtt_qos: int = 0
-    
+
     # Default Model Settings
     model_type: str = "isolation_forest"
-    
+
     # Default Anomaly Thresholds
     anomaly_threshold_medium: float = 0.6
     anomaly_threshold_high: float = 0.8
     anomaly_threshold_critical: float = 0.9
-    
+
     # Default Performance Settings
     batch_size: int = 100
     batch_timeout: float = 1.0
     memory_limit_mb: int = 1000
     checkpoint_interval: int = 10000
-    
+
     # Default Database Settings
     db_write_enabled: bool = True
     db_batch_size: int = 50
     db_batch_timeout: float = 2.0
-    
+
     # Default Health Settings
     health_check_interval: float = 30.0
     log_level: str = "INFO"
     rate_limit_per_minute: int = 1000
-    
+
     class Config:
         extra = "forbid"
         validate_assignment = True
-    
+
     @field_validator("mqtt_broker_port")
     @classmethod
     def validate_mqtt_port(cls, v: int) -> int:
@@ -120,7 +122,7 @@ class RadarDefaultsConfig(BaseModel):
         if not 1 <= v <= 65535:
             raise ValueError("MQTT broker port must be between 1 and 65535")
         return v
-    
+
     @field_validator("mqtt_qos")
     @classmethod
     def validate_mqtt_qos(cls, v: int) -> int:
@@ -128,7 +130,7 @@ class RadarDefaultsConfig(BaseModel):
         if v not in [0, 1, 2]:
             raise ValueError("MQTT QoS must be 0, 1, or 2")
         return v
-    
+
     @field_validator("model_type")
     @classmethod
     def validate_model_type(cls, v: str) -> str:
@@ -137,15 +139,19 @@ class RadarDefaultsConfig(BaseModel):
         if v not in valid_models:
             raise ValueError(f"Model type must be one of: {valid_models}")
         return v
-    
-    @field_validator("anomaly_threshold_medium", "anomaly_threshold_high", "anomaly_threshold_critical")
+
+    @field_validator(
+        "anomaly_threshold_medium",
+        "anomaly_threshold_high",
+        "anomaly_threshold_critical",
+    )
     @classmethod
     def validate_anomaly_threshold(cls, v: float) -> float:
         """Validate anomaly threshold is between 0 and 1"""
         if not 0.0 <= v <= 1.0:
             raise ValueError("Anomaly threshold must be between 0.0 and 1.0")
         return v
-    
+
     @field_validator("batch_size")
     @classmethod
     def validate_batch_size(cls, v: int) -> int:
@@ -153,7 +159,7 @@ class RadarDefaultsConfig(BaseModel):
         if not 1 <= v <= 10000:
             raise ValueError("Batch size must be between 1 and 10000")
         return v
-    
+
     @field_validator("batch_timeout", "db_batch_timeout", "health_check_interval")
     @classmethod
     def validate_timeout(cls, v: float) -> float:
@@ -161,7 +167,7 @@ class RadarDefaultsConfig(BaseModel):
         if not 0.1 <= v <= 3600.0:
             raise ValueError("Timeout must be between 0.1 and 3600.0 seconds")
         return v
-    
+
     @field_validator("memory_limit_mb")
     @classmethod
     def validate_memory_limit(cls, v: int) -> int:
@@ -169,7 +175,7 @@ class RadarDefaultsConfig(BaseModel):
         if not 128 <= v <= 16384:
             raise ValueError("Memory limit must be between 128 and 16384 MB")
         return v
-    
+
     @field_validator("checkpoint_interval")
     @classmethod
     def validate_checkpoint_interval(cls, v: int) -> int:
@@ -177,7 +183,7 @@ class RadarDefaultsConfig(BaseModel):
         if not 100 <= v <= 100000:
             raise ValueError("Checkpoint interval must be between 100 and 100000")
         return v
-    
+
     @field_validator("db_batch_size")
     @classmethod
     def validate_db_batch_size(cls, v: int) -> int:
@@ -185,7 +191,7 @@ class RadarDefaultsConfig(BaseModel):
         if not 1 <= v <= 1000:
             raise ValueError("Database batch size must be between 1 and 1000")
         return v
-    
+
     @field_validator("rate_limit_per_minute")
     @classmethod
     def validate_rate_limit(cls, v: int) -> int:
@@ -193,7 +199,7 @@ class RadarDefaultsConfig(BaseModel):
         if not 1 <= v <= 100000:
             raise ValueError("Rate limit per minute must be between 1 and 100000")
         return v
-    
+
     @field_validator("log_level")
     @classmethod
     def validate_log_level(cls, v: str) -> str:
@@ -206,10 +212,16 @@ class RadarDefaultsConfig(BaseModel):
     @model_validator(mode="after")
     def validate_threshold_ordering(self) -> Self:
         """Validate that anomaly thresholds are in correct order"""
-        if not (self.anomaly_threshold_medium <= self.anomaly_threshold_high <= self.anomaly_threshold_critical):
+        if not (
+            self.anomaly_threshold_medium
+            <= self.anomaly_threshold_high
+            <= self.anomaly_threshold_critical
+        ):
             raise ValueError(
                 "Anomaly thresholds must be ordered: medium <= high <= critical "
-                f"(got {self.anomaly_threshold_medium} <= {self.anomaly_threshold_high} <= {self.anomaly_threshold_critical})"
+                f"(got {self.anomaly_threshold_medium} "
+                f"<= {self.anomaly_threshold_high} "
+                f"<= {self.anomaly_threshold_critical})"
             )
         return self
 
@@ -218,31 +230,31 @@ class TacticConfig(BaseModel):
     """
     Complete TACTIC service configuration with business logic validation.
     """
-    
+
     # Service Information
     service_name: str = "tactic-middleware"
     service_version: str = "0.1.0"
-    
+
     # API Configuration
     host: str = "0.0.0.0"
     port: int = 8000
-    
+
     # Docker Configuration
     docker: DockerConfig
-    
+
     # RADAR Defaults
     radar_defaults: RadarDefaultsConfig
-    
+
     # Database Configuration
     database_url: Optional[str] = None
-    
+
     # Logging Configuration
     log_level: str = "INFO"
-    
+
     class Config:
         extra = "forbid"
         validate_assignment = True
-    
+
     @field_validator("port")
     @classmethod
     def validate_port(cls, v: int) -> int:
@@ -250,7 +262,7 @@ class TacticConfig(BaseModel):
         if not 1 <= v <= 65535:
             raise ValueError("Service port must be between 1 and 65535")
         return v
-    
+
     @field_validator("log_level")
     @classmethod
     def validate_log_level(cls, v: str) -> str:
@@ -263,14 +275,14 @@ class TacticConfig(BaseModel):
 
 class TacticSettings(BaseSettings):
     """Environment-based settings for TACTIC service"""
-    
+
     # Service Configuration
     TACTIC_SERVICE_NAME: str = "tactic-middleware"
     TACTIC_SERVICE_VERSION: str = "0.1.0"
     TACTIC_HOST: str = "0.0.0.0"
     TACTIC_PORT: int = 8000
     TACTIC_LOG_LEVEL: str = "INFO"
-    
+
     # Docker API Configuration
     TACTIC_DOCKER_API_URL: str = "http://socket-proxy"
     TACTIC_DOCKER_API_PORT: int = 2375
@@ -280,7 +292,7 @@ class TacticSettings(BaseSettings):
     TACTIC_DOCKER_DEFAULT_RESTART_MAX_ATTEMPTS: int = 3
     TACTIC_DOCKER_DEFAULT_MEMORY_LIMIT: str = "512m"
     TACTIC_DOCKER_DEFAULT_CPU_LIMIT: str = "0.5"
-    
+
     # RADAR Default Configuration
     TACTIC_RADAR_DEFAULT_MQTT_BROKER_HOST: str = "localhost"
     TACTIC_RADAR_DEFAULT_MQTT_BROKER_PORT: int = 1883
@@ -302,19 +314,19 @@ class TacticSettings(BaseSettings):
     TACTIC_RADAR_DEFAULT_HEALTH_CHECK_INTERVAL: float = 30.0
     TACTIC_RADAR_DEFAULT_LOG_LEVEL: str = "INFO"
     TACTIC_RADAR_DEFAULT_RATE_LIMIT_PER_MINUTE: int = 1000
-    
-    # Database Configuration  
+
+    # Database Configuration
     TACTIC_DATABASE_URL: Optional[str] = None
-    
+
     class Config:
         env_file = ".env"
         case_sensitive = True
-    
+
     @property
     def config(self) -> TacticConfig:
         """
         Create TacticConfig instance from environment settings.
-        
+
         Returns:
             TacticConfig: Validated TACTIC service configuration
         """
@@ -328,7 +340,7 @@ class TacticSettings(BaseSettings):
             default_memory_limit=self.TACTIC_DOCKER_DEFAULT_MEMORY_LIMIT,
             default_cpu_limit=self.TACTIC_DOCKER_DEFAULT_CPU_LIMIT,
         )
-        
+
         radar_defaults_config = RadarDefaultsConfig(
             mqtt_broker_host=self.TACTIC_RADAR_DEFAULT_MQTT_BROKER_HOST,
             mqtt_broker_port=self.TACTIC_RADAR_DEFAULT_MQTT_BROKER_PORT,
@@ -351,7 +363,7 @@ class TacticSettings(BaseSettings):
             log_level=self.TACTIC_RADAR_DEFAULT_LOG_LEVEL,
             rate_limit_per_minute=self.TACTIC_RADAR_DEFAULT_RATE_LIMIT_PER_MINUTE,
         )
-        
+
         return TacticConfig(
             service_name=self.TACTIC_SERVICE_NAME,
             service_version=self.TACTIC_SERVICE_VERSION,

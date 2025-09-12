@@ -11,6 +11,7 @@ import logging
 from off_key_core.db.base import async_engine
 from off_key_core.db.models import Base
 
+
 # Helper functions for startup tasks
 async def _initialize_database():
     """Creates all database tables."""
@@ -20,8 +21,8 @@ async def _initialize_database():
 
 
 async def forward_messages(external: MQTTClient, internal: MQTTClient):
-        async for msg in external.messages:
-            await internal.publish(str(msg.topic), msg.payload, qos=1)
+    async for msg in external.messages:
+        await internal.publish(str(msg.topic), msg.payload, qos=1)
 
 
 async def main():
@@ -46,21 +47,23 @@ async def main():
     context.verify_mode = ssl.CERT_NONE  # For WebSocket connections
 
     # Define MQTT Clients settings
-    ext_client_config = dict(hostname=mqtt_settings.MQTT_EXTERNAL_HOST,
-                             port=mqtt_settings.MQTT_EXTERNAL_PORT,
-                             identifier=mqtt_settings.MQTT_EXTERNAL_CLIENT_ID,
-                             transport="websockets",
-                             username=mqtt_settings.MQTT_EXTERNAL_USERNAME,
-                             password=mqtt_settings.MQTT_EXTERNAL_APIKEY.get_secret_value(),
-                             keepalive=15,
-                             tls_context=context
-                             )
+    ext_client_config = dict(
+        hostname=mqtt_settings.MQTT_EXTERNAL_HOST,
+        port=mqtt_settings.MQTT_EXTERNAL_PORT,
+        identifier=mqtt_settings.MQTT_EXTERNAL_CLIENT_ID,
+        transport="websockets",
+        username=mqtt_settings.MQTT_EXTERNAL_USERNAME,
+        password=mqtt_settings.MQTT_EXTERNAL_APIKEY.get_secret_value(),
+        keepalive=15,
+        tls_context=context,
+    )
 
-    int_client_config = dict(hostname=mqtt_settings.MQTT_INTERNAL_HOST,
-                             port=mqtt_settings.MQTT_INTERNAL_PORT,
-                             keepalive=60,
-                             clean_session=True
-                             )
+    int_client_config = dict(
+        hostname=mqtt_settings.MQTT_INTERNAL_HOST,
+        port=mqtt_settings.MQTT_INTERNAL_PORT,
+        keepalive=60,
+        clean_session=True,
+    )
     # Setup MQTT Clients
     ext_client = MQTTClient(**ext_client_config)
     int_client = MQTTClient(**int_client_config)

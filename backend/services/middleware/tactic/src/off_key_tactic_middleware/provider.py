@@ -14,10 +14,10 @@ def get_radar_orchestration_service(
 ) -> RadarOrchestrationService:
     """
     Dependency injection provider for RadarOrchestrationService.
-    
+
     Args:
         session: Database session from dependency injection
-        
+
     Returns:
         RadarOrchestrationService: Configured service instance
     """

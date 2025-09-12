@@ -3,7 +3,6 @@ HTTP client for communicating with the TACTIC middleware service.
 """
 
 import os
-import asyncio
 import aiohttp
 from typing import Dict, List, Optional, Any
 from off_key_core.config.logs import logger
@@ -28,21 +27,21 @@ class Tactic:
     ) -> Dict[str, Any]:
         """
         Make an HTTP request to the TACTIC service.
-        
+
         Args:
             method: HTTP method (GET, POST, DELETE, etc.)
             endpoint: API endpoint path
             json_data: JSON payload for POST requests
             params: Query parameters
-            
+
         Returns:
             Dict: Response JSON data
-            
+
         Raises:
             Exception: If the request fails
         """
         url = f"{self.base_url}{endpoint}"
-        
+
         try:
             async with aiohttp.ClientSession(timeout=self.timeout) as session:
                 async with session.request(
@@ -52,15 +51,19 @@ class Tactic:
                     params=params,
                 ) as response:
                     response_data = await response.json()
-                    
+
                     if response.status >= 400:
-                        error_msg = response_data.get("detail", f"HTTP {response.status}")
-                        logger.error(f"TACTIC request failed: {method} {url} - {error_msg}")
+                        error_msg = response_data.get(
+                            "detail", f"HTTP {response.status}"
+                        )
+                        logger.error(
+                            f"TACTIC request failed: {method} {url} - {error_msg}"
+                        )
                         raise Exception(f"TACTIC service error: {error_msg}")
-                    
+
                     logger.debug(f"TACTIC request successful: {method} {url}")
                     return response_data
-                    
+
         except aiohttp.ClientError as e:
             logger.error(f"TACTIC client error: {method} {url} - {str(e)}")
             raise Exception(f"Failed to communicate with TACTIC service: {str(e)}")
@@ -80,7 +83,7 @@ class Tactic:
     ) -> Dict[str, Any]:
         """
         Start a new RADAR service via TACTIC.
-        
+
         Args:
             container_name: Name for the Docker container
             mqtt_topics: List of MQTT topics to monitor
@@ -89,7 +92,7 @@ class Tactic:
             mqtt_config: MQTT configuration
             anomaly_thresholds: Anomaly detection thresholds
             performance_config: Performance settings
-            
+
         Returns:
             Dict: Service creation response
         """
@@ -98,7 +101,7 @@ class Tactic:
             "mqtt_topics": mqtt_topics,
             "model_type": model_type,
         }
-        
+
         if model_params:
             payload["model_params"] = model_params
         if mqtt_config:
@@ -107,7 +110,7 @@ class Tactic:
             payload["anomaly_thresholds"] = anomaly_thresholds
         if performance_config:
             payload["performance_config"] = performance_config
-        
+
         return await self._make_request(
             method="POST",
             endpoint="/api/v1/orchestration/radar/services/start/",
@@ -121,11 +124,11 @@ class Tactic:
     ) -> Dict[str, Any]:
         """
         Stop a RADAR service via TACTIC.
-        
+
         Args:
             container_name: Name of the container to stop
             container_id: ID of the container to stop
-            
+
         Returns:
             Dict: Service stop response
         """
@@ -134,25 +137,27 @@ class Tactic:
             params["container_name"] = container_name
         if container_id:
             params["container_id"] = container_id
-        
+
         return await self._make_request(
             method="DELETE",
             endpoint="/api/v1/orchestration/radar/services/stop/",
             params=params,
         )
 
-    async def list_radar_services(self, active_only: bool = False) -> List[Dict[str, Any]]:
+    async def list_radar_services(
+        self, active_only: bool = False
+    ) -> List[Dict[str, Any]]:
         """
         List RADAR services via TACTIC.
-        
+
         Args:
             active_only: If True, only return active services
-            
+
         Returns:
             List[Dict]: List of services
         """
         params = {"active_only": str(active_only).lower()}
-        
+
         return await self._make_request(
             method="GET",
             endpoint="/api/v1/orchestration/radar/services/",
@@ -166,11 +171,11 @@ class Tactic:
     ) -> Dict[str, Any]:
         """
         Get RADAR service details via TACTIC.
-        
+
         Args:
             container_name: Name of the container
             container_id: ID of the container
-            
+
         Returns:
             Dict: Service details
         """
@@ -179,7 +184,7 @@ class Tactic:
             params["container_name"] = container_name
         if container_id:
             params["container_id"] = container_id
-        
+
         return await self._make_request(
             method="GET",
             endpoint="/api/v1/orchestration/radar/services/details/",

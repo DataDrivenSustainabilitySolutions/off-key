@@ -17,10 +17,11 @@ from .config import tactic_settings
 def create_app() -> FastAPI:
     """Create and configure the FastAPI application."""
     config = tactic_settings.config
-    
+
     app = FastAPI(
         title=config.service_name,
-        description="Timely Anomaly Communication / Task Instance Control for off-key platform",
+        description="Timely Anomaly Communication / "
+        "Task Instance Control for off-key platform",
         version=config.service_version,
         docs_url="/docs",
         redoc_url="/redoc",
@@ -36,7 +37,9 @@ def create_app() -> FastAPI:
     )
 
     # Include API routers
-    app.include_router(radar.router, prefix="/api/v1/orchestration", tags=["orchestration"])
+    app.include_router(
+        radar.router, prefix="/api/v1/orchestration", tags=["orchestration"]
+    )
 
     @app.get("/health")
     async def health_check():
@@ -49,13 +52,13 @@ def create_app() -> FastAPI:
 def main() -> None:
     """Main entry point for the TACTIC middleware service."""
     config = tactic_settings.config
-    
+
     logger.info(f"Starting {config.service_name} v{config.service_version}...")
     logger.info(f"Docker API: {config.docker.base_url}")
-    logger.info(f"Service configuration loaded from environment")
-    
+    logger.info("Service configuration loaded from environment")
+
     app = create_app()
-    
+
     uvicorn.run(
         app,
         host=config.host,

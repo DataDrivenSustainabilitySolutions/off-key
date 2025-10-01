@@ -41,7 +41,7 @@ services:
       interval: 10s
       retries: 5
     environment:
-      - SYNC_ENABLED=false
+      - SYNC_ENABLED=true
     command: ["uvicorn", "off_key_api_gateway.main:app",
               "--reload", "--reload-dir", "/app/lib/python3.12/site-packages/off_key_api_gateway",
               "--host", "0.0.0.0", "--port", "8000"]

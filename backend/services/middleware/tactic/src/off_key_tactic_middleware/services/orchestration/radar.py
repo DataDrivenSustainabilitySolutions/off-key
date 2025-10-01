@@ -281,23 +281,30 @@ class RadarOrchestrationService:
             "managed_by": "tactic",
         }
 
-        container = await self.async_docker.run(
-            self.async_docker.client.services.create,
-            name=f"radar-{service_id}",
-            labels=labels,
-            image="off-key-radar:latest",
-            env=environment,
-            mode=ServiceMode("replicated", replicas=1),
-            restart_policy=RestartPolicy(
+        service_kwargs = {
+            "name": f"radar-{service_id}",
+            "labels": labels,
+            "image": "off-key-radar:latest",
+            "env": environment,
+            "command": ["/app/bin/python", "-m", "off_key_mqtt_radar"],
+            "mode": ServiceMode("replicated", replicas=1),
+            "restart_policy": RestartPolicy(
                 condition=docker_config.default_restart_policy,
                 max_attempts=docker_config.default_restart_max_attempts,
             ),
-            constraints=["node.role == worker"],
-            networks=[docker_config.default_network],
-            resources=Resources(
+            "networks": [docker_config.default_network],
+            "resources": Resources(
                 cpu_limit=int(float(docker_config.default_cpu_limit) * 1_000_000_000),
                 mem_limit=_parse_memory_string(docker_config.default_memory_limit),
             ),
+        }
+
+        if docker_config.default_constraints:
+            service_kwargs["constraints"] = docker_config.default_constraints
+
+        container = await self.async_docker.run(
+            self.async_docker.client.services.create,
+            **service_kwargs,
         )
 
         return container

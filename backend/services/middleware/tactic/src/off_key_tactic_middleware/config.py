@@ -7,7 +7,7 @@ including Docker API configuration,
 RADAR orchestration settings, and service-specific parameters.
 """
 
-from pydantic import BaseModel, field_validator, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings
 from typing import Self, Optional
 from dotenv import find_dotenv, load_dotenv
@@ -39,6 +39,7 @@ class DockerConfig(BaseModel):
     # Resource Limits
     default_memory_limit: str = "512m"
     default_cpu_limit: str = "0.5"
+    default_constraints: list[str] = Field(default_factory=list)
 
     class Config:
         extra = "forbid"
@@ -292,6 +293,7 @@ class TacticSettings(BaseSettings):
     TACTIC_DOCKER_DEFAULT_RESTART_MAX_ATTEMPTS: int = 3
     TACTIC_DOCKER_DEFAULT_MEMORY_LIMIT: str = "512m"
     TACTIC_DOCKER_DEFAULT_CPU_LIMIT: str = "0.5"
+    TACTIC_DOCKER_DEFAULT_CONSTRAINTS: str = "node.role == worker"
 
     # RADAR Default Configuration
     TACTIC_RADAR_DEFAULT_MQTT_BROKER_HOST: str = "localhost"
@@ -322,6 +324,24 @@ class TacticSettings(BaseSettings):
         env_file = ".env"
         case_sensitive = True
 
+    @staticmethod
+    def _split_constraints(raw_value: str) -> list[str]:
+        if not raw_value:
+            return []
+        values: list[str] = []
+        for item in raw_value.split(","):
+            cleaned = item.strip()
+            if not cleaned:
+                continue
+            if cleaned[0] == cleaned[-1] and cleaned[0] in {"'", '"'}:
+                cleaned = cleaned[1:-1].strip()
+            if cleaned:
+                values.append(cleaned)
+        return values
+
+    def _parse_default_constraints(self) -> list[str]:
+        return self._split_constraints(self.TACTIC_DOCKER_DEFAULT_CONSTRAINTS)
+
     @property
     def config(self) -> TacticConfig:
         """
@@ -339,6 +359,7 @@ class TacticSettings(BaseSettings):
             default_restart_max_attempts=self.TACTIC_DOCKER_DEFAULT_RESTART_MAX_ATTEMPTS,
             default_memory_limit=self.TACTIC_DOCKER_DEFAULT_MEMORY_LIMIT,
             default_cpu_limit=self.TACTIC_DOCKER_DEFAULT_CPU_LIMIT,
+            default_constraints=self._parse_default_constraints(),
         )
 
         radar_defaults_config = RadarDefaultsConfig(

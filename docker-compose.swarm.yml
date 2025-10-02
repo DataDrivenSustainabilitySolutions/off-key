@@ -39,23 +39,24 @@ services:
 #      retries: 5
 #    environment:
 #      - SYNC_ENABLED=false
-#    command: ["uvicorn", "off_key_api_gateway.main:app",
-#              "--reload", "--reload-dir", "/app/lib/python3.12/site-packages/off_key_api_gateway",
-#              "--host", "0.0.0.0", "--port", "8000"]
+    command: ["uvicorn", "off_key_api_gateway.main:app",
+              "--reload", "--reload-dir", "/app/lib/python3.12/site-packages/off_key_api_gateway",
+              "--host", "0.0.0.0", "--port", "8000"]
     deploy:
       mode: replicated
       replicas: 1
       placement:
-        constraints: [node.labels.frontend == true ]
+        constraints: [node.labels.backend == true ]
       restart_policy:
         condition: any
 
   tactic:
     image: "${TACTIC_IMAGE:-off-key-tactic-middleware:latest}"
+    env_file: .env
     ports:
       - target: 8000
         published: 8001
-        mode: host
+        mode: ingress
     networks:
       - app-network
       - socket-network
@@ -128,6 +129,8 @@ services:
         mode: ingress
     networks:
       - app-network
+    environment:
+      - __VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS=offk.qzz.io
     deploy:
       mode: replicated
       replicas: 1
@@ -138,8 +141,8 @@ services:
 
   mailpit:
     image: axllent/mailpit:latest
-    volumes:
-      - mailpit_data:/data
+#    volumes:
+#      - mailpit_data:/data
     ports:
       - target: 8025
         published: 8025
@@ -166,8 +169,8 @@ services:
     environment:
       - SERVICE_TYPE=mqtt_proxy
       - MQTT_TELEMETRY_ENABLED=true
-    volumes:
-      - mqtt_logs:/app/logs
+#    volumes:
+#      - mqtt_logs:/app/logs
     deploy:
       mode: replicated
       replicas: 1
@@ -190,73 +193,75 @@ services:
       restart_policy:
         condition: any
 
-  memcached:
-    image: memcached:latest
-    ports:
-      - target: 11211
-        published: 11211
-        mode: ingress
-    networks:
-      - app-network
-    deploy:
-      replicas: 1
-      placement:
-        constraints: [ node.labels.backend == true ]
-      restart_policy:
-        condition: any
+#  memcached:
+#    image: memcached:latest
+#    ports:
+#      - target: 11211
+#        published: 11211
+#        mode: ingress
+#    networks:
+#      - app-network
+#    deploy:
+#      replicas: 1
+#      placement:
+#        constraints: [ node.labels.backend == true ]
+#      restart_policy:
+#        condition: any
 
-  mcrouter:
-    image: ghcr.io/mszabo-wikia/mcrouter-debian-bookworm:20250621-a099b76
-    environment:
-      - MC_LOCAL=memcached
-      - MC_SERVICE=memcached
-    ports:
-      - target: 11211
-        published: 11210
-        mode: ingress
-    configs:
-      - source: mcrouter_config
-        target: /usr/local/mcrouter/config/config.json.template
-    command:
-      - /bin/bash
-      - -c
-      - |
-        sed "s|\$${MC_LOCAL}|$${MC_LOCAL}|g" /usr/local/mcrouter/config/config.json.template | \
-        sed "s|\$${MC_SERVICE}|$${MC_SERVICE}|g" > /usr/local/mcrouter/config/config.json && \
-        /usr/bin/mcrouter --config-file=/usr/local/mcrouter/config/config.json \
-        -p 11211 \
-        --num-proxies=1 \
-        --stats-logging-interval=0 \
-        --asynclog-disable \
-        --probe-timeout-initial=1000 \
-        --probe-timeout-max=15000 \
-        --reset-inactive-connection-interval=900000 \
-        --keepalive-count=6 \
-        --keepalive-interval=4 \
-        --keepalive-idle=30 \
-        --timeouts-until-tko=6
-    networks:
-      - app-network
-    deploy:
-      replicas: 1
-      placement:
-        constraints: [ node.labels.backend == true ]
-      restart_policy:
-        condition: any
+#  mcrouter:
+#    image: ghcr.io/mszabo-wikia/mcrouter-debian-bookworm:20250621-a099b76
+#    environment:
+#      - MC_LOCAL=memcached
+#      - MC_SERVICE=memcached
+#    ports:
+#      - target: 11211
+#        published: 11210
+#        mode: ingress
+#    configs:
+#      - source: mcrouter_config
+#        target: /usr/local/mcrouter/config/config.json.template
+#    command:
+#      - /bin/bash
+#      - -c
+#      - |
+#        sed "s|\$${MC_LOCAL}|$${MC_LOCAL}|g" /usr/local/mcrouter/config/config.json.template | \
+#        sed "s|\$${MC_SERVICE}|$${MC_SERVICE}|g" > /usr/local/mcrouter/config/config.json && \
+#        /usr/bin/mcrouter --config-file=/usr/local/mcrouter/config/config.json \
+#        -p 11211 \
+#       --num-proxies=1 \
+#        --stats-logging-interval=0 \
+#        --asynclog-disable \
+#        --probe-timeout-initial=1000 \
+#        --probe-timeout-max=15000 \
+#        --reset-inactive-connection-interval=900000 \
+#        --keepalive-count=6 \
+#        --keepalive-interval=4 \
+#        --keepalive-idle=30 \
+#        --timeouts-until-tko=6
+#    networks:
+#      - app-network
+#    deploy:
+#      replicas: 1
+#      placement:
+#        constraints: [ node.labels.backend == true ]
+#      restart_policy:
+#        condition: any
 
   emqx-main:
     image: emqx/emqx:5.8.7
     environment:
-      - "EMQX_NODE_NAME=emqx@{{.Node.Hostname}}.emqx-main"
+      - "EMQX_NODE_NAME=emqx@emqx-main"
       - "EMQX_CLUSTER__DISCOVERY_STRATEGY=static"
-      - "EMQX_CLUSTER__STATIC__SEEDS=[emqx@tasks.emqx-main,emqx@tasks.emqx-worker]"
-    healthcheck:
-      test: ["CMD", "/opt/emqx/bin/emqx", "ctl", "status"]
-      interval: 5s
-      timeout: 25s
-      retries: 5
+      - "EMQX_CLUSTER__STATIC__SEEDS=[emqx@emqx-main]"
+#    healthcheck:
+#      test: ["CMD", "/opt/emqx/bin/emqx", "ctl", "status"]
+#      interval: 5s
+#      timeout: 25s
+#      retries: 5
     networks:
-      - emqx-network
+      emqx-network:
+        aliases:
+          - emqx-main
     ports:
       - target: 1883
         published: 1883
@@ -276,8 +281,7 @@ services:
     deploy:
       replicas: 1
       placement:
-        constraints:
-          - node.role == manager
+        constraints: [ node.labels.backend == true ]
       restart_policy:
         condition: any
 
@@ -304,8 +308,12 @@ networks:
     driver: overlay
   app-network:
     driver: overlay
+    attachable: true
   socket-network:
     driver: overlay
+  emqx-network:
+    driver: overlay
+    attachable: true
 
 volumes:
   postgres_data:

@@ -41,7 +41,7 @@ class ServiceResponse(BaseModel):
     mqtt_topics: List[str]
 
 
-@router.get("/all/", response_model=List[Dict[str, Any]])
+@router.get("/all", response_model=List[Dict[str, Any]])
 @shared_limit_fetch
 async def list_services(
     request: Request,
@@ -62,7 +62,7 @@ async def list_services(
         )
 
 
-@router.post("/start/", response_model=ServiceResponse)
+@router.post("/start", response_model=ServiceResponse)
 @shared_limit_execute
 async def start_monitoring_service(
     request: Request,
@@ -95,7 +95,7 @@ async def start_monitoring_service(
         )
 
 
-@router.get("/", response_model=Dict[str, Any])
+@router.get("", response_model=Dict[str, Any])
 @shared_limit_fetch
 async def get_service_details(
     request: Request,
@@ -133,7 +133,7 @@ async def get_service_details(
         )
 
 
-@router.delete("/stop/")
+@router.delete("/stop")
 @shared_limit_execute
 async def stop_monitoring_service(
     request: Request,

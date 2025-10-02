@@ -67,10 +67,10 @@ export const API_CONFIG = {
 
     // Monitoring Services
     MONITORING: {
-      START: '/v1/services/start/',
-      STOP: '/v1/services/stop/',
-      LIST: '/v1/services/all/',
-      DETAILS: '/v1/services/',
+      START: '/v1/services/start',
+      STOP: '/v1/services/stop',
+      LIST: '/v1/services/all',
+      DETAILS: '/v1/services',
     },
 
     // Monitoring & Anomaly Detection

@@ -1,0 +1,37 @@
+[project]
+name = "off-key-tactic-middleware"
+version = "0.1.0"
+description = "Timely Anomaly Communication / Task Instance Control for off-key platform"
+authors = [
+    { name = "Oliver Hennhoefer", email = "oliver.hennhoefer@mail.de" },
+    { name = "Fernando Saba", email = "fernando.saba@gmx.de" }
+]
+maintainers = [
+    { name = "Oliver Hennhoefer", email = "oliver.hennhoefer@mail.de" },
+    { name = "Fernando Saba", email = "fernando.saba@gmx.de" }
+]
+keywords = ["off-key", "anomaly", "communication", "container", "management"]
+requires-python = ">=3.12"
+classifiers = [
+    "Programming Language :: Python :: 3.12",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Development Status :: 3 - Alpha"
+]
+dependencies = [
+    "off-key-core",
+    "fastapi>=0.104.0",
+    "uvicorn[standard]>=0.24.0",
+    "docker>=7.0.0",
+    "sqlalchemy>=2.0.0",
+    "pydantic>=2.0.0",
+    "pydantic-settings>=2.0.0",
+    "python-dotenv>=1.0.0"
+]
+
+[build-system]
+requires = ["uv_build>=0.8.11,<0.9.0"]
+build-backend = "uv_build"
+
+[tool.uv.sources]
+off-key-core = { workspace = true }

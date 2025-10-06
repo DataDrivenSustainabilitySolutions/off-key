@@ -7,6 +7,8 @@ import { useNavigate } from "react-router-dom";
 import { Link } from "react-router-dom";
 import { useAuth } from "@/auth/AuthContext";
 import { useFetch } from "@/dataFetch/UseFetch";
+import { API_CONFIG, getApiUrl } from "@/lib/api-config";
+import { validateEmail, validatePassword, sanitizeInput } from "@/lib/validation";
 import { Eye, EyeOff } from "lucide-react";
 
 interface LoginResponse {
@@ -20,17 +22,42 @@ const Login: React.FC = () => {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [message, setMessage] = useState("");
+  const [emailError, setEmailError] = useState<string | undefined>();
+  const [passwordError, setPasswordError] = useState<string | undefined>();
   const navigate = useNavigate();
   const { login } = useAuth();
-  const { syncChargers, syncTelemetry } = useFetch();
+  // Removed sync functions - frontend is now a viewer only
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Clear previous errors
+    setEmailError(undefined);
+    setPasswordError(undefined);
+    setMessage("");
+    
+    // Validate inputs
+    const emailValidation = validateEmail(email);
+    const passwordValidation = validatePassword(password);
+    
+    if (!emailValidation.isValid) {
+      setEmailError(emailValidation.message);
+      return;
+    }
+    
+    if (!passwordValidation.isValid) {
+      setPasswordError(passwordValidation.message);
+      return;
+    }
+    
     try {
-      const response = await fetch("http://localhost:8000/v1/auth/login", {
+      // Sanitize inputs before sending
+      const sanitizedEmail = sanitizeInput(email);
+      const sanitizedPassword = password; // Don't sanitize password as it might contain special chars
+      const response = await fetch(getApiUrl(API_CONFIG.ENDPOINTS.AUTH.LOGIN), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email: sanitizedEmail, password: sanitizedPassword }),
       });
 
       if (!response.ok) {
@@ -49,14 +76,10 @@ const Login: React.FC = () => {
 
       login(data.access_token);
 
-      await syncChargers();
-      console.log("Vor SyncTelemetry aufruf");
-      syncTelemetry();
-      console.log("nach Auftruf");
-
+      // Navigate immediately to landing page - data should already be in database
       setTimeout(() => {
         navigate("/");
-      }, 2000);
+      }, 1000); // Reduced delay since no sync needed
     } catch (error) {
       console.error(error);
       setMessage("An error occurred");
@@ -81,28 +104,42 @@ const Login: React.FC = () => {
                 type="email"
                 placeholder="E-Mail"
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                onChange={(e) => {
+                  setEmail(e.target.value);
+                  if (emailError) setEmailError(undefined);
+                }}
+                className={emailError ? 'border-destructive' : ''}
                 required
               />
+              {emailError && (
+                <p className="text-sm text-destructive mt-1">{emailError}</p>
+              )}
             </div>
 
             <div className="relative">
               <Label htmlFor="password" className="mb-1 block text-sm">
-                Passwort
+                Password
               </Label>
               <Input
                 id="password"
                 type={showPassword ? "text" : "password"}
-                placeholder="Passwort"
+                placeholder="Password"
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  if (passwordError) setPasswordError(undefined);
+                }}
+                className={passwordError ? 'border-destructive' : ''}
                 required
               />
+              {passwordError && (
+                <p className="text-sm text-destructive mt-1 mr-10">{passwordError}</p>
+              )}
               <button
                 type="button"
                 className="absolute right-3 top-9 text-gray-500"
                 onClick={() => setShowPassword(!showPassword)}
-                aria-label="Passwort anzeigen"
+                aria-label="Show password"
               >
                 {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
               </button>

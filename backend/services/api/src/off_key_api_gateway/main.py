@@ -43,6 +43,7 @@ logger = setup_logging(
     enable_correlation=True,
 )
 
+
 # Helper functions for startup tasks
 async def _initialize_database():
     """Creates all database tables."""
@@ -62,11 +63,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         # Create dependency factories for services
         def charger_sync_factory(session):
             from .provider import get_charger_api_client
+
             client = get_charger_api_client()
             return ChargersSyncService(session, client)
 
         def telemetry_sync_factory(session):
             from .provider import get_charger_api_client
+
             client = get_charger_api_client()
             return TelemetrySyncService(session, client)
 
@@ -74,7 +77,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         background_sync = BackgroundSyncService(
             charger_sync_factory, telemetry_sync_factory
         )
-        
+
         app.state.background_sync = background_sync
         await background_sync.start()
 
@@ -86,6 +89,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     if hasattr(app.state, "background_sync"):
         await app.state.background_sync.stop()
     logger.info("Background sync service stopped")
+
 
 # FastAPI app
 app = FastAPI(
@@ -117,6 +121,7 @@ app.add_middleware(
 # Routes
 app.include_router(v1_router, prefix="/v1", tags=["v1"])
 
+
 # TODO: Rethink healthcheck as a (micro)service. TODO What is considered "healthy" now?
 @app.get("/health", tags=["Health"])
 async def health_check():
@@ -126,12 +131,10 @@ async def health_check():
     """
     ...
 
+
 if __name__ == "__main__":
     import uvicorn
-    
+
     uvicorn.run(
-        "main:app",
-        host="0.0.0.0",
-        port=8000,
-        reload=True if settings.DEBUG else False
+        "main:app", host="0.0.0.0", port=8000, reload=True if settings.DEBUG else False
     )

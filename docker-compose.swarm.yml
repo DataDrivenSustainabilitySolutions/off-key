@@ -28,8 +28,12 @@ services:
 #      test: [ "CMD", "curl", "-f", "http://localhost:8000/health" ]
 #      interval: 10s
 #      retries: 5
-#    environment:
+    environment:
 #      - SYNC_ENABLED=false
+      - DOCKER_TACTIC_SERVICE_NAME=${TACTIC_SERVICE_NAME}
+      - DOCKER_TACTIC_SERVICE_PORT=${TACTIC_PORT}
+      # Define in compose.env
+      - FRONTEND_BASE_URL=https://${OFFKEY_FQDN}
     command: ["uvicorn", "off_key_api_gateway.main:app",
               "--reload", "--reload-dir", "/app/lib/python3.12/site-packages/off_key_api_gateway",
               "--host", "", "--port", "8000"]

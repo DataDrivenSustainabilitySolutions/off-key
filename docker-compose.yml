@@ -42,6 +42,9 @@ services:
       retries: 5
     environment:
       - SYNC_ENABLED=true
+      - DOCKER_TACTIC_SERVICE_NAME=${TACTIC_SERVICE_NAME}
+      - DOCKER_TACTIC_SERVICE_PORT=${TACTIC_PORT}
+#      - FRONTEND_BASE_URL=http://${FRONTEND_SERVICE_NAME}:${FRONTEND_PORT}
     command: ["uvicorn", "off_key_api_gateway.main:app",
               "--reload", "--reload-dir", "/app/lib/python3.12/site-packages/off_key_api_gateway",
               "--host", "0.0.0.0", "--port", "8000"]
@@ -63,7 +66,7 @@ services:
     container_name: tactic_middleware
     env_file: .env
     ports:
-      - "8001:8000"
+      - "8001:8001"
     depends_on:
       postgres:
         condition: service_healthy

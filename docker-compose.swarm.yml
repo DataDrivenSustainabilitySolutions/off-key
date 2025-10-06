@@ -3,12 +3,8 @@ services:
   postgres:
     image: timescale/timescaledb:latest-pg15
     env_file: .env
-    ports:
-      - target: 5432
-        published: "${POSTGRES_PORT}"
-        mode: ingress
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
+#    volumes:
+#      - postgres_data:/var/lib/postgresql/data
     networks:
       - app-network
     healthcheck:
@@ -26,13 +22,8 @@ services:
   api:
     image: "${API_IMAGE:-off-key-api-gateway:latest}"
     env_file: .env
-    ports:
-      - target: 8000
-        published: "${BACKEND_PORT}"
-        mode: ingress
     networks:
       - app-network
-      - socket-network
 #    healthcheck:
 #      test: [ "CMD", "curl", "-f", "http://localhost:8000/health" ]
 #      interval: 10s
@@ -41,7 +32,7 @@ services:
 #      - SYNC_ENABLED=false
     command: ["uvicorn", "off_key_api_gateway.main:app",
               "--reload", "--reload-dir", "/app/lib/python3.12/site-packages/off_key_api_gateway",
-              "--host", "0.0.0.0", "--port", "8000"]
+              "--host", "", "--port", "8000"]
     deploy:
       mode: replicated
       replicas: 1
@@ -53,10 +44,6 @@ services:
   tactic:
     image: "${TACTIC_IMAGE:-off-key-tactic-middleware:latest}"
     env_file: .env
-    ports:
-      - target: 8000
-        published: 8001
-        mode: ingress
     networks:
       - app-network
       - socket-network
@@ -74,10 +61,6 @@ services:
     image: tecnativa/docker-socket-proxy
     networks:
       - socket-network
-    ports:
-      - target: 2375
-        published: 2375
-        mode: host
     volumes:
       - "/var/run/docker.sock:/var/run/docker.sock:ro"
     environment:
@@ -123,14 +106,11 @@ services:
   frontend:
     image: "${FRONTEND_IMAGE:-off-key-frontend:latest}"
     env_file: .env
-    ports:
-      - target: 5173
-        published: "${FRONTEND_PORT}"
-        mode: ingress
     networks:
+      - public-network
       - app-network
     environment:
-      - __VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS=offk.qzz.io
+      - __VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS=demo.offk.qzz.io
     deploy:
       mode: replicated
       replicas: 1
@@ -143,15 +123,18 @@ services:
     image: axllent/mailpit:latest
 #    volumes:
 #      - mailpit_data:/data
-    ports:
-      - target: 8025
-        published: 8025
-        mode: ingress
-      - target: 1025
-        published: 1025
-        mode: ingress
     networks:
+      - public-network
       - app-network
+    environment:
+      # Don't use quotes here!
+      - MP_UI_AUTH=ddss:sZZvxai44lRcxtXpU0FB
+    # For future reference
+#    configs:
+#      - source: mailpit_config
+#        target: /run/docker/mailpit_user_file
+#    environment:
+#      - MP_UI_AUTH_FILE=/run/docker/mailpit_user_file
     deploy:
       replicas: 1
       placement:
@@ -253,6 +236,10 @@ services:
       - "EMQX_NODE_NAME=emqx@emqx-main"
       - "EMQX_CLUSTER__DISCOVERY_STRATEGY=static"
       - "EMQX_CLUSTER__STATIC__SEEDS=[emqx@emqx-main]"
+        # See https://github.com/emqx/emqx/issues/8627#issuecomment-2833234761
+        # Only works on fresh boot (no data volume!)
+      - "EMQX_DASHBOARD__DEFAULT_USERNAME=ddss"
+      - "EMQX_DASHBOARD__DEFAULT_PASSWORD=xMdrOJtNxRA8ZwUtjAHq"
 #    healthcheck:
 #      test: ["CMD", "/opt/emqx/bin/emqx", "ctl", "status"]
 #      interval: 5s
@@ -262,22 +249,6 @@ services:
       emqx-network:
         aliases:
           - emqx-main
-    ports:
-      - target: 1883
-        published: 1883
-        mode: ingress
-      - target: 8083
-        published: 8083
-        mode: ingress
-      - target: 8084
-        published: 8084
-        mode: ingress
-      - target: 8883
-        published: 8883
-        mode: ingress
-      - target: 18083
-        published: 18083
-        mode: ingress
     deploy:
       replicas: 1
       placement:
@@ -303,20 +274,40 @@ services:
 #      restart_policy:
 #        condition: any
 
+# WARNING: Encrypted overlay is incompatible with Tailscale
+# MTU=1280 for tailscale0 compatibility
 networks:
   public-network:
     driver: overlay
+    attachable: true
+    driver_opts:
+      com.docker.network.driver.mtu: 1280
+      # encrypted: "true"
   app-network:
     driver: overlay
-    attachable: true
+    driver_opts:
+      com.docker.network.driver.mtu: 1280
+      # encrypted: "true"
   socket-network:
     driver: overlay
+    driver_opts:
+      com.docker.network.driver.mtu: 1280
+      # encrypted: "true"
   emqx-network:
     driver: overlay
     attachable: true
+    driver_opts:
+      com.docker.network.driver.mtu: 1280
+      # encrypted: "true"
 
-volumes:
-  postgres_data:
-  vite_cache:
-    driver: local
-  frontend_node_modules:
+# Ephemeral demo
+# volumes:
+#  postgres_data:
+#  vite_cache:
+#    driver: local
+#  frontend_node_modules:
+
+# For future reference
+#  configs:
+#    mailpit_config:
+#      file: ./dev/mailpit-user-file

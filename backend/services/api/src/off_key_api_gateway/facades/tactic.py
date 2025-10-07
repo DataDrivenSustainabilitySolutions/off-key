@@ -14,7 +14,8 @@ class Tactic:
     """
 
     def __init__(self):
-        self.base_url = os.getenv("TACTIC_SERVICE_URL", "http://tactic:8000")
+        self.base_url = (f"{os.getenv("DOCKER_TACTIC_SERVICE_NAME", "tactic")}:"
+                         f"{os.getenv("DOCKER_TACTIC_SERVICE_PORT", "8001")}")
         self.timeout = aiohttp.ClientTimeout(total=30)
         logger.info(f"Tactic facade initialized with base URL: {self.base_url}")
 

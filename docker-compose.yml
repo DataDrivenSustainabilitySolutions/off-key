@@ -46,10 +46,34 @@ services:
     develop:
       watch:
         - action: sync
-          path: backend/services/api/src/off_key_api_gateway
+          path: backend/services/api/gateway/src/off_key_api_gateway
           target: /app/lib/python3.12/site-packages/off_key_api_gateway
         - action: rebuild
           path: ./backend/uv.lock
+
+  tactic:
+    build:
+      context: ./backend/
+      args:
+        SERVICE_NAME: off-key-middleware-tactic
+        SERVICE_ROOT: services/middleware/tactic
+    image: "${TACTIC_IMAGE:-off-key-tactic-middleware:latest}"
+    container_name: middleware_tactic
+    env_file: .env
+    ports:
+      - "8001:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      socket-proxy:
+        condition: service_started
+    networks:
+      - app-network
+      - socket-network
+    environment:
+      - TACTIC_DOCKER_DEFAULT_NETWORK=off-key_emqx-network
+    restart: always
+    command: [ "/app/bin/python", "-m", "off_key_tactic_middleware" ]
 
   socket-proxy:
     container_name: socket-proxy

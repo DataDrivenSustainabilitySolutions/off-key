@@ -148,6 +148,7 @@ services:
         condition: service_healthy
     networks:
       - app-network
+      - emqx-network
     restart: always
     environment:
       - SERVICE_TYPE=mqtt_proxy

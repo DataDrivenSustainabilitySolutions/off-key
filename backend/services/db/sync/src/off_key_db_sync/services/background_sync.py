@@ -13,9 +13,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 
-from off_key_core.config.config import settings
 from off_key_core.config.logs import logger
 from off_key_core.db.base import AsyncSessionLocal
+from ..config import sync_settings
 from .chargers import ChargersSyncService
 from .telemetry import TelemetrySyncService
 
@@ -40,9 +40,11 @@ class BackgroundSyncService:
         self,
         charger_sync_factory: ChargerSyncFactory,
         telemetry_sync_factory: TelemetrySyncFactory,
+        on_initial_sync_complete: Optional[Callable[[], None]] = None,
     ):
         self.charger_sync_factory = charger_sync_factory
         self.telemetry_sync_factory = telemetry_sync_factory
+        self.on_initial_sync_complete = on_initial_sync_complete
         self.scheduler: Optional[AsyncIOScheduler] = None
         self.is_running = False
 
@@ -51,7 +53,7 @@ class BackgroundSyncService:
 
     async def start(self):
         """Start the background sync service"""
-        if not settings.SYNC_ENABLED:
+        if not sync_settings.config.enabled:
             logger.info("Background sync service disabled", extra=self._log_context)
             return
 
@@ -67,36 +69,54 @@ class BackgroundSyncService:
         self.scheduler = AsyncIOScheduler()
 
         # Add charger sync job
-        if settings.SYNC_CHARGERS_INTERVAL > 0:
+        if sync_settings.config.chargers_interval > 0:
             self.scheduler.add_job(
                 self._sync_chargers,
-                trigger=IntervalTrigger(seconds=settings.SYNC_CHARGERS_INTERVAL),
+                trigger=IntervalTrigger(seconds=sync_settings.config.chargers_interval),
                 id="charger_sync",
                 name="Charger Sync",
-                max_instances=1,
+                max_instances=sync_settings.config.scheduler_max_instances,
                 coalesce=True,
-                misfire_grace_time=300,  # 5 minutes
+                misfire_grace_time=sync_settings.config.scheduler_misfire_grace_time,
             )
             logger.info(
                 f"Charger sync scheduled every "
-                f"{settings.SYNC_CHARGERS_INTERVAL} seconds",
+                f"{sync_settings.config.chargers_interval} seconds",
                 extra=self._log_context,
             )
 
         # Add telemetry sync job
-        if settings.SYNC_TELEMETRY_INTERVAL > 0:
+        if sync_settings.config.telemetry_interval > 0:
             self.scheduler.add_job(
                 self._sync_telemetry,
-                trigger=IntervalTrigger(seconds=settings.SYNC_TELEMETRY_INTERVAL),
+                trigger=IntervalTrigger(seconds=sync_settings.config.telemetry_interval),
                 id="telemetry_sync",
                 name="Telemetry Sync",
-                max_instances=1,
+                max_instances=sync_settings.config.scheduler_max_instances,
                 coalesce=True,
-                misfire_grace_time=300,  # 5 minutes
+                misfire_grace_time=sync_settings.config.scheduler_misfire_grace_time,
             )
             logger.info(
                 f"Telemetry sync scheduled every "
-                f"{settings.SYNC_TELEMETRY_INTERVAL} seconds",
+                f"{sync_settings.config.telemetry_interval} seconds",
+                extra=self._log_context,
+            )
+
+        # Add charger cleanup job
+        if sync_settings.config.cleanup_enabled and sync_settings.config.cleanup_interval > 0:
+            self.scheduler.add_job(
+                self._cleanup_chargers,
+                trigger=IntervalTrigger(seconds=sync_settings.config.cleanup_interval),
+                id="charger_cleanup",
+                name="Charger Cleanup",
+                max_instances=sync_settings.config.scheduler_max_instances,
+                coalesce=True,
+                misfire_grace_time=sync_settings.config.scheduler_misfire_grace_time,
+            )
+            logger.info(
+                f"Charger cleanup scheduled every "
+                f"{sync_settings.config.cleanup_interval} seconds "
+                f"(threshold: {sync_settings.config.cleanup_days_inactive} days)",
                 extra=self._log_context,
             )
 
@@ -109,7 +129,7 @@ class BackgroundSyncService:
         )
 
         # Run initial sync if enabled
-        if settings.SYNC_ON_STARTUP:
+        if sync_settings.config.sync_on_startup:
             asyncio.create_task(self._initial_sync())
 
     async def stop(self):
@@ -144,10 +164,17 @@ class BackgroundSyncService:
 
             logger.info("Initial sync completed successfully", extra=self._log_context)
 
+            # Notify parent service that initial sync is complete
+            if self.on_initial_sync_complete:
+                self.on_initial_sync_complete()
+
         except Exception as e:
             logger.error(
                 f"Initial sync failed: {e}", extra=self._log_context, exc_info=True
             )
+            # Still notify completion even on failure so service doesn't hang
+            if self.on_initial_sync_complete:
+                self.on_initial_sync_complete()
 
     async def _sync_chargers(self):
         """Sync chargers from Pionix Cloud"""
@@ -194,7 +221,7 @@ class BackgroundSyncService:
             # Create database session
             async with AsyncSessionLocal() as session:
                 sync_service = self.telemetry_sync_factory(session)
-                await sync_service.sync_telemetry(limit=settings.SYNC_TELEMETRY_LIMIT)
+                await sync_service.sync_telemetry(limit=sync_settings.config.telemetry_limit)
 
             sync_duration = (datetime.now() - sync_start).total_seconds()
             logger.info(
@@ -203,7 +230,7 @@ class BackgroundSyncService:
                     **self._log_context,
                     "sync_type": "telemetry",
                     "duration": sync_duration,
-                    "limit": settings.SYNC_TELEMETRY_LIMIT,
+                    "limit": sync_settings.config.telemetry_limit,
                 },
             )
 
@@ -215,7 +242,49 @@ class BackgroundSyncService:
                     **self._log_context,
                     "sync_type": "telemetry",
                     "duration": sync_duration,
-                    "limit": settings.SYNC_TELEMETRY_LIMIT,
+                    "limit": sync_settings.config.telemetry_limit,
+                    "error": str(e),
+                },
+                exc_info=True,
+            )
+
+    async def _cleanup_chargers(self):
+        """Clean up inactive chargers"""
+        cleanup_start = datetime.now()
+
+        try:
+            logger.info(
+                f"Starting charger cleanup (threshold: {sync_settings.config.cleanup_days_inactive} days)",
+                extra=self._log_context
+            )
+
+            # Create database session
+            async with AsyncSessionLocal() as session:
+                sync_service = self.charger_sync_factory(session)
+                await sync_service.clean_chargers(
+                    days_inactive=sync_settings.config.cleanup_days_inactive
+                )
+
+            cleanup_duration = (datetime.now() - cleanup_start).total_seconds()
+            logger.info(
+                f"Charger cleanup completed in {cleanup_duration:.2f}s",
+                extra={
+                    **self._log_context,
+                    "sync_type": "charger_cleanup",
+                    "duration": cleanup_duration,
+                    "days_threshold": sync_settings.config.cleanup_days_inactive,
+                },
+            )
+
+        except Exception as e:
+            cleanup_duration = (datetime.now() - cleanup_start).total_seconds()
+            logger.error(
+                f"Charger cleanup failed after {cleanup_duration:.2f}s: {e}",
+                extra={
+                    **self._log_context,
+                    "sync_type": "charger_cleanup",
+                    "duration": cleanup_duration,
+                    "days_threshold": sync_settings.config.cleanup_days_inactive,
                     "error": str(e),
                 },
                 exc_info=True,
@@ -224,7 +293,7 @@ class BackgroundSyncService:
     def get_status(self) -> dict:
         """Get sync service status"""
         if not self.scheduler:
-            return {"enabled": settings.SYNC_ENABLED, "running": False, "jobs": []}
+            return {"enabled": sync_settings.config.enabled, "running": False, "jobs": []}
 
         jobs = []
         for job in self.scheduler.get_jobs():
@@ -240,7 +309,7 @@ class BackgroundSyncService:
             )
 
         return {
-            "enabled": settings.SYNC_ENABLED,
+            "enabled": sync_settings.config.enabled,
             "running": self.is_running,
             "jobs": jobs,
         }

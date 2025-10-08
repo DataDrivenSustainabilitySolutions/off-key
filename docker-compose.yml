@@ -16,6 +16,34 @@ services:
       timeout: 5s
       retries: 5
 
+  sync:
+    build:
+      context: ./backend/
+      args:
+        SERVICE_ROOT: services/db/sync
+        SERVICE_NAME: off-key-db-sync
+    image: "${DB_SYNC_IMAGE:-off-key-db-sync:latest}"
+    container_name: db_sync
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - app-network
+    restart: always
+    command: ["/app/bin/python", "-m", "off_key_db_sync"]
+#    command: ["uvicorn", "off_key_db_sync.main:app",
+#              "--reload", "--reload-dir", "/app/lib/python3.12/site-packages/off_key_db_sync",
+#              "--host", "", "--port", "8009"]
+#    command: ["sleep", "10000"]
+    develop:
+      watch:
+        - action: sync
+          path: backend/services/api/src/off_key_api_gateway
+          target: /app/lib/python3.12/site-packages/off_key_api_gateway
+        - action: rebuild
+          path: ./backend/uv.lock
+
   api:
     build:
       context: ./backend/
@@ -32,6 +60,8 @@ services:
         condition: service_healthy
       socket-proxy:
         condition: service_started
+#      sync:
+#        condition: service_healthy
     networks:
       - app-network
       - socket-network

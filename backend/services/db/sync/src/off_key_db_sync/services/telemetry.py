@@ -1,6 +1,9 @@
 import logging
+import time
 
 from datetime import datetime, timezone
+from dataclasses import dataclass
+from typing import Optional
 from urllib.parse import unquote
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -10,15 +13,66 @@ from off_key_core.clients.base_client import ChargerAPIClient
 from off_key_core.config.logs import logger
 from off_key_core.db.models import Charger, Telemetry
 from off_key_core.utils.string import clean_string, string_to_float
+from off_key_core.utils.enum import HealthStatus
+from ..config import sync_settings
 
 logging.getLogger("sqlalchemy.engine").setLevel(logging.CRITICAL)
+
+
+@dataclass
+class TelemetrySyncMetrics:
+    """Telemetry synchronization performance metrics"""
+
+    total_syncs_executed: int
+    total_syncs_successful: int
+    total_syncs_failed: int
+    total_chargers_processed: int
+    total_hierarchies_processed: int
+    total_records_inserted: int
+    total_batches_processed: int
+    total_batches_failed: int
+    sync_success_rate: float
+    batch_success_rate: float
+    average_sync_latency: float
+    last_sync_time: Optional[str]
+    last_sync_status: str
+
+
+@dataclass
+class TelemetrySyncHealthStatus:
+    """Telemetry synchronization health status"""
+
+    status: HealthStatus
+    health_score: float
+    performance: TelemetrySyncMetrics
 
 
 class TelemetrySyncService:
     def __init__(self, session: AsyncSession, client: ChargerAPIClient):
         self.session: AsyncSession = session
         self.client = client
-        logger.info("TelemetrySyncService initialized (retention logic removed).")
+
+        # Performance metrics
+        self.total_syncs_executed = 0
+        self.total_syncs_successful = 0
+        self.total_syncs_failed = 0
+        self.total_chargers_processed = 0
+        self.total_hierarchies_processed = 0
+        self.total_records_inserted = 0
+        self.total_batches_processed = 0
+        self.total_batches_failed = 0
+        self.sync_latency_sum = 0.0
+        self.sync_latency_count = 0
+        self.last_sync_time: Optional[datetime] = None
+        self.last_sync_status = "never_run"
+
+        # Logging context
+        self._log_context = {"component": "telemetry_sync", "service": "db_sync"}
+
+        logger.info(
+            "TelemetrySyncService initialized",
+            extra=self._log_context
+        )
 
     async def sync_telemetry(self, limit: int):
         """
@@ -29,19 +83,36 @@ class TelemetrySyncService:
         constraints (via ON CONFLICT DO NOTHING) to avoid duplication.
         WARNING: Fetching all data can be very resource-intensive.
         """
+        start_time = time.time()
+        self.total_syncs_executed += 1
 
         # 1. Query ALL known charger IDs from the database
-        logger.info("Querying all known charger IDs from the database...")
+        logger.info(
+            "Starting telemetry synchronization",
+            extra={**self._log_context, "limit": limit}
+        )
         try:
             stmt = select(Charger.charger_id)  # Select all charger IDs
             result = await self.session.execute(stmt)
             all_charger_ids = result.scalars().all()
         except Exception as e:
-            logger.error(f"Failed to query charger IDs from database: {e}")
+            logger.error(
+                f"Failed to query charger IDs from database: {e}",
+                extra=self._log_context,
+                exc_info=True
+            )
+            self.total_syncs_failed += 1
+            self.last_sync_status = "failed"
+            self.last_sync_time = datetime.now()
             return
 
         if not all_charger_ids:
-            logger.warning("No chargers found in the database. Telemetry sync aborted.")
+            logger.warning(
+                "No chargers found in the database. Telemetry sync aborted.",
+                extra=self._log_context
+            )
+            self.last_sync_status = "no_chargers"
+            self.last_sync_time = datetime.now()
             return
 
         logger.info(f"Found {len(all_charger_ids)} chargers to sync telemetry for.")
@@ -56,6 +127,7 @@ class TelemetrySyncService:
         # 3. Iterate through each charger found in the database
         for charger_id in all_charger_ids:
             chargers_processed_count += 1
+            self.total_chargers_processed += 1
             logger.info(
                 f"--- Processing Charger ID: {charger_id} "
                 f"({chargers_processed_count}/{len(all_charger_ids)}) ---"
@@ -95,6 +167,7 @@ class TelemetrySyncService:
             hierarchies_processed_count = 0
             for hierarchy_raw in telemetry_hierarchies:
                 hierarchies_processed_count += 1
+                self.total_hierarchies_processed += 1
                 logger.debug(
                     f"Processing hierarchy "
                     f"{hierarchies_processed_count}/{len(telemetry_hierarchies)}: "
@@ -212,13 +285,14 @@ class TelemetrySyncService:
                 )
 
                 # Dynamic batch size based on record count for better performance
+                config = sync_settings.config
                 record_count = len(telemetry_records_to_insert)
-                if record_count < 1000:
+                if record_count < config.batch_size_small:
                     batch_size = record_count  # Single batch for small datasets
-                elif record_count < 10000:
-                    batch_size = 2000  # Smaller batches for medium datasets
+                elif record_count < (config.batch_size_small * 10):
+                    batch_size = config.batch_size_medium  # Smaller batches for medium datasets
                 else:
-                    batch_size = 5000  # Larger batches for big datasets
+                    batch_size = config.batch_size_large  # Larger batches for big datasets
 
                 batch_num = 0
                 successful_batches = 0
@@ -237,6 +311,8 @@ class TelemetrySyncService:
                         result = await self.session.execute(stmt)
                         await self.session.commit()
                         successful_batches += 1
+                        self.total_batches_processed += 1
+                        self.total_records_inserted += len(batch)
                         logger.debug(
                             f"Committed batch {batch_num} for "
                             f"{charger_id} / {hierarchy_raw}."
@@ -244,6 +320,7 @@ class TelemetrySyncService:
                     except IntegrityError as ie:
                         await self.session.rollback()
                         failed_batches += 1
+                        self.total_batches_failed += 1
                         logger.error(
                             f"IntegrityError during batch {batch_num} insert for "
                             f"{charger_id}/{hierarchy_raw}: {ie}. "
@@ -252,6 +329,7 @@ class TelemetrySyncService:
                     except Exception as e:
                         await self.session.rollback()
                         failed_batches += 1
+                        self.total_batches_failed += 1
                         logger.error(
                             f"Error during batch {batch_num} insert for "
                             f"{charger_id}/{hierarchy_raw}: {e}. "
@@ -268,7 +346,111 @@ class TelemetrySyncService:
                 f"for Charger ID: {charger_id}."
             )
 
+        # Update final metrics
+        self.total_syncs_successful += 1
+        self.last_sync_status = "success"
+        self.last_sync_time = datetime.now()
+
+        # Track latency
+        sync_latency = time.time() - start_time
+        self.sync_latency_sum += sync_latency
+        self.sync_latency_count += 1
+
         logger.info(
-            f"Telemetry synchronization process completed. "
-            f" {chargers_processed_count} chargers."
+            f"Telemetry synchronization completed | "
+            f"Chargers: {chargers_processed_count} | "
+            f"Hierarchies: {self.total_hierarchies_processed} | "
+            f"Records: {self.total_records_inserted} | "
+            f"Batches: {self.total_batches_processed} successful, {self.total_batches_failed} failed | "
+            f"Latency: {sync_latency:.2f}s",
+            extra={
+                **self._log_context,
+                "chargers_processed": chargers_processed_count,
+                "hierarchies_processed": self.total_hierarchies_processed,
+                "records_inserted": self.total_records_inserted,
+                "batches_successful": self.total_batches_processed,
+                "batches_failed": self.total_batches_failed,
+                "latency": sync_latency,
+            }
         )
+
+    def get_performance_metrics(self) -> TelemetrySyncMetrics:
+        """Get performance metrics"""
+        avg_latency = 0.0
+        if self.sync_latency_count > 0:
+            avg_latency = self.sync_latency_sum / self.sync_latency_count
+
+        sync_success_rate = 100.0
+        if self.total_syncs_executed > 0:
+            sync_success_rate = (
+                self.total_syncs_successful / self.total_syncs_executed
+            ) * 100
+
+        batch_success_rate = 100.0
+        total_batches = self.total_batches_processed + self.total_batches_failed
+        if total_batches > 0:
+            batch_success_rate = (
+                self.total_batches_processed / total_batches
+            ) * 100
+
+        return TelemetrySyncMetrics(
+            total_syncs_executed=self.total_syncs_executed,
+            total_syncs_successful=self.total_syncs_successful,
+            total_syncs_failed=self.total_syncs_failed,
+            total_chargers_processed=self.total_chargers_processed,
+            total_hierarchies_processed=self.total_hierarchies_processed,
+            total_records_inserted=self.total_records_inserted,
+            total_batches_processed=self.total_batches_processed,
+            total_batches_failed=self.total_batches_failed,
+            sync_success_rate=round(sync_success_rate, 2),
+            batch_success_rate=round(batch_success_rate, 2),
+            average_sync_latency=round(avg_latency, 3),
+            last_sync_time=(
+                self.last_sync_time.isoformat()
+                if self.last_sync_time
+                else None
+            ),
+            last_sync_status=self.last_sync_status,
+        )
+
+    def get_health_status(self) -> TelemetrySyncHealthStatus:
+        """Get health status for monitoring"""
+        metrics = self.get_performance_metrics()
+        config = sync_settings.config
+
+        # Determine health status
+        status = HealthStatus.HEALTHY
+        health_score = 100.0
+
+        # Check for sync failures
+        if metrics.sync_success_rate < config.telemetry_sync_success_rate_unhealthy:
+            status = HealthStatus.UNHEALTHY
+            health_score = metrics.sync_success_rate
+        elif metrics.sync_success_rate < config.telemetry_sync_success_rate_degraded:
+            status = HealthStatus.DEGRADED
+            health_score = metrics.sync_success_rate
+
+        # Check for batch failures
+        if metrics.batch_success_rate < config.telemetry_batch_success_rate_unhealthy:
+            status = HealthStatus.UNHEALTHY
+            health_score = min(health_score, metrics.batch_success_rate)
+        elif metrics.batch_success_rate < config.telemetry_batch_success_rate_degraded:
+            if status == HealthStatus.HEALTHY:
+                status = HealthStatus.DEGRADED
+            health_score = min(health_score, metrics.batch_success_rate)
+
+        # Check for high latency (telemetry sync takes longer)
+        if metrics.average_sync_latency > config.telemetry_sync_latency_unhealthy:
+            status = HealthStatus.UNHEALTHY
+            health_score = min(health_score, 50.0)
+        elif metrics.average_sync_latency > config.telemetry_sync_latency_degraded:
+            if status == HealthStatus.HEALTHY:
+                status = HealthStatus.DEGRADED
+            health_score = min(health_score, 80.0)
+
+        return TelemetrySyncHealthStatus(
+            status=status,
+            health_score=round(health_score, 2),
+            performance=metrics,
+        )
+

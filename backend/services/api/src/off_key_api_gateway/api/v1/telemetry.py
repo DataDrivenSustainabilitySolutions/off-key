@@ -1,22 +1,29 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+import httpx
 
 from off_key_core.db.base import get_db_async
 from off_key_core.db.models import Telemetry
-from ...services.telemetry import TelemetrySyncService
-from ...provider import get_telemetry_sync_service
+from off_key_core.config.config import settings
 
 router = APIRouter()
 
 
 @router.post("/sync")
-async def sync_chargers(
-    service: TelemetrySyncService = Depends(get_telemetry_sync_service),
-    limit: int = 10_000,
-):
-    await service.sync_telemetry(limit=limit)
-    return {"status": "successful"}
+async def sync_telemetry(limit: int = 10_000):
+    """Trigger manual telemetry sync via db-sync service."""
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"{settings.DB_SYNC_SERVICE_URL}/sync/telemetry",
+                params={"limit": limit},
+                timeout=600.0  # 10 minute timeout for telemetry sync
+            )
+            response.raise_for_status()
+            return response.json()
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=500, detail=f"Failed to trigger telemetry sync: {str(e)}")
 
 
 @router.get("/{charger_id}/type")

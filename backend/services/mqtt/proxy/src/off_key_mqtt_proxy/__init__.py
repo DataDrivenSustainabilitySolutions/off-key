@@ -14,7 +14,7 @@ Components:
 
 from .proxy import MQTTProxyService
 from .config import MQTTConfig
-from .facade import MQTTClient
+from .client.facade import MQTTClient
 from .client.models import MQTTMessage
 
 __all__ = ["MQTTProxyService", "MQTTConfig", "MQTTClient", "MQTTMessage"]

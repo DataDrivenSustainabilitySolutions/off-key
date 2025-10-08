@@ -28,7 +28,7 @@ class ConnectionManager:
     def __init__(
         self,
         config: MQTTConfig,
-        auth_handler: ApiKeyAuthHandler,
+        auth_handler: Optional[ApiKeyAuthHandler] = None,
         on_connected: Optional[Callable[[], Awaitable[None]]] = None,
         on_disconnected: Optional[Callable[[bool], Awaitable[None]]] = None,
     ):
@@ -81,22 +81,25 @@ class ConnectionManager:
         )
 
         try:
-            # Get API-Key credentials
-            username, password = await self.auth_handler.get_mqtt_credentials()
-
             # Create MQTT client
             client_id = self.config.get_client_id()
-            self.client = mqtt.Client(client_id=client_id, transport="websockets")
+
+            # Use TCP transport for anonymous connections, WebSocket for authenticated ones
+            transport = "tcp" if not self.auth_handler else "websockets"
+            self.client = mqtt.Client(client_id=client_id, transport=transport)
 
             # Configure TLS
             if self.config.use_tls:
                 context = ssl.create_default_context()
-                context.check_hostname = False
-                context.verify_mode = ssl.CERT_NONE  # For WebSocket connections
+                if transport == "websockets":
+                    context.check_hostname = False
+                    context.verify_mode = ssl.CERT_NONE  # For WebSocket connections
                 self.client.tls_set_context(context)
 
-            # Set authentication
-            self.client.username_pw_set(username, password)
+            # Set authentication if auth handler is provided
+            if self.auth_handler:
+                username, password = await self.auth_handler.get_mqtt_credentials()
+                self.client.username_pw_set(username, password)
 
             # Set callbacks
             self.client.on_connect = self._on_connect

@@ -5,6 +5,7 @@ on:
       - demo-frontend # Branches where the original PRs will be merged
     types:
       - closed
+  workflow_dispatch:
 
 permissions:
   contents: write      # for actions/checkout
@@ -17,7 +18,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          ref: refs/pull/75/head
 
       - name: Cherry pick
         id: cherry-pick

@@ -1,6 +1,5 @@
 name: 'Cherry pick demo-frontend into main'
 on:
-
   pull_request:
     branches:
       - demo-frontend # Branches where the original PRs will be merged
@@ -19,21 +18,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: refs/pull/75/head
+          fetch-depth: 0
 
-      # - name: Cherry pick
-      #   id: cherry-pick
-      #   uses: wireapp/action-auto-cherry-pick@v1.0.2
-      #   with:
-      #     # Branch which will receive the automatic cherry-picks
-      #     target-branch: 'main'
-      #     pr-title-suffix: '[🍒 FRONTEND]'
-      #     pr-creator-token: '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'
-
-      - name: Create PR to branch
-        uses: gorillio/github-action-cherry-pick@master
+      - name: Cherry pick
+        id: cherry-pick
+        uses: wireapp/action-auto-cherry-pick@v1.0.2
         with:
-          pr_branch: 'main'
+          # Branch which will receive the automatic cherry-picks
+          target-branch: 'main'
+          pr-title-suffix: '[🍒 FRONTEND]'
 
       - name: Get the output
         run:

@@ -11,14 +11,18 @@ import {
 import { Link } from "react-router-dom";
 import { FetchContext } from "@/dataFetch/FetchContext";
 import { Anomaly } from "@/dataFetch/FetchContext";
+import toast from 'react-hot-toast';
 
 export default function AnomalyTable() {
   const [data, setData] = useState<Anomaly[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
   const fetchContext = useContext(FetchContext);
 
-    const fetchAllAnomalies = async () => {
+  const fetchAllAnomalies = async () => {
     try {
+      setIsLoading(true);
+      setError(null);
       if (!fetchContext) return;
 
       const chargers = await fetchContext.getAllChargers();
@@ -30,7 +34,11 @@ export default function AnomalyTable() {
       const flattenedAnomalies = allAnomalies.flat();
       setData(flattenedAnomalies);
     } catch (err: any) {
-      setError(err.message || "Unknown error");
+      const errorMessage = err.message || "Unknown error";
+      setError(errorMessage);
+      toast.error(`Failed to load anomalies: ${errorMessage}`);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -47,9 +55,12 @@ export default function AnomalyTable() {
         anomaly.telemetry_type
       );
       
+      toast.success('Anomaly deleted successfully');
       await fetchAllAnomalies();
     } catch (err: any) {
-      setError("Error while deleting: " + err.message);
+      const errorMessage = "Error while deleting: " + err.message;
+      setError(errorMessage);
+      toast.error(errorMessage);
     }
   };
 
@@ -60,6 +71,8 @@ export default function AnomalyTable() {
         <h1 className="text-xl font-bold mb-4">Anomalies</h1>
 
         {error && <p className="text-red-500 mb-4">{error}</p>}
+        
+        {isLoading && <p className="text-gray-500 mb-4">Loading anomalies...</p>}
 
         <Table>
           <TableHeader>
@@ -106,7 +119,7 @@ export default function AnomalyTable() {
               ))
             ) : (
               <TableRow>
-                <TableCell colSpan={4} className="text-center">
+                <TableCell colSpan={6} className="text-center">
                   No data found.
                 </TableCell>
               </TableRow>

@@ -3,8 +3,12 @@ services:
   postgres:
     image: timescale/timescaledb:latest-pg15
     env_file: .env
-#    volumes:
-#      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - target: 5432
+        published: "${POSTGRES_PORT}"
+        mode: ingress
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
     networks:
       - app-network
     healthcheck:
@@ -13,58 +17,47 @@ services:
       timeout: 5s
       retries: 5
     deploy:
-      replicas: 1
       placement:
-        constraints: [node.labels.backend == true ]
-      restart_policy:
-        condition: any
+        constraints:
+          - node.role == manager
 
   api:
     image: "${API_IMAGE:-off-key-api-gateway:latest}"
     env_file: .env
+    ports:
+      - target: 8000
+        published: "${BACKEND_PORT}"
+        mode: ingress
     networks:
       - app-network
+      - socket-network
+#    TODO: This healthcheck doesn't work for now
 #    healthcheck:
 #      test: [ "CMD", "curl", "-f", "http://localhost:8000/health" ]
 #      interval: 10s
 #      retries: 5
-    environment:
-#      - SYNC_ENABLED=false
-      - DOCKER_TACTIC_SERVICE_NAME=${TACTIC_SERVICE_NAME}
-      - DOCKER_TACTIC_SERVICE_PORT=${TACTIC_PORT}
-      # Define in compose.env
-      - FRONTEND_BASE_URL=https://${OFFKEY_FQDN}
-    command: ["uvicorn", "off_key_api_gateway.main:app",
-              "--reload", "--reload-dir", "/app/lib/python3.12/site-packages/off_key_api_gateway",
-              "--host", "", "--port", "8000"]
     deploy:
       mode: replicated
-      replicas: 1
+      replicas: 2
       placement:
-        constraints: [node.labels.backend == true ]
-      restart_policy:
-        condition: any
-
-  tactic:
-    image: "${TACTIC_IMAGE:-off-key-tactic-middleware:latest}"
-    env_file: .env
-    networks:
-      - app-network
-      - socket-network
-    environment:
-      - TACTIC_DOCKER_DEFAULT_NETWORK=off-key_emqx-network
-    command: [ "/app/bin/python", "-m", "off_key_tactic_middleware" ]
-    deploy:
-      replicas: 1
-      placement:
-        constraints: [node.labels.frontend == true ]
-      restart_policy:
-        condition: any
+        constraints:
+          - node.role == worker
+#        preferences:
+#          - spread: node.labels.type  # Distribute evenly
+#      TODO: Measure resources with MQTT images
+#      resources:
+#        limits:
+#          cpus: '0.2'
+#          memory: 512M
 
   socket-proxy:
     image: tecnativa/docker-socket-proxy
     networks:
       - socket-network
+    ports:
+      - target: 2375
+        published: 2375
+        mode: host
     volumes:
       - "/var/run/docker.sock:/var/run/docker.sock:ro"
     environment:
@@ -99,219 +92,91 @@ services:
       - SYSTEM=0
       - TASKS=1 # Portainer
       - VOLUMES=1 # Portainer
-    deploy:
-      replicas: 1
-      placement:
-        constraints:
-          - node.role == manager
-      restart_policy:
-        condition: any
 
   frontend:
     image: "${FRONTEND_IMAGE:-off-key-frontend:latest}"
     env_file: .env
+    ports:
+      - target: 5173
+        published: "${FRONTEND_PORT}"
+        mode: ingress
     networks:
       - public-network
       - app-network
-    environment:
-      - __VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS=demo.offk.qzz.io
+    volumes:
+      - type: bind
+        source: ./frontend
+        target: /src
+      - frontend_node_modules:/src/node_modules
+      - type: volume
+        source: vite_cache
+        target: /src/node_modules/.vite
     deploy:
       mode: replicated
-      replicas: 1
+      replicas: 2
       placement:
-        constraints: [ node.labels.frontend == true ]
-      restart_policy:
-        condition: any
+        constraints:
+          - node.role == worker
+#        preferences:
+#          - spread: node.labels.type  # Distribute evenly
+#      resources:
+#        limits:
+#          cpus: '1'
+#          memory: 512M
 
   mailpit:
     image: axllent/mailpit:latest
-#    volumes:
-#      - mailpit_data:/data
+    volumes:
+      - ./data:/data
+    ports:
+      - target: 8025
+        published: 8025
+        mode: ingress
+      - target: 1025
+        published: 1025
+        mode: ingress
     networks:
       - public-network
       - app-network
-    environment:
-      # Don't use quotes here!
-      - MP_UI_AUTH=ddss:sZZvxai44lRcxtXpU0FB
-    # For future reference
-#    configs:
-#      - source: mailpit_config
-#        target: /run/docker/mailpit_user_file
-#    environment:
-#      - MP_UI_AUTH_FILE=/run/docker/mailpit_user_file
     deploy:
-      replicas: 1
       placement:
-        constraints: [node.labels.backend == true ]
-      restart_policy:
-        condition: any
+        constraints:
+          - node.role == manager
 
   mqtt-proxy:
     image: "${MQTT_PROXY_IMAGE:-off-key-mqtt-proxy:latest}"
     env_file: .env
-    command: ["/app/bin/python", "-m", "off_key_mqtt_proxy"]
     networks:
       - app-network
-      - emqx-network
     environment:
       - SERVICE_TYPE=mqtt_proxy
       - MQTT_TELEMETRY_ENABLED=true
-#    volumes:
-#      - mqtt_logs:/app/logs
+    volumes:
+      - ./logs:/app/logs  # For log persistence
     deploy:
       mode: replicated
-      replicas: 1
+      replicas: 2
       placement:
-        constraints: [ node.labels.backend == true ]
-      restart_policy:
-        condition: any
+        constraints:
+          - node.role == worker
+  #        preferences:
+  #          - spread: node.labels.type  # Distribute evenly
+  #      TODO: Measure resources with MQTT images
+  #      resources:
+  #        limits:
+  #          cpus: '0.2'
+  #          memory: 512M
 
-  mqtt-radar:
-    image: "${MQTT_RADAR_IMAGE:-off-key-mqtt-radar:latest}"
-    env_file: .env
-    command: [ "/app/bin/python", "-m", "off_key_mqtt_radar" ]
-    networks:
-      - app-network
-      - emqx-network
-    deploy:
-      replicas: 1
-      placement:
-        constraints: [ node.labels.backend == true ]
-      restart_policy:
-        condition: any
-
-#  memcached:
-#    image: memcached:latest
-#    ports:
-#      - target: 11211
-#        published: 11211
-#        mode: ingress
-#    networks:
-#      - app-network
-#    deploy:
-#      replicas: 1
-#      placement:
-#        constraints: [ node.labels.backend == true ]
-#      restart_policy:
-#        condition: any
-
-#  mcrouter:
-#    image: ghcr.io/mszabo-wikia/mcrouter-debian-bookworm:20250621-a099b76
-#    environment:
-#      - MC_LOCAL=memcached
-#      - MC_SERVICE=memcached
-#    ports:
-#      - target: 11211
-#        published: 11210
-#        mode: ingress
-#    configs:
-#      - source: mcrouter_config
-#        target: /usr/local/mcrouter/config/config.json.template
-#    command:
-#      - /bin/bash
-#      - -c
-#      - |
-#        sed "s|\$${MC_LOCAL}|$${MC_LOCAL}|g" /usr/local/mcrouter/config/config.json.template | \
-#        sed "s|\$${MC_SERVICE}|$${MC_SERVICE}|g" > /usr/local/mcrouter/config/config.json && \
-#        /usr/bin/mcrouter --config-file=/usr/local/mcrouter/config/config.json \
-#        -p 11211 \
-#       --num-proxies=1 \
-#        --stats-logging-interval=0 \
-#        --asynclog-disable \
-#        --probe-timeout-initial=1000 \
-#        --probe-timeout-max=15000 \
-#        --reset-inactive-connection-interval=900000 \
-#        --keepalive-count=6 \
-#        --keepalive-interval=4 \
-#        --keepalive-idle=30 \
-#        --timeouts-until-tko=6
-#    networks:
-#      - app-network
-#    deploy:
-#      replicas: 1
-#      placement:
-#        constraints: [ node.labels.backend == true ]
-#      restart_policy:
-#        condition: any
-
-  emqx-main:
-    image: emqx/emqx:5.8.7
-    environment:
-      - "EMQX_NODE_NAME=emqx@emqx-main"
-      - "EMQX_CLUSTER__DISCOVERY_STRATEGY=static"
-      - "EMQX_CLUSTER__STATIC__SEEDS=[emqx@emqx-main]"
-        # See https://github.com/emqx/emqx/issues/8627#issuecomment-2833234761
-        # Only works on fresh boot (no data volume!)
-      - "EMQX_DASHBOARD__DEFAULT_USERNAME=ddss"
-      - "EMQX_DASHBOARD__DEFAULT_PASSWORD=xMdrOJtNxRA8ZwUtjAHq"
-#    healthcheck:
-#      test: ["CMD", "/opt/emqx/bin/emqx", "ctl", "status"]
-#      interval: 5s
-#      timeout: 25s
-#      retries: 5
-    networks:
-      emqx-network:
-        aliases:
-          - emqx-main
-    deploy:
-      replicas: 1
-      placement:
-        constraints: [ node.labels.backend == true ]
-      restart_policy:
-        condition: any
-
-#  emqx-worker:
-#    image: emqx/emqx:5.8.7
-#    environment:
-#      - "EMQX_NODE_NAME=emqx@{{.Node.Hostname}}.emqx-worker"
-#      - "EMQX_CLUSTER__DISCOVERY_STRATEGY=static"
-#      - "EMQX_CLUSTER__STATIC__SEEDS=[emqx@tasks.emqx-main,emqx@tasks.emqx-worker]"
-#    healthcheck:
-#      test: ["CMD", "/opt/emqx/bin/emqx", "ctl", "status"]
-#      interval: 5s
-#      timeout: 25s
-#      retries: 5
-#    networks:
-#      - emqx-network
-#    deploy:
-#      replicas: 2
-#      restart_policy:
-#        condition: any
-
-# WARNING: Encrypted overlay is incompatible with Tailscale
-# MTU=1280 for tailscale0 compatibility
 networks:
   public-network:
     driver: overlay
-    attachable: true
-    driver_opts:
-      com.docker.network.driver.mtu: 1280
-      # encrypted: "true"
   app-network:
     driver: overlay
-    driver_opts:
-      com.docker.network.driver.mtu: 1280
-      # encrypted: "true"
   socket-network:
     driver: overlay
-    driver_opts:
-      com.docker.network.driver.mtu: 1280
-      # encrypted: "true"
-  emqx-network:
-    driver: overlay
-    attachable: true
-    driver_opts:
-      com.docker.network.driver.mtu: 1280
-      # encrypted: "true"
 
-# Ephemeral demo
-# volumes:
-#  postgres_data:
-#  vite_cache:
-#    driver: local
-#  frontend_node_modules:
-
-# For future reference
-#  configs:
-#    mailpit_config:
-#      file: ./dev/mailpit-user-file
+volumes:
+  postgres_data:
+  vite_cache:
+    driver: local
+  frontend_node_modules:

@@ -8,6 +8,7 @@ from off_key_core.db.base import get_db_async
 
 if TYPE_CHECKING:
     from .services.background_sync import BackgroundSyncService
+    from .services.services import MonitoringAsyncService
     from .services.chargers import ChargersSyncService
     from .services.telemetry import TelemetrySyncService
 
@@ -34,6 +35,23 @@ def get_background_sync_service(request: Request) -> "BackgroundSyncService":
         raise ValueError("BackgroundSyncService not properly initialized in app state")
 
     return service
+
+
+def get_monitoring_service(
+    db: AsyncSession = Depends(get_db_async),
+) -> "MonitoringAsyncService":
+    """
+    Dependency provider for the MonitoringAsyncService.
+
+    Args:
+        db: AsyncSession injected by FastAPI dependency system
+
+    Returns:
+        MonitoringAsyncService instance configured with the database session
+    """
+    from .services.services import MonitoringAsyncService
+
+    return MonitoringAsyncService(db)
 
 
 def get_chargers_sync_service(

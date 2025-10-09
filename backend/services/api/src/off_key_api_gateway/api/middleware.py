@@ -47,7 +47,8 @@ class LoggingMiddleware(BaseHTTPMiddleware):
         except Exception as e:
             # Log errors with correlation context
             logger.error(
-                f"Request failed: {request.method} {request.url.path} | Error: {str(e)}"
+                f"Request failed: {request.method} {request.url.path} | "
+                f"Error: {str(e)}"
             )
             raise
 
@@ -82,13 +83,17 @@ class SecurityLoggingMiddleware(BaseHTTPMiddleware):
         # Log authentication failures
         if response.status_code == 401:
             logger.warning(
-                f"Authentication failed | IP: {client_ip} | Path: {request.url.path}"
+                f"Authentication failed | "
+                f"IP: {client_ip} | "
+                f"Path: {request.url.path}"
             )
 
         # Log authorization failures
         if response.status_code == 403:
             logger.warning(
-                f"Authorization failed | IP: {client_ip} | Path: {request.url.path}"
+                f"Authorization failed | "
+                f"IP: {client_ip} | "
+                f"Path: {request.url.path}"
             )
 
         return response

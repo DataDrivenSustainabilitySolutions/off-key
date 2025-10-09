@@ -26,6 +26,7 @@ jobs:
           # Branch which will receive the automatic cherry-picks
           target-branch: 'main'
           pr-title-suffix: '[🍒 FRONTEND]'
+          pr-creator-token: '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'
 
       - name: Get the output
         run:

@@ -2,8 +2,7 @@ import { useEffect, useState, useRef } from 'react';
 import { useLocation, Link } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { apiUtils } from '@/lib/api-client';
-import { API_CONFIG } from '@/lib/api-config';
+import axios from 'axios';
 
 const Verification: React.FC = () => {
     const location = useLocation();
@@ -16,7 +15,7 @@ const Verification: React.FC = () => {
 
     useEffect(() => {
         if (token) {
-            apiUtils.get(`${API_CONFIG.ENDPOINTS.AUTH.VERIFY_EMAIL}?token=${token}`)
+            axios.get(`http://localhost:8000/v1/auth/verify-email?token=${token}`)
                 .then(_response => {
                     setStatus('Email verified successfully!');
                 })

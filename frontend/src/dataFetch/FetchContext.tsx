@@ -1,6 +1,5 @@
 import React, { createContext, useState, useCallback, ReactNode } from "react";
-import { apiUtils } from "@/lib/api-client";
-import { API_CONFIG } from "@/lib/api-config";
+import axios from "axios";
 
 // Interface CPU
 export interface Cpu {
@@ -11,12 +10,6 @@ export interface Cpu {
 export interface Monitoring {
   type: string;
   value: number;
-}
-
-export interface TelemetryTypeData {
-  type: string;
-  category: 'cpu' | 'system' | 'controller' | 'other';
-  data: Cpu[];
 }
 // Interface Charger
 export interface Charger {
@@ -87,22 +80,11 @@ export interface FetchContextType {
   loadCpuUsage: (chargerId: string) => Promise<void>;
   loadMonitoring: (chargerId: string) => Promise<void>;
   loadCpuThermal: (chargerId: string) => Promise<void>;
-  loadAnomalies: (chargerId: string) => Promise<void>;
-  
-  // New dynamic telemetry functions
-  loadAllTelemetryTypes: (chargerId: string) => Promise<void>;
-  getTelemetryCategory: (telemetryType: string) => 'cpu' | 'system' | 'controller' | 'other';
 
   // State objects - set Telemetry per chargerId
   cpuUsageMap: Record<string, Cpu[]>;
   cpuThermalMap: Record<string, Cpu[]>;
   monitoringMap: Record<string, Monitoring[]>;
-  anomaliesMap: Record<string, Anomaly[]>;
-  
-  // New dynamic telemetry state
-  allTelemetryMap: Record<string, TelemetryTypeData[]>; // chargerId -> array of telemetry types with data
-  telemetryTypes: Record<string, string[]>; // chargerId -> array of telemetry type names
-  
   // Simple Error indicator if needed
   searchError: boolean;
 }
@@ -119,48 +101,43 @@ export const FetchProvider: React.FC<{ children: ReactNode }> = ({
     Record<string, Monitoring[]>
   >({});
   const [cpuThermalMap, setCpuThermalMap] = useState<Record<string, Cpu[]>>({});
-  const [anomaliesMap, setAnomaliesMap] = useState<Record<string, Anomaly[]>>({});
   const [searchError, setSearchError] = useState(false);
-  
-  // New dynamic telemetry state
-  const [allTelemetryMap, setAllTelemetryMap] = useState<Record<string, TelemetryTypeData[]>>({});
-  const [telemetryTypes, setTelemetryTypes] = useState<Record<string, string[]>>({});
 
   // Axios Functions to fetch data from API
 
   const getTelemetryTypes = useCallback(
     async (chargerId: string): Promise<string[]> => {
-      const resp = await apiUtils.get<string[]>(
-        API_CONFIG.ENDPOINTS.TELEMETRY.TYPES(chargerId)
+      const resp = await axios.get<string[]>(
+        `http://127.0.0.1:8000/v1/telemetry/${chargerId}/type`
       );
-      return resp;
+      return resp.data;
     },
     []
   );
 
   const getTelemetryData = useCallback(
     async (chargerId: string, telemetryKey: string): Promise<Cpu[]> => {
-      const resp = await apiUtils.get<Cpu[]>(
-        API_CONFIG.ENDPOINTS.TELEMETRY.DATA(chargerId, telemetryKey, 1000)
+      const resp = await axios.get<Cpu[]>(
+        `http://127.0.0.1:8000/v1/telemetry/${chargerId}/${telemetryKey}?limit=1000`
       );
-      return resp;
+      return resp.data;
     },
     []
   );
 
   const getAllChargers = useCallback(async (): Promise<Charger[]> => {
-    const resp = await apiUtils.get<Charger[]>(
-      API_CONFIG.ENDPOINTS.CHARGERS.AVAILABLE
+    const resp = await axios.get<Charger[]>(
+      "http://127.0.0.1:8000/v1/chargers/available"
     );
-    return resp;
+    return resp.data;
   }, []);
 
   const getFavorites = useCallback(
     async (userId: number): Promise<string[]> => {
-      const resp = await apiUtils.get<string[]>(
-        API_CONFIG.ENDPOINTS.FAVORITES.GET(userId)
+      const resp = await axios.get<string[]>(
+        `http://127.0.0.1:8000/v1/favorites?user_id=${userId}`
       );
-      return resp;
+      return resp.data;
     },
     []
   );
@@ -168,12 +145,11 @@ export const FetchProvider: React.FC<{ children: ReactNode }> = ({
   const toggleFavorite = useCallback(
     async (chargerId: string, userId: number, isCurrentlyFavorite: boolean) => {
       if (isCurrentlyFavorite) {
-        await apiUtils.delete(API_CONFIG.ENDPOINTS.FAVORITES.REMOVE, {
-          charger_id: chargerId,
-          user_id: userId,
+        await axios.delete("http://127.0.0.1:8000/v1/favorites", {
+          data: { charger_id: chargerId, user_id: userId },
         });
       } else {
-        await apiUtils.post(API_CONFIG.ENDPOINTS.FAVORITES.ADD, {
+        await axios.post("http://127.0.0.1:8000/v1/favorites", {
           charger_id: chargerId,
           user_id: userId,
         });
@@ -188,11 +164,11 @@ export const FetchProvider: React.FC<{ children: ReactNode }> = ({
         chargers.map(async (charger) => {
           try {
             const [value1Res, value2Res] = await Promise.all([
-              apiUtils.get<TelemetryData[]>(
-                API_CONFIG.ENDPOINTS.TELEMETRY.DATA(charger.charger_id, "controllerCpuUsage")
+              axios.get<TelemetryData[]>(
+                `http://127.0.0.1:8000/v1/telemetry/${charger.charger_id}/controllerCpuUsage`
               ),
-              apiUtils.get<TelemetryData[]>(
-                API_CONFIG.ENDPOINTS.TELEMETRY.DATA(charger.charger_id, "controllertemperaturecpu-thermal")
+              axios.get<TelemetryData[]>(
+                `http://127.0.0.1:8000/v1/telemetry/${charger.charger_id}/controllertemperaturecpu-thermal`
               ),
             ]);
             return {
@@ -201,8 +177,8 @@ export const FetchProvider: React.FC<{ children: ReactNode }> = ({
               online: charger.online,
               state: charger.state,
               last_seen: charger.last_seen,
-              value1: value1Res[0]?.value ?? null,
-              value2: value2Res[0]?.value ?? null,
+              value1: value1Res.data[0]?.value ?? null,
+              value2: value2Res.data[0]?.value ?? null,
             };
           } catch (error) {
             console.warn(
@@ -228,11 +204,10 @@ export const FetchProvider: React.FC<{ children: ReactNode }> = ({
 
   const getAnomalies = useCallback(
     async (chargerId: string): Promise<Anomaly[]> => {
-      // Use proxy in development, direct URL otherwise
-      const resp = await apiUtils.get<Anomaly[]>(
-        API_CONFIG.ENDPOINTS.ANOMALIES.BY_CHARGER(chargerId)
+      const resp = await axios.get<Anomaly[]>(
+        `http://127.0.0.1:8000/v1/anomalies?charger_id=${chargerId}`
       );
-      return resp;
+      return resp.data;
     },
     []
   );
@@ -245,7 +220,7 @@ export const FetchProvider: React.FC<{ children: ReactNode }> = ({
       anomaly_type: string,
       anomaly_value: number
     ) => {
-      await apiUtils.post(API_CONFIG.ENDPOINTS.ANOMALIES.CREATE, {
+      await axios.post("http://127.0.0.1:8000/v1/anomalies", {
         charger_id: chargerId,
         timestamp: timestamp,
         telemetry_type: telemetry_type,
@@ -264,8 +239,9 @@ export const FetchProvider: React.FC<{ children: ReactNode }> = ({
         telemetry_type: telemetry_type,
       });
 
-      const endpoint = `${API_CONFIG.ENDPOINTS.ANOMALIES.DELETE}?${params.toString()}`;
-      await apiUtils.delete(endpoint);
+      await axios.delete(
+        `http://127.0.0.1:8000/v1/anomalies?${params.toString()}`
+      );
     },
     []
   );
@@ -274,7 +250,7 @@ export const FetchProvider: React.FC<{ children: ReactNode }> = ({
 
   const syncChargers = useCallback(async (): Promise<void> => {
     try {
-      await apiUtils.post(API_CONFIG.ENDPOINTS.CHARGERS.SYNC, null);
+      await axios.post("http://127.0.0.1:8000/v1/chargers/sync", null);
     } catch (err) {
       console.warn("syncChargers failed:", err);
     }
@@ -282,8 +258,8 @@ export const FetchProvider: React.FC<{ children: ReactNode }> = ({
 
   const syncTelemetry = useCallback(async (): Promise<void> => {
     try {
-      await apiUtils.post(
-        API_CONFIG.ENDPOINTS.TELEMETRY.SYNC(10000),
+      await axios.post(
+        "http://127.0.0.1:8000/v1/telemetry/sync?limit=10000",
         null
       );
     } catch (err) {
@@ -293,8 +269,8 @@ export const FetchProvider: React.FC<{ children: ReactNode }> = ({
 
   const syncTelemetryShort = useCallback(async (): Promise<void> => {
     try {
-      await apiUtils.post(
-        API_CONFIG.ENDPOINTS.TELEMETRY.SYNC(100),
+      await axios.post(
+        "http://127.0.0.1:8000/v1/telemetry/sync?limit=100",
         null
       );
     } catch (err) {
@@ -418,81 +394,6 @@ export const FetchProvider: React.FC<{ children: ReactNode }> = ({
     }
   }, []);
 
-  const loadAnomalies = useCallback(async (chargerId: string) => {
-    try {
-      const anomalies = await getAnomalies(chargerId);
-      
-      // Store anomalies in the Map
-      setAnomaliesMap((prev) => ({
-        ...prev,
-        [chargerId]: anomalies,
-      }));
-      setSearchError(false);
-    } catch (err) {
-      console.error("Error loading anomalies:", err);
-      setSearchError(true);
-    }
-  }, [getAnomalies]);
-
-  // New dynamic telemetry functions
-  const getTelemetryCategory = useCallback((telemetryType: string): 'cpu' | 'system' | 'controller' | 'other' => {
-    const type = telemetryType.toLowerCase();
-    if (type.includes('cpu') || type.includes('thermal')) {
-      return 'cpu';
-    }
-    if (type.startsWith('system')) {
-      return 'system';
-    }
-    if (type.startsWith('controller')) {
-      return 'controller';
-    }
-    return 'other';
-  }, []);
-
-  const loadAllTelemetryTypes = useCallback(async (chargerId: string) => {
-    if (!chargerId) return;
-    
-    try {
-      setSearchError(false);
-      
-      // Get all available telemetry types for this charger
-      const types = await getTelemetryTypes(chargerId);
-      setTelemetryTypes(prev => ({
-        ...prev,
-        [chargerId]: types,
-      }));
-      
-      // Load data for all telemetry types
-      const telemetryData = await Promise.all(
-        types.map(async (type) => {
-          try {
-            const data = await getTelemetryData(chargerId, type);
-            const category = getTelemetryCategory(type);
-            return {
-              type,
-              category,
-              data,
-            } as TelemetryTypeData;
-          } catch (error) {
-            console.warn(`Failed to load data for telemetry type: ${type}`, error);
-            return null;
-          }
-        })
-      );
-      
-      // Filter out failed loads and store successful ones
-      const successfulData = telemetryData.filter((item): item is TelemetryTypeData => item !== null);
-      setAllTelemetryMap(prev => ({
-        ...prev,
-        [chargerId]: successfulData,
-      }));
-      
-    } catch (err) {
-      console.error("Error loading all telemetry types:", err);
-      setSearchError(true);
-    }
-  }, [getTelemetryTypes, getTelemetryData, getTelemetryCategory]);
-
   // Provider gives alle the functions etc.
   // Provider gives all the functions etc.
 
@@ -514,15 +415,9 @@ export const FetchProvider: React.FC<{ children: ReactNode }> = ({
         loadCpuUsage,
         loadMonitoring,
         loadCpuThermal,
-        loadAnomalies,
-        loadAllTelemetryTypes,
-        getTelemetryCategory,
         cpuUsageMap,
         cpuThermalMap,
-        anomaliesMap,
         monitoringMap,
-        allTelemetryMap,
-        telemetryTypes,
         searchError,
       }}
     >

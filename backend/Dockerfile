@@ -85,6 +85,3 @@ WORKDIR /app
 
 EXPOSE 8000
 
-LABEL org.opencontainers.image.source=https://github.com/DataDrivenSustainabilitySolutions/off-key/
-
-

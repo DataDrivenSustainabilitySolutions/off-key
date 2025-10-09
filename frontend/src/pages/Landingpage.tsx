@@ -19,8 +19,6 @@ import {
 } from "@/components/ui/card";
 import { NavigationBar } from "@/components/NavigationBar";
 import { useFetch } from "@/dataFetch/UseFetch";
-import { useAuth } from "@/auth/AuthContext";
-import toast from 'react-hot-toast';
 import type { CombinedData } from "@/dataFetch/FetchContext";
 
 import {
@@ -38,7 +36,6 @@ export default function ChargerTable() {
   const [favoriteChargerIds, setFavoriteChargerIds] = useState<string[]>([]);
   const [data, setData] = useState<CombinedData[]>([]);
 
-  const { userId } = useAuth();
   const {
     getAllChargers,
     getCombinedChargerData,
@@ -53,16 +50,14 @@ export default function ChargerTable() {
         const chargers = await getAllChargers();
         const combined = await getCombinedChargerData(chargers);
         setData(combined);
-        if (userId) {
-          const favs = await getFavorites(userId);
-          setFavoriteChargerIds(favs);
-        }
+        const favs = await getFavorites(1);
+        setFavoriteChargerIds(favs);
       } finally {
         setLoading(false);
       }
     }
     loadData();
-  }, [getAllChargers, getCombinedChargerData, getFavorites, userId]);
+  }, [getAllChargers, getCombinedChargerData, getFavorites]);
 
   const filteredData = data
     .filter(
@@ -86,22 +81,15 @@ export default function ChargerTable() {
   };
 
   const handleToggleFavorite = async (chargerId: string) => {
-    if (!userId) {
-      toast.error("Please log in to favorite chargers");
-      return;
-    }
-    
     const isFavorite = favoriteChargerIds.includes(chargerId);
     setFavoriteChargerIds((prev) =>
       isFavorite ? prev.filter((id) => id !== chargerId) : [...prev, chargerId]
     );
 
     try {
-      await toggleFavorite(chargerId, userId, isFavorite);
-      toast.success(isFavorite ? 'Removed from favorites' : 'Added to favorites');
+      await toggleFavorite(chargerId, 1, isFavorite);
     } catch (err) {
       console.error("Error saving favorite:", err);
-      toast.error('Failed to update favorite status');
       setFavoriteChargerIds((prev) =>
         isFavorite ? [...prev, chargerId] : prev.filter((id) => id !== chargerId)
       );

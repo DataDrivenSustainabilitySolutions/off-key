@@ -29,7 +29,6 @@ dependencies = [
     "fastapi-mail>=1.4.2",
     "slowapi>=0.1.9",
     "uvicorn>=0.25.0",
-    "aiohttp>=3.9.0",
 ]
 
 [build-system]

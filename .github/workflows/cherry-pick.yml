@@ -13,6 +13,10 @@ on:
 permissions:
   contents: write      # for actions/checkout
 
+permissions:
+  contents: write
+  pull-requests: write
+
 jobs:
   test-cherry-pick:
     runs-on: ubuntu-latest

@@ -9,14 +9,14 @@ from off_key_core.schemas.favorites import FavoriteCreate
 router = APIRouter()
 
 
-@router.get("")
+@router.get("/")
 async def get_favorites(user_id: int, db: AsyncSession = Depends(get_db_async)):
     result = await db.execute(select(Favorite).filter(Favorite.user_id == user_id))
     favorites = result.scalars().all()
     return [f.charger_id for f in favorites]
 
 
-@router.post("")
+@router.post("/")
 async def add_favorite(fav: FavoriteCreate, db: AsyncSession = Depends(get_db_async)):
     # Check if already exists
     result = await db.execute(
@@ -36,7 +36,7 @@ async def add_favorite(fav: FavoriteCreate, db: AsyncSession = Depends(get_db_as
     return {"message": "Favorite added"}
 
 
-@router.delete("")
+@router.delete("/")
 async def remove_favorite(
     fav: FavoriteCreate, db: AsyncSession = Depends(get_db_async)
 ):

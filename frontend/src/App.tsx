@@ -17,7 +17,6 @@ import Monitoring from "./pages/Monitoring";
 import Account from "./pages/Account";
 import Anomaly from "./pages/Anomalies";
 import { FetchProvider } from "./dataFetch/FetchContext";
-import { Toaster } from 'react-hot-toast';
 
 const App: React.FC = () => {
   return (
@@ -86,7 +85,6 @@ const App: React.FC = () => {
           </FetchProvider>
         </BrowserRouter>
       </AuthProvider>
-      <Toaster position="top-right" />
     </ThemeProvider>
   );
 };

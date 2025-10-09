@@ -22,6 +22,7 @@ from ..utils.enum import RoleEnum
 
 
 class User(Base):
+
     __tablename__ = "users"  # noqa
 
     id = Column(Integer, primary_key=True, index=True)
@@ -37,6 +38,7 @@ class User(Base):
 
 
 class Charger(Base):
+
     __tablename__ = "chargers"  # noqa
 
     charger_id = Column(Text, primary_key=True, unique=True, index=True, nullable=False)
@@ -66,6 +68,7 @@ class Charger(Base):
 
 
 class Telemetry(Base):
+
     __tablename__ = "telemetry"  # noqa
 
     charger_id = Column(
@@ -105,6 +108,7 @@ event.listen(
 
 
 class MonitoringService(Base):
+
     __tablename__ = "services"
 
     id = Column(Text, primary_key=True)

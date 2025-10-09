@@ -11,25 +11,19 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { apiUtils } from "@/lib/api-client";
-import { API_CONFIG } from "@/lib/api-config";
-import toast from "react-hot-toast";
+import React, { useEffect, useMemo, useState } from "react";
+import axios from "axios";
 
 const Monitoring: React.FC = () => {
   const { chargerId } = useParams<{ chargerId: string }>();
   //map where keys and the boolean are safed for the dropbox checked or not checked symbole
   const [visibleMap, setVisibleMap] = useState<Record<string, boolean>>({});
   //Data from useFetch
-  const { allTelemetryMap, loadAllTelemetryTypes } = useFetch();
+  const { monitoringMap, loadMonitoring } = useFetch();
   //Caching mechanism to avoid unneccesary fetches
   const monitoringKeys = useMemo(
-    () => {
-      const telemetryData = allTelemetryMap[chargerId!] || [];
-      return telemetryData.map(item => item.type);
-    },
-    [allTelemetryMap, chargerId]
+    () => Object.keys(monitoringMap),
+    [monitoringMap]
   );
   const activeKeys = useMemo(
     () =>
@@ -43,24 +37,11 @@ const Monitoring: React.FC = () => {
     null
   );
 
-  // Active services management
-  interface ActiveService {
-    id: string;
-    container_id: string;
-    container_name: string;
-    mqtt_topics: string[];
-    status: boolean;
-    created_at?: string;
-  }
-
-  const [activeServices, setActiveServices] = useState<ActiveService[]>([]);
-  const [isLoadingServices, setIsLoadingServices] = useState(false);
-
   useEffect(() => {
     if (!chargerId) return;
 
-    loadAllTelemetryTypes(chargerId);
-  }, [loadAllTelemetryTypes, chargerId]);
+    loadMonitoring(chargerId);
+  }, [loadMonitoring, chargerId]);
 
   useEffect(() => {
     if (monitoringKeys.length === 0) return; // if no keys given do nothing
@@ -70,91 +51,24 @@ const Monitoring: React.FC = () => {
     console.log(visibleMap);
   }, [monitoringKeys, visibleMap]);
 
-  // Load active services
-  const loadActiveServices = useCallback(async () => {
-    try {
-      setIsLoadingServices(true);
-      const response = await apiUtils.get(API_CONFIG.ENDPOINTS.MONITORING.LIST);
-      setActiveServices(response);
-    } catch (error) {
-      console.error("Failed to load active services:", error);
-      toast.error("Failed to load active services");
-    } finally {
-      setIsLoadingServices(false);
-    }
-  }, []);
-
-  // Delete service
-  const deleteService = useCallback(async (containerName: string) => {
-    if (!confirm(`Are you sure you want to delete the service "${containerName}"?`)) {
-      return;
-    }
-
-    try {
-      await apiUtils.delete(`${API_CONFIG.ENDPOINTS.MONITORING.STOP}?container_name=${encodeURIComponent(containerName)}`);
-      toast.success(`Service "${containerName}" deleted successfully`);
-      // Refresh the services list
-      await loadActiveServices();
-    } catch (error) {
-      console.error("Failed to delete service:", error);
-      toast.error(`Failed to delete service: ${error.message || "Unknown error"}`);
-    }
-  }, [loadActiveServices]);
-
-  // Extract charger ID from container name (format: radar-{chargerId}-{timestamp})
-  const extractChargerIdFromContainer = (containerName: string): string => {
-    const match = containerName.match(/^radar-(.+)-\d+$/);
-    return match ? match[1] : "Unknown";
-  };
-
-  // Filter services to only show ones for the current charger
-  const chargerSpecificServices = useMemo(() => {
-    if (!chargerId) return [];
-    return activeServices.filter(service =>
-      extractChargerIdFromContainer(service.container_name) === chargerId
-    );
-  }, [activeServices, chargerId]);
-
-  // Load services on component mount and set up refresh interval
-  useEffect(() => {
-    loadActiveServices();
-
-    // Refresh services every 30 seconds
-    const interval = setInterval(loadActiveServices, 30000);
-
-    return () => clearInterval(interval);
-  }, [loadActiveServices]);
-
   const submitAnomalyDetection = async () => {
-    if (!selectedAlgorithm || activeKeys.length === 0 || !chargerId) {
+    if (!selectedAlgorithm || activeKeys.length === 0) {
       alert("Please select at least one sensor and an algorithm.");
       return;
     }
-
     try {
-      // Build MQTT topics using charger ID and selected sensors
-      const mqttTopics = activeKeys.map(sensorType => `charger/${chargerId}/${sensorType}`);
-
-      // Generate unique container name
-      const containerName = `radar-${chargerId}-${Date.now()}`;
-
-      const response = await apiUtils.post(
-        API_CONFIG.ENDPOINTS.MONITORING.START,
+      const response = await axios.post(
+        `http://127.0.0.1:8000/v1/anomalyDetection/`,
         {
-          container_name: containerName,
-          service_type: "radar",
-          mqtt_topics: mqttTopics,
-          model_type: selectedAlgorithm,
+          chargerId,
+          selectedAlgorithm,
+          selectedSensors: activeKeys,
         }
       );
 
-      console.log("Successfully started monitoring service:", response);
-      toast.success(`Monitoring service started successfully! Container: ${containerName}`);
-      // Refresh the services list
-      await loadActiveServices();
+      console.log("Successfully submitted:", response.data);
     } catch (error) {
-      console.error("Failed to start monitoring service:", error);
-      toast.error(`Error: ${error.message || "Failed to start monitoring service"}`);
+      console.error("Failed to submit configuration:", error);
     }
   };
 
@@ -169,7 +83,7 @@ const Monitoring: React.FC = () => {
             </CardTitle>
             <CardContent>
               <div className="flex items-start gap-6">
-                {/* Left Side */}
+                {/* Linke Seite */}
                 <div className="flex flex-col w-2/5">
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
@@ -221,28 +135,20 @@ const Monitoring: React.FC = () => {
                     </DropdownMenuTrigger>
                     <DropdownMenuContent className="w-48">
                       <DropdownMenuCheckboxItem
-                        checked={selectedAlgorithm === "isolation_forest"}
+                        checked={selectedAlgorithm === "Algorithm A"}
                         onCheckedChange={() =>
-                          setSelectedAlgorithm("isolation_forest")
+                          setSelectedAlgorithm("Algorithm A")
                         }
                       >
-                        Isolation Forest
+                        Algorithm A
                       </DropdownMenuCheckboxItem>
                       <DropdownMenuCheckboxItem
-                        checked={selectedAlgorithm === "adaptive_svm"}
+                        checked={selectedAlgorithm === "Algorithm B"}
                         onCheckedChange={() =>
-                          setSelectedAlgorithm("adaptive_svm")
+                          setSelectedAlgorithm("Algorithm B")
                         }
                       >
-                        Adaptive SVM
-                      </DropdownMenuCheckboxItem>
-                      <DropdownMenuCheckboxItem
-                        checked={selectedAlgorithm === "knn"}
-                        onCheckedChange={() =>
-                          setSelectedAlgorithm("knn")
-                        }
-                      >
-                        K-Nearest Neighbors
+                        Algorithm B
                       </DropdownMenuCheckboxItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
@@ -263,85 +169,6 @@ const Monitoring: React.FC = () => {
               </Button>
             </CardContent>
           </div>
-        </Card>
-      </div>
-
-      {/* Active Services Management Section */}
-      <div className="flex mt-5">
-        <Card className="ml-16 bg-white shadow-md w-11/12 min-h-96 dark:bg-neutral-950">
-          <CardTitle className="ml-5 mt-4">Active Monitoring Services for Charger {chargerId}</CardTitle>
-          <CardContent>
-            <div className="mt-4">
-              {isLoadingServices ? (
-                <div className="flex justify-center items-center py-8">
-                  <div className="text-gray-500">Loading active services...</div>
-                </div>
-              ) : chargerSpecificServices.length === 0 ? (
-                <div className="flex justify-center items-center py-8">
-                  <div className="text-gray-500">No active monitoring services found for charger {chargerId}</div>
-                </div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Container Name</TableHead>
-                        <TableHead>Charger ID</TableHead>
-                        <TableHead>MQTT Topics</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead>Created At</TableHead>
-                        <TableHead>Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {chargerSpecificServices.map((service) => (
-                        <TableRow key={service.id}>
-                          <TableCell className="font-medium">
-                            {service.container_name}
-                          </TableCell>
-                          <TableCell>
-                            {extractChargerIdFromContainer(service.container_name)}
-                          </TableCell>
-                          <TableCell>
-                            <div className="max-w-xs truncate" title={service.mqtt_topics.join(', ')}>
-                              {service.mqtt_topics.length > 0
-                                ? service.mqtt_topics.slice(0, 2).join(', ') +
-                                  (service.mqtt_topics.length > 2 ? ` +${service.mqtt_topics.length - 2} more` : '')
-                                : 'No topics'}
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                              service.status
-                                ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
-                                : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
-                            }`}>
-                              {service.status ? 'Active' : 'Inactive'}
-                            </span>
-                          </TableCell>
-                          <TableCell>
-                            {service.created_at
-                              ? new Date(service.created_at).toLocaleString()
-                              : 'Unknown'}
-                          </TableCell>
-                          <TableCell>
-                            <Button
-                              variant="destructive"
-                              size="sm"
-                              onClick={() => deleteService(service.container_name)}
-                              className="bg-red-600 hover:bg-red-700"
-                            >
-                              Delete
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              )}
-            </div>
-          </CardContent>
         </Card>
       </div>
     </>

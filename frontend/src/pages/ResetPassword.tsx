@@ -53,7 +53,7 @@ const ResetPassword: React.FC = () => {
       }
 
       setMessage('Password successfully reset. You will be redirected...');
-      setTimeout(() => navigate('/login'), 3000); // Navigate to login page after 3 seconds
+      setTimeout(() => navigate('/login'), 3000); // nach 3 Sekunden zur Login-Seite
     } catch (err) {
       setError('Server error. Please try again later.');
       console.error(err);

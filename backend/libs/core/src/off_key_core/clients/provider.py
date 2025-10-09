@@ -30,7 +30,7 @@ def get_charger_api_client() -> ChargerAPIClient:
     #     return FictionalClient(config=settings.fictional_config)
     else:
         raise ValueError(
-            f"Unknown charger API provider: {provider}. Valid options are: 'pionix'"
+            f"Unknown charger API provider: {provider}. " f"Valid options are: 'pionix'"
         )
 
 

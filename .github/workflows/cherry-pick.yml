@@ -6,6 +6,9 @@ on:
     types:
       - closed
 
+permissions:
+  contents: write      # for actions/checkout
+
 jobs:
   test-cherry-pick:
     runs-on: ubuntu-latest

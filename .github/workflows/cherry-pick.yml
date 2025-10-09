@@ -1,17 +1,11 @@
 name: 'Cherry pick demo-frontend into main'
 on:
-  push:
-    branches:
-      - frontend/refinement
+
   pull_request:
     branches:
       - demo-frontend # Branches where the original PRs will be merged
     types:
       - closed
-  workflow_dispatch:
-
-permissions:
-  contents: write      # for actions/checkout
 
 permissions:
   contents: write

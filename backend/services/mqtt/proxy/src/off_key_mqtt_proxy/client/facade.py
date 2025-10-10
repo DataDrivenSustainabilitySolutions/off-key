@@ -13,17 +13,17 @@ from typing import Optional, Dict, Any, Callable, Union, Awaitable
 import paho.mqtt.client as mqtt
 from off_key_core.config.logs import logger
 from off_key_core.utils.enum import HealthStatus
-from backend.services.mqtt.proxy.src.off_key_mqtt_proxy.config import MQTTConfig
-from backend.services.mqtt.proxy.src.off_key_mqtt_proxy.auth import ApiKeyAuthHandler
-from backend.services.mqtt.proxy.src.off_key_mqtt_proxy.client.models import (
+from ..config import MQTTConfig
+from ..auth import ApiKeyAuthHandler
+from .models import (
     ConnectionState,
     MQTTMessage,
     ClientConnectionInfo,
     ClientHealthStatus,
 )
-from backend.services.mqtt.proxy.src.off_key_mqtt_proxy.client.connection import ConnectionManager
-from backend.services.mqtt.proxy.src.off_key_mqtt_proxy.client.subscriptions import SubscriptionManager
-from backend.services.mqtt.proxy.src.off_key_mqtt_proxy.client.messaging import MessageHandler
+from .connection import ConnectionManager
+from .subscriptions import SubscriptionManager
+from .messaging import MessageHandler
 
 
 class MQTTClient:

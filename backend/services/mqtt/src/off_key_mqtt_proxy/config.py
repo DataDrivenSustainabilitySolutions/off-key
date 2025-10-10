@@ -4,6 +4,7 @@ MQTT Service Configuration
 Handles configuration for the MQTT proxy service including API-Key authentication,
 MQTT broker configuration, and service-specific parameters.
 """
+
 import random
 from pydantic import BaseModel, field_validator, model_validator
 from pydantic_settings import BaseSettings
@@ -431,5 +432,6 @@ class MQTTSettings(BaseSettings):
             shutdown_timeout=self.MQTT_SHUTDOWN_TIMEOUT,
             graceful_shutdown_timeout=self.MQTT_GRACEFUL_SHUTDOWN_TIMEOUT,
         )
+
 
 mqtt_settings = MQTTSettings()

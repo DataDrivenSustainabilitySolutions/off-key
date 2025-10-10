@@ -1,7 +1,7 @@
 [project]
-name = "off-key-core"
+name = "off-key-db-sync"
 version = "0.1.0"
-description = "Shared core components for off-key platform"
+description = "Db Synchronization service for off-key-platform"
 authors = [
     { name = "Oliver Hennhoefer", email = "oliver.hennhoefer@mail.de" },
     { name = "Fernando Saba", email = "fernando.saba@gmx.de" }
@@ -10,7 +10,7 @@ maintainers = [
     { name = "Oliver Hennhoefer", email = "oliver.hennhoefer@mail.de" },
     { name = "Fernando Saba", email = "fernando.saba@gmx.de" }
 ]
-keywords = ["off-key", "shared", "core"]
+keywords = ["off-key", "anomaly", "communication", "container", "management"]
 requires-python = ">=3.12"
 classifiers = [
     "Programming Language :: Python :: 3.12",
@@ -19,17 +19,15 @@ classifiers = [
     "Development Status :: 3 - Alpha"
 ]
 dependencies = [
-    "asyncpg>=0.30.0",
-    "httpx>=0.26.0",
-    "pydantic-settings>=2.7.1",
-    "requests>=2.32.3",
-    "sqlalchemy>=2.0.38",
-    "email-validator>=2.2.0",
-    "python-dateutil>=2.8.2",
-    "psycopg2-binary>=2.9.10",
-
+    "off-key-core",
+    "apscheduler>=3.11.0",
+    "uvicorn>=0.25.0",
+    "fastapi[all]>=0.115.8",
 ]
 
 [build-system]
-requires = ["uv_build>=0.9.0,<0.10.0"]
+requires = ["uv_build>=0.8.11,<0.9.0"]
 build-backend = "uv_build"
+
+[tool.uv.sources]
+off-key-core = { workspace = true }

@@ -105,6 +105,9 @@ class Settings(BaseSettings):
     SYNC_TELEMETRY_INTERVAL: int = 21600  # Telemetry sync interval in seconds (6 hours)
     SYNC_TELEMETRY_LIMIT: int = 1000  # Maximum telemetry records to sync per run
 
+    # DB Sync Service Configuration
+    DB_SYNC_SERVICE_URL: str = "http://sync:8009"  # URL for db-sync service
+
     # Logging Configuration
     LOG_LEVEL: str = "INFO"  # DEBUG, INFO, WARNING, ERROR, CRITICAL
     LOG_FORMAT: str = "simple"  # simple or json

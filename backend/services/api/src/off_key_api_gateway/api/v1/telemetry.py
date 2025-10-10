@@ -1,22 +1,33 @@
-from fastapi import APIRouter, Depends
+from datetime import datetime, timezone
+
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+import httpx
 
 from off_key_core.db.base import get_db_async
 from off_key_core.db.models import Telemetry
-from ...services.telemetry import TelemetrySyncService
-from ...provider import get_telemetry_sync_service
+from off_key_core.config.config import settings
 
 router = APIRouter()
 
 
 @router.post("/sync")
-async def sync_chargers(
-    service: TelemetrySyncService = Depends(get_telemetry_sync_service),
-    limit: int = 10_000,
-):
-    await service.sync_telemetry(limit=limit)
-    return {"status": "successful"}
+async def sync_telemetry(limit: int = 10_000):
+    """Trigger manual telemetry sync via db-sync service."""
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"{settings.DB_SYNC_SERVICE_URL}/sync/telemetry",
+                params={"limit": limit},
+                timeout=600.0,  # 10 minute timeout for telemetry sync
+            )
+            response.raise_for_status()
+            return response.json()
+    except httpx.HTTPError as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to trigger telemetry sync: {str(e)}"
+        )
 
 
 @router.get("/{charger_id}/type")
@@ -35,7 +46,7 @@ async def get_telemetry(
     telemetry_type: str,
     db: AsyncSession = Depends(get_db_async),
     limit: int = 1000,  # Reduced default limit for better performance
-    after_timestamp: str = None,  # Cursor for pagination
+    after_timestamp: datetime | None = Query(None),  # Cursor for pagination
     paginated: bool = False,  # Enable paginated response format
 ):
     query = select(Telemetry).filter(
@@ -43,8 +54,13 @@ async def get_telemetry(
     )
 
     # Cursor-based pagination for time-series data
-    if after_timestamp:
-        query = query.filter(Telemetry.timestamp < after_timestamp)
+    if after_timestamp is not None:
+        cursor = (
+            after_timestamp.replace(tzinfo=timezone.utc)
+            if after_timestamp.tzinfo is None
+            else after_timestamp.astimezone(timezone.utc)
+        )
+        query = query.filter(Telemetry.timestamp < cursor)
 
     # Always order by timestamp DESC for time-series data
     query = query.order_by(Telemetry.timestamp.desc()).limit(limit)

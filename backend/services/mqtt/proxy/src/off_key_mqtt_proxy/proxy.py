@@ -23,6 +23,7 @@ from .telemetry import DatabaseWriter
 from .router import MessageRouter, DatabaseDestination, BridgeDestination
 from .core.interfaces import Stoppable, ShutdownFailedError
 
+
 class MQTTProxyService:
     """
     Main MQTT Proxy Service that orchestrates all components
@@ -472,7 +473,7 @@ class MQTTProxyService:
     def get_health_status(self):
         """Get current health status"""
         status = {
-           "status": (
+            "status": (
                 HealthStatus.HEALTHY if self.is_running else HealthStatus.DISABLED
             ),
             "components": {},

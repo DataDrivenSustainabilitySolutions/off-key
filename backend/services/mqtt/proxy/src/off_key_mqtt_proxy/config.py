@@ -4,6 +4,7 @@ MQTT Proxy Configuration
 Handles configuration for the MQTT proxy service including API-Key authentication,
 MQTT broker configuration, and service-specific parameters.
 """
+
 import random
 from pydantic import BaseModel, field_validator, model_validator
 from pydantic_settings import BaseSettings
@@ -482,5 +483,6 @@ class MQTTSettings(BaseSettings):
             bridge_username=self.MQTT_BRIDGE_USERNAME,
             bridge_api_key=self.MQTT_BRIDGE_APIKEY
         )
+
 
 mqtt_settings = MQTTSettings()

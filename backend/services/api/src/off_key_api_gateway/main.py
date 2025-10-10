@@ -40,8 +40,16 @@ logger = setup_logging(
 )
 
 
-async def wait_for_db_sync(max_retries: int = 150, retry_delay: int = 2):
-    """Wait for db-sync service to be ready before starting API."""
+async def wait_for_db_sync(
+    max_retries: int = 150,
+    retry_delay: int = 2,
+    acceptable_statuses: tuple[str, ...] = ("healthy", "starting"),
+):
+    """Wait for db-sync service to reach an acceptable readiness state.
+
+    The API can safely start once db-sync is either fully healthy or in its
+    long-running "starting" state (initial backfill still in progress).
+    """
     logger.info(f"Waiting for db-sync service at {settings.DB_SYNC_SERVICE_URL}")
 
     async with httpx.AsyncClient(timeout=5.0) as client:
@@ -50,8 +58,12 @@ async def wait_for_db_sync(max_retries: int = 150, retry_delay: int = 2):
                 response = await client.get(f"{settings.DB_SYNC_SERVICE_URL}/health")
                 if response.status_code == 200:
                     data = response.json()
-                    if data.get("status") == "healthy":
-                        logger.info("db-sync service is ready")
+                    status = data.get("status")
+                    if status in acceptable_statuses:
+                        logger.info(
+                            "db-sync service is ready "
+                            f"(status={status}, acceptable={acceptable_statuses})"
+                        )
                         return True
                     else:
                         logger.info(

@@ -104,16 +104,6 @@ class ParseFailure:
 ParseResult = Union[ParseSuccess, ParseFailure]
 
 
-class WriteStatus(Enum):
-    """Database write status"""
-
-    PENDING = "pending"
-    PROCESSING = "processing"
-    SUCCESS = "success"
-    FAILED = "failed"
-    RETRYING = "retrying"
-
-
 @dataclass
 class WriteBatch:
     """Batch of telemetry records for database insertion"""
@@ -424,8 +414,8 @@ class DatabaseWriter:
                 except asyncio.TimeoutError:
                     # Timeout reached - check for aged batch
                     if (
-                            self.pending_batch.size() > 0
-                            and self.pending_batch.get_age_seconds() >= self.batch_timeout
+                        self.pending_batch.size() > 0
+                        and self.pending_batch.get_age_seconds() >= self.batch_timeout
                     ):
                         logger.debug(
                             f"Batch timeout reached, "

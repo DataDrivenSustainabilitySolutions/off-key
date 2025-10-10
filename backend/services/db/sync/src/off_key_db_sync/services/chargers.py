@@ -73,8 +73,7 @@ class ChargersSyncService:
             active_chargers_data = await self.client.get_chargers()
             if not active_chargers_data:
                 logger.warning(
-                    "Received empty list of active chargers.",
-                    extra=self._log_context
+                    "Received empty list of active chargers.", extra=self._log_context
                 )
                 self.last_sync_status = "no_data"
                 self.last_sync_time = datetime.now()
@@ -83,7 +82,7 @@ class ChargersSyncService:
             logger.error(
                 f"Failed to fetch active chargers: {e}",
                 extra=self._log_context,
-                exc_info=True
+                exc_info=True,
             )
             self.total_syncs_failed += 1
             self.last_sync_status = "failed"
@@ -171,14 +170,14 @@ class ChargersSyncService:
                     "added": len(chargers_to_add),
                     "updated": chargers_updated_count,
                     "latency": sync_latency,
-                }
+                },
             )
             log_performance("charger_sync", start_time)
         except Exception as e:
             logger.error(
                 f"Database commit failed during charger sync: {e}",
                 extra=self._log_context,
-                exc_info=True
+                exc_info=True,
             )
             self.total_syncs_failed += 1
             self.last_sync_status = "failed"
@@ -260,7 +259,7 @@ class ChargersSyncService:
                 if days_inactive == -1:
                     logger.info(
                         f"Successfully deleted ALL {deleted_count} chargers.",
-                        extra={**self._log_context, "deleted_count": deleted_count}
+                        extra={**self._log_context, "deleted_count": deleted_count},
                     )
                 else:
                     logger.info(
@@ -268,8 +267,8 @@ class ChargersSyncService:
                         extra={
                             **self._log_context,
                             "deleted_count": deleted_count,
-                            "days_inactive": days_inactive
-                        }
+                            "days_inactive": days_inactive,
+                        },
                     )
 
             except Exception as e:
@@ -309,9 +308,7 @@ class ChargersSyncService:
             sync_success_rate=round(success_rate, 2),
             average_sync_latency=round(avg_latency, 3),
             last_sync_time=(
-                self.last_sync_time.isoformat()
-                if self.last_sync_time
-                else None
+                self.last_sync_time.isoformat() if self.last_sync_time else None
             ),
             last_sync_status=self.last_sync_status,
         )

@@ -17,12 +17,14 @@ async def sync_chargers():
         async with httpx.AsyncClient() as client:
             response = await client.post(
                 f"{settings.DB_SYNC_SERVICE_URL}/sync/chargers",
-                timeout=300.0  # 5 minute timeout for sync operation
+                timeout=300.0,  # 5 minute timeout for sync operation
             )
             response.raise_for_status()
             return response.json()
     except httpx.HTTPError as e:
-        raise HTTPException(status_code=500, detail=f"Failed to trigger charger sync: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to trigger charger sync: {str(e)}"
+        )
 
 
 @router.post("/clean", tags=["chargers"])
@@ -33,12 +35,14 @@ async def clean_chargers(older_n_days: int):
             response = await client.post(
                 f"{settings.DB_SYNC_SERVICE_URL}/sync/chargers/clean",
                 params={"days_inactive": older_n_days},
-                timeout=300.0
+                timeout=300.0,
             )
             response.raise_for_status()
             return response.json()
     except httpx.HTTPError as e:
-        raise HTTPException(status_code=500, detail=f"Failed to trigger charger cleanup: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to trigger charger cleanup: {str(e)}"
+        )
 
 
 @router.get("/available", tags=["chargers"])

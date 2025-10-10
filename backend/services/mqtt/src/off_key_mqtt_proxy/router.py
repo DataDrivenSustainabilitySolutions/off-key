@@ -197,6 +197,7 @@ class MessageDestination(ABC):
             metrics=metrics,
         )
 
+
 class DatabaseDestination(MessageDestination):
     """Database destination for telemetry data"""
 
@@ -634,7 +635,6 @@ class MessageRouter:
             self.total_messages_routed % 100 == 0
             or route_info.get_success_count() < len(enabled_destinations)
         ):
-
             message_text = (
                 f"Message routed: {route_info.get_success_count()}/"
                 f"{len(enabled_destinations)} successful"

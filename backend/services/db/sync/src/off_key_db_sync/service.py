@@ -60,7 +60,7 @@ class SyncService:
             logger.error(
                 f"Database initialization failed: {e}",
                 extra=self._log_context,
-                exc_info=True
+                exc_info=True,
             )
             return False
 
@@ -80,17 +80,14 @@ class SyncService:
             logger.error(
                 f"Database connection failed: {e}",
                 extra=self._log_context,
-                exc_info=True
+                exc_info=True,
             )
             return False
 
     def _on_initial_sync_complete(self):
         """Callback when initial sync completes"""
         self.initial_sync_complete = True
-        logger.info(
-            "Initial sync marked as complete",
-            extra=self._log_context
-        )
+        logger.info("Initial sync marked as complete", extra=self._log_context)
 
     async def _wait_for_database(self, max_retries: int = 30, delay: int = 2) -> bool:
         """
@@ -106,7 +103,7 @@ class SyncService:
         for attempt in range(1, max_retries + 1):
             logger.info(
                 f"Database connection attempt {attempt}/{max_retries}",
-                extra=self._log_context
+                extra=self._log_context,
             )
 
             if await self._check_database_connection():
@@ -116,13 +113,13 @@ class SyncService:
             if attempt < max_retries:
                 logger.info(
                     f"Waiting {delay} seconds before next attempt",
-                    extra=self._log_context
+                    extra=self._log_context,
                 )
                 await asyncio.sleep(delay)
 
         logger.error(
             f"Database not available after {max_retries} attempts",
-            extra=self._log_context
+            extra=self._log_context,
         )
         return False
 
@@ -130,8 +127,7 @@ class SyncService:
         """Start the database sync service"""
         if self.is_running:
             logger.warning(
-                "Database sync service already running",
-                extra=self._log_context
+                "Database sync service already running", extra=self._log_context
             )
             return
 
@@ -148,7 +144,9 @@ class SyncService:
 
             # Start background sync service if enabled
             if settings.SYNC_ENABLED:
-                logger.info("Starting background sync scheduler", extra=self._log_context)
+                logger.info(
+                    "Starting background sync scheduler", extra=self._log_context
+                )
 
                 # Create dependency factories for services
                 def charger_sync_factory(session):
@@ -175,12 +173,12 @@ class SyncService:
                         "sync_enabled": True,
                         "chargers_interval": settings.SYNC_CHARGERS_INTERVAL,
                         "telemetry_interval": settings.SYNC_TELEMETRY_INTERVAL,
-                    }
+                    },
                 )
             else:
                 logger.info(
                     "Background sync disabled",
-                    extra={**self._log_context, "sync_enabled": False}
+                    extra={**self._log_context, "sync_enabled": False},
                 )
                 # If sync is disabled, mark as complete immediately
                 self.initial_sync_complete = True
@@ -192,15 +190,14 @@ class SyncService:
             self.is_running = True
 
             logger.info(
-                "Database sync service started successfully",
-                extra=self._log_context
+                "Database sync service started successfully", extra=self._log_context
             )
 
         except Exception as e:
             logger.error(
                 f"Failed to start database sync service: {e}",
                 extra=self._log_context,
-                exc_info=True
+                exc_info=True,
             )
 
             # Cleanup on failure
@@ -211,8 +208,7 @@ class SyncService:
         """Stop the database sync service"""
         if not self.is_running:
             logger.info(
-                "Database sync service already stopped",
-                extra=self._log_context
+                "Database sync service already stopped", extra=self._log_context
             )
             return
 
@@ -227,20 +223,23 @@ class SyncService:
             # Stop background sync if running
             if self.background_sync:
                 await self.background_sync.stop()
-                logger.info("Background sync scheduler stopped", extra=self._log_context)
+                logger.info(
+                    "Background sync scheduler stopped", extra=self._log_context
+                )
 
             shutdown_duration = asyncio.get_event_loop().time() - shutdown_start_time
 
             logger.info(
-                f"Database sync service stopped successfully in {shutdown_duration:.2f}s",
-                extra={**self._log_context, "shutdown_duration": shutdown_duration}
+                f"Database sync service stopped successfully in "
+                f"{shutdown_duration:.2f}s",
+                extra={**self._log_context, "shutdown_duration": shutdown_duration},
             )
 
         except Exception as e:
             logger.error(
                 f"Error during database sync service shutdown: {e}",
                 extra=self._log_context,
-                exc_info=True
+                exc_info=True,
             )
             raise
 
@@ -251,7 +250,7 @@ class SyncService:
         def signal_handler(signum, frame):
             logger.info(
                 f"Received signal {signum}, initiating graceful shutdown",
-                extra=self._log_context
+                extra=self._log_context,
             )
             asyncio.create_task(self.stop())
 
@@ -265,7 +264,7 @@ class SyncService:
             # Keep running until shutdown signal
             logger.info(
                 "Database sync service running, waiting for shutdown signal",
-                extra=self._log_context
+                extra=self._log_context,
             )
             await self.shutdown_event.wait()
 
@@ -273,7 +272,7 @@ class SyncService:
             logger.error(
                 f"Unexpected error in database sync service: {e}",
                 extra=self._log_context,
-                exc_info=True
+                exc_info=True,
             )
 
         finally:
@@ -286,7 +285,11 @@ class SyncService:
         is_healthy = self.is_running and self.initial_sync_complete
 
         status = {
-            "status": "healthy" if is_healthy else ("starting" if self.is_running else "stopped"),
+            "status": (
+                "healthy"
+                if is_healthy
+                else ("starting" if self.is_running else "stopped")
+            ),
             "sync_enabled": settings.SYNC_ENABLED,
             "initial_sync_complete": self.initial_sync_complete,
             "components": {},

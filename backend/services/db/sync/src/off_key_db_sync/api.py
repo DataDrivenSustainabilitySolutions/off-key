@@ -6,7 +6,7 @@ This runs as an optional component alongside the main SyncService.
 """
 
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator, Optional
+from typing import AsyncGenerator
 
 from fastapi import FastAPI, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -39,7 +39,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 # FastAPI app
 app = FastAPI(
     title="Off-Key Database Sync Service",
-    description="Database initialization and synchronization service with manual trigger API",
+    description=(
+        "Database initialization and synchronization service with manual trigger API"
+    ),
     lifespan=lifespan,
 )
 
@@ -72,15 +74,17 @@ async def trigger_charger_sync(db: AsyncSession = Depends(get_db_async)):
 
 @app.post("/sync/chargers/clean", tags=["Sync"])
 async def trigger_charger_cleanup(
-    days_inactive: int,
-    db: AsyncSession = Depends(get_db_async)
+    days_inactive: int, db: AsyncSession = Depends(get_db_async)
 ):
     """Manually trigger charger cleanup."""
     try:
         client = get_charger_api_client()
         service = ChargersSyncService(db, client)
         await service.clean_chargers(days_inactive=days_inactive)
-        return {"status": "success", "message": f"Charger cleanup completed (days_inactive={days_inactive})"}
+        return {
+            "status": "success",
+            "message": f"Charger cleanup completed (days_inactive={days_inactive})",
+        }
     except Exception as e:
         logger.error(f"Manual charger cleanup failed: {e}", exc_info=True)
         return {"status": "error", "message": str(e)}
@@ -88,15 +92,18 @@ async def trigger_charger_cleanup(
 
 @app.post("/sync/telemetry", tags=["Sync"])
 async def trigger_telemetry_sync(
-    limit: int = 10_000,
-    db: AsyncSession = Depends(get_db_async)
+    limit: int = 10_000, db: AsyncSession = Depends(get_db_async)
 ):
     """Manually trigger telemetry synchronization."""
     try:
         client = get_charger_api_client()
         service = TelemetrySyncService(db, client)
         await service.sync_telemetry(limit=limit)
-        return {"status": "success", "message": "Telemetry sync completed", "limit": limit}
+        return {
+            "status": "success",
+            "message": "Telemetry sync completed",
+            "limit": limit,
+        }
     except Exception as e:
         logger.error(f"Manual telemetry sync failed: {e}", exc_info=True)
         return {"status": "error", "message": str(e)}

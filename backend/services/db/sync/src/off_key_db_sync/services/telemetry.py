@@ -69,10 +69,7 @@ class TelemetrySyncService:
         # Logging context
         self._log_context = {"component": "telemetry_sync", "service": "db_sync"}
 
-        logger.info(
-            "TelemetrySyncService initialized",
-            extra=self._log_context
-        )
+        logger.info("TelemetrySyncService initialized", extra=self._log_context)
 
     async def sync_telemetry(self, limit: int):
         """
@@ -89,7 +86,7 @@ class TelemetrySyncService:
         # 1. Query ALL known charger IDs from the database
         logger.info(
             "Starting telemetry synchronization",
-            extra={**self._log_context, "limit": limit}
+            extra={**self._log_context, "limit": limit},
         )
         try:
             stmt = select(Charger.charger_id)  # Select all charger IDs
@@ -99,7 +96,7 @@ class TelemetrySyncService:
             logger.error(
                 f"Failed to query charger IDs from database: {e}",
                 extra=self._log_context,
-                exc_info=True
+                exc_info=True,
             )
             self.total_syncs_failed += 1
             self.last_sync_status = "failed"
@@ -109,7 +106,7 @@ class TelemetrySyncService:
         if not all_charger_ids:
             logger.warning(
                 "No chargers found in the database. Telemetry sync aborted.",
-                extra=self._log_context
+                extra=self._log_context,
             )
             self.last_sync_status = "no_chargers"
             self.last_sync_time = datetime.now()
@@ -290,9 +287,13 @@ class TelemetrySyncService:
                 if record_count < config.batch_size_small:
                     batch_size = record_count  # Single batch for small datasets
                 elif record_count < (config.batch_size_small * 10):
-                    batch_size = config.batch_size_medium  # Smaller batches for medium datasets
+                    batch_size = (
+                        config.batch_size_medium
+                    )  # Smaller batches for medium datasets
                 else:
-                    batch_size = config.batch_size_large  # Larger batches for big datasets
+                    batch_size = (
+                        config.batch_size_large
+                    )  # Larger batches for big datasets
 
                 batch_num = 0
                 successful_batches = 0
@@ -361,7 +362,8 @@ class TelemetrySyncService:
             f"Chargers: {chargers_processed_count} | "
             f"Hierarchies: {self.total_hierarchies_processed} | "
             f"Records: {self.total_records_inserted} | "
-            f"Batches: {self.total_batches_processed} successful, {self.total_batches_failed} failed | "
+            f"Batches: {self.total_batches_processed} successful, "
+            f"{self.total_batches_failed} failed | "
             f"Latency: {sync_latency:.2f}s",
             extra={
                 **self._log_context,
@@ -371,7 +373,7 @@ class TelemetrySyncService:
                 "batches_successful": self.total_batches_processed,
                 "batches_failed": self.total_batches_failed,
                 "latency": sync_latency,
-            }
+            },
         )
 
     def get_performance_metrics(self) -> TelemetrySyncMetrics:
@@ -389,9 +391,7 @@ class TelemetrySyncService:
         batch_success_rate = 100.0
         total_batches = self.total_batches_processed + self.total_batches_failed
         if total_batches > 0:
-            batch_success_rate = (
-                self.total_batches_processed / total_batches
-            ) * 100
+            batch_success_rate = (self.total_batches_processed / total_batches) * 100
 
         return TelemetrySyncMetrics(
             total_syncs_executed=self.total_syncs_executed,
@@ -406,9 +406,7 @@ class TelemetrySyncService:
             batch_success_rate=round(batch_success_rate, 2),
             average_sync_latency=round(avg_latency, 3),
             last_sync_time=(
-                self.last_sync_time.isoformat()
-                if self.last_sync_time
-                else None
+                self.last_sync_time.isoformat() if self.last_sync_time else None
             ),
             last_sync_status=self.last_sync_status,
         )
@@ -453,4 +451,3 @@ class TelemetrySyncService:
             health_score=round(health_score, 2),
             performance=metrics,
         )
-

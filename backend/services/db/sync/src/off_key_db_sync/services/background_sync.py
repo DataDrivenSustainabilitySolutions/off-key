@@ -89,7 +89,9 @@ class BackgroundSyncService:
         if sync_settings.config.telemetry_interval > 0:
             self.scheduler.add_job(
                 self._sync_telemetry,
-                trigger=IntervalTrigger(seconds=sync_settings.config.telemetry_interval),
+                trigger=IntervalTrigger(
+                    seconds=sync_settings.config.telemetry_interval
+                ),
                 id="telemetry_sync",
                 name="Telemetry Sync",
                 max_instances=sync_settings.config.scheduler_max_instances,
@@ -103,7 +105,10 @@ class BackgroundSyncService:
             )
 
         # Add charger cleanup job
-        if sync_settings.config.cleanup_enabled and sync_settings.config.cleanup_interval > 0:
+        if (
+            sync_settings.config.cleanup_enabled
+            and sync_settings.config.cleanup_interval > 0
+        ):
             self.scheduler.add_job(
                 self._cleanup_chargers,
                 trigger=IntervalTrigger(seconds=sync_settings.config.cleanup_interval),
@@ -221,7 +226,9 @@ class BackgroundSyncService:
             # Create database session
             async with AsyncSessionLocal() as session:
                 sync_service = self.telemetry_sync_factory(session)
-                await sync_service.sync_telemetry(limit=sync_settings.config.telemetry_limit)
+                await sync_service.sync_telemetry(
+                    limit=sync_settings.config.telemetry_limit
+                )
 
             sync_duration = (datetime.now() - sync_start).total_seconds()
             logger.info(
@@ -254,8 +261,9 @@ class BackgroundSyncService:
 
         try:
             logger.info(
-                f"Starting charger cleanup (threshold: {sync_settings.config.cleanup_days_inactive} days)",
-                extra=self._log_context
+                f"Starting charger cleanup "
+                f"(threshold: {sync_settings.config.cleanup_days_inactive} days)",
+                extra=self._log_context,
             )
 
             # Create database session
@@ -293,7 +301,11 @@ class BackgroundSyncService:
     def get_status(self) -> dict:
         """Get sync service status"""
         if not self.scheduler:
-            return {"enabled": sync_settings.config.enabled, "running": False, "jobs": []}
+            return {
+                "enabled": sync_settings.config.enabled,
+                "running": False,
+                "jobs": [],
+            }
 
         jobs = []
         for job in self.scheduler.get_jobs():

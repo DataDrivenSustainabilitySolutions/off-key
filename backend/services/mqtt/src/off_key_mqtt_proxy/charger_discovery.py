@@ -47,6 +47,7 @@ class DiscoveryHealthStatus:
     total_topics: int
     last_discovery_time: Optional[str]
 
+
 @dataclass
 class ChargerTelemetryInfo:
     """Information about a charger's telemetry hierarchies"""

@@ -54,16 +54,25 @@ async def wait_for_db_sync(max_retries: int = 150, retry_delay: int = 2):
                         logger.info("db-sync service is ready")
                         return True
                     else:
-                        logger.info(f"db-sync service not ready: {data.get('message', 'unknown')}")
+                        logger.info(
+                            f"db-sync service not ready: "
+                            f"{data.get('message', 'unknown')}"
+                        )
                 else:
-                    logger.info(f"db-sync health check returned status {response.status_code}")
+                    logger.info(
+                        f"db-sync health check returned status {response.status_code}"
+                    )
             except Exception as e:
-                logger.info(f"Waiting for db-sync (attempt {attempt}/{max_retries}): {e}")
+                logger.info(
+                    f"Waiting for db-sync (attempt {attempt}/{max_retries}): {e}"
+                )
 
             if attempt < max_retries:
                 await asyncio.sleep(retry_delay)
 
-        logger.warning(f"db-sync service did not become ready after {max_retries} attempts")
+        logger.warning(
+            f"db-sync service did not become ready after {max_retries} attempts"
+        )
         return False
 
 
@@ -78,6 +87,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     # Shutdown
     logger.info("Application shutdown...")
+
 
 # FastAPI app
 app = FastAPI(
@@ -108,6 +118,7 @@ app.add_middleware(
 # Routes
 app.include_router(v1_router, prefix="/v1", tags=["v1"])
 
+
 # TODO: Rethink healthcheck as a (micro)service. TODO What is considered "healthy" now?
 @app.get("/health", tags=["Health"])
 async def health_check():
@@ -117,12 +128,10 @@ async def health_check():
     """
     ...
 
+
 if __name__ == "__main__":
     import uvicorn
 
     uvicorn.run(
-        "main:app",
-        host="0.0.0.0",
-        port=8000,
-        reload=True if settings.DEBUG else False
+        "main:app", host="0.0.0.0", port=8000, reload=True if settings.DEBUG else False
     )

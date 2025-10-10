@@ -4,6 +4,7 @@ Database Sync Service Configuration
 Handles configuration for the database sync service including sync intervals,
 batch processing, health monitoring, and charger cleanup.
 """
+
 from pydantic import BaseModel, field_validator, model_validator
 from pydantic_settings import BaseSettings
 from typing import Self
@@ -85,7 +86,9 @@ class SyncConfig(BaseModel):
     def validate_chargers_interval(cls, v: int) -> int:
         """Validate charger sync interval"""
         if v < 0:
-            raise ValueError("Charger sync interval must be non-negative (0 to disable)")
+            raise ValueError(
+                "Charger sync interval must be non-negative (0 to disable)"
+            )
         if v > 0 and v < 60:
             raise ValueError(
                 "Charger sync interval must be at least 60 seconds when enabled"
@@ -97,10 +100,13 @@ class SyncConfig(BaseModel):
     def validate_telemetry_interval(cls, v: int) -> int:
         """Validate telemetry sync interval"""
         if v < 0:
-            raise ValueError("Telemetry sync interval must be non-negative (0 to disable)")
+            raise ValueError(
+                "Telemetry sync interval must be non-negative (0 to disable)"
+            )
         if v > 0 and v < 300:
             raise ValueError(
-                "Telemetry sync interval must be at least 300 seconds (5 minutes) when enabled"
+                "Telemetry sync interval must be at least 300 seconds "
+                "(5 minutes) when enabled"
             )
         return v
 
@@ -195,14 +201,18 @@ class SyncConfig(BaseModel):
             <= self.charger_sync_success_rate_unhealthy
         ):
             raise ValueError(
-                f"Charger sync degraded threshold ({self.charger_sync_success_rate_degraded}%) "
-                f"must be greater than unhealthy threshold ({self.charger_sync_success_rate_unhealthy}%)"
+                f"Charger sync degraded threshold "
+                f"({self.charger_sync_success_rate_degraded}%) "
+                f"must be greater than unhealthy threshold "
+                f"({self.charger_sync_success_rate_unhealthy}%)"
             )
 
         if self.charger_sync_latency_degraded >= self.charger_sync_latency_unhealthy:
             raise ValueError(
-                f"Charger sync degraded latency ({self.charger_sync_latency_degraded}s) "
-                f"must be less than unhealthy latency ({self.charger_sync_latency_unhealthy}s)"
+                f"Charger sync degraded latency "
+                f"({self.charger_sync_latency_degraded}s) "
+                f"must be less than unhealthy latency "
+                f"({self.charger_sync_latency_unhealthy}s)"
             )
 
         # Telemetry sync thresholds
@@ -211,8 +221,10 @@ class SyncConfig(BaseModel):
             <= self.telemetry_sync_success_rate_unhealthy
         ):
             raise ValueError(
-                f"Telemetry sync degraded threshold ({self.telemetry_sync_success_rate_degraded}%) "
-                f"must be greater than unhealthy threshold ({self.telemetry_sync_success_rate_unhealthy}%)"
+                f"Telemetry sync degraded threshold "
+                f"({self.telemetry_sync_success_rate_degraded}%) "
+                f"must be greater than unhealthy threshold "
+                f"({self.telemetry_sync_success_rate_unhealthy}%)"
             )
 
         if (
@@ -220,8 +232,10 @@ class SyncConfig(BaseModel):
             <= self.telemetry_batch_success_rate_unhealthy
         ):
             raise ValueError(
-                f"Telemetry batch degraded threshold ({self.telemetry_batch_success_rate_degraded}%) "
-                f"must be greater than unhealthy threshold ({self.telemetry_batch_success_rate_unhealthy}%)"
+                f"Telemetry batch degraded threshold "
+                f"({self.telemetry_batch_success_rate_degraded}%) "
+                f"must be greater than unhealthy threshold "
+                f"({self.telemetry_batch_success_rate_unhealthy}%)"
             )
 
         if (
@@ -229,8 +243,10 @@ class SyncConfig(BaseModel):
             >= self.telemetry_sync_latency_unhealthy
         ):
             raise ValueError(
-                f"Telemetry sync degraded latency ({self.telemetry_sync_latency_degraded}s) "
-                f"must be less than unhealthy latency ({self.telemetry_sync_latency_unhealthy}s)"
+                f"Telemetry sync degraded latency "
+                f"({self.telemetry_sync_latency_degraded}s) "
+                f"must be less than unhealthy latency "
+                f"({self.telemetry_sync_latency_unhealthy}s)"
             )
 
         # Batch size consistency
@@ -263,8 +279,12 @@ class SyncSettings(BaseSettings):
     SYNC_ON_STARTUP: bool = True  # Run sync immediately on startup
 
     # Sync Intervals
-    SYNC_CHARGERS_INTERVAL: int = 3600  # Charger sync interval (seconds) - default 1 hour
-    SYNC_TELEMETRY_INTERVAL: int = 21600  # Telemetry sync interval (seconds) - default 6 hours
+    SYNC_CHARGERS_INTERVAL: int = (
+        3600  # Charger sync interval (seconds) - default 1 hour
+    )
+    SYNC_TELEMETRY_INTERVAL: int = (
+        21600  # Telemetry sync interval (seconds) - default 6 hours
+    )
     SYNC_TELEMETRY_LIMIT: int = 10000  # Max telemetry records per hierarchy
 
     # API Server Configuration
@@ -296,7 +316,9 @@ class SyncSettings(BaseSettings):
     SYNC_TELEMETRY_LATENCY_DEGRADED: float = 120.0  # seconds above = degraded (2 min)
 
     # Scheduler Configuration
-    SYNC_SCHEDULER_MISFIRE_GRACE_TIME: int = 300  # Scheduler misfire grace time (seconds)
+    SYNC_SCHEDULER_MISFIRE_GRACE_TIME: int = (
+        300  # Scheduler misfire grace time (seconds)
+    )
     SYNC_SCHEDULER_MAX_INSTANCES: int = 1  # Max concurrent instances per job
 
     @property

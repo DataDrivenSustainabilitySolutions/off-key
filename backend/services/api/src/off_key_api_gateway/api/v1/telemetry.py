@@ -18,12 +18,14 @@ async def sync_telemetry(limit: int = 10_000):
             response = await client.post(
                 f"{settings.DB_SYNC_SERVICE_URL}/sync/telemetry",
                 params={"limit": limit},
-                timeout=600.0  # 10 minute timeout for telemetry sync
+                timeout=600.0,  # 10 minute timeout for telemetry sync
             )
             response.raise_for_status()
             return response.json()
     except httpx.HTTPError as e:
-        raise HTTPException(status_code=500, detail=f"Failed to trigger telemetry sync: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to trigger telemetry sync: {str(e)}"
+        )
 
 
 @router.get("/{charger_id}/type")

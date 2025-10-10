@@ -1,4 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException
+from datetime import datetime, timezone
+
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 import httpx
@@ -44,7 +46,7 @@ async def get_telemetry(
     telemetry_type: str,
     db: AsyncSession = Depends(get_db_async),
     limit: int = 1000,  # Reduced default limit for better performance
-    after_timestamp: str = None,  # Cursor for pagination
+    after_timestamp: datetime | None = Query(None),  # Cursor for pagination
     paginated: bool = False,  # Enable paginated response format
 ):
     query = select(Telemetry).filter(
@@ -52,8 +54,13 @@ async def get_telemetry(
     )
 
     # Cursor-based pagination for time-series data
-    if after_timestamp:
-        query = query.filter(Telemetry.timestamp < after_timestamp)
+    if after_timestamp is not None:
+        cursor = (
+            after_timestamp.replace(tzinfo=timezone.utc)
+            if after_timestamp.tzinfo is None
+            else after_timestamp.astimezone(timezone.utc)
+        )
+        query = query.filter(Telemetry.timestamp < cursor)
 
     # Always order by timestamp DESC for time-series data
     query = query.order_by(Telemetry.timestamp.desc()).limit(limit)

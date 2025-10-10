@@ -28,7 +28,10 @@ async def run_api_server(sync_service: SyncService):
     )
     server = uvicorn.Server(config)
 
-    logger.info(f"Starting FastAPI server on {sync_settings.config.api_host}:{sync_settings.config.api_port}")
+    logger.info(
+        f"Starting FastAPI server on "
+        f"{sync_settings.config.api_host}:{sync_settings.config.api_port}"
+    )
 
     # Run server
     await server.serve()
@@ -50,26 +53,35 @@ async def main():
 
     logger.info("Starting Off-Key database sync service")
 
-    # Create sync service
     sync_service = SyncService()
+    sync_task = asyncio.create_task(sync_service.run(), name="off-key-db-sync-service")
+    api_task = asyncio.create_task(
+        run_api_server(sync_service), name="off-key-db-sync-api"
+    )
 
-    # Start sync service
-    await sync_service.start()
-
-    # Run FastAPI server alongside sync service
-    api_task = asyncio.create_task(run_api_server(sync_service))
-
+    tasks = {sync_task, api_task}
     try:
-        # Wait for shutdown signal (handled by service)
-        await sync_service.shutdown_event.wait()
+        # Wait until either the sync service stops or the API server exits
+        done, _ = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+
+        # Propagate exceptions from whichever task finished first
+        for task in done:
+            task.result()
 
     finally:
-        # Cancel API server
-        api_task.cancel()
-        try:
-            await api_task
-        except asyncio.CancelledError:
-            pass
+        # Ensure both tasks are stopped
+        for task in tasks:
+            if task.done():
+                continue
+            task.cancel()
+
+        for task in tasks:
+            if task.done():
+                continue
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
 
         logger.info("Database sync service shutdown complete")
 

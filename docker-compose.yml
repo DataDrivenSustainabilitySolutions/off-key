@@ -39,8 +39,8 @@ services:
     develop:
       watch:
         - action: sync
-          path: backend/services/api/src/off_key_api_gateway
-          target: /app/lib/python3.12/site-packages/off_key_api_gateway
+          path: backend/services/db/sync/src/off_key_db_sync
+          target: /app/lib/python3.12/site-packages/off_key_db_sync
         - action: rebuild
           path: ./backend/uv.lock
 

@@ -226,7 +226,7 @@ class ChargersSyncService:
 
                 # Use string comparison which is much more efficient than casting
                 delete_statement = delete(Charger).where(
-                    Charger.last_seen is not None,
+                    Charger.last_seen.is_not(None),
                     Charger.last_seen < cutoff_iso_string,
                 )
             except Exception as e:

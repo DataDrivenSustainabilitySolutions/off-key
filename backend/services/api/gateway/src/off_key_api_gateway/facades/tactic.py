@@ -2,9 +2,9 @@
 HTTP client for communicating with the TACTIC middleware service.
 """
 
-import os
 import aiohttp
 from typing import Dict, List, Optional, Any
+from off_key_core.config.config import settings
 from off_key_core.config.logs import logger
 
 
@@ -14,8 +14,7 @@ class Tactic:
     """
 
     def __init__(self):
-        self.base_url = (f"{os.getenv("DOCKER_TACTIC_SERVICE_NAME", "tactic")}:"
-                         f"{os.getenv("DOCKER_TACTIC_SERVICE_PORT", "8001")}")
+        self.base_url = settings.tactic_service_base_url
         self.timeout = aiohttp.ClientTimeout(total=30)
         logger.info(f"Tactic facade initialized with base URL: {self.base_url}")
 

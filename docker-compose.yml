@@ -185,7 +185,6 @@ services:
       - MQTT_TELEMETRY_ENABLED=true
     volumes:
       - ./logs:/app/logs  # For log persistence
-      -
 
   emqx-main:
     image: emqx/emqx:5.8.7 # BSL license starting at 5.9!

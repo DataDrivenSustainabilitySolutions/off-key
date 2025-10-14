@@ -70,8 +70,9 @@ services:
     networks:
       - app-network
       - socket-network
+      - emqx-network
     environment:
-      - TACTIC_DOCKER_DEFAULT_NETWORK=off-key_emqx-network
+      - TACTIC_DOCKER_DEFAULT_NETWORK=emqx-network
     restart: always
     command: [ "/app/bin/python", "-m", "off_key_middleware_tactic" ]
 
@@ -184,6 +185,9 @@ networks:
     driver: bridge
   socket-network:
     driver: bridge
+  emqx-network:
+    driver: bridge
+    name: emqx-network
 
 volumes:
   postgres_data:

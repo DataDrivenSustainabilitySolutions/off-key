@@ -344,7 +344,12 @@ class WebSocketDestination(MessageDestination):
 class BridgeDestination(MessageDestination):
     """Bridge destination for forwarding messages to another MQTT broker"""
 
-    def __init__(self, target_client, topic_mapping: Dict[str, str] = None, config: Dict[str, Any] = None):
+    def __init__(
+        self,
+        target_client,
+        topic_mapping: Dict[str, str] = None,
+        config: Dict[str, Any] = None,
+    ):
         super().__init__("mqtt_bridge", config)
         self.target_client = target_client
         self.topic_mapping = topic_mapping or {}
@@ -362,7 +367,7 @@ class BridgeDestination(MessageDestination):
                 target_topic,
                 message.payload,
                 qos=0,  # Use QoS 0 for bridge to avoid loops
-                retain=False
+                retain=False,
             )
 
             processing_time = time.time() - start_time
@@ -372,7 +377,8 @@ class BridgeDestination(MessageDestination):
             if success:
                 self.success_count += 1
                 logger.debug(
-                    f"Message bridged from {message.topic} to {target_topic} in {processing_time:.3f}s",
+                    f"Message bridged from {message.topic} "
+                    f"to {target_topic} in {processing_time:.3f}s",
                     extra={
                         **self._log_context,
                         "source_topic": message.topic,
@@ -403,7 +409,9 @@ class BridgeDestination(MessageDestination):
                 extra={
                     **self._log_context,
                     "source_topic": message.topic,
-                    "target_topic": self.topic_mapping.get(message.topic, message.topic),
+                    "target_topic": self.topic_mapping.get(
+                        message.topic, message.topic
+                    ),
                     "error": str(e),
                 },
                 exc_info=True,

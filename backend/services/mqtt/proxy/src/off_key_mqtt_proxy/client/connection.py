@@ -84,7 +84,7 @@ class ConnectionManager:
             # Create MQTT client
             client_id = self.config.get_client_id()
 
-            # Use TCP transport for anonymous connections, WebSocket for authenticated ones
+            # Use TCP transport for anonymous and WebSocket for authenticated ones
             transport = "tcp" if not self.auth_handler else "websockets"
             self.client = mqtt.Client(client_id=client_id, transport=transport)
 

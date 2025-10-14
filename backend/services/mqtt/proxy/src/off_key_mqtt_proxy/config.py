@@ -402,7 +402,7 @@ class MQTTSettings(BaseSettings):
     MQTT_CONNECTION_TIMEOUT: float = 30.0  # Connection timeout in seconds
 
     # Authentication
-    MQTT_CLIENT_ID: str = "" # MQTT Client ID
+    MQTT_CLIENT_ID: str = ""  # MQTT Client ID
     MQTT_CLIENT_ID_PREFIX: str = "offkey-backend"  # MQTT client ID prefix
     MQTT_USERNAME: str  # MQTT authentication username (required)
     MQTT_APIKEY: str = ""  # API key for MQTT authentication (falls back to PIONIX_KEY)
@@ -481,7 +481,7 @@ class MQTTSettings(BaseSettings):
             bridge_client_id_prefix=self.MQTT_BRIDGE_CLIENT_ID_PREFIX,
             bridge_use_auth=self.MQTT_BRIDGE_USE_AUTH,
             bridge_username=self.MQTT_BRIDGE_USERNAME,
-            bridge_api_key=self.MQTT_BRIDGE_APIKEY
+            bridge_api_key=self.MQTT_BRIDGE_APIKEY,
         )
 
 

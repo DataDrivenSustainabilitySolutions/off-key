@@ -5,7 +5,7 @@ Database Writer for MQTT Telemetry Data
 import asyncio
 import time
 from datetime import datetime
-from typing import Dict, List, Optional, Any, Union
+from typing import Dict, List, Optional, Any, Union, Callable
 from dataclasses import dataclass, field
 from collections import defaultdict
 from enum import Enum
@@ -151,9 +151,9 @@ class DatabaseWriter:
     - Connection health monitoring
     """
 
-    def __init__(self, config: MQTTConfig, db_session: AsyncSession):
+    def __init__(self, config: MQTTConfig, session_factory: Callable[[], AsyncSession]):
         self.config = config
-        self.db_session = db_session
+        self._session_factory = session_factory
 
         # Batching configuration
         self.batch_size = config.batch_size
@@ -525,6 +525,8 @@ class DatabaseWriter:
 
         start_time = time.time()
 
+        charger_ids = batch.get_charger_ids()
+
         try:
             # Convert records to database format
             records_data = [record.to_dict() for record in batch.records]
@@ -535,8 +537,15 @@ class DatabaseWriter:
                 index_elements=["charger_id", "timestamp", "type"]
             )
 
-            result = await self.db_session.execute(stmt)  # noqa
-            await self.db_session.commit()
+            async with self._session_factory() as session:
+                try:
+                    await session.execute(stmt)
+                    if charger_ids:
+                        await self._update_charger_statuses(session, charger_ids)
+                    await session.commit()
+                except Exception:
+                    await session.rollback()
+                    raise
 
             # Update metrics
             records_written = len(
@@ -549,9 +558,6 @@ class DatabaseWriter:
             write_latency = time.time() - start_time
             self.write_latency_sum += write_latency
             self.write_latency_count += 1
-
-            # Update charger statuses
-            await self._update_charger_statuses(batch.get_charger_ids())
 
             # Log batch processing with intelligent frequency
             if self.total_batches_processed % 10 == 0 or write_latency > 1.0:
@@ -566,7 +572,7 @@ class DatabaseWriter:
                     "total_batches": self.total_batches_processed,
                     "total_records": self.total_records_written,
                     "avg_latency": self.write_latency_sum / self.write_latency_count,
-                    "charger_count": len(batch.get_charger_ids()),
+                    "charger_count": len(charger_ids),
                 }
 
                 if write_latency <= 1.0:
@@ -592,7 +598,7 @@ class DatabaseWriter:
                     "error": str(e),
                 },
             )
-            await self.db_session.rollback()
+            await self._update_chargers_after_failure(charger_ids)
             return True  # Treat as success since it's likely just duplicates
 
         except SQLAlchemyError as e:
@@ -604,7 +610,6 @@ class DatabaseWriter:
                     "error": str(e),
                 },
             )
-            await self.db_session.rollback()
             return False
 
         except Exception as e:
@@ -617,38 +622,53 @@ class DatabaseWriter:
                 },
                 exc_info=True,
             )
-            await self.db_session.rollback()
             return False
 
-    async def _update_charger_statuses(self, charger_ids: set):
-        """Update charger MQTT connection statuses"""
-        try:
-            now = datetime.now()
+    async def _update_charger_statuses(
+        self, session: AsyncSession, charger_ids: set
+    ) -> None:
+        """Update charger MQTT connection statuses within an active session"""
+        if not charger_ids:
+            return
 
-            # Update chargers' MQTT status
-            for charger_id in charger_ids:
-                last_seen = self.charger_last_seen.get(charger_id, now)
+        now = datetime.now()
 
-                stmt = (
-                    update(Charger)
-                    .where(Charger.charger_id == charger_id)
-                    .values(mqtt_connected=True, mqtt_last_message=last_seen)
-                )
+        for charger_id in charger_ids:
+            last_seen = self.charger_last_seen.get(charger_id, now)
 
-                await self.db_session.execute(stmt)
-
-            await self.db_session.commit()
-
-        except Exception as e:
-            logger.error(
-                f"Error updating charger statuses: {e}",
-                extra={
-                    **self._log_context,
-                    "charger_ids": list(charger_ids),
-                    "error": str(e),
-                },
+            stmt = (
+                update(Charger)
+                .where(Charger.charger_id == charger_id)
+                .values(mqtt_connected=True, mqtt_last_message=last_seen)
             )
-            await self.db_session.rollback()
+
+            await session.execute(stmt)
+
+    async def _update_chargers_after_failure(self, charger_ids: set) -> None:
+        """Best-effort status update when inserts fail (duplicates, etc.)."""
+        if not charger_ids:
+            return
+
+        try:
+            async with self._session_factory() as session:
+                try:
+                    await self._update_charger_statuses(session, charger_ids)
+                    await session.commit()
+                except Exception as exc:
+                    await session.rollback()
+                    logger.warning(
+                        "Failed to update charger statuses after integrity error",
+                        extra={
+                            **self._log_context,
+                            "charger_ids": list(charger_ids),
+                            "error": str(exc),
+                        },
+                    )
+        except Exception as exc:
+            logger.warning(
+                "Unable to create session for post-failure charger updates",
+                extra={**self._log_context, "error": str(exc)},
+            )
 
     async def _health_monitor_loop(self):
         """Background health monitoring loop"""

@@ -4,7 +4,7 @@ import time
 from docker import DockerClient
 from typing import Callable, Any
 from off_key_core.config.logs import logger, log_performance
-from off_key_tactic_middleware.config import tactic_settings
+from off_key_middleware_tactic.config import tactic_settings
 
 
 class AsyncDocker:

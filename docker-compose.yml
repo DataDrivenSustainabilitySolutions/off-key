@@ -21,7 +21,7 @@ services:
       context: ./backend/
       args:
         SERVICE_NAME: off-key-api-gateway
-        SERVICE_ROOT: services/api
+        SERVICE_ROOT: services/api/gateway
     image: "${API_IMAGE:-off-key-api-gateway:latest}"
     container_name: api_gateway
     env_file: .env
@@ -73,7 +73,7 @@ services:
     environment:
       - TACTIC_DOCKER_DEFAULT_NETWORK=off-key_emqx-network
     restart: always
-    command: [ "/app/bin/python", "-m", "off_key_tactic_middleware" ]
+    command: [ "/app/bin/python", "-m", "off_key_middleware_tactic" ]
 
   socket-proxy:
     container_name: socket-proxy

@@ -115,11 +115,11 @@ class MQTTProxyService:
             db_destination = DatabaseDestination(self.database_writer)
             self.message_router.add_destination(db_destination, is_default=True)
 
+            self.is_running = True
+
             # Initialize bridge if enabled
             if self.config.enable_bridge:
                 await self._setup_bridge()
-
-            self.is_running = True
 
             logger.info(
                 "MQTT proxy service started successfully",

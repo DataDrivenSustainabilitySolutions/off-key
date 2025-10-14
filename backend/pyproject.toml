@@ -24,17 +24,10 @@ dev = ["black", "ruff", "pre-commit"]
 
 [tool.uv.workspace]
 members = [
-#    "services/**",
-#    "libs/**"
-    "[!.]*/**"
-]
-
-exclude = [
-    "**/src",
-    "**/src/**",
-    # Services parents
-    "services/db",
-    "services/mqtt"
+    "libs/*",
+    "services/api",
+    "services/db/sync",
+    "services/mqtt/proxy"
 ]
 
 [project.urls]

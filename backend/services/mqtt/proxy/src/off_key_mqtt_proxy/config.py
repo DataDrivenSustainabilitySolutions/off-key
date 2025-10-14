@@ -1,5 +1,5 @@
 """
-MQTT Service Configuration
+MQTT Proxy Configuration
 
 Handles configuration for the MQTT proxy service including API-Key authentication,
 MQTT broker configuration, and service-specific parameters.
@@ -10,7 +10,7 @@ from pydantic import BaseModel, field_validator, model_validator
 from pydantic_settings import BaseSettings
 
 from off_key_core.config.config import settings
-from typing import Self
+from typing import Self, Dict
 from dotenv import find_dotenv, load_dotenv
 
 # Load default ".env" file from upper project tree
@@ -74,6 +74,17 @@ class MQTTConfig(BaseModel):
     # Shutdown Configuration
     shutdown_timeout: float = 10.0  # Default timeout for component shutdown
     graceful_shutdown_timeout: float = 30.0  # Total graceful shutdown timeout
+
+    # Bridge Configuration
+    enable_bridge: bool = False  # Enable MQTT bridge to another broker
+    bridge_broker_host: str = ""  # Bridge target broker host
+    bridge_broker_port: int = 1883  # Bridge target broker port
+    bridge_use_tls: bool = False  # Use TLS for bridge connection
+    bridge_client_id_prefix: str = "offkey-bridge"  # Bridge client ID prefix
+    bridge_use_auth: bool = True  # Enable/disable bridge authentication
+    bridge_username: str = ""  # Bridge authentication username
+    bridge_api_key: str = ""  # Bridge API key
+    bridge_topic_mapping: Dict[str, str] = {}  # Source topic -> target topic mapping
 
     class Config:
         # Prevent extra fields
@@ -285,6 +296,27 @@ class MQTTConfig(BaseModel):
             )
         return v
 
+    @field_validator("bridge_broker_port")
+    @classmethod
+    def validate_bridge_broker_port(cls, v: int) -> int:
+        """Validate bridge broker port is in valid range"""
+        if not 1 <= v <= 65535:
+            raise ValueError("Bridge broker port must be between 1 and 65535")
+        return v
+
+    @field_validator("bridge_client_id_prefix")
+    @classmethod
+    def validate_bridge_client_id_prefix(cls, v: str) -> str:
+        """Validate bridge client ID prefix format"""
+        if v and len(v) > 50:
+            raise ValueError("Bridge client ID prefix must be max 50 characters")
+        if v and not v.replace("-", "").replace("_", "").isalnum():
+            raise ValueError(
+                "Bridge client ID prefix must contain only "
+                "alphanumeric characters, hyphens, and underscores"
+            )
+        return v
+
     @model_validator(mode="after")
     def validate_timeout_consistency(self) -> Self:
         """Validate that timeouts are consistent with explicit safety margins"""
@@ -370,6 +402,7 @@ class MQTTSettings(BaseSettings):
     MQTT_CONNECTION_TIMEOUT: float = 30.0  # Connection timeout in seconds
 
     # Authentication
+    MQTT_CLIENT_ID: str = ""  # MQTT Client ID
     MQTT_CLIENT_ID_PREFIX: str = "offkey-backend"  # MQTT client ID prefix
     MQTT_USERNAME: str  # MQTT authentication username (required)
     MQTT_APIKEY: str = ""  # API key for MQTT authentication (falls back to PIONIX_KEY)
@@ -394,6 +427,16 @@ class MQTTSettings(BaseSettings):
     # Shutdown Configuration
     MQTT_SHUTDOWN_TIMEOUT: float = 10.0  # Component shutdown timeout in seconds
     MQTT_GRACEFUL_SHUTDOWN_TIMEOUT: float = 30.0  # Total graceful shutdown timeout
+
+    # Bridge Configuration
+    MQTT_ENABLE_BRIDGE: bool = False  # Enable MQTT bridge to another broker
+    MQTT_BRIDGE_BROKER_HOST: str = ""  # Bridge target broker host
+    MQTT_BRIDGE_BROKER_PORT: int = 1883  # Bridge target broker port
+    MQTT_BRIDGE_USE_TLS: bool = False  # Use TLS for bridge connection
+    MQTT_BRIDGE_CLIENT_ID_PREFIX: str = "offkey-bridge"  # Bridge client ID prefix
+    MQTT_BRIDGE_USE_AUTH: bool = True  # Enable/disable bridge authentication
+    MQTT_BRIDGE_USERNAME: str = ""  # Bridge authentication username
+    MQTT_BRIDGE_APIKEY: str = ""  # Bridge API key (falls back to PIONIX_KEY)
 
     @property
     def config(self) -> "MQTTConfig":
@@ -431,6 +474,14 @@ class MQTTSettings(BaseSettings):
             worker_threads=self.MQTT_WORKER_THREADS,
             shutdown_timeout=self.MQTT_SHUTDOWN_TIMEOUT,
             graceful_shutdown_timeout=self.MQTT_GRACEFUL_SHUTDOWN_TIMEOUT,
+            enable_bridge=self.MQTT_ENABLE_BRIDGE,
+            bridge_broker_host=self.MQTT_BRIDGE_BROKER_HOST,
+            bridge_broker_port=self.MQTT_BRIDGE_BROKER_PORT,
+            bridge_use_tls=self.MQTT_BRIDGE_USE_TLS,
+            bridge_client_id_prefix=self.MQTT_BRIDGE_CLIENT_ID_PREFIX,
+            bridge_use_auth=self.MQTT_BRIDGE_USE_AUTH,
+            bridge_username=self.MQTT_BRIDGE_USERNAME,
+            bridge_api_key=self.MQTT_BRIDGE_APIKEY,
         )
 
 

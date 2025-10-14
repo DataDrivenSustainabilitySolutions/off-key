@@ -734,7 +734,7 @@ requires-dist = [
 [[package]]
 name = "off-key-mqtt-proxy"
 version = "0.1.0"
-source = { editable = "services/mqtt" }
+source = { editable = "services/mqtt/proxy" }
 dependencies = [
     { name = "asyncio-mqtt" },
     { name = "off-key-core" },

@@ -197,6 +197,7 @@ class MessageDestination(ABC):
             metrics=metrics,
         )
 
+
 class DatabaseDestination(MessageDestination):
     """Database destination for telemetry data"""
 
@@ -337,6 +338,84 @@ class WebSocketDestination(MessageDestination):
                 exc_info=True,
             )
 
+            return False
+
+
+class BridgeDestination(MessageDestination):
+    """Bridge destination for forwarding messages to another MQTT broker"""
+
+    def __init__(
+        self,
+        target_client,
+        topic_mapping: Dict[str, str] = None,
+        config: Dict[str, Any] = None,
+    ):
+        super().__init__("mqtt_bridge", config)
+        self.target_client = target_client
+        self.topic_mapping = topic_mapping or {}
+
+    async def process_message(self, message: MQTTMessage) -> bool:
+        """Forward message to target broker"""
+        try:
+            start_time = time.time()
+
+            # Map topic if needed
+            target_topic = self.topic_mapping.get(message.topic, message.topic)
+
+            # Forward message to target broker
+            success = await self.target_client.publish(
+                target_topic,
+                message.payload,
+                qos=0,  # Use QoS 0 for bridge to avoid loops
+                retain=False,
+            )
+
+            processing_time = time.time() - start_time
+            self.message_count += 1
+            self.total_processing_time += processing_time
+
+            if success:
+                self.success_count += 1
+                logger.debug(
+                    f"Message bridged from {message.topic} "
+                    f"to {target_topic} in {processing_time:.3f}s",
+                    extra={
+                        **self._log_context,
+                        "source_topic": message.topic,
+                        "target_topic": target_topic,
+                        "processing_time": processing_time,
+                    },
+                )
+                return True
+            else:
+                self.failure_count += 1
+                logger.error(
+                    f"Failed to bridge message from {message.topic} to {target_topic}",
+                    extra={
+                        **self._log_context,
+                        "source_topic": message.topic,
+                        "target_topic": target_topic,
+                        "error": "publish_failed",
+                    },
+                )
+                return False
+
+        except Exception as e:
+            self.message_count += 1
+            self.failure_count += 1
+
+            logger.error(
+                f"Bridge destination processing failed: {e}",
+                extra={
+                    **self._log_context,
+                    "source_topic": message.topic,
+                    "target_topic": self.topic_mapping.get(
+                        message.topic, message.topic
+                    ),
+                    "error": str(e),
+                },
+                exc_info=True,
+            )
             return False
 
 
@@ -634,7 +713,6 @@ class MessageRouter:
             self.total_messages_routed % 100 == 0
             or route_info.get_success_count() < len(enabled_destinations)
         ):
-
             message_text = (
                 f"Message routed: {route_info.get_success_count()}/"
                 f"{len(enabled_destinations)} successful"

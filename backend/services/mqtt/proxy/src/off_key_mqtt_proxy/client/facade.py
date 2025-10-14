@@ -13,17 +13,17 @@ from typing import Optional, Dict, Any, Callable, Union, Awaitable
 import paho.mqtt.client as mqtt
 from off_key_core.config.logs import logger
 from off_key_core.utils.enum import HealthStatus
-from .config import MQTTConfig
-from .auth import ApiKeyAuthHandler
-from .client.models import (
+from ..config import MQTTConfig
+from ..auth import ApiKeyAuthHandler
+from .models import (
     ConnectionState,
     MQTTMessage,
     ClientConnectionInfo,
     ClientHealthStatus,
 )
-from .client.connection import ConnectionManager
-from .client.subscriptions import SubscriptionManager
-from .client.messaging import MessageHandler
+from .connection import ConnectionManager
+from .subscriptions import SubscriptionManager
+from .messaging import MessageHandler
 
 
 class MQTTClient:
@@ -208,7 +208,6 @@ class MQTTClient:
             ),
             messages_sent=self.messages_sent,
         )
-
 
     def get_health_status(self) -> ClientHealthStatus:
         """Get health status for monitoring"""

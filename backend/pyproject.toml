@@ -26,8 +26,12 @@ dev = ["black", "ruff", "pre-commit"]
 members = [
     "libs/*",
     "services/api/*",
-    "services/middleware/*",
-    "services/mqtt"
+    "services/db/*",
+    "services/mqtt/*",
+    "services/middleware/*"
+]
+exclude = [
+    "services/mqtt/broker"
 ]
 
 [project.urls]

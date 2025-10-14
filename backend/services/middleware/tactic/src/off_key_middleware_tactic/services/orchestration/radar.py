@@ -392,7 +392,7 @@ class RadarOrchestrationService:
         """
         query = select(MonitoringService)
         if active_only:
-            query = query.where(MonitoringService.status is True)
+            query = query.where(MonitoringService.status.is_(True))
 
         result = await self.session.execute(query)
         services = result.scalars().all()

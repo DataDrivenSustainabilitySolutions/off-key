@@ -283,6 +283,47 @@ services:
     # volumes:
     #   - $PWD/emqx2_data:/opt/emqx/data
 
+  memcached:
+    image: memcached:latest
+    # command: memcached -vv
+    ports:
+      - "11211:11211"
+    # hostname: "memcached-alpha"
+    networks:
+      - app-network
+
+  mcrouter:
+    image: ghcr.io/mszabo-wikia/mcrouter-debian-bookworm:20250621-a099b76
+    environment:
+      - MC_LOCAL=memcached
+      - MC_SERVICE=memcached
+    ports:
+      - "11210:11211"
+    volumes:
+      - "./backend/services/cache/mcrouter/config.json:/usr/local/mcrouter/config/config.json.template"
+    command:
+      - /bin/bash
+      - -c
+      - |
+        sed "s|\$${MC_LOCAL}|$${MC_LOCAL}|g" /usr/local/mcrouter/config/config.json.template | \
+        sed "s|\$${MC_SERVICE}|$${MC_SERVICE}|g" > /usr/local/mcrouter/config/config.json && \
+        /usr/bin/mcrouter --config-file=/usr/local/mcrouter/config/config.json \
+        -p 11211 \
+        --num-proxies=1 \
+        --stats-logging-interval=0 \
+        --asynclog-disable \
+        --probe-timeout-initial=1000 \
+        --probe-timeout-max=15000 \
+        --reset-inactive-connection-interval=900000 \
+        --keepalive-count=6 \
+        --keepalive-interval=4 \
+        --keepalive-idle=30 \
+        --timeouts-until-tko=6
+    depends_on:
+      - memcached
+    networks:
+      - app-network
+
 networks:
   app-network:
     driver: bridge

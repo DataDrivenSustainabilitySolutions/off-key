@@ -211,6 +211,24 @@ services:
     volumes:
       - ./logs:/app/logs  # For log persistence
 
+  mqtt-radar:
+    build:
+      context: ./backend/
+      args:
+        SERVICE_NAME: off-key-mqtt-radar
+        SERVICE_ROOT: services/mqtt/radar
+    image: "${MQTT_PROXY_IMAGE:-off-key-mqtt-radar:latest}"
+    container_name: mqtt_radar
+    env_file: .env
+    command: [ "/app/bin/python", "-m", "off_key_mqtt_radar" ]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - app-network
+      - emqx-network
+    restart: always
+
   emqx-main:
     image: emqx/emqx:5.8.7 # BSL license starting at 5.9!
     environment:

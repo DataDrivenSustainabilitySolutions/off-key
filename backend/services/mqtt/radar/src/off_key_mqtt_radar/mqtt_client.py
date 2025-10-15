@@ -196,14 +196,31 @@ class RadarMQTTClient:
             logger.warning(f"Unexpected MQTT disconnection (code: {rc})")
             # Schedule reconnection
             if self._loop and not self._shutdown_event.is_set():
-                self._loop.create_task(self._schedule_reconnect())
+                self._loop.call_soon_threadsafe(
+                    lambda: asyncio.create_task(self._schedule_reconnect())
+                )
         else:
             logger.info("MQTT disconnection completed")
 
     def _on_message(self, client, userdata, msg):
         """MQTT message callback"""
+        if not self._loop:
+            logger.debug("Asyncio loop not ready, dropping incoming MQTT message")
+            return
+
+        message = MQTTMessage(
+            topic=msg.topic,
+            payload=msg.payload,
+            qos=msg.qos,
+            retain=msg.retain,
+            timestamp=datetime.now(),
+        )
+
+        self._loop.call_soon_threadsafe(lambda: self._handle_incoming_message(message))
+
+    def _handle_incoming_message(self, message: MQTTMessage):
+        """Handle MQTT message on the asyncio event loop thread"""
         try:
-            # Check rate limiting
             current_time = time.time()
             self.rate_limiter.append(current_time)
 
@@ -217,16 +234,6 @@ class RadarMQTTClient:
                 logger.warning("Rate limit exceeded, dropping message")
                 return
 
-            # Create message object
-            message = MQTTMessage(
-                topic=msg.topic,
-                payload=msg.payload,
-                qos=msg.qos,
-                retain=msg.retain,
-                timestamp=datetime.now(),
-            )
-
-            # Add to processing queue
             try:
                 self.message_queue.put_nowait(message)
                 self.message_count += 1

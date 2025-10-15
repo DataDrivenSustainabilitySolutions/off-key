@@ -121,6 +121,10 @@ class Settings(BaseSettings):
         "http://localhost:5173",
     ]  # List of allowed origins for CORS
 
+    # Middleware TACTIC Service
+    TACTIC_SERVICE_HOST: str = "middleware_tactic"
+    TACTIC_SERVICE_PORT: int = 8000
+
     @property
     def database_url(self):
         return (
@@ -189,6 +193,13 @@ class Settings(BaseSettings):
             )
         except KeyError as e:
             raise ValueError(f"Missing required parameter {e} for MQTT topic template")
+
+    @property
+    def tactic_service_base_url(self) -> str:
+        """
+        Build the base URL used to reach the middleware TACTIC service.
+        """
+        return f"http://{self.TACTIC_SERVICE_HOST}:{self.TACTIC_SERVICE_PORT}"
 
     @property
     def pionix_config(self) -> "PionixConfig":

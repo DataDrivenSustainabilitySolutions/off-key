@@ -1,31 +1,29 @@
-import os
 import asyncio
 import time
 
 from docker import DockerClient
 from typing import Callable, Any
 from off_key_core.config.logs import logger, log_performance
-
-MAX_CONCURRENT_CALLS = int(os.getenv("DOCKER_MAX_CONCURRENT_CALLS", "5"))
+from off_key_middleware_tactic.config import tactic_settings
 
 
 class AsyncDocker:
-    def __init__(self, max_concurrent_calls: int = MAX_CONCURRENT_CALLS):
-        docker_url = os.getenv("DOCKER_API_URL", "http://socket-proxy")
-        docker_port = os.getenv("DOCKER_API_PORT", "2375")
-        base_url = f"{docker_url}:{docker_port}"
+    def __init__(self, docker_config=None):
+        config = docker_config or tactic_settings.config.docker
 
         try:
-            self.client = DockerClient(base_url=base_url)
-            self.semaphore = asyncio.Semaphore(max_concurrent_calls)
+            self.client = DockerClient(base_url=config.base_url)
+            self.semaphore = asyncio.Semaphore(config.max_concurrent_calls)
+            self.config = config
             logger.info(
                 f"Docker client initialized successfully |"
-                f" URL: {base_url} | Max concurrent: {max_concurrent_calls}"
+                f" URL: {config.base_url} | "
+                f"Max concurrent: {config.max_concurrent_calls}"
             )
         except Exception as e:
             logger.error(
                 f"Failed to initialize Docker client |"
-                f" URL: {base_url} | Error: {str(e)}"
+                f" URL: {config.base_url} | Error: {str(e)}"
             )
             raise
 

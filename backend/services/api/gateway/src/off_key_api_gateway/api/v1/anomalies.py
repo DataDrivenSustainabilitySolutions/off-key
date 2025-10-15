@@ -11,7 +11,7 @@ from off_key_core.config.logs import logger
 router = APIRouter()
 
 
-@router.get("/")
+@router.get("")
 async def get_anomalies(charger_id: str, db: AsyncSession = Depends(get_db_async)):
     result = await db.execute(
         select(Anomaly)
@@ -32,7 +32,7 @@ async def get_anomalies(charger_id: str, db: AsyncSession = Depends(get_db_async
     ]
 
 
-@router.post("/")
+@router.post("")
 async def create_anomaly(
     charger_id: str,
     timestamp: datetime,
@@ -78,7 +78,7 @@ async def create_anomaly(
     return {"message": "Anomaly added"}
 
 
-@router.delete("/")
+@router.delete("")
 async def delete_anomaly_by_fields(
     charger_id: str,
     timestamp: datetime,

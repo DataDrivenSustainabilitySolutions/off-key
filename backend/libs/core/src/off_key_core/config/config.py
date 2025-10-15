@@ -105,6 +105,9 @@ class Settings(BaseSettings):
     SYNC_TELEMETRY_INTERVAL: int = 21600  # Telemetry sync interval in seconds (6 hours)
     SYNC_TELEMETRY_LIMIT: int = 1000  # Maximum telemetry records to sync per run
 
+    # DB Sync Service Configuration
+    DB_SYNC_SERVICE_URL: str = "http://sync:8009"  # URL for db-sync service
+
     # Logging Configuration
     LOG_LEVEL: str = "INFO"  # DEBUG, INFO, WARNING, ERROR, CRITICAL
     LOG_FORMAT: str = "simple"  # simple or json
@@ -117,6 +120,10 @@ class Settings(BaseSettings):
         "http://localhost:8000",
         "http://localhost:5173",
     ]  # List of allowed origins for CORS
+
+    # Middleware TACTIC Service
+    TACTIC_SERVICE_HOST: str = "middleware_tactic"
+    TACTIC_SERVICE_PORT: int = 8000
 
     @property
     def database_url(self):
@@ -186,6 +193,13 @@ class Settings(BaseSettings):
             )
         except KeyError as e:
             raise ValueError(f"Missing required parameter {e} for MQTT topic template")
+
+    @property
+    def tactic_service_base_url(self) -> str:
+        """
+        Build the base URL used to reach the middleware TACTIC service.
+        """
+        return f"http://{self.TACTIC_SERVICE_HOST}:{self.TACTIC_SERVICE_PORT}"
 
     @property
     def pionix_config(self) -> "PionixConfig":

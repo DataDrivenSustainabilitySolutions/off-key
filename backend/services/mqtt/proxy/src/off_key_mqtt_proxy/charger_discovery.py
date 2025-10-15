@@ -7,7 +7,7 @@ then manages MQTT topic subscriptions for real-time telemetry data.
 """
 
 from datetime import datetime
-from typing import Dict, List, Set, Optional, Iterable, Tuple, AsyncGenerator
+from typing import Dict, List, Set, Optional, Iterable, Tuple, AsyncGenerator, Callable
 from dataclasses import dataclass
 
 from sqlalchemy import select
@@ -47,6 +47,7 @@ class DiscoveryHealthStatus:
     total_topics: int
     last_discovery_time: Optional[str]
 
+
 @dataclass
 class ChargerTelemetryInfo:
     """Information about a charger's telemetry hierarchies"""
@@ -85,11 +86,11 @@ class ChargerDiscoveryService:
     def __init__(
         self,
         config: MQTTConfig,
-        db_session: AsyncSession,
+        session_factory: Callable[[], AsyncSession],
         api_client: ChargerAPIClient,
     ):
         self.config = config
-        self.db_session = db_session
+        self._session_factory = session_factory
         self.api_client = api_client
 
         # Discovery state
@@ -164,7 +165,8 @@ class ChargerDiscoveryService:
         """Get all charger IDs from the database"""
         try:
             stmt = select(Charger.charger_id)
-            result = await self.db_session.execute(stmt)
+            async with self._session_factory() as session:
+                result = await session.execute(stmt)
             charger_ids = result.scalars().all()
             charger_list = list(charger_ids)
 

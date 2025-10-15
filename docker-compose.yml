@@ -16,12 +16,40 @@ services:
       timeout: 5s
       retries: 5
 
+  sync:
+    build:
+      context: ./backend/
+      args:
+        SERVICE_ROOT: services/db/sync
+        SERVICE_NAME: off-key-db-sync
+    image: "${DB_SYNC_IMAGE:-off-key-db-sync:latest}"
+    container_name: db_sync
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - app-network
+    restart: always
+    command: ["/app/bin/python", "-m", "off_key_db_sync"]
+#    command: ["uvicorn", "off_key_db_sync.main:app",
+#              "--reload", "--reload-dir", "/app/lib/python3.12/site-packages/off_key_db_sync",
+#              "--host", "", "--port", "8009"]
+#    command: ["sleep", "10000"]
+    develop:
+      watch:
+        - action: sync
+          path: backend/services/db/sync/src/off_key_db_sync
+          target: /app/lib/python3.12/site-packages/off_key_db_sync
+        - action: rebuild
+          path: ./backend/uv.lock
+
   api:
     build:
       context: ./backend/
       args:
         SERVICE_NAME: off-key-api-gateway
-        SERVICE_ROOT: services/api
+        SERVICE_ROOT: services/api/gateway
     image: "${API_IMAGE:-off-key-api-gateway:latest}"
     container_name: api_gateway
     env_file: .env
@@ -32,6 +60,8 @@ services:
         condition: service_healthy
       socket-proxy:
         condition: service_started
+#      sync:
+#        condition: service_healthy
     networks:
       - app-network
       - socket-network
@@ -46,10 +76,35 @@ services:
     develop:
       watch:
         - action: sync
-          path: backend/services/api/src/off_key_api_gateway
+          path: backend/services/api/gateway/src/off_key_api_gateway
           target: /app/lib/python3.12/site-packages/off_key_api_gateway
         - action: rebuild
           path: ./backend/uv.lock
+
+  tactic:
+    build:
+      context: ./backend/
+      args:
+        SERVICE_NAME: off-key-middleware-tactic
+        SERVICE_ROOT: services/middleware/tactic
+    image: "${TACTIC_IMAGE:-off-key-tactic-middleware:latest}"
+    container_name: middleware_tactic
+    env_file: .env
+    ports:
+      - "8001:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      socket-proxy:
+        condition: service_started
+    networks:
+      - app-network
+      - socket-network
+      - emqx-network
+    environment:
+      - TACTIC_DOCKER_DEFAULT_NETWORK=emqx-network
+    restart: always
+    command: [ "/app/bin/python", "-m", "off_key_middleware_tactic" ]
 
   socket-proxy:
     container_name: socket-proxy
@@ -138,7 +193,7 @@ services:
       context: ./backend/
       args:
         SERVICE_NAME: off-key-mqtt-proxy
-        SERVICE_ROOT: services/mqtt
+        SERVICE_ROOT: services/mqtt/proxy
     image: "${MQTT_PROXY_IMAGE:-off-key-mqtt-proxy:latest}"
     container_name: mqtt_proxy
     env_file: .env
@@ -148,6 +203,7 @@ services:
         condition: service_healthy
     networks:
       - app-network
+      - emqx-network
     restart: always
     environment:
       - SERVICE_TYPE=mqtt_proxy
@@ -173,10 +229,66 @@ services:
       - emqx-network
     restart: always
 
+  emqx-main:
+    image: emqx/emqx:5.8.7 # BSL license starting at 5.9!
+    environment:
+      - "EMQX_NODE_NAME=emqx@emqx-main.ddss.local"
+      - "EMQX_CLUSTER__DISCOVERY_STRATEGY=static"
+      # Docker Swarm: Use service name / "tasks.service_name" to leverage docker DNS resolver
+      # Docker Swarm: Use template holders for hostnames
+      - "EMQX_CLUSTER__STATIC__SEEDS=[emqx@emqx-main.ddss.local,emqx@emqx-worker.ddss.local]"
+      # See https://github.com/emqx/emqx/issues/8627#issuecomment-2833234761
+      # Only works on fresh boot (no data volume!)
+      - "EMQX_DASHBOARD__DEFAULT_USERNAME=ddss"
+      - "EMQX_DASHBOARD__DEFAULT_PASSWORD=xMdrOJtNxRA8ZwUtjAHq"
+    healthcheck:
+      test: [ "CMD", "/opt/emqx/bin/emqx", "ctl", "status" ]
+      interval: 5s
+      timeout: 25s
+      retries: 5
+    networks:
+      emqx-network:
+        aliases:
+          - emqx-main.ddss.local
+    ports:
+      - 1883:1883
+      - 8083:8083
+      - 8084:8084
+      - 8883:8883
+      - 18083:18083
+    # volumes:
+    #   - $PWD/emqx1_data:/opt/emqx/data
+
+  emqx-worker:
+    image: emqx/emqx:5.8.7 # BSL license starting at 5.9!
+    environment:
+      - "EMQX_NODE_NAME=emqx@emqx-worker.ddss.local"
+      - "EMQX_CLUSTER__DISCOVERY_STRATEGY=static"
+      # Docker Swarm: Use service name / "tasks.service_name" to leverage docker DNS resolver
+      # Docker Swarm: Use template holders for hostnames
+      - "EMQX_CLUSTER__STATIC__SEEDS=[emqx@emqx-main.ddss.local,emqx@emqx-worker.ddss.local]"
+      # See https://github.com/emqx/emqx/issues/8627#issuecomment-2833234761
+      # Only works on fresh boot (no data volume!)
+      - "EMQX_DASHBOARD__DEFAULT_USERNAME=ddss"
+      - "EMQX_DASHBOARD__DEFAULT_PASSWORD=xMdrOJtNxRA8ZwUtjAHq"
+    healthcheck:
+      test: [ "CMD", "/opt/emqx/bin/emqx", "ctl", "status" ]
+      interval: 5s
+      timeout: 25s
+      retries: 5
+    networks:
+      emqx-network:
+        aliases:
+          - emqx-worker.ddss.local
+    # volumes:
+    #   - $PWD/emqx2_data:/opt/emqx/data
+
 networks:
   app-network:
     driver: bridge
   socket-network:
+    driver: bridge
+  emqx-network:
     driver: bridge
 
 volumes:

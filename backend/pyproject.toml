@@ -24,17 +24,14 @@ dev = ["black", "ruff", "pre-commit"]
 
 [tool.uv.workspace]
 members = [
-    "[!.]*/**" # Traverse all visible directories right under backend/
+    "libs/*",
+    "services/api/*",
+    "services/db/*",
+    "services/mqtt/*",
+    "services/middleware/*"
 ]
 exclude = [
-    "**/src", # Exclude all src/ dirs
-    "**/src/**",  # Exclude all src/ subdirs
-    # Define the immediate parent of nested projects
-    "services/mqtt",
-    "services/db",
-    "services/db/**",
-    "services/middleware",
-    "services/middleware/**"
+    "services/mqtt/broker"
 ]
 
 [project.urls]

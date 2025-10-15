@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, Depends, Query, Request
 from typing import List, Dict, Optional, Any
 from pydantic import BaseModel, Field
 
-from off_key_middleware_tactic.services.orchestration.radar import (
+from ...services.orchestration.radar import (
     RadarOrchestrationService,
 )
 from ...provider import get_radar_orchestration_service

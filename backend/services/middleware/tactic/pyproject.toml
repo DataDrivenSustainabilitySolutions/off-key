@@ -1,5 +1,5 @@
 [project]
-name = "off-key-middleware-tactic"
+name = "off-key-tactic-middleware"
 version = "0.1.0"
 description = "Timely Anomaly Communication / Task Instance Control for off-key platform"
 authors = [

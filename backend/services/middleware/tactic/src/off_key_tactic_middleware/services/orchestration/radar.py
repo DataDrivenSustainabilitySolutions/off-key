@@ -10,8 +10,8 @@ from sqlalchemy import select, delete
 
 from off_key_core.config.logs import logger
 from off_key_core.db.models import MonitoringService
-from off_key_middleware_tactic.facades.docker import AsyncDocker
-from off_key_middleware_tactic.config import tactic_settings
+from ...facades.docker import AsyncDocker
+from ...config import tactic_settings
 
 async_docker = AsyncDocker()
 

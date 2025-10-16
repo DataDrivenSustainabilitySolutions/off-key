@@ -1,7 +1,173 @@
 services:
-  postgres:
+### =============================================== ###
+###               INTERNAL SERVICES                 ###
+### =============================================== ###
+  frontend:
+    build: ./frontend
+    image: "${FRONTEND_IMAGE:-off-key-frontend:latest}"
+    container_name: react_client
+    env_file: .env
+    ports:
+      - "${FRONTEND_PORT}:5173"
+    depends_on:
+      - api-gateway
+    networks:
+      - app-network
+    develop:
+      watch:
+        - action: sync
+          path: ./frontend
+          target: /src
+          ignore:
+            - node_modules/
+        - action: rebuild
+          path: ./frontend/package.json
+        - action: rebuild
+          path: ./frontend/yarn.lock
+
+  api-gateway:
+    build:
+      context: ./backend/
+      args:
+        SERVICE_NAME: off-key-api-gateway
+        SERVICE_ROOT: services/api/gateway
+    image: "${API_GATEWAY_IMAGE:-off-key-api-gateway:latest}"
+    container_name: api_gateway
+    env_file: .env
+    ports:
+      - "${BACKEND_PORT}:8000"
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+      socket-proxy:
+        condition: service_started
+      db-sync:
+        condition: service_started
+      tactic-middleware:
+        condition: service_started
+    networks:
+      - app-network
+      - socket-network
+    restart: always
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      retries: 5
+    command: ["uvicorn", "off_key_api_gateway.main:app",
+              "--reload", "--reload-dir", "/app/lib/python3.12/site-packages/off_key_api_gateway",
+              "--host", "", "--port", "8000"]
+    develop:
+      watch:
+        - action: sync
+          path: backend/services/api/gateway/src/off_key_api_gateway
+          target: /app/lib/python3.12/site-packages/off_key_api_gateway
+        - action: rebuild
+          path: ./backend/uv.lock
+
+  tactic-middleware:
+    build:
+      context: ./backend/
+      args:
+        SERVICE_NAME: off-key-tactic-middleware
+        SERVICE_ROOT: services/middleware/tactic
+    image: "${TACTIC_MIDDLEWARE_IMAGE:-off-key-tactic-middleware:latest}"
+    container_name: tactic_middleware
+    env_file: .env
+    ports:
+      - "8001:8000"
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+      socket-proxy:
+        condition: service_started
+    networks:
+      - app-network
+      - socket-network
+      - emqx-network
+    environment:
+      # Create network: `sudo docker network create --driver overlay --attachable ${COMPOSE_PROJECT_NAME}_emqx-network`
+      - TACTIC_DOCKER_DEFAULT_NETWORK=${COMPOSE_PROJECT_NAME:-off-key}_emqx-network
+    restart: always
+    command: [ "/app/bin/python", "-m", "off_key_tactic_middleware" ]
+
+  mqtt-radar:
+    build:
+      context: ./backend/
+      args:
+        SERVICE_NAME: off-key-mqtt-radar
+        SERVICE_ROOT: services/mqtt/radar
+    image: "${MQTT_RADAR_IMAGE:-off-key-mqtt-radar:latest}"
+    container_name: mqtt_radar
+    env_file: .env
+    command: [ "/app/bin/python", "-m", "off_key_mqtt_radar" ]
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+    networks:
+      - app-network
+      - emqx-network
+    restart: always
+
+  mqtt-proxy:
+    build:
+      context: ./backend/
+      args:
+        SERVICE_NAME: off-key-mqtt-proxy
+        SERVICE_ROOT: services/mqtt/proxy
+    image: "${MQTT_PROXY_IMAGE:-off-key-mqtt-proxy:latest}"
+    container_name: mqtt_proxy
+    env_file: .env
+    command: [ "/app/bin/python", "-m", "off_key_mqtt_proxy" ]
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+    networks:
+      - app-network
+      - emqx-network
+    restart: always
+    environment:
+      - SERVICE_TYPE=mqtt_proxy
+      - MQTT_TELEMETRY_ENABLED=true
+    volumes:
+      - ./logs:/app/logs  # For log persistence
+
+  db-sync:
+    build:
+      context: ./backend/
+      args:
+        SERVICE_ROOT: services/db/sync
+        SERVICE_NAME: off-key-db-sync
+    image: "${DB_SYNC_IMAGE:-off-key-db-sync:latest}"
+    container_name: db_sync
+    env_file: .env
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+    networks:
+      - app-network
+    environment:
+      - SYNC_ON_STARTUP=false
+      - SYNC_HOSTNAME=db-sync
+    restart: always
+    command: [ "/app/bin/python", "-m", "off_key_db_sync" ]
+    #    command: ["uvicorn", "off_key_db_sync.main:app",
+    #              "--reload", "--reload-dir", "/app/lib/python3.12/site-packages/off_key_db_sync",
+    #              "--host", "", "--port", "8009"]
+    #    command: ["sleep", "10000"]
+    develop:
+      watch:
+        - action: sync
+          path: backend/services/db/sync/src/off_key_db_sync
+          target: /app/lib/python3.12/site-packages/off_key_db_sync
+        - action: rebuild
+          path: ./backend/uv.lock
+
+### =============================================== ###
+###            THIRD-PARTY DEPENDENCIES             ###
+### =============================================== ###
+  timescaledb:
     image: timescale/timescaledb:latest-pg15
-    container_name: postgres_database
+    container_name: timescaledb
     env_file: .env
     ports:
       - "${POSTGRES_PORT}:5432"
@@ -16,98 +182,8 @@ services:
       timeout: 5s
       retries: 5
 
-  sync:
-    build:
-      context: ./backend/
-      args:
-        SERVICE_ROOT: services/db/sync
-        SERVICE_NAME: off-key-db-sync
-    image: "${DB_SYNC_IMAGE:-off-key-db-sync:latest}"
-    container_name: db_sync
-    env_file: .env
-    depends_on:
-      postgres:
-        condition: service_healthy
-    networks:
-      - app-network
-    restart: always
-    command: ["/app/bin/python", "-m", "off_key_db_sync"]
-#    command: ["uvicorn", "off_key_db_sync.main:app",
-#              "--reload", "--reload-dir", "/app/lib/python3.12/site-packages/off_key_db_sync",
-#              "--host", "", "--port", "8009"]
-#    command: ["sleep", "10000"]
-    develop:
-      watch:
-        - action: sync
-          path: backend/services/db/sync/src/off_key_db_sync
-          target: /app/lib/python3.12/site-packages/off_key_db_sync
-        - action: rebuild
-          path: ./backend/uv.lock
-
-  api:
-    build:
-      context: ./backend/
-      args:
-        SERVICE_NAME: off-key-api-gateway
-        SERVICE_ROOT: services/api/gateway
-    image: "${API_IMAGE:-off-key-api-gateway:latest}"
-    container_name: api_gateway
-    env_file: .env
-    ports:
-      - "${BACKEND_PORT}:8000"
-    depends_on:
-      postgres:
-        condition: service_healthy
-      socket-proxy:
-        condition: service_started
-#      sync:
-#        condition: service_healthy
-    networks:
-      - app-network
-      - socket-network
-    restart: always
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 10s
-      retries: 5
-    command: ["uvicorn", "off_key_api_gateway.main:app",
-              "--reload", "--reload-dir", "/app/lib/python3.12/site-packages/off_key_api_gateway",
-              "--host", "0.0.0.0", "--port", "8000"]
-    develop:
-      watch:
-        - action: sync
-          path: backend/services/api/gateway/src/off_key_api_gateway
-          target: /app/lib/python3.12/site-packages/off_key_api_gateway
-        - action: rebuild
-          path: ./backend/uv.lock
-
-  tactic:
-    build:
-      context: ./backend/
-      args:
-        SERVICE_NAME: off-key-middleware-tactic
-        SERVICE_ROOT: services/middleware/tactic
-    image: "${TACTIC_IMAGE:-off-key-tactic-middleware:latest}"
-    container_name: middleware_tactic
-    env_file: .env
-    ports:
-      - "8001:8000"
-    depends_on:
-      postgres:
-        condition: service_healthy
-      socket-proxy:
-        condition: service_started
-    networks:
-      - app-network
-      - socket-network
-      - emqx-network
-    environment:
-      - TACTIC_DOCKER_DEFAULT_NETWORK=emqx-network
-    restart: always
-    command: [ "/app/bin/python", "-m", "off_key_middleware_tactic" ]
-
   socket-proxy:
-    container_name: socket-proxy
+    container_name: socket_proxy
     image: tecnativa/docker-socket-proxy
     restart: always
     networks:
@@ -152,29 +228,6 @@ services:
       - TASKS=1 # Portainer
       - VOLUMES=1 # Portainer
 
-  frontend:
-    build: ./frontend
-    image: "${FRONTEND_IMAGE:-off-key-frontend:latest}"
-    container_name: react_client
-    env_file: .env
-    ports:
-      - "${FRONTEND_PORT}:5173"
-    depends_on:
-      - api
-    networks:
-      - app-network
-    develop:
-      watch:
-        - action: sync
-          path: ./frontend
-          target: /src
-          ignore:
-            - node_modules/
-        - action: rebuild
-          path: ./frontend/package.json
-        - action: rebuild
-          path: ./frontend/yarn.lock
-
   mailpit:
     image: axllent/mailpit:latest
     container_name: mailpit
@@ -187,47 +240,6 @@ services:
 
     networks:
       - app-network
-
-  mqtt-proxy:
-    build:
-      context: ./backend/
-      args:
-        SERVICE_NAME: off-key-mqtt-proxy
-        SERVICE_ROOT: services/mqtt/proxy
-    image: "${MQTT_PROXY_IMAGE:-off-key-mqtt-proxy:latest}"
-    container_name: mqtt_proxy
-    env_file: .env
-    command: ["/app/bin/python", "-m", "off_key_mqtt_proxy"]
-    depends_on:
-      postgres:
-        condition: service_healthy
-    networks:
-      - app-network
-      - emqx-network
-    restart: always
-    environment:
-      - SERVICE_TYPE=mqtt_proxy
-      - MQTT_TELEMETRY_ENABLED=true
-    volumes:
-      - ./logs:/app/logs  # For log persistence
-
-  mqtt-radar:
-    build:
-      context: ./backend/
-      args:
-        SERVICE_NAME: off-key-mqtt-radar
-        SERVICE_ROOT: services/mqtt/radar
-    image: "${MQTT_PROXY_IMAGE:-off-key-mqtt-radar:latest}"
-    container_name: mqtt_radar
-    env_file: .env
-    command: [ "/app/bin/python", "-m", "off_key_mqtt_radar" ]
-    depends_on:
-      postgres:
-        condition: service_healthy
-    networks:
-      - app-network
-      - emqx-network
-    restart: always
 
   emqx-main:
     image: emqx/emqx:5.8.7 # BSL license starting at 5.9!
@@ -330,7 +342,8 @@ networks:
   socket-network:
     driver: bridge
   emqx-network:
-    driver: bridge
+    driver: overlay
+    attachable: true
 
 volumes:
   postgres_data:

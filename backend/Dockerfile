@@ -9,7 +9,6 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         gcc \
         python3-dev \
-        tree \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy uv

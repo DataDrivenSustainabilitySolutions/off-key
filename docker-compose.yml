@@ -145,7 +145,7 @@ services:
     networks:
       - app-network
     environment:
-      - SYNC_ON_STARTUP=false
+      - SYNC_ON_STARTUP=true
       - SYNC_HOSTNAME=db-sync
     restart: always
     command: [ "/app/bin/python", "-m", "off_key_db_sync" ]

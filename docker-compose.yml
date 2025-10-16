@@ -85,7 +85,6 @@ services:
       - socket-network
       - emqx-network
     environment:
-      # Create network: `sudo docker network create --driver overlay --attachable ${COMPOSE_PROJECT_NAME}_emqx-network`
       - TACTIC_DOCKER_DEFAULT_NETWORK=${COMPOSE_PROJECT_NAME:-off-key}_emqx-network
     restart: always
     command: [ "/app/bin/python", "-m", "off_key_tactic_middleware" ]

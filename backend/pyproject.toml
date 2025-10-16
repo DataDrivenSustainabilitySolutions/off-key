@@ -18,6 +18,10 @@ classifiers = [
     "Operating System :: OS Independent",
     "Development Status :: 3 - Alpha"
 ]
+dependencies = [
+    # See https://github.com/sabuhish/fastapi-mail/issues/236
+    "pydantic~=2.11.0",
+]
 
 [project.optional-dependencies]
 dev = ["black", "ruff", "pre-commit"]

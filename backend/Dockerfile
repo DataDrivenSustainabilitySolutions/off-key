@@ -76,12 +76,6 @@ EOT
 # Change the ownership to user app and group app in one step.
 COPY --from=builder --chown=app:app /app /app
 
-# Install PostgreSQL client tools for pg_isready
-RUN apt-get update && apt-get install -y --no-install-recommends postgresql-client && rm -rf /var/lib/apt/lists/*
-
 USER app
 
 WORKDIR /app
-
-EXPOSE 8000
-

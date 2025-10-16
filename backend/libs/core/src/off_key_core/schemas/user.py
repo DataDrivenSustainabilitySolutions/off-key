@@ -2,6 +2,14 @@ from typing import Optional
 
 from pydantic import BaseModel, EmailStr
 
+__all__ = [
+    "UserCreate",
+    "UserLogin",
+    "UserVerification",
+    "ForgotPasswordRequest",
+    "ResetPasswordRequest",
+]
+
 
 class UserCreate(BaseModel):
     email: EmailStr

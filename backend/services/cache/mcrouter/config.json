@@ -1,0 +1,23 @@
+{
+  "pools": {
+    "local_pool": {
+      "servers": [
+        "${MC_LOCAL}:11211"
+      ],
+      "protocol": "ascii"
+    },
+    "cluster_pool": {
+      "servers": [
+        "${MC_SERVICE}:11211"
+      ],
+      "protocol": "ascii"
+    }
+  },
+  "route": {
+    "type": "FailoverRoute",
+    "children": [
+        "PoolRoute|local_pool",
+        "PoolRoute|cluster_pool"
+    ]
+  }
+}

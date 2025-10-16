@@ -16,7 +16,7 @@ async def sync_chargers():
     try:
         async with httpx.AsyncClient() as client:
             response = await client.post(
-                f"{settings.DB_SYNC_SERVICE_URL}/sync/chargers",
+                f"{settings.db_sync_service_url}/sync/chargers",
                 timeout=300.0,  # 5 minute timeout for sync operation
             )
             response.raise_for_status()
@@ -33,7 +33,7 @@ async def clean_chargers(older_n_days: int):
     try:
         async with httpx.AsyncClient() as client:
             response = await client.post(
-                f"{settings.DB_SYNC_SERVICE_URL}/sync/chargers/clean",
+                f"{settings.db_sync_service_url}/sync/chargers/clean",
                 params={"days_inactive": older_n_days},
                 timeout=300.0,
             )

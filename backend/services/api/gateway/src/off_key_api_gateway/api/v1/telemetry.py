@@ -18,7 +18,7 @@ async def sync_telemetry(limit: int = 10_000):
     try:
         async with httpx.AsyncClient() as client:
             response = await client.post(
-                f"{settings.DB_SYNC_SERVICE_URL}/sync/telemetry",
+                f"{settings.db_sync_service_url}/sync/telemetry",
                 params={"limit": limit},
                 timeout=600.0,  # 10 minute timeout for telemetry sync
             )

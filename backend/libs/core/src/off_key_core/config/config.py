@@ -106,7 +106,8 @@ class Settings(BaseSettings):
     SYNC_TELEMETRY_LIMIT: int = 1000  # Maximum telemetry records to sync per run
 
     # DB Sync Service Configuration
-    DB_SYNC_SERVICE_URL: str = "http://sync:8009"  # URL for db-sync service
+    SYNC_HOSTNAME: str = "db-sync"  # Hostname for db-sync service
+    SYNC_API_PORT: int = 8009  # API port for db-sync service
 
     # Logging Configuration
     LOG_LEVEL: str = "INFO"  # DEBUG, INFO, WARNING, ERROR, CRITICAL
@@ -200,6 +201,13 @@ class Settings(BaseSettings):
         Build the base URL used to reach the middleware TACTIC service.
         """
         return f"http://{self.TACTIC_SERVICE_HOST}:{self.TACTIC_SERVICE_PORT}"
+
+    @property
+    def db_sync_service_url(self) -> str:
+        """
+        Build the base URL used to reach the DB Sync service.
+        """
+        return f"http://{self.SYNC_HOSTNAME}:{self.SYNC_API_PORT}"
 
     @property
     def pionix_config(self) -> "PionixConfig":

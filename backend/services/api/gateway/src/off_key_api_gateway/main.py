@@ -50,12 +50,12 @@ async def wait_for_db_sync(
     The API can safely start once db-sync is either fully healthy or in its
     long-running "starting" state (initial backfill still in progress).
     """
-    logger.info(f"Waiting for db-sync service at {settings.DB_SYNC_SERVICE_URL}")
+    logger.info(f"Waiting for db-sync service at {settings.db_sync_service_url}")
 
     async with httpx.AsyncClient(timeout=5.0) as client:
         for attempt in range(1, max_retries + 1):
             try:
-                response = await client.get(f"{settings.DB_SYNC_SERVICE_URL}/health")
+                response = await client.get(f"{settings.db_sync_service_url}/health")
                 if response.status_code == 200:
                     data = response.json()
                     status = data.get("status")

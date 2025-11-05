@@ -71,6 +71,9 @@ class MQTTConfig(BaseModel):
     metrics_interval: float = 300.0  # Metrics reporting interval in seconds
     health_monitor_interval: float = 30.0  # Health monitoring interval in seconds
 
+    # Charger Discovery Configuration
+    discovery_source: str = "api"  # Source for charger discovery: "api", "database", or "api_with_db_fallback"
+
     # Shutdown Configuration
     shutdown_timeout: float = 10.0  # Default timeout for component shutdown
     graceful_shutdown_timeout: float = 30.0  # Total graceful shutdown timeout
@@ -264,6 +267,17 @@ class MQTTConfig(BaseModel):
             )
         return v
 
+    @field_validator("discovery_source")
+    @classmethod
+    def validate_discovery_source(cls, v: str) -> str:
+        """Validate charger discovery source"""
+        allowed_sources = {"api", "database", "api_with_db_fallback"}
+        if v not in allowed_sources:
+            raise ValueError(
+                f"Discovery source must be one of {allowed_sources}, got '{v}'"
+            )
+        return v
+
     @field_validator("client_id_prefix")
     @classmethod
     def validate_client_id_prefix(cls, v: str) -> str:
@@ -428,6 +442,9 @@ class MQTTSettings(BaseSettings):
     MQTT_SHUTDOWN_TIMEOUT: float = 10.0  # Component shutdown timeout in seconds
     MQTT_GRACEFUL_SHUTDOWN_TIMEOUT: float = 30.0  # Total graceful shutdown timeout
 
+    # Charger Discovery Configuration
+    MQTT_DISCOVERY_SOURCE: str = "api"  # Charger discovery source: "api", "database", or "api_with_db_fallback"
+
     # Bridge Configuration
     MQTT_ENABLE_BRIDGE: bool = False  # Enable MQTT bridge to another broker
     MQTT_BRIDGE_BROKER_HOST: str = ""  # Bridge target broker host
@@ -474,6 +491,7 @@ class MQTTSettings(BaseSettings):
             worker_threads=self.MQTT_WORKER_THREADS,
             shutdown_timeout=self.MQTT_SHUTDOWN_TIMEOUT,
             graceful_shutdown_timeout=self.MQTT_GRACEFUL_SHUTDOWN_TIMEOUT,
+            discovery_source=self.MQTT_DISCOVERY_SOURCE,
             enable_bridge=self.MQTT_ENABLE_BRIDGE,
             bridge_broker_host=self.MQTT_BRIDGE_BROKER_HOST,
             bridge_broker_port=self.MQTT_BRIDGE_BROKER_PORT,

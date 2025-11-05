@@ -272,8 +272,7 @@ class TelemetrySyncService:
 
                 # Log message reflects potentially large amount of data
                 logger.info(
-                    f"Retrieved {len(items)} items (potentially all historical) "
-                    f"for {charger_id} / {hierarchy_raw}. "
+                    f"Retrieved {len(items)} items for {charger_id} / {hierarchy_raw}. "
                     f"Preparing for insertion."
                 )
                 logger.debug(f"First 3 items sample: {items[:3]}")
@@ -282,6 +281,7 @@ class TelemetrySyncService:
                 telemetry_records_to_insert = []
                 items_processed_count = 0
                 items_skipped_count = 0
+                items_filtered_by_gap_detection = 0
                 for item in items:
                     items_processed_count += 1
                     if not isinstance(item, dict):
@@ -303,6 +303,13 @@ class TelemetrySyncService:
                             ):
                                 ts_aware = ts_aware.replace(tzinfo=timezone.utc)
                         timestamp_naive = ts_aware.replace(tzinfo=None)
+                        
+                        # Skip records within existing coverage if gap detection is enabled
+                        if config.enable_gap_detection and earliest and latest:
+                            if earliest <= timestamp_naive <= latest:
+                                items_filtered_by_gap_detection += 1
+                                continue
+                        
                         value_float = string_to_float(item.get("value"))
                         created_naive = datetime.now(timezone.utc).replace(tzinfo=None)
                         telemetry_records_to_insert.append(
@@ -324,6 +331,11 @@ class TelemetrySyncService:
                         )
                         continue
 
+                if items_filtered_by_gap_detection > 0:
+                    logger.info(
+                        f"Gap detection: Filtered {items_filtered_by_gap_detection}/{len(items)} items "
+                        f"for {charger_id}/{hierarchy_raw} (already in database coverage)."
+                    )
                 if items_skipped_count > 0:
                     logger.warning(
                         f"Skipped {items_skipped_count}/{len(items)} items "

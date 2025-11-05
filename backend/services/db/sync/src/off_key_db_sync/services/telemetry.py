@@ -7,7 +7,7 @@ from typing import Optional
 from urllib.parse import unquote
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.dialects.postgresql import insert
 from off_key_core.clients.base_client import ChargerAPIClient
 from off_key_core.config.logs import logger
@@ -70,6 +70,50 @@ class TelemetrySyncService:
         self._log_context = {"component": "telemetry_sync", "service": "db_sync"}
 
         logger.info("TelemetrySyncService initialized", extra=self._log_context)
+
+
+    async def _check_existing_data_coverage(
+        self, charger_id: str, hierarchy_type: str
+    ) -> tuple[Optional[datetime], Optional[datetime]]:
+        """
+        Check the earliest and latest timestamps for existing telemetry data.
+
+        Args:
+            charger_id: The charger ID to check
+            hierarchy_type: The telemetry hierarchy type
+
+        Returns:
+            Tuple of (earliest_timestamp, latest_timestamp) or (None, None) if no data exists
+        """
+        try:
+            stmt = select(
+                func.min(Telemetry.timestamp),
+                func.max(Telemetry.timestamp)
+            ).where(
+                Telemetry.charger_id == charger_id,
+                Telemetry.type == hierarchy_type
+            )
+            result = await self.session.execute(stmt)
+            row = result.first()
+            
+            if row and row[0] is not None and row[1] is not None:
+                logger.debug(
+                    f"Existing data for {charger_id}/{hierarchy_type}: "
+                    f"{row[0]} to {row[1]}"
+                )
+                return row[0], row[1]
+            else:
+                logger.debug(
+                    f"No existing data for {charger_id}/{hierarchy_type}"
+                )
+                return None, None
+
+        except Exception as e:
+            logger.error(
+                f"Failed to check existing data coverage for "
+                f"{charger_id}/{hierarchy_type}: {e}"
+            )
+            return None, None
 
     async def sync_telemetry(self, limit: int):
         """
@@ -180,10 +224,28 @@ class TelemetrySyncService:
                     )
                     continue
 
-                logger.info(
-                    f"Fetching ALL telemetry data points for "
-                    f"{charger_id}/{hierarchy_raw} with limit {limit}"
-                )  # Log change
+                # Check for existing data coverage if gap detection is enabled
+                config = sync_settings.config
+                if config.enable_gap_detection:
+                    earliest, latest = await self._check_existing_data_coverage(
+                        charger_id, hierarchy_db_type
+                    )
+                    if earliest and latest:
+                        logger.info(
+                            f"Gap detection: Found existing data for "
+                            f"{charger_id}/{hierarchy_raw} from {earliest} to {latest}. "
+                            f"Fetching up to {limit} most recent records to check for updates."
+                        )
+                    else:
+                        logger.info(
+                            f"Gap detection: No existing data for {charger_id}/{hierarchy_raw}. "
+                            f"Fetching up to {limit} records."
+                        )
+                else:
+                    logger.info(
+                        f"Fetching up to {limit} telemetry data points for "
+                        f"{charger_id}/{hierarchy_raw} (gap detection disabled)"
+                    )
 
                 try:
                     telemetry_api_response = await self.client.get_telemetry_data(

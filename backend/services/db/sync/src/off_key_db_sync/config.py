@@ -35,6 +35,7 @@ class SyncConfig(BaseModel):
     chargers_interval: int
     telemetry_interval: int
     telemetry_limit: int
+    enable_gap_detection: bool  # Check for existing data and sync only gaps
 
     # API Server Configuration
     api_host: str
@@ -286,6 +287,7 @@ class SyncSettings(BaseSettings):
         21600  # Telemetry sync interval (seconds) - default 6 hours
     )
     SYNC_TELEMETRY_LIMIT: int = 10000  # Max telemetry records per hierarchy
+    SYNC_ENABLE_GAP_DETECTION: bool = True  # Enable gap detection for telemetry sync
 
     # API Server Configuration
     SYNC_API_HOST: str = "0.0.0.0"  # API server host
@@ -338,6 +340,7 @@ class SyncSettings(BaseSettings):
             chargers_interval=self.SYNC_CHARGERS_INTERVAL,
             telemetry_interval=self.SYNC_TELEMETRY_INTERVAL,
             telemetry_limit=self.SYNC_TELEMETRY_LIMIT,
+            enable_gap_detection=self.SYNC_ENABLE_GAP_DETECTION,
             api_host=self.SYNC_API_HOST,
             api_port=self.SYNC_API_PORT,
             cleanup_enabled=self.SYNC_CLEANUP_ENABLED,

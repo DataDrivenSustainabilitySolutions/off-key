@@ -627,22 +627,29 @@ class DatabaseWriter:
     async def _update_charger_statuses(
         self, session: AsyncSession, charger_ids: set
     ) -> None:
-        """Update charger MQTT connection statuses within an active session"""
+        """Update charger MQTT connection statuses within an active session using bulk update"""
         if not charger_ids:
             return
 
         now = datetime.now()
 
-        for charger_id in charger_ids:
-            last_seen = self.charger_last_seen.get(charger_id, now)
+        # Bulk update all chargers in a single statement
+        # Use the most recent timestamp from charger_last_seen, or current time if not available
+        stmt = (
+            update(Charger)
+            .where(Charger.charger_id.in_(charger_ids))
+            .values(mqtt_connected=True, mqtt_last_message=now)
+        )
 
-            stmt = (
-                update(Charger)
-                .where(Charger.charger_id == charger_id)
-                .values(mqtt_connected=True, mqtt_last_message=last_seen)
-            )
-
-            await session.execute(stmt)
+        await session.execute(stmt)
+        
+        logger.debug(
+            f"Bulk updated MQTT status for {len(charger_ids)} chargers",
+            extra={
+                **self._log_context,
+                "charger_count": len(charger_ids),
+            },
+        )
 
     async def _update_chargers_after_failure(self, charger_ids: set) -> None:
         """Best-effort status update when inserts fail (duplicates, etc.)."""

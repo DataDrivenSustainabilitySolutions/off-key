@@ -162,16 +162,19 @@ class ChargerDiscoveryService:
             raise ChargerDiscoveryError(f"Discovery failed: {e}")
 
     async def _get_chargers_from_database(self) -> List[str]:
-        """Get all charger IDs from the database"""
+        """Get charger IDs from the database, filtering for online chargers only"""
         try:
-            stmt = select(Charger.charger_id)
+            # Filter for online chargers only to reduce discovery overhead
+            stmt = select(Charger.charger_id).where(Charger.online == True)
             async with self._session_factory() as session:
                 result = await session.execute(stmt)
             charger_ids = result.scalars().all()
             charger_list = list(charger_ids)
 
             if not charger_list:
-                logger.warning("No chargers found in database")
+                logger.warning("No online chargers found in database")
+            else:
+                logger.info(f"Retrieved {len(charger_list)} online chargers from database")
 
             return charger_list
 

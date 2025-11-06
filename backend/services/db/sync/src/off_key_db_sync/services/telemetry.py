@@ -299,43 +299,50 @@ class TelemetrySyncService:
                 successful_batches = 0
                 failed_batches = 0
 
-                for i in range(0, len(telemetry_records_to_insert), batch_size):
-                    batch_num += 1
-                    batch = telemetry_records_to_insert[i : i + batch_size]
-                    logger.debug(
-                        f"Preparing batch {batch_num} ({len(batch)} records) for "
-                        f"{charger_id} / {hierarchy_raw}."
-                    )
-                    try:
+                # Execute all batches, then commit once at the end
+                try:
+                    for i in range(0, len(telemetry_records_to_insert), batch_size):
+                        batch_num += 1
+                        batch = telemetry_records_to_insert[i : i + batch_size]
+                        logger.debug(
+                            f"Preparing batch {batch_num} ({len(batch)} records) for "
+                            f"{charger_id} / {hierarchy_raw}."
+                        )
                         stmt = insert(Telemetry).values(batch)
                         stmt = stmt.on_conflict_do_nothing()
                         result = await self.session.execute(stmt)
-                        await self.session.commit()
                         successful_batches += 1
                         self.total_batches_processed += 1
                         self.total_records_inserted += len(batch)
                         logger.debug(
-                            f"Committed batch {batch_num} for "
+                            f"Executed batch {batch_num} for "
                             f"{charger_id} / {hierarchy_raw}."
                         )
-                    except IntegrityError as ie:
-                        await self.session.rollback()
-                        failed_batches += 1
-                        self.total_batches_failed += 1
-                        logger.error(
-                            f"IntegrityError during batch {batch_num} insert for "
-                            f"{charger_id}/{hierarchy_raw}: {ie}. "
-                            f"Rolling back batch."
-                        )
-                    except Exception as e:
-                        await self.session.rollback()
-                        failed_batches += 1
-                        self.total_batches_failed += 1
-                        logger.error(
-                            f"Error during batch {batch_num} insert for "
-                            f"{charger_id}/{hierarchy_raw}: {e}. "
-                            f"Rolling back batch."
-                        )
+                    
+                    # Commit once after all batches for this hierarchy
+                    await self.session.commit()
+                    logger.debug(
+                        f"Committed all {batch_num} batches for "
+                        f"{charger_id} / {hierarchy_raw}."
+                    )
+                except IntegrityError as ie:
+                    await self.session.rollback()
+                    failed_batches = batch_num
+                    self.total_batches_failed += failed_batches
+                    logger.error(
+                        f"IntegrityError during batch insert for "
+                        f"{charger_id}/{hierarchy_raw}: {ie}. "
+                        f"Rolling back all {batch_num} batches."
+                    )
+                except Exception as e:
+                    await self.session.rollback()
+                    failed_batches = batch_num
+                    self.total_batches_failed += failed_batches
+                    logger.error(
+                        f"Error during batch insert for "
+                        f"{charger_id}/{hierarchy_raw}: {e}. "
+                        f"Rolling back all {batch_num} batches."
+                    )
 
                 logger.info(
                     f"Batch processing completed for {charger_id}/{hierarchy_raw}: "

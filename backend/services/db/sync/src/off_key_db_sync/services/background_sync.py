@@ -15,7 +15,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 
 from off_key_core.config.logs import logger
 from off_key_core.db.base import AsyncSessionLocal
-from ..config import sync_settings
+from ..config.config import sync_settings
 from .chargers import ChargersSyncService
 from .telemetry import TelemetrySyncService
 

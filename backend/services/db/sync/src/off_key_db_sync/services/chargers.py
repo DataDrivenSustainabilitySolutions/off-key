@@ -10,7 +10,7 @@ from off_key_core.config.logs import logger, log_performance
 from off_key_core.utils.enum import HealthStatus
 import time
 from off_key_core.db.models import Charger
-from ..config import sync_settings
+from ..config.config import sync_settings
 
 
 @dataclass

@@ -209,7 +209,7 @@ class ConfigReloader:
             logger.info("Starting configuration reload")
 
             # Import here to avoid circular imports
-            from .config import radar_settings
+            from .config.config import radar_settings
 
             # Store old config for comparison
             old_config = (

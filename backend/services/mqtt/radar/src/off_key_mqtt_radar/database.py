@@ -15,7 +15,7 @@ from sqlalchemy import text
 from off_key_core.config.logs import logger
 from off_key_core.db.base import AsyncSessionLocal
 
-from .config import MQTTRadarConfig
+from .config.config import MQTTRadarConfig
 from .models import ServiceMetrics, AnomalyResult, Base
 
 

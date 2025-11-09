@@ -1,0 +1,44 @@
+version: 1
+disable_existing_loggers: false
+
+formatters:
+  simple:
+    format: '%(asctime)s - %(levelname)s - %(name)s - %(message)s'
+
+  detailed:
+    format: '%(asctime)s - %(levelname)s - %(name)s - [CID: %(correlation_id)s] - %(message)s'
+
+  truncated:
+    (): 'off_key_core.config.logs.TruncatingFormatter'
+    base_format: '%(asctime)s - %(levelname)s - %(name)s - [CID: %(correlation_id)s] - %(message)s'
+    truncate_length: ${LOG_TRUNCATE_LENGTH:150}
+
+filters:
+  correlation:
+    (): 'off_key_core.config.logs.CorrelationFilter'
+
+handlers:
+  console:
+    class: logging.StreamHandler
+    level: ${LOG_LEVEL:INFO}
+    formatter: detailed
+    stream: ext://sys.stdout
+    filters: [correlation]
+
+  console_truncated:
+    class: logging.StreamHandler
+    level: ${LOG_LEVEL:INFO}
+    formatter: truncated
+    stream: ext://sys.stdout
+    filters: [correlation]
+
+  file:
+    class: logging.FileHandler
+    level: ${LOG_LEVEL:INFO}
+    formatter: detailed
+    filename: ${LOG_FILE:/tmp/service.log}
+    filters: [correlation]
+
+root:
+  level: ${LOG_LEVEL:INFO}
+  handlers: [console]

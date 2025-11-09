@@ -42,3 +42,9 @@ handlers:
 root:
   level: ${LOG_LEVEL:INFO}
   handlers: [console]
+
+loggers:
+  truncated:
+    level: ${SERVICE_LOG_LEVEL:${LOG_LEVEL:INFO}}
+    handlers: [console_truncated, file]
+    propagate: false

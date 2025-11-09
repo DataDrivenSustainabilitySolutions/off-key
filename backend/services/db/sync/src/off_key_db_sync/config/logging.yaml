@@ -1,0 +1,66 @@
+version: 1
+disable_existing_loggers: false
+
+# Override root logger to prevent double logging
+root:
+  level: ${LOG_LEVEL:INFO}
+  handlers: []
+
+# Service-specific logger configurations
+loggers:
+  db-sync:
+    level: ${SERVICE_LOG_LEVEL:${LOG_LEVEL:INFO}}
+    handlers: [console, file]
+    propagate: false
+
+  # FastAPI/Uvicorn loggers
+  uvicorn:
+    level: ${UVICORN_LOG_LEVEL:INFO}
+    handlers: [console_truncated, file]
+    propagate: false
+
+  uvicorn.access:
+    level: ${UVICORN_ACCESS_LOG_LEVEL:INFO}
+    handlers: [console_truncated, file]
+    propagate: false
+
+  fastapi:
+    level: ${FASTAPI_LOG_LEVEL:INFO}
+    handlers: [console_truncated, file]
+    propagate: false
+
+  # SQLAlchemy loggers with specific configurations
+  sqlalchemy.engine.Engine:
+    level: ${SQLALCHEMY_LOG_LEVEL:INFO}
+    handlers: [console_truncated, file]
+    propagate: false
+
+  sqlalchemy.dialects:
+    level: ${SQLALCHEMY_LOG_LEVEL:WARNING}
+    handlers: [console_truncated, file]
+    propagate: false
+
+  sqlalchemy.pool:
+    level: ${SQLALCHEMY_LOG_LEVEL:WARNING}
+    handlers: [console_truncated, file]
+    propagate: false
+
+  sqlalchemy.orm:
+    level: ${SQLALCHEMY_LOG_LEVEL:WARNING}
+    handlers: [console_truncated, file]
+    propagate: false
+
+  # Asyncio logging
+  asyncio:
+    level: ${ASYNCIO_LOG_LEVEL:WARNING}
+    handlers: [console_truncated, file]
+    propagate: false
+
+
+handlers:
+  file:
+    class: logging.FileHandler
+    level: ${LOG_LEVEL:INFO}
+    formatter: detailed
+    filename: ${SERVICE_LOG_FILE:/tmp/db-sync.log}
+    filters: [correlation]

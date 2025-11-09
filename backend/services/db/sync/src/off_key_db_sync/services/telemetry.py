@@ -13,7 +13,7 @@ from off_key_core.config.logs import logger
 from off_key_core.db.models import Charger, Telemetry
 from off_key_core.utils.string import clean_string, string_to_float
 from off_key_core.utils.enum import HealthStatus
-from ..config import sync_settings
+from ..config.config import sync_settings
 
 
 @dataclass

@@ -3,12 +3,13 @@ from typing import AsyncGenerator
 import asyncio
 import httpx
 
+from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi.middleware import SlowAPIMiddleware
 
 from off_key_core.config.config import settings
-from off_key_core.config.logs import setup_logging, LogFormat
+from off_key_core.config.logs import logger, load_yaml_config
 
 from .api.middleware import LoggingMiddleware, SecurityLoggingMiddleware
 from .api.rate_limiter import limiter, rate_limit_exceeded_handler
@@ -28,17 +29,9 @@ import bcrypt
 if not hasattr(bcrypt, "__about__"):
     bcrypt.__about__ = type("about", (object,), {"__version__": bcrypt.__version__})
 
-# Initialize logging with configuration
-log_format = (
-    LogFormat.JSON if settings.LOG_FORMAT.lower() == "json" else LogFormat.SIMPLE
-)
-logger = setup_logging(
-    app_name=settings.APP_NAME,
-    log_level=settings.LOG_LEVEL,
-    log_format=log_format,
-    enable_correlation=True,
-)
-
+# Load logging configuration from YAML files
+service_logging_config = Path(__file__).parent / "config" / "logging.yaml"
+load_yaml_config(str(service_logging_config))
 
 async def wait_for_db_sync(
     max_retries: int = 150,
@@ -91,6 +84,9 @@ async def wait_for_db_sync(
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """FastAPI lifespan manager for startup and shutdown events."""
+    # Force logging config within uvicorn
+    load_yaml_config(str(service_logging_config))
+
     # Wait for db-sync service to be ready
     await wait_for_db_sync()
 

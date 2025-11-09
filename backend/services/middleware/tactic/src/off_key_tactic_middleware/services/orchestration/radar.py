@@ -13,7 +13,6 @@ from off_key_core.db.models import MonitoringService
 from ...facades.docker import AsyncDocker
 from ...config.config import tactic_settings
 
-async_docker = AsyncDocker()
 
 
 def _parse_memory_string(memory_str: str) -> int:
@@ -73,7 +72,7 @@ class RadarOrchestrationService:
 
     def __init__(self, session: AsyncSession):
         self.session: AsyncSession = session
-        self.async_docker: AsyncDocker = async_docker
+        self.async_docker: AsyncDocker = AsyncDocker()
         logger.info("RadarOrchestrationService initialized.")
 
     async def create_radar_service(

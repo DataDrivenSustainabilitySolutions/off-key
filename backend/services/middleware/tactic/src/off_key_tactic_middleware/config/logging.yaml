@@ -16,23 +16,23 @@ loggers:
   # FastAPI/Uvicorn loggers
   uvicorn:
     level: ${UVICORN_LOG_LEVEL:INFO}
-    handlers: [console_truncated, file]
+    handlers: [console, file]
     propagate: false
 
   uvicorn.access:
     level: ${UVICORN_ACCESS_LOG_LEVEL:INFO}
-    handlers: [console_truncated, file]
+    handlers: [console, file]
     propagate: false
 
   fastapi:
     level: ${FASTAPI_LOG_LEVEL:INFO}
-    handlers: [console_truncated, file]
+    handlers: [console, file]
     propagate: false
 
   # Docker library logger
   docker:
     level: ${DOCKER_LOG_LEVEL:WARNING}
-    handlers: [console_truncated, file]
+    handlers: [console, file]
     propagate: false
 
   # SQLAlchemy loggers (if used)

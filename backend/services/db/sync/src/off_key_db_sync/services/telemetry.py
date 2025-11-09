@@ -1,4 +1,3 @@
-import logging
 import time
 
 from datetime import datetime, timezone
@@ -15,8 +14,6 @@ from off_key_core.db.models import Charger, Telemetry
 from off_key_core.utils.string import clean_string, string_to_float
 from off_key_core.utils.enum import HealthStatus
 from ..config import sync_settings
-
-logging.getLogger("sqlalchemy.engine").setLevel(logging.CRITICAL)
 
 
 @dataclass

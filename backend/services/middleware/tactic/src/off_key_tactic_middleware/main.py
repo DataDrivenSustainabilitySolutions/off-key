@@ -6,10 +6,13 @@ specifically handling Docker container orchestration for RADAR services.
 """
 
 import uvicorn
+
 from pathlib import Path
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
+from typing import AsyncGenerator
+from contextlib import asynccontextmanager
 
+from fastapi.middleware.cors import CORSMiddleware
 from off_key_core.config.logs import load_yaml_config, logger
 from .api.v1 import radar
 from .config.config import tactic_settings
@@ -23,6 +26,26 @@ def create_app() -> FastAPI:
     """Create and configure the FastAPI application."""
     config = tactic_settings.config
 
+    @asynccontextmanager
+    async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
+        """FastAPI lifespan manager for startup and shutdown events."""
+        # Force logging config
+        load_yaml_config(str(service_logging_config))
+        logger.info("Application is now running...")
+
+        # Exit on failed Docker API connection
+        from .facades.docker import AsyncDocker
+        try:
+            AsyncDocker()
+        except:
+            logger.error("Connection to Docker API failed. "
+                         "Service will shutdown after another failed attempt...")
+
+        yield
+
+        # Shutdown
+        logger.info("Application shutdown...")
+
     app = FastAPI(
         title=config.service_name,
         description="Timely Anomaly Communication / "
@@ -30,6 +53,7 @@ def create_app() -> FastAPI:
         version=config.service_version,
         docs_url="/docs",
         redoc_url="/redoc",
+        lifespan=lifespan,
     )
 
     # Add CORS middleware
@@ -68,7 +92,7 @@ def main() -> None:
         app,
         host=config.host,
         port=config.port,
-        log_level=config.log_level.lower(),
+        log_config=None,  # Disable uvicorn's logging, use our logger
     )
 
 

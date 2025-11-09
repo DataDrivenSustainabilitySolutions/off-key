@@ -6,12 +6,17 @@ specifically handling Docker container orchestration for RADAR services.
 """
 
 import uvicorn
+from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from off_key_core.config.logs import logger
+from off_key_core.config.logs import load_yaml_config, logger
 from .api.v1 import radar
-from .config import tactic_settings
+from .config.config import tactic_settings
+
+# Load logging configuration from YAML files
+service_logging_config = Path(__file__).parent / "config" / "logging.yaml"
+load_yaml_config(str(service_logging_config))
 
 
 def create_app() -> FastAPI:

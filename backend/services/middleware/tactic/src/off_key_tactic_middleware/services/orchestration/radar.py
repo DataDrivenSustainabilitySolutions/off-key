@@ -11,7 +11,7 @@ from sqlalchemy import select, delete
 from off_key_core.config.logs import logger
 from off_key_core.db.models import MonitoringService
 from ...facades.docker import AsyncDocker
-from ...config import tactic_settings
+from ...config.config import tactic_settings
 
 async_docker = AsyncDocker()
 

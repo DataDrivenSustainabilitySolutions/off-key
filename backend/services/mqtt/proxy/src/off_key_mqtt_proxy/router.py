@@ -15,7 +15,7 @@ from abc import ABC, abstractmethod
 
 from off_key_core.config.logs import logger
 from off_key_core.utils.enum import HealthStatus
-from .config import MQTTConfig
+from .config.config import MQTTConfig
 from .client.models import MQTTMessage
 
 

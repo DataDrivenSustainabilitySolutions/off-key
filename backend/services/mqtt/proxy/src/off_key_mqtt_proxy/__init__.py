@@ -13,7 +13,7 @@ Components:
 """
 
 from .proxy import MQTTProxyService
-from .config import MQTTConfig
+from .config.config import MQTTConfig
 from .client.facade import MQTTClient
 from .client.models import MQTTMessage
 

@@ -18,7 +18,7 @@ from off_key_core.config.config import settings
 from off_key_core.config.logs import logger
 from off_key_core.db.models import Charger
 from off_key_core.utils.enum import HealthStatus
-from .config import MQTTConfig
+from .config.config import MQTTConfig
 
 
 @dataclass

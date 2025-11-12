@@ -15,10 +15,16 @@ from sqlalchemy import (
     Integer,
     JSON,
     ForeignKey,
+    text,
 )
 
 from .base import Base
 from ..utils.enum import RoleEnum
+from ..config import get_retention_days
+from ..config.logs import logger
+
+# Cache retention days at module load to prevent mid-run environment changes
+_RETENTION_DAYS = get_retention_days()
 
 
 class User(Base):
@@ -101,6 +107,38 @@ event.listen(
     Telemetry.__table__,
     "after_create",
     DDL(f"SELECT create_hypertable('{Telemetry.__tablename__}', 'timestamp');"),
+)
+
+
+def _add_telemetry_retention_policy(target, connection, **kw):
+    """
+    Add TimescaleDB retention policy to the telemetry hypertable.
+
+    This function is called after the hypertable is created to set up
+    automatic data retention based on the configured retention period.
+    Uses the cached retention_days value to prevent mid-run changes.
+    """
+    # Use cached value (already validated as integer 1-365)
+    retention_policy_sql = text(
+        f"""
+        SELECT add_retention_policy(
+            '{Telemetry.__tablename__}',
+            INTERVAL '{_RETENTION_DAYS} days',
+            if_not_exists => true
+        );
+        """
+    )
+    connection.execute(retention_policy_sql)
+    logger.info(
+        f"TimescaleDB retention policy set for '{Telemetry.__tablename__}': "
+        f"{_RETENTION_DAYS} days"
+    )
+
+
+event.listen(
+    Telemetry.__table__,
+    "after_create",
+    _add_telemetry_retention_policy,
 )
 
 

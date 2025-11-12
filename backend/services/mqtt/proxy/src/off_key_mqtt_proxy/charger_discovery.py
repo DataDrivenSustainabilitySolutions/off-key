@@ -187,7 +187,6 @@ class ChargerDiscoveryService:
             logger.error(f"Failed to query chargers from database: {e}")
             raise ChargerDiscoveryError(f"Database query failed: {e}")
 
-
     async def _get_chargers_from_api(self) -> List[str]:
         """Get all charger IDs directly from the API"""
         try:
@@ -195,14 +194,19 @@ class ChargerDiscoveryService:
             if not chargers_data:
                 logger.warning("No chargers received from API")
                 return []
-            
-            charger_ids = [charger["id"] for charger in chargers_data if isinstance(charger, dict) and "id" in charger]
+
+            charger_ids = [
+                charger["id"]
+                for charger in chargers_data
+                if isinstance(charger, dict) and "id" in charger
+            ]
             logger.info(f"Retrieved {len(charger_ids)} chargers from API")
             return charger_ids
 
         except Exception as e:
             logger.error(f"Failed to query chargers from API: {e}")
             return []
+
     async def _discover_charger_hierarchies(
         self, charger_id: str
     ) -> Optional[ChargerTelemetryInfo]:

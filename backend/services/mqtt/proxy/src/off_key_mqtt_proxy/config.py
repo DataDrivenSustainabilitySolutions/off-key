@@ -72,7 +72,8 @@ class MQTTConfig(BaseModel):
     health_monitor_interval: float = 30.0  # Health monitoring interval in seconds
 
     # Charger Discovery Configuration
-    discovery_source: str = "api"  # Source for charger discovery: "api", "database", or "api_with_db_fallback"
+    # Source for charger discovery: "api", "database", or "api_with_db_fallback"
+    discovery_source: str = "api"
 
     # Shutdown Configuration
     shutdown_timeout: float = 10.0  # Default timeout for component shutdown
@@ -443,7 +444,9 @@ class MQTTSettings(BaseSettings):
     MQTT_GRACEFUL_SHUTDOWN_TIMEOUT: float = 30.0  # Total graceful shutdown timeout
 
     # Charger Discovery Configuration
-    MQTT_DISCOVERY_SOURCE: str = "api"  # Charger discovery source: "api", "database", or "api_with_db_fallback"
+    MQTT_DISCOVERY_SOURCE: str = (
+        "api"  # Charger discovery source: "api", "database", or "api_with_db_fallback"
+    )
 
     # Bridge Configuration
     MQTT_ENABLE_BRIDGE: bool = False  # Enable MQTT bridge to another broker

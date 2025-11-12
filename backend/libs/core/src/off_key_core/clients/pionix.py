@@ -6,6 +6,7 @@ Encapsulates all URL building logic and provides high-level methods.
 """
 
 import httpx
+from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List
 from urllib.parse import quote
 
@@ -80,7 +81,12 @@ class PionixClient:
             )
 
     def _build_telemetry_url(
-        self, charger_id: str, hierarchy: str, limit: Optional[int] = None
+        self,
+        charger_id: str,
+        hierarchy: str,
+        limit: Optional[int] = None,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
     ) -> str:
         """
         Private method to build telemetry URL with optional query parameters.
@@ -89,6 +95,8 @@ class PionixClient:
             charger_id: Charger ID
             hierarchy: Telemetry hierarchy path
             limit: Optional limit parameter
+            start_date: Optional start date for filtering telemetry data
+            end_date: Optional end date for filtering telemetry data
 
         Returns:
             Complete telemetry URL with query parameters
@@ -97,8 +105,27 @@ class PionixClient:
             "telemetry", charger_id=charger_id, hierarchy=hierarchy
         )
 
+        # Build query parameters
+        query_params = []
+        if start_date is not None:
+            # Normalize to UTC before formatting to ensure correct timestamp
+            start_utc = (
+                start_date.astimezone(timezone.utc) if start_date.tzinfo else start_date
+            )
+            # Format datetime as ISO 8601 with milliseconds and Z suffix
+            start_str = start_utc.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+            query_params.append(f"StartDate={quote(start_str)}")
+        if end_date is not None:
+            # Normalize to UTC before formatting to ensure correct timestamp
+            end_utc = end_date.astimezone(timezone.utc) if end_date.tzinfo else end_date
+            # Format datetime as ISO 8601 with milliseconds and Z suffix
+            end_str = end_utc.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+            query_params.append(f"EndDate={quote(end_str)}")
         if limit is not None:
-            base_url += f"?Limit={limit}"
+            query_params.append(f"Limit={limit}")
+
+        if query_params:
+            base_url += "?" + "&".join(query_params)
 
         return base_url
 
@@ -223,7 +250,12 @@ class PionixClient:
         return await self.get(url)
 
     async def get_telemetry_data(
-        self, charger_id: str, hierarchy: str, limit: Optional[int] = None
+        self,
+        charger_id: str,
+        hierarchy: str,
+        limit: Optional[int] = None,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
     ) -> Dict[str, Any]:
         """
         Get telemetry data for a specific charger and hierarchy.
@@ -232,13 +264,18 @@ class PionixClient:
             charger_id: The ID of the charger
             hierarchy: The telemetry hierarchy path
             limit: Optional limit on number of records to retrieve
+            start_date: Optional start date for filtering telemetry data
+            end_date: Optional end date for filtering telemetry data
 
         Returns:
-            Telemetry data dictionary with items list
+            Telemetry data dictionary with items list and metadata
         """
         logger.info(
             f"Fetching telemetry for charger {charger_id}, "
-            f"hierarchy {hierarchy}, limit {limit}"
+            f"hierarchy {hierarchy}, limit {limit}, "
+            f"start_date {start_date}, end_date {end_date}"
         )
-        url = self._build_telemetry_url(charger_id, hierarchy, limit)
+        url = self._build_telemetry_url(
+            charger_id, hierarchy, limit, start_date, end_date
+        )
         return await self.get(url)

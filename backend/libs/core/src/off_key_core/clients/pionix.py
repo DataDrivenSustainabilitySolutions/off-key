@@ -80,6 +80,36 @@ class PionixClient:
                 f"Missing required parameter {e} for endpoint {endpoint_name}"
             )
 
+    def _format_query_timestamp(self, dt: datetime) -> str:
+        """
+        Normalize datetime to UTC and format as API expects.
+
+        Args:
+            dt: datetime provided by the caller
+
+        Returns:
+            Timestamp string with millisecond precision and Z suffix
+        """
+        dt_utc = dt.astimezone(timezone.utc) if dt.tzinfo else dt
+        return dt_utc.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+
+    def _append_timestamp_param(
+        self, params: List[str], param_name: str, dt: Optional[datetime]
+    ) -> None:
+        """
+        Append a timestamp query parameter if a datetime is provided.
+
+        Args:
+            params: List of query parameters to mutate
+            param_name: Name of the parameter (e.g., StartDate)
+            dt: datetime value supplied by the caller
+        """
+        if dt is None:
+            return
+
+        timestamp = self._format_query_timestamp(dt)
+        params.append(f"{param_name}={quote(timestamp)}")
+
     def _build_telemetry_url(
         self,
         charger_id: str,
@@ -107,20 +137,8 @@ class PionixClient:
 
         # Build query parameters
         query_params = []
-        if start_date is not None:
-            # Normalize to UTC before formatting to ensure correct timestamp
-            start_utc = (
-                start_date.astimezone(timezone.utc) if start_date.tzinfo else start_date
-            )
-            # Format datetime as ISO 8601 with milliseconds and Z suffix
-            start_str = start_utc.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
-            query_params.append(f"StartDate={quote(start_str)}")
-        if end_date is not None:
-            # Normalize to UTC before formatting to ensure correct timestamp
-            end_utc = end_date.astimezone(timezone.utc) if end_date.tzinfo else end_date
-            # Format datetime as ISO 8601 with milliseconds and Z suffix
-            end_str = end_utc.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
-            query_params.append(f"EndDate={quote(end_str)}")
+        self._append_timestamp_param(query_params, "StartDate", start_date)
+        self._append_timestamp_param(query_params, "EndDate", end_date)
         if limit is not None:
             query_params.append(f"Limit={limit}")
 

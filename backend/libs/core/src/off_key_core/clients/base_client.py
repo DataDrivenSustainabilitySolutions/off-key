@@ -5,6 +5,7 @@ Defines the interface that all charger API clients must implement.
 Uses Python's Protocol for structural typing (no inheritance required).
 """
 
+from datetime import datetime
 from typing import Protocol, List, Dict, Any, Optional, runtime_checkable
 
 
@@ -39,7 +40,12 @@ class ChargerAPIClient(Protocol):
         ...
 
     async def get_telemetry_data(
-        self, charger_id: str, hierarchy: str, limit: Optional[int] = None
+        self,
+        charger_id: str,
+        hierarchy: str,
+        limit: Optional[int] = None,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
     ) -> Dict[str, Any]:
         """
         Get telemetry data for a specific charger and hierarchy.
@@ -48,8 +54,10 @@ class ChargerAPIClient(Protocol):
             charger_id: The unique identifier of the charger
             hierarchy: The telemetry hierarchy/metric path
             limit: Optional limit on number of records to retrieve
+            start_date: Optional start date for filtering telemetry data
+            end_date: Optional end date for filtering telemetry data
 
         Returns:
-            Dictionary containing telemetry data
+            Dictionary containing telemetry data with items and metadata
         """
         ...

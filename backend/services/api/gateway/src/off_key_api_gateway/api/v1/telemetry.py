@@ -32,16 +32,20 @@ async def sync_telemetry(limit: int = 10_000):
 
 @router.get("/{charger_id}/type")
 async def get_telemetry_types_from_id(
-    charger_id: str, 
+    charger_id: str,
     db: AsyncSession = Depends(get_db_async),
-    limit: int = Query(100, description="Maximum number of telemetry types to return")
+    limit: int = Query(
+        100, ge=1, le=1000, description="Maximum number of telemetry types to return"
+    ),
 ):
-    result = await db.execute(
+    stmt = (
         select(Telemetry.type)
-        .filter(Telemetry.charger_id == charger_id)
+        .where(Telemetry.charger_id == charger_id)
         .distinct()
+        .order_by(Telemetry.type.asc())
         .limit(limit)
     )
+    result = await db.execute(stmt)
     return result.scalars().all()
 
 

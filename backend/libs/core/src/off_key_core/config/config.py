@@ -1,5 +1,12 @@
 from pydantic_settings import BaseSettings
-from pydantic import field_validator, FieldValidationInfo, BaseModel, SecretStr
+from pydantic import (
+    AliasChoices,
+    Field,
+    field_validator,
+    FieldValidationInfo,
+    BaseModel,
+    SecretStr,
+)
 from dotenv import find_dotenv, load_dotenv
 
 # Load default ".env" file from upper project tree
@@ -228,3 +235,35 @@ class Settings(BaseSettings):
 
 
 settings = Settings()  # noqa
+
+
+class TelemetrySettings(BaseSettings):
+    """
+    Configuration for telemetry data retention and related limits.
+
+    This lives in the core package so shared services use the same validated
+    values rather than each implementing their own parsing logic.
+    """
+
+    TELEMETRY_RETENTION_DAYS: int = Field(
+        14,
+        validation_alias=AliasChoices(
+            "TELEMETRY_RETENTION_DAYS", "SYNC_RETENTION_DAYS"
+        ),
+    )
+
+    @field_validator("TELEMETRY_RETENTION_DAYS")
+    @classmethod
+    def validate_retention_days(cls, v: int) -> int:
+        """Ensure telemetry retention stays within a reasonable window."""
+        if not 1 <= v <= 365:
+            raise ValueError("Telemetry retention days must be between 1 and 365")
+        return v
+
+    @property
+    def retention_days(self) -> int:
+        """Expose a friendlier name used by services."""
+        return self.TELEMETRY_RETENTION_DAYS
+
+
+telemetry_settings = TelemetrySettings()

@@ -29,17 +29,19 @@ def create_app() -> FastAPI:
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
         """FastAPI lifespan manager for startup and shutdown events."""
-        # Force logging config
-        load_yaml_config(str(service_logging_config))
         logger.info("Application is now running...")
 
-        # Exit on failed Docker API connection
+        # Validate Docker API connection
         from .facades.docker import AsyncDocker
+
         try:
             AsyncDocker()
-        except:
-            logger.error("Connection to Docker API failed. "
-                         "Service will shutdown after another failed attempt...")
+        except Exception as exc:
+            logger.exception(
+                "Docker API connection failed; shutting down immediately",
+                extra={"error": str(exc), "error_type": type(exc).__name__},
+            )
+            raise  # Re-raise to fail fast and stop FastAPI startup
 
         yield
 

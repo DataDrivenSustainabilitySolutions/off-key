@@ -19,6 +19,10 @@ from off_key_core.clients.provider import get_charger_api_client
 from .services.chargers import ChargersSyncService
 from .services.telemetry import TelemetrySyncService
 
+# Load logging configuration from YAML files
+service_logging_config = Path(__file__).parent / "config" / "logging.yaml"
+load_yaml_config(str(service_logging_config))
+
 # Global reference to sync service (set by main)
 _sync_service = None
 
@@ -33,9 +37,6 @@ def set_sync_service(service):
 async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
     """FastAPI lifespan manager"""
     logger.info("Database sync API started")
-    # Force logging config
-    service_logging_config = Path(__file__).parent / "config" / "logging.yaml"
-    load_yaml_config(str(service_logging_config))
     yield
     logger.info("Database sync API stopped")
 

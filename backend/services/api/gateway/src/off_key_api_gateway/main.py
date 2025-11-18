@@ -33,6 +33,7 @@ if not hasattr(bcrypt, "__about__"):
 service_logging_config = Path(__file__).parent / "config" / "logging.yaml"
 load_yaml_config(str(service_logging_config))
 
+
 async def wait_for_db_sync(
     max_retries: int = 150,
     retry_delay: int = 2,
@@ -84,9 +85,6 @@ async def wait_for_db_sync(
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """FastAPI lifespan manager for startup and shutdown events."""
-    # Force logging config within uvicorn
-    load_yaml_config(str(service_logging_config))
-
     # Wait for db-sync service to be ready
     await wait_for_db_sync()
 

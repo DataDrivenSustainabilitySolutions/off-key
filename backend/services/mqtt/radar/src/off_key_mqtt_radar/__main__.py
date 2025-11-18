@@ -20,7 +20,16 @@ load_yaml_config(str(service_logging_config))
 async def main():
     """Main entry point for RADAR service"""
     logger.info("Starting MQTT RADAR service")
-    logger.info(f"Configuration: {radar_settings.config.dict()}")
+
+    # Log compact configuration summary (actionable fields only)
+    config = radar_settings.config
+    logger.info(
+        "RADAR Configuration: broker=%s:%s, subscription_qos=%s, db_write_enabled=%s",
+        config.broker_host,
+        config.broker_port,
+        getattr(config, "subscription_qos", "n/a"),
+        getattr(config, "db_write_enabled", "n/a"),
+    )
 
     try:
         # Get service instance and run

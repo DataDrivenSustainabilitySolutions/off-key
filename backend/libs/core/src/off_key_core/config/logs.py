@@ -73,7 +73,7 @@ class TruncatingFormatter(logging.Formatter):
             message_part = parts[-1]
 
             if len(message_part) > self.truncate_length:
-                message_part = message_part[:self.truncate_length] + "..."
+                message_part = message_part[: self.truncate_length] + "..."
 
             return " - ".join(prefix_parts + [message_part])
 
@@ -133,7 +133,7 @@ def load_yaml_config(service_config_path: str = None) -> None:
     # Load base configuration from core
     core_config_path = Path(__file__).parent / "logging.yaml"
 
-    with open(core_config_path, 'r') as f:
+    with open(core_config_path, "r") as f:
         config_text = f.read()
         # Expand environment variables
         config_text = _expand_env_vars(config_text)
@@ -141,7 +141,7 @@ def load_yaml_config(service_config_path: str = None) -> None:
 
     # Load and merge service-specific configuration if provided
     if service_config_path and os.path.exists(service_config_path):
-        with open(service_config_path, 'r') as f:
+        with open(service_config_path, "r") as f:
             service_config_text = f.read()
             # Expand environment variables
             service_config_text = _expand_env_vars(service_config_text)
@@ -149,8 +149,8 @@ def load_yaml_config(service_config_path: str = None) -> None:
 
         # Extract the service logger name from the service config
         # Look for the first logger that's not sqlalchemy-related
-        if 'loggers' in service_config:
-            logger_names = list(service_config['loggers'].keys())
+        if "loggers" in service_config:
+            logger_names = list(service_config["loggers"].keys())
             if logger_names:
                 _service_logger_name = logger_names[0]
 
@@ -172,25 +172,26 @@ def _expand_env_vars(text: str) -> str:
         ${LOG_LEVEL:INFO} -> Uses LOG_LEVEL env var, defaults to INFO
         ${LOG_FILE:/tmp/app.log} -> Uses LOG_FILE env var, defaults to /tmp/app.log
     """
+
     def replace_env_var(match):
         var_expr = match.group(1)
-        if ':' in var_expr:
-            var_name, default_value = var_expr.split(':', 1)
+        if ":" in var_expr:
+            var_name, default_value = var_expr.split(":", 1)
         else:
             var_name = var_expr
-            default_value = ''
+            default_value = ""
 
         # Handle nested environment variable references
         result = os.getenv(var_name.strip(), default_value.strip())
 
         # If the result contains another ${} reference, expand it recursively
-        if '${' in result:
+        if "${" in result:
             result = _expand_env_vars(result)
 
         return result
 
     # Match ${VAR} or ${VAR:default}
-    pattern = r'\$\{([^}]+)\}'
+    pattern = r"\$\{([^}]+)\}"
 
     # Keep expanding until no more variables are found
     prev_text = None
@@ -217,6 +218,7 @@ def _merge_configs(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, 
 # Global variables for YAML configuration
 _default_logger_instance = None
 _service_logger_name = None  # Store the service logger name when YAML is configured
+
 
 class LazyLogger:
     """A lazy logger that creates the actual logger on first use."""
@@ -245,6 +247,7 @@ class LazyLogger:
         else:
             # No YAML config loaded - use basic logging
             return logging.getLogger("off_key")
+
 
 logger = LazyLogger()
 

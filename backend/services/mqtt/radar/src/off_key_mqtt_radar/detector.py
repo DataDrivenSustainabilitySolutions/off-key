@@ -17,49 +17,23 @@ from typing import Dict, Any, Optional
 from collections import deque
 from enum import Enum
 
-# ONAD imports for online anomaly detection
+# Model registry for dynamic model loading
+from off_key_core.models import (
+    get_model_class,
+    validate_model_params,
+)
+
+# ONAD preprocessing imports
 try:
-    from onad.models.online_isolation_forest import OnlineIsolationForest
-    from onad.models.incremental_one_class_svm import (
-        IncrementalOneClassSVMAdaptiveKernel,
-    )
-    from onad.models.incremental_knn import IncrementalKNN
     from onad.transform.preprocess.scaler import StandardScaler
     from onad.transform.project.incremental_pca import IncrementalPCA
+
+    ONAD_AVAILABLE = True
 except ImportError as e:
-    logging.warning(f"ONAD not available: {e}. Using mock implementations.")
+    logging.warning(f"ONAD preprocessing not available: {e}")
+    ONAD_AVAILABLE = False
 
-    # Mock implementations for development
-    class OnlineIsolationForest:
-        def __init__(self, **kwargs):
-            self.params = kwargs
-
-        def learn_one(self, x):
-            pass
-
-        def score_one(self, x):
-            return 0.5
-
-    class IncrementalOneClassSVMAdaptiveKernel:
-        def __init__(self, **kwargs):
-            self.params = kwargs
-
-        def learn_one(self, x):
-            pass
-
-        def score_one(self, x):
-            return 0.5
-
-    class IncrementalKNN:
-        def __init__(self, **kwargs):
-            self.params = kwargs
-
-        def learn_one(self, x):
-            pass
-
-        def score_one(self, x):
-            return 0.5
-
+    # Minimal fallback for preprocessing only (models use registry)
     class StandardScaler:
         def __init__(self, **kwargs):
             self.params = kwargs
@@ -128,18 +102,29 @@ class AnomalyDetectionService:
         )
 
     def _create_model(self):
-        """Factory method for model creation"""
-        model_map = {
-            "isolation_forest": OnlineIsolationForest,
-            "adaptive_svm": IncrementalOneClassSVMAdaptiveKernel,
-            "knn": IncrementalKNN,
-        }
+        """Factory method for model creation using registry"""
+        try:
+            # Get model class from registry (handles dynamic import)
+            model_class = get_model_class(self.config.model_type)
 
-        model_class = model_map.get(self.config.model_type)
-        if not model_class:
-            raise ValueError(f"Unknown model type: {self.config.model_type}")
+            # Validate and apply default parameters
+            validated_params = validate_model_params(
+                self.config.model_type, self.config.model_params
+            )
 
-        return model_class(**self.config.model_params)
+            self.logger.info(
+                f"Creating model '{self.config.model_type}'"
+                f" with params: {validated_params}"
+            )
+
+            return model_class(**validated_params)
+
+        except ImportError as e:
+            self.logger.error(f"Failed to import model: {e}")
+            raise
+        except ValueError as e:
+            self.logger.error(f"Invalid model configuration: {e}")
+            raise
 
     def _create_preprocessors(self):
         """Create preprocessing pipeline"""

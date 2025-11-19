@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from typing import List, Dict, Optional, Any
 from pydantic import BaseModel, Field
 
+from off_key_core.models import get_available_models
 from ...facades.tactic import tactic
 from ..rate_limiter import limiter
 
@@ -178,4 +179,28 @@ async def stop_monitoring_service(
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to stop monitoring service: {str(e)}"
+        )
+
+
+@router.get("/models", response_model=Dict[str, Any])
+@shared_limit_fetch
+async def list_available_models_endpoint(request: Request):
+    """
+    Lists all available anomaly detection models and their hyperparameters.
+
+    Returns information about each model including:
+    - description: What the model does
+    - category: Model type (forest, distance, svm, etc.)
+    - complexity: Computational complexity
+    - memory_usage: Expected memory footprint
+    - parameters: JSON schema for hyperparameters with defaults and constraints
+
+    Use this endpoint to discover available models and their configuration options
+    before starting a monitoring service.
+    """
+    try:
+        return get_available_models()
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get available models: {str(e)}"
         )

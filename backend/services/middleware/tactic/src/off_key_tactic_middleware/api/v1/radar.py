@@ -1,7 +1,8 @@
 from fastapi import APIRouter, HTTPException, Depends, Query, Request
 from typing import List, Dict, Optional, Any
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
+from off_key_core.models import MODEL_REGISTRY, get_available_models
 from ...services.orchestration.radar import (
     RadarOrchestrationService,
 )
@@ -19,10 +20,12 @@ class RadarConfig(BaseModel):
     # Model Configuration
     model_type: str = Field(
         default="isolation_forest",
-        description="ML model type: isolation_forest, adaptive_svm, knn",
+        description="ML model type. Use GET /radar/models/ to see available models.",
     )
     model_params: Optional[Dict[str, Any]] = Field(
-        default=None, description="Model-specific parameters"
+        default=None,
+        description="Model-specific hyperparameters. Use GET /radar/models/ to see"
+        " available parameters for each model.",
     )
 
     # MQTT Configuration
@@ -40,6 +43,17 @@ class RadarConfig(BaseModel):
     performance_config: Optional[Dict[str, Any]] = Field(
         default=None, description="Performance and resource settings"
     )
+
+    @field_validator("model_type")
+    @classmethod
+    def validate_model_type(cls, v: str) -> str:
+        """Validate that model_type exists in the registry."""
+        if v not in MODEL_REGISTRY:
+            available = ", ".join(MODEL_REGISTRY.keys())
+            raise ValueError(
+                f"Unknown model type: '{v}'. Available models: {available}"
+            )
+        return v
 
 
 class RadarServiceResponse(BaseModel):
@@ -192,4 +206,27 @@ async def stop_radar_service(
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to stop RADAR service: {str(e)}"
+        )
+
+
+@router.get("/radar/models/", response_model=Dict[str, Any])
+async def list_available_models(request: Request):
+    """
+    Lists all available anomaly detection models and their hyperparameters.
+
+    Returns information about each model including:
+    - description: What the model does
+    - category: Model type (forest, distance, svm, etc.)
+    - complexity: Computational complexity
+    - memory_usage: Expected memory footprint
+    - parameters: JSON schema for hyperparameters with defaults and constraints
+
+    Use this endpoint to discover available models and their configuration options
+    before starting a RADAR service.
+    """
+    try:
+        return get_available_models()
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get available models: {str(e)}"
         )

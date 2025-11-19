@@ -1,4 +1,5 @@
 import os
+import json
 import uuid
 from datetime import datetime
 from typing import List, Dict, Optional, Any
@@ -10,6 +11,7 @@ from sqlalchemy import select, delete
 
 from off_key_core.config.logs import logger
 from off_key_core.db.models import MonitoringService
+from off_key_core.models import validate_model_params
 from ...facades.docker import AsyncDocker
 from ...config import tactic_settings
 
@@ -253,10 +255,24 @@ class RadarOrchestrationService:
             ),
         }
 
-        # Add model-specific parameters if provided
-        for key, value in model_params.items():
-            env_key = f"RADAR_MODEL_{key.upper()}"
-            env_vars[env_key] = str(value)
+        # Validate and serialize model parameters using registry
+        try:
+            # Validate model_params against the registry schema
+            validated_params = validate_model_params(model_type, model_params)
+
+            # Serialize complete params as JSON for container to parse
+            env_vars["RADAR_MODEL_PARAMS"] = json.dumps(validated_params)
+
+            # Also set individual params for backward compatibility and debugging
+            for key, value in validated_params.items():
+                env_key = f"RADAR_MODEL_{key.upper()}"
+                env_vars[env_key] = str(value)
+
+            logger.info(f"Model params validated for {model_type}: {validated_params}")
+
+        except ValueError as e:
+            logger.error(f"Invalid model parameters for {model_type}: {e}")
+            raise ValueError(f"Invalid model parameters: {e}")
 
         return env_vars
 

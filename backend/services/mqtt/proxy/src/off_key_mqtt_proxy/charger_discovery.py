@@ -170,8 +170,9 @@ class ChargerDiscoveryService:
             raise ChargerDiscoveryError(f"Discovery failed: {e}")
 
     async def _get_chargers_from_database(self) -> List[str]:
-        """Get all charger IDs from the database"""
+        """Get all charger IDs from the database (online and offline)"""
         try:
+            # Get all chargers to allow rediscovery of offline chargers
             stmt = select(Charger.charger_id)
             async with self._session_factory() as session:
                 result = await session.execute(stmt)
@@ -180,6 +181,8 @@ class ChargerDiscoveryService:
 
             if not charger_list:
                 logger.warning("No chargers found in database")
+            else:
+                logger.info(f"Retrieved {len(charger_list)} chargers from database")
 
             return charger_list
 

@@ -167,7 +167,7 @@ class MqttTopic(Base):
     __tablename__ = "mqtt_topics"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    service_id = Column(Text, ForeignKey("services.id"), nullable=False)
+    service_id = Column(Text, ForeignKey("services.id"), nullable=False, index=True)
     topic = Column(Text, nullable=False)
 
 

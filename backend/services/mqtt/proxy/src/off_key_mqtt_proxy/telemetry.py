@@ -13,7 +13,7 @@ from enum import Enum
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
-from sqlalchemy import update
+from sqlalchemy import update, case
 
 from off_key_core.config.logs import logger, log_performance
 from off_key_core.db.models import Telemetry, Charger
@@ -627,22 +627,38 @@ class DatabaseWriter:
     async def _update_charger_statuses(
         self, session: AsyncSession, charger_ids: set
     ) -> None:
-        """Update charger MQTT connection statuses within an active session"""
+        """Update charger MQTT connection statuses within an active session
+        using bulk update"""
         if not charger_ids:
             return
 
         now = datetime.now()
 
-        for charger_id in charger_ids:
-            last_seen = self.charger_last_seen.get(charger_id, now)
+        # Build CASE expression to preserve per-charger timestamps
+        # Use actual timestamp from charger_last_seen, fallback to current time
+        timestamp_case = case(
+            *[
+                (Charger.charger_id == cid, self.charger_last_seen.get(cid, now))
+                for cid in charger_ids
+            ],
+            else_=now,
+        )
 
-            stmt = (
-                update(Charger)
-                .where(Charger.charger_id == charger_id)
-                .values(mqtt_connected=True, mqtt_last_message=last_seen)
-            )
+        stmt = (
+            update(Charger)
+            .where(Charger.charger_id.in_(charger_ids))
+            .values(mqtt_connected=True, mqtt_last_message=timestamp_case)
+        )
 
-            await session.execute(stmt)
+        await session.execute(stmt)
+
+        logger.debug(
+            f"Bulk updated MQTT status for {len(charger_ids)} chargers",
+            extra={
+                **self._log_context,
+                "charger_count": len(charger_ids),
+            },
+        )
 
     async def _update_chargers_after_failure(self, charger_ids: set) -> None:
         """Best-effort status update when inserts fail (duplicates, etc.)."""

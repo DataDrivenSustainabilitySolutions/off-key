@@ -14,7 +14,7 @@ from collections import deque
 
 from off_key_core.config.logs import logger
 
-from .config import radar_settings, AnomalyDetectionConfig
+from .config.config import radar_settings, AnomalyDetectionConfig
 from .detector import (
     AnomalyDetectionService,
     ResilientAnomalyDetector,

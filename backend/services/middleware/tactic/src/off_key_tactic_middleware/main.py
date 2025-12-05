@@ -6,17 +6,47 @@ specifically handling Docker container orchestration for RADAR services.
 """
 
 import uvicorn
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 
-from off_key_core.config.logs import logger
+from pathlib import Path
+from fastapi import FastAPI
+from typing import AsyncGenerator
+from contextlib import asynccontextmanager
+
+from fastapi.middleware.cors import CORSMiddleware
+from off_key_core.config.logs import load_yaml_config, logger
 from .api.v1 import radar
-from .config import tactic_settings
+from .config.config import tactic_settings
+
+# Load logging configuration from YAML files
+service_logging_config = Path(__file__).parent / "config" / "logging.yaml"
+load_yaml_config(str(service_logging_config))
 
 
 def create_app() -> FastAPI:
     """Create and configure the FastAPI application."""
     config = tactic_settings.config
+
+    @asynccontextmanager
+    async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
+        """FastAPI lifespan manager for startup and shutdown events."""
+        logger.info("Application is now running...")
+
+        # Validate Docker API connection
+        from .facades.docker import AsyncDocker
+
+        try:
+            AsyncDocker()
+        except Exception as exc:
+            logger.exception(
+                "Docker API connection failed; shutting down immediately",
+                extra={"error": str(exc), "error_type": type(exc).__name__},
+            )
+            raise  # Re-raise to fail fast and stop FastAPI startup
+
+        yield
+
+        # Shutdown
+        logger.info("Application shutdown...")
 
     app = FastAPI(
         title=config.service_name,
@@ -25,6 +55,7 @@ def create_app() -> FastAPI:
         version=config.service_version,
         docs_url="/docs",
         redoc_url="/redoc",
+        lifespan=lifespan,
     )
 
     # Add CORS middleware
@@ -63,7 +94,7 @@ def main() -> None:
         app,
         host=config.host,
         port=config.port,
-        log_level=config.log_level.lower(),
+        log_config=None,  # Disable uvicorn's logging, use our logger
     )
 
 

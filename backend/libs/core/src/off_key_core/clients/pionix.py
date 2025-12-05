@@ -13,6 +13,9 @@ from urllib.parse import quote
 from ..config.config import PionixConfig
 from ..config.logs import logger
 
+# Dedicated logger for verbose response content (configured in YAML)
+response_logger = logger.getChild("response")
+
 
 class PionixClient:
     """
@@ -180,7 +183,7 @@ class PionixClient:
                 timeout=30.0,  # Add a timeout to prevent hanging requests
             )
             logger.info(f"GET response from {url} - Status: {response.status_code}")
-            logger.debug(f"Response content: {response.text}")
+            response_logger.debug(f"Response content: {response.text}")
 
             response.raise_for_status()
             return response.json()

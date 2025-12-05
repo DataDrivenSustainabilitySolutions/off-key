@@ -1,0 +1,78 @@
+version: 1
+disable_existing_loggers: false
+
+# Override root logger to prevent double logging
+root:
+  level: ${LOG_LEVEL:INFO}
+  handlers: []
+
+# Service-specific logger configurations
+loggers:
+  api-gateway:
+    level: ${SERVICE_LOG_LEVEL:${LOG_LEVEL:INFO}}
+    handlers: [console, file]
+    propagate: false
+
+  # FastAPI/Uvicorn loggers
+  uvicorn:
+    level: ${UVICORN_LOG_LEVEL:INFO}
+    handlers: [console, file]
+    propagate: false
+
+  uvicorn.access:
+    level: ${UVICORN_ACCESS_LOG_LEVEL:INFO}
+    handlers: [console, file]
+    propagate: false
+
+  fastapi:
+    level: ${FASTAPI_LOG_LEVEL:INFO}
+    handlers: [console, file]
+    propagate: false
+
+  # HTTP client logging
+  httpx:
+    level: ${HTTPX_LOG_LEVEL:WARNING}
+    handlers: [console, file]
+    propagate: false
+
+  # Security and rate limiting
+  slowapi:
+    level: ${RATE_LIMIT_LOG_LEVEL:INFO}
+    handlers: [console, file]
+    propagate: false
+
+  # Authentication logging
+  bcrypt:
+    level: ${AUTH_LOG_LEVEL:WARNING}
+    handlers: [console, file]
+    propagate: false
+
+  # SQLAlchemy loggers (if used)
+  sqlalchemy.engine.Engine:
+    level: ${SQLALCHEMY_LOG_LEVEL:WARNING}
+    handlers: [console_truncated, file]
+    propagate: false
+
+  sqlalchemy.dialects:
+    level: ${SQLALCHEMY_LOG_LEVEL:WARNING}
+    handlers: [console_truncated, file]
+    propagate: false
+
+  sqlalchemy.pool:
+    level: ${SQLALCHEMY_LOG_LEVEL:WARNING}
+    handlers: [console_truncated, file]
+    propagate: false
+
+  sqlalchemy.orm:
+    level: ${SQLALCHEMY_LOG_LEVEL:WARNING}
+    handlers: [console_truncated, file]
+    propagate: false
+
+
+handlers:
+  file:
+    class: logging.FileHandler
+    level: ${LOG_LEVEL:INFO}
+    formatter: detailed
+    filename: ${SERVICE_LOG_FILE:/tmp/api-gateway.log}
+    filters: [correlation]

@@ -5,38 +5,31 @@ MQTT Real-Time Anomaly Detector for Analysis and Reporting
 """
 
 import asyncio
-import logging
 import sys
+from pathlib import Path
 
-from off_key_core.config.logs import logger
+from off_key_core.config.logs import load_yaml_config, logger
 from .service import get_radar_service
-from .config import radar_settings
+from .config.config import radar_settings
 
-
-def setup_logging():
-    """Setup logging configuration"""
-    log_level = getattr(radar_settings, "RADAR_LOG_LEVEL", "INFO")
-
-    # Configure root logger
-    logging.basicConfig(
-        level=getattr(logging, log_level.upper(), logging.INFO),
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-        handlers=[
-            logging.StreamHandler(sys.stdout),
-        ],
-    )
-
-    # Set specific logger levels
-    logging.getLogger("paho.mqtt").setLevel(logging.WARNING)
-    logging.getLogger("sqlalchemy").setLevel(logging.WARNING)
+# Load logging configuration from YAML files
+service_logging_config = Path(__file__).parent / "config" / "logging.yaml"
+load_yaml_config(str(service_logging_config))
 
 
 async def main():
     """Main entry point for RADAR service"""
-    setup_logging()
-
     logger.info("Starting MQTT RADAR service")
-    logger.info(f"Configuration: {radar_settings.config.dict()}")
+
+    # Log compact configuration summary (actionable fields only)
+    config = radar_settings.config
+    logger.info(
+        "RADAR Configuration: broker=%s:%s, subscription_qos=%s, db_write_enabled=%s",
+        config.broker_host,
+        config.broker_port,
+        getattr(config, "subscription_qos", "n/a"),
+        getattr(config, "db_write_enabled", "n/a"),
+    )
 
     try:
         # Get service instance and run

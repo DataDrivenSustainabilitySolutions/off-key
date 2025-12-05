@@ -12,7 +12,7 @@ from typing import Optional, Callable, Awaitable
 
 import paho.mqtt.client as mqtt
 from off_key_core.config.logs import logger
-from ..config import MQTTConfig
+from ..config.config import MQTTConfig
 from ..auth import ApiKeyAuthHandler, ApiKeyAuthError
 from .models import ConnectionState
 

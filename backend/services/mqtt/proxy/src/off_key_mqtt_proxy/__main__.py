@@ -7,8 +7,15 @@ occur when a module is both imported as a package component and executed as a sc
 """
 
 import asyncio
-from off_key_core.clients.provider import get_charger_api_client
+from pathlib import Path
+
 from .proxy import MQTTProxyService
+from off_key_core.clients.provider import get_charger_api_client
+from off_key_core.config.logs import load_yaml_config
+
+# Load logging configuration from YAML files
+service_logging_config = Path(__file__).parent / "config" / "logging.yaml"
+load_yaml_config(str(service_logging_config))
 
 
 async def main():

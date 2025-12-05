@@ -12,7 +12,7 @@ from typing import Optional
 from off_key_core.config.logs import logger
 from off_key_core.db.base import AsyncSessionLocal
 from off_key_core.utils.enum import HealthStatus
-from .config import mqtt_settings
+from .config.config import mqtt_settings
 from .auth import ApiKeyAuthHandler
 from .client.facade import MQTTClient
 from .charger_discovery import ChargerDiscoveryService
@@ -171,7 +171,7 @@ class MQTTProxyService:
                 self.bridge_auth_handler = None
 
             # Create bridge configuration
-            from .config import MQTTConfig
+            from .config.config import MQTTConfig
 
             bridge_config = MQTTConfig(
                 broker_host=self.config.bridge_broker_host,

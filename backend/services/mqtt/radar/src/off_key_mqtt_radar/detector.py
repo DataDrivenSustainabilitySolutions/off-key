@@ -5,7 +5,6 @@ Implements anomaly detection patterns from guide.md for real-time processing
 of MQTT telemetry data with resilient error handling and monitoring.
 """
 
-import logging
 import time
 import pickle
 import os
@@ -17,6 +16,8 @@ from typing import Dict, Any, Optional
 from collections import deque
 from enum import Enum
 
+from off_key_core.config.logs import logger
+
 # ONAD imports for online anomaly detection
 try:
     from onad.models.online_isolation_forest import OnlineIsolationForest
@@ -27,7 +28,7 @@ try:
     from onad.transform.preprocess.scaler import StandardScaler
     from onad.transform.project.incremental_pca import IncrementalPCA
 except ImportError as e:
-    logging.warning(f"ONAD not available: {e}. Using mock implementations.")
+    logger.warning(f"ONAD not available: {e}. Using mock implementations.")
 
     # Mock implementations for development
     class OnlineIsolationForest:
@@ -81,7 +82,7 @@ except ImportError as e:
             return x
 
 
-from .config import AnomalyDetectionConfig
+from off_key_mqtt_radar.config.config import AnomalyDetectionConfig
 from .models import AnomalyResult
 
 
@@ -108,7 +109,7 @@ class AnomalyDetectionService:
 
     def __init__(self, config: AnomalyDetectionConfig):
         self.config = config
-        self.logger = logging.getLogger(__name__)
+        self.logger = logger
 
         # Initialize components
         self.model = self._create_model()
@@ -315,7 +316,7 @@ class ResilientAnomalyDetector:
         self.circuit_breaker_timeout = 300  # 5 minutes
         self.circuit_breaker_opened_at = None
 
-        self.logger = logging.getLogger(__name__)
+        self.logger = logger
 
     def process_with_resilience(
         self, data: Dict[str, float], topic: str = None, charger_id: str = None
@@ -487,7 +488,7 @@ class MemoryManager:
         self.max_memory_mb = max_memory_mb
         self.cleanup_threshold = cleanup_threshold
         self.process = psutil.Process(os.getpid())
-        self.logger = logging.getLogger(__name__)
+        self.logger = logger
 
     def get_memory_usage(self) -> float:
         """Get current memory usage in MB"""
@@ -522,7 +523,7 @@ class SecurityValidator:
     def __init__(self, max_feature_count=100, max_string_length=1000):
         self.max_feature_count = max_feature_count
         self.max_string_length = max_string_length
-        self.logger = logging.getLogger(__name__)
+        self.logger = logger
 
     def validate_and_sanitize(self, data: Dict[str, Any]) -> Dict[str, float]:
         """Validate and sanitize input data to numeric format"""

@@ -19,7 +19,7 @@ from off_key_core.config.logs import logger, log_performance
 from off_key_core.db.models import Telemetry, Charger
 from off_key_core.utils.string import clean_string, string_to_float
 from off_key_core.utils.enum import HealthStatus
-from .config import MQTTConfig
+from .config.config import MQTTConfig
 from .client.models import MQTTMessage
 
 

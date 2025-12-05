@@ -16,7 +16,7 @@ from collections import deque
 import paho.mqtt.client as mqtt
 from off_key_core.config.logs import logger
 
-from .config import MQTTRadarConfig
+from .config.config import MQTTRadarConfig
 from .models import MQTTMessage
 
 

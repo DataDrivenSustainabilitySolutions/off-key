@@ -9,6 +9,7 @@ from pydantic import BaseModel, field_validator, model_validator
 from pydantic_settings import BaseSettings
 from typing import Self
 from dotenv import find_dotenv, load_dotenv
+from .core_config import get_retention_days
 
 # Load default ".env" file from upper project tree
 load_dotenv()
@@ -35,6 +36,11 @@ class SyncConfig(BaseModel):
     chargers_interval: int
     telemetry_interval: int
     telemetry_limit: int
+    enable_gap_detection: bool  # Check for existing data and sync only gaps
+    enable_incremental_sync: bool  # Use date parameters for incremental sync
+    enable_pagination: bool  # Handle API pagination for large datasets
+    max_pagination_calls: int  # Maximum number of pagination calls per hierarchy
+    retention_days: int  # Days of telemetry data to retain (14 = 2 weeks)
 
     # API Server Configuration
     api_host: str
@@ -116,6 +122,22 @@ class SyncConfig(BaseModel):
         """Validate telemetry record limit"""
         if not 1 <= v <= 100000:
             raise ValueError("Telemetry limit must be between 1 and 100,000")
+        return v
+
+    @field_validator("max_pagination_calls")
+    @classmethod
+    def validate_max_pagination_calls(cls, v: int) -> int:
+        """Validate maximum pagination calls"""
+        if not 1 <= v <= 100:
+            raise ValueError("Max pagination calls must be between 1 and 100")
+        return v
+
+    @field_validator("retention_days")
+    @classmethod
+    def validate_retention_days(cls, v: int) -> int:
+        """Validate retention period"""
+        if not 1 <= v <= 365:
+            raise ValueError("Retention days must be between 1 and 365")
         return v
 
     @field_validator("cleanup_days_inactive")
@@ -286,6 +308,12 @@ class SyncSettings(BaseSettings):
         21600  # Telemetry sync interval (seconds) - default 6 hours
     )
     SYNC_TELEMETRY_LIMIT: int = 10000  # Max telemetry records per hierarchy
+    SYNC_ENABLE_GAP_DETECTION: bool = True  # Enable gap detection for telemetry sync
+    SYNC_ENABLE_INCREMENTAL_SYNC: bool = (
+        True  # Use date parameters for incremental sync
+    )
+    SYNC_ENABLE_PAGINATION: bool = True  # Handle API pagination for large datasets
+    SYNC_MAX_PAGINATION_CALLS: int = 10  # Maximum pagination calls per hierarchy
 
     # API Server Configuration
     SYNC_API_HOST: str = "0.0.0.0"  # API server host
@@ -338,6 +366,11 @@ class SyncSettings(BaseSettings):
             chargers_interval=self.SYNC_CHARGERS_INTERVAL,
             telemetry_interval=self.SYNC_TELEMETRY_INTERVAL,
             telemetry_limit=self.SYNC_TELEMETRY_LIMIT,
+            enable_gap_detection=self.SYNC_ENABLE_GAP_DETECTION,
+            enable_incremental_sync=self.SYNC_ENABLE_INCREMENTAL_SYNC,
+            enable_pagination=self.SYNC_ENABLE_PAGINATION,
+            max_pagination_calls=self.SYNC_MAX_PAGINATION_CALLS,
+            retention_days=get_retention_days(),  # Use centralized config
             api_host=self.SYNC_API_HOST,
             api_port=self.SYNC_API_PORT,
             cleanup_enabled=self.SYNC_CLEANUP_ENABLED,

@@ -1,12 +1,12 @@
 import time
 
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from dataclasses import dataclass
 from typing import Optional
 from urllib.parse import unquote
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.dialects.postgresql import insert
 from off_key_core.clients.base_client import ChargerAPIClient
 from off_key_core.config.logs import logger
@@ -67,6 +67,53 @@ class TelemetrySyncService:
         self._log_context = {"component": "telemetry_sync", "service": "db_sync"}
 
         logger.info("TelemetrySyncService initialized", extra=self._log_context)
+
+        # Log active retention period (uses centralized config)
+        retention_days = sync_settings.config.retention_days
+        logger.info(
+            f"Telemetry sync retention window: {retention_days} days",
+            extra={**self._log_context, "retention_days": retention_days},
+        )
+
+    async def _check_existing_data_coverage(
+        self, charger_id: str, hierarchy_type: str
+    ) -> tuple[Optional[datetime], Optional[datetime]]:
+        """
+        Check the earliest and latest timestamps for existing telemetry data.
+
+        Args:
+            charger_id: The charger ID to check
+            hierarchy_type: The telemetry hierarchy type
+
+        Returns:
+            Tuple of (earliest_timestamp, latest_timestamp)
+            or (None, None) if no data exists
+        """
+        try:
+            stmt = select(
+                func.min(Telemetry.timestamp), func.max(Telemetry.timestamp)
+            ).where(
+                Telemetry.charger_id == charger_id, Telemetry.type == hierarchy_type
+            )
+            result = await self.session.execute(stmt)
+            row = result.first()
+
+            if row and row[0] is not None and row[1] is not None:
+                logger.debug(
+                    f"Existing data for {charger_id}/{hierarchy_type}: "
+                    f"{row[0]} to {row[1]}"
+                )
+                return row[0], row[1]
+            else:
+                logger.debug(f"No existing data for {charger_id}/{hierarchy_type}")
+                return None, None
+
+        except Exception as e:
+            logger.error(
+                f"Failed to check existing data coverage for "
+                f"{charger_id}/{hierarchy_type}: {e}"
+            )
+            return None, None
 
     async def sync_telemetry(self, limit: int):
         """
@@ -177,26 +224,213 @@ class TelemetrySyncService:
                     )
                     continue
 
-                logger.info(
-                    f"Fetching ALL telemetry data points for "
-                    f"{charger_id}/{hierarchy_raw} with limit {limit}"
-                )  # Log change
+                # Check for existing data coverage if gap detection is enabled
+                config = sync_settings.config
+                start_date = None
+                end_date = None
+                earliest = None
+                latest = None
+                now = datetime.now(timezone.utc).replace(tzinfo=None)
 
+                # Calculate retention window
+                window_start = now - timedelta(days=config.retention_days)
+
+                if config.enable_gap_detection:
+                    earliest, latest = await self._check_existing_data_coverage(
+                        charger_id, hierarchy_db_type
+                    )
+
+                    if earliest and latest:
+                        # Normalize to timezone-naive UTC for comparison
+                        if earliest.tzinfo is not None:
+                            earliest = earliest.astimezone(timezone.utc).replace(
+                                tzinfo=None
+                            )
+                        if latest.tzinfo is not None:
+                            latest = latest.astimezone(timezone.utc).replace(
+                                tzinfo=None
+                            )
+
+                        # Check if latest data is within retention window
+                        if latest >= window_start:
+                            # Data is fresh enough for incremental sync
+                            if config.enable_incremental_sync:
+                                start_date = latest
+                                end_date = now
+                                logger.info(
+                                    f"Incremental sync: Fetching new data "
+                                    f"after {latest} for {charger_id}/{hierarchy_raw}"
+                                )
+                            else:
+                                logger.info(
+                                    f"Gap detection: Fetching up to {limit} "
+                                    f"recent records for {charger_id}/{hierarchy_raw}"
+                                )
+                        else:
+                            # Latest data is too old, restart from retention window
+                            start_date = window_start
+                            end_date = now
+                            logger.info(
+                                f"Gap recovery: Latest data ({latest}) is older "
+                                f"than {config.retention_days} days. "
+                                f"Restarting sync from {start_date} "
+                                f"for {charger_id}/{hierarchy_raw}"
+                            )
+                    else:
+                        # No existing data, fetch retention window
+                        start_date = window_start
+                        end_date = now
+                        logger.info(
+                            f"Initial sync: Fetching {config.retention_days} days "
+                            f"from {start_date} for {charger_id}/{hierarchy_raw}"
+                        )
+                else:
+                    logger.info(
+                        f"Fetching up to {limit} telemetry data points for "
+                        f"{charger_id}/{hierarchy_raw} (gap detection disabled)"
+                    )
+
+                # Fetch telemetry data with pagination support
+                all_items = []
+                pagination_calls = 0
                 try:
                     telemetry_api_response = await self.client.get_telemetry_data(
-                        charger_id, hierarchy_raw, limit
+                        charger_id, hierarchy_raw, limit, start_date, end_date
                     )
                     items = (
                         telemetry_api_response.get("items", [])
                         if isinstance(telemetry_api_response, dict)
                         else []
                     )
+                    all_items.extend(items)
+
+                    # Handle pagination if enabled and more data is available
+                    remaining_count = (
+                        telemetry_api_response.get("remainingCount", 0)
+                        if isinstance(telemetry_api_response, dict)
+                        else 0
+                    )
+                    total_count = (
+                        telemetry_api_response.get("totalCount", 0)
+                        if isinstance(telemetry_api_response, dict)
+                        else 0
+                    )
+
+                    logger.info(
+                        f"API response for {charger_id}/{hierarchy_raw}: "
+                        f"{len(items)} items retrieved, "
+                        f"{remaining_count} remaining, "
+                        f"{total_count} total"
+                    )
+
+                    if config.enable_pagination and remaining_count > 0:
+                        logger.info(
+                            f"Pagination: {remaining_count} more records available "
+                            f"for {charger_id}/{hierarchy_raw}"
+                        )
+
+                        # Epsilon to advance cursor and prevent duplicate fetches
+                        epsilon = timedelta(milliseconds=1)
+
+                        # Iteratively fetch remaining data
+                        while (
+                            remaining_count > 0
+                            and pagination_calls < config.max_pagination_calls
+                        ):
+                            pagination_calls += 1
+
+                            # Use the last timestamp as the new start_date for next page
+                            if all_items:
+                                last_item = all_items[-1]
+                                if (
+                                    isinstance(last_item, dict)
+                                    and "timestamp" in last_item
+                                ):
+                                    ts_str = unquote(last_item.get("timestamp", ""))
+                                    if ts_str:
+                                        if ts_str.endswith("Z"):
+                                            next_start = datetime.fromisoformat(
+                                                ts_str.replace("Z", "+00:00")
+                                            ).replace(tzinfo=None)
+                                        else:
+                                            next_start = datetime.fromisoformat(ts_str)
+                                            if next_start.tzinfo is None:
+                                                next_start = next_start.replace(
+                                                    tzinfo=timezone.utc
+                                                )
+                                            # Convert to UTC before making naive
+                                            next_start = next_start.astimezone(
+                                                timezone.utc
+                                            ).replace(tzinfo=None)
+
+                                        # Advance cursor to prevent duplicate fetches
+                                        next_start = next_start + epsilon
+
+                                        logger.debug(
+                                            f"Pagination call {pagination_calls}: "
+                                            f"Fetching from {next_start}"
+                                        )
+
+                                        # Fetch next page
+                                        next_response = (
+                                            await self.client.get_telemetry_data(
+                                                charger_id,
+                                                hierarchy_raw,
+                                                limit,
+                                                next_start,
+                                                end_date,
+                                            )
+                                        )
+                                        next_items = (
+                                            next_response.get("items", [])
+                                            if isinstance(next_response, dict)
+                                            else []
+                                        )
+                                        all_items.extend(next_items)
+
+                                        remaining_count = (
+                                            next_response.get("remainingCount", 0)
+                                            if isinstance(next_response, dict)
+                                            else 0
+                                        )
+
+                                        logger.info(
+                                            f"Pagination call {pagination_calls}: "
+                                            f"Retrieved {len(next_items)} items, "
+                                            f"{remaining_count} remaining"
+                                        )
+                                    else:
+                                        break
+                            else:
+                                break
+
+                        if (
+                            pagination_calls >= config.max_pagination_calls
+                            and remaining_count > 0
+                        ):
+                            logger.warning(
+                                f"Pagination limit reached "
+                                f"({config.max_pagination_calls} calls) "
+                                f"for {charger_id}/{hierarchy_raw}. "
+                                f"{remaining_count} records remaining unfetched."
+                            )
+                        elif remaining_count == 0:
+                            logger.info(
+                                f"Pagination complete for "
+                                f"{charger_id}/{hierarchy_raw}: "
+                                f"All {len(all_items)} items fetched in "
+                                f"{pagination_calls + 1} calls"
+                            )
+
                 except Exception as e:
                     logger.error(
                         f"Failed to fetch telemetry for "
                         f"{charger_id}/{hierarchy_raw}: {e}"
                     )
                     continue
+
+                # Use all_items (which includes paginated results) instead of items
+                items = all_items
 
                 if not items:
                     logger.info(
@@ -207,7 +441,7 @@ class TelemetrySyncService:
 
                 # Log message reflects potentially large amount of data
                 logger.info(
-                    f"Retrieved {len(items)} items (potentially all historical) "
+                    f"Processing {len(items)} total items "
                     f"for {charger_id} / {hierarchy_raw}. "
                     f"Preparing for insertion."
                 )
@@ -217,6 +451,7 @@ class TelemetrySyncService:
                 telemetry_records_to_insert = []
                 items_processed_count = 0
                 items_skipped_count = 0
+                items_filtered_by_gap_detection = 0
                 for item in items:
                     items_processed_count += 1
                     if not isinstance(item, dict):
@@ -238,6 +473,13 @@ class TelemetrySyncService:
                             ):
                                 ts_aware = ts_aware.replace(tzinfo=timezone.utc)
                         timestamp_naive = ts_aware.replace(tzinfo=None)
+
+                        # Skip records within existing coverage if gap detection om
+                        if config.enable_gap_detection and earliest and latest:
+                            if earliest <= timestamp_naive <= latest:
+                                items_filtered_by_gap_detection += 1
+                                continue
+
                         value_float = string_to_float(item.get("value"))
                         created_naive = datetime.now(timezone.utc).replace(tzinfo=None)
                         telemetry_records_to_insert.append(
@@ -259,6 +501,13 @@ class TelemetrySyncService:
                         )
                         continue
 
+                if items_filtered_by_gap_detection > 0:
+                    logger.info(
+                        f"Gap detection: Filtered "
+                        f"{items_filtered_by_gap_detection}/{len(items)} items "
+                        f"for {charger_id}/{hierarchy_raw} "
+                        f"(already in database coverage)."
+                    )
                 if items_skipped_count > 0:
                     logger.warning(
                         f"Skipped {items_skipped_count}/{len(items)} items "
@@ -295,44 +544,60 @@ class TelemetrySyncService:
                 batch_num = 0
                 successful_batches = 0
                 failed_batches = 0
+                pending_batches = 0
+                pending_records = 0
 
-                for i in range(0, len(telemetry_records_to_insert), batch_size):
-                    batch_num += 1
-                    batch = telemetry_records_to_insert[i : i + batch_size]
-                    logger.debug(
-                        f"Preparing batch {batch_num} ({len(batch)} records) for "
-                        f"{charger_id} / {hierarchy_raw}."
-                    )
-                    try:
+                # Execute all batches, then commit once at the end
+                try:
+                    for i in range(0, len(telemetry_records_to_insert), batch_size):
+                        batch_num += 1
+                        batch = telemetry_records_to_insert[i : i + batch_size]
+                        logger.debug(
+                            f"Preparing batch {batch_num} ({len(batch)} records) for "
+                            f"{charger_id} / {hierarchy_raw}."
+                        )
                         stmt = insert(Telemetry).values(batch)
                         stmt = stmt.on_conflict_do_nothing()
                         result = await self.session.execute(stmt)
-                        await self.session.commit()
-                        successful_batches += 1
-                        self.total_batches_processed += 1
-                        self.total_records_inserted += len(batch)
+                        pending_batches += 1
+                        pending_records += len(batch)
                         logger.debug(
-                            f"Committed batch {batch_num} for "
+                            f"Executed batch {batch_num} for "
                             f"{charger_id} / {hierarchy_raw}."
                         )
-                    except IntegrityError as ie:
-                        await self.session.rollback()
-                        failed_batches += 1
-                        self.total_batches_failed += 1
-                        logger.error(
-                            f"IntegrityError during batch {batch_num} insert for "
-                            f"{charger_id}/{hierarchy_raw}: {ie}. "
-                            f"Rolling back batch."
-                        )
-                    except Exception as e:
-                        await self.session.rollback()
-                        failed_batches += 1
-                        self.total_batches_failed += 1
-                        logger.error(
-                            f"Error during batch {batch_num} insert for "
-                            f"{charger_id}/{hierarchy_raw}: {e}. "
-                            f"Rolling back batch."
-                        )
+
+                    # Commit once after all batches for this hierarchy
+                    await self.session.commit()
+
+                    # Only increment metrics after successful commit
+                    successful_batches = pending_batches
+                    self.total_batches_processed += pending_batches
+                    self.total_records_inserted += pending_records
+
+                    logger.debug(
+                        f"Committed all {batch_num} batches for "
+                        f"{charger_id} / {hierarchy_raw}."
+                    )
+                except IntegrityError as ie:
+                    await self.session.rollback()
+                    failed_batches = pending_batches
+                    successful_batches = 0
+                    self.total_batches_failed += failed_batches
+                    logger.error(
+                        f"IntegrityError during batch insert for "
+                        f"{charger_id}/{hierarchy_raw}: {ie}. "
+                        f"Rolling back all {pending_batches} batches."
+                    )
+                except Exception as e:
+                    await self.session.rollback()
+                    failed_batches = pending_batches
+                    successful_batches = 0
+                    self.total_batches_failed += failed_batches
+                    logger.error(
+                        f"Error during batch insert for "
+                        f"{charger_id}/{hierarchy_raw}: {e}. "
+                        f"Rolling back all {pending_batches} batches."
+                    )
 
                 logger.info(
                     f"Batch processing completed for {charger_id}/{hierarchy_raw}: "

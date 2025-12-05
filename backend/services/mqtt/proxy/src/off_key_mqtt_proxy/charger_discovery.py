@@ -119,10 +119,18 @@ class ChargerDiscoveryService:
         discovery_start_time = datetime.now()
 
         try:
-            # Get all chargers from database
-            charger_ids = await self._get_chargers_from_database()
+            # Get chargers based on configured source
+            if self.config.discovery_source == "api":
+                charger_ids = await self._get_chargers_from_api()
+            elif self.config.discovery_source == "database":
+                charger_ids = await self._get_chargers_from_database()
+            else:  # api_with_db_fallback
+                charger_ids = await self._get_chargers_from_api()
+                if not charger_ids:
+                    logger.info("No chargers from API, falling back to database")
+                    charger_ids = await self._get_chargers_from_database()
 
-            logger.info(f"Found {len(charger_ids)} chargers in database")
+            logger.info(f"Found {len(charger_ids)} chargers to discover")
 
             # Discover telemetry hierarchies for each charger
             charger_info_list = []
@@ -162,8 +170,9 @@ class ChargerDiscoveryService:
             raise ChargerDiscoveryError(f"Discovery failed: {e}")
 
     async def _get_chargers_from_database(self) -> List[str]:
-        """Get all charger IDs from the database"""
+        """Get all charger IDs from the database (online and offline)"""
         try:
+            # Get all chargers to allow rediscovery of offline chargers
             stmt = select(Charger.charger_id)
             async with self._session_factory() as session:
                 result = await session.execute(stmt)
@@ -172,12 +181,34 @@ class ChargerDiscoveryService:
 
             if not charger_list:
                 logger.warning("No chargers found in database")
+            else:
+                logger.info(f"Retrieved {len(charger_list)} chargers from database")
 
             return charger_list
 
         except Exception as e:
             logger.error(f"Failed to query chargers from database: {e}")
             raise ChargerDiscoveryError(f"Database query failed: {e}")
+
+    async def _get_chargers_from_api(self) -> List[str]:
+        """Get all charger IDs directly from the API"""
+        try:
+            chargers_data = await self.api_client.get_chargers()
+            if not chargers_data:
+                logger.warning("No chargers received from API")
+                return []
+
+            charger_ids = [
+                charger["id"]
+                for charger in chargers_data
+                if isinstance(charger, dict) and "id" in charger
+            ]
+            logger.info(f"Retrieved {len(charger_ids)} chargers from API")
+            return charger_ids
+
+        except Exception as e:
+            logger.error(f"Failed to query chargers from API: {e}")
+            return []
 
     async def _discover_charger_hierarchies(
         self, charger_id: str

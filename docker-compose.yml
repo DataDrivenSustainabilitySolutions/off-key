@@ -85,7 +85,7 @@ services:
       - socket-network
       - emqx-network
     environment:
-      - TACTIC_DOCKER_DEFAULT_NETWORK=${COMPOSE_PROJECT_NAME:-off-key}_emqx-network
+      - TACTIC_DOCKER_DEFAULT_NETWORK=${COMPOSE_PROJECT_NAME:-off-key}_app-network
     restart: always
     command: [ "/app/bin/python", "-m", "off_key_tactic_middleware" ]
 
@@ -106,6 +106,8 @@ services:
       - app-network
       - emqx-network
     restart: always
+    environment:
+      - RADAR_DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@timescaledb:5432/${POSTGRES_DB}
 
   mqtt-proxy:
     build:
@@ -261,6 +263,7 @@ services:
       emqx-network:
         aliases:
           - emqx-main.ddss.local
+      app-network:
     ports:
       - 1883:1883
       - 8083:8083
@@ -291,6 +294,7 @@ services:
       emqx-network:
         aliases:
           - emqx-worker.ddss.local
+      app-network:
     # volumes:
     #   - $PWD/emqx2_data:/opt/emqx/data
 
@@ -337,7 +341,8 @@ services:
 
 networks:
   app-network:
-    driver: bridge
+    driver: overlay
+    attachable: true
   socket-network:
     driver: bridge
   emqx-network:

@@ -17,6 +17,33 @@ import { apiUtils } from "@/lib/api-client";
 import { API_CONFIG } from "@/lib/api-config";
 import toast from "react-hot-toast";
 
+// Helper function to map Docker status to display properties
+const getStatusDisplay = (dockerStatus: string | undefined, isActive: boolean) => {
+  const status = dockerStatus?.toLowerCase();
+  switch (status) {
+    case 'running':
+      return { label: 'Running', className: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' };
+    case 'complete':
+    case 'completed':
+      return { label: 'Completed', className: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200' };
+    case 'failed':
+    case 'error':
+      return { label: 'Failed', className: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200' };
+    case 'not_found':
+      return { label: 'Not Found', className: 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200' };
+    case 'pending':
+    case 'assigned':
+    case 'preparing':
+    case 'starting':
+      return { label: 'Starting', className: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200' };
+    default:
+      return {
+        label: dockerStatus || (isActive ? 'Active' : 'Inactive'),
+        className: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200'
+      };
+  }
+};
+
 const Monitoring: React.FC = () => {
   const { chargerId } = useParams<{ chargerId: string }>();
   //map where keys and the boolean are safed for the dropbox checked or not checked symbole
@@ -42,6 +69,13 @@ const Monitoring: React.FC = () => {
   const [selectedAlgorithm, setSelectedAlgorithm] = useState<string | null>(
     null
   );
+  const [availableModels, setAvailableModels] = useState<Record<string, any>>({});
+  const [modelParams, setModelParams] = useState<Record<string, any>>({});
+  const [isLoadingModels, setIsLoadingModels] = useState(false);
+  const [availablePreprocessors, setAvailablePreprocessors] = useState<Record<string, any>>({});
+  const [preprocessingSteps, setPreprocessingSteps] = useState<Array<{ type: string; params: Record<string, any> }>>([]);
+  const [isLoadingPreprocessors, setIsLoadingPreprocessors] = useState(false);
+  const [newPreprocessorType, setNewPreprocessorType] = useState<string>("");
 
   // Active services management
   interface ActiveService {
@@ -50,11 +84,23 @@ const Monitoring: React.FC = () => {
     container_name: string;
     mqtt_topics: string[];
     status: boolean;
+    docker_status?: string;  // Actual Docker container status
     created_at?: string;
   }
 
   const [activeServices, setActiveServices] = useState<ActiveService[]>([]);
   const [isLoadingServices, setIsLoadingServices] = useState(false);
+
+  // Anomalies state
+  interface Anomaly {
+    charger_id: string;
+    timestamp: string;
+    telemetry_type: string;
+    anomaly_type: string;
+    anomaly_value: number;
+  }
+  const [anomalies, setAnomalies] = useState<Anomaly[]>([]);
+  const [isLoadingAnomalies, setIsLoadingAnomalies] = useState(false);
 
   useEffect(() => {
     if (!chargerId) return;
@@ -62,27 +108,160 @@ const Monitoring: React.FC = () => {
     loadAllTelemetryTypes(chargerId);
   }, [loadAllTelemetryTypes, chargerId]);
 
+  const loadModels = useCallback(async () => {
+    try {
+      setIsLoadingModels(true);
+      const response = await apiUtils.get<Record<string, any>>(API_CONFIG.ENDPOINTS.MONITORING.MODELS);
+      setAvailableModels(response || {});
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      toast.error(`Failed to load models: ${errorMessage}`);
+    } finally {
+      setIsLoadingModels(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadModels();
+  }, [loadModels]);
+
+  const loadPreprocessors = useCallback(async () => {
+    try {
+      setIsLoadingPreprocessors(true);
+      const response = await apiUtils.get<Record<string, any>>(API_CONFIG.ENDPOINTS.MONITORING.PREPROCESSORS);
+      setAvailablePreprocessors(response || {});
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      toast.error(`Failed to load preprocessors: ${errorMessage}`);
+    } finally {
+      setIsLoadingPreprocessors(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadPreprocessors();
+  }, [loadPreprocessors]);
+
+  const applyModelDefaults = useCallback(
+    (modelType: string) => {
+      const modelInfo = availableModels[modelType];
+      const properties = modelInfo?.parameters?.properties || {};
+      const defaults: Record<string, any> = {};
+      Object.entries(properties).forEach(([key, schema]: [string, any]) => {
+        if (schema && typeof schema === "object" && schema.default !== undefined) {
+          defaults[key] = schema.default;
+        }
+      });
+      return defaults;
+    },
+    [availableModels]
+  );
+
+  const applyPreprocessorDefaults = useCallback(
+    (preType: string) => {
+      const info = availablePreprocessors[preType];
+      const properties = info?.parameters?.properties || {};
+      const defaults: Record<string, any> = {};
+      Object.entries(properties).forEach(([key, schema]: [string, any]) => {
+        if (schema && typeof schema === "object" && schema.default !== undefined) {
+          defaults[key] = schema.default;
+        }
+      });
+      return defaults;
+    },
+    [availablePreprocessors]
+  );
+
+  const handleModelSelect = useCallback(
+    (modelType: string) => {
+      setSelectedAlgorithm(modelType);
+      setModelParams(applyModelDefaults(modelType));
+    },
+    [applyModelDefaults]
+  );
+
+  const handleParamChange = useCallback((key: string, rawValue: string, schemaType?: string) => {
+    if (rawValue === "") {
+      setModelParams((prev) => ({ ...prev, [key]: "" }));
+      return;
+    }
+
+    let parsed: any = rawValue;
+    if (schemaType === "integer") {
+      parsed = parseInt(rawValue, 10);
+    } else if (schemaType === "number") {
+      parsed = parseFloat(rawValue);
+    }
+
+    setModelParams((prev) => ({ ...prev, [key]: parsed }));
+  }, []);
+
+  const handleAddPreprocessor = useCallback(() => {
+    if (!newPreprocessorType) return;
+    const defaults = applyPreprocessorDefaults(newPreprocessorType);
+    setPreprocessingSteps((prev) => [...prev, { type: newPreprocessorType, params: defaults }]);
+    setNewPreprocessorType("");
+  }, [applyPreprocessorDefaults, newPreprocessorType]);
+
+  const handlePreprocessorParamChange = useCallback(
+    (index: number, key: string, rawValue: string, schemaType?: string) => {
+      setPreprocessingSteps((prev) => {
+        const updated = [...prev];
+        const parsed = schemaType === "integer" ? parseInt(rawValue, 10) : schemaType === "number" ? parseFloat(rawValue) : rawValue;
+        updated[index] = {
+          ...updated[index],
+          params: { ...(updated[index].params || {}), [key]: rawValue === "" ? "" : parsed },
+        };
+        return updated;
+      });
+    },
+    []
+  );
+
+  const handleRemovePreprocessor = useCallback((index: number) => {
+    setPreprocessingSteps((prev) => prev.filter((_, i) => i !== index));
+  }, []);
+
   useEffect(() => {
     if (monitoringKeys.length === 0) return; // if no keys given do nothing
     if (Object.keys(visibleMap).length > 0) return; // if keys already initialised also do nothing
     setVisibleMap(Object.fromEntries(monitoringKeys.map((k) => [k, false]))); //k = keys, bool = should all be shown per default or not
-
-    console.log(visibleMap);
   }, [monitoringKeys, visibleMap]);
 
-  // Load active services
+  // Load active services with Docker status
   const loadActiveServices = useCallback(async () => {
     try {
       setIsLoadingServices(true);
-      const response = await apiUtils.get(API_CONFIG.ENDPOINTS.MONITORING.LIST);
+      // Include Docker status to get actual container state
+      const response = await apiUtils.get(
+        `${API_CONFIG.ENDPOINTS.MONITORING.LIST}?include_docker_status=true`
+      );
       setActiveServices(response);
     } catch (error) {
-      console.error("Failed to load active services:", error);
-      toast.error("Failed to load active services");
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      toast.error(`Failed to load active services: ${errorMessage}`);
     } finally {
       setIsLoadingServices(false);
     }
   }, []);
+
+  // Load anomalies for current charger
+  const loadAnomalies = useCallback(async () => {
+    if (!chargerId) return;
+
+    try {
+      setIsLoadingAnomalies(true);
+      const response = await apiUtils.get<Anomaly[]>(
+        API_CONFIG.ENDPOINTS.ANOMALIES.BY_CHARGER(chargerId)
+      );
+      setAnomalies(response || []);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      toast.error(`Failed to load anomalies: ${errorMessage}`);
+    } finally {
+      setIsLoadingAnomalies(false);
+    }
+  }, [chargerId]);
 
   // Delete service
   const deleteService = useCallback(async (containerName: string) => {
@@ -96,8 +275,8 @@ const Monitoring: React.FC = () => {
       // Refresh the services list
       await loadActiveServices();
     } catch (error) {
-      console.error("Failed to delete service:", error);
-      toast.error(`Failed to delete service: ${error.message || "Unknown error"}`);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      toast.error(`Failed to delete service: ${errorMessage}`);
     }
   }, [loadActiveServices]);
 
@@ -125,6 +304,16 @@ const Monitoring: React.FC = () => {
     return () => clearInterval(interval);
   }, [loadActiveServices]);
 
+  // Load anomalies on component mount and set up refresh interval
+  useEffect(() => {
+    loadAnomalies();
+
+    // Refresh anomalies every 30 seconds
+    const anomalyInterval = setInterval(loadAnomalies, 30000);
+
+    return () => clearInterval(anomalyInterval);
+  }, [loadAnomalies]);
+
   const submitAnomalyDetection = async () => {
     if (!selectedAlgorithm || activeKeys.length === 0 || !chargerId) {
       alert("Please select at least one sensor and an algorithm.");
@@ -138,23 +327,34 @@ const Monitoring: React.FC = () => {
       // Generate unique container name
       const containerName = `radar-${chargerId}-${Date.now()}`;
 
-      const response = await apiUtils.post(
+      // Clean params (drop empty strings)
+      const cleanedParams = Object.fromEntries(
+        Object.entries(modelParams || {}).filter(([, value]) => value !== "" && value !== undefined)
+      );
+
+      await apiUtils.post(
         API_CONFIG.ENDPOINTS.MONITORING.START,
         {
           container_name: containerName,
           service_type: "radar",
           mqtt_topics: mqttTopics,
           model_type: selectedAlgorithm,
+          model_params: cleanedParams,
+          preprocessing_steps: preprocessingSteps.map((step) => ({
+            type: step.type,
+            params: Object.fromEntries(
+              Object.entries(step.params || {}).filter(([, value]) => value !== "" && value !== undefined)
+            ),
+          })),
         }
       );
 
-      console.log("Successfully started monitoring service:", response);
       toast.success(`Monitoring service started successfully! Container: ${containerName}`);
       // Refresh the services list
       await loadActiveServices();
     } catch (error) {
-      console.error("Failed to start monitoring service:", error);
-      toast.error(`Error: ${error.message || "Failed to start monitoring service"}`);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      toast.error(`Error: ${errorMessage}`);
     }
   };
 
@@ -213,45 +413,136 @@ const Monitoring: React.FC = () => {
                 </div>
                 <div className="h-80 border-l border-gray-300 ml-4 mr-4"></div>
                 <div className="flex flex-col w-2/5">
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button className="w-30 mt-4 bg-indigo-800 hover:bg-indigo-700 cursor-pointer">
-                        Algorithm
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent className="w-48">
-                      <DropdownMenuCheckboxItem
-                        checked={selectedAlgorithm === "isolation_forest"}
-                        onCheckedChange={() =>
-                          setSelectedAlgorithm("isolation_forest")
-                        }
-                      >
-                        Isolation Forest
-                      </DropdownMenuCheckboxItem>
-                      <DropdownMenuCheckboxItem
-                        checked={selectedAlgorithm === "adaptive_svm"}
-                        onCheckedChange={() =>
-                          setSelectedAlgorithm("adaptive_svm")
-                        }
-                      >
-                        Adaptive SVM
-                      </DropdownMenuCheckboxItem>
-                      <DropdownMenuCheckboxItem
-                        checked={selectedAlgorithm === "knn"}
-                        onCheckedChange={() =>
-                          setSelectedAlgorithm("knn")
-                        }
-                      >
-                        K-Nearest Neighbors
-                      </DropdownMenuCheckboxItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                  <label className="text-sm font-semibold mt-4 mb-2">Algorithm</label>
+                  <select
+                    className="border rounded px-3 py-2 bg-white text-black dark:bg-neutral-900 dark:text-white"
+                    value={selectedAlgorithm || ""}
+                    onChange={(e) => handleModelSelect(e.target.value)}
+                    disabled={isLoadingModels}
+                  >
+                    <option value="" disabled>
+                      {isLoadingModels ? "Loading models..." : "Select algorithm"}
+                    </option>
+                    {Object.keys(availableModels).map((key) => (
+                      <option key={key} value={key}>
+                        {key}
+                      </option>
+                    ))}
+                  </select>
 
                   <div className="mt-10">
                     <h2 className="text-lg font-bold mb-2">
                       Picked Algorithm:
                     </h2>
-                    <p>{selectedAlgorithm}</p>
+                    <p>{selectedAlgorithm || "None selected"}</p>
+                  </div>
+
+                  {selectedAlgorithm && (
+                    <div className="mt-6 space-y-3">
+                      <h3 className="text-md font-semibold">Parameters</h3>
+                      {Object.entries(availableModels[selectedAlgorithm]?.parameters?.properties || {}).length === 0 && (
+                        <p className="text-sm text-gray-500">No parameters for this model.</p>
+                      )}
+                      {Object.entries(availableModels[selectedAlgorithm]?.parameters?.properties || {}).map(
+                        ([key, schema]: [string, any]) => (
+                          <div key={key} className="flex flex-col">
+                            <label className="text-sm font-medium mb-1">
+                              {key}
+                              {schema?.description ? (
+                                <span className="text-xs text-gray-500 ml-1">({schema.description})</span>
+                              ) : null}
+                            </label>
+                            <input
+                              type={schema?.type === "integer" || schema?.type === "number" ? "number" : "text"}
+                              className="border rounded px-3 py-2 bg-white text-black dark:bg-neutral-900 dark:text-white"
+                              value={modelParams[key] ?? ""}
+                              onChange={(e) => handleParamChange(key, e.target.value, schema?.type)}
+                              min={schema?.minimum}
+                              max={schema?.maximum}
+                              step="any"
+                            />
+                          </div>
+                        )
+                      )}
+                    </div>
+                  )}
+
+                  <div className="mt-10">
+                    <div className="flex items-center justify-between mb-2">
+                      <h3 className="text-md font-semibold">Preprocessing (optional)</h3>
+                      {isLoadingPreprocessors && (
+                        <span className="text-xs text-gray-500">Loading...</span>
+                      )}
+                    </div>
+                    <div className="flex gap-2 items-center mb-3">
+                      <select
+                        className="border rounded px-3 py-2 bg-white text-black dark:bg-neutral-900 dark:text-white"
+                        value={newPreprocessorType}
+                        onChange={(e) => setNewPreprocessorType(e.target.value)}
+                        disabled={isLoadingPreprocessors}
+                      >
+                        <option value="">Add step...</option>
+                        {Object.keys(availablePreprocessors).map((key) => (
+                          <option key={key} value={key}>
+                            {key}
+                          </option>
+                        ))}
+                      </select>
+                      <Button
+                        className="bg-indigo-800 hover:bg-indigo-700"
+                        disabled={!newPreprocessorType}
+                        onClick={handleAddPreprocessor}
+                      >
+                        Add
+                      </Button>
+                    </div>
+
+                    {preprocessingSteps.length === 0 && (
+                      <p className="text-sm text-gray-500">No preprocessing steps selected.</p>
+                    )}
+
+                    <div className="space-y-4">
+                      {preprocessingSteps.map((step, index) => {
+                        const schemaProps =
+                          availablePreprocessors[step.type]?.parameters?.properties || {};
+                        return (
+                          <div key={`${step.type}-${index}`} className="border rounded p-3 bg-gray-50 dark:bg-neutral-900">
+                            <div className="flex items-center justify-between">
+                              <div className="font-semibold">{index + 1}. {step.type}</div>
+                              <Button variant="destructive" size="sm" onClick={() => handleRemovePreprocessor(index)}>
+                                Remove
+                              </Button>
+                            </div>
+                            <div className="mt-3 space-y-3">
+                              {Object.entries(schemaProps).length === 0 && (
+                                <p className="text-sm text-gray-500">No parameters.</p>
+                              )}
+                              {Object.entries(schemaProps).map(([key, schema]: [string, any]) => (
+                                <div key={key} className="flex flex-col">
+                                  <label className="text-sm font-medium mb-1">
+                                    {key}
+                                    {schema?.description ? (
+                                      <span className="text-xs text-gray-500 ml-1">({schema.description})</span>
+                                    ) : null}
+                                  </label>
+                                  <input
+                                    type={schema?.type === "integer" || schema?.type === "number" ? "number" : "text"}
+                                    className="border rounded px-3 py-2 bg-white text-black dark:bg-neutral-900 dark:text-white"
+                                    value={step.params?.[key] ?? ""}
+                                    onChange={(e) =>
+                                      handlePreprocessorParamChange(index, key, e.target.value, schema?.type)
+                                    }
+                                    min={schema?.minimum}
+                                    max={schema?.maximum}
+                                    step="any"
+                                  />
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -311,13 +602,14 @@ const Monitoring: React.FC = () => {
                             </div>
                           </TableCell>
                           <TableCell>
-                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                              service.status
-                                ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
-                                : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
-                            }`}>
-                              {service.status ? 'Active' : 'Inactive'}
-                            </span>
+                            {(() => {
+                              const statusDisplay = getStatusDisplay(service.docker_status, service.status);
+                              return (
+                                <span className={`px-2 py-1 rounded-full text-xs font-medium ${statusDisplay.className}`}>
+                                  {statusDisplay.label}
+                                </span>
+                              );
+                            })()}
                           </TableCell>
                           <TableCell>
                             {service.created_at
@@ -338,6 +630,83 @@ const Monitoring: React.FC = () => {
                       ))}
                     </TableBody>
                   </Table>
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Detected Anomalies Section */}
+      <div className="flex mt-5 mb-5">
+        <Card className="ml-16 bg-white shadow-md w-11/12 min-h-96 dark:bg-neutral-950">
+          <CardTitle className="ml-5 mt-4">Detected Anomalies for Charger {chargerId}</CardTitle>
+          <CardContent>
+            <div className="mt-4">
+              <div className="flex justify-between items-center mb-4">
+                <span className="text-sm text-gray-500">
+                  {anomalies.length} anomalies detected
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={loadAnomalies}
+                  disabled={isLoadingAnomalies}
+                >
+                  {isLoadingAnomalies ? "Refreshing..." : "Refresh"}
+                </Button>
+              </div>
+              {isLoadingAnomalies ? (
+                <div className="flex justify-center items-center py-8">
+                  <div className="text-gray-500">Loading anomalies...</div>
+                </div>
+              ) : anomalies.length === 0 ? (
+                <div className="flex justify-center items-center py-8">
+                  <div className="text-gray-500">No anomalies detected for charger {chargerId}</div>
+                </div>
+              ) : (
+                <div className="overflow-x-auto max-h-96 overflow-y-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Timestamp</TableHead>
+                        <TableHead>Telemetry Type</TableHead>
+                        <TableHead>Anomaly Type</TableHead>
+                        <TableHead>Score</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {anomalies.slice(0, 50).map((anomaly, index) => (
+                        <TableRow key={`${anomaly.timestamp}-${index}`}>
+                          <TableCell className="font-medium">
+                            {new Date(anomaly.timestamp).toLocaleString()}
+                          </TableCell>
+                          <TableCell>
+                            <span className="px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
+                              {anomaly.telemetry_type}
+                            </span>
+                          </TableCell>
+                          <TableCell>{anomaly.anomaly_type}</TableCell>
+                          <TableCell>
+                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                              anomaly.anomaly_value >= 0.9
+                                ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
+                                : anomaly.anomaly_value >= 0.7
+                                ? 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200'
+                                : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200'
+                            }`}>
+                              {(anomaly.anomaly_value * 100).toFixed(1)}%
+                            </span>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                  {anomalies.length > 50 && (
+                    <div className="text-center py-2 text-sm text-gray-500">
+                      Showing 50 of {anomalies.length} anomalies
+                    </div>
+                  )}
                 </div>
               )}
             </div>

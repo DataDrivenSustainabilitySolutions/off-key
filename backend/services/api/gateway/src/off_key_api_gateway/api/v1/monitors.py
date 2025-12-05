@@ -2,14 +2,19 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from typing import List, Dict, Optional, Any
 from pydantic import BaseModel, Field
 
-from off_key_core.models import get_available_models
+from off_key_core.models import (
+    get_available_models,
+    validate_model_params,
+    validate_preprocessing_steps,
+    get_available_preprocessors,
+)
 from ...facades.tactic import tactic
 from ..rate_limiter import limiter
 
 router = APIRouter()
 
-shared_limit_fetch = limiter.shared_limit("10/minute", scope="services")
-shared_limit_execute = limiter.shared_limit("5/minute", scope="services")
+shared_limit_fetch = limiter.shared_limit("60/minute", scope="services")
+shared_limit_execute = limiter.shared_limit("20/minute", scope="services")
 
 
 class MonitoringServiceConfig(BaseModel):
@@ -25,6 +30,9 @@ class MonitoringServiceConfig(BaseModel):
     )
     model_params: Optional[Dict[str, Any]] = Field(
         default=None, description="Model-specific parameters"
+    )
+    preprocessing_steps: Optional[List[Dict[str, Any]]] = Field(
+        default=None, description="Ordered preprocessing steps applied before the model"
     )
     requirements: Optional[List[str]] = Field(
         None, description="List of pip packages to install"
@@ -47,15 +55,23 @@ class ServiceResponse(BaseModel):
 async def list_services(
     request: Request,
     active_only: bool = False,
+    include_docker_status: bool = False,
 ):
     """
     Lists all monitoring services.
 
     Parameters:
     - active_only: If true, only return active services
+    - include_docker_status: If true, check actual Docker container status
+      for each service. This is slower but provides accurate real-time status.
+      When enabled, each service will include a 'docker_status' field with
+      values like: 'running', 'complete', 'failed', 'not_found', 'error'.
     """
     try:
-        services = await tactic.list_radar_services(active_only=active_only)
+        services = await tactic.list_radar_services(
+            active_only=active_only,
+            include_docker_status=include_docker_status,
+        )
         return services
     except Exception as e:
         raise HTTPException(
@@ -73,12 +89,18 @@ async def start_monitoring_service(
     Starts a new monitoring service container via TACTIC orchestration.
     """
     try:
+        if config.model_params is not None:
+            # Validate early to provide fast feedback
+            validate_model_params(config.model_type, config.model_params)
+        if config.preprocessing_steps is not None:
+            validate_preprocessing_steps(config.preprocessing_steps)
         if config.service_type == "radar":
             response = await tactic.start_radar_service(
                 container_name=config.container_name,
                 mqtt_topics=config.mqtt_topics,
                 model_type=config.model_type,
                 model_params=config.model_params,
+                preprocessing_steps=config.preprocessing_steps,
                 mqtt_config=None,
                 anomaly_thresholds=None,
                 performance_config=None,
@@ -203,4 +225,20 @@ async def list_available_models_endpoint(request: Request):
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to get available models: {str(e)}"
+        )
+
+
+@router.get("/preprocessors", response_model=Dict[str, Any])
+@shared_limit_fetch
+async def list_available_preprocessors_endpoint(request: Request):
+    """List available preprocessing steps and their parameters.
+
+    Examples: standard scaler, PCA.
+    """
+    try:
+        return get_available_preprocessors()
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to get available preprocessors: {str(e)}",
         )

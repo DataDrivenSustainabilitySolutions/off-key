@@ -8,6 +8,7 @@ from typing import Dict, Any, List, Optional
 from dotenv import find_dotenv, load_dotenv
 from pathlib import Path
 import os
+import json
 
 
 def load_configuration(custom_config_file: Optional[str] = None):
@@ -40,12 +41,8 @@ class AnomalyDetectionConfig(BaseModel):
     """Configuration for anomaly detection models"""
 
     model_type: str = "isolation_forest"  # isolation_forest, adaptive_svm, knn
-    model_params: Dict[str, Any] = {"num_trees": 100, "window_size": 2000}
-
-    preprocessing_steps: List[Dict[str, Any]] = [
-        {"type": "scaler", "params": {}},
-        {"type": "pca", "params": {"n_components": 10}},
-    ]
+    model_params: Dict[str, Any] = {}
+    preprocessing_steps: List[Dict[str, Any]] = []
 
     thresholds: Dict[str, float] = {"medium": 0.6, "high": 0.8, "critical": 0.9}
 
@@ -103,6 +100,8 @@ class MQTTRadarConfig(BaseModel):
 
     # Anomaly Detection
     model_type: str = "isolation_forest"
+    model_params: Dict[str, Any] = {}
+    preprocessing_steps: List[Dict[str, Any]] = []
     thresholds: Dict[str, float] = {"medium": 0.6, "high": 0.8, "critical": 0.9}
     batch_size: int = 100
     batch_timeout: float = 1.0
@@ -137,6 +136,8 @@ class RadarSettings(BaseSettings):
 
     # Anomaly Detection
     RADAR_MODEL_TYPE: str = "isolation_forest"
+    RADAR_MODEL_PARAMS: str = ""
+    RADAR_PREPROCESSING_STEPS: str = ""
     RADAR_ANOMALY_THRESHOLD_MEDIUM: float = 0.6
     RADAR_ANOMALY_THRESHOLD_HIGH: float = 0.8
     RADAR_ANOMALY_THRESHOLD_CRITICAL: float = 0.9
@@ -171,6 +172,27 @@ class RadarSettings(BaseSettings):
         # Parse topics
         topics = [topic.strip() for topic in self.RADAR_SUBSCRIPTION_TOPICS.split(",")]
 
+        # Parse model params JSON if provided
+        model_params: Dict[str, Any] = {}
+        params_raw = os.getenv("RADAR_MODEL_PARAMS", self.RADAR_MODEL_PARAMS)
+        if params_raw:
+            try:
+                model_params = json.loads(params_raw)
+            except json.JSONDecodeError:
+                model_params = {}
+
+        preprocessing_steps: List[Dict[str, Any]] = []
+        preprocessing_raw = os.getenv(
+            "RADAR_PREPROCESSING_STEPS", self.RADAR_PREPROCESSING_STEPS
+        )
+        if preprocessing_raw:
+            try:
+                parsed = json.loads(preprocessing_raw)
+                if isinstance(parsed, list):
+                    preprocessing_steps = parsed
+            except json.JSONDecodeError:
+                preprocessing_steps = []
+
         return MQTTRadarConfig(
             broker_host=self.RADAR_MQTT_BROKER_HOST,
             broker_port=self.RADAR_MQTT_BROKER_PORT,
@@ -189,6 +211,7 @@ class RadarSettings(BaseSettings):
             rate_limit_per_minute=self.RADAR_RATE_LIMIT_PER_MINUTE,
             memory_limit_mb=self.RADAR_MEMORY_LIMIT_MB,
             model_type=self.RADAR_MODEL_TYPE,
+            model_params=model_params,
             thresholds={
                 "medium": self.RADAR_ANOMALY_THRESHOLD_MEDIUM,
                 "high": self.RADAR_ANOMALY_THRESHOLD_HIGH,
@@ -197,6 +220,7 @@ class RadarSettings(BaseSettings):
             batch_size=self.RADAR_BATCH_SIZE,
             batch_timeout=self.RADAR_BATCH_TIMEOUT,
             checkpoint_interval=self.RADAR_CHECKPOINT_INTERVAL,
+            preprocessing_steps=preprocessing_steps,
         )
 
 

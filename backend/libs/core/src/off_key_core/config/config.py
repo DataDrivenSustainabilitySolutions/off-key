@@ -234,7 +234,30 @@ class Settings(BaseSettings):
         )
 
 
-settings = Settings()  # noqa
+# Lazy singleton pattern - avoid side effects on import
+# This allows modules like logs.py to be imported without requiring all env vars
+_settings: Settings | None = None
+
+
+def get_settings() -> Settings:
+    """Get or create Settings singleton.
+
+    Only instantiates when env vars are available.
+    """
+    global _settings
+    if _settings is None:
+        _settings = Settings()
+    return _settings
+
+
+class _SettingsProxy:
+    """Proxy that lazily creates Settings on first attribute access."""
+
+    def __getattr__(self, name: str):
+        return getattr(get_settings(), name)
+
+
+settings = _SettingsProxy()  # noqa
 
 
 class TelemetrySettings(BaseSettings):

@@ -77,6 +77,7 @@ class Tactic:
         mqtt_topics: List[str],
         model_type: str = "isolation_forest",
         model_params: Optional[Dict[str, Any]] = None,
+        preprocessing_steps: Optional[List[Dict[str, Any]]] = None,
         mqtt_config: Optional[Dict[str, Any]] = None,
         anomaly_thresholds: Optional[Dict[str, float]] = None,
         performance_config: Optional[Dict[str, Any]] = None,
@@ -104,6 +105,8 @@ class Tactic:
 
         if model_params:
             payload["model_params"] = model_params
+        if preprocessing_steps:
+            payload["preprocessing_steps"] = preprocessing_steps
         if mqtt_config:
             payload["mqtt_config"] = mqtt_config
         if anomaly_thresholds:
@@ -145,18 +148,23 @@ class Tactic:
         )
 
     async def list_radar_services(
-        self, active_only: bool = False
+        self, active_only: bool = False, include_docker_status: bool = False
     ) -> List[Dict[str, Any]]:
         """
         List RADAR services via TACTIC.
 
         Args:
             active_only: If True, only return active services
+            include_docker_status: If True, check actual Docker container status
+                for each service (slower but more accurate)
 
         Returns:
             List[Dict]: List of services
         """
-        params = {"active_only": str(active_only).lower()}
+        params = {
+            "active_only": str(active_only).lower(),
+            "include_docker_status": str(include_docker_status).lower(),
+        }
 
         return await self._make_request(
             method="GET",

@@ -2,44 +2,130 @@ from sqlalchemy import create_engine
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 
-from ..config.config import settings
-from ..config.logs import logger
+# Lazy initialization to avoid triggering Settings() on import
+# This allows modules to import db/base.py without needing all env vars
+_engine = None
+_async_engine = None
+_SyncSessionLocal = None
+_AsyncSessionLocal = None
+_logger = None
 
-# Synchronous Engine
-engine = create_engine(
-    settings.database_url,  # URL for the synchronous database
-    echo=settings.DEBUG,  # Log SQL queries only in debug mode
-    echo_pool=False,
-    pool_pre_ping=True,  # Enable connection health checks
-    pool_size=10,  # Number of connections to keep in the pool
-    max_overflow=20,  # Allow additional connections beyond the pool size
-)
 
-# Synchronous Session Factory
-SyncSessionLocal = sessionmaker(
-    bind=engine,
-    autocommit=False,  # Disable autocommit for explicit transaction control
-    autoflush=False,  # Disable autoflush to avoid unintended database writes
-    expire_on_commit=False,  # Prevent objects from expiring after commit
-)
+def _get_settings():
+    """Lazy import to avoid circular dependency and early Settings instantiation."""
+    from ..config.config import settings
 
-# Asynchronous Engine
-async_engine = create_async_engine(
-    settings.async_database_url,  # URL for the asynchronous database
-    echo=settings.DEBUG,  # Log SQL queries only in debug mode
-    pool_pre_ping=True,  # Enable connection health checks
-    pool_size=10,  # Number of connections to keep in the pool
-    max_overflow=20,  # Allow additional connections beyond the pool size
-)
+    return settings
 
-# Asynchronous Session Factory
-AsyncSessionLocal = sessionmaker(
-    bind=async_engine,
-    autocommit=False,  # Disable autocommit for explicit transaction control
-    autoflush=False,  # Disable autoflush to avoid unintended database writes
-    expire_on_commit=False,  # Prevent objects from expiring after commit
-    class_=AsyncSession,  # Use AsyncSession for asynchronous operations
-)
+
+def _get_logger():
+    """Lazy import for logger."""
+    global _logger
+    if _logger is None:
+        from ..config.logs import logger
+
+        _logger = logger
+    return _logger
+
+
+def get_engine():
+    """Get or create sync engine lazily."""
+    global _engine
+    if _engine is None:
+        settings = _get_settings()
+        _engine = create_engine(
+            settings.database_url,
+            echo=settings.DEBUG,
+            echo_pool=False,
+            pool_pre_ping=True,
+            pool_size=10,
+            max_overflow=20,
+        )
+    return _engine
+
+
+def get_async_engine():
+    """Get or create async engine lazily."""
+    global _async_engine
+    if _async_engine is None:
+        settings = _get_settings()
+        _async_engine = create_async_engine(
+            settings.async_database_url,
+            echo=settings.DEBUG,
+            pool_pre_ping=True,
+            pool_size=10,
+            max_overflow=20,
+        )
+    return _async_engine
+
+
+def get_sync_session_local():
+    """Get or create sync session factory lazily."""
+    global _SyncSessionLocal
+    if _SyncSessionLocal is None:
+        _SyncSessionLocal = sessionmaker(
+            bind=get_engine(),
+            autocommit=False,
+            autoflush=False,
+            expire_on_commit=False,
+        )
+    return _SyncSessionLocal
+
+
+def get_async_session_local():
+    """Get or create async session factory lazily."""
+    global _AsyncSessionLocal
+    if _AsyncSessionLocal is None:
+        _AsyncSessionLocal = sessionmaker(
+            bind=get_async_engine(),
+            autocommit=False,
+            autoflush=False,
+            expire_on_commit=False,
+            class_=AsyncSession,
+        )
+    return _AsyncSessionLocal
+
+
+# Backward-compatible proxies that defer initialization until first use
+class _EngineProxy:
+    """Proxy that lazily creates engine on first attribute access."""
+
+    def __getattr__(self, name):
+        return getattr(get_engine(), name)
+
+
+class _AsyncEngineProxy:
+    """Proxy that lazily creates async engine on first attribute access."""
+
+    def __getattr__(self, name):
+        return getattr(get_async_engine(), name)
+
+
+class _SessionFactoryProxy:
+    """Proxy that lazily creates sync session factory on first use."""
+
+    def __call__(self):
+        return get_sync_session_local()()
+
+    def __getattr__(self, name):
+        return getattr(get_sync_session_local(), name)
+
+
+class _AsyncSessionFactoryProxy:
+    """Proxy that lazily creates async session factory on first use."""
+
+    def __call__(self):
+        return get_async_session_local()()
+
+    def __getattr__(self, name):
+        return getattr(get_async_session_local(), name)
+
+
+# Backward compatible exports - these proxies defer initialization
+engine = _EngineProxy()
+async_engine = _AsyncEngineProxy()
+SyncSessionLocal = _SessionFactoryProxy()
+AsyncSessionLocal = _AsyncSessionFactoryProxy()
 
 # Base class for declarative models
 Base = declarative_base()
@@ -52,16 +138,17 @@ async def get_db_async():
     Commits the transaction if no exceptions occur.
     Automatically closes the session when done.
     """
-    async with AsyncSessionLocal() as db:
+    session_factory = get_async_session_local()
+    async with session_factory() as db:
         try:
             yield db
-            await db.commit()  # Commit changes if no exceptions occur
+            await db.commit()
         except Exception as e:
-            await db.rollback()  # Rollback on errors
-            logger.warning(f"Database transaction rolled back: {str(e)}")
+            await db.rollback()
+            _get_logger().warning(f"Database transaction rolled back: {str(e)}")
             raise
         finally:
-            await db.close()  # Ensure the session is closed
+            await db.close()
 
 
 # Dependency for synchronous database sessions
@@ -71,16 +158,17 @@ def get_db_sync():
     Commits the transaction if no exceptions occur.
     Automatically closes the session when done.
     """
-    db = SyncSessionLocal()
+    session_factory = get_sync_session_local()
+    db = session_factory()
     try:
         yield db
-        db.commit()  # Commit changes if no exceptions occur
+        db.commit()
     except Exception as e:
-        db.rollback()  # Rollback on errors
-        logger.warning(f"Database transaction rolled back: {str(e)}")
+        db.rollback()
+        _get_logger().warning(f"Database transaction rolled back: {str(e)}")
         raise
     finally:
-        db.close()  # Ensure the session is closed
+        db.close()
 
 
 # Dependency for asynchronous database sessions without auto-commit
@@ -90,11 +178,12 @@ async def get_db_transactional():
     Useful for complex transactions where manual commit/rollback control is needed.
     The caller is responsible for committing or rolling back the transaction.
     """
-    async with AsyncSessionLocal() as db:
+    session_factory = get_async_session_local()
+    async with session_factory() as db:
         try:
             yield db
         finally:
-            await db.close()  # Just close, don't commit
+            await db.close()
 
 
 # Dependency for synchronous database sessions without auto-commit
@@ -104,8 +193,9 @@ def get_db_sync_transactional():
     Useful for complex transactions where manual commit/rollback control is needed.
     The caller is responsible for committing or rolling back the transaction.
     """
-    db = SyncSessionLocal()
+    session_factory = get_sync_session_local()
+    db = session_factory()
     try:
         yield db
     finally:
-        db.close()  # Just close, don't commit
+        db.close()

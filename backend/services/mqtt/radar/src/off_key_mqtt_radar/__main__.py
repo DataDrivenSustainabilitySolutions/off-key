@@ -36,7 +36,7 @@ async def main():
     setup_logging()
 
     logger.info("Starting MQTT RADAR service")
-    logger.info(f"Configuration: {radar_settings.config.dict()}")
+    logger.info(f"Configuration: {radar_settings.config.model_dump()}")
 
     try:
         # Get service instance and run

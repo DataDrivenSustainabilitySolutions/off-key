@@ -71,6 +71,8 @@ export const API_CONFIG = {
       STOP: '/v1/monitors/stop',
       LIST: '/v1/monitors/all',
       DETAILS: '/v1/monitors',
+      MODELS: '/v1/monitors/models',
+      PREPROCESSORS: '/v1/monitors/preprocessors',
     },
 
     // Monitoring & Anomaly Detection

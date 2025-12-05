@@ -9,7 +9,7 @@ import asyncio
 import signal
 import time
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List
 from collections import deque
 
 from off_key_core.config.logs import logger
@@ -25,6 +25,7 @@ from .mqtt_client import RadarMQTTClient
 from .database import DatabaseWriter, ensure_tables_exist
 from .models import MQTTMessage, HealthStatus as RadarHealthStatus
 from .config_watcher import ConfigWatcher, ConfigReloader
+from .state_cache import SensorStateCache
 
 
 class RadarService:
@@ -77,6 +78,12 @@ class RadarService:
 
         # Logging context
         self._log_context = {"service": "radar", "component": "main"}
+
+        # Sensor alignment (wait_for_all with latest values)
+        self.required_sensors = self._derive_required_sensors(
+            self.config.subscription_topics
+        )
+        self.state_cache = SensorStateCache(self.required_sensors)
 
         logger.info("Initialized RADAR service orchestrator")
 
@@ -170,6 +177,8 @@ class RadarService:
         # Create anomaly detection config
         anomaly_config = AnomalyDetectionConfig(
             model_type=getattr(self.config, "model_type", "isolation_forest"),
+            model_params=getattr(self.config, "model_params", {}),
+            preprocessing_steps=getattr(self.config, "preprocessing_steps", []),
             thresholds=getattr(
                 self.config, "thresholds", {"medium": 0.6, "high": 0.8, "critical": 0.9}
             ),
@@ -188,6 +197,12 @@ class RadarService:
         logger.info(
             f"Anomaly detection setup complete with model: {anomaly_config.model_type}"
         )
+
+        if self.required_sensors:
+            logger.info(
+                "Sensor alignment enabled (wait_for_all)",
+                extra={**self._log_context, "required_sensors": self.required_sensors},
+            )
 
     async def _setup_database_writer(self):
         """Initialize database writer"""
@@ -266,9 +281,24 @@ class RadarService:
             # Extract charger ID from topic
             charger_id = message.extract_charger_id()
 
+            # Derive sensor type from topic (charger/<id>/<sensor>)
+            sensor_type = self._extract_sensor_type(message.topic)
+
+            # Align multi-sensor streams: wait_for_all with latest values
+            aligned_features = None
+            if charger_id and sensor_type:
+                aligned_features = self.state_cache.update(
+                    charger_id, sensor_type, sanitized_data
+                )
+                if not aligned_features:
+                    # Still waiting for a complete set
+                    return
+            else:
+                aligned_features = sanitized_data
+
             # Process with anomaly detection
             result = self.detector.process_with_resilience(
-                sanitized_data, topic=message.topic, charger_id=charger_id
+                aligned_features, topic=message.topic, charger_id=charger_id
             )
 
             # Record processing time
@@ -486,6 +516,30 @@ class RadarService:
             active_alerts=active_alerts,
             uptime_seconds=uptime,
         )
+
+    def _derive_required_sensors(self, topics: List[str]) -> set[str]:
+        """
+        Derive required sensors from subscription topics.
+        Expected topic pattern: charger/<charger_id>/<sensor_type>
+        """
+        sensors = set()
+        for topic in topics:
+            parts = topic.split("/")
+            if len(parts) >= 3 and parts[0] == "charger":
+                sensor = parts[2]
+                if sensor != "+":
+                    sensors.add(sensor)
+        return sensors
+
+    def _extract_sensor_type(self, topic: str) -> Optional[str]:
+        """Extract sensor type from topic pattern charger/<id>/<sensor>"""
+        try:
+            parts = topic.split("/")
+            if len(parts) >= 3 and parts[0] == "charger":
+                return parts[2]
+        except Exception:
+            return None
+        return None
 
 
 # Global service instance

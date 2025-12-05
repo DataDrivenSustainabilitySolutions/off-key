@@ -19,40 +19,10 @@ from enum import Enum
 
 # Model registry for dynamic model loading
 from off_key_core.models import (
-    get_model_class,
-    validate_model_params,
+    create_model_instance,
+    validate_preprocessing_steps,
+    get_preprocessor_class,
 )
-
-# ONAD preprocessing imports
-try:
-    from onad.transform.preprocess.scaler import StandardScaler
-    from onad.transform.project.incremental_pca import IncrementalPCA
-
-    ONAD_AVAILABLE = True
-except ImportError as e:
-    logging.warning(f"ONAD preprocessing not available: {e}")
-    ONAD_AVAILABLE = False
-
-    # Minimal fallback for preprocessing only (models use registry)
-    class StandardScaler:
-        def __init__(self, **kwargs):
-            self.params = kwargs
-
-        def learn_one(self, x):
-            pass
-
-        def transform_one(self, x):
-            return x
-
-    class IncrementalPCA:
-        def __init__(self, **kwargs):
-            self.params = kwargs
-
-        def learn_one(self, x):
-            pass
-
-        def transform_one(self, x):
-            return x
 
 
 from .config import AnomalyDetectionConfig
@@ -102,22 +72,22 @@ class AnomalyDetectionService:
         )
 
     def _create_model(self):
-        """Factory method for model creation using registry"""
+        """Factory method for model creation using registry.
+
+        Uses create_model_instance which handles special cases like KNN
+        that require additional setup (e.g., similarity engine).
+        """
         try:
-            # Get model class from registry (handles dynamic import)
-            model_class = get_model_class(self.config.model_type)
-
-            # Validate and apply default parameters
-            validated_params = validate_model_params(
-                self.config.model_type, self.config.model_params
-            )
-
+            # Log params before validation
             self.logger.info(
                 f"Creating model '{self.config.model_type}'"
-                f" with params: {validated_params}"
+                f" with params: {self.config.model_params}"
             )
 
-            return model_class(**validated_params)
+            # Use create_model_instance which handles special cases like KNN
+            return create_model_instance(
+                self.config.model_type, self.config.model_params
+            )
 
         except ImportError as e:
             self.logger.error(f"Failed to import model: {e}")
@@ -127,13 +97,21 @@ class AnomalyDetectionService:
             raise
 
     def _create_preprocessors(self):
-        """Create preprocessing pipeline"""
+        """Create preprocessing pipeline from validated config."""
         preprocessors = []
-        for step in self.config.preprocessing_steps:
-            if step["type"] == "scaler":
-                preprocessors.append(StandardScaler(**step.get("params", {})))
-            elif step["type"] == "pca":
-                preprocessors.append(IncrementalPCA(**step.get("params", {})))
+        try:
+            validated_steps = validate_preprocessing_steps(
+                getattr(self.config, "preprocessing_steps", [])
+            )
+            for step in validated_steps:
+                preprocessor_cls = get_preprocessor_class(step["type"])
+                preprocessors.append(preprocessor_cls(**step.get("params", {})))
+            if preprocessors:
+                step_types = [s["type"] for s in validated_steps]
+                self.logger.info(f"Enabled preprocessing pipeline: {step_types}")
+        except Exception as e:
+            self.logger.error(f"Failed to create preprocessing pipeline: {e}")
+            raise
 
         return preprocessors
 
@@ -144,15 +122,14 @@ class AnomalyDetectionService:
         start_time = time.time()
 
         try:
-            # Preprocessing
             processed_data = data.copy()
             for preprocessor in self.preprocessors:
                 preprocessor.learn_one(processed_data)
                 processed_data = preprocessor.transform_one(processed_data)
 
-            # Anomaly detection
-            self.model.learn_one(processed_data)
+            # Anomaly detection: score first, then learn
             score = self.model.score_one(processed_data)
+            self.model.learn_one(processed_data)
 
             # Thresholding
             is_anomaly = score > self.config.thresholds.get("medium", 0.6)
@@ -239,7 +216,6 @@ class AnomalyDetectionService:
                 pickle.dump(
                     {
                         "model": self.model,
-                        "preprocessors": self.preprocessors,
                         "processed_count": self.processed_count,
                         "anomaly_count": self.anomaly_count,
                         "config": self.config,

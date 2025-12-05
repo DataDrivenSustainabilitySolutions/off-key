@@ -11,7 +11,7 @@ from sqlalchemy import select, delete
 
 from off_key_core.config.logs import logger
 from off_key_core.db.models import MonitoringService
-from off_key_core.models import validate_model_params
+from off_key_core.models import validate_model_params, validate_preprocessing_steps
 from ...facades.docker import AsyncDocker
 from ...config import tactic_settings
 
@@ -84,6 +84,7 @@ class RadarOrchestrationService:
         mqtt_topics: List[str],
         model_type: str = "isolation_forest",
         model_params: Optional[Dict[str, Any]] = None,
+        preprocessing_steps: Optional[List[Dict[str, Any]]] = None,
         mqtt_config: Optional[Dict[str, Any]] = None,
         anomaly_thresholds: Optional[Dict[str, float]] = None,
         performance_config: Optional[Dict[str, Any]] = None,
@@ -96,6 +97,7 @@ class RadarOrchestrationService:
             mqtt_topics (List[str]): List of MQTT topics to monitor
             model_type (str): Type of ML model (isolation_forest, adaptive_svm, knn)
             model_params (Dict, optional): Model-specific parameters
+            preprocessing_steps (List[Dict], optional): Preprocessing pipeline steps
             mqtt_config (Dict, optional): MQTT connection configuration
             anomaly_thresholds (Dict, optional): Anomaly detection thresholds
             performance_config (Dict, optional): Performance and resource settings
@@ -125,6 +127,7 @@ class RadarOrchestrationService:
             mqtt_topics=mqtt_topics,
             model_type=model_type,
             model_params=model_params or {},
+            preprocessing_steps=preprocessing_steps or [],
             mqtt_config=mqtt_config or {},
             anomaly_thresholds=anomaly_thresholds or {},
             performance_config=performance_config or {},
@@ -168,6 +171,7 @@ class RadarOrchestrationService:
         mqtt_topics: List[str],
         model_type: str,
         model_params: Dict[str, Any],
+        preprocessing_steps: List[Dict[str, Any]],
         mqtt_config: Dict[str, Any],
         anomaly_thresholds: Dict[str, float],
         performance_config: Dict[str, Any],
@@ -241,6 +245,8 @@ class RadarOrchestrationService:
             "RADAR_DB_BATCH_TIMEOUT": str(
                 performance_config.get("db_batch_timeout", defaults.db_batch_timeout)
             ),
+            # Database URL - avoid Settings dependency in radar containers
+            "RADAR_DATABASE_URL": self._build_database_url(),
             # Health and Monitoring
             "RADAR_HEALTH_CHECK_INTERVAL": str(
                 performance_config.get(
@@ -274,7 +280,35 @@ class RadarOrchestrationService:
             logger.error(f"Invalid model parameters for {model_type}: {e}")
             raise ValueError(f"Invalid model parameters: {e}")
 
+        # Validate preprocessing steps
+        try:
+            validated_steps = validate_preprocessing_steps(preprocessing_steps)
+            env_vars["RADAR_PREPROCESSING_STEPS"] = json.dumps(validated_steps)
+            logger.info(f"Preprocessing steps validated: {validated_steps}")
+        except ValueError as e:
+            logger.error(f"Invalid preprocessing steps: {e}")
+            raise ValueError(f"Invalid preprocessing steps: {e}")
+
         return env_vars
+
+    def _build_database_url(self) -> str:
+        """
+        Build async database URL from environment variables.
+
+        This allows radar containers to connect to the database without
+        depending on the full Settings class which requires many unrelated
+        environment variables.
+        """
+        postgres_user = os.getenv("POSTGRES_USER", "postgres")
+        postgres_password = os.getenv("POSTGRES_PASSWORD", "postgres")
+        postgres_host = os.getenv("POSTGRES_HOST", "timescaledb")
+        postgres_port = os.getenv("POSTGRES_PORT", "5432")
+        postgres_db = os.getenv("POSTGRES_DB", "postgres")
+
+        return (
+            f"postgresql+asyncpg://{postgres_user}:{postgres_password}"
+            f"@{postgres_host}:{postgres_port}/{postgres_db}"
+        )
 
     async def _create_radar_service_sync(
         self,
@@ -300,7 +334,7 @@ class RadarOrchestrationService:
         service_kwargs = {
             "name": f"radar-{service_id}",
             "labels": labels,
-            "image": "off-key-radar:latest",
+            "image": "off-key-mqtt-radar:latest",
             "env": environment,
             "command": ["/app/bin/python", "-m", "off_key_mqtt_radar"],
             "mode": ServiceMode("replicated", replicas=1),
@@ -394,14 +428,46 @@ class RadarOrchestrationService:
             logger.error(f"Failed to stop RADAR container {container_name}: {e}")
             return False
 
+    async def _get_docker_status(self, container_id: str) -> str:
+        """
+        Check actual Docker container status.
+
+        Args:
+            container_id: Docker service/container ID
+
+        Returns:
+            str: Status string - "running", "complete", "failed",
+                 "no_tasks", "not_found", or "error"
+        """
+        if not container_id:
+            return "no_container_id"
+
+        try:
+            docker_service = await self.async_docker.run(
+                self.async_docker.client.services.get, container_id
+            )
+            tasks = await self.async_docker.run(docker_service.tasks)
+            if tasks:
+                # Get the most recent task
+                latest = max(tasks, key=lambda t: t.get("CreatedAt", ""))
+                return latest.get("Status", {}).get("State", "unknown")
+            return "no_tasks"
+        except docker.errors.NotFound:
+            return "not_found"
+        except Exception as e:
+            logger.error(f"Failed to get Docker status for {container_id}: {e}")
+            return "error"
+
     async def list_radar_services(
-        self, active_only: bool = False
+        self, active_only: bool = False, include_docker_status: bool = False
     ) -> List[Dict[str, Any]]:
         """
         List all RADAR services.
 
         Args:
             active_only (bool): If True, only return active services
+            include_docker_status (bool): If True, check actual Docker container
+                status for each service (slower but more accurate)
 
         Returns:
             List[Dict]: List of RADAR services with their details
@@ -415,18 +481,24 @@ class RadarOrchestrationService:
 
         service_list = []
         for service in services:
-            service_list.append(
-                {
-                    "id": service.id,
-                    "container_id": service.container_id,
-                    "container_name": service.container_name,
-                    "mqtt_topics": service.mqtt_topic,
-                    "status": service.status,
-                    "created_at": (
-                        service.created_at.isoformat() if service.created_at else None
-                    ),
-                }
-            )
+            service_dict = {
+                "id": service.id,
+                "container_id": service.container_id,
+                "container_name": service.container_name,
+                "mqtt_topics": service.mqtt_topic,
+                "status": service.status,
+                "created_at": (
+                    service.created_at.isoformat() if service.created_at else None
+                ),
+            }
+
+            # Optionally check actual Docker state
+            if include_docker_status:
+                service_dict["docker_status"] = await self._get_docker_status(
+                    service.container_id
+                )
+
+            service_list.append(service_dict)
 
         return service_list
 

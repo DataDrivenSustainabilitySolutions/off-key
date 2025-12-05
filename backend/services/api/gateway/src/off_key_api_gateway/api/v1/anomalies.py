@@ -1,3 +1,5 @@
+from typing import Optional
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -12,13 +14,31 @@ router = APIRouter()
 
 
 @router.get("")
-async def get_anomalies(charger_id: str, db: AsyncSession = Depends(get_db_async)):
-    result = await db.execute(
-        select(Anomaly)
-        .filter(Anomaly.charger_id == charger_id)
-        .order_by(Anomaly.timestamp.desc())
-        .limit(500)  # Safety limit for anomalies
-    )
+async def get_anomalies(
+    charger_id: str,
+    telemetry_type: Optional[str] = None,
+    db: AsyncSession = Depends(get_db_async),
+):
+    """
+    Get anomalies for a charger, optionally filtered by telemetry type.
+
+    Args:
+        charger_id: The charger identifier
+        telemetry_type: Optional filter for specific telemetry type
+            (e.g., "voltage", "temperature")
+        db: Database session
+
+    Returns:
+        List of anomaly records
+    """
+    query = select(Anomaly).filter(Anomaly.charger_id == charger_id)
+
+    if telemetry_type:
+        query = query.filter(Anomaly.telemetry_type == telemetry_type)
+
+    query = query.order_by(Anomaly.timestamp.desc()).limit(500)
+
+    result = await db.execute(query)
     anomalies = result.scalars().all()
     return [
         {

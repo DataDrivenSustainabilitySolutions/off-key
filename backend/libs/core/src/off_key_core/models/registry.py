@@ -25,14 +25,16 @@ Usage:
 
 import importlib
 import logging
-from typing import Any, Dict, Type, Optional
+from typing import Any, Dict, Type, Optional, List
 
 from .schemas import (
     ModelHyperparameters,
     IncrementalKNNParams,
     OnlineIsolationForestParams,
     AdaptiveSVMParams,
-    HalfSpaceTrees,
+    MondrianIsolationForestParams,
+    StandardScalerParams,
+    IncrementalPCAParams,
 )
 
 logger = logging.getLogger(__name__)
@@ -47,7 +49,7 @@ MODEL_REGISTRY: Dict[str, Dict[str, Any]] = {
     # Distance-based Models
     # -------------------------------------------------------------------------
     "knn": {
-        "import_path": "onad.models.incremental_knn.IncrementalKNN",
+        "import_paths": ["onad.model.distance.knn.KNN"],
         "params_schema": IncrementalKNNParams,
         "description": "Incremental K-Nearest Neighbors for streaming anomaly detection",  # noqa
         "category": "distance",
@@ -58,17 +60,17 @@ MODEL_REGISTRY: Dict[str, Dict[str, Any]] = {
     # Forest-based Models
     # -------------------------------------------------------------------------
     "isolation_forest": {
-        "import_path": "onad.models.online_isolation_forest.OnlineIsolationForest",
+        "import_paths": ["onad.model.iforest.online.OnlineIsolationForest"],
         "params_schema": OnlineIsolationForestParams,
         "description": "Online Isolation Forest for streaming anomaly detection",
         "category": "forest",
         "complexity": "medium",
         "memory_usage": "medium",
     },
-    "half_space_trees": {
-        "import_path": "onad.models.half_space_trees.HalfSpaceTrees",
-        "params_schema": HalfSpaceTrees,
-        "description": "Half-Space Trees - fast streaming anomaly detection via random partitioning",  # noqa
+    "mondrian_forest": {
+        "import_paths": ["onad.model.iforest.mondrian.MondrianForest"],
+        "params_schema": MondrianIsolationForestParams,
+        "description": "Mondrian Forest - fast streaming anomaly detection",
         "category": "forest",
         "complexity": "low",
         "memory_usage": "low",
@@ -77,12 +79,27 @@ MODEL_REGISTRY: Dict[str, Dict[str, Any]] = {
     # SVM-based Models
     # -------------------------------------------------------------------------
     "adaptive_svm": {
-        "import_path": "onad.models.incremental_one_class_svm.IncrementalOneClassSVMAdaptiveKernel",  # noqa
+        "import_paths": [
+            "onad.model.svm.adaptive.IncrementalOneClassSVMAdaptiveKernel"
+        ],
         "params_schema": AdaptiveSVMParams,
         "description": "Adaptive One-Class SVM with incremental kernel updates",
         "category": "svm",
         "complexity": "high",
         "memory_usage": "high",
+    },
+}
+
+PREPROCESSOR_REGISTRY: Dict[str, Dict[str, Any]] = {
+    "standard_scaler": {
+        "import_paths": ["onad.transform.preprocessing.scaler.StandardScaler"],
+        "params_schema": StandardScalerParams,
+        "description": "Standardize features by removing mean and scaling to unit var",
+    },
+    "pca": {
+        "import_paths": ["onad.transform.projection.incremental_pca.IncrementalPCA"],
+        "params_schema": IncrementalPCAParams,
+        "description": "Incremental PCA for dimensionality reduction on streams",
     },
 }
 
@@ -113,24 +130,28 @@ def get_model_class(model_type: str) -> Type:
         )
 
     config = MODEL_REGISTRY[model_type]
-    import_path = config["import_path"]
+    import_paths = config.get("import_paths") or [config.get("import_path")]
+    import_paths = [p for p in import_paths if p]  # Filter None values
+    errors = []
 
-    try:
-        module_path, class_name = import_path.rsplit(".", 1)
-        module = importlib.import_module(module_path)
-        model_class = getattr(module, class_name)
-        return model_class
-    except ImportError as e:
-        logger.error(f"Failed to import model '{model_type}' from '{import_path}': {e}")
-        raise ImportError(
-            f"Cannot import model '{model_type}'. "
-            f"Ensure onad is installed: pip install onad"
-        ) from e
-    except AttributeError as e:
-        logger.error(f"Model class not found in module: {e}")
-        raise ImportError(
-            f"Model class '{class_name}' not found in '{module_path}'"
-        ) from e
+    for import_path in import_paths:
+        try:
+            module_path, class_name = import_path.rsplit(".", 1)
+            module = importlib.import_module(module_path)
+            model_class = getattr(module, class_name)
+            return model_class
+        except (ImportError, AttributeError, ModuleNotFoundError) as e:
+            errors.append(f"{import_path}: {e}")
+            continue
+
+    error_msg = "; ".join(errors) if errors else "unknown"
+    logger.error(
+        f"Failed to import model '{model_type}' from any known path: {error_msg}"
+    )
+    raise ImportError(
+        f"Cannot import model '{model_type}'. "
+        f"Ensure onad is installed and compatible. Tried: {import_paths}"
+    )
 
 
 def get_model_params_schema(model_type: str) -> Type[ModelHyperparameters]:
@@ -173,9 +194,72 @@ def validate_model_params(
 
     try:
         validated = schema(**params)
-        return validated.model_dump()
+        return validated.model_dump(mode="json")
     except Exception as e:
         raise ValueError(f"Invalid parameters for model '{model_type}': {e}") from e
+
+
+def get_preprocessor_class(step_type: str) -> Type:
+    """Dynamically import and return a preprocessor class."""
+    if step_type not in PREPROCESSOR_REGISTRY:
+        available = ", ".join(PREPROCESSOR_REGISTRY.keys())
+        raise ValueError(
+            f"Unknown preprocessor type: '{step_type}'. Available: {available}"
+        )
+
+    config = PREPROCESSOR_REGISTRY[step_type]
+    import_paths = config.get("import_paths") or [config.get("import_path")]
+    import_paths = [p for p in import_paths if p]  # Filter None values
+    errors = []
+
+    for import_path in import_paths:
+        try:
+            module_path, class_name = import_path.rsplit(".", 1)
+            module = importlib.import_module(module_path)
+            cls = getattr(module, class_name)
+            return cls
+        except (ImportError, AttributeError, ModuleNotFoundError) as e:
+            errors.append(f"{import_path}: {e}")
+            continue
+
+    error_msg = "; ".join(errors) if errors else "unknown"
+    logger.error(
+        f"Failed to import preprocessor '{step_type}' from any known path: {error_msg}"
+    )
+    raise ImportError(
+        f"Cannot import preprocessor '{step_type}'. "
+        f"Ensure onad is installed and compatible. Tried: {import_paths}"
+    )
+
+
+def validate_preprocessing_steps(
+    steps: Optional[List[Dict[str, Any]]],
+) -> List[Dict[str, Any]]:
+    """Validate and normalize preprocessing steps."""
+    if not steps:
+        return []
+
+    validated_steps: List[Dict[str, Any]] = []
+    for step in steps:
+        if not isinstance(step, dict):
+            raise ValueError("Each preprocessing step must be an object")
+        step_type = step.get("type")
+        params = step.get("params") or {}
+        if step_type not in PREPROCESSOR_REGISTRY:
+            available = ", ".join(PREPROCESSOR_REGISTRY.keys())
+            raise ValueError(
+                f"Unknown preprocessor type: '{step_type}'. Available: {available}"
+            )
+        schema = PREPROCESSOR_REGISTRY[step_type]["params_schema"]
+        try:
+            validated_params = schema(**params).model_dump(mode="json")
+        except Exception as e:
+            raise ValueError(
+                f"Invalid parameters for preprocessor '{step_type}': {e}"
+            ) from e
+        validated_steps.append({"type": step_type, "params": validated_params})
+
+    return validated_steps
 
 
 def get_available_models() -> Dict[str, Dict[str, Any]]:
@@ -198,6 +282,55 @@ def get_available_models() -> Dict[str, Dict[str, Any]]:
     return result
 
 
+def get_available_preprocessors() -> Dict[str, Dict[str, Any]]:
+    """Get information about available preprocessing steps."""
+    result = {}
+    for step_type, config in PREPROCESSOR_REGISTRY.items():
+        schema = config["params_schema"]
+        result[step_type] = {
+            "description": config.get("description", ""),
+            "parameters": schema.model_json_schema(),
+        }
+    return result
+
+
+def _create_knn_model(validated_params: Dict[str, Any]) -> Any:
+    """
+    Create KNN model with FaissSimilaritySearchEngine.
+
+    KNN in ONAD requires a similarity_engine instance. This factory
+    creates the engine from the window_size and warm_up params.
+
+    Args:
+        validated_params: Validated parameters including k, window_size, warm_up
+
+    Returns:
+        Configured KNN model instance
+    """
+    try:
+        from onad.utils.similar.faiss_engine import FaissSimilaritySearchEngine
+        from onad.model.distance.knn import KNN
+    except ImportError as e:
+        logger.error(f"Failed to import KNN dependencies: {e}")
+        raise ImportError(
+            "Cannot import KNN model. Ensure onad is installed with FAISS support."
+        ) from e
+
+    # Extract params for similarity engine
+    window_size = validated_params.pop("window_size", 1000)
+    warm_up = validated_params.pop("warm_up", 50)
+    k = validated_params.get("k", 5)
+
+    # Create similarity engine
+    similarity_engine = FaissSimilaritySearchEngine(
+        window_size=window_size,
+        warm_up=warm_up,
+    )
+
+    # Create KNN model with similarity engine
+    return KNN(k=k, similarity_engine=similarity_engine)
+
+
 def create_model_instance(
     model_type: str, params: Optional[Dict[str, Any]] = None
 ) -> Any:
@@ -205,7 +338,8 @@ def create_model_instance(
     Create a model instance with validated parameters.
 
     This is a convenience function that combines get_model_class
-    and validate_model_params.
+    and validate_model_params. It handles special cases like KNN
+    which requires a similarity engine.
 
     Args:
         model_type: The model type identifier
@@ -214,6 +348,12 @@ def create_model_instance(
     Returns:
         Instantiated model ready for use
     """
-    model_class = get_model_class(model_type)
     validated_params = validate_model_params(model_type, params)
+
+    # Special case: KNN requires a similarity engine
+    if model_type == "knn":
+        return _create_knn_model(validated_params)
+
+    # Standard case: direct instantiation
+    model_class = get_model_class(model_type)
     return model_class(**validated_params)

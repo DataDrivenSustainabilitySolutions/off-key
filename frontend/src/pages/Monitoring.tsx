@@ -16,6 +16,23 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { apiUtils } from "@/lib/api-client";
 import { API_CONFIG } from "@/lib/api-config";
 import toast from "react-hot-toast";
+import { ChevronUp, ChevronDown } from "lucide-react";
+
+// Helper function to parse numeric input, preventing NaN storage
+const parseNumericInput = (
+  rawValue: string,
+  schemaType?: string
+): string | number => {
+  if (rawValue === "") return "";
+
+  if (schemaType === "integer" || schemaType === "number") {
+    const parsed =
+      schemaType === "integer" ? parseInt(rawValue, 10) : parseFloat(rawValue);
+    return Number.isNaN(parsed) ? "" : parsed;
+  }
+
+  return rawValue;
+};
 
 // Helper function to map Docker status to display properties
 const getStatusDisplay = (dockerStatus: string | undefined, isActive: boolean) => {
@@ -43,6 +60,310 @@ const getStatusDisplay = (dockerStatus: string | undefined, isActive: boolean) =
       };
   }
 };
+
+interface ActiveService {
+  id: string;
+  container_id: string;
+  container_name: string;
+  mqtt_topics: string[];
+  status: boolean;
+  docker_status?: string; // Actual Docker container status
+  created_at?: string;
+}
+
+interface Anomaly {
+  charger_id: string;
+  timestamp: string;
+  telemetry_type: string;
+  anomaly_type: string;
+  anomaly_value: number;
+}
+
+type PreprocessingStepConfig = {
+  type: string;
+  params: Record<string, any>;
+};
+
+const PreprocessingSection: React.FC<{
+  steps: PreprocessingStepConfig[];
+  availablePreprocessors: Record<string, any>;
+  newPreprocessorType: string;
+  isLoading: boolean;
+  onSelectType: (type: string) => void;
+  onAdd: () => void;
+  onParamChange: (index: number, key: string, rawValue: string, schemaType?: string) => void;
+  onMoveUp: (index: number) => void;
+  onMoveDown: (index: number) => void;
+  onRemove: (index: number) => void;
+}> = ({
+  steps,
+  availablePreprocessors,
+  newPreprocessorType,
+  isLoading,
+  onSelectType,
+  onAdd,
+  onParamChange,
+  onMoveUp,
+  onMoveDown,
+  onRemove,
+}) => (
+  <div className="mt-10">
+    <div className="flex items-center justify-between mb-2">
+      <h3 className="text-md font-semibold">Preprocessing (optional)</h3>
+      {isLoading && <span className="text-xs text-gray-500">Loading...</span>}
+    </div>
+    <div className="flex gap-2 items-center mb-3">
+      <select
+        className="border rounded px-3 py-2 bg-white text-black dark:bg-neutral-900 dark:text-white"
+        value={newPreprocessorType}
+        onChange={(e) => onSelectType(e.target.value)}
+        disabled={isLoading}
+      >
+        <option value="">Add step...</option>
+        {Object.keys(availablePreprocessors).map((key) => (
+          <option key={key} value={key}>
+            {key}
+          </option>
+        ))}
+      </select>
+      <Button className="bg-indigo-800 hover:bg-indigo-700" disabled={!newPreprocessorType} onClick={onAdd}>
+        Add
+      </Button>
+    </div>
+
+    {steps.length === 0 && <p className="text-sm text-gray-500">No preprocessing steps selected.</p>}
+
+    <div className="space-y-4">
+      {steps.map((step, index) => {
+        const schemaProps = availablePreprocessors[step.type]?.parameters?.properties || {};
+        return (
+          <div key={`${step.type}-${index}`} className="border rounded p-3 bg-gray-50 dark:bg-neutral-900">
+            <div className="flex items-center justify-between">
+              <div className="font-semibold">
+                {index + 1}. {step.type}
+              </div>
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => onMoveUp(index)}
+                  disabled={index === 0}
+                  title="Move up"
+                >
+                  <ChevronUp className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => onMoveDown(index)}
+                  disabled={index === steps.length - 1}
+                  title="Move down"
+                >
+                  <ChevronDown className="h-4 w-4" />
+                </Button>
+                <Button variant="destructive" size="sm" onClick={() => onRemove(index)}>
+                  Remove
+                </Button>
+              </div>
+            </div>
+            <div className="mt-3 space-y-3">
+              {Object.entries(schemaProps).length === 0 && (
+                <p className="text-sm text-gray-500">No parameters.</p>
+              )}
+              {Object.entries(schemaProps).map(([key, schema]: [string, any]) => (
+                <div key={key} className="flex flex-col">
+                  <label className="text-sm font-medium mb-1">
+                    {key}
+                    {schema?.description ? (
+                      <span className="text-xs text-gray-500 ml-1">({schema.description})</span>
+                    ) : null}
+                  </label>
+                  <input
+                    type={schema?.type === "integer" || schema?.type === "number" ? "number" : "text"}
+                    className="border rounded px-3 py-2 bg-white text-black dark:bg-neutral-900 dark:text-white"
+                    value={step.params?.[key] ?? ""}
+                    onChange={(e) => onParamChange(index, key, e.target.value, schema?.type)}
+                    min={schema?.minimum}
+                    max={schema?.maximum}
+                    step="any"
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  </div>
+);
+
+const ActiveServicesSection: React.FC<{
+  services: ActiveService[];
+  isLoading: boolean;
+  chargerId?: string;
+  onDelete: (containerName: string) => void | Promise<void>;
+}> = ({ services, isLoading, chargerId, onDelete }) => {
+  const extractChargerIdFromContainer = (containerName: string): string => {
+    const match = containerName.match(/^radar-(.+)-\d+$/);
+    return match ? match[1] : "Unknown";
+  };
+
+  const chargerSpecificServices = React.useMemo(() => {
+    if (!chargerId) return services;
+    return services.filter((service) => extractChargerIdFromContainer(service.container_name) === chargerId);
+  }, [services, chargerId]);
+
+  return (
+    <div className="flex mt-5">
+      <Card className="ml-16 bg-white shadow-md w-11/12 min-h-96 dark:bg-neutral-950">
+        <CardTitle className="ml-5 mt-4">Active Monitoring Services for Charger {chargerId}</CardTitle>
+        <CardContent>
+          <div className="mt-4">
+            {isLoading ? (
+              <div className="flex justify-center items-center py-8">
+                <div className="text-gray-500">Loading active services...</div>
+              </div>
+            ) : chargerSpecificServices.length === 0 ? (
+              <div className="flex justify-center items-center py-8">
+                <div className="text-gray-500">No active monitoring services found for charger {chargerId}</div>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Container Name</TableHead>
+                      <TableHead>Charger ID</TableHead>
+                      <TableHead>MQTT Topics</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Created At</TableHead>
+                      <TableHead>Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {chargerSpecificServices.map((service) => (
+                      <TableRow key={service.id}>
+                        <TableCell className="font-medium">{service.container_name}</TableCell>
+                        <TableCell>{extractChargerIdFromContainer(service.container_name)}</TableCell>
+                        <TableCell>
+                          <div className="max-w-xs truncate" title={service.mqtt_topics.join(", ")}>
+                            {service.mqtt_topics.length > 0
+                              ? service.mqtt_topics.slice(0, 2).join(", ") +
+                                (service.mqtt_topics.length > 2 ? ` +${service.mqtt_topics.length - 2} more` : "")
+                              : "No topics"}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          {(() => {
+                            const statusDisplay = getStatusDisplay(service.docker_status, service.status);
+                            return (
+                              <span
+                                className={`px-2 py-1 rounded-full text-xs font-medium ${statusDisplay.className}`}
+                              >
+                                {statusDisplay.label}
+                              </span>
+                            );
+                          })()}
+                        </TableCell>
+                        <TableCell>
+                          {service.created_at ? new Date(service.created_at).toLocaleString() : "Unknown"}
+                        </TableCell>
+                        <TableCell>
+                          <Button
+                            variant="destructive"
+                            size="sm"
+                            onClick={() => onDelete(service.container_name)}
+                            className="bg-red-600 hover:bg-red-700"
+                          >
+                            Delete
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+};
+
+const AnomaliesSection: React.FC<{
+  anomalies: Anomaly[];
+  isLoading: boolean;
+  chargerId?: string;
+  onRefresh: () => void;
+}> = ({ anomalies, isLoading, chargerId, onRefresh }) => (
+  <div className="flex mt-5 mb-5">
+    <Card className="ml-16 bg-white shadow-md w-11/12 min-h-96 dark:bg-neutral-950">
+      <CardTitle className="ml-5 mt-4">Detected Anomalies for Charger {chargerId}</CardTitle>
+      <CardContent>
+        <div className="mt-4">
+          <div className="flex justify-between items-center mb-4">
+            <span className="text-sm text-gray-500">{anomalies.length} anomalies detected</span>
+            <Button variant="outline" size="sm" onClick={onRefresh} disabled={isLoading}>
+              {isLoading ? "Refreshing..." : "Refresh"}
+            </Button>
+          </div>
+          {isLoading ? (
+            <div className="flex justify-center items-center py-8">
+              <div className="text-gray-500">Loading anomalies...</div>
+            </div>
+          ) : anomalies.length === 0 ? (
+            <div className="flex justify-center items-center py-8">
+              <div className="text-gray-500">No anomalies detected for charger {chargerId}</div>
+            </div>
+          ) : (
+            <div className="overflow-x-auto max-h-96 overflow-y-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Timestamp</TableHead>
+                    <TableHead>Telemetry Type</TableHead>
+                    <TableHead>Anomaly Type</TableHead>
+                    <TableHead>Score</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {anomalies.slice(0, 50).map((anomaly, index) => (
+                    <TableRow key={`${anomaly.timestamp}-${index}`}>
+                      <TableCell className="font-medium">{new Date(anomaly.timestamp).toLocaleString()}</TableCell>
+                      <TableCell>
+                        <span className="px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
+                          {anomaly.telemetry_type}
+                        </span>
+                      </TableCell>
+                      <TableCell>{anomaly.anomaly_type}</TableCell>
+                      <TableCell>
+                        <span
+                          className={`px-2 py-1 rounded-full text-xs font-medium ${
+                            anomaly.anomaly_value >= 0.9
+                              ? "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200"
+                              : anomaly.anomaly_value >= 0.7
+                              ? "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200"
+                              : "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200"
+                          }`}
+                        >
+                          {(anomaly.anomaly_value * 100).toFixed(1)}%
+                        </span>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+              {anomalies.length > 50 && (
+                <div className="text-center py-2 text-sm text-gray-500">Showing 50 of {anomalies.length} anomalies</div>
+              )}
+            </div>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  </div>
+);
 
 const Monitoring: React.FC = () => {
   const { chargerId } = useParams<{ chargerId: string }>();
@@ -73,32 +394,13 @@ const Monitoring: React.FC = () => {
   const [modelParams, setModelParams] = useState<Record<string, any>>({});
   const [isLoadingModels, setIsLoadingModels] = useState(false);
   const [availablePreprocessors, setAvailablePreprocessors] = useState<Record<string, any>>({});
-  const [preprocessingSteps, setPreprocessingSteps] = useState<Array<{ type: string; params: Record<string, any> }>>([]);
+  const [preprocessingSteps, setPreprocessingSteps] = useState<PreprocessingStepConfig[]>([]);
   const [isLoadingPreprocessors, setIsLoadingPreprocessors] = useState(false);
   const [newPreprocessorType, setNewPreprocessorType] = useState<string>("");
-
-  // Active services management
-  interface ActiveService {
-    id: string;
-    container_id: string;
-    container_name: string;
-    mqtt_topics: string[];
-    status: boolean;
-    docker_status?: string;  // Actual Docker container status
-    created_at?: string;
-  }
 
   const [activeServices, setActiveServices] = useState<ActiveService[]>([]);
   const [isLoadingServices, setIsLoadingServices] = useState(false);
 
-  // Anomalies state
-  interface Anomaly {
-    charger_id: string;
-    timestamp: string;
-    telemetry_type: string;
-    anomaly_type: string;
-    anomaly_value: number;
-  }
   const [anomalies, setAnomalies] = useState<Anomaly[]>([]);
   const [isLoadingAnomalies, setIsLoadingAnomalies] = useState(false);
 
@@ -181,18 +483,7 @@ const Monitoring: React.FC = () => {
   );
 
   const handleParamChange = useCallback((key: string, rawValue: string, schemaType?: string) => {
-    if (rawValue === "") {
-      setModelParams((prev) => ({ ...prev, [key]: "" }));
-      return;
-    }
-
-    let parsed: any = rawValue;
-    if (schemaType === "integer") {
-      parsed = parseInt(rawValue, 10);
-    } else if (schemaType === "number") {
-      parsed = parseFloat(rawValue);
-    }
-
+    const parsed = parseNumericInput(rawValue, schemaType);
     setModelParams((prev) => ({ ...prev, [key]: parsed }));
   }, []);
 
@@ -205,12 +496,12 @@ const Monitoring: React.FC = () => {
 
   const handlePreprocessorParamChange = useCallback(
     (index: number, key: string, rawValue: string, schemaType?: string) => {
+      const parsed = parseNumericInput(rawValue, schemaType);
       setPreprocessingSteps((prev) => {
         const updated = [...prev];
-        const parsed = schemaType === "integer" ? parseInt(rawValue, 10) : schemaType === "number" ? parseFloat(rawValue) : rawValue;
         updated[index] = {
           ...updated[index],
-          params: { ...(updated[index].params || {}), [key]: rawValue === "" ? "" : parsed },
+          params: { ...(updated[index].params || {}), [key]: parsed },
         };
         return updated;
       });
@@ -220,6 +511,24 @@ const Monitoring: React.FC = () => {
 
   const handleRemovePreprocessor = useCallback((index: number) => {
     setPreprocessingSteps((prev) => prev.filter((_, i) => i !== index));
+  }, []);
+
+  const handleMovePreprocessorUp = useCallback((index: number) => {
+    if (index === 0) return;
+    setPreprocessingSteps((prev) => {
+      const updated = [...prev];
+      [updated[index - 1], updated[index]] = [updated[index], updated[index - 1]];
+      return updated;
+    });
+  }, []);
+
+  const handleMovePreprocessorDown = useCallback((index: number) => {
+    setPreprocessingSteps((prev) => {
+      if (index >= prev.length - 1) return prev;
+      const updated = [...prev];
+      [updated[index], updated[index + 1]] = [updated[index + 1], updated[index]];
+      return updated;
+    });
   }, []);
 
   useEffect(() => {
@@ -236,7 +545,7 @@ const Monitoring: React.FC = () => {
       const response = await apiUtils.get(
         `${API_CONFIG.ENDPOINTS.MONITORING.LIST}?include_docker_status=true`
       );
-      setActiveServices(response);
+      setActiveServices(response || []);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       toast.error(`Failed to load active services: ${errorMessage}`);
@@ -279,20 +588,6 @@ const Monitoring: React.FC = () => {
       toast.error(`Failed to delete service: ${errorMessage}`);
     }
   }, [loadActiveServices]);
-
-  // Extract charger ID from container name (format: radar-{chargerId}-{timestamp})
-  const extractChargerIdFromContainer = (containerName: string): string => {
-    const match = containerName.match(/^radar-(.+)-\d+$/);
-    return match ? match[1] : "Unknown";
-  };
-
-  // Filter services to only show ones for the current charger
-  const chargerSpecificServices = useMemo(() => {
-    if (!chargerId) return [];
-    return activeServices.filter(service =>
-      extractChargerIdFromContainer(service.container_name) === chargerId
-    );
-  }, [activeServices, chargerId]);
 
   // Load services on component mount and set up refresh interval
   useEffect(() => {
@@ -467,83 +762,18 @@ const Monitoring: React.FC = () => {
                     </div>
                   )}
 
-                  <div className="mt-10">
-                    <div className="flex items-center justify-between mb-2">
-                      <h3 className="text-md font-semibold">Preprocessing (optional)</h3>
-                      {isLoadingPreprocessors && (
-                        <span className="text-xs text-gray-500">Loading...</span>
-                      )}
-                    </div>
-                    <div className="flex gap-2 items-center mb-3">
-                      <select
-                        className="border rounded px-3 py-2 bg-white text-black dark:bg-neutral-900 dark:text-white"
-                        value={newPreprocessorType}
-                        onChange={(e) => setNewPreprocessorType(e.target.value)}
-                        disabled={isLoadingPreprocessors}
-                      >
-                        <option value="">Add step...</option>
-                        {Object.keys(availablePreprocessors).map((key) => (
-                          <option key={key} value={key}>
-                            {key}
-                          </option>
-                        ))}
-                      </select>
-                      <Button
-                        className="bg-indigo-800 hover:bg-indigo-700"
-                        disabled={!newPreprocessorType}
-                        onClick={handleAddPreprocessor}
-                      >
-                        Add
-                      </Button>
-                    </div>
-
-                    {preprocessingSteps.length === 0 && (
-                      <p className="text-sm text-gray-500">No preprocessing steps selected.</p>
-                    )}
-
-                    <div className="space-y-4">
-                      {preprocessingSteps.map((step, index) => {
-                        const schemaProps =
-                          availablePreprocessors[step.type]?.parameters?.properties || {};
-                        return (
-                          <div key={`${step.type}-${index}`} className="border rounded p-3 bg-gray-50 dark:bg-neutral-900">
-                            <div className="flex items-center justify-between">
-                              <div className="font-semibold">{index + 1}. {step.type}</div>
-                              <Button variant="destructive" size="sm" onClick={() => handleRemovePreprocessor(index)}>
-                                Remove
-                              </Button>
-                            </div>
-                            <div className="mt-3 space-y-3">
-                              {Object.entries(schemaProps).length === 0 && (
-                                <p className="text-sm text-gray-500">No parameters.</p>
-                              )}
-                              {Object.entries(schemaProps).map(([key, schema]: [string, any]) => (
-                                <div key={key} className="flex flex-col">
-                                  <label className="text-sm font-medium mb-1">
-                                    {key}
-                                    {schema?.description ? (
-                                      <span className="text-xs text-gray-500 ml-1">({schema.description})</span>
-                                    ) : null}
-                                  </label>
-                                  <input
-                                    type={schema?.type === "integer" || schema?.type === "number" ? "number" : "text"}
-                                    className="border rounded px-3 py-2 bg-white text-black dark:bg-neutral-900 dark:text-white"
-                                    value={step.params?.[key] ?? ""}
-                                    onChange={(e) =>
-                                      handlePreprocessorParamChange(index, key, e.target.value, schema?.type)
-                                    }
-                                    min={schema?.minimum}
-                                    max={schema?.maximum}
-                                    step="any"
-                                  />
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
+                  <PreprocessingSection
+                    steps={preprocessingSteps}
+                    availablePreprocessors={availablePreprocessors}
+                    newPreprocessorType={newPreprocessorType}
+                    isLoading={isLoadingPreprocessors}
+                    onSelectType={setNewPreprocessorType}
+                    onAdd={handleAddPreprocessor}
+                    onParamChange={handlePreprocessorParamChange}
+                    onMoveUp={handleMovePreprocessorUp}
+                    onMoveDown={handleMovePreprocessorDown}
+                    onRemove={handleRemovePreprocessor}
+                  />
                 </div>
               </div>
               <Button
@@ -557,162 +787,19 @@ const Monitoring: React.FC = () => {
         </Card>
       </div>
 
-      {/* Active Services Management Section */}
-      <div className="flex mt-5">
-        <Card className="ml-16 bg-white shadow-md w-11/12 min-h-96 dark:bg-neutral-950">
-          <CardTitle className="ml-5 mt-4">Active Monitoring Services for Charger {chargerId}</CardTitle>
-          <CardContent>
-            <div className="mt-4">
-              {isLoadingServices ? (
-                <div className="flex justify-center items-center py-8">
-                  <div className="text-gray-500">Loading active services...</div>
-                </div>
-              ) : chargerSpecificServices.length === 0 ? (
-                <div className="flex justify-center items-center py-8">
-                  <div className="text-gray-500">No active monitoring services found for charger {chargerId}</div>
-                </div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Container Name</TableHead>
-                        <TableHead>Charger ID</TableHead>
-                        <TableHead>MQTT Topics</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead>Created At</TableHead>
-                        <TableHead>Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {chargerSpecificServices.map((service) => (
-                        <TableRow key={service.id}>
-                          <TableCell className="font-medium">
-                            {service.container_name}
-                          </TableCell>
-                          <TableCell>
-                            {extractChargerIdFromContainer(service.container_name)}
-                          </TableCell>
-                          <TableCell>
-                            <div className="max-w-xs truncate" title={service.mqtt_topics.join(', ')}>
-                              {service.mqtt_topics.length > 0
-                                ? service.mqtt_topics.slice(0, 2).join(', ') +
-                                  (service.mqtt_topics.length > 2 ? ` +${service.mqtt_topics.length - 2} more` : '')
-                                : 'No topics'}
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            {(() => {
-                              const statusDisplay = getStatusDisplay(service.docker_status, service.status);
-                              return (
-                                <span className={`px-2 py-1 rounded-full text-xs font-medium ${statusDisplay.className}`}>
-                                  {statusDisplay.label}
-                                </span>
-                              );
-                            })()}
-                          </TableCell>
-                          <TableCell>
-                            {service.created_at
-                              ? new Date(service.created_at).toLocaleString()
-                              : 'Unknown'}
-                          </TableCell>
-                          <TableCell>
-                            <Button
-                              variant="destructive"
-                              size="sm"
-                              onClick={() => deleteService(service.container_name)}
-                              className="bg-red-600 hover:bg-red-700"
-                            >
-                              Delete
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+      <ActiveServicesSection
+        services={activeServices}
+        isLoading={isLoadingServices}
+        chargerId={chargerId}
+        onDelete={deleteService}
+      />
 
-      {/* Detected Anomalies Section */}
-      <div className="flex mt-5 mb-5">
-        <Card className="ml-16 bg-white shadow-md w-11/12 min-h-96 dark:bg-neutral-950">
-          <CardTitle className="ml-5 mt-4">Detected Anomalies for Charger {chargerId}</CardTitle>
-          <CardContent>
-            <div className="mt-4">
-              <div className="flex justify-between items-center mb-4">
-                <span className="text-sm text-gray-500">
-                  {anomalies.length} anomalies detected
-                </span>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={loadAnomalies}
-                  disabled={isLoadingAnomalies}
-                >
-                  {isLoadingAnomalies ? "Refreshing..." : "Refresh"}
-                </Button>
-              </div>
-              {isLoadingAnomalies ? (
-                <div className="flex justify-center items-center py-8">
-                  <div className="text-gray-500">Loading anomalies...</div>
-                </div>
-              ) : anomalies.length === 0 ? (
-                <div className="flex justify-center items-center py-8">
-                  <div className="text-gray-500">No anomalies detected for charger {chargerId}</div>
-                </div>
-              ) : (
-                <div className="overflow-x-auto max-h-96 overflow-y-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Timestamp</TableHead>
-                        <TableHead>Telemetry Type</TableHead>
-                        <TableHead>Anomaly Type</TableHead>
-                        <TableHead>Score</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {anomalies.slice(0, 50).map((anomaly, index) => (
-                        <TableRow key={`${anomaly.timestamp}-${index}`}>
-                          <TableCell className="font-medium">
-                            {new Date(anomaly.timestamp).toLocaleString()}
-                          </TableCell>
-                          <TableCell>
-                            <span className="px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
-                              {anomaly.telemetry_type}
-                            </span>
-                          </TableCell>
-                          <TableCell>{anomaly.anomaly_type}</TableCell>
-                          <TableCell>
-                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                              anomaly.anomaly_value >= 0.9
-                                ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
-                                : anomaly.anomaly_value >= 0.7
-                                ? 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200'
-                                : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200'
-                            }`}>
-                              {(anomaly.anomaly_value * 100).toFixed(1)}%
-                            </span>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                  {anomalies.length > 50 && (
-                    <div className="text-center py-2 text-sm text-gray-500">
-                      Showing 50 of {anomalies.length} anomalies
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+      <AnomaliesSection
+        anomalies={anomalies}
+        isLoading={isLoadingAnomalies}
+        chargerId={chargerId}
+        onRefresh={loadAnomalies}
+      />
     </>
   );
 };

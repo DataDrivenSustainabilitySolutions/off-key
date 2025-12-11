@@ -3,6 +3,7 @@ import json
 import uuid
 from datetime import datetime
 from typing import List, Dict, Optional, Any
+from urllib.parse import quote_plus
 
 import docker
 from docker.types import RestartPolicy, ServiceMode, Resources
@@ -267,12 +268,8 @@ class RadarOrchestrationService:
             validated_params = validate_model_params(model_type, model_params)
 
             # Serialize complete params as JSON for container to parse
+            # Note: Individual RADAR_MODEL_* params removed - use only JSON
             env_vars["RADAR_MODEL_PARAMS"] = json.dumps(validated_params)
-
-            # Also set individual params for backward compatibility and debugging
-            for key, value in validated_params.items():
-                env_key = f"RADAR_MODEL_{key.upper()}"
-                env_vars[env_key] = str(value)
 
             logger.info(f"Model params validated for {model_type}: {validated_params}")
 
@@ -306,7 +303,7 @@ class RadarOrchestrationService:
         postgres_db = os.getenv("POSTGRES_DB", "postgres")
 
         return (
-            f"postgresql+asyncpg://{postgres_user}:{postgres_password}"
+            f"postgresql+asyncpg://{quote_plus(postgres_user)}:{quote_plus(postgres_password)}"
             f"@{postgres_host}:{postgres_port}/{postgres_db}"
         )
 

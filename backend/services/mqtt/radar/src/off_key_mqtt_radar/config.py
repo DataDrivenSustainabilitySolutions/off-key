@@ -2,13 +2,20 @@
 Configuration for MQTT RADAR service
 """
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, field_validator, model_validator
 from pydantic_settings import BaseSettings
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Self
 from dotenv import find_dotenv, load_dotenv
 from pathlib import Path
 import os
 import json
+
+
+def _truncate_for_error(value: str, max_len: int = 500) -> str:
+    """Truncate a string for error messages with length indication."""
+    if len(value) <= max_len:
+        return value
+    return f"{value[:max_len]}... ({len(value)} chars total)"
 
 
 def load_configuration(custom_config_file: Optional[str] = None):
@@ -55,6 +62,71 @@ class AnomalyDetectionConfig(BaseModel):
 
     # Memory management
     reset_threshold_mb: int = 500
+
+    @model_validator(mode="after")
+    def validate_model_configuration(self) -> Self:
+        """Validate model_params and preprocessing_steps against registry schemas.
+
+        This ensures invalid configurations fail fast at startup rather than
+        during model instantiation. Validation is pure - no mutation.
+        """
+        from off_key_core.models import (
+            validate_model_params,
+            validate_preprocessing_steps,
+        )
+
+        # Validate model parameters against the registry schema (raises if invalid)
+        try:
+            validate_model_params(self.model_type, self.model_params)
+        except ValueError as e:
+            raise ValueError(
+                f"Invalid model parameters for '{self.model_type}': {e}"
+            ) from e
+
+        # Validate preprocessing steps (raises if invalid)
+        try:
+            validate_preprocessing_steps(self.preprocessing_steps)
+        except ValueError as e:
+            raise ValueError(f"Invalid preprocessing configuration: {e}") from e
+
+        return self
+
+    @classmethod
+    def create_normalized(
+        cls,
+        model_type: str = "isolation_forest",
+        model_params: Optional[Dict[str, Any]] = None,
+        preprocessing_steps: Optional[List[Dict[str, Any]]] = None,
+        **kwargs,
+    ) -> "AnomalyDetectionConfig":
+        """Factory that normalizes params before creating instance.
+
+        Use this when you want default values applied and parameters
+        normalized according to the registry schemas.
+
+        Args:
+            model_type: Model type identifier
+            model_params: Raw model parameters (will be normalized)
+            preprocessing_steps: Raw preprocessing steps (will be normalized)
+            **kwargs: Other AnomalyDetectionConfig fields
+
+        Returns:
+            AnomalyDetectionConfig with normalized parameters
+        """
+        from off_key_core.models import (
+            validate_model_params,
+            validate_preprocessing_steps,
+        )
+
+        normalized_params = validate_model_params(model_type, model_params or {})
+        normalized_steps = validate_preprocessing_steps(preprocessing_steps or [])
+
+        return cls(
+            model_type=model_type,
+            model_params=normalized_params,
+            preprocessing_steps=normalized_steps,
+            **kwargs,
+        )
 
 
 class MQTTRadarConfig(BaseModel):
@@ -178,8 +250,11 @@ class RadarSettings(BaseSettings):
         if params_raw:
             try:
                 model_params = json.loads(params_raw)
-            except json.JSONDecodeError:
-                model_params = {}
+            except json.JSONDecodeError as e:
+                raise ValueError(
+                    f"Invalid JSON in RADAR_MODEL_PARAMS: {e}. "
+                    f"Raw value: {_truncate_for_error(params_raw)}"
+                ) from e
 
         preprocessing_steps: List[Dict[str, Any]] = []
         preprocessing_raw = os.getenv(
@@ -190,8 +265,16 @@ class RadarSettings(BaseSettings):
                 parsed = json.loads(preprocessing_raw)
                 if isinstance(parsed, list):
                     preprocessing_steps = parsed
-            except json.JSONDecodeError:
-                preprocessing_steps = []
+                else:
+                    raise ValueError(
+                        f"RADAR_PREPROCESSING_STEPS must be a JSON array, "
+                        f"got {type(parsed).__name__}"
+                    )
+            except json.JSONDecodeError as e:
+                raise ValueError(
+                    f"Invalid JSON in RADAR_PREPROCESSING_STEPS: {e}. "
+                    f"Raw value: {_truncate_for_error(preprocessing_raw)}"
+                ) from e
 
         return MQTTRadarConfig(
             broker_host=self.RADAR_MQTT_BROKER_HOST,

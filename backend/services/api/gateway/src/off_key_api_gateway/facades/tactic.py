@@ -2,10 +2,22 @@
 HTTP client for communicating with the TACTIC middleware service.
 """
 
-import aiohttp
+import asyncio
+import json
 from typing import Dict, List, Optional, Any
+
+import aiohttp
 from off_key_core.config.config import settings
 from off_key_core.config.logs import logger
+
+
+class TacticError(Exception):
+    """Typed error for TACTIC HTTP failures."""
+
+    def __init__(self, message: str, status: Optional[int] = None, body: Any = None):
+        super().__init__(message)
+        self.status = status
+        self.body = body
 
 
 class Tactic:
@@ -16,7 +28,20 @@ class Tactic:
     def __init__(self):
         self.base_url = settings.tactic_service_base_url
         self.timeout = aiohttp.ClientTimeout(total=30)
+        self._session: Optional[aiohttp.ClientSession] = None
+        self._max_retries = 2
         logger.info(f"Tactic facade initialized with base URL: {self.base_url}")
+
+    async def _get_session(self) -> aiohttp.ClientSession:
+        """Create or reuse a shared aiohttp session."""
+        if self._session is None or self._session.closed:
+            self._session = aiohttp.ClientSession(timeout=self.timeout)
+        return self._session
+
+    async def close(self) -> None:
+        """Close the shared session if it exists."""
+        if self._session and not self._session.closed:
+            await self._session.close()
 
     async def _make_request(
         self,
@@ -42,34 +67,66 @@ class Tactic:
         """
         url = f"{self.base_url}{endpoint}"
 
-        try:
-            async with aiohttp.ClientSession(timeout=self.timeout) as session:
+        attempt = 0
+        while True:
+            attempt += 1
+            try:
+                session = await self._get_session()
                 async with session.request(
                     method=method,
                     url=url,
                     json=json_data,
                     params=params,
                 ) as response:
-                    response_data = await response.json()
+                    parsed_body = await self._parse_response_body(response)
 
                     if response.status >= 400:
-                        error_msg = response_data.get(
-                            "detail", f"HTTP {response.status}"
-                        )
+                        error_msg = (
+                            parsed_body.get("detail")
+                            if isinstance(parsed_body, dict)
+                            else parsed_body
+                        ) or f"HTTP {response.status}"
                         logger.error(
                             f"TACTIC request failed: {method} {url} - {error_msg}"
                         )
-                        raise Exception(f"TACTIC service error: {error_msg}")
+                        raise TacticError(
+                            f"TACTIC service error: {error_msg}",
+                            status=response.status,
+                            body=parsed_body,
+                        )
 
                     logger.debug(f"TACTIC request successful: {method} {url}")
-                    return response_data
+                    return parsed_body
 
-        except aiohttp.ClientError as e:
-            logger.error(f"TACTIC client error: {method} {url} - {str(e)}")
-            raise Exception(f"Failed to communicate with TACTIC service: {str(e)}")
-        except Exception as e:
-            logger.error(f"TACTIC request error: {method} {url} - {str(e)}")
-            raise
+            except aiohttp.ClientError as e:
+                if attempt <= self._max_retries:
+                    backoff = 0.2 * attempt
+                    logger.warning(
+                        f"TACTIC client error (attempt {attempt}/{self._max_retries}): "
+                        f"{method} {url} - {str(e)}; retrying in {backoff:.1f}s"
+                    )
+                    await asyncio.sleep(backoff)
+                    continue
+                logger.error(f"TACTIC client error: {method} {url} - {str(e)}")
+                raise TacticError(
+                    f"Failed to communicate with TACTIC service: {str(e)}"
+                )
+            except TacticError:
+                raise
+            except Exception as e:
+                logger.error(f"TACTIC request error: {method} {url} - {str(e)}")
+                raise TacticError(f"TACTIC request error: {str(e)}")
+
+    async def _parse_response_body(self, response: aiohttp.ClientResponse) -> Any:
+        """Parse JSON if possible, otherwise return raw text for diagnostics."""
+        try:
+            return await response.json()
+        except aiohttp.ContentTypeError:
+            text = await response.text()
+            try:
+                return json.loads(text)
+            except json.JSONDecodeError:
+                return text
 
     async def start_radar_service(
         self,
@@ -90,6 +147,7 @@ class Tactic:
             mqtt_topics: List of MQTT topics to monitor
             model_type: ML model type
             model_params: Model-specific parameters
+            preprocessing_steps: Optional preprocessing steps for data transformation
             mqtt_config: MQTT configuration
             anomaly_thresholds: Anomaly detection thresholds
             performance_config: Performance settings
@@ -135,6 +193,11 @@ class Tactic:
         Returns:
             Dict: Service stop response
         """
+        if not container_name and not container_id:
+            raise TacticError(
+                "Either container_name or container_id is required to stop a service"
+            )
+
         params = {}
         if container_name:
             params["container_name"] = container_name
@@ -187,6 +250,11 @@ class Tactic:
         Returns:
             Dict: Service details
         """
+        if not container_name and not container_id:
+            raise TacticError(
+                "Either container_name or container_id is required to get details"
+            )
+
         params = {}
         if container_name:
             params["container_name"] = container_name

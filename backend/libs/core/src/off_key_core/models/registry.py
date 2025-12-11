@@ -316,10 +316,13 @@ def _create_knn_model(validated_params: Dict[str, Any]) -> Any:
             "Cannot import KNN model. Ensure onad is installed with FAISS support."
         ) from e
 
+    # Work with a copy to avoid mutating the input
+    params = validated_params.copy()
+
     # Extract params for similarity engine
-    window_size = validated_params.pop("window_size", 1000)
-    warm_up = validated_params.pop("warm_up", 50)
-    k = validated_params.get("k", 5)
+    window_size = params.pop("window_size", 1000)
+    warm_up = params.pop("warm_up", 50)
+    k = params.get("k", 5)
 
     # Create similarity engine
     similarity_engine = FaissSimilaritySearchEngine(

@@ -16,6 +16,7 @@ import logging
 from datetime import datetime
 from typing import List, Optional, Dict, Any
 from collections import deque
+from urllib.parse import quote_plus
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
@@ -32,23 +33,44 @@ logger = logging.getLogger(__name__)
 _radar_async_session_factory = None
 
 
+def _build_database_url_from_env() -> Optional[str]:
+    """Build database URL from env vars with fallback to POSTGRES_*."""
+    direct = os.getenv("RADAR_DATABASE_URL")
+    if direct:
+        return direct
+
+    user = os.getenv("POSTGRES_USER")
+    password = os.getenv("POSTGRES_PASSWORD")
+    host = os.getenv("POSTGRES_HOST")
+    port = os.getenv("POSTGRES_PORT")
+    db = os.getenv("POSTGRES_DB")
+
+    if all([user, password, host, port, db]):
+        return (
+            f"postgresql+asyncpg://{quote_plus(user)}:{quote_plus(password)}"
+            f"@{host}:{port}/{db}"
+        )
+
+    return None
+
+
 def get_radar_async_session_factory():
     """
     Get or create async session factory using RADAR_DATABASE_URL env var.
 
-    This allows radar containers to connect to the database without
-    depending on off_key_core.db.base which requires the full Settings class.
+    Falls back to POSTGRES_* when RADAR_DATABASE_URL is not provided to
+    remain compatible with existing deployments.
 
-    Raises ValueError if RADAR_DATABASE_URL is not set.
+    Raises ValueError if no usable configuration is found.
     """
     global _radar_async_session_factory
 
     if _radar_async_session_factory is None:
-        database_url = os.getenv("RADAR_DATABASE_URL")
+        database_url = _build_database_url_from_env()
         if not database_url:
             raise ValueError(
-                "RADAR_DATABASE_URL environment variable is required. "
-                "For local development, add it to docker-compose.yml."
+                "RADAR_DATABASE_URL or POSTGRES_* environment variables are required "
+                "for radar database connectivity."
             )
 
         engine = create_async_engine(
@@ -84,7 +106,9 @@ class DatabaseWriter:
 
     def __init__(self, config: MQTTRadarConfig, session_factory=None):
         self.config = config
-        self.session_factory = session_factory or get_radar_async_session_factory()
+        # Session factory is created lazily to avoid requiring DB env vars
+        # when database writing is disabled.
+        self.session_factory = session_factory
 
         # Batch processing
         self.write_queue: List[AnomalyResult] = []
@@ -106,6 +130,10 @@ class DatabaseWriter:
         if not self.config.db_write_enabled:
             logger.info("Database writing disabled by configuration")
             return
+
+        # Initialize session factory lazily to avoid failing when disabled
+        if self.session_factory is None:
+            self.session_factory = get_radar_async_session_factory()
 
         # Test database connection
         await self._test_connection()
@@ -156,6 +184,9 @@ class DatabaseWriter:
             return
 
         try:
+            if self.session_factory is None:
+                self.session_factory = get_radar_async_session_factory()
+
             async with self.session_factory() as session:
                 service_metrics = ServiceMetrics(
                     timestamp=datetime.now(),
@@ -181,6 +212,9 @@ class DatabaseWriter:
     async def _test_connection(self):
         """Test database connection"""
         try:
+            if self.session_factory is None:
+                self.session_factory = get_radar_async_session_factory()
+
             async with self.session_factory() as session:
                 # Simple test query
                 result = await session.execute(text("SELECT 1"))

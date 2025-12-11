@@ -28,13 +28,13 @@ class DockerConfig(BaseModel):
 
     # Docker API Connection
     api_url: str = "http://socket-proxy"
-    api_port: int = 2375
-    max_concurrent_calls: int = 5
+    api_port: int = Field(default=2375, ge=1, le=65535)
+    max_concurrent_calls: int = Field(default=5, ge=1, le=100)
 
     # Container Defaults
     default_network: str = "emqx-network"
     default_restart_policy: str = "on-failure"
-    default_restart_max_attempts: int = 3
+    default_restart_max_attempts: int = Field(default=3, ge=0, le=10)
 
     # Resource Limits
     default_memory_limit: str = "512m"
@@ -44,30 +44,6 @@ class DockerConfig(BaseModel):
     class Config:
         extra = "forbid"
         validate_assignment = True
-
-    @field_validator("api_port")
-    @classmethod
-    def validate_api_port(cls, v: int) -> int:
-        """Validate Docker API port is in valid range"""
-        if not 1 <= v <= 65535:
-            raise ValueError("Docker API port must be between 1 and 65535")
-        return v
-
-    @field_validator("max_concurrent_calls")
-    @classmethod
-    def validate_max_concurrent_calls(cls, v: int) -> int:
-        """Validate max concurrent calls is reasonable"""
-        if not 1 <= v <= 100:
-            raise ValueError("Max concurrent calls must be between 1 and 100")
-        return v
-
-    @field_validator("default_restart_max_attempts")
-    @classmethod
-    def validate_restart_max_attempts(cls, v: int) -> int:
-        """Validate restart max attempts"""
-        if not 0 <= v <= 10:
-            raise ValueError("Restart max attempts must be between 0 and 10")
-        return v
 
     @property
     def base_url(self) -> str:
@@ -82,55 +58,39 @@ class RadarDefaultsConfig(BaseModel):
 
     # Default MQTT Settings
     mqtt_broker_host: str = "localhost"
-    mqtt_broker_port: int = 1883
+    mqtt_broker_port: int = Field(default=1883, ge=1, le=65535)
     mqtt_use_tls: bool = False
     mqtt_client_id_prefix: str = "radar"
     mqtt_use_auth: bool = False
-    mqtt_qos: int = 0
+    mqtt_qos: int = Field(default=0, ge=0, le=2)
 
     # Default Model Settings
     model_type: str = "isolation_forest"
 
     # Default Anomaly Thresholds
-    anomaly_threshold_medium: float = 0.6
-    anomaly_threshold_high: float = 0.8
-    anomaly_threshold_critical: float = 0.9
+    anomaly_threshold_medium: float = Field(default=0.6, ge=0.0, le=1.0)
+    anomaly_threshold_high: float = Field(default=0.8, ge=0.0, le=1.0)
+    anomaly_threshold_critical: float = Field(default=0.9, ge=0.0, le=1.0)
 
     # Default Performance Settings
-    batch_size: int = 100
-    batch_timeout: float = 1.0
-    memory_limit_mb: int = 1000
-    checkpoint_interval: int = 10000
+    batch_size: int = Field(default=100, ge=1, le=10000)
+    batch_timeout: float = Field(default=1.0, ge=0.1, le=3600.0)
+    memory_limit_mb: int = Field(default=1000, ge=128, le=16384)
+    checkpoint_interval: int = Field(default=10000, ge=100, le=100000)
 
     # Default Database Settings
     db_write_enabled: bool = True
-    db_batch_size: int = 50
-    db_batch_timeout: float = 2.0
+    db_batch_size: int = Field(default=50, ge=1, le=1000)
+    db_batch_timeout: float = Field(default=2.0, ge=0.1, le=3600.0)
 
     # Default Health Settings
-    health_check_interval: float = 30.0
+    health_check_interval: float = Field(default=30.0, ge=0.1, le=3600.0)
     log_level: str = "INFO"
-    rate_limit_per_minute: int = 1000
+    rate_limit_per_minute: int = Field(default=1000, ge=1, le=100000)
 
     class Config:
         extra = "forbid"
         validate_assignment = True
-
-    @field_validator("mqtt_broker_port")
-    @classmethod
-    def validate_mqtt_port(cls, v: int) -> int:
-        """Validate MQTT broker port"""
-        if not 1 <= v <= 65535:
-            raise ValueError("MQTT broker port must be between 1 and 65535")
-        return v
-
-    @field_validator("mqtt_qos")
-    @classmethod
-    def validate_mqtt_qos(cls, v: int) -> int:
-        """Validate MQTT QoS level"""
-        if v not in [0, 1, 2]:
-            raise ValueError("MQTT QoS must be 0, 1, or 2")
-        return v
 
     @field_validator("model_type")
     @classmethod
@@ -139,66 +99,6 @@ class RadarDefaultsConfig(BaseModel):
         valid_models = ["isolation_forest", "adaptive_svm", "knn"]
         if v not in valid_models:
             raise ValueError(f"Model type must be one of: {valid_models}")
-        return v
-
-    @field_validator(
-        "anomaly_threshold_medium",
-        "anomaly_threshold_high",
-        "anomaly_threshold_critical",
-    )
-    @classmethod
-    def validate_anomaly_threshold(cls, v: float) -> float:
-        """Validate anomaly threshold is between 0 and 1"""
-        if not 0.0 <= v <= 1.0:
-            raise ValueError("Anomaly threshold must be between 0.0 and 1.0")
-        return v
-
-    @field_validator("batch_size")
-    @classmethod
-    def validate_batch_size(cls, v: int) -> int:
-        """Validate batch size"""
-        if not 1 <= v <= 10000:
-            raise ValueError("Batch size must be between 1 and 10000")
-        return v
-
-    @field_validator("batch_timeout", "db_batch_timeout", "health_check_interval")
-    @classmethod
-    def validate_timeout(cls, v: float) -> float:
-        """Validate timeout values"""
-        if not 0.1 <= v <= 3600.0:
-            raise ValueError("Timeout must be between 0.1 and 3600.0 seconds")
-        return v
-
-    @field_validator("memory_limit_mb")
-    @classmethod
-    def validate_memory_limit(cls, v: int) -> int:
-        """Validate memory limit"""
-        if not 128 <= v <= 16384:
-            raise ValueError("Memory limit must be between 128 and 16384 MB")
-        return v
-
-    @field_validator("checkpoint_interval")
-    @classmethod
-    def validate_checkpoint_interval(cls, v: int) -> int:
-        """Validate checkpoint interval"""
-        if not 100 <= v <= 100000:
-            raise ValueError("Checkpoint interval must be between 100 and 100000")
-        return v
-
-    @field_validator("db_batch_size")
-    @classmethod
-    def validate_db_batch_size(cls, v: int) -> int:
-        """Validate database batch size"""
-        if not 1 <= v <= 1000:
-            raise ValueError("Database batch size must be between 1 and 1000")
-        return v
-
-    @field_validator("rate_limit_per_minute")
-    @classmethod
-    def validate_rate_limit(cls, v: int) -> int:
-        """Validate rate limit per minute"""
-        if not 1 <= v <= 100000:
-            raise ValueError("Rate limit per minute must be between 1 and 100000")
         return v
 
     @field_validator("log_level")
@@ -238,7 +138,7 @@ class TacticConfig(BaseModel):
 
     # API Configuration
     host: str = "0.0.0.0"
-    port: int = 8000
+    port: int = Field(default=8000, ge=1, le=65535)
 
     # Docker Configuration
     docker: DockerConfig
@@ -252,17 +152,13 @@ class TacticConfig(BaseModel):
     # Logging Configuration
     log_level: str = "INFO"
 
+    # Status Reconciliation Configuration
+    reconciliation_enabled: bool = True
+    reconciliation_interval: int = Field(default=60, ge=1, le=86400)
+
     class Config:
         extra = "forbid"
         validate_assignment = True
-
-    @field_validator("port")
-    @classmethod
-    def validate_port(cls, v: int) -> int:
-        """Validate service port"""
-        if not 1 <= v <= 65535:
-            raise ValueError("Service port must be between 1 and 65535")
-        return v
 
     @field_validator("log_level")
     @classmethod
@@ -274,51 +170,110 @@ class TacticConfig(BaseModel):
         return v.upper()
 
 
+# Defaulted config instances to centralize defaults across settings and runtime
+DEFAULT_DOCKER_CONFIG = DockerConfig()
+DEFAULT_RADAR_DEFAULTS = RadarDefaultsConfig()
+
+
 class TacticSettings(BaseSettings):
     """Environment-based settings for TACTIC service"""
 
     # Service Configuration
-    TACTIC_SERVICE_NAME: str = "tactic-middleware"
-    TACTIC_SERVICE_VERSION: str = "0.1.0"
-    TACTIC_HOST: str = "0.0.0.0"
-    TACTIC_PORT: int = 8000
-    TACTIC_LOG_LEVEL: str = "INFO"
+    TACTIC_SERVICE_NAME: str = Field(default="tactic-middleware")
+    TACTIC_SERVICE_VERSION: str = Field(default="0.1.0")
+    TACTIC_HOST: str = Field(default="0.0.0.0")
+    TACTIC_PORT: int = Field(default=8000)
+    TACTIC_LOG_LEVEL: str = Field(default="INFO")
 
     # Docker API Configuration
-    TACTIC_DOCKER_API_URL: str = "http://socket-proxy"
-    TACTIC_DOCKER_API_PORT: int = 2375
-    TACTIC_DOCKER_MAX_CONCURRENT_CALLS: int = 5
-    TACTIC_DOCKER_DEFAULT_NETWORK: str = "emqx-network"
-    TACTIC_DOCKER_DEFAULT_RESTART_POLICY: str = "on-failure"
-    TACTIC_DOCKER_DEFAULT_RESTART_MAX_ATTEMPTS: int = 3
-    TACTIC_DOCKER_DEFAULT_MEMORY_LIMIT: str = "512m"
-    TACTIC_DOCKER_DEFAULT_CPU_LIMIT: str = "0.5"
-    TACTIC_DOCKER_DEFAULT_CONSTRAINTS: str = "node.role == worker"
+    TACTIC_DOCKER_API_URL: str = Field(default=DEFAULT_DOCKER_CONFIG.api_url)
+    TACTIC_DOCKER_API_PORT: int = Field(default=DEFAULT_DOCKER_CONFIG.api_port)
+    TACTIC_DOCKER_MAX_CONCURRENT_CALLS: int = Field(
+        default=DEFAULT_DOCKER_CONFIG.max_concurrent_calls
+    )
+    TACTIC_DOCKER_DEFAULT_NETWORK: str = Field(
+        default=DEFAULT_DOCKER_CONFIG.default_network
+    )
+    TACTIC_DOCKER_DEFAULT_RESTART_POLICY: str = Field(
+        default=DEFAULT_DOCKER_CONFIG.default_restart_policy
+    )
+    TACTIC_DOCKER_DEFAULT_RESTART_MAX_ATTEMPTS: int = Field(
+        default=DEFAULT_DOCKER_CONFIG.default_restart_max_attempts
+    )
+    TACTIC_DOCKER_DEFAULT_MEMORY_LIMIT: str = Field(
+        default=DEFAULT_DOCKER_CONFIG.default_memory_limit
+    )
+    TACTIC_DOCKER_DEFAULT_CPU_LIMIT: str = Field(
+        default=DEFAULT_DOCKER_CONFIG.default_cpu_limit
+    )
+    TACTIC_DOCKER_DEFAULT_CONSTRAINTS: str = Field(default="node.role == worker")
 
     # RADAR Default Configuration
-    TACTIC_RADAR_DEFAULT_MQTT_BROKER_HOST: str = "localhost"
-    TACTIC_RADAR_DEFAULT_MQTT_BROKER_PORT: int = 1883
-    TACTIC_RADAR_DEFAULT_MQTT_USE_TLS: bool = False
-    TACTIC_RADAR_DEFAULT_MQTT_CLIENT_ID_PREFIX: str = "radar"
-    TACTIC_RADAR_DEFAULT_MQTT_USE_AUTH: bool = False
-    TACTIC_RADAR_DEFAULT_MQTT_QOS: int = 0
-    TACTIC_RADAR_DEFAULT_MODEL_TYPE: str = "isolation_forest"
-    TACTIC_RADAR_DEFAULT_ANOMALY_THRESHOLD_MEDIUM: float = 0.6
-    TACTIC_RADAR_DEFAULT_ANOMALY_THRESHOLD_HIGH: float = 0.8
-    TACTIC_RADAR_DEFAULT_ANOMALY_THRESHOLD_CRITICAL: float = 0.9
-    TACTIC_RADAR_DEFAULT_BATCH_SIZE: int = 100
-    TACTIC_RADAR_DEFAULT_BATCH_TIMEOUT: float = 1.0
-    TACTIC_RADAR_DEFAULT_MEMORY_LIMIT_MB: int = 1000
-    TACTIC_RADAR_DEFAULT_CHECKPOINT_INTERVAL: int = 10000
-    TACTIC_RADAR_DEFAULT_DB_WRITE_ENABLED: bool = True
-    TACTIC_RADAR_DEFAULT_DB_BATCH_SIZE: int = 50
-    TACTIC_RADAR_DEFAULT_DB_BATCH_TIMEOUT: float = 2.0
-    TACTIC_RADAR_DEFAULT_HEALTH_CHECK_INTERVAL: float = 30.0
-    TACTIC_RADAR_DEFAULT_LOG_LEVEL: str = "INFO"
-    TACTIC_RADAR_DEFAULT_RATE_LIMIT_PER_MINUTE: int = 1000
+    TACTIC_RADAR_DEFAULT_MQTT_BROKER_HOST: str = Field(
+        default=DEFAULT_RADAR_DEFAULTS.mqtt_broker_host
+    )
+    TACTIC_RADAR_DEFAULT_MQTT_BROKER_PORT: int = Field(
+        default=DEFAULT_RADAR_DEFAULTS.mqtt_broker_port
+    )
+    TACTIC_RADAR_DEFAULT_MQTT_USE_TLS: bool = Field(
+        default=DEFAULT_RADAR_DEFAULTS.mqtt_use_tls
+    )
+    TACTIC_RADAR_DEFAULT_MQTT_CLIENT_ID_PREFIX: str = Field(
+        default=DEFAULT_RADAR_DEFAULTS.mqtt_client_id_prefix
+    )
+    TACTIC_RADAR_DEFAULT_MQTT_USE_AUTH: bool = Field(
+        default=DEFAULT_RADAR_DEFAULTS.mqtt_use_auth
+    )
+    TACTIC_RADAR_DEFAULT_MQTT_QOS: int = Field(default=DEFAULT_RADAR_DEFAULTS.mqtt_qos)
+    TACTIC_RADAR_DEFAULT_MODEL_TYPE: str = Field(
+        default=DEFAULT_RADAR_DEFAULTS.model_type
+    )
+    TACTIC_RADAR_DEFAULT_ANOMALY_THRESHOLD_MEDIUM: float = Field(
+        default=DEFAULT_RADAR_DEFAULTS.anomaly_threshold_medium
+    )
+    TACTIC_RADAR_DEFAULT_ANOMALY_THRESHOLD_HIGH: float = Field(
+        default=DEFAULT_RADAR_DEFAULTS.anomaly_threshold_high
+    )
+    TACTIC_RADAR_DEFAULT_ANOMALY_THRESHOLD_CRITICAL: float = Field(
+        default=DEFAULT_RADAR_DEFAULTS.anomaly_threshold_critical
+    )
+    TACTIC_RADAR_DEFAULT_BATCH_SIZE: int = Field(
+        default=DEFAULT_RADAR_DEFAULTS.batch_size
+    )
+    TACTIC_RADAR_DEFAULT_BATCH_TIMEOUT: float = Field(
+        default=DEFAULT_RADAR_DEFAULTS.batch_timeout
+    )
+    TACTIC_RADAR_DEFAULT_MEMORY_LIMIT_MB: int = Field(
+        default=DEFAULT_RADAR_DEFAULTS.memory_limit_mb
+    )
+    TACTIC_RADAR_DEFAULT_CHECKPOINT_INTERVAL: int = Field(
+        default=DEFAULT_RADAR_DEFAULTS.checkpoint_interval
+    )
+    TACTIC_RADAR_DEFAULT_DB_WRITE_ENABLED: bool = Field(
+        default=DEFAULT_RADAR_DEFAULTS.db_write_enabled
+    )
+    TACTIC_RADAR_DEFAULT_DB_BATCH_SIZE: int = Field(
+        default=DEFAULT_RADAR_DEFAULTS.db_batch_size
+    )
+    TACTIC_RADAR_DEFAULT_DB_BATCH_TIMEOUT: float = Field(
+        default=DEFAULT_RADAR_DEFAULTS.db_batch_timeout
+    )
+    TACTIC_RADAR_DEFAULT_HEALTH_CHECK_INTERVAL: float = Field(
+        default=DEFAULT_RADAR_DEFAULTS.health_check_interval
+    )
+    TACTIC_RADAR_DEFAULT_LOG_LEVEL: str = Field(
+        default=DEFAULT_RADAR_DEFAULTS.log_level
+    )
+    TACTIC_RADAR_DEFAULT_RATE_LIMIT_PER_MINUTE: int = Field(
+        default=DEFAULT_RADAR_DEFAULTS.rate_limit_per_minute
+    )
 
     # Database Configuration
-    TACTIC_DATABASE_URL: Optional[str] = None
+    TACTIC_DATABASE_URL: Optional[str] = Field(default=None)
+
+    # Status Reconciliation Configuration
+    TACTIC_RECONCILIATION_ENABLED: bool = Field(default=True)
+    TACTIC_RECONCILIATION_INTERVAL: int = Field(default=60)
 
     class Config:
         env_file = ".env"
@@ -394,6 +349,8 @@ class TacticSettings(BaseSettings):
             radar_defaults=radar_defaults_config,
             database_url=self.TACTIC_DATABASE_URL,
             log_level=self.TACTIC_LOG_LEVEL,
+            reconciliation_enabled=self.TACTIC_RECONCILIATION_ENABLED,
+            reconciliation_interval=self.TACTIC_RECONCILIATION_INTERVAL,
         )
 
 

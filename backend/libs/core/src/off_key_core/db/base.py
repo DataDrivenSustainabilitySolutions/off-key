@@ -1,3 +1,5 @@
+import threading
+
 from sqlalchemy import create_engine
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
@@ -10,6 +12,13 @@ _SyncSessionLocal = None
 _AsyncSessionLocal = None
 _logger = None
 
+# Thread-safety locks for lazy initialization
+_engine_lock = threading.Lock()
+_async_engine_lock = threading.Lock()
+_sync_session_lock = threading.Lock()
+_async_session_lock = threading.Lock()
+_logger_lock = threading.Lock()
+
 
 def _get_settings():
     """Lazy import to avoid circular dependency and early Settings instantiation."""
@@ -19,70 +28,80 @@ def _get_settings():
 
 
 def _get_logger():
-    """Lazy import for logger."""
+    """Lazy import for logger (thread-safe)."""
     global _logger
     if _logger is None:
-        from ..config.logs import logger
+        with _logger_lock:
+            if _logger is None:
+                from ..config.logs import logger
 
-        _logger = logger
+                _logger = logger
     return _logger
 
 
 def get_engine():
-    """Get or create sync engine lazily."""
+    """Get or create sync engine lazily (thread-safe)."""
     global _engine
     if _engine is None:
-        settings = _get_settings()
-        _engine = create_engine(
-            settings.database_url,
-            echo=settings.DEBUG,
-            echo_pool=False,
-            pool_pre_ping=True,
-            pool_size=10,
-            max_overflow=20,
-        )
+        with _engine_lock:
+            if _engine is None:
+                settings = _get_settings()
+                _engine = create_engine(
+                    settings.database_url,
+                    echo=settings.DEBUG,
+                    echo_pool=False,
+                    pool_pre_ping=True,
+                    pool_size=10,
+                    max_overflow=20,
+                )
     return _engine
 
 
 def get_async_engine():
-    """Get or create async engine lazily."""
+    """Get or create async engine lazily (thread-safe)."""
     global _async_engine
     if _async_engine is None:
-        settings = _get_settings()
-        _async_engine = create_async_engine(
-            settings.async_database_url,
-            echo=settings.DEBUG,
-            pool_pre_ping=True,
-            pool_size=10,
-            max_overflow=20,
-        )
+        with _async_engine_lock:
+            if _async_engine is None:
+                settings = _get_settings()
+                _async_engine = create_async_engine(
+                    settings.async_database_url,
+                    echo=settings.DEBUG,
+                    pool_pre_ping=True,
+                    pool_size=10,
+                    max_overflow=20,
+                )
     return _async_engine
 
 
 def get_sync_session_local():
-    """Get or create sync session factory lazily."""
+    """Get or create sync session factory lazily (thread-safe)."""
     global _SyncSessionLocal
     if _SyncSessionLocal is None:
-        _SyncSessionLocal = sessionmaker(
-            bind=get_engine(),
-            autocommit=False,
-            autoflush=False,
-            expire_on_commit=False,
-        )
+        with _sync_session_lock:
+            if _SyncSessionLocal is None:
+                _SyncSessionLocal = sessionmaker(
+                    bind=get_engine(),
+                    autocommit=False,
+                    autoflush=False,
+                    expire_on_commit=False,
+                )
     return _SyncSessionLocal
 
 
 def get_async_session_local():
-    """Get or create async session factory lazily."""
+    """Get or create async session factory lazily (thread-safe)."""
     global _AsyncSessionLocal
     if _AsyncSessionLocal is None:
-        _AsyncSessionLocal = sessionmaker(
-            bind=get_async_engine(),
-            autocommit=False,
-            autoflush=False,
-            expire_on_commit=False,
-            class_=AsyncSession,
-        )
+        with _async_session_lock:
+            if _AsyncSessionLocal is None:
+                _AsyncSessionLocal = sessionmaker(
+                    bind=get_async_engine(),
+                    autocommit=False,
+                    autoflush=False,
+                    expire_on_commit=False,
+                    class_=AsyncSession,
+                )
     return _AsyncSessionLocal
 
 
@@ -93,12 +112,18 @@ class _EngineProxy:
     def __getattr__(self, name):
         return getattr(get_engine(), name)
 
+    def __repr__(self) -> str:
+        return repr(get_engine())
+
 
 class _AsyncEngineProxy:
     """Proxy that lazily creates async engine on first attribute access."""
 
     def __getattr__(self, name):
         return getattr(get_async_engine(), name)
+
+    def __repr__(self) -> str:
+        return repr(get_async_engine())
 
 
 class _SessionFactoryProxy:
@@ -110,6 +135,9 @@ class _SessionFactoryProxy:
     def __getattr__(self, name):
         return getattr(get_sync_session_local(), name)
 
+    def __repr__(self) -> str:
+        return repr(get_sync_session_local())
+
 
 class _AsyncSessionFactoryProxy:
     """Proxy that lazily creates async session factory on first use."""
@@ -119,6 +147,9 @@ class _AsyncSessionFactoryProxy:
 
     def __getattr__(self, name):
         return getattr(get_async_session_local(), name)
+
+    def __repr__(self) -> str:
+        return repr(get_async_session_local())
 
 
 # Backward compatible exports - these proxies defer initialization

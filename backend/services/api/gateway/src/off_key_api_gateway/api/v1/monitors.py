@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, HTTPException, Query, Request, Response
 from typing import List, Dict, Optional, Any
 from pydantic import BaseModel, Field
 
@@ -94,6 +94,12 @@ async def start_monitoring_service(
             validate_model_params(config.model_type, config.model_params)
         if config.preprocessing_steps is not None:
             validate_preprocessing_steps(config.preprocessing_steps)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid monitoring config: {e}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Validation failed: {str(e)}")
+
+    try:
         if config.service_type == "radar":
             response = await tactic.start_radar_service(
                 container_name=config.container_name,
@@ -112,6 +118,8 @@ async def start_monitoring_service(
             )
 
         return response
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to start monitoring service: {str(e)}"
@@ -150,6 +158,8 @@ async def get_service_details(
             raise HTTPException(status_code=404, detail="Service not found")
 
         return service_detail
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to get service details: {str(e)}"
@@ -198,6 +208,8 @@ async def stop_monitoring_service(
             "message": f"Container '{container_name or container_id}'"
             f" stopped successfully",
         }
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to stop monitoring service: {str(e)}"
@@ -206,7 +218,7 @@ async def stop_monitoring_service(
 
 @router.get("/models", response_model=Dict[str, Any])
 @shared_limit_fetch
-async def list_available_models_endpoint(request: Request):
+async def list_available_models_endpoint(request: Request, response: Response):
     """
     Lists all available anomaly detection models and their hyperparameters.
 
@@ -219,7 +231,11 @@ async def list_available_models_endpoint(request: Request):
 
     Use this endpoint to discover available models and their configuration options
     before starting a monitoring service.
+
+    Response is cacheable for 5 minutes since model definitions rarely change.
     """
+    # Enable client-side caching - models rarely change
+    response.headers["Cache-Control"] = "public, max-age=300"
     try:
         return get_available_models()
     except Exception as e:
@@ -230,11 +246,15 @@ async def list_available_models_endpoint(request: Request):
 
 @router.get("/preprocessors", response_model=Dict[str, Any])
 @shared_limit_fetch
-async def list_available_preprocessors_endpoint(request: Request):
+async def list_available_preprocessors_endpoint(request: Request, response: Response):
     """List available preprocessing steps and their parameters.
 
     Examples: standard scaler, PCA.
+
+    Response is cacheable for 5 minutes since preprocessor definitions rarely change.
     """
+    # Enable client-side caching - preprocessors rarely change
+    response.headers["Cache-Control"] = "public, max-age=300"
     try:
         return get_available_preprocessors()
     except Exception as e:

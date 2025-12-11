@@ -14,19 +14,11 @@ from .config import radar_settings
 
 
 def setup_logging():
-    """Setup logging configuration"""
-    log_level = getattr(radar_settings, "RADAR_LOG_LEVEL", "INFO")
+    """Configure logging levels for third-party libraries.
 
-    # Configure root logger
-    logging.basicConfig(
-        level=getattr(logging, log_level.upper(), logging.INFO),
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-        handlers=[
-            logging.StreamHandler(sys.stdout),
-        ],
-    )
-
-    # Set specific logger levels
+    The main application logger is already configured by off_key_core.config.logs
+    at import time. This function only silences noisy third-party loggers.
+    """
     logging.getLogger("paho.mqtt").setLevel(logging.WARNING)
     logging.getLogger("sqlalchemy").setLevel(logging.WARNING)
 
@@ -36,7 +28,18 @@ async def main():
     setup_logging()
 
     logger.info("Starting MQTT RADAR service")
-    logger.info(f"Configuration: {radar_settings.config.model_dump()}")
+    cfg = radar_settings.config
+    logger.info(
+        "Configuration summary",
+        extra={
+            "broker": f"{cfg.broker_host}:{cfg.broker_port}",
+            "topics": cfg.subscription_topics,
+            "model_type": cfg.model_type,
+            "db_write_enabled": cfg.db_write_enabled,
+            "batch_size": cfg.batch_size,
+            "log_level": cfg.log_level,
+        },
+    )
 
     try:
         # Get service instance and run

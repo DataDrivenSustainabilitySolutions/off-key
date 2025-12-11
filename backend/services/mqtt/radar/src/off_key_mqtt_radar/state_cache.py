@@ -123,12 +123,8 @@ class SensorStateCache:
                         f"Failed to extract numeric value for sensor '{sensor}' "
                         f"from charger '{charger_id}': {latest}"
                     )
-                    continue
+                    return None  # Cannot emit partial feature vector
                 aligned[sensor] = value
-
-            # If we somehow failed to extract any values, do not emit
-            if not aligned:
-                return None
 
             return aligned
 

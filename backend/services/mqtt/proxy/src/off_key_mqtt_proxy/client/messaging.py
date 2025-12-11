@@ -22,8 +22,9 @@ class MessageHandler:
     message queuing, and thread-safe event loop operations.
     """
 
-    def __init__(self, max_queue_size: int = 10000):
+    def __init__(self, max_queue_size: int = 10000, max_concurrent_handlers: int = 100):
         self.max_queue_size = max_queue_size
+        self.max_concurrent_handlers = max_concurrent_handlers
 
         # Message handling
         self.message_handler: Optional[
@@ -33,10 +34,15 @@ class MessageHandler:
         ] = None
         self.message_queue: List[MQTTMessage] = []
         self._event_loop: Optional[asyncio.AbstractEventLoop] = None
+        self._handler_semaphore: Optional[asyncio.Semaphore] = None
 
         # Metrics
         self.messages_received = 0
         self.last_message_time: Optional[datetime] = None
+        self.handler_errors = 0
+        self.futures_created = 0
+        self.futures_completed = 0
+        self.futures_failed = 0
 
     def set_client(self, client: mqtt.Client) -> None:
         """Set the MQTT client and register message callback"""
@@ -110,6 +116,10 @@ class MessageHandler:
                 self.last_message_time.isoformat() if self.last_message_time else None
             ),
             "has_handler": self.message_handler is not None,
+            "handler_errors": self.handler_errors,
+            "futures_created": self.futures_created,
+            "futures_completed": self.futures_completed,
+            "futures_failed": self.futures_failed,
         }
 
     def get_message_rate(
@@ -152,6 +162,25 @@ class MessageHandler:
         except Exception as e:
             logger.error(f"Error processing MQTT message: {e}")
 
+    def _handle_future_result(self, future: asyncio.Future) -> None:
+        """
+        Handle future completion and log any exceptions
+
+        This callback is called when the async message handler completes,
+        ensuring exceptions are not silently lost.
+        """
+        try:
+            # This will raise if handler raised an exception
+            future.result()
+            self.futures_completed += 1
+        except Exception as e:
+            self.futures_failed += 1
+            self.handler_errors += 1
+            logger.error(
+                f"Exception in async message handler: {e}",
+                exc_info=True
+            )
+
     def _handle_user_callback(self, message: MQTTMessage) -> None:
         """Handle user-provided message callback (sync or async)"""
         try:
@@ -159,9 +188,13 @@ class MessageHandler:
                 # Handle async callback
                 if self._event_loop and not self._event_loop.is_closed():
                     # Schedule in main event loop thread-safely
-                    _future = asyncio.run_coroutine_threadsafe(
+                    future = asyncio.run_coroutine_threadsafe(
                         self.message_handler(message), self._event_loop
                     )
+                    # Track future creation
+                    self.futures_created += 1
+                    # Add callback to handle exceptions and track completion
+                    future.add_done_callback(self._handle_future_result)
                     # Don't wait for completion to avoid blocking MQTT thread
                 else:
                     logger.error("Event loop not available for async message handler")
@@ -170,6 +203,7 @@ class MessageHandler:
                 self.message_handler(message)
 
         except Exception as e:
+            self.handler_errors += 1
             logger.error(f"Error in user message handler: {e}")
 
     def _queue_message(self, message: MQTTMessage) -> None:

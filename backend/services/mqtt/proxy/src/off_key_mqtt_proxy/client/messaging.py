@@ -74,6 +74,12 @@ class MessageHandler:
             except RuntimeError:
                 logger.warning("No event loop available for async message handler")
 
+        # Initialize semaphore for async handlers to limit concurrency
+        if asyncio.iscoroutinefunction(handler) and self._event_loop:
+            self._handler_semaphore = asyncio.Semaphore(
+                self.max_concurrent_handlers
+            )
+
     def clear_handler(self) -> None:
         """Clear the current message handler"""
         self.message_handler = None
@@ -162,6 +168,16 @@ class MessageHandler:
         except Exception as e:
             logger.error(f"Error processing MQTT message: {e}")
 
+    async def _wrapped_handler(self, message: MQTTMessage) -> None:
+        """
+        Wrap handler with semaphore to limit concurrency
+
+        This prevents unbounded future creation by limiting the number
+        of concurrent handler executions.
+        """
+        async with self._handler_semaphore:
+            await self.message_handler(message)
+
     def _handle_future_result(self, future: asyncio.Future) -> None:
         """
         Handle future completion and log any exceptions
@@ -187,9 +203,9 @@ class MessageHandler:
             if asyncio.iscoroutinefunction(self.message_handler):
                 # Handle async callback
                 if self._event_loop and not self._event_loop.is_closed():
-                    # Schedule in main event loop thread-safely
+                    # Schedule in main event loop thread-safely with semaphore wrapper
                     future = asyncio.run_coroutine_threadsafe(
-                        self.message_handler(message), self._event_loop
+                        self._wrapped_handler(message), self._event_loop
                     )
                     # Track future creation
                     self.futures_created += 1

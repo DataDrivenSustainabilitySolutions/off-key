@@ -203,15 +203,20 @@ class MessageHandler:
             if asyncio.iscoroutinefunction(self.message_handler):
                 # Handle async callback
                 if self._event_loop and not self._event_loop.is_closed():
-                    # Schedule in main event loop thread-safely with semaphore wrapper
-                    future = asyncio.run_coroutine_threadsafe(
-                        self._wrapped_handler(message), self._event_loop
-                    )
-                    # Track future creation
-                    self.futures_created += 1
-                    # Add callback to handle exceptions and track completion
-                    future.add_done_callback(self._handle_future_result)
-                    # Don't wait for completion to avoid blocking MQTT thread
+                    try:
+                        # Schedule in main event loop thread-safely with semaphore wrapper
+                        future = asyncio.run_coroutine_threadsafe(
+                            self._wrapped_handler(message), self._event_loop
+                        )
+                        # Track future creation
+                        self.futures_created += 1
+                        # Add callback to handle exceptions and track completion
+                        future.add_done_callback(self._handle_future_result)
+                        # Don't wait for completion to avoid blocking MQTT thread
+                    except RuntimeError as e:
+                        # Event loop closed between check and call (race condition)
+                        logger.error(f"Event loop closed during callback: {e}")
+                        self.handler_errors += 1
                 else:
                     logger.error("Event loop not available for async message handler")
             else:

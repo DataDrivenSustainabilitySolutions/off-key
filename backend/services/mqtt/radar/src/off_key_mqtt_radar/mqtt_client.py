@@ -48,7 +48,7 @@ class RadarMQTTClient:
         self.error_count = 0
 
         # Rate limiting
-        self.rate_limiter = deque(maxlen=config.rate_limit_per_minute)
+        self.rate_limiter = deque()  # No maxlen - size controlled by time-based cleanup
 
         # Performance tracking
         self.connection_time = None
@@ -222,17 +222,19 @@ class RadarMQTTClient:
         """Handle MQTT message on the asyncio event loop thread"""
         try:
             current_time = time.time()
-            self.rate_limiter.append(current_time)
 
             # Remove old entries (older than 1 minute)
             minute_ago = current_time - 60
             while self.rate_limiter and self.rate_limiter[0] < minute_ago:
                 self.rate_limiter.popleft()
 
-            # Check rate limit
-            if len(self.rate_limiter) > self.config.rate_limit_per_minute:
+            # Check rate limit BEFORE appending
+            if len(self.rate_limiter) >= self.config.rate_limit_per_minute:
                 logger.warning("Rate limit exceeded, dropping message")
                 return
+
+            # Only append timestamp for accepted messages
+            self.rate_limiter.append(current_time)
 
             try:
                 self.message_queue.put_nowait(message)

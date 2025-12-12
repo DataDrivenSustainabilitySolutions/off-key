@@ -23,8 +23,25 @@ dependencies = [
     "pydantic~=2.11.0",
 ]
 
-[project.optional-dependencies]
-dev = ["black", "ruff", "pre-commit"]
+[dependency-groups]
+dev = [
+    {include-group = "lint"},
+    {include-group = "test"},
+    {include-group = "typing"}
+]
+test = [
+    "pytest >=8.1.1,<9",
+    "pytest-cov >=6.3.0",
+    "pytest-asyncio >=0.23.0",
+    "pytest-timeout >=2.2.0",
+]
+lint = [
+    "ruff",
+    "pre-commit",
+]
+typing = [
+    # "ty"
+]
 
 [tool.uv.workspace]
 members = [

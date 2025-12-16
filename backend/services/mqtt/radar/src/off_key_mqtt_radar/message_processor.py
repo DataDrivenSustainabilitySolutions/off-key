@@ -171,9 +171,14 @@ class MessageProcessor:
         data: Dict[str, float],
     ) -> Optional[Dict[str, float]]:
         """Align multi-sensor streams if required."""
-        if not (
-            charger_id and sensor_type and self.state_cache and self.required_sensors
-        ):
+        # Skip alignment if no cache or only single sensor subscribed
+        # Single-sensor mode: pass data through directly for anomaly detection
+        if not self.state_cache or not self.required_sensors:
+            return data
+        if len(self.required_sensors) <= 1:
+            return data
+
+        if not (charger_id and sensor_type):
             return data
 
         aligned_features = self.state_cache.update(charger_id, sensor_type, data)
@@ -195,20 +200,43 @@ class MessageProcessor:
         return result
 
     def _record_metrics(self, start_time: float, result: AnomalyResult) -> None:
-        """Log significant anomalies."""
-        if result.is_anomaly and result.severity in ["high", "critical"]:
-            logger.warning(
-                f"Significant anomaly detected: score={result.anomaly_score:.3f}, "
-                f"severity={result.severity}, topic={result.topic}, "
-                f"charger={result.charger_id}",
+        """Log processing activity and anomalies."""
+        # Log first message to confirm data is flowing
+        if self.message_count == 1:
+            logger.info(
+                f"First message received and processed from {result.topic}",
                 extra={
                     **self._log_context,
-                    "anomaly_score": result.anomaly_score,
-                    "severity": result.severity,
-                    "topic": result.topic,
                     "charger_id": result.charger_id,
+                    "anomaly_score": result.anomaly_score,
                 },
             )
+
+        # Log all anomalies
+        if result.is_anomaly:
+            if result.severity in ["high", "critical"]:
+                logger.warning(
+                    f"Anomaly: score={result.anomaly_score:.3f}, "
+                    f"severity={result.severity}, charger={result.charger_id}",
+                    extra={
+                        **self._log_context,
+                        "anomaly_score": result.anomaly_score,
+                        "severity": result.severity,
+                        "topic": result.topic,
+                        "charger_id": result.charger_id,
+                    },
+                )
+            else:
+                logger.info(
+                    f"Anomaly: score={result.anomaly_score:.3f}, "
+                    f"severity={result.severity}, charger={result.charger_id}",
+                    extra={
+                        **self._log_context,
+                        "anomaly_score": result.anomaly_score,
+                        "severity": result.severity,
+                        "charger_id": result.charger_id,
+                    },
+                )
 
     def _maybe_cleanup_memory(self) -> None:
         """Trigger periodic memory cleanup."""

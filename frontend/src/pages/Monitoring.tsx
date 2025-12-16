@@ -617,7 +617,8 @@ const Monitoring: React.FC = () => {
 
     try {
       // Build MQTT topics using charger ID and selected sensors
-      const mqttTopics = activeKeys.map(sensorType => `charger/${chargerId}/${sensorType}`);
+      // Format: charger/{charger_id}/live-telemetry/{sensor_type}
+      const mqttTopics = activeKeys.map(sensorType => `charger/${chargerId}/live-telemetry/${sensorType}`);
 
       // Generate unique container name
       const containerName = `radar-${chargerId}-${Date.now()}`;

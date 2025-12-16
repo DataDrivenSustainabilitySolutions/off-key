@@ -40,10 +40,10 @@ async def get_telemetry_types_from_id(
     return result.scalars().all()
 
 
-@router.get("/{charger_id}/{telemetry_type}")
+@router.get("/{charger_id}/data")
 async def get_telemetry(
     charger_id: str,
-    telemetry_type: str,
+    telemetry_type: str = Query(..., alias="type"),
     db: AsyncSession = Depends(get_db_async),
     limit: int = 1000,  # Reduced default limit for better performance
     after_timestamp: datetime | None = Query(None),  # Cursor for pagination

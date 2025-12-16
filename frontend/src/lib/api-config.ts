@@ -43,8 +43,11 @@ export const API_CONFIG = {
     TELEMETRY: {
       SYNC: (limit?: number) => `/v1/telemetry/sync${limit ? `?limit=${limit}` : ''}`,
       TYPES: (chargerId: string) => `/v1/telemetry/${chargerId}/type`,
-      DATA: (chargerId: string, telemetryType: string, limit?: number) =>
-        `/v1/telemetry/${chargerId}/${telemetryType}${limit ? `?limit=${limit}` : ''}`,
+      DATA: (chargerId: string, telemetryType: string, limit?: number) => {
+        const params = new URLSearchParams({ type: telemetryType });
+        if (limit) params.append('limit', limit.toString());
+        return `/v1/telemetry/${chargerId}/data?${params.toString()}`;
+      },
     },
 
     // Favorites

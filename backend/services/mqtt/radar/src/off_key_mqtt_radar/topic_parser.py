@@ -12,13 +12,18 @@ class TopicParser:
     """
     Parser for MQTT topic patterns.
 
-    Expected topic format: charger/<charger_id>/telemetry/<sensor_type>
+    Supported topic formats:
+    - charger/<charger_id>/telemetry/<sensor_type>
+    - charger/<charger_id>/live-telemetry/<sensor_type>
 
     Handles wildcards (+, #) appropriately when extracting metadata.
     """
 
     # Topic segments that should be treated as wildcards
-    WILDCARD_SEGMENTS = {"+", "#", "telemetry"}
+    WILDCARD_SEGMENTS = {"+", "#", "telemetry", "live-telemetry"}
+
+    # Telemetry segment names (used to find sensor type after these segments)
+    TELEMETRY_SEGMENTS = {"telemetry", "live-telemetry"}
 
     @staticmethod
     def extract_charger_id(topic: str) -> Optional[str]:
@@ -48,7 +53,10 @@ class TopicParser:
         """
         Extract sensor type from topic.
 
-        Expected format: charger/<id>/telemetry/<sensor_type>
+        Supported formats:
+        - charger/<id>/telemetry/<sensor_type>
+        - charger/<id>/live-telemetry/<sensor_type>
+
         Falls back to the last non-wildcard segment.
 
         Args:
@@ -62,13 +70,14 @@ class TopicParser:
             if len(parts) < 3 or parts[0] != "charger":
                 return None
 
-            # Prefer the leaf after "telemetry" when present
-            if "telemetry" in parts:
-                idx = parts.index("telemetry")
-                if idx + 1 < len(parts):
-                    sensor = parts[idx + 1]
-                    if sensor not in TopicParser.WILDCARD_SEGMENTS:
-                        return sensor
+            # Find the telemetry segment and get sensor type after it
+            for i, part in enumerate(parts):
+                if part in TopicParser.TELEMETRY_SEGMENTS:
+                    if i + 1 < len(parts):
+                        sensor = parts[i + 1]
+                        if sensor not in TopicParser.WILDCARD_SEGMENTS:
+                            return sensor
+                    break
 
             # Fallback to last segment
             sensor = parts[-1]
@@ -99,19 +108,22 @@ class TopicParser:
             if len(parts) < 4 or parts[0] != "charger":
                 continue
 
-            # Prefer the leaf after "telemetry" when present
-            if "telemetry" in parts:
-                telemetry_idx = parts.index("telemetry")
-                if telemetry_idx + 1 < len(parts):
-                    candidate = parts[telemetry_idx + 1]
-                    if candidate not in TopicParser.WILDCARD_SEGMENTS:
-                        sensors.add(candidate)
-                        continue
+            # Find the telemetry segment and get sensor type after it
+            found = False
+            for i, part in enumerate(parts):
+                if part in TopicParser.TELEMETRY_SEGMENTS:
+                    if i + 1 < len(parts):
+                        candidate = parts[i + 1]
+                        if candidate not in TopicParser.WILDCARD_SEGMENTS:
+                            sensors.add(candidate)
+                            found = True
+                    break
 
-            # Fallback to last segment
-            candidate = parts[-1]
-            if candidate not in TopicParser.WILDCARD_SEGMENTS:
-                sensors.add(candidate)
+            # Fallback to last segment if no telemetry segment found
+            if not found:
+                candidate = parts[-1]
+                if candidate not in TopicParser.WILDCARD_SEGMENTS:
+                    sensors.add(candidate)
 
         return sensors
 

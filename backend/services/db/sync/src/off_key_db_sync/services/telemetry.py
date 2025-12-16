@@ -12,7 +12,7 @@ from sqlalchemy.dialects.postgresql import insert
 from off_key_core.clients.base_client import ChargerAPIClient
 from off_key_core.config.logs import logger
 from off_key_core.db.models import Charger, Telemetry
-from off_key_core.utils.string import clean_string, string_to_float
+from off_key_core.utils.string import string_to_float
 from off_key_core.utils.enum import HealthStatus
 from ..config import sync_settings
 
@@ -218,13 +218,11 @@ class TelemetrySyncService:
                     f"'{hierarchy_raw}' for {charger_id}."
                 )
 
-                hierarchy_db_type = clean_string(hierarchy_raw)
+                # Use hierarchy directly (preserves slashes for MQTT topic matching)
+                hierarchy_db_type = hierarchy_raw
 
                 if not hierarchy_db_type:
-                    logger.warning(
-                        f"Skipping hierarchy '{hierarchy_raw}' for {charger_id} "
-                        f"due to cleaning returning None."
-                    )
+                    logger.warning(f"Skipping empty hierarchy for {charger_id}.")
                     continue
 
                 # Check for existing data coverage if gap detection is enabled

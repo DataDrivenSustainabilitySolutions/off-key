@@ -4,9 +4,11 @@ Tests for AnomalyDetectionService and related components.
 Tests cover:
 - Data point processing
 - Severity calculation
-- Checkpoint save/restore
 - Preprocessing pipeline
 - Error handling
+- Resilient detector with circuit breaker
+- Security validation
+- Memory management
 """
 
 import pytest

@@ -1,5 +1,5 @@
-import os
 import json
+import os
 import uuid
 from datetime import datetime
 from typing import List, Dict, Optional, Any
@@ -14,9 +14,15 @@ from off_key_core.config.logs import logger
 from off_key_core.db.models import MonitoringService
 from off_key_core.models import validate_model_params, validate_preprocessing_steps
 from ...facades.docker import AsyncDocker
-from ...config import tactic_settings
+from ...config import get_tactic_config
 
-async_docker = AsyncDocker()
+from functools import lru_cache
+
+
+@lru_cache(maxsize=1)
+def get_async_docker() -> AsyncDocker:
+    """Return cached AsyncDocker instance."""
+    return AsyncDocker()
 
 
 def _parse_memory_string(memory_str: str) -> int:
@@ -76,7 +82,7 @@ class RadarOrchestrationService:
 
     def __init__(self, session: AsyncSession):
         self.session: AsyncSession = session
-        self.async_docker: AsyncDocker = async_docker
+        self.async_docker: AsyncDocker = get_async_docker()
         logger.info("RadarOrchestrationService initialized.")
 
     async def create_radar_service(
@@ -184,7 +190,7 @@ class RadarOrchestrationService:
         Pydantic configuration defaults.
         """
         # Get RADAR defaults from configuration
-        defaults = tactic_settings.config.radar_defaults
+        defaults = get_tactic_config().radar_defaults
 
         env_vars = {
             "SERVICE_ID": service_id,
@@ -271,7 +277,14 @@ class RadarOrchestrationService:
             # Note: Individual RADAR_MODEL_* params removed - use only JSON
             env_vars["RADAR_MODEL_PARAMS"] = json.dumps(validated_params)
 
-            logger.info(f"Model params validated for {model_type}: {validated_params}")
+            logger.debug(
+                "Model params validated for %s: %s", model_type, validated_params
+            )
+            logger.info(
+                "Model params validated for %s with %d parameters",
+                model_type,
+                len(validated_params),
+            )
 
         except ValueError as e:
             logger.error(f"Invalid model parameters for {model_type}: {e}")
@@ -281,7 +294,8 @@ class RadarOrchestrationService:
         try:
             validated_steps = validate_preprocessing_steps(preprocessing_steps)
             env_vars["RADAR_PREPROCESSING_STEPS"] = json.dumps(validated_steps)
-            logger.info(f"Preprocessing steps validated: {validated_steps}")
+            logger.debug("Preprocessing steps validated: %s", validated_steps)
+            logger.info("Preprocessing steps validated: %d steps", len(validated_steps))
         except ValueError as e:
             logger.error(f"Invalid preprocessing steps: {e}")
             raise ValueError(f"Invalid preprocessing steps: {e}")
@@ -296,11 +310,33 @@ class RadarOrchestrationService:
         depending on the full Settings class which requires many unrelated
         environment variables.
         """
-        postgres_user = os.getenv("POSTGRES_USER", "postgres")
-        postgres_password = os.getenv("POSTGRES_PASSWORD", "postgres")
-        postgres_host = os.getenv("POSTGRES_HOST", "timescaledb")
-        postgres_port = os.getenv("POSTGRES_PORT", "5432")
-        postgres_db = os.getenv("POSTGRES_DB", "postgres")
+        postgres_user = os.getenv("POSTGRES_USER")
+        postgres_password = os.getenv("POSTGRES_PASSWORD")
+        postgres_host = os.getenv("POSTGRES_HOST")
+        postgres_port = os.getenv("POSTGRES_PORT")
+        postgres_db = os.getenv("POSTGRES_DB")
+
+        missing_envs = []
+        if not postgres_user:
+            postgres_user = "postgres"
+            missing_envs.append("POSTGRES_USER")
+        if not postgres_password:
+            postgres_password = "postgres"
+            missing_envs.append("POSTGRES_PASSWORD")
+        if not postgres_host:
+            postgres_host = "timescaledb"
+            missing_envs.append("POSTGRES_HOST")
+        if not postgres_port:
+            postgres_port = "5432"
+            missing_envs.append("POSTGRES_PORT")
+        if not postgres_db:
+            postgres_db = "postgres"
+            missing_envs.append("POSTGRES_DB")
+
+        if missing_envs:
+            logger.warning(
+                "Using default DB envs for radar: %s", ", ".join(missing_envs)
+            )
 
         return (
             f"postgresql+asyncpg://{quote_plus(postgres_user)}:{quote_plus(postgres_password)}"
@@ -317,7 +353,7 @@ class RadarOrchestrationService:
         Helper method to create RADAR Docker service using Pydantic configuration.
         """
         # Get Docker configuration from Pydantic settings
-        docker_config = tactic_settings.config.docker
+        docker_config = get_tactic_config().docker
 
         labels = {
             "owner": "tactic_middleware",

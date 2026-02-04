@@ -87,6 +87,9 @@ class HealthMonitor:
         Args:
             shutdown_event: Event signaling service shutdown
         """
+        if self._health_check_task is not None:
+            logger.warning("Health monitor already started", extra=self._log_context)
+            return
         self.start_time = datetime.now()
         self._shutdown_event = shutdown_event
         self._health_check_task = asyncio.create_task(self._monitor_loop())
@@ -100,6 +103,7 @@ class HealthMonitor:
                 await self._health_check_task
             except asyncio.CancelledError:
                 pass
+            self._health_check_task = None
         logger.info("Health monitor stopped", extra=self._log_context)
 
     async def _monitor_loop(self) -> None:

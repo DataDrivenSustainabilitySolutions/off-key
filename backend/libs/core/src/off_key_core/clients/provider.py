@@ -3,7 +3,8 @@ from typing import Optional
 
 from off_key_core.clients.base_client import ChargerAPIClient
 from off_key_core.clients.pionix import PionixClient
-from off_key_core.config.config import settings
+from off_key_core.config.app import get_app_settings
+from off_key_core.config.pionix import get_pionix_settings
 
 
 @lru_cache()
@@ -20,10 +21,12 @@ def get_charger_api_client() -> ChargerAPIClient:
     Raises:
         ValueError: If the configured provider is unknown
     """
-    provider = getattr(settings, "CHARGER_API_PROVIDER", "pionix")  # Default to pionix
+    app_settings = get_app_settings()
+    provider = getattr(app_settings, "CHARGER_API_PROVIDER", "pionix")
 
     if provider == "pionix":
-        return PionixClient(config=settings.pionix_config)
+        pionix_settings = get_pionix_settings()
+        return PionixClient(config=pionix_settings.pionix_config)
     # Future providers can be added here:
     # elif provider == "fictional":
     #     from .client.fictional import FictionalClient
@@ -51,7 +54,8 @@ def get_charger_api_client_factory(provider: Optional[str] = None) -> ChargerAPI
         return get_charger_api_client()
 
     if provider == "pionix":
-        return PionixClient(config=settings.pionix_config)
+        pionix_settings = get_pionix_settings()
+        return PionixClient(config=pionix_settings.pionix_config)
     # Future providers can be added here
     else:
         raise ValueError(f"Unknown charger API provider: {provider}")

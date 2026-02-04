@@ -7,7 +7,7 @@ import httpx
 
 from off_key_core.db.base import get_db_async
 from off_key_core.db.models import Telemetry
-from off_key_core.config.config import settings
+from off_key_core.config.services import get_service_endpoints_settings
 
 router = APIRouter()
 
@@ -16,9 +16,10 @@ router = APIRouter()
 async def sync_telemetry(limit: int = 10_000):
     """Trigger manual telemetry sync via db-sync service."""
     try:
+        service_endpoints = get_service_endpoints_settings()
         async with httpx.AsyncClient() as client:
             response = await client.post(
-                f"{settings.db_sync_service_url}/sync/telemetry",
+                f"{service_endpoints.db_sync_service_url}/sync/telemetry",
                 params={"limit": limit},
                 timeout=600.0,  # 10 minute timeout for telemetry sync
             )

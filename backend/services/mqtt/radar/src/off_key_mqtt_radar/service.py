@@ -12,6 +12,7 @@ Refactored to use extracted components:
 """
 
 import asyncio
+import os
 import signal
 import time
 from datetime import datetime
@@ -19,7 +20,7 @@ from typing import Optional
 
 from off_key_core.config.logs import logger
 
-from .config import radar_settings, AnomalyDetectionConfig
+from .config import AnomalyDetectionConfig, get_radar_config
 from .detector import (
     AnomalyDetectionService,
     ResilientAnomalyDetector,
@@ -49,8 +50,9 @@ class RadarService:
     - Resource management
     """
 
-    def __init__(self):
-        self.config = radar_settings.config
+    def __init__(self, config_file_path: Optional[str] = None):
+        self.config = get_radar_config()
+        self.config_file_path = config_file_path or os.getenv("RADAR_CONFIG_FILE")
 
         # Core components
         self.mqtt_client: Optional[RadarMQTTClient] = None
@@ -292,7 +294,7 @@ class RadarService:
         """Setup configuration file watching for hot reload"""
         try:
             # Check if we have a config file to watch
-            config_file_path = getattr(radar_settings, "custom_config_file", None)
+            config_file_path = self.config_file_path
 
             if not config_file_path:
                 logger.info("No configuration file specified for watching")
@@ -452,9 +454,11 @@ class RadarService:
 _radar_service: Optional[RadarService] = None
 
 
-def get_radar_service() -> RadarService:
-    """Get the global RADAR service instance"""
+def get_radar_service(config_file_path: Optional[str] = None) -> RadarService:
+    """Get the global RADAR service instance."""
     global _radar_service
     if _radar_service is None:
-        _radar_service = RadarService()
+        _radar_service = RadarService(config_file_path=config_file_path)
+    elif config_file_path:
+        _radar_service.config_file_path = config_file_path
     return _radar_service

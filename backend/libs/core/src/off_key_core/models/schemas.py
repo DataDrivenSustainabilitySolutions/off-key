@@ -10,8 +10,8 @@ These schemas serve multiple purposes:
 3. Type safety - IDE support and runtime validation
 """
 
-from typing import Any, Dict, Literal, Optional
-from pydantic import BaseModel, Field
+from typing import Any, Dict, Optional
+from pydantic import BaseModel, Field, field_validator
 
 
 class ModelHyperparameters(BaseModel):
@@ -194,7 +194,24 @@ class IncrementalPCAParams(ModelHyperparameters):
 class PreprocessingStep(BaseModel):
     """Generic preprocessing step definition."""
 
-    type: Literal["standard_scaler", "pca"] = Field(
-        description="Preprocessing transformer type"
-    )
-    params: Dict[str, Any] = Field(default_factory=dict)
+    type: str = Field(description="Preprocessing transformer type")
+    params: Optional[Dict[str, Any]] = None
+
+    @field_validator("type")
+    @classmethod
+    def normalize_type(cls, v: str) -> str:
+        if not isinstance(v, str):
+            raise ValueError("Preprocessing step 'type' must be a string")
+        normalized = v.strip()
+        if not normalized:
+            raise ValueError("Preprocessing step 'type' must be a non-empty string")
+        return normalized
+
+    @field_validator("params", mode="before")
+    @classmethod
+    def normalize_params(cls, v: Any) -> Dict[str, Any]:
+        if v is None:
+            return {}
+        if not isinstance(v, dict):
+            raise ValueError("Preprocessing step 'params' must be an object")
+        return v

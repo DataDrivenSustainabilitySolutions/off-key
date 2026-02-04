@@ -10,13 +10,13 @@ __description__ = "MQTT Real-Time Anomaly Detector for Analysis and Reporting"
 __author__ = "Oliver Hennhoefer, Fernando Saba"
 
 from .service import RadarService, get_radar_service
-from .config import radar_settings
+from .config import get_radar_settings
 from .models import AnomalyResult, MQTTMessage, HealthStatus
 
 __all__ = [
     "RadarService",
     "get_radar_service",
-    "radar_settings",
+    "get_radar_settings",
     "AnomalyResult",
     "MQTTMessage",
     "HealthStatus",

@@ -234,6 +234,7 @@ class MessageProcessor:
                         **self._log_context,
                         "anomaly_score": result.anomaly_score,
                         "severity": result.severity,
+                        "topic": result.topic,
                         "charger_id": result.charger_id,
                     },
                 )

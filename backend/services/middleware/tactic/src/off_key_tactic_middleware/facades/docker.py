@@ -4,12 +4,12 @@ import time
 from docker import DockerClient
 from typing import Callable, Any
 from off_key_core.config.logs import logger, log_performance
-from ..config import tactic_settings
+from ..config import get_tactic_config
 
 
 class AsyncDocker:
     def __init__(self, docker_config=None):
-        config = docker_config or tactic_settings.config.docker
+        config = docker_config or get_tactic_config().docker
 
         try:
             self.client = DockerClient(base_url=config.base_url)
@@ -43,9 +43,10 @@ class AsyncDocker:
 
     def close(self) -> None:
         """Close the underlying Docker client and release resources."""
-        if self.client:
+        if self.client is not None:
             try:
                 self.client.close()
+                self.client = None
                 logger.debug("Docker client closed")
             except Exception as e:
                 logger.warning(f"Error closing Docker client: {e}")

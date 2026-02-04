@@ -4,6 +4,7 @@ HTTP client for communicating with the TACTIC middleware service.
 
 import aiohttp
 from typing import Dict, List, Optional, Any
+from datetime import datetime
 from off_key_core.config.config import settings
 from off_key_core.config.logs import logger
 
@@ -188,6 +189,189 @@ class Tactic:
         return await self._make_request(
             method="GET",
             endpoint="/api/v1/orchestration/radar/services/details/",
+            params=params,
+        )
+
+    # =========================================================================
+    # Data Services - Charger Management
+    # =========================================================================
+
+    async def get_chargers(
+        self,
+        skip: int = 0,
+        limit: int = 100,
+        active_only: bool = False,
+    ) -> List[Dict[str, Any]]:
+        """Get chargers from TACTIC data service."""
+        params = {
+            "skip": skip,
+            "limit": limit,
+            "active_only": active_only,
+        }
+        return await self._make_request(
+            method="GET",
+            endpoint="/api/v1/data/chargers",
+            params=params,
+        )
+
+    async def get_active_charger_ids(
+        self, skip: int = 0, limit: int = 100
+    ) -> Dict[str, List[str]]:
+        """Get active charger IDs from TACTIC data service."""
+        params = {"skip": skip, "limit": limit}
+        return await self._make_request(
+            method="GET",
+            endpoint="/api/v1/data/chargers/active/ids",
+            params=params,
+        )
+
+    # =========================================================================
+    # Data Services - Telemetry Management
+    # =========================================================================
+
+    async def get_telemetry_types(
+        self, charger_id: str, limit: int = 100
+    ) -> List[str]:
+        """Get telemetry types for a charger from TACTIC data service."""
+        params = {"limit": limit}
+        return await self._make_request(
+            method="GET",
+            endpoint=f"/api/v1/data/telemetry/{charger_id}/types",
+            params=params,
+        )
+
+    async def get_telemetry_data(
+        self,
+        charger_id: str,
+        telemetry_type: str,
+        limit: int = 1000,
+        after_timestamp: Optional[datetime] = None,
+        paginated: bool = False,
+    ) -> Dict[str, Any]:
+        """Get telemetry data from TACTIC data service."""
+        params = {
+            "limit": limit,
+            "paginated": paginated,
+        }
+        if after_timestamp:
+            params["after_timestamp"] = after_timestamp.isoformat()
+
+        return await self._make_request(
+            method="GET",
+            endpoint=f"/api/v1/data/telemetry/{charger_id}/{telemetry_type}",
+            params=params,
+        )
+
+    # =========================================================================
+    # Data Services - User Management
+    # =========================================================================
+
+    async def get_user_by_email(self, email: str) -> Optional[Dict[str, Any]]:
+        """Get user by email from TACTIC data service."""
+        try:
+            return await self._make_request(
+                method="GET",
+                endpoint=f"/api/v1/data/users/{email}",
+            )
+        except Exception as e:
+            if "404" in str(e) or "not found" in str(e).lower():
+                return None
+            raise
+
+    async def create_user(self, user_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Create user via TACTIC data service."""
+        return await self._make_request(
+            method="POST",
+            endpoint="/api/v1/data/users",
+            json_data=user_data,
+        )
+
+    async def verify_user_email(self, email: str) -> Dict[str, str]:
+        """Verify user email via TACTIC data service."""
+        return await self._make_request(
+            method="PATCH",
+            endpoint=f"/api/v1/data/users/{email}/verify",
+        )
+
+    async def update_user_password(
+        self, email: str, new_password_hash: str
+    ) -> Dict[str, str]:
+        """Update user password via TACTIC data service."""
+        params = {"new_password_hash": new_password_hash}
+        return await self._make_request(
+            method="PATCH",
+            endpoint=f"/api/v1/data/users/{email}/password",
+            params=params,
+        )
+
+    # =========================================================================
+    # Data Services - Favorites Management
+    # =========================================================================
+
+    async def get_user_favorites(self, user_id: int) -> List[str]:
+        """Get user favorites from TACTIC data service."""
+        return await self._make_request(
+            method="GET",
+            endpoint=f"/api/v1/data/users/{user_id}/favorites",
+        )
+
+    async def add_user_favorite(
+        self, user_id: int, charger_id: str
+    ) -> Dict[str, str]:
+        """Add user favorite via TACTIC data service."""
+        params = {"charger_id": charger_id}
+        return await self._make_request(
+            method="POST",
+            endpoint=f"/api/v1/data/users/{user_id}/favorites",
+            params=params,
+        )
+
+    async def remove_user_favorite(
+        self, user_id: int, charger_id: str
+    ) -> Dict[str, str]:
+        """Remove user favorite via TACTIC data service."""
+        return await self._make_request(
+            method="DELETE",
+            endpoint=f"/api/v1/data/users/{user_id}/favorites/{charger_id}",
+        )
+
+    # =========================================================================
+    # Data Services - Anomaly Management
+    # =========================================================================
+
+    async def get_charger_anomalies(
+        self, charger_id: str, limit: int = 500
+    ) -> List[Dict[str, Any]]:
+        """Get anomalies for charger from TACTIC data service."""
+        params = {"limit": limit}
+        return await self._make_request(
+            method="GET",
+            endpoint=f"/api/v1/data/anomalies/{charger_id}",
+            params=params,
+        )
+
+    async def create_anomaly(self, anomaly_data: Dict[str, Any]) -> Dict[str, str]:
+        """Create anomaly via TACTIC data service."""
+        return await self._make_request(
+            method="POST",
+            endpoint="/api/v1/data/anomalies",
+            json_data=anomaly_data,
+        )
+
+    async def delete_anomaly(
+        self,
+        charger_id: str,
+        timestamp: datetime,
+        telemetry_type: str,
+    ) -> Dict[str, str]:
+        """Delete anomaly via TACTIC data service."""
+        params = {
+            "timestamp": timestamp.isoformat(),
+            "telemetry_type": telemetry_type,
+        }
+        return await self._make_request(
+            method="DELETE",
+            endpoint=f"/api/v1/data/anomalies/{charger_id}",
             params=params,
         )
 

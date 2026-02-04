@@ -14,7 +14,7 @@ from contextlib import asynccontextmanager
 
 from fastapi.middleware.cors import CORSMiddleware
 from off_key_core.config.logs import load_yaml_config, logger
-from .api.v1 import radar
+from .api.v1 import radar, data_services
 from .config.config import tactic_settings
 
 # Load logging configuration from YAML files
@@ -70,6 +70,9 @@ def create_app() -> FastAPI:
     # Include API routers
     app.include_router(
         radar.router, prefix="/api/v1/orchestration", tags=["orchestration"]
+    )
+    app.include_router(
+        data_services.router, prefix="/api/v1/data", tags=["data-services"]
     )
 
     @app.get("/health")

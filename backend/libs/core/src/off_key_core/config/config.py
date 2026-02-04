@@ -1,6 +1,3 @@
-import threading
-from typing import cast
-
 from pydantic_settings import BaseSettings
 from pydantic import (
     AliasChoices,
@@ -237,50 +234,16 @@ class Settings(BaseSettings):
         )
 
 
-# Lazy singleton pattern - avoid side effects on import
-# This allows modules like logs.py to be imported without requiring all env vars
-_settings: Settings | None = None
-_settings_lock = threading.Lock()
+# Cached settings instance to avoid recreating multiple times
+_settings_instance: Settings | None = None
 
 
 def get_settings() -> Settings:
-    """Get or create Settings singleton (thread-safe).
-
-    Uses double-check locking pattern to ensure thread-safe initialization
-    while avoiding lock overhead on subsequent calls.
-
-    Only instantiates when env vars are available.
-    """
-    global _settings
-    if _settings is None:
-        with _settings_lock:
-            # Double-check after acquiring lock
-            if _settings is None:
-                _settings = Settings()
-    return _settings
-
-
-class _SettingsProxy:
-    """Proxy that lazily creates Settings on first attribute access.
-
-    This proxy provides backward compatibility while deferring Settings
-    instantiation until first use. Type checkers see this as Settings
-    via the module-level cast.
-    """
-
-    def __getattr__(self, name: str):
-        return getattr(get_settings(), name)
-
-    def __setattr__(self, name: str, value):
-        setattr(get_settings(), name, value)
-
-    def __repr__(self) -> str:
-        return repr(get_settings())
-
-
-# Cast to Settings for type checker compatibility
-# At runtime this is a _SettingsProxy that defers to get_settings()
-settings: Settings = cast(Settings, _SettingsProxy())
+    """Get cached Settings instance."""
+    global _settings_instance
+    if _settings_instance is None:
+        _settings_instance = Settings()
+    return _settings_instance
 
 
 class TelemetrySettings(BaseSettings):
@@ -312,4 +275,6 @@ class TelemetrySettings(BaseSettings):
         return self.TELEMETRY_RETENTION_DAYS
 
 
-telemetry_settings = TelemetrySettings()
+def get_telemetry_settings() -> TelemetrySettings:
+    """Get TelemetrySettings instance."""
+    return TelemetrySettings()

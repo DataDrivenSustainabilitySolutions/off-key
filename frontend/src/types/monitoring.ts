@@ -45,6 +45,7 @@ export interface ActiveService {
 
 // Preprocessing step configuration
 export interface PreprocessingStepConfig {
+  id?: string;
   type: string;
   params: Record<string, string | number | boolean>;
 }
@@ -108,8 +109,14 @@ export function getStatusDisplay(
         className: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200',
       };
     default:
+      if (!dockerStatus && !isActive) {
+        return {
+          label: 'Inactive',
+          className: 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200',
+        };
+      }
       return {
-        label: dockerStatus || (isActive ? 'Active' : 'Inactive'),
+        label: dockerStatus || 'Active',
         className: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200',
       };
   }

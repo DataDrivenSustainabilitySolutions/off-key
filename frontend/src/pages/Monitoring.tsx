@@ -12,11 +12,12 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiUtils } from "@/lib/api-client";
 import { API_CONFIG } from "@/lib/api-config";
 import toast from "react-hot-toast";
 import { ChevronUp, ChevronDown } from "lucide-react";
+import { getStatusDisplay } from "@/types/monitoring";
 
 // Helper function to parse numeric input, preventing NaN storage
 const parseNumericInput = (
@@ -32,33 +33,6 @@ const parseNumericInput = (
   }
 
   return rawValue;
-};
-
-// Helper function to map Docker status to display properties
-const getStatusDisplay = (dockerStatus: string | undefined, isActive: boolean) => {
-  const status = dockerStatus?.toLowerCase();
-  switch (status) {
-    case 'running':
-      return { label: 'Running', className: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' };
-    case 'complete':
-    case 'completed':
-      return { label: 'Completed', className: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200' };
-    case 'failed':
-    case 'error':
-      return { label: 'Failed', className: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200' };
-    case 'not_found':
-      return { label: 'Not Found', className: 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200' };
-    case 'pending':
-    case 'assigned':
-    case 'preparing':
-    case 'starting':
-      return { label: 'Starting', className: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200' };
-    default:
-      return {
-        label: dockerStatus || (isActive ? 'Active' : 'Inactive'),
-        className: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200'
-      };
-  }
 };
 
 interface ActiveService {
@@ -80,6 +54,7 @@ interface Anomaly {
 }
 
 type PreprocessingStepConfig = {
+  id: string;
   type: string;
   params: Record<string, any>;
 };
@@ -126,7 +101,11 @@ const PreprocessingSection: React.FC<{
           </option>
         ))}
       </select>
-      <Button className="bg-indigo-800 hover:bg-indigo-700" disabled={!newPreprocessorType} onClick={onAdd}>
+      <Button
+        className="bg-indigo-800 hover:bg-indigo-700"
+        disabled={!newPreprocessorType || isLoading}
+        onClick={onAdd}
+      >
         Add
       </Button>
     </div>
@@ -137,7 +116,7 @@ const PreprocessingSection: React.FC<{
       {steps.map((step, index) => {
         const schemaProps = availablePreprocessors[step.type]?.parameters?.properties || {};
         return (
-          <div key={`${step.type}-${index}`} className="border rounded p-3 bg-gray-50 dark:bg-neutral-900">
+          <div key={step.id} className="border rounded p-3 bg-gray-50 dark:bg-neutral-900">
             <div className="flex items-center justify-between">
               <div className="font-semibold">
                 {index + 1}. {step.type}
@@ -397,6 +376,7 @@ const Monitoring: React.FC = () => {
   const [preprocessingSteps, setPreprocessingSteps] = useState<PreprocessingStepConfig[]>([]);
   const [isLoadingPreprocessors, setIsLoadingPreprocessors] = useState(false);
   const [newPreprocessorType, setNewPreprocessorType] = useState<string>("");
+  const nextPreprocessingStepId = useRef(0);
 
   const [activeServices, setActiveServices] = useState<ActiveService[]>([]);
   const [isLoadingServices, setIsLoadingServices] = useState(false);
@@ -490,7 +470,11 @@ const Monitoring: React.FC = () => {
   const handleAddPreprocessor = useCallback(() => {
     if (!newPreprocessorType) return;
     const defaults = applyPreprocessorDefaults(newPreprocessorType);
-    setPreprocessingSteps((prev) => [...prev, { type: newPreprocessorType, params: defaults }]);
+    const stepId = `pre-${nextPreprocessingStepId.current++}`;
+    setPreprocessingSteps((prev) => [
+      ...prev,
+      { id: stepId, type: newPreprocessorType, params: defaults },
+    ]);
     setNewPreprocessorType("");
   }, [applyPreprocessorDefaults, newPreprocessorType]);
 

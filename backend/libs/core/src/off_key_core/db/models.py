@@ -217,3 +217,45 @@ event.listen(
     "after_create",
     DDL(f"SELECT create_hypertable('{Anomaly.__tablename__}', 'timestamp');"),
 )
+
+
+class ModelRegistry(Base):
+    """
+    Database-backed ML model registry.
+
+    Stores model definitions, hyperparameter schemas, and metadata.
+    Replaces hardcoded MODEL_REGISTRY and PREPROCESSOR_REGISTRY.
+    """
+    __tablename__ = "model_registry"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    model_type = Column(Text, unique=True, nullable=False, index=True)
+    category = Column(Text, nullable=False, index=True)  # 'model' or 'preprocessor'
+
+    # Model metadata
+    name = Column(Text, nullable=False)
+    description = Column(Text, nullable=True)
+    complexity = Column(Text, nullable=True)  # 'low', 'medium', 'high'
+    memory_usage = Column(Text, nullable=True)  # 'low', 'medium', 'high'
+
+    # Import configuration
+    import_paths = Column(JSON, nullable=False)  # List of import paths to try
+
+    # Parameter schema (JSON Schema format)
+    parameter_schema = Column(JSON, nullable=False)
+    default_parameters = Column(JSON, nullable=False, default=dict)
+
+    # Versioning and lifecycle
+    version = Column(Text, nullable=False, default="1.0.0")
+    is_active = Column(Boolean, default=True, nullable=False, index=True)
+    requires_special_handling = Column(Boolean, default=False, nullable=False)  # For KNN, etc.
+
+    # Timestamps
+    created_at = Column(DateTime, default=func.now(), nullable=False)
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now(), nullable=False)
+
+    # Indexes for efficient queries
+    __table_args__ = (
+        Index("ix_model_registry_active_category", "is_active", "category"),
+        Index("ix_model_registry_type_active", "model_type", "is_active"),
+    )

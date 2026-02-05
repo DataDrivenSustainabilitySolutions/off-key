@@ -19,7 +19,7 @@ from collections import deque
 from enum import Enum
 
 # Model registry for dynamic model loading
-from off_key_core.models import (
+from .tactic_client import (
     create_model_instance,
     validate_preprocessing_steps,
     get_preprocessor_class,

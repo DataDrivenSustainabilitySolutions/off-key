@@ -11,12 +11,14 @@ from typing import AsyncGenerator
 from fastapi import FastAPI, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from off_key_core.config.config import settings
+from off_key_core.config.config import get_settings
 from off_key_core.config.logs import logger
 from off_key_core.db.base import get_db_async
 from off_key_core.clients.provider import get_charger_api_client
 from .services.chargers import ChargersSyncService
 from .services.telemetry import TelemetrySyncService
+
+settings = get_settings()
 
 # Global reference to sync service (set by main)
 _sync_service = None

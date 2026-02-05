@@ -14,11 +14,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from off_key_core.clients.base_client import ChargerAPIClient
-from off_key_core.config.config import settings
+from off_key_core.config.config import get_settings
 from off_key_core.config.logs import logger
 from off_key_core.db.models import Charger
 from off_key_core.utils.enum import HealthStatus
 from .config import MQTTConfig
+
+settings = get_settings()
 
 
 @dataclass

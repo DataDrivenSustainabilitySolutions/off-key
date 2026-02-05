@@ -6,7 +6,9 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp
 
 from off_key_core.config.logs import set_correlation_id, log_performance, logger
-from off_key_core.config.config import settings
+from off_key_core.config.config import get_settings
+
+settings = get_settings()
 
 
 class LoggingMiddleware(BaseHTTPMiddleware):

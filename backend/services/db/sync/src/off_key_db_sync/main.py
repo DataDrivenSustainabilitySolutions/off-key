@@ -7,11 +7,13 @@ Orchestrates both the core sync service and optional FastAPI server.
 import asyncio
 import uvicorn
 
-from off_key_core.config.config import settings
+from off_key_core.config.config import get_settings
 from off_key_core.config.logs import setup_logging, LogFormat, logger
 from .config import sync_settings
 from .service import SyncService
 from .api import app, set_sync_service
+
+settings = get_settings()
 
 
 async def run_api_server(sync_service: SyncService):

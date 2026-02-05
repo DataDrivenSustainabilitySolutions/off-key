@@ -135,17 +135,8 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({
   );
 
   // Loading state
-  const [loadingCount, setLoadingCount] = useState(0);
-  const loading = loadingCount > 0;
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  const beginLoading = useCallback(() => {
-    setLoadingCount((count) => count + 1);
-  }, []);
-
-  const endLoading = useCallback(() => {
-    setLoadingCount((count) => (count > 0 ? count - 1 : 0));
-  }, []);
 
   // ============================================
   // Charger Functions
@@ -161,7 +152,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({
 
   const getCombinedChargerData = useCallback(
     async (chargerList: Charger[]): Promise<CombinedChargerData[]> => {
-      beginLoading();
+      setLoading(true);
       setError(null);
 
       try {
@@ -213,10 +204,10 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({
         setError(errorMessage);
         throw err;
       } finally {
-        endLoading();
+        setLoading(false);
       }
     },
-    [beginLoading, endLoading]
+    []
   );
 
   // ============================================
@@ -250,7 +241,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({
       if (!chargerId) return;
 
       try {
-        beginLoading();
+        setLoading(true);
         setError(null);
 
         const types = await getTelemetryTypes(chargerId);
@@ -273,10 +264,10 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({
           err instanceof Error ? err.message : "Failed to load CPU usage data";
         setError(errorMessage);
       } finally {
-        endLoading();
+        setLoading(false);
       }
     },
-    [beginLoading, endLoading, getTelemetryTypes, getTelemetryData]
+    [getTelemetryTypes, getTelemetryData]
   );
 
   const loadCpuThermal = useCallback(
@@ -284,7 +275,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({
       if (!chargerId) return;
 
       try {
-        beginLoading();
+        setLoading(true);
         setError(null);
 
         const types = await getTelemetryTypes(chargerId);
@@ -307,10 +298,10 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({
           err instanceof Error ? err.message : "Failed to load CPU thermal data";
         setError(errorMessage);
       } finally {
-        endLoading();
+        setLoading(false);
       }
     },
-    [beginLoading, endLoading, getTelemetryTypes, getTelemetryData]
+    [getTelemetryTypes, getTelemetryData]
   );
 
   const loadMonitoring = useCallback(
@@ -318,7 +309,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({
       if (!chargerId) return;
 
       try {
-        beginLoading();
+        setLoading(true);
         setError(null);
 
         const types = await getTelemetryTypes(chargerId);
@@ -345,17 +336,17 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({
 
         setMonitoringMap((prev) => ({
           ...prev,
-          [chargerId]: entries.flatMap(([, data]) => data),
+          ...Object.fromEntries(entries),
         }));
       } catch (err) {
         const errorMessage =
           err instanceof Error ? err.message : "Failed to load monitoring data";
         setError(errorMessage);
       } finally {
-        endLoading();
+        setLoading(false);
       }
     },
-    [beginLoading, endLoading, getTelemetryTypes, getTelemetryData]
+    [getTelemetryTypes, getTelemetryData]
   );
 
   const loadAllTelemetryTypes = useCallback(
@@ -363,7 +354,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({
       if (!chargerId) return;
 
       try {
-        beginLoading();
+        setLoading(true);
         setError(null);
 
         const types = await getTelemetryTypes(chargerId);
@@ -402,10 +393,10 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({
             : "Failed to load all telemetry types";
         setError(errorMessage);
       } finally {
-        endLoading();
+        setLoading(false);
       }
     },
-    [beginLoading, endLoading, getTelemetryTypes, getTelemetryData]
+    [getTelemetryTypes, getTelemetryData]
   );
 
   // ============================================
@@ -560,10 +551,6 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({
         return rest;
       });
       setTelemetryTypes((prev) => {
-        const { [chargerId]: _, ...rest } = prev;
-        return rest;
-      });
-      setMonitoringMap((prev) => {
         const { [chargerId]: _, ...rest } = prev;
         return rest;
       });

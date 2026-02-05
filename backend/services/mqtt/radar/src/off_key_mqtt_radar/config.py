@@ -2,15 +2,13 @@
 Configuration for MQTT RADAR service
 """
 
-import json
-import os
-from functools import lru_cache
-from pathlib import Path
-from typing import Dict, Any, List, Optional, Self
-
-from dotenv import find_dotenv, load_dotenv
 from pydantic import BaseModel, field_validator, model_validator
 from pydantic_settings import BaseSettings
+from typing import Dict, Any, List, Optional, Self
+from dotenv import find_dotenv, load_dotenv
+from pathlib import Path
+import os
+import json
 
 
 def _truncate_for_error(value: str, max_len: int = 500) -> str:
@@ -20,8 +18,8 @@ def _truncate_for_error(value: str, max_len: int = 500) -> str:
     return f"{value[:max_len]}... ({len(value)} chars total)"
 
 
-def load_radar_env(custom_config_file: Optional[str] = None) -> Optional[str]:
-    """Load configuration from environment and optional custom file."""
+def load_configuration(custom_config_file: Optional[str] = None):
+    """Load configuration from environment and optional custom file"""
     # Load default ".env" file from upper project tree
     load_dotenv()
 
@@ -39,6 +37,11 @@ def load_radar_env(custom_config_file: Optional[str] = None) -> Optional[str]:
         return dev_env
 
     return None
+
+
+# Check for custom config file from environment variable
+RADAR_CONFIG_FILE = os.getenv("RADAR_CONFIG_FILE")
+loaded_config_file = load_configuration(RADAR_CONFIG_FILE)
 
 
 class AnomalyDetectionConfig(BaseModel):
@@ -180,6 +183,9 @@ class MQTTRadarConfig(BaseModel):
 class RadarSettings(BaseSettings):
     """Environment-based settings for RADAR service"""
 
+    # Configuration Management
+    custom_config_file: Optional[str] = None  # Path to custom config file being watched
+
     # MQTT Configuration
     RADAR_MQTT_BROKER_HOST: str = "localhost"
     RADAR_MQTT_BROKER_PORT: int = 1883
@@ -220,6 +226,7 @@ class RadarSettings(BaseSettings):
     RADAR_RATE_LIMIT_PER_MINUTE: int = 1000
 
     class Config:
+        env_file = ".env"
         case_sensitive = True
 
     @field_validator("RADAR_SUBSCRIPTION_TOPICS")
@@ -300,19 +307,8 @@ class RadarSettings(BaseSettings):
         )
 
 
-@lru_cache(maxsize=1)
-def get_radar_settings() -> RadarSettings:
-    """Return cached RadarSettings instance."""
-    return RadarSettings()
+# Global settings instance
+radar_settings = RadarSettings()
 
-
-@lru_cache(maxsize=1)
-def get_radar_config() -> MQTTRadarConfig:
-    """Return cached MQTTRadarConfig instance."""
-    return get_radar_settings().config
-
-
-def reset_radar_settings_cache() -> None:
-    """Clear cached radar settings/config (for hot reload)."""
-    get_radar_settings.cache_clear()
-    get_radar_config.cache_clear()
+# Store the loaded config file path for the file watcher
+radar_settings.custom_config_file = loaded_config_file

@@ -7,11 +7,18 @@ including Docker API configuration,
 RADAR orchestration settings, and service-specific parameters.
 """
 
-from functools import lru_cache
-from typing import Self, Optional
-
 from pydantic import BaseModel, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings
+from typing import Self, Optional
+from dotenv import find_dotenv, load_dotenv
+
+# Load default ".env" file from upper project tree
+load_dotenv()
+
+# Override with dev.env values if present
+dev_env = find_dotenv("dev.env")
+if dev_env:
+    load_dotenv(dev_env, override=True)
 
 
 class DockerConfig(BaseModel):
@@ -348,13 +355,4 @@ class TacticSettings(BaseSettings):
 
 
 # Global settings instance
-@lru_cache(maxsize=1)
-def get_tactic_settings() -> TacticSettings:
-    """Return cached TacticSettings instance."""
-    return TacticSettings()
-
-
-@lru_cache(maxsize=1)
-def get_tactic_config() -> "TacticConfig":
-    """Return cached TacticConfig instance."""
-    return get_tactic_settings().config
+tactic_settings = TacticSettings()

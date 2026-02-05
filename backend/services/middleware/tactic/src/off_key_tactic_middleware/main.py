@@ -11,32 +11,19 @@ import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from off_key_core.config.env import load_env
 from off_key_core.config.logs import logger
-from off_key_core.config.validation import validate_settings
 from .api.v1 import radar
-from .config import get_tactic_config, TacticConfig
+from .config import tactic_settings
 from .services.reconciliation import RadarStatusReconciliationService
 from .facades.docker import AsyncDocker
-
-
-def get_validated_config() -> TacticConfig:
-    """Load environment and validate required settings."""
-    load_env()
-    validate_settings(
-        [("tactic", get_tactic_config)],
-        context="TACTIC middleware configuration",
-    )
-    return get_tactic_config()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """FastAPI lifespan manager for startup and shutdown events."""
-    config = get_tactic_config()
+    config = tactic_settings.config
 
     # Validate Docker connectivity early
-    docker_client = None
     try:
         docker_client = AsyncDocker()
         await docker_client.run(docker_client.client.ping)
@@ -47,11 +34,6 @@ async def lifespan(app: FastAPI):
             "Docker API connection failed; shutting down",
             extra={"error": str(exc), "error_type": type(exc).__name__},
         )
-        if docker_client:
-            try:
-                docker_client.close()
-            except Exception:
-                pass
         raise
 
     # Start reconciliation service if enabled
@@ -85,10 +67,9 @@ async def lifespan(app: FastAPI):
         app.state.docker_client = None
 
 
-def create_app(config: TacticConfig | None = None) -> FastAPI:
+def create_app() -> FastAPI:
     """Create and configure the FastAPI application."""
-    if config is None:
-        config = get_validated_config()
+    config = tactic_settings.config
 
     app = FastAPI(
         title=config.service_name,
@@ -124,13 +105,13 @@ def create_app(config: TacticConfig | None = None) -> FastAPI:
 
 def main() -> None:
     """Main entry point for the TACTIC middleware service."""
-    config = get_validated_config()
+    config = tactic_settings.config
 
     logger.info(f"Starting {config.service_name} v{config.service_version}...")
     logger.info(f"Docker API: {config.docker.base_url}")
     logger.info("Service configuration loaded from environment")
 
-    app = create_app(config)
+    app = create_app()
 
     uvicorn.run(
         app,

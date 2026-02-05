@@ -6,13 +6,20 @@ MQTT broker configuration, and service-specific parameters.
 """
 
 import random
-from functools import lru_cache
-from typing import Self, Dict
-
 from pydantic import BaseModel, field_validator, model_validator
 from pydantic_settings import BaseSettings
 
-from off_key_core.config.pionix import get_pionix_settings
+from off_key_core.config.config import settings
+from typing import Self, Dict
+from dotenv import find_dotenv, load_dotenv
+
+# Load default ".env" file from upper project tree
+load_dotenv()
+
+# Override with dev.env values if present
+dev_env = find_dotenv("dev.env")
+if dev_env:
+    load_dotenv(dev_env, override=True)
 
 
 class MQTTConfig(BaseModel):
@@ -336,10 +343,10 @@ class MQTTConfig(BaseModel):
             self.connection_timeout + MINIMUM_HEALTH_CHECK_MARGIN_SECONDS
         ):
             raise ValueError(
-                f"Health check interval ({self.health_check_interval}s) must be "
-                f"at least {MINIMUM_HEALTH_CHECK_MARGIN_SECONDS}s greater than "
-                f"connection timeout ({self.connection_timeout}s) to ensure "
-                f"reliable health monitoring. Required minimum: "
+                f"Health check interval ({self.health_check_interval}s) must be >"
+                f"{MINIMUM_HEALTH_CHECK_MARGIN_SECONDS}s than connection timeout "
+                f"({self.connection_timeout}s) to ensure reliable health monitoring. "
+                f"Required minimum: "
                 f"{self.connection_timeout + MINIMUM_HEALTH_CHECK_MARGIN_SECONDS}s"
             )
 
@@ -467,15 +474,13 @@ class MQTTSettings(BaseSettings):
         Returns:
             MQTTConfig: Validated MQTT service config with business logic constraints
         """
-        pionix_settings = get_pionix_settings()
         return MQTTConfig(
             broker_host=self.MQTT_BROKER_HOST,
             broker_port=self.MQTT_BROKER_PORT,
             use_tls=self.MQTT_USE_TLS,
             client_id_prefix=self.MQTT_CLIENT_ID_PREFIX,
             mqtt_username=self.MQTT_USERNAME,
-            mqtt_api_key=self.MQTT_APIKEY
-            or pionix_settings.PIONIX_KEY.get_secret_value(),
+            mqtt_api_key=self.MQTT_APIKEY or settings.PIONIX_KEY.get_secret_value(),
             enabled=self.MQTT_TELEMETRY_ENABLED,
             reconnect_delay=self.MQTT_RECONNECT_DELAY,
             max_reconnect_attempts=self.MQTT_MAX_RECONNECT_ATTEMPTS,
@@ -501,7 +506,4 @@ class MQTTSettings(BaseSettings):
         )
 
 
-@lru_cache(maxsize=1)
-def get_mqtt_settings() -> MQTTSettings:
-    """Return cached MQTTSettings instance."""
-    return MQTTSettings()
+mqtt_settings = MQTTSettings()

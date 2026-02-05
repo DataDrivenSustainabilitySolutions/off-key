@@ -5,8 +5,8 @@ Handles batch writing of anomaly detection results to the database
 with error handling and performance optimization.
 
 Note: This module uses RADAR_DATABASE_URL environment variable directly
-to avoid depending on off_key_core.db.base which expects POSTGRES_* settings
-that may be absent when RADAR runs in isolation.
+to avoid depending on off_key_core.db.base which requires the full Settings
+class with 23+ environment variables.
 """
 
 import asyncio
@@ -400,7 +400,7 @@ class DatabaseWriter:
                     f"Dropping batch of {len(retry_batch)} anomalies "
                     f"after {max_retries} failed attempts"
                 )
-                self.total_errors += len(retry_batch)
+                self.total_errors += 1
 
             # Remove processed batch (whether success or failure)
             anomalies_to_retry = anomalies_to_retry[10:]

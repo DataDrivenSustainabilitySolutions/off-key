@@ -4,11 +4,10 @@ HTTP client for communicating with the TACTIC middleware service.
 
 import asyncio
 import json
-from functools import lru_cache
 from typing import Dict, List, Optional, Any
 
 import aiohttp
-from off_key_core.config.services import get_service_endpoints_settings
+from off_key_core.config.config import settings
 from off_key_core.config.logs import logger
 
 
@@ -27,7 +26,7 @@ class Tactic:
     """
 
     def __init__(self):
-        self.base_url = get_service_endpoints_settings().tactic_service_base_url
+        self.base_url = settings.tactic_service_base_url
         self.timeout = aiohttp.ClientTimeout(total=30)
         self._session: Optional[aiohttp.ClientSession] = None
         self._max_retries = 2
@@ -269,7 +268,5 @@ class Tactic:
         )
 
 
-@lru_cache(maxsize=1)
-def get_tactic_client() -> Tactic:
-    """Return cached Tactic client instance."""
-    return Tactic()
+# Global client instance
+tactic = Tactic()

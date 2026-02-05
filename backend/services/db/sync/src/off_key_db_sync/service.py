@@ -8,14 +8,13 @@ Similar to MQTTProxyService pattern for consistent service architecture.
 import asyncio
 import signal
 from typing import Optional
-
 from sqlalchemy import text
 
+from off_key_core.config.config import settings
 from off_key_core.config.logs import logger
-from off_key_core.db.base import get_async_engine
+from off_key_core.db.base import async_engine
 from off_key_core.db.models import Base
 from off_key_core.clients.provider import get_charger_api_client
-from .config import get_sync_config
 from .services.background_sync import BackgroundSyncService
 from .services.chargers import ChargersSyncService
 from .services.telemetry import TelemetrySyncService
@@ -37,7 +36,6 @@ class SyncService:
         self.is_running = False
         self.initial_sync_complete = False
         self.shutdown_event = asyncio.Event()
-        self.sync_config = get_sync_config()
 
         # Logging context
         self._log_context = {"component": "sync_service", "service": "db_sync"}
@@ -52,7 +50,7 @@ class SyncService:
         try:
             logger.info("Starting database initialization", extra=self._log_context)
 
-            async with get_async_engine().begin() as conn:
+            async with async_engine.begin() as conn:
                 await conn.run_sync(Base.metadata.create_all)
 
             logger.info("Database tables created successfully", extra=self._log_context)
@@ -74,7 +72,7 @@ class SyncService:
             bool: True if connection is successful, False otherwise
         """
         try:
-            async with get_async_engine().begin() as conn:
+            async with async_engine.begin() as conn:
                 await conn.execute(text("SELECT 1"))
             return True
 
@@ -145,7 +143,7 @@ class SyncService:
                 raise RuntimeError("Database initialization failed")
 
             # Start background sync service if enabled
-            if self.sync_config.enabled:
+            if settings.SYNC_ENABLED:
                 logger.info(
                     "Starting background sync scheduler", extra=self._log_context
                 )
@@ -173,8 +171,8 @@ class SyncService:
                     extra={
                         **self._log_context,
                         "sync_enabled": True,
-                        "chargers_interval": self.sync_config.chargers_interval,
-                        "telemetry_interval": self.sync_config.telemetry_interval,
+                        "chargers_interval": settings.SYNC_CHARGERS_INTERVAL,
+                        "telemetry_interval": settings.SYNC_TELEMETRY_INTERVAL,
                     },
                 )
             else:
@@ -186,7 +184,7 @@ class SyncService:
                 self.initial_sync_complete = True
 
             # If sync_on_startup is disabled, mark as complete immediately
-            if not self.sync_config.sync_on_startup:
+            if not settings.SYNC_ON_STARTUP:
                 self.initial_sync_complete = True
 
             self.is_running = True
@@ -292,7 +290,7 @@ class SyncService:
                 if is_healthy
                 else ("starting" if self.is_running else "stopped")
             ),
-            "sync_enabled": self.sync_config.enabled,
+            "sync_enabled": settings.SYNC_ENABLED,
             "initial_sync_complete": self.initial_sync_complete,
             "components": {},
         }

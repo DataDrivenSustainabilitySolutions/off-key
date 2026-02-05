@@ -7,13 +7,9 @@ Orchestrates both the core sync service and optional FastAPI server.
 import asyncio
 import uvicorn
 
-from off_key_core.config.env import load_env
-from off_key_core.config.database import get_database_settings
-from off_key_core.config.logging import get_logging_settings
+from off_key_core.config.config import settings
 from off_key_core.config.logs import setup_logging, LogFormat, logger
-from off_key_core.config.pionix import get_pionix_settings
-from off_key_core.config.validation import validate_settings
-from .config import get_sync_config
+from .config import sync_settings
 from .service import SyncService
 from .api import app, set_sync_service
 
@@ -24,17 +20,17 @@ async def run_api_server(sync_service: SyncService):
     set_sync_service(sync_service)
 
     # Configure uvicorn
-    sync_config = get_sync_config()
     config = uvicorn.Config(
         app,
-        host=sync_config.api_host,
-        port=sync_config.api_port,
+        host=sync_settings.config.api_host,
+        port=sync_settings.config.api_port,
         log_config=None,  # Disable uvicorn's logging, use our logger
     )
     server = uvicorn.Server(config)
 
     logger.info(
-        f"Starting FastAPI server on {sync_config.api_host}:{sync_config.api_port}"
+        f"Starting FastAPI server on "
+        f"{sync_settings.config.api_host}:{sync_settings.config.api_port}"
     )
 
     # Run server
@@ -44,27 +40,13 @@ async def run_api_server(sync_service: SyncService):
 async def main():
     """Main entry point for database sync service"""
 
-    load_env()
-    logging_settings = get_logging_settings()
-    validate_settings(
-        [
-            ("logging", get_logging_settings),
-            ("database", get_database_settings),
-            ("pionix", get_pionix_settings),
-            ("sync", get_sync_config),
-        ],
-        context="DB sync configuration",
-    )
-
     # Initialize logging
     log_format = (
-        LogFormat.JSON
-        if logging_settings.LOG_FORMAT.lower() == "json"
-        else LogFormat.SIMPLE
+        LogFormat.JSON if settings.LOG_FORMAT.lower() == "json" else LogFormat.SIMPLE
     )
     setup_logging(
         app_name="off-key-db-sync",
-        log_level=logging_settings.LOG_LEVEL,
+        log_level=settings.LOG_LEVEL,
         log_format=log_format,
         enable_correlation=True,
     )

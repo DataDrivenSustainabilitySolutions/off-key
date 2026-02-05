@@ -17,13 +17,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
  */
 const getUserIdFromToken = (token: string): number | null => {
   try {
-    const base64 = token.split(".")[1];
-    const base64Standard = base64.replace(/-/g, "+").replace(/_/g, "/");
-    const padded = base64Standard.padEnd(
-      base64Standard.length + ((4 - (base64Standard.length % 4)) % 4),
-      "="
-    );
-    const payload = JSON.parse(atob(padded));
+    const payload = JSON.parse(atob(token.split(".")[1]));
     return payload.sub ? parseInt(payload.sub, 10) : null;
   } catch {
     return null;

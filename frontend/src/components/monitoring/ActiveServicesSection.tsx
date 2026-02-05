@@ -87,7 +87,6 @@ export const ActiveServicesSection: React.FC<ActiveServicesSectionProps> = ({
                         service.docker_status,
                         service.status
                       );
-                      const topics = service.mqtt_topics ?? [];
 
                       return (
                         <TableRow key={service.id}>
@@ -102,12 +101,12 @@ export const ActiveServicesSection: React.FC<ActiveServicesSectionProps> = ({
                           <TableCell>
                             <div
                               className="max-w-xs truncate"
-                              title={topics.join(", ")}
+                              title={service.mqtt_topics.join(", ")}
                             >
-                              {topics.length > 0
-                                ? topics.slice(0, 2).join(", ") +
-                                  (topics.length > 2
-                                    ? ` +${topics.length - 2} more`
+                              {service.mqtt_topics.length > 0
+                                ? service.mqtt_topics.slice(0, 2).join(", ") +
+                                  (service.mqtt_topics.length > 2
+                                    ? ` +${service.mqtt_topics.length - 2} more`
                                     : "")
                                 : "No topics"}
                             </div>

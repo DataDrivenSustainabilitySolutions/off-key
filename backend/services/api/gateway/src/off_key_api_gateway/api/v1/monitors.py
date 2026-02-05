@@ -8,7 +8,7 @@ from off_key_core.models import (
     validate_preprocessing_steps,
     get_available_preprocessors,
 )
-from ...facades.tactic import get_tactic_client
+from ...facades.tactic import tactic
 from ..rate_limiter import limiter
 
 router = APIRouter()
@@ -68,7 +68,6 @@ async def list_services(
       values like: 'running', 'complete', 'failed', 'not_found', 'error'.
     """
     try:
-        tactic = get_tactic_client()
         services = await tactic.list_radar_services(
             active_only=active_only,
             include_docker_status=include_docker_status,
@@ -102,7 +101,6 @@ async def start_monitoring_service(
 
     try:
         if config.service_type == "radar":
-            tactic = get_tactic_client()
             response = await tactic.start_radar_service(
                 container_name=config.container_name,
                 mqtt_topics=config.mqtt_topics,
@@ -151,7 +149,6 @@ async def get_service_details(
         )
 
     try:
-        tactic = get_tactic_client()
         service_detail = await tactic.get_radar_service_details(
             container_name=container_name,
             container_id=container_id,
@@ -192,7 +189,6 @@ async def stop_monitoring_service(
         )
 
     try:
-        tactic = get_tactic_client()
         response = await tactic.stop_radar_service(
             container_name=container_name,
             container_id=container_id,

@@ -10,9 +10,9 @@ import signal
 from typing import Optional
 
 from off_key_core.config.logs import logger
-from off_key_core.db.base import get_async_session_local
+from off_key_core.db.base import AsyncSessionLocal
 from off_key_core.utils.enum import HealthStatus
-from .config import get_mqtt_settings
+from .config import mqtt_settings
 from .auth import ApiKeyAuthHandler
 from .client.facade import MQTTClient
 from .charger_discovery import ChargerDiscoveryService
@@ -35,9 +35,7 @@ class MQTTProxyService:
 
     def __init__(self, api_client: ChargerAPIClient):
         self.api_client = api_client
-        self.config = get_mqtt_settings().config
-
-        self._session_factory = get_async_session_local()
+        self.config = mqtt_settings.config
 
         # Core components
         self.auth_handler: Optional[ApiKeyAuthHandler] = None
@@ -88,7 +86,7 @@ class MQTTProxyService:
             # Initialize charger discovery
             self.charger_discovery = ChargerDiscoveryService(
                 self.config,
-                self._session_factory,
+                AsyncSessionLocal,
                 self.api_client,
             )
 
@@ -106,7 +104,7 @@ class MQTTProxyService:
                 )
 
             # Initialize database writer
-            self.database_writer = DatabaseWriter(self.config, self._session_factory)
+            self.database_writer = DatabaseWriter(self.config, AsyncSessionLocal)
             await self.database_writer.start()
 
             # Initialize message router

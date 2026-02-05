@@ -82,7 +82,7 @@ export const PreprocessingSection: React.FC<PreprocessingSectionProps> = ({
       </select>
       <Button
         className="bg-indigo-800 hover:bg-indigo-700"
-        disabled={!newPreprocessorType || isLoading}
+        disabled={!newPreprocessorType}
         onClick={onAdd}
       >
         Add
@@ -100,7 +100,7 @@ export const PreprocessingSection: React.FC<PreprocessingSectionProps> = ({
 
         return (
           <div
-            key={step.id ?? `${step.type}-${index}`}
+            key={`${step.type}-${index}`}
             className="border rounded p-3 bg-gray-50 dark:bg-neutral-900"
           >
             <div className="flex items-center justify-between">

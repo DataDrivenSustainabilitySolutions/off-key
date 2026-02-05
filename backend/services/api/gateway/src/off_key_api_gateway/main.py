@@ -7,14 +7,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi.middleware import SlowAPIMiddleware
 
-from off_key_core.config.app import get_app_settings
-from off_key_core.config.auth import get_auth_settings
-from off_key_core.config.database import get_database_settings
-from off_key_core.config.email import get_email_settings
-from off_key_core.config.env import load_env
-from off_key_core.config.logging import get_logging_settings
-from off_key_core.config.services import get_service_endpoints_settings
-from off_key_core.config.validation import validate_settings
+from off_key_core.config.config import settings
 from off_key_core.config.logs import setup_logging, LogFormat
 
 from .api.middleware import LoggingMiddleware, SecurityLoggingMiddleware
@@ -35,32 +28,13 @@ import bcrypt
 if not hasattr(bcrypt, "__about__"):
     bcrypt.__about__ = type("about", (object,), {"__version__": bcrypt.__version__})
 
-load_env()
-
-app_settings = get_app_settings()
-logging_settings = get_logging_settings()
-service_endpoints = get_service_endpoints_settings()
-validate_settings(
-    [
-        ("app", get_app_settings),
-        ("logging", get_logging_settings),
-        ("services", get_service_endpoints_settings),
-        ("auth", get_auth_settings),
-        ("email", get_email_settings),
-        ("database", get_database_settings),
-    ],
-    context="API gateway configuration",
-)
-
 # Initialize logging with configuration
 log_format = (
-    LogFormat.JSON
-    if (logging_settings.LOG_FORMAT or "").lower() == "json"
-    else LogFormat.SIMPLE
+    LogFormat.JSON if settings.LOG_FORMAT.lower() == "json" else LogFormat.SIMPLE
 )
 logger = setup_logging(
-    app_name=app_settings.APP_NAME,
-    log_level=logging_settings.LOG_LEVEL,
+    app_name=settings.APP_NAME,
+    log_level=settings.LOG_LEVEL,
     log_format=log_format,
     enable_correlation=True,
 )
@@ -76,16 +50,12 @@ async def wait_for_db_sync(
     The API can safely start once db-sync is either fully healthy or in its
     long-running "starting" state (initial backfill still in progress).
     """
-    logger.info(
-        f"Waiting for db-sync service at {service_endpoints.db_sync_service_url}"
-    )
+    logger.info(f"Waiting for db-sync service at {settings.db_sync_service_url}")
 
     async with httpx.AsyncClient(timeout=5.0) as client:
         for attempt in range(1, max_retries + 1):
             try:
-                response = await client.get(
-                    f"{service_endpoints.db_sync_service_url.rstrip('/')}/health"
-                )
+                response = await client.get(f"{settings.db_sync_service_url}/health")
                 if response.status_code == 200:
                     data = response.json()
                     status = data.get("status")
@@ -133,7 +103,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
 # FastAPI app
 app = FastAPI(
-    title=app_settings.APP_NAME,
+    title=settings.APP_NAME,
     description="Off-Key API Gateway - Real-time Anomaly Detection Platform",
     lifespan=lifespan,
 )
@@ -175,8 +145,5 @@ if __name__ == "__main__":
     import uvicorn
 
     uvicorn.run(
-        "main:app",
-        host="0.0.0.0",
-        port=8000,
-        reload=True if app_settings.DEBUG else False,
+        "main:app", host="0.0.0.0", port=8000, reload=True if settings.DEBUG else False
     )

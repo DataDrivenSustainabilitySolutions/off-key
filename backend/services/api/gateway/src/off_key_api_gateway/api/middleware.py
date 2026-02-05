@@ -6,7 +6,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp
 
 from off_key_core.config.logs import set_correlation_id, log_performance, logger
-from off_key_core.config.logging import get_logging_settings
+from off_key_core.config.config import settings
 
 
 class LoggingMiddleware(BaseHTTPMiddleware):
@@ -15,16 +15,14 @@ class LoggingMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         start_time = time.time()
 
-        logging_settings = get_logging_settings()
-
         # Generate or extract correlation ID
-        correlation_id = request.headers.get(
-            logging_settings.LOG_CORRELATION_HEADER
-        ) or str(uuid.uuid4())
+        correlation_id = request.headers.get(settings.LOG_CORRELATION_HEADER) or str(
+            uuid.uuid4()
+        )
         set_correlation_id(correlation_id)
 
         # Log incoming request
-        if logging_settings.ENABLE_REQUEST_LOGGING:
+        if settings.ENABLE_REQUEST_LOGGING:
             logger.info(
                 f"Request: {request.method} {request.url.path} | "
                 f"Query: {dict(request.query_params)} | "
@@ -36,14 +34,14 @@ class LoggingMiddleware(BaseHTTPMiddleware):
             response = await call_next(request)
 
             # Log response
-            if logging_settings.ENABLE_REQUEST_LOGGING:
+            if settings.ENABLE_REQUEST_LOGGING:
                 logger.info(
                     f"Response: {response.status_code} | "
                     f"Content-Type: {response.headers.get('content-type', 'unknown')}"
                 )
 
             # Log performance
-            if logging_settings.ENABLE_PERFORMANCE_LOGGING:
+            if settings.ENABLE_PERFORMANCE_LOGGING:
                 log_performance(f"{request.method} {request.url.path}", start_time)
 
         except Exception as e:
@@ -54,7 +52,7 @@ class LoggingMiddleware(BaseHTTPMiddleware):
             raise
 
         # Add correlation ID to response headers
-        response.headers[logging_settings.LOG_CORRELATION_HEADER] = correlation_id
+        response.headers[settings.LOG_CORRELATION_HEADER] = correlation_id
 
         return response
 

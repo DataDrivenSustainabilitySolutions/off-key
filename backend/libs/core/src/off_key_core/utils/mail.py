@@ -1,32 +1,23 @@
 import time
-from functools import lru_cache
-
 from fastapi_mail import FastMail, MessageSchema, ConnectionConfig, MessageType
-
-from ..config.email import get_email_settings
+from ..config.config import settings
 from ..config.logs import logger, log_performance, log_security_event
 
-
-@lru_cache(maxsize=1)
-def get_mail_config() -> ConnectionConfig:
-    """Create and cache the FastMail ConnectionConfig."""
-    settings = get_email_settings()
-    return ConnectionConfig(
-        MAIL_USERNAME=settings.EMAIL_USERNAME,
-        MAIL_PASSWORD=settings.EMAIL_PASSWORD.get_secret_value(),
-        MAIL_FROM=settings.EMAIL_FROM,
-        MAIL_PORT=settings.SMTP_PORT,
-        MAIL_SERVER=settings.SMTP_SERVER,
-        MAIL_SSL_TLS=settings.MAIL_SSL_TLS,
-        MAIL_STARTTLS=settings.MAIL_STARTTLS,
-        USE_CREDENTIALS=settings.USE_CREDENTIALS,
-        VALIDATE_CERTS=settings.VALIDATE_CERTS,
-    )
+conf = ConnectionConfig(
+    MAIL_USERNAME=settings.EMAIL_USERNAME,
+    MAIL_PASSWORD=settings.EMAIL_PASSWORD,
+    MAIL_FROM=settings.EMAIL_FROM,
+    MAIL_PORT=settings.SMTP_PORT,
+    MAIL_SERVER=settings.SMTP_SERVER,
+    MAIL_SSL_TLS=settings.MAIL_SSL_TLS,
+    MAIL_STARTTLS=settings.MAIL_STARTTLS,
+    USE_CREDENTIALS=settings.USE_CREDENTIALS,
+    VALIDATE_CERTS=settings.VALIDATE_CERTS,
+)
 
 
 async def send_verification_email(email: str, token: str):
     start_time = time.time()
-    settings = get_email_settings()
     verification_link = f"{settings.FRONTEND_BASE_URL}/verify?token={token}"
 
     try:
@@ -36,7 +27,7 @@ async def send_verification_email(email: str, token: str):
             body=f"Please verify your email by clicking this link: {verification_link}",
             subtype=MessageType.plain,
         )
-        fm = FastMail(get_mail_config())
+        fm = FastMail(conf)
         await fm.send_message(message)
 
         logger.info(f"Verification email sent successfully to {email}")
@@ -51,7 +42,6 @@ async def send_verification_email(email: str, token: str):
 
 async def send_password_reset_email(email: str, token: str):
     start_time = time.time()
-    settings = get_email_settings()
     reset_link = f"{settings.FRONTEND_BASE_URL}/reset-password?token={token}"
 
     try:
@@ -63,7 +53,7 @@ async def send_password_reset_email(email: str, token: str):
             f"you can ignore this email.",
             subtype=MessageType.plain,
         )
-        fm = FastMail(get_mail_config())
+        fm = FastMail(conf)
         await fm.send_message(message)
 
         logger.info(f"Password reset email sent successfully to {email}")
@@ -82,7 +72,6 @@ async def send_anomaly_alert_email(anomaly: dict):
     start_time = time.time()
     charger_id = anomaly.get("charger_id", "unknown")
     anomaly_type = anomaly.get("anomaly_type", "unknown")
-    settings = get_email_settings()
 
     try:
         body = f"""
@@ -100,7 +89,7 @@ async def send_anomaly_alert_email(anomaly: dict):
             body=body,
             subtype=MessageType.plain,
         )
-        fm = FastMail(get_mail_config())
+        fm = FastMail(conf)
         await fm.send_message(message)
 
         logger.warning(

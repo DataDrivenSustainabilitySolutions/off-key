@@ -27,7 +27,6 @@ import importlib
 import logging
 from typing import Any, Dict, Type, Optional, List
 
-from pydantic import ValidationError
 from .schemas import (
     ModelHyperparameters,
     IncrementalKNNParams,
@@ -36,7 +35,6 @@ from .schemas import (
     MondrianIsolationForestParams,
     StandardScalerParams,
     IncrementalPCAParams,
-    PreprocessingStep,
 )
 
 logger = logging.getLogger(__name__)
@@ -242,25 +240,15 @@ def validate_preprocessing_steps(
         return []
 
     validated_steps: List[Dict[str, Any]] = []
-    for idx, step in enumerate(steps):
-        try:
-            step_model = PreprocessingStep.model_validate(step)
-        except ValidationError as e:
-            for err in e.errors():
-                if err.get("loc") == ("type",) and err.get("type") == "missing":
-                    raise ValueError(
-                        f"Preprocessing step at index {idx} missing required "
-                        "'type' field"
-                    ) from e
-            raise ValueError(f"Invalid preprocessing step at index {idx}: {e}") from e
-
-        step_type = step_model.type
-        params = step_model.params or {}
+    for step in steps:
+        if not isinstance(step, dict):
+            raise ValueError("Each preprocessing step must be an object")
+        step_type = step.get("type")
+        params = step.get("params") or {}
         if step_type not in PREPROCESSOR_REGISTRY:
             available = ", ".join(PREPROCESSOR_REGISTRY.keys())
             raise ValueError(
-                f"Unknown preprocessor type at index {idx}: '{step_type}'. "
-                f"Available: {available}"
+                f"Unknown preprocessor type: '{step_type}'. Available: {available}"
             )
         schema = PREPROCESSOR_REGISTRY[step_type]["params_schema"]
         try:

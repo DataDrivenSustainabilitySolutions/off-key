@@ -109,7 +109,7 @@ export const ChargerListView: React.FC<ChargerListViewProps> = ({
       <div className="mb-4 flex flex-wrap items-center justify-between gap-4">
         <input
           type="text"
-          placeholder="Search by ID or name..."
+          placeholder="Search by Charger ID..."
           value={searchTerm}
           onChange={(e) => onSearchChange(e.target.value)}
           className="p-2 border rounded w-full md:w-1/2"
@@ -224,8 +224,8 @@ const ChargerCardGrid: React.FC<ChargerCardGridProps> = ({
   onToggleFavorite,
 }) => (
   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-    {chargers.map((charger) => (
-      <Card key={charger.charger_id}>
+    {chargers.map((charger, index) => (
+      <Card key={index}>
         <CardHeader>
           <CardTitle>{charger.charger_id}</CardTitle>
           <CardDescription>{charger.charger_name || "No name"}</CardDescription>
@@ -289,7 +289,7 @@ const ChargerTable: React.FC<ChargerTableProps> = ({
           <TableCell>
             <Link
               to={`/details/${charger.charger_id}`}
-              className="text-gray-900 hover:underline"
+              className="text-black-600 hover:underline"
             >
               {charger.charger_id}
             </Link>
@@ -297,7 +297,7 @@ const ChargerTable: React.FC<ChargerTableProps> = ({
           <TableCell>
             <Link
               to={`/details/${charger.charger_id}`}
-              className="text-gray-900 hover:underline"
+              className="text-black-600 hover:underline"
             >
               {charger.charger_name || "N/A"}
             </Link>

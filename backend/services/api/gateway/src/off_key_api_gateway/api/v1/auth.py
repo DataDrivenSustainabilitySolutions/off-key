@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from jose import jwt, JWTError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from off_key_core.config.auth import get_auth_settings
+from off_key_core.config.config import settings
 
 from off_key_core.config.logs import logger, log_security_event
 from off_key_core.db.base import get_db_async
@@ -38,11 +38,8 @@ async def register(user: UserCreate, db: AsyncSession = Depends(get_db_async)):
     # Create user
     verification_token = create_verification_token(user.email)
 
-    auth_settings = get_auth_settings()
     user_role = (
-        user.role
-        if user.email != auth_settings.SUPERUSER_MAIL
-        else RoleEnum.admin.value
+        user.role if user.email != settings.SUPERUSER_MAIL else RoleEnum.admin.value
     )
 
     db_user = User(
@@ -104,12 +101,9 @@ async def login(user: UserLogin, db: AsyncSession = Depends(get_db_async)):
 
 @router.get("/verify-email")
 async def verify_email(token: str, db: AsyncSession = Depends(get_db_async)):
-    auth_settings = get_auth_settings()
     try:
         payload = jwt.decode(
-            token,
-            auth_settings.JWT_VERIFICATION_SECRET,
-            algorithms=[auth_settings.ALGORITHM],
+            token, settings.JWT_VERIFICATION_SECRET, algorithms=[settings.ALGORITHM]
         )
         if payload.get("token_type") != "email_verification":
             raise HTTPException(
@@ -191,12 +185,9 @@ async def reset_password(
     req: ResetPasswordRequest,
     db: AsyncSession = Depends(get_db_async),
 ):
-    auth_settings = get_auth_settings()
     try:
         payload = jwt.decode(
-            req.token,
-            auth_settings.JWT_VERIFICATION_SECRET,
-            algorithms=[auth_settings.ALGORITHM],
+            req.token, settings.JWT_VERIFICATION_SECRET, algorithms=[settings.ALGORITHM]
         )
         if payload.get("token_type") != "password_reset":
             raise HTTPException(status_code=400, detail="Invalid token type")

@@ -14,7 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from off_key_core.clients.base_client import ChargerAPIClient
-from off_key_core.config.pionix import get_pionix_settings
+from off_key_core.config.config import settings
 from off_key_core.config.logs import logger
 from off_key_core.db.models import Charger
 from off_key_core.utils.enum import HealthStatus
@@ -242,9 +242,7 @@ class ChargerDiscoveryService:
 
             # Generate MQTT topics
             mqtt_topics = [
-                get_pionix_settings().build_mqtt_topic(
-                    charger_id=charger_id, hierarchy=hierarchy
-                )
+                settings.build_mqtt_topic(charger_id=charger_id, hierarchy=hierarchy)
                 for hierarchy in hierarchies
             ]
 

@@ -5,7 +5,9 @@ import httpx
 
 from off_key_core.db.base import get_db_async
 from off_key_core.db.models import Charger
-from off_key_core.config.config import settings
+from off_key_core.config.config import get_settings
+
+settings = get_settings()
 
 router = APIRouter()
 

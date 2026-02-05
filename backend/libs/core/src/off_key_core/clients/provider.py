@@ -3,7 +3,9 @@ from typing import Optional
 
 from off_key_core.clients.base_client import ChargerAPIClient
 from off_key_core.clients.pionix import PionixClient
-from off_key_core.config.config import settings
+from off_key_core.config.config import get_settings
+
+settings = get_settings()
 
 
 @lru_cache()

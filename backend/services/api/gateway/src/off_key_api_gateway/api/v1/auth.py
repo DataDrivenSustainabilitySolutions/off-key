@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from jose import jwt, JWTError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from off_key_core.config.config import settings
+from off_key_core.config.config import get_settings
 
 from off_key_core.config.logs import logger, log_security_event
 from off_key_core.db.base import get_db_async
@@ -22,6 +22,8 @@ from ...services.auth import (
 )
 from off_key_core.utils.enum import RoleEnum
 from off_key_core.utils.mail import send_verification_email, send_password_reset_email
+
+settings = get_settings()
 
 router = APIRouter()
 

@@ -1,7 +1,9 @@
 from jose import JWTError, jwt
 from datetime import datetime, timedelta, timezone
 from passlib.context import CryptContext
-from off_key_core.config.config import settings
+from off_key_core.config.config import get_settings
+
+settings = get_settings()
 
 password_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 

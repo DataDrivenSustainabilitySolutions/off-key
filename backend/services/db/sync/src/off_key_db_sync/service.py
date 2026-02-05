@@ -10,7 +10,7 @@ import signal
 from typing import Optional
 from sqlalchemy import text
 
-from off_key_core.config.config import settings
+from off_key_core.config.config import get_settings
 from off_key_core.config.logs import logger
 from off_key_core.db.base import async_engine
 from off_key_core.db.models import Base
@@ -18,6 +18,8 @@ from off_key_core.clients.provider import get_charger_api_client
 from .services.background_sync import BackgroundSyncService
 from .services.chargers import ChargersSyncService
 from .services.telemetry import TelemetrySyncService
+
+settings = get_settings()
 
 
 class SyncService:

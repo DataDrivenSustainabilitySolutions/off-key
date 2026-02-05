@@ -7,8 +7,10 @@ import json
 from typing import Dict, List, Optional, Any
 
 import aiohttp
-from off_key_core.config.config import settings
+from off_key_core.config.config import get_settings
 from off_key_core.config.logs import logger
+
+settings = get_settings()
 
 
 class TacticError(Exception):

@@ -5,18 +5,18 @@ Replaces direct core package imports with HTTP calls to TACTIC middleware.
 """
 
 import logging
-import json
 import aiohttp
 import asyncio
 from typing import Dict, Any, List, Optional, Type
-from functools import lru_cache
-from off_key_core.config.config import settings
+from off_key_core.config.config import get_settings
 
 logger = logging.getLogger(__name__)
+settings = get_settings()
 
 
 class TacticModelError(Exception):
     """Custom exception for TACTIC model registry errors."""
+
     pass
 
 
@@ -41,7 +41,9 @@ class TacticModelClient:
         if self.session and not self.session.closed:
             await self.session.close()
 
-    async def _make_request(self, method: str, endpoint: str, **kwargs) -> Dict[str, Any]:
+    async def _make_request(
+        self, method: str, endpoint: str, **kwargs
+    ) -> Dict[str, Any]:
         """Make HTTP request to TACTIC."""
         session = await self._get_session()
         url = f"{self.base_url}{endpoint}"
@@ -52,8 +54,12 @@ class TacticModelClient:
                     return await response.json()
                 else:
                     error_text = await response.text()
-                    logger.error(f"TACTIC request failed: {response.status} - {error_text}")
-                    raise TacticModelError(f"TACTIC request failed: {response.status} - {error_text}")
+                    logger.error(
+                        f"TACTIC request failed: {response.status} - {error_text}"
+                    )
+                    raise TacticModelError(
+                        f"TACTIC request failed: {response.status} - {error_text}"
+                    )
         except aiohttp.ClientError as e:
             logger.error(f"TACTIC connection error: {e}")
             raise TacticModelError(f"TACTIC connection error: {e}")
@@ -70,23 +76,22 @@ class TacticModelClient:
     async def get_available_preprocessors(self) -> List[Dict[str, Any]]:
         """Get list of available preprocessors."""
         if not self._preprocessor_cache:
-            preprocessors = await self._make_request("GET", "/api/v1/models/preprocessors")
+            preprocessors = await self._make_request(
+                "GET", "/api/v1/models/preprocessors"
+            )
             self._preprocessor_cache = {p["model_type"]: p for p in preprocessors}
             logger.info(f"Cached {len(preprocessors)} preprocessors from TACTIC")
 
         return list(self._preprocessor_cache.values())
 
-    async def validate_model_params(self, model_type: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    async def validate_model_params(
+        self, model_type: str, params: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
         """Validate model parameters against schema."""
-        request_data = {
-            "model_type": model_type,
-            "parameters": params or {}
-        }
+        request_data = {"model_type": model_type, "parameters": params or {}}
 
         response = await self._make_request(
-            "POST",
-            "/api/v1/models/validate",
-            json=request_data
+            "POST", "/api/v1/models/validate", json=request_data
         )
 
         if not response.get("valid"):
@@ -94,33 +99,39 @@ class TacticModelClient:
 
         return response["validated_parameters"]
 
-    async def create_model_instance_validate(self, model_type: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    async def create_model_instance_validate(
+        self, model_type: str, params: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
         """Validate that model can be instantiated (doesn't return actual instance)."""
-        request_data = {
-            "model_type": model_type,
-            "parameters": params or {}
-        }
+        request_data = {"model_type": model_type, "parameters": params or {}}
 
         return await self._make_request(
-            "POST",
-            "/api/v1/models/create-instance",
-            json=request_data
+            "POST", "/api/v1/models/create-instance", json=request_data
         )
 
     # Synchronous wrapper methods for compatibility with existing code
-    def validate_model_params_sync(self, model_type: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    def validate_model_params_sync(
+        self, model_type: str, params: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
         """Synchronous wrapper for validate_model_params."""
         loop = asyncio.get_event_loop()
         if loop.is_running():
             # We're in an async context, create a new event loop
             import concurrent.futures
+
             with concurrent.futures.ThreadPoolExecutor() as executor:
-                future = executor.submit(asyncio.run, self.validate_model_params(model_type, params))
+                future = executor.submit(
+                    asyncio.run, self.validate_model_params(model_type, params)
+                )
                 return future.result()
         else:
-            return loop.run_until_complete(self.validate_model_params(model_type, params))
+            return loop.run_until_complete(
+                self.validate_model_params(model_type, params)
+            )
 
-    def validate_preprocessing_steps_sync(self, steps: Optional[List[Dict[str, Any]]]) -> List[Dict[str, Any]]:
+    def validate_preprocessing_steps_sync(
+        self, steps: Optional[List[Dict[str, Any]]]
+    ) -> List[Dict[str, Any]]:
         """Synchronous validation for preprocessing steps."""
         if not steps:
             return []
@@ -142,8 +153,11 @@ class TacticModelClient:
         loop = asyncio.get_event_loop()
         if loop.is_running():
             import concurrent.futures
+
             with concurrent.futures.ThreadPoolExecutor() as executor:
-                future = executor.submit(asyncio.run, self._get_model_class_async(model_type))
+                future = executor.submit(
+                    asyncio.run, self._get_model_class_async(model_type)
+                )
                 return future.result()
         else:
             return loop.run_until_complete(self._get_model_class_async(model_type))
@@ -163,16 +177,22 @@ class TacticModelClient:
             available_models = list(self._model_cache.keys())
             available_preprocessors = list(self._preprocessor_cache.keys())
             available = available_models + available_preprocessors
-            raise ValueError(f"Unknown model type: '{model_type}'. Available: {available}")
+            raise ValueError(
+                f"Unknown model type: '{model_type}'. Available: {available}"
+            )
 
         # Extract import paths from cached model info (now includes import_paths)
         import_paths = model_info.get("import_paths", [])
         if not import_paths:
-            raise ValueError(f"No import paths available for model type: '{model_type}'")
+            raise ValueError(
+                f"No import paths available for model type: '{model_type}'"
+            )
 
         return self._import_model_class_dynamic(model_type, import_paths)
 
-    def _import_model_class_dynamic(self, model_type: str, import_paths: List[str]) -> Type:
+    def _import_model_class_dynamic(
+        self, model_type: str, import_paths: List[str]
+    ) -> Type:
         """Dynamically import model class using paths from TACTIC."""
         import importlib
 
@@ -188,14 +208,18 @@ class TacticModelClient:
                 continue
 
         error_msg = "; ".join(errors) if errors else "unknown"
-        logger.error(f"Failed to import model '{model_type}' from any known path: {error_msg}")
+        logger.error(
+            f"Failed to import model '{model_type}' from any known path: {error_msg}"
+        )
         raise ImportError(f"Cannot import model '{model_type}'. Tried: {import_paths}")
 
     def get_preprocessor_class(self, step_type: str) -> Type:
         """Get preprocessor class."""
         return self.get_model_class(step_type)
 
-    def create_model_instance(self, model_type: str, params: Optional[Dict[str, Any]] = None) -> Any:
+    def create_model_instance(
+        self, model_type: str, params: Optional[Dict[str, Any]] = None
+    ) -> Any:
         """Create model instance with validated parameters."""
         validated_params = self.validate_model_params_sync(model_type, params)
 
@@ -244,13 +268,17 @@ def get_tactic_client() -> TacticModelClient:
 
 
 # Compatibility functions for existing RADAR code
-def validate_model_params(model_type: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+def validate_model_params(
+    model_type: str, params: Optional[Dict[str, Any]] = None
+) -> Dict[str, Any]:
     """Compatibility wrapper for core.models.validate_model_params."""
     client = get_tactic_client()
     return client.validate_model_params_sync(model_type, params)
 
 
-def validate_preprocessing_steps(steps: Optional[List[Dict[str, Any]]]) -> List[Dict[str, Any]]:
+def validate_preprocessing_steps(
+    steps: Optional[List[Dict[str, Any]]],
+) -> List[Dict[str, Any]]:
     """Compatibility wrapper for core.models.validate_preprocessing_steps."""
     client = get_tactic_client()
     return client.validate_preprocessing_steps_sync(steps)
@@ -262,7 +290,9 @@ def get_preprocessor_class(step_type: str) -> Type:
     return client.get_preprocessor_class(step_type)
 
 
-def create_model_instance(model_type: str, params: Optional[Dict[str, Any]] = None) -> Any:
+def create_model_instance(
+    model_type: str, params: Optional[Dict[str, Any]] = None
+) -> Any:
     """Compatibility wrapper for core.models.create_model_instance."""
     client = get_tactic_client()
     return client.create_model_instance(model_type, params)

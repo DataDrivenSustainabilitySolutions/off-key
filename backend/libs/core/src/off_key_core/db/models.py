@@ -226,6 +226,7 @@ class ModelRegistry(Base):
     Stores model definitions, hyperparameter schemas, and metadata.
     Replaces hardcoded MODEL_REGISTRY and PREPROCESSOR_REGISTRY.
     """
+
     __tablename__ = "model_registry"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -248,11 +249,15 @@ class ModelRegistry(Base):
     # Versioning and lifecycle
     version = Column(Text, nullable=False, default="1.0.0")
     is_active = Column(Boolean, default=True, nullable=False, index=True)
-    requires_special_handling = Column(Boolean, default=False, nullable=False)  # For KNN, etc.
+    requires_special_handling = Column(
+        Boolean, default=False, nullable=False
+    )  # For KNN, etc.
 
     # Timestamps
     created_at = Column(DateTime, default=func.now(), nullable=False)
-    updated_at = Column(DateTime, default=func.now(), onupdate=func.now(), nullable=False)
+    updated_at = Column(
+        DateTime, default=func.now(), onupdate=func.now(), nullable=False
+    )
 
     # Indexes for efficient queries
     __table_args__ = (

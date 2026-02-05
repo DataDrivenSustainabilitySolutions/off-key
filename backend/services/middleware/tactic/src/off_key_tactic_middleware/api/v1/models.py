@@ -6,7 +6,7 @@ Provides REST API for managing model registry and model instances.
 
 import logging
 from typing import Any, Dict, List, Optional
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from ...models.registry import model_registry
@@ -19,46 +19,67 @@ router = APIRouter(prefix="/models", tags=["models"])
 # Request/Response models
 class ModelInfo(BaseModel):
     """Model information response."""
+
     model_type: str = Field(..., description="Model type identifier")
     name: str = Field(..., description="Human-readable model name")
     description: Optional[str] = Field(None, description="Model description")
     complexity: Optional[str] = Field(None, description="Computational complexity")
     memory_usage: Optional[str] = Field(None, description="Memory usage level")
     import_paths: List[str] = Field(..., description="Python import paths to try")
-    parameter_schema: Dict[str, Any] = Field(..., description="JSON schema for parameters")
-    default_parameters: Dict[str, Any] = Field(..., description="Default parameter values")
+    parameter_schema: Dict[str, Any] = Field(
+        ..., description="JSON schema for parameters"
+    )
+    default_parameters: Dict[str, Any] = Field(
+        ..., description="Default parameter values"
+    )
     version: str = Field(..., description="Model version")
-    requires_special_handling: bool = Field(..., description="Requires custom instantiation logic")
+    requires_special_handling: bool = Field(
+        ..., description="Requires custom instantiation logic"
+    )
 
 
 class PreprocessorInfo(BaseModel):
     """Preprocessor information response."""
+
     model_type: str = Field(..., description="Preprocessor type identifier")
     name: str = Field(..., description="Human-readable preprocessor name")
     description: Optional[str] = Field(None, description="Preprocessor description")
     import_paths: List[str] = Field(..., description="Python import paths to try")
-    parameter_schema: Dict[str, Any] = Field(..., description="JSON schema for parameters")
-    default_parameters: Dict[str, Any] = Field(..., description="Default parameter values")
+    parameter_schema: Dict[str, Any] = Field(
+        ..., description="JSON schema for parameters"
+    )
+    default_parameters: Dict[str, Any] = Field(
+        ..., description="Default parameter values"
+    )
     version: str = Field(..., description="Preprocessor version")
-    requires_special_handling: bool = Field(..., description="Requires custom instantiation logic")
+    requires_special_handling: bool = Field(
+        ..., description="Requires custom instantiation logic"
+    )
 
 
 class ModelInstanceRequest(BaseModel):
     """Request to create a model instance."""
+
     model_type: str = Field(..., description="Model type identifier")
     parameters: Optional[Dict[str, Any]] = Field(None, description="Model parameters")
 
 
 class ModelValidationRequest(BaseModel):
     """Request to validate model parameters."""
+
     model_type: str = Field(..., description="Model type identifier")
-    parameters: Optional[Dict[str, Any]] = Field(None, description="Parameters to validate")
+    parameters: Optional[Dict[str, Any]] = Field(
+        None, description="Parameters to validate"
+    )
 
 
 class ModelValidationResponse(BaseModel):
     """Model parameter validation response."""
+
     valid: bool = Field(..., description="Whether parameters are valid")
-    validated_parameters: Optional[Dict[str, Any]] = Field(None, description="Validated parameters with defaults")
+    validated_parameters: Optional[Dict[str, Any]] = Field(
+        None, description="Validated parameters with defaults"
+    )
     error: Optional[str] = Field(None, description="Validation error message")
 
 
@@ -112,21 +133,29 @@ async def get_model_info(model_type: str) -> ModelInfo:
         if not model:
             # Try preprocessors
             preprocessors = model_registry.get_available_preprocessors()
-            model = next((p for p in preprocessors if p["model_type"] == model_type), None)
+            model = next(
+                (p for p in preprocessors if p["model_type"] == model_type), None
+            )
 
         if not model:
-            raise HTTPException(status_code=404, detail=f"Model '{model_type}' not found")
+            raise HTTPException(
+                status_code=404, detail=f"Model '{model_type}' not found"
+            )
 
         return ModelInfo(**model)
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Failed to get model info for '{model_type}': {e}")
-        raise HTTPException(status_code=500, detail="Failed to retrieve model information")
+        raise HTTPException(
+            status_code=500, detail="Failed to retrieve model information"
+        )
 
 
 @router.post("/validate", response_model=ModelValidationResponse)
-async def validate_model_parameters(request: ModelValidationRequest) -> ModelValidationResponse:
+async def validate_model_parameters(
+    request: ModelValidationRequest,
+) -> ModelValidationResponse:
     """
     Validate model parameters against the model's schema.
 
@@ -138,18 +167,13 @@ async def validate_model_parameters(request: ModelValidationRequest) -> ModelVal
     """
     try:
         validated_params = model_registry.validate_model_params(
-            request.model_type,
-            request.parameters
+            request.model_type, request.parameters
         )
         return ModelValidationResponse(
-            valid=True,
-            validated_parameters=validated_params
+            valid=True, validated_parameters=validated_params
         )
     except ValueError as e:
-        return ModelValidationResponse(
-            valid=False,
-            error=str(e)
-        )
+        return ModelValidationResponse(valid=False, error=str(e))
     except Exception as e:
         logger.error(f"Failed to validate parameters for '{request.model_type}': {e}")
         raise HTTPException(status_code=500, detail="Parameter validation failed")
@@ -173,8 +197,7 @@ async def create_model_instance(request: ModelInstanceRequest) -> Dict[str, Any]
     try:
         # Validate parameters first
         validated_params = model_registry.validate_model_params(
-            request.model_type,
-            request.parameters
+            request.model_type, request.parameters
         )
 
         # Test that the model can be instantiated (but don't return it)
@@ -184,12 +207,14 @@ async def create_model_instance(request: ModelInstanceRequest) -> Dict[str, Any]
             "success": True,
             "message": f"Model '{request.model_type}' created successfully",
             "model_type": request.model_type,
-            "validated_parameters": validated_params
+            "validated_parameters": validated_params,
         }
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except ImportError as e:
-        raise HTTPException(status_code=422, detail=f"Model dependencies not available: {e}")
+        raise HTTPException(
+            status_code=422, detail=f"Model dependencies not available: {e}"
+        )
     except Exception as e:
         logger.error(f"Failed to create model instance '{request.model_type}': {e}")
         raise HTTPException(status_code=500, detail="Model creation failed")
@@ -228,11 +253,8 @@ async def model_registry_health() -> Dict[str, Any]:
             "status": "healthy",
             "models_available": len(models),
             "preprocessors_available": len(preprocessors),
-            "total_components": len(models) + len(preprocessors)
+            "total_components": len(models) + len(preprocessors),
         }
     except Exception as e:
         logger.error(f"Model registry health check failed: {e}")
-        return {
-            "status": "unhealthy",
-            "error": str(e)
-        }
+        return {"status": "unhealthy", "error": str(e)}

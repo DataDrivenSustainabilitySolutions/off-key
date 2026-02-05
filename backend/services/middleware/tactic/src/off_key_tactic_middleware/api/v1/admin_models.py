@@ -21,6 +21,7 @@ router = APIRouter(prefix="/admin/models", tags=["admin", "models"])
 # Request/Response models for admin operations
 class CreateModelRequest(BaseModel):
     """Request to create a new model in registry."""
+
     model_type: str = Field(..., description="Unique model type identifier")
     category: str = Field(..., description="'model' or 'preprocessor'")
     name: str = Field(..., description="Human-readable model name")
@@ -28,28 +29,44 @@ class CreateModelRequest(BaseModel):
     complexity: Optional[str] = Field("medium", description="Computational complexity")
     memory_usage: Optional[str] = Field("medium", description="Memory usage level")
     import_paths: List[str] = Field(..., description="Python import paths to try")
-    parameter_schema: Dict[str, Any] = Field(..., description="JSON schema for parameters")
-    default_parameters: Dict[str, Any] = Field(default_factory=dict, description="Default parameter values")
+    parameter_schema: Dict[str, Any] = Field(
+        ..., description="JSON schema for parameters"
+    )
+    default_parameters: Dict[str, Any] = Field(
+        default_factory=dict, description="Default parameter values"
+    )
     version: str = Field(default="1.0.0", description="Model version")
-    requires_special_handling: bool = Field(default=False, description="Requires custom instantiation logic")
+    requires_special_handling: bool = Field(
+        default=False, description="Requires custom instantiation logic"
+    )
 
 
 class UpdateModelRequest(BaseModel):
     """Request to update an existing model."""
+
     name: Optional[str] = Field(None, description="Human-readable model name")
     description: Optional[str] = Field(None, description="Model description")
     complexity: Optional[str] = Field(None, description="Computational complexity")
     memory_usage: Optional[str] = Field(None, description="Memory usage level")
-    import_paths: Optional[List[str]] = Field(None, description="Python import paths to try")
-    parameter_schema: Optional[Dict[str, Any]] = Field(None, description="JSON schema for parameters")
-    default_parameters: Optional[Dict[str, Any]] = Field(None, description="Default parameter values")
+    import_paths: Optional[List[str]] = Field(
+        None, description="Python import paths to try"
+    )
+    parameter_schema: Optional[Dict[str, Any]] = Field(
+        None, description="JSON schema for parameters"
+    )
+    default_parameters: Optional[Dict[str, Any]] = Field(
+        None, description="Default parameter values"
+    )
     version: Optional[str] = Field(None, description="Model version")
     is_active: Optional[bool] = Field(None, description="Whether model is active")
-    requires_special_handling: Optional[bool] = Field(None, description="Requires custom instantiation logic")
+    requires_special_handling: Optional[bool] = Field(
+        None, description="Requires custom instantiation logic"
+    )
 
 
 class ModelRegistryResponse(BaseModel):
     """Full model registry entry response."""
+
     id: int
     model_type: str
     category: str
@@ -69,8 +86,7 @@ class ModelRegistryResponse(BaseModel):
 
 @router.post("/", response_model=ModelRegistryResponse)
 async def create_model(
-    request: CreateModelRequest,
-    session: Session = Depends(get_db_sync)
+    request: CreateModelRequest, session: Session = Depends(get_db_sync)
 ) -> ModelRegistryResponse:
     """
     Create a new model in the registry.
@@ -79,14 +95,16 @@ async def create_model(
     """
     try:
         # Check if model type already exists
-        existing = session.query(ModelRegistry).filter(
-            ModelRegistry.model_type == request.model_type
-        ).first()
+        existing = (
+            session.query(ModelRegistry)
+            .filter(ModelRegistry.model_type == request.model_type)
+            .first()
+        )
 
         if existing:
             raise HTTPException(
                 status_code=400,
-                detail=f"Model type '{request.model_type}' already exists"
+                detail=f"Model type '{request.model_type}' already exists",
             )
 
         # Create new model registry entry
@@ -102,7 +120,7 @@ async def create_model(
             default_parameters=request.default_parameters,
             version=request.version,
             requires_special_handling=request.requires_special_handling,
-            is_active=True
+            is_active=True,
         )
 
         session.add(new_model)
@@ -126,7 +144,7 @@ async def create_model(
             is_active=new_model.is_active,
             requires_special_handling=new_model.requires_special_handling,
             created_at=new_model.created_at.isoformat(),
-            updated_at=new_model.updated_at.isoformat()
+            updated_at=new_model.updated_at.isoformat(),
         )
 
     except Exception as e:
@@ -139,7 +157,7 @@ async def create_model(
 async def update_model(
     model_type: str,
     request: UpdateModelRequest,
-    session: Session = Depends(get_db_sync)
+    session: Session = Depends(get_db_sync),
 ) -> ModelRegistryResponse:
     """
     Update an existing model in the registry.
@@ -147,14 +165,15 @@ async def update_model(
     Allows updating model metadata, parameters, or activation status.
     """
     try:
-        model = session.query(ModelRegistry).filter(
-            ModelRegistry.model_type == model_type
-        ).first()
+        model = (
+            session.query(ModelRegistry)
+            .filter(ModelRegistry.model_type == model_type)
+            .first()
+        )
 
         if not model:
             raise HTTPException(
-                status_code=404,
-                detail=f"Model '{model_type}' not found"
+                status_code=404, detail=f"Model '{model_type}' not found"
             )
 
         # Update fields that are provided
@@ -182,7 +201,7 @@ async def update_model(
             is_active=model.is_active,
             requires_special_handling=model.requires_special_handling,
             created_at=model.created_at.isoformat(),
-            updated_at=model.updated_at.isoformat()
+            updated_at=model.updated_at.isoformat(),
         )
 
     except HTTPException:
@@ -195,8 +214,7 @@ async def update_model(
 
 @router.delete("/{model_type}")
 async def delete_model(
-    model_type: str,
-    session: Session = Depends(get_db_sync)
+    model_type: str, session: Session = Depends(get_db_sync)
 ) -> Dict[str, str]:
     """
     Delete (deactivate) a model from the registry.
@@ -204,14 +222,15 @@ async def delete_model(
     Actually sets is_active=False rather than hard deleting to preserve history.
     """
     try:
-        model = session.query(ModelRegistry).filter(
-            ModelRegistry.model_type == model_type
-        ).first()
+        model = (
+            session.query(ModelRegistry)
+            .filter(ModelRegistry.model_type == model_type)
+            .first()
+        )
 
         if not model:
             raise HTTPException(
-                status_code=404,
-                detail=f"Model '{model_type}' not found"
+                status_code=404, detail=f"Model '{model_type}' not found"
             )
 
         # Soft delete - just deactivate
@@ -234,7 +253,7 @@ async def delete_model(
 async def list_all_models(
     include_inactive: bool = False,
     category: Optional[str] = None,
-    session: Session = Depends(get_db_sync)
+    session: Session = Depends(get_db_sync),
 ) -> List[ModelRegistryResponse]:
     """
     List all models in registry, including inactive ones.
@@ -245,7 +264,7 @@ async def list_all_models(
         query = session.query(ModelRegistry)
 
         if not include_inactive:
-            query = query.filter(ModelRegistry.is_active == True)
+            query = query.filter(ModelRegistry.is_active)
 
         if category:
             query = query.filter(ModelRegistry.category == category)
@@ -268,7 +287,7 @@ async def list_all_models(
                 is_active=m.is_active,
                 requires_special_handling=m.requires_special_handling,
                 created_at=m.created_at.isoformat(),
-                updated_at=m.updated_at.isoformat()
+                updated_at=m.updated_at.isoformat(),
             )
             for m in models
         ]
@@ -282,7 +301,7 @@ async def list_all_models(
 async def test_model_instantiation(
     model_type: str,
     test_parameters: Optional[Dict[str, Any]] = None,
-    session: Session = Depends(get_db_sync)
+    session: Session = Depends(get_db_sync),
 ) -> Dict[str, Any]:
     """
     Test that a model can be instantiated with given parameters.
@@ -295,8 +314,7 @@ async def test_model_instantiation(
 
         # Test parameter validation
         validated_params = model_registry.validate_model_params(
-            model_type,
-            test_parameters or {}
+            model_type, test_parameters or {}
         )
 
         # Test model instantiation (but don't return the instance)
@@ -305,25 +323,17 @@ async def test_model_instantiation(
         return {
             "success": True,
             "message": f"Model '{model_type}' instantiated successfully",
-            "validated_parameters": validated_params
+            "validated_parameters": validated_params,
         }
 
     except ValueError as e:
-        return {
-            "success": False,
-            "error": "validation_error",
-            "message": str(e)
-        }
+        return {"success": False, "error": "validation_error", "message": str(e)}
     except ImportError as e:
         return {
             "success": False,
             "error": "import_error",
-            "message": f"Cannot import model dependencies: {e}"
+            "message": f"Cannot import model dependencies: {e}",
         }
     except Exception as e:
         logger.error(f"Model test failed for '{model_type}': {e}")
-        return {
-            "success": False,
-            "error": "instantiation_error",
-            "message": str(e)
-        }
+        return {"success": False, "error": "instantiation_error", "message": str(e)}

@@ -12,11 +12,10 @@ from sqlalchemy.orm import Session
 from sqlalchemy import and_
 
 from off_key_core.db.models import ModelRegistry
-from off_key_core.config.config import settings
+from off_key_core.config.config import get_settings
 from off_key_core.db.base import get_engine
 
 from .schemas import (
-    ModelHyperparameters,
     IncrementalKNNParams,
     OnlineIsolationForestParams,
     AdaptiveSVMParams,
@@ -26,6 +25,7 @@ from .schemas import (
 )
 
 logger = logging.getLogger(__name__)
+settings = get_settings()
 
 
 class ModelRegistryService:
@@ -60,7 +60,9 @@ class ModelRegistryService:
                 "model_type": "knn",
                 "category": "model",
                 "name": "Incremental K-Nearest Neighbors",
-                "description": "Incremental K-Nearest Neighbors for streaming anomaly detection",
+                "description": (
+                    "Incremental K-Nearest Neighbors for streaming anomaly detection"
+                ),
                 "complexity": "low",
                 "memory_usage": "medium",
                 "import_paths": ["onad.model.distance.knn.KNN"],
@@ -73,7 +75,9 @@ class ModelRegistryService:
                 "model_type": "isolation_forest",
                 "category": "model",
                 "name": "Online Isolation Forest",
-                "description": "Online Isolation Forest for streaming anomaly detection",
+                "description": (
+                    "Online Isolation Forest for streaming anomaly detection"
+                ),
                 "complexity": "medium",
                 "memory_usage": "medium",
                 "import_paths": ["onad.model.iforest.online.OnlineIsolationForest"],
@@ -99,7 +103,9 @@ class ModelRegistryService:
                 "description": "Adaptive One-Class SVM with incremental kernel updates",
                 "complexity": "high",
                 "memory_usage": "high",
-                "import_paths": ["onad.model.svm.adaptive.IncrementalOneClassSVMAdaptiveKernel"],
+                "import_paths": [
+                    "onad.model.svm.adaptive.IncrementalOneClassSVMAdaptiveKernel"
+                ],
                 "parameter_schema": AdaptiveSVMParams.model_json_schema(),
                 "default_parameters": AdaptiveSVMParams().model_dump(),
             },
@@ -108,7 +114,9 @@ class ModelRegistryService:
                 "model_type": "standard_scaler",
                 "category": "preprocessor",
                 "name": "Standard Scaler",
-                "description": "Standardize features by removing mean and scaling to unit variance",
+                "description": (
+                    "Standardize features by removing mean and scaling to unit variance"
+                ),
                 "complexity": "low",
                 "memory_usage": "low",
                 "import_paths": ["onad.transform.preprocessing.scaler.StandardScaler"],
@@ -119,10 +127,14 @@ class ModelRegistryService:
                 "model_type": "pca",
                 "category": "preprocessor",
                 "name": "Incremental PCA",
-                "description": "Incremental PCA for dimensionality reduction on streams",
+                "description": (
+                    "Incremental PCA for dimensionality reduction on streams"
+                ),
                 "complexity": "medium",
                 "memory_usage": "medium",
-                "import_paths": ["onad.transform.projection.incremental_pca.IncrementalPCA"],
+                "import_paths": [
+                    "onad.transform.projection.incremental_pca.IncrementalPCA"
+                ],
                 "parameter_schema": IncrementalPCAParams.model_json_schema(),
                 "default_parameters": IncrementalPCAParams().model_dump(),
             },
@@ -135,54 +147,85 @@ class ModelRegistryService:
     def get_available_models(self) -> List[Dict[str, Any]]:
         """Get all available models from database."""
         with Session(get_engine()) as session:
-            models = session.query(ModelRegistry).filter(
-                and_(ModelRegistry.is_active == True, ModelRegistry.category == "model")
-            ).all()
+            models = (
+                session.query(ModelRegistry)
+                .filter(
+                    and_(
+                        ModelRegistry.is_active,
+                        ModelRegistry.category == "model",
+                    )
+                )
+                .all()
+            )
 
-            return [{
-                "model_type": m.model_type,
-                "name": m.name,
-                "description": m.description,
-                "complexity": m.complexity,
-                "memory_usage": m.memory_usage,
-                "import_paths": m.import_paths,
-                "parameter_schema": m.parameter_schema,
-                "default_parameters": m.default_parameters,
-                "version": m.version,
-                "requires_special_handling": m.requires_special_handling,
-            } for m in models]
+            return [
+                {
+                    "model_type": m.model_type,
+                    "name": m.name,
+                    "description": m.description,
+                    "complexity": m.complexity,
+                    "memory_usage": m.memory_usage,
+                    "import_paths": m.import_paths,
+                    "parameter_schema": m.parameter_schema,
+                    "default_parameters": m.default_parameters,
+                    "version": m.version,
+                    "requires_special_handling": m.requires_special_handling,
+                }
+                for m in models
+            ]
 
     def get_available_preprocessors(self) -> List[Dict[str, Any]]:
         """Get all available preprocessors from database."""
         with Session(get_engine()) as session:
-            preprocessors = session.query(ModelRegistry).filter(
-                and_(ModelRegistry.is_active == True, ModelRegistry.category == "preprocessor")
-            ).all()
+            preprocessors = (
+                session.query(ModelRegistry)
+                .filter(
+                    and_(
+                        ModelRegistry.is_active,
+                        ModelRegistry.category == "preprocessor",
+                    )
+                )
+                .all()
+            )
 
-            return [{
-                "model_type": p.model_type,
-                "name": p.name,
-                "description": p.description,
-                "import_paths": p.import_paths,
-                "parameter_schema": p.parameter_schema,
-                "default_parameters": p.default_parameters,
-                "version": p.version,
-                "requires_special_handling": p.requires_special_handling,
-            } for p in preprocessors]
+            return [
+                {
+                    "model_type": p.model_type,
+                    "name": p.name,
+                    "description": p.description,
+                    "import_paths": p.import_paths,
+                    "parameter_schema": p.parameter_schema,
+                    "default_parameters": p.default_parameters,
+                    "version": p.version,
+                    "requires_special_handling": p.requires_special_handling,
+                }
+                for p in preprocessors
+            ]
 
     def get_model_class(self, model_type: str) -> Type:
         """Dynamically import and return the model class."""
         with Session(get_engine()) as session:
-            model = session.query(ModelRegistry).filter(
-                and_(
-                    ModelRegistry.model_type == model_type,
-                    ModelRegistry.is_active == True
+            model = (
+                session.query(ModelRegistry)
+                .filter(
+                    and_(
+                        ModelRegistry.model_type == model_type,
+                        ModelRegistry.is_active,
+                    )
                 )
-            ).first()
+                .first()
+            )
 
             if not model:
-                available = [m.model_type for m in session.query(ModelRegistry.model_type).filter(ModelRegistry.is_active == True).all()]
-                raise ValueError(f"Unknown model type: '{model_type}'. Available: {available}")
+                available = [
+                    m.model_type
+                    for m in session.query(ModelRegistry.model_type)
+                    .filter(ModelRegistry.is_active)
+                    .all()
+                ]
+                raise ValueError(
+                    f"Unknown model type: '{model_type}'. Available: {available}"
+                )
 
             errors = []
             for import_path in model.import_paths:
@@ -196,10 +239,18 @@ class ModelRegistryService:
                     continue
 
             error_msg = "; ".join(errors) if errors else "unknown"
-            logger.error(f"Failed to import model '{model_type}' from any known path: {error_msg}")
-            raise ImportError(f"Cannot import model '{model_type}'. Tried: {model.import_paths}")
+            logger.error(
+                "Failed to import model '%s' from any known path: %s",
+                model_type,
+                error_msg,
+            )
+            raise ImportError(
+                f"Cannot import model '{model_type}'. Tried: {model.import_paths}"
+            )
 
-    def validate_model_params(self, model_type: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    def validate_model_params(
+        self, model_type: str, params: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
         """Validate and normalize model parameters."""
         schema_class = self._schema_map.get(model_type)
         if not schema_class:
@@ -235,18 +286,24 @@ class ModelRegistryService:
 
         return KNN(k=k, similarity_engine=similarity_engine)
 
-    def create_model_instance(self, model_type: str, params: Optional[Dict[str, Any]] = None) -> Any:
+    def create_model_instance(
+        self, model_type: str, params: Optional[Dict[str, Any]] = None
+    ) -> Any:
         """Create a model instance with validated parameters."""
         validated_params = self.validate_model_params(model_type, params)
 
         # Check if special handling is required
         with Session(get_engine()) as session:
-            model = session.query(ModelRegistry).filter(
-                and_(
-                    ModelRegistry.model_type == model_type,
-                    ModelRegistry.is_active == True
+            model = (
+                session.query(ModelRegistry)
+                .filter(
+                    and_(
+                        ModelRegistry.model_type == model_type,
+                        ModelRegistry.is_active,
+                    )
                 )
-            ).first()
+                .first()
+            )
 
             if model and model.requires_special_handling and model_type == "knn":
                 return self._create_knn_model(validated_params)

@@ -95,12 +95,8 @@ def create_app() -> FastAPI:
     app.include_router(
         radar.router, prefix="/api/v1/orchestration", tags=["orchestration"]
     )
-    app.include_router(
-        models.router, prefix="/api/v1", tags=["models"]
-    )
-    app.include_router(
-        admin_models_router, prefix="/api/v1", tags=["admin"]
-    )
+    app.include_router(models.router, prefix="/api/v1", tags=["models"])
+    app.include_router(admin_models_router, prefix="/api/v1", tags=["admin"])
 
     @app.get("/health")
     async def health_check():

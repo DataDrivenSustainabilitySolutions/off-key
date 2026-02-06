@@ -7,17 +7,28 @@ Provides admin endpoints for dynamically adding, updating, and managing models.
 import logging
 from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, HTTPException, Depends
-from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field, field_validator
 
-from off_key_core.db.models import ModelRegistry
-from off_key_core.db.base import get_db_sync
+from ...domain import DomainError, ConflictError, NotFoundError, InfrastructureError
 from ...models.registry import ModelRegistryService
-from ...provider import get_model_registry_service
+from ...provider import get_model_registry_service, get_model_registry_admin_service
+from ...services.admin_models import ModelRegistryAdminService
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/admin/models", tags=["admin", "models"])
+
+
+def _raise_http_from_domain(error: DomainError) -> None:
+    """Map domain errors to HTTP response codes."""
+    if isinstance(error, ConflictError):
+        raise HTTPException(status_code=409, detail=str(error))
+    if isinstance(error, NotFoundError):
+        raise HTTPException(status_code=404, detail=str(error))
+    if isinstance(error, InfrastructureError):
+        raise HTTPException(status_code=500, detail="Failed to process request")
+
+    raise HTTPException(status_code=500, detail="Unexpected domain error")
 
 
 # Request/Response models for admin operations
@@ -123,7 +134,8 @@ class ModelRegistryResponse(BaseModel):
 
 @router.post("/", response_model=ModelRegistryResponse)
 async def create_model(
-    request: CreateModelRequest, session: Session = Depends(get_db_sync)
+    request: CreateModelRequest,
+    service: ModelRegistryAdminService = Depends(get_model_registry_admin_service),
 ) -> ModelRegistryResponse:
     """
     Create a new model in the registry.
@@ -131,75 +143,18 @@ async def create_model(
     This allows adding new models dynamically without code changes.
     """
     try:
-        # Check if model type already exists
-        existing = (
-            session.query(ModelRegistry)
-            .filter(ModelRegistry.model_type == request.model_type)
-            .first()
-        )
-
-        if existing:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Model type '{request.model_type}' already exists",
-            )
-
-        # Create new model registry entry
-        new_model = ModelRegistry(
-            model_type=request.model_type,
-            category=request.category,
-            family=request.family,
-            name=request.name,
-            description=request.description,
-            complexity=request.complexity,
-            memory_usage=request.memory_usage,
-            import_paths=request.import_paths,
-            parameter_schema=request.parameter_schema,
-            default_parameters=request.default_parameters,
-            version=request.version,
-            requires_special_handling=request.requires_special_handling,
-            is_active=True,
-        )
-
-        session.add(new_model)
-        session.commit()
-        session.refresh(new_model)
-
-        logger.info(f"Created new model: {request.model_type}")
-
         return ModelRegistryResponse(
-            id=new_model.id,
-            model_type=new_model.model_type,
-            category=new_model.category,
-            family=new_model.family,
-            name=new_model.name,
-            description=new_model.description,
-            complexity=new_model.complexity,
-            memory_usage=new_model.memory_usage,
-            import_paths=new_model.import_paths,
-            parameter_schema=new_model.parameter_schema,
-            default_parameters=new_model.default_parameters,
-            version=new_model.version,
-            is_active=new_model.is_active,
-            requires_special_handling=new_model.requires_special_handling,
-            created_at=new_model.created_at.isoformat(),
-            updated_at=new_model.updated_at.isoformat(),
+            **service.create_model(payload=request.model_dump()),
         )
-
-    except HTTPException:
-        session.rollback()
-        raise
-    except Exception as e:
-        session.rollback()
-        logger.error(f"Failed to create model '{request.model_type}': {e}")
-        raise HTTPException(status_code=500, detail="Failed to create model")
+    except DomainError as exc:
+        _raise_http_from_domain(exc)
 
 
 @router.put("/{model_type}", response_model=ModelRegistryResponse)
 async def update_model(
     model_type: str,
     request: UpdateModelRequest,
-    session: Session = Depends(get_db_sync),
+    service: ModelRegistryAdminService = Depends(get_model_registry_admin_service),
 ) -> ModelRegistryResponse:
     """
     Update an existing model in the registry.
@@ -207,57 +162,20 @@ async def update_model(
     Allows updating model metadata, parameters, or activation status.
     """
     try:
-        model = (
-            session.query(ModelRegistry)
-            .filter(ModelRegistry.model_type == model_type)
-            .first()
-        )
-
-        if not model:
-            raise HTTPException(
-                status_code=404, detail=f"Model '{model_type}' not found"
-            )
-
-        # Update fields that are provided
-        update_data = request.model_dump(exclude_unset=True)
-        for field, value in update_data.items():
-            setattr(model, field, value)
-
-        session.commit()
-        session.refresh(model)
-
-        logger.info(f"Updated model: {model_type}")
-
         return ModelRegistryResponse(
-            id=model.id,
-            model_type=model.model_type,
-            category=model.category,
-            family=model.family,
-            name=model.name,
-            description=model.description,
-            complexity=model.complexity,
-            memory_usage=model.memory_usage,
-            import_paths=model.import_paths,
-            parameter_schema=model.parameter_schema,
-            default_parameters=model.default_parameters,
-            version=model.version,
-            is_active=model.is_active,
-            requires_special_handling=model.requires_special_handling,
-            created_at=model.created_at.isoformat(),
-            updated_at=model.updated_at.isoformat(),
+            **service.update_model(
+                model_type=model_type,
+                update_data=request.model_dump(exclude_unset=True),
+            ),
         )
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        session.rollback()
-        logger.error(f"Failed to update model '{model_type}': {e}")
-        raise HTTPException(status_code=500, detail="Failed to update model")
+    except DomainError as exc:
+        _raise_http_from_domain(exc)
 
 
 @router.delete("/{model_type}")
 async def delete_model(
-    model_type: str, session: Session = Depends(get_db_sync)
+    model_type: str,
+    service: ModelRegistryAdminService = Depends(get_model_registry_admin_service),
 ) -> Dict[str, str]:
     """
     Delete (deactivate) a model from the registry.
@@ -265,38 +183,16 @@ async def delete_model(
     Actually sets is_active=False rather than hard deleting to preserve history.
     """
     try:
-        model = (
-            session.query(ModelRegistry)
-            .filter(ModelRegistry.model_type == model_type)
-            .first()
-        )
-
-        if not model:
-            raise HTTPException(
-                status_code=404, detail=f"Model '{model_type}' not found"
-            )
-
-        # Soft delete - just deactivate
-        model.is_active = False
-        session.commit()
-
-        logger.info(f"Deactivated model: {model_type}")
-
-        return {"message": f"Model '{model_type}' deactivated successfully"}
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        session.rollback()
-        logger.error(f"Failed to deactivate model '{model_type}': {e}")
-        raise HTTPException(status_code=500, detail="Failed to deactivate model")
+        return service.deactivate_model(model_type=model_type)
+    except DomainError as exc:
+        _raise_http_from_domain(exc)
 
 
 @router.get("/", response_model=List[ModelRegistryResponse])
 async def list_all_models(
     include_inactive: bool = False,
     category: Optional[str] = None,
-    session: Session = Depends(get_db_sync),
+    service: ModelRegistryAdminService = Depends(get_model_registry_admin_service),
 ) -> List[ModelRegistryResponse]:
     """
     List all models in registry, including inactive ones.
@@ -304,41 +200,13 @@ async def list_all_models(
     Useful for admin interface showing complete model inventory.
     """
     try:
-        query = session.query(ModelRegistry)
-
-        if not include_inactive:
-            query = query.filter(ModelRegistry.is_active)
-
-        if category:
-            query = query.filter(ModelRegistry.category == category)
-
-        models = query.all()
-
-        return [
-            ModelRegistryResponse(
-                id=m.id,
-                model_type=m.model_type,
-                category=m.category,
-                family=m.family,
-                name=m.name,
-                description=m.description,
-                complexity=m.complexity,
-                memory_usage=m.memory_usage,
-                import_paths=m.import_paths,
-                parameter_schema=m.parameter_schema,
-                default_parameters=m.default_parameters,
-                version=m.version,
-                is_active=m.is_active,
-                requires_special_handling=m.requires_special_handling,
-                created_at=m.created_at.isoformat(),
-                updated_at=m.updated_at.isoformat(),
-            )
-            for m in models
-        ]
-
-    except Exception as e:
-        logger.error(f"Failed to list models: {e}")
-        raise HTTPException(status_code=500, detail="Failed to retrieve models")
+        models = service.list_models(
+            include_inactive=include_inactive,
+            category=category,
+        )
+        return [ModelRegistryResponse(**model) for model in models]
+    except DomainError as exc:
+        _raise_http_from_domain(exc)
 
 
 @router.post("/{model_type}/test")

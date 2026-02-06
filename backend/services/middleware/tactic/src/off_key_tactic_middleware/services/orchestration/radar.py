@@ -189,6 +189,14 @@ class RadarOrchestrationService:
 
         env_vars = {
             "SERVICE_ID": service_id,
+            # TACTIC connectivity for model-registry calls from RADAR containers
+            "RADAR_TACTIC_SERVICE_HOST": os.getenv(
+                "TACTIC_SERVICE_HOST", "tactic-middleware"
+            ),
+            "RADAR_TACTIC_SERVICE_PORT": os.getenv("TACTIC_SERVICE_PORT", "8000"),
+            "RADAR_TACTIC_MODEL_REGISTRY_CACHE_TTL_SECONDS": os.getenv(
+                "TACTIC_MODEL_REGISTRY_CACHE_TTL_SECONDS", "60"
+            ),
             # MQTT Configuration
             "RADAR_MQTT_BROKER_HOST": mqtt_config.get(
                 "host", defaults.mqtt_broker_host

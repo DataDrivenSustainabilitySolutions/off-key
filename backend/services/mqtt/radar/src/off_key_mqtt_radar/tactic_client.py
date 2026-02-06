@@ -7,11 +7,54 @@ Replaces direct core package imports with HTTP calls to TACTIC middleware.
 import logging
 import aiohttp
 import asyncio
+import os
+import time
+import concurrent.futures
 from typing import Dict, Any, List, Optional, Type
-from off_key_core.config.config import get_settings
 
 logger = logging.getLogger(__name__)
-settings = get_settings()
+
+
+def _default_tactic_base_url() -> str:
+    """Build TACTIC base URL from RADAR/container environment."""
+    configured_base_url = os.getenv("RADAR_TACTIC_BASE_URL") or os.getenv(
+        "TACTIC_SERVICE_BASE_URL"
+    )
+    if configured_base_url:
+        return configured_base_url.rstrip("/")
+
+    host = os.getenv("RADAR_TACTIC_SERVICE_HOST") or os.getenv(
+        "TACTIC_SERVICE_HOST", "tactic-middleware"
+    )
+    port = os.getenv("RADAR_TACTIC_SERVICE_PORT") or os.getenv(
+        "TACTIC_SERVICE_PORT", "8000"
+    )
+    return f"http://{host}:{port}"
+
+
+def _default_cache_ttl_seconds() -> float:
+    """Resolve model-registry cache TTL from environment."""
+    raw_ttl = os.getenv("RADAR_TACTIC_MODEL_REGISTRY_CACHE_TTL_SECONDS") or os.getenv(
+        "TACTIC_MODEL_REGISTRY_CACHE_TTL_SECONDS"
+    )
+    if raw_ttl is None:
+        return 60.0
+
+    try:
+        ttl_seconds = float(raw_ttl)
+    except ValueError:
+        logger.warning(
+            "Invalid TACTIC model cache TTL '%s'; falling back to 60s", raw_ttl
+        )
+        return 60.0
+
+    if ttl_seconds <= 0:
+        logger.warning(
+            "Non-positive TACTIC model cache TTL '%s'; falling back to 60s", raw_ttl
+        )
+        return 60.0
+
+    return ttl_seconds
 
 
 class TacticModelError(Exception):
@@ -23,65 +66,109 @@ class TacticModelError(Exception):
 class TacticModelClient:
     """Client for TACTIC model registry API."""
 
-    def __init__(self, base_url: Optional[str] = None):
-        self.base_url = base_url or settings.tactic_service_base_url
-        self.session: Optional[aiohttp.ClientSession] = None
+    def __init__(
+        self,
+        base_url: Optional[str] = None,
+        cache_ttl_seconds: Optional[float] = None,
+    ):
+        self.base_url = (base_url or _default_tactic_base_url()).rstrip("/")
         self._model_cache: Dict[str, Dict[str, Any]] = {}
         self._preprocessor_cache: Dict[str, Dict[str, Any]] = {}
+        self._cache_ttl_seconds = cache_ttl_seconds or _default_cache_ttl_seconds()
+        self._model_cache_expires_at = 0.0
+        self._preprocessor_cache_expires_at = 0.0
 
-    async def _get_session(self) -> aiohttp.ClientSession:
-        """Get or create HTTP session."""
-        if self.session is None or self.session.closed:
-            timeout = aiohttp.ClientTimeout(total=30.0, connect=10.0)
-            self.session = aiohttp.ClientSession(timeout=timeout)
-        return self.session
+    def _is_cache_valid(self, expires_at: float) -> bool:
+        return time.monotonic() < expires_at
 
-    async def close(self):
-        """Close HTTP session."""
-        if self.session and not self.session.closed:
-            await self.session.close()
+    async def _refresh_model_cache(self, force: bool = False) -> None:
+        """Refresh model registry cache when stale or explicitly forced."""
+        if (
+            self._model_cache
+            and not force
+            and self._is_cache_valid(self._model_cache_expires_at)
+        ):
+            return
 
-    async def _make_request(
-        self, method: str, endpoint: str, **kwargs
-    ) -> Dict[str, Any]:
+        models = await self._make_request("GET", "/api/v1/models/")
+        self._model_cache = {m["model_type"]: m for m in models}
+        self._model_cache_expires_at = time.monotonic() + self._cache_ttl_seconds
+        logger.info(
+            "Cached %s models from TACTIC (ttl=%ss)",
+            len(models),
+            self._cache_ttl_seconds,
+        )
+
+    async def _refresh_preprocessor_cache(self, force: bool = False) -> None:
+        """Refresh preprocessor registry cache when stale or explicitly forced."""
+        if (
+            self._preprocessor_cache
+            and not force
+            and self._is_cache_valid(self._preprocessor_cache_expires_at)
+        ):
+            return
+
+        preprocessors = await self._make_request("GET", "/api/v1/models/preprocessors")
+        self._preprocessor_cache = {p["model_type"]: p for p in preprocessors}
+        self._preprocessor_cache_expires_at = time.monotonic() + self._cache_ttl_seconds
+        logger.info(
+            "Cached %s preprocessors from TACTIC (ttl=%ss)",
+            len(preprocessors),
+            self._cache_ttl_seconds,
+        )
+
+    @staticmethod
+    def _run_coroutine_sync(coro: Any) -> Any:
+        """
+        Run a coroutine from sync code in both sync and async caller contexts.
+
+        If called from within an active event loop, execute the coroutine in a
+        worker thread with its own temporary loop.
+        """
+        try:
+            asyncio.get_running_loop()
+            loop_running = True
+        except RuntimeError:
+            loop_running = False
+
+        if loop_running:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(asyncio.run, coro)
+                return future.result()
+
+        return asyncio.run(coro)
+
+    async def _make_request(self, method: str, endpoint: str, **kwargs) -> Any:
         """Make HTTP request to TACTIC."""
-        session = await self._get_session()
         url = f"{self.base_url}{endpoint}"
+        timeout = aiohttp.ClientTimeout(total=30.0, connect=10.0)
 
         try:
-            async with session.request(method, url, **kwargs) as response:
-                if response.status == 200:
-                    return await response.json()
-                else:
-                    error_text = await response.text()
-                    logger.error(
-                        f"TACTIC request failed: {response.status} - {error_text}"
-                    )
-                    raise TacticModelError(
-                        f"TACTIC request failed: {response.status} - {error_text}"
-                    )
+            # Use request-scoped sessions to avoid cross-event-loop session reuse.
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.request(method, url, **kwargs) as response:
+                    if response.status == 200:
+                        return await response.json()
+                    else:
+                        error_text = await response.text()
+                        logger.error(
+                            f"TACTIC request failed: {response.status} - {error_text}"
+                        )
+                        raise TacticModelError(
+                            f"TACTIC request failed: {response.status} - {error_text}"
+                        )
         except aiohttp.ClientError as e:
             logger.error(f"TACTIC connection error: {e}")
             raise TacticModelError(f"TACTIC connection error: {e}")
 
     async def get_available_models(self) -> List[Dict[str, Any]]:
         """Get list of available models."""
-        if not self._model_cache:
-            models = await self._make_request("GET", "/api/v1/models/")
-            self._model_cache = {m["model_type"]: m for m in models}
-            logger.info(f"Cached {len(models)} models from TACTIC")
-
+        await self._refresh_model_cache()
         return list(self._model_cache.values())
 
     async def get_available_preprocessors(self) -> List[Dict[str, Any]]:
         """Get list of available preprocessors."""
-        if not self._preprocessor_cache:
-            preprocessors = await self._make_request(
-                "GET", "/api/v1/models/preprocessors"
-            )
-            self._preprocessor_cache = {p["model_type"]: p for p in preprocessors}
-            logger.info(f"Cached {len(preprocessors)} preprocessors from TACTIC")
-
+        await self._refresh_preprocessor_cache()
         return list(self._preprocessor_cache.values())
 
     async def validate_model_params(
@@ -114,20 +201,7 @@ class TacticModelClient:
         self, model_type: str, params: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """Synchronous wrapper for validate_model_params."""
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            # We're in an async context, create a new event loop
-            import concurrent.futures
-
-            with concurrent.futures.ThreadPoolExecutor() as executor:
-                future = executor.submit(
-                    asyncio.run, self.validate_model_params(model_type, params)
-                )
-                return future.result()
-        else:
-            return loop.run_until_complete(
-                self.validate_model_params(model_type, params)
-            )
+        return self._run_coroutine_sync(self.validate_model_params(model_type, params))
 
     def validate_preprocessing_steps_sync(
         self, steps: Optional[List[Dict[str, Any]]]
@@ -150,27 +224,23 @@ class TacticModelClient:
     # Model instantiation methods (using importlib for actual model creation)
     def get_model_class(self, model_type: str) -> Type:
         """Get model class using cached model info and dynamic import."""
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            import concurrent.futures
-
-            with concurrent.futures.ThreadPoolExecutor() as executor:
-                future = executor.submit(
-                    asyncio.run, self._get_model_class_async(model_type)
-                )
-                return future.result()
-        else:
-            return loop.run_until_complete(self._get_model_class_async(model_type))
+        return self._run_coroutine_sync(self._get_model_class_async(model_type))
 
     async def _get_model_class_async(self, model_type: str) -> Type:
         """Async version of get_model_class."""
-        # Ensure we have model cache
-        await self.get_available_models()
+        await self._refresh_model_cache()
 
         model_info = self._model_cache.get(model_type)
         if not model_info:
-            # Try preprocessors
-            await self.get_available_preprocessors()
+            await self._refresh_preprocessor_cache()
+            model_info = self._preprocessor_cache.get(model_type)
+
+        # Dynamic discovery: force one refresh round before declaring unknown.
+        if not model_info:
+            await self._refresh_model_cache(force=True)
+            model_info = self._model_cache.get(model_type)
+        if not model_info:
+            await self._refresh_preprocessor_cache(force=True)
             model_info = self._preprocessor_cache.get(model_type)
 
         if not model_info:

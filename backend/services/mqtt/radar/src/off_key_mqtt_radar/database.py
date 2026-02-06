@@ -18,11 +18,11 @@ from typing import List, Optional, Dict, Any
 from collections import deque
 from urllib.parse import quote_plus
 
-from sqlalchemy import text
+from sqlalchemy import Table, Column, Text, Float, TIMESTAMP, text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.schema import MetaData
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.dialects.postgresql import insert as pg_insert
-from off_key_core.db.models import Anomaly
 
 from .config import MQTTRadarConfig
 from .models import ServiceMetrics, AnomalyResult
@@ -31,6 +31,21 @@ logger = logging.getLogger(__name__)
 
 # Lazy-initialized async session factory
 _radar_async_session_factory = None
+
+# Minimal table mapping used for anomaly inserts without importing
+# off_key_core.db.models.
+# Importing core models pulls off_key_core.db.base, which initializes global Settings
+# and fails in RADAR-only container contexts where non-RADAR env vars are absent.
+_anomaly_metadata = MetaData()
+ANOMALY_TABLE = Table(
+    "anomalies",
+    _anomaly_metadata,
+    Column("charger_id", Text, primary_key=True),
+    Column("timestamp", TIMESTAMP(timezone=True), primary_key=True),
+    Column("telemetry_type", Text, primary_key=True),
+    Column("anomaly_type", Text, nullable=False),
+    Column("anomaly_value", Float, nullable=False),
+)
 
 
 def _build_database_url_from_env() -> Optional[str]:
@@ -309,7 +324,7 @@ class DatabaseWriter:
 
                     # Use INSERT ... ON CONFLICT DO NOTHING for idempotency
                     # (composite PK: charger_id, timestamp, telemetry_type)
-                    stmt = pg_insert(Anomaly).values(anomaly_records)
+                    stmt = pg_insert(ANOMALY_TABLE).values(anomaly_records)
                     stmt = stmt.on_conflict_do_nothing(
                         index_elements=["charger_id", "timestamp", "telemetry_type"]
                     )
@@ -377,7 +392,7 @@ class DatabaseWriter:
                             for result in retry_batch
                         ]
 
-                        stmt = pg_insert(Anomaly).values(anomaly_records)
+                        stmt = pg_insert(ANOMALY_TABLE).values(anomaly_records)
                         stmt = stmt.on_conflict_do_nothing(
                             index_elements=["charger_id", "timestamp", "telemetry_type"]
                         )

@@ -37,7 +37,7 @@ def _normalize_models_for_gateway(
         normalized[model_type] = {
             "name": model.get("name"),
             "description": model.get("description", ""),
-            "category": model.get("category", "model"),
+            "family": model["family"],
             "complexity": model.get("complexity", "unknown"),
             "memory_usage": model.get("memory_usage", "unknown"),
             "parameters": model.get("parameter_schema", model.get("parameters", {})),
@@ -67,7 +67,7 @@ def _normalize_preprocessors_for_gateway(
         normalized[model_type] = {
             "name": preprocessor.get("name"),
             "description": preprocessor.get("description", ""),
-            "category": preprocessor.get("category", "preprocessor"),
+            "family": preprocessor["family"],
             "parameters": preprocessor.get(
                 "parameter_schema",
                 preprocessor.get("parameters", {}),
@@ -283,7 +283,7 @@ async def list_available_models_endpoint(request: Request, response: Response):
 
     Returns information about each model including:
     - description: What the model does
-    - category: Model type (forest, distance, svm, etc.)
+    - family: Model family (forest, distance, svm, etc.)
     - complexity: Computational complexity
     - memory_usage: Expected memory footprint
     - parameters: JSON schema for hyperparameters with defaults and constraints

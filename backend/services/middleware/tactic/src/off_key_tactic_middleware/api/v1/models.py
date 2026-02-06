@@ -6,7 +6,7 @@ Provides REST API for managing model registry and model instances.
 
 import logging
 from typing import Any, Dict, List, Optional
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Response, status
 from pydantic import BaseModel, Field
 
 from ...models.registry import ModelRegistryService
@@ -22,6 +22,10 @@ class ModelInfo(BaseModel):
     """Model information response."""
 
     model_type: str = Field(..., description="Model type identifier")
+    family: str = Field(
+        ...,
+        description="Model family (e.g., 'distance', 'forest', 'svm')",
+    )
     name: str = Field(..., description="Human-readable model name")
     description: Optional[str] = Field(None, description="Model description")
     complexity: Optional[str] = Field(None, description="Computational complexity")
@@ -43,6 +47,10 @@ class PreprocessorInfo(BaseModel):
     """Preprocessor information response."""
 
     model_type: str = Field(..., description="Preprocessor type identifier")
+    family: str = Field(
+        ...,
+        description="Preprocessor family (e.g., 'scaling', 'projection')",
+    )
     name: str = Field(..., description="Human-readable preprocessor name")
     description: Optional[str] = Field(None, description="Preprocessor description")
     import_paths: List[str] = Field(..., description="Python import paths to try")
@@ -120,7 +128,43 @@ async def list_preprocessors(
         raise HTTPException(status_code=500, detail="Failed to retrieve preprocessors")
 
 
-@router.get("/{model_type}", response_model=ModelInfo)
+@router.get("/preprocessors/info/{preprocessor_type}", response_model=PreprocessorInfo)
+async def get_preprocessor_info(
+    preprocessor_type: str,
+    model_registry: ModelRegistryService = Depends(get_model_registry_service),
+) -> PreprocessorInfo:
+    """
+    Get detailed information about a specific preprocessor.
+
+    Args:
+        preprocessor_type: The preprocessor type identifier
+
+    Returns:
+        Detailed preprocessor information including schema and defaults
+    """
+    try:
+        preprocessors = model_registry.get_available_preprocessors()
+        preprocessor = next(
+            (p for p in preprocessors if p["model_type"] == preprocessor_type), None
+        )
+
+        if not preprocessor:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Preprocessor '{preprocessor_type}' not found",
+            )
+
+        return PreprocessorInfo(**preprocessor)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get preprocessor info for '{preprocessor_type}': {e}")
+        raise HTTPException(
+            status_code=500, detail="Failed to retrieve preprocessor information"
+        )
+
+
+@router.get("/info/{model_type}", response_model=ModelInfo)
 async def get_model_info(
     model_type: str,
     model_registry: ModelRegistryService = Depends(get_model_registry_service),
@@ -137,13 +181,6 @@ async def get_model_info(
     try:
         models = model_registry.get_available_models()
         model = next((m for m in models if m["model_type"] == model_type), None)
-
-        if not model:
-            # Try preprocessors
-            preprocessors = model_registry.get_available_preprocessors()
-            model = next(
-                (p for p in preprocessors if p["model_type"] == model_type), None
-            )
 
         if not model:
             raise HTTPException(
@@ -237,22 +274,23 @@ async def get_model_categories(
     model_registry: ModelRegistryService = Depends(get_model_registry_service),
 ) -> List[str]:
     """
-    Get list of unique model categories.
+    Get list of unique model families.
 
     Returns:
-        List of available model categories (e.g., ['distance', 'forest', 'svm'])
+        List of available model families (e.g., ['distance', 'forest', 'svm'])
     """
     try:
         models = model_registry.get_available_models()
-        categories = list({m.get("complexity", "unknown") for m in models})
-        return sorted(categories)
+        families = list({m["family"] for m in models})
+        return sorted(families)
     except Exception as e:
-        logger.error(f"Failed to get model categories: {e}")
-        raise HTTPException(status_code=500, detail="Failed to retrieve categories")
+        logger.error(f"Failed to get model families: {e}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve model families")
 
 
 @router.get("/health")
 async def model_registry_health(
+    response: Response,
     model_registry: ModelRegistryService = Depends(get_model_registry_service),
 ) -> Dict[str, Any]:
     """
@@ -271,6 +309,7 @@ async def model_registry_health(
             "preprocessors_available": len(preprocessors),
             "total_components": len(models) + len(preprocessors),
         }
-    except Exception as e:
-        logger.error(f"Model registry health check failed: {e}")
-        return {"status": "unhealthy", "error": str(e)}
+    except Exception:
+        logger.exception("Model registry health check failed")
+        response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+        return {"status": "unhealthy", "error": "Health check failed"}

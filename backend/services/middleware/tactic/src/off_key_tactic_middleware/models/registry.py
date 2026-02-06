@@ -10,7 +10,7 @@ import importlib
 import logging
 from typing import Any, Dict, Type, Optional, List
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, inspect, text
+from sqlalchemy import and_, inspect, text, or_, func
 from jsonschema import validate as jsonschema_validate
 from jsonschema.exceptions import ValidationError as JsonSchemaValidationError
 
@@ -96,6 +96,34 @@ class ModelRegistryService:
                     "Required table 'model_registry' not found. "
                     "Run DB schema initialization/migrations before starting TACTIC."
                 )
+            columns = {
+                column["name"]
+                for column in inspector.get_columns(ModelRegistry.__tablename__)
+            }
+            if "family" not in columns:
+                raise ModelRegistryNotReadyError(
+                    "Required column 'model_registry.family' not found. "
+                    "Run DB schema initialization/migrations before starting TACTIC."
+                )
+            missing_family_entries = (
+                session.query(ModelRegistry.model_type)
+                .filter(
+                    ModelRegistry.is_active,
+                    or_(
+                        ModelRegistry.family.is_(None),
+                        func.trim(ModelRegistry.family) == "",
+                    ),
+                )
+                .all()
+            )
+            if missing_family_entries:
+                missing_types = ", ".join(
+                    model_type for (model_type,) in missing_family_entries[:20]
+                )
+                raise ModelRegistryNotReadyError(
+                    "Some active model_registry entries have empty family values. "
+                    f"Fix these model types and retry: {missing_types}"
+                )
 
             self._ensure_registry_populated(session)
             session.commit()
@@ -121,6 +149,7 @@ class ModelRegistryService:
             {
                 "model_type": "knn",
                 "category": "model",
+                "family": "distance",
                 "name": "Incremental K-Nearest Neighbors",
                 "description": (
                     "Incremental K-Nearest Neighbors for streaming anomaly detection"
@@ -136,6 +165,7 @@ class ModelRegistryService:
             {
                 "model_type": "isolation_forest",
                 "category": "model",
+                "family": "forest",
                 "name": "Online Isolation Forest",
                 "description": (
                     "Online Isolation Forest for streaming anomaly detection"
@@ -149,6 +179,7 @@ class ModelRegistryService:
             {
                 "model_type": "mondrian_forest",
                 "category": "model",
+                "family": "forest",
                 "name": "Mondrian Forest",
                 "description": "Mondrian Forest - fast streaming anomaly detection",
                 "complexity": "low",
@@ -161,6 +192,7 @@ class ModelRegistryService:
             {
                 "model_type": "adaptive_svm",
                 "category": "model",
+                "family": "svm",
                 "name": "Adaptive One-Class SVM",
                 "description": "Adaptive One-Class SVM with incremental kernel updates",
                 "complexity": "high",
@@ -175,6 +207,7 @@ class ModelRegistryService:
             {
                 "model_type": "standard_scaler",
                 "category": "preprocessor",
+                "family": "scaling",
                 "name": "Standard Scaler",
                 "description": (
                     "Standardize features by removing mean and scaling to unit variance"
@@ -188,6 +221,7 @@ class ModelRegistryService:
             {
                 "model_type": "pca",
                 "category": "preprocessor",
+                "family": "projection",
                 "name": "Incremental PCA",
                 "description": (
                     "Incremental PCA for dimensionality reduction on streams"
@@ -224,6 +258,7 @@ class ModelRegistryService:
             return [
                 {
                     "model_type": m.model_type,
+                    "family": m.family,
                     "name": m.name,
                     "description": m.description,
                     "complexity": m.complexity,
@@ -255,6 +290,7 @@ class ModelRegistryService:
             return [
                 {
                     "model_type": p.model_type,
+                    "family": p.family,
                     "name": p.name,
                     "description": p.description,
                     "import_paths": p.import_paths,

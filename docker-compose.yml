@@ -44,7 +44,7 @@ services:
       db-sync:
         condition: service_started
       tactic-middleware:
-        condition: service_started
+        condition: service_healthy
     networks:
       - app-network
       - socket-network
@@ -81,7 +81,7 @@ services:
       socket-proxy:
         condition: service_started
       db-sync:
-        condition: service_started
+        condition: service_healthy
     networks:
       - app-network
       - socket-network
@@ -89,6 +89,16 @@ services:
     environment:
       - TACTIC_DOCKER_DEFAULT_NETWORK=${COMPOSE_PROJECT_NAME:-off-key}_app-network
     restart: always
+    healthcheck:
+      test:
+        - "CMD"
+        - "/app/bin/python"
+        - "-c"
+        - "import urllib.request; urllib.request.urlopen('http://localhost:8000/ready', timeout=2)"
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
     command: [ "/app/bin/python", "-m", "off_key_tactic_middleware" ]
 
   mqtt-radar:
@@ -103,6 +113,8 @@ services:
     command: [ "/app/bin/python", "-m", "off_key_mqtt_radar" ]
     depends_on:
       timescaledb:
+        condition: service_healthy
+      tactic-middleware:
         condition: service_healthy
     networks:
       - app-network
@@ -152,6 +164,16 @@ services:
       - SYNC_ON_STARTUP=true
       - SYNC_HOSTNAME=db-sync
     restart: always
+    healthcheck:
+      test:
+        - "CMD"
+        - "/app/bin/python"
+        - "-c"
+        - "import urllib.request; urllib.request.urlopen('http://localhost:8009/ready/schema', timeout=2)"
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
     command: [ "/app/bin/python", "-m", "off_key_db_sync" ]
     #    command: ["uvicorn", "off_key_db_sync.main:app",
     #              "--reload", "--reload-dir", "/app/lib/python3.12/site-packages/off_key_db_sync",

@@ -8,7 +8,7 @@ This runs as an optional component alongside the main SyncService.
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from off_key_core.config.config import get_settings
@@ -59,6 +59,23 @@ async def health_check():
         "message": "Sync service not initialized",
         "sync_enabled": settings.SYNC_ENABLED,
     }
+
+
+@app.get("/ready/schema", tags=["Health"])
+async def schema_ready_check():
+    """
+    Readiness endpoint for schema/migration completion.
+
+    Returns HTTP 200 only after database schema initialization has completed.
+    Use this for startup ordering of dependent services.
+    """
+    if _sync_service and _sync_service.schema_ready:
+        return {"status": "ready", "schema_ready": True}
+
+    raise HTTPException(
+        status_code=503,
+        detail="Schema initialization still in progress",
+    )
 
 
 @app.post("/sync/chargers", tags=["Sync"])

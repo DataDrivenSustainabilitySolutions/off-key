@@ -221,6 +221,7 @@ async def list_available_models(
     Lists all available anomaly detection models and their hyperparameters.
 
     Returns information about each model including:
+    - family: Model family (forest, distance, svm, etc.)
     - description: What the model does
     - complexity: Computational complexity
     - memory_usage: Expected memory footprint

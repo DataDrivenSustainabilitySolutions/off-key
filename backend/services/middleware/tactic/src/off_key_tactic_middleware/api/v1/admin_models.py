@@ -8,7 +8,7 @@ import logging
 from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.orm import Session
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from off_key_core.db.models import ModelRegistry
 from off_key_core.db.base import get_db_sync
@@ -26,6 +26,10 @@ class CreateModelRequest(BaseModel):
 
     model_type: str = Field(..., description="Unique model type identifier")
     category: str = Field(..., description="'model' or 'preprocessor'")
+    family: str = Field(
+        ...,
+        description="Domain family (e.g., model: 'forest'; preprocessor: 'scaling')",
+    )
     name: str = Field(..., description="Human-readable model name")
     description: Optional[str] = Field(None, description="Model description")
     complexity: Optional[str] = Field("medium", description="Computational complexity")
@@ -42,12 +46,32 @@ class CreateModelRequest(BaseModel):
         default=False, description="Requires custom instantiation logic"
     )
 
+    @field_validator("category")
+    @classmethod
+    def validate_category(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if normalized not in {"model", "preprocessor"}:
+            raise ValueError("category must be either 'model' or 'preprocessor'")
+        return normalized
+
+    @field_validator("family")
+    @classmethod
+    def validate_family(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if not normalized:
+            raise ValueError("family must not be empty")
+        return normalized
+
 
 class UpdateModelRequest(BaseModel):
     """Request to update an existing model."""
 
     name: Optional[str] = Field(None, description="Human-readable model name")
     description: Optional[str] = Field(None, description="Model description")
+    family: Optional[str] = Field(
+        None,
+        description="Domain family (e.g., model: 'forest'; preprocessor: 'scaling')",
+    )
     complexity: Optional[str] = Field(None, description="Computational complexity")
     memory_usage: Optional[str] = Field(None, description="Memory usage level")
     import_paths: Optional[List[str]] = Field(
@@ -65,6 +89,16 @@ class UpdateModelRequest(BaseModel):
         None, description="Requires custom instantiation logic"
     )
 
+    @field_validator("family")
+    @classmethod
+    def validate_family(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return value
+        normalized = value.strip().lower()
+        if not normalized:
+            raise ValueError("family must not be empty")
+        return normalized
+
 
 class ModelRegistryResponse(BaseModel):
     """Full model registry entry response."""
@@ -72,6 +106,7 @@ class ModelRegistryResponse(BaseModel):
     id: int
     model_type: str
     category: str
+    family: str
     name: str
     description: Optional[str]
     complexity: Optional[str]
@@ -113,6 +148,7 @@ async def create_model(
         new_model = ModelRegistry(
             model_type=request.model_type,
             category=request.category,
+            family=request.family,
             name=request.name,
             description=request.description,
             complexity=request.complexity,
@@ -135,6 +171,7 @@ async def create_model(
             id=new_model.id,
             model_type=new_model.model_type,
             category=new_model.category,
+            family=new_model.family,
             name=new_model.name,
             description=new_model.description,
             complexity=new_model.complexity,
@@ -149,6 +186,9 @@ async def create_model(
             updated_at=new_model.updated_at.isoformat(),
         )
 
+    except HTTPException:
+        session.rollback()
+        raise
     except Exception as e:
         session.rollback()
         logger.error(f"Failed to create model '{request.model_type}': {e}")
@@ -192,6 +232,7 @@ async def update_model(
             id=model.id,
             model_type=model.model_type,
             category=model.category,
+            family=model.family,
             name=model.name,
             description=model.description,
             complexity=model.complexity,
@@ -278,6 +319,7 @@ async def list_all_models(
                 id=m.id,
                 model_type=m.model_type,
                 category=m.category,
+                family=m.family,
                 name=m.name,
                 description=m.description,
                 complexity=m.complexity,

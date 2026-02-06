@@ -232,6 +232,7 @@ class ModelRegistry(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     model_type = Column(Text, unique=True, nullable=False, index=True)
     category = Column(Text, nullable=False, index=True)  # 'model' or 'preprocessor'
+    family = Column(Text, nullable=False, index=True)  # 'forest', 'distance', etc.
 
     # Model metadata
     name = Column(Text, nullable=False)

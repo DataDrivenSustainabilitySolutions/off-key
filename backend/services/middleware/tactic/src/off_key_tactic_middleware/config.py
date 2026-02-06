@@ -156,6 +156,12 @@ class TacticConfig(BaseModel):
     reconciliation_enabled: bool = True
     reconciliation_interval: int = Field(default=60, ge=1, le=86400)
 
+    # Model Registry Initialization
+    model_registry_init_max_retries: int = Field(default=30, ge=1, le=600)
+    model_registry_init_retry_interval_seconds: float = Field(
+        default=2.0, ge=0.1, le=60.0
+    )
+
     class Config:
         extra = "forbid"
         validate_assignment = True
@@ -275,6 +281,10 @@ class TacticSettings(BaseSettings):
     TACTIC_RECONCILIATION_ENABLED: bool = Field(default=True)
     TACTIC_RECONCILIATION_INTERVAL: int = Field(default=60)
 
+    # Model Registry Initialization
+    TACTIC_MODEL_REGISTRY_INIT_MAX_RETRIES: int = Field(default=30)
+    TACTIC_MODEL_REGISTRY_INIT_RETRY_INTERVAL_SECONDS: float = Field(default=2.0)
+
     class Config:
         env_file = ".env"
         case_sensitive = True
@@ -351,6 +361,10 @@ class TacticSettings(BaseSettings):
             log_level=self.TACTIC_LOG_LEVEL,
             reconciliation_enabled=self.TACTIC_RECONCILIATION_ENABLED,
             reconciliation_interval=self.TACTIC_RECONCILIATION_INTERVAL,
+            model_registry_init_max_retries=self.TACTIC_MODEL_REGISTRY_INIT_MAX_RETRIES,
+            model_registry_init_retry_interval_seconds=(
+                self.TACTIC_MODEL_REGISTRY_INIT_RETRY_INTERVAL_SECONDS
+            ),
         )
 
 

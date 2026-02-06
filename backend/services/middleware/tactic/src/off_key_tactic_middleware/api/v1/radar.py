@@ -2,11 +2,14 @@ from fastapi import APIRouter, HTTPException, Depends, Query, Request
 from typing import List, Dict, Optional, Any
 from pydantic import BaseModel, Field
 
-from ...models.registry import model_registry
+from ...models.registry import ModelRegistryService
 from ...services.orchestration.radar import (
     RadarOrchestrationService,
 )
-from ...provider import get_radar_orchestration_service
+from ...provider import (
+    get_model_registry_service,
+    get_radar_orchestration_service,
+)
 
 router = APIRouter()
 
@@ -210,7 +213,10 @@ async def stop_radar_service(
 
 
 @router.get("/radar/models/", response_model=List[Dict[str, Any]])
-async def list_available_models(request: Request):
+async def list_available_models(
+    request: Request,
+    model_registry: ModelRegistryService = Depends(get_model_registry_service),
+):
     """
     Lists all available anomaly detection models and their hyperparameters.
 
@@ -233,7 +239,10 @@ async def list_available_models(request: Request):
 
 
 @router.get("/radar/preprocessors/", response_model=List[Dict[str, Any]])
-async def list_available_preprocessors(request: Request):
+async def list_available_preprocessors(
+    request: Request,
+    model_registry: ModelRegistryService = Depends(get_model_registry_service),
+):
     """List available preprocessing steps and their hyperparameters."""
     try:
         return model_registry.get_available_preprocessors()

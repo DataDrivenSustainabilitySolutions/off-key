@@ -5,11 +5,12 @@ Replaces hardcoded MODEL_REGISTRY with dynamic database-backed registry
 that allows runtime addition of new models without code changes.
 """
 
+import asyncio
 import importlib
 import logging
 from typing import Any, Dict, Type, Optional, List
 from sqlalchemy.orm import Session
-from sqlalchemy import and_
+from sqlalchemy import and_, inspect, text
 from jsonschema import validate as jsonschema_validate
 from jsonschema.exceptions import ValidationError as JsonSchemaValidationError
 
@@ -28,21 +29,90 @@ from .schemas import (
 logger = logging.getLogger(__name__)
 
 
+class ModelRegistryNotReadyError(RuntimeError):
+    """Raised when registry storage is unavailable or not initialized."""
+
+
 class ModelRegistryService:
     """Database-backed model registry service."""
 
     def __init__(self):
-        # Initialize registry if empty
-        self._ensure_registry_populated()
+        self._initialized = False
 
-    def _ensure_registry_populated(self):
+    @property
+    def initialized(self) -> bool:
+        return self._initialized
+
+    async def initialize(
+        self,
+        max_retries: int = 30,
+        retry_interval_seconds: float = 2.0,
+    ) -> None:
+        """
+        Initialize registry storage and seed defaults.
+
+        Runs at service startup. This avoids DB access at import time and makes
+        startup behavior explicit and retryable.
+        """
+        last_error: Optional[Exception] = None
+
+        for attempt in range(1, max_retries + 1):
+            try:
+                self._initialize_once()
+                self._initialized = True
+                logger.info("Model registry initialized successfully")
+                return
+            except Exception as exc:
+                last_error = exc
+                self._initialized = False
+
+                if attempt < max_retries:
+                    logger.warning(
+                        "Model registry initialization attempt %s/%s failed: %s. "
+                        "Retrying in %.1fs",
+                        attempt,
+                        max_retries,
+                        exc,
+                        retry_interval_seconds,
+                    )
+                    await asyncio.sleep(retry_interval_seconds)
+                else:
+                    break
+
+        raise ModelRegistryNotReadyError(
+            "Model registry initialization failed after "
+            f"{max_retries} attempts. Verify DB connectivity and schema readiness."
+        ) from last_error
+
+    def _initialize_once(self) -> None:
+        engine = get_engine()
+        inspector = inspect(engine)
+
+        with Session(engine) as session:
+            session.execute(text("SELECT 1"))
+
+            if not inspector.has_table(ModelRegistry.__tablename__):
+                raise ModelRegistryNotReadyError(
+                    "Required table 'model_registry' not found. "
+                    "Run DB schema initialization/migrations before starting TACTIC."
+                )
+
+            self._ensure_registry_populated(session)
+            session.commit()
+
+    def _ensure_registry_populated(self, session: Session) -> None:
         """Populate database registry with default models if empty."""
-        with Session(get_engine()) as session:
-            count = session.query(ModelRegistry).count()
-            if count == 0:
-                logger.info("Model registry empty, populating with defaults...")
-                self._populate_default_models(session)
-                session.commit()
+        count = session.query(ModelRegistry).count()
+        if count == 0:
+            logger.info("Model registry empty, populating with defaults...")
+            self._populate_default_models(session)
+
+    def _ensure_ready(self) -> None:
+        if not self._initialized:
+            raise ModelRegistryNotReadyError(
+                "Model registry not initialized yet. "
+                "Try again once startup initialization completes."
+            )
 
     def _populate_default_models(self, session: Session):
         """Populate default model definitions."""
@@ -138,6 +208,7 @@ class ModelRegistryService:
 
     def get_available_models(self) -> List[Dict[str, Any]]:
         """Get all available models from database."""
+        self._ensure_ready()
         with Session(get_engine()) as session:
             models = (
                 session.query(ModelRegistry)
@@ -168,6 +239,7 @@ class ModelRegistryService:
 
     def get_available_preprocessors(self) -> List[Dict[str, Any]]:
         """Get all available preprocessors from database."""
+        self._ensure_ready()
         with Session(get_engine()) as session:
             preprocessors = (
                 session.query(ModelRegistry)
@@ -196,6 +268,7 @@ class ModelRegistryService:
 
     def get_model_class(self, model_type: str) -> Type:
         """Dynamically import and return the model class."""
+        self._ensure_ready()
         with Session(get_engine()) as session:
             model = self._get_active_entry(session, model_type)
 
@@ -219,6 +292,7 @@ class ModelRegistryService:
         category: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Validate and normalize model parameters using DB-backed schema."""
+        self._ensure_ready()
         params = params or {}
         with Session(get_engine()) as session:
             model = self._get_active_entry(session, model_type, category)
@@ -233,6 +307,7 @@ class ModelRegistryService:
         self, steps: Optional[List[Dict[str, Any]]]
     ) -> List[Dict[str, Any]]:
         """Validate and normalize preprocessing steps against registry."""
+        self._ensure_ready()
         if not steps:
             return []
 
@@ -280,6 +355,7 @@ class ModelRegistryService:
         self, model_type: str, params: Optional[Dict[str, Any]] = None
     ) -> Any:
         """Create a model instance with validated parameters."""
+        self._ensure_ready()
         with Session(get_engine()) as session:
             model = self._get_active_entry(session, model_type, category="model")
             if not model:
@@ -364,7 +440,3 @@ class ModelRegistryService:
             ) from exc
 
         return merged
-
-
-# Global registry service instance
-model_registry = ModelRegistryService()

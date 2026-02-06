@@ -80,6 +80,8 @@ services:
         condition: service_healthy
       socket-proxy:
         condition: service_started
+      db-sync:
+        condition: service_started
     networks:
       - app-network
       - socket-network

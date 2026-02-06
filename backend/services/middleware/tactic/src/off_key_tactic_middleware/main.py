@@ -8,7 +8,7 @@ specifically handling Docker container orchestration for RADAR services.
 from contextlib import asynccontextmanager
 
 import uvicorn
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from off_key_core.config.logs import logger
@@ -17,12 +17,34 @@ from .api.v1.admin_models import router as admin_models_router
 from .config import tactic_settings
 from .services.reconciliation import RadarStatusReconciliationService
 from .facades.docker import AsyncDocker
+from .models.registry import ModelRegistryService, ModelRegistryNotReadyError
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """FastAPI lifespan manager for startup and shutdown events."""
     config = tactic_settings.config
+
+    app.state.model_registry = None
+    app.state.model_registry_ready = False
+
+    # Initialize model registry with retries; keep API up in degraded mode on failure.
+    model_registry = ModelRegistryService()
+    try:
+        await model_registry.initialize(
+            max_retries=config.model_registry_init_max_retries,
+            retry_interval_seconds=config.model_registry_init_retry_interval_seconds,
+        )
+        app.state.model_registry = model_registry
+        app.state.model_registry_ready = True
+        logger.info("Model registry ready")
+    except ModelRegistryNotReadyError as exc:
+        app.state.model_registry = model_registry
+        app.state.model_registry_ready = False
+        logger.exception(
+            "Model registry initialization failed; model endpoints will return 503",
+            extra={"error": str(exc), "error_type": type(exc).__name__},
+        )
 
     # Validate Docker connectivity early
     try:
@@ -67,6 +89,9 @@ async def lifespan(app: FastAPI):
             logger.exception("Error closing Docker client")
         app.state.docker_client = None
 
+    app.state.model_registry_ready = False
+    app.state.model_registry = None
+
 
 def create_app() -> FastAPI:
     """Create and configure the FastAPI application."""
@@ -99,9 +124,17 @@ def create_app() -> FastAPI:
     app.include_router(admin_models_router, prefix="/api/v1", tags=["admin"])
 
     @app.get("/health")
-    async def health_check():
+    async def health_check(request: Request):
         """Health check endpoint."""
-        return {"status": "healthy", "service": "tactic-middleware"}
+        return {
+            "status": "healthy",
+            "service": "tactic-middleware",
+            "model_registry_ready": getattr(
+                request.app.state,
+                "model_registry_ready",
+                False,
+            ),
+        }
 
     return app
 

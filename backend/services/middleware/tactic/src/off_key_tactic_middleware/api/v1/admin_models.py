@@ -12,6 +12,8 @@ from pydantic import BaseModel, Field
 
 from off_key_core.db.models import ModelRegistry
 from off_key_core.db.base import get_db_sync
+from ...models.registry import ModelRegistryService
+from ...provider import get_model_registry_service
 
 logger = logging.getLogger(__name__)
 
@@ -301,7 +303,7 @@ async def list_all_models(
 async def test_model_instantiation(
     model_type: str,
     test_parameters: Optional[Dict[str, Any]] = None,
-    session: Session = Depends(get_db_sync),
+    model_registry: ModelRegistryService = Depends(get_model_registry_service),
 ) -> Dict[str, Any]:
     """
     Test that a model can be instantiated with given parameters.
@@ -309,9 +311,6 @@ async def test_model_instantiation(
     Useful for validating new model definitions before deployment.
     """
     try:
-        # Import the TACTIC model registry service
-        from ...models.registry import model_registry
-
         # Test parameter validation
         validated_params = model_registry.validate_model_params(
             model_type, test_parameters or {}

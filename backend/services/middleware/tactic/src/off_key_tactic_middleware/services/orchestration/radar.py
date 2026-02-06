@@ -12,7 +12,7 @@ from sqlalchemy import select, delete
 
 from off_key_core.config.logs import logger
 from off_key_core.db.models import MonitoringService
-from ...models.registry import model_registry
+from ...models.registry import ModelRegistryService
 from ...facades.docker import AsyncDocker
 from ...config import tactic_settings
 
@@ -74,9 +74,10 @@ class RadarOrchestrationService:
     - Parsing and applying environment variables from RADAR configuration
     """
 
-    def __init__(self, session: AsyncSession):
+    def __init__(self, session: AsyncSession, model_registry: ModelRegistryService):
         self.session: AsyncSession = session
         self.async_docker: AsyncDocker = async_docker
+        self.model_registry = model_registry
         logger.info("RadarOrchestrationService initialized.")
 
     async def create_radar_service(
@@ -265,7 +266,7 @@ class RadarOrchestrationService:
         # Validate and serialize model parameters using registry
         try:
             # Validate model_params against the registry schema
-            validated_params = model_registry.validate_model_params(
+            validated_params = self.model_registry.validate_model_params(
                 model_type, model_params, category="model"
             )
 
@@ -281,7 +282,7 @@ class RadarOrchestrationService:
 
         # Validate preprocessing steps
         try:
-            validated_steps = model_registry.validate_preprocessing_steps(
+            validated_steps = self.model_registry.validate_preprocessing_steps(
                 preprocessing_steps
             )
             env_vars["RADAR_PREPROCESSING_STEPS"] = json.dumps(validated_steps)

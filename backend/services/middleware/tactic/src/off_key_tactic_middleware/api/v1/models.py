@@ -6,10 +6,11 @@ Provides REST API for managing model registry and model instances.
 
 import logging
 from typing import Any, Dict, List, Optional
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, Field
 
-from ...models.registry import model_registry
+from ...models.registry import ModelRegistryService
+from ...provider import get_model_registry_service
 
 logger = logging.getLogger(__name__)
 
@@ -84,7 +85,9 @@ class ModelValidationResponse(BaseModel):
 
 
 @router.get("/", response_model=List[ModelInfo])
-async def list_models() -> List[ModelInfo]:
+async def list_models(
+    model_registry: ModelRegistryService = Depends(get_model_registry_service),
+) -> List[ModelInfo]:
     """
     Get list of all available models.
 
@@ -100,7 +103,9 @@ async def list_models() -> List[ModelInfo]:
 
 
 @router.get("/preprocessors", response_model=List[PreprocessorInfo])
-async def list_preprocessors() -> List[PreprocessorInfo]:
+async def list_preprocessors(
+    model_registry: ModelRegistryService = Depends(get_model_registry_service),
+) -> List[PreprocessorInfo]:
     """
     Get list of all available preprocessors.
 
@@ -116,7 +121,10 @@ async def list_preprocessors() -> List[PreprocessorInfo]:
 
 
 @router.get("/{model_type}", response_model=ModelInfo)
-async def get_model_info(model_type: str) -> ModelInfo:
+async def get_model_info(
+    model_type: str,
+    model_registry: ModelRegistryService = Depends(get_model_registry_service),
+) -> ModelInfo:
     """
     Get detailed information about a specific model.
 
@@ -155,6 +163,7 @@ async def get_model_info(model_type: str) -> ModelInfo:
 @router.post("/validate", response_model=ModelValidationResponse)
 async def validate_model_parameters(
     request: ModelValidationRequest,
+    model_registry: ModelRegistryService = Depends(get_model_registry_service),
 ) -> ModelValidationResponse:
     """
     Validate model parameters against the model's schema.
@@ -180,7 +189,10 @@ async def validate_model_parameters(
 
 
 @router.post("/create-instance", status_code=200)
-async def create_model_instance(request: ModelInstanceRequest) -> Dict[str, Any]:
+async def create_model_instance(
+    request: ModelInstanceRequest,
+    model_registry: ModelRegistryService = Depends(get_model_registry_service),
+) -> Dict[str, Any]:
     """
     Create and initialize a model instance.
 
@@ -221,7 +233,9 @@ async def create_model_instance(request: ModelInstanceRequest) -> Dict[str, Any]
 
 
 @router.get("/categories/models", response_model=List[str])
-async def get_model_categories() -> List[str]:
+async def get_model_categories(
+    model_registry: ModelRegistryService = Depends(get_model_registry_service),
+) -> List[str]:
     """
     Get list of unique model categories.
 
@@ -238,7 +252,9 @@ async def get_model_categories() -> List[str]:
 
 
 @router.get("/health")
-async def model_registry_health() -> Dict[str, Any]:
+async def model_registry_health(
+    model_registry: ModelRegistryService = Depends(get_model_registry_service),
+) -> Dict[str, Any]:
     """
     Health check for model registry service.
 

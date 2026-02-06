@@ -2,19 +2,84 @@ from fastapi import APIRouter, HTTPException, Query, Request, Response
 from typing import List, Dict, Optional, Any
 from pydantic import BaseModel, Field
 
-from off_key_core.models import (
-    get_available_models,
-    validate_model_params,
-    validate_preprocessing_steps,
-    get_available_preprocessors,
-)
-from ...facades.tactic import tactic
+from ...facades.tactic import tactic, TacticError
 from ..rate_limiter import limiter
 
 router = APIRouter()
 
 shared_limit_fetch = limiter.shared_limit("60/minute", scope="services")
 shared_limit_execute = limiter.shared_limit("20/minute", scope="services")
+
+
+def _get_tactic_error_detail(error: TacticError) -> str:
+    """Extract API detail from TACTIC error body when available."""
+    if isinstance(error.body, dict):
+        detail = error.body.get("detail")
+        if detail:
+            return str(detail)
+    return str(error)
+
+
+def _normalize_models_for_gateway(
+    models_from_tactic: List[Dict[str, Any]],
+) -> Dict[str, Dict[str, Any]]:
+    """
+    Normalize TACTIC model list into gateway's existing dictionary response shape.
+
+    Data source stays TACTIC; only the transport shape is adapted for consumers.
+    """
+    normalized: Dict[str, Dict[str, Any]] = {}
+    for model in models_from_tactic:
+        model_type = model.get("model_type")
+        if not model_type:
+            continue
+
+        normalized[model_type] = {
+            "name": model.get("name"),
+            "description": model.get("description", ""),
+            "category": model.get("category", "model"),
+            "complexity": model.get("complexity", "unknown"),
+            "memory_usage": model.get("memory_usage", "unknown"),
+            "parameters": model.get("parameter_schema", model.get("parameters", {})),
+            "default_parameters": model.get("default_parameters", {}),
+            "version": model.get("version"),
+            "requires_special_handling": model.get("requires_special_handling", False),
+        }
+
+    return normalized
+
+
+def _normalize_preprocessors_for_gateway(
+    preprocessors_from_tactic: List[Dict[str, Any]],
+) -> Dict[str, Dict[str, Any]]:
+    """
+    Normalize TACTIC preprocessor list into gateway's existing
+    dictionary response shape.
+
+    Data source stays TACTIC; only the transport shape is adapted for consumers.
+    """
+    normalized: Dict[str, Dict[str, Any]] = {}
+    for preprocessor in preprocessors_from_tactic:
+        model_type = preprocessor.get("model_type")
+        if not model_type:
+            continue
+
+        normalized[model_type] = {
+            "name": preprocessor.get("name"),
+            "description": preprocessor.get("description", ""),
+            "category": preprocessor.get("category", "preprocessor"),
+            "parameters": preprocessor.get(
+                "parameter_schema",
+                preprocessor.get("parameters", {}),
+            ),
+            "default_parameters": preprocessor.get("default_parameters", {}),
+            "version": preprocessor.get("version"),
+            "requires_special_handling": preprocessor.get(
+                "requires_special_handling", False
+            ),
+        }
+
+    return normalized
 
 
 class MonitoringServiceConfig(BaseModel):
@@ -89,17 +154,6 @@ async def start_monitoring_service(
     Starts a new monitoring service container via TACTIC orchestration.
     """
     try:
-        if config.model_params is not None:
-            # Validate early to provide fast feedback
-            validate_model_params(config.model_type, config.model_params)
-        if config.preprocessing_steps is not None:
-            validate_preprocessing_steps(config.preprocessing_steps)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=f"Invalid monitoring config: {e}")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Validation failed: {str(e)}")
-
-    try:
         if config.service_type == "radar":
             response = await tactic.start_radar_service(
                 container_name=config.container_name,
@@ -118,6 +172,11 @@ async def start_monitoring_service(
             )
 
         return response
+    except TacticError as e:
+        raise HTTPException(
+            status_code=e.status or 502,
+            detail=_get_tactic_error_detail(e),
+        )
     except HTTPException:
         raise
     except Exception as e:
@@ -237,7 +296,13 @@ async def list_available_models_endpoint(request: Request, response: Response):
     # Enable client-side caching - models rarely change
     response.headers["Cache-Control"] = "public, max-age=300"
     try:
-        return get_available_models()
+        models = await tactic.list_available_models()
+        return _normalize_models_for_gateway(models)
+    except TacticError as e:
+        raise HTTPException(
+            status_code=e.status or 502,
+            detail=_get_tactic_error_detail(e),
+        )
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to get available models: {str(e)}"
@@ -256,7 +321,13 @@ async def list_available_preprocessors_endpoint(request: Request, response: Resp
     # Enable client-side caching - preprocessors rarely change
     response.headers["Cache-Control"] = "public, max-age=300"
     try:
-        return get_available_preprocessors()
+        preprocessors = await tactic.list_available_preprocessors()
+        return _normalize_preprocessors_for_gateway(preprocessors)
+    except TacticError as e:
+        raise HTTPException(
+            status_code=e.status or 502,
+            detail=_get_tactic_error_detail(e),
+        )
     except Exception as e:
         raise HTTPException(
             status_code=500,

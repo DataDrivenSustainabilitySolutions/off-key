@@ -188,3 +188,4 @@ docker-compose.local-swarm.yml
 CLAUDE.md
 .claude
 /.pre-commit-cache
+AGENTS.md

@@ -269,6 +269,20 @@ class Tactic:
             params=params,
         )
 
+    async def list_available_models(self) -> List[Dict[str, Any]]:
+        """List models from TACTIC model registry API."""
+        return await self._make_request(
+            method="GET",
+            endpoint="/api/v1/models/",
+        )
+
+    async def list_available_preprocessors(self) -> List[Dict[str, Any]]:
+        """List preprocessors from TACTIC model registry API."""
+        return await self._make_request(
+            method="GET",
+            endpoint="/api/v1/models/preprocessors",
+        )
+
 
 # Global client instance
 tactic = Tactic()

@@ -1,5 +1,5 @@
 """
-Pydantic schemas for model hyperparameters.
+Pydantic schemas for ML model hyperparameters.
 
 Each model in the registry has a corresponding schema that defines
 its configurable hyperparameters with defaults and validation.

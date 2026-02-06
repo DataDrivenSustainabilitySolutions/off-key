@@ -48,6 +48,11 @@ AsyncSessionLocal = sessionmaker(
 Base = declarative_base()
 
 
+def get_engine():
+    """Return the configured synchronous SQLAlchemy engine."""
+    return engine
+
+
 # Dependency for asynchronous database sessions
 async def get_db_async():
     """

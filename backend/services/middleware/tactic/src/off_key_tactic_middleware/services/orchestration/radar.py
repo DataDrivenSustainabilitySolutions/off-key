@@ -12,7 +12,7 @@ from sqlalchemy import select, delete
 
 from off_key_core.config.logs import logger
 from off_key_core.db.models import MonitoringService
-from off_key_core.models import validate_model_params, validate_preprocessing_steps
+from ...models.registry import ModelRegistryService
 from ...facades.docker import AsyncDocker
 from ...config import tactic_settings
 
@@ -74,9 +74,10 @@ class RadarOrchestrationService:
     - Parsing and applying environment variables from RADAR configuration
     """
 
-    def __init__(self, session: AsyncSession):
+    def __init__(self, session: AsyncSession, model_registry: ModelRegistryService):
         self.session: AsyncSession = session
         self.async_docker: AsyncDocker = async_docker
+        self.model_registry = model_registry
         logger.info("RadarOrchestrationService initialized.")
 
     async def create_radar_service(
@@ -188,6 +189,14 @@ class RadarOrchestrationService:
 
         env_vars = {
             "SERVICE_ID": service_id,
+            # TACTIC connectivity for model-registry calls from RADAR containers
+            "RADAR_TACTIC_SERVICE_HOST": os.getenv(
+                "TACTIC_SERVICE_HOST", "tactic-middleware"
+            ),
+            "RADAR_TACTIC_SERVICE_PORT": os.getenv("TACTIC_SERVICE_PORT", "8000"),
+            "RADAR_TACTIC_MODEL_REGISTRY_CACHE_TTL_SECONDS": os.getenv(
+                "TACTIC_MODEL_REGISTRY_CACHE_TTL_SECONDS", "60"
+            ),
             # MQTT Configuration
             "RADAR_MQTT_BROKER_HOST": mqtt_config.get(
                 "host", defaults.mqtt_broker_host
@@ -265,7 +274,9 @@ class RadarOrchestrationService:
         # Validate and serialize model parameters using registry
         try:
             # Validate model_params against the registry schema
-            validated_params = validate_model_params(model_type, model_params)
+            validated_params = self.model_registry.validate_model_params(
+                model_type, model_params, category="model"
+            )
 
             # Serialize complete params as JSON for container to parse
             # Note: Individual RADAR_MODEL_* params removed - use only JSON
@@ -279,7 +290,9 @@ class RadarOrchestrationService:
 
         # Validate preprocessing steps
         try:
-            validated_steps = validate_preprocessing_steps(preprocessing_steps)
+            validated_steps = self.model_registry.validate_preprocessing_steps(
+                preprocessing_steps
+            )
             env_vars["RADAR_PREPROCESSING_STEPS"] = json.dumps(validated_steps)
             logger.info(f"Preprocessing steps validated: {validated_steps}")
         except ValueError as e:

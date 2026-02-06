@@ -1,13 +1,8 @@
 from fastapi import APIRouter, HTTPException, Depends, Query, Request
 from typing import List, Dict, Optional, Any
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field
 
-from off_key_core.models import (
-    MODEL_REGISTRY,
-    get_available_models,
-    validate_preprocessing_steps,
-    get_available_preprocessors,
-)
+from ...models.registry import model_registry
 from ...services.orchestration.radar import (
     RadarOrchestrationService,
 )
@@ -25,16 +20,17 @@ class RadarConfig(BaseModel):
     # Model Configuration
     model_type: str = Field(
         default="isolation_forest",
-        description="ML model type. Use GET /radar/models/ to see available models.",
+        description="ML model type. Use GET /api/v1/models/ to see available models.",
     )
     model_params: Optional[Dict[str, Any]] = Field(
         default=None,
-        description="Model-specific hyperparameters. Use GET /radar/models/ to see"
+        description="Model-specific hyperparameters. Use GET /api/v1/models/ to see"
         " available parameters for each model.",
     )
     preprocessing_steps: Optional[List[Dict[str, Any]]] = Field(
         default=None,
-        description="Ordered preprocessing steps applied before the model.",
+        description="Ordered preprocessing steps applied before the model."
+        " Use GET /api/v1/models/preprocessors to see available options.",
     )
 
     # MQTT Configuration
@@ -52,25 +48,6 @@ class RadarConfig(BaseModel):
     performance_config: Optional[Dict[str, Any]] = Field(
         default=None, description="Performance and resource settings"
     )
-
-    @field_validator("model_type")
-    @classmethod
-    def validate_model_type(cls, v: str) -> str:
-        """Validate that model_type exists in the registry."""
-        if v not in MODEL_REGISTRY:
-            available = ", ".join(MODEL_REGISTRY.keys())
-            raise ValueError(
-                f"Unknown model type: '{v}'. Available models: {available}"
-            )
-        return v
-
-    @field_validator("preprocessing_steps")
-    @classmethod
-    def validate_preprocessing(cls, v):
-        if v is None:
-            return v
-        validate_preprocessing_steps(v)
-        return v
 
 
 class RadarServiceResponse(BaseModel):
@@ -141,6 +118,8 @@ async def start_radar_service(
             "status": "running" if radar_service.status else "stopped",
             "mqtt_topics": radar_service.mqtt_topic,
         }
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to start RADAR service: {str(e)}"
@@ -230,34 +209,34 @@ async def stop_radar_service(
         )
 
 
-@router.get("/radar/models/", response_model=Dict[str, Any])
+@router.get("/radar/models/", response_model=List[Dict[str, Any]])
 async def list_available_models(request: Request):
     """
     Lists all available anomaly detection models and their hyperparameters.
 
     Returns information about each model including:
     - description: What the model does
-    - category: Model type (forest, distance, svm, etc.)
     - complexity: Computational complexity
     - memory_usage: Expected memory footprint
-    - parameters: JSON schema for hyperparameters with defaults and constraints
+    - parameter_schema: JSON schema for hyperparameters
+    - default_parameters: Default parameter values
 
     Use this endpoint to discover available models and their configuration options
     before starting a RADAR service.
     """
     try:
-        return get_available_models()
+        return model_registry.get_available_models()
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to get available models: {str(e)}"
         )
 
 
-@router.get("/radar/preprocessors/", response_model=Dict[str, Any])
+@router.get("/radar/preprocessors/", response_model=List[Dict[str, Any]])
 async def list_available_preprocessors(request: Request):
     """List available preprocessing steps and their hyperparameters."""
     try:
-        return get_available_preprocessors()
+        return model_registry.get_available_preprocessors()
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to get available preprocessors: {str(e)}"

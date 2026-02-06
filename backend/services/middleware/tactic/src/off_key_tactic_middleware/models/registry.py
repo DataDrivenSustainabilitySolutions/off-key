@@ -10,9 +10,10 @@ import logging
 from typing import Any, Dict, Type, Optional, List
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
+from jsonschema import validate as jsonschema_validate
+from jsonschema.exceptions import ValidationError as JsonSchemaValidationError
 
 from off_key_core.db.models import ModelRegistry
-from off_key_core.config.config import get_settings
 from off_key_core.db.base import get_engine
 
 from .schemas import (
@@ -25,21 +26,12 @@ from .schemas import (
 )
 
 logger = logging.getLogger(__name__)
-settings = get_settings()
 
 
 class ModelRegistryService:
     """Database-backed model registry service."""
 
     def __init__(self):
-        self._schema_map = {
-            "knn": IncrementalKNNParams,
-            "isolation_forest": OnlineIsolationForestParams,
-            "mondrian_forest": MondrianIsolationForestParams,
-            "adaptive_svm": AdaptiveSVMParams,
-            "standard_scaler": StandardScalerParams,
-            "pca": IncrementalPCAParams,
-        }
         # Initialize registry if empty
         self._ensure_registry_populated()
 
@@ -205,16 +197,7 @@ class ModelRegistryService:
     def get_model_class(self, model_type: str) -> Type:
         """Dynamically import and return the model class."""
         with Session(get_engine()) as session:
-            model = (
-                session.query(ModelRegistry)
-                .filter(
-                    and_(
-                        ModelRegistry.model_type == model_type,
-                        ModelRegistry.is_active,
-                    )
-                )
-                .first()
-            )
+            model = self._get_active_entry(session, model_type)
 
             if not model:
                 available = [
@@ -227,41 +210,48 @@ class ModelRegistryService:
                     f"Unknown model type: '{model_type}'. Available: {available}"
                 )
 
-            errors = []
-            for import_path in model.import_paths:
-                try:
-                    module_path, class_name = import_path.rsplit(".", 1)
-                    module = importlib.import_module(module_path)
-                    model_class = getattr(module, class_name)
-                    return model_class
-                except (ImportError, AttributeError, ModuleNotFoundError) as e:
-                    errors.append(f"{import_path}: {e}")
-                    continue
-
-            error_msg = "; ".join(errors) if errors else "unknown"
-            logger.error(
-                "Failed to import model '%s' from any known path: %s",
-                model_type,
-                error_msg,
-            )
-            raise ImportError(
-                f"Cannot import model '{model_type}'. Tried: {model.import_paths}"
-            )
+            return self._import_model_class(model_type, model.import_paths)
 
     def validate_model_params(
-        self, model_type: str, params: Optional[Dict[str, Any]] = None
+        self,
+        model_type: str,
+        params: Optional[Dict[str, Any]] = None,
+        category: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Validate and normalize model parameters."""
-        schema_class = self._schema_map.get(model_type)
-        if not schema_class:
-            raise ValueError(f"No schema available for model type: '{model_type}'")
-
+        """Validate and normalize model parameters using DB-backed schema."""
         params = params or {}
-        try:
-            validated = schema_class(**params)
-            return validated.model_dump(mode="json")
-        except Exception as e:
-            raise ValueError(f"Invalid parameters for model '{model_type}': {e}") from e
+        with Session(get_engine()) as session:
+            model = self._get_active_entry(session, model_type, category)
+            if not model:
+                raise ValueError(
+                    self._format_missing_model_message(model_type, category)
+                )
+
+            return self._validate_params_with_schema(model, params)
+
+    def validate_preprocessing_steps(
+        self, steps: Optional[List[Dict[str, Any]]]
+    ) -> List[Dict[str, Any]]:
+        """Validate and normalize preprocessing steps against registry."""
+        if not steps:
+            return []
+
+        validated_steps = []
+        for step in steps:
+            if not isinstance(step, dict):
+                raise ValueError("Each preprocessing step must be an object")
+
+            step_type = step.get("type")
+            if not step_type:
+                raise ValueError("Each preprocessing step must include a 'type' field")
+
+            params = step.get("params") or {}
+            validated_params = self.validate_model_params(
+                step_type, params, category="preprocessor"
+            )
+            validated_steps.append({"type": step_type, "params": validated_params})
+
+        return validated_steps
 
     def _create_knn_model(self, validated_params: Dict[str, Any]) -> Any:
         """Create KNN model with FaissSimilaritySearchEngine."""
@@ -290,27 +280,90 @@ class ModelRegistryService:
         self, model_type: str, params: Optional[Dict[str, Any]] = None
     ) -> Any:
         """Create a model instance with validated parameters."""
-        validated_params = self.validate_model_params(model_type, params)
-
-        # Check if special handling is required
         with Session(get_engine()) as session:
-            model = (
-                session.query(ModelRegistry)
-                .filter(
-                    and_(
-                        ModelRegistry.model_type == model_type,
-                        ModelRegistry.is_active,
-                    )
+            model = self._get_active_entry(session, model_type, category="model")
+            if not model:
+                raise ValueError(
+                    self._format_missing_model_message(model_type, "model")
                 )
-                .first()
+
+            validated_params = self._validate_params_with_schema(model, params or {})
+
+            if model.requires_special_handling:
+                if model_type == "knn":
+                    return self._create_knn_model(validated_params)
+                raise ValueError(
+                    f"Model '{model_type}' requires special handling but no handler "
+                    "is registered."
+                )
+
+            model_class = self._import_model_class(model_type, model.import_paths)
+            return model_class(**validated_params)
+
+    @staticmethod
+    def _format_missing_model_message(model_type: str, category: Optional[str]) -> str:
+        if category == "preprocessor":
+            return f"Unknown preprocessor type: '{model_type}'"
+        if category == "model":
+            return f"Unknown model type: '{model_type}'"
+        return f"Unknown model type: '{model_type}'"
+
+    @staticmethod
+    def _get_active_entry(
+        session: Session, model_type: str, category: Optional[str] = None
+    ) -> Optional[ModelRegistry]:
+        query = session.query(ModelRegistry).filter(
+            ModelRegistry.model_type == model_type,
+            ModelRegistry.is_active,
+        )
+        if category:
+            query = query.filter(ModelRegistry.category == category)
+        return query.first()
+
+    @staticmethod
+    def _import_model_class(model_type: str, import_paths: List[str]) -> Type:
+        errors = []
+        for import_path in import_paths:
+            try:
+                module_path, class_name = import_path.rsplit(".", 1)
+                module = importlib.import_module(module_path)
+                model_class = getattr(module, class_name)
+                return model_class
+            except (ImportError, AttributeError, ModuleNotFoundError) as e:
+                errors.append(f"{import_path}: {e}")
+                continue
+
+        error_msg = "; ".join(errors) if errors else "unknown"
+        logger.error(
+            "Failed to import model '%s' from any known path: %s",
+            model_type,
+            error_msg,
+        )
+        raise ImportError(f"Cannot import model '{model_type}'. Tried: {import_paths}")
+
+    @staticmethod
+    def _validate_params_with_schema(
+        model: ModelRegistry, params: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        defaults = model.default_parameters or {}
+        merged = {**defaults, **params}
+
+        schema = model.parameter_schema or {}
+        if not schema:
+            raise ValueError(
+                f"No parameter schema available for model '{model.model_type}'"
             )
 
-            if model and model.requires_special_handling and model_type == "knn":
-                return self._create_knn_model(validated_params)
+        try:
+            jsonschema_validate(instance=merged, schema=schema)
+        except JsonSchemaValidationError as exc:
+            path = ".".join(str(p) for p in exc.path) if exc.path else ""
+            message = f"{path}: {exc.message}" if path else exc.message
+            raise ValueError(
+                f"Invalid parameters for model '{model.model_type}': {message}"
+            ) from exc
 
-        # Standard case: direct instantiation
-        model_class = self.get_model_class(model_type)
-        return model_class(**validated_params)
+        return merged
 
 
 # Global registry service instance

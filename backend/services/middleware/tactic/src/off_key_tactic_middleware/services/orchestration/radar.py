@@ -12,7 +12,7 @@ from sqlalchemy import select, delete
 
 from off_key_core.config.logs import logger
 from off_key_core.db.models import MonitoringService
-from off_key_core.models import validate_model_params, validate_preprocessing_steps
+from ...models.registry import model_registry
 from ...facades.docker import AsyncDocker
 from ...config import tactic_settings
 
@@ -265,7 +265,9 @@ class RadarOrchestrationService:
         # Validate and serialize model parameters using registry
         try:
             # Validate model_params against the registry schema
-            validated_params = validate_model_params(model_type, model_params)
+            validated_params = model_registry.validate_model_params(
+                model_type, model_params, category="model"
+            )
 
             # Serialize complete params as JSON for container to parse
             # Note: Individual RADAR_MODEL_* params removed - use only JSON
@@ -279,7 +281,9 @@ class RadarOrchestrationService:
 
         # Validate preprocessing steps
         try:
-            validated_steps = validate_preprocessing_steps(preprocessing_steps)
+            validated_steps = model_registry.validate_preprocessing_steps(
+                preprocessing_steps
+            )
             env_vars["RADAR_PREPROCESSING_STEPS"] = json.dumps(validated_steps)
             logger.info(f"Preprocessing steps validated: {validated_steps}")
         except ValueError as e:

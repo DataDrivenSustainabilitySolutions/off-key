@@ -40,3 +40,12 @@ class AsyncDocker:
         except Exception as e:
             logger.error(f"Docker operation failed: {func_name} | Error: {str(e)}")
             raise
+
+    def close(self) -> None:
+        """Close the underlying Docker client and release resources."""
+        if self.client:
+            try:
+                self.client.close()
+                logger.debug("Docker client closed")
+            except Exception as e:
+                logger.warning(f"Error closing Docker client: {e}")

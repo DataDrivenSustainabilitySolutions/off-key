@@ -10,7 +10,7 @@ import signal
 from typing import Optional
 from sqlalchemy import text
 
-from off_key_core.config.config import settings
+from off_key_core.config.config import get_settings
 from off_key_core.config.logs import logger
 from off_key_core.db.base import async_engine
 from off_key_core.db.models import Base
@@ -18,6 +18,8 @@ from off_key_core.clients.provider import get_charger_api_client
 from .services.background_sync import BackgroundSyncService
 from .services.chargers import ChargersSyncService
 from .services.telemetry import TelemetrySyncService
+
+settings = get_settings()
 
 
 class SyncService:
@@ -35,6 +37,7 @@ class SyncService:
         self.background_sync: Optional[BackgroundSyncService] = None
         self.is_running = False
         self.initial_sync_complete = False
+        self.schema_ready = False
         self.shutdown_event = asyncio.Event()
 
         # Logging context
@@ -52,17 +55,131 @@ class SyncService:
 
             async with async_engine.begin() as conn:
                 await conn.run_sync(Base.metadata.create_all)
+                await self._migrate_model_registry_family(conn)
 
+            self.schema_ready = True
             logger.info("Database tables created successfully", extra=self._log_context)
             return True
 
         except Exception as e:
+            self.schema_ready = False
             logger.error(
                 f"Database initialization failed: {e}",
                 extra=self._log_context,
                 exc_info=True,
             )
             return False
+
+    async def _migrate_model_registry_family(self, conn) -> None:
+        """
+        Ensure model_registry.family exists, is populated, and is non-null.
+
+        This is a deterministic schema/data migration step for existing deployments
+        where `model_registry` may predate the family column.
+        """
+        table_exists = await conn.scalar(
+            text("SELECT to_regclass('public.model_registry') IS NOT NULL")
+        )
+        if not table_exists:
+            return
+
+        family_column_exists = await conn.scalar(
+            text(
+                """
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM information_schema.columns
+                    WHERE table_schema = 'public'
+                      AND table_name = 'model_registry'
+                      AND column_name = 'family'
+                )
+                """
+            )
+        )
+        if not family_column_exists:
+            logger.info("Adding model_registry.family column", extra=self._log_context)
+            await conn.execute(
+                text("ALTER TABLE model_registry ADD COLUMN family TEXT")
+            )
+
+        # Backfill legacy rows for built-in registry entries.
+        await conn.execute(
+            text(
+                """
+                UPDATE model_registry
+                SET family = CASE
+                    WHEN model_type = 'knn' THEN 'distance'
+                    WHEN model_type IN (
+                        'isolation_forest',
+                        'mondrian_forest'
+                    ) THEN 'forest'
+                    WHEN model_type = 'adaptive_svm' THEN 'svm'
+                    WHEN model_type = 'standard_scaler' THEN 'scaling'
+                    WHEN model_type = 'pca' THEN 'projection'
+                    ELSE family
+                END
+                WHERE family IS NULL OR btrim(family) = ''
+                """
+            )
+        )
+        await conn.execute(
+            text(
+                """
+                UPDATE model_registry
+                SET family = lower(btrim(family))
+                WHERE family IS NOT NULL
+                """
+            )
+        )
+
+        unresolved = (
+            await conn.execute(
+                text(
+                    """
+                    SELECT model_type, category
+                    FROM model_registry
+                    WHERE family IS NULL OR btrim(family) = ''
+                    ORDER BY model_type
+                    """
+                )
+            )
+        ).all()
+        if unresolved:
+            unresolved_names = ", ".join(
+                f"{model_type}({category})" for model_type, category in unresolved[:20]
+            )
+            raise RuntimeError(
+                "Cannot finalize model_registry.family migration. "
+                "Some entries still have no family. Update these rows manually: "
+                f"{unresolved_names}"
+            )
+
+        # Enforce non-null after successful backfill.
+        family_nullable = await conn.scalar(
+            text(
+                """
+                SELECT is_nullable
+                FROM information_schema.columns
+                WHERE table_schema = 'public'
+                  AND table_name = 'model_registry'
+                  AND column_name = 'family'
+                """
+            )
+        )
+        if family_nullable == "YES":
+            logger.info(
+                "Enforcing NOT NULL on model_registry.family", extra=self._log_context
+            )
+            await conn.execute(
+                text("ALTER TABLE model_registry ALTER COLUMN family SET NOT NULL")
+            )
+
+        await conn.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_model_registry_family "
+                "ON model_registry (family)"
+            )
+        )
 
     async def _check_database_connection(self) -> bool:
         """
@@ -218,6 +335,7 @@ class SyncService:
         # Signal shutdown
         self.shutdown_event.set()
         self.is_running = False
+        self.schema_ready = False
 
         try:
             # Stop background sync if running
@@ -281,8 +399,11 @@ class SyncService:
 
     def get_health_status(self):
         """Get current health status"""
-        # Service is only healthy if running AND initial sync is complete
-        is_healthy = self.is_running and self.initial_sync_complete
+        # Service is only healthy if running, schema is ready,
+        # and initial sync completed.
+        is_healthy = (
+            self.is_running and self.schema_ready and self.initial_sync_complete
+        )
 
         status = {
             "status": (
@@ -291,6 +412,7 @@ class SyncService:
                 else ("starting" if self.is_running else "stopped")
             ),
             "sync_enabled": settings.SYNC_ENABLED,
+            "schema_ready": self.schema_ready,
             "initial_sync_complete": self.initial_sync_complete,
             "components": {},
         }

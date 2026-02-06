@@ -1,8 +1,13 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 import httpx
 
-from off_key_core.config.config import settings
-from ...facades.tactic import tactic
+from off_key_core.db.base import get_db_async
+from off_key_core.db.models import Charger
+from off_key_core.config.config import get_settings
+
+settings = get_settings()
 
 router = APIRouter()
 
@@ -43,33 +48,28 @@ async def clean_chargers(older_n_days: int):
 
 
 @router.get("/available", tags=["chargers"])
-async def get_all_chargers(skip: int = 0, limit: int = 100):
-    """Get all available chargers via TACTIC data service."""
-    try:
-        return await tactic.get_chargers(skip=skip, limit=limit, active_only=False)
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to retrieve chargers: {str(e)}"
-        )
+async def get_all_chargers(
+    skip: int = 0, limit: int = 100, db: AsyncSession = Depends(get_db_async)
+):
+    query = select(Charger).offset(skip).limit(limit)
+    result = await db.execute(query)
+    return result.scalars().all()
 
 
 @router.get("/active", tags=["chargers"])
-async def get_active_chargers(skip: int = 0, limit: int = 100):
-    """Get active chargers via TACTIC data service."""
-    try:
-        return await tactic.get_chargers(skip=skip, limit=limit, active_only=True)
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to retrieve active chargers: {str(e)}"
-        )
+async def get_active_chargers(
+    skip: int = 0, limit: int = 100, db: AsyncSession = Depends(get_db_async)
+):
+    query = select(Charger).filter(Charger.online).offset(skip).limit(limit)
+    result = await db.execute(query)
+    return result.scalars().all()
 
 
 @router.get("/active/id", tags=["chargers"])
-async def get_active_charger_ids(skip: int = 0, limit: int = 100):
-    """Get active charger IDs via TACTIC data service."""
-    try:
-        return await tactic.get_active_charger_ids(skip=skip, limit=limit)
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to retrieve active charger IDs: {str(e)}"
-        )
+async def get_active_charger_ids(
+    skip: int = 0, limit: int = 100, db: AsyncSession = Depends(get_db_async)
+):
+    query = select(Charger.charger_id).filter(Charger.online).offset(skip).limit(limit)
+    result = await db.execute(query)
+    active_ids = result.scalars().all()
+    return {"active": list(active_ids)}

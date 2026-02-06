@@ -2,12 +2,20 @@
 Configuration for MQTT RADAR service
 """
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, field_validator, model_validator
 from pydantic_settings import BaseSettings
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Self
 from dotenv import find_dotenv, load_dotenv
 from pathlib import Path
 import os
+import json
+
+
+def _truncate_for_error(value: str, max_len: int = 500) -> str:
+    """Truncate a string for error messages with length indication."""
+    if len(value) <= max_len:
+        return value
+    return f"{value[:max_len]}... ({len(value)} chars total)"
 
 
 def load_configuration(custom_config_file: Optional[str] = None):
@@ -40,12 +48,8 @@ class AnomalyDetectionConfig(BaseModel):
     """Configuration for anomaly detection models"""
 
     model_type: str = "isolation_forest"  # isolation_forest, adaptive_svm, knn
-    model_params: Dict[str, Any] = {"num_trees": 100, "window_size": 2000}
-
-    preprocessing_steps: List[Dict[str, Any]] = [
-        {"type": "scaler", "params": {}},
-        {"type": "pca", "params": {"n_components": 10}},
-    ]
+    model_params: Dict[str, Any] = {}
+    preprocessing_steps: List[Dict[str, Any]] = []
 
     thresholds: Dict[str, float] = {"medium": 0.6, "high": 0.8, "critical": 0.9}
 
@@ -58,6 +62,71 @@ class AnomalyDetectionConfig(BaseModel):
 
     # Memory management
     reset_threshold_mb: int = 500
+
+    @model_validator(mode="after")
+    def validate_model_configuration(self) -> Self:
+        """Validate model_params and preprocessing_steps against registry schemas.
+
+        This ensures invalid configurations fail fast at startup rather than
+        during model instantiation. Validation is pure - no mutation.
+        """
+        from .tactic_client import (
+            validate_model_params,
+            validate_preprocessing_steps,
+        )
+
+        # Validate model parameters against the registry schema (raises if invalid)
+        try:
+            validate_model_params(self.model_type, self.model_params)
+        except ValueError as e:
+            raise ValueError(
+                f"Invalid model parameters for '{self.model_type}': {e}"
+            ) from e
+
+        # Validate preprocessing steps (raises if invalid)
+        try:
+            validate_preprocessing_steps(self.preprocessing_steps)
+        except ValueError as e:
+            raise ValueError(f"Invalid preprocessing configuration: {e}") from e
+
+        return self
+
+    @classmethod
+    def create_normalized(
+        cls,
+        model_type: str = "isolation_forest",
+        model_params: Optional[Dict[str, Any]] = None,
+        preprocessing_steps: Optional[List[Dict[str, Any]]] = None,
+        **kwargs,
+    ) -> "AnomalyDetectionConfig":
+        """Factory that normalizes params before creating instance.
+
+        Use this when you want default values applied and parameters
+        normalized according to the registry schemas.
+
+        Args:
+            model_type: Model type identifier
+            model_params: Raw model parameters (will be normalized)
+            preprocessing_steps: Raw preprocessing steps (will be normalized)
+            **kwargs: Other AnomalyDetectionConfig fields
+
+        Returns:
+            AnomalyDetectionConfig with normalized parameters
+        """
+        from .tactic_client import (
+            validate_model_params,
+            validate_preprocessing_steps,
+        )
+
+        normalized_params = validate_model_params(model_type, model_params or {})
+        normalized_steps = validate_preprocessing_steps(preprocessing_steps or [])
+
+        return cls(
+            model_type=model_type,
+            model_params=normalized_params,
+            preprocessing_steps=normalized_steps,
+            **kwargs,
+        )
 
 
 class MQTTRadarConfig(BaseModel):
@@ -103,6 +172,8 @@ class MQTTRadarConfig(BaseModel):
 
     # Anomaly Detection
     model_type: str = "isolation_forest"
+    model_params: Dict[str, Any] = {}
+    preprocessing_steps: List[Dict[str, Any]] = []
     thresholds: Dict[str, float] = {"medium": 0.6, "high": 0.8, "critical": 0.9}
     batch_size: int = 100
     batch_timeout: float = 1.0
@@ -137,6 +208,8 @@ class RadarSettings(BaseSettings):
 
     # Anomaly Detection
     RADAR_MODEL_TYPE: str = "isolation_forest"
+    RADAR_MODEL_PARAMS: str = ""
+    RADAR_PREPROCESSING_STEPS: str = ""
     RADAR_ANOMALY_THRESHOLD_MEDIUM: float = 0.6
     RADAR_ANOMALY_THRESHOLD_HIGH: float = 0.8
     RADAR_ANOMALY_THRESHOLD_CRITICAL: float = 0.9
@@ -171,6 +244,38 @@ class RadarSettings(BaseSettings):
         # Parse topics
         topics = [topic.strip() for topic in self.RADAR_SUBSCRIPTION_TOPICS.split(",")]
 
+        # Parse model params JSON if provided
+        model_params: Dict[str, Any] = {}
+        params_raw = os.getenv("RADAR_MODEL_PARAMS", self.RADAR_MODEL_PARAMS)
+        if params_raw:
+            try:
+                model_params = json.loads(params_raw)
+            except json.JSONDecodeError as e:
+                raise ValueError(
+                    f"Invalid JSON in RADAR_MODEL_PARAMS: {e}. "
+                    f"Raw value: {_truncate_for_error(params_raw)}"
+                ) from e
+
+        preprocessing_steps: List[Dict[str, Any]] = []
+        preprocessing_raw = os.getenv(
+            "RADAR_PREPROCESSING_STEPS", self.RADAR_PREPROCESSING_STEPS
+        )
+        if preprocessing_raw:
+            try:
+                parsed = json.loads(preprocessing_raw)
+                if isinstance(parsed, list):
+                    preprocessing_steps = parsed
+                else:
+                    raise ValueError(
+                        f"RADAR_PREPROCESSING_STEPS must be a JSON array, "
+                        f"got {type(parsed).__name__}"
+                    )
+            except json.JSONDecodeError as e:
+                raise ValueError(
+                    f"Invalid JSON in RADAR_PREPROCESSING_STEPS: {e}. "
+                    f"Raw value: {_truncate_for_error(preprocessing_raw)}"
+                ) from e
+
         return MQTTRadarConfig(
             broker_host=self.RADAR_MQTT_BROKER_HOST,
             broker_port=self.RADAR_MQTT_BROKER_PORT,
@@ -189,6 +294,7 @@ class RadarSettings(BaseSettings):
             rate_limit_per_minute=self.RADAR_RATE_LIMIT_PER_MINUTE,
             memory_limit_mb=self.RADAR_MEMORY_LIMIT_MB,
             model_type=self.RADAR_MODEL_TYPE,
+            model_params=model_params,
             thresholds={
                 "medium": self.RADAR_ANOMALY_THRESHOLD_MEDIUM,
                 "high": self.RADAR_ANOMALY_THRESHOLD_HIGH,
@@ -197,6 +303,7 @@ class RadarSettings(BaseSettings):
             batch_size=self.RADAR_BATCH_SIZE,
             batch_timeout=self.RADAR_BATCH_TIMEOUT,
             checkpoint_interval=self.RADAR_CHECKPOINT_INTERVAL,
+            preprocessing_steps=preprocessing_steps,
         )
 
 

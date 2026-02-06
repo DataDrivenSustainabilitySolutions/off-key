@@ -1,10 +1,15 @@
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 import httpx
 
-from off_key_core.config.config import settings
-from ...facades.tactic import tactic
+from off_key_core.db.base import get_db_async
+from off_key_core.db.models import Telemetry
+from off_key_core.config.config import get_settings
+
+settings = get_settings()
 
 router = APIRouter()
 
@@ -29,46 +34,60 @@ async def sync_telemetry(limit: int = 10_000):
 
 @router.get("/{charger_id}/type")
 async def get_telemetry_types_from_id(
-    charger_id: str,
-    limit: int = Query(
-        100, ge=1, le=1000, description="Maximum number of telemetry types to return"
-    ),
+    charger_id: str, db: AsyncSession = Depends(get_db_async)
 ):
-    """Get available telemetry types for a charger via TACTIC data service."""
-    try:
-        return await tactic.get_telemetry_types(charger_id=charger_id, limit=limit)
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to retrieve telemetry types: {str(e)}"
-        )
+    result = await db.execute(
+        select(Telemetry.type).filter(Telemetry.charger_id == charger_id).distinct()
+    )
+    return result.scalars().all()
 
 
-@router.get("/{charger_id}/{telemetry_type}")
+@router.get("/{charger_id}/data")
 async def get_telemetry(
     charger_id: str,
-    telemetry_type: str,
+    telemetry_type: str = Query(..., alias="type"),
+    db: AsyncSession = Depends(get_db_async),
     limit: int = 1000,  # Reduced default limit for better performance
     after_timestamp: datetime | None = Query(None),  # Cursor for pagination
     paginated: bool = False,  # Enable paginated response format
 ):
-    """Get telemetry data via TACTIC data service."""
-    # Handle timezone normalization for cursor pagination
+    query = select(Telemetry).filter(
+        Telemetry.charger_id == charger_id, Telemetry.type == telemetry_type
+    )
+
+    # Cursor-based pagination for time-series data
     if after_timestamp is not None:
-        after_timestamp = (
+        cursor = (
             after_timestamp.replace(tzinfo=timezone.utc)
             if after_timestamp.tzinfo is None
             else after_timestamp.astimezone(timezone.utc)
         )
+        query = query.filter(Telemetry.timestamp < cursor)
 
-    try:
-        return await tactic.get_telemetry_data(
-            charger_id=charger_id,
-            telemetry_type=telemetry_type,
-            limit=limit,
-            after_timestamp=after_timestamp,
-            paginated=paginated,
-        )
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to retrieve telemetry data: {str(e)}"
-        )
+    # Always order by timestamp DESC for time-series data
+    query = query.order_by(Telemetry.timestamp.desc()).limit(limit)
+
+    result = await db.execute(query)
+    results = result.scalars().all()
+
+    # Format results to match frontend expectations exactly
+    formatted_results = [
+        {"timestamp": str(result.timestamp), "value": result.value}
+        for result in results
+    ]
+
+    # Return paginated response only if explicitly requested
+    if paginated:
+        return {
+            "data": formatted_results,
+            "pagination": {
+                "limit": limit,
+                "has_more": len(formatted_results) == limit,
+                "next_cursor": (
+                    formatted_results[-1]["timestamp"] if formatted_results else None
+                ),
+            },
+        }
+
+    # Default: return simple array for backward compatibility
+    return formatted_results

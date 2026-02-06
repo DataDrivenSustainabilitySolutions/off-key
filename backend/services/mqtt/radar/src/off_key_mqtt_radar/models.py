@@ -1,8 +1,12 @@
 """
-Database models for MQTT RADAR service
+Database models for MQTT RADAR service.
+
+Note: Anomalies are now written to the core 'anomalies' table (TimescaleDB hypertable)
+managed by off_key_core. This module contains only auxiliary models for service
+metrics and model checkpoints.
 """
 
-from sqlalchemy import Column, Integer, String, Float, DateTime, Text, Boolean, JSON
+from sqlalchemy import Column, Integer, String, Float, DateTime, JSON
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.sql import func
 from datetime import datetime
@@ -11,51 +15,6 @@ from dataclasses import dataclass
 import json
 
 Base = declarative_base()
-
-
-class AnomalyRecord(Base):
-    """Database model for storing detected anomalies"""
-
-    __tablename__ = "radar_anomalies"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-
-    # MQTT message info
-    topic = Column(String(255), nullable=False, index=True)
-    charger_id = Column(String(100), nullable=True, index=True)
-
-    # Anomaly detection results
-    anomaly_score = Column(Float, nullable=False, index=True)
-    severity = Column(
-        String(20), nullable=False, index=True
-    )  # low, medium, high, critical
-    is_anomaly = Column(Boolean, nullable=False, default=False, index=True)
-
-    # Original data and processed features
-    raw_data = Column(JSON, nullable=False)  # Original MQTT message data
-    processed_features = Column(
-        JSON, nullable=True
-    )  # Preprocessed features used for detection
-
-    # Model information
-    model_type = Column(String(50), nullable=False)
-    model_version = Column(String(50), nullable=True)
-
-    # Timing
-    message_timestamp = Column(DateTime, nullable=True)  # Original message timestamp
-    processed_timestamp = Column(DateTime, nullable=False, default=func.now())
-
-    # Additional context
-    context = Column(JSON, nullable=True)  # Additional context like processing stats
-    notes = Column(Text, nullable=True)
-
-    def __repr__(self):
-        return (
-            f"<AnomalyRecord(id={self.id},"
-            f" topic='{self.topic}',"
-            f" severity='{self.severity}',"
-            f" score={self.anomaly_score:.3f})>"
-        )
 
 
 class ModelCheckpoint(Base):
@@ -161,26 +120,6 @@ class AnomalyResult:
             "charger_id": self.charger_id,
             "context": self.context,
         }
-
-    def to_db_record(
-        self, model_type: str, model_version: str = "1.0"
-    ) -> AnomalyRecord:
-        """Convert to database record"""
-        return AnomalyRecord(
-            topic=self.topic,
-            charger_id=self.charger_id,
-            anomaly_score=self.anomaly_score,
-            severity=self.severity,
-            is_anomaly=self.is_anomaly,
-            raw_data=self.raw_data,
-            processed_features=self.processed_features,
-            model_type=model_type,
-            model_version=model_version,
-            message_timestamp=(
-                self.timestamp if isinstance(self.timestamp, datetime) else None
-            ),
-            context=self.context,
-        )
 
 
 @dataclass

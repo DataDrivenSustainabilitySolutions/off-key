@@ -1,22 +1,55 @@
-from fastapi import APIRouter, HTTPException
+from typing import Optional
+
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 from datetime import datetime
 
 from off_key_core.utils.mail import send_anomaly_alert_email
+from off_key_core.db.base import get_db_async
+from off_key_core.db.models import Anomaly
 from off_key_core.config.logs import logger
-from ...facades.tactic import tactic
 
 router = APIRouter()
 
 
 @router.get("")
-async def get_anomalies(charger_id: str, limit: int = 500):
-    """Get anomalies for charger via TACTIC data service."""
-    try:
-        return await tactic.get_charger_anomalies(charger_id=charger_id, limit=limit)
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to retrieve anomalies: {str(e)}"
-        )
+async def get_anomalies(
+    charger_id: str,
+    telemetry_type: Optional[str] = None,
+    db: AsyncSession = Depends(get_db_async),
+):
+    """
+    Get anomalies for a charger, optionally filtered by telemetry type.
+
+    Args:
+        charger_id: The charger identifier
+        telemetry_type: Optional filter for specific telemetry type
+            (e.g., "voltage", "temperature")
+        db: Database session
+
+    Returns:
+        List of anomaly records
+    """
+    query = select(Anomaly).filter(Anomaly.charger_id == charger_id)
+
+    if telemetry_type:
+        query = query.filter(Anomaly.telemetry_type == telemetry_type)
+
+    query = query.order_by(Anomaly.timestamp.desc()).limit(500)
+
+    result = await db.execute(query)
+    anomalies = result.scalars().all()
+    return [
+        {
+            "charger_id": a.charger_id,
+            "timestamp": a.timestamp,
+            "telemetry_type": a.telemetry_type,
+            "anomaly_type": a.anomaly_type,
+            "anomaly_value": a.anomaly_value,
+        }
+        for a in anomalies
+    ]
 
 
 @router.post("")
@@ -26,42 +59,43 @@ async def create_anomaly(
     telemetry_type: str,
     anomaly_type: str,
     anomaly_value: float,
+    db: AsyncSession = Depends(get_db_async),
 ):
-    """Create anomaly via TACTIC data service."""
-    anomaly_data = {
-        "charger_id": charger_id,
-        "timestamp": timestamp.isoformat(),
-        "telemetry_type": telemetry_type,
-        "anomaly_type": anomaly_type,
-        "anomaly_value": anomaly_value,
-    }
+    new_anomaly = Anomaly(
+        charger_id=charger_id,
+        timestamp=timestamp,
+        telemetry_type=telemetry_type,
+        anomaly_type=anomaly_type,
+        anomaly_value=anomaly_value,
+    )
+    db.add(new_anomaly)
+    await db.commit()
+    await db.refresh(new_anomaly)
+
+    # Log anomaly detection
+    logger.warning(
+        f"Anomaly detected and recorded | "
+        f"Charger: {charger_id} | Type: {anomaly_type} | "
+        f"Telemetry: {telemetry_type} | Value: {anomaly_value}"
+    )
 
     try:
-        # Create anomaly via TACTIC
-        result = await tactic.create_anomaly(anomaly_data)
-
-        # Log anomaly detection
-        logger.warning(
-            f"Anomaly detected and recorded | "
-            f"Charger: {charger_id} | Type: {anomaly_type} | "
-            f"Telemetry: {telemetry_type} | Value: {anomaly_value}"
+        await send_anomaly_alert_email(
+            {
+                "charger_id": new_anomaly.charger_id,
+                "timestamp": new_anomaly.timestamp,
+                "telemetry_type": new_anomaly.telemetry_type,
+                "anomaly_type": new_anomaly.anomaly_type,
+                "anomaly_value": new_anomaly.anomaly_value,
+            }
         )
-
-        # Send alert email (don't fail if this fails)
-        try:
-            await send_anomaly_alert_email(anomaly_data)
-        except Exception as e:
-            logger.error(
-                f"Failed to send anomaly alert email for charger {charger_id}: {str(e)}"
-            )
-            # Don't fail the anomaly creation if email fails
-
-        return result
-
     except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to create anomaly: {str(e)}"
+        logger.error(
+            f"Failed to send anomaly alert email for charger {charger_id}: {str(e)}"
         )
+        # Don't fail the anomaly creation if email fails
+
+    return {"message": "Anomaly added"}
 
 
 @router.delete("")
@@ -69,27 +103,28 @@ async def delete_anomaly_by_fields(
     charger_id: str,
     timestamp: datetime,
     telemetry_type: str,
+    db: AsyncSession = Depends(get_db_async),
 ):
-    """Delete anomaly via TACTIC data service."""
-    try:
-        result = await tactic.delete_anomaly(
-            charger_id=charger_id,
-            timestamp=timestamp,
-            telemetry_type=telemetry_type,
+    result = await db.execute(
+        select(Anomaly).filter(
+            Anomaly.charger_id == charger_id,
+            Anomaly.timestamp == timestamp,
+            Anomaly.telemetry_type == telemetry_type,
         )
+    )
+    anomaly = result.scalars().first()
 
-        logger.info(
-            f"Anomaly deleted | Charger: {charger_id} | "
-            f"Telemetry: {telemetry_type} | Timestamp: {timestamp}"
-        )
-
-        return result
-
-    except Exception as e:
-        if "not found" in str(e).lower():
-            raise HTTPException(
-                status_code=404, detail="Anomaly not found with given parameters"
-            )
+    if not anomaly:
         raise HTTPException(
-            status_code=500, detail=f"Failed to delete anomaly: {str(e)}"
+            status_code=404, detail="Anomaly not found with given parameters"
         )
+
+    await db.delete(anomaly)
+    await db.commit()
+
+    logger.info(
+        f"Anomaly deleted | Charger: {charger_id} | "
+        f"Type: {anomaly.anomaly_type} | Timestamp: {timestamp}"
+    )
+
+    return {"message": "Anomaly deleted successfully"}

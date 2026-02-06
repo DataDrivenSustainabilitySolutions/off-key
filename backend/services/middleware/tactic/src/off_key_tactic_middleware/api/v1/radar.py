@@ -2,10 +2,14 @@ from fastapi import APIRouter, HTTPException, Depends, Query, Request
 from typing import List, Dict, Optional, Any
 from pydantic import BaseModel, Field
 
+from ...models.registry import ModelRegistryService
 from ...services.orchestration.radar import (
     RadarOrchestrationService,
 )
-from ...provider import get_radar_orchestration_service
+from ...provider import (
+    get_model_registry_service,
+    get_radar_orchestration_service,
+)
 
 router = APIRouter()
 
@@ -19,10 +23,17 @@ class RadarConfig(BaseModel):
     # Model Configuration
     model_type: str = Field(
         default="isolation_forest",
-        description="ML model type: isolation_forest, adaptive_svm, knn",
+        description="ML model type. Use GET /api/v1/models/ to see available models.",
     )
     model_params: Optional[Dict[str, Any]] = Field(
-        default=None, description="Model-specific parameters"
+        default=None,
+        description="Model-specific hyperparameters. Use GET /api/v1/models/ to see"
+        " available parameters for each model.",
+    )
+    preprocessing_steps: Optional[List[Dict[str, Any]]] = Field(
+        default=None,
+        description="Ordered preprocessing steps applied before the model."
+        " Use GET /api/v1/models/preprocessors to see available options.",
     )
 
     # MQTT Configuration
@@ -56,6 +67,7 @@ class RadarServiceResponse(BaseModel):
 async def list_radar_services(
     request: Request,
     active_only: bool = False,
+    include_docker_status: bool = False,
     service: RadarOrchestrationService = Depends(get_radar_orchestration_service),
 ):
     """
@@ -63,9 +75,11 @@ async def list_radar_services(
 
     Parameters:
     - active_only: If true, only return active services
+    - include_docker_status: If true, check actual Docker container status
+      for each service. This is slower but provides accurate real-time status.
     """
     try:
-        services = await service.list_radar_services(active_only)
+        services = await service.list_radar_services(active_only, include_docker_status)
         return services
     except Exception as e:
         raise HTTPException(
@@ -94,6 +108,7 @@ async def start_radar_service(
             mqtt_topics=config.mqtt_topics,
             model_type=config.model_type,
             model_params=config.model_params,
+            preprocessing_steps=config.preprocessing_steps,
             mqtt_config=config.mqtt_config,
             anomaly_thresholds=config.anomaly_thresholds,
             performance_config=config.performance_config,
@@ -106,6 +121,8 @@ async def start_radar_service(
             "status": "running" if radar_service.status else "stopped",
             "mqtt_topics": radar_service.mqtt_topic,
         }
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to start RADAR service: {str(e)}"
@@ -192,4 +209,45 @@ async def stop_radar_service(
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to stop RADAR service: {str(e)}"
+        )
+
+
+@router.get("/radar/models/", response_model=List[Dict[str, Any]])
+async def list_available_models(
+    request: Request,
+    model_registry: ModelRegistryService = Depends(get_model_registry_service),
+):
+    """
+    Lists all available anomaly detection models and their hyperparameters.
+
+    Returns information about each model including:
+    - family: Model family (forest, distance, svm, etc.)
+    - description: What the model does
+    - complexity: Computational complexity
+    - memory_usage: Expected memory footprint
+    - parameter_schema: JSON schema for hyperparameters
+    - default_parameters: Default parameter values
+
+    Use this endpoint to discover available models and their configuration options
+    before starting a RADAR service.
+    """
+    try:
+        return model_registry.get_available_models()
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get available models: {str(e)}"
+        )
+
+
+@router.get("/radar/preprocessors/", response_model=List[Dict[str, Any]])
+async def list_available_preprocessors(
+    request: Request,
+    model_registry: ModelRegistryService = Depends(get_model_registry_service),
+):
+    """List available preprocessing steps and their hyperparameters."""
+    try:
+        return model_registry.get_available_preprocessors()
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get available preprocessors: {str(e)}"
         )

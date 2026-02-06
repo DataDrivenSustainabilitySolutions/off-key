@@ -3,20 +3,109 @@ Database writer for RADAR service
 
 Handles batch writing of anomaly detection results to the database
 with error handling and performance optimization.
+
+Note: This module uses RADAR_DATABASE_URL environment variable directly
+to avoid depending on off_key_core.db.base which requires the full Settings
+class with 23+ environment variables.
 """
 
 import asyncio
+import os
 import time
+import logging
 from datetime import datetime
 from typing import List, Optional, Dict, Any
 from collections import deque
+from urllib.parse import quote_plus
 
-from sqlalchemy import text
-from off_key_core.config.logs import logger
-from off_key_core.db.base import AsyncSessionLocal
+from sqlalchemy import Table, Column, Text, Float, TIMESTAMP, text
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.schema import MetaData
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-from .config.config import MQTTRadarConfig
-from .models import ServiceMetrics, AnomalyResult, Base
+from .config import MQTTRadarConfig
+from .models import ServiceMetrics, AnomalyResult
+
+logger = logging.getLogger(__name__)
+
+# Lazy-initialized async session factory
+_radar_async_session_factory = None
+
+# Minimal table mapping used for anomaly inserts without importing
+# off_key_core.db.models.
+# Importing core models pulls off_key_core.db.base, which initializes global Settings
+# and fails in RADAR-only container contexts where non-RADAR env vars are absent.
+_anomaly_metadata = MetaData()
+ANOMALY_TABLE = Table(
+    "anomalies",
+    _anomaly_metadata,
+    Column("charger_id", Text, primary_key=True),
+    Column("timestamp", TIMESTAMP(timezone=True), primary_key=True),
+    Column("telemetry_type", Text, primary_key=True),
+    Column("anomaly_type", Text, nullable=False),
+    Column("anomaly_value", Float, nullable=False),
+)
+
+
+def _build_database_url_from_env() -> Optional[str]:
+    """Build database URL from env vars with fallback to POSTGRES_*."""
+    direct = os.getenv("RADAR_DATABASE_URL")
+    if direct:
+        return direct
+
+    user = os.getenv("POSTGRES_USER")
+    password = os.getenv("POSTGRES_PASSWORD")
+    host = os.getenv("POSTGRES_HOST")
+    port = os.getenv("POSTGRES_PORT")
+    db = os.getenv("POSTGRES_DB")
+
+    if all([user, password, host, port, db]):
+        return (
+            f"postgresql+asyncpg://{quote_plus(user)}:{quote_plus(password)}"
+            f"@{host}:{port}/{db}"
+        )
+
+    return None
+
+
+def get_radar_async_session_factory():
+    """
+    Get or create async session factory using RADAR_DATABASE_URL env var.
+
+    Falls back to POSTGRES_* when RADAR_DATABASE_URL is not provided to
+    remain compatible with existing deployments.
+
+    Raises ValueError if no usable configuration is found.
+    """
+    global _radar_async_session_factory
+
+    if _radar_async_session_factory is None:
+        database_url = _build_database_url_from_env()
+        if not database_url:
+            raise ValueError(
+                "RADAR_DATABASE_URL or POSTGRES_* environment variables are required "
+                "for radar database connectivity."
+            )
+
+        engine = create_async_engine(
+            database_url,
+            pool_pre_ping=True,
+            pool_size=5,
+            max_overflow=10,
+        )
+
+        _radar_async_session_factory = sessionmaker(
+            bind=engine,
+            autocommit=False,
+            autoflush=False,
+            expire_on_commit=False,
+            class_=AsyncSession,
+        )
+
+        logger.info("Created RADAR async session factory")
+
+    return _radar_async_session_factory
 
 
 class DatabaseWriter:
@@ -32,7 +121,9 @@ class DatabaseWriter:
 
     def __init__(self, config: MQTTRadarConfig, session_factory=None):
         self.config = config
-        self.session_factory = session_factory or AsyncSessionLocal
+        # Session factory is created lazily to avoid requiring DB env vars
+        # when database writing is disabled.
+        self.session_factory = session_factory
 
         # Batch processing
         self.write_queue: List[AnomalyResult] = []
@@ -54,6 +145,10 @@ class DatabaseWriter:
         if not self.config.db_write_enabled:
             logger.info("Database writing disabled by configuration")
             return
+
+        # Initialize session factory lazily to avoid failing when disabled
+        if self.session_factory is None:
+            self.session_factory = get_radar_async_session_factory()
 
         # Test database connection
         await self._test_connection()
@@ -104,6 +199,9 @@ class DatabaseWriter:
             return
 
         try:
+            if self.session_factory is None:
+                self.session_factory = get_radar_async_session_factory()
+
             async with self.session_factory() as session:
                 service_metrics = ServiceMetrics(
                     timestamp=datetime.now(),
@@ -129,6 +227,9 @@ class DatabaseWriter:
     async def _test_connection(self):
         """Test database connection"""
         try:
+            if self.session_factory is None:
+                self.session_factory = get_radar_async_session_factory()
+
             async with self.session_factory() as session:
                 # Simple test query
                 result = await session.execute(text("SELECT 1"))
@@ -168,90 +269,156 @@ class DatabaseWriter:
 
         logger.info("Database writer loop stopped")
 
+    def _extract_telemetry_type(self, topic: str) -> str:
+        """Extract telemetry type from MQTT topic.
+
+        Expected topic formats:
+        - charger/{charger_id}/telemetry/{type}
+        - charger/{charger_id}/{type}
+
+        Args:
+            topic: MQTT topic string
+
+        Returns:
+            Extracted telemetry type or "unknown" if extraction fails
+        """
+        if not topic:
+            return "unknown"
+
+        parts = topic.split("/")
+        # Format: charger/{charger_id}/telemetry/{type}
+        if len(parts) >= 4 and parts[2] == "telemetry":
+            return parts[3]
+        # Format: charger/{charger_id}/{type}
+        if len(parts) >= 3 and parts[0] == "charger":
+            return parts[2]
+        return "unknown"
+
     async def _flush_batch(self):
-        """Flush current batch to database"""
+        """Flush current batch to core anomalies table"""
         if not self.write_queue:
             return
 
+        # Only write actual anomalies (is_anomaly=True)
+        anomalies_to_write = [r for r in self.write_queue if r.is_anomaly]
         batch_size = len(self.write_queue)
+        anomaly_count = len(anomalies_to_write)
         start_time = time.time()
 
         try:
-            async with self.session_factory() as session:
-                # Convert results to database records
-                db_records = []
-                for result in self.write_queue:
-                    db_record = result.to_db_record(
-                        model_type="radar_model",  # Could be made configurable
-                        model_version="1.0",
+            if anomalies_to_write:
+                async with self.session_factory() as session:
+                    # Convert results to core Anomaly records
+                    anomaly_records = [
+                        {
+                            "charger_id": result.charger_id or "unknown",
+                            "timestamp": result.timestamp,
+                            "telemetry_type": self._extract_telemetry_type(
+                                result.topic
+                            ),
+                            "anomaly_type": "ml_detected",
+                            "anomaly_value": result.anomaly_score,
+                        }
+                        for result in anomalies_to_write
+                    ]
+
+                    # Use INSERT ... ON CONFLICT DO NOTHING for idempotency
+                    # (composite PK: charger_id, timestamp, telemetry_type)
+                    stmt = pg_insert(ANOMALY_TABLE).values(anomaly_records)
+                    stmt = stmt.on_conflict_do_nothing(
+                        index_elements=["charger_id", "timestamp", "telemetry_type"]
                     )
-                    db_records.append(db_record)
+                    await session.execute(stmt)
+                    await session.commit()
 
-                # Batch insert
-                session.add_all(db_records)
-                await session.commit()
+                    logger.info(
+                        f"Wrote {anomaly_count} anomalies to database "
+                        f"(from batch of {batch_size} results)"
+                    )
 
-                # Update statistics
-                write_time = time.time() - start_time
-                self.write_times.append(write_time)
-                self.total_written += batch_size
-                self.last_write_time = time.time()
+            # Update statistics
+            write_time = time.time() - start_time
+            self.write_times.append(write_time)
+            self.total_written += anomaly_count
+            self.last_write_time = time.time()
 
-                logger.info(
-                    f"Wrote batch of {batch_size} anomaly records in {write_time:.3f}s"
-                )
-
-                # Clear the queue
-                self.write_queue.clear()
+            # Clear the queue
+            self.write_queue.clear()
 
         except Exception as e:
-            logger.error(f"Failed to write batch of {batch_size} records: {e}")
+            logger.error(f"Failed to write batch of {anomaly_count} anomalies: {e}")
             self.total_errors += 1
 
             # Implement retry logic
             await self._retry_failed_batch()
 
     async def _retry_failed_batch(self):
-        """Retry writing failed batch with exponential backoff"""
+        """Retry writing failed batch with exponential backoff.
+
+        Processes anomalies in chunks of 10, retrying each chunk up to
+        max_retries times before moving to the next chunk.
+        """
         max_retries = 3
-        retry_delay = 1.0
+        base_delay = 1.0
 
-        for attempt in range(max_retries):
-            try:
-                await asyncio.sleep(retry_delay)
+        # Only retry actual anomalies
+        anomalies_to_retry = [r for r in self.write_queue if r.is_anomaly]
+        self.write_queue.clear()  # Clear queue immediately to prevent double processing
 
-                async with self.session_factory() as session:
-                    # Try to write a subset of records
-                    retry_batch = self.write_queue[:10]  # Limit retry batch size
+        if not anomalies_to_retry:
+            return
 
-                    db_records = []
-                    for result in retry_batch:
-                        db_record = result.to_db_record("radar_model", "1.0")
-                        db_records.append(db_record)
+        # Process in chunks of 10
+        while anomalies_to_retry:
+            retry_batch = anomalies_to_retry[:10]
+            retry_delay = base_delay
+            success = False
 
-                    session.add_all(db_records)
-                    await session.commit()
+            for attempt in range(max_retries):
+                try:
+                    await asyncio.sleep(retry_delay)
 
-                    # Remove successfully written records
-                    self.write_queue = self.write_queue[10:]
-                    self.total_written += len(retry_batch)
+                    async with self.session_factory() as session:
+                        anomaly_records = [
+                            {
+                                "charger_id": result.charger_id or "unknown",
+                                "timestamp": result.timestamp,
+                                "telemetry_type": self._extract_telemetry_type(
+                                    result.topic
+                                ),
+                                "anomaly_type": "ml_detected",
+                                "anomaly_value": result.anomaly_score,
+                            }
+                            for result in retry_batch
+                        ]
 
-                    logger.info(
-                        f"Successfully retried writing {len(retry_batch)} records"
-                    )
-                    return
+                        stmt = pg_insert(ANOMALY_TABLE).values(anomaly_records)
+                        stmt = stmt.on_conflict_do_nothing(
+                            index_elements=["charger_id", "timestamp", "telemetry_type"]
+                        )
+                        await session.execute(stmt)
+                        await session.commit()
 
-            except Exception as e:
-                logger.error(f"Retry attempt {attempt + 1} failed: {e}")
-                retry_delay *= 2  # Exponential backoff
+                        self.total_written += len(retry_batch)
+                        logger.info(
+                            f"Successfully retried writing {len(retry_batch)} anomalies"
+                        )
+                        success = True
+                        break  # Exit retry loop on success
 
-        # If all retries failed, drop the batch to prevent memory issues
-        logger.error(
-            f"Dropping failed batch of "
-            f"{len(self.write_queue)} records after {max_retries} attempts"
-        )
-        self.write_queue.clear()
-        self.total_errors += 1
+                except Exception as e:
+                    logger.error(f"Retry attempt {attempt + 1} failed: {e}")
+                    retry_delay *= 2  # Exponential backoff
+
+            if not success:
+                logger.error(
+                    f"Dropping batch of {len(retry_batch)} anomalies "
+                    f"after {max_retries} failed attempts"
+                )
+                self.total_errors += 1
+
+            # Remove processed batch (whether success or failure)
+            anomalies_to_retry = anomalies_to_retry[10:]
 
     def get_performance_metrics(self) -> Dict[str, Any]:
         """Get database writer performance metrics"""
@@ -307,168 +474,91 @@ class DatabaseWriter:
             }
 
 
-async def ensure_tables_exist():
-    """Ensure database tables exist (for development/testing)"""
+async def ensure_radar_metrics_tables():
+    """Ensure RADAR service metrics tables exist.
+
+    Note: Anomalies are now written to the core 'anomalies' table
+    (TimescaleDB hypertable) managed by off_key_core. This function only
+    creates auxiliary tables for service metrics and model checkpoints.
+    """
     try:
-        async with AsyncSessionLocal() as session:
-            # Try to create tables using raw SQL first
-            try:
-                # Check if radar_anomalies table exists
-                result = await session.execute(
-                    text("SELECT to_regclass('radar_anomalies')")
+        session_factory = get_radar_async_session_factory()
+        async with session_factory() as session:
+            # Check if radar_service_metrics table exists
+            result = await session.execute(
+                text("SELECT to_regclass('radar_service_metrics')")
+            )
+            metrics_table_exists = result.scalar() is not None
+
+            if not metrics_table_exists:
+                logger.info("Creating RADAR service metrics tables...")
+
+                # Create radar_service_metrics table
+                await session.execute(
+                    text(
+                        """
+                    CREATE TABLE IF NOT EXISTS radar_service_metrics (
+                        id SERIAL PRIMARY KEY,
+                        timestamp TIMESTAMP NOT NULL DEFAULT NOW(),
+                        total_messages_processed INTEGER NOT NULL DEFAULT 0,
+                        total_anomalies_detected INTEGER NOT NULL DEFAULT 0,
+                        anomaly_rate FLOAT NOT NULL DEFAULT 0.0,
+                        avg_processing_time_ms FLOAT,
+                        throughput_per_second FLOAT,
+                        memory_usage_mb FLOAT,
+                        error_count INTEGER NOT NULL DEFAULT 0,
+                        error_rate FLOAT NOT NULL DEFAULT 0.0,
+                        service_status VARCHAR(20) NOT NULL,
+                        active_alerts JSONB
+                    )
+                """
+                    )
                 )
-                table_exists = result.scalar() is not None
 
-                if not table_exists:
-                    # TODO: DIRTY! THIS MUST BE DONE SOMEWHERE ELSE...
-                    logger.info("RADAR tables don't exist, creating them...")
+                # Create radar_model_checkpoints table
+                await session.execute(
+                    text(
+                        """
+                    CREATE TABLE IF NOT EXISTS radar_model_checkpoints (
+                        id SERIAL PRIMARY KEY,
+                        model_type VARCHAR(50) NOT NULL,
+                        model_version VARCHAR(50) NOT NULL,
+                        checkpoint_path VARCHAR(500) NOT NULL,
+                        processed_count INTEGER NOT NULL DEFAULT 0,
+                        anomaly_count INTEGER NOT NULL DEFAULT 0,
+                        anomaly_rate FLOAT NOT NULL DEFAULT 0.0,
+                        avg_processing_time FLOAT,
+                        memory_usage_mb FLOAT,
+                        created_timestamp TIMESTAMP NOT NULL DEFAULT NOW(),
+                        config_snapshot JSONB
+                    )
+                """
+                    )
+                )
 
-                    # Create radar_anomalies table
-                    await session.execute(
-                        text(
-                            """
-                        CREATE TABLE IF NOT EXISTS radar_anomalies (
-                            id SERIAL PRIMARY KEY,
-                            topic VARCHAR(255) NOT NULL,
-                            charger_id VARCHAR(100),
-                            anomaly_score FLOAT NOT NULL,
-                            severity VARCHAR(20) NOT NULL,
-                            is_anomaly BOOLEAN NOT NULL DEFAULT FALSE,
-                            raw_data JSONB NOT NULL,
-                            processed_features JSONB,
-                            model_type VARCHAR(50) NOT NULL,
-                            model_version VARCHAR(50),
-                            message_timestamp TIMESTAMP,
-                            processed_timestamp TIMESTAMP NOT NULL DEFAULT NOW(),
-                            context JSONB,
-                            notes TEXT
-                        )
-                    """
-                        )
+                # Create index for better performance
+                await session.execute(
+                    text(
+                        "CREATE INDEX IF NOT EXISTS "
+                        "idx_radar_service_metrics_timestamp "
+                        "ON radar_service_metrics(timestamp)"
                     )
+                )
 
-                    # Create radar_service_metrics table
-                    await session.execute(
-                        text(
-                            """
-                        CREATE TABLE IF NOT EXISTS radar_service_metrics (
-                            id SERIAL PRIMARY KEY,
-                            timestamp TIMESTAMP NOT NULL DEFAULT NOW(),
-                            total_messages_processed INTEGER NOT NULL DEFAULT 0,
-                            total_anomalies_detected INTEGER NOT NULL DEFAULT 0,
-                            anomaly_rate FLOAT NOT NULL DEFAULT 0.0,
-                            avg_processing_time_ms FLOAT,
-                            throughput_per_second FLOAT,
-                            memory_usage_mb FLOAT,
-                            error_count INTEGER NOT NULL DEFAULT 0,
-                            error_rate FLOAT NOT NULL DEFAULT 0.0,
-                            service_status VARCHAR(20) NOT NULL,
-                            active_alerts JSONB
-                        )
-                    """
-                        )
-                    )
-
-                    # Create radar_model_checkpoints table
-                    await session.execute(
-                        text(
-                            """
-                        CREATE TABLE IF NOT EXISTS radar_model_checkpoints (
-                            id SERIAL PRIMARY KEY,
-                            model_type VARCHAR(50) NOT NULL,
-                            model_version VARCHAR(50) NOT NULL,
-                            checkpoint_path VARCHAR(500) NOT NULL,
-                            processed_count INTEGER NOT NULL DEFAULT 0,
-                            anomaly_count INTEGER NOT NULL DEFAULT 0,
-                            anomaly_rate FLOAT NOT NULL DEFAULT 0.0,
-                            avg_processing_time FLOAT,
-                            memory_usage_mb FLOAT,
-                            created_timestamp TIMESTAMP NOT NULL DEFAULT NOW(),
-                            config_snapshot JSONB
-                        )
-                    """
-                        )
-                    )
-
-                    # Create indexes for better performance
-                    await session.execute(
-                        text(
-                            "CREATE INDEX IF NOT EXISTS "
-                            "idx_radar_anomalies_topic "
-                            "ON radar_anomalies(topic)"
-                        )
-                    )
-                    await session.execute(
-                        text(
-                            "CREATE INDEX IF NOT EXISTS "
-                            "idx_radar_anomalies_charger_id "
-                            "ON radar_anomalies(charger_id)"
-                        )
-                    )
-                    await session.execute(
-                        text(
-                            "CREATE INDEX IF NOT EXISTS "
-                            "idx_radar_anomalies_severity "
-                            "ON radar_anomalies(severity)"
-                        )
-                    )
-                    await session.execute(
-                        text(
-                            "CREATE INDEX IF NOT EXISTS "
-                            "idx_radar_anomalies_is_anomaly "
-                            "ON radar_anomalies(is_anomaly)"
-                        )
-                    )
-                    await session.execute(
-                        text(
-                            "CREATE INDEX IF NOT EXISTS "
-                            "idx_radar_anomalies_score "
-                            "ON radar_anomalies(anomaly_score)"
-                        )
-                    )
-                    await session.execute(
-                        text(
-                            "CREATE INDEX IF NOT EXISTS "
-                            "idx_radar_service_metrics_timestamp "
-                            "ON radar_service_metrics(timestamp)"
-                        )
-                    )
-
-                    await session.commit()
-                    logger.info("RADAR database tables created successfully")
-                else:
-                    logger.info("RADAR database tables already exist")
-
-            except Exception as sql_error:
-                logger.warning(f"Raw SQL table creation failed: {sql_error}")
-
-                # Fallback: Try using SQLAlchemy metadata (might work with some engines)
-                try:
-                    engine = session.get_bind()
-
-                    # For async engines, use run_sync
-                    if hasattr(engine, "run_sync"):
-                        await engine.run_sync(Base.metadata.create_all)
-                        logger.info("Tables created using SQLAlchemy metadata (async)")
-                    else:
-                        # Last resort - this might not work but we'll try
-                        Base.metadata.create_all(bind=engine)
-                        logger.info("Tables created using SQLAlchemy metadata (sync)")
-
-                except Exception as metadata_error:
-                    logger.error(
-                        f"SQLAlchemy metadata creation also failed: {metadata_error}"
-                    )
-                    logger.warning(
-                        "Could not create tables automatically."
-                        " Please create them manually or via migrations."
-                    )
+                await session.commit()
+                logger.info("RADAR service metrics tables created successfully")
+            else:
+                logger.info("RADAR service metrics tables already exist")
 
         logger.info("Database table verification completed")
 
     except Exception as e:
-        logger.error(f"Failed to ensure database tables exist: {e}")
+        logger.error(f"Failed to ensure RADAR metrics tables exist: {e}")
         logger.warning(
-            "Continuing without table creation -"
-            " tables should be handled by migrations or manual setup"
+            "Continuing without table creation - "
+            "metrics tables should be handled by migrations or manual setup"
         )
+
+
+# Keep alias for backward compatibility
+ensure_tables_exist = ensure_radar_metrics_tables

@@ -2,13 +2,11 @@
 
 from dotenv import load_dotenv
 
-from .config import telemetry_settings
-
 # Load .env file to ensure local dev overrides work.
 load_dotenv()
 
-# Default retention period for telemetry data (in days)
-RETENTION_DAYS_DEFAULT = telemetry_settings.retention_days
+# Default retention period fallback
+RETENTION_DAYS_DEFAULT = 14
 
 
 def get_retention_days() -> int:
@@ -19,8 +17,9 @@ def get_retention_days() -> int:
     `SYNC_RETENTION_DAYS` for compatibility) and is validated by the
     TelemetrySettings model in :mod:`off_key_core.config.config`.
     """
+    from .config import get_telemetry_settings
 
-    return telemetry_settings.retention_days
+    return get_telemetry_settings().retention_days
 
 
-__all__ = ["RETENTION_DAYS_DEFAULT", "get_retention_days", "telemetry_settings"]
+__all__ = ["RETENTION_DAYS_DEFAULT", "get_retention_days"]

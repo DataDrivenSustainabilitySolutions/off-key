@@ -3,6 +3,12 @@ Main RADAR Service Orchestrator
 
 Coordinates MQTT subscription, anomaly detection, and database persistence
 with comprehensive monitoring and health checks.
+
+Refactored to use extracted components:
+- CheckpointManager: Handles checkpoint persistence
+- MessageProcessor: Handles MQTT message processing
+- HealthMonitor: Handles health checks and metrics
+- TopicParser: Handles topic parsing utilities
 """
 
 import asyncio
@@ -10,7 +16,6 @@ import signal
 import time
 from datetime import datetime
 from typing import Optional
-from collections import deque
 
 from off_key_core.config.logs import logger
 
@@ -25,6 +30,11 @@ from .mqtt_client import RadarMQTTClient
 from .database import DatabaseWriter, ensure_tables_exist
 from .models import MQTTMessage, HealthStatus as RadarHealthStatus
 from .config_watcher import ConfigWatcher, ConfigReloader
+from .state_cache import SensorStateCache
+from .checkpoint_manager import CheckpointManager
+from .message_processor import MessageProcessor
+from .health_monitor import HealthMonitor
+from .topic_parser import TopicParser
 
 
 class RadarService:
@@ -56,20 +66,17 @@ class RadarService:
             max_string_length=self.config.max_string_length,
         )
 
+        # Extracted components
+        self.checkpoint_manager = CheckpointManager()
+        self.health_monitor = HealthMonitor(
+            health_check_interval=self.config.health_check_interval
+        )
+        self.message_processor: Optional[MessageProcessor] = None
+
         # Service state
         self.is_running = False
         self.start_time: Optional[datetime] = None
         self.shutdown_event = asyncio.Event()
-
-        # Performance tracking
-        self.message_count = 0
-        self.anomaly_count = 0
-        self.error_count = 0
-        self.processing_times = deque(maxlen=1000)
-
-        # Health monitoring
-        self.health_check_task: Optional[asyncio.Task] = None
-        self.last_health_check = time.time()
 
         # Configuration watching and reloading
         self.config_watcher: Optional[ConfigWatcher] = None
@@ -77,6 +84,14 @@ class RadarService:
 
         # Logging context
         self._log_context = {"service": "radar", "component": "main"}
+
+        # Sensor alignment (wait_for_all with latest values)
+        self.required_sensors = TopicParser.derive_required_sensors(
+            self.config.subscription_topics
+        )
+        self.state_cache = (
+            SensorStateCache(self.required_sensors) if self.required_sensors else None
+        )
 
         logger.info("Initialized RADAR service orchestrator")
 
@@ -90,20 +105,40 @@ class RadarService:
         self.start_time = datetime.now()
 
         try:
-            # Ensure database tables exist
-            await ensure_tables_exist()
-
             # Initialize anomaly detection
             await self._setup_anomaly_detection()
 
-            # Initialize database writer
-            await self._setup_database_writer()
+            # Initialize message processor
+            self.message_processor = MessageProcessor(
+                detector=self.detector,
+                security_validator=self.security_validator,
+                memory_manager=self.memory_manager,
+                state_cache=self.state_cache,
+                required_sensors=self.required_sensors,
+            )
+
+            # Initialize database writer only when enabled
+            if self.config.db_write_enabled:
+                await ensure_tables_exist()
+                await self._setup_database_writer()
+            else:
+                logger.info(
+                    "Database writing disabled by configuration; skipping DB setup",
+                    extra=self._log_context,
+                )
 
             # Initialize MQTT client
             await self._setup_mqtt_client()
 
-            # Start health monitoring
-            self.health_check_task = asyncio.create_task(self._health_monitor())
+            # Start health monitoring with component references
+            self.health_monitor.set_components(
+                mqtt_client=self.mqtt_client,
+                database_writer=self.database_writer,
+                detector=self.detector,
+                memory_manager=self.memory_manager,
+                message_processor=self.message_processor,
+            )
+            await self.health_monitor.start(self.shutdown_event)
 
             # Setup configuration watching
             await self._setup_config_watcher()
@@ -140,7 +175,7 @@ class RadarService:
         # Stop components in reverse order
         components = [
             ("config_watcher", self.config_watcher),
-            ("health_monitor", self.health_check_task),
+            ("health_monitor", self.health_monitor),
             ("mqtt_client", self.mqtt_client),
             ("database_writer", self.database_writer),
         ]
@@ -161,15 +196,24 @@ class RadarService:
                 except Exception as e:
                     logger.error(f"Error stopping {component_name}: {e}")
 
+        # Cleanup checkpoint lock file using extracted manager
+        self.checkpoint_manager.cleanup_lock()
+
         logger.info("RADAR service stopped")
 
     async def _setup_anomaly_detection(self):
-        """Initialize anomaly detection components"""
+        """Initialize anomaly detection components.
+
+        Attempts to restore from a checkpoint if one exists for this service.
+        Otherwise creates a fresh instance.
+        """
         logger.info("Setting up anomaly detection")
 
         # Create anomaly detection config
         anomaly_config = AnomalyDetectionConfig(
             model_type=getattr(self.config, "model_type", "isolation_forest"),
+            model_params=getattr(self.config, "model_params", {}),
+            preprocessing_steps=getattr(self.config, "preprocessing_steps", []),
             thresholds=getattr(
                 self.config, "thresholds", {"medium": 0.6, "high": 0.8, "critical": 0.9}
             ),
@@ -179,8 +223,34 @@ class RadarService:
             checkpoint_interval=getattr(self.config, "checkpoint_interval", 10000),
         )
 
-        # Create primary service
-        primary_service = AnomalyDetectionService(anomaly_config)
+        # Try to restore from checkpoint using extracted manager
+        checkpoint_path = self.checkpoint_manager.find_latest_checkpoint()
+        if checkpoint_path:
+            try:
+                logger.info(
+                    f"Found checkpoint, attempting restore: {checkpoint_path}",
+                    extra=self._log_context,
+                )
+                primary_service = AnomalyDetectionService.from_checkpoint(
+                    checkpoint_path, anomaly_config
+                )
+                logger.info(
+                    "Successfully restored from checkpoint",
+                    extra={
+                        **self._log_context,
+                        "checkpoint_path": checkpoint_path,
+                        "processed_count": primary_service.processed_count,
+                    },
+                )
+            except Exception as e:
+                logger.warning(
+                    f"Failed to load checkpoint, starting fresh: {e}",
+                    extra=self._log_context,
+                )
+                primary_service = AnomalyDetectionService(anomaly_config)
+        else:
+            logger.info("No checkpoint found, starting fresh", extra=self._log_context)
+            primary_service = AnomalyDetectionService(anomaly_config)
 
         # Create resilient detector (with fallback)
         self.detector = ResilientAnomalyDetector(primary_service)
@@ -189,8 +259,18 @@ class RadarService:
             f"Anomaly detection setup complete with model: {anomaly_config.model_type}"
         )
 
+        if self.required_sensors and self.state_cache:
+            logger.info(
+                "Sensor alignment enabled (wait_for_all)",
+                extra={**self._log_context, "required_sensors": self.required_sensors},
+            )
+
     async def _setup_database_writer(self):
         """Initialize database writer"""
+        if not self.config.db_write_enabled:
+            logger.info("Database writing disabled; not creating writer")
+            return
+
         logger.info("Setting up database writer")
 
         self.database_writer = DatabaseWriter(self.config)
@@ -240,76 +320,28 @@ class RadarService:
             # Don't fail the service startup if config watching fails
 
     async def _handle_mqtt_message(self, message: MQTTMessage):
-        """Handle incoming MQTT message"""
+        """Handle incoming MQTT message using extracted MessageProcessor."""
         start_time = time.time()
 
         try:
-            # Parse JSON payload
-            try:
-                data = message.get_json_payload()
-            except ValueError as e:
-                logger.debug(f"Invalid JSON payload from {message.topic}: {e}")
-                self.error_count += 1
-                return
+            # Delegate to message processor
+            result = await self.message_processor.process_message(message)
 
-            # Validate and sanitize input
-            try:
-                sanitized_data = self.security_validator.validate_and_sanitize(data)
-                if not sanitized_data:
-                    logger.debug(f"No valid features in message from {message.topic}")
-                    return
-            except ValueError as e:
-                logger.debug(f"Security validation failed for {message.topic}: {e}")
-                self.error_count += 1
-                return
+            if result:
+                # Record processing time in health monitor
+                self.health_monitor.record_processing_time(time.time() - start_time)
 
-            # Extract charger ID from topic
-            charger_id = message.extract_charger_id()
-
-            # Process with anomaly detection
-            result = self.detector.process_with_resilience(
-                sanitized_data, topic=message.topic, charger_id=charger_id
-            )
-
-            # Record processing time
-            processing_time = time.time() - start_time
-            self.processing_times.append(processing_time)
-
-            # Update counters
-            self.message_count += 1
-            if result.is_anomaly:
-                self.anomaly_count += 1
-
-            # Write to database if anomaly detected or configured to write all
-            if result.is_anomaly or getattr(self.config, "write_all_results", False):
-                if self.database_writer:
-                    await self.database_writer.write_anomaly(result)
-
-            # Log significant anomalies
-            if result.is_anomaly and result.severity in ["high", "critical"]:
-                logger.warning(
-                    f"Significant anomaly detected: score={result.anomaly_score:.3f}, "
-                    f"severity={result.severity}, "
-                    f"topic={message.topic}, charger={charger_id}",
-                    extra={
-                        **self._log_context,
-                        "anomaly_score": result.anomaly_score,
-                        "severity": result.severity,
-                        "topic": message.topic,
-                        "charger_id": charger_id,
-                    },
-                )
-
-            # Memory cleanup check
-            if self.memory_manager.should_cleanup():
-                freed = self.memory_manager.force_cleanup()
-                logger.info(f"Memory cleanup freed {freed:.1f} MB")
+                # Write results to database if needed
+                if result.is_anomaly or getattr(
+                    self.config, "write_all_results", False
+                ):
+                    if self.database_writer:
+                        await self.database_writer.write_anomaly(result)
 
         except Exception as e:
             logger.error(
                 f"Error processing message from {message.topic}: {e}", exc_info=True
             )
-            self.error_count += 1
 
     async def _health_monitor(self):
         """Periodic health monitoring and metrics collection"""
@@ -412,80 +444,8 @@ class RadarService:
             await self.stop()
 
     def get_health_status(self) -> RadarHealthStatus:
-        """Get comprehensive health status"""
-        components = {}
-        active_alerts = []
-
-        # Check MQTT client
-        if self.mqtt_client:
-            mqtt_health = self.mqtt_client.get_health_status()
-            components["mqtt_client"] = mqtt_health
-            if mqtt_health["status"] != "healthy":
-                active_alerts.append(f"mqtt_{mqtt_health['reason']}")
-
-        # Check database writer
-        if self.database_writer:
-            db_health = self.database_writer.get_health_status()
-            components["database_writer"] = db_health
-            if db_health["status"] != "healthy" and db_health["status"] != "disabled":
-                active_alerts.append(f"database_{db_health['reason']}")
-
-        # Check anomaly detector
-        if self.detector:
-            detector_health = self.detector.get_health_info()
-            components["anomaly_detector"] = detector_health
-            if detector_health["state"] != "healthy":
-                active_alerts.append(f"detector_{detector_health['state']}")
-
-        # Check memory usage
-        memory_usage = self.memory_manager.get_memory_usage()
-        if memory_usage > self.memory_manager.max_memory_mb * 0.9:
-            active_alerts.append("high_memory_usage")
-
-        # Check error rate
-        error_rate = self.error_count / max(self.message_count, 1)
-        if error_rate > 0.1:  # > 10% error rate
-            active_alerts.append("high_error_rate")
-
-        # Determine overall status
-        if not self.is_running:
-            status = "failed"
-        elif active_alerts:
-            status = "degraded"
-        else:
-            status = "healthy"
-
-        # Calculate metrics
-        uptime = 0.0
-        if self.start_time:
-            uptime = (datetime.now() - self.start_time).total_seconds()
-
-        avg_processing_time = 0.0
-        if self.processing_times:
-            avg_processing_time = (
-                sum(self.processing_times) / len(self.processing_times) * 1000
-            )
-
-        metrics = {
-            "uptime_seconds": uptime,
-            "message_count": self.message_count,
-            "anomaly_count": self.anomaly_count,
-            "anomaly_rate": self.anomaly_count / max(self.message_count, 1),
-            "error_count": self.error_count,
-            "error_rate": error_rate,
-            "avg_processing_time_ms": avg_processing_time,
-            "throughput_per_second": self._calculate_throughput(),
-            "memory_usage_mb": memory_usage,
-        }
-
-        return RadarHealthStatus(
-            status=status,
-            timestamp=datetime.now(),
-            components=components,
-            metrics=metrics,
-            active_alerts=active_alerts,
-            uptime_seconds=uptime,
-        )
+        """Get comprehensive health status using HealthMonitor."""
+        return self.health_monitor.get_health_status()
 
 
 # Global service instance

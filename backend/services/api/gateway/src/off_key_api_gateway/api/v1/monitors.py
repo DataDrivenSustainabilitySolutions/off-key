@@ -1,14 +1,85 @@
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, HTTPException, Query, Request, Response
 from typing import List, Dict, Optional, Any
 from pydantic import BaseModel, Field
 
-from ...facades.tactic import tactic
+from ...facades.tactic import tactic, TacticError
 from ..rate_limiter import limiter
 
 router = APIRouter()
 
-shared_limit_fetch = limiter.shared_limit("10/minute", scope="services")
-shared_limit_execute = limiter.shared_limit("5/minute", scope="services")
+shared_limit_fetch = limiter.shared_limit("60/minute", scope="services")
+shared_limit_execute = limiter.shared_limit("20/minute", scope="services")
+
+
+def _get_tactic_error_detail(error: TacticError) -> str:
+    """Extract API detail from TACTIC error body when available."""
+    if isinstance(error.body, dict):
+        detail = error.body.get("detail")
+        if detail:
+            return str(detail)
+    return str(error)
+
+
+def _normalize_models_for_gateway(
+    models_from_tactic: List[Dict[str, Any]],
+) -> Dict[str, Dict[str, Any]]:
+    """
+    Normalize TACTIC model list into gateway's existing dictionary response shape.
+
+    Data source stays TACTIC; only the transport shape is adapted for consumers.
+    """
+    normalized: Dict[str, Dict[str, Any]] = {}
+    for model in models_from_tactic:
+        model_type = model.get("model_type")
+        if not model_type:
+            continue
+
+        normalized[model_type] = {
+            "name": model.get("name"),
+            "description": model.get("description", ""),
+            "family": model["family"],
+            "complexity": model.get("complexity", "unknown"),
+            "memory_usage": model.get("memory_usage", "unknown"),
+            "parameters": model.get("parameter_schema", model.get("parameters", {})),
+            "default_parameters": model.get("default_parameters", {}),
+            "version": model.get("version"),
+            "requires_special_handling": model.get("requires_special_handling", False),
+        }
+
+    return normalized
+
+
+def _normalize_preprocessors_for_gateway(
+    preprocessors_from_tactic: List[Dict[str, Any]],
+) -> Dict[str, Dict[str, Any]]:
+    """
+    Normalize TACTIC preprocessor list into gateway's existing
+    dictionary response shape.
+
+    Data source stays TACTIC; only the transport shape is adapted for consumers.
+    """
+    normalized: Dict[str, Dict[str, Any]] = {}
+    for preprocessor in preprocessors_from_tactic:
+        model_type = preprocessor.get("model_type")
+        if not model_type:
+            continue
+
+        normalized[model_type] = {
+            "name": preprocessor.get("name"),
+            "description": preprocessor.get("description", ""),
+            "family": preprocessor["family"],
+            "parameters": preprocessor.get(
+                "parameter_schema",
+                preprocessor.get("parameters", {}),
+            ),
+            "default_parameters": preprocessor.get("default_parameters", {}),
+            "version": preprocessor.get("version"),
+            "requires_special_handling": preprocessor.get(
+                "requires_special_handling", False
+            ),
+        }
+
+    return normalized
 
 
 class MonitoringServiceConfig(BaseModel):
@@ -24,6 +95,9 @@ class MonitoringServiceConfig(BaseModel):
     )
     model_params: Optional[Dict[str, Any]] = Field(
         default=None, description="Model-specific parameters"
+    )
+    preprocessing_steps: Optional[List[Dict[str, Any]]] = Field(
+        default=None, description="Ordered preprocessing steps applied before the model"
     )
     requirements: Optional[List[str]] = Field(
         None, description="List of pip packages to install"
@@ -46,15 +120,23 @@ class ServiceResponse(BaseModel):
 async def list_services(
     request: Request,
     active_only: bool = False,
+    include_docker_status: bool = False,
 ):
     """
     Lists all monitoring services.
 
     Parameters:
     - active_only: If true, only return active services
+    - include_docker_status: If true, check actual Docker container status
+      for each service. This is slower but provides accurate real-time status.
+      When enabled, each service will include a 'docker_status' field with
+      values like: 'running', 'complete', 'failed', 'not_found', 'error'.
     """
     try:
-        services = await tactic.list_radar_services(active_only=active_only)
+        services = await tactic.list_radar_services(
+            active_only=active_only,
+            include_docker_status=include_docker_status,
+        )
         return services
     except Exception as e:
         raise HTTPException(
@@ -78,6 +160,7 @@ async def start_monitoring_service(
                 mqtt_topics=config.mqtt_topics,
                 model_type=config.model_type,
                 model_params=config.model_params,
+                preprocessing_steps=config.preprocessing_steps,
                 mqtt_config=None,
                 anomaly_thresholds=None,
                 performance_config=None,
@@ -89,6 +172,13 @@ async def start_monitoring_service(
             )
 
         return response
+    except TacticError as e:
+        raise HTTPException(
+            status_code=e.status or 502,
+            detail=_get_tactic_error_detail(e),
+        )
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to start monitoring service: {str(e)}"
@@ -127,6 +217,8 @@ async def get_service_details(
             raise HTTPException(status_code=404, detail="Service not found")
 
         return service_detail
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to get service details: {str(e)}"
@@ -175,7 +267,69 @@ async def stop_monitoring_service(
             "message": f"Container '{container_name or container_id}'"
             f" stopped successfully",
         }
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to stop monitoring service: {str(e)}"
+        )
+
+
+@router.get("/models", response_model=Dict[str, Any])
+@shared_limit_fetch
+async def list_available_models_endpoint(request: Request, response: Response):
+    """
+    Lists all available anomaly detection models and their hyperparameters.
+
+    Returns information about each model including:
+    - description: What the model does
+    - family: Model family (forest, distance, svm, etc.)
+    - complexity: Computational complexity
+    - memory_usage: Expected memory footprint
+    - parameters: JSON schema for hyperparameters with defaults and constraints
+
+    Use this endpoint to discover available models and their configuration options
+    before starting a monitoring service.
+
+    Response is cacheable for 5 minutes since model definitions rarely change.
+    """
+    # Enable client-side caching - models rarely change
+    response.headers["Cache-Control"] = "public, max-age=300"
+    try:
+        models = await tactic.list_available_models()
+        return _normalize_models_for_gateway(models)
+    except TacticError as e:
+        raise HTTPException(
+            status_code=e.status or 502,
+            detail=_get_tactic_error_detail(e),
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get available models: {str(e)}"
+        )
+
+
+@router.get("/preprocessors", response_model=Dict[str, Any])
+@shared_limit_fetch
+async def list_available_preprocessors_endpoint(request: Request, response: Response):
+    """List available preprocessing steps and their parameters.
+
+    Examples: standard scaler, PCA.
+
+    Response is cacheable for 5 minutes since preprocessor definitions rarely change.
+    """
+    # Enable client-side caching - preprocessors rarely change
+    response.headers["Cache-Control"] = "public, max-age=300"
+    try:
+        preprocessors = await tactic.list_available_preprocessors()
+        return _normalize_preprocessors_for_gateway(preprocessors)
+    except TacticError as e:
+        raise HTTPException(
+            status_code=e.status or 502,
+            detail=_get_tactic_error_detail(e),
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to get available preprocessors: {str(e)}",
         )

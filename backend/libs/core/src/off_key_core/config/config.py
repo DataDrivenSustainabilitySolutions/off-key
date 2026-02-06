@@ -132,6 +132,7 @@ class Settings(BaseSettings):
     # Middleware TACTIC Service
     TACTIC_SERVICE_HOST: str = "middleware_tactic"
     TACTIC_SERVICE_PORT: int = 8000
+    TACTIC_MODEL_REGISTRY_CACHE_TTL_SECONDS: float = 60.0
 
     @property
     def database_url(self):
@@ -209,6 +210,14 @@ class Settings(BaseSettings):
         """
         return f"http://{self.TACTIC_SERVICE_HOST}:{self.TACTIC_SERVICE_PORT}"
 
+    @field_validator("TACTIC_MODEL_REGISTRY_CACHE_TTL_SECONDS")
+    @classmethod
+    def validate_tactic_model_registry_cache_ttl(cls, v: float) -> float:
+        """Ensure cache TTL is positive to avoid stale-forever/always-refetch bugs."""
+        if v <= 0:
+            raise ValueError("TACTIC_MODEL_REGISTRY_CACHE_TTL_SECONDS must be > 0")
+        return v
+
     @property
     def db_sync_service_url(self) -> str:
         """
@@ -234,7 +243,16 @@ class Settings(BaseSettings):
         )
 
 
-settings = Settings()  # noqa
+# Cached settings instance to avoid recreating multiple times
+_settings_instance: Settings | None = None
+
+
+def get_settings() -> Settings:
+    """Get cached Settings instance."""
+    global _settings_instance
+    if _settings_instance is None:
+        _settings_instance = Settings()
+    return _settings_instance
 
 
 class TelemetrySettings(BaseSettings):
@@ -266,4 +284,6 @@ class TelemetrySettings(BaseSettings):
         return self.TELEMETRY_RETENTION_DAYS
 
 
-telemetry_settings = TelemetrySettings()
+def get_telemetry_settings() -> TelemetrySettings:
+    """Get TelemetrySettings instance."""
+    return TelemetrySettings()

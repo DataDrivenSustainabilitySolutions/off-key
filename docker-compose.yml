@@ -44,7 +44,7 @@ services:
       db-sync:
         condition: service_started
       tactic-middleware:
-        condition: service_started
+        condition: service_healthy
     networks:
       - app-network
       - socket-network
@@ -80,13 +80,25 @@ services:
         condition: service_healthy
       socket-proxy:
         condition: service_started
+      db-sync:
+        condition: service_healthy
     networks:
       - app-network
       - socket-network
       - emqx-network
     environment:
-      - TACTIC_DOCKER_DEFAULT_NETWORK=${COMPOSE_PROJECT_NAME:-off-key}_emqx-network
+      - TACTIC_DOCKER_DEFAULT_NETWORK=${COMPOSE_PROJECT_NAME:-off-key}_app-network
     restart: always
+    healthcheck:
+      test:
+        - "CMD"
+        - "/app/bin/python"
+        - "-c"
+        - "import urllib.request; urllib.request.urlopen('http://localhost:8000/ready', timeout=2)"
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
     command: [ "/app/bin/python", "-m", "off_key_tactic_middleware" ]
 
   mqtt-radar:
@@ -102,10 +114,14 @@ services:
     depends_on:
       timescaledb:
         condition: service_healthy
+      tactic-middleware:
+        condition: service_healthy
     networks:
       - app-network
       - emqx-network
     restart: always
+    environment:
+      - RADAR_DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@timescaledb:5432/${POSTGRES_DB}
 
   mqtt-proxy:
     build:
@@ -148,6 +164,16 @@ services:
       - SYNC_ON_STARTUP=true
       - SYNC_HOSTNAME=db-sync
     restart: always
+    healthcheck:
+      test:
+        - "CMD"
+        - "/app/bin/python"
+        - "-c"
+        - "import urllib.request; urllib.request.urlopen('http://localhost:8009/ready/schema', timeout=2)"
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
     command: [ "/app/bin/python", "-m", "off_key_db_sync" ]
     #    command: ["uvicorn", "off_key_db_sync.main:app",
     #              "--reload", "--reload-dir", "/app/lib/python3.12/site-packages/off_key_db_sync",
@@ -261,6 +287,7 @@ services:
       emqx-network:
         aliases:
           - emqx-main.ddss.local
+      app-network:
     ports:
       - 1883:1883
       - 8083:8083
@@ -291,6 +318,7 @@ services:
       emqx-network:
         aliases:
           - emqx-worker.ddss.local
+      app-network:
     # volumes:
     #   - $PWD/emqx2_data:/opt/emqx/data
 
@@ -337,7 +365,8 @@ services:
 
 networks:
   app-network:
-    driver: bridge
+    driver: overlay
+    attachable: true
   socket-network:
     driver: bridge
   emqx-network:

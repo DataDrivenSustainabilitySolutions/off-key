@@ -9,7 +9,7 @@ import random
 from pydantic import BaseModel, field_validator, model_validator
 from pydantic_settings import BaseSettings
 
-from off_key_core.config.config import settings
+from off_key_core.config.config import get_settings
 from typing import Self, Dict
 from dotenv import find_dotenv, load_dotenv
 
@@ -20,6 +20,8 @@ load_dotenv()
 dev_env = find_dotenv("dev.env")
 if dev_env:
     load_dotenv(dev_env, override=True)
+
+settings = get_settings()
 
 
 class MQTTConfig(BaseModel):

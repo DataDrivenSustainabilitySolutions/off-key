@@ -17,6 +17,7 @@ from off_key_core.config.logs import logger
 @dataclass
 class CacheEntry:
     """Individual cache entry with data and expiration."""
+
     data: Any
     expires_at: datetime
     access_count: int = 0
@@ -80,10 +81,7 @@ class SimpleCache:
             return entry.data
 
     async def set(
-        self,
-        key: str,
-        value: Any,
-        ttl_seconds: Optional[int] = None
+        self, key: str, value: Any, ttl_seconds: Optional[int] = None
     ) -> None:
         """Set value in cache with optional TTL override."""
         ttl = ttl_seconds if ttl_seconds is not None else self.default_ttl
@@ -116,9 +114,7 @@ class SimpleCache:
         async with self._lock:
             total_requests = self._stats["hits"] + self._stats["misses"]
             hit_rate = (
-                self._stats["hits"] / total_requests
-                if total_requests > 0
-                else 0.0
+                self._stats["hits"] / total_requests if total_requests > 0 else 0.0
             )
 
             return {
@@ -154,7 +150,9 @@ class SimpleCache:
                 self._stats["evictions"] += 1
 
             if expired_keys:
-                logger.debug(f"Cache cleanup: removed {len(expired_keys)} expired entries")
+                logger.debug(
+                    f"Cache cleanup: removed {len(expired_keys)} expired entries"
+                )
 
     def shutdown(self):
         """Shutdown the cache and cleanup task."""
@@ -215,6 +213,7 @@ def cache_result(key_func, ttl_seconds: Optional[int] = None):
         key_func: Function to generate cache key from function args
         ttl_seconds: Optional TTL override
     """
+
     def decorator(func):
         async def wrapper(*args, **kwargs):
             cache_key = key_func(*args, **kwargs)
@@ -229,7 +228,9 @@ def cache_result(key_func, ttl_seconds: Optional[int] = None):
             await cache.set(cache_key, result, ttl_seconds)
 
             return result
+
         return wrapper
+
     return decorator
 
 

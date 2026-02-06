@@ -1,12 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, HTTPException, status
 from jose import jwt, JWTError
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 from off_key_core.config.config import get_settings
 
 from off_key_core.config.logs import logger, log_security_event
-from off_key_core.db.base import get_db_async
-from off_key_core.db.models import User
 from off_key_core.schemas.user import (
     ForgotPasswordRequest,
     ResetPasswordRequest,
@@ -17,22 +13,41 @@ from ...services.auth import (
     create_reset_token,
     create_verification_token,
     get_password_hash,
-    verify_password,
     create_jwt,
 )
 from off_key_core.utils.enum import RoleEnum
 from off_key_core.utils.mail import send_verification_email, send_password_reset_email
+from ...facades.tactic import TacticError, tactic
 
 settings = get_settings()
 
 router = APIRouter()
 
 
+def _get_tactic_error_detail(error: TacticError) -> str:
+    """Extract API detail from TACTIC error body when available."""
+    if isinstance(error.body, dict):
+        detail = error.body.get("detail")
+        if detail:
+            return str(detail)
+    return str(error)
+
+
+def _raise_tactic_http_error(error: TacticError) -> None:
+    raise HTTPException(
+        status_code=error.status or status.HTTP_502_BAD_GATEWAY,
+        detail=_get_tactic_error_detail(error),
+    )
+
+
 @router.post("/register")
-async def register(user: UserCreate, db: AsyncSession = Depends(get_db_async)):
-    result = await db.execute(select(User).filter(User.email == user.email))
-    db_user = result.scalars().first()
-    if db_user:
+async def register(user: UserCreate):
+    try:
+        existing_user = await tactic.get_user_by_email(user.email)
+    except TacticError as e:
+        _raise_tactic_http_error(e)
+
+    if existing_user:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail="Email already registered"
         )
@@ -44,16 +59,21 @@ async def register(user: UserCreate, db: AsyncSession = Depends(get_db_async)):
         user.role if user.email != settings.SUPERUSER_MAIL else RoleEnum.admin.value
     )
 
-    db_user = User(
-        email=user.email,
-        hashed_password=get_password_hash(user.password),
-        verification_token=verification_token,
-        role=user_role,
-    )
-
-    db.add(db_user)
-    await db.flush()
-    await db.commit()
+    user_data = {
+        "email": user.email,
+        "hashed_password": get_password_hash(user.password),
+        "verification_token": verification_token,
+        "role": user_role,
+    }
+    try:
+        await tactic.create_user(user_data)
+    except TacticError as e:
+        if e.status in (status.HTTP_400_BAD_REQUEST, status.HTTP_409_CONFLICT):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Email already registered",
+            )
+        _raise_tactic_http_error(e)
 
     # Log user registration
     logger.info(f"User registered successfully: {user.email}")
@@ -78,31 +98,30 @@ async def register(user: UserCreate, db: AsyncSession = Depends(get_db_async)):
 
 
 @router.post("/login")
-async def login(user: UserLogin, db: AsyncSession = Depends(get_db_async)):
-    result = await db.execute(select(User).filter(User.email == user.email))
-    db_user = result.scalars().first()
-
-    if not db_user or not verify_password(user.password, db_user.hashed_password):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials"
+async def login(user: UserLogin):
+    try:
+        authenticated_user = await tactic.authenticate_user(
+            email=user.email,
+            password=user.password,
         )
+    except TacticError as e:
+        _raise_tactic_http_error(e)
 
-    if not db_user.is_verified:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Email not verified"
-        )
-
-    access_token = create_jwt({"sub": db_user.email})
+    access_token = create_jwt({"sub": authenticated_user["email"]})
 
     # Log successful login
-    logger.info(f"User logged in successfully: {db_user.email}")
-    log_security_event("user_login_success", db_user.email, {"role": db_user.role})
+    logger.info(f"User logged in successfully: {authenticated_user['email']}")
+    log_security_event(
+        "user_login_success",
+        authenticated_user["email"],
+        {"role": authenticated_user["role"]},
+    )
 
     return {"access_token": access_token, "token_type": "bearer"}
 
 
 @router.get("/verify-email")
-async def verify_email(token: str, db: AsyncSession = Depends(get_db_async)):
+async def verify_email(token: str):
     try:
         payload = jwt.decode(
             token, settings.JWT_VERIFICATION_SECRET, algorithms=[settings.ALGORITHM]
@@ -119,8 +138,10 @@ async def verify_email(token: str, db: AsyncSession = Depends(get_db_async)):
             )
 
         logger.info(f"Verifying email: {email}")
-        result = await db.execute(select(User).filter(User.email == email))
-        user = result.scalars().first()
+        try:
+            user = await tactic.get_user_by_email(email)
+        except TacticError as e:
+            _raise_tactic_http_error(e)
 
         if not user:
             logger.error(f"User not found for email: {email}")
@@ -129,14 +150,15 @@ async def verify_email(token: str, db: AsyncSession = Depends(get_db_async)):
                 detail="User not found",
             )
 
-        if user.is_verified:
+        if user.get("is_verified"):
             logger.info(f"User {email} is already verified")
             # Return success for already verified users (idempotent)
             return {"message": "Email verified successfully"}
 
-        user.is_verified = True
-        user.verification_token = None
-        await db.commit()
+        try:
+            result = await tactic.verify_user_email(email)
+        except TacticError as e:
+            _raise_tactic_http_error(e)
 
         # Log successful email verification
         logger.info(f"Email verified successfully: {email}")
@@ -144,7 +166,7 @@ async def verify_email(token: str, db: AsyncSession = Depends(get_db_async)):
             "email_verification_success", email, {"verification_method": "email_token"}
         )
 
-        return {"message": "Email verified successfully"}
+        return result
 
     except JWTError:
         raise HTTPException(
@@ -153,19 +175,19 @@ async def verify_email(token: str, db: AsyncSession = Depends(get_db_async)):
 
 
 @router.post("/forgot-password")
-async def forgot_password(
-    user: ForgotPasswordRequest, db: AsyncSession = Depends(get_db_async)
-):
+async def forgot_password(user: ForgotPasswordRequest):
     email = user.email
     response_message = (
         "If the email is registered, a password reset link has been sent."
     )
 
-    result = await db.execute(select(User).filter(User.email == email))
-    user = result.scalars().first()
+    try:
+        existing_user = await tactic.get_user_by_email(email)
+    except TacticError as e:
+        _raise_tactic_http_error(e)
 
-    if user:
-        reset_token = create_reset_token(user.email)
+    if existing_user:
+        reset_token = create_reset_token(existing_user["email"])
         logger.info(f"Sending password reset email to {email}")
 
         try:
@@ -183,10 +205,7 @@ async def forgot_password(
 
 
 @router.post("/reset-password")
-async def reset_password(
-    req: ResetPasswordRequest,
-    db: AsyncSession = Depends(get_db_async),
-):
+async def reset_password(req: ResetPasswordRequest):
     try:
         payload = jwt.decode(
             req.token, settings.JWT_VERIFICATION_SECRET, algorithms=[settings.ALGORITHM]
@@ -199,15 +218,20 @@ async def reset_password(
     except JWTError:
         raise HTTPException(status_code=400, detail="Invalid or expired token")
 
-    # Find user
-    result = await db.execute(select(User).filter(User.email == email))
-    user = result.scalars().first()
+    try:
+        user = await tactic.get_user_by_email(email)
+    except TacticError as e:
+        _raise_tactic_http_error(e)
+
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
     # Update password
-    user.hashed_password = get_password_hash(req.new_password)
-    await db.commit()
+    new_password_hash = get_password_hash(req.new_password)
+    try:
+        await tactic.update_user_password(email, new_password_hash)
+    except TacticError as e:
+        _raise_tactic_http_error(e)
 
     logger.info(f"Password successfully reset for {email}")
     log_security_event("password_reset_success", email, {"reset_method": "email_token"})

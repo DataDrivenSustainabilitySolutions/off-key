@@ -10,7 +10,7 @@ import sys
 
 from off_key_core.config.logs import logger
 from .service import get_radar_service
-from .config import radar_settings
+from .config.config import radar_settings
 
 
 def setup_logging():

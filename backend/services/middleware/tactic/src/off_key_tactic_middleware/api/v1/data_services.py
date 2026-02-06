@@ -1,368 +1,263 @@
 """
-Data services router for TACTIC middleware.
+Data-services API adapter layer.
 
-This module provides HTTP endpoints that act as a service layer between
-the API Gateway and the database, implementing proper separation of concerns.
+Routes in this module are intentionally thin: they only parse HTTP inputs,
+invoke application services, and map domain errors to HTTP responses.
 """
 
 from datetime import datetime
-from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from typing import Any, Optional
 
-from off_key_core.db.base import get_db_async
-from off_key_core.db.models import Charger, Telemetry, User, Favorite, Anomaly
-from off_key_core.config.logs import logger
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+
+from ...domain import (
+    AuthenticationError,
+    ConflictError,
+    DomainError,
+    InfrastructureError,
+    NotFoundError,
+    ValidationError,
+)
+from ...provider import (
+    get_anomaly_service,
+    get_charger_query_service,
+    get_favorite_service,
+    get_telemetry_query_service,
+    get_user_service,
+)
 from ...schemas import (
-    ChargerResponse,
-    TelemetryResponse,
-    TelemetryTypeResponse,
-    UserResponse,
-    FavoriteResponse,
+    AnomalyCreateRequest,
     AnomalyResponse,
+    ChargerResponse,
+    FavoriteMutationRequest,
     UserCreateRequest,
     UserLoginRequest,
-    FavoriteCreateRequest,
-    AnomalyCreateRequest,
+    UserPasswordUpdateRequest,
+    UserResponse,
+)
+from ...services.data import (
+    AnomalyService,
+    ChargerQueryService,
+    FavoriteService,
+    TelemetryQueryService,
+    UserService,
 )
 
 router = APIRouter()
 
-# =============================================================================
-# Charger Services
-# =============================================================================
 
-@router.get("/chargers", response_model=List[ChargerResponse])
+def _raise_http_from_domain(error: DomainError) -> None:
+    """Map domain/application errors to HTTP errors."""
+    if isinstance(error, NotFoundError):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(error))
+    if isinstance(error, ConflictError):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error))
+    if isinstance(error, AuthenticationError):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(error))
+    if isinstance(error, ValidationError):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(error),
+        )
+    if isinstance(error, InfrastructureError):
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal infrastructure error",
+        )
+
+    raise HTTPException(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        detail="Unexpected domain error",
+    )
+
+
+@router.get("/chargers", response_model=list[ChargerResponse])
 async def get_chargers(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
     active_only: bool = Query(False),
-    db: AsyncSession = Depends(get_db_async),
+    service: ChargerQueryService = Depends(get_charger_query_service),
 ):
-    """Get chargers with optional filtering."""
-    query = select(Charger)
-
-    if active_only:
-        query = query.filter(Charger.online == True)
-
-    query = query.offset(skip).limit(limit)
-    result = await db.execute(query)
-    chargers = result.scalars().all()
-
-    logger.info(f"Retrieved {len(chargers)} chargers (active_only={active_only})")
-    return chargers
+    try:
+        return await service.list_chargers(
+            skip=skip,
+            limit=limit,
+            active_only=active_only,
+        )
+    except DomainError as exc:
+        _raise_http_from_domain(exc)
 
 
 @router.get("/chargers/active/ids", response_model=dict)
 async def get_active_charger_ids(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
-    db: AsyncSession = Depends(get_db_async),
+    service: ChargerQueryService = Depends(get_charger_query_service),
 ):
-    """Get IDs of active chargers only."""
-    query = (
-        select(Charger.charger_id)
-        .filter(Charger.online == True)
-        .offset(skip)
-        .limit(limit)
-    )
-    result = await db.execute(query)
-    active_ids = result.scalars().all()
-
-    return {"active": list(active_ids)}
+    try:
+        return await service.list_active_charger_ids(skip=skip, limit=limit)
+    except DomainError as exc:
+        _raise_http_from_domain(exc)
 
 
-# =============================================================================
-# Telemetry Services
-# =============================================================================
-
-@router.get("/telemetry/{charger_id}/types", response_model=List[str])
+@router.get("/telemetry/{charger_id}/types", response_model=list[str])
 async def get_telemetry_types(
     charger_id: str,
     limit: int = Query(100, ge=1, le=1000),
-    db: AsyncSession = Depends(get_db_async),
+    service: TelemetryQueryService = Depends(get_telemetry_query_service),
 ):
-    """Get available telemetry types for a charger."""
-    query = (
-        select(Telemetry.type)
-        .where(Telemetry.charger_id == charger_id)
-        .distinct()
-        .order_by(Telemetry.type.asc())
-        .limit(limit)
-    )
-    result = await db.execute(query)
-    types = result.scalars().all()
-
-    logger.info(f"Retrieved {len(types)} telemetry types for charger {charger_id}")
-    return types
+    try:
+        return await service.list_types(charger_id=charger_id, limit=limit)
+    except DomainError as exc:
+        _raise_http_from_domain(exc)
 
 
-@router.get("/telemetry/{charger_id}/{telemetry_type}")
+@router.get("/telemetry/{charger_id}")
 async def get_telemetry_data(
     charger_id: str,
-    telemetry_type: str,
+    telemetry_type: str = Query(..., alias="type"),
     limit: int = Query(1000, ge=1, le=10000),
     after_timestamp: Optional[datetime] = Query(None),
     paginated: bool = Query(False),
-    db: AsyncSession = Depends(get_db_async),
-):
-    """Get telemetry data with cursor-based pagination."""
-    query = select(Telemetry).filter(
-        Telemetry.charger_id == charger_id,
-        Telemetry.type == telemetry_type
-    )
-
-    # Cursor-based pagination for time-series data
-    if after_timestamp is not None:
-        query = query.filter(Telemetry.timestamp < after_timestamp)
-
-    # Always order by timestamp DESC for time-series data
-    query = query.order_by(Telemetry.timestamp.desc()).limit(limit)
-
-    result = await db.execute(query)
-    telemetry_records = result.scalars().all()
-
-    logger.info(
-        f"Retrieved {len(telemetry_records)} telemetry records for "
-        f"{charger_id}/{telemetry_type}"
-    )
-
-    # Format results to match frontend expectations
-    formatted_results = [
-        {"timestamp": str(record.timestamp), "value": record.value}
-        for record in telemetry_records
-    ]
-
-    # Return paginated response only if explicitly requested
-    if paginated:
-        return {
-            "data": formatted_results,
-            "pagination": {
-                "limit": limit,
-                "has_more": len(formatted_results) == limit,
-                "next_cursor": (
-                    formatted_results[-1]["timestamp"] if formatted_results else None
-                ),
-            },
-        }
-
-    # Default: return simple array for backward compatibility
-    return formatted_results
+    service: TelemetryQueryService = Depends(get_telemetry_query_service),
+) -> list[dict[str, Any]] | dict[str, Any]:
+    try:
+        return await service.get_telemetry_data(
+            charger_id=charger_id,
+            telemetry_type=telemetry_type,
+            limit=limit,
+            after_timestamp=after_timestamp,
+            paginated=paginated,
+        )
+    except DomainError as exc:
+        _raise_http_from_domain(exc)
 
 
-# =============================================================================
-# User Services
-# =============================================================================
+@router.post("/auth/login")
+async def authenticate_user(
+    login_data: UserLoginRequest,
+    service: UserService = Depends(get_user_service),
+) -> dict[str, str]:
+    try:
+        return await service.authenticate(
+            email=login_data.email,
+            password=login_data.password,
+        )
+    except DomainError as exc:
+        _raise_http_from_domain(exc)
 
-@router.get("/users/{email}", response_model=Optional[UserResponse])
+
+@router.get("/users/{email}", response_model=UserResponse)
 async def get_user_by_email(
     email: str,
-    db: AsyncSession = Depends(get_db_async),
-):
-    """Get user by email address."""
-    result = await db.execute(select(User).filter(User.email == email))
-    user = result.scalars().first()
-
-    if not user:
-        return None
-
-    return user
+    service: UserService = Depends(get_user_service),
+) -> dict[str, object]:
+    try:
+        return await service.get_by_email(email=email)
+    except DomainError as exc:
+        _raise_http_from_domain(exc)
 
 
 @router.post("/users", response_model=UserResponse)
 async def create_user(
     user_data: UserCreateRequest,
-    db: AsyncSession = Depends(get_db_async),
+    service: UserService = Depends(get_user_service),
 ):
-    """Create a new user."""
-    # Check if user already exists
-    existing = await db.execute(select(User).filter(User.email == user_data.email))
-    if existing.scalars().first():
-        raise HTTPException(status_code=400, detail="Email already registered")
-
-    # Create new user
-    new_user = User(
-        email=user_data.email,
-        hashed_password=user_data.hashed_password,
-        verification_token=user_data.verification_token,
-        role=user_data.role,
-    )
-
-    db.add(new_user)
-    await db.flush()
-    await db.commit()
-    await db.refresh(new_user)
-
-    logger.info(f"Created new user: {user_data.email}")
-    return new_user
+    try:
+        return await service.create_user(payload=user_data)
+    except DomainError as exc:
+        _raise_http_from_domain(exc)
 
 
 @router.patch("/users/{email}/verify")
 async def verify_user_email(
     email: str,
-    db: AsyncSession = Depends(get_db_async),
+    service: UserService = Depends(get_user_service),
 ):
-    """Mark user as email verified."""
-    result = await db.execute(select(User).filter(User.email == email))
-    user = result.scalars().first()
-
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-
-    user.is_verified = True
-    user.verification_token = None
-    await db.commit()
-
-    logger.info(f"Verified email for user: {email}")
-    return {"message": "Email verified successfully"}
+    try:
+        return await service.verify_email(email=email)
+    except DomainError as exc:
+        _raise_http_from_domain(exc)
 
 
 @router.patch("/users/{email}/password")
 async def update_user_password(
     email: str,
-    new_password_hash: str,
-    db: AsyncSession = Depends(get_db_async),
+    payload: UserPasswordUpdateRequest,
+    service: UserService = Depends(get_user_service),
 ):
-    """Update user password."""
-    result = await db.execute(select(User).filter(User.email == email))
-    user = result.scalars().first()
-
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-
-    user.hashed_password = new_password_hash
-    await db.commit()
-
-    logger.info(f"Updated password for user: {email}")
-    return {"message": "Password updated successfully"}
+    try:
+        return await service.update_password(
+            email=email,
+            new_password_hash=payload.new_password_hash,
+        )
+    except DomainError as exc:
+        _raise_http_from_domain(exc)
 
 
-# =============================================================================
-# Favorites Services
-# =============================================================================
-
-@router.get("/users/{user_id}/favorites", response_model=List[str])
+@router.get("/users/{user_id}/favorites", response_model=list[str])
 async def get_user_favorites(
     user_id: int,
-    db: AsyncSession = Depends(get_db_async),
+    service: FavoriteService = Depends(get_favorite_service),
 ):
-    """Get user's favorite charger IDs."""
-    result = await db.execute(select(Favorite).filter(Favorite.user_id == user_id))
-    favorites = result.scalars().all()
-
-    charger_ids = [f.charger_id for f in favorites]
-    logger.info(f"Retrieved {len(charger_ids)} favorites for user {user_id}")
-    return charger_ids
+    try:
+        return await service.list_user_favorites(user_id=user_id)
+    except DomainError as exc:
+        _raise_http_from_domain(exc)
 
 
 @router.post("/users/{user_id}/favorites")
 async def add_user_favorite(
     user_id: int,
-    charger_id: str,
-    db: AsyncSession = Depends(get_db_async),
+    payload: FavoriteMutationRequest,
+    service: FavoriteService = Depends(get_favorite_service),
 ):
-    """Add charger to user's favorites."""
-    # Check if already exists
-    existing = await db.execute(
-        select(Favorite).filter(
-            Favorite.user_id == user_id,
-            Favorite.charger_id == charger_id
+    try:
+        return await service.add_favorite(
+            user_id=user_id, charger_id=payload.charger_id
         )
-    )
-    if existing.scalars().first():
-        raise HTTPException(status_code=400, detail="Charger already favorited")
-
-    # Add new favorite
-    new_favorite = Favorite(user_id=user_id, charger_id=charger_id)
-    db.add(new_favorite)
-    await db.commit()
-
-    logger.info(f"Added favorite {charger_id} for user {user_id}")
-    return {"message": "Favorite added"}
+    except DomainError as exc:
+        _raise_http_from_domain(exc)
 
 
 @router.delete("/users/{user_id}/favorites/{charger_id}")
 async def remove_user_favorite(
     user_id: int,
     charger_id: str,
-    db: AsyncSession = Depends(get_db_async),
+    service: FavoriteService = Depends(get_favorite_service),
 ):
-    """Remove charger from user's favorites."""
-    result = await db.execute(
-        select(Favorite).filter(
-            Favorite.user_id == user_id,
-            Favorite.charger_id == charger_id
-        )
-    )
-    favorite = result.scalars().first()
-
-    if not favorite:
-        raise HTTPException(status_code=404, detail="Favorite not found")
-
-    await db.delete(favorite)
-    await db.commit()
-
-    logger.info(f"Removed favorite {charger_id} for user {user_id}")
-    return {"message": "Favorite removed"}
+    try:
+        return await service.remove_favorite(user_id=user_id, charger_id=charger_id)
+    except DomainError as exc:
+        _raise_http_from_domain(exc)
 
 
-# =============================================================================
-# Anomaly Services
-# =============================================================================
-
-@router.get("/anomalies/{charger_id}", response_model=List[AnomalyResponse])
+@router.get("/anomalies/{charger_id}", response_model=list[AnomalyResponse])
 async def get_charger_anomalies(
     charger_id: str,
+    telemetry_type: Optional[str] = Query(None),
     limit: int = Query(500, ge=1, le=1000),
-    db: AsyncSession = Depends(get_db_async),
+    service: AnomalyService = Depends(get_anomaly_service),
 ):
-    """Get anomalies for a specific charger."""
-    result = await db.execute(
-        select(Anomaly)
-        .filter(Anomaly.charger_id == charger_id)
-        .order_by(Anomaly.timestamp.desc())
-        .limit(limit)
-    )
-    anomalies = result.scalars().all()
-
-    logger.info(f"Retrieved {len(anomalies)} anomalies for charger {charger_id}")
-    return [
-        {
-            "charger_id": a.charger_id,
-            "timestamp": a.timestamp,
-            "telemetry_type": a.telemetry_type,
-            "anomaly_type": a.anomaly_type,
-            "anomaly_value": a.anomaly_value,
-        }
-        for a in anomalies
-    ]
+    try:
+        return await service.list_anomalies(
+            charger_id=charger_id,
+            telemetry_type=telemetry_type,
+            limit=limit,
+        )
+    except DomainError as exc:
+        _raise_http_from_domain(exc)
 
 
 @router.post("/anomalies")
 async def create_anomaly(
     anomaly_data: AnomalyCreateRequest,
-    db: AsyncSession = Depends(get_db_async),
+    service: AnomalyService = Depends(get_anomaly_service),
 ):
-    """Create a new anomaly record."""
-    new_anomaly = Anomaly(
-        charger_id=anomaly_data.charger_id,
-        timestamp=anomaly_data.timestamp,
-        telemetry_type=anomaly_data.telemetry_type,
-        anomaly_type=anomaly_data.anomaly_type,
-        anomaly_value=anomaly_data.anomaly_value,
-    )
-
-    db.add(new_anomaly)
-    await db.commit()
-    await db.refresh(new_anomaly)
-
-    logger.warning(
-        f"Anomaly created | Charger: {anomaly_data.charger_id} | "
-        f"Type: {anomaly_data.anomaly_type} | Value: {anomaly_data.anomaly_value}"
-    )
-
-    return {"message": "Anomaly created", "anomaly_id": new_anomaly.charger_id}
+    try:
+        return await service.create_anomaly(payload=anomaly_data)
+    except DomainError as exc:
+        _raise_http_from_domain(exc)
 
 
 @router.delete("/anomalies/{charger_id}")
@@ -370,23 +265,13 @@ async def delete_anomaly(
     charger_id: str,
     timestamp: datetime,
     telemetry_type: str,
-    db: AsyncSession = Depends(get_db_async),
+    service: AnomalyService = Depends(get_anomaly_service),
 ):
-    """Delete a specific anomaly."""
-    result = await db.execute(
-        select(Anomaly).filter(
-            Anomaly.charger_id == charger_id,
-            Anomaly.timestamp == timestamp,
-            Anomaly.telemetry_type == telemetry_type,
+    try:
+        return await service.delete_anomaly(
+            charger_id=charger_id,
+            timestamp=timestamp,
+            telemetry_type=telemetry_type,
         )
-    )
-    anomaly = result.scalars().first()
-
-    if not anomaly:
-        raise HTTPException(status_code=404, detail="Anomaly not found")
-
-    await db.delete(anomaly)
-    await db.commit()
-
-    logger.info(f"Deleted anomaly for charger {charger_id} at {timestamp}")
-    return {"message": "Anomaly deleted"}
+    except DomainError as exc:
+        _raise_http_from_domain(exc)

@@ -19,6 +19,7 @@ This test module covers the following risk scenarios:
 6. Silent failures
 """
 
+
 class TestMQTTAsyncEventHandling:
     """Test suite for async event handling in MQTT client"""
 
@@ -43,7 +44,7 @@ class TestMQTTAsyncEventHandling:
         client = RadarMQTTClient(config)
 
         # Mock network connections
-        with patch('off_key_mqtt_radar.mqtt_client.mqtt.Client') as mock_client_class:
+        with patch("off_key_mqtt_radar.mqtt_client.mqtt.Client") as mock_client_class:
             mock_mqtt_client = MagicMock()
             mock_mqtt_client.connect_async = MagicMock()
             mock_mqtt_client.loop_start = MagicMock()
@@ -69,13 +70,15 @@ class TestMQTTAsyncEventHandling:
             yield client
 
             # Cleanup
-            if client._message_processor_task and not client._message_processor_task.done():
+            if (
+                client._message_processor_task
+                and not client._message_processor_task.done()
+            ):
                 client._message_processor_task.cancel()
                 try:
                     await client._message_processor_task
                 except asyncio.CancelledError:
                     pass
-
 
     @pytest.mark.asyncio
     async def test_event_loop_not_initialized(self, mqtt_client):
@@ -100,7 +103,9 @@ class TestMQTTAsyncEventHandling:
         """Test handling message when event loop closes between check and execution"""
         # Start client and simulate successful connection
         mqtt_client._loop = asyncio.get_running_loop()
-        mqtt_client._message_processor_task = asyncio.create_task(mqtt_client._message_processor())
+        mqtt_client._message_processor_task = asyncio.create_task(
+            mqtt_client._message_processor()
+        )
         mqtt_client.is_connected = True
 
         mock_msg = Mock()
@@ -136,14 +141,15 @@ class TestMQTTAsyncEventHandling:
                 payload=b"test",
                 qos=0,
                 retain=False,
-                timestamp=datetime.now()
+                timestamp=datetime.now(),
             )
             # This may raise RuntimeError if loop is closed, which is expected
-            loop.call_soon_threadsafe(lambda: mqtt_client._handle_incoming_message(message))
+            loop.call_soon_threadsafe(
+                lambda: mqtt_client._handle_incoming_message(message)
+            )
         except RuntimeError as e:
             # Expected when loop is closed
             assert "closed" in str(e).lower() or "running" in str(e).lower()
-
 
     @pytest.mark.asyncio
     async def test_message_handler_exception_propagation(self, mqtt_client):
@@ -162,7 +168,7 @@ class TestMQTTAsyncEventHandling:
             payload=b"test",
             qos=0,
             retain=False,
-            timestamp=datetime.now()
+            timestamp=datetime.now(),
         )
 
         await mqtt_client.message_queue.put(message)
@@ -199,7 +205,7 @@ class TestMQTTAsyncEventHandling:
                 payload=f"message_{i}".encode(),
                 qos=0,
                 retain=False,
-                timestamp=datetime.now()
+                timestamp=datetime.now(),
             )
             await mqtt_client.message_queue.put(message)
 
@@ -234,7 +240,7 @@ class TestMQTTAsyncEventHandling:
                     payload=payload,
                     qos=0,
                     retain=False,
-                    timestamp=datetime.now()
+                    timestamp=datetime.now(),
                 )
             )
 
@@ -244,7 +250,6 @@ class TestMQTTAsyncEventHandling:
         # Successful messages should be processed
         assert len(processed_messages) == 3
         assert mqtt_client.error_count == 2
-
 
     @pytest.mark.asyncio
     async def test_message_queue_cleanup_on_shutdown(self, mqtt_client):
@@ -258,7 +263,7 @@ class TestMQTTAsyncEventHandling:
                 payload=f"message_{i}".encode(),
                 qos=0,
                 retain=False,
-                timestamp=datetime.now()
+                timestamp=datetime.now(),
             )
             await mqtt_client.message_queue.put(message)
 
@@ -269,8 +274,10 @@ class TestMQTTAsyncEventHandling:
         await mqtt_client.stop()
 
         # Task should be cancelled
-        assert mqtt_client._message_processor_task.cancelled() or \
-               mqtt_client._message_processor_task.done()
+        assert (
+            mqtt_client._message_processor_task.cancelled()
+            or mqtt_client._message_processor_task.done()
+        )
 
     @pytest.mark.asyncio
     async def test_no_handler_memory_leak(self, mqtt_client):
@@ -287,7 +294,7 @@ class TestMQTTAsyncEventHandling:
                 payload=f"message_{i}".encode(),
                 qos=0,
                 retain=False,
-                timestamp=datetime.now()
+                timestamp=datetime.now(),
             )
             await mqtt_client.message_queue.put(message)
 
@@ -311,7 +318,6 @@ class TestMQTTAsyncEventHandling:
         assert mqtt_client._shutdown_event.is_set()
         assert not mqtt_client.is_connected
 
-
     @pytest.mark.asyncio
     async def test_concurrent_message_arrival_and_handler_setting(self, mqtt_client):
         """Test race condition when handler is set while messages arrive"""
@@ -331,7 +337,7 @@ class TestMQTTAsyncEventHandling:
                     payload=f"message_{i}".encode(),
                     qos=0,
                     retain=False,
-                    timestamp=datetime.now()
+                    timestamp=datetime.now(),
                 )
                 await mqtt_client.message_queue.put(message)
                 await asyncio.sleep(0.01)
@@ -368,7 +374,7 @@ class TestMQTTAsyncEventHandling:
             payload=b"test",
             qos=0,
             retain=False,
-            timestamp=datetime.now()
+            timestamp=datetime.now(),
         )
         await mqtt_client.message_queue.put(message)
 
@@ -394,7 +400,7 @@ class TestMQTTAsyncEventHandling:
                     payload=f"msg_{i}".encode(),
                     qos=0,
                     retain=False,
-                    timestamp=datetime.now()
+                    timestamp=datetime.now(),
                 )
                 # Simulate call from MQTT thread via event loop
                 mqtt_client._loop.call_soon_threadsafe(
@@ -407,7 +413,6 @@ class TestMQTTAsyncEventHandling:
 
         # Should not crash and rate limiter should work
         assert len(mqtt_client.rate_limiter) <= mqtt_client.config.rate_limit_per_minute
-
 
     @pytest.mark.asyncio
     async def test_message_queue_backpressure(self, mqtt_client):
@@ -429,7 +434,7 @@ class TestMQTTAsyncEventHandling:
                 payload=f"message_{i}".encode(),
                 qos=0,
                 retain=False,
-                timestamp=datetime.now()
+                timestamp=datetime.now(),
             )
             try:
                 mqtt_client.message_queue.put_nowait(message)
@@ -454,13 +459,16 @@ class TestMQTTAsyncEventHandling:
                 payload=f"message_{i}".encode(),
                 qos=0,
                 retain=False,
-                timestamp=datetime.now()
+                timestamp=datetime.now(),
             )
             mqtt_client._handle_incoming_message(message)
 
         # Queue size should be limited by rate limiter
         # Only the first rate_limit_per_minute messages should be queued
-        assert mqtt_client.message_queue.qsize() <= mqtt_client.config.rate_limit_per_minute
+        assert (
+            mqtt_client.message_queue.qsize()
+            <= mqtt_client.config.rate_limit_per_minute
+        )
 
         # Rate limiter should have accepted initial batch and dropped excess
         # Note: Rate limiting logs warnings but doesn't increment error_count
@@ -487,7 +495,7 @@ class TestMQTTAsyncEventHandling:
                 payload=f"message_{i}".encode(),
                 qos=0,
                 retain=False,
-                timestamp=datetime.now()
+                timestamp=datetime.now(),
             )
             await mqtt_client.message_queue.put(message)
 
@@ -520,7 +528,7 @@ class TestMQTTAsyncEventHandling:
             payload=b"test",
             qos=0,
             retain=False,
-            timestamp=datetime.now()
+            timestamp=datetime.now(),
         )
         await mqtt_client.message_queue.put(message)
 
@@ -533,13 +541,13 @@ class TestMQTTAsyncEventHandling:
     async def test_connection_failure_tracking(self, mqtt_client):
         """Test that connection failures are tracked and visible"""
         # Mock failed connection
-        with patch.object(mqtt_client, 'client') as mock_client:
+        with patch.object(mqtt_client, "client") as mock_client:
             mock_client.connect_async.side_effect = Exception("Connection failed")
 
             # Attempt connection should handle failure
             try:
                 await mqtt_client._connect()
-            except:
+            except Exception:
                 pass
 
             # Should track reconnection attempts
@@ -595,7 +603,7 @@ class TestMQTTAsyncEventHandling:
             payload=b"",
             qos=0,
             retain=False,
-            timestamp=datetime.now()
+            timestamp=datetime.now(),
         )
         await mqtt_client.message_queue.put(message)
 
@@ -634,7 +642,7 @@ class TestMQTTAsyncEventHandling:
             payload=b"test",
             qos=0,
             retain=False,
-            timestamp=original_timestamp
+            timestamp=original_timestamp,
         )
         await mqtt_client.message_queue.put(message)
 

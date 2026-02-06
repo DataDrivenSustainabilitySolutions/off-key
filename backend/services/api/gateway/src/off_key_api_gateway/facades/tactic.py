@@ -4,6 +4,7 @@ HTTP client for communicating with the TACTIC middleware service.
 
 import asyncio
 import json
+from datetime import datetime
 from typing import Dict, List, Optional, Any
 
 import aiohttp
@@ -51,7 +52,7 @@ class Tactic:
         endpoint: str,
         json_data: Optional[Dict] = None,
         params: Optional[Dict] = None,
-    ) -> Dict[str, Any]:
+    ) -> Any:
         """
         Make an HTTP request to the TACTIC service.
 
@@ -68,6 +69,7 @@ class Tactic:
             Exception: If the request fails
         """
         url = f"{self.base_url}{endpoint}"
+        normalized_params = self._normalize_query_params(params)
 
         attempt = 0
         while True:
@@ -78,7 +80,7 @@ class Tactic:
                     method=method,
                     url=url,
                     json=json_data,
-                    params=params,
+                    params=normalized_params,
                 ) as response:
                     parsed_body = await self._parse_response_body(response)
 
@@ -118,6 +120,27 @@ class Tactic:
             except Exception as e:
                 logger.error(f"TACTIC request error: {method} {url} - {str(e)}")
                 raise TacticError(f"TACTIC request error: {str(e)}")
+
+    def _normalize_query_params(self, params: Optional[Dict]) -> Optional[Dict]:
+        """
+        Normalize query params for aiohttp/yarl compatibility.
+
+        yarl rejects raw bool values in query strings. Convert booleans to
+        lowercase strings and drop None values.
+        """
+        if params is None:
+            return None
+
+        normalized: Dict[str, Any] = {}
+        for key, value in params.items():
+            if value is None:
+                continue
+            if isinstance(value, bool):
+                normalized[key] = "true" if value else "false"
+            else:
+                normalized[key] = value
+
+        return normalized
 
     async def _parse_response_body(self, response: aiohttp.ClientResponse) -> Any:
         """Parse JSON if possible, otherwise return raw text for diagnostics."""
@@ -266,6 +289,177 @@ class Tactic:
         return await self._make_request(
             method="GET",
             endpoint="/api/v1/orchestration/radar/services/details/",
+            params=params,
+        )
+
+    async def get_chargers(
+        self,
+        skip: int = 0,
+        limit: int = 100,
+        active_only: bool = False,
+    ) -> List[Dict[str, Any]]:
+        """Get chargers from TACTIC data service."""
+        params = {
+            "skip": skip,
+            "limit": limit,
+            "active_only": str(active_only).lower(),
+        }
+        return await self._make_request(
+            method="GET",
+            endpoint="/api/v1/data/chargers",
+            params=params,
+        )
+
+    async def get_active_charger_ids(
+        self, skip: int = 0, limit: int = 100
+    ) -> Dict[str, List[str]]:
+        """Get active charger IDs from TACTIC data service."""
+        params = {"skip": skip, "limit": limit}
+        return await self._make_request(
+            method="GET",
+            endpoint="/api/v1/data/chargers/active/ids",
+            params=params,
+        )
+
+    async def get_telemetry_types(self, charger_id: str, limit: int = 100) -> List[str]:
+        """Get telemetry types for a charger from TACTIC data service."""
+        params = {"limit": limit}
+        return await self._make_request(
+            method="GET",
+            endpoint=f"/api/v1/data/telemetry/{charger_id}/types",
+            params=params,
+        )
+
+    async def get_telemetry_data(
+        self,
+        charger_id: str,
+        telemetry_type: str,
+        limit: int = 1000,
+        after_timestamp: Optional[datetime] = None,
+        paginated: bool = False,
+    ) -> Any:
+        """Get telemetry data from TACTIC data service."""
+        params: Dict[str, Any] = {
+            "type": telemetry_type,
+            "limit": limit,
+            "paginated": paginated,
+        }
+        if after_timestamp is not None:
+            params["after_timestamp"] = after_timestamp.isoformat()
+
+        return await self._make_request(
+            method="GET",
+            endpoint=f"/api/v1/data/telemetry/{charger_id}",
+            params=params,
+        )
+
+    async def get_user_by_email(self, email: str) -> Optional[Dict[str, Any]]:
+        """Get user by email from TACTIC data service."""
+        try:
+            return await self._make_request(
+                method="GET",
+                endpoint=f"/api/v1/data/users/{email}",
+            )
+        except TacticError as e:
+            if e.status == 404:
+                return None
+            raise
+
+    async def create_user(self, user_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Create user via TACTIC data service."""
+        return await self._make_request(
+            method="POST",
+            endpoint="/api/v1/data/users",
+            json_data=user_data,
+        )
+
+    async def authenticate_user(self, email: str, password: str) -> Dict[str, Any]:
+        """Validate user credentials via TACTIC data service."""
+        return await self._make_request(
+            method="POST",
+            endpoint="/api/v1/data/auth/login",
+            json_data={"email": email, "password": password},
+        )
+
+    async def verify_user_email(self, email: str) -> Dict[str, str]:
+        """Verify user email via TACTIC data service."""
+        return await self._make_request(
+            method="PATCH",
+            endpoint=f"/api/v1/data/users/{email}/verify",
+        )
+
+    async def update_user_password(
+        self, email: str, new_password_hash: str
+    ) -> Dict[str, str]:
+        """Update user password via TACTIC data service."""
+        return await self._make_request(
+            method="PATCH",
+            endpoint=f"/api/v1/data/users/{email}/password",
+            json_data={"new_password_hash": new_password_hash},
+        )
+
+    async def get_user_favorites(self, user_id: int) -> List[str]:
+        """Get user favorites from TACTIC data service."""
+        return await self._make_request(
+            method="GET",
+            endpoint=f"/api/v1/data/users/{user_id}/favorites",
+        )
+
+    async def add_user_favorite(self, user_id: int, charger_id: str) -> Dict[str, str]:
+        """Add user favorite via TACTIC data service."""
+        return await self._make_request(
+            method="POST",
+            endpoint=f"/api/v1/data/users/{user_id}/favorites",
+            json_data={"charger_id": charger_id},
+        )
+
+    async def remove_user_favorite(
+        self, user_id: int, charger_id: str
+    ) -> Dict[str, str]:
+        """Remove user favorite via TACTIC data service."""
+        return await self._make_request(
+            method="DELETE",
+            endpoint=f"/api/v1/data/users/{user_id}/favorites/{charger_id}",
+        )
+
+    async def get_charger_anomalies(
+        self,
+        charger_id: str,
+        limit: int = 500,
+        telemetry_type: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """Get anomalies for charger from TACTIC data service."""
+        params: Dict[str, Any] = {"limit": limit}
+        if telemetry_type:
+            params["telemetry_type"] = telemetry_type
+        return await self._make_request(
+            method="GET",
+            endpoint=f"/api/v1/data/anomalies/{charger_id}",
+            params=params,
+        )
+
+    async def create_anomaly(self, anomaly_data: Dict[str, Any]) -> Dict[str, str]:
+        """Create anomaly via TACTIC data service."""
+        return await self._make_request(
+            method="POST",
+            endpoint="/api/v1/data/anomalies",
+            json_data=anomaly_data,
+        )
+
+    async def delete_anomaly(
+        self,
+        charger_id: str,
+        timestamp: datetime,
+        telemetry_type: str,
+    ) -> Dict[str, str]:
+        """Delete anomaly via TACTIC data service."""
+        params = {
+            "timestamp": timestamp.isoformat(),
+            "telemetry_type": telemetry_type,
+        }
+        return await self._make_request(
+            method="DELETE",
+            endpoint=f"/api/v1/data/anomalies/{charger_id}",
             params=params,
         )
 

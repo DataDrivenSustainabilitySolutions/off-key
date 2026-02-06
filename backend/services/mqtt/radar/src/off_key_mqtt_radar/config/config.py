@@ -70,7 +70,7 @@ class AnomalyDetectionConfig(BaseModel):
         This ensures invalid configurations fail fast at startup rather than
         during model instantiation. Validation is pure - no mutation.
         """
-        from .tactic_client import (
+        from ..tactic_client import (
             validate_model_params,
             validate_preprocessing_steps,
         )
@@ -113,7 +113,7 @@ class AnomalyDetectionConfig(BaseModel):
         Returns:
             AnomalyDetectionConfig with normalized parameters
         """
-        from .tactic_client import (
+        from ..tactic_client import (
             validate_model_params,
             validate_preprocessing_steps,
         )

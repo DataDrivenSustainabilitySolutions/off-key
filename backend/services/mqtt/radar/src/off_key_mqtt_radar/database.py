@@ -24,7 +24,7 @@ from sqlalchemy.schema import MetaData
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-from .config import MQTTRadarConfig
+from .config.config import MQTTRadarConfig
 from .models import ServiceMetrics, AnomalyResult
 
 logger = logging.getLogger(__name__)

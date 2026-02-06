@@ -25,7 +25,7 @@ from .tactic_client import (
     get_preprocessor_class,
 )
 
-from .config import AnomalyDetectionConfig
+from .config.config import AnomalyDetectionConfig
 from .models import AnomalyResult
 
 

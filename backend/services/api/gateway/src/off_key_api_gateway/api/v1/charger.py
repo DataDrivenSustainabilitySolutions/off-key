@@ -1,15 +1,28 @@
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from fastapi import APIRouter, HTTPException, status
 import httpx
 
-from off_key_core.db.base import get_db_async
-from off_key_core.db.models import Charger
 from off_key_core.config.config import get_settings
+from ...facades.tactic import TacticError, tactic
 
 settings = get_settings()
 
 router = APIRouter()
+
+
+def _get_tactic_error_detail(error: TacticError) -> str:
+    """Extract API detail from TACTIC error body when available."""
+    if isinstance(error.body, dict):
+        detail = error.body.get("detail")
+        if detail:
+            return str(detail)
+    return str(error)
+
+
+def _raise_tactic_http_error(error: TacticError) -> None:
+    raise HTTPException(
+        status_code=error.status or status.HTTP_502_BAD_GATEWAY,
+        detail=_get_tactic_error_detail(error),
+    )
 
 
 @router.post("/sync", tags=["chargers"])
@@ -48,28 +61,24 @@ async def clean_chargers(older_n_days: int):
 
 
 @router.get("/available", tags=["chargers"])
-async def get_all_chargers(
-    skip: int = 0, limit: int = 100, db: AsyncSession = Depends(get_db_async)
-):
-    query = select(Charger).offset(skip).limit(limit)
-    result = await db.execute(query)
-    return result.scalars().all()
+async def get_all_chargers(skip: int = 0, limit: int = 100):
+    try:
+        return await tactic.get_chargers(skip=skip, limit=limit, active_only=False)
+    except TacticError as e:
+        _raise_tactic_http_error(e)
 
 
 @router.get("/active", tags=["chargers"])
-async def get_active_chargers(
-    skip: int = 0, limit: int = 100, db: AsyncSession = Depends(get_db_async)
-):
-    query = select(Charger).filter(Charger.online).offset(skip).limit(limit)
-    result = await db.execute(query)
-    return result.scalars().all()
+async def get_active_chargers(skip: int = 0, limit: int = 100):
+    try:
+        return await tactic.get_chargers(skip=skip, limit=limit, active_only=True)
+    except TacticError as e:
+        _raise_tactic_http_error(e)
 
 
 @router.get("/active/id", tags=["chargers"])
-async def get_active_charger_ids(
-    skip: int = 0, limit: int = 100, db: AsyncSession = Depends(get_db_async)
-):
-    query = select(Charger.charger_id).filter(Charger.online).offset(skip).limit(limit)
-    result = await db.execute(query)
-    active_ids = result.scalars().all()
-    return {"active": list(active_ids)}
+async def get_active_charger_ids(skip: int = 0, limit: int = 100):
+    try:
+        return await tactic.get_active_charger_ids(skip=skip, limit=limit)
+    except TacticError as e:
+        _raise_tactic_http_error(e)

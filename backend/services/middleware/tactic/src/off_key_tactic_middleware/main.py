@@ -13,9 +13,9 @@ from fastapi import FastAPI, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 
 from off_key_core.config.logs import logger
-from .api.v1 import radar, models
+from .api.v1 import radar, models, data_services
 from .api.v1.admin_models import router as admin_models_router
-from .config import tactic_settings
+from .config.config import tactic_settings
 from .services.reconciliation import RadarStatusReconciliationService
 from .facades.docker import AsyncDocker
 from .models.registry import ModelRegistryService, ModelRegistryNotReadyError
@@ -186,6 +186,9 @@ def create_app() -> FastAPI:
     # Include API routers
     app.include_router(
         radar.router, prefix="/api/v1/orchestration", tags=["orchestration"]
+    )
+    app.include_router(
+        data_services.router, prefix="/api/v1/data", tags=["data-services"]
     )
     app.include_router(models.router, prefix="/api/v1", tags=["models"])
     app.include_router(admin_models_router, prefix="/api/v1", tags=["admin"])

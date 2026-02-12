@@ -8,14 +8,13 @@ import asyncio
 import uvicorn
 from pathlib import Path
 
+from off_key_core.config.config import get_settings
 from off_key_core.config.logs import load_yaml_config, logger
 from .config.config import sync_settings
 from .service import SyncService
 from .api import app, set_sync_service
 
-# Load logging configuration from YAML files
-service_logging_config = Path(__file__).parent / "config" / "logging.yaml"
-load_yaml_config(str(service_logging_config))
+settings = get_settings()
 
 
 async def run_api_server(sync_service: SyncService):
@@ -43,6 +42,11 @@ async def run_api_server(sync_service: SyncService):
 
 async def main():
     """Main entry point for database sync service"""
+
+    # Initialize logging
+    service_logging_config = Path(__file__).parent / "config" / "logging.yaml"
+    load_yaml_config(str(service_logging_config))
+
     logger.info("Starting Off-Key database sync service")
 
     sync_service = SyncService()

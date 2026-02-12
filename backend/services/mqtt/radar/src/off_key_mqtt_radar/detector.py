@@ -5,85 +5,74 @@ Implements anomaly detection patterns from guide.md for real-time processing
 of MQTT telemetry data with resilient error handling and monitoring.
 """
 
+import logging
 import time
 import pickle
 import os
 import psutil
 import gc
 import hashlib
-from datetime import datetime
+import hmac
+from datetime import datetime, timezone
 from typing import Dict, Any, Optional
 from collections import deque
 from enum import Enum
 
-from off_key_core.config.logs import logger
+# Model registry for dynamic model loading
+from .tactic_client import (
+    create_model_instance,
+    validate_preprocessing_steps,
+    get_preprocessor_class,
+)
 
-# ONAD imports for online anomaly detection
-try:
-    from onad.models.online_isolation_forest import OnlineIsolationForest
-    from onad.models.incremental_one_class_svm import (
-        IncrementalOneClassSVMAdaptiveKernel,
-    )
-    from onad.models.incremental_knn import IncrementalKNN
-    from onad.transform.preprocess.scaler import StandardScaler
-    from onad.transform.project.incremental_pca import IncrementalPCA
-except ImportError as e:
-    logger.warning(f"ONAD not available: {e}. Using mock implementations.")
-
-    # Mock implementations for development
-    class OnlineIsolationForest:
-        def __init__(self, **kwargs):
-            self.params = kwargs
-
-        def learn_one(self, x):
-            pass
-
-        def score_one(self, x):
-            return 0.5
-
-    class IncrementalOneClassSVMAdaptiveKernel:
-        def __init__(self, **kwargs):
-            self.params = kwargs
-
-        def learn_one(self, x):
-            pass
-
-        def score_one(self, x):
-            return 0.5
-
-    class IncrementalKNN:
-        def __init__(self, **kwargs):
-            self.params = kwargs
-
-        def learn_one(self, x):
-            pass
-
-        def score_one(self, x):
-            return 0.5
-
-    class StandardScaler:
-        def __init__(self, **kwargs):
-            self.params = kwargs
-
-        def learn_one(self, x):
-            pass
-
-        def transform_one(self, x):
-            return x
-
-    class IncrementalPCA:
-        def __init__(self, **kwargs):
-            self.params = kwargs
-
-        def learn_one(self, x):
-            pass
-
-        def transform_one(self, x):
-            return x
-
-
-from off_key_mqtt_radar.config.config import AnomalyDetectionConfig
+from .config.config import AnomalyDetectionConfig
 from .models import AnomalyResult
+
+
+# =============================================================================
+# Checkpoint Security
+# =============================================================================
+
+_checkpoint_secret_warning_logged = False
+
+
+def _get_checkpoint_secret() -> bytes:
+    """Get checkpoint signing secret from environment."""
+    return os.getenv("RADAR_CHECKPOINT_SECRET", "").encode()
+
+
+def _sign_checkpoint_data(data: bytes) -> str:
+    """Create HMAC signature for checkpoint data."""
+    secret = _get_checkpoint_secret()
+    if not secret:
+        return ""
+    return hmac.new(secret, data, hashlib.sha256).hexdigest()
+
+
+def _verify_checkpoint_signature(data: bytes, signature: str) -> bool:
+    """Verify HMAC signature for checkpoint data.
+
+    If no secret is configured, verification is skipped (returns True).
+    This allows backwards compatibility with unsigned checkpoints in dev.
+    """
+    global _checkpoint_secret_warning_logged
+    logger = logging.getLogger(__name__)
+
+    secret = _get_checkpoint_secret()
+    if not secret:
+        # Log warning once per process to avoid spam
+        if not _checkpoint_secret_warning_logged:
+            logger.warning(
+                "RADAR_CHECKPOINT_SECRET not configured - checkpoint signature "
+                "verification is DISABLED. Set this environment variable in "
+                "production to protect against checkpoint tampering."
+            )
+            _checkpoint_secret_warning_logged = True
+        return True  # Skip verification if no secret configured
+    if not signature:
+        return False  # Signature required when secret is set
+    expected = hmac.new(secret, data, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(expected, signature)
 
 
 class ServiceState(Enum):
@@ -107,49 +96,174 @@ class AnomalyDetectionService:
     - Performance monitoring
     """
 
-    def __init__(self, config: AnomalyDetectionConfig):
+    def __init__(
+        self,
+        config: AnomalyDetectionConfig,
+        checkpoint: Optional[Dict[str, Any]] = None,
+    ):
+        """Initialize anomaly detection service.
+
+        Args:
+            config: Service configuration
+            checkpoint: Optional checkpoint data to restore from. If provided,
+                       the model and preprocessors are restored from the checkpoint
+                       instead of being created fresh.
+        """
         self.config = config
-        self.logger = logger
+        self.logger = logging.getLogger(__name__)
 
-        # Initialize components
-        self.model = self._create_model()
-        self.preprocessors = self._create_preprocessors()
-
-        # Monitoring
-        self.processed_count = 0
-        self.anomaly_count = 0
-        self.last_checkpoint = 0
+        # Performance tracking (always fresh)
         self.start_time = time.time()
+        self.processing_times: deque = deque(maxlen=1000)
 
-        # Performance tracking
-        self.processing_times = deque(maxlen=1000)
+        if checkpoint:
+            self._restore_from_checkpoint(checkpoint)
+        else:
+            self._initialize_fresh()
 
         self.logger.info(
             f"Initialized anomaly detection service with model: {config.model_type}"
+            f" (restored={checkpoint is not None})"
         )
 
+    def _initialize_fresh(self):
+        """Initialize fresh model and preprocessors."""
+        self.model = self._create_model()
+        self.preprocessors = self._create_preprocessors()
+        self.processed_count = 0
+        self.anomaly_count = 0
+        self.last_checkpoint = 0
+
+    def _restore_from_checkpoint(self, checkpoint: Dict[str, Any]):
+        """Restore state from checkpoint data."""
+        self.model = checkpoint["model"]
+        self.preprocessors = checkpoint.get("preprocessors", [])
+        self.processed_count = checkpoint["processed_count"]
+        self.anomaly_count = checkpoint["anomaly_count"]
+        self.last_checkpoint = self.processed_count
+
+        self.logger.info(
+            f"Restored from checkpoint: {self.processed_count} points processed, "
+            f"{self.anomaly_count} anomalies detected, "
+            f"{len(self.preprocessors)} preprocessors restored"
+        )
+
+    @classmethod
+    def _load_and_verify_checkpoint(cls, checkpoint_path: str) -> Dict[str, Any]:
+        """Load checkpoint file with signature verification.
+
+        Args:
+            checkpoint_path: Path to the checkpoint file
+
+        Returns:
+            Verified checkpoint data
+
+        Raises:
+            ValueError: If signature verification fails
+            FileNotFoundError: If checkpoint file doesn't exist
+        """
+        logger = logging.getLogger(__name__)
+
+        # Read raw bytes for signature verification
+        with open(checkpoint_path, "rb") as f:
+            raw_data = f.read()
+
+        # Check for signature file
+        sig_path = checkpoint_path + ".sig"
+        signature = ""
+        if os.path.exists(sig_path):
+            with open(sig_path, "r") as f:
+                signature = f.read().strip()
+
+        # Verify signature
+        if not _verify_checkpoint_signature(raw_data, signature):
+            logger.error(f"Checkpoint signature verification failed: {checkpoint_path}")
+            raise ValueError(
+                f"Checkpoint signature verification failed. "
+                f"The checkpoint file may have been tampered with: {checkpoint_path}"
+            )
+
+        # Deserialize after verification
+        checkpoint = pickle.loads(raw_data)
+        return checkpoint
+
+    @classmethod
+    def from_checkpoint(
+        cls, checkpoint_path: str, config: AnomalyDetectionConfig
+    ) -> "AnomalyDetectionService":
+        """Restore service from a checkpoint file.
+
+        This restores the learned state of both the model and preprocessors,
+        allowing the service to resume from where it left off.
+
+        Args:
+            checkpoint_path: Path to the pickle checkpoint file
+            config: Current configuration (used for thresholds, etc.)
+
+        Returns:
+            Restored AnomalyDetectionService instance
+
+        Raises:
+            ValueError: If checkpoint signature fails or model type mismatches
+        """
+        logger = logging.getLogger(__name__)
+
+        # Load and verify checkpoint
+        checkpoint = cls._load_and_verify_checkpoint(checkpoint_path)
+
+        # Validate model type matches
+        saved_config = checkpoint.get("config")
+        if saved_config and hasattr(saved_config, "model_type"):
+            if saved_config.model_type != config.model_type:
+                raise ValueError(
+                    f"Checkpoint model type '{saved_config.model_type}' "
+                    f"does not match config model type '{config.model_type}'."
+                )
+
+        logger.info(f"Loading verified checkpoint: {checkpoint_path}")
+        return cls(config, checkpoint=checkpoint)
+
     def _create_model(self):
-        """Factory method for model creation"""
-        model_map = {
-            "isolation_forest": OnlineIsolationForest,
-            "adaptive_svm": IncrementalOneClassSVMAdaptiveKernel,
-            "knn": IncrementalKNN,
-        }
+        """Factory method for model creation using registry.
 
-        model_class = model_map.get(self.config.model_type)
-        if not model_class:
-            raise ValueError(f"Unknown model type: {self.config.model_type}")
+        Uses create_model_instance which handles special cases like KNN
+        that require additional setup (e.g., similarity engine).
+        """
+        try:
+            # Log params before validation
+            self.logger.info(
+                f"Creating model '{self.config.model_type}'"
+                f" with params: {self.config.model_params}"
+            )
 
-        return model_class(**self.config.model_params)
+            # Use create_model_instance which handles special cases like KNN
+            return create_model_instance(
+                self.config.model_type, self.config.model_params
+            )
+
+        except ImportError as e:
+            self.logger.error(f"Failed to import model: {e}")
+            raise
+        except ValueError as e:
+            self.logger.error(f"Invalid model configuration: {e}")
+            raise
 
     def _create_preprocessors(self):
-        """Create preprocessing pipeline"""
+        """Create preprocessing pipeline from validated config."""
         preprocessors = []
-        for step in self.config.preprocessing_steps:
-            if step["type"] == "scaler":
-                preprocessors.append(StandardScaler(**step.get("params", {})))
-            elif step["type"] == "pca":
-                preprocessors.append(IncrementalPCA(**step.get("params", {})))
+        try:
+            validated_steps = validate_preprocessing_steps(
+                getattr(self.config, "preprocessing_steps", [])
+            )
+            for step in validated_steps:
+                preprocessor_cls = get_preprocessor_class(step["type"])
+                preprocessors.append(preprocessor_cls(**step.get("params", {})))
+            if preprocessors:
+                step_types = [s["type"] for s in validated_steps]
+                self.logger.info(f"Enabled preprocessing pipeline: {step_types}")
+        except Exception as e:
+            self.logger.error(f"Failed to create preprocessing pipeline: {e}")
+            raise
 
         return preprocessors
 
@@ -160,15 +274,18 @@ class AnomalyDetectionService:
         start_time = time.time()
 
         try:
-            # Preprocessing
             processed_data = data.copy()
+            # Apply preprocessing using the state learned so far (no leakage)
             for preprocessor in self.preprocessors:
-                preprocessor.learn_one(processed_data)
                 processed_data = preprocessor.transform_one(processed_data)
 
-            # Anomaly detection
-            self.model.learn_one(processed_data)
+            # Anomaly detection: score first, then learn
             score = self.model.score_one(processed_data)
+            self.model.learn_one(processed_data)
+
+            # Update preprocessors after scoring to avoid influencing current result
+            for preprocessor in self.preprocessors:
+                preprocessor.learn_one(data)
 
             # Thresholding
             is_anomaly = score > self.config.thresholds.get("medium", 0.6)
@@ -192,7 +309,7 @@ class AnomalyDetectionService:
                 anomaly_score=score,
                 is_anomaly=is_anomaly,
                 severity=severity,
-                timestamp=datetime.now(),
+                timestamp=datetime.now(timezone.utc),
                 model_info=self._get_model_info(),
                 raw_data=data,
                 processed_features=processed_data,
@@ -218,7 +335,7 @@ class AnomalyDetectionService:
                 anomaly_score=0.0,
                 is_anomaly=False,
                 severity="unknown",
-                timestamp=datetime.now(),
+                timestamp=datetime.now(timezone.utc),
                 model_info={"error": str(e)},
                 raw_data=data,
                 topic=topic,
@@ -243,27 +360,46 @@ class AnomalyDetectionService:
             return "low"
 
     def _checkpoint_model(self):
-        """Save model checkpoint"""
+        """Save model and preprocessor checkpoint with HMAC signature.
+
+        Checkpoints are namespaced by SERVICE_ID to support multiple RADAR
+        containers running independently. If RADAR_CHECKPOINT_SECRET is set,
+        the checkpoint is signed with HMAC-SHA256.
+        """
         try:
-            checkpoint_dir = "checkpoints"
+            checkpoint_dir = os.getenv("RADAR_CHECKPOINT_DIR", "checkpoints")
+            service_id = os.getenv("SERVICE_ID", "default")
             os.makedirs(checkpoint_dir, exist_ok=True)
 
-            checkpoint_path = (
-                f"{checkpoint_dir}/model_{self.processed_count}_{int(time.time())}.pkl"
-            )
-            with open(checkpoint_path, "wb") as f:
-                pickle.dump(
-                    {
-                        "model": self.model,
-                        "preprocessors": self.preprocessors,
-                        "processed_count": self.processed_count,
-                        "anomaly_count": self.anomaly_count,
-                        "config": self.config,
-                    },
-                    f,
-                )
+            timestamp = int(time.time())
+            checkpoint_name = f"{service_id}_{self.processed_count}_{timestamp}.pkl"
+            checkpoint_path = f"{checkpoint_dir}/{checkpoint_name}"
 
-            self.logger.info(f"Model checkpoint saved: {checkpoint_path}")
+            # Serialize checkpoint data
+            checkpoint_data = pickle.dumps(
+                {
+                    "model": self.model,
+                    "preprocessors": self.preprocessors,
+                    "processed_count": self.processed_count,
+                    "anomaly_count": self.anomaly_count,
+                    "config": self.config,
+                    "service_id": service_id,
+                }
+            )
+
+            # Write checkpoint file
+            with open(checkpoint_path, "wb") as f:
+                f.write(checkpoint_data)
+
+            # Write signature file if secret is configured
+            signature = _sign_checkpoint_data(checkpoint_data)
+            if signature:
+                sig_path = checkpoint_path + ".sig"
+                with open(sig_path, "w") as f:
+                    f.write(signature)
+                self.logger.info(f"Checkpoint saved with signature: {checkpoint_path}")
+            else:
+                self.logger.info(f"Checkpoint saved (unsigned): {checkpoint_path}")
 
         except Exception as e:
             self.logger.error(f"Failed to save checkpoint: {e}")
@@ -286,7 +422,7 @@ class AnomalyDetectionService:
         try:
             process = psutil.Process(os.getpid())
             return process.memory_info().rss / 1024 / 1024
-        except Exception:
+        except (psutil.NoSuchProcess, psutil.AccessDenied, OSError):
             return 0.0
 
 
@@ -316,7 +452,7 @@ class ResilientAnomalyDetector:
         self.circuit_breaker_timeout = 300  # 5 minutes
         self.circuit_breaker_opened_at = None
 
-        self.logger = logger
+        self.logger = logging.getLogger(__name__)
 
     def process_with_resilience(
         self, data: Dict[str, float], topic: str = None, charger_id: str = None
@@ -416,7 +552,7 @@ class ResilientAnomalyDetector:
             score = min(deviation / (self._running_std + 1e-8), 1.0)
             return score
 
-        except Exception:
+        except (ImportError, ValueError, TypeError, ZeroDivisionError):
             return 0.0
 
     def _record_error(self, error: Exception):
@@ -488,7 +624,7 @@ class MemoryManager:
         self.max_memory_mb = max_memory_mb
         self.cleanup_threshold = cleanup_threshold
         self.process = psutil.Process(os.getpid())
-        self.logger = logger
+        self.logger = logging.getLogger(__name__)
 
     def get_memory_usage(self) -> float:
         """Get current memory usage in MB"""
@@ -523,7 +659,7 @@ class SecurityValidator:
     def __init__(self, max_feature_count=100, max_string_length=1000):
         self.max_feature_count = max_feature_count
         self.max_string_length = max_string_length
-        self.logger = logger
+        self.logger = logging.getLogger(__name__)
 
     def validate_and_sanitize(self, data: Dict[str, Any]) -> Dict[str, float]:
         """Validate and sanitize input data to numeric format"""

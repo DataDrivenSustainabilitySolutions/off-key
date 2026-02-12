@@ -32,8 +32,7 @@ const routeList: RouteProps[] = [];
 
 export const NavigationBar = () => {
   const [isOpen, setIsOpen] = useState<boolean>(false);
-  const [isLoggedIn] = useState<boolean>(true);
-  const { logout } = useAuth();
+  const { isAuthenticated, logout } = useAuth();
   const navigate = useNavigate();
   const [message, setMessage] = useState<string>("");
 
@@ -123,7 +122,7 @@ export const NavigationBar = () => {
             <ModeToggle />
 
             {/* User */}
-            {isLoggedIn ? (
+            {isAuthenticated ? (
               <DropdownMenu>
                 <Tooltip>
                   <TooltipTrigger asChild>

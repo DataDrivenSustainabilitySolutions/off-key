@@ -224,7 +224,11 @@ class ConnectionManager:
             if not self._shutdown_event.is_set():
                 self._schedule_reconnect()
                 # Notify disconnected callback
-                if self.on_disconnected and self._event_loop and not self._event_loop.is_closed():
+                if (
+                    self.on_disconnected
+                    and self._event_loop
+                    and not self._event_loop.is_closed()
+                ):
                     # Capture callback to avoid lambda mutable state issues
                     callback = self.on_disconnected
                     self._event_loop.call_soon_threadsafe(
@@ -233,7 +237,11 @@ class ConnectionManager:
         else:
             logger.info("MQTT disconnection completed")
             # Notify disconnected callback
-            if self.on_disconnected and self._event_loop and not self._event_loop.is_closed():
+            if (
+                self.on_disconnected
+                and self._event_loop
+                and not self._event_loop.is_closed()
+            ):
                 # Capture callback to avoid lambda mutable state issues
                 callback = self.on_disconnected
                 self._event_loop.call_soon_threadsafe(

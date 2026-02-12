@@ -1,15 +1,34 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
+import { tokenManager } from "@/lib/api-client";
 
 interface AuthContextType {
   isAuthenticated: boolean;
   token: string | null;
   userId: number | null;
   isLoading: boolean;
-  login: (token: string) => void;
+  login: (token: string, rememberMe?: boolean) => void;
   logout: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+/**
+ * Extract user ID from JWT token payload
+ */
+const getUserIdFromToken = (token: string): number | null => {
+  try {
+    const base64 = token.split(".")[1];
+    const base64Standard = base64.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = base64Standard.padEnd(
+      base64Standard.length + ((4 - (base64Standard.length % 4)) % 4),
+      "="
+    );
+    const payload = JSON.parse(atob(padded));
+    return payload.sub ? parseInt(payload.sub, 10) : null;
+  } catch {
+    return null;
+  }
+};
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
@@ -18,40 +37,40 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   const [userId, setUserId] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  const getUserIdFromToken = (token: string): number | null => {
-    try {
-      const payload = JSON.parse(atob(token.split('.')[1]));
-      return payload.sub ? parseInt(payload.sub) : null;
-    } catch {
-      return null;
-    }
-  };
-
+  // Initialize from stored token using centralized tokenManager
   useEffect(() => {
-    const savedToken = localStorage.getItem("token") || sessionStorage.getItem("token");
-    if (savedToken) {
+    const savedToken = tokenManager.getToken();
+    if (savedToken && !tokenManager.isTokenExpired(savedToken)) {
       setToken(savedToken);
       setUserId(getUserIdFromToken(savedToken));
+    } else if (savedToken) {
+      // Token exists but is expired - clean up
+      tokenManager.removeToken();
     }
     setIsLoading(false);
   }, []);
 
-    
-
-  const login = (newToken: string) => {
-    sessionStorage.setItem("token", newToken);
+  /**
+   * Login with token
+   * @param newToken JWT token
+   * @param rememberMe If true, persist in localStorage; otherwise sessionStorage
+   */
+  const login = (newToken: string, rememberMe = false) => {
+    tokenManager.setToken(newToken, rememberMe);
     setToken(newToken);
     setUserId(getUserIdFromToken(newToken));
   };
 
+  /**
+   * Logout and clear all stored tokens
+   */
   const logout = () => {
-    sessionStorage.removeItem("token");
-    localStorage.removeItem("token");
+    tokenManager.removeToken();
     setToken(null);
     setUserId(null);
   };
 
-  const isAuthenticated = !!token;
+  const isAuthenticated = !!token && !tokenManager.isTokenExpired(token);
 
   return (
     <AuthContext.Provider

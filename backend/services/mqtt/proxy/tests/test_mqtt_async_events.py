@@ -1,7 +1,7 @@
 import asyncio
 import time
 from datetime import datetime
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 from typing import List
 
 import pytest
@@ -41,7 +41,6 @@ class TestMessageHandlerAsyncEvents:
         msg.retain = False
         return msg
 
-
     @pytest.mark.asyncio
     async def test_event_loop_not_set(self, message_handler, mock_mqtt_message):
         """Test async handler when event loop is not set"""
@@ -62,8 +61,10 @@ class TestMessageHandlerAsyncEvents:
         assert len(handler_called) == 0
 
     @pytest.mark.asyncio
-    async def test_event_loop_closed_before_callback(self, message_handler, mock_mqtt_message):
-        """Test run_coroutine_threadsafe when event loop closes between check and execution"""
+    async def test_event_loop_closed_before_callback(
+        self, message_handler, mock_mqtt_message
+    ):
+        """Test run_coroutine_threadsafe across event-loop close race."""
         handler_called = []
 
         async def async_handler(message: MQTTMessage):
@@ -74,7 +75,7 @@ class TestMessageHandlerAsyncEvents:
 
         # Close the loop before callback
         # Note: We can't actually close the running loop, so we'll mock is_closed()
-        with patch.object(loop, 'is_closed', return_value=True):
+        with patch.object(loop, "is_closed", return_value=True):
             message_handler._on_message(None, None, mock_mqtt_message)
 
         await asyncio.sleep(0.1)
@@ -84,6 +85,7 @@ class TestMessageHandlerAsyncEvents:
     @pytest.mark.asyncio
     async def test_run_coroutine_threadsafe_with_stopped_loop(self, message_handler):
         """Test that run_coroutine_threadsafe raises when loop is stopped"""
+
         async def async_handler(message: MQTTMessage):
             pass
 
@@ -103,9 +105,10 @@ class TestMessageHandlerAsyncEvents:
         # Should handle gracefully (error logged, no crash)
         message_handler._on_message(None, None, mock_msg)
 
-
     @pytest.mark.asyncio
-    async def test_future_not_awaited_memory_leak(self, message_handler, mock_mqtt_message):
+    async def test_future_not_awaited_memory_leak(
+        self, message_handler, mock_mqtt_message
+    ):
         """Test that fire-and-forget futures don't cause memory leaks"""
         futures_created = []
 
@@ -123,7 +126,7 @@ class TestMessageHandlerAsyncEvents:
             futures_created.append(future)
             return future
 
-        with patch('asyncio.run_coroutine_threadsafe', side_effect=tracked_rcts):
+        with patch("asyncio.run_coroutine_threadsafe", side_effect=tracked_rcts):
             # Send multiple messages
             for _ in range(10):
                 message_handler._on_message(None, None, mock_mqtt_message)
@@ -139,7 +142,9 @@ class TestMessageHandlerAsyncEvents:
                 future.cancel()
 
     @pytest.mark.asyncio
-    async def test_futures_complete_eventually(self, message_handler, mock_mqtt_message):
+    async def test_futures_complete_eventually(
+        self, message_handler, mock_mqtt_message
+    ):
         """Test that futures complete and clean up properly"""
         completed_count = []
 
@@ -160,10 +165,12 @@ class TestMessageHandlerAsyncEvents:
         # All should complete
         assert len(completed_count) == 5
 
-
     @pytest.mark.asyncio
-    async def test_exception_in_async_handler_logged(self, message_handler, mock_mqtt_message):
+    async def test_exception_in_async_handler_logged(
+        self, message_handler, mock_mqtt_message
+    ):
         """Test that exceptions in async handlers are logged (not silent)"""
+
         async def failing_handler(message: MQTTMessage):
             raise ValueError("Test exception in async handler")
 
@@ -182,7 +189,9 @@ class TestMessageHandlerAsyncEvents:
         assert message_handler.handler_errors == 1
 
     @pytest.mark.asyncio
-    async def test_multiple_handler_exceptions_dont_crash(self, message_handler, mock_mqtt_message):
+    async def test_multiple_handler_exceptions_dont_crash(
+        self, message_handler, mock_mqtt_message
+    ):
         """Test multiple concurrent exceptions in async handlers"""
         exception_count = []
 
@@ -239,7 +248,6 @@ class TestMessageHandlerAsyncEvents:
         assert "test/success2" in processed_messages
         assert len(processed_messages) == 2
 
-
     @pytest.mark.asyncio
     async def test_concurrent_handler_changes(self, message_handler, mock_mqtt_message):
         """Test race condition when handler is changed while messages arrive"""
@@ -267,7 +275,9 @@ class TestMessageHandlerAsyncEvents:
         assert total_calls == 2
 
     @pytest.mark.asyncio
-    async def test_handler_cleared_during_processing(self, message_handler, mock_mqtt_message):
+    async def test_handler_cleared_during_processing(
+        self, message_handler, mock_mqtt_message
+    ):
         """Test clearing handler while messages are being processed"""
         processing_started = asyncio.Event()
         handler_calls = []
@@ -313,7 +323,7 @@ class TestMessageHandlerAsyncEvents:
         for i in range(50):
             msg = Mock()
             msg.topic = f"test/topic/{i}"
-            msg.payload = b'{"index": ' + str(i).encode() + b'}'
+            msg.payload = b'{"index": ' + str(i).encode() + b"}"
             msg.qos = 0
             msg.retain = False
             message_handler._on_message(None, None, msg)
@@ -323,7 +333,6 @@ class TestMessageHandlerAsyncEvents:
 
         # All messages should be processed
         assert len(received_topics) == 50
-
 
     @pytest.mark.asyncio
     async def test_message_queue_overflow(self, message_handler):
@@ -336,7 +345,7 @@ class TestMessageHandlerAsyncEvents:
         for i in range(max_size + 20):
             msg = Mock()
             msg.topic = f"test/topic/{i}"
-            msg.payload = b'{"index": ' + str(i).encode() + b'}'
+            msg.payload = b'{"index": ' + str(i).encode() + b"}"
             msg.qos = 0
             msg.retain = False
             message_handler._on_message(None, None, msg)
@@ -377,9 +386,10 @@ class TestMessageHandlerAsyncEvents:
         # All should eventually process
         assert len(call_times) == 5
 
-
     @pytest.mark.asyncio
-    async def test_metrics_track_messages_received(self, message_handler, mock_mqtt_message):
+    async def test_metrics_track_messages_received(
+        self, message_handler, mock_mqtt_message
+    ):
         """Test that message metrics are properly tracked"""
         initial_count = message_handler.messages_received
 
@@ -403,6 +413,7 @@ class TestMessageHandlerAsyncEvents:
     @pytest.mark.asyncio
     async def test_metrics_visibility(self, message_handler, mock_mqtt_message):
         """Test that metrics are accessible for monitoring"""
+
         async def handler(message: MQTTMessage):
             pass
 
@@ -463,7 +474,7 @@ class TestMessageHandlerAsyncEvents:
 
         msg = Mock()
         msg.topic = "test/topic"
-        msg.payload = b'invalid json {'
+        msg.payload = b"invalid json {"
         msg.qos = 0
         msg.retain = False
 
@@ -489,7 +500,7 @@ class TestMessageHandlerAsyncEvents:
 
         msg = Mock()
         msg.topic = "test/topic"
-        msg.payload = b''
+        msg.payload = b""
         msg.qos = 0
         msg.retain = False
 
@@ -570,7 +581,7 @@ class TestConnectionManagerAsyncEvents:
         connection_manager._event_loop = loop
 
         # Mock is_closed to return True
-        with patch.object(loop, 'is_closed', return_value=True):
+        with patch.object(loop, "is_closed", return_value=True):
             connection_manager._schedule_reconnect()
 
         # Should log warning and not crash

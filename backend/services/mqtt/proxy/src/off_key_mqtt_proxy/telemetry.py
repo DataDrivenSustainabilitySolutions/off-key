@@ -17,7 +17,7 @@ from sqlalchemy import update, case
 
 from off_key_core.config.logs import logger, log_performance
 from off_key_core.db.models import Telemetry, Charger
-from off_key_core.utils.string import clean_string, string_to_float
+from off_key_core.utils.string import string_to_float
 from off_key_core.utils.enum import HealthStatus
 from .config.config import MQTTConfig
 from .client.models import MQTTMessage
@@ -316,8 +316,8 @@ class DatabaseWriter:
             charger_id = topic_parts[1]
             hierarchy = "/".join(topic_parts[3:])  # Reconstruct hierarchy
 
-            # Clean hierarchy for database storage
-            telemetry_type = clean_string(hierarchy)
+            # Use hierarchy directly as telemetry type
+            telemetry_type = hierarchy
             if not telemetry_type:
                 return ParseFailure(
                     reason="Invalid hierarchy after cleaning",

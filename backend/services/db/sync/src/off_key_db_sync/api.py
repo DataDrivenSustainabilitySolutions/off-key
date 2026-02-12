@@ -5,23 +5,20 @@ Provides REST endpoints to manually trigger sync operations.
 This runs as an optional component alongside the main SyncService.
 """
 
-from pathlib import Path
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from off_key_core.config.config import settings
-from off_key_core.config.logs import logger, load_yaml_config
+from off_key_core.config.config import get_settings
+from off_key_core.config.logs import logger
 from off_key_core.db.base import get_db_async
 from off_key_core.clients.provider import get_charger_api_client
 from .services.chargers import ChargersSyncService
 from .services.telemetry import TelemetrySyncService
 
-# Load logging configuration from YAML files
-service_logging_config = Path(__file__).parent / "config" / "logging.yaml"
-load_yaml_config(str(service_logging_config))
+settings = get_settings()
 
 # Global reference to sync service (set by main)
 _sync_service = None
@@ -34,7 +31,7 @@ def set_sync_service(service):
 
 
 @asynccontextmanager
-async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """FastAPI lifespan manager"""
     logger.info("Database sync API started")
     yield
@@ -62,6 +59,23 @@ async def health_check():
         "message": "Sync service not initialized",
         "sync_enabled": settings.SYNC_ENABLED,
     }
+
+
+@app.get("/ready/schema", tags=["Health"])
+async def schema_ready_check():
+    """
+    Readiness endpoint for schema/migration completion.
+
+    Returns HTTP 200 only after database schema initialization has completed.
+    Use this for startup ordering of dependent services.
+    """
+    if _sync_service and _sync_service.schema_ready:
+        return {"status": "ready", "schema_ready": True}
+
+    raise HTTPException(
+        status_code=503,
+        detail="Schema initialization still in progress",
+    )
 
 
 @app.post("/sync/chargers", tags=["Sync"])

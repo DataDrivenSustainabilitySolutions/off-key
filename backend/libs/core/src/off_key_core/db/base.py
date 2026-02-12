@@ -2,47 +2,55 @@ from sqlalchemy import create_engine
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 
-from ..config.config import settings
+from ..config.config import get_settings
 from ..config.logs import logger
+
+# Initialize database components
+settings = get_settings()
 
 # Synchronous Engine
 engine = create_engine(
-    settings.database_url,  # URL for the synchronous database
-    echo=settings.DEBUG,  # Log SQL queries only in debug mode
+    settings.database_url,
+    echo=settings.DEBUG,
     echo_pool=False,
-    pool_pre_ping=True,  # Enable connection health checks
-    pool_size=10,  # Number of connections to keep in the pool
-    max_overflow=20,  # Allow additional connections beyond the pool size
+    pool_pre_ping=True,
+    pool_size=10,
+    max_overflow=20,
 )
 
 # Synchronous Session Factory
 SyncSessionLocal = sessionmaker(
     bind=engine,
-    autocommit=False,  # Disable autocommit for explicit transaction control
-    autoflush=False,  # Disable autoflush to avoid unintended database writes
-    expire_on_commit=False,  # Prevent objects from expiring after commit
+    autocommit=False,
+    autoflush=False,
+    expire_on_commit=False,
 )
 
 # Asynchronous Engine
 async_engine = create_async_engine(
-    settings.async_database_url,  # URL for the asynchronous database
-    echo=settings.DEBUG,  # Log SQL queries only in debug mode
-    pool_pre_ping=True,  # Enable connection health checks
-    pool_size=10,  # Number of connections to keep in the pool
-    max_overflow=20,  # Allow additional connections beyond the pool size
+    settings.async_database_url,
+    echo=settings.DEBUG,
+    pool_pre_ping=True,
+    pool_size=10,
+    max_overflow=20,
 )
 
 # Asynchronous Session Factory
 AsyncSessionLocal = sessionmaker(
     bind=async_engine,
-    autocommit=False,  # Disable autocommit for explicit transaction control
-    autoflush=False,  # Disable autoflush to avoid unintended database writes
-    expire_on_commit=False,  # Prevent objects from expiring after commit
-    class_=AsyncSession,  # Use AsyncSession for asynchronous operations
+    autocommit=False,
+    autoflush=False,
+    expire_on_commit=False,
+    class_=AsyncSession,
 )
 
 # Base class for declarative models
 Base = declarative_base()
+
+
+def get_engine():
+    """Return the configured synchronous SQLAlchemy engine."""
+    return engine
 
 
 # Dependency for asynchronous database sessions
@@ -55,13 +63,13 @@ async def get_db_async():
     async with AsyncSessionLocal() as db:
         try:
             yield db
-            await db.commit()  # Commit changes if no exceptions occur
+            await db.commit()
         except Exception as e:
-            await db.rollback()  # Rollback on errors
+            await db.rollback()
             logger.warning(f"Database transaction rolled back: {str(e)}")
             raise
         finally:
-            await db.close()  # Ensure the session is closed
+            await db.close()
 
 
 # Dependency for synchronous database sessions
@@ -74,13 +82,13 @@ def get_db_sync():
     db = SyncSessionLocal()
     try:
         yield db
-        db.commit()  # Commit changes if no exceptions occur
+        db.commit()
     except Exception as e:
-        db.rollback()  # Rollback on errors
+        db.rollback()
         logger.warning(f"Database transaction rolled back: {str(e)}")
         raise
     finally:
-        db.close()  # Ensure the session is closed
+        db.close()
 
 
 # Dependency for asynchronous database sessions without auto-commit
@@ -94,7 +102,7 @@ async def get_db_transactional():
         try:
             yield db
         finally:
-            await db.close()  # Just close, don't commit
+            await db.close()
 
 
 # Dependency for synchronous database sessions without auto-commit
@@ -108,4 +116,4 @@ def get_db_sync_transactional():
     try:
         yield db
     finally:
-        db.close()  # Just close, don't commit
+        db.close()

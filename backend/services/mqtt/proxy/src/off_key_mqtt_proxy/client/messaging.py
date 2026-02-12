@@ -76,9 +76,7 @@ class MessageHandler:
 
         # Initialize semaphore for async handlers to limit concurrency
         if asyncio.iscoroutinefunction(handler) and self._event_loop:
-            self._handler_semaphore = asyncio.Semaphore(
-                self.max_concurrent_handlers
-            )
+            self._handler_semaphore = asyncio.Semaphore(self.max_concurrent_handlers)
 
     def clear_handler(self) -> None:
         """Clear the current message handler"""
@@ -192,10 +190,7 @@ class MessageHandler:
         except Exception as e:
             self.futures_failed += 1
             self.handler_errors += 1
-            logger.error(
-                f"Exception in async message handler: {e}",
-                exc_info=True
-            )
+            logger.error(f"Exception in async message handler: {e}", exc_info=True)
 
     def _handle_user_callback(self, message: MQTTMessage) -> None:
         """Handle user-provided message callback (sync or async)"""
@@ -204,7 +199,8 @@ class MessageHandler:
                 # Handle async callback
                 if self._event_loop and not self._event_loop.is_closed():
                     try:
-                        # Schedule in main event loop thread-safely with semaphore wrapper
+                        # Schedule in main event loop thread-safely
+                        # with semaphore wrapper.
                         future = asyncio.run_coroutine_threadsafe(
                             self._wrapped_handler(message), self._event_loop
                         )

@@ -2,18 +2,21 @@ from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 import asyncio
 import httpx
-
 from pathlib import Path
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi.middleware import SlowAPIMiddleware
 
-from off_key_core.config.config import settings
-from off_key_core.config.logs import logger, load_yaml_config
+from off_key_core.config.config import get_settings
+from off_key_core.config.logs import load_yaml_config, logger
 
 from .api.middleware import LoggingMiddleware, SecurityLoggingMiddleware
 from .api.rate_limiter import limiter, rate_limit_exceeded_handler
 from .api.v1.routes import router as v1_router
+from .facades.tactic import tactic
+
+settings = get_settings()
 
 # Rate limiter setup
 # def get_real_client_ip(request):
@@ -24,12 +27,12 @@ from .api.v1.routes import router as v1_router
 
 
 # See https://github.com/pyca/bcrypt/issues/684#issuecomment-2465572106
-import bcrypt
+import bcrypt  # noqa: E402
 
 if not hasattr(bcrypt, "__about__"):
     bcrypt.__about__ = type("about", (object,), {"__version__": bcrypt.__version__})
 
-# Load logging configuration from YAML files
+# Initialize logging from core + service YAML config
 service_logging_config = Path(__file__).parent / "config" / "logging.yaml"
 load_yaml_config(str(service_logging_config))
 
@@ -92,6 +95,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     yield
 
     # Shutdown
+    await tactic.close()
     logger.info("Application shutdown...")
 
 

@@ -30,26 +30,26 @@ const Login: React.FC = () => {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     // Clear previous errors
     setEmailError(undefined);
     setPasswordError(undefined);
     setMessage("");
-    
+
     // Validate inputs
     const emailValidation = validateEmail(email);
     const passwordValidation = validatePassword(password);
-    
+
     if (!emailValidation.isValid) {
       setEmailError(emailValidation.message);
       return;
     }
-    
+
     if (!passwordValidation.isValid) {
       setPasswordError(passwordValidation.message);
       return;
     }
-    
+
     try {
       // Sanitize inputs before sending
       const sanitizedEmail = sanitizeInput(email);
@@ -68,13 +68,8 @@ const Login: React.FC = () => {
 
       const data: LoginResponse = await response.json();
 
-      if (rememberMe) {
-        localStorage.setItem("token", data.access_token);
-      } else {
-        sessionStorage.setItem("token", data.access_token);
-      }
-
-      login(data.access_token);
+      // Use consolidated login function which handles token storage
+      login(data.access_token, rememberMe);
 
       // Navigate immediately to landing page - data should already be in database
       setTimeout(() => {

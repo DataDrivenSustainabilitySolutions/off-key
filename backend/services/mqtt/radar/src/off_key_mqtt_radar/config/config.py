@@ -3,12 +3,14 @@ Configuration for MQTT RADAR service
 """
 
 from pydantic import BaseModel, field_validator, model_validator
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import Dict, Any, List, Optional, Self
 from dotenv import find_dotenv, load_dotenv
 from pathlib import Path
 import os
 import json
+
+SENSOR_KEY_STRATEGIES = {"full_hierarchy", "top_level", "leaf"}
 
 
 def _truncate_for_error(value: str, max_len: int = 500) -> str:
@@ -16,6 +18,15 @@ def _truncate_for_error(value: str, max_len: int = 500) -> str:
     if len(value) <= max_len:
         return value
     return f"{value[:max_len]}... ({len(value)} chars total)"
+
+
+def _normalize_sensor_key_strategy(value: str, field_name: str) -> str:
+    """Normalize and validate sensor key strategy values."""
+    normalized = value.strip().lower()
+    if normalized not in SENSOR_KEY_STRATEGIES:
+        allowed = ", ".join(sorted(SENSOR_KEY_STRATEGIES))
+        raise ValueError(f"{field_name} must be one of: {allowed}")
+    return normalized
 
 
 def load_configuration(custom_config_file: Optional[str] = None):
@@ -50,6 +61,8 @@ class AnomalyDetectionConfig(BaseModel):
     model_type: str = "isolation_forest"  # isolation_forest, adaptive_svm, knn
     model_params: Dict[str, Any] = {}
     preprocessing_steps: List[Dict[str, Any]] = []
+    subscription_topics: List[str] = []
+    sensor_key_strategy: str = "full_hierarchy"
 
     thresholds: Dict[str, float] = {"medium": 0.6, "high": 0.8, "critical": 0.9}
 
@@ -62,6 +75,12 @@ class AnomalyDetectionConfig(BaseModel):
 
     # Memory management
     reset_threshold_mb: int = 500
+
+    @field_validator("sensor_key_strategy")
+    @classmethod
+    def validate_sensor_key_strategy(cls, value: str) -> str:
+        """Validate sensor key strategy for model schema consistency."""
+        return _normalize_sensor_key_strategy(value, "sensor_key_strategy")
 
     @model_validator(mode="after")
     def validate_model_configuration(self) -> Self:
@@ -148,6 +167,7 @@ class MQTTRadarConfig(BaseModel):
         "charger/+/telemetry"
     ]  # Subscribe to telemetry from bridge
     subscription_qos: int = 0
+    sensor_key_strategy: str = "full_hierarchy"
 
     # Database settings
     db_write_enabled: bool = True
@@ -179,6 +199,12 @@ class MQTTRadarConfig(BaseModel):
     batch_timeout: float = 1.0
     checkpoint_interval: int = 10000
 
+    @field_validator("sensor_key_strategy")
+    @classmethod
+    def validate_sensor_key_strategy(cls, value: str) -> str:
+        """Validate feature-key strategy used by topic parsing."""
+        return _normalize_sensor_key_strategy(value, "sensor_key_strategy")
+
 
 class RadarSettings(BaseSettings):
     """Environment-based settings for RADAR service"""
@@ -200,6 +226,7 @@ class RadarSettings(BaseSettings):
     # Topics
     RADAR_SUBSCRIPTION_TOPICS: str = "charger/+/telemetry"  # Comma-separated
     RADAR_SUBSCRIPTION_QOS: int = 0
+    RADAR_SENSOR_KEY_STRATEGY: str = "full_hierarchy"
 
     # Database
     RADAR_DB_WRITE_ENABLED: bool = True
@@ -225,9 +252,11 @@ class RadarSettings(BaseSettings):
     RADAR_LOG_LEVEL: str = "INFO"
     RADAR_RATE_LIMIT_PER_MINUTE: int = 1000
 
-    class Config:
-        env_file = ".env"
-        case_sensitive = True
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        case_sensitive=True,
+        extra="ignore",
+    )
 
     @field_validator("RADAR_SUBSCRIPTION_TOPICS")
     @classmethod
@@ -236,6 +265,12 @@ class RadarSettings(BaseSettings):
         if not v:
             raise ValueError("At least one subscription topic is required")
         return v
+
+    @field_validator("RADAR_SENSOR_KEY_STRATEGY")
+    @classmethod
+    def validate_sensor_key_strategy(cls, value: str) -> str:
+        """Validate sensor key strategy from environment."""
+        return _normalize_sensor_key_strategy(value, "RADAR_SENSOR_KEY_STRATEGY")
 
     @property
     def config(self) -> MQTTRadarConfig:
@@ -286,6 +321,7 @@ class RadarSettings(BaseSettings):
             api_key=self.RADAR_MQTT_API_KEY,
             subscription_topics=topics,
             subscription_qos=self.RADAR_SUBSCRIPTION_QOS,
+            sensor_key_strategy=self.RADAR_SENSOR_KEY_STRATEGY,
             db_write_enabled=self.RADAR_DB_WRITE_ENABLED,
             db_batch_size=self.RADAR_DB_BATCH_SIZE,
             db_batch_timeout=self.RADAR_DB_BATCH_TIMEOUT,

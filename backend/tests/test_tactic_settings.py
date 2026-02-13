@@ -20,3 +20,11 @@ def test_threshold_ordering_validation():
             anomaly_threshold_high=0.5,
             anomaly_threshold_critical=0.7,
         )
+
+
+def test_sensor_key_strategy_validation():
+    config = RadarDefaultsConfig(sensor_key_strategy="TOP_LEVEL")
+    assert config.sensor_key_strategy == "top_level"
+
+    with pytest.raises(ValueError):
+        RadarDefaultsConfig(sensor_key_strategy="invalid")

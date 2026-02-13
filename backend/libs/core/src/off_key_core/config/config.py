@@ -3,11 +3,12 @@ from pydantic import (
     AliasChoices,
     Field,
     field_validator,
-    FieldValidationInfo,
+    ValidationInfo,
     BaseModel,
     SecretStr,
 )
 from dotenv import find_dotenv, load_dotenv
+from urllib.parse import quote
 
 # Load default ".env" file from upper project tree
 load_dotenv()
@@ -65,15 +66,15 @@ class Settings(BaseSettings):
     CHARGER_API_PROVIDER: str = "pionix"  # Default to pionix, can be overridden
 
     # Authentication & Security Configuration
-    JWT_SECRET: str
-    JWT_VERIFICATION_SECRET: str
+    JWT_SECRET: SecretStr
+    JWT_VERIFICATION_SECRET: SecretStr
     ALGORITHM: str
     ACCESS_TOKEN_EXPIRE_MINUTES: int
     SUPERUSER_MAIL: str
 
     # Email Service Configuration
     EMAIL_USERNAME: str
-    EMAIL_PASSWORD: str
+    EMAIL_PASSWORD: SecretStr
     EMAIL_FROM: str
     FRONTEND_BASE_URL: str
     SMTP_SERVER: str
@@ -85,7 +86,7 @@ class Settings(BaseSettings):
 
     # Database Configuration
     POSTGRES_USER: str
-    POSTGRES_PASSWORD: str
+    POSTGRES_PASSWORD: SecretStr
     POSTGRES_DB: str
     POSTGRES_PORT: str
     POSTGRES_HOST: str  # 'postgres' if connecting from another container
@@ -111,8 +112,15 @@ class Settings(BaseSettings):
     SYNC_CHARGERS_INTERVAL: int = 3600  # Charger sync interval in seconds (1 hour)
     SYNC_TELEMETRY_INTERVAL: int = 21600  # Telemetry sync interval in seconds (6 hours)
     SYNC_TELEMETRY_LIMIT: int = 1000  # Maximum telemetry records to sync per run
+    TELEMETRY_RETENTION_DAYS: int = Field(
+        14,
+        validation_alias=AliasChoices(
+            "TELEMETRY_RETENTION_DAYS", "SYNC_RETENTION_DAYS"
+        ),
+    )
 
     # DB Sync Service Configuration
+    SYNC_SERVICE_SCHEME: str = "http"
     SYNC_HOSTNAME: str = "db-sync"  # Hostname for db-sync service
     SYNC_API_PORT: int = 8009  # API port for db-sync service
 
@@ -130,21 +138,26 @@ class Settings(BaseSettings):
     ]  # List of allowed origins for CORS
 
     # Middleware TACTIC Service
+    TACTIC_SERVICE_SCHEME: str = "http"
     TACTIC_SERVICE_HOST: str = "middleware_tactic"
     TACTIC_SERVICE_PORT: int = 8000
     TACTIC_MODEL_REGISTRY_CACHE_TTL_SECONDS: float = 60.0
 
     @property
     def database_url(self):
+        user = quote(self.POSTGRES_USER, safe="")
+        password = quote(self.POSTGRES_PASSWORD.get_secret_value(), safe="")
         return (
-            f"postgresql://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}"
+            f"postgresql://{user}:{password}"
             f"@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
         )
 
     @property
     def async_database_url(self):
+        user = quote(self.POSTGRES_USER, safe="")
+        password = quote(self.POSTGRES_PASSWORD.get_secret_value(), safe="")
         return (
-            f"postgresql+asyncpg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}"
+            f"postgresql+asyncpg://{user}:{password}"
             f"@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
         )
 
@@ -163,7 +176,7 @@ class Settings(BaseSettings):
         "PIONIX_MQTT_TELEMETRY_TOPIC",
     )
     @classmethod
-    def validate_endpoint_templates(cls, v: str, info: FieldValidationInfo) -> str:
+    def validate_endpoint_templates(cls, v: str, info: ValidationInfo) -> str:
         """Validate that endpoint templates contain expected placeholders."""
         required_placeholders = {
             "PIONIX_DEVICE_MODEL_ENDPOINT": ["{charger_id}"],
@@ -208,7 +221,10 @@ class Settings(BaseSettings):
         """
         Build the base URL used to reach the middleware TACTIC service.
         """
-        return f"http://{self.TACTIC_SERVICE_HOST}:{self.TACTIC_SERVICE_PORT}"
+        return (
+            f"{self.TACTIC_SERVICE_SCHEME}://"
+            f"{self.TACTIC_SERVICE_HOST}:{self.TACTIC_SERVICE_PORT}"
+        )
 
     @field_validator("TACTIC_MODEL_REGISTRY_CACHE_TTL_SECONDS")
     @classmethod
@@ -218,12 +234,28 @@ class Settings(BaseSettings):
             raise ValueError("TACTIC_MODEL_REGISTRY_CACHE_TTL_SECONDS must be > 0")
         return v
 
+    @field_validator("SYNC_SERVICE_SCHEME", "TACTIC_SERVICE_SCHEME")
+    @classmethod
+    def validate_service_scheme(cls, value: str) -> str:
+        normalized = value.lower().strip()
+        if normalized not in {"http", "https"}:
+            raise ValueError("Service scheme must be either 'http' or 'https'")
+        return normalized
+
+    @field_validator("TELEMETRY_RETENTION_DAYS")
+    @classmethod
+    def validate_retention_days(cls, v: int) -> int:
+        """Ensure telemetry retention stays within a reasonable window."""
+        if not 1 <= v <= 365:
+            raise ValueError("Telemetry retention days must be between 1 and 365")
+        return v
+
     @property
     def db_sync_service_url(self) -> str:
         """
         Build the base URL used to reach the DB Sync service.
         """
-        return f"http://{self.SYNC_HOSTNAME}:{self.SYNC_API_PORT}"
+        return f"{self.SYNC_SERVICE_SCHEME}://{self.SYNC_HOSTNAME}:{self.SYNC_API_PORT}"
 
     @property
     def pionix_config(self) -> "PionixConfig":
@@ -255,35 +287,14 @@ def get_settings() -> Settings:
     return _settings_instance
 
 
-class TelemetrySettings(BaseSettings):
-    """
-    Configuration for telemetry data retention and related limits.
-
-    This lives in the core package so shared services use the same validated
-    values rather than each implementing their own parsing logic.
-    """
-
-    TELEMETRY_RETENTION_DAYS: int = Field(
-        14,
-        validation_alias=AliasChoices(
-            "TELEMETRY_RETENTION_DAYS", "SYNC_RETENTION_DAYS"
-        ),
-    )
-
-    @field_validator("TELEMETRY_RETENTION_DAYS")
-    @classmethod
-    def validate_retention_days(cls, v: int) -> int:
-        """Ensure telemetry retention stays within a reasonable window."""
-        if not 1 <= v <= 365:
-            raise ValueError("Telemetry retention days must be between 1 and 365")
-        return v
-
-    @property
-    def retention_days(self) -> int:
-        """Expose a friendlier name used by services."""
-        return self.TELEMETRY_RETENTION_DAYS
+def reset_settings_cache() -> None:
+    """Clear cached Settings instance."""
+    global _settings_instance
+    _settings_instance = None
 
 
-def get_telemetry_settings() -> TelemetrySettings:
-    """Get TelemetrySettings instance."""
-    return TelemetrySettings()
+def get_telemetry_settings():
+    """Compatibility wrapper for telemetry settings getter."""
+    from .telemetry import get_telemetry_settings as _get_telemetry_settings
+
+    return _get_telemetry_settings()

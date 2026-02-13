@@ -7,9 +7,10 @@ including Docker API configuration,
 RADAR orchestration settings, and service-specific parameters.
 """
 
+from functools import lru_cache
 from pydantic import BaseModel, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings
-from typing import Self, Optional
+from typing import Any, Optional, Self, cast
 from dotenv import find_dotenv, load_dotenv
 
 # Load default ".env" file from upper project tree
@@ -19,6 +20,8 @@ load_dotenv()
 dev_env = find_dotenv("dev.env")
 if dev_env:
     load_dotenv(dev_env, override=True)
+
+RADAR_SENSOR_KEY_STRATEGIES = {"full_hierarchy", "top_level", "leaf"}
 
 
 class DockerConfig(BaseModel):
@@ -66,6 +69,7 @@ class RadarDefaultsConfig(BaseModel):
 
     # Default Model Settings
     model_type: str = "isolation_forest"
+    sensor_key_strategy: str = "full_hierarchy"
 
     # Default Anomaly Thresholds
     anomaly_threshold_medium: float = Field(default=0.6, ge=0.0, le=1.0)
@@ -109,6 +113,16 @@ class RadarDefaultsConfig(BaseModel):
         if v.upper() not in valid_levels:
             raise ValueError(f"Log level must be one of: {valid_levels}")
         return v.upper()
+
+    @field_validator("sensor_key_strategy")
+    @classmethod
+    def validate_sensor_key_strategy(cls, v: str) -> str:
+        """Validate feature-key extraction strategy passed to RADAR."""
+        normalized = v.strip().lower()
+        if normalized not in RADAR_SENSOR_KEY_STRATEGIES:
+            allowed = ", ".join(sorted(RADAR_SENSOR_KEY_STRATEGIES))
+            raise ValueError(f"sensor_key_strategy must be one of: {allowed}")
+        return normalized
 
     @model_validator(mode="after")
     def validate_threshold_ordering(self) -> Self:
@@ -234,6 +248,9 @@ class TacticSettings(BaseSettings):
     TACTIC_RADAR_DEFAULT_MODEL_TYPE: str = Field(
         default=DEFAULT_RADAR_DEFAULTS.model_type
     )
+    TACTIC_RADAR_DEFAULT_SENSOR_KEY_STRATEGY: str = Field(
+        default=DEFAULT_RADAR_DEFAULTS.sensor_key_strategy
+    )
     TACTIC_RADAR_DEFAULT_ANOMALY_THRESHOLD_MEDIUM: float = Field(
         default=DEFAULT_RADAR_DEFAULTS.anomaly_threshold_medium
     )
@@ -288,6 +305,7 @@ class TacticSettings(BaseSettings):
     class Config:
         env_file = ".env"
         case_sensitive = True
+        extra = "ignore"
 
     @staticmethod
     def _split_constraints(raw_value: str) -> list[str]:
@@ -335,6 +353,7 @@ class TacticSettings(BaseSettings):
             mqtt_use_auth=self.TACTIC_RADAR_DEFAULT_MQTT_USE_AUTH,
             mqtt_qos=self.TACTIC_RADAR_DEFAULT_MQTT_QOS,
             model_type=self.TACTIC_RADAR_DEFAULT_MODEL_TYPE,
+            sensor_key_strategy=self.TACTIC_RADAR_DEFAULT_SENSOR_KEY_STRATEGY,
             anomaly_threshold_medium=self.TACTIC_RADAR_DEFAULT_ANOMALY_THRESHOLD_MEDIUM,
             anomaly_threshold_high=self.TACTIC_RADAR_DEFAULT_ANOMALY_THRESHOLD_HIGH,
             anomaly_threshold_critical=self.TACTIC_RADAR_DEFAULT_ANOMALY_THRESHOLD_CRITICAL,
@@ -368,5 +387,18 @@ class TacticSettings(BaseSettings):
         )
 
 
-# Global settings instance
-tactic_settings = TacticSettings()
+@lru_cache(maxsize=1)
+def get_tactic_settings() -> TacticSettings:
+    """Return cached TACTIC settings instance."""
+    return TacticSettings()
+
+
+class _LazyTacticSettings:
+    """Attribute-forwarding facade that defers settings creation until first use."""
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(get_tactic_settings(), name)
+
+
+# Backward-compatible lazy settings accessor.
+tactic_settings = cast(TacticSettings, _LazyTacticSettings())

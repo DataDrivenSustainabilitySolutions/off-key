@@ -245,6 +245,11 @@ class RadarOrchestrationService:
                     "checkpoint_interval", defaults.checkpoint_interval
                 )
             ),
+            "RADAR_SENSOR_KEY_STRATEGY": str(
+                performance_config.get(
+                    "sensor_key_strategy", defaults.sensor_key_strategy
+                )
+            ),
             # Database Settings
             "RADAR_DB_WRITE_ENABLED": str(
                 performance_config.get("db_write_enabled", defaults.db_write_enabled)

@@ -13,6 +13,7 @@ Tests cover:
 
 import pytest
 from unittest.mock import MagicMock, patch
+from types import SimpleNamespace
 
 
 class TestAnomalyDetectionService:
@@ -166,6 +167,187 @@ class TestAnomalyDetectionService:
         assert result.is_anomaly is False
         assert result.severity == "unknown"
         assert "error" in result.context
+
+    def test_process_primes_model_on_unseen_feature(self):
+        """Test unseen feature errors trigger schema warm-up instead of hard failure."""
+        from off_key_mqtt_radar.detector import AnomalyDetectionService
+
+        config = SimpleNamespace(
+            model_type="isolation_forest",
+            thresholds={"medium": 0.6, "high": 0.8, "critical": 0.9},
+            checkpoint_interval=1000,
+        )
+
+        with patch.object(AnomalyDetectionService, "_create_model") as mock_create:
+            mock_model = MagicMock()
+            mock_model.score_one.side_effect = [
+                ValueError("Feature 'timestamp' has not been seen during learning."),
+                0.4,
+            ]
+            mock_model.learn_one = MagicMock()
+            mock_create.return_value = mock_model
+
+            with patch.object(
+                AnomalyDetectionService, "_create_preprocessors", return_value=[]
+            ):
+                service = AnomalyDetectionService(config)
+                result = service.process_data_point(
+                    {"value": 10.0, "timestamp": 1739441120.0}
+                )
+
+        assert result.is_anomaly is False
+        assert result.severity == "low"
+        assert result.context["schema_warmup"] is True
+        assert result.context["unseen_feature"] == "timestamp"
+        assert service.processed_count == 1
+        mock_model.learn_one.assert_called_once_with(
+            {"value": 10.0, "timestamp": 1739441120.0}
+        )
+
+    def test_process_primes_scaler_on_first_unseen_feature(self):
+        """Test scaler cold-start uses schema warm-up instead of failing permanently."""
+        from onad.transform.preprocessing.scaler import StandardScaler
+        from off_key_mqtt_radar.detector import AnomalyDetectionService
+
+        config = SimpleNamespace(
+            model_type="isolation_forest",
+            thresholds={"medium": 0.6, "high": 0.8, "critical": 0.9},
+            checkpoint_interval=1000,
+            preprocessing_steps=[],
+            subscription_topics=[],
+            sensor_key_strategy="full_hierarchy",
+        )
+
+        with patch.object(AnomalyDetectionService, "_create_model") as mock_create:
+            mock_model = MagicMock()
+            mock_model.score_one.return_value = 0.4
+            mock_model.learn_one = MagicMock()
+            mock_create.return_value = mock_model
+
+            with patch.object(
+                AnomalyDetectionService,
+                "_create_preprocessors",
+                return_value=[StandardScaler()],
+            ):
+                service = AnomalyDetectionService(config)
+                result = service.process_data_point({"TopLevelPart": 42.0})
+
+        assert result.is_anomaly is False
+        assert result.severity == "low"
+        assert result.context["schema_warmup"] is True
+        assert result.context["unseen_feature"] == "TopLevelPart"
+        assert service.processed_count == 1
+        mock_model.learn_one.assert_called_once()
+
+    def test_preprocessor_learning_is_stage_consistent(self):
+        """Test each preprocessor learns from the preceding stage output."""
+        from off_key_mqtt_radar.detector import AnomalyDetectionService
+
+        config = SimpleNamespace(
+            model_type="isolation_forest",
+            thresholds={"medium": 0.6, "high": 0.8, "critical": 0.9},
+            checkpoint_interval=1000,
+            preprocessing_steps=[],
+            subscription_topics=[],
+            sensor_key_strategy="full_hierarchy",
+        )
+
+        first = MagicMock()
+        first.transform_one.side_effect = lambda sample: {"scaled": sample["x"] + 1.0}
+        first.learn_one = MagicMock()
+
+        second = MagicMock()
+        second.transform_one.side_effect = lambda sample: {
+            "projected": sample["scaled"] * 2.0
+        }
+        second.learn_one = MagicMock()
+
+        with patch.object(AnomalyDetectionService, "_create_model") as mock_create:
+            mock_model = MagicMock()
+            mock_model.score_one.return_value = 0.1
+            mock_model.learn_one = MagicMock()
+            mock_create.return_value = mock_model
+
+            with patch.object(
+                AnomalyDetectionService,
+                "_create_preprocessors",
+                return_value=[first, second],
+            ):
+                service = AnomalyDetectionService(config)
+                service.process_data_point({"x": 3.0})
+
+        first.learn_one.assert_called_once_with({"x": 3.0})
+        second.learn_one.assert_called_once_with({"scaled": 4.0})
+
+    def test_unseen_feature_after_learning_triggers_single_warmup_then_recovers(self):
+        """Test new feature warm-up recovers and subsequent point processes normally."""
+        from onad.transform.preprocessing.scaler import StandardScaler
+        from off_key_mqtt_radar.detector import AnomalyDetectionService
+
+        config = SimpleNamespace(
+            model_type="isolation_forest",
+            thresholds={"medium": 0.6, "high": 0.8, "critical": 0.9},
+            checkpoint_interval=1000,
+            preprocessing_steps=[],
+            subscription_topics=[],
+            sensor_key_strategy="full_hierarchy",
+        )
+
+        with patch.object(AnomalyDetectionService, "_create_model") as mock_create:
+            mock_model = MagicMock()
+            mock_model.score_one.return_value = 0.2
+            mock_model.learn_one = MagicMock()
+            mock_create.return_value = mock_model
+
+            with patch.object(
+                AnomalyDetectionService,
+                "_create_preprocessors",
+                return_value=[StandardScaler()],
+            ):
+                service = AnomalyDetectionService(config)
+                first = service.process_data_point({"A": 1.0})
+                second = service.process_data_point({"B": 2.0})
+                third = service.process_data_point({"B": 2.5})
+
+        assert first.context["schema_warmup"] is True
+        assert first.context["unseen_feature"] == "A"
+        assert second.context["schema_warmup"] is True
+        assert second.context["unseen_feature"] == "B"
+        assert "schema_warmup" not in (third.context or {})
+        assert third.severity == "low"
+        assert mock_model.score_one.call_count == 1
+
+    def test_checkpoint_schema_signature_mismatch_raises_error(self):
+        """Test checkpoint restore raises ValueError on schema signature mismatch."""
+        from off_key_mqtt_radar.detector import AnomalyDetectionService
+
+        config = SimpleNamespace(
+            model_type="isolation_forest",
+            preprocessing_steps=[
+                {"type": "standard_scaler", "params": {"with_std": True}}
+            ],
+            subscription_topics=["charger/+/live-telemetry/TopLevelPart/SubMetricA"],
+            sensor_key_strategy="full_hierarchy",
+        )
+
+        mismatch_checkpoint = {
+            "model": MagicMock(),
+            "preprocessors": [],
+            "processed_count": 10,
+            "anomaly_count": 1,
+            "config": SimpleNamespace(model_type="isolation_forest"),
+            "schema_signature": "different-signature",
+        }
+
+        with patch.object(
+            AnomalyDetectionService,
+            "_load_and_verify_checkpoint",
+            return_value=mismatch_checkpoint,
+        ):
+            with pytest.raises(
+                ValueError, match="Checkpoint schema signature does not match"
+            ):
+                AnomalyDetectionService.from_checkpoint("ignored.pkl", config)
 
 
 class TestResilientAnomalyDetector:
@@ -324,6 +506,16 @@ class TestSecurityValidator:
         assert "normal" in result
         assert "too_big" not in result
         assert "too_small" not in result
+
+    def test_validate_drops_metadata_timestamp_keys(self):
+        """Test that metadata keys like timestamp are excluded from features."""
+        from off_key_mqtt_radar.detector import SecurityValidator
+
+        validator = SecurityValidator()
+        data = {"value": 12.5, "timestamp": "2026-02-13T12:23:40Z"}
+        result = validator.validate_and_sanitize(data)
+
+        assert result == {"value": 12.5}
 
 
 class TestMemoryManager:

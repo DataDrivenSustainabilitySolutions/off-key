@@ -24,6 +24,27 @@ class TopicParser:
 
     # Telemetry segment names (used to find sensor type after these segments)
     TELEMETRY_SEGMENTS = {"telemetry", "live-telemetry"}
+    SENSOR_KEY_STRATEGIES = {"full_hierarchy", "top_level", "leaf"}
+
+    @staticmethod
+    def _validate_sensor_key_strategy(sensor_key_strategy: str) -> str:
+        """Validate and normalize sensor key extraction strategy."""
+        normalized = sensor_key_strategy.strip().lower()
+        if normalized not in TopicParser.SENSOR_KEY_STRATEGIES:
+            allowed = ", ".join(sorted(TopicParser.SENSOR_KEY_STRATEGIES))
+            raise ValueError(f"sensor_key_strategy must be one of: {allowed}")
+        return normalized
+
+    @staticmethod
+    def _extract_hierarchy_tail(parts: List[str]) -> Optional[List[str]]:
+        """Extract hierarchy tail after telemetry/live-telemetry segment."""
+        for i, part in enumerate(parts):
+            if part in TopicParser.TELEMETRY_SEGMENTS:
+                tail = parts[i + 1 :]
+                if tail:
+                    return tail
+                break
+        return None
 
     @staticmethod
     def extract_charger_id(topic: str) -> Optional[str]:
@@ -49,7 +70,9 @@ class TopicParser:
             return None
 
     @staticmethod
-    def extract_sensor_type(topic: str) -> Optional[str]:
+    def extract_sensor_type(
+        topic: str, sensor_key_strategy: str = "full_hierarchy"
+    ) -> Optional[str]:
         """
         Extract sensor type from topic.
 
@@ -57,39 +80,41 @@ class TopicParser:
         - charger/<id>/telemetry/<sensor_type>
         - charger/<id>/live-telemetry/<sensor_type>
 
-        Falls back to the last non-wildcard segment.
+        Supports extraction strategies:
+        - full_hierarchy: join all hierarchy tail segments with '/'
+        - top_level: use first hierarchy tail segment
+        - leaf: use last hierarchy tail segment
 
         Args:
             topic: MQTT topic string
+            sensor_key_strategy: Feature key extraction strategy
 
         Returns:
             Sensor type or None if not found
         """
         try:
+            strategy = TopicParser._validate_sensor_key_strategy(sensor_key_strategy)
             parts = [p for p in topic.split("/") if p]
             if len(parts) < 3 or parts[0] != "charger":
                 return None
 
-            # Find the telemetry segment and get sensor type after it
-            for i, part in enumerate(parts):
-                if part in TopicParser.TELEMETRY_SEGMENTS:
-                    if i + 1 < len(parts):
-                        sensor = parts[i + 1]
-                        if sensor not in TopicParser.WILDCARD_SEGMENTS:
-                            return sensor
-                    break
-
-            # Fallback to last segment
-            sensor = parts[-1]
-            if sensor not in TopicParser.WILDCARD_SEGMENTS:
-                return sensor
-
+            hierarchy_tail = TopicParser._extract_hierarchy_tail(parts)
+            if hierarchy_tail:
+                if any(seg in {"+", "#"} for seg in hierarchy_tail):
+                    return None
+                if strategy == "top_level":
+                    return hierarchy_tail[0]
+                if strategy == "leaf":
+                    return hierarchy_tail[-1]
+                return "/".join(hierarchy_tail)
             return None
         except (AttributeError, IndexError):
             return None
 
     @staticmethod
-    def derive_required_sensors(topics: List[str]) -> Set[str]:
+    def derive_required_sensors(
+        topics: List[str], sensor_key_strategy: str = "full_hierarchy"
+    ) -> Set[str]:
         """
         Derive required sensor types from subscription topics.
 
@@ -97,6 +122,7 @@ class TopicParser:
 
         Args:
             topics: List of subscription topic patterns
+            sensor_key_strategy: Feature key extraction strategy
 
         Returns:
             Set of required sensor type names
@@ -104,26 +130,11 @@ class TopicParser:
         sensors: Set[str] = set()
 
         for topic in topics:
-            parts = [p for p in topic.split("/") if p]
-            if len(parts) < 4 or parts[0] != "charger":
-                continue
-
-            # Find the telemetry segment and get sensor type after it
-            found = False
-            for i, part in enumerate(parts):
-                if part in TopicParser.TELEMETRY_SEGMENTS:
-                    if i + 1 < len(parts):
-                        candidate = parts[i + 1]
-                        if candidate not in TopicParser.WILDCARD_SEGMENTS:
-                            sensors.add(candidate)
-                            found = True
-                    break
-
-            # Fallback to last segment if no telemetry segment found
-            if not found:
-                candidate = parts[-1]
-                if candidate not in TopicParser.WILDCARD_SEGMENTS:
-                    sensors.add(candidate)
+            sensor = TopicParser.extract_sensor_type(
+                topic, sensor_key_strategy=sensor_key_strategy
+            )
+            if sensor:
+                sensors.add(sensor)
 
         return sensors
 

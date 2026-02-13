@@ -5,13 +5,12 @@ HTTP client for communicating with the TACTIC middleware service.
 import asyncio
 import json
 from datetime import datetime
-from typing import Dict, List, Optional, Any
+from functools import lru_cache
+from typing import Dict, List, Optional, Any, cast
 
 import aiohttp
-from off_key_core.config.config import get_settings
+from off_key_core.config.services import get_service_endpoints_settings
 from off_key_core.config.logs import logger
-
-settings = get_settings()
 
 
 class TacticError(Exception):
@@ -29,7 +28,7 @@ class Tactic:
     """
 
     def __init__(self):
-        self.base_url = settings.tactic_service_base_url
+        self.base_url = get_service_endpoints_settings().tactic_service_base_url
         self.timeout = aiohttp.ClientTimeout(total=30)
         self._session: Optional[aiohttp.ClientSession] = None
         self._max_retries = 2
@@ -478,5 +477,18 @@ class Tactic:
         )
 
 
-# Global client instance
-tactic = Tactic()
+@lru_cache(maxsize=1)
+def get_tactic_client() -> Tactic:
+    """Return cached tactic client instance."""
+    return Tactic()
+
+
+class _LazyTacticFacade:
+    """Attribute-forwarding facade that defers Tactic creation until first use."""
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(get_tactic_client(), name)
+
+
+# Global facade for existing callsites without import-time Tactic initialization.
+tactic = cast(Tactic, _LazyTacticFacade())

@@ -124,7 +124,9 @@ async def login(user: UserLogin):
 async def verify_email(token: str):
     try:
         payload = jwt.decode(
-            token, settings.JWT_VERIFICATION_SECRET, algorithms=[settings.ALGORITHM]
+            token,
+            settings.JWT_VERIFICATION_SECRET.get_secret_value(),
+            algorithms=[settings.ALGORITHM],
         )
         if payload.get("token_type") != "email_verification":
             raise HTTPException(
@@ -208,7 +210,9 @@ async def forgot_password(user: ForgotPasswordRequest):
 async def reset_password(req: ResetPasswordRequest):
     try:
         payload = jwt.decode(
-            req.token, settings.JWT_VERIFICATION_SECRET, algorithms=[settings.ALGORITHM]
+            req.token,
+            settings.JWT_VERIFICATION_SECRET.get_secret_value(),
+            algorithms=[settings.ALGORITHM],
         )
         if payload.get("token_type") != "password_reset":
             raise HTTPException(status_code=400, detail="Invalid token type")

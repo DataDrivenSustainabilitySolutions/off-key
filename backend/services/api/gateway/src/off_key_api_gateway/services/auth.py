@@ -24,7 +24,11 @@ def create_jwt(data: dict, expires_delta: timedelta = None) -> str:
         else timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     )
     to_encode.update({"exp": expire})
-    return jwt.encode(to_encode, settings.JWT_SECRET, algorithm=settings.ALGORITHM)
+    return jwt.encode(
+        to_encode,
+        settings.JWT_SECRET.get_secret_value(),
+        algorithm=settings.ALGORITHM,
+    )
 
 
 def create_verification_token(email: str, expires_minutes: int = 120) -> str:
@@ -34,14 +38,18 @@ def create_verification_token(email: str, expires_minutes: int = 120) -> str:
         "token_type": "email_verification",
     }
     return jwt.encode(
-        to_encode, settings.JWT_VERIFICATION_SECRET, algorithm=settings.ALGORITHM
+        to_encode,
+        settings.JWT_VERIFICATION_SECRET.get_secret_value(),
+        algorithm=settings.ALGORITHM,
     )
 
 
 def verify_verification_token(token: str) -> str | None:
     try:
         payload = jwt.decode(
-            token, settings.JWT_VERIFICATION_SECRET, algorithms=[settings.ALGORITHM]
+            token,
+            settings.JWT_VERIFICATION_SECRET.get_secret_value(),
+            algorithms=[settings.ALGORITHM],
         )
         return payload.get("sub")
     except JWTError:
@@ -55,5 +63,7 @@ def create_reset_token(email: str, expires_minutes: int = 120) -> str:
         "token_type": "password_reset",
     }
     return jwt.encode(
-        to_encode, settings.JWT_VERIFICATION_SECRET, algorithm=settings.ALGORITHM
+        to_encode,
+        settings.JWT_VERIFICATION_SECRET.get_secret_value(),
+        algorithm=settings.ALGORITHM,
     )

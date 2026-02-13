@@ -11,7 +11,11 @@ from pathlib import Path
 
 from .proxy import MQTTProxyService
 from off_key_core.clients.provider import get_charger_api_client
+from off_key_core.config.env import load_env
+from off_key_core.config.pionix import get_pionix_settings
+from off_key_core.config.validation import validate_settings
 from off_key_core.config.logs import load_yaml_config
+from .config.config import mqtt_settings
 
 # Load logging configuration from YAML files
 service_logging_config = Path(__file__).parent / "config" / "logging.yaml"
@@ -20,6 +24,14 @@ load_yaml_config(str(service_logging_config))
 
 async def main():
     """Main entry point for MQTT proxy service"""
+    load_env()
+    validate_settings(
+        [
+            ("pionix", get_pionix_settings),
+            ("mqtt_proxy", lambda: mqtt_settings.config),
+        ],
+        context="MQTT proxy configuration",
+    )
     api_client = get_charger_api_client()
     service = MQTTProxyService(api_client)
     await service.run()

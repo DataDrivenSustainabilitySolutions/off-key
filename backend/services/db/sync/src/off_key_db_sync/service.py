@@ -12,7 +12,7 @@ from sqlalchemy import text
 
 from off_key_core.config.config import get_settings
 from off_key_core.config.logs import logger
-from off_key_core.db.base import async_engine
+from off_key_core.db.base import get_async_engine
 from off_key_core.db.models import Base
 from off_key_core.clients.provider import get_charger_api_client
 from .services.background_sync import BackgroundSyncService
@@ -53,7 +53,7 @@ class SyncService:
         try:
             logger.info("Starting database initialization", extra=self._log_context)
 
-            async with async_engine.begin() as conn:
+            async with get_async_engine().begin() as conn:
                 await conn.run_sync(Base.metadata.create_all)
                 await self._migrate_model_registry_family(conn)
 
@@ -189,7 +189,7 @@ class SyncService:
             bool: True if connection is successful, False otherwise
         """
         try:
-            async with async_engine.begin() as conn:
+            async with get_async_engine().begin() as conn:
                 await conn.execute(text("SELECT 1"))
             return True
 

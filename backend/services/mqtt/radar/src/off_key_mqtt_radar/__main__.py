@@ -6,11 +6,14 @@ MQTT Real-Time Anomaly Detector for Analysis and Reporting
 
 import asyncio
 import logging
+import os
 import sys
 
+from off_key_core.config.env import load_env
+from off_key_core.config.validation import validate_settings
 from off_key_core.config.logs import logger
 from .service import get_radar_service
-from .config.config import radar_settings
+from .config.config import radar_settings, load_configuration
 
 
 def setup_logging():
@@ -26,6 +29,14 @@ def setup_logging():
 async def main():
     """Main entry point for RADAR service"""
     setup_logging()
+    load_env()
+    radar_settings.custom_config_file = load_configuration(
+        os.getenv("RADAR_CONFIG_FILE")
+    )
+    validate_settings(
+        [("radar", lambda: radar_settings.config)],
+        context="RADAR service configuration",
+    )
 
     logger.info("Starting MQTT RADAR service")
     cfg = radar_settings.config

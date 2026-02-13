@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from off_key_core.config.logs import logger
 from off_key_core.db.models import MonitoringService
-from off_key_core.db.base import AsyncSessionLocal
+from off_key_core.db.base import get_async_session_local
 from ..facades.docker import AsyncDocker
 
 
@@ -97,7 +97,8 @@ class RadarStatusReconciliationService:
 
     async def _reconcile(self):
         """Perform a single reconciliation pass."""
-        async with AsyncSessionLocal() as session:
+        session_factory = get_async_session_local()
+        async with session_factory() as session:
             try:
                 await self._reconcile_with_session(session)
                 await session.commit()

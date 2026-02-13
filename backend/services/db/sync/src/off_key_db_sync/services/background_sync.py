@@ -14,7 +14,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 
 from off_key_core.config.logs import logger
-from off_key_core.db.base import AsyncSessionLocal
+from off_key_core.db.base import get_async_session_local
 from ..config.config import sync_settings
 from .chargers import ChargersSyncService
 from .telemetry import TelemetrySyncService
@@ -189,7 +189,8 @@ class BackgroundSyncService:
             logger.info("Starting charger sync", extra=self._log_context)
 
             # Create database session
-            async with AsyncSessionLocal() as session:
+            session_factory = get_async_session_local()
+            async with session_factory() as session:
                 sync_service = self.charger_sync_factory(session)
                 await sync_service.sync_chargers()
 
@@ -224,7 +225,8 @@ class BackgroundSyncService:
             logger.info("Starting telemetry sync", extra=self._log_context)
 
             # Create database session
-            async with AsyncSessionLocal() as session:
+            session_factory = get_async_session_local()
+            async with session_factory() as session:
                 sync_service = self.telemetry_sync_factory(session)
                 await sync_service.sync_telemetry(
                     limit=sync_settings.config.telemetry_limit
@@ -267,7 +269,8 @@ class BackgroundSyncService:
             )
 
             # Create database session
-            async with AsyncSessionLocal() as session:
+            session_factory = get_async_session_local()
+            async with session_factory() as session:
                 sync_service = self.charger_sync_factory(session)
                 await sync_service.clean_chargers(
                     days_inactive=sync_settings.config.cleanup_days_inactive

@@ -8,13 +8,15 @@ import asyncio
 import uvicorn
 from pathlib import Path
 
-from off_key_core.config.config import get_settings
+from off_key_core.config.database import get_database_settings
+from off_key_core.config.env import load_env
+from off_key_core.config.logging import get_logging_settings
+from off_key_core.config.pionix import get_pionix_settings
+from off_key_core.config.validation import validate_settings
 from off_key_core.config.logs import load_yaml_config, logger
 from .config.config import sync_settings
 from .service import SyncService
 from .api import app, set_sync_service
-
-settings = get_settings()
 
 
 async def run_api_server(sync_service: SyncService):
@@ -32,8 +34,9 @@ async def run_api_server(sync_service: SyncService):
     server = uvicorn.Server(config)
 
     logger.info(
-        f"Starting FastAPI server on "
-        f"{sync_settings.config.api_host}:{sync_settings.config.api_port}"
+        "Starting FastAPI server on %s:%s",
+        sync_settings.config.api_host,
+        sync_settings.config.api_port,
     )
 
     # Run server
@@ -43,9 +46,21 @@ async def run_api_server(sync_service: SyncService):
 async def main():
     """Main entry point for database sync service"""
 
-    # Initialize logging
+    load_env()
+
+    # Initialize logging before validation so startup failures are structured.
     service_logging_config = Path(__file__).parent / "config" / "logging.yaml"
     load_yaml_config(str(service_logging_config))
+
+    validate_settings(
+        [
+            ("logging", get_logging_settings),
+            ("database", get_database_settings),
+            ("pionix", get_pionix_settings),
+            ("sync", lambda: sync_settings.config),
+        ],
+        context="DB sync configuration",
+    )
 
     logger.info("Starting Off-Key database sync service")
 

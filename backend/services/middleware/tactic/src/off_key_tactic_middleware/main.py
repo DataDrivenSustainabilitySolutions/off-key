@@ -12,6 +12,8 @@ import uvicorn
 from fastapi import FastAPI, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 
+from off_key_core.config.env import load_env
+from off_key_core.config.validation import validate_settings
 from off_key_core.config.logs import logger
 from .api.v1 import radar, models, data_services
 from .api.v1.admin_models import router as admin_models_router
@@ -227,6 +229,11 @@ def create_app() -> FastAPI:
 
 def main() -> None:
     """Main entry point for the TACTIC middleware service."""
+    load_env()
+    validate_settings(
+        [("tactic", lambda: tactic_settings.config)],
+        context="TACTIC middleware configuration",
+    )
     config = tactic_settings.config
 
     logger.info(f"Starting {config.service_name} v{config.service_version}...")

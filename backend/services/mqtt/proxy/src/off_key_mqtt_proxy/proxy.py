@@ -10,7 +10,7 @@ import signal
 from typing import Optional
 
 from off_key_core.config.logs import logger
-from off_key_core.db.base import AsyncSessionLocal
+from off_key_core.db.base import get_async_session_local
 from off_key_core.utils.enum import HealthStatus
 from .config.config import mqtt_settings
 from .auth import ApiKeyAuthHandler
@@ -66,6 +66,10 @@ class MQTTProxyService:
         logger.info("Starting MQTT proxy service", extra=self._log_context)
 
         try:
+            # Resolve cached async session factory once and reuse across
+            # DB-backed components.
+            session_factory = get_async_session_local()
+
             # Initialize API-Key authentication
             self.auth_handler = ApiKeyAuthHandler(
                 self.config.mqtt_username, self.config.mqtt_api_key
@@ -86,7 +90,7 @@ class MQTTProxyService:
             # Initialize charger discovery
             self.charger_discovery = ChargerDiscoveryService(
                 self.config,
-                AsyncSessionLocal,
+                session_factory,
                 self.api_client,
             )
 
@@ -104,7 +108,7 @@ class MQTTProxyService:
                 )
 
             # Initialize database writer
-            self.database_writer = DatabaseWriter(self.config, AsyncSessionLocal)
+            self.database_writer = DatabaseWriter(self.config, session_factory)
             await self.database_writer.start()
 
             # Initialize message router

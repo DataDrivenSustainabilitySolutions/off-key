@@ -1,0 +1,79 @@
+{
+  "name": "off-key-dev",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": ".."
+  },
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "24"
+    },
+    "ghcr.io/devcontainers/features/docker-outside-of-docker:1": {}
+  },
+  "workspaceFolder": "/workspaces/off-key",
+  "remoteUser": "vscode",
+  "updateRemoteUserUID": true,
+  "containerEnv": {
+    "UV_LINK_MODE": "copy",
+    "UV_COMPILE_BYTECODE": "1",
+    "UV_PYTHON_DOWNLOADS": "never",
+    "UV_PYTHON": "python3.12"
+  },
+  "postCreateCommand": "bash .devcontainer/post-create.sh",
+  "forwardPorts": [
+    5173,
+    8000,
+    8001,
+    8009,
+    5432,
+    1883,
+    18083,
+    8025,
+    1025
+  ],
+  "portsAttributes": {
+    "5173": {
+      "label": "Frontend (Vite)"
+    },
+    "8000": {
+      "label": "API Gateway"
+    },
+    "8001": {
+      "label": "Tactic Middleware"
+    },
+    "8009": {
+      "label": "DB Sync"
+    },
+    "5432": {
+      "label": "PostgreSQL / TimescaleDB"
+    },
+    "1883": {
+      "label": "MQTT"
+    },
+    "18083": {
+      "label": "EMQX Dashboard"
+    },
+    "8025": {
+      "label": "Mailpit UI"
+    },
+    "1025": {
+      "label": "Mailpit SMTP"
+    }
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "charliermarsh.ruff",
+        "ms-azuretools.vscode-docker",
+        "esbenp.prettier-vscode",
+        "dbaeumer.vscode-eslint"
+      ],
+      "settings": {
+        "python.defaultInterpreterPath": "/usr/local/bin/python",
+        "python.terminal.activateEnvironment": false
+      }
+    }
+  }
+}

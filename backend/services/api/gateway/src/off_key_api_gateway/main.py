@@ -10,9 +10,9 @@ from slowapi.middleware import SlowAPIMiddleware
 
 from off_key_core.config.app import get_app_settings
 from off_key_core.config.auth import get_auth_settings
-from off_key_core.config.database import get_database_settings
 from off_key_core.config.email import get_email_settings
 from off_key_core.config.env import load_env
+from off_key_core.config.runtime import get_runtime_settings
 from off_key_core.config.services import get_service_endpoints_settings
 from off_key_core.config.validation import validate_settings
 from off_key_core.config.logs import load_yaml_config, logger
@@ -26,15 +26,16 @@ load_env()
 validate_settings(
     [
         ("app", get_app_settings),
+        ("runtime", get_runtime_settings),
         ("auth", get_auth_settings),
         ("email", get_email_settings),
-        ("database", get_database_settings),
         ("services", get_service_endpoints_settings),
     ],
     context="API gateway configuration",
 )
 
 app_settings = get_app_settings()
+runtime_settings = get_runtime_settings()
 service_endpoints = get_service_endpoints_settings()
 
 # Rate limiter setup
@@ -139,7 +140,8 @@ app.add_middleware(SlowAPIMiddleware)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    # Keep defaults development-friendly via AppSettings, and override via env in prod.
+    allow_origins=list(app_settings.CORS_ALLOWED_ORIGINS),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -166,5 +168,5 @@ if __name__ == "__main__":
         "main:app",
         host="0.0.0.0",
         port=8000,
-        reload=app_settings.DEBUG,
+        reload=runtime_settings.DEBUG,
     )

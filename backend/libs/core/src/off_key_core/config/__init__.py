@@ -8,6 +8,7 @@ from .database import DatabaseSettings, get_database_settings
 from .email import EmailSettings, get_email_settings
 from .logging import LoggingSettings, get_logging_settings
 from .pionix import PionixConfig, PionixSettings, get_pionix_settings
+from .runtime import RuntimeSettings, get_runtime_settings
 from .services import (
     ServiceEndpointsSettings,
     _clear_service_endpoints_settings_cache,
@@ -23,18 +24,16 @@ def get_retention_days() -> int:
 
 def reset_runtime_caches_for_tests() -> None:
     """Clear runtime caches for deterministic tests and local tooling."""
-    from .config import reset_settings_cache
-
     from off_key_core.clients.provider import get_charger_api_client
     from off_key_core.db.base import reset_db_runtime_caches
 
-    reset_settings_cache()
     get_app_settings.cache_clear()
     get_auth_settings.cache_clear()
     get_database_settings.cache_clear()
     get_email_settings.cache_clear()
     get_logging_settings.cache_clear()
     get_pionix_settings.cache_clear()
+    get_runtime_settings.cache_clear()
     _clear_service_endpoints_settings_cache()
     get_telemetry_settings.cache_clear()
     get_charger_api_client.cache_clear()
@@ -65,6 +64,8 @@ __all__ = [
     "PionixConfig",
     "PionixSettings",
     "get_pionix_settings",
+    "RuntimeSettings",
+    "get_runtime_settings",
     "ServiceEndpointsSettings",
     "get_service_endpoints_settings",
     "TelemetrySettings",

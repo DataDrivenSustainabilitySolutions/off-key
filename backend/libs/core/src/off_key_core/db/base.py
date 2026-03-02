@@ -6,19 +6,19 @@ from sqlalchemy import create_engine
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 
-from ..config.app import get_app_settings
 from ..config.database import get_database_settings
 from ..config.logs import logger
+from ..config.runtime import get_runtime_settings
 
 
 @lru_cache(maxsize=1)
 def get_engine():
     """Return lazily-created sync SQLAlchemy engine."""
     db_settings = get_database_settings()
-    app_settings = get_app_settings()
+    runtime_settings = get_runtime_settings()
     return create_engine(
         db_settings.database_url,
-        echo=app_settings.DEBUG,
+        echo=runtime_settings.DEBUG,
         echo_pool=False,
         pool_pre_ping=True,
         pool_size=10,
@@ -30,10 +30,10 @@ def get_engine():
 def get_async_engine():
     """Return lazily-created async SQLAlchemy engine."""
     db_settings = get_database_settings()
-    app_settings = get_app_settings()
+    runtime_settings = get_runtime_settings()
     return create_async_engine(
         db_settings.async_database_url,
-        echo=app_settings.DEBUG,
+        echo=runtime_settings.DEBUG,
         pool_pre_ping=True,
         pool_size=10,
         max_overflow=20,

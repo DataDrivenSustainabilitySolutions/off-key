@@ -1,28 +1,25 @@
 from functools import lru_cache
 
-from pydantic import BaseModel, ConfigDict
-
-from .config import get_settings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-class AppSettings(BaseModel):
+class AppSettings(BaseSettings):
     """Application-level settings shared across services."""
 
-    model_config = ConfigDict(frozen=True)
+    model_config = SettingsConfigDict(
+        case_sensitive=True,
+        extra="ignore",
+        frozen=True,
+    )
 
     APP_NAME: str
-    DEBUG: bool
-    CHARGER_API_PROVIDER: str
-    CORS_ALLOWED_ORIGINS: tuple[str, ...]
+    CORS_ALLOWED_ORIGINS: tuple[str, ...] = (
+        "http://localhost:8000",
+        "http://localhost:5173",
+    )
 
 
 @lru_cache(maxsize=1)
 def get_app_settings() -> AppSettings:
-    """Return cached AppSettings view derived from canonical Settings."""
-    settings = get_settings()
-    return AppSettings(
-        APP_NAME=settings.APP_NAME,
-        DEBUG=settings.DEBUG,
-        CHARGER_API_PROVIDER=settings.CHARGER_API_PROVIDER,
-        CORS_ALLOWED_ORIGINS=tuple(settings.CORS_ALLOWED_ORIGINS),
-    )
+    """Return cached app-level settings."""
+    return AppSettings()

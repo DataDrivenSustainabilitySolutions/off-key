@@ -3,8 +3,8 @@ from typing import Optional
 
 from off_key_core.clients.base_client import ChargerAPIClient
 from off_key_core.clients.pionix import PionixClient
-from off_key_core.config.app import get_app_settings
 from off_key_core.config.pionix import get_pionix_settings
+from off_key_core.config.runtime import get_runtime_settings
 
 
 def _create_pionix_client() -> PionixClient:
@@ -26,8 +26,8 @@ def get_charger_api_client() -> ChargerAPIClient:
     Raises:
         ValueError: If the configured provider is unknown
     """
-    app_settings = get_app_settings()
-    provider = app_settings.CHARGER_API_PROVIDER
+    runtime_settings = get_runtime_settings()
+    provider = runtime_settings.CHARGER_API_PROVIDER
 
     if provider == "pionix":
         return _create_pionix_client()

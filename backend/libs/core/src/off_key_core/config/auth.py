@@ -1,28 +1,22 @@
 from functools import lru_cache
 
-from pydantic import BaseModel, SecretStr
+from pydantic import EmailStr, SecretStr
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from .config import get_settings
 
-
-class AuthSettings(BaseModel):
+class AuthSettings(BaseSettings):
     """Authentication and authorization settings."""
+
+    model_config = SettingsConfigDict(case_sensitive=True, extra="ignore", frozen=True)
 
     JWT_SECRET: SecretStr
     JWT_VERIFICATION_SECRET: SecretStr
     ALGORITHM: str
     ACCESS_TOKEN_EXPIRE_MINUTES: int
-    SUPERUSER_MAIL: str
+    SUPERUSER_MAIL: EmailStr
 
 
 @lru_cache(maxsize=1)
 def get_auth_settings() -> AuthSettings:
-    """Return cached AuthSettings view derived from canonical Settings."""
-    settings = get_settings()
-    return AuthSettings(
-        JWT_SECRET=settings.JWT_SECRET,
-        JWT_VERIFICATION_SECRET=settings.JWT_VERIFICATION_SECRET,
-        ALGORITHM=settings.ALGORITHM,
-        ACCESS_TOKEN_EXPIRE_MINUTES=settings.ACCESS_TOKEN_EXPIRE_MINUTES,
-        SUPERUSER_MAIL=settings.SUPERUSER_MAIL,
-    )
+    """Return cached auth settings."""
+    return AuthSettings()

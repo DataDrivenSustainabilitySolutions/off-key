@@ -10,16 +10,14 @@ import signal
 from typing import Optional
 from sqlalchemy import text
 
-from off_key_core.config.config import get_settings
 from off_key_core.config.logs import logger
 from off_key_core.db.base import get_async_engine
 from off_key_core.db.models import Base
 from off_key_core.clients.provider import get_charger_api_client
+from .config.config import get_sync_settings
 from .services.background_sync import BackgroundSyncService
 from .services.chargers import ChargersSyncService
 from .services.telemetry import TelemetrySyncService
-
-settings = get_settings()
 
 
 class SyncService:
@@ -242,6 +240,7 @@ class SyncService:
 
     async def start(self):
         """Start the database sync service"""
+        config = get_sync_settings().config
         if self.is_running:
             logger.warning(
                 "Database sync service already running", extra=self._log_context
@@ -260,7 +259,7 @@ class SyncService:
                 raise RuntimeError("Database initialization failed")
 
             # Start background sync service if enabled
-            if settings.SYNC_ENABLED:
+            if config.enabled:
                 logger.info(
                     "Starting background sync scheduler", extra=self._log_context
                 )
@@ -288,8 +287,8 @@ class SyncService:
                     extra={
                         **self._log_context,
                         "sync_enabled": True,
-                        "chargers_interval": settings.SYNC_CHARGERS_INTERVAL,
-                        "telemetry_interval": settings.SYNC_TELEMETRY_INTERVAL,
+                        "chargers_interval": config.chargers_interval,
+                        "telemetry_interval": config.telemetry_interval,
                     },
                 )
             else:
@@ -301,7 +300,7 @@ class SyncService:
                 self.initial_sync_complete = True
 
             # If sync_on_startup is disabled, mark as complete immediately
-            if not settings.SYNC_ON_STARTUP:
+            if not config.sync_on_startup:
                 self.initial_sync_complete = True
 
             self.is_running = True
@@ -399,6 +398,7 @@ class SyncService:
 
     def get_health_status(self):
         """Get current health status"""
+        config = get_sync_settings().config
         # Service is only healthy if running, schema is ready,
         # and initial sync completed.
         is_healthy = (
@@ -411,7 +411,7 @@ class SyncService:
                 if is_healthy
                 else ("starting" if self.is_running else "stopped")
             ),
-            "sync_enabled": settings.SYNC_ENABLED,
+            "sync_enabled": config.enabled,
             "schema_ready": self.schema_ready,
             "initial_sync_complete": self.initial_sync_complete,
             "components": {},

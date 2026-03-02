@@ -19,7 +19,7 @@ from typing import Optional
 
 from off_key_core.config.logs import logger
 
-from .config.config import radar_settings, AnomalyDetectionConfig
+from .config.config import AnomalyDetectionConfig, get_radar_settings
 from .detector import (
     AnomalyDetectionService,
     ResilientAnomalyDetector,
@@ -50,7 +50,7 @@ class RadarService:
     """
 
     def __init__(self):
-        self.config = radar_settings.config
+        self.config = get_radar_settings().config
 
         # Core components
         self.mqtt_client: Optional[RadarMQTTClient] = None
@@ -296,7 +296,11 @@ class RadarService:
         """Setup configuration file watching for hot reload"""
         try:
             # Check if we have a config file to watch
-            config_file_path = getattr(radar_settings, "custom_config_file", None)
+            config_file_path = getattr(
+                get_radar_settings(),
+                "custom_config_file",
+                None,
+            )
 
             if not config_file_path:
                 logger.info("No configuration file specified for watching")

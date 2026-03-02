@@ -17,7 +17,7 @@ from off_key_core.config.validation import validate_settings
 from off_key_core.config.logs import logger
 from .api.v1 import radar, models, data_services
 from .api.v1.admin_models import router as admin_models_router
-from .config.config import tactic_settings
+from .config.config import get_tactic_settings
 from .services.reconciliation import RadarStatusReconciliationService
 from .facades.docker import AsyncDocker
 from .models.registry import ModelRegistryService, ModelRegistryNotReadyError
@@ -63,7 +63,7 @@ async def _initialize_model_registry(
 
 async def _model_registry_recovery_loop(app: FastAPI) -> None:
     """Retry model registry initialization in background until ready."""
-    config = tactic_settings.config
+    config = get_tactic_settings().config
     retry_interval = config.model_registry_init_retry_interval_seconds
 
     logger.info(
@@ -87,7 +87,7 @@ async def _model_registry_recovery_loop(app: FastAPI) -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """FastAPI lifespan manager for startup and shutdown events."""
-    config = tactic_settings.config
+    config = get_tactic_settings().config
 
     app.state.model_registry = ModelRegistryService()
     app.state.model_registry_ready = False
@@ -164,7 +164,7 @@ async def lifespan(app: FastAPI):
 
 def create_app() -> FastAPI:
     """Create and configure the FastAPI application."""
-    config = tactic_settings.config
+    config = get_tactic_settings().config
 
     app = FastAPI(
         title=config.service_name,
@@ -231,10 +231,10 @@ def main() -> None:
     """Main entry point for the TACTIC middleware service."""
     load_env()
     validate_settings(
-        [("tactic", lambda: tactic_settings.config)],
+        [("tactic", lambda: get_tactic_settings().config)],
         context="TACTIC middleware configuration",
     )
-    config = tactic_settings.config
+    config = get_tactic_settings().config
 
     logger.info(f"Starting {config.service_name} v{config.service_version}...")
     logger.info(f"Docker API: {config.docker.base_url}")

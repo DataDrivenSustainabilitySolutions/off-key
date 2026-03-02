@@ -4,12 +4,12 @@ import time
 from docker import DockerClient
 from typing import Callable, Any
 from off_key_core.config.logs import logger, log_performance
-from ..config.config import tactic_settings
+from ..config.config import get_tactic_settings
 
 
 class AsyncDocker:
     def __init__(self, docker_config=None):
-        config = docker_config or tactic_settings.config.docker
+        config = docker_config or get_tactic_settings().config.docker
 
         try:
             self.client = DockerClient(base_url=config.base_url)

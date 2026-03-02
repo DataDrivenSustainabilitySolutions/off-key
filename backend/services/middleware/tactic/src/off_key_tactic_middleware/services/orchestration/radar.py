@@ -1,6 +1,7 @@
 import os
 import json
 import uuid
+from functools import lru_cache
 from datetime import datetime
 from typing import List, Dict, Optional, Any
 from urllib.parse import quote_plus
@@ -14,9 +15,23 @@ from off_key_core.config.logs import logger
 from off_key_core.db.models import MonitoringService
 from ...models.registry import ModelRegistryService
 from ...facades.docker import AsyncDocker
-from ...config.config import tactic_settings
+from ...config.config import get_tactic_settings
 
-async_docker = AsyncDocker()
+
+@lru_cache(maxsize=1)
+def get_async_docker() -> AsyncDocker:
+    """Create Docker facade lazily to avoid import-time settings evaluation.
+
+    Note:
+        This function is cached. Tests that monkeypatch Docker behavior or related
+        settings should clear the cache between cases.
+    """
+    return AsyncDocker()
+
+
+def reset_async_docker_cache_for_tests() -> None:
+    """Clear cached AsyncDocker singleton for deterministic tests/tooling."""
+    get_async_docker.cache_clear()
 
 
 def _parse_memory_string(memory_str: str) -> int:
@@ -76,7 +91,7 @@ class RadarOrchestrationService:
 
     def __init__(self, session: AsyncSession, model_registry: ModelRegistryService):
         self.session: AsyncSession = session
-        self.async_docker: AsyncDocker = async_docker
+        self.async_docker: AsyncDocker = get_async_docker()
         self.model_registry = model_registry
         logger.info("RadarOrchestrationService initialized.")
 
@@ -185,7 +200,7 @@ class RadarOrchestrationService:
         Pydantic configuration defaults.
         """
         # Get RADAR defaults from configuration
-        defaults = tactic_settings.config.radar_defaults
+        defaults = get_tactic_settings().config.radar_defaults
 
         env_vars = {
             "SERVICE_ID": service_id,
@@ -335,7 +350,7 @@ class RadarOrchestrationService:
         Helper method to create RADAR Docker service using Pydantic configuration.
         """
         # Get Docker configuration from Pydantic settings
-        docker_config = tactic_settings.config.docker
+        docker_config = get_tactic_settings().config.docker
 
         labels = {
             "owner": "tactic_middleware",

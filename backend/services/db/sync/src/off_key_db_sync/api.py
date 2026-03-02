@@ -11,14 +11,12 @@ from typing import AsyncGenerator
 from fastapi import FastAPI, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from off_key_core.config.config import get_settings
 from off_key_core.config.logs import logger
 from off_key_core.db.base import get_db_async
 from off_key_core.clients.provider import get_charger_api_client
+from .config.config import get_sync_settings
 from .services.chargers import ChargersSyncService
 from .services.telemetry import TelemetrySyncService
-
-settings = get_settings()
 
 # Global reference to sync service (set by main)
 _sync_service = None
@@ -57,7 +55,7 @@ async def health_check():
     return {
         "status": "unhealthy",
         "message": "Sync service not initialized",
-        "sync_enabled": settings.SYNC_ENABLED,
+        "sync_enabled": get_sync_settings().config.enabled,
     }
 
 
@@ -133,4 +131,4 @@ async def get_sync_status():
     """Get background sync service status."""
     if _sync_service and _sync_service.background_sync:
         return _sync_service.background_sync.get_status()
-    return {"enabled": settings.SYNC_ENABLED, "running": False, "jobs": []}
+    return {"enabled": get_sync_settings().config.enabled, "running": False, "jobs": []}

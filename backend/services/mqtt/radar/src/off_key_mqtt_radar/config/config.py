@@ -2,10 +2,11 @@
 Configuration for MQTT RADAR service
 """
 
+from functools import lru_cache
 from pydantic import BaseModel, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from typing import Dict, Any, List, Optional, Self
-from dotenv import find_dotenv, load_dotenv
+from typing import Any, Dict, List, Optional, Self
+from dotenv import load_dotenv
 from pathlib import Path
 import os
 import json
@@ -31,9 +32,6 @@ def _normalize_sensor_key_strategy(value: str, field_name: str) -> str:
 
 def load_configuration(custom_config_file: Optional[str] = None):
     """Load configuration from environment and optional custom file"""
-    # Load default ".env" file from upper project tree
-    load_dotenv()
-
     # Load custom configuration file if specified
     if custom_config_file:
         config_path = Path(custom_config_file)
@@ -41,18 +39,7 @@ def load_configuration(custom_config_file: Optional[str] = None):
             load_dotenv(config_path, override=True)
             return str(config_path.resolve())
 
-    # Override with dev.env values if present
-    dev_env = find_dotenv("dev.env")
-    if dev_env:
-        load_dotenv(dev_env, override=True)
-        return dev_env
-
     return None
-
-
-# Check for custom config file from environment variable
-RADAR_CONFIG_FILE = os.getenv("RADAR_CONFIG_FILE")
-loaded_config_file = load_configuration(RADAR_CONFIG_FILE)
 
 
 class AnomalyDetectionConfig(BaseModel):
@@ -253,7 +240,6 @@ class RadarSettings(BaseSettings):
     RADAR_RATE_LIMIT_PER_MINUTE: int = 1000
 
     model_config = SettingsConfigDict(
-        env_file=".env",
         case_sensitive=True,
         extra="ignore",
     )
@@ -343,8 +329,12 @@ class RadarSettings(BaseSettings):
         )
 
 
-# Global settings instance
-radar_settings = RadarSettings()
+@lru_cache(maxsize=1)
+def get_radar_settings() -> RadarSettings:
+    """Return cached RADAR settings instance."""
+    return RadarSettings()
 
-# Store the loaded config file path for the file watcher
-radar_settings.custom_config_file = loaded_config_file
+
+def clear_radar_settings_cache() -> None:
+    """Clear cached RADAR settings (useful for tests and config reloads)."""
+    get_radar_settings.cache_clear()

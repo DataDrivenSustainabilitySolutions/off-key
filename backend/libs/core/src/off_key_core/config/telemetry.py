@@ -1,16 +1,15 @@
 from functools import lru_cache
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from .config import get_settings
 
-
-class TelemetrySettings(BaseModel):
+class TelemetrySettings(BaseSettings):
     """Telemetry retention settings shared across services."""
 
-    model_config = ConfigDict(frozen=True)
+    model_config = SettingsConfigDict(case_sensitive=True, extra="ignore", frozen=True)
 
-    TELEMETRY_RETENTION_DAYS: int = Field(default=14)
+    TELEMETRY_RETENTION_DAYS: int = 14
 
     @field_validator("TELEMETRY_RETENTION_DAYS")
     @classmethod
@@ -26,8 +25,5 @@ class TelemetrySettings(BaseModel):
 
 @lru_cache(maxsize=1)
 def get_telemetry_settings() -> TelemetrySettings:
-    """Return cached telemetry settings derived from canonical Settings."""
-    settings = get_settings()
-    return TelemetrySettings(
-        TELEMETRY_RETENTION_DAYS=settings.TELEMETRY_RETENTION_DAYS,
-    )
+    """Return cached telemetry settings."""
+    return TelemetrySettings()

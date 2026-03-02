@@ -5,23 +5,14 @@ Handles configuration for the MQTT proxy service including API-Key authenticatio
 MQTT broker configuration, and service-specific parameters.
 """
 
+from functools import lru_cache
 import random
+import uuid
 from pydantic import BaseModel, field_validator, model_validator
 from pydantic_settings import BaseSettings
 
-from off_key_core.config.config import get_settings
-from typing import Self, Dict
-from dotenv import find_dotenv, load_dotenv
-
-# Load default ".env" file from upper project tree
-load_dotenv()
-
-# Override with dev.env values if present
-dev_env = find_dotenv("dev.env")
-if dev_env:
-    load_dotenv(dev_env, override=True)
-
-settings = get_settings()
+from off_key_core.config.pionix import get_pionix_settings
+from typing import Dict, Self
 
 
 class MQTTConfig(BaseModel):
@@ -376,8 +367,6 @@ class MQTTConfig(BaseModel):
 
     def get_client_id(self) -> str:
         """Generate unique client ID"""
-        import uuid
-
         return f"{self.client_id_prefix}_{uuid.uuid4().hex[:8]}"
 
     def get_jittered_backoff_delay(self, attempt: int) -> float:
@@ -463,7 +452,7 @@ class MQTTSettings(BaseSettings):
     @property
     def config(self) -> "MQTTConfig":
         """
-        Create MQTTConfig instance from centralized settings.
+        Create MQTTConfig instance from environment settings.
 
         This property demonstrates the dual-config pattern: environment parsing
         happens here, while business logic validation occurs in MQTTConfig.
@@ -476,13 +465,17 @@ class MQTTSettings(BaseSettings):
         Returns:
             MQTTConfig: Validated MQTT service config with business logic constraints
         """
+        pionix_settings = get_pionix_settings()
+
         return MQTTConfig(
             broker_host=self.MQTT_BROKER_HOST,
             broker_port=self.MQTT_BROKER_PORT,
             use_tls=self.MQTT_USE_TLS,
             client_id_prefix=self.MQTT_CLIENT_ID_PREFIX,
             mqtt_username=self.MQTT_USERNAME,
-            mqtt_api_key=self.MQTT_APIKEY or settings.PIONIX_KEY.get_secret_value(),
+            mqtt_api_key=(
+                self.MQTT_APIKEY or pionix_settings.PIONIX_KEY.get_secret_value()
+            ),
             enabled=self.MQTT_TELEMETRY_ENABLED,
             reconnect_delay=self.MQTT_RECONNECT_DELAY,
             max_reconnect_attempts=self.MQTT_MAX_RECONNECT_ATTEMPTS,
@@ -508,4 +501,7 @@ class MQTTSettings(BaseSettings):
         )
 
 
-mqtt_settings = MQTTSettings()
+@lru_cache(maxsize=1)
+def get_mqtt_settings() -> MQTTSettings:
+    """Return cached MQTT proxy settings instance."""
+    return MQTTSettings()

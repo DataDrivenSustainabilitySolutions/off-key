@@ -1,19 +1,34 @@
 from functools import lru_cache
 
 from pydantic import BaseModel, SecretStr, ValidationInfo, field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from .config import PionixConfig, get_settings
+
+class PionixConfig(BaseModel):
+    """Configuration for Pionix API client."""
+
+    base_url: str = "https://cloud.pionix.com/api"
+    api_key: SecretStr
+    user_agent: str
+    chargers_endpoint: str
+    device_model_endpoint: str
+    telemetry_endpoint: str
+
+    class Config:
+        extra = "forbid"
 
 
-class PionixSettings(BaseModel):
+class PionixSettings(BaseSettings):
     """Pionix API and MQTT template settings."""
+
+    model_config = SettingsConfigDict(case_sensitive=True, extra="ignore", frozen=True)
 
     PIONIX_KEY: SecretStr
     PIONIX_USER_AGENT: str
-    PIONIX_CHARGERS_ENDPOINT: str
-    PIONIX_DEVICE_MODEL_ENDPOINT: str
-    PIONIX_TELEMETRY_ENDPOINT: str
-    PIONIX_MQTT_TELEMETRY_TOPIC: str
+    PIONIX_CHARGERS_ENDPOINT: str = "chargers"
+    PIONIX_DEVICE_MODEL_ENDPOINT: str = "chargers/{charger_id}/deviceModel"
+    PIONIX_TELEMETRY_ENDPOINT: str = "chargers/{charger_id}/telemetry/{hierarchy}"
+    PIONIX_MQTT_TELEMETRY_TOPIC: str = "charger/{charger_id}/live-telemetry/{hierarchy}"
 
     @field_validator(
         "PIONIX_DEVICE_MODEL_ENDPOINT",
@@ -58,13 +73,5 @@ class PionixSettings(BaseModel):
 
 @lru_cache(maxsize=1)
 def get_pionix_settings() -> PionixSettings:
-    """Return cached PionixSettings view derived from canonical Settings."""
-    settings = get_settings()
-    return PionixSettings(
-        PIONIX_KEY=settings.PIONIX_KEY,
-        PIONIX_USER_AGENT=settings.PIONIX_USER_AGENT,
-        PIONIX_CHARGERS_ENDPOINT=settings.PIONIX_CHARGERS_ENDPOINT,
-        PIONIX_DEVICE_MODEL_ENDPOINT=settings.PIONIX_DEVICE_MODEL_ENDPOINT,
-        PIONIX_TELEMETRY_ENDPOINT=settings.PIONIX_TELEMETRY_ENDPOINT,
-        PIONIX_MQTT_TELEMETRY_TOPIC=settings.PIONIX_MQTT_TELEMETRY_TOPIC,
-    )
+    """Return cached Pionix settings."""
+    return PionixSettings()

@@ -1,13 +1,14 @@
 from functools import lru_cache
 from urllib.parse import quote
 
-from pydantic import BaseModel, SecretStr
+from pydantic import SecretStr
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from .config import get_settings
 
-
-class DatabaseSettings(BaseModel):
+class DatabaseSettings(BaseSettings):
     """Database connection settings."""
+
+    model_config = SettingsConfigDict(case_sensitive=True, extra="ignore", frozen=True)
 
     POSTGRES_USER: str
     POSTGRES_PASSWORD: SecretStr
@@ -36,12 +37,5 @@ class DatabaseSettings(BaseModel):
 
 @lru_cache(maxsize=1)
 def get_database_settings() -> DatabaseSettings:
-    """Return cached DatabaseSettings view derived from canonical Settings."""
-    settings = get_settings()
-    return DatabaseSettings(
-        POSTGRES_USER=settings.POSTGRES_USER,
-        POSTGRES_PASSWORD=settings.POSTGRES_PASSWORD,
-        POSTGRES_DB=settings.POSTGRES_DB,
-        POSTGRES_PORT=settings.POSTGRES_PORT,
-        POSTGRES_HOST=settings.POSTGRES_HOST,
-    )
+    """Return cached database settings."""
+    return DatabaseSettings()

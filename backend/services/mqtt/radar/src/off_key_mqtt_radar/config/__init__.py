@@ -4,14 +4,16 @@ from .config import (
     AnomalyDetectionConfig,
     MQTTRadarConfig,
     RadarSettings,
+    clear_radar_settings_cache,
+    get_radar_settings,
     load_configuration,
-    radar_settings,
 )
 
 __all__ = [
     "AnomalyDetectionConfig",
     "MQTTRadarConfig",
     "RadarSettings",
+    "clear_radar_settings_cache",
+    "get_radar_settings",
     "load_configuration",
-    "radar_settings",
 ]

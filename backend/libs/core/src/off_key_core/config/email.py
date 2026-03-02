@@ -1,12 +1,13 @@
 from functools import lru_cache
 
-from pydantic import BaseModel, SecretStr, model_validator
+from pydantic import SecretStr, model_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from .config import get_settings
 
-
-class EmailSettings(BaseModel):
+class EmailSettings(BaseSettings):
     """Email and notification settings."""
+
+    model_config = SettingsConfigDict(case_sensitive=True, extra="ignore", frozen=True)
 
     EMAIL_USERNAME: str
     EMAIL_PASSWORD: SecretStr
@@ -18,7 +19,7 @@ class EmailSettings(BaseModel):
     MAIL_SSL_TLS: bool
     USE_CREDENTIALS: bool
     VALIDATE_CERTS: bool
-    ANOMALY_ALERT_RECIPIENTS: str
+    ANOMALY_ALERT_RECIPIENTS: str = "admin@example.com"
 
     @model_validator(mode="after")
     def check_tls_exclusivity(self) -> "EmailSettings":
@@ -37,18 +38,5 @@ class EmailSettings(BaseModel):
 
 @lru_cache(maxsize=1)
 def get_email_settings() -> EmailSettings:
-    """Return cached EmailSettings view derived from canonical Settings."""
-    settings = get_settings()
-    return EmailSettings(
-        EMAIL_USERNAME=settings.EMAIL_USERNAME,
-        EMAIL_PASSWORD=settings.EMAIL_PASSWORD,
-        EMAIL_FROM=settings.EMAIL_FROM,
-        FRONTEND_BASE_URL=settings.FRONTEND_BASE_URL,
-        SMTP_SERVER=settings.SMTP_SERVER,
-        SMTP_PORT=settings.SMTP_PORT,
-        MAIL_STARTTLS=settings.MAIL_STARTTLS,
-        MAIL_SSL_TLS=settings.MAIL_SSL_TLS,
-        USE_CREDENTIALS=settings.USE_CREDENTIALS,
-        VALIDATE_CERTS=settings.VALIDATE_CERTS,
-        ANOMALY_ALERT_RECIPIENTS=settings.ANOMALY_ALERT_RECIPIENTS,
-    )
+    """Return cached email settings."""
+    return EmailSettings()

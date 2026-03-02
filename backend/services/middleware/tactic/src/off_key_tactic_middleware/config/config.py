@@ -10,16 +10,7 @@ RADAR orchestration settings, and service-specific parameters.
 from functools import lru_cache
 from pydantic import BaseModel, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings
-from typing import Any, Optional, Self, cast
-from dotenv import find_dotenv, load_dotenv
-
-# Load default ".env" file from upper project tree
-load_dotenv()
-
-# Override with dev.env values if present
-dev_env = find_dotenv("dev.env")
-if dev_env:
-    load_dotenv(dev_env, override=True)
+from typing import Optional, Self
 
 RADAR_SENSOR_KEY_STRATEGIES = {"full_hierarchy", "top_level", "leaf"}
 
@@ -303,7 +294,6 @@ class TacticSettings(BaseSettings):
     TACTIC_MODEL_REGISTRY_INIT_RETRY_INTERVAL_SECONDS: float = Field(default=2.0)
 
     class Config:
-        env_file = ".env"
         case_sensitive = True
         extra = "ignore"
 
@@ -391,14 +381,3 @@ class TacticSettings(BaseSettings):
 def get_tactic_settings() -> TacticSettings:
     """Return cached TACTIC settings instance."""
     return TacticSettings()
-
-
-class _LazyTacticSettings:
-    """Attribute-forwarding facade that defers settings creation until first use."""
-
-    def __getattr__(self, name: str) -> Any:
-        return getattr(get_tactic_settings(), name)
-
-
-# Backward-compatible lazy settings accessor.
-tactic_settings = cast(TacticSettings, _LazyTacticSettings())

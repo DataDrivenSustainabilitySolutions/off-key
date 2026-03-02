@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, status
 from jose import jwt, JWTError
-from off_key_core.config.config import get_settings
+from off_key_core.config.auth import get_auth_settings
 
 from off_key_core.config.logs import logger, log_security_event
 from off_key_core.schemas.user import (
@@ -18,8 +18,6 @@ from ...services.auth import (
 from off_key_core.utils.enum import RoleEnum
 from off_key_core.utils.mail import send_verification_email, send_password_reset_email
 from ...facades.tactic import TacticError, tactic
-
-settings = get_settings()
 
 router = APIRouter()
 
@@ -42,6 +40,7 @@ def _raise_tactic_http_error(error: TacticError) -> None:
 
 @router.post("/register")
 async def register(user: UserCreate):
+    settings = get_auth_settings()
     try:
         existing_user = await tactic.get_user_by_email(user.email)
     except TacticError as e:
@@ -122,6 +121,7 @@ async def login(user: UserLogin):
 
 @router.get("/verify-email")
 async def verify_email(token: str):
+    settings = get_auth_settings()
     try:
         payload = jwt.decode(
             token,
@@ -208,6 +208,7 @@ async def forgot_password(user: ForgotPasswordRequest):
 
 @router.post("/reset-password")
 async def reset_password(req: ResetPasswordRequest):
+    settings = get_auth_settings()
     try:
         payload = jwt.decode(
             req.token,

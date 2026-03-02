@@ -1,9 +1,7 @@
 from jose import JWTError, jwt
 from datetime import datetime, timedelta, timezone
 from passlib.context import CryptContext
-from off_key_core.config.config import get_settings
-
-settings = get_settings()
+from off_key_core.config.auth import get_auth_settings
 
 password_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -17,6 +15,7 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 
 
 def create_jwt(data: dict, expires_delta: timedelta = None) -> str:
+    settings = get_auth_settings()
     to_encode = data.copy()
     expire = datetime.now(timezone.utc) + (
         expires_delta
@@ -32,6 +31,7 @@ def create_jwt(data: dict, expires_delta: timedelta = None) -> str:
 
 
 def create_verification_token(email: str, expires_minutes: int = 120) -> str:
+    settings = get_auth_settings()
     to_encode = {
         "sub": email,
         "exp": datetime.now(timezone.utc) + timedelta(minutes=expires_minutes),
@@ -45,6 +45,7 @@ def create_verification_token(email: str, expires_minutes: int = 120) -> str:
 
 
 def verify_verification_token(token: str) -> str | None:
+    settings = get_auth_settings()
     try:
         payload = jwt.decode(
             token,
@@ -57,6 +58,7 @@ def verify_verification_token(token: str) -> str | None:
 
 
 def create_reset_token(email: str, expires_minutes: int = 120) -> str:
+    settings = get_auth_settings()
     to_encode = {
         "sub": email,
         "exp": datetime.now(timezone.utc) + timedelta(minutes=expires_minutes),

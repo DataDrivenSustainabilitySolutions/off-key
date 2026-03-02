@@ -6,7 +6,6 @@ from .config import (
     TacticConfig,
     TacticSettings,
     get_tactic_settings,
-    tactic_settings,
 )
 
 __all__ = [
@@ -15,5 +14,4 @@ __all__ = [
     "TacticConfig",
     "TacticSettings",
     "get_tactic_settings",
-    "tactic_settings",
 ]

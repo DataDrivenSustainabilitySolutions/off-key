@@ -5,19 +5,11 @@ Handles configuration for the database sync service including sync intervals,
 batch processing, health monitoring, and charger cleanup.
 """
 
+from functools import lru_cache
 from pydantic import BaseModel, field_validator, model_validator
 from pydantic_settings import BaseSettings
 from typing import Self
-from dotenv import find_dotenv, load_dotenv
 from ..core_config import get_retention_days
-
-# Load default ".env" file from upper project tree
-load_dotenv()
-
-# Override with dev.env values if present
-dev_env = find_dotenv("dev.env")
-if dev_env:
-    load_dotenv(dev_env, override=True)
 
 
 class SyncConfig(BaseModel):
@@ -394,4 +386,12 @@ class SyncSettings(BaseSettings):
         )
 
 
-sync_settings = SyncSettings()
+@lru_cache(maxsize=1)
+def get_sync_settings() -> SyncSettings:
+    """Return cached DB-sync settings instance."""
+    return SyncSettings()
+
+
+def clear_sync_settings_cache() -> None:
+    """Clear cached DB-sync settings (useful for tests and local tooling)."""
+    get_sync_settings.cache_clear()

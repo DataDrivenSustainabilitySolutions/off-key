@@ -15,7 +15,7 @@ from off_key_core.config.env import load_env
 from off_key_core.config.pionix import get_pionix_settings
 from off_key_core.config.validation import validate_settings
 from off_key_core.config.logs import load_yaml_config
-from .config.config import mqtt_settings
+from .config.config import get_mqtt_settings
 
 # Load logging configuration from YAML files
 service_logging_config = Path(__file__).parent / "config" / "logging.yaml"
@@ -28,7 +28,7 @@ async def main():
     validate_settings(
         [
             ("pionix", get_pionix_settings),
-            ("mqtt_proxy", lambda: mqtt_settings.config),
+            ("mqtt_proxy", lambda: get_mqtt_settings().config),
         ],
         context="MQTT proxy configuration",
     )

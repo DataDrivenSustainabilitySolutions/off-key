@@ -209,7 +209,10 @@ class ConfigReloader:
             logger.info("Starting configuration reload")
 
             # Import here to avoid circular imports
-            from .config.config import radar_settings
+            from .config.config import (
+                clear_radar_settings_cache,
+                get_radar_settings,
+            )
 
             # Store old config for comparison
             old_config = (
@@ -223,12 +226,18 @@ class ConfigReloader:
             load_dotenv(override=True)
 
             # Reload custom config file if it exists
-            custom_config_file = getattr(radar_settings, "custom_config_file", None)
+            custom_config_file = getattr(
+                get_radar_settings(),
+                "custom_config_file",
+                None,
+            )
             if custom_config_file and Path(custom_config_file).exists():
                 load_dotenv(custom_config_file, override=True)
 
             # Recreate settings to pick up new values
-            new_settings = radar_settings.__class__()
+            clear_radar_settings_cache()
+            new_settings = get_radar_settings()
+            new_settings.custom_config_file = custom_config_file
             new_config = new_settings.config
 
             # Validate new configuration

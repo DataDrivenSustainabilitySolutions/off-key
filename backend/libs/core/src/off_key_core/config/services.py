@@ -1,22 +1,21 @@
 from functools import lru_cache
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import Field, field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from .config import get_settings
 
-
-class ServiceEndpointsSettings(BaseModel):
+class ServiceEndpointsSettings(BaseSettings):
     """Service endpoint settings shared across services."""
 
-    model_config = ConfigDict(frozen=True)
+    model_config = SettingsConfigDict(case_sensitive=True, extra="ignore", frozen=True)
 
     SYNC_SERVICE_SCHEME: str = "http"
-    SYNC_HOSTNAME: str
-    SYNC_API_PORT: int = Field(ge=1, le=65535)
+    SYNC_HOSTNAME: str = "db-sync"
+    SYNC_API_PORT: int = Field(default=8009, ge=1, le=65535)
     TACTIC_SERVICE_SCHEME: str = "http"
-    TACTIC_SERVICE_HOST: str
-    TACTIC_SERVICE_PORT: int = Field(ge=1, le=65535)
-    TACTIC_MODEL_REGISTRY_CACHE_TTL_SECONDS: float
+    TACTIC_SERVICE_HOST: str = "middleware_tactic"
+    TACTIC_SERVICE_PORT: int = Field(default=8000, ge=1, le=65535)
+    TACTIC_MODEL_REGISTRY_CACHE_TTL_SECONDS: float = Field(default=60.0, gt=0)
 
     @property
     def db_sync_service_url(self) -> str:
@@ -37,35 +36,13 @@ class ServiceEndpointsSettings(BaseModel):
             raise ValueError("Service scheme must be either 'http' or 'https'")
         return normalized
 
-    @field_validator("TACTIC_MODEL_REGISTRY_CACHE_TTL_SECONDS")
-    @classmethod
-    def validate_tactic_model_registry_cache_ttl(cls, value: float) -> float:
-        if value <= 0:
-            raise ValueError("TACTIC_MODEL_REGISTRY_CACHE_TTL_SECONDS must be > 0")
-        return value
-
 
 @lru_cache(maxsize=1)
 def get_service_endpoints_settings() -> ServiceEndpointsSettings:
-    """Return cached service endpoint settings derived from canonical Settings."""
-    settings = get_settings()
-    return ServiceEndpointsSettings(
-        SYNC_SERVICE_SCHEME=settings.SYNC_SERVICE_SCHEME,
-        SYNC_HOSTNAME=settings.SYNC_HOSTNAME,
-        SYNC_API_PORT=settings.SYNC_API_PORT,
-        TACTIC_SERVICE_SCHEME=settings.TACTIC_SERVICE_SCHEME,
-        TACTIC_SERVICE_HOST=settings.TACTIC_SERVICE_HOST,
-        TACTIC_SERVICE_PORT=settings.TACTIC_SERVICE_PORT,
-        TACTIC_MODEL_REGISTRY_CACHE_TTL_SECONDS=(
-            settings.TACTIC_MODEL_REGISTRY_CACHE_TTL_SECONDS
-        ),
-    )
+    """Return cached service endpoint settings."""
+    return ServiceEndpointsSettings()
 
 
 def _clear_service_endpoints_settings_cache() -> None:
-    """Clear cached service endpoint settings.
-
-    For coordinated runtime cache reset (including canonical ``get_settings()``),
-    use ``off_key_core.config.reset_runtime_caches_for_tests``.
-    """
+    """Clear cached service endpoint settings."""
     get_service_endpoints_settings.cache_clear()

@@ -14,7 +14,7 @@ from off_key_core.config.logging import get_logging_settings
 from off_key_core.config.pionix import get_pionix_settings
 from off_key_core.config.validation import validate_settings
 from off_key_core.config.logs import load_yaml_config, logger
-from .config.config import sync_settings
+from .config.config import get_sync_settings
 from .service import SyncService
 from .api import app, set_sync_service
 
@@ -25,18 +25,19 @@ async def run_api_server(sync_service: SyncService):
     set_sync_service(sync_service)
 
     # Configure uvicorn
+    sync_config = get_sync_settings().config
     config = uvicorn.Config(
         app,
-        host=sync_settings.config.api_host,
-        port=sync_settings.config.api_port,
+        host=sync_config.api_host,
+        port=sync_config.api_port,
         log_config=None,  # Disable uvicorn's logging, use our logger
     )
     server = uvicorn.Server(config)
 
     logger.info(
         "Starting FastAPI server on %s:%s",
-        sync_settings.config.api_host,
-        sync_settings.config.api_port,
+        sync_config.api_host,
+        sync_config.api_port,
     )
 
     # Run server
@@ -57,7 +58,7 @@ async def main():
             ("logging", get_logging_settings),
             ("database", get_database_settings),
             ("pionix", get_pionix_settings),
-            ("sync", lambda: sync_settings.config),
+            ("sync", lambda: get_sync_settings().config),
         ],
         context="DB sync configuration",
     )

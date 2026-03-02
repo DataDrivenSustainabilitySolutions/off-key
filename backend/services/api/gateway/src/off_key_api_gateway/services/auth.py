@@ -52,6 +52,8 @@ def verify_verification_token(token: str) -> str | None:
             settings.JWT_VERIFICATION_SECRET.get_secret_value(),
             algorithms=[settings.ALGORITHM],
         )
+        if payload.get("token_type") != "email_verification":
+            return None
         return payload.get("sub")
     except JWTError:
         return None
@@ -69,3 +71,18 @@ def create_reset_token(email: str, expires_minutes: int = 120) -> str:
         settings.JWT_VERIFICATION_SECRET.get_secret_value(),
         algorithm=settings.ALGORITHM,
     )
+
+
+def verify_reset_token(token: str) -> str | None:
+    settings = get_auth_settings()
+    try:
+        payload = jwt.decode(
+            token,
+            settings.JWT_VERIFICATION_SECRET.get_secret_value(),
+            algorithms=[settings.ALGORITHM],
+        )
+        if payload.get("token_type") != "password_reset":
+            return None
+        return payload.get("sub")
+    except JWTError:
+        return None

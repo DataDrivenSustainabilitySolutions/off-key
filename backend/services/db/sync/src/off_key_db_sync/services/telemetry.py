@@ -526,7 +526,6 @@ class TelemetrySyncService:
                 )
 
                 # Dynamic batch size based on record count for better performance
-                config = get_sync_settings().config
                 record_count = len(telemetry_records_to_insert)
                 if record_count < config.batch_size_small:
                     batch_size = record_count  # Single batch for small datasets

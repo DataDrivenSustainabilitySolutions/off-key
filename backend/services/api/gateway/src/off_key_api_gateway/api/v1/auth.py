@@ -1,5 +1,4 @@
 from fastapi import APIRouter, HTTPException, status
-from jose import jwt, JWTError
 from off_key_core.config.auth import get_auth_settings
 
 from off_key_core.config.logs import logger, log_security_event
@@ -14,6 +13,8 @@ from ...services.auth import (
     create_verification_token,
     get_password_hash,
     create_jwt,
+    verify_reset_token,
+    verify_verification_token,
 )
 from off_key_core.utils.enum import RoleEnum
 from off_key_core.utils.mail import send_verification_email, send_password_reset_email
@@ -121,59 +122,42 @@ async def login(user: UserLogin):
 
 @router.get("/verify-email")
 async def verify_email(token: str):
-    settings = get_auth_settings()
-    try:
-        payload = jwt.decode(
-            token,
-            settings.JWT_VERIFICATION_SECRET.get_secret_value(),
-            algorithms=[settings.ALGORITHM],
-        )
-        if payload.get("token_type") != "email_verification":
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid token type"
-            )
-
-        email = payload.get("sub")
-        if email is None:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid token"
-            )
-
-        logger.info(f"Verifying email: {email}")
-        try:
-            user = await tactic.get_user_by_email(email)
-        except TacticError as e:
-            _raise_tactic_http_error(e)
-
-        if not user:
-            logger.error(f"User not found for email: {email}")
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="User not found",
-            )
-
-        if user.get("is_verified"):
-            logger.info(f"User {email} is already verified")
-            # Return success for already verified users (idempotent)
-            return {"message": "Email verified successfully"}
-
-        try:
-            result = await tactic.verify_user_email(email)
-        except TacticError as e:
-            _raise_tactic_http_error(e)
-
-        # Log successful email verification
-        logger.info(f"Email verified successfully: {email}")
-        log_security_event(
-            "email_verification_success", email, {"verification_method": "email_token"}
-        )
-
-        return result
-
-    except JWTError:
+    email = verify_verification_token(token)
+    if email is None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired token"
         )
+
+    logger.info(f"Verifying email: {email}")
+    try:
+        user = await tactic.get_user_by_email(email)
+    except TacticError as e:
+        _raise_tactic_http_error(e)
+
+    if not user:
+        logger.error(f"User not found for email: {email}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="User not found",
+        )
+
+    if user.get("is_verified"):
+        logger.info(f"User {email} is already verified")
+        # Return success for already verified users (idempotent)
+        return {"message": "Email verified successfully"}
+
+    try:
+        result = await tactic.verify_user_email(email)
+    except TacticError as e:
+        _raise_tactic_http_error(e)
+
+    # Log successful email verification
+    logger.info(f"Email verified successfully: {email}")
+    log_security_event(
+        "email_verification_success", email, {"verification_method": "email_token"}
+    )
+
+    return result
 
 
 @router.post("/forgot-password")
@@ -208,19 +192,8 @@ async def forgot_password(user: ForgotPasswordRequest):
 
 @router.post("/reset-password")
 async def reset_password(req: ResetPasswordRequest):
-    settings = get_auth_settings()
-    try:
-        payload = jwt.decode(
-            req.token,
-            settings.JWT_VERIFICATION_SECRET.get_secret_value(),
-            algorithms=[settings.ALGORITHM],
-        )
-        if payload.get("token_type") != "password_reset":
-            raise HTTPException(status_code=400, detail="Invalid token type")
-        email = payload.get("sub")
-        if email is None:
-            raise HTTPException(status_code=400, detail="Invalid token")
-    except JWTError:
+    email = verify_reset_token(req.token)
+    if email is None:
         raise HTTPException(status_code=400, detail="Invalid or expired token")
 
     try:

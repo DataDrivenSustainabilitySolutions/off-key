@@ -164,23 +164,23 @@ def test_client_provider_uses_runtime_default_without_app_name(monkeypatch):
     reset_runtime_caches_for_tests()
 
 
-def test_database_url_encodes_reserved_credential_characters():
+def test_database_url_encodes_reserved_url_component_characters():
     settings = DatabaseSettings(
         POSTGRES_USER="user@name",
         POSTGRES_PASSWORD="p@ss:word/?#[]",
-        POSTGRES_DB="db",
+        POSTGRES_DB="db/name?x#y@z",
         POSTGRES_PORT="5432",
         POSTGRES_HOST="localhost",
     )
 
     assert (
         settings.database_url
-        == "postgresql://user%40name:p%40ss%3Aword%2F%3F%23%5B%5D@localhost:5432/db"
+        == "postgresql://user%40name:p%40ss%3Aword%2F%3F%23%5B%5D@localhost:5432/db%2Fname%3Fx%23y%40z"
     )
     assert (
         settings.async_database_url
         == "postgresql+asyncpg://user%40name:p%40ss%3Aword%2F%3F%23%5B%5D"
-        "@localhost:5432/db"
+        "@localhost:5432/db%2Fname%3Fx%23y%40z"
     )
 
 

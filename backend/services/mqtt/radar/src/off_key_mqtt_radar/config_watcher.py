@@ -213,6 +213,7 @@ class ConfigReloader:
                 clear_radar_settings_cache,
                 get_radar_settings,
             )
+            from .config.runtime import clear_radar_runtime_settings_cache
 
             # Store old config for comparison
             old_config = (
@@ -238,6 +239,7 @@ class ConfigReloader:
 
             # Recreate settings to pick up new values
             clear_radar_settings_cache()
+            clear_radar_runtime_settings_cache()
             new_settings = get_radar_settings()
             new_settings.custom_config_file = custom_config_file
             new_config = new_settings.config

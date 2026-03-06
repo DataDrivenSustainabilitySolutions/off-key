@@ -1,10 +1,8 @@
-import os
 import json
 import uuid
 from functools import lru_cache
 from datetime import datetime
 from typing import List, Dict, Optional, Any
-from urllib.parse import quote_plus
 
 import docker
 from docker.types import RestartPolicy, ServiceMode, Resources
@@ -15,7 +13,10 @@ from off_key_core.config.logs import logger
 from off_key_core.db.models import MonitoringService
 from ...models.registry import ModelRegistryService
 from ...facades.docker import AsyncDocker
-from ...config.config import get_tactic_settings
+from ...config.config import (
+    get_radar_container_runtime_settings,
+    get_tactic_settings,
+)
 
 
 @lru_cache(maxsize=1)
@@ -201,16 +202,15 @@ class RadarOrchestrationService:
         """
         # Get RADAR defaults from configuration
         defaults = get_tactic_settings().config.radar_defaults
+        runtime = get_radar_container_runtime_settings()
 
         env_vars = {
             "SERVICE_ID": service_id,
             # TACTIC connectivity for model-registry calls from RADAR containers
-            "RADAR_TACTIC_SERVICE_HOST": os.getenv(
-                "TACTIC_SERVICE_HOST", "tactic-middleware"
-            ),
-            "RADAR_TACTIC_SERVICE_PORT": os.getenv("TACTIC_SERVICE_PORT", "8000"),
-            "RADAR_TACTIC_MODEL_REGISTRY_CACHE_TTL_SECONDS": os.getenv(
-                "TACTIC_MODEL_REGISTRY_CACHE_TTL_SECONDS", "60"
+            "RADAR_TACTIC_SERVICE_HOST": runtime.TACTIC_SERVICE_HOST,
+            "RADAR_TACTIC_SERVICE_PORT": str(runtime.TACTIC_SERVICE_PORT),
+            "RADAR_TACTIC_MODEL_REGISTRY_CACHE_TTL_SECONDS": str(
+                runtime.TACTIC_MODEL_REGISTRY_CACHE_TTL_SECONDS
             ),
             # MQTT Configuration
             "RADAR_MQTT_BROKER_HOST": mqtt_config.get(
@@ -329,16 +329,7 @@ class RadarOrchestrationService:
         depending on the full Settings class which requires many unrelated
         environment variables.
         """
-        postgres_user = os.getenv("POSTGRES_USER", "postgres")
-        postgres_password = os.getenv("POSTGRES_PASSWORD", "postgres")
-        postgres_host = os.getenv("POSTGRES_HOST", "timescaledb")
-        postgres_port = os.getenv("POSTGRES_PORT", "5432")
-        postgres_db = os.getenv("POSTGRES_DB", "postgres")
-
-        return (
-            f"postgresql+asyncpg://{quote_plus(postgres_user)}:{quote_plus(postgres_password)}"
-            f"@{postgres_host}:{postgres_port}/{postgres_db}"
-        )
+        return get_radar_container_runtime_settings().radar_database_url
 
     async def _create_radar_service_sync(
         self,
@@ -356,7 +347,7 @@ class RadarOrchestrationService:
             "owner": "tactic_middleware",
             "started_at": datetime.utcnow().isoformat() + "Z",
             "purpose": "RADAR anomaly detection service",
-            "env": os.getenv("ENVIRONMENT", "development"),
+            "env": get_radar_container_runtime_settings().ENVIRONMENT,
             "service_type": "radar",
             "managed_by": "tactic",
         }

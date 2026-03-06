@@ -13,6 +13,7 @@ import time
 from typing import Optional
 
 from off_key_core.config.logs import logger
+from .config.runtime import get_radar_checkpoint_settings
 
 
 class CheckpointManager:
@@ -39,10 +40,9 @@ class CheckpointManager:
             service_id: Unique identifier for this service instance (default: from env)
             stale_lock_age_seconds: Max age before a lock is considered stale
         """
-        self.checkpoint_dir = checkpoint_dir or os.getenv(
-            "RADAR_CHECKPOINT_DIR", "checkpoints"
-        )
-        self.service_id = service_id or os.getenv("SERVICE_ID", "default")
+        runtime = get_radar_checkpoint_settings()
+        self.checkpoint_dir = checkpoint_dir or runtime.RADAR_CHECKPOINT_DIR
+        self.service_id = service_id or runtime.SERVICE_ID
         self.stale_lock_age_seconds = stale_lock_age_seconds
         self._claimed_lock_path: Optional[str] = None
         self._log_context = {"component": "checkpoint_manager"}

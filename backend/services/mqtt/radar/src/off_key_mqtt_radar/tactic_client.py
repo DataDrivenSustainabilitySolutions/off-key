@@ -7,54 +7,23 @@ Replaces direct core package imports with HTTP calls to TACTIC middleware.
 import logging
 import aiohttp
 import asyncio
-import os
 import time
 import concurrent.futures
 from typing import Dict, Any, List, Optional, Type
+
+from .config.runtime import get_radar_tactic_client_settings
 
 logger = logging.getLogger(__name__)
 
 
 def _default_tactic_base_url() -> str:
     """Build TACTIC base URL from RADAR/container environment."""
-    configured_base_url = os.getenv("RADAR_TACTIC_BASE_URL") or os.getenv(
-        "TACTIC_SERVICE_BASE_URL"
-    )
-    if configured_base_url:
-        return configured_base_url.rstrip("/")
-
-    host = os.getenv("RADAR_TACTIC_SERVICE_HOST") or os.getenv(
-        "TACTIC_SERVICE_HOST", "tactic-middleware"
-    )
-    port = os.getenv("RADAR_TACTIC_SERVICE_PORT") or os.getenv(
-        "TACTIC_SERVICE_PORT", "8000"
-    )
-    return f"http://{host}:{port}"
+    return get_radar_tactic_client_settings().base_url
 
 
 def _default_cache_ttl_seconds() -> float:
     """Resolve model-registry cache TTL from environment."""
-    raw_ttl = os.getenv("RADAR_TACTIC_MODEL_REGISTRY_CACHE_TTL_SECONDS") or os.getenv(
-        "TACTIC_MODEL_REGISTRY_CACHE_TTL_SECONDS"
-    )
-    if raw_ttl is None:
-        return 60.0
-
-    try:
-        ttl_seconds = float(raw_ttl)
-    except ValueError:
-        logger.warning(
-            "Invalid TACTIC model cache TTL '%s'; falling back to 60s", raw_ttl
-        )
-        return 60.0
-
-    if ttl_seconds <= 0:
-        logger.warning(
-            "Non-positive TACTIC model cache TTL '%s'; falling back to 60s", raw_ttl
-        )
-        return 60.0
-
-    return ttl_seconds
+    return get_radar_tactic_client_settings().cache_ttl_seconds
 
 
 class TacticModelError(Exception):

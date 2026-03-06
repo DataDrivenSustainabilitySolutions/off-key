@@ -8,7 +8,16 @@ RADAR orchestration settings, and service-specific parameters.
 """
 
 from functools import lru_cache
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from urllib.parse import quote_plus
+
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    SecretStr,
+    field_validator,
+    model_validator,
+)
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import Optional, Self
 
@@ -369,7 +378,54 @@ class TacticSettings(BaseSettings):
         )
 
 
+class RadarContainerRuntimeSettings(BaseSettings):
+    """Environment settings used to build RADAR container runtime env vars."""
+
+    model_config = SettingsConfigDict(case_sensitive=True, extra="ignore")
+
+    TACTIC_SERVICE_HOST: str = "tactic-middleware"
+    TACTIC_SERVICE_PORT: int = Field(default=8000, ge=1, le=65535)
+    TACTIC_MODEL_REGISTRY_CACHE_TTL_SECONDS: float = Field(default=60.0, gt=0)
+    POSTGRES_USER: str = "postgres"
+    POSTGRES_PASSWORD: SecretStr = SecretStr("postgres")
+    POSTGRES_HOST: str = "timescaledb"
+    POSTGRES_PORT: int = Field(default=5432, ge=1, le=65535)
+    POSTGRES_DB: str = "postgres"
+    ENVIRONMENT: str = "development"
+
+    @field_validator("ENVIRONMENT")
+    @classmethod
+    def validate_environment(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        allowed = {"development", "test", "staging", "production"}
+        if normalized not in allowed:
+            allowed_text = ", ".join(sorted(allowed))
+            raise ValueError(f"ENVIRONMENT must be one of: {allowed_text}")
+        return normalized
+
+    @property
+    def radar_database_url(self) -> str:
+        user = quote_plus(self.POSTGRES_USER)
+        password = quote_plus(self.POSTGRES_PASSWORD.get_secret_value())
+        return (
+            f"postgresql+asyncpg://{user}:{password}@"
+            f"{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
+        )
+
+
 @lru_cache(maxsize=1)
 def get_tactic_settings() -> TacticSettings:
     """Return cached TACTIC settings instance."""
     return TacticSettings()
+
+
+@lru_cache(maxsize=1)
+def get_radar_container_runtime_settings() -> RadarContainerRuntimeSettings:
+    """Return cached runtime settings used for RADAR container env assembly."""
+    return RadarContainerRuntimeSettings()
+
+
+def clear_tactic_settings_caches() -> None:
+    """Clear cached TACTIC settings for deterministic tests and tooling."""
+    get_tactic_settings.cache_clear()
+    get_radar_container_runtime_settings.cache_clear()

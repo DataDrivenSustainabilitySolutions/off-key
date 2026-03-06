@@ -1,6 +1,7 @@
 import pytest
 
 from off_key_tactic_middleware.config import (
+    RadarContainerRuntimeSettings,
     TacticSettings,
     RadarDefaultsConfig,
 )
@@ -28,3 +29,20 @@ def test_sensor_key_strategy_validation():
 
     with pytest.raises(ValueError):
         RadarDefaultsConfig(sensor_key_strategy="invalid")
+
+
+def test_radar_container_runtime_settings_build_encoded_database_url():
+    settings = RadarContainerRuntimeSettings(
+        POSTGRES_USER="db@user",
+        POSTGRES_PASSWORD="p@ss",
+        POSTGRES_HOST="db-host",
+        POSTGRES_PORT=5432,
+        POSTGRES_DB="radar",
+        ENVIRONMENT="Production",
+    )
+
+    assert settings.ENVIRONMENT == "production"
+    assert (
+        settings.radar_database_url
+        == "postgresql+asyncpg://db%40user:p%40ss@db-host:5432/radar"
+    )

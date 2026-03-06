@@ -28,6 +28,7 @@ from .tactic_client import (
 )
 
 from .config.config import AnomalyDetectionConfig
+from .config.runtime import get_radar_checkpoint_settings
 from .models import AnomalyResult
 
 
@@ -55,8 +56,8 @@ _DEFAULT_METADATA_FEATURE_KEYS = frozenset(
 
 
 def _get_checkpoint_secret() -> bytes:
-    """Get checkpoint signing secret from environment."""
-    return os.getenv("RADAR_CHECKPOINT_SECRET", "").encode()
+    """Get checkpoint signing secret from runtime configuration."""
+    return get_radar_checkpoint_settings().checkpoint_secret_bytes
 
 
 def _sign_checkpoint_data(data: bytes) -> str:
@@ -537,8 +538,9 @@ class AnomalyDetectionService:
         the checkpoint is signed with HMAC-SHA256.
         """
         try:
-            checkpoint_dir = os.getenv("RADAR_CHECKPOINT_DIR", "checkpoints")
-            service_id = os.getenv("SERVICE_ID", "default")
+            checkpoint_settings = get_radar_checkpoint_settings()
+            checkpoint_dir = checkpoint_settings.RADAR_CHECKPOINT_DIR
+            service_id = checkpoint_settings.SERVICE_ID
             os.makedirs(checkpoint_dir, exist_ok=True)
 
             timestamp = int(time.time())

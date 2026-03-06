@@ -3,22 +3,13 @@ Configuration for MQTT RADAR service
 """
 
 from functools import lru_cache
-from pydantic import BaseModel, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import Any, Dict, List, Optional, Self
 from dotenv import load_dotenv
 from pathlib import Path
-import os
-import json
 
 SENSOR_KEY_STRATEGIES = {"full_hierarchy", "top_level", "leaf"}
-
-
-def _truncate_for_error(value: str, max_len: int = 500) -> str:
-    """Truncate a string for error messages with length indication."""
-    if len(value) <= max_len:
-        return value
-    return f"{value[:max_len]}... ({len(value)} chars total)"
 
 
 def _normalize_sensor_key_strategy(value: str, field_name: str) -> str:
@@ -45,13 +36,17 @@ def load_configuration(custom_config_file: Optional[str] = None):
 class AnomalyDetectionConfig(BaseModel):
     """Configuration for anomaly detection models"""
 
+    model_config = ConfigDict(extra="forbid", validate_assignment=True)
+
     model_type: str = "isolation_forest"  # isolation_forest, adaptive_svm, knn
-    model_params: Dict[str, Any] = {}
-    preprocessing_steps: List[Dict[str, Any]] = []
-    subscription_topics: List[str] = []
+    model_params: Dict[str, Any] = Field(default_factory=dict)
+    preprocessing_steps: List[Dict[str, Any]] = Field(default_factory=list)
+    subscription_topics: List[str] = Field(default_factory=list)
     sensor_key_strategy: str = "full_hierarchy"
 
-    thresholds: Dict[str, float] = {"medium": 0.6, "high": 0.8, "critical": 0.9}
+    thresholds: Dict[str, float] = Field(
+        default_factory=lambda: {"medium": 0.6, "high": 0.8, "critical": 0.9}
+    )
 
     memory_limit_mb: int = 1000
     checkpoint_interval: int = 10000
@@ -138,6 +133,8 @@ class AnomalyDetectionConfig(BaseModel):
 class MQTTRadarConfig(BaseModel):
     """MQTT RADAR service configuration"""
 
+    model_config = ConfigDict(extra="forbid", validate_assignment=True)
+
     # MQTT Connection
     broker_host: str = "localhost"
     broker_port: int = 1883
@@ -150,9 +147,9 @@ class MQTTRadarConfig(BaseModel):
     api_key: str = ""
 
     # Subscription settings
-    subscription_topics: List[str] = [
-        "charger/+/telemetry"
-    ]  # Subscribe to telemetry from bridge
+    subscription_topics: List[str] = Field(
+        default_factory=lambda: ["charger/+/telemetry"]
+    )
     subscription_qos: int = 0
     sensor_key_strategy: str = "full_hierarchy"
 
@@ -179,9 +176,11 @@ class MQTTRadarConfig(BaseModel):
 
     # Anomaly Detection
     model_type: str = "isolation_forest"
-    model_params: Dict[str, Any] = {}
-    preprocessing_steps: List[Dict[str, Any]] = []
-    thresholds: Dict[str, float] = {"medium": 0.6, "high": 0.8, "critical": 0.9}
+    model_params: Dict[str, Any] = Field(default_factory=dict)
+    preprocessing_steps: List[Dict[str, Any]] = Field(default_factory=list)
+    thresholds: Dict[str, float] = Field(
+        default_factory=lambda: {"medium": 0.6, "high": 0.8, "critical": 0.9}
+    )
     batch_size: int = 100
     batch_timeout: float = 1.0
     checkpoint_interval: int = 10000
@@ -222,8 +221,8 @@ class RadarSettings(BaseSettings):
 
     # Anomaly Detection
     RADAR_MODEL_TYPE: str = "isolation_forest"
-    RADAR_MODEL_PARAMS: str = ""
-    RADAR_PREPROCESSING_STEPS: str = ""
+    RADAR_MODEL_PARAMS: Dict[str, Any] = Field(default_factory=dict)
+    RADAR_PREPROCESSING_STEPS: List[Dict[str, Any]] = Field(default_factory=list)
     RADAR_ANOMALY_THRESHOLD_MEDIUM: float = 0.6
     RADAR_ANOMALY_THRESHOLD_HIGH: float = 0.8
     RADAR_ANOMALY_THRESHOLD_CRITICAL: float = 0.9
@@ -263,39 +262,13 @@ class RadarSettings(BaseSettings):
         """Create MQTTRadarConfig from environment settings"""
 
         # Parse topics
-        topics = [topic.strip() for topic in self.RADAR_SUBSCRIPTION_TOPICS.split(",")]
-
-        # Parse model params JSON if provided
-        model_params: Dict[str, Any] = {}
-        params_raw = os.getenv("RADAR_MODEL_PARAMS", self.RADAR_MODEL_PARAMS)
-        if params_raw:
-            try:
-                model_params = json.loads(params_raw)
-            except json.JSONDecodeError as e:
-                raise ValueError(
-                    f"Invalid JSON in RADAR_MODEL_PARAMS: {e}. "
-                    f"Raw value: {_truncate_for_error(params_raw)}"
-                ) from e
-
-        preprocessing_steps: List[Dict[str, Any]] = []
-        preprocessing_raw = os.getenv(
-            "RADAR_PREPROCESSING_STEPS", self.RADAR_PREPROCESSING_STEPS
-        )
-        if preprocessing_raw:
-            try:
-                parsed = json.loads(preprocessing_raw)
-                if isinstance(parsed, list):
-                    preprocessing_steps = parsed
-                else:
-                    raise ValueError(
-                        f"RADAR_PREPROCESSING_STEPS must be a JSON array, "
-                        f"got {type(parsed).__name__}"
-                    )
-            except json.JSONDecodeError as e:
-                raise ValueError(
-                    f"Invalid JSON in RADAR_PREPROCESSING_STEPS: {e}. "
-                    f"Raw value: {_truncate_for_error(preprocessing_raw)}"
-                ) from e
+        topics = [
+            topic.strip()
+            for topic in self.RADAR_SUBSCRIPTION_TOPICS.split(",")
+            if topic.strip()
+        ]
+        if not topics:
+            raise ValueError("At least one subscription topic is required")
 
         return MQTTRadarConfig(
             broker_host=self.RADAR_MQTT_BROKER_HOST,
@@ -316,7 +289,7 @@ class RadarSettings(BaseSettings):
             rate_limit_per_minute=self.RADAR_RATE_LIMIT_PER_MINUTE,
             memory_limit_mb=self.RADAR_MEMORY_LIMIT_MB,
             model_type=self.RADAR_MODEL_TYPE,
-            model_params=model_params,
+            model_params=self.RADAR_MODEL_PARAMS,
             thresholds={
                 "medium": self.RADAR_ANOMALY_THRESHOLD_MEDIUM,
                 "high": self.RADAR_ANOMALY_THRESHOLD_HIGH,
@@ -325,7 +298,7 @@ class RadarSettings(BaseSettings):
             batch_size=self.RADAR_BATCH_SIZE,
             batch_timeout=self.RADAR_BATCH_TIMEOUT,
             checkpoint_interval=self.RADAR_CHECKPOINT_INTERVAL,
-            preprocessing_steps=preprocessing_steps,
+            preprocessing_steps=self.RADAR_PREPROCESSING_STEPS,
         )
 
 

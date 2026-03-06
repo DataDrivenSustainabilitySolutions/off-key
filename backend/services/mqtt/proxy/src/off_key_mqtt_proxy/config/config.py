@@ -8,11 +8,11 @@ MQTT broker configuration, and service-specific parameters.
 from functools import lru_cache
 import random
 import uuid
-from pydantic import BaseModel, field_validator, model_validator
-from pydantic_settings import BaseSettings
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from off_key_core.config.pionix import get_pionix_settings
-from typing import Dict, Self
+from typing import Self
 
 
 class MQTTConfig(BaseModel):
@@ -81,13 +81,9 @@ class MQTTConfig(BaseModel):
     bridge_use_auth: bool = True  # Enable/disable bridge authentication
     bridge_username: str = ""  # Bridge authentication username
     bridge_api_key: str = ""  # Bridge API key
-    bridge_topic_mapping: Dict[str, str] = {}  # Source topic -> target topic mapping
+    bridge_topic_mapping: dict[str, str] = Field(default_factory=dict)
 
-    class Config:
-        # Prevent extra fields
-        extra = "forbid"
-        # Validate assignment to ensure changes maintain constraints
-        validate_assignment = True
+    model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
     @field_validator("broker_port")
     @classmethod
@@ -397,6 +393,8 @@ class MQTTConfig(BaseModel):
 
 
 class MQTTSettings(BaseSettings):
+    model_config = SettingsConfigDict(case_sensitive=True, extra="ignore")
+
     # MQTT Service Configuration
     # Service Control
     MQTT_TELEMETRY_ENABLED: bool = True  # Enable MQTT telemetry service

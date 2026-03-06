@@ -38,8 +38,8 @@ def test_database_settings_parse_with_only_database_environment(monkeypatch):
 
 
 def test_auth_settings_parse_with_only_auth_environment(monkeypatch):
-    monkeypatch.setenv("JWT_SECRET", "super-secret")
-    monkeypatch.setenv("JWT_VERIFICATION_SECRET", "verify-secret")
+    monkeypatch.setenv("JWT_SECRET", "super-secret-key-material-123456")
+    monkeypatch.setenv("JWT_VERIFICATION_SECRET", "verify-secret-key-material-654321")
     monkeypatch.setenv("ALGORITHM", "HS256")
     monkeypatch.setenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30")
     monkeypatch.setenv("SUPERUSER_MAIL", "admin@example.com")
@@ -186,8 +186,8 @@ def test_database_url_encodes_reserved_credential_characters():
 
 def test_gateway_validation_specs_no_longer_require_database(monkeypatch):
     monkeypatch.setenv("APP_NAME", "off-key")
-    monkeypatch.setenv("JWT_SECRET", "super-secret")
-    monkeypatch.setenv("JWT_VERIFICATION_SECRET", "verify-secret")
+    monkeypatch.setenv("JWT_SECRET", "super-secret-key-material-123456")
+    monkeypatch.setenv("JWT_VERIFICATION_SECRET", "verify-secret-key-material-654321")
     monkeypatch.setenv("ALGORITHM", "HS256")
     monkeypatch.setenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30")
     monkeypatch.setenv("SUPERUSER_MAIL", "admin@example.com")

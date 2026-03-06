@@ -216,7 +216,9 @@ class ConfigReloader:
 
             # Store old config for comparison
             old_config = (
-                self.service.config.dict() if hasattr(self.service, "config") else {}
+                self.service.config.model_dump()
+                if hasattr(self.service, "config")
+                else {}
             )
 
             # Force reload of environment variables
@@ -258,7 +260,7 @@ class ConfigReloader:
             logger.info(f"Configuration reloaded successfully in {reload_time:.3f}s")
 
             # Log significant changes
-            self._log_config_changes(old_config, new_config.dict())
+            self._log_config_changes(old_config, new_config.model_dump())
 
         except Exception as e:
             error_msg = f"Configuration reload failed: {e}"

@@ -6,8 +6,8 @@ batch processing, health monitoring, and charger cleanup.
 """
 
 from functools import lru_cache
-from pydantic import BaseModel, field_validator, model_validator
-from pydantic_settings import BaseSettings
+from pydantic import BaseModel, ConfigDict, field_validator, model_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import Self
 from ..core_config import get_retention_days
 
@@ -65,11 +65,7 @@ class SyncConfig(BaseModel):
     scheduler_misfire_grace_time: int
     scheduler_max_instances: int
 
-    class Config:
-        # Prevent extra fields
-        extra = "forbid"
-        # Validate assignment to ensure changes maintain constraints
-        validate_assignment = True
+    model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
     @field_validator("api_port")
     @classmethod
@@ -287,6 +283,8 @@ class SyncSettings(BaseSettings):
     Follows the dual-config pattern where this class handles environment
     parsing and SyncConfig handles business logic validation.
     """
+
+    model_config = SettingsConfigDict(case_sensitive=True, extra="ignore")
 
     # Service Control
     SYNC_ENABLED: bool = True  # Enable background sync service

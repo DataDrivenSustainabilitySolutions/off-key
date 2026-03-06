@@ -8,8 +8,8 @@ RADAR orchestration settings, and service-specific parameters.
 """
 
 from functools import lru_cache
-from pydantic import BaseModel, Field, field_validator, model_validator
-from pydantic_settings import BaseSettings
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import Optional, Self
 
 RADAR_SENSOR_KEY_STRATEGIES = {"full_hierarchy", "top_level", "leaf"}
@@ -35,9 +35,7 @@ class DockerConfig(BaseModel):
     default_cpu_limit: str = "0.5"
     default_constraints: list[str] = Field(default_factory=list)
 
-    class Config:
-        extra = "forbid"
-        validate_assignment = True
+    model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
     @property
     def base_url(self) -> str:
@@ -83,9 +81,7 @@ class RadarDefaultsConfig(BaseModel):
     log_level: str = "INFO"
     rate_limit_per_minute: int = Field(default=1000, ge=1, le=100000)
 
-    class Config:
-        extra = "forbid"
-        validate_assignment = True
+    model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
     @field_validator("model_type")
     @classmethod
@@ -167,9 +163,7 @@ class TacticConfig(BaseModel):
         default=2.0, ge=0.1, le=60.0
     )
 
-    class Config:
-        extra = "forbid"
-        validate_assignment = True
+    model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
     @field_validator("log_level")
     @classmethod
@@ -188,6 +182,8 @@ DEFAULT_RADAR_DEFAULTS = RadarDefaultsConfig()
 
 class TacticSettings(BaseSettings):
     """Environment-based settings for TACTIC service"""
+
+    model_config = SettingsConfigDict(case_sensitive=True, extra="ignore")
 
     # Service Configuration
     TACTIC_SERVICE_NAME: str = Field(default="tactic-middleware")
@@ -292,10 +288,6 @@ class TacticSettings(BaseSettings):
     # Model Registry Initialization
     TACTIC_MODEL_REGISTRY_INIT_MAX_RETRIES: int = Field(default=30)
     TACTIC_MODEL_REGISTRY_INIT_RETRY_INTERVAL_SECONDS: float = Field(default=2.0)
-
-    class Config:
-        case_sensitive = True
-        extra = "ignore"
 
     @staticmethod
     def _split_constraints(raw_value: str) -> list[str]:

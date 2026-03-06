@@ -1,11 +1,13 @@
 from functools import lru_cache
 
-from pydantic import BaseModel, SecretStr, ValidationInfo, field_validator
+from pydantic import BaseModel, ConfigDict, SecretStr, ValidationInfo, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class PionixConfig(BaseModel):
     """Configuration for Pionix API client."""
+
+    model_config = ConfigDict(extra="forbid")
 
     base_url: str = "https://cloud.pionix.com/api"
     api_key: SecretStr
@@ -13,9 +15,6 @@ class PionixConfig(BaseModel):
     chargers_endpoint: str
     device_model_endpoint: str
     telemetry_endpoint: str
-
-    class Config:
-        extra = "forbid"
 
 
 class PionixSettings(BaseSettings):

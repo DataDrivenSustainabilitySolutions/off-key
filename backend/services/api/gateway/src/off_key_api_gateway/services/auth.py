@@ -4,6 +4,7 @@ from passlib.context import CryptContext
 from off_key_core.config.auth import get_auth_settings
 
 password_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+_REQUIRED_SCOPED_CLAIMS = ("sub", "exp", "iss", "aud", "token_type")
 
 
 def get_password_hash(password: str) -> str:
@@ -22,7 +23,13 @@ def create_jwt(data: dict, expires_delta: timedelta = None) -> str:
         if expires_delta
         else timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     )
-    to_encode.update({"exp": expire})
+    to_encode.update(
+        {
+            "exp": expire,
+            "iss": settings.JWT_ISSUER,
+            "aud": settings.JWT_AUDIENCE,
+        }
+    )
     return jwt.encode(
         to_encode,
         settings.JWT_SECRET.get_secret_value(),
@@ -35,6 +42,8 @@ def create_verification_token(email: str, expires_minutes: int = 120) -> str:
     to_encode = {
         "sub": email,
         "exp": datetime.now(timezone.utc) + timedelta(minutes=expires_minutes),
+        "iss": settings.JWT_ISSUER,
+        "aud": settings.JWT_AUDIENCE,
         "token_type": "email_verification",
     }
     return jwt.encode(
@@ -44,19 +53,31 @@ def create_verification_token(email: str, expires_minutes: int = 120) -> str:
     )
 
 
-def verify_verification_token(token: str) -> str | None:
+def _decode_scoped_token(token: str, expected_token_type: str) -> str | None:
     settings = get_auth_settings()
     try:
         payload = jwt.decode(
             token,
             settings.JWT_VERIFICATION_SECRET.get_secret_value(),
             algorithms=[settings.ALGORITHM],
+            issuer=settings.JWT_ISSUER,
+            audience=settings.JWT_AUDIENCE,
+            options={"leeway": settings.JWT_CLOCK_SKEW_SECONDS},
         )
-        if payload.get("token_type") != "email_verification":
+        if any(claim not in payload for claim in _REQUIRED_SCOPED_CLAIMS):
             return None
-        return payload.get("sub")
+        if payload.get("token_type") != expected_token_type:
+            return None
+        subject = payload.get("sub")
+        if not isinstance(subject, str) or not subject:
+            return None
+        return subject
     except JWTError:
         return None
+
+
+def verify_verification_token(token: str) -> str | None:
+    return _decode_scoped_token(token, expected_token_type="email_verification")
 
 
 def create_reset_token(email: str, expires_minutes: int = 120) -> str:
@@ -64,6 +85,8 @@ def create_reset_token(email: str, expires_minutes: int = 120) -> str:
     to_encode = {
         "sub": email,
         "exp": datetime.now(timezone.utc) + timedelta(minutes=expires_minutes),
+        "iss": settings.JWT_ISSUER,
+        "aud": settings.JWT_AUDIENCE,
         "token_type": "password_reset",
     }
     return jwt.encode(
@@ -74,15 +97,4 @@ def create_reset_token(email: str, expires_minutes: int = 120) -> str:
 
 
 def verify_reset_token(token: str) -> str | None:
-    settings = get_auth_settings()
-    try:
-        payload = jwt.decode(
-            token,
-            settings.JWT_VERIFICATION_SECRET.get_secret_value(),
-            algorithms=[settings.ALGORITHM],
-        )
-        if payload.get("token_type") != "password_reset":
-            return None
-        return payload.get("sub")
-    except JWTError:
-        return None
+    return _decode_scoped_token(token, expected_token_type="password_reset")

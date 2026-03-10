@@ -70,6 +70,7 @@ class PionixSettings(BaseSettings):
             ) from exc
 
 
+# Cache parsed secrets once per process; tests clear explicitly between env changes.
 @lru_cache(maxsize=1)
 def get_pionix_settings() -> PionixSettings:
     """Return cached Pionix settings."""

@@ -80,6 +80,7 @@ class AuthSettings(BaseSettings):
         return self
 
 
+# Cache parsed secrets once per process; tests clear explicitly between env changes.
 @lru_cache(maxsize=1)
 def get_auth_settings() -> AuthSettings:
     """Return cached auth settings."""

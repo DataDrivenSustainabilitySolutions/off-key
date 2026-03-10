@@ -58,6 +58,7 @@ class EmailSettings(BaseSettings):
         return [str(email) for email in _RECIPIENTS_ADAPTER.validate_python(recipients)]
 
 
+# Cache parsed secrets once per process; tests clear explicitly between env changes.
 @lru_cache(maxsize=1)
 def get_email_settings() -> EmailSettings:
     """Return cached email settings."""

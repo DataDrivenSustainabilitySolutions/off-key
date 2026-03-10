@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import off_key_core.config as core_config
 from off_key_core.config import (
     get_app_settings,
     get_auth_settings,
@@ -8,13 +9,26 @@ from off_key_core.config import (
     get_runtime_settings,
     get_service_endpoints_settings,
     get_telemetry_settings,
-    reset_runtime_caches_for_tests,
 )
 from off_key_core.clients.pionix import PionixClient
 from off_key_core.clients.provider import get_charger_api_client
 from off_key_core.config.database import DatabaseSettings
 from off_key_core.config.validation import validate_settings
 from off_key_core.db import base as db_base
+from off_key_mqtt_radar.config.runtime import (
+    clear_radar_runtime_settings_cache,
+    get_radar_database_settings,
+)
+from off_key_tactic_middleware.config import (
+    clear_tactic_settings_caches,
+    get_radar_container_runtime_settings,
+)
+from tests.support.runtime_cache import reset_runtime_caches_for_tests
+
+
+def test_core_config_does_not_export_test_runtime_cache_resetter():
+    assert "reset_runtime_caches_for_tests" not in core_config.__all__
+    assert not hasattr(core_config, "reset_runtime_caches_for_tests")
 
 
 def test_database_settings_parse_with_only_database_environment(monkeypatch):
@@ -182,6 +196,32 @@ def test_database_url_encodes_reserved_url_component_characters():
         == "postgresql+asyncpg://user%40name:p%40ss%3Aword%2F%3F%23%5B%5D"
         "@localhost:5432/db%2Fname%3Fx%23y%40z"
     )
+
+
+def test_database_url_encoding_is_consistent_across_runtime_builders(monkeypatch):
+    monkeypatch.setenv("POSTGRES_USER", "user name")
+    monkeypatch.setenv("POSTGRES_PASSWORD", "p@ss word")
+    monkeypatch.setenv("POSTGRES_DB", "db/name")
+    monkeypatch.setenv("POSTGRES_PORT", "5432")
+    monkeypatch.setenv("POSTGRES_HOST", "localhost")
+    monkeypatch.delenv("RADAR_DATABASE_URL", raising=False)
+
+    reset_runtime_caches_for_tests()
+    clear_tactic_settings_caches()
+    clear_radar_runtime_settings_cache()
+
+    core_async_url = get_database_settings().async_database_url
+    tactic_runtime_url = get_radar_container_runtime_settings().radar_database_url
+    radar_runtime_url = get_radar_database_settings().async_database_url
+
+    expected = "postgresql+asyncpg://user%20name:p%40ss%20word@localhost:5432/db%2Fname"
+    assert core_async_url == expected
+    assert tactic_runtime_url == expected
+    assert radar_runtime_url == expected
+
+    clear_tactic_settings_caches()
+    clear_radar_runtime_settings_cache()
+    reset_runtime_caches_for_tests()
 
 
 def test_gateway_validation_specs_no_longer_require_database(monkeypatch):

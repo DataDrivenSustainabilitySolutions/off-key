@@ -1,6 +1,6 @@
 from functools import lru_cache
-from urllib.parse import quote_plus
 
+from off_key_core.config.database import build_postgres_database_url
 from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -81,10 +81,13 @@ class RadarDatabaseSettings(BaseSettings):
         postgres_user = (self.POSTGRES_USER or "").strip()
         postgres_host = (self.POSTGRES_HOST or "").strip()
         postgres_db = (self.POSTGRES_DB or "").strip()
-        return (
-            f"postgresql+asyncpg://{quote_plus(postgres_user)}:"
-            f"{quote_plus(password)}"
-            f"@{postgres_host}:{postgres_port}/{postgres_db}"
+        return build_postgres_database_url(
+            user=postgres_user,
+            password=password,
+            host=postgres_host,
+            port=postgres_port,
+            database=postgres_db,
+            async_driver=True,
         )
 
 
@@ -212,6 +215,7 @@ class RadarRuntimeFileSettings(BaseSettings):
         return normalized
 
 
+# Cache secret-bearing DB settings once; tests reset this cache when mutating env.
 @lru_cache(maxsize=1)
 def get_radar_database_settings() -> RadarDatabaseSettings:
     return RadarDatabaseSettings()
@@ -222,6 +226,7 @@ def get_radar_tactic_client_settings() -> RadarTacticClientSettings:
     return RadarTacticClientSettings()
 
 
+# Cache checkpoint secret settings once; tests reset this cache when mutating env.
 @lru_cache(maxsize=1)
 def get_radar_checkpoint_settings() -> RadarCheckpointSettings:
     return RadarCheckpointSettings()

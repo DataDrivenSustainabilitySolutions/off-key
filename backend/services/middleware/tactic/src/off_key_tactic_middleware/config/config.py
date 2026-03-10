@@ -8,8 +8,8 @@ RADAR orchestration settings, and service-specific parameters.
 """
 
 from functools import lru_cache
-from urllib.parse import quote_plus
 
+from off_key_core.config.database import build_postgres_database_url
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -405,11 +405,13 @@ class RadarContainerRuntimeSettings(BaseSettings):
 
     @property
     def radar_database_url(self) -> str:
-        user = quote_plus(self.POSTGRES_USER)
-        password = quote_plus(self.POSTGRES_PASSWORD.get_secret_value())
-        return (
-            f"postgresql+asyncpg://{user}:{password}@"
-            f"{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
+        return build_postgres_database_url(
+            user=self.POSTGRES_USER,
+            password=self.POSTGRES_PASSWORD.get_secret_value(),
+            host=self.POSTGRES_HOST,
+            port=self.POSTGRES_PORT,
+            database=self.POSTGRES_DB,
+            async_driver=True,
         )
 
 
@@ -419,6 +421,7 @@ def get_tactic_settings() -> TacticSettings:
     return TacticSettings()
 
 
+# Cache secret-bearing runtime settings once; test helpers clear this cache explicitly.
 @lru_cache(maxsize=1)
 def get_radar_container_runtime_settings() -> RadarContainerRuntimeSettings:
     """Return cached runtime settings used for RADAR container env assembly."""

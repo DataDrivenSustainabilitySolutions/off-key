@@ -12,7 +12,7 @@ from typing import Optional
 from off_key_core.config.logs import logger
 from off_key_core.db.base import get_async_session_local
 from off_key_core.utils.enum import HealthStatus
-from .config.config import get_mqtt_settings
+from .config.config import MQTTConfig, get_mqtt_settings
 from .auth import ApiKeyAuthHandler
 from .client.facade import MQTTClient
 from .charger_discovery import ChargerDiscoveryService
@@ -47,6 +47,9 @@ class MQTTProxyService:
         # Bridge components
         self.bridge_auth_handler: Optional[ApiKeyAuthHandler] = None
         self.bridge_client: Optional[MQTTClient] = None
+        self.bridge_destination: Optional[BridgeDestination] = None
+        self.bridge_supervisor_task: Optional[asyncio.Task] = None
+        self.bridge_connected_event = asyncio.Event()
 
         # Service state
         self.is_running = False
@@ -66,6 +69,9 @@ class MQTTProxyService:
         logger.info("Starting MQTT proxy service", extra=self._log_context)
 
         try:
+            self.shutdown_event.clear()
+            self.bridge_connected_event.clear()
+
             # Resolve cached async session factory once and reuse across
             # DB-backed components.
             session_factory = get_async_session_local()
@@ -122,8 +128,20 @@ class MQTTProxyService:
             self.is_running = True
 
             # Initialize bridge if enabled
+            bridge_connected = True
             if self.config.enable_bridge:
-                await self._setup_bridge()
+                bridge_connected = await self._connect_bridge_once()
+                self._start_bridge_supervisor()
+                if not bridge_connected:
+                    logger.warning(
+                        "MQTT bridge unavailable during startup; "
+                        "service running in degraded mode with background retries",
+                        extra={
+                            **self._log_context,
+                            "bridge_host": self.config.bridge_broker_host,
+                            "bridge_port": self.config.bridge_broker_port,
+                        },
+                    )
 
             logger.info(
                 "MQTT proxy service started successfully",
@@ -131,6 +149,8 @@ class MQTTProxyService:
                     **self._log_context,
                     "chargers_discovered": len(chargers),
                     "subscribed_topics": len(self.charger_discovery.get_all_topics()),
+                    "bridge_enabled": self.config.enable_bridge,
+                    "bridge_connected": bridge_connected,
                 },
             )
 
@@ -145,92 +165,147 @@ class MQTTProxyService:
             await self.stop()
             raise
 
-    async def _setup_bridge(self):
-        """Set up MQTT bridge to target broker"""
+    def _start_bridge_supervisor(self) -> None:
+        """Start background bridge supervision if not already running."""
+        if self.bridge_supervisor_task and not self.bridge_supervisor_task.done():
+            return
+        self.bridge_supervisor_task = asyncio.create_task(
+            self._bridge_supervisor_loop()
+        )
+
+    async def _stop_bridge_supervisor(self) -> None:
+        """Stop background bridge supervision task."""
+        if self.bridge_supervisor_task and not self.bridge_supervisor_task.done():
+            self.bridge_supervisor_task.cancel()
+            try:
+                await self.bridge_supervisor_task
+            except asyncio.CancelledError:
+                pass
+        self.bridge_supervisor_task = None
+
+    def _build_bridge_config(self) -> MQTTConfig:
+        """Build MQTT config for the bridge target broker."""
+        return MQTTConfig(
+            broker_host=self.config.bridge_broker_host,
+            broker_port=self.config.bridge_broker_port,
+            use_tls=self.config.bridge_use_tls,
+            client_id_prefix=self.config.bridge_client_id_prefix,
+            mqtt_username=(
+                self.config.bridge_username
+                if self.config.bridge_use_auth
+                else "anonymous"
+            ),
+            mqtt_api_key=(
+                self.config.bridge_api_key
+                if self.config.bridge_use_auth
+                else "anonymousanonymousanonymousanonymousanonymous"
+            ),
+            enabled=True,
+            reconnect_delay=self.config.reconnect_delay,
+            max_reconnect_attempts=self.config.max_reconnect_attempts,
+            batch_size=self.config.batch_size,
+            batch_timeout=self.config.batch_timeout,
+            subscription_qos=self.config.subscription_qos,
+            health_check_interval=self.config.health_check_interval,
+            health_log_reminder_interval=self.config.health_log_reminder_interval,
+            connection_timeout=self.config.connection_timeout,
+            max_message_queue_size=self.config.max_message_queue_size,
+            worker_threads=self.config.worker_threads,
+            shutdown_timeout=self.config.shutdown_timeout,
+            graceful_shutdown_timeout=self.config.graceful_shutdown_timeout,
+            enable_bridge=False,  # Prevent recursive bridging
+            bridge_broker_host=self.config.bridge_broker_host,
+            bridge_broker_port=self.config.bridge_broker_port,
+            bridge_use_tls=self.config.bridge_use_tls,
+            bridge_client_id_prefix=self.config.bridge_client_id_prefix,
+            bridge_use_auth=self.config.bridge_use_auth,
+            bridge_username=self.config.bridge_username,
+            bridge_api_key=self.config.bridge_api_key,
+            bridge_topic_mapping={},
+        )
+
+    async def _cleanup_existing_bridge_components(self) -> None:
+        """
+        Cleanup currently active bridge components before a reconnect attempt.
+
+        Keep the destination registered, but disable it while disconnected.
+        """
+        if self.bridge_destination:
+            self.bridge_destination.enabled = False
+
+        if self.bridge_client:
+            await self._safe_component_shutdown("bridge_client", self.bridge_client)
+            self.bridge_client = None
+
+        if self.bridge_auth_handler:
+            await self._safe_component_shutdown(
+                "bridge_auth_handler", self.bridge_auth_handler
+            )
+            self.bridge_auth_handler = None
+
+        self.bridge_connected_event.clear()
+
+    async def _connect_bridge_once(self) -> bool:
+        """
+        Attempt a single bridge connection cycle.
+
+        Returns:
+            True if connected and destination enabled, False otherwise.
+        """
+        if not self.message_router:
+            logger.error(
+                "Cannot setup MQTT bridge: message router not initialized",
+                extra=self._log_context,
+            )
+            return False
+
+        if not self.config.bridge_broker_host:
+            logger.error(
+                "Cannot setup MQTT bridge: bridge broker host is missing",
+                extra=self._log_context,
+            )
+            return False
+
+        if self.config.bridge_use_auth and not self.config.bridge_username:
+            logger.error(
+                "Cannot setup MQTT bridge: bridge username is required when "
+                "authentication is enabled",
+                extra=self._log_context,
+            )
+            return False
+
         logger.info("Setting up MQTT bridge", extra=self._log_context)
+        await self._cleanup_existing_bridge_components()
+
+        bridge_auth_handler: Optional[ApiKeyAuthHandler] = None
+        bridge_client: Optional[MQTTClient] = None
 
         try:
-            # Validate bridge configuration
-            if not self.config.bridge_broker_host:
-                raise ValueError(
-                    "Bridge broker host is required when bridge is enabled"
-                )
-
-            # Initialize bridge authentication if enabled
             if self.config.bridge_use_auth:
-                if not self.config.bridge_username:
-                    raise ValueError(
-                        "Bridge username is required when "
-                        "bridge authentication is enabled"
-                    )
-
-                self.bridge_auth_handler = ApiKeyAuthHandler(
+                bridge_auth_handler = ApiKeyAuthHandler(
                     self.config.bridge_username, self.config.bridge_api_key
                 )
+                await bridge_auth_handler.authenticate()
 
-                # Authenticate bridge credentials
-                await self.bridge_auth_handler.authenticate()
-            else:
-                # No authentication for anonymous connections
-                self.bridge_auth_handler = None
-
-            # Create bridge configuration
-            from .config.config import MQTTConfig
-
-            bridge_config = MQTTConfig(
-                broker_host=self.config.bridge_broker_host,
-                broker_port=self.config.bridge_broker_port,
-                use_tls=self.config.bridge_use_tls,
-                client_id_prefix=self.config.bridge_client_id_prefix,
-                mqtt_username=(
-                    self.config.bridge_username
-                    if self.config.bridge_use_auth
-                    else "anonymous"
-                ),
-                mqtt_api_key=(
-                    self.config.bridge_api_key
-                    if self.config.bridge_use_auth
-                    else "anonymousanonymousanonymousanonymousanonymous"
-                ),
-                enabled=True,
-                reconnect_delay=self.config.reconnect_delay,
-                max_reconnect_attempts=self.config.max_reconnect_attempts,
-                batch_size=self.config.batch_size,
-                batch_timeout=self.config.batch_timeout,
-                subscription_qos=self.config.subscription_qos,
-                health_check_interval=self.config.health_check_interval,
-                health_log_reminder_interval=self.config.health_log_reminder_interval,
-                connection_timeout=self.config.connection_timeout,
-                max_message_queue_size=self.config.max_message_queue_size,
-                worker_threads=self.config.worker_threads,
-                shutdown_timeout=self.config.shutdown_timeout,
-                graceful_shutdown_timeout=self.config.graceful_shutdown_timeout,
-                enable_bridge=False,  # Prevent recursive bridging
-                bridge_broker_host=self.config.bridge_broker_host,
-                bridge_broker_port=self.config.bridge_broker_port,
-                bridge_use_tls=self.config.bridge_use_tls,
-                bridge_client_id_prefix=self.config.bridge_client_id_prefix,
-                bridge_use_auth=self.config.bridge_use_auth,
-                bridge_username=self.config.bridge_username,
-                bridge_api_key=self.config.bridge_api_key,
-                bridge_topic_mapping={},
-            )
-
-            # Initialize bridge MQTT client
-            self.bridge_client = MQTTClient(bridge_config, self.bridge_auth_handler)
-
-            # Connect to bridge broker
-            connected = await self.bridge_client.connect()
+            bridge_client = MQTTClient(self._build_bridge_config(), bridge_auth_handler)
+            connected = await bridge_client.connect()
             if not connected:
                 raise RuntimeError("Failed to connect to bridge broker")
 
-            # Create bridge destination
-            bridge_destination = BridgeDestination(
-                self.bridge_client, self.config.bridge_topic_mapping
-            )
+            self.bridge_auth_handler = bridge_auth_handler
+            self.bridge_client = bridge_client
+            self.bridge_connected_event.set()
 
-            # Add bridge destination to message router
-            self.message_router.add_destination(bridge_destination, is_default=True)
+            if self.bridge_destination is None:
+                self.bridge_destination = BridgeDestination(
+                    bridge_client, self.config.bridge_topic_mapping
+                )
+                self.message_router.add_destination(
+                    self.bridge_destination, is_default=True
+                )
+            else:
+                self.bridge_destination.target_client = bridge_client
+            self.bridge_destination.enabled = True
 
             logger.info(
                 f"MQTT bridge established successfully to "
@@ -242,6 +317,7 @@ class MQTTProxyService:
                     "topic_mappings": len(self.config.bridge_topic_mapping),
                 },
             )
+            return True
 
         except Exception as e:
             logger.error(
@@ -249,7 +325,112 @@ class MQTTProxyService:
                 extra=self._log_context,
                 exc_info=True,
             )
+
+            self.bridge_connected_event.clear()
+            if self.bridge_destination:
+                self.bridge_destination.enabled = False
+
+            if bridge_client:
+                await self._safe_component_shutdown("bridge_client", bridge_client)
+            if bridge_auth_handler:
+                await self._safe_component_shutdown(
+                    "bridge_auth_handler", bridge_auth_handler
+                )
+            return False
+
+    async def _wait_for_shutdown_or_timeout(self, timeout: float) -> bool:
+        """
+        Wait for either shutdown signal or timeout.
+
+        Returns:
+            True if shutdown was signaled, False if timeout elapsed.
+        """
+        try:
+            await asyncio.wait_for(self.shutdown_event.wait(), timeout=timeout)
+            return True
+        except asyncio.TimeoutError:
+            return False
+
+    async def _bridge_supervisor_loop(self) -> None:
+        """Keep bridge connection healthy and reconnect on failures."""
+        reconnect_attempt = 0
+        logger.info("MQTT bridge supervisor started", extra=self._log_context)
+
+        try:
+            while not self.shutdown_event.is_set():
+                if not self.config.enable_bridge:
+                    return
+
+                if self.bridge_client and self.bridge_client.is_connected:
+                    self.bridge_connected_event.set()
+                    if self.bridge_destination:
+                        self.bridge_destination.enabled = True
+                    reconnect_attempt = 0
+
+                    should_stop = await self._wait_for_shutdown_or_timeout(
+                        self.config.health_monitor_interval
+                    )
+                    if should_stop:
+                        return
+                    continue
+
+                if self.bridge_client:
+                    bridge_state = getattr(
+                        getattr(self.bridge_client, "state", None),
+                        "value",
+                        "unknown",
+                    )
+                    if bridge_state in {"connecting", "reconnecting"}:
+                        should_stop = await self._wait_for_shutdown_or_timeout(
+                            self.config.health_monitor_interval
+                        )
+                        if should_stop:
+                            return
+                        continue
+
+                self.bridge_connected_event.clear()
+                if self.bridge_destination:
+                    self.bridge_destination.enabled = False
+
+                reconnect_attempt += 1
+                connected = await self._connect_bridge_once()
+                if connected:
+                    reconnect_attempt = 0
+                    continue
+
+                retry_delay = self.config.get_jittered_backoff_delay(
+                    reconnect_attempt - 1
+                )
+                logger.warning(
+                    f"MQTT bridge unavailable; retrying in {retry_delay:.2f}s "
+                    f"(attempt {reconnect_attempt})",
+                    extra={
+                        **self._log_context,
+                        "retry_delay_seconds": retry_delay,
+                        "reconnect_attempt": reconnect_attempt,
+                        "bridge_host": self.config.bridge_broker_host,
+                        "bridge_port": self.config.bridge_broker_port,
+                    },
+                )
+
+                should_stop = await self._wait_for_shutdown_or_timeout(retry_delay)
+                if should_stop:
+                    return
+
+        except asyncio.CancelledError:
+            logger.info("MQTT bridge supervisor cancelled", extra=self._log_context)
             raise
+        except Exception as e:
+            logger.error(
+                f"Unexpected error in MQTT bridge supervisor: {e}",
+                extra=self._log_context,
+                exc_info=True,
+            )
+        finally:
+            self.bridge_connected_event.clear()
+            if self.bridge_destination:
+                self.bridge_destination.enabled = False
+            logger.info("MQTT bridge supervisor stopped", extra=self._log_context)
 
     async def _safe_component_shutdown(
         self, name: str, component: Stoppable, timeout: float = None
@@ -313,6 +494,8 @@ class MQTTProxyService:
         """
         shutdown_errors = []
 
+        await self._stop_bridge_supervisor()
+
         # Components to stop in reverse order (dependency order)
         components = [
             ("message_router", self.message_router),
@@ -358,7 +541,19 @@ class MQTTProxyService:
 
     async def stop(self):
         """Stop the MQTT proxy service with robust multi-stage shutdown"""
-        if not self.is_running:
+        has_active_components = any(
+            [
+                self.auth_handler,
+                self.mqtt_client,
+                self.charger_discovery,
+                self.database_writer,
+                self.message_router,
+                self.bridge_auth_handler,
+                self.bridge_client,
+                self.bridge_supervisor_task and not self.bridge_supervisor_task.done(),
+            ]
+        )
+        if not self.is_running and not has_active_components:
             logger.info("MQTT proxy service already stopped", extra=self._log_context)
             return
 
@@ -367,6 +562,7 @@ class MQTTProxyService:
 
         # Signal shutdown immediately
         self.shutdown_event.set()
+        self.bridge_connected_event.clear()
         self.is_running = False
 
         try:
@@ -469,12 +665,85 @@ class MQTTProxyService:
             # Ensure cleanup
             await self.stop()
 
+    def _is_bridge_supervisor_running(self) -> bool:
+        """Check whether bridge supervisor task is active."""
+        return bool(
+            self.bridge_supervisor_task and not self.bridge_supervisor_task.done()
+        )
+
+    def is_bridge_ready(self) -> bool:
+        """
+        Bridge readiness predicate for orchestrator probes.
+
+        Returns:
+            True when service is running, primary MQTT is connected, and
+            bridge requirements are satisfied (if enabled).
+        """
+        if not self.is_running:
+            return False
+
+        if not self.mqtt_client or not self.mqtt_client.is_connected:
+            return False
+
+        if not self.config.enable_bridge:
+            return True
+
+        if not self.bridge_connected_event.is_set():
+            return False
+
+        if not self._is_bridge_supervisor_running():
+            return False
+
+        return bool(self.bridge_destination and self.bridge_destination.enabled)
+
+    def get_readiness_status(self) -> dict:
+        """Get structured readiness status used by health API endpoints."""
+        primary_connected = bool(self.mqtt_client and self.mqtt_client.is_connected)
+        bridge_required = bool(self.config.enable_bridge)
+        bridge_connected = bool(
+            bridge_required and self.bridge_connected_event.is_set()
+        )
+        bridge_supervisor_running = self._is_bridge_supervisor_running()
+        destination_enabled = bool(
+            self.bridge_destination and self.bridge_destination.enabled
+        )
+        ready = self.is_bridge_ready()
+
+        return {
+            "status": "ready" if ready else "not_ready",
+            "ready": ready,
+            "service": "mqtt-proxy",
+            "running": self.is_running,
+            "mqtt_primary_connected": primary_connected,
+            "bridge_required": bridge_required,
+            "bridge_connected": bridge_connected,
+            "bridge_supervisor_running": bridge_supervisor_running,
+            "bridge_destination_enabled": destination_enabled,
+            "bridge_host": self.config.bridge_broker_host,
+            "bridge_port": self.config.bridge_broker_port,
+        }
+
     def get_health_status(self):
         """Get current health status"""
+        bridge_supervisor_running = self._is_bridge_supervisor_running()
+        bridge_connected = bool(
+            self.config.enable_bridge and self.bridge_connected_event.is_set()
+        )
+
+        status_value = (
+            HealthStatus.HEALTHY if self.is_running else HealthStatus.DISABLED
+        )
+        if self.is_running and self.config.enable_bridge and not bridge_connected:
+            status_value = HealthStatus.UNHEALTHY
+        if (
+            self.is_running
+            and self.config.enable_bridge
+            and not bridge_supervisor_running
+        ):
+            status_value = HealthStatus.UNHEALTHY
+
         status = {
-            "status": (
-                HealthStatus.HEALTHY if self.is_running else HealthStatus.DISABLED
-            ),
+            "status": status_value,
             "components": {},
         }
 
@@ -501,6 +770,17 @@ class MQTTProxyService:
         if self.bridge_client:
             status["components"]["bridge_client"] = {
                 "connected": self.bridge_client.state.value == "connected"
+            }
+        if self.config.enable_bridge:
+            status["components"]["bridge"] = {
+                "required": True,
+                "connected": bridge_connected,
+                "supervisor_running": bridge_supervisor_running,
+                "destination_enabled": bool(
+                    self.bridge_destination and self.bridge_destination.enabled
+                ),
+                "broker_host": self.config.bridge_broker_host,
+                "broker_port": self.config.bridge_broker_port,
             }
 
         return status

@@ -10,11 +10,12 @@ import asyncio
 from pathlib import Path
 
 from .proxy import MQTTProxyService
+from .health_api import run_health_api
 from off_key_core.clients.provider import get_charger_api_client
 from off_key_core.config.env import load_env
 from off_key_core.config.pionix import get_pionix_settings
 from off_key_core.config.validation import validate_settings
-from off_key_core.config.logs import load_yaml_config
+from off_key_core.config.logs import load_yaml_config, logger
 from .config.config import get_mqtt_settings
 
 # Load logging configuration from YAML files
@@ -34,7 +35,40 @@ async def main():
     )
     api_client = get_charger_api_client()
     service = MQTTProxyService(api_client)
-    await service.run()
+    settings = get_mqtt_settings()
+
+    service_task = asyncio.create_task(
+        service.run(),
+        name="off-key-mqtt-proxy-service",
+    )
+    tasks = {service_task}
+
+    if settings.MQTT_HEALTH_API_ENABLED:
+        health_task = asyncio.create_task(
+            run_health_api(service),
+            name="off-key-mqtt-proxy-health-api",
+        )
+        tasks.add(health_task)
+
+    try:
+        done, _ = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+        for task in done:
+            task.result()
+    finally:
+        for task in tasks:
+            if task.done():
+                continue
+            task.cancel()
+
+        for task in tasks:
+            if task.done():
+                continue
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+
+        logger.info("MQTT proxy service shutdown complete")
 
 
 if __name__ == "__main__":

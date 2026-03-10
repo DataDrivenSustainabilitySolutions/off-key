@@ -447,6 +447,19 @@ class MQTTSettings(BaseSettings):
     MQTT_BRIDGE_USERNAME: str = ""  # Bridge authentication username
     MQTT_BRIDGE_APIKEY: str = ""  # Bridge API key (falls back to PIONIX_KEY)
 
+    # Health API Configuration
+    MQTT_HEALTH_API_ENABLED: bool = True  # Enable lightweight health API server
+    MQTT_HEALTH_API_HOST: str = "0.0.0.0"  # Health API bind host
+    MQTT_HEALTH_API_PORT: int = 8010  # Health API bind port
+
+    @field_validator("MQTT_HEALTH_API_PORT")
+    @classmethod
+    def validate_health_api_port(cls, v: int) -> int:
+        """Validate health API port is in valid range."""
+        if not 1 <= v <= 65535:
+            raise ValueError("MQTT health API port must be between 1 and 65535")
+        return v
+
     @property
     def config(self) -> "MQTTConfig":
         """

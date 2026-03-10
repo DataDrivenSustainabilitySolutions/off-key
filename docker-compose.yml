@@ -12,7 +12,7 @@ services:
     depends_on:
       - api-gateway
     networks:
-      - app-network
+      - socket-network
     develop:
       watch:
         - action: sync
@@ -116,6 +116,8 @@ services:
         condition: service_healthy
       tactic-middleware:
         condition: service_healthy
+      mqtt-proxy:
+        condition: service_healthy
     networks:
       - app-network
       - emqx-network
@@ -136,10 +138,22 @@ services:
     depends_on:
       timescaledb:
         condition: service_healthy
+      emqx-main:
+        condition: service_healthy
     networks:
       - app-network
       - emqx-network
     restart: always
+    healthcheck:
+      test:
+        - "CMD"
+        - "/app/bin/python"
+        - "-c"
+        - "import urllib.request; urllib.request.urlopen('http://localhost:8010/ready/bridge', timeout=2)"
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
     environment:
       - SERVICE_TYPE=mqtt_proxy
       - MQTT_TELEMETRY_ENABLED=true
@@ -268,11 +282,13 @@ services:
 
   emqx-main:
     image: emqx/emqx:5.8.7 # BSL license starting at 5.9!
+    hostname: emqx-main
+    domainname: ddss.local
     environment:
       - "EMQX_NODE_NAME=emqx@emqx-main.ddss.local"
+      - "EMQX_NODE__COOKIE=${EMQX_NODE_COOKIE:-off-key-emqx-cookie-change-me}"
       - "EMQX_CLUSTER__DISCOVERY_STRATEGY=static"
-      # Docker Swarm: Use service name / "tasks.service_name" to leverage docker DNS resolver
-      # Docker Swarm: Use template holders for hostnames
+      # Use stable service identities resolvable in compose and swarm networks.
       - "EMQX_CLUSTER__STATIC__SEEDS=[emqx@emqx-main.ddss.local,emqx@emqx-worker.ddss.local]"
       # See https://github.com/emqx/emqx/issues/8627#issuecomment-2833234761
       # Only works on fresh boot (no data volume!)
@@ -299,11 +315,13 @@ services:
 
   emqx-worker:
     image: emqx/emqx:5.8.7 # BSL license starting at 5.9!
+    hostname: emqx-worker
+    domainname: ddss.local
     environment:
       - "EMQX_NODE_NAME=emqx@emqx-worker.ddss.local"
+      - "EMQX_NODE__COOKIE=${EMQX_NODE_COOKIE:-off-key-emqx-cookie-change-me}"
       - "EMQX_CLUSTER__DISCOVERY_STRATEGY=static"
-      # Docker Swarm: Use service name / "tasks.service_name" to leverage docker DNS resolver
-      # Docker Swarm: Use template holders for hostnames
+      # Use stable service identities resolvable in compose and swarm networks.
       - "EMQX_CLUSTER__STATIC__SEEDS=[emqx@emqx-main.ddss.local,emqx@emqx-worker.ddss.local]"
       # See https://github.com/emqx/emqx/issues/8627#issuecomment-2833234761
       # Only works on fresh boot (no data volume!)

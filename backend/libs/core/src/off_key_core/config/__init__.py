@@ -1,25 +1,43 @@
 """Centralized configuration helpers for off-key core."""
 
-from dotenv import load_dotenv
-
-# Load .env file to ensure local dev overrides work.
-load_dotenv()
-
-# Default retention period fallback
-RETENTION_DAYS_DEFAULT = 14
+from .app import AppSettings, get_app_settings
+from .auth import AuthSettings, get_auth_settings
+from .database import DatabaseSettings, get_database_settings
+from .email import EmailSettings, get_email_settings
+from .logging import LoggingSettings, get_logging_settings
+from .pionix import PionixConfig, PionixSettings, get_pionix_settings
+from .runtime import RuntimeSettings, get_runtime_settings
+from .services import (
+    ServiceEndpointsSettings,
+    get_service_endpoints_settings,
+)
+from .telemetry import TelemetrySettings, get_telemetry_settings
 
 
 def get_retention_days() -> int:
-    """
-    Return validated telemetry retention days for use across services.
-
-    The value originates from `TELEMETRY_RETENTION_DAYS` (fallback
-    `SYNC_RETENTION_DAYS` for compatibility) and is validated by the
-    TelemetrySettings model in :mod:`off_key_core.config.config`.
-    """
-    from .config import get_telemetry_settings
-
+    """Return validated telemetry retention days for use across services."""
     return get_telemetry_settings().retention_days
 
 
-__all__ = ["RETENTION_DAYS_DEFAULT", "get_retention_days"]
+__all__ = [
+    "get_retention_days",
+    "AppSettings",
+    "get_app_settings",
+    "AuthSettings",
+    "get_auth_settings",
+    "DatabaseSettings",
+    "get_database_settings",
+    "EmailSettings",
+    "get_email_settings",
+    "LoggingSettings",
+    "get_logging_settings",
+    "PionixConfig",
+    "PionixSettings",
+    "get_pionix_settings",
+    "RuntimeSettings",
+    "get_runtime_settings",
+    "ServiceEndpointsSettings",
+    "get_service_endpoints_settings",
+    "TelemetrySettings",
+    "get_telemetry_settings",
+]

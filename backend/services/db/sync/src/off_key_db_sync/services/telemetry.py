@@ -13,7 +13,7 @@ from off_key_core.config.logs import logger
 from off_key_core.db.models import Charger, Telemetry
 from off_key_core.utils.string import string_to_float
 from off_key_core.utils.enum import HealthStatus
-from ..config.config import sync_settings
+from ..config.config import get_sync_settings
 
 
 @dataclass
@@ -69,7 +69,7 @@ class TelemetrySyncService:
         logger.info("TelemetrySyncService initialized", extra=self._log_context)
 
         # Log active retention period (uses centralized config)
-        retention_days = sync_settings.config.retention_days
+        retention_days = get_sync_settings().config.retention_days
         logger.info(
             f"Telemetry sync retention window: {retention_days} days",
             extra={**self._log_context, "retention_days": retention_days},
@@ -223,7 +223,7 @@ class TelemetrySyncService:
                     continue
 
                 # Check for existing data coverage if gap detection is enabled
-                config = sync_settings.config
+                config = get_sync_settings().config
                 start_date = None
                 end_date = None
                 earliest = None
@@ -526,7 +526,6 @@ class TelemetrySyncService:
                 )
 
                 # Dynamic batch size based on record count for better performance
-                config = sync_settings.config
                 record_count = len(telemetry_records_to_insert)
                 if record_count < config.batch_size_small:
                     batch_size = record_count  # Single batch for small datasets
@@ -674,7 +673,7 @@ class TelemetrySyncService:
     def get_health_status(self) -> TelemetrySyncHealthStatus:
         """Get health status for monitoring"""
         metrics = self.get_performance_metrics()
-        config = sync_settings.config
+        config = get_sync_settings().config
 
         # Determine health status
         status = HealthStatus.HEALTHY

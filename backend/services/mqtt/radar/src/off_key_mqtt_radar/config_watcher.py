@@ -209,11 +209,17 @@ class ConfigReloader:
             logger.info("Starting configuration reload")
 
             # Import here to avoid circular imports
-            from .config.config import radar_settings
+            from .config.config import (
+                clear_radar_settings_cache,
+                get_radar_settings,
+            )
+            from .config.runtime import clear_radar_runtime_settings_cache
 
             # Store old config for comparison
             old_config = (
-                self.service.config.dict() if hasattr(self.service, "config") else {}
+                self.service.config.model_dump()
+                if hasattr(self.service, "config")
+                else {}
             )
 
             # Force reload of environment variables
@@ -223,12 +229,19 @@ class ConfigReloader:
             load_dotenv(override=True)
 
             # Reload custom config file if it exists
-            custom_config_file = getattr(radar_settings, "custom_config_file", None)
+            custom_config_file = getattr(
+                get_radar_settings(),
+                "custom_config_file",
+                None,
+            )
             if custom_config_file and Path(custom_config_file).exists():
                 load_dotenv(custom_config_file, override=True)
 
             # Recreate settings to pick up new values
-            new_settings = radar_settings.__class__()
+            clear_radar_settings_cache()
+            clear_radar_runtime_settings_cache()
+            new_settings = get_radar_settings()
+            new_settings.custom_config_file = custom_config_file
             new_config = new_settings.config
 
             # Validate new configuration
@@ -249,7 +262,7 @@ class ConfigReloader:
             logger.info(f"Configuration reloaded successfully in {reload_time:.3f}s")
 
             # Log significant changes
-            self._log_config_changes(old_config, new_config.dict())
+            self._log_config_changes(old_config, new_config.model_dump())
 
         except Exception as e:
             error_msg = f"Configuration reload failed: {e}"

@@ -5,23 +5,14 @@ Handles configuration for the MQTT proxy service including API-Key authenticatio
 MQTT broker configuration, and service-specific parameters.
 """
 
+from functools import lru_cache
 import random
-from pydantic import BaseModel, field_validator, model_validator
-from pydantic_settings import BaseSettings
+import uuid
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from off_key_core.config.config import get_settings
-from typing import Self, Dict
-from dotenv import find_dotenv, load_dotenv
-
-# Load default ".env" file from upper project tree
-load_dotenv()
-
-# Override with dev.env values if present
-dev_env = find_dotenv("dev.env")
-if dev_env:
-    load_dotenv(dev_env, override=True)
-
-settings = get_settings()
+from off_key_core.config.pionix import get_pionix_settings
+from typing import Self
 
 
 class MQTTConfig(BaseModel):
@@ -90,13 +81,9 @@ class MQTTConfig(BaseModel):
     bridge_use_auth: bool = True  # Enable/disable bridge authentication
     bridge_username: str = ""  # Bridge authentication username
     bridge_api_key: str = ""  # Bridge API key
-    bridge_topic_mapping: Dict[str, str] = {}  # Source topic -> target topic mapping
+    bridge_topic_mapping: dict[str, str] = Field(default_factory=dict)
 
-    class Config:
-        # Prevent extra fields
-        extra = "forbid"
-        # Validate assignment to ensure changes maintain constraints
-        validate_assignment = True
+    model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
     @field_validator("broker_port")
     @classmethod
@@ -376,8 +363,6 @@ class MQTTConfig(BaseModel):
 
     def get_client_id(self) -> str:
         """Generate unique client ID"""
-        import uuid
-
         return f"{self.client_id_prefix}_{uuid.uuid4().hex[:8]}"
 
     def get_jittered_backoff_delay(self, attempt: int) -> float:
@@ -408,6 +393,8 @@ class MQTTConfig(BaseModel):
 
 
 class MQTTSettings(BaseSettings):
+    model_config = SettingsConfigDict(case_sensitive=True, extra="ignore")
+
     # MQTT Service Configuration
     # Service Control
     MQTT_TELEMETRY_ENABLED: bool = True  # Enable MQTT telemetry service
@@ -460,10 +447,23 @@ class MQTTSettings(BaseSettings):
     MQTT_BRIDGE_USERNAME: str = ""  # Bridge authentication username
     MQTT_BRIDGE_APIKEY: str = ""  # Bridge API key (falls back to PIONIX_KEY)
 
+    # Health API Configuration
+    MQTT_HEALTH_API_ENABLED: bool = True  # Enable lightweight health API server
+    MQTT_HEALTH_API_HOST: str = "0.0.0.0"  # Health API bind host
+    MQTT_HEALTH_API_PORT: int = 8010  # Health API bind port
+
+    @field_validator("MQTT_HEALTH_API_PORT")
+    @classmethod
+    def validate_health_api_port(cls, v: int) -> int:
+        """Validate health API port is in valid range."""
+        if not 1 <= v <= 65535:
+            raise ValueError("MQTT health API port must be between 1 and 65535")
+        return v
+
     @property
     def config(self) -> "MQTTConfig":
         """
-        Create MQTTConfig instance from centralized settings.
+        Create MQTTConfig instance from environment settings.
 
         This property demonstrates the dual-config pattern: environment parsing
         happens here, while business logic validation occurs in MQTTConfig.
@@ -476,13 +476,17 @@ class MQTTSettings(BaseSettings):
         Returns:
             MQTTConfig: Validated MQTT service config with business logic constraints
         """
+        pionix_settings = get_pionix_settings()
+
         return MQTTConfig(
             broker_host=self.MQTT_BROKER_HOST,
             broker_port=self.MQTT_BROKER_PORT,
             use_tls=self.MQTT_USE_TLS,
             client_id_prefix=self.MQTT_CLIENT_ID_PREFIX,
             mqtt_username=self.MQTT_USERNAME,
-            mqtt_api_key=self.MQTT_APIKEY or settings.PIONIX_KEY.get_secret_value(),
+            mqtt_api_key=(
+                self.MQTT_APIKEY or pionix_settings.PIONIX_KEY.get_secret_value()
+            ),
             enabled=self.MQTT_TELEMETRY_ENABLED,
             reconnect_delay=self.MQTT_RECONNECT_DELAY,
             max_reconnect_attempts=self.MQTT_MAX_RECONNECT_ATTEMPTS,
@@ -508,4 +512,7 @@ class MQTTSettings(BaseSettings):
         )
 
 
-mqtt_settings = MQTTSettings()
+@lru_cache(maxsize=1)
+def get_mqtt_settings() -> MQTTSettings:
+    """Return cached MQTT proxy settings instance."""
+    return MQTTSettings()

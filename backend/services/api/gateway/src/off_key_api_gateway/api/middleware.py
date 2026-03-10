@@ -1,20 +1,20 @@
 import time
 import uuid
 from typing import Callable
+
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp
 
+from off_key_core.config.logging import get_logging_settings
 from off_key_core.config.logs import set_correlation_id, log_performance, logger
-from off_key_core.config.config import get_settings
-
-settings = get_settings()
 
 
 class LoggingMiddleware(BaseHTTPMiddleware):
     """Middleware for request/response logging and correlation ID tracking."""
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
+        settings = get_logging_settings()
         start_time = time.time()
 
         # Generate or extract correlation ID

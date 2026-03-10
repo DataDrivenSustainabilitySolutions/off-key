@@ -2,27 +2,27 @@
 Configuration for MQTT RADAR service
 """
 
-from pydantic import BaseModel, field_validator, model_validator
-from pydantic_settings import BaseSettings
-from typing import Dict, Any, List, Optional, Self
-from dotenv import find_dotenv, load_dotenv
+from functools import lru_cache
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
+from typing import Any, Dict, List, Optional, Self
+from dotenv import load_dotenv
 from pathlib import Path
-import os
-import json
+
+SENSOR_KEY_STRATEGIES = {"full_hierarchy", "top_level", "leaf"}
 
 
-def _truncate_for_error(value: str, max_len: int = 500) -> str:
-    """Truncate a string for error messages with length indication."""
-    if len(value) <= max_len:
-        return value
-    return f"{value[:max_len]}... ({len(value)} chars total)"
+def _normalize_sensor_key_strategy(value: str, field_name: str) -> str:
+    """Normalize and validate sensor key strategy values."""
+    normalized = value.strip().lower()
+    if normalized not in SENSOR_KEY_STRATEGIES:
+        allowed = ", ".join(sorted(SENSOR_KEY_STRATEGIES))
+        raise ValueError(f"{field_name} must be one of: {allowed}")
+    return normalized
 
 
 def load_configuration(custom_config_file: Optional[str] = None):
     """Load configuration from environment and optional custom file"""
-    # Load default ".env" file from upper project tree
-    load_dotenv()
-
     # Load custom configuration file if specified
     if custom_config_file:
         config_path = Path(custom_config_file)
@@ -30,28 +30,23 @@ def load_configuration(custom_config_file: Optional[str] = None):
             load_dotenv(config_path, override=True)
             return str(config_path.resolve())
 
-    # Override with dev.env values if present
-    dev_env = find_dotenv("dev.env")
-    if dev_env:
-        load_dotenv(dev_env, override=True)
-        return dev_env
-
     return None
-
-
-# Check for custom config file from environment variable
-RADAR_CONFIG_FILE = os.getenv("RADAR_CONFIG_FILE")
-loaded_config_file = load_configuration(RADAR_CONFIG_FILE)
 
 
 class AnomalyDetectionConfig(BaseModel):
     """Configuration for anomaly detection models"""
 
-    model_type: str = "isolation_forest"  # isolation_forest, adaptive_svm, knn
-    model_params: Dict[str, Any] = {}
-    preprocessing_steps: List[Dict[str, Any]] = []
+    model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
-    thresholds: Dict[str, float] = {"medium": 0.6, "high": 0.8, "critical": 0.9}
+    model_type: str = "isolation_forest"  # isolation_forest, adaptive_svm, knn
+    model_params: Dict[str, Any] = Field(default_factory=dict)
+    preprocessing_steps: List[Dict[str, Any]] = Field(default_factory=list)
+    subscription_topics: List[str] = Field(default_factory=list)
+    sensor_key_strategy: str = "full_hierarchy"
+
+    thresholds: Dict[str, float] = Field(
+        default_factory=lambda: {"medium": 0.6, "high": 0.8, "critical": 0.9}
+    )
 
     memory_limit_mb: int = 1000
     checkpoint_interval: int = 10000
@@ -62,6 +57,12 @@ class AnomalyDetectionConfig(BaseModel):
 
     # Memory management
     reset_threshold_mb: int = 500
+
+    @field_validator("sensor_key_strategy")
+    @classmethod
+    def validate_sensor_key_strategy(cls, value: str) -> str:
+        """Validate sensor key strategy for model schema consistency."""
+        return _normalize_sensor_key_strategy(value, "sensor_key_strategy")
 
     @model_validator(mode="after")
     def validate_model_configuration(self) -> Self:
@@ -132,6 +133,8 @@ class AnomalyDetectionConfig(BaseModel):
 class MQTTRadarConfig(BaseModel):
     """MQTT RADAR service configuration"""
 
+    model_config = ConfigDict(extra="forbid", validate_assignment=True)
+
     # MQTT Connection
     broker_host: str = "localhost"
     broker_port: int = 1883
@@ -144,10 +147,11 @@ class MQTTRadarConfig(BaseModel):
     api_key: str = ""
 
     # Subscription settings
-    subscription_topics: List[str] = [
-        "charger/+/telemetry"
-    ]  # Subscribe to telemetry from bridge
+    subscription_topics: List[str] = Field(
+        default_factory=lambda: ["charger/+/telemetry"]
+    )
     subscription_qos: int = 0
+    sensor_key_strategy: str = "full_hierarchy"
 
     # Database settings
     db_write_enabled: bool = True
@@ -172,12 +176,20 @@ class MQTTRadarConfig(BaseModel):
 
     # Anomaly Detection
     model_type: str = "isolation_forest"
-    model_params: Dict[str, Any] = {}
-    preprocessing_steps: List[Dict[str, Any]] = []
-    thresholds: Dict[str, float] = {"medium": 0.6, "high": 0.8, "critical": 0.9}
+    model_params: Dict[str, Any] = Field(default_factory=dict)
+    preprocessing_steps: List[Dict[str, Any]] = Field(default_factory=list)
+    thresholds: Dict[str, float] = Field(
+        default_factory=lambda: {"medium": 0.6, "high": 0.8, "critical": 0.9}
+    )
     batch_size: int = 100
     batch_timeout: float = 1.0
     checkpoint_interval: int = 10000
+
+    @field_validator("sensor_key_strategy")
+    @classmethod
+    def validate_sensor_key_strategy(cls, value: str) -> str:
+        """Validate feature-key strategy used by topic parsing."""
+        return _normalize_sensor_key_strategy(value, "sensor_key_strategy")
 
 
 class RadarSettings(BaseSettings):
@@ -200,6 +212,7 @@ class RadarSettings(BaseSettings):
     # Topics
     RADAR_SUBSCRIPTION_TOPICS: str = "charger/+/telemetry"  # Comma-separated
     RADAR_SUBSCRIPTION_QOS: int = 0
+    RADAR_SENSOR_KEY_STRATEGY: str = "full_hierarchy"
 
     # Database
     RADAR_DB_WRITE_ENABLED: bool = True
@@ -208,8 +221,8 @@ class RadarSettings(BaseSettings):
 
     # Anomaly Detection
     RADAR_MODEL_TYPE: str = "isolation_forest"
-    RADAR_MODEL_PARAMS: str = ""
-    RADAR_PREPROCESSING_STEPS: str = ""
+    RADAR_MODEL_PARAMS: Dict[str, Any] = Field(default_factory=dict)
+    RADAR_PREPROCESSING_STEPS: List[Dict[str, Any]] = Field(default_factory=list)
     RADAR_ANOMALY_THRESHOLD_MEDIUM: float = 0.6
     RADAR_ANOMALY_THRESHOLD_HIGH: float = 0.8
     RADAR_ANOMALY_THRESHOLD_CRITICAL: float = 0.9
@@ -225,9 +238,10 @@ class RadarSettings(BaseSettings):
     RADAR_LOG_LEVEL: str = "INFO"
     RADAR_RATE_LIMIT_PER_MINUTE: int = 1000
 
-    class Config:
-        env_file = ".env"
-        case_sensitive = True
+    model_config = SettingsConfigDict(
+        case_sensitive=True,
+        extra="ignore",
+    )
 
     @field_validator("RADAR_SUBSCRIPTION_TOPICS")
     @classmethod
@@ -237,44 +251,24 @@ class RadarSettings(BaseSettings):
             raise ValueError("At least one subscription topic is required")
         return v
 
+    @field_validator("RADAR_SENSOR_KEY_STRATEGY")
+    @classmethod
+    def validate_sensor_key_strategy(cls, value: str) -> str:
+        """Validate sensor key strategy from environment."""
+        return _normalize_sensor_key_strategy(value, "RADAR_SENSOR_KEY_STRATEGY")
+
     @property
     def config(self) -> MQTTRadarConfig:
         """Create MQTTRadarConfig from environment settings"""
 
         # Parse topics
-        topics = [topic.strip() for topic in self.RADAR_SUBSCRIPTION_TOPICS.split(",")]
-
-        # Parse model params JSON if provided
-        model_params: Dict[str, Any] = {}
-        params_raw = os.getenv("RADAR_MODEL_PARAMS", self.RADAR_MODEL_PARAMS)
-        if params_raw:
-            try:
-                model_params = json.loads(params_raw)
-            except json.JSONDecodeError as e:
-                raise ValueError(
-                    f"Invalid JSON in RADAR_MODEL_PARAMS: {e}. "
-                    f"Raw value: {_truncate_for_error(params_raw)}"
-                ) from e
-
-        preprocessing_steps: List[Dict[str, Any]] = []
-        preprocessing_raw = os.getenv(
-            "RADAR_PREPROCESSING_STEPS", self.RADAR_PREPROCESSING_STEPS
-        )
-        if preprocessing_raw:
-            try:
-                parsed = json.loads(preprocessing_raw)
-                if isinstance(parsed, list):
-                    preprocessing_steps = parsed
-                else:
-                    raise ValueError(
-                        f"RADAR_PREPROCESSING_STEPS must be a JSON array, "
-                        f"got {type(parsed).__name__}"
-                    )
-            except json.JSONDecodeError as e:
-                raise ValueError(
-                    f"Invalid JSON in RADAR_PREPROCESSING_STEPS: {e}. "
-                    f"Raw value: {_truncate_for_error(preprocessing_raw)}"
-                ) from e
+        topics = [
+            topic.strip()
+            for topic in self.RADAR_SUBSCRIPTION_TOPICS.split(",")
+            if topic.strip()
+        ]
+        if not topics:
+            raise ValueError("At least one subscription topic is required")
 
         return MQTTRadarConfig(
             broker_host=self.RADAR_MQTT_BROKER_HOST,
@@ -286,6 +280,7 @@ class RadarSettings(BaseSettings):
             api_key=self.RADAR_MQTT_API_KEY,
             subscription_topics=topics,
             subscription_qos=self.RADAR_SUBSCRIPTION_QOS,
+            sensor_key_strategy=self.RADAR_SENSOR_KEY_STRATEGY,
             db_write_enabled=self.RADAR_DB_WRITE_ENABLED,
             db_batch_size=self.RADAR_DB_BATCH_SIZE,
             db_batch_timeout=self.RADAR_DB_BATCH_TIMEOUT,
@@ -294,7 +289,7 @@ class RadarSettings(BaseSettings):
             rate_limit_per_minute=self.RADAR_RATE_LIMIT_PER_MINUTE,
             memory_limit_mb=self.RADAR_MEMORY_LIMIT_MB,
             model_type=self.RADAR_MODEL_TYPE,
-            model_params=model_params,
+            model_params=self.RADAR_MODEL_PARAMS,
             thresholds={
                 "medium": self.RADAR_ANOMALY_THRESHOLD_MEDIUM,
                 "high": self.RADAR_ANOMALY_THRESHOLD_HIGH,
@@ -303,12 +298,16 @@ class RadarSettings(BaseSettings):
             batch_size=self.RADAR_BATCH_SIZE,
             batch_timeout=self.RADAR_BATCH_TIMEOUT,
             checkpoint_interval=self.RADAR_CHECKPOINT_INTERVAL,
-            preprocessing_steps=preprocessing_steps,
+            preprocessing_steps=self.RADAR_PREPROCESSING_STEPS,
         )
 
 
-# Global settings instance
-radar_settings = RadarSettings()
+@lru_cache(maxsize=1)
+def get_radar_settings() -> RadarSettings:
+    """Return cached RADAR settings instance."""
+    return RadarSettings()
 
-# Store the loaded config file path for the file watcher
-radar_settings.custom_config_file = loaded_config_file
+
+def clear_radar_settings_cache() -> None:
+    """Clear cached RADAR settings (useful for tests and config reloads)."""
+    get_radar_settings.cache_clear()

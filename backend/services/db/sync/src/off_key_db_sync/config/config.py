@@ -5,19 +5,11 @@ Handles configuration for the database sync service including sync intervals,
 batch processing, health monitoring, and charger cleanup.
 """
 
-from pydantic import BaseModel, field_validator, model_validator
-from pydantic_settings import BaseSettings
+from functools import lru_cache
+from pydantic import BaseModel, ConfigDict, field_validator, model_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import Self
-from dotenv import find_dotenv, load_dotenv
 from ..core_config import get_retention_days
-
-# Load default ".env" file from upper project tree
-load_dotenv()
-
-# Override with dev.env values if present
-dev_env = find_dotenv("dev.env")
-if dev_env:
-    load_dotenv(dev_env, override=True)
 
 
 class SyncConfig(BaseModel):
@@ -73,11 +65,7 @@ class SyncConfig(BaseModel):
     scheduler_misfire_grace_time: int
     scheduler_max_instances: int
 
-    class Config:
-        # Prevent extra fields
-        extra = "forbid"
-        # Validate assignment to ensure changes maintain constraints
-        validate_assignment = True
+    model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
     @field_validator("api_port")
     @classmethod
@@ -296,6 +284,8 @@ class SyncSettings(BaseSettings):
     parsing and SyncConfig handles business logic validation.
     """
 
+    model_config = SettingsConfigDict(case_sensitive=True, extra="ignore")
+
     # Service Control
     SYNC_ENABLED: bool = True  # Enable background sync service
     SYNC_ON_STARTUP: bool = True  # Run sync immediately on startup
@@ -394,4 +384,12 @@ class SyncSettings(BaseSettings):
         )
 
 
-sync_settings = SyncSettings()
+@lru_cache(maxsize=1)
+def get_sync_settings() -> SyncSettings:
+    """Return cached DB-sync settings instance."""
+    return SyncSettings()
+
+
+def clear_sync_settings_cache() -> None:
+    """Clear cached DB-sync settings (useful for tests and local tooling)."""
+    get_sync_settings.cache_clear()

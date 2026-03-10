@@ -10,13 +10,11 @@ class with 23+ environment variables.
 """
 
 import asyncio
-import os
 import time
 import logging
 from datetime import datetime
 from typing import List, Optional, Dict, Any
 from collections import deque
-from urllib.parse import quote_plus
 
 from sqlalchemy import Table, Column, Text, Float, TIMESTAMP, text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
@@ -25,6 +23,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from .config.config import MQTTRadarConfig
+from .config.runtime import get_radar_database_settings
 from .models import ServiceMetrics, AnomalyResult
 
 logger = logging.getLogger(__name__)
@@ -48,27 +47,6 @@ ANOMALY_TABLE = Table(
 )
 
 
-def _build_database_url_from_env() -> Optional[str]:
-    """Build database URL from env vars with fallback to POSTGRES_*."""
-    direct = os.getenv("RADAR_DATABASE_URL")
-    if direct:
-        return direct
-
-    user = os.getenv("POSTGRES_USER")
-    password = os.getenv("POSTGRES_PASSWORD")
-    host = os.getenv("POSTGRES_HOST")
-    port = os.getenv("POSTGRES_PORT")
-    db = os.getenv("POSTGRES_DB")
-
-    if all([user, password, host, port, db]):
-        return (
-            f"postgresql+asyncpg://{quote_plus(user)}:{quote_plus(password)}"
-            f"@{host}:{port}/{db}"
-        )
-
-    return None
-
-
 def get_radar_async_session_factory():
     """
     Get or create async session factory using RADAR_DATABASE_URL env var.
@@ -81,12 +59,7 @@ def get_radar_async_session_factory():
     global _radar_async_session_factory
 
     if _radar_async_session_factory is None:
-        database_url = _build_database_url_from_env()
-        if not database_url:
-            raise ValueError(
-                "RADAR_DATABASE_URL or POSTGRES_* environment variables are required "
-                "for radar database connectivity."
-            )
+        database_url = get_radar_database_settings().async_database_url
 
         engine = create_async_engine(
             database_url,

@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List
 from urllib.parse import quote
 
-from ..config.config import PionixConfig
+from ..config.pionix import PionixConfig
 from ..config.logs import logger
 
 # Dedicated logger for verbose response content (configured in YAML)

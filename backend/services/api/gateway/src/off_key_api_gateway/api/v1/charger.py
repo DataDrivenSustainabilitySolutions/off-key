@@ -1,10 +1,8 @@
 from fastapi import APIRouter, HTTPException, status
 import httpx
 
-from off_key_core.config.config import get_settings
+from off_key_core.config.services import get_service_endpoints_settings
 from ...facades.tactic import TacticError, tactic
-
-settings = get_settings()
 
 router = APIRouter()
 
@@ -28,10 +26,11 @@ def _raise_tactic_http_error(error: TacticError) -> None:
 @router.post("/sync", tags=["chargers"])
 async def sync_chargers():
     """Trigger manual charger sync via db-sync service."""
+    service_endpoints = get_service_endpoints_settings()
     try:
         async with httpx.AsyncClient() as client:
             response = await client.post(
-                f"{settings.db_sync_service_url}/sync/chargers",
+                f"{service_endpoints.db_sync_service_url}/sync/chargers",
                 timeout=300.0,  # 5 minute timeout for sync operation
             )
             response.raise_for_status()
@@ -45,10 +44,11 @@ async def sync_chargers():
 @router.post("/clean", tags=["chargers"])
 async def clean_chargers(older_n_days: int):
     """Trigger manual charger cleanup via db-sync service."""
+    service_endpoints = get_service_endpoints_settings()
     try:
         async with httpx.AsyncClient() as client:
             response = await client.post(
-                f"{settings.db_sync_service_url}/sync/chargers/clean",
+                f"{service_endpoints.db_sync_service_url}/sync/chargers/clean",
                 params={"days_inactive": older_n_days},
                 timeout=300.0,
             )

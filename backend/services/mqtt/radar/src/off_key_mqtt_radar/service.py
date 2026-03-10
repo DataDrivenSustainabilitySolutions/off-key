@@ -19,7 +19,7 @@ from typing import Optional
 
 from off_key_core.config.logs import logger
 
-from .config.config import radar_settings, AnomalyDetectionConfig
+from .config.config import AnomalyDetectionConfig, get_radar_settings
 from .detector import (
     AnomalyDetectionService,
     ResilientAnomalyDetector,
@@ -50,7 +50,7 @@ class RadarService:
     """
 
     def __init__(self):
-        self.config = radar_settings.config
+        self.config = get_radar_settings().config
 
         # Core components
         self.mqtt_client: Optional[RadarMQTTClient] = None
@@ -87,7 +87,8 @@ class RadarService:
 
         # Sensor alignment (wait_for_all with latest values)
         self.required_sensors = TopicParser.derive_required_sensors(
-            self.config.subscription_topics
+            self.config.subscription_topics,
+            sensor_key_strategy=self.config.sensor_key_strategy,
         )
         self.state_cache = (
             SensorStateCache(self.required_sensors) if self.required_sensors else None
@@ -115,6 +116,7 @@ class RadarService:
                 memory_manager=self.memory_manager,
                 state_cache=self.state_cache,
                 required_sensors=self.required_sensors,
+                sensor_key_strategy=self.config.sensor_key_strategy,
             )
 
             # Initialize database writer only when enabled
@@ -214,6 +216,8 @@ class RadarService:
             model_type=getattr(self.config, "model_type", "isolation_forest"),
             model_params=getattr(self.config, "model_params", {}),
             preprocessing_steps=getattr(self.config, "preprocessing_steps", []),
+            subscription_topics=getattr(self.config, "subscription_topics", []),
+            sensor_key_strategy=self.config.sensor_key_strategy,
             thresholds=getattr(
                 self.config, "thresholds", {"medium": 0.6, "high": 0.8, "critical": 0.9}
             ),
@@ -292,7 +296,11 @@ class RadarService:
         """Setup configuration file watching for hot reload"""
         try:
             # Check if we have a config file to watch
-            config_file_path = getattr(radar_settings, "custom_config_file", None)
+            config_file_path = getattr(
+                get_radar_settings(),
+                "custom_config_file",
+                None,
+            )
 
             if not config_file_path:
                 logger.info("No configuration file specified for watching")
@@ -342,82 +350,6 @@ class RadarService:
             logger.error(
                 f"Error processing message from {message.topic}: {e}", exc_info=True
             )
-
-    async def _health_monitor(self):
-        """Periodic health monitoring and metrics collection"""
-        logger.info("Started health monitor")
-
-        try:
-            while not self.shutdown_event.is_set():
-                try:
-                    # Wait for health check interval
-                    await asyncio.wait_for(
-                        self.shutdown_event.wait(),
-                        timeout=self.config.health_check_interval,
-                    )
-                    break  # Shutdown event was set
-                except asyncio.TimeoutError:
-                    # Perform health check
-                    await self._perform_health_check()
-
-        except asyncio.CancelledError:
-            logger.info("Health monitor cancelled")
-        except Exception as e:
-            logger.error(f"Health monitor error: {e}")
-
-        logger.info("Health monitor stopped")
-
-    async def _perform_health_check(self):
-        """Perform comprehensive health check"""
-        try:
-            health_status = self.get_health_status()
-
-            # Log health status
-            if health_status.status in ["degraded", "failed"]:
-                logger.warning(
-                    f"Service health: {health_status.status}", extra=self._log_context
-                )
-                for alert in health_status.active_alerts:
-                    logger.warning(f"Active alert: {alert}", extra=self._log_context)
-            else:
-                logger.debug(
-                    f"Service health: {health_status.status}", extra=self._log_context
-                )
-
-            # Write metrics to database
-            if self.database_writer and health_status.status != "failed":
-                metrics = {
-                    "total_messages_processed": self.message_count,
-                    "total_anomalies_detected": self.anomaly_count,
-                    "anomaly_rate": self.anomaly_count / max(self.message_count, 1),
-                    "avg_processing_time_ms": sum(self.processing_times)
-                    / max(len(self.processing_times), 1)
-                    * 1000,
-                    "throughput_per_second": self._calculate_throughput(),
-                    "memory_usage_mb": self.memory_manager.get_memory_usage(),
-                    "error_count": self.error_count,
-                    "error_rate": self.error_count / max(self.message_count, 1),
-                    "service_status": health_status.status,
-                    "active_alerts": health_status.active_alerts,
-                }
-
-                await self.database_writer.write_service_metrics(metrics)
-
-            self.last_health_check = time.time()
-
-        except Exception as e:
-            logger.error(f"Health check failed: {e}")
-
-    def _calculate_throughput(self) -> float:
-        """Calculate current message processing throughput"""
-        if not self.start_time:
-            return 0.0
-
-        uptime = (datetime.now() - self.start_time).total_seconds()
-        if uptime <= 0:
-            return 0.0
-
-        return self.message_count / uptime
 
     async def run(self):
         """Run the RADAR service with signal handling"""

@@ -7,18 +7,21 @@ including Docker API configuration,
 RADAR orchestration settings, and service-specific parameters.
 """
 
-from pydantic import BaseModel, Field, field_validator, model_validator
-from pydantic_settings import BaseSettings
-from typing import Self, Optional
-from dotenv import find_dotenv, load_dotenv
+from functools import lru_cache
 
-# Load default ".env" file from upper project tree
-load_dotenv()
+from off_key_core.config.database import build_postgres_database_url
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    SecretStr,
+    field_validator,
+    model_validator,
+)
+from pydantic_settings import BaseSettings, SettingsConfigDict
+from typing import Optional, Self
 
-# Override with dev.env values if present
-dev_env = find_dotenv("dev.env")
-if dev_env:
-    load_dotenv(dev_env, override=True)
+RADAR_SENSOR_KEY_STRATEGIES = {"full_hierarchy", "top_level", "leaf"}
 
 
 class DockerConfig(BaseModel):
@@ -41,9 +44,7 @@ class DockerConfig(BaseModel):
     default_cpu_limit: str = "0.5"
     default_constraints: list[str] = Field(default_factory=list)
 
-    class Config:
-        extra = "forbid"
-        validate_assignment = True
+    model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
     @property
     def base_url(self) -> str:
@@ -66,6 +67,7 @@ class RadarDefaultsConfig(BaseModel):
 
     # Default Model Settings
     model_type: str = "isolation_forest"
+    sensor_key_strategy: str = "full_hierarchy"
 
     # Default Anomaly Thresholds
     anomaly_threshold_medium: float = Field(default=0.6, ge=0.0, le=1.0)
@@ -88,9 +90,7 @@ class RadarDefaultsConfig(BaseModel):
     log_level: str = "INFO"
     rate_limit_per_minute: int = Field(default=1000, ge=1, le=100000)
 
-    class Config:
-        extra = "forbid"
-        validate_assignment = True
+    model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
     @field_validator("model_type")
     @classmethod
@@ -109,6 +109,16 @@ class RadarDefaultsConfig(BaseModel):
         if v.upper() not in valid_levels:
             raise ValueError(f"Log level must be one of: {valid_levels}")
         return v.upper()
+
+    @field_validator("sensor_key_strategy")
+    @classmethod
+    def validate_sensor_key_strategy(cls, v: str) -> str:
+        """Validate feature-key extraction strategy passed to RADAR."""
+        normalized = v.strip().lower()
+        if normalized not in RADAR_SENSOR_KEY_STRATEGIES:
+            allowed = ", ".join(sorted(RADAR_SENSOR_KEY_STRATEGIES))
+            raise ValueError(f"sensor_key_strategy must be one of: {allowed}")
+        return normalized
 
     @model_validator(mode="after")
     def validate_threshold_ordering(self) -> Self:
@@ -162,9 +172,7 @@ class TacticConfig(BaseModel):
         default=2.0, ge=0.1, le=60.0
     )
 
-    class Config:
-        extra = "forbid"
-        validate_assignment = True
+    model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
     @field_validator("log_level")
     @classmethod
@@ -183,6 +191,8 @@ DEFAULT_RADAR_DEFAULTS = RadarDefaultsConfig()
 
 class TacticSettings(BaseSettings):
     """Environment-based settings for TACTIC service"""
+
+    model_config = SettingsConfigDict(case_sensitive=True, extra="ignore")
 
     # Service Configuration
     TACTIC_SERVICE_NAME: str = Field(default="tactic-middleware")
@@ -233,6 +243,9 @@ class TacticSettings(BaseSettings):
     TACTIC_RADAR_DEFAULT_MQTT_QOS: int = Field(default=DEFAULT_RADAR_DEFAULTS.mqtt_qos)
     TACTIC_RADAR_DEFAULT_MODEL_TYPE: str = Field(
         default=DEFAULT_RADAR_DEFAULTS.model_type
+    )
+    TACTIC_RADAR_DEFAULT_SENSOR_KEY_STRATEGY: str = Field(
+        default=DEFAULT_RADAR_DEFAULTS.sensor_key_strategy
     )
     TACTIC_RADAR_DEFAULT_ANOMALY_THRESHOLD_MEDIUM: float = Field(
         default=DEFAULT_RADAR_DEFAULTS.anomaly_threshold_medium
@@ -285,10 +298,6 @@ class TacticSettings(BaseSettings):
     TACTIC_MODEL_REGISTRY_INIT_MAX_RETRIES: int = Field(default=30)
     TACTIC_MODEL_REGISTRY_INIT_RETRY_INTERVAL_SECONDS: float = Field(default=2.0)
 
-    class Config:
-        env_file = ".env"
-        case_sensitive = True
-
     @staticmethod
     def _split_constraints(raw_value: str) -> list[str]:
         if not raw_value:
@@ -335,6 +344,7 @@ class TacticSettings(BaseSettings):
             mqtt_use_auth=self.TACTIC_RADAR_DEFAULT_MQTT_USE_AUTH,
             mqtt_qos=self.TACTIC_RADAR_DEFAULT_MQTT_QOS,
             model_type=self.TACTIC_RADAR_DEFAULT_MODEL_TYPE,
+            sensor_key_strategy=self.TACTIC_RADAR_DEFAULT_SENSOR_KEY_STRATEGY,
             anomaly_threshold_medium=self.TACTIC_RADAR_DEFAULT_ANOMALY_THRESHOLD_MEDIUM,
             anomaly_threshold_high=self.TACTIC_RADAR_DEFAULT_ANOMALY_THRESHOLD_HIGH,
             anomaly_threshold_critical=self.TACTIC_RADAR_DEFAULT_ANOMALY_THRESHOLD_CRITICAL,
@@ -368,5 +378,57 @@ class TacticSettings(BaseSettings):
         )
 
 
-# Global settings instance
-tactic_settings = TacticSettings()
+class RadarContainerRuntimeSettings(BaseSettings):
+    """Environment settings used to build RADAR container runtime env vars."""
+
+    model_config = SettingsConfigDict(case_sensitive=True, extra="ignore")
+
+    TACTIC_SERVICE_HOST: str = "tactic-middleware"
+    TACTIC_SERVICE_PORT: int = Field(default=8000, ge=1, le=65535)
+    TACTIC_MODEL_REGISTRY_CACHE_TTL_SECONDS: float = Field(default=60.0, gt=0)
+    POSTGRES_USER: str = "postgres"
+    POSTGRES_PASSWORD: SecretStr = SecretStr("postgres")
+    POSTGRES_HOST: str = "timescaledb"
+    POSTGRES_PORT: int = Field(default=5432, ge=1, le=65535)
+    POSTGRES_DB: str = "postgres"
+    ENVIRONMENT: str = "development"
+
+    @field_validator("ENVIRONMENT")
+    @classmethod
+    def validate_environment(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        allowed = {"development", "test", "staging", "production"}
+        if normalized not in allowed:
+            allowed_text = ", ".join(sorted(allowed))
+            raise ValueError(f"ENVIRONMENT must be one of: {allowed_text}")
+        return normalized
+
+    @property
+    def radar_database_url(self) -> str:
+        return build_postgres_database_url(
+            user=self.POSTGRES_USER,
+            password=self.POSTGRES_PASSWORD.get_secret_value(),
+            host=self.POSTGRES_HOST,
+            port=self.POSTGRES_PORT,
+            database=self.POSTGRES_DB,
+            async_driver=True,
+        )
+
+
+@lru_cache(maxsize=1)
+def get_tactic_settings() -> TacticSettings:
+    """Return cached TACTIC settings instance."""
+    return TacticSettings()
+
+
+# Cache secret-bearing runtime settings once; test helpers clear this cache explicitly.
+@lru_cache(maxsize=1)
+def get_radar_container_runtime_settings() -> RadarContainerRuntimeSettings:
+    """Return cached runtime settings used for RADAR container env assembly."""
+    return RadarContainerRuntimeSettings()
+
+
+def clear_tactic_settings_caches() -> None:
+    """Clear cached TACTIC settings for deterministic tests and tooling."""
+    get_tactic_settings.cache_clear()
+    get_radar_container_runtime_settings.cache_clear()

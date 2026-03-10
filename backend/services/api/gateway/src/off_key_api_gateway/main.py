@@ -8,7 +8,13 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi.middleware import SlowAPIMiddleware
 
-from off_key_core.config.config import get_settings
+from off_key_core.config.app import get_app_settings
+from off_key_core.config.auth import get_auth_settings
+from off_key_core.config.email import get_email_settings
+from off_key_core.config.env import load_env
+from off_key_core.config.runtime import get_runtime_settings
+from off_key_core.config.services import get_service_endpoints_settings
+from off_key_core.config.validation import validate_settings
 from off_key_core.config.logs import load_yaml_config, logger
 
 from .api.middleware import LoggingMiddleware, SecurityLoggingMiddleware
@@ -16,7 +22,21 @@ from .api.rate_limiter import limiter, rate_limit_exceeded_handler
 from .api.v1.routes import router as v1_router
 from .facades.tactic import tactic
 
-settings = get_settings()
+load_env()
+validate_settings(
+    [
+        ("app", get_app_settings),
+        ("runtime", get_runtime_settings),
+        ("auth", get_auth_settings),
+        ("email", get_email_settings),
+        ("services", get_service_endpoints_settings),
+    ],
+    context="API gateway configuration",
+)
+
+app_settings = get_app_settings()
+runtime_settings = get_runtime_settings()
+service_endpoints = get_service_endpoints_settings()
 
 # Rate limiter setup
 # def get_real_client_ip(request):
@@ -47,12 +67,13 @@ async def wait_for_db_sync(
     The API can safely start once db-sync is either fully healthy or in its
     long-running "starting" state (initial backfill still in progress).
     """
-    logger.info(f"Waiting for db-sync service at {settings.db_sync_service_url}")
+    db_sync_service_url = service_endpoints.db_sync_service_url.rstrip("/")
+    logger.info(f"Waiting for db-sync service at {db_sync_service_url}")
 
     async with httpx.AsyncClient(timeout=5.0) as client:
         for attempt in range(1, max_retries + 1):
             try:
-                response = await client.get(f"{settings.db_sync_service_url}/health")
+                response = await client.get(f"{db_sync_service_url}/health")
                 if response.status_code == 200:
                     data = response.json()
                     status = data.get("status")
@@ -101,7 +122,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
 # FastAPI app
 app = FastAPI(
-    title=settings.APP_NAME,
+    title=app_settings.APP_NAME,
     description="Off-Key API Gateway - Real-time Anomaly Detection Platform",
     lifespan=lifespan,
 )
@@ -119,7 +140,8 @@ app.add_middleware(SlowAPIMiddleware)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    # Keep defaults development-friendly via AppSettings, and override via env in prod.
+    allow_origins=list(app_settings.CORS_ALLOWED_ORIGINS),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -143,5 +165,8 @@ if __name__ == "__main__":
     import uvicorn
 
     uvicorn.run(
-        "main:app", host="0.0.0.0", port=8000, reload=True if settings.DEBUG else False
+        "main:app",
+        host="0.0.0.0",
+        port=8000,
+        reload=runtime_settings.DEBUG,
     )

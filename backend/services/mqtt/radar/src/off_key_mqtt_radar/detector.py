@@ -13,8 +13,10 @@ import psutil
 import gc
 import hashlib
 import hmac
+import re
+import json
 from datetime import datetime, timezone
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from collections import deque
 from enum import Enum
 
@@ -26,6 +28,7 @@ from .tactic_client import (
 )
 
 from .config.config import AnomalyDetectionConfig
+from .config.runtime import get_radar_checkpoint_settings
 from .models import AnomalyResult
 
 
@@ -34,11 +37,27 @@ from .models import AnomalyResult
 # =============================================================================
 
 _checkpoint_secret_warning_logged = False
+_UNSEEN_FEATURE_PATTERN = re.compile(
+    r"Feature ['\"](?P<feature>[^'\"]+)['\"] has not been seen during learning"
+)
+_WARMUP_STAGE_PATTERN = re.compile(r"^(?P<stage>[a-z_]+):\s")
+_DEFAULT_METADATA_FEATURE_KEYS = frozenset(
+    {
+        "timestamp",
+        "time",
+        "datetime",
+        "date",
+        "created",
+        "created_at",
+        "updated_at",
+        "ingested_at",
+    }
+)
 
 
 def _get_checkpoint_secret() -> bytes:
-    """Get checkpoint signing secret from environment."""
-    return os.getenv("RADAR_CHECKPOINT_SECRET", "").encode()
+    """Get checkpoint signing secret from runtime configuration."""
+    return get_radar_checkpoint_settings().checkpoint_secret_bytes
 
 
 def _sign_checkpoint_data(data: bytes) -> str:
@@ -111,6 +130,7 @@ class AnomalyDetectionService:
         """
         self.config = config
         self.logger = logging.getLogger(__name__)
+        self.schema_signature = self._build_schema_signature_from_config(config)
 
         # Performance tracking (always fresh)
         self.start_time = time.time()
@@ -141,6 +161,7 @@ class AnomalyDetectionService:
         self.processed_count = checkpoint["processed_count"]
         self.anomaly_count = checkpoint["anomaly_count"]
         self.last_checkpoint = self.processed_count
+        self.schema_signature = checkpoint["schema_signature"]
 
         self.logger.info(
             f"Restored from checkpoint: {self.processed_count} points processed, "
@@ -220,8 +241,67 @@ class AnomalyDetectionService:
                     f"does not match config model type '{config.model_type}'."
                 )
 
+        saved_schema_signature = checkpoint.get("schema_signature")
+        if not saved_schema_signature:
+            raise ValueError(
+                "Checkpoint is missing a schema signature. "
+                "This checkpoint format is no longer supported."
+            )
+
+        current_schema_signature = cls._build_schema_signature_from_config(config)
+        if saved_schema_signature != current_schema_signature:
+            raise ValueError(
+                "Checkpoint schema signature does not match current configuration. "
+                "Starting with a fresh model is required."
+            )
+
         logger.info(f"Loading verified checkpoint: {checkpoint_path}")
         return cls(config, checkpoint=checkpoint)
+
+    @staticmethod
+    def _normalize_preprocessing_steps_for_signature(
+        preprocessing_steps: Any,
+    ) -> List[Dict[str, Any]]:
+        """Normalize preprocessing definition into a stable, serializable structure."""
+        normalized_steps: List[Dict[str, Any]] = []
+        if not isinstance(preprocessing_steps, list):
+            return normalized_steps
+
+        for step in preprocessing_steps:
+            if not isinstance(step, dict):
+                continue
+            step_type = str(step.get("type", ""))
+            params = step.get("params") or {}
+            if not isinstance(params, dict):
+                params = {}
+            normalized_steps.append({"type": step_type, "params": params})
+
+        return normalized_steps
+
+    @classmethod
+    def _build_schema_signature_from_config(cls, config: Any) -> str:
+        """Compute a stable schema signature for checkpoint compatibility checks."""
+        model_type = str(getattr(config, "model_type", ""))
+        preprocessing_steps = cls._normalize_preprocessing_steps_for_signature(
+            getattr(config, "preprocessing_steps", [])
+        )
+        subscription_topics = [
+            str(topic)
+            for topic in (getattr(config, "subscription_topics", []) or [])
+            if topic is not None
+        ]
+        sensor_key_strategy = str(
+            getattr(config, "sensor_key_strategy", "full_hierarchy")
+        )
+
+        payload = {
+            "model_type": model_type,
+            "preprocessing_steps": preprocessing_steps,
+            "subscription_topics": sorted(subscription_topics),
+            "sensor_key_strategy": sensor_key_strategy,
+        }
+        payload_json = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+        return hashlib.sha256(payload_json.encode("utf-8")).hexdigest()
 
     def _create_model(self):
         """Factory method for model creation using registry.
@@ -267,25 +347,35 @@ class AnomalyDetectionService:
 
         return preprocessors
 
+    def _transform_pipeline(self, sample: Dict[str, float]) -> Dict[str, float]:
+        """Apply the preprocessing pipeline using current learned state."""
+        transformed = sample.copy()
+        for preprocessor in self.preprocessors:
+            transformed = preprocessor.transform_one(transformed)
+        return transformed
+
+    def _learn_pipeline(self, sample: Dict[str, float]) -> None:
+        """Learn preprocessors stage-by-stage using each stage's transformed output."""
+        stage_input = sample.copy()
+        for i, preprocessor in enumerate(self.preprocessors):
+            preprocessor.learn_one(stage_input)
+            if i < len(self.preprocessors) - 1:
+                stage_input = preprocessor.transform_one(stage_input)
+
     def process_data_point(
         self, data: Dict[str, float], topic: str = None, charger_id: str = None
     ) -> AnomalyResult:
         """Process single data point and return anomaly result"""
         start_time = time.time()
-
         try:
-            processed_data = data.copy()
-            # Apply preprocessing using the state learned so far (no leakage)
-            for preprocessor in self.preprocessors:
-                processed_data = preprocessor.transform_one(processed_data)
+            processed_data = self._transform_pipeline(data)
 
             # Anomaly detection: score first, then learn
             score = self.model.score_one(processed_data)
             self.model.learn_one(processed_data)
 
-            # Update preprocessors after scoring to avoid influencing current result
-            for preprocessor in self.preprocessors:
-                preprocessor.learn_one(data)
+            # Update preprocessors after scoring to avoid influencing current result.
+            self._learn_pipeline(data)
 
             # Thresholding
             is_anomaly = score > self.config.thresholds.get("medium", 0.6)
@@ -330,7 +420,75 @@ class AnomalyDetectionService:
             return result
 
         except Exception as e:
+            unseen_feature = self._extract_unseen_feature_name(str(e))
+            warmup_failure_stage = None
+            if unseen_feature is not None:
+                try:
+                    try:
+                        self._learn_pipeline(data)
+                    except Exception as preprocess_learn_error:
+                        raise RuntimeError(
+                            f"preprocessor_learn: {preprocess_learn_error}"
+                        ) from preprocess_learn_error
+
+                    try:
+                        processed_data = self._transform_pipeline(data)
+                    except Exception as transform_error:
+                        raise RuntimeError(
+                            f"transform_after_warmup: {transform_error}"
+                        ) from transform_error
+
+                    try:
+                        self.model.learn_one(processed_data)
+                    except Exception as model_learn_error:
+                        raise RuntimeError(
+                            f"model_learn: {model_learn_error}"
+                        ) from model_learn_error
+                    self.processed_count += 1
+                    processing_time = time.time() - start_time
+                    self.processing_times.append(processing_time)
+                    self.logger.warning(
+                        "Primed model with unseen feature '%s'; "
+                        "skipping anomaly scoring for this point",
+                        unseen_feature,
+                    )
+                    return AnomalyResult(
+                        anomaly_score=0.0,
+                        is_anomaly=False,
+                        severity="low",
+                        timestamp=datetime.now(timezone.utc),
+                        model_info=self._get_model_info(),
+                        raw_data=data,
+                        processed_features=processed_data,
+                        topic=topic,
+                        charger_id=charger_id,
+                        context={
+                            "processing_time_ms": processing_time * 1000,
+                            "model_type": self.config.model_type,
+                            "schema_warmup": True,
+                            "unseen_feature": unseen_feature,
+                        },
+                    )
+                except Exception as warmup_error:
+                    warmup_failure_stage = self._extract_warmup_failure_stage(
+                        str(warmup_error)
+                    )
+                    self.logger.error(
+                        "Model warm-up after unseen-feature error failed "
+                        "(stage=%s): %s",
+                        warmup_failure_stage or "unknown",
+                        warmup_error,
+                    )
+
             self.logger.error(f"Processing error: {e}")
+            context = {
+                "error": str(e),
+                "processing_time_ms": (time.time() - start_time) * 1000,
+            }
+            if unseen_feature is not None:
+                context["unseen_feature"] = unseen_feature
+            if warmup_failure_stage is not None:
+                context["warmup_failure_stage"] = warmup_failure_stage
             return AnomalyResult(
                 anomaly_score=0.0,
                 is_anomaly=False,
@@ -340,11 +498,24 @@ class AnomalyDetectionService:
                 raw_data=data,
                 topic=topic,
                 charger_id=charger_id,
-                context={
-                    "error": str(e),
-                    "processing_time_ms": (time.time() - start_time) * 1000,
-                },
+                context=context,
             )
+
+    @staticmethod
+    def _extract_unseen_feature_name(error_message: str) -> Optional[str]:
+        """Extract unseen feature name from model error message when present."""
+        match = _UNSEEN_FEATURE_PATTERN.search(error_message)
+        if match:
+            return match.group("feature")
+        return None
+
+    @staticmethod
+    def _extract_warmup_failure_stage(error_message: str) -> Optional[str]:
+        """Extract warm-up stage name from prefixed exception message."""
+        match = _WARMUP_STAGE_PATTERN.search(error_message)
+        if match:
+            return match.group("stage")
+        return None
 
     def _calculate_severity(self, score: float) -> str:
         """Calculate anomaly severity level"""
@@ -367,8 +538,9 @@ class AnomalyDetectionService:
         the checkpoint is signed with HMAC-SHA256.
         """
         try:
-            checkpoint_dir = os.getenv("RADAR_CHECKPOINT_DIR", "checkpoints")
-            service_id = os.getenv("SERVICE_ID", "default")
+            checkpoint_settings = get_radar_checkpoint_settings()
+            checkpoint_dir = checkpoint_settings.RADAR_CHECKPOINT_DIR
+            service_id = checkpoint_settings.SERVICE_ID
             os.makedirs(checkpoint_dir, exist_ok=True)
 
             timestamp = int(time.time())
@@ -384,6 +556,7 @@ class AnomalyDetectionService:
                     "anomaly_count": self.anomaly_count,
                     "config": self.config,
                     "service_id": service_id,
+                    "schema_signature": self.schema_signature,
                 }
             )
 
@@ -656,9 +829,16 @@ class MemoryManager:
 class SecurityValidator:
     """Input validation and sanitization following guide.md patterns"""
 
-    def __init__(self, max_feature_count=100, max_string_length=1000):
+    def __init__(
+        self,
+        max_feature_count=100,
+        max_string_length=1000,
+        metadata_feature_keys: Optional[set[str]] = None,
+    ):
         self.max_feature_count = max_feature_count
         self.max_string_length = max_string_length
+        keys = metadata_feature_keys or set(_DEFAULT_METADATA_FEATURE_KEYS)
+        self.metadata_feature_keys = {key.lower() for key in keys}
         self.logger = logging.getLogger(__name__)
 
     def validate_and_sanitize(self, data: Dict[str, Any]) -> Dict[str, float]:
@@ -677,6 +857,8 @@ class SecurityValidator:
             # Validate key
             if not isinstance(key, str) or len(key) > 100:
                 continue  # Skip invalid keys
+            if key.lower() in self.metadata_feature_keys:
+                continue
 
             # Convert value to float
             try:

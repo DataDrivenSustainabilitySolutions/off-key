@@ -48,6 +48,8 @@ class MessageProcessor:
     - Track processing metrics
     """
 
+    SENSOR_KEY_STRATEGIES = TopicParser.SENSOR_KEY_STRATEGIES
+
     def __init__(
         self,
         detector: ResilientAnomalyDetector,
@@ -55,6 +57,7 @@ class MessageProcessor:
         memory_manager: MemoryManager,
         state_cache: Optional[SensorStateCache] = None,
         required_sensors: Optional[set] = None,
+        sensor_key_strategy: str = "full_hierarchy",
     ):
         """
         Initialize message processor.
@@ -65,12 +68,17 @@ class MessageProcessor:
             memory_manager: Memory management component
             state_cache: Optional sensor state cache for alignment
             required_sensors: Set of required sensors for alignment
+            sensor_key_strategy: Feature key extraction strategy for MQTT hierarchy.
+                Allowed values: "full_hierarchy", "top_level", "leaf".
         """
         self.detector = detector
         self.security_validator = security_validator
         self.memory_manager = memory_manager
         self.state_cache = state_cache
         self.required_sensors = required_sensors or set()
+        self.sensor_key_strategy = self._validate_sensor_key_strategy(
+            sensor_key_strategy
+        )
 
         # Metrics
         self.message_count = 0
@@ -78,6 +86,15 @@ class MessageProcessor:
         self.error_count = 0
 
         self._log_context = {"component": "message_processor"}
+
+    @classmethod
+    def _validate_sensor_key_strategy(cls, value: str) -> str:
+        """Validate sensor key strategy at construction time for clearer errors."""
+        normalized = value.strip().lower()
+        if normalized not in cls.SENSOR_KEY_STRATEGIES:
+            allowed = ", ".join(sorted(cls.SENSOR_KEY_STRATEGIES))
+            raise ValueError(f"sensor_key_strategy must be one of: {allowed}")
+        return normalized
 
     async def process_message(self, message: MQTTMessage) -> Optional[AnomalyResult]:
         """
@@ -104,7 +121,9 @@ class MessageProcessor:
 
             # Step 3: Extract metadata
             charger_id = message.extract_charger_id()
-            sensor_type = TopicParser.extract_sensor_type(message.topic)
+            sensor_type = TopicParser.extract_sensor_type(
+                message.topic, sensor_key_strategy=self.sensor_key_strategy
+            )
 
             # Step 4: Align features (for multi-sensor)
             aligned_features = self._align_features(
@@ -171,18 +190,44 @@ class MessageProcessor:
         data: Dict[str, float],
     ) -> Optional[Dict[str, float]]:
         """Align multi-sensor streams if required."""
+        normalized_data = self._normalize_sensor_reading(sensor_type, data)
+
         # Skip alignment if no cache or only single sensor subscribed
-        # Single-sensor mode: pass data through directly for anomaly detection
+        # Single-sensor mode: use normalized sensor-keyed feature.
         if not self.state_cache or not self.required_sensors:
-            return data
+            return normalized_data
         if len(self.required_sensors) <= 1:
-            return data
+            return normalized_data
 
         if not (charger_id and sensor_type):
+            return normalized_data
+
+        aligned_features = self.state_cache.update(
+            charger_id,
+            sensor_type,
+            normalized_data,
+        )
+        return aligned_features if aligned_features else None
+
+    @staticmethod
+    def _normalize_sensor_reading(
+        sensor_type: Optional[str], data: Dict[str, float]
+    ) -> Dict[str, float]:
+        """Normalize payload to a stable feature key based on sensor type.
+
+        Priority order: sensor_type key, then "value", then first available key.
+        """
+        if not sensor_type or not data:
             return data
 
-        aligned_features = self.state_cache.update(charger_id, sensor_type, data)
-        return aligned_features if aligned_features else None
+        if sensor_type in data:
+            return {sensor_type: float(data[sensor_type])}
+
+        if "value" in data:
+            return {sensor_type: float(data["value"])}
+
+        first_key = next(iter(data))
+        return {sensor_type: float(data[first_key])}
 
     def _detect_anomaly(
         self,

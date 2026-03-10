@@ -1,9 +1,8 @@
-import os
 import json
 import uuid
+from functools import lru_cache
 from datetime import datetime
 from typing import List, Dict, Optional, Any
-from urllib.parse import quote_plus
 
 import docker
 from docker.types import RestartPolicy, ServiceMode, Resources
@@ -14,9 +13,26 @@ from off_key_core.config.logs import logger
 from off_key_core.db.models import MonitoringService
 from ...models.registry import ModelRegistryService
 from ...facades.docker import AsyncDocker
-from ...config.config import tactic_settings
+from ...config.config import (
+    get_radar_container_runtime_settings,
+    get_tactic_settings,
+)
 
-async_docker = AsyncDocker()
+
+@lru_cache(maxsize=1)
+def get_async_docker() -> AsyncDocker:
+    """Create Docker facade lazily to avoid import-time settings evaluation.
+
+    Note:
+        This function is cached. Tests that monkeypatch Docker behavior or related
+        settings should clear the cache between cases.
+    """
+    return AsyncDocker()
+
+
+def reset_async_docker_cache_for_tests() -> None:
+    """Clear cached AsyncDocker singleton for deterministic tests/tooling."""
+    get_async_docker.cache_clear()
 
 
 def _parse_memory_string(memory_str: str) -> int:
@@ -76,7 +92,7 @@ class RadarOrchestrationService:
 
     def __init__(self, session: AsyncSession, model_registry: ModelRegistryService):
         self.session: AsyncSession = session
-        self.async_docker: AsyncDocker = async_docker
+        self.async_docker: AsyncDocker = get_async_docker()
         self.model_registry = model_registry
         logger.info("RadarOrchestrationService initialized.")
 
@@ -185,17 +201,16 @@ class RadarOrchestrationService:
         Pydantic configuration defaults.
         """
         # Get RADAR defaults from configuration
-        defaults = tactic_settings.config.radar_defaults
+        defaults = get_tactic_settings().config.radar_defaults
+        runtime = get_radar_container_runtime_settings()
 
         env_vars = {
             "SERVICE_ID": service_id,
             # TACTIC connectivity for model-registry calls from RADAR containers
-            "RADAR_TACTIC_SERVICE_HOST": os.getenv(
-                "TACTIC_SERVICE_HOST", "tactic-middleware"
-            ),
-            "RADAR_TACTIC_SERVICE_PORT": os.getenv("TACTIC_SERVICE_PORT", "8000"),
-            "RADAR_TACTIC_MODEL_REGISTRY_CACHE_TTL_SECONDS": os.getenv(
-                "TACTIC_MODEL_REGISTRY_CACHE_TTL_SECONDS", "60"
+            "RADAR_TACTIC_SERVICE_HOST": runtime.TACTIC_SERVICE_HOST,
+            "RADAR_TACTIC_SERVICE_PORT": str(runtime.TACTIC_SERVICE_PORT),
+            "RADAR_TACTIC_MODEL_REGISTRY_CACHE_TTL_SECONDS": str(
+                runtime.TACTIC_MODEL_REGISTRY_CACHE_TTL_SECONDS
             ),
             # MQTT Configuration
             "RADAR_MQTT_BROKER_HOST": mqtt_config.get(
@@ -243,6 +258,11 @@ class RadarOrchestrationService:
             "RADAR_CHECKPOINT_INTERVAL": str(
                 performance_config.get(
                     "checkpoint_interval", defaults.checkpoint_interval
+                )
+            ),
+            "RADAR_SENSOR_KEY_STRATEGY": str(
+                performance_config.get(
+                    "sensor_key_strategy", defaults.sensor_key_strategy
                 )
             ),
             # Database Settings
@@ -309,16 +329,7 @@ class RadarOrchestrationService:
         depending on the full Settings class which requires many unrelated
         environment variables.
         """
-        postgres_user = os.getenv("POSTGRES_USER", "postgres")
-        postgres_password = os.getenv("POSTGRES_PASSWORD", "postgres")
-        postgres_host = os.getenv("POSTGRES_HOST", "timescaledb")
-        postgres_port = os.getenv("POSTGRES_PORT", "5432")
-        postgres_db = os.getenv("POSTGRES_DB", "postgres")
-
-        return (
-            f"postgresql+asyncpg://{quote_plus(postgres_user)}:{quote_plus(postgres_password)}"
-            f"@{postgres_host}:{postgres_port}/{postgres_db}"
-        )
+        return get_radar_container_runtime_settings().radar_database_url
 
     async def _create_radar_service_sync(
         self,
@@ -330,13 +341,13 @@ class RadarOrchestrationService:
         Helper method to create RADAR Docker service using Pydantic configuration.
         """
         # Get Docker configuration from Pydantic settings
-        docker_config = tactic_settings.config.docker
+        docker_config = get_tactic_settings().config.docker
 
         labels = {
             "owner": "tactic_middleware",
             "started_at": datetime.utcnow().isoformat() + "Z",
             "purpose": "RADAR anomaly detection service",
-            "env": os.getenv("ENVIRONMENT", "development"),
+            "env": get_radar_container_runtime_settings().ENVIRONMENT,
             "service_type": "radar",
             "managed_by": "tactic",
         }

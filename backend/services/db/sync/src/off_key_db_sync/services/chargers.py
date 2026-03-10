@@ -10,7 +10,7 @@ from off_key_core.config.logs import logger, log_performance
 from off_key_core.utils.enum import HealthStatus
 import time
 from off_key_core.db.models import Charger
-from ..config.config import sync_settings
+from ..config.config import get_sync_settings
 
 
 @dataclass
@@ -316,7 +316,7 @@ class ChargersSyncService:
     def get_health_status(self) -> ChargerSyncHealthStatus:
         """Get health status for monitoring"""
         metrics = self.get_performance_metrics()
-        config = sync_settings.config
+        config = get_sync_settings().config
 
         # Determine health status
         status = HealthStatus.HEALTHY

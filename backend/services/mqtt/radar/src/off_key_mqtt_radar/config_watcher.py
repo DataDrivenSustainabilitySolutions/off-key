@@ -323,10 +323,16 @@ class ConfigReloader:
             if hasattr(self.service, "memory_manager"):
                 self.service.memory_manager.max_memory_mb = new_config.memory_limit_mb
 
-        # Check for anomaly detection threshold changes
-        if old_config.thresholds != new_config.thresholds:
-            logger.info("Anomaly detection thresholds changed")
-            # Note: Threshold changes would take effect immediately for new messages
+        # Check for moving-window heuristic changes
+        heuristic_changed = (
+            old_config.heuristic_enabled != new_config.heuristic_enabled
+            or old_config.heuristic_window_size != new_config.heuristic_window_size
+            or old_config.heuristic_min_samples != new_config.heuristic_min_samples
+            or old_config.heuristic_zscore_threshold
+            != new_config.heuristic_zscore_threshold
+        )
+        if heuristic_changed:
+            logger.info("Moving-window anomaly heuristic settings changed")
 
     def _log_config_changes(self, old_config: dict, new_config: dict):
         """Log significant configuration changes"""

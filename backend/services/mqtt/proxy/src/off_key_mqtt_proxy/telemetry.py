@@ -4,7 +4,7 @@ Database Writer for MQTT Telemetry Data
 
 import asyncio
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, List, Optional, Any, Union, Callable
 from dataclasses import dataclass, field
 from collections import defaultdict
@@ -17,6 +17,7 @@ from sqlalchemy import update, case
 
 from off_key_core.config.logs import logger, log_performance
 from off_key_core.db.models import Telemetry, Charger
+from off_key_core.utils.mqtt_topics import TopicMetadataExtractor
 from off_key_core.utils.string import string_to_float
 from off_key_core.utils.enum import HealthStatus
 from .config.config import MQTTConfig
@@ -151,9 +152,15 @@ class DatabaseWriter:
     - Connection health monitoring
     """
 
-    def __init__(self, config: MQTTConfig, session_factory: Callable[[], AsyncSession]):
+    def __init__(
+        self,
+        config: MQTTConfig,
+        session_factory: Callable[[], AsyncSession],
+        topic_extractor: TopicMetadataExtractor,
+    ):
         self.config = config
         self._session_factory = session_factory
+        self.topic_extractor = topic_extractor
 
         # Batching configuration
         self.batch_size = config.batch_size
@@ -302,36 +309,34 @@ class DatabaseWriter:
     async def _parse_telemetry_message(self, message: MQTTMessage) -> ParseResult:
         """Parse MQTT message and return an explicit success or failure object"""
         try:
-            # Extract charger ID from topic
-            # Topic format: charger/{charger_id}/live-telemetry/{hierarchy}
-            topic_parts = message.topic.split("/")
-            if len(topic_parts) < 4 or topic_parts[0] != "charger":
+            payload = message.payload
+            metadata = self.topic_extractor.extract(message.topic, payload)
+            if metadata is None:
                 return ParseFailure(
-                    reason="Invalid topic format",
+                    reason="Topic metadata extraction failed",
                     is_error=False,
-                    log_message=f"Invalid topic format: {message.topic}",
+                    log_message=(
+                        f"Unable to extract metadata from topic: {message.topic}"
+                    ),
                     context={"topic": message.topic},
                 )
 
-            charger_id = topic_parts[1]
-            hierarchy = "/".join(topic_parts[3:])  # Reconstruct hierarchy
-
-            # Use hierarchy directly as telemetry type
-            telemetry_type = hierarchy
+            charger_id = metadata.charger_id
+            telemetry_type = metadata.telemetry_type
             if not telemetry_type:
                 return ParseFailure(
-                    reason="Invalid hierarchy after cleaning",
+                    reason="Missing telemetry type",
                     is_error=False,
-                    log_message=f"Invalid hierarchy after cleaning: {hierarchy}",
+                    log_message=(
+                        f"Missing telemetry type after extraction: {message.topic}"
+                    ),
                     context={
                         "charger_id": charger_id,
-                        "hierarchy": hierarchy,
+                        "topic": message.topic,
                     },
                 )
 
             # Extract value and timestamp from payload
-            payload = message.payload
-
             # Parse timestamp
             timestamp_str = payload.get("timestamp")
             if timestamp_str:
@@ -539,6 +544,7 @@ class DatabaseWriter:
 
             async with self._session_factory() as session:
                 try:
+                    await self._upsert_chargers(session, charger_ids)
                     await session.execute(stmt)
                     if charger_ids:
                         await self._update_charger_statuses(session, charger_ids)
@@ -624,6 +630,36 @@ class DatabaseWriter:
             )
             return False
 
+    async def _upsert_chargers(
+        self, session: AsyncSession, charger_ids: set[str]
+    ) -> None:
+        """
+        Ensure chargers exist before telemetry inserts and status updates.
+        """
+        if not charger_ids:
+            return
+
+        now = datetime.now()
+        rows = [
+            {
+                "charger_id": charger_id,
+                "online": True,
+                "mqtt_connected": True,
+                "mqtt_last_message": self.charger_last_seen.get(charger_id, now),
+                "last_seen": self._format_last_seen(
+                    self.charger_last_seen.get(charger_id, now)
+                ),
+            }
+            for charger_id in charger_ids
+        ]
+
+        stmt = (
+            insert(Charger)
+            .values(rows)
+            .on_conflict_do_nothing(index_elements=["charger_id"])
+        )
+        await session.execute(stmt)
+
     async def _update_charger_statuses(
         self, session: AsyncSession, charger_ids: set
     ) -> None:
@@ -643,11 +679,25 @@ class DatabaseWriter:
             ],
             else_=now,
         )
+        last_seen_case = case(
+            *[
+                (
+                    Charger.charger_id == cid,
+                    self._format_last_seen(self.charger_last_seen.get(cid, now)),
+                )
+                for cid in charger_ids
+            ],
+            else_=self._format_last_seen(now),
+        )
 
         stmt = (
             update(Charger)
             .where(Charger.charger_id.in_(charger_ids))
-            .values(mqtt_connected=True, mqtt_last_message=timestamp_case)
+            .values(
+                mqtt_connected=True,
+                mqtt_last_message=timestamp_case,
+                last_seen=last_seen_case,
+            )
         )
 
         await session.execute(stmt)
@@ -659,6 +709,15 @@ class DatabaseWriter:
                 "charger_count": len(charger_ids),
             },
         )
+
+    @staticmethod
+    def _format_last_seen(value: datetime) -> str:
+        """
+        Format datetime into a stable ISO string for the legacy text `last_seen` field.
+        """
+        if value.tzinfo is not None:
+            return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+        return value.isoformat()
 
     async def _update_chargers_after_failure(self, charger_ids: set) -> None:
         """Best-effort status update when inserts fail (duplicates, etc.)."""

@@ -1,37 +1,41 @@
 """
-MQTT Proxy Configuration
-
-Handles configuration for the MQTT proxy service including API-Key authentication,
-MQTT broker configuration, and service-specific parameters.
+MQTT proxy configuration.
 """
 
 from functools import lru_cache
 import random
 import uuid
+
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
-
-from off_key_core.config.pionix import get_pionix_settings
 from typing import Self
+
+from off_key_core.utils.mqtt_topics import (
+    DEFAULT_TOPIC_REGEX,
+    TopicMetadataExtractor,
+)
 
 
 class MQTTConfig(BaseModel):
     """
-    MQTT service configuration with business logic validation.
-
-    This is a pure data model containing validated configuration values
-    for the MQTT proxy service.
+    Validated runtime configuration for MQTT proxy.
     """
 
     # MQTT Broker Configuration
     broker_host: str
     broker_port: int
     use_tls: bool
+    transport: str = "tcp"  # tcp | websockets
     client_id_prefix: str
-
-    # API-Key Authentication
+    use_auth: bool
     mqtt_username: str
     mqtt_api_key: str
+
+    # Source subscriptions
+    source_topics: list[str]
+    topic_regex: str = DEFAULT_TOPIC_REGEX
+    topic_payload_charger_key: str = "charger_id"
+    topic_payload_type_key: str = "telemetry_type"
 
     # Service Configuration
     enabled: bool
@@ -53,440 +57,409 @@ class MQTTConfig(BaseModel):
     worker_threads: int
 
     # Retry Configuration
-    retry_base_delay: float = 0.1  # Base delay for exponential backoff
-    retry_max_delay: float = 5.0  # Maximum delay cap for retries
-    retry_exponential_base: float = 2.0  # Exponential backoff base (standard is 2.0)
-    retry_jitter_enabled: bool = True  # Enable jitter to prevent thundering herd
-    retry_jitter_magnitude: float = 0.2  # Jitter magnitude (±20% range)
+    retry_base_delay: float = 0.1
+    retry_max_delay: float = 5.0
+    retry_exponential_base: float = 2.0
+    retry_jitter_enabled: bool = True
+    retry_jitter_magnitude: float = 0.2
 
     # Background Task Intervals
-    cleanup_interval: float = 60.0  # Cleanup task interval in seconds
-    metrics_interval: float = 300.0  # Metrics reporting interval in seconds
-    health_monitor_interval: float = 30.0  # Health monitoring interval in seconds
-
-    # Charger Discovery Configuration
-    # Source for charger discovery: "api", "database", or "api_with_db_fallback"
-    discovery_source: str = "api"
+    cleanup_interval: float = 60.0
+    metrics_interval: float = 300.0
+    health_monitor_interval: float = 30.0
 
     # Shutdown Configuration
-    shutdown_timeout: float = 10.0  # Default timeout for component shutdown
-    graceful_shutdown_timeout: float = 30.0  # Total graceful shutdown timeout
+    shutdown_timeout: float = 10.0
+    graceful_shutdown_timeout: float = 30.0
 
     # Bridge Configuration
-    enable_bridge: bool = False  # Enable MQTT bridge to another broker
-    bridge_broker_host: str = ""  # Bridge target broker host
-    bridge_broker_port: int = 1883  # Bridge target broker port
-    bridge_use_tls: bool = False  # Use TLS for bridge connection
-    bridge_client_id_prefix: str = "offkey-bridge"  # Bridge client ID prefix
-    bridge_use_auth: bool = True  # Enable/disable bridge authentication
-    bridge_username: str = ""  # Bridge authentication username
-    bridge_api_key: str = ""  # Bridge API key
+    enable_bridge: bool = False
+    bridge_broker_host: str = ""
+    bridge_broker_port: int = 1883
+    bridge_use_tls: bool = False
+    bridge_transport: str = "tcp"
+    bridge_client_id_prefix: str = "offkey-bridge"
+    bridge_use_auth: bool = False
+    bridge_username: str = ""
+    bridge_api_key: str = ""
     bridge_topic_mapping: dict[str, str] = Field(default_factory=dict)
 
     model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
-    @field_validator("broker_port")
+    @field_validator("broker_port", "bridge_broker_port")
     @classmethod
-    def validate_broker_port(cls, v: int) -> int:
-        """Validate MQTT broker port is in valid range"""
-        if not 1 <= v <= 65535:
-            raise ValueError("MQTT broker port must be between 1 and 65535")
-        return v
+    def validate_port(cls, value: int) -> int:
+        if not 1 <= value <= 65535:
+            raise ValueError("Port must be between 1 and 65535")
+        return value
+
+    @field_validator("transport", "bridge_transport")
+    @classmethod
+    def validate_transport(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if normalized not in {"tcp", "websockets"}:
+            raise ValueError("Transport must be one of: tcp, websockets")
+        return normalized
 
     @field_validator("worker_threads")
     @classmethod
-    def validate_worker_threads(cls, v: int) -> int:
-        """Validate worker threads is reasonable for MQTT processing"""
-        if not 1 <= v <= 32:
+    def validate_worker_threads(cls, value: int) -> int:
+        if not 1 <= value <= 32:
             raise ValueError("Worker threads must be between 1 and 32")
-        return v
+        return value
 
     @field_validator("batch_size")
     @classmethod
-    def validate_batch_size(cls, v: int) -> int:
-        """Validate batch size for database operations"""
-        if not 1 <= v <= 10000:
+    def validate_batch_size(cls, value: int) -> int:
+        if not 1 <= value <= 10000:
             raise ValueError("Batch size must be between 1 and 10000")
-        return v
+        return value
 
     @field_validator("batch_timeout")
     @classmethod
-    def validate_batch_timeout(cls, v: float) -> float:
-        """Validate batch timeout is reasonable"""
-        if not 0.1 <= v <= 300.0:
+    def validate_batch_timeout(cls, value: float) -> float:
+        if not 0.1 <= value <= 300.0:
             raise ValueError("Batch timeout must be between 0.1 and 300.0 seconds")
-        return v
+        return value
 
     @field_validator("subscription_qos")
     @classmethod
-    def validate_subscription_qos(cls, v: int) -> int:
-        """Validate MQTT QoS level"""
-        if v not in [0, 1, 2]:
-            raise ValueError(
-                "MQTT QoS must be 0 (at most once), "
-                "1 (at least once), "
-                "or 2 (exactly once)"
-            )
-        return v
+    def validate_subscription_qos(cls, value: int) -> int:
+        if value not in {0, 1, 2}:
+            raise ValueError("MQTT QoS must be 0, 1, or 2")
+        return value
 
     @field_validator("reconnect_delay")
     @classmethod
-    def validate_reconnect_delay(cls, v: int) -> int:
-        """Validate reconnection delay"""
-        if not 1 <= v <= 300:
+    def validate_reconnect_delay(cls, value: int) -> int:
+        if not 1 <= value <= 300:
             raise ValueError("Reconnect delay must be between 1 and 300 seconds")
-        return v
+        return value
 
     @field_validator("max_reconnect_attempts")
     @classmethod
-    def validate_max_reconnect_attempts(cls, v: int) -> int:
-        """Validate maximum reconnection attempts"""
-        if not 1 <= v <= 100:
+    def validate_max_reconnect_attempts(cls, value: int) -> int:
+        if not 1 <= value <= 100:
             raise ValueError("Max reconnect attempts must be between 1 and 100")
-        return v
+        return value
 
     @field_validator("health_check_interval")
     @classmethod
-    def validate_health_check_interval(cls, v: int) -> int:
-        """Validate health check interval"""
-        if not 5 <= v <= 3600:
+    def validate_health_check_interval(cls, value: int) -> int:
+        if not 5 <= value <= 3600:
             raise ValueError("Health check interval must be between 5 and 3600 seconds")
-        return v
+        return value
 
     @field_validator("health_log_reminder_interval")
     @classmethod
-    def validate_health_log_reminder_interval(cls, v: int) -> int:
-        """Validate health log reminder interval"""
-        if not 1 <= v <= 1000:
+    def validate_health_log_reminder_interval(cls, value: int) -> int:
+        if not 1 <= value <= 1000:
             raise ValueError(
                 "Health log reminder interval must be between 1 and 1000 checks"
             )
-        return v
+        return value
 
     @field_validator("connection_timeout")
     @classmethod
-    def validate_connection_timeout(cls, v: float) -> float:
-        """Validate connection timeout"""
-        if not 1.0 <= v <= 120.0:
+    def validate_connection_timeout(cls, value: float) -> float:
+        if not 1.0 <= value <= 120.0:
             raise ValueError("Connection timeout must be between 1.0 and 120.0 seconds")
-        return v
+        return value
 
     @field_validator("max_message_queue_size")
     @classmethod
-    def validate_max_message_queue_size(cls, v: int) -> int:
-        """Validate maximum message queue size"""
-        if not 100 <= v <= 100000:
+    def validate_max_message_queue_size(cls, value: int) -> int:
+        if not 100 <= value <= 100000:
             raise ValueError("Max message queue size must be between 100 and 100000")
-        return v
+        return value
 
     @field_validator("shutdown_timeout")
     @classmethod
-    def validate_shutdown_timeout(cls, v: float) -> float:
-        """Validate component shutdown timeout"""
-        if not 1.0 <= v <= 60.0:
+    def validate_shutdown_timeout(cls, value: float) -> float:
+        if not 1.0 <= value <= 60.0:
             raise ValueError("Shutdown timeout must be between 1.0 and 60.0 seconds")
-        return v
+        return value
 
     @field_validator("graceful_shutdown_timeout")
     @classmethod
-    def validate_graceful_shutdown_timeout(cls, v: float) -> float:
-        """Validate total graceful shutdown timeout"""
-        if not 5.0 <= v <= 300.0:
+    def validate_graceful_shutdown_timeout(cls, value: float) -> float:
+        if not 5.0 <= value <= 300.0:
             raise ValueError(
                 "Graceful shutdown timeout must be between 5.0 and 300.0 seconds"
             )
-        return v
+        return value
 
     @field_validator("retry_base_delay")
     @classmethod
-    def validate_retry_base_delay(cls, v: float) -> float:
-        """Validate retry base delay"""
-        if not 0.01 <= v <= 10.0:
+    def validate_retry_base_delay(cls, value: float) -> float:
+        if not 0.01 <= value <= 10.0:
             raise ValueError("Retry base delay must be between 0.01 and 10.0 seconds")
-        return v
+        return value
 
     @field_validator("retry_max_delay")
     @classmethod
-    def validate_retry_max_delay(cls, v: float) -> float:
-        """Validate retry maximum delay"""
-        if not 0.1 <= v <= 60.0:
+    def validate_retry_max_delay(cls, value: float) -> float:
+        if not 0.1 <= value <= 60.0:
             raise ValueError("Retry max delay must be between 0.1 and 60.0 seconds")
-        return v
+        return value
 
     @field_validator("retry_exponential_base")
     @classmethod
-    def validate_retry_exponential_base(cls, v: float) -> float:
-        """Validate retry exponential base"""
-        if not 1.1 <= v <= 10.0:
+    def validate_retry_exponential_base(cls, value: float) -> float:
+        if not 1.1 <= value <= 10.0:
             raise ValueError("Retry exponential base must be between 1.1 and 10.0")
-        return v
+        return value
 
     @field_validator("retry_jitter_magnitude")
     @classmethod
-    def validate_retry_jitter_magnitude(cls, v: float) -> float:
-        """Validate retry jitter magnitude"""
-        if not 0.0 <= v <= 0.5:
+    def validate_retry_jitter_magnitude(cls, value: float) -> float:
+        if not 0.0 <= value <= 0.5:
             raise ValueError(
                 "Retry jitter magnitude must be between 0.0 (0%) and 0.5 (50%)"
             )
-        return v
+        return value
 
     @field_validator("cleanup_interval")
     @classmethod
-    def validate_cleanup_interval(cls, v: float) -> float:
-        """Validate cleanup interval"""
-        if not 10.0 <= v <= 3600.0:
+    def validate_cleanup_interval(cls, value: float) -> float:
+        if not 10.0 <= value <= 3600.0:
             raise ValueError("Cleanup interval must be between 10.0 and 3600.0 seconds")
-        return v
+        return value
 
     @field_validator("metrics_interval")
     @classmethod
-    def validate_metrics_interval(cls, v: float) -> float:
-        """Validate metrics interval"""
-        if not 30.0 <= v <= 7200.0:
+    def validate_metrics_interval(cls, value: float) -> float:
+        if not 30.0 <= value <= 7200.0:
             raise ValueError("Metrics interval must be between 30.0 and 7200.0 seconds")
-        return v
+        return value
 
     @field_validator("health_monitor_interval")
     @classmethod
-    def validate_health_monitor_interval(cls, v: float) -> float:
-        """Validate health monitor interval"""
-        if not 5.0 <= v <= 300.0:
+    def validate_health_monitor_interval(cls, value: float) -> float:
+        if not 5.0 <= value <= 300.0:
             raise ValueError(
                 "Health monitor interval must be between 5.0 and 300.0 seconds"
             )
-        return v
+        return value
 
-    @field_validator("discovery_source")
+    @field_validator("client_id_prefix", "bridge_client_id_prefix")
     @classmethod
-    def validate_discovery_source(cls, v: str) -> str:
-        """Validate charger discovery source"""
-        allowed_sources = {"api", "database", "api_with_db_fallback"}
-        if v not in allowed_sources:
-            raise ValueError(
-                f"Discovery source must be one of {allowed_sources}, got '{v}'"
-            )
-        return v
-
-    @field_validator("client_id_prefix")
-    @classmethod
-    def validate_client_id_prefix(cls, v: str) -> str:
-        """Validate client ID prefix format"""
-        if not v or len(v) > 50:
+    def validate_client_id_prefix(cls, value: str) -> str:
+        if not value or len(value) > 50:
             raise ValueError("Client ID prefix must be non-empty and max 50 characters")
-        # MQTT client ID restrictions: alphanumeric and limited special chars
-        if not v.replace("-", "").replace("_", "").isalnum():
+        if not value.replace("-", "").replace("_", "").isalnum():
             raise ValueError(
-                "Client ID prefix must contain only "
-                "alphanumeric characters, hyphens, and underscores"
+                "Client ID prefix must contain only alphanumeric characters, "
+                "hyphens, and underscores"
             )
-        return v
+        return value
 
-    @field_validator("mqtt_username")
+    @field_validator("source_topics")
     @classmethod
-    def validate_mqtt_username(cls, v: str) -> str:
-        """Validate MQTT username"""
-        if not v or len(v) > 100:
-            raise ValueError("MQTT username must be non-empty and max 100 characters")
-        return v
+    def validate_source_topics(cls, value: list[str]) -> list[str]:
+        normalized = [topic.strip() for topic in value if topic and topic.strip()]
+        if not normalized:
+            raise ValueError("At least one source topic filter is required")
+        return normalized
 
-    @field_validator("mqtt_api_key")
+    @field_validator("topic_payload_charger_key", "topic_payload_type_key")
     @classmethod
-    def validate_mqtt_api_key(cls, v: str) -> str:
-        """Validate MQTT API key"""
-        if not v or len(v) < 10:
-            raise ValueError(
-                "MQTT API key must be non-empty and at least 10 characters"
-            )
-        return v
-
-    @field_validator("bridge_broker_port")
-    @classmethod
-    def validate_bridge_broker_port(cls, v: int) -> int:
-        """Validate bridge broker port is in valid range"""
-        if not 1 <= v <= 65535:
-            raise ValueError("Bridge broker port must be between 1 and 65535")
-        return v
-
-    @field_validator("bridge_client_id_prefix")
-    @classmethod
-    def validate_bridge_client_id_prefix(cls, v: str) -> str:
-        """Validate bridge client ID prefix format"""
-        if v and len(v) > 50:
-            raise ValueError("Bridge client ID prefix must be max 50 characters")
-        if v and not v.replace("-", "").replace("_", "").isalnum():
-            raise ValueError(
-                "Bridge client ID prefix must contain only "
-                "alphanumeric characters, hyphens, and underscores"
-            )
-        return v
+    def validate_payload_key(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("Payload metadata keys must be non-empty")
+        return normalized
 
     @model_validator(mode="after")
-    def validate_timeout_consistency(self) -> Self:
-        """Validate that timeouts are consistent with explicit safety margins"""
-        # Define minimum safe margin for reliable health monitoring
-        MINIMUM_HEALTH_CHECK_MARGIN_SECONDS = 5
-
-        # Health check interval must exceed connection timeout by minimum margin
+    def validate_consistency(self) -> Self:
+        min_health_margin_seconds = 5
         if self.health_check_interval < (
-            self.connection_timeout + MINIMUM_HEALTH_CHECK_MARGIN_SECONDS
+            self.connection_timeout + min_health_margin_seconds
         ):
             raise ValueError(
-                f"Health check interval ({self.health_check_interval}s) must be >"
-                f"{MINIMUM_HEALTH_CHECK_MARGIN_SECONDS}s than connection timeout "
-                f"({self.connection_timeout}s) to ensure reliable health monitoring. "
-                f"Required minimum: "
-                f"{self.connection_timeout + MINIMUM_HEALTH_CHECK_MARGIN_SECONDS}s"
+                f"Health check interval ({self.health_check_interval}s) must be > "
+                f"{min_health_margin_seconds}s than connection timeout "
+                f"({self.connection_timeout}s)."
             )
 
-        # Batch timeout should be reasonable compared to connection timeout
         if self.batch_timeout >= self.connection_timeout:
             raise ValueError(
-                f"Batch timeout ({self.batch_timeout}s) should be less than "
-                f"connection timeout ({self.connection_timeout}s)"
-                f" to prevent processing delays"
+                f"Batch timeout ({self.batch_timeout}s) must be less than connection "
+                f"timeout ({self.connection_timeout}s)."
             )
 
-        # Retry max delay must be greater than base delay
         if self.retry_max_delay <= self.retry_base_delay:
             raise ValueError(
                 f"Retry max delay ({self.retry_max_delay}s) must be greater than "
-                f"retry base delay ({self.retry_base_delay}s)"
+                f"retry base delay ({self.retry_base_delay}s)."
             )
+
+        # Validate extraction contract early to fail fast.
+        TopicMetadataExtractor(
+            topic_regex=self.topic_regex,
+            payload_charger_key=self.topic_payload_charger_key,
+            payload_type_key=self.topic_payload_type_key,
+        )
+
+        if self.use_auth:
+            if not self.mqtt_username.strip():
+                raise ValueError("MQTT username is required when MQTT auth is enabled")
+            if len(self.mqtt_api_key.strip()) < 10:
+                raise ValueError(
+                    "MQTT API key must be at least 10 characters when auth is enabled"
+                )
+
+        if self.enable_bridge and not self.bridge_broker_host.strip():
+            raise ValueError("Bridge broker host is required when bridge is enabled")
+
+        if self.bridge_use_auth:
+            if not self.bridge_username.strip():
+                raise ValueError(
+                    "Bridge username is required when bridge auth is enabled"
+                )
+            if len(self.bridge_api_key.strip()) < 10:
+                raise ValueError(
+                    "Bridge API key must be at least 10 characters when "
+                    "bridge auth is enabled"
+                )
 
         return self
 
     def get_websocket_url(self) -> str:
-        """Get WebSocket URL for MQTT connection"""
         protocol = "wss" if self.use_tls else "ws"
-        return f"{protocol}://{self.broker_host}/mqtt"
+        return f"{protocol}://{self.broker_host}:{self.broker_port}/mqtt"
 
     def get_client_id(self) -> str:
-        """Generate unique client ID"""
         return f"{self.client_id_prefix}_{uuid.uuid4().hex[:8]}"
 
     def get_jittered_backoff_delay(self, attempt: int) -> float:
-        """
-        Calculates exponential backoff delay with cap and optional jitter.
-        Zero magic numbers - fully self-documenting implementation.
-
-        Args:
-            attempt: Retry attempt number (0-based)
-
-        Returns:
-            Calculated delay in seconds, guaranteed non-negative
-        """
-        # Capped exponential backoff using configurable base
         delay = min(
             self.retry_base_delay * (self.retry_exponential_base**attempt),
             self.retry_max_delay,
         )
-
-        # Add symmetric jitter if enabled
         if self.retry_jitter_enabled:
             jitter_amount = delay * self.retry_jitter_magnitude
-            jitter = random.uniform(-jitter_amount, jitter_amount)  # Clear intent
+            jitter = random.uniform(-jitter_amount, jitter_amount)
             delay += jitter
-
-        # Ensure non-negative delay
         return max(0.0, delay)
+
+    def build_topic_extractor(self) -> TopicMetadataExtractor:
+        return TopicMetadataExtractor(
+            topic_regex=self.topic_regex,
+            payload_charger_key=self.topic_payload_charger_key,
+            payload_type_key=self.topic_payload_type_key,
+        )
 
 
 class MQTTSettings(BaseSettings):
     model_config = SettingsConfigDict(case_sensitive=True, extra="ignore")
 
     # MQTT Service Configuration
-    # Service Control
-    MQTT_TELEMETRY_ENABLED: bool = True  # Enable MQTT telemetry service
+    MQTT_TELEMETRY_ENABLED: bool = True
 
     # Broker Connection
-    MQTT_BROKER_HOST: str = "cloud.pionix.com"  # MQTT broker host
-    MQTT_BROKER_PORT: int = 443  # MQTT broker port
-    MQTT_USE_TLS: bool = True  # Use TLS for MQTT connection
-    MQTT_CONNECTION_TIMEOUT: float = 30.0  # Connection timeout in seconds
+    MQTT_BROKER_HOST: str = "localhost"
+    MQTT_BROKER_PORT: int = 1883
+    MQTT_USE_TLS: bool = False
+    MQTT_TRANSPORT: str = "tcp"
+    MQTT_CONNECTION_TIMEOUT: float = 30.0
 
     # Authentication
-    MQTT_CLIENT_ID: str = ""  # MQTT Client ID
-    MQTT_CLIENT_ID_PREFIX: str = "offkey-backend"  # MQTT client ID prefix
-    MQTT_USERNAME: str  # MQTT authentication username (required)
-    MQTT_APIKEY: str = ""  # API key for MQTT authentication (falls back to PIONIX_KEY)
+    MQTT_CLIENT_ID_PREFIX: str = "offkey-backend"
+    MQTT_USE_AUTH: bool = False
+    MQTT_USERNAME: str = ""
+    MQTT_APIKEY: str = ""
+
+    # Source Subscriptions
+    MQTT_SOURCE_TOPICS: str = "charger/+/live-telemetry/#"
+    MQTT_TOPIC_REGEX: str = DEFAULT_TOPIC_REGEX
+    MQTT_TOPIC_PAYLOAD_CHARGER_KEY: str = "charger_id"
+    MQTT_TOPIC_PAYLOAD_TYPE_KEY: str = "telemetry_type"
 
     # Connection Management
-    MQTT_RECONNECT_DELAY: int = 5  # Reconnection delay in seconds
-    MQTT_MAX_RECONNECT_ATTEMPTS: int = 10  # Maximum reconnection attempts
+    MQTT_RECONNECT_DELAY: int = 5
+    MQTT_MAX_RECONNECT_ATTEMPTS: int = 10
 
     # Message Processing
-    MQTT_BATCH_SIZE: int = 100  # Database batch size for MQTT messages
-    MQTT_BATCH_TIMEOUT: float = 5.0  # Batch timeout in seconds
-    MQTT_SUBSCRIPTION_QOS: int = 1  # MQTT subscription QoS level
-    MQTT_MAX_MESSAGE_QUEUE_SIZE: int = 10000  # Maximum message queue size
-    MQTT_WORKER_THREADS: int = 4  # Number of worker threads
+    MQTT_BATCH_SIZE: int = 100
+    MQTT_BATCH_TIMEOUT: float = 5.0
+    MQTT_SUBSCRIPTION_QOS: int = 1
+    MQTT_MAX_MESSAGE_QUEUE_SIZE: int = 10000
+    MQTT_WORKER_THREADS: int = 4
+
+    # Retry Configuration
+    MQTT_RETRY_BASE_DELAY: float = 0.1
+    MQTT_RETRY_MAX_DELAY: float = 5.0
+    MQTT_RETRY_EXPONENTIAL_BASE: float = 2.0
+    MQTT_RETRY_JITTER_ENABLED: bool = True
+    MQTT_RETRY_JITTER_MAGNITUDE: float = 0.2
+
+    # Background Task Intervals
+    MQTT_CLEANUP_INTERVAL: float = 60.0
+    MQTT_METRICS_INTERVAL: float = 300.0
+    MQTT_HEALTH_MONITOR_INTERVAL: float = 30.0
 
     # Health Monitoring
-    MQTT_HEALTH_CHECK_INTERVAL: int = 35  # Health check interval in seconds
-    MQTT_HEALTH_LOG_REMINDER_INTERVAL: int = (
-        10  # Re-log persistent unhealthy states every N health checks
-    )
+    MQTT_HEALTH_CHECK_INTERVAL: int = 35
+    MQTT_HEALTH_LOG_REMINDER_INTERVAL: int = 10
 
     # Shutdown Configuration
-    MQTT_SHUTDOWN_TIMEOUT: float = 10.0  # Component shutdown timeout in seconds
-    MQTT_GRACEFUL_SHUTDOWN_TIMEOUT: float = 30.0  # Total graceful shutdown timeout
-
-    # Charger Discovery Configuration
-    MQTT_DISCOVERY_SOURCE: str = (
-        "api"  # Charger discovery source: "api", "database", or "api_with_db_fallback"
-    )
+    MQTT_SHUTDOWN_TIMEOUT: float = 10.0
+    MQTT_GRACEFUL_SHUTDOWN_TIMEOUT: float = 30.0
 
     # Bridge Configuration
-    MQTT_ENABLE_BRIDGE: bool = False  # Enable MQTT bridge to another broker
-    MQTT_BRIDGE_BROKER_HOST: str = ""  # Bridge target broker host
-    MQTT_BRIDGE_BROKER_PORT: int = 1883  # Bridge target broker port
-    MQTT_BRIDGE_USE_TLS: bool = False  # Use TLS for bridge connection
-    MQTT_BRIDGE_CLIENT_ID_PREFIX: str = "offkey-bridge"  # Bridge client ID prefix
-    MQTT_BRIDGE_USE_AUTH: bool = True  # Enable/disable bridge authentication
-    MQTT_BRIDGE_USERNAME: str = ""  # Bridge authentication username
-    MQTT_BRIDGE_APIKEY: str = ""  # Bridge API key (falls back to PIONIX_KEY)
+    MQTT_ENABLE_BRIDGE: bool = False
+    MQTT_BRIDGE_BROKER_HOST: str = ""
+    MQTT_BRIDGE_BROKER_PORT: int = 1883
+    MQTT_BRIDGE_USE_TLS: bool = False
+    MQTT_BRIDGE_TRANSPORT: str = "tcp"
+    MQTT_BRIDGE_CLIENT_ID_PREFIX: str = "offkey-bridge"
+    MQTT_BRIDGE_USE_AUTH: bool = False
+    MQTT_BRIDGE_USERNAME: str = ""
+    MQTT_BRIDGE_APIKEY: str = ""
 
     # Health API Configuration
-    MQTT_HEALTH_API_ENABLED: bool = True  # Enable lightweight health API server
-    MQTT_HEALTH_API_HOST: str = "0.0.0.0"  # Health API bind host
-    MQTT_HEALTH_API_PORT: int = 8010  # Health API bind port
+    MQTT_HEALTH_API_ENABLED: bool = True
+    MQTT_HEALTH_API_HOST: str = "0.0.0.0"
+    MQTT_HEALTH_API_PORT: int = 8010
 
     @field_validator("MQTT_HEALTH_API_PORT")
     @classmethod
-    def validate_health_api_port(cls, v: int) -> int:
-        """Validate health API port is in valid range."""
-        if not 1 <= v <= 65535:
+    def validate_health_api_port(cls, value: int) -> int:
+        if not 1 <= value <= 65535:
             raise ValueError("MQTT health API port must be between 1 and 65535")
-        return v
+        return value
+
+    @field_validator("MQTT_SOURCE_TOPICS")
+    @classmethod
+    def validate_source_topics(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError(
+                "MQTT_SOURCE_TOPICS must contain at least one topic filter"
+            )
+        return value
 
     @property
-    def config(self) -> "MQTTConfig":
-        """
-        Create MQTTConfig instance from environment settings.
-
-        This property demonstrates the dual-config pattern: environment parsing
-        happens here, while business logic validation occurs in MQTTConfig.
-
-        Features:
-        - Fallback logic for MQTT_APIKEY (uses PIONIX_KEY if empty)
-        - Centralized mapping from environment variables to config objects
-        - Late import to avoid circular dependencies
-
-        Returns:
-            MQTTConfig: Validated MQTT service config with business logic constraints
-        """
-        pionix_settings = get_pionix_settings()
+    def config(self) -> MQTTConfig:
+        source_topics = [
+            topic.strip()
+            for topic in self.MQTT_SOURCE_TOPICS.split(",")
+            if topic.strip()
+        ]
 
         return MQTTConfig(
             broker_host=self.MQTT_BROKER_HOST,
             broker_port=self.MQTT_BROKER_PORT,
             use_tls=self.MQTT_USE_TLS,
+            transport=self.MQTT_TRANSPORT,
             client_id_prefix=self.MQTT_CLIENT_ID_PREFIX,
+            use_auth=self.MQTT_USE_AUTH,
             mqtt_username=self.MQTT_USERNAME,
-            mqtt_api_key=(
-                self.MQTT_APIKEY or pionix_settings.PIONIX_KEY.get_secret_value()
-            ),
+            mqtt_api_key=self.MQTT_APIKEY,
+            source_topics=source_topics,
+            topic_regex=self.MQTT_TOPIC_REGEX,
+            topic_payload_charger_key=self.MQTT_TOPIC_PAYLOAD_CHARGER_KEY,
+            topic_payload_type_key=self.MQTT_TOPIC_PAYLOAD_TYPE_KEY,
             enabled=self.MQTT_TELEMETRY_ENABLED,
             reconnect_delay=self.MQTT_RECONNECT_DELAY,
             max_reconnect_attempts=self.MQTT_MAX_RECONNECT_ATTEMPTS,
@@ -498,13 +471,21 @@ class MQTTSettings(BaseSettings):
             connection_timeout=self.MQTT_CONNECTION_TIMEOUT,
             max_message_queue_size=self.MQTT_MAX_MESSAGE_QUEUE_SIZE,
             worker_threads=self.MQTT_WORKER_THREADS,
+            retry_base_delay=self.MQTT_RETRY_BASE_DELAY,
+            retry_max_delay=self.MQTT_RETRY_MAX_DELAY,
+            retry_exponential_base=self.MQTT_RETRY_EXPONENTIAL_BASE,
+            retry_jitter_enabled=self.MQTT_RETRY_JITTER_ENABLED,
+            retry_jitter_magnitude=self.MQTT_RETRY_JITTER_MAGNITUDE,
+            cleanup_interval=self.MQTT_CLEANUP_INTERVAL,
+            metrics_interval=self.MQTT_METRICS_INTERVAL,
+            health_monitor_interval=self.MQTT_HEALTH_MONITOR_INTERVAL,
             shutdown_timeout=self.MQTT_SHUTDOWN_TIMEOUT,
             graceful_shutdown_timeout=self.MQTT_GRACEFUL_SHUTDOWN_TIMEOUT,
-            discovery_source=self.MQTT_DISCOVERY_SOURCE,
             enable_bridge=self.MQTT_ENABLE_BRIDGE,
             bridge_broker_host=self.MQTT_BRIDGE_BROKER_HOST,
             bridge_broker_port=self.MQTT_BRIDGE_BROKER_PORT,
             bridge_use_tls=self.MQTT_BRIDGE_USE_TLS,
+            bridge_transport=self.MQTT_BRIDGE_TRANSPORT,
             bridge_client_id_prefix=self.MQTT_BRIDGE_CLIENT_ID_PREFIX,
             bridge_use_auth=self.MQTT_BRIDGE_USE_AUTH,
             bridge_username=self.MQTT_BRIDGE_USERNAME,

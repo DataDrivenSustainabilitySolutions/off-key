@@ -38,7 +38,9 @@ class MQTTClient:
     Provides a unified, clean API while maintaining separation of concerns.
     """
 
-    def __init__(self, config: MQTTConfig, auth_handler: ApiKeyAuthHandler):
+    def __init__(
+        self, config: MQTTConfig, auth_handler: Optional[ApiKeyAuthHandler] = None
+    ):
         self.config = config
         self.auth_handler = auth_handler
 

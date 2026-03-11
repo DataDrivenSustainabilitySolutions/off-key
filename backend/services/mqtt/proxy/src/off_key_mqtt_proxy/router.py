@@ -14,6 +14,7 @@ from enum import Enum
 from abc import ABC, abstractmethod
 
 from off_key_core.config.logs import logger
+from off_key_core.utils.mqtt_topics import TopicMetadataExtractor
 from off_key_core.utils.enum import HealthStatus
 from .config.config import MQTTConfig
 from .client.models import MQTTMessage
@@ -432,8 +433,13 @@ class MessageRouter:
     - Circuit breaker pattern for failing destinations
     """
 
-    def __init__(self, config: MQTTConfig):
+    def __init__(
+        self,
+        config: MQTTConfig,
+        topic_extractor: Optional[TopicMetadataExtractor] = None,
+    ):
         self.config = config
+        self.topic_extractor = topic_extractor or config.build_topic_extractor()
 
         # Destinations
         self.destinations: Dict[str, MessageDestination] = {}
@@ -818,11 +824,8 @@ class MessageRouter:
 
     def _extract_charger_id(self, topic: str) -> str:
         """Extract charger ID from MQTT topic"""
-        # Topic format: charger/{charger_id}/live-telemetry/{hierarchy}
-        parts = topic.split("/")
-        if len(parts) >= 2 and parts[0] == "charger":
-            return parts[1]
-        return "unknown"
+        metadata = self.topic_extractor.extract(topic=topic, payload=None)
+        return metadata.charger_id if metadata else "unknown"
 
     async def _cleanup_loop(self):
         """Background cleanup loop"""

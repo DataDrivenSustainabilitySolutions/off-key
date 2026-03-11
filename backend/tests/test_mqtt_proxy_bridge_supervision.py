@@ -9,16 +9,24 @@ from off_key_mqtt_proxy.proxy import MQTTProxyService
 
 def _build_proxy_config() -> SimpleNamespace:
     return SimpleNamespace(
+        use_auth=False,
         mqtt_username="proxy-user",
         mqtt_api_key="proxy-key-123456",
+        source_topics=["charger/+/live-telemetry/#"],
+        topic_regex=r"^charger/(?P<charger_id>[^/]+)/live-telemetry/(?P<telemetry_type>.+)$",
+        topic_payload_charger_key="charger_id",
+        topic_payload_type_key="telemetry_type",
         enable_bridge=True,
         bridge_broker_host="emqx-main",
         bridge_broker_port=1883,
         bridge_use_tls=False,
+        bridge_transport="tcp",
         bridge_client_id_prefix="offkey-bridge",
         bridge_use_auth=False,
         bridge_username="",
         bridge_api_key="",
+        bridge_topic_mapping={},
+        transport="tcp",
         reconnect_delay=1,
         max_reconnect_attempts=10,
         batch_size=100,
@@ -33,6 +41,9 @@ def _build_proxy_config() -> SimpleNamespace:
         graceful_shutdown_timeout=5.0,
         health_monitor_interval=0.01,
         get_jittered_backoff_delay=lambda _: 0.01,
+        build_topic_extractor=lambda: MagicMock(
+            extract=MagicMock(return_value=SimpleNamespace(charger_id="charger-1"))
+        ),
     )
 
 
@@ -41,7 +52,7 @@ def _build_service(config: SimpleNamespace) -> MQTTProxyService:
         "off_key_mqtt_proxy.proxy.get_mqtt_settings",
         return_value=SimpleNamespace(config=config),
     ):
-        return MQTTProxyService(api_client=MagicMock())
+        return MQTTProxyService()
 
 
 @pytest.mark.asyncio
@@ -55,15 +66,10 @@ async def test_start_survives_initial_bridge_failure():
 
     mqtt_client = MagicMock()
     mqtt_client.connect = AsyncMock(return_value=True)
+    mqtt_client.subscribe = AsyncMock(return_value=True)
     mqtt_client.set_message_handler = MagicMock()
     mqtt_client.stop = AsyncMock()
     mqtt_client.state = SimpleNamespace(value="connected")
-
-    charger_discovery = MagicMock()
-    charger_discovery.discover_chargers = AsyncMock(return_value=[])
-    charger_discovery.subscribe_to_charger_topics = AsyncMock()
-    charger_discovery.get_all_topics = MagicMock(return_value=[])
-    charger_discovery.stop = AsyncMock()
 
     database_writer = MagicMock()
     database_writer.start = AsyncMock()
@@ -85,10 +91,6 @@ async def test_start_survives_initial_bridge_failure():
         ),
         patch("off_key_mqtt_proxy.proxy.ApiKeyAuthHandler", return_value=auth_handler),
         patch("off_key_mqtt_proxy.proxy.MQTTClient", return_value=mqtt_client),
-        patch(
-            "off_key_mqtt_proxy.proxy.ChargerDiscoveryService",
-            return_value=charger_discovery,
-        ),
         patch("off_key_mqtt_proxy.proxy.DatabaseWriter", return_value=database_writer),
         patch("off_key_mqtt_proxy.proxy.MessageRouter", return_value=message_router),
         patch.object(
@@ -103,6 +105,7 @@ async def test_start_survives_initial_bridge_failure():
         await service.start()
 
     assert service.is_running is True
+    mqtt_client.subscribe.assert_awaited()
     connect_bridge_once_mock.assert_awaited_once()
     start_bridge_supervisor_mock.assert_called_once()
 
@@ -147,6 +150,7 @@ async def test_readiness_requires_bridge_when_enabled():
 
     service.is_running = True
     service.mqtt_client = MagicMock(is_connected=True)
+    service.source_subscription_status = {"charger/+/live-telemetry/#": True}
     service.bridge_destination = MagicMock(enabled=True)
     service.bridge_connected_event.set()
     service.bridge_supervisor_task = asyncio.create_task(asyncio.sleep(0.1))
@@ -170,6 +174,7 @@ async def test_readiness_without_bridge_only_requires_primary_connection():
 
     service.is_running = True
     service.mqtt_client = MagicMock(is_connected=True)
+    service.source_subscription_status = {"charger/+/live-telemetry/#": True}
 
     readiness = service.get_readiness_status()
     assert service.is_bridge_ready() is True

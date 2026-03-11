@@ -1,15 +1,15 @@
 """
 MQTT Proxy Service for Real-time Telemetry Processing
 
-This package provides a complete MQTT proxy service that connects to the Pionix Cloud
-MQTT broker and processes real-time telemetry data from EV chargers.
+This package provides a complete MQTT proxy service that connects to a configured
+MQTT source broker and processes real-time telemetry data from EV chargers.
 
 Components:
-- API-Key authentication for Pionix Cloud access
-- MQTT client with WebSocket/TLS support
+- Optional username/API-key authentication
+- MQTT client with TCP/WebSocket/TLS support
 - Message routing to multiple destinations
 - Optimized database writer for telemetry data
-- Charger discovery and subscription management
+- Topic-pattern subscription management
 """
 
 from .proxy import MQTTProxyService

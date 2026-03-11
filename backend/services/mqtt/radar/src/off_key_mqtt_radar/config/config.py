@@ -47,6 +47,10 @@ class AnomalyDetectionConfig(BaseModel):
     thresholds: Dict[str, float] = Field(
         default_factory=lambda: {"medium": 0.6, "high": 0.8, "critical": 0.9}
     )
+    heuristic_enabled: bool = True
+    heuristic_window_size: int = Field(default=300, ge=3)
+    heuristic_min_samples: int = Field(default=30, ge=2)
+    heuristic_zscore_threshold: float = Field(default=2.0, gt=0.0)
 
     memory_limit_mb: int = 1000
     checkpoint_interval: int = 10000
@@ -89,6 +93,12 @@ class AnomalyDetectionConfig(BaseModel):
             validate_preprocessing_steps(self.preprocessing_steps)
         except ValueError as e:
             raise ValueError(f"Invalid preprocessing configuration: {e}") from e
+
+        if self.heuristic_min_samples > self.heuristic_window_size:
+            raise ValueError(
+                "heuristic_min_samples must be less than or equal to "
+                "heuristic_window_size"
+            )
 
         return self
 
@@ -148,7 +158,7 @@ class MQTTRadarConfig(BaseModel):
 
     # Subscription settings
     subscription_topics: List[str] = Field(
-        default_factory=lambda: ["charger/+/telemetry"]
+        default_factory=lambda: ["charger/+/live-telemetry/#"]
     )
     subscription_qos: int = 0
     sensor_key_strategy: str = "full_hierarchy"
@@ -181,6 +191,10 @@ class MQTTRadarConfig(BaseModel):
     thresholds: Dict[str, float] = Field(
         default_factory=lambda: {"medium": 0.6, "high": 0.8, "critical": 0.9}
     )
+    heuristic_enabled: bool = True
+    heuristic_window_size: int = Field(default=300, ge=3)
+    heuristic_min_samples: int = Field(default=30, ge=2)
+    heuristic_zscore_threshold: float = Field(default=2.0, gt=0.0)
     batch_size: int = 100
     batch_timeout: float = 1.0
     checkpoint_interval: int = 10000
@@ -190,6 +204,16 @@ class MQTTRadarConfig(BaseModel):
     def validate_sensor_key_strategy(cls, value: str) -> str:
         """Validate feature-key strategy used by topic parsing."""
         return _normalize_sensor_key_strategy(value, "sensor_key_strategy")
+
+    @model_validator(mode="after")
+    def validate_heuristic_window(self) -> Self:
+        """Validate moving-window heuristic configuration."""
+        if self.heuristic_min_samples > self.heuristic_window_size:
+            raise ValueError(
+                "heuristic_min_samples must be less than or equal to "
+                "heuristic_window_size"
+            )
+        return self
 
 
 class RadarSettings(BaseSettings):
@@ -210,7 +234,7 @@ class RadarSettings(BaseSettings):
     RADAR_MQTT_API_KEY: str = ""
 
     # Topics
-    RADAR_SUBSCRIPTION_TOPICS: str = "charger/+/telemetry"  # Comma-separated
+    RADAR_SUBSCRIPTION_TOPICS: str = "charger/+/live-telemetry/#"  # Comma-separated
     RADAR_SUBSCRIPTION_QOS: int = 0
     RADAR_SENSOR_KEY_STRATEGY: str = "full_hierarchy"
 
@@ -226,6 +250,10 @@ class RadarSettings(BaseSettings):
     RADAR_ANOMALY_THRESHOLD_MEDIUM: float = 0.6
     RADAR_ANOMALY_THRESHOLD_HIGH: float = 0.8
     RADAR_ANOMALY_THRESHOLD_CRITICAL: float = 0.9
+    RADAR_HEURISTIC_ENABLED: bool = True
+    RADAR_HEURISTIC_WINDOW_SIZE: int = 300
+    RADAR_HEURISTIC_MIN_SAMPLES: int = 30
+    RADAR_HEURISTIC_ZSCORE_THRESHOLD: float = 2.0
 
     # Performance
     RADAR_BATCH_SIZE: int = 100
@@ -295,6 +323,10 @@ class RadarSettings(BaseSettings):
                 "high": self.RADAR_ANOMALY_THRESHOLD_HIGH,
                 "critical": self.RADAR_ANOMALY_THRESHOLD_CRITICAL,
             },
+            heuristic_enabled=self.RADAR_HEURISTIC_ENABLED,
+            heuristic_window_size=self.RADAR_HEURISTIC_WINDOW_SIZE,
+            heuristic_min_samples=self.RADAR_HEURISTIC_MIN_SAMPLES,
+            heuristic_zscore_threshold=self.RADAR_HEURISTIC_ZSCORE_THRESHOLD,
             batch_size=self.RADAR_BATCH_SIZE,
             batch_timeout=self.RADAR_BATCH_TIMEOUT,
             checkpoint_interval=self.RADAR_CHECKPOINT_INTERVAL,

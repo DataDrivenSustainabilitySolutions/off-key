@@ -221,6 +221,12 @@ class RadarService:
             thresholds=getattr(
                 self.config, "thresholds", {"medium": 0.6, "high": 0.8, "critical": 0.9}
             ),
+            heuristic_enabled=getattr(self.config, "heuristic_enabled", True),
+            heuristic_window_size=getattr(self.config, "heuristic_window_size", 300),
+            heuristic_min_samples=getattr(self.config, "heuristic_min_samples", 30),
+            heuristic_zscore_threshold=getattr(
+                self.config, "heuristic_zscore_threshold", 2.0
+            ),
             batch_size=getattr(self.config, "batch_size", 100),
             batch_timeout=getattr(self.config, "batch_timeout", 1.0),
             memory_limit_mb=getattr(self.config, "memory_limit_mb", 1000),

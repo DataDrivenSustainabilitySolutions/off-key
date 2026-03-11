@@ -15,6 +15,7 @@ import hashlib
 import hmac
 import re
 import json
+import math
 from datetime import datetime, timezone
 from typing import Dict, Any, Optional, List
 from collections import deque
@@ -153,6 +154,7 @@ class AnomalyDetectionService:
         self.processed_count = 0
         self.anomaly_count = 0
         self.last_checkpoint = 0
+        self.score_window = deque(maxlen=self._get_heuristic_window_size())
 
     def _restore_from_checkpoint(self, checkpoint: Dict[str, Any]):
         """Restore state from checkpoint data."""
@@ -162,6 +164,14 @@ class AnomalyDetectionService:
         self.anomaly_count = checkpoint["anomaly_count"]
         self.last_checkpoint = self.processed_count
         self.schema_signature = checkpoint["schema_signature"]
+        self.score_window = deque(
+            (
+                float(v)
+                for v in checkpoint.get("score_window", [])
+                if isinstance(v, (int, float))
+            ),
+            maxlen=self._get_heuristic_window_size(),
+        )
 
         self.logger.info(
             f"Restored from checkpoint: {self.processed_count} points processed, "
@@ -219,7 +229,7 @@ class AnomalyDetectionService:
 
         Args:
             checkpoint_path: Path to the pickle checkpoint file
-            config: Current configuration (used for thresholds, etc.)
+            config: Current configuration (used for runtime behavior and validation)
 
         Returns:
             Restored AnomalyDetectionService instance
@@ -377,9 +387,11 @@ class AnomalyDetectionService:
             # Update preprocessors after scoring to avoid influencing current result.
             self._learn_pipeline(data)
 
-            # Thresholding
-            is_anomaly = score > self.config.thresholds.get("medium", 0.6)
-            severity = self._calculate_severity(score)
+            score = float(score)
+            heuristic_context = self._evaluate_moving_window_heuristic(score)
+            heuristic_triggered = bool(heuristic_context.get("triggered", False))
+            is_anomaly = heuristic_triggered
+            severity = self._calculate_heuristic_severity(heuristic_context)
 
             # Update counters
             self.processed_count += 1
@@ -408,13 +420,14 @@ class AnomalyDetectionService:
                 context={
                     "processing_time_ms": processing_time * 1000,
                     "model_type": self.config.model_type,
+                    "score_window": heuristic_context,
                 },
             )
 
             if is_anomaly:
                 self.logger.warning(
                     f"Anomaly detected: score={score:.3f},"
-                    f" severity={severity}, topic={topic}"
+                    f" severity={severity}, topic={topic}, trigger=moving_window_zscore"
                 )
 
             return result
@@ -517,18 +530,82 @@ class AnomalyDetectionService:
             return match.group("stage")
         return None
 
-    def _calculate_severity(self, score: float) -> str:
-        """Calculate anomaly severity level"""
-        thresholds = self.config.thresholds
-
-        if score > thresholds.get("critical", 0.9):
-            return "critical"
-        elif score > thresholds.get("high", 0.8):
-            return "high"
-        elif score > thresholds.get("medium", 0.6):
-            return "medium"
-        else:
+    def _calculate_heuristic_severity(self, heuristic_context: Dict[str, Any]) -> str:
+        """Calculate severity based on moving-window z-score only."""
+        if not heuristic_context.get("triggered", False):
             return "low"
+
+        zscore = float(heuristic_context.get("zscore", 0.0))
+        threshold = float(heuristic_context.get("zscore_threshold", 2.0))
+
+        if zscore >= threshold * 2.5:
+            return "critical"
+        if zscore >= threshold * 1.75:
+            return "high"
+        return "medium"
+
+    def _evaluate_moving_window_heuristic(self, score: float) -> Dict[str, Any]:
+        """Evaluate moving-window z-score trigger for the current service instance."""
+        heuristic_enabled = bool(getattr(self.config, "heuristic_enabled", True))
+        if not heuristic_enabled:
+            return {"enabled": False, "triggered": False}
+
+        min_samples = self._get_heuristic_min_samples()
+        zscore_threshold = self._get_heuristic_zscore_threshold()
+        window_count = len(self.score_window)
+        context: Dict[str, Any] = {
+            "enabled": True,
+            "window_size": self.score_window.maxlen,
+            "history_count": window_count,
+            "min_samples": min_samples,
+            "zscore_threshold": zscore_threshold,
+            "triggered": False,
+            "warmup": window_count < min_samples,
+        }
+
+        if window_count >= min_samples and window_count > 0:
+            mean_score = sum(self.score_window) / window_count
+            variance = (
+                sum((existing - mean_score) ** 2 for existing in self.score_window)
+                / window_count
+            )
+            std_dev = math.sqrt(variance)
+
+            zscore = 0.0
+            if std_dev > 1e-9:
+                zscore = (score - mean_score) / std_dev
+
+            context.update({"mean": mean_score, "std_dev": std_dev, "zscore": zscore})
+            context["triggered"] = zscore >= zscore_threshold
+
+        self.score_window.append(score)
+        context["history_count_after"] = len(self.score_window)
+        return context
+
+    def _get_heuristic_window_size(self) -> int:
+        """Get moving-window size with safe fallback for legacy config objects."""
+        try:
+            return max(int(getattr(self.config, "heuristic_window_size", 300)), 3)
+        except (TypeError, ValueError):
+            return 300
+
+    def _get_heuristic_min_samples(self) -> int:
+        """Get minimum sample count with safe fallback and clamping."""
+        try:
+            min_samples = int(getattr(self.config, "heuristic_min_samples", 30))
+        except (TypeError, ValueError):
+            min_samples = 30
+
+        min_samples = max(min_samples, 2)
+        return min(min_samples, self._get_heuristic_window_size())
+
+    def _get_heuristic_zscore_threshold(self) -> float:
+        """Get z-score threshold with safe fallback for legacy config objects."""
+        try:
+            threshold = float(getattr(self.config, "heuristic_zscore_threshold", 2.0))
+        except (TypeError, ValueError):
+            threshold = 2.0
+        return threshold if threshold > 0 else 2.0
 
     def _checkpoint_model(self):
         """Save model and preprocessor checkpoint with HMAC signature.
@@ -554,6 +631,7 @@ class AnomalyDetectionService:
                     "preprocessors": self.preprocessors,
                     "processed_count": self.processed_count,
                     "anomaly_count": self.anomaly_count,
+                    "score_window": list(self.score_window),
                     "config": self.config,
                     "service_id": service_id,
                     "schema_signature": self.schema_signature,
@@ -668,10 +746,15 @@ class ResilientAnomalyDetector:
             else:
                 # Simple statistical fallback
                 score = self._simple_statistical_anomaly_score(data)
+                heuristic_context = (
+                    self.primary_service._evaluate_moving_window_heuristic(score)
+                )
                 return AnomalyResult(
                     anomaly_score=score,
-                    is_anomaly=score > 0.7,
-                    severity="medium" if score > 0.7 else "low",
+                    is_anomaly=bool(heuristic_context.get("triggered", False)),
+                    severity=self.primary_service._calculate_heuristic_severity(
+                        heuristic_context
+                    ),
                     timestamp=datetime.now(),
                     model_info={"model_used": "statistical"},
                     raw_data=data,
@@ -681,6 +764,7 @@ class ResilientAnomalyDetector:
                         "fallback_reason": reason,
                         "model_used": "statistical",
                         "service_state": ServiceState.DEGRADED.value,
+                        "score_window": heuristic_context,
                     },
                 )
 

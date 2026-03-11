@@ -10,9 +10,15 @@ def test_mqtt_config_mutable_defaults_are_isolated():
         broker_host="localhost",
         broker_port=1883,
         use_tls=False,
+        transport="tcp",
         client_id_prefix="proxy",
+        use_auth=True,
         mqtt_username="user",
         mqtt_api_key="secret-key-123",
+        source_topics=["charger/+/live-telemetry/#"],
+        topic_regex=r"^charger/(?P<charger_id>[^/]+)/live-telemetry/(?P<telemetry_type>.+)$",
+        topic_payload_charger_key="charger_id",
+        topic_payload_type_key="telemetry_type",
         enabled=True,
         reconnect_delay=5,
         max_reconnect_attempts=10,
@@ -29,9 +35,15 @@ def test_mqtt_config_mutable_defaults_are_isolated():
         broker_host="localhost",
         broker_port=1883,
         use_tls=False,
+        transport="tcp",
         client_id_prefix="proxy",
+        use_auth=True,
         mqtt_username="user",
         mqtt_api_key="secret-key-456",
+        source_topics=["charger/+/live-telemetry/#"],
+        topic_regex=r"^charger/(?P<charger_id>[^/]+)/live-telemetry/(?P<telemetry_type>.+)$",
+        topic_payload_charger_key="charger_id",
+        topic_payload_type_key="telemetry_type",
         enabled=True,
         reconnect_delay=5,
         max_reconnect_attempts=10,
@@ -58,7 +70,7 @@ def test_mqtt_radar_config_mutable_defaults_are_isolated():
     cfg_one.subscription_topics.append("charger/+/extra")
 
     assert cfg_two.thresholds["medium"] == 0.6
-    assert cfg_two.subscription_topics == ["charger/+/telemetry"]
+    assert cfg_two.subscription_topics == ["charger/+/live-telemetry/#"]
 
 
 def test_radar_settings_parse_json_env_fields(monkeypatch):

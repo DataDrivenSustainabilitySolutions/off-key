@@ -1,8 +1,5 @@
 """
-Main MQTT Proxy Service Orchestrator
-
-Orchestrates all MQTT proxy service components including API-Key authentication,
-MQTT client, charger discovery, database writer, and message router.
+Main MQTT proxy service orchestrator.
 """
 
 import asyncio
@@ -12,37 +9,32 @@ from typing import Optional
 from off_key_core.config.logs import logger
 from off_key_core.db.base import get_async_session_local
 from off_key_core.utils.enum import HealthStatus
-from .config.config import MQTTConfig, get_mqtt_settings
+
 from .auth import ApiKeyAuthHandler
 from .client.facade import MQTTClient
-from .charger_discovery import ChargerDiscoveryService
-from off_key_core.clients.base_client import ChargerAPIClient
+from .config.config import MQTTConfig, get_mqtt_settings
+from .core.interfaces import ShutdownFailedError, Stoppable
+from .router import BridgeDestination, DatabaseDestination, MessageRouter
 from .telemetry import DatabaseWriter
-from .router import MessageRouter, DatabaseDestination, BridgeDestination
-from .core.interfaces import Stoppable, ShutdownFailedError
 
 
 class MQTTProxyService:
     """
-    Main MQTT Proxy Service that orchestrates all components
-
-    This service:
-    1. Initializes all components
-    2. Manages component lifecycle
-    3. Handles graceful shutdown
-    4. Coordinates message flow
+    Main MQTT proxy service that orchestrates ingestion and bridge forwarding.
     """
 
-    def __init__(self, api_client: ChargerAPIClient):
-        self.api_client = api_client
+    def __init__(self):
         self.config = get_mqtt_settings().config
+        self.topic_extractor = self.config.build_topic_extractor()
 
         # Core components
         self.auth_handler: Optional[ApiKeyAuthHandler] = None
         self.mqtt_client: Optional[MQTTClient] = None
-        self.charger_discovery: Optional[ChargerDiscoveryService] = None
         self.database_writer: Optional[DatabaseWriter] = None
         self.message_router: Optional[MessageRouter] = None
+
+        # Source subscription state
+        self.source_subscription_status: dict[str, bool] = {}
 
         # Bridge components
         self.bridge_auth_handler: Optional[ApiKeyAuthHandler] = None
@@ -58,8 +50,26 @@ class MQTTProxyService:
         # Logging context
         self._log_context = {"component": "proxy_service", "service": "mqtt_proxy"}
 
+    async def _subscribe_source_topics(self) -> dict[str, bool]:
+        if not self.mqtt_client:
+            raise RuntimeError("MQTT client is not initialized")
+
+        results: dict[str, bool] = {}
+        for topic in self.config.source_topics:
+            try:
+                results[topic] = await self.mqtt_client.subscribe(
+                    topic, qos=self.config.subscription_qos
+                )
+            except Exception as exc:
+                logger.error(
+                    "Failed to subscribe to source topic",
+                    extra={**self._log_context, "topic": topic, "error": str(exc)},
+                )
+                results[topic] = False
+        return results
+
     async def start(self):
-        """Start the MQTT proxy service"""
+        """Start the MQTT proxy service."""
         if self.is_running:
             logger.warning(
                 "MQTT proxy service already running", extra=self._log_context
@@ -72,53 +82,47 @@ class MQTTProxyService:
             self.shutdown_event.clear()
             self.bridge_connected_event.clear()
 
-            # Resolve cached async session factory once and reuse across
-            # DB-backed components.
+            # Resolve cached async session factory once and reuse across DB-backed
+            # components.
             session_factory = get_async_session_local()
 
-            # Initialize API-Key authentication
-            self.auth_handler = ApiKeyAuthHandler(
-                self.config.mqtt_username, self.config.mqtt_api_key
-            )
-
-            # Authenticate with API-Key (simple validation)
-            await self.auth_handler.authenticate()
+            if self.config.use_auth:
+                self.auth_handler = ApiKeyAuthHandler(
+                    self.config.mqtt_username, self.config.mqtt_api_key
+                )
+                await self.auth_handler.authenticate()
 
             # Initialize MQTT client
             self.mqtt_client = MQTTClient(self.config, self.auth_handler)
             self.mqtt_client.set_message_handler(self._handle_mqtt_message)
 
-            # Connect to MQTT broker
+            # Connect to source MQTT broker
             connected = await self.mqtt_client.connect()
             if not connected:
-                raise RuntimeError("Failed to connect to MQTT broker")
+                raise RuntimeError("Failed to connect to MQTT source broker")
 
-            # Initialize charger discovery
-            self.charger_discovery = ChargerDiscoveryService(
-                self.config,
-                session_factory,
-                self.api_client,
+            # Subscribe directly to configured source topic filters
+            self.source_subscription_status = await self._subscribe_source_topics()
+            successful_subscriptions = sum(
+                1 for ok in self.source_subscription_status.values() if ok
             )
-
-            # Discover chargers and subscribe to topics
-            chargers = await self.charger_discovery.discover_chargers()
-            logger.info(
-                f"Discovered {len(chargers)} chargers",
-                extra={**self._log_context, "charger_count": len(chargers)},
-            )
-
-            # Subscribe to all charger topics
-            for charger_info in chargers:
-                await self.charger_discovery.subscribe_to_charger_topics(
-                    self.mqtt_client, charger_info
+            if successful_subscriptions == 0:
+                raise RuntimeError(
+                    "Failed to subscribe to all configured source topic filters"
                 )
 
             # Initialize database writer
-            self.database_writer = DatabaseWriter(self.config, session_factory)
+            self.database_writer = DatabaseWriter(
+                self.config,
+                session_factory,
+                topic_extractor=self.topic_extractor,
+            )
             await self.database_writer.start()
 
             # Initialize message router
-            self.message_router = MessageRouter(self.config)
+            self.message_router = MessageRouter(
+                self.config, topic_extractor=self.topic_extractor
+            )
             await self.message_router.start()
 
             # Add database destination as default
@@ -147,21 +151,19 @@ class MQTTProxyService:
                 "MQTT proxy service started successfully",
                 extra={
                     **self._log_context,
-                    "chargers_discovered": len(chargers),
-                    "subscribed_topics": len(self.charger_discovery.get_all_topics()),
+                    "configured_topic_filters": len(self.config.source_topics),
+                    "subscribed_topics": successful_subscriptions,
                     "bridge_enabled": self.config.enable_bridge,
                     "bridge_connected": bridge_connected,
                 },
             )
 
-        except Exception as e:
+        except Exception as exc:
             logger.error(
-                f"Failed to start MQTT proxy service: {e}",
+                f"Failed to start MQTT proxy service: {exc}",
                 extra=self._log_context,
                 exc_info=True,
             )
-
-            # Cleanup on failure
             await self.stop()
             raise
 
@@ -189,17 +191,15 @@ class MQTTProxyService:
             broker_host=self.config.bridge_broker_host,
             broker_port=self.config.bridge_broker_port,
             use_tls=self.config.bridge_use_tls,
+            transport=self.config.bridge_transport,
             client_id_prefix=self.config.bridge_client_id_prefix,
-            mqtt_username=(
-                self.config.bridge_username
-                if self.config.bridge_use_auth
-                else "anonymous"
-            ),
-            mqtt_api_key=(
-                self.config.bridge_api_key
-                if self.config.bridge_use_auth
-                else "anonymousanonymousanonymousanonymousanonymous"
-            ),
+            use_auth=self.config.bridge_use_auth,
+            mqtt_username=self.config.bridge_username,
+            mqtt_api_key=self.config.bridge_api_key,
+            source_topics=self.config.source_topics,
+            topic_regex=self.config.topic_regex,
+            topic_payload_charger_key=self.config.topic_payload_charger_key,
+            topic_payload_type_key=self.config.topic_payload_type_key,
             enabled=True,
             reconnect_delay=self.config.reconnect_delay,
             max_reconnect_attempts=self.config.max_reconnect_attempts,
@@ -217,6 +217,7 @@ class MQTTProxyService:
             bridge_broker_host=self.config.bridge_broker_host,
             bridge_broker_port=self.config.bridge_broker_port,
             bridge_use_tls=self.config.bridge_use_tls,
+            bridge_transport=self.config.bridge_transport,
             bridge_client_id_prefix=self.config.bridge_client_id_prefix,
             bridge_use_auth=self.config.bridge_use_auth,
             bridge_username=self.config.bridge_username,
@@ -319,9 +320,9 @@ class MQTTProxyService:
             )
             return True
 
-        except Exception as e:
+        except Exception as exc:
             logger.error(
-                f"Failed to setup MQTT bridge: {e}",
+                f"Failed to setup MQTT bridge: {exc}",
                 extra=self._log_context,
                 exc_info=True,
             )
@@ -420,9 +421,9 @@ class MQTTProxyService:
         except asyncio.CancelledError:
             logger.info("MQTT bridge supervisor cancelled", extra=self._log_context)
             raise
-        except Exception as e:
+        except Exception as exc:
             logger.error(
-                f"Unexpected error in MQTT bridge supervisor: {e}",
+                f"Unexpected error in MQTT bridge supervisor: {exc}",
                 extra=self._log_context,
                 exc_info=True,
             )
@@ -433,7 +434,7 @@ class MQTTProxyService:
             logger.info("MQTT bridge supervisor stopped", extra=self._log_context)
 
     async def _safe_component_shutdown(
-        self, name: str, component: Stoppable, timeout: float = None
+        self, name: str, component: Stoppable, timeout: Optional[float] = None
     ) -> Optional[Exception]:
         """
         Safely shutdown a component with timeout protection.
@@ -472,31 +473,25 @@ class MQTTProxyService:
             )
             return error
 
-        except Exception as e:
+        except Exception as exc:
             logger.error(
-                f"Component {name} shutdown failed: {e}",
-                extra={**self._log_context, "component": name, "error": str(e)},
+                f"Component {name} shutdown failed: {exc}",
+                extra={**self._log_context, "component": name, "error": str(exc)},
                 exc_info=True,
             )
-            return e
+            return exc
 
     async def _graceful_shutdown_with_timeout(self) -> list[Exception]:
         """
         Perform graceful shutdown with total timeout protection.
 
-        Multi-stage shutdown strategy:
-        1. Graceful component shutdown (with individual timeouts)
-        2. Critical resource cleanup (database session)
-        3. Log results and return errors
-
         Returns:
-            List of exceptions that occurred during shutdown
+            List of exceptions that occurred during shutdown.
         """
         shutdown_errors = []
 
         await self._stop_bridge_supervisor()
 
-        # Components to stop in reverse order (dependency order)
         components = [
             ("message_router", self.message_router),
             ("database_writer", self.database_writer),
@@ -507,7 +502,6 @@ class MQTTProxyService:
         ]
 
         try:
-            # Stage 1: Graceful component shutdown
             logger.debug(
                 "Starting graceful component shutdown",
                 extra={**self._log_context, "stage": "component_shutdown"},
@@ -521,17 +515,14 @@ class MQTTProxyService:
                     if error:
                         shutdown_errors.append(error)
 
-        except Exception as e:
-            # Shouldn't happen since _safe_component_shutdown catches all exceptions
+        except Exception as exc:
             logger.critical(
-                f"Unexpected error during component shutdown: {e}",
+                f"Unexpected error during component shutdown: {exc}",
                 extra=self._log_context,
                 exc_info=True,
             )
-            shutdown_errors.append(e)
-
+            shutdown_errors.append(exc)
         finally:
-            # Stage 2: Critical resource cleanup (GUARANTEED)
             logger.debug(
                 "Starting critical resource cleanup",
                 extra={**self._log_context, "stage": "critical_cleanup"},
@@ -540,12 +531,11 @@ class MQTTProxyService:
         return shutdown_errors
 
     async def stop(self):
-        """Stop the MQTT proxy service with robust multi-stage shutdown"""
+        """Stop the MQTT proxy service with robust multi-stage shutdown."""
         has_active_components = any(
             [
                 self.auth_handler,
                 self.mqtt_client,
-                self.charger_discovery,
                 self.database_writer,
                 self.message_router,
                 self.bridge_auth_handler,
@@ -560,19 +550,16 @@ class MQTTProxyService:
         logger.info("Stopping MQTT proxy service", extra=self._log_context)
         shutdown_start_time = asyncio.get_event_loop().time()
 
-        # Signal shutdown immediately
         self.shutdown_event.set()
         self.bridge_connected_event.clear()
         self.is_running = False
 
         try:
-            # Perform graceful shutdown with total timeout protection
             shutdown_errors = await asyncio.wait_for(
                 self._graceful_shutdown_with_timeout(),
                 timeout=self.config.graceful_shutdown_timeout,
             )
 
-            # Stage 3: Log results and handle errors
             shutdown_duration = asyncio.get_event_loop().time() - shutdown_start_time
 
             if shutdown_errors:
@@ -585,20 +572,17 @@ class MQTTProxyService:
                         "shutdown_duration": shutdown_duration,
                     },
                 )
-                # Raise aggregated exception with all shutdown errors
                 raise ShutdownFailedError(
                     "MQTT proxy service shutdown failed for some components",
                     errors=shutdown_errors,
                 )
-            else:
-                logger.info(
-                    f"MQTT proxy service stopped successfully "
-                    f"in {shutdown_duration:.2f}s",
-                    extra={**self._log_context, "shutdown_duration": shutdown_duration},
-                )
+
+            logger.info(
+                f"MQTT proxy service stopped successfully in {shutdown_duration:.2f}s",
+                extra={**self._log_context, "shutdown_duration": shutdown_duration},
+            )
 
         except asyncio.TimeoutError:
-            # Graceful shutdown timed out - log critical failure and exit
             shutdown_duration = asyncio.get_event_loop().time() - shutdown_start_time
             logger.critical(
                 f"MQTT proxy service graceful shutdown timed out after "
@@ -613,30 +597,27 @@ class MQTTProxyService:
                     "stage": "timeout_critical_failure",
                 },
             )
-            # Don't attempt further cleanup - let the orchestrator handle it
             raise TimeoutError(
                 f"MQTT proxy service shutdown timed out after "
                 f"{self.config.graceful_shutdown_timeout}s"
             )
 
     async def _handle_mqtt_message(self, message):
-        """Handle incoming MQTT messages"""
+        """Handle incoming MQTT messages."""
         try:
-            # Route message through message router
             if self.message_router:
                 await self.message_router.route_message(message)
 
-        except Exception as e:
+        except Exception as exc:
             logger.error(
-                f"Error handling MQTT message: {e}",
-                extra={**self._log_context, "topic": message.topic, "error": str(e)},
+                f"Error handling MQTT message: {exc}",
+                extra={**self._log_context, "topic": message.topic, "error": str(exc)},
                 exc_info=True,
             )
 
     async def run(self):
-        """Run the MQTT proxy service"""
+        """Run the MQTT proxy service."""
 
-        # Set up signal handlers for graceful shutdown
         def signal_handler(signum, frame):
             logger.info(
                 f"Received signal {signum}, initiating graceful shutdown",
@@ -648,56 +629,41 @@ class MQTTProxyService:
         signal.signal(signal.SIGTERM, signal_handler)
 
         try:
-            # Start the service
             await self.start()
-
-            # Keep running until shutdown signal
             await self.shutdown_event.wait()
 
-        except Exception as e:
+        except Exception as exc:
             logger.error(
-                f"Unexpected error in MQTT proxy service: {e}",
+                f"Unexpected error in MQTT proxy service: {exc}",
                 extra=self._log_context,
                 exc_info=True,
             )
-
         finally:
-            # Ensure cleanup
             await self.stop()
 
     def _is_bridge_supervisor_running(self) -> bool:
-        """Check whether bridge supervisor task is active."""
         return bool(
             self.bridge_supervisor_task and not self.bridge_supervisor_task.done()
         )
 
     def is_bridge_ready(self) -> bool:
-        """
-        Bridge readiness predicate for orchestrator probes.
-
-        Returns:
-            True when service is running, primary MQTT is connected, and
-            bridge requirements are satisfied (if enabled).
-        """
         if not self.is_running:
             return False
-
         if not self.mqtt_client or not self.mqtt_client.is_connected:
             return False
-
+        if not self.source_subscription_status:
+            return False
+        if not any(self.source_subscription_status.values()):
+            return False
         if not self.config.enable_bridge:
             return True
-
         if not self.bridge_connected_event.is_set():
             return False
-
         if not self._is_bridge_supervisor_running():
             return False
-
         return bool(self.bridge_destination and self.bridge_destination.enabled)
 
     def get_readiness_status(self) -> dict:
-        """Get structured readiness status used by health API endpoints."""
         primary_connected = bool(self.mqtt_client and self.mqtt_client.is_connected)
         bridge_required = bool(self.config.enable_bridge)
         bridge_connected = bool(
@@ -715,6 +681,7 @@ class MQTTProxyService:
             "service": "mqtt-proxy",
             "running": self.is_running,
             "mqtt_primary_connected": primary_connected,
+            "source_subscriptions": self.source_subscription_status,
             "bridge_required": bridge_required,
             "bridge_connected": bridge_connected,
             "bridge_supervisor_running": bridge_supervisor_running,
@@ -724,7 +691,6 @@ class MQTTProxyService:
         }
 
     def get_health_status(self):
-        """Get current health status"""
         bridge_supervisor_running = self._is_bridge_supervisor_running()
         bridge_connected = bool(
             self.config.enable_bridge and self.bridge_connected_event.is_set()
@@ -733,6 +699,8 @@ class MQTTProxyService:
         status_value = (
             HealthStatus.HEALTHY if self.is_running else HealthStatus.DISABLED
         )
+        if self.is_running and not any(self.source_subscription_status.values()):
+            status_value = HealthStatus.UNHEALTHY
         if self.is_running and self.config.enable_bridge and not bridge_connected:
             status_value = HealthStatus.UNHEALTHY
         if (
@@ -744,7 +712,9 @@ class MQTTProxyService:
 
         status = {
             "status": status_value,
-            "components": {},
+            "components": {
+                "source_subscriptions": self.source_subscription_status,
+            },
         }
 
         if self.mqtt_client:
@@ -761,11 +731,6 @@ class MQTTProxyService:
             status["components"][
                 "message_router"
             ] = self.message_router.get_health_status()
-
-        if self.charger_discovery:
-            status["components"][
-                "charger_discovery"
-            ] = self.charger_discovery.get_health_status()
 
         if self.bridge_client:
             status["components"]["bridge_client"] = {
@@ -786,8 +751,9 @@ class MQTTProxyService:
         return status
 
     def get_performance_metrics(self):
-        """Get performance metrics"""
-        metrics = {}
+        metrics = {
+            "source_subscriptions": self.source_subscription_status,
+        }
 
         if self.mqtt_client:
             metrics["mqtt_client"] = self.mqtt_client.get_connection_info()
@@ -797,11 +763,6 @@ class MQTTProxyService:
 
         if self.message_router:
             metrics["message_router"] = self.message_router.get_performance_metrics()
-
-        if self.charger_discovery:
-            metrics["charger_discovery"] = (
-                self.charger_discovery.get_discovery_metrics()
-            )
 
         if self.bridge_client:
             metrics["bridge_client"] = self.bridge_client.get_connection_info()

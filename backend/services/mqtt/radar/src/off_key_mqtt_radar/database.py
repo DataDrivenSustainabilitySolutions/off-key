@@ -22,6 +22,7 @@ from sqlalchemy.schema import MetaData
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
+from off_key_core.utils.mqtt_topics import TopicMetadataExtractor
 from .config.config import MQTTRadarConfig
 from .config.runtime import get_radar_database_settings
 from .models import ServiceMetrics, AnomalyResult
@@ -44,6 +45,19 @@ ANOMALY_TABLE = Table(
     Column("telemetry_type", Text, primary_key=True),
     Column("anomaly_type", Text, nullable=False),
     Column("anomaly_value", Float, nullable=False),
+)
+ANOMALY_IDENTITY_TABLE = Table(
+    "anomaly_identity",
+    _anomaly_metadata,
+    Column(
+        "anomaly_id",
+        Text,
+        primary_key=True,
+        server_default=text("gen_random_uuid()::text"),
+    ),
+    Column("charger_id", Text, nullable=False),
+    Column("timestamp", TIMESTAMP(timezone=True), nullable=False),
+    Column("telemetry_type", Text, nullable=False),
 )
 
 
@@ -94,6 +108,7 @@ class DatabaseWriter:
 
     def __init__(self, config: MQTTRadarConfig, session_factory=None):
         self.config = config
+        self.topic_extractor = TopicMetadataExtractor()
         # Session factory is created lazily to avoid requiring DB env vars
         # when database writing is disabled.
         self.session_factory = session_factory
@@ -242,30 +257,12 @@ class DatabaseWriter:
 
         logger.info("Database writer loop stopped")
 
-    def _extract_telemetry_type(self, topic: str) -> str:
-        """Extract telemetry type from MQTT topic.
-
-        Expected topic formats:
-        - charger/{charger_id}/telemetry/{type}
-        - charger/{charger_id}/{type}
-
-        Args:
-            topic: MQTT topic string
-
-        Returns:
-            Extracted telemetry type or "unknown" if extraction fails
-        """
-        if not topic:
-            return "unknown"
-
-        parts = topic.split("/")
-        # Format: charger/{charger_id}/telemetry/{type}
-        if len(parts) >= 4 and parts[2] == "telemetry":
-            return parts[3]
-        # Format: charger/{charger_id}/{type}
-        if len(parts) >= 3 and parts[0] == "charger":
-            return parts[2]
-        return "unknown"
+    def _extract_telemetry_type(
+        self, topic: str, payload: Optional[Dict[str, Any]] = None
+    ) -> str:
+        """Extract telemetry type from MQTT topic."""
+        metadata = self.topic_extractor.extract(topic=topic, payload=payload)
+        return metadata.telemetry_type if metadata else "unknown"
 
     async def _flush_batch(self):
         """Flush current batch to core anomalies table"""
@@ -287,12 +284,20 @@ class DatabaseWriter:
                             "charger_id": result.charger_id or "unknown",
                             "timestamp": result.timestamp,
                             "telemetry_type": self._extract_telemetry_type(
-                                result.topic
+                                result.topic, result.raw_data
                             ),
                             "anomaly_type": "ml_detected",
                             "anomaly_value": result.anomaly_score,
                         }
                         for result in anomalies_to_write
+                    ]
+                    identity_records = [
+                        {
+                            "charger_id": record["charger_id"],
+                            "timestamp": record["timestamp"],
+                            "telemetry_type": record["telemetry_type"],
+                        }
+                        for record in anomaly_records
                     ]
 
                     # Use INSERT ... ON CONFLICT DO NOTHING for idempotency
@@ -302,6 +307,14 @@ class DatabaseWriter:
                         index_elements=["charger_id", "timestamp", "telemetry_type"]
                     )
                     await session.execute(stmt)
+
+                    identity_stmt = pg_insert(ANOMALY_IDENTITY_TABLE).values(
+                        identity_records
+                    )
+                    identity_stmt = identity_stmt.on_conflict_do_nothing(
+                        index_elements=["charger_id", "timestamp", "telemetry_type"]
+                    )
+                    await session.execute(identity_stmt)
                     await session.commit()
 
                     logger.info(
@@ -357,12 +370,20 @@ class DatabaseWriter:
                                 "charger_id": result.charger_id or "unknown",
                                 "timestamp": result.timestamp,
                                 "telemetry_type": self._extract_telemetry_type(
-                                    result.topic
+                                    result.topic, result.raw_data
                                 ),
                                 "anomaly_type": "ml_detected",
                                 "anomaly_value": result.anomaly_score,
                             }
                             for result in retry_batch
+                        ]
+                        identity_records = [
+                            {
+                                "charger_id": record["charger_id"],
+                                "timestamp": record["timestamp"],
+                                "telemetry_type": record["telemetry_type"],
+                            }
+                            for record in anomaly_records
                         ]
 
                         stmt = pg_insert(ANOMALY_TABLE).values(anomaly_records)
@@ -370,6 +391,18 @@ class DatabaseWriter:
                             index_elements=["charger_id", "timestamp", "telemetry_type"]
                         )
                         await session.execute(stmt)
+
+                        identity_stmt = pg_insert(ANOMALY_IDENTITY_TABLE).values(
+                            identity_records
+                        )
+                        identity_stmt = identity_stmt.on_conflict_do_nothing(
+                            index_elements=[
+                                "charger_id",
+                                "timestamp",
+                                "telemetry_type",
+                            ]
+                        )
+                        await session.execute(identity_stmt)
                         await session.commit()
 
                         self.total_written += len(retry_batch)

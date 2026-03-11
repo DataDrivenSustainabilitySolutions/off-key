@@ -8,15 +8,10 @@ This runs as an optional component alongside the main SyncService.
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
-from fastapi import FastAPI, Depends, HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import FastAPI, HTTPException
 
 from off_key_core.config.logs import logger
-from off_key_core.db.base import get_db_async
-from off_key_core.clients.provider import get_charger_api_client
 from .config.config import get_sync_settings
-from .services.chargers import ChargersSyncService
-from .services.telemetry import TelemetrySyncService
 
 # Global reference to sync service (set by main)
 _sync_service = None
@@ -26,6 +21,17 @@ def set_sync_service(service):
     """Set the global sync service reference for API access"""
     global _sync_service
     _sync_service = service
+
+
+def _sync_skipped_response(action: str) -> dict[str, object]:
+    return {
+        "status": "skipped",
+        "message": (
+            f"{action} skipped because SYNC_SOURCE_MODE="
+            f"{get_sync_settings().config.source_mode}"
+        ),
+        "source_mode": get_sync_settings().config.source_mode,
+    }
 
 
 @asynccontextmanager
@@ -77,53 +83,27 @@ async def schema_ready_check():
 
 
 @app.post("/sync/chargers", tags=["Sync"])
-async def trigger_charger_sync(db: AsyncSession = Depends(get_db_async)):
+async def trigger_charger_sync():
     """Manually trigger charger synchronization."""
-    try:
-        client = get_charger_api_client()
-        service = ChargersSyncService(db, client)
-        await service.sync_chargers()
-        return {"status": "success", "message": "Charger sync completed"}
-    except Exception as e:
-        logger.error(f"Manual charger sync failed: {e}", exc_info=True)
-        return {"status": "error", "message": str(e)}
+    return _sync_skipped_response("charger sync")
 
 
 @app.post("/sync/chargers/clean", tags=["Sync"])
 async def trigger_charger_cleanup(
-    days_inactive: int, db: AsyncSession = Depends(get_db_async)
+    days_inactive: int,
 ):
     """Manually trigger charger cleanup."""
-    try:
-        client = get_charger_api_client()
-        service = ChargersSyncService(db, client)
-        await service.clean_chargers(days_inactive=days_inactive)
-        return {
-            "status": "success",
-            "message": f"Charger cleanup completed (days_inactive={days_inactive})",
-        }
-    except Exception as e:
-        logger.error(f"Manual charger cleanup failed: {e}", exc_info=True)
-        return {"status": "error", "message": str(e)}
+    return _sync_skipped_response(f"charger cleanup (days_inactive={days_inactive})")
 
 
 @app.post("/sync/telemetry", tags=["Sync"])
 async def trigger_telemetry_sync(
-    limit: int = 10_000, db: AsyncSession = Depends(get_db_async)
+    limit: int = 10_000,
 ):
     """Manually trigger telemetry synchronization."""
-    try:
-        client = get_charger_api_client()
-        service = TelemetrySyncService(db, client)
-        await service.sync_telemetry(limit=limit)
-        return {
-            "status": "success",
-            "message": "Telemetry sync completed",
-            "limit": limit,
-        }
-    except Exception as e:
-        logger.error(f"Manual telemetry sync failed: {e}", exc_info=True)
-        return {"status": "error", "message": str(e)}
+    response = _sync_skipped_response(f"telemetry sync (limit={limit})")
+    response["limit"] = limit
+    return response
 
 
 @app.get("/sync/status", tags=["Sync"])
@@ -131,4 +111,10 @@ async def get_sync_status():
     """Get background sync service status."""
     if _sync_service and _sync_service.background_sync:
         return _sync_service.background_sync.get_status()
-    return {"enabled": get_sync_settings().config.enabled, "running": False, "jobs": []}
+    config = get_sync_settings().config
+    return {
+        "enabled": config.enabled,
+        "running": False,
+        "jobs": [],
+        "source_mode": config.source_mode,
+    }

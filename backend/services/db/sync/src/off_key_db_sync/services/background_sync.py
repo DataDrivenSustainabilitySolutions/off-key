@@ -1,7 +1,7 @@
 """
 Background Sync Service for Charger and Telemetry Data
 
-Handles periodic synchronization of charger and telemetry data from Pionix Cloud
+Handles periodic synchronization jobs for charger and telemetry data
 using APScheduler. Runs in the background of the main API service.
 """
 
@@ -177,7 +177,7 @@ class BackgroundSyncService:
                 self.on_initial_sync_complete()
 
     async def _sync_chargers(self):
-        """Sync chargers from Pionix Cloud"""
+        """Sync chargers from configured external source."""
         sync_start = datetime.now()
 
         try:
@@ -213,7 +213,7 @@ class BackgroundSyncService:
             )
 
     async def _sync_telemetry(self):
-        """Sync telemetry data from Pionix Cloud"""
+        """Sync telemetry data from configured external source."""
         sync_start = datetime.now()
         config = get_sync_settings().config
 

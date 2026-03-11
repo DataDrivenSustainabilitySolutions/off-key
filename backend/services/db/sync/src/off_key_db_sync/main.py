@@ -11,7 +11,6 @@ from pathlib import Path
 from off_key_core.config.database import get_database_settings
 from off_key_core.config.env import load_env
 from off_key_core.config.logging import get_logging_settings
-from off_key_core.config.pionix import get_pionix_settings
 from off_key_core.config.validation import validate_settings
 from off_key_core.config.logs import load_yaml_config, logger
 from .config.config import get_sync_settings
@@ -57,7 +56,6 @@ async def main():
         [
             ("logging", get_logging_settings),
             ("database", get_database_settings),
-            ("pionix", get_pionix_settings),
             ("sync", lambda: get_sync_settings().config),
         ],
         context="DB sync configuration",

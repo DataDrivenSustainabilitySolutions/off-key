@@ -13,11 +13,8 @@ from sqlalchemy import text
 from off_key_core.config.logs import logger
 from off_key_core.db.base import get_async_engine
 from off_key_core.db.models import Base
-from off_key_core.clients.provider import get_charger_api_client
 from .config.config import get_sync_settings
 from .services.background_sync import BackgroundSyncService
-from .services.chargers import ChargersSyncService
-from .services.telemetry import TelemetrySyncService
 
 
 class SyncService:
@@ -52,8 +49,10 @@ class SyncService:
             logger.info("Starting database initialization", extra=self._log_context)
 
             async with get_async_engine().begin() as conn:
+                await conn.execute(text("CREATE EXTENSION IF NOT EXISTS pgcrypto"))
                 await conn.run_sync(Base.metadata.create_all)
                 await self._migrate_model_registry_family(conn)
+                await self._migrate_anomaly_identity(conn)
 
             self.schema_ready = True
             logger.info("Database tables created successfully", extra=self._log_context)
@@ -179,6 +178,247 @@ class SyncService:
             )
         )
 
+    async def _migrate_anomaly_identity(self, conn) -> None:
+        """
+        Maintain anomaly identity in dedicated table with strict uniqueness.
+
+        Clean break:
+        - `anomalies` hypertable stores only anomaly payload (time-series semantics).
+        - `anomaly_identity` stores globally unique `anomaly_id` keyed to composite PK.
+        """
+        anomalies_exists = await conn.scalar(
+            text("SELECT to_regclass('public.anomalies') IS NOT NULL")
+        )
+        if not anomalies_exists:
+            return
+
+        # `anomaly_identity.anomaly_id` is DB-generated to avoid app-side ID races.
+        await conn.execute(text("CREATE EXTENSION IF NOT EXISTS pgcrypto"))
+
+        logger.info(
+            "Normalizing anomalies schema before hypertable conversion",
+            extra=self._log_context,
+        )
+        await conn.execute(text("DROP INDEX IF EXISTS idx_anomaly_id"))
+        await conn.execute(
+            text(
+                "ALTER TABLE anomalies DROP CONSTRAINT \
+                    IF EXISTS anomalies_anomaly_id_key"
+            )
+        )
+
+        current_pk = await conn.execute(
+            text(
+                """
+                SELECT
+                    tc.constraint_name,
+                    string_agg(
+                        kcu.column_name,
+                        ',' ORDER BY kcu.ordinal_position
+                    ) AS columns
+                FROM information_schema.table_constraints AS tc
+                JOIN information_schema.key_column_usage AS kcu
+                  ON tc.constraint_name = kcu.constraint_name
+                 AND tc.table_schema = kcu.table_schema
+                WHERE tc.table_schema = 'public'
+                  AND tc.table_name = 'anomalies'
+                  AND tc.constraint_type = 'PRIMARY KEY'
+                GROUP BY tc.constraint_name
+                """
+            )
+        )
+        current_pk_row = current_pk.first()
+        expected_pk_columns = "charger_id,timestamp,telemetry_type"
+        if current_pk_row is not None and current_pk_row[1] != expected_pk_columns:
+            logger.info(
+                f"Dropping legacy anomalies PK ({current_pk_row[0]})",
+                extra=self._log_context,
+            )
+            await conn.execute(
+                text(
+                    f'ALTER TABLE anomalies \
+                        DROP CONSTRAINT IF EXISTS "{current_pk_row[0]}"'
+                )
+            )
+
+        await conn.execute(
+            text("ALTER TABLE anomalies DROP COLUMN IF EXISTS anomaly_id")
+        )
+
+        normalized_pk_columns = await conn.scalar(
+            text(
+                """
+                SELECT string_agg(
+                    kcu.column_name,
+                    ',' ORDER BY kcu.ordinal_position
+                )
+                FROM information_schema.table_constraints AS tc
+                JOIN information_schema.key_column_usage AS kcu
+                  ON tc.constraint_name = kcu.constraint_name
+                 AND tc.table_schema = kcu.table_schema
+                WHERE tc.table_schema = 'public'
+                  AND tc.table_name = 'anomalies'
+                  AND tc.constraint_type = 'PRIMARY KEY'
+                """
+            )
+        )
+        if normalized_pk_columns != expected_pk_columns:
+            logger.info(
+                "Creating anomalies composite primary key "
+                "(charger_id, timestamp, telemetry_type)",
+                extra=self._log_context,
+            )
+            await conn.execute(
+                text(
+                    """
+                    ALTER TABLE anomalies
+                    ADD CONSTRAINT pk_anomaly
+                    PRIMARY KEY (charger_id, timestamp, telemetry_type)
+                    """
+                )
+            )
+
+        anomalies_is_hypertable = await conn.scalar(
+            text(
+                """
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM timescaledb_information.hypertables
+                    WHERE hypertable_schema = 'public'
+                      AND hypertable_name = 'anomalies'
+                )
+                """
+            )
+        )
+        if not anomalies_is_hypertable:
+            logger.info(
+                "Converting anomalies table to Timescale hypertable",
+                extra=self._log_context,
+            )
+            await conn.execute(
+                text(
+                    """
+                    SELECT create_hypertable(
+                        'anomalies',
+                        'timestamp',
+                        if_not_exists => TRUE,
+                        migrate_data => TRUE
+                    )
+                    """
+                )
+            )
+
+        identity_exists = await conn.scalar(
+            text("SELECT to_regclass('public.anomaly_identity') IS NOT NULL")
+        )
+        if not identity_exists:
+            logger.info(
+                "Creating anomaly_identity table",
+                extra=self._log_context,
+            )
+            await conn.execute(
+                text(
+                    """
+                    CREATE TABLE anomaly_identity (
+                        anomaly_id TEXT PRIMARY KEY
+                            DEFAULT gen_random_uuid()::text,
+                        charger_id TEXT NOT NULL,
+                        timestamp TIMESTAMPTZ NOT NULL,
+                        telemetry_type TEXT NOT NULL,
+                        created TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                        CONSTRAINT uq_anomaly_identity_target UNIQUE (
+                            charger_id, timestamp, telemetry_type
+                        ),
+                        CONSTRAINT fk_anomaly_identity_anomaly
+                            FOREIGN KEY (charger_id, timestamp, telemetry_type)
+                            REFERENCES anomalies (charger_id, timestamp, telemetry_type)
+                            ON DELETE CASCADE
+                    )
+                    """
+                )
+            )
+        else:
+            await conn.execute(
+                text(
+                    """
+                    ALTER TABLE anomaly_identity
+                    ALTER COLUMN anomaly_id
+                    SET DEFAULT gen_random_uuid()::text
+                    """
+                )
+            )
+
+        await conn.execute(
+            text(
+                """
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (
+                        SELECT 1
+                        FROM pg_constraint
+                        WHERE conname = 'uq_anomaly_identity_target'
+                          AND conrelid = 'anomaly_identity'::regclass
+                    ) THEN
+                        ALTER TABLE anomaly_identity
+                        ADD CONSTRAINT uq_anomaly_identity_target
+                        UNIQUE (charger_id, timestamp, telemetry_type);
+                    END IF;
+                END
+                $$;
+                """
+            )
+        )
+        await conn.execute(
+            text(
+                """
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (
+                        SELECT 1
+                        FROM pg_constraint
+                        WHERE conname = 'fk_anomaly_identity_anomaly'
+                          AND conrelid = 'anomaly_identity'::regclass
+                    ) THEN
+                        ALTER TABLE anomaly_identity
+                        ADD CONSTRAINT fk_anomaly_identity_anomaly
+                        FOREIGN KEY (charger_id, timestamp, telemetry_type)
+                        REFERENCES anomalies (charger_id, timestamp, telemetry_type)
+                        ON DELETE CASCADE;
+                    END IF;
+                END
+                $$;
+                """
+            )
+        )
+
+        await conn.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS idx_anomaly_identity_charger_timestamp "
+                "ON anomaly_identity (charger_id, timestamp)"
+            )
+        )
+
+        # Backfill missing identity rows; IDs are generated by DB default.
+        await conn.execute(
+            text(
+                """
+                INSERT INTO anomaly_identity (
+                    charger_id, timestamp, telemetry_type
+                )
+                SELECT
+                    a.charger_id,
+                    a.timestamp,
+                    a.telemetry_type
+                FROM anomalies AS a
+                LEFT JOIN anomaly_identity AS ai
+                  ON ai.charger_id = a.charger_id
+                 AND ai.timestamp = a.timestamp
+                 AND ai.telemetry_type = a.telemetry_type
+                WHERE ai.anomaly_id IS NULL
+                """
+            )
+        )
+
     async def _check_database_connection(self) -> bool:
         """
         Check if database connection is available.
@@ -258,50 +498,25 @@ class SyncService:
             if not await self._initialize_database():
                 raise RuntimeError("Database initialization failed")
 
-            # Start background sync service if enabled
-            if config.enabled:
-                logger.info(
-                    "Starting background sync scheduler", extra=self._log_context
-                )
-
-                # Create dependency factories for services
-                def charger_sync_factory(session):
-                    client = get_charger_api_client()
-                    return ChargersSyncService(session, client)
-
-                def telemetry_sync_factory(session):
-                    client = get_charger_api_client()
-                    return TelemetrySyncService(session, client)
-
-                # Initialize and start background sync service
-                self.background_sync = BackgroundSyncService(
-                    charger_sync_factory,
-                    telemetry_sync_factory,
-                    on_initial_sync_complete=self._on_initial_sync_complete,
-                )
-
-                await self.background_sync.start()
-
-                logger.info(
-                    "Background sync scheduler started",
-                    extra={
-                        **self._log_context,
-                        "sync_enabled": True,
-                        "chargers_interval": config.chargers_interval,
-                        "telemetry_interval": config.telemetry_interval,
-                    },
-                )
-            else:
+            # API source sync jobs are removed; fail fast on unsupported mode.
+            if not config.enabled:
                 logger.info(
                     "Background sync disabled",
                     extra={**self._log_context, "sync_enabled": False},
                 )
-                # If sync is disabled, mark as complete immediately
                 self.initial_sync_complete = True
-
-            # If sync_on_startup is disabled, mark as complete immediately
-            if not config.sync_on_startup:
+            elif config.source_mode == "mqtt_only":
+                logger.info(
+                    "SYNC_SOURCE_MODE=mqtt_only: skipping API sync jobs",
+                    extra={**self._log_context, "source_mode": config.source_mode},
+                )
+                # In MQTT-only mode there is no initial cloud sync phase.
                 self.initial_sync_complete = True
+            else:
+                raise RuntimeError(
+                    "SYNC_SOURCE_MODE=api is not supported because API adapters were "
+                    "removed. Use SYNC_SOURCE_MODE=mqtt_only."
+                )
 
             self.is_running = True
 
@@ -412,6 +627,7 @@ class SyncService:
                 else ("starting" if self.is_running else "stopped")
             ),
             "sync_enabled": config.enabled,
+            "source_mode": config.source_mode,
             "schema_ready": self.schema_ready,
             "initial_sync_complete": self.initial_sync_complete,
             "components": {},

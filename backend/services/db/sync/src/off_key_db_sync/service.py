@@ -50,9 +50,9 @@ class SyncService:
 
             async with get_async_engine().begin() as conn:
                 await conn.execute(text("CREATE EXTENSION IF NOT EXISTS pgcrypto"))
-                await conn.run_sync(Base.metadata.create_all)
-                await self._migrate_model_registry_family(conn)
                 await self._migrate_anomaly_identity(conn)
+                await self._migrate_model_registry_family(conn)
+                await conn.run_sync(Base.metadata.create_all)
 
             self.schema_ready = True
             logger.info("Database tables created successfully", extra=self._log_context)

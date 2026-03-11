@@ -536,7 +536,7 @@ class AnomalyDetectionService:
             return "low"
 
         zscore = float(heuristic_context.get("zscore", 0.0))
-        threshold = float(heuristic_context.get("zscore_threshold", 2.0))
+        threshold = float(heuristic_context.get("zscore_threshold", 3.0))
 
         if zscore >= threshold * 2.5:
             return "critical"
@@ -602,10 +602,10 @@ class AnomalyDetectionService:
     def _get_heuristic_zscore_threshold(self) -> float:
         """Get z-score threshold with safe fallback for legacy config objects."""
         try:
-            threshold = float(getattr(self.config, "heuristic_zscore_threshold", 2.0))
+            threshold = float(getattr(self.config, "heuristic_zscore_threshold", 3.0))
         except (TypeError, ValueError):
-            threshold = 2.0
-        return threshold if threshold > 0 else 2.0
+            threshold = 3.0
+        return threshold if threshold > 0 else 3.0
 
     def _checkpoint_model(self):
         """Save model and preprocessor checkpoint with HMAC signature.

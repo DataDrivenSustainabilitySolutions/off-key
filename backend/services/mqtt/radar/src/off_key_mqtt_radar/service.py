@@ -225,7 +225,7 @@ class RadarService:
             heuristic_window_size=getattr(self.config, "heuristic_window_size", 300),
             heuristic_min_samples=getattr(self.config, "heuristic_min_samples", 30),
             heuristic_zscore_threshold=getattr(
-                self.config, "heuristic_zscore_threshold", 2.0
+                self.config, "heuristic_zscore_threshold", 3.0
             ),
             batch_size=getattr(self.config, "batch_size", 100),
             batch_timeout=getattr(self.config, "batch_timeout", 1.0),

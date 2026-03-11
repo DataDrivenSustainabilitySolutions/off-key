@@ -50,7 +50,7 @@ class AnomalyDetectionConfig(BaseModel):
     heuristic_enabled: bool = True
     heuristic_window_size: int = Field(default=300, ge=3)
     heuristic_min_samples: int = Field(default=30, ge=2)
-    heuristic_zscore_threshold: float = Field(default=2.0, gt=0.0)
+    heuristic_zscore_threshold: float = Field(default=3.0, gt=0.0)
 
     memory_limit_mb: int = 1000
     checkpoint_interval: int = 10000
@@ -194,7 +194,7 @@ class MQTTRadarConfig(BaseModel):
     heuristic_enabled: bool = True
     heuristic_window_size: int = Field(default=300, ge=3)
     heuristic_min_samples: int = Field(default=30, ge=2)
-    heuristic_zscore_threshold: float = Field(default=2.0, gt=0.0)
+    heuristic_zscore_threshold: float = Field(default=3.0, gt=0.0)
     batch_size: int = 100
     batch_timeout: float = 1.0
     checkpoint_interval: int = 10000
@@ -253,7 +253,7 @@ class RadarSettings(BaseSettings):
     RADAR_HEURISTIC_ENABLED: bool = True
     RADAR_HEURISTIC_WINDOW_SIZE: int = 300
     RADAR_HEURISTIC_MIN_SAMPLES: int = 30
-    RADAR_HEURISTIC_ZSCORE_THRESHOLD: float = 2.0
+    RADAR_HEURISTIC_ZSCORE_THRESHOLD: float = 3.0
 
     # Performance
     RADAR_BATCH_SIZE: int = 100

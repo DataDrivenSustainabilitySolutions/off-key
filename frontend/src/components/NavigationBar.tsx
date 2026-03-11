@@ -1,4 +1,4 @@
-import { useCallback, useContext, useEffect, useState } from "react";
+import { useCallback, useContext, useEffect, useRef, useState } from "react";
 import {
   NavigationMenu,
   NavigationMenuItem,
@@ -38,6 +38,15 @@ export const NavigationBar = () => {
   const [message, setMessage] = useState<string>("");
   const [anomalyCount, setAnomalyCount] = useState<number>(0);
   const fetchContext = useContext(FetchContext);
+  const getAnomalyCount = fetchContext?.getAnomalyCount;
+  const refreshInFlightRef = useRef(false);
+  const isMountedRef = useRef(true);
+
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   const handleLogout = () => {
     logout();
@@ -48,35 +57,34 @@ export const NavigationBar = () => {
   };
 
   const refreshAnomalyCount = useCallback(async () => {
-    if (!fetchContext || !isAuthenticated) {
-      setAnomalyCount(0);
+    if (!isAuthenticated || !getAnomalyCount) {
+      if (isMountedRef.current) {
+        setAnomalyCount(0);
+      }
       return;
     }
 
-    try {
-      const chargers = await fetchContext.getAllChargers();
-      if (!chargers.length) {
-        setAnomalyCount(0);
-        return;
-      }
+    if (refreshInFlightRef.current) {
+      return;
+    }
+    refreshInFlightRef.current = true;
 
-      const anomaliesByCharger = await Promise.all(
-        chargers.map((charger) => fetchContext.getAnomalies(charger.charger_id))
-      );
-      const total = anomaliesByCharger.reduce(
-        (sum, anomalies) => sum + anomalies.length,
-        0
-      );
-      setAnomalyCount(total);
+    try {
+      const total = await getAnomalyCount();
+      if (isMountedRef.current) {
+        setAnomalyCount(total);
+      }
     } catch (err) {
       console.error("Failed to refresh anomaly badge count:", err);
+    } finally {
+      refreshInFlightRef.current = false;
     }
-  }, [fetchContext, isAuthenticated]);
+  }, [getAnomalyCount, isAuthenticated]);
 
   useEffect(() => {
     void refreshAnomalyCount();
 
-    if (!fetchContext || !isAuthenticated) {
+    if (!isAuthenticated || !getAnomalyCount) {
       return;
     }
 
@@ -87,7 +95,7 @@ export const NavigationBar = () => {
     return () => {
       window.clearInterval(intervalId);
     };
-  }, [fetchContext, isAuthenticated, refreshAnomalyCount]);
+  }, [getAnomalyCount, isAuthenticated, refreshAnomalyCount]);
 
   return (
     <header className="sticky border-b-[1px] top-0 z-40 w-full bg-white dark:border-b-slate-700 dark:bg-background">

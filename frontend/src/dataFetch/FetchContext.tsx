@@ -67,6 +67,7 @@ export interface FetchContextType {
   ) => Promise<void>;
   getCombinedChargerData: (chargers: Charger[]) => Promise<CombinedData[]>;
   getAnomalies: (chargerId: string) => Promise<Anomaly[]>;
+  getAnomalyCount: () => Promise<number>;
   deleteAnomaly: (anomalyId: string) => Promise<void>;
   addAnomaly: (
     chargerId: string,
@@ -238,6 +239,21 @@ export const FetchProvider: React.FC<{ children: ReactNode }> = ({
     },
     []
   );
+
+  const getAnomalyCount = useCallback(async (): Promise<number> => {
+    const chargers = await getAllChargers();
+    if (!chargers.length) {
+      return 0;
+    }
+
+    const anomaliesByCharger = await Promise.all(
+      chargers.map((charger) => getAnomalies(charger.charger_id))
+    );
+    return anomaliesByCharger.reduce(
+      (sum, anomalies) => sum + anomalies.length,
+      0
+    );
+  }, [getAllChargers, getAnomalies]);
 
   const addAnomaly = useCallback(
     async (
@@ -505,6 +521,7 @@ export const FetchProvider: React.FC<{ children: ReactNode }> = ({
         toggleFavorite,
         getCombinedChargerData,
         getAnomalies,
+        getAnomalyCount,
         addAnomaly,
         deleteAnomaly,
         syncChargers,

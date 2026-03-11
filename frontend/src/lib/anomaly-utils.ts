@@ -7,6 +7,7 @@ import { groupTimestampsIntoRanges, findNearestTelemetryPoint, timestampsAreClos
 import { INTERVALS } from './constants';
 
 export interface Anomaly {
+  anomaly_id: string;
   charger_id: string;
   timestamp: string;
   telemetry_type: string;
@@ -40,10 +41,10 @@ export const matchAnomaliesWithTelemetry = (
 ): EnhancedTelemetryPoint[] => {
   return telemetryData.map(point => {
     // Find anomaly that matches this telemetry point's timestamp
-    const matchingAnomaly = anomalies.find(anomaly => 
+    const matchingAnomaly = anomalies.find(anomaly =>
       timestampsAreClose(point.timestamp, anomaly.timestamp, 5 * INTERVALS.POLLING) // 5 second tolerance
     );
-    
+
     return {
       ...point,
       hasAnomaly: !!matchingAnomaly,
@@ -61,13 +62,13 @@ export const createAnomalyZones = (
   telemetryData: TelemetryPoint[]
 ): RedZone[] => {
   if (anomalies.length === 0) return [];
-  
+
   // Get all anomaly timestamps
   const timestamps = anomalies.map(a => a.timestamp);
-  
+
   // Group into continuous ranges
   const ranges = groupTimestampsIntoRanges(timestamps, 300000); // 5 minute max gap
-  
+
   // Convert ranges to RedZones with associated anomalies
   return ranges.map(range => {
     const zoneAnomalies = anomalies.filter(anomaly => {
@@ -76,7 +77,7 @@ export const createAnomalyZones = (
       const endTime = new Date(range.end).getTime();
       return anomalyTime >= startTime && anomalyTime <= endTime;
     });
-    
+
     return {
       start: range.start,
       end: range.end,
@@ -93,7 +94,7 @@ export const hasAnomaly = (
   timestamp: string,
   anomalies: Anomaly[]
 ): Anomaly | null => {
-  return anomalies.find(anomaly => 
+  return anomalies.find(anomaly =>
     timestampsAreClose(timestamp, anomaly.timestamp, 5 * INTERVALS.POLLING) // 5 second tolerance
   ) || null;
 };
@@ -112,18 +113,18 @@ export const filterAnomalies = (
     if (anomaly.telemetry_type !== telemetryType) {
       return false;
     }
-    
+
     // Filter by time range if provided
     if (fromDate || toDate) {
       const anomalyTime = new Date(anomaly.timestamp).getTime();
       const fromTime = fromDate?.getTime() ?? -Infinity;
       const toTime = toDate?.getTime() ?? Infinity;
-      
+
       if (anomalyTime < fromTime || anomalyTime > toTime) {
         return false;
       }
     }
-    
+
     return true;
   });
 };
@@ -142,20 +143,20 @@ export const getAnomalyStats = (anomalies: Anomaly[]) => {
       latest: '',
     },
   };
-  
+
   if (anomalies.length === 0) return stats;
-  
+
   // Count by anomaly type
   anomalies.forEach(anomaly => {
     stats.byType[anomaly.anomaly_type] = (stats.byType[anomaly.anomaly_type] || 0) + 1;
     stats.byTelemetryType[anomaly.telemetry_type] = (stats.byTelemetryType[anomaly.telemetry_type] || 0) + 1;
   });
-  
+
   // Find time range
   const timestamps = anomalies.map(a => new Date(a.timestamp).getTime()).sort();
   stats.timeRange.earliest = new Date(timestamps[0]).toISOString();
   stats.timeRange.latest = new Date(timestamps[timestamps.length - 1]).toISOString();
-  
+
   return stats;
 };
 
@@ -181,6 +182,6 @@ export const getAnomalyStyle = (anomalyType: string) => {
     'pattern_break': { color: '#8b5cf6', radius: 3, opacity: 0.7 },
     'default': { color: '#dc2626', radius: 3, opacity: 0.8 },
   };
-  
+
   return styles[anomalyType] || styles.default;
 };

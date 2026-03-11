@@ -447,19 +447,12 @@ class Tactic:
 
     async def delete_anomaly(
         self,
-        charger_id: str,
-        timestamp: datetime,
-        telemetry_type: str,
+        anomaly_id: str,
     ) -> Dict[str, str]:
         """Delete anomaly via TACTIC data service."""
-        params = {
-            "timestamp": timestamp.isoformat(),
-            "telemetry_type": telemetry_type,
-        }
         return await self._make_request(
             method="DELETE",
-            endpoint=f"/api/v1/data/anomalies/{charger_id}",
-            params=params,
+            endpoint=f"/api/v1/data/anomalies/{anomaly_id}",
         )
 
     async def list_available_models(self) -> List[Dict[str, Any]]:

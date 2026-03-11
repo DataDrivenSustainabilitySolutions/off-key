@@ -123,29 +123,18 @@ async def create_anomaly(
     return result
 
 
-@router.delete("")
-async def delete_anomaly_by_fields(
-    charger_id: str,
-    timestamp: datetime,
-    telemetry_type: str,
-):
+@router.delete("/{anomaly_id}")
+async def delete_anomaly(anomaly_id: str):
     try:
-        result = await tactic.delete_anomaly(
-            charger_id=charger_id,
-            timestamp=timestamp,
-            telemetry_type=telemetry_type,
-        )
+        result = await tactic.delete_anomaly(anomaly_id=anomaly_id)
     except TacticError as e:
         if e.status == status.HTTP_404_NOT_FOUND:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Anomaly not found with given parameters",
+                detail="Anomaly not found",
             )
         _raise_tactic_http_error(e)
 
-    logger.info(
-        f"Anomaly deleted | Charger: {charger_id} | "
-        f"Telemetry: {telemetry_type} | Timestamp: {timestamp}"
-    )
+    logger.info(f"Anomaly deleted | Anomaly ID: {anomaly_id}")
 
     return result

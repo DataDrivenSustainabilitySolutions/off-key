@@ -309,19 +309,22 @@ class MQTTConfig(BaseModel):
                     "MQTT API key must be at least 10 characters when auth is enabled"
                 )
 
-        if self.enable_bridge and not self.bridge_broker_host.strip():
-            raise ValueError("Bridge broker host is required when bridge is enabled")
+        if self.enable_bridge:
+            if not self.bridge_broker_host.strip():
+                raise ValueError(
+                    "Bridge broker host is required when bridge is enabled"
+                )
 
-        if self.bridge_use_auth:
-            if not self.bridge_username.strip():
-                raise ValueError(
-                    "Bridge username is required when bridge auth is enabled"
-                )
-            if len(self.bridge_api_key.strip()) < 10:
-                raise ValueError(
-                    "Bridge API key must be at least 10 characters when "
-                    "bridge auth is enabled"
-                )
+            if self.bridge_use_auth:
+                if not self.bridge_username.strip():
+                    raise ValueError(
+                        "Bridge username is required when bridge auth is enabled"
+                    )
+                if len(self.bridge_api_key.strip()) < 10:
+                    raise ValueError(
+                        "Bridge API key must be at least 10 characters when "
+                        "bridge auth is enabled"
+                    )
 
         return self
 

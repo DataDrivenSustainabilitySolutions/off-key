@@ -5,56 +5,43 @@ from off_key_mqtt_proxy.config.config import MQTTConfig
 from off_key_mqtt_radar.config.config import MQTTRadarConfig, RadarSettings
 
 
+def _base_mqtt_config() -> dict:
+    return {
+        "broker_host": "localhost",
+        "broker_port": 1883,
+        "use_tls": False,
+        "transport": "tcp",
+        "client_id_prefix": "proxy",
+        "use_auth": True,
+        "mqtt_username": "user",
+        "mqtt_api_key": "secret-key-123",
+        "source_topics": ["charger/+/live-telemetry/#"],
+        "topic_regex": (
+            r"^charger/(?P<charger_id>[^/]+)/live-telemetry/(?P<telemetry_type>.+)$"
+        ),
+        "topic_payload_charger_key": "charger_id",
+        "topic_payload_type_key": "telemetry_type",
+        "enabled": True,
+        "reconnect_delay": 5,
+        "max_reconnect_attempts": 10,
+        "batch_size": 100,
+        "batch_timeout": 5.0,
+        "subscription_qos": 1,
+        "health_check_interval": 35,
+        "health_log_reminder_interval": 10,
+        "connection_timeout": 30.0,
+        "max_message_queue_size": 10000,
+        "worker_threads": 4,
+    }
+
+
 def test_mqtt_config_mutable_defaults_are_isolated():
-    cfg_one = MQTTConfig(
-        broker_host="localhost",
-        broker_port=1883,
-        use_tls=False,
-        transport="tcp",
-        client_id_prefix="proxy",
-        use_auth=True,
-        mqtt_username="user",
-        mqtt_api_key="secret-key-123",
-        source_topics=["charger/+/live-telemetry/#"],
-        topic_regex=r"^charger/(?P<charger_id>[^/]+)/live-telemetry/(?P<telemetry_type>.+)$",
-        topic_payload_charger_key="charger_id",
-        topic_payload_type_key="telemetry_type",
-        enabled=True,
-        reconnect_delay=5,
-        max_reconnect_attempts=10,
-        batch_size=100,
-        batch_timeout=5.0,
-        subscription_qos=1,
-        health_check_interval=35,
-        health_log_reminder_interval=10,
-        connection_timeout=30.0,
-        max_message_queue_size=10000,
-        worker_threads=4,
-    )
+    cfg_one = MQTTConfig(**_base_mqtt_config())
     cfg_two = MQTTConfig(
-        broker_host="localhost",
-        broker_port=1883,
-        use_tls=False,
-        transport="tcp",
-        client_id_prefix="proxy",
-        use_auth=True,
-        mqtt_username="user",
-        mqtt_api_key="secret-key-456",
-        source_topics=["charger/+/live-telemetry/#"],
-        topic_regex=r"^charger/(?P<charger_id>[^/]+)/live-telemetry/(?P<telemetry_type>.+)$",
-        topic_payload_charger_key="charger_id",
-        topic_payload_type_key="telemetry_type",
-        enabled=True,
-        reconnect_delay=5,
-        max_reconnect_attempts=10,
-        batch_size=100,
-        batch_timeout=5.0,
-        subscription_qos=1,
-        health_check_interval=35,
-        health_log_reminder_interval=10,
-        connection_timeout=30.0,
-        max_message_queue_size=10000,
-        worker_threads=4,
+        **{
+            **_base_mqtt_config(),
+            "mqtt_api_key": "secret-key-456",
+        }
     )
 
     cfg_one.bridge_topic_mapping["charger/+/telemetry"] = "radar/+/telemetry"
@@ -97,3 +84,29 @@ def test_radar_settings_reject_non_object_model_params(monkeypatch):
 
     with pytest.raises(ValidationError):
         RadarSettings()
+
+
+def test_mqtt_config_allows_bridge_auth_fields_when_bridge_disabled():
+    MQTTConfig(
+        **{
+            **_base_mqtt_config(),
+            "enable_bridge": False,
+            "bridge_use_auth": True,
+            "bridge_username": "",
+            "bridge_api_key": "",
+        }
+    )
+
+
+def test_mqtt_config_requires_bridge_credentials_when_bridge_enabled():
+    with pytest.raises(ValidationError, match="Bridge username"):
+        MQTTConfig(
+            **{
+                **_base_mqtt_config(),
+                "enable_bridge": True,
+                "bridge_broker_host": "emqx-main",
+                "bridge_use_auth": True,
+                "bridge_username": "",
+                "bridge_api_key": "",
+            }
+        )

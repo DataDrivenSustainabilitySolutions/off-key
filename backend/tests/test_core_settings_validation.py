@@ -15,11 +15,11 @@ def clear_core_settings_caches():
     get_runtime_settings.cache_clear()
 
 
-def test_runtime_settings_reject_unknown_provider(monkeypatch):
-    monkeypatch.setenv("CHARGER_API_PROVIDER", "unknown-provider")
-
-    with pytest.raises(ValidationError):
-        get_runtime_settings()
+def test_runtime_settings_parse_debug_flag(monkeypatch):
+    monkeypatch.setenv("DEBUG", "true")
+    settings = get_runtime_settings()
+    assert settings.DEBUG is True
+    assert not hasattr(settings, "CHARGER_API_PROVIDER")
 
 
 def test_logging_settings_normalize_fields(monkeypatch):

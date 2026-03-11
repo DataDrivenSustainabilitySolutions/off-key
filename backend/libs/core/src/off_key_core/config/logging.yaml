@@ -48,8 +48,3 @@ loggers:
     level: ${SERVICE_LOG_LEVEL:${LOG_LEVEL:INFO}}
     handlers: [console_truncated, file]
     propagate: false
-
-  off_key_core.clients.pionix.response:
-    level: ${SERVICE_LOG_LEVEL:${LOG_LEVEL:INFO}}
-    handlers: [console_truncated, file]
-    propagate: false

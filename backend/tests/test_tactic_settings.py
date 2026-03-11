@@ -2,6 +2,7 @@ import pytest
 
 from off_key_tactic_middleware.config import (
     RadarContainerRuntimeSettings,
+    RadarWorkloadLifecycle,
     TacticSettings,
     RadarDefaultsConfig,
 )
@@ -46,3 +47,21 @@ def test_radar_container_runtime_settings_build_encoded_database_url():
         settings.radar_database_url
         == "postgresql+asyncpg://db%40user:p%40ss@db-host:5432/radar"
     )
+
+
+def test_radar_lifecycle_defaults_to_ephemeral_in_development():
+    settings = TacticSettings(ENVIRONMENT="development")
+    assert settings.config.radar_workload_lifecycle == RadarWorkloadLifecycle.EPHEMERAL
+
+
+def test_radar_lifecycle_defaults_to_persistent_in_production():
+    settings = TacticSettings(ENVIRONMENT="production")
+    assert settings.config.radar_workload_lifecycle == RadarWorkloadLifecycle.PERSISTENT
+
+
+def test_radar_lifecycle_override_is_respected():
+    settings = TacticSettings(
+        ENVIRONMENT="production",
+        TACTIC_RADAR_WORKLOAD_LIFECYCLE="ephemeral",
+    )
+    assert settings.config.radar_workload_lifecycle == RadarWorkloadLifecycle.EPHEMERAL

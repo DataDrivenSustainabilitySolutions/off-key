@@ -7,6 +7,7 @@ including Docker API configuration,
 RADAR orchestration settings, and service-specific parameters.
 """
 
+from enum import Enum
 from functools import lru_cache
 
 from off_key_core.config.database import build_postgres_database_url
@@ -22,6 +23,13 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import Optional, Self
 
 RADAR_SENSOR_KEY_STRATEGIES = {"full_hierarchy", "top_level", "leaf"}
+
+
+class RadarWorkloadLifecycle(str, Enum):
+    """Lifecycle behavior for TACTIC-managed RADAR workloads."""
+
+    EPHEMERAL = "ephemeral"
+    PERSISTENT = "persistent"
 
 
 class DockerConfig(BaseModel):
@@ -166,6 +174,9 @@ class TacticConfig(BaseModel):
     reconciliation_enabled: bool = True
     reconciliation_interval: int = Field(default=60, ge=1, le=86400)
 
+    # Managed RADAR workload lifecycle behavior
+    radar_workload_lifecycle: RadarWorkloadLifecycle = RadarWorkloadLifecycle.EPHEMERAL
+
     # Model Registry Initialization
     model_registry_init_max_retries: int = Field(default=30, ge=1, le=600)
     model_registry_init_retry_interval_seconds: float = Field(
@@ -200,6 +211,7 @@ class TacticSettings(BaseSettings):
     TACTIC_HOST: str = Field(default="0.0.0.0")
     TACTIC_PORT: int = Field(default=8000)
     TACTIC_LOG_LEVEL: str = Field(default="INFO")
+    ENVIRONMENT: str = Field(default="development")
 
     # Docker API Configuration
     TACTIC_DOCKER_API_URL: str = Field(default=DEFAULT_DOCKER_CONFIG.api_url)
@@ -293,6 +305,7 @@ class TacticSettings(BaseSettings):
     # Status Reconciliation Configuration
     TACTIC_RECONCILIATION_ENABLED: bool = Field(default=True)
     TACTIC_RECONCILIATION_INTERVAL: int = Field(default=60)
+    TACTIC_RADAR_WORKLOAD_LIFECYCLE: Optional[str] = Field(default=None)
 
     # Model Registry Initialization
     TACTIC_MODEL_REGISTRY_INIT_MAX_RETRIES: int = Field(default=30)
@@ -315,6 +328,38 @@ class TacticSettings(BaseSettings):
 
     def _parse_default_constraints(self) -> list[str]:
         return self._split_constraints(self.TACTIC_DOCKER_DEFAULT_CONSTRAINTS)
+
+    @field_validator("ENVIRONMENT")
+    @classmethod
+    def validate_environment(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        allowed = {"development", "test", "staging", "production"}
+        if normalized not in allowed:
+            allowed_text = ", ".join(sorted(allowed))
+            raise ValueError(f"ENVIRONMENT must be one of: {allowed_text}")
+        return normalized
+
+    @staticmethod
+    def _normalize_lifecycle_policy(raw_value: str) -> RadarWorkloadLifecycle:
+        normalized = raw_value.strip().lower()
+        try:
+            return RadarWorkloadLifecycle(normalized)
+        except ValueError as exc:
+            allowed = ", ".join(policy.value for policy in RadarWorkloadLifecycle)
+            raise ValueError(
+                f"TACTIC_RADAR_WORKLOAD_LIFECYCLE must be one of: {allowed}"
+            ) from exc
+
+    def _resolve_radar_workload_lifecycle(self) -> RadarWorkloadLifecycle:
+        if self.TACTIC_RADAR_WORKLOAD_LIFECYCLE:
+            return self._normalize_lifecycle_policy(
+                self.TACTIC_RADAR_WORKLOAD_LIFECYCLE
+            )
+
+        if self.ENVIRONMENT == "production":
+            return RadarWorkloadLifecycle.PERSISTENT
+
+        return RadarWorkloadLifecycle.EPHEMERAL
 
     @property
     def config(self) -> TacticConfig:
@@ -371,6 +416,7 @@ class TacticSettings(BaseSettings):
             log_level=self.TACTIC_LOG_LEVEL,
             reconciliation_enabled=self.TACTIC_RECONCILIATION_ENABLED,
             reconciliation_interval=self.TACTIC_RECONCILIATION_INTERVAL,
+            radar_workload_lifecycle=self._resolve_radar_workload_lifecycle(),
             model_registry_init_max_retries=self.TACTIC_MODEL_REGISTRY_INIT_MAX_RETRIES,
             model_registry_init_retry_interval_seconds=(
                 self.TACTIC_MODEL_REGISTRY_INIT_RETRY_INTERVAL_SECONDS

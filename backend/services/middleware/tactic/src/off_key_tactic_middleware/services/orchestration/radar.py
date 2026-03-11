@@ -18,6 +18,9 @@ from ...config.config import (
     get_tactic_settings,
 )
 
+MANAGED_BY_TACTIC_LABEL = "managed_by=tactic"
+RADAR_SERVICE_TYPE_LABEL = "service_type=radar"
+
 
 @lru_cache(maxsize=1)
 def get_async_docker() -> AsyncDocker:
@@ -500,6 +503,74 @@ class RadarOrchestrationService:
             self.async_docker.client.containers.get, container_id
         )
         return await self.async_docker.run(on_container, docker_container)
+
+    @staticmethod
+    def _managed_radar_label_filters() -> Dict[str, List[str]]:
+        return {"label": [MANAGED_BY_TACTIC_LABEL, RADAR_SERVICE_TYPE_LABEL]}
+
+    async def _list_managed_radar_workload_ids(self) -> set[str]:
+        filters = self._managed_radar_label_filters()
+
+        docker_services = await self.async_docker.run(
+            self.async_docker.client.services.list,
+            filters=filters,
+        )
+        docker_containers = await self.async_docker.run(
+            self.async_docker.client.containers.list,
+            all=True,
+            filters=filters,
+        )
+
+        service_ids = {service.id for service in docker_services if service.id}
+        container_ids = {
+            container.id for container in docker_containers if container.id
+        }
+        return service_ids | container_ids
+
+    async def teardown_managed_radar_workloads(self) -> Dict[str, int]:
+        """
+        Remove all TACTIC-managed RADAR Docker workloads and clear service records.
+
+        Returns:
+            Dict[str, int]: Cleanup summary counters.
+        """
+        result = await self.session.execute(select(MonitoringService.container_id))
+        db_container_ids = {row[0] for row in result.all() if row[0]}
+
+        managed_workload_ids = await self._list_managed_radar_workload_ids()
+        target_ids = db_container_ids | managed_workload_ids
+
+        removed_workloads = 0
+        removal_failures: list[str] = []
+
+        for workload_id in target_ids:
+            try:
+                await self._resolve_workload_operation(
+                    workload_id,
+                    on_service=lambda s: s.remove(),
+                    on_container=lambda c: c.remove(force=True),
+                )
+                removed_workloads += 1
+            except docker.errors.NotFound:
+                continue
+            except Exception as exc:
+                removal_failures.append(f"{workload_id}: {exc}")
+
+        if removal_failures:
+            await self.session.rollback()
+            failures = "; ".join(removal_failures)
+            raise RuntimeError(
+                "Failed to remove one or more managed RADAR workloads: " f"{failures}"
+            )
+
+        delete_result = await self.session.execute(delete(MonitoringService))
+        await self.session.commit()
+
+        return {
+            "db_rows_deleted": int(delete_result.rowcount or 0),
+            "docker_workloads_removed": removed_workloads,
+            "workloads_targeted": len(target_ids),
+        }
 
     async def stop_radar_service(
         self, container_name: Optional[str] = None, container_id: Optional[str] = None

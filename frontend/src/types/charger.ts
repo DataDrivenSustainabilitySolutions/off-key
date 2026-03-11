@@ -12,6 +12,7 @@ export interface Charger {
   charger_id: string;
   charger_name: string | null;
   last_seen: string;
+  mqtt_last_message?: string | null;
   online: boolean;
   state: string;
   created: string;
@@ -59,6 +60,7 @@ export interface TelemetryTypeData {
 
 // Anomaly detection result
 export interface Anomaly {
+  anomaly_id: string;
   charger_id: string;
   timestamp: string;
   telemetry_type: string;

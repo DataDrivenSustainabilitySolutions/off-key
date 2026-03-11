@@ -35,6 +35,13 @@ const parseNumericInput = (
   return rawValue;
 };
 
+const parseTopicPatterns = (raw: string): string[] => {
+  return raw
+    .split(/[\n,]/)
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
+};
+
 interface ActiveService {
   id: string;
   container_id: string;
@@ -366,6 +373,10 @@ const Monitoring: React.FC = () => {
         .map(([key]) => key),
     [visibleMap]
   );
+  const [topicMode, setTopicMode] = useState<"selected_sensors" | "direct_patterns">(
+    "selected_sensors"
+  );
+  const [topicPatternInput, setTopicPatternInput] = useState<string>("");
   const [selectedAlgorithm, setSelectedAlgorithm] = useState<string | null>(
     null
   );
@@ -389,6 +400,11 @@ const Monitoring: React.FC = () => {
 
     loadAllTelemetryTypes(chargerId);
   }, [loadAllTelemetryTypes, chargerId]);
+
+  useEffect(() => {
+    if (!chargerId) return;
+    setTopicPatternInput(`charger/${chargerId}/live-telemetry/#`);
+  }, [chargerId]);
 
   const loadModels = useCallback(async () => {
     try {
@@ -594,15 +610,21 @@ const Monitoring: React.FC = () => {
   }, [loadAnomalies]);
 
   const submitAnomalyDetection = async () => {
-    if (!selectedAlgorithm || activeKeys.length === 0 || !chargerId) {
-      alert("Please select at least one sensor and an algorithm.");
+    if (!selectedAlgorithm || !chargerId) {
+      alert("Please select an algorithm.");
       return;
     }
 
     try {
-      // Build MQTT topics using charger ID and selected sensors
-      // Format: charger/{charger_id}/live-telemetry/{sensor_type}
-      const mqttTopics = activeKeys.map(sensorType => `charger/${chargerId}/live-telemetry/${sensorType}`);
+      const mqttTopics =
+        topicMode === "selected_sensors"
+          ? activeKeys.map((sensorType) => `charger/${chargerId}/live-telemetry/${sensorType}`)
+          : parseTopicPatterns(topicPatternInput);
+
+      if (mqttTopics.length === 0) {
+        alert("Please select at least one sensor or provide at least one topic pattern.");
+        return;
+      }
 
       // Generate unique container name
       const containerName = `radar-${chargerId}-${Date.now()}`;
@@ -651,41 +673,100 @@ const Monitoring: React.FC = () => {
               <div className="flex items-start gap-6">
                 {/* Left Side */}
                 <div className="flex flex-col w-2/5">
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button className="w-30 mb-5 mr-3 mt-4 bg-indigo-800 hover:bg-indigo-700 cursor-pointer">
-                        Sensor types
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent className="w100">
-                      <DropdownMenuLabel>Sensors</DropdownMenuLabel>
-                      <DropdownMenuSeparator />
-                      {monitoringKeys.map((key) => (
-                        <DropdownMenuCheckboxItem
-                          key={key}
-                          checked={visibleMap[key]}
-                          onCheckedChange={() =>
-                            setVisibleMap((prev) => ({
-                              ...prev,
-                              [key]: !prev[key],
-                            }))
-                          }
-                          onClick={(e) => e.stopPropagation()}
+                  <label className="text-sm font-semibold mt-4 mb-2">Topic Input Mode</label>
+                  <select
+                    className="border rounded px-3 py-2 bg-white text-black dark:bg-neutral-900 dark:text-white"
+                    value={topicMode}
+                    onChange={(e) => setTopicMode(e.target.value as "selected_sensors" | "direct_patterns")}
+                  >
+                    <option value="selected_sensors">Build from selected sensors</option>
+                    <option value="direct_patterns">Use direct topic patterns</option>
+                  </select>
+
+                  {topicMode === "selected_sensors" ? (
+                    <>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button className="w-30 mb-5 mr-3 mt-4 bg-indigo-800 hover:bg-indigo-700 cursor-pointer">
+                            Sensor types
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent className="w100">
+                          <DropdownMenuLabel>Sensors</DropdownMenuLabel>
+                          <DropdownMenuSeparator />
+                          {monitoringKeys.map((key) => (
+                            <DropdownMenuCheckboxItem
+                              key={key}
+                              checked={visibleMap[key]}
+                              onCheckedChange={() =>
+                                setVisibleMap((prev) => ({
+                                  ...prev,
+                                  [key]: !prev[key],
+                                }))
+                              }
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              {key}
+                            </DropdownMenuCheckboxItem>
+                          ))}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+
+                      <div className="mt-6">
+                        <h2 className="text-lg font-bold mb-2">
+                          Picked values for the Anomaly Detection:
+                        </h2>
+                        <ul className="list-disc list-inside space-y-1">
+                          {activeKeys.map((key) => (
+                            <li key={key} className="ml-2">
+                              {key}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="mt-4 space-y-3">
+                      <label className="text-sm font-semibold">Topic Patterns</label>
+                      <textarea
+                        className="border rounded px-3 py-2 bg-white text-black dark:bg-neutral-900 dark:text-white min-h-36"
+                        value={topicPatternInput}
+                        onChange={(e) => setTopicPatternInput(e.target.value)}
+                        placeholder="One topic per line or comma-separated. Supports MQTT wildcards + and #."
+                      />
+                      <div className="flex gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => setTopicPatternInput("#")}
                         >
-                          {key}
-                        </DropdownMenuCheckboxItem>
-                      ))}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                          Use all topics (#)
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => setTopicPatternInput(`charger/${chargerId}/live-telemetry/#`)}
+                        >
+                          Charger wildcard
+                        </Button>
+                      </div>
+                      <p className="text-xs text-gray-500">
+                        Parsed topics: {parseTopicPatterns(topicPatternInput).join(", ") || "none"}
+                      </p>
+                    </div>
+                  )}
 
                   <div className="mt-6">
                     <h2 className="text-lg font-bold mb-2">
-                      Picked values for the Anomaly Detection:
+                      Effective Topics:
                     </h2>
                     <ul className="list-disc list-inside space-y-1">
-                      {activeKeys.map((key) => (
-                        <li key={key} className="ml-2">
-                          {key}
+                      {(topicMode === "selected_sensors"
+                        ? activeKeys.map((sensorType) => `charger/${chargerId}/live-telemetry/${sensorType}`)
+                        : parseTopicPatterns(topicPatternInput)
+                      ).map((topic) => (
+                        <li key={topic} className="ml-2">
+                          {topic}
                         </li>
                       ))}
                     </ul>

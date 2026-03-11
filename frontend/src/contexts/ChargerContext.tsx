@@ -5,6 +5,7 @@ import { API_CONFIG } from "@/lib/api-config";
 export interface Charger {
   charger_name: string | null;
   last_seen: string;
+  mqtt_last_message?: string | null;
   online: boolean;
   charger_id: string;
   state: string;
@@ -36,23 +37,23 @@ export interface ChargerContextType {
   // Core charger functions
   getAllChargers: () => Promise<Charger[]>;
   getCombinedChargerData: (chargers: Charger[]) => Promise<CombinedData[]>;
-  
+
   // Sync functions
   syncChargers: () => Promise<void>;
   syncTelemetry: () => Promise<void>;
   syncTelemetryShort: () => Promise<void>;
-  
+
   // Monitoring functions
   loadMonitoring: (chargerId: string) => Promise<void>;
-  
+
   // State management
   monitoringMap: Record<string, Monitoring[]>;
   chargers: Charger[];
-  
+
   // Loading and error states
   loading: boolean;
   error: string | null;
-  
+
   // Clear functions
   clearMonitoringData: (chargerId?: string) => void;
   clearChargers: () => void;
@@ -69,8 +70,12 @@ export const ChargerProvider: React.FC<{ children: ReactNode }> = ({ children })
   const getAllChargers = useCallback(async (): Promise<Charger[]> => {
     const endpoint = API_CONFIG.ENDPOINTS.CHARGERS.AVAILABLE;
     const chargersData = await apiUtils.get<Charger[]>(endpoint);
-    setChargers(chargersData);
-    return chargersData;
+    const normalized = chargersData.map((charger) => ({
+      ...charger,
+      last_seen: charger.mqtt_last_message ?? charger.last_seen ?? "",
+    }));
+    setChargers(normalized);
+    return normalized;
   }, []);
 
   const getCombinedChargerData = useCallback(
@@ -78,7 +83,7 @@ export const ChargerProvider: React.FC<{ children: ReactNode }> = ({ children })
       try {
         setLoading(true);
         setError(null);
-        
+
         const combinedData = await Promise.all(
           chargers.map(async (charger) => {
             try {
@@ -90,7 +95,7 @@ export const ChargerProvider: React.FC<{ children: ReactNode }> = ({ children })
                   API_CONFIG.ENDPOINTS.TELEMETRY.DATA(charger.charger_id, "controllertemperaturecpu-thermal")
                 ),
               ]);
-              
+
               return {
                 charger_id: charger.charger_id,
                 charger_name: charger.charger_name,
@@ -117,7 +122,7 @@ export const ChargerProvider: React.FC<{ children: ReactNode }> = ({ children })
             }
           })
         );
-        
+
         return combinedData;
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : 'Failed to get combined charger data';
@@ -162,20 +167,20 @@ export const ChargerProvider: React.FC<{ children: ReactNode }> = ({ children })
 
   const loadMonitoring = useCallback(async (chargerId: string) => {
     if (!chargerId) return;
-    
+
     try {
       setLoading(true);
       setError(null);
-      
+
       const typesEndpoint = API_CONFIG.ENDPOINTS.TELEMETRY.TYPES(chargerId);
       const types = await apiUtils.get<string[]>(typesEndpoint);
-      
+
       const keys = types.filter(
         (t) =>
           t.toLowerCase().startsWith("system") ||
           t.toLowerCase().startsWith("controllerstate")
       );
-      
+
       if (keys.length === 0) {
         throw new Error(
           `No monitoring keys found for charger ${chargerId}`

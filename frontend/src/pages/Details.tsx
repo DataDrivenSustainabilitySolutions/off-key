@@ -6,6 +6,7 @@ import { useFetch } from "@/dataFetch/UseFetch";
 import { ChartSkeleton, NoDataFound } from "@/components/LoadingStates";
 import DynamicTelemetryChart from "@/components/DynamicTelemetryChart";
 import { Button } from "@/components/ui/button";
+import { INTERVALS } from "@/lib/constants";
 import {
   Tooltip,
   TooltipContent,
@@ -36,7 +37,7 @@ const Details: React.FC = () => {
     const loadInitialData = async () => {
       setIsLoadingTelemetry(true);
       setIsLoadingAnomalies(true);
-      
+
       try {
         await Promise.all([
           loadAllTelemetryTypes(chargerId).finally(() => setIsLoadingTelemetry(false)),
@@ -55,7 +56,7 @@ const Details: React.FC = () => {
       syncTelemetryShort();
       loadAllTelemetryTypes(chargerId);
       loadAnomalies(chargerId);
-    }, 60 * 1000); // every 60s
+    }, INTERVALS.DETAILS_UPDATE); // every 10s
 
     // Cleanup on unmount or change
     return () => clearInterval(interval);
@@ -64,7 +65,7 @@ const Details: React.FC = () => {
   // Get dynamic telemetry data and anomalies
   const allTelemetryData = allTelemetryMap[chargerId!] || [];
   const chargerAnomalies = anomaliesMap[chargerId!] || [];
-  
+
   // Group telemetry data by category for better organization
   const telemetryByCategory = useMemo(() => {
     const grouped = {
@@ -73,11 +74,11 @@ const Details: React.FC = () => {
       controller: [] as typeof allTelemetryData,
       other: [] as typeof allTelemetryData,
     };
-    
+
     allTelemetryData.forEach(telemetry => {
       grouped[telemetry.category].push(telemetry);
     });
-    
+
     return grouped;
   }, [allTelemetryData]);
 
@@ -115,12 +116,12 @@ const Details: React.FC = () => {
               </div>
             ) : allTelemetryData.length === 0 ? (
               <div className="h-80">
-                <NoDataFound 
-                  message="No telemetry data available for this charger" 
+                <NoDataFound
+                  message="No telemetry data available for this charger"
                   onRefresh={() => {
                     setIsLoadingTelemetry(true);
                     loadAllTelemetryTypes(chargerId!).finally(() => setIsLoadingTelemetry(false));
-                  }} 
+                  }}
                 />
               </div>
             ) : (
@@ -139,7 +140,7 @@ const Details: React.FC = () => {
                     ))}
                   </div>
                 )}
-                
+
                 {/* System Category Charts */}
                 {telemetryByCategory.system.length > 0 && (
                   <div className="space-y-4">
@@ -154,7 +155,7 @@ const Details: React.FC = () => {
                     ))}
                   </div>
                 )}
-                
+
                 {/* Controller Category Charts */}
                 {telemetryByCategory.controller.length > 0 && (
                   <div className="space-y-4">
@@ -169,7 +170,7 @@ const Details: React.FC = () => {
                     ))}
                   </div>
                 )}
-                
+
                 {/* Other Category Charts */}
                 {telemetryByCategory.other.length > 0 && (
                   <div className="space-y-4">

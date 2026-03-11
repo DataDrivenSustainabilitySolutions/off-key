@@ -75,3 +75,22 @@ def test_extract_sensor_type_rejects_invalid_strategy():
 def test_extract_sensor_type_requires_telemetry_segment():
     sensor = TopicParser.extract_sensor_type("charger/charger-1/legacy/TopLevelPart")
     assert sensor is None
+
+
+def test_extract_charger_id_uses_payload_fallback_on_regex_miss():
+    charger_id = TopicParser.extract_charger_id(
+        "tenant-a/site-b/topic",
+        payload={"charger_id": "charger-from-payload", "telemetry_type": "voltage"},
+    )
+    assert charger_id == "charger-from-payload"
+
+
+def test_extract_sensor_type_uses_payload_fallback_on_regex_miss():
+    sensor = TopicParser.extract_sensor_type(
+        "tenant-a/site-b/topic",
+        payload={
+            "charger_id": "charger-from-payload",
+            "telemetry_type": "metrics/voltage",
+        },
+    )
+    assert sensor == "metrics/voltage"

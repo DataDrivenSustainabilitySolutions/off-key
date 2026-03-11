@@ -120,9 +120,11 @@ class MessageProcessor:
                 return None
 
             # Step 3: Extract metadata
-            charger_id = message.extract_charger_id()
+            charger_id = TopicParser.extract_charger_id(message.topic, payload=data)
             sensor_type = TopicParser.extract_sensor_type(
-                message.topic, sensor_key_strategy=self.sensor_key_strategy
+                message.topic,
+                sensor_key_strategy=self.sensor_key_strategy,
+                payload=data,
             )
 
             # Step 4: Align features (for multi-sensor)

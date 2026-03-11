@@ -149,15 +149,22 @@ class RadarStatusReconciliationService:
             return "no_container_id"
 
         try:
-            docker_service = await self.async_docker.run(
-                self.async_docker.client.services.get, container_id
-            )
-            tasks = await self.async_docker.run(docker_service.tasks)
-            if tasks:
-                # Get the most recent task
-                latest = max(tasks, key=lambda t: t.get("CreatedAt", ""))
-                return latest.get("Status", {}).get("State", "unknown")
-            return "no_tasks"
+            try:
+                docker_service = await self.async_docker.run(
+                    self.async_docker.client.services.get, container_id
+                )
+                tasks = await self.async_docker.run(docker_service.tasks)
+                if tasks:
+                    # Get the most recent task
+                    latest = max(tasks, key=lambda t: t.get("CreatedAt", ""))
+                    return latest.get("Status", {}).get("State", "unknown")
+                return "no_tasks"
+            except docker.errors.NotFound:
+                docker_container = await self.async_docker.run(
+                    self.async_docker.client.containers.get, container_id
+                )
+                await self.async_docker.run(docker_container.reload)
+                return docker_container.status or "unknown"
         except docker.errors.NotFound:
             return "not_found"
         except Exception as e:

@@ -2,7 +2,7 @@ import json
 import uuid
 from functools import lru_cache
 from datetime import datetime
-from typing import List, Dict, Optional, Any
+from typing import List, Dict, Optional, Any, Callable
 
 import docker
 from docker.types import RestartPolicy, ServiceMode, Resources
@@ -151,9 +151,9 @@ class RadarOrchestrationService:
             performance_config=performance_config or {},
         )
 
-        # Create the RADAR service
+        # Create the RADAR workload (Swarm service when available, otherwise container)
         try:
-            service = await self._create_radar_service_sync(
+            docker_workload = await self._create_radar_workload(
                 container_name=container_name,
                 service_id=db_service_id,
                 environment=env_vars,
@@ -162,7 +162,7 @@ class RadarOrchestrationService:
             # Create monitoring service record
             service_record = MonitoringService(
                 id=db_service_id,
-                container_id=service.id,
+                container_id=docker_workload.id,
                 container_name=container_name,
                 mqtt_topic=mqtt_topics,
                 created_at=datetime.now(),
@@ -173,7 +173,7 @@ class RadarOrchestrationService:
             self.session.add(service_record)
             await self.session.commit()
 
-            logger.info(f"RADAR service created with ID: {service.id}")
+            logger.info(f"RADAR workload created with ID: {docker_workload.id}")
             logger.info(f"RADAR service added to database with ID: {service_record.id}")
 
             return service_record
@@ -331,7 +331,60 @@ class RadarOrchestrationService:
         """
         return get_radar_container_runtime_settings().radar_database_url
 
-    async def _create_radar_service_sync(
+    async def _is_swarm_manager(self) -> bool:
+        """Return True when Docker engine is an active Swarm manager."""
+        try:
+            info = await self.async_docker.run(self.async_docker.client.info)
+            swarm = info.get("Swarm", {})
+            local_node_state = str(swarm.get("LocalNodeState", "")).lower()
+            return local_node_state == "active" and bool(swarm.get("ControlAvailable"))
+        except Exception as exc:
+            logger.warning("Failed to detect Swarm mode; assuming non-Swarm: %s", exc)
+            return False
+
+    @staticmethod
+    def _should_fallback_to_container(exc: Exception) -> bool:
+        """Detect Swarm-only errors where local container fallback should be used."""
+        text = str(exc).lower()
+        indicators = (
+            "cannot be used with services",
+            "only networks scoped to the swarm can be used",
+            "this node is not a swarm manager",
+            "swarm mode is not active",
+        )
+        return any(indicator in text for indicator in indicators)
+
+    async def _create_radar_workload(
+        self,
+        container_name: str,
+        service_id: str,
+        environment: Dict[str, str],
+    ) -> Any:
+        """
+        Create RADAR as a Swarm service when possible, otherwise as a Docker container.
+        """
+        if await self._is_swarm_manager():
+            try:
+                return await self._create_radar_swarm_service(
+                    container_name=container_name,
+                    service_id=service_id,
+                    environment=environment,
+                )
+            except Exception as exc:
+                if not self._should_fallback_to_container(exc):
+                    raise
+                logger.warning(
+                    "Swarm RADAR creation failed; falling back to container mode: %s",
+                    exc,
+                )
+
+        return await self._create_radar_container(
+            container_name=container_name,
+            service_id=service_id,
+            environment=environment,
+        )
+
+    async def _create_radar_swarm_service(
         self,
         container_name: str,
         service_id: str,
@@ -380,6 +433,74 @@ class RadarOrchestrationService:
 
         return container
 
+    async def _create_radar_container(
+        self,
+        container_name: str,
+        service_id: str,
+        environment: Dict[str, str],
+    ) -> Any:
+        """Helper method to create RADAR Docker container in non-Swarm mode."""
+        docker_config = get_tactic_settings().config.docker
+
+        labels = {
+            "owner": "tactic_middleware",
+            "started_at": datetime.utcnow().isoformat() + "Z",
+            "purpose": "RADAR anomaly detection service",
+            "env": get_radar_container_runtime_settings().ENVIRONMENT,
+            "service_type": "radar",
+            "managed_by": "tactic",
+        }
+
+        restart_policy: Dict[str, Any] = {
+            "Name": docker_config.default_restart_policy,
+        }
+        if (
+            docker_config.default_restart_policy == "on-failure"
+            and docker_config.default_restart_max_attempts > 0
+        ):
+            restart_policy["MaximumRetryCount"] = (
+                docker_config.default_restart_max_attempts
+            )
+
+        container_kwargs = {
+            "name": f"radar-{service_id}",
+            "labels": labels,
+            "image": "off-key-mqtt-radar:latest",
+            "environment": environment,
+            "command": ["/app/bin/python", "-m", "off_key_mqtt_radar"],
+            "detach": True,
+            "network": docker_config.default_network,
+            "restart_policy": restart_policy,
+            "mem_limit": _parse_memory_string(docker_config.default_memory_limit),
+            "nano_cpus": int(float(docker_config.default_cpu_limit) * 1_000_000_000),
+        }
+
+        container = await self.async_docker.run(
+            self.async_docker.client.containers.run,
+            **container_kwargs,
+        )
+        return container
+
+    async def _resolve_workload_operation(
+        self,
+        container_id: str,
+        on_service: Callable[[Any], Any],
+        on_container: Callable[[Any], Any],
+    ) -> Any:
+        """Apply operation to Swarm service or fallback container by ID."""
+        try:
+            docker_service = await self.async_docker.run(
+                self.async_docker.client.services.get, container_id
+            )
+            return await self.async_docker.run(on_service, docker_service)
+        except docker.errors.NotFound:
+            pass
+
+        docker_container = await self.async_docker.run(
+            self.async_docker.client.containers.get, container_id
+        )
+        return await self.async_docker.run(on_container, docker_container)
+
     async def stop_radar_service(
         self, container_name: Optional[str] = None, container_id: Optional[str] = None
     ) -> bool:
@@ -411,11 +532,12 @@ class RadarOrchestrationService:
             return False
 
         try:
-            # Stop and remove the Docker service
-            docker_service = await self.async_docker.run(
-                self.async_docker.client.services.get, service.container_id
+            # Stop and remove the Docker workload (service or container)
+            await self._resolve_workload_operation(
+                service.container_id,
+                on_service=lambda s: s.remove(),
+                on_container=lambda c: c.remove(force=True),
             )
-            await self.async_docker.run(docker_service.remove)
 
             # Delete the service from the database
             delete_stmt = delete(MonitoringService).where(
@@ -464,15 +586,22 @@ class RadarOrchestrationService:
             return "no_container_id"
 
         try:
-            docker_service = await self.async_docker.run(
-                self.async_docker.client.services.get, container_id
-            )
-            tasks = await self.async_docker.run(docker_service.tasks)
-            if tasks:
-                # Get the most recent task
-                latest = max(tasks, key=lambda t: t.get("CreatedAt", ""))
-                return latest.get("Status", {}).get("State", "unknown")
-            return "no_tasks"
+            try:
+                docker_service = await self.async_docker.run(
+                    self.async_docker.client.services.get, container_id
+                )
+                tasks = await self.async_docker.run(docker_service.tasks)
+                if tasks:
+                    # Get the most recent task
+                    latest = max(tasks, key=lambda t: t.get("CreatedAt", ""))
+                    return latest.get("Status", {}).get("State", "unknown")
+                return "no_tasks"
+            except docker.errors.NotFound:
+                docker_container = await self.async_docker.run(
+                    self.async_docker.client.containers.get, container_id
+                )
+                await self.async_docker.run(docker_container.reload)
+                return docker_container.status or "unknown"
         except docker.errors.NotFound:
             return "not_found"
         except Exception as e:
@@ -549,27 +678,8 @@ class RadarOrchestrationService:
         if not service:
             return None
 
-        # Check actual service status in Docker
-        docker_service_status = "unknown"
-        try:
-            docker_service = await self.async_docker.run(
-                self.async_docker.client.services.get, service.container_id
-            )
-            # For Docker services, check tasks to get the actual status
-            tasks = await self.async_docker.run(docker_service.tasks)
-            if tasks:
-                # Get the status of the most recent task
-                latest_task = max(tasks, key=lambda t: t.get("CreatedAt", ""))
-                docker_service_status = latest_task.get("Status", {}).get(
-                    "State", "unknown"
-                )
-            else:
-                docker_service_status = "no_tasks"
-        except docker.errors.NotFound:
-            docker_service_status = "not_found"
-        except Exception as e:
-            logger.error(f"Error checking Docker service status: {e}")
-            docker_service_status = "error"
+        # Check actual workload status in Docker
+        docker_service_status = await self._get_docker_status(service.container_id)
 
         return {
             "id": service.id,

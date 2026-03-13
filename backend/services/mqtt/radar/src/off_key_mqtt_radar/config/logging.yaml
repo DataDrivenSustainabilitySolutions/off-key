@@ -4,12 +4,17 @@ disable_existing_loggers: false
 # Override root logger to prevent double logging
 root:
   level: ${LOG_LEVEL:INFO}
-  handlers: []
+  handlers: [console]
 
 # Service-specific logger configurations
 loggers:
+  off_key_mqtt_radar:
+    level: ${RADAR_LOG_LEVEL:${SERVICE_LOG_LEVEL:${LOG_LEVEL:INFO}}}
+    handlers: [console, file]
+    propagate: false
+
   mqtt-radar:
-    level: ${SERVICE_LOG_LEVEL:${LOG_LEVEL:INFO}}
+    level: ${RADAR_LOG_LEVEL:${SERVICE_LOG_LEVEL:${LOG_LEVEL:INFO}}}
     handlers: [console, file]
     propagate: false
 

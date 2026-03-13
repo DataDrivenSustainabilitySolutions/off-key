@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Link } from 'react-router-dom';
 import { Eye, EyeOff } from 'lucide-react';
+import { clientLogger } from "@/lib/logger";
 
 interface RegistrationResponse {
   message: string;
@@ -59,7 +60,11 @@ const Registration: React.FC = () => {
         window.location.href = '/login';
       }, 3000);
     } catch (error) {
-      console.error(error);
+      clientLogger.error({
+        event: "auth.registration_request_failed",
+        message: "Registration request failed",
+        error,
+      });
       setMessage('An error occurred.');
       setIsError(true);
     }

@@ -18,6 +18,7 @@ import { API_CONFIG } from "@/lib/api-config";
 import toast from "react-hot-toast";
 import { ChevronUp, ChevronDown } from "lucide-react";
 import { getStatusDisplay } from "@/types/monitoring";
+import { formatAnomalyZScore, getAnomalyZScoreClassName } from "@/lib/anomaly-semantics";
 
 // Helper function to parse numeric input, preventing NaN storage
 const parseNumericInput = (
@@ -59,6 +60,17 @@ interface Anomaly {
   anomaly_type: string;
   anomaly_value: number;
 }
+
+type SensorKeyStrategy = "full_hierarchy" | "top_level" | "leaf";
+
+type PerformanceConfigState = {
+  heuristic_enabled: boolean;
+  heuristic_window_size: number;
+  heuristic_min_samples: number;
+  heuristic_zscore_threshold: number;
+  sensor_key_strategy: SensorKeyStrategy;
+  sensor_freshness_seconds: number;
+};
 
 type PreprocessingStepConfig = {
   id: string;
@@ -305,12 +317,12 @@ const AnomaliesSection: React.FC<{
           ) : (
             <div className="overflow-x-auto max-h-96 overflow-y-auto">
               <Table>
-                <TableHeader>
+                  <TableHeader>
                   <TableRow>
                     <TableHead>Timestamp</TableHead>
                     <TableHead>Telemetry Type</TableHead>
                     <TableHead>Anomaly Type</TableHead>
-                    <TableHead>Score</TableHead>
+                    <TableHead>Z-Score</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -325,15 +337,11 @@ const AnomaliesSection: React.FC<{
                       <TableCell>{anomaly.anomaly_type}</TableCell>
                       <TableCell>
                         <span
-                          className={`px-2 py-1 rounded-full text-xs font-medium ${
-                            anomaly.anomaly_value >= 0.9
-                              ? "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200"
-                              : anomaly.anomaly_value >= 0.7
-                              ? "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200"
-                              : "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200"
-                          }`}
+                          className={`px-2 py-1 rounded-full text-xs font-medium ${getAnomalyZScoreClassName(
+                            anomaly.anomaly_value
+                          )}`}
                         >
-                          {(anomaly.anomaly_value * 100).toFixed(1)}%
+                          {formatAnomalyZScore(anomaly.anomaly_value)}
                         </span>
                       </TableCell>
                     </TableRow>
@@ -388,6 +396,14 @@ const Monitoring: React.FC = () => {
   const [isLoadingPreprocessors, setIsLoadingPreprocessors] = useState(false);
   const [newPreprocessorType, setNewPreprocessorType] = useState<string>("");
   const nextPreprocessingStepId = useRef(0);
+  const [performanceConfig, setPerformanceConfig] = useState<PerformanceConfigState>({
+    heuristic_enabled: true,
+    heuristic_window_size: 300,
+    heuristic_min_samples: 30,
+    heuristic_zscore_threshold: 3.0,
+    sensor_key_strategy: "full_hierarchy",
+    sensor_freshness_seconds: 30,
+  });
 
   const [activeServices, setActiveServices] = useState<ActiveService[]>([]);
   const [isLoadingServices, setIsLoadingServices] = useState(false);
@@ -531,6 +547,30 @@ const Monitoring: React.FC = () => {
     });
   }, []);
 
+  const handlePerformanceNumberChange = useCallback(
+    (
+      key:
+        | "heuristic_window_size"
+        | "heuristic_min_samples"
+        | "heuristic_zscore_threshold"
+        | "sensor_freshness_seconds",
+      rawValue: string
+    ) => {
+      const parsed = parseFloat(rawValue);
+      if (Number.isNaN(parsed)) {
+        return;
+      }
+      setPerformanceConfig((prev) => ({
+        ...prev,
+        [key]:
+          key === "heuristic_window_size" || key === "heuristic_min_samples"
+            ? Math.max(1, Math.round(parsed))
+            : parsed,
+      }));
+    },
+    []
+  );
+
   useEffect(() => {
     if (monitoringKeys.length === 0) return; // if no keys given do nothing
     if (Object.keys(visibleMap).length > 0) return; // if keys already initialised also do nothing
@@ -626,6 +666,11 @@ const Monitoring: React.FC = () => {
         return;
       }
 
+      if (performanceConfig.heuristic_min_samples > performanceConfig.heuristic_window_size) {
+        alert("Heuristic min samples must be less than or equal to window size.");
+        return;
+      }
+
       // Generate unique container name
       const containerName = `radar-${chargerId}-${Date.now()}`;
 
@@ -648,6 +693,14 @@ const Monitoring: React.FC = () => {
               Object.entries(step.params || {}).filter(([, value]) => value !== "" && value !== undefined)
             ),
           })),
+          performance_config: {
+            heuristic_enabled: performanceConfig.heuristic_enabled,
+            heuristic_window_size: performanceConfig.heuristic_window_size,
+            heuristic_min_samples: performanceConfig.heuristic_min_samples,
+            heuristic_zscore_threshold: performanceConfig.heuristic_zscore_threshold,
+            sensor_key_strategy: performanceConfig.sensor_key_strategy,
+            sensor_freshness_seconds: performanceConfig.sensor_freshness_seconds,
+          },
         }
       );
 
@@ -827,6 +880,102 @@ const Monitoring: React.FC = () => {
                       )}
                     </div>
                   )}
+
+                  <div className="mt-8 space-y-3">
+                    <h3 className="text-md font-semibold">Detection Heuristics</h3>
+                    <label className="flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={performanceConfig.heuristic_enabled}
+                        onChange={(event) =>
+                          setPerformanceConfig((prev) => ({
+                            ...prev,
+                            heuristic_enabled: event.target.checked,
+                          }))
+                        }
+                      />
+                      Enable moving-window z-score trigger
+                    </label>
+                    <div className="flex flex-col">
+                      <label className="text-sm font-medium mb-1">Window Size</label>
+                      <input
+                        type="number"
+                        min={3}
+                        className="border rounded px-3 py-2 bg-white text-black dark:bg-neutral-900 dark:text-white"
+                        value={performanceConfig.heuristic_window_size}
+                        onChange={(event) =>
+                          handlePerformanceNumberChange(
+                            "heuristic_window_size",
+                            event.target.value
+                          )
+                        }
+                      />
+                    </div>
+                    <div className="flex flex-col">
+                      <label className="text-sm font-medium mb-1">Min Samples</label>
+                      <input
+                        type="number"
+                        min={2}
+                        className="border rounded px-3 py-2 bg-white text-black dark:bg-neutral-900 dark:text-white"
+                        value={performanceConfig.heuristic_min_samples}
+                        onChange={(event) =>
+                          handlePerformanceNumberChange(
+                            "heuristic_min_samples",
+                            event.target.value
+                          )
+                        }
+                      />
+                    </div>
+                    <div className="flex flex-col">
+                      <label className="text-sm font-medium mb-1">Z-Score Threshold</label>
+                      <input
+                        type="number"
+                        min={0.1}
+                        step="0.1"
+                        className="border rounded px-3 py-2 bg-white text-black dark:bg-neutral-900 dark:text-white"
+                        value={performanceConfig.heuristic_zscore_threshold}
+                        onChange={(event) =>
+                          handlePerformanceNumberChange(
+                            "heuristic_zscore_threshold",
+                            event.target.value
+                          )
+                        }
+                      />
+                    </div>
+                    <div className="flex flex-col">
+                      <label className="text-sm font-medium mb-1">Sensor Strategy</label>
+                      <select
+                        className="border rounded px-3 py-2 bg-white text-black dark:bg-neutral-900 dark:text-white"
+                        value={performanceConfig.sensor_key_strategy}
+                        onChange={(event) =>
+                          setPerformanceConfig((prev) => ({
+                            ...prev,
+                            sensor_key_strategy: event.target.value as SensorKeyStrategy,
+                          }))
+                        }
+                      >
+                        <option value="full_hierarchy">full_hierarchy</option>
+                        <option value="top_level">top_level</option>
+                        <option value="leaf">leaf</option>
+                      </select>
+                    </div>
+                    <div className="flex flex-col">
+                      <label className="text-sm font-medium mb-1">Sensor Freshness (s)</label>
+                      <input
+                        type="number"
+                        min={1}
+                        step="1"
+                        className="border rounded px-3 py-2 bg-white text-black dark:bg-neutral-900 dark:text-white"
+                        value={performanceConfig.sensor_freshness_seconds}
+                        onChange={(event) =>
+                          handlePerformanceNumberChange(
+                            "sensor_freshness_seconds",
+                            event.target.value
+                          )
+                        }
+                      />
+                    </div>
+                  </div>
 
                   <PreprocessingSection
                     steps={preprocessingSteps}

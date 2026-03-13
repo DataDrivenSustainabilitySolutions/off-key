@@ -15,6 +15,10 @@ class LoggingSettings(BaseSettings):
     LOG_LEVEL: str = "INFO"
     LOG_FORMAT: str = "simple"
     LOG_CORRELATION_HEADER: str = "X-Correlation-ID"
+    LOG_REDACT_PII: bool = True
+    LOG_PII_DEBUG_UNMASK: bool = False
+    LOG_HEARTBEAT_INTERVAL_SECONDS: int = 60
+    LOG_REPEAT_SUPPRESSION_SECONDS: int = 60
     ENABLE_REQUEST_LOGGING: bool = True
     ENABLE_PERFORMANCE_LOGGING: bool = True
 
@@ -45,6 +49,20 @@ class LoggingSettings(BaseSettings):
         if any(ch.isspace() for ch in normalized):
             raise ValueError("LOG_CORRELATION_HEADER must not contain whitespace")
         return normalized
+
+    @field_validator("LOG_HEARTBEAT_INTERVAL_SECONDS")
+    @classmethod
+    def validate_heartbeat_interval(cls, value: int) -> int:
+        if value <= 0:
+            raise ValueError("LOG_HEARTBEAT_INTERVAL_SECONDS must be > 0")
+        return value
+
+    @field_validator("LOG_REPEAT_SUPPRESSION_SECONDS")
+    @classmethod
+    def validate_repeat_suppression(cls, value: int) -> int:
+        if value <= 0:
+            raise ValueError("LOG_REPEAT_SUPPRESSION_SECONDS must be > 0")
+        return value
 
 
 @lru_cache(maxsize=1)

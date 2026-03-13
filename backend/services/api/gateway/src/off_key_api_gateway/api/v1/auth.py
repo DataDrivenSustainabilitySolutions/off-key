@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, status
 from off_key_core.config.auth import get_auth_settings
 
-from off_key_core.config.logs import logger, log_security_event
+from off_key_core.config.logs import logger, log_security_event, redact_email
 from off_key_core.schemas.user import (
     ForgotPasswordRequest,
     ResetPasswordRequest,
@@ -75,18 +75,22 @@ async def register(user: UserCreate):
             )
         _raise_tactic_http_error(e)
 
-    # Log user registration
-    logger.info(f"User registered successfully: {user.email}")
+    safe_email = redact_email(user.email)
+    logger.info("event=auth.user_registered email=%s role=%s", safe_email, user_role)
     log_security_event("user_registration", user.email, {"role": user_role})
 
-    # Send verification email
-    logger.info(f"Sending verification email to {user.email}")
+    logger.info("event=auth.verification_email_requested email=%s", safe_email)
 
     try:
         await send_verification_email(user.email, verification_token)
-        logger.info("Verification email sent successfully.")
+        logger.info("event=auth.verification_email_sent email=%s", safe_email)
     except Exception as e:
-        logger.error(f"Error sending verification email: {e}")
+        logger.error(
+            "event=auth.verification_email_send_failed email=%s error=%s",
+            safe_email,
+            str(e),
+            exc_info=True,
+        )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to send verification email: {e}",
@@ -105,12 +109,18 @@ async def login(user: UserLogin):
             password=user.password,
         )
     except TacticError as e:
+        if e.status in (status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN):
+            log_security_event(
+                "user_login_failed",
+                user.email,
+                {"status": e.status},
+            )
         _raise_tactic_http_error(e)
 
     access_token = create_jwt({"sub": authenticated_user["email"]})
 
-    # Log successful login
-    logger.info(f"User logged in successfully: {authenticated_user['email']}")
+    safe_email = redact_email(authenticated_user["email"])
+    logger.info("event=auth.user_logged_in email=%s", safe_email)
     log_security_event(
         "user_login_success",
         authenticated_user["email"],
@@ -128,21 +138,22 @@ async def verify_email(token: str):
             status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired token"
         )
 
-    logger.info(f"Verifying email: {email}")
+    safe_email = redact_email(email)
+    logger.info("event=auth.verification_requested email=%s", safe_email)
     try:
         user = await tactic.get_user_by_email(email)
     except TacticError as e:
         _raise_tactic_http_error(e)
 
     if not user:
-        logger.error(f"User not found for email: {email}")
+        logger.warning("event=auth.verification_user_missing email=%s", safe_email)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="User not found",
         )
 
     if user.get("is_verified"):
-        logger.info(f"User {email} is already verified")
+        logger.info("event=auth.user_already_verified email=%s", safe_email)
         # Return success for already verified users (idempotent)
         return {"message": "Email verified successfully"}
 
@@ -151,8 +162,7 @@ async def verify_email(token: str):
     except TacticError as e:
         _raise_tactic_http_error(e)
 
-    # Log successful email verification
-    logger.info(f"Email verified successfully: {email}")
+    logger.info("event=auth.verification_success email=%s", safe_email)
     log_security_event(
         "email_verification_success", email, {"verification_method": "email_token"}
     )
@@ -174,12 +184,20 @@ async def forgot_password(user: ForgotPasswordRequest):
 
     if existing_user:
         reset_token = create_reset_token(existing_user["email"])
-        logger.info(f"Sending password reset email to {email}")
+        logger.info(
+            "event=auth.password_reset_email_requested email=%s",
+            redact_email(email),
+        )
 
         try:
             await send_password_reset_email(email, reset_token)
         except Exception as e:
-            logger.error(f"Error sending password reset email: {e}")
+            logger.error(
+                "event=auth.password_reset_email_send_failed email=%s error=%s",
+                redact_email(email),
+                str(e),
+                exc_info=True,
+            )
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Error sending the password reset email.",
@@ -211,7 +229,7 @@ async def reset_password(req: ResetPasswordRequest):
     except TacticError as e:
         _raise_tactic_http_error(e)
 
-    logger.info(f"Password successfully reset for {email}")
+    logger.info("event=auth.password_reset_success email=%s", redact_email(email))
     log_security_event("password_reset_success", email, {"reset_method": "email_token"})
 
     return {"message": "Password has been successfully reset"}

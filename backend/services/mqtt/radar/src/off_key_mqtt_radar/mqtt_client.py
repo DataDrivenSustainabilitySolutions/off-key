@@ -14,6 +14,7 @@ from typing import Callable, Optional, Awaitable, Dict, Any
 from collections import deque
 
 import paho.mqtt.client as mqtt
+from off_key_core.config.logging import get_logging_settings
 from off_key_core.config.logs import logger
 
 from .config.config import MQTTRadarConfig
@@ -58,10 +59,21 @@ class RadarMQTTClient:
         self._loop: Optional[asyncio.AbstractEventLoop] = None
         self._message_processor_task: Optional[asyncio.Task] = None
         self._shutdown_event = asyncio.Event()
+        logging_settings = get_logging_settings()
+        self._heartbeat_interval_seconds = (
+            logging_settings.LOG_HEARTBEAT_INTERVAL_SECONDS
+        )
+        self._repeat_suppression_seconds = (
+            logging_settings.LOG_REPEAT_SUPPRESSION_SECONDS
+        )
+        self._last_drop_summary_time = time.time()
+        self._last_heartbeat_time = time.time()
+        self._drop_counts: Dict[str, int] = {"rate_limit": 0, "queue_full": 0}
 
         logger.info(
-            f"Initialized RADAR MQTT client "
-            f"for broker {config.broker_host}:{config.broker_port}"
+            "event=radar.mqtt_client_initialized broker=%s:%s",
+            config.broker_host,
+            config.broker_port,
         )
 
     async def start(self):
@@ -74,11 +86,11 @@ class RadarMQTTClient:
         # Connect to MQTT broker
         await self._connect()
 
-        logger.info("RADAR MQTT client started successfully")
+        logger.info("event=radar.mqtt_client_started")
 
     async def stop(self):
         """Stop the MQTT client and cleanup resources"""
-        logger.info("Stopping RADAR MQTT client")
+        logger.info("event=radar.mqtt_client_stopping")
 
         # Signal shutdown
         self._shutdown_event.set()
@@ -98,7 +110,8 @@ class RadarMQTTClient:
                 pass
 
         self.is_connected = False
-        logger.info("RADAR MQTT client stopped")
+        self._emit_drop_summary(force=True)
+        logger.info("event=radar.mqtt_client_stopped")
 
     def set_message_handler(self, handler: Callable[[MQTTMessage], Awaitable[None]]):
         """Set the message handler for processing incoming messages"""
@@ -130,8 +143,9 @@ class RadarMQTTClient:
 
             # Connect to broker
             logger.info(
-                f"Connecting to MQTT broker at "
-                f"{self.config.broker_host}:{self.config.broker_port}"
+                "event=radar.mqtt_connecting broker=%s:%s",
+                self.config.broker_host,
+                self.config.broker_port,
             )
             self.client.connect_async(
                 self.config.broker_host, self.config.broker_port, keepalive=60
@@ -153,27 +167,38 @@ class RadarMQTTClient:
             if not self.is_connected:
                 raise RuntimeError("Failed to connect to MQTT broker within timeout")
 
-            logger.info("Successfully connected to MQTT broker")
+            logger.info("event=radar.mqtt_connected")
             self.connection_time = datetime.now()
             self.reconnect_attempts = 0
 
         except Exception as e:
-            logger.error(f"MQTT connection failed: {e}")
+            logger.error(
+                "event=radar.mqtt_connect_failed error=%s", str(e), exc_info=True
+            )
             await self._schedule_reconnect()
 
     def _on_connect(self, client, userdata, flags, rc):
         """MQTT connection callback"""
         if rc == 0:
             self.is_connected = True
-            logger.info("MQTT connection established")
+            logger.info("event=radar.mqtt_connection_established")
 
             # Subscribe to configured topics
             for topic in self.config.subscription_topics:
                 try:
                     result = client.subscribe(topic, self.config.subscription_qos)
-                    logger.info(f"Subscribed to topic: {topic} (result: {result})")
+                    logger.info(
+                        "event=radar.mqtt_subscribed topic=%s result=%s",
+                        topic,
+                        result,
+                    )
                 except Exception as e:
-                    logger.error(f"Failed to subscribe to topic {topic}: {e}")
+                    logger.error(
+                        "event=radar.mqtt_subscribe_failed topic=%s error=%s",
+                        topic,
+                        str(e),
+                        exc_info=True,
+                    )
 
         else:
             error_messages = {
@@ -185,7 +210,7 @@ class RadarMQTTClient:
             }
 
             error_msg = error_messages.get(rc, f"Unknown error code {rc}")
-            logger.error(f"MQTT connection failed: {error_msg}")
+            logger.error("event=radar.mqtt_connection_refused error=%s", error_msg)
             self.is_connected = False
 
     def _on_disconnect(self, client, userdata, rc):
@@ -193,14 +218,14 @@ class RadarMQTTClient:
         self.is_connected = False
 
         if rc != 0:
-            logger.warning(f"Unexpected MQTT disconnection (code: {rc})")
+            logger.warning("event=radar.mqtt_disconnected_unexpected code=%s", rc)
             # Schedule reconnection
             if self._loop and not self._shutdown_event.is_set():
                 self._loop.call_soon_threadsafe(
                     lambda: asyncio.create_task(self._schedule_reconnect())
                 )
         else:
-            logger.info("MQTT disconnection completed")
+            logger.info("event=radar.mqtt_disconnected")
 
     def _on_message(self, client, userdata, msg):
         """MQTT message callback"""
@@ -230,7 +255,8 @@ class RadarMQTTClient:
 
             # Check rate limit BEFORE appending
             if len(self.rate_limiter) >= self.config.rate_limit_per_minute:
-                logger.warning("Rate limit exceeded, dropping message")
+                self._drop_counts["rate_limit"] += 1
+                self._emit_drop_summary()
                 return
 
             # Only append timestamp for accepted messages
@@ -241,25 +267,30 @@ class RadarMQTTClient:
                 self.message_count += 1
                 self.last_message_time = datetime.now()
             except asyncio.QueueFull:
-                logger.warning("Message queue full, dropping message")
+                self._drop_counts["queue_full"] += 1
+                self._emit_drop_summary()
                 self.error_count += 1
 
         except Exception as e:
-            logger.error(f"Error processing MQTT message: {e}")
+            logger.error(
+                "event=radar.mqtt_message_enqueue_failed error=%s",
+                str(e),
+                exc_info=True,
+            )
             self.error_count += 1
 
     def _on_log(self, client, userdata, level, buf):
         """MQTT log callback"""
         if level == mqtt.MQTT_LOG_ERR:
-            logger.error(f"MQTT: {buf}")
+            logger.error("event=radar.mqtt_library_error message=%s", buf)
         elif level == mqtt.MQTT_LOG_WARNING:
-            logger.warning(f"MQTT: {buf}")
+            logger.warning("event=radar.mqtt_library_warning message=%s", buf)
         else:
-            logger.debug(f"MQTT: {buf}")
+            logger.debug("event=radar.mqtt_library_debug message=%s", buf)
 
     async def _message_processor(self):
         """Process messages from the queue asynchronously"""
-        logger.info("Started MQTT message processor")
+        logger.info("event=radar.mqtt_message_processor_started")
 
         try:
             while not self._shutdown_event.is_set():
@@ -274,27 +305,42 @@ class RadarMQTTClient:
                         try:
                             await self.message_handler(message)
                         except Exception as e:
-                            logger.error(f"Message handler error: {e}")
+                            logger.error(
+                                "event=radar.mqtt_message_handler_failed error=%s",
+                                str(e),
+                                exc_info=True,
+                            )
                             self.error_count += 1
                     else:
                         logger.debug(
-                            f"No message handler set,"
-                            f" dropping message from {message.topic}"
+                            "event=radar.mqtt_message_dropped_no_handler topic=%s",
+                            message.topic,
                         )
 
+                    self._emit_heartbeat()
+
                 except asyncio.TimeoutError:
+                    self._emit_heartbeat()
                     continue
                 except Exception as e:
-                    logger.error(f"Message processor error: {e}")
+                    logger.error(
+                        "event=radar.mqtt_message_processor_error error=%s",
+                        str(e),
+                        exc_info=True,
+                    )
                     self.error_count += 1
                     await asyncio.sleep(1.0)
 
         except asyncio.CancelledError:
-            logger.info("Message processor cancelled")
+            logger.debug("event=radar.mqtt_message_processor_cancelled")
         except Exception as e:
-            logger.error(f"Message processor failed: {e}")
+            logger.error(
+                "event=radar.mqtt_message_processor_failed error=%s",
+                str(e),
+                exc_info=True,
+            )
 
-        logger.info("Message processor stopped")
+        logger.info("event=radar.mqtt_message_processor_stopped")
 
     async def _schedule_reconnect(self):
         """Schedule reconnection attempt with exponential backoff"""
@@ -302,7 +348,10 @@ class RadarMQTTClient:
             return
 
         if self.reconnect_attempts >= self.max_reconnect_attempts:
-            logger.error("Maximum reconnection attempts reached")
+            logger.error(
+                "event=radar.mqtt_reconnect_exhausted attempts=%s",
+                self.reconnect_attempts,
+            )
             return
 
         self.reconnect_attempts += 1
@@ -311,8 +360,9 @@ class RadarMQTTClient:
         )  # Max 5 minutes
 
         logger.info(
-            f"Scheduling reconnection attempt {self.reconnect_attempts}"
-            f" in {delay:.1f} seconds"
+            "event=radar.mqtt_reconnect_scheduled attempt=%s delay_s=%.1f",
+            self.reconnect_attempts,
+            delay,
         )
         await asyncio.sleep(delay)
 
@@ -385,3 +435,47 @@ class RadarMQTTClient:
                 else 0
             ),
         }
+
+    def _emit_drop_summary(self, *, force: bool = False) -> None:
+        now = time.time()
+        should_emit = force or (
+            now - self._last_drop_summary_time >= self._repeat_suppression_seconds
+        )
+        if not should_emit:
+            return
+
+        rate_limited = self._drop_counts.get("rate_limit", 0)
+        queue_full = self._drop_counts.get("queue_full", 0)
+        total = rate_limited + queue_full
+        if total > 0:
+            logger.warning(
+                "event=radar.mqtt_drop_summary total=%s rate_limit=%s \
+                     queue_full=%s queue_size=%s limit=%s",
+                total,
+                rate_limited,
+                queue_full,
+                self.message_queue.qsize(),
+                self.config.max_queue_size,
+            )
+            self._drop_counts = {"rate_limit": 0, "queue_full": 0}
+        self._last_drop_summary_time = now
+
+    def _emit_heartbeat(self) -> None:
+        now = time.time()
+        if now - self._last_heartbeat_time < self._heartbeat_interval_seconds:
+            return
+
+        queue_usage = self.message_queue.qsize() / max(self.config.max_queue_size, 1)
+        error_rate = self.error_count / max(self.message_count, 1)
+        logger.info(
+            "event=radar.mqtt_heartbeat connected=%s queue_usage=%.3f \
+                 message_count=%s error_count=%s \
+                    error_rate=%.4f reconnect_attempts=%s",
+            self.is_connected,
+            queue_usage,
+            self.message_count,
+            self.error_count,
+            error_rate,
+            self.reconnect_attempts,
+        )
+        self._last_heartbeat_time = now

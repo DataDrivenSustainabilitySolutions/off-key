@@ -71,12 +71,10 @@ class MQTTProxyService:
     async def start(self):
         """Start the MQTT proxy service."""
         if self.is_running:
-            logger.warning(
-                "MQTT proxy service already running", extra=self._log_context
-            )
+            logger.debug("event=proxy.already_running", extra=self._log_context)
             return
 
-        logger.info("Starting MQTT proxy service", extra=self._log_context)
+        logger.info("event=proxy.starting", extra=self._log_context)
 
         try:
             self.shutdown_event.clear()
@@ -138,8 +136,7 @@ class MQTTProxyService:
                 self._start_bridge_supervisor()
                 if not bridge_connected:
                     logger.warning(
-                        "MQTT bridge unavailable during startup; "
-                        "service running in degraded mode with background retries",
+                        "event=proxy.bridge_unavailable_startup",
                         extra={
                             **self._log_context,
                             "bridge_host": self.config.bridge_broker_host,
@@ -148,7 +145,7 @@ class MQTTProxyService:
                     )
 
             logger.info(
-                "MQTT proxy service started successfully",
+                "event=proxy.started",
                 extra={
                     **self._log_context,
                     "configured_topic_filters": len(self.config.source_topics),
@@ -160,7 +157,8 @@ class MQTTProxyService:
 
         except Exception as exc:
             logger.error(
-                f"Failed to start MQTT proxy service: {exc}",
+                "event=proxy.start_failed error=%s",
+                exc,
                 extra=self._log_context,
                 exc_info=True,
             )
@@ -255,27 +253,26 @@ class MQTTProxyService:
         """
         if not self.message_router:
             logger.error(
-                "Cannot setup MQTT bridge: message router not initialized",
+                "event=proxy.bridge_setup_failed reason=router_not_initialized",
                 extra=self._log_context,
             )
             return False
 
         if not self.config.bridge_broker_host:
             logger.error(
-                "Cannot setup MQTT bridge: bridge broker host is missing",
+                "event=proxy.bridge_setup_failed reason=missing_bridge_host",
                 extra=self._log_context,
             )
             return False
 
         if self.config.bridge_use_auth and not self.config.bridge_username:
             logger.error(
-                "Cannot setup MQTT bridge: bridge username is required when "
-                "authentication is enabled",
+                "event=proxy.bridge_setup_failed reason=missing_bridge_username",
                 extra=self._log_context,
             )
             return False
 
-        logger.info("Setting up MQTT bridge", extra=self._log_context)
+        logger.info("event=proxy.bridge_setting_up", extra=self._log_context)
         await self._cleanup_existing_bridge_components()
 
         bridge_auth_handler: Optional[ApiKeyAuthHandler] = None
@@ -309,8 +306,11 @@ class MQTTProxyService:
             self.bridge_destination.enabled = True
 
             logger.info(
-                f"MQTT bridge established successfully to "
-                f"{self.config.bridge_broker_host}:{self.config.bridge_broker_port}",
+                "event=proxy.bridge_connected bridge_host=%s \
+                     bridge_port=%s topic_mappings=%s",
+                self.config.bridge_broker_host,
+                self.config.bridge_broker_port,
+                len(self.config.bridge_topic_mapping),
                 extra={
                     **self._log_context,
                     "bridge_host": self.config.bridge_broker_host,
@@ -322,7 +322,8 @@ class MQTTProxyService:
 
         except Exception as exc:
             logger.error(
-                f"Failed to setup MQTT bridge: {exc}",
+                "event=proxy.bridge_setup_failed error=%s",
+                exc,
                 extra=self._log_context,
                 exc_info=True,
             )
@@ -355,7 +356,7 @@ class MQTTProxyService:
     async def _bridge_supervisor_loop(self) -> None:
         """Keep bridge connection healthy and reconnect on failures."""
         reconnect_attempt = 0
-        logger.info("MQTT bridge supervisor started", extra=self._log_context)
+        logger.debug("event=proxy.bridge_supervisor_started", extra=self._log_context)
 
         try:
             while not self.shutdown_event.is_set():
@@ -403,8 +404,9 @@ class MQTTProxyService:
                     reconnect_attempt - 1
                 )
                 logger.warning(
-                    f"MQTT bridge unavailable; retrying in {retry_delay:.2f}s "
-                    f"(attempt {reconnect_attempt})",
+                    "event=proxy.bridge_retry_scheduled retry_delay_s=%.2f attempt=%s",
+                    retry_delay,
+                    reconnect_attempt,
                     extra={
                         **self._log_context,
                         "retry_delay_seconds": retry_delay,
@@ -419,11 +421,14 @@ class MQTTProxyService:
                     return
 
         except asyncio.CancelledError:
-            logger.info("MQTT bridge supervisor cancelled", extra=self._log_context)
+            logger.debug(
+                "event=proxy.bridge_supervisor_cancelled", extra=self._log_context
+            )
             raise
         except Exception as exc:
             logger.error(
-                f"Unexpected error in MQTT bridge supervisor: {exc}",
+                "event=proxy.bridge_supervisor_failed error=%s",
+                exc,
                 extra=self._log_context,
                 exc_info=True,
             )
@@ -431,7 +436,9 @@ class MQTTProxyService:
             self.bridge_connected_event.clear()
             if self.bridge_destination:
                 self.bridge_destination.enabled = False
-            logger.info("MQTT bridge supervisor stopped", extra=self._log_context)
+            logger.debug(
+                "event=proxy.bridge_supervisor_stopped", extra=self._log_context
+            )
 
     async def _safe_component_shutdown(
         self, name: str, component: Stoppable, timeout: Optional[float] = None
@@ -453,7 +460,9 @@ class MQTTProxyService:
         try:
             await asyncio.wait_for(component.stop(), timeout=timeout)
             logger.debug(
-                f"Component {name} stopped successfully",
+                "event=proxy.component_stopped component_name=%s timeout_s=%s",
+                name,
+                timeout,
                 extra={**self._log_context, "component": name, "timeout": timeout},
             )
             return None
@@ -463,7 +472,9 @@ class MQTTProxyService:
                 f"Component {name} shutdown timed out after {timeout}s"
             )
             logger.error(
-                f"Component {name} shutdown timed out",
+                "event=proxy.component_shutdown_timeout component_name=%s timeout_s=%s",
+                name,
+                timeout,
                 extra={
                     **self._log_context,
                     "component": name,
@@ -475,7 +486,9 @@ class MQTTProxyService:
 
         except Exception as exc:
             logger.error(
-                f"Component {name} shutdown failed: {exc}",
+                "event=proxy.component_shutdown_failed component_name=%s error=%s",
+                name,
+                exc,
                 extra={**self._log_context, "component": name, "error": str(exc)},
                 exc_info=True,
             )
@@ -544,10 +557,10 @@ class MQTTProxyService:
             ]
         )
         if not self.is_running and not has_active_components:
-            logger.info("MQTT proxy service already stopped", extra=self._log_context)
+            logger.debug("event=proxy.already_stopped", extra=self._log_context)
             return
 
-        logger.info("Stopping MQTT proxy service", extra=self._log_context)
+        logger.debug("event=proxy.stopping", extra=self._log_context)
         shutdown_start_time = asyncio.get_event_loop().time()
 
         self.shutdown_event.set()
@@ -564,8 +577,10 @@ class MQTTProxyService:
 
             if shutdown_errors:
                 logger.warning(
-                    f"MQTT proxy service stopped with {len(shutdown_errors)} errors "
-                    f"in {shutdown_duration:.2f}s",
+                    "event=proxy.stopped_with_errors error_count=%s \
+                         shutdown_duration_s=%.2f",
+                    len(shutdown_errors),
+                    shutdown_duration,
                     extra={
                         **self._log_context,
                         "error_count": len(shutdown_errors),
@@ -578,18 +593,18 @@ class MQTTProxyService:
                 )
 
             logger.info(
-                f"MQTT proxy service stopped successfully in {shutdown_duration:.2f}s",
+                "event=proxy.stopped shutdown_duration_s=%.2f",
+                shutdown_duration,
                 extra={**self._log_context, "shutdown_duration": shutdown_duration},
             )
 
         except asyncio.TimeoutError:
             shutdown_duration = asyncio.get_event_loop().time() - shutdown_start_time
             logger.critical(
-                f"MQTT proxy service graceful shutdown timed out after "
-                f"{self.config.graceful_shutdown_timeout}s "
-                f"(total: {shutdown_duration:.2f}s). "
-                "Exiting without further cleanup. "
-                "Orchestrator should handle process termination.",
+                "event=proxy.shutdown_timeout graceful_timeout_s=%s \
+                     actual_duration_s=%.2f",
+                self.config.graceful_shutdown_timeout,
+                shutdown_duration,
                 extra={
                     **self._log_context,
                     "shutdown_timeout": self.config.graceful_shutdown_timeout,
@@ -610,7 +625,9 @@ class MQTTProxyService:
 
         except Exception as exc:
             logger.error(
-                f"Error handling MQTT message: {exc}",
+                "event=proxy.message_handle_failed topic=%s error=%s",
+                message.topic,
+                exc,
                 extra={**self._log_context, "topic": message.topic, "error": str(exc)},
                 exc_info=True,
             )
@@ -619,8 +636,9 @@ class MQTTProxyService:
         """Run the MQTT proxy service."""
 
         def signal_handler(signum, frame):
-            logger.info(
-                f"Received signal {signum}, initiating graceful shutdown",
+            logger.debug(
+                "event=proxy.signal_received signal=%s",
+                signum,
                 extra=self._log_context,
             )
             asyncio.create_task(self.stop())
@@ -634,7 +652,8 @@ class MQTTProxyService:
 
         except Exception as exc:
             logger.error(
-                f"Unexpected error in MQTT proxy service: {exc}",
+                "event=proxy.run_failed error=%s",
+                exc,
                 extra=self._log_context,
                 exc_info=True,
             )

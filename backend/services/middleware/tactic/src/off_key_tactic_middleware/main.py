@@ -7,6 +7,7 @@ specifically handling Docker container orchestration for RADAR services.
 
 import asyncio
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 import uvicorn
 from fastapi import FastAPI, Request, Response, status
@@ -14,7 +15,11 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from off_key_core.config.env import load_env
 from off_key_core.config.validation import validate_settings
-from off_key_core.config.logs import logger
+from off_key_core.config.logs import (
+    logger,
+    load_yaml_config,
+    log_startup_logging_configuration,
+)
 from off_key_core.db.base import get_async_session_local
 from .api.v1 import radar, models, data_services
 from .api.v1.admin_models import router as admin_models_router
@@ -262,6 +267,10 @@ def create_app() -> FastAPI:
 def main() -> None:
     """Main entry point for the TACTIC middleware service."""
     load_env()
+    service_logging_config = Path(__file__).parent / "config" / "logging.yaml"
+    load_yaml_config(str(service_logging_config))
+    log_startup_logging_configuration("tactic")
+
     validate_settings(
         [("tactic", lambda: get_tactic_settings().config)],
         context="TACTIC middleware configuration",

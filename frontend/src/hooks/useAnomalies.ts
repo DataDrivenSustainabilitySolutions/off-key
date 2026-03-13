@@ -7,6 +7,7 @@ import { apiUtils } from '@/lib/api-client';
 import { API_CONFIG } from '@/lib/api-config';
 import { Anomaly } from '@/lib/anomaly-utils';
 import { INTERVALS } from '@/lib/constants';
+import { clientLogger } from "@/lib/logger";
 
 export interface UseAnomaliesResult {
   anomalies: Anomaly[];
@@ -38,21 +39,26 @@ export const useAnomalies = ({
 
   const fetchAnomalies = useCallback(async () => {
     if (!chargerId) return;
-    
+
     try {
       setError(null);
-      
+
       // Choose appropriate endpoint based on whether telemetry type is specified
-      const endpoint = telemetryType 
+      const endpoint = telemetryType
         ? API_CONFIG.ENDPOINTS.ANOMALIES.BY_CHARGER_AND_TYPE(chargerId, telemetryType)
         : API_CONFIG.ENDPOINTS.ANOMALIES.BY_CHARGER(chargerId);
-      
+
       const fetchedAnomalies = await apiUtils.get<Anomaly[]>(endpoint);
       setAnomalies(fetchedAnomalies);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to fetch anomalies';
       setError(errorMessage);
-      console.error('Error fetching anomalies:', err);
+      clientLogger.error({
+        event: "anomalies.fetch_failed",
+        message: "Error fetching anomalies",
+        error: err,
+        context: { chargerId, telemetryType },
+      });
     } finally {
       setLoading(false);
     }

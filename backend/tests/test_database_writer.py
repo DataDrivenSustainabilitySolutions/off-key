@@ -1,172 +1,93 @@
-"""
-Tests for DatabaseWriter batch operations.
+"""Tests for DatabaseWriter batching and health behavior."""
 
-Tests cover:
-- Batch accumulation
-- Flush operations
-- Retry logic
-- Error handling
-"""
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from unittest.mock import MagicMock, AsyncMock, patch
 
 
-class TestDatabaseWriter:
-    """Tests for DatabaseWriter batch operations."""
-
-    @pytest.fixture
-    def db_config(self):
-        """Create test database configuration."""
-        config = MagicMock()
-        config.db_batch_size = 10
-        config.db_batch_timeout = 1.0
-        config.db_write_enabled = True
-        return config
-
-    @pytest.mark.asyncio
-    async def test_write_anomaly_adds_to_batch(self, db_config, sample_anomaly_result):
-        """Test that write_anomaly adds results to batch."""
-        from off_key_mqtt_radar.database import DatabaseWriter
-
-        with patch(
-            "off_key_mqtt_radar.database.get_radar_async_session_factory"
-        ) as mock_factory:
-            mock_factory.return_value = AsyncMock()
-
-            writer = DatabaseWriter(db_config)
-            writer._is_running = True
-            writer._batch = []
-
-            await writer.write_anomaly(sample_anomaly_result)
-
-            assert len(writer._batch) == 1
-
-    @pytest.mark.asyncio
-    async def test_batch_flush_on_size_threshold(
-        self, db_config, sample_anomaly_result
-    ):
-        """Test that batch flushes when size threshold is reached."""
-        from off_key_mqtt_radar.database import DatabaseWriter
-
-        db_config.db_batch_size = 2
-
-        with patch(
-            "off_key_mqtt_radar.database.get_radar_async_session_factory"
-        ) as mock_factory:
-            mock_session = AsyncMock()
-            mock_factory.return_value = MagicMock(
-                return_value=AsyncMock(
-                    __aenter__=AsyncMock(return_value=mock_session),
-                    __aexit__=AsyncMock(return_value=None),
-                )
-            )
-
-            writer = DatabaseWriter(db_config)
-            writer._is_running = True
-            writer._batch = []
-            writer._flush_batch = AsyncMock()
-
-            # Add items up to threshold
-            for _ in range(2):
-                await writer.write_anomaly(sample_anomaly_result)
-
-            # Flush should have been called
-            writer._flush_batch.assert_called()
-
-    @pytest.mark.asyncio
-    async def test_get_health_status_healthy(self, db_config):
-        """Test health status when writer is healthy."""
-        from off_key_mqtt_radar.database import DatabaseWriter
-
-        with patch(
-            "off_key_mqtt_radar.database.get_radar_async_session_factory"
-        ) as mock_factory:
-            mock_factory.return_value = AsyncMock()
-
-            writer = DatabaseWriter(db_config)
-            writer._is_running = True
-            writer._consecutive_errors = 0
-
-            status = writer.get_health_status()
-
-            assert status["status"] == "healthy"
-
-    @pytest.mark.asyncio
-    async def test_get_health_status_disabled(self, db_config):
-        """Test health status when writer is disabled."""
-        from off_key_mqtt_radar.database import DatabaseWriter
-
-        db_config.db_write_enabled = False
-
-        with patch(
-            "off_key_mqtt_radar.database.get_radar_async_session_factory"
-        ) as mock_factory:
-            mock_factory.return_value = AsyncMock()
-
-            writer = DatabaseWriter(db_config)
-
-            status = writer.get_health_status()
-
-            assert status["status"] == "disabled"
-
-    @pytest.mark.asyncio
-    async def test_get_health_status_degraded_on_errors(self, db_config):
-        """Test health status is degraded when errors occur."""
-        from off_key_mqtt_radar.database import DatabaseWriter
-
-        with patch(
-            "off_key_mqtt_radar.database.get_radar_async_session_factory"
-        ) as mock_factory:
-            mock_factory.return_value = AsyncMock()
-
-            writer = DatabaseWriter(db_config)
-            writer._is_running = True
-            writer._consecutive_errors = 5
-
-            status = writer.get_health_status()
-
-            assert status["status"] == "degraded"
+@pytest.fixture
+def db_config():
+    config = MagicMock()
+    config.db_batch_size = 2
+    config.db_batch_timeout = 5.0
+    config.db_write_enabled = True
+    return config
 
 
-class TestDatabaseWriterRetry:
-    """Tests for DatabaseWriter retry logic."""
+@pytest.mark.asyncio
+async def test_write_anomaly_adds_to_queue(db_config, sample_anomaly_result):
+    from off_key_mqtt_radar.database import DatabaseWriter
 
-    @pytest.fixture
-    def db_config(self):
-        """Create test database configuration."""
-        config = MagicMock()
-        config.db_batch_size = 10
-        config.db_batch_timeout = 1.0
-        config.db_write_enabled = True
-        return config
+    writer = DatabaseWriter(db_config, session_factory=AsyncMock())
+    writer._flush_batch = AsyncMock()
 
-    @pytest.mark.asyncio
-    async def test_retry_on_transient_error(self, db_config, sample_anomaly_result):
-        """Test retry behavior on transient database errors."""
-        from off_key_mqtt_radar.database import DatabaseWriter
+    await writer.write_anomaly(sample_anomaly_result)
 
-        with patch(
-            "off_key_mqtt_radar.database.get_radar_async_session_factory"
-        ) as mock_factory:
-            mock_session = AsyncMock()
-            # First call fails, second succeeds
-            mock_session.execute = AsyncMock(
-                side_effect=[Exception("Connection lost"), None]
-            )
-            mock_factory.return_value = MagicMock(
-                return_value=AsyncMock(
-                    __aenter__=AsyncMock(return_value=mock_session),
-                    __aexit__=AsyncMock(return_value=None),
-                )
-            )
+    assert len(writer.write_queue) == 1
+    writer._flush_batch.assert_not_awaited()
 
-            writer = DatabaseWriter(db_config)
-            writer._is_running = True
-            writer._failed_batch = []
 
-            # Add failed items for retry
-            writer._failed_batch.append(sample_anomaly_result)
+@pytest.mark.asyncio
+async def test_write_anomaly_flushes_when_batch_size_reached(
+    db_config,
+    sample_anomaly_result,
+):
+    from off_key_mqtt_radar.database import DatabaseWriter
 
-            # Should handle the retry gracefully
-            # (Actual retry logic depends on implementation)
+    writer = DatabaseWriter(db_config, session_factory=AsyncMock())
+    writer._flush_batch = AsyncMock()
+
+    await writer.write_anomaly(sample_anomaly_result)
+    await writer.write_anomaly(sample_anomaly_result)
+
+    writer._flush_batch.assert_awaited_once()
+
+
+def test_get_health_status_disabled_when_writing_off(db_config):
+    from off_key_mqtt_radar.database import DatabaseWriter
+
+    db_config.db_write_enabled = False
+    writer = DatabaseWriter(db_config, session_factory=AsyncMock())
+
+    assert writer.get_health_status()["status"] == "disabled"
+
+
+def test_get_health_status_unhealthy_when_task_missing(db_config):
+    from off_key_mqtt_radar.database import DatabaseWriter
+
+    writer = DatabaseWriter(db_config, session_factory=AsyncMock())
+    status = writer.get_health_status()
+
+    assert status["status"] == "unhealthy"
+    assert status["reason"] == "writer_task_stopped"
+
+
+def test_get_health_status_healthy_when_task_running(db_config):
+    from off_key_mqtt_radar.database import DatabaseWriter
+
+    writer = DatabaseWriter(db_config, session_factory=AsyncMock())
+    writer._writer_task = MagicMock()
+    writer._writer_task.done.return_value = False
+
+    status = writer.get_health_status()
+
+    assert status["status"] == "healthy"
+
+
+@pytest.mark.asyncio
+async def test_test_connection_uses_session_factory(db_config):
+    from off_key_mqtt_radar.database import DatabaseWriter
+
+    session = AsyncMock()
+    query_result = MagicMock()
+    query_result.fetchone.return_value = (1,)
+    session.execute = AsyncMock(return_value=query_result)
+    session_ctx = AsyncMock()
+    session_ctx.__aenter__.return_value = session
+    session_ctx.__aexit__.return_value = None
+    session_factory = MagicMock(return_value=session_ctx)
+
+    writer = DatabaseWriter(db_config, session_factory=session_factory)
+    await writer._test_connection()
+
+    session.execute.assert_awaited_once()

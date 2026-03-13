@@ -91,7 +91,12 @@ class RadarService:
             sensor_key_strategy=self.config.sensor_key_strategy,
         )
         self.state_cache = (
-            SensorStateCache(self.required_sensors) if self.required_sensors else None
+            SensorStateCache(
+                self.required_sensors,
+                max_sensor_age_seconds=self.config.sensor_freshness_seconds,
+            )
+            if self.required_sensors
+            else None
         )
 
         logger.info("Initialized RADAR service orchestrator")
@@ -99,7 +104,7 @@ class RadarService:
     async def start(self):
         """Start the RADAR service"""
         if self.is_running:
-            logger.warning("RADAR service already running")
+            logger.debug("event=radar.service_already_running")
             return
 
         logger.info("Starting RADAR service", extra=self._log_context)
@@ -124,8 +129,8 @@ class RadarService:
                 await ensure_tables_exist()
                 await self._setup_database_writer()
             else:
-                logger.info(
-                    "Database writing disabled by configuration; skipping DB setup",
+                logger.debug(
+                    "event=radar.db_writer_setup_skipped reason=db_write_disabled",
                     extra=self._log_context,
                 )
 
@@ -158,14 +163,19 @@ class RadarService:
             )
 
         except Exception as e:
-            logger.error(f"Failed to start RADAR service: {e}", extra=self._log_context)
+            logger.error(
+                "event=radar.start_failed error=%s",
+                str(e),
+                extra=self._log_context,
+                exc_info=True,
+            )
             await self.stop()
             raise
 
     async def stop(self):
         """Stop the RADAR service"""
         if not self.is_running:
-            logger.info("RADAR service already stopped")
+            logger.debug("event=radar.service_already_stopped")
             return
 
         logger.info("Stopping RADAR service", extra=self._log_context)
@@ -194,9 +204,16 @@ class RadarService:
                         except asyncio.CancelledError:
                             pass
 
-                    logger.info(f"Stopped {component_name}")
+                    logger.debug(
+                        "event=radar.component_stopped component=%s", component_name
+                    )
                 except Exception as e:
-                    logger.error(f"Error stopping {component_name}: {e}")
+                    logger.error(
+                        "event=radar.component_stop_failed component=%s error=%s",
+                        component_name,
+                        str(e),
+                        exc_info=True,
+                    )
 
         # Cleanup checkpoint lock file using extracted manager
         self.checkpoint_manager.cleanup_lock()
@@ -254,8 +271,10 @@ class RadarService:
                 )
             except Exception as e:
                 logger.warning(
-                    f"Failed to load checkpoint, starting fresh: {e}",
+                    "event=radar.checkpoint_restore_failed error=%s",
+                    str(e),
                     extra=self._log_context,
+                    exc_info=True,
                 )
                 primary_service = AnomalyDetectionService(anomaly_config)
         else:
@@ -272,7 +291,23 @@ class RadarService:
         if self.required_sensors and self.state_cache:
             logger.info(
                 "Sensor alignment enabled (wait_for_all)",
-                extra={**self._log_context, "required_sensors": self.required_sensors},
+                extra={
+                    **self._log_context,
+                    "required_sensors": self.required_sensors,
+                    "sensor_freshness_seconds": self.config.sensor_freshness_seconds,
+                },
+            )
+        else:
+            logger.info(
+                (
+                    "Sensor alignment disabled; processing incoming sensor "
+                    "streams independently"
+                ),
+                extra={
+                    **self._log_context,
+                    "subscription_topics": self.config.subscription_topics,
+                    "sensor_key_strategy": self.config.sensor_key_strategy,
+                },
             )
 
     async def _setup_database_writer(self):
@@ -309,7 +344,9 @@ class RadarService:
             )
 
             if not config_file_path:
-                logger.info("No configuration file specified for watching")
+                logger.debug(
+                    "event=radar.config_watcher_disabled reason=no_config_file"
+                )
                 return
 
             logger.info(
@@ -330,7 +367,11 @@ class RadarService:
             logger.info("Configuration file watcher setup complete")
 
         except Exception as e:
-            logger.error(f"Failed to setup configuration watcher: {e}")
+            logger.error(
+                "event=radar.config_watcher_setup_failed error=%s",
+                str(e),
+                exc_info=True,
+            )
             # Don't fail the service startup if config watching fails
 
     async def _handle_mqtt_message(self, message: MQTTMessage):

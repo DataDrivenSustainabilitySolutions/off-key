@@ -86,6 +86,13 @@ def test_radar_settings_reject_non_object_model_params(monkeypatch):
         RadarSettings()
 
 
+def test_radar_settings_parse_sensor_freshness_seconds(monkeypatch):
+    monkeypatch.setenv("RADAR_SENSOR_FRESHNESS_SECONDS", "12.5")
+    settings = RadarSettings()
+
+    assert settings.config.sensor_freshness_seconds == 12.5
+
+
 def test_mqtt_config_allows_bridge_auth_fields_when_bridge_disabled():
     MQTTConfig(
         **{

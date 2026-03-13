@@ -23,6 +23,7 @@ import { useAuth } from "@/auth/AuthContext";
 import toast from 'react-hot-toast';
 import type { CombinedData } from "@/dataFetch/FetchContext";
 import { formatLastSeen } from "@/lib/time-utils";
+import { clientLogger } from "@/lib/logger";
 
 import {
   Tooltip,
@@ -101,7 +102,12 @@ export default function ChargerTable() {
       await toggleFavorite(chargerId, userId, isFavorite);
       toast.success(isFavorite ? 'Removed from favorites' : 'Added to favorites');
     } catch (err) {
-      console.error("Error saving favorite:", err);
+      clientLogger.error({
+        event: "favorites.toggle_failed",
+        message: "Error saving favorite",
+        error: err,
+        context: { chargerId, userId, isFavorite },
+      });
       toast.error('Failed to update favorite status');
       setFavoriteChargerIds((prev) =>
         isFavorite ? [...prev, chargerId] : prev.filter((id) => id !== chargerId)

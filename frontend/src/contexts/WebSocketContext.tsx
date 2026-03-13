@@ -1,9 +1,10 @@
 import React, { createContext, useContext, useEffect, useRef, useState, ReactNode } from 'react';
 import { INTERVALS } from '@/lib/constants';
+import { clientLogger } from "@/lib/logger";
 
 export type WebSocketMessage = {
   type: 'anomaly_detected' | 'telemetry_update' | 'charger_status';
-  data: any;
+  data: unknown;
   timestamp: string;
 };
 
@@ -12,10 +13,10 @@ export type ConnectionStatus = 'connecting' | 'connected' | 'disconnected' | 'er
 export interface WebSocketContextType {
   connectionStatus: ConnectionStatus;
   lastMessage: WebSocketMessage | null;
-  sendMessage: (message: any) => void;
+  sendMessage: (message: unknown) => void;
   connect: () => void;
   disconnect: () => void;
-  subscribe: (type: string, callback: (data: any) => void) => () => void;
+  subscribe: (type: string, callback: (data: unknown) => void) => () => void;
 }
 
 const WebSocketContext = createContext<WebSocketContextType | undefined>(undefined);
@@ -25,21 +26,21 @@ export const WebSocketProvider: React.FC<{ children: ReactNode }> = ({ children 
   const [lastMessage, setLastMessage] = useState<WebSocketMessage | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const subscribersRef = useRef<Map<string, ((data: any) => void)[]>>(new Map());
+  const subscribersRef = useRef<Map<string, ((data: unknown) => void)[]>>(new Map());
   const reconnectAttempts = useRef(0);
   const maxReconnectAttempts = 5;
 
   const getWebSocketUrl = (): string => {
     const isDevelopment = import.meta.env.DEV;
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    
+
     if (isDevelopment) {
       return `${protocol}//localhost:8000/ws`;
     }
-    
+
     const wsUrl = import.meta.env.VITE_WS_URL;
     if (wsUrl) return wsUrl;
-    
+
     return `${protocol}//${window.location.host}/ws`;
   };
 
@@ -56,32 +57,47 @@ export const WebSocketProvider: React.FC<{ children: ReactNode }> = ({ children 
       ws.onopen = () => {
         setConnectionStatus('connected');
         reconnectAttempts.current = 0;
-        console.log('WebSocket connected');
+        clientLogger.info({
+          event: "ws.connected",
+          message: "WebSocket connected",
+        });
       };
 
       ws.onmessage = (event) => {
         try {
           const message: WebSocketMessage = JSON.parse(event.data);
           setLastMessage(message);
-          
+
           // Notify subscribers
           const subscribers = subscribersRef.current.get(message.type) || [];
           subscribers.forEach(callback => callback(message.data));
         } catch (error) {
-          console.error('Error parsing WebSocket message:', error);
+          clientLogger.error({
+            event: "ws.message_parse_failed",
+            message: "Error parsing WebSocket message",
+            error,
+          });
         }
       };
 
       ws.onclose = (event) => {
         setConnectionStatus('disconnected');
-        console.log('WebSocket disconnected:', event.code, event.reason);
-        
+        clientLogger.info({
+          event: "ws.disconnected",
+          message: "WebSocket disconnected",
+          context: { code: event.code, reason: event.reason },
+        });
+
         // Attempt reconnection if not intentional
         if (event.code !== 1000 && reconnectAttempts.current < maxReconnectAttempts) {
           const delay = Math.min(1000 * Math.pow(2, reconnectAttempts.current), 30000);
           reconnectAttempts.current++;
-          
-          console.log(`Attempting to reconnect in ${delay}ms (attempt ${reconnectAttempts.current})`);
+
+          clientLogger.warn({
+            event: "ws.reconnect_scheduled",
+            message: "Attempting to reconnect",
+            context: { delayMs: delay, attempt: reconnectAttempts.current },
+          });
           reconnectTimeoutRef.current = setTimeout(() => {
             connect();
           }, delay);
@@ -90,11 +106,19 @@ export const WebSocketProvider: React.FC<{ children: ReactNode }> = ({ children 
 
       ws.onerror = (error) => {
         setConnectionStatus('error');
-        console.error('WebSocket error:', error);
+        clientLogger.error({
+          event: "ws.error",
+          message: "WebSocket error",
+          error,
+        });
       };
     } catch (error) {
       setConnectionStatus('error');
-      console.error('Failed to create WebSocket connection:', error);
+      clientLogger.error({
+        event: "ws.connection_create_failed",
+        message: "Failed to create WebSocket connection",
+        error,
+      });
     }
   }, []);
 
@@ -103,24 +127,28 @@ export const WebSocketProvider: React.FC<{ children: ReactNode }> = ({ children 
       clearTimeout(reconnectTimeoutRef.current);
       reconnectTimeoutRef.current = null;
     }
-    
+
     if (wsRef.current) {
       wsRef.current.close(1000, 'Intentional disconnect');
       wsRef.current = null;
     }
-    
+
     setConnectionStatus('disconnected');
   }, []);
 
-  const sendMessage = React.useCallback((message: any) => {
+  const sendMessage = React.useCallback((message: unknown) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify(message));
     } else {
-      console.warn('WebSocket is not connected. Message not sent:', message);
+      clientLogger.warn({
+        event: "ws.send_skipped_not_connected",
+        message: "WebSocket is not connected. Message not sent",
+        context: { message },
+      });
     }
   }, []);
 
-  const subscribe = React.useCallback((type: string, callback: (data: any) => void) => {
+  const subscribe = React.useCallback((type: string, callback: (data: unknown) => void) => {
     const subscribers = subscribersRef.current.get(type) || [];
     subscribers.push(callback);
     subscribersRef.current.set(type, subscribers);
@@ -140,7 +168,7 @@ export const WebSocketProvider: React.FC<{ children: ReactNode }> = ({ children 
   // Auto-connect on mount
   useEffect(() => {
     connect();
-    
+
     return () => {
       disconnect();
     };
@@ -184,7 +212,7 @@ export const useWebSocket = (): WebSocketContextType => {
 // Hook for anomaly notifications specifically
 export const useAnomalyNotifications = () => {
   const { subscribe } = useWebSocket();
-  const [anomalies, setAnomalies] = useState<any[]>([]);
+  const [anomalies, setAnomalies] = useState<unknown[]>([]);
 
   useEffect(() => {
     const unsubscribe = subscribe('anomaly_detected', (data) => {

@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import and_, select
+from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from off_key_core.db.models import (
@@ -159,6 +159,13 @@ class AnomalyRepository:
         query = query.order_by(Anomaly.timestamp.desc()).limit(limit)
         result = await self._session.execute(query)
         return [(anomaly_id, anomaly) for anomaly_id, anomaly in result.all()]
+
+    async def count_since(self, *, since: Optional[datetime] = None) -> int:
+        query = select(func.count()).select_from(Anomaly)
+        if since is not None:
+            query = query.where(Anomaly.timestamp > since)
+        result = await self._session.execute(query)
+        return result.scalar_one()
 
     async def add(self, anomaly: Anomaly) -> str:
         self._session.add(anomaly)

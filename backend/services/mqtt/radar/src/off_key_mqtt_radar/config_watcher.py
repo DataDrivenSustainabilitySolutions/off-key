@@ -31,7 +31,9 @@ class ConfigFileHandler(FileSystemEventHandler):
         except RuntimeError:
             self.loop = None
 
-        logger.info(f"Watching config file: {self.config_file_path}")
+        logger.debug(
+            "event=radar.config_file_watch_target path=%s", self.config_file_path
+        )
 
     def on_modified(self, event):
         """Handle file modification events"""
@@ -47,7 +49,7 @@ class ConfigFileHandler(FileSystemEventHandler):
                 return
 
             self.last_modified = current_time
-            logger.info(f"Configuration file changed: {event.src_path}")
+            logger.info("event=radar.config_file_changed path=%s", event.src_path)
 
             # Trigger callback asynchronously
             if self.loop and self.callback:
@@ -79,11 +81,14 @@ class ConfigWatcher:
         # Validate config file exists
         if not self.config_file_path.exists():
             logger.warning(
-                f"Configuration file does not exist: {self.config_file_path}"
+                "event=radar.config_file_missing path=%s",
+                self.config_file_path,
             )
-            logger.info("File watching will start once the file is created")
+            logger.debug("event=radar.config_watch_pending_file_creation")
 
-        logger.info(f"Initialized config watcher for: {self.config_file_path}")
+        logger.debug(
+            "event=radar.config_watcher_initialized path=%s", self.config_file_path
+        )
 
     async def start(self):
         """Start watching the configuration file"""
@@ -110,10 +115,14 @@ class ConfigWatcher:
             self.observer.start()
 
             self.is_watching = True
-            logger.info(f"Started watching configuration directory: {watch_dir}")
+            logger.info("event=radar.config_watcher_started directory=%s", watch_dir)
 
         except Exception as e:
-            logger.error(f"Failed to start config watcher: {e}")
+            logger.error(
+                "event=radar.config_watcher_start_failed error=%s",
+                str(e),
+                exc_info=True,
+            )
             await self.stop()
 
     async def stop(self):
@@ -121,7 +130,7 @@ class ConfigWatcher:
         if not self.is_watching:
             return
 
-        logger.info("Stopping configuration file watcher")
+        logger.info("event=radar.config_watcher_stopping")
 
         try:
             if self.observer:
@@ -132,19 +141,23 @@ class ConfigWatcher:
             self.handler = None
             self.is_watching = False
 
-            logger.info("Configuration file watcher stopped")
+            logger.info("event=radar.config_watcher_stopped")
 
         except Exception as e:
-            logger.error(f"Error stopping config watcher: {e}")
+            logger.error(
+                "event=radar.config_watcher_stop_failed error=%s",
+                str(e),
+                exc_info=True,
+            )
 
     async def _handle_config_change(self):
         """Handle configuration file change"""
         try:
-            logger.info("Processing configuration file change")
+            logger.debug("event=radar.config_change_processing")
 
             # Validate file exists and is readable
             if not self.config_file_path.exists():
-                logger.error("Configuration file was deleted")
+                logger.error("event=radar.config_file_deleted")
                 return
 
             # Check if file is readable
@@ -152,14 +165,22 @@ class ConfigWatcher:
                 with open(self.config_file_path, "r") as f:
                     f.read(1)  # Try to read first byte
             except Exception as e:
-                logger.error(f"Configuration file is not readable: {e}")
+                logger.error(
+                    "event=radar.config_file_unreadable error=%s",
+                    str(e),
+                    exc_info=True,
+                )
                 return
 
             # Call the reload callback
             await self.reload_callback()
 
         except Exception as e:
-            logger.error(f"Error handling configuration change: {e}")
+            logger.error(
+                "event=radar.config_change_handler_failed error=%s",
+                str(e),
+                exc_info=True,
+            )
 
     def get_status(self) -> dict:
         """Get watcher status information"""

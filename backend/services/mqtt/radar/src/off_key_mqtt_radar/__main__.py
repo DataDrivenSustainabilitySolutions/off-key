@@ -7,21 +7,24 @@ MQTT Real-Time Anomaly Detector for Analysis and Reporting
 import asyncio
 import logging
 import sys
+from pathlib import Path
 
 from off_key_core.config.env import load_env
 from off_key_core.config.validation import validate_settings
-from off_key_core.config.logs import logger
+from off_key_core.config.logs import (
+    load_yaml_config,
+    logger,
+    log_startup_logging_configuration,
+)
 from .service import get_radar_service
 from .config.config import get_radar_settings, load_configuration
 from .config.runtime import get_radar_runtime_file_settings
 
 
 def setup_logging():
-    """Configure logging levels for third-party libraries.
-
-    The main application logger is already configured by off_key_core.config.logs
-    at import time. This function only silences noisy third-party loggers.
-    """
+    """Load RADAR logging YAML and silence noisy third-party libraries."""
+    service_logging_config = Path(__file__).parent / "config" / "logging.yaml"
+    load_yaml_config(str(service_logging_config))
     logging.getLogger("paho.mqtt").setLevel(logging.WARNING)
     logging.getLogger("sqlalchemy").setLevel(logging.WARNING)
 
@@ -29,6 +32,7 @@ def setup_logging():
 async def main():
     """Main entry point for RADAR service"""
     setup_logging()
+    log_startup_logging_configuration("mqtt-radar")
     load_env()
     runtime_file_settings = get_radar_runtime_file_settings()
     settings = get_radar_settings()
@@ -40,10 +44,10 @@ async def main():
         context="RADAR service configuration",
     )
 
-    logger.info("Starting MQTT RADAR service")
+    logger.info("event=radar.service_bootstrap_start")
     cfg = get_radar_settings().config
     logger.info(
-        "Configuration summary",
+        "event=radar.configuration_summary",
         extra={
             "broker": f"{cfg.broker_host}:{cfg.broker_port}",
             "topics": cfg.subscription_topics,
@@ -60,19 +64,19 @@ async def main():
         await radar_service.run()
 
     except KeyboardInterrupt:
-        logger.info("Received keyboard interrupt, shutting down...")
+        logger.info("event=radar.keyboard_interrupt")
     except Exception as e:
-        logger.error(f"Fatal error in RADAR service: {e}", exc_info=True)
+        logger.error("event=radar.fatal_error error=%s", str(e), exc_info=True)
         sys.exit(1)
 
-    logger.info("MQTT RADAR service stopped")
+    logger.info("event=radar.service_bootstrap_stopped")
 
 
 if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        logger.info("Service interrupted by user")
+        logger.info("event=radar.service_interrupted_by_user")
     except Exception as e:
-        logger.error(f"Failed to start service: {e}", exc_info=True)
+        logger.error("event=radar.service_start_failed error=%s", str(e), exc_info=True)
         sys.exit(1)

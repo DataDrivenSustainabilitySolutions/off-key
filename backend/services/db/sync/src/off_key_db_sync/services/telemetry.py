@@ -66,12 +66,13 @@ class TelemetrySyncService:
         # Logging context
         self._log_context = {"component": "telemetry_sync", "service": "db_sync"}
 
-        logger.info("TelemetrySyncService initialized", extra=self._log_context)
+        logger.info("event=telemetry_sync.initialized", extra=self._log_context)
 
         # Log active retention period (uses centralized config)
         retention_days = get_sync_settings().config.retention_days
         logger.info(
-            f"Telemetry sync retention window: {retention_days} days",
+            "event=telemetry_sync.retention_window retention_days=%s",
+            retention_days,
             extra={**self._log_context, "retention_days": retention_days},
         )
 
@@ -100,18 +101,30 @@ class TelemetrySyncService:
 
             if row and row[0] is not None and row[1] is not None:
                 logger.debug(
-                    f"Existing data for {charger_id}/{hierarchy_type}: "
-                    f"{row[0]} to {row[1]}"
+                    "event=telemetry_sync.coverage_found charger_id=%s \
+                         hierarchy=%s start=%s end=%s",
+                    charger_id,
+                    hierarchy_type,
+                    row[0],
+                    row[1],
                 )
                 return row[0], row[1]
             else:
-                logger.debug(f"No existing data for {charger_id}/{hierarchy_type}")
+                logger.debug(
+                    "event=telemetry_sync.coverage_missing charger_id=%s hierarchy=%s",
+                    charger_id,
+                    hierarchy_type,
+                )
                 return None, None
 
         except Exception as e:
             logger.error(
-                f"Failed to check existing data coverage for "
-                f"{charger_id}/{hierarchy_type}: {e}"
+                "event=telemetry_sync.coverage_check_failed charger_id=%s \
+                     hierarchy=%s error=%s",
+                charger_id,
+                hierarchy_type,
+                e,
+                exc_info=True,
             )
             return None, None
 
@@ -129,7 +142,8 @@ class TelemetrySyncService:
 
         # 1. Query ALL known charger IDs from the database
         logger.info(
-            "Starting telemetry synchronization",
+            "event=telemetry_sync.started limit=%s",
+            limit,
             extra={**self._log_context, "limit": limit},
         )
         try:
@@ -138,7 +152,8 @@ class TelemetrySyncService:
             all_charger_ids = result.scalars().all()
         except Exception as e:
             logger.error(
-                f"Failed to query charger IDs from database: {e}",
+                "event=telemetry_sync.query_chargers_failed error=%s",
+                e,
                 extra=self._log_context,
                 exc_info=True,
             )
@@ -148,19 +163,18 @@ class TelemetrySyncService:
             return
 
         if not all_charger_ids:
-            logger.warning(
-                "No chargers found in the database. Telemetry sync aborted.",
-                extra=self._log_context,
-            )
+            logger.warning("event=telemetry_sync.no_chargers", extra=self._log_context)
             self.last_sync_status = "no_chargers"
             self.last_sync_time = datetime.now()
             return
 
-        logger.info(f"Found {len(all_charger_ids)} chargers to sync telemetry for.")
+        logger.info(
+            "event=telemetry_sync.chargers_discovered count=%s", len(all_charger_ids)
+        )
         log_ids_display = all_charger_ids[:5] + (
             ["..."] if len(all_charger_ids) > 5 else []
         )
-        logger.debug(f"Charger IDs sample: {log_ids_display}")
+        logger.debug("event=telemetry_sync.charger_sample sample=%s", log_ids_display)
 
         # 2. Date range calculation ('dr') removed.
         chargers_processed_count = 0
@@ -169,23 +183,41 @@ class TelemetrySyncService:
         for charger_id in all_charger_ids:
             chargers_processed_count += 1
             self.total_chargers_processed += 1
-            logger.info(
-                f"--- Processing Charger ID: {charger_id} "
-                f"({chargers_processed_count}/{len(all_charger_ids)}) ---"
+            logger.debug(
+                "event=telemetry_sync.charger_processing charger_id=%s \
+                     index=%s total=%s",
+                charger_id,
+                chargers_processed_count,
+                len(all_charger_ids),
             )
+            if chargers_processed_count % 25 == 0:
+                logger.info(
+                    "event=telemetry_sync.progress chargers_processed=%s \
+                         total_chargers=%s",
+                    chargers_processed_count,
+                    len(all_charger_ids),
+                )
 
             # 3a. Fetch Device Model to discover telemetry hierarchies
-            logger.debug(f"Fetching device model for charger: {charger_id}")
+            logger.debug(
+                "event=telemetry_sync.device_model_fetching charger_id=%s", charger_id
+            )
             try:
                 device_model = await self.client.get_device_info(charger_id)
                 if not isinstance(device_model, dict):
                     logger.warning(
-                        f"Received unexpected device model format for {charger_id}. "
-                        f"Skipping."
+                        "event=telemetry_sync.device_model_invalid charger_id=%s",
+                        charger_id,
                     )
                     continue
             except Exception as e:
-                logger.error(f"Failed to fetch device model for {charger_id}: {e}")
+                logger.error(
+                    "event=telemetry_sync.device_model_fetch_failed \
+                         charger_id=%s error=%s",
+                    charger_id,
+                    e,
+                    exc_info=True,
+                )
                 continue
 
             telemetry_hierarchies = []
@@ -197,12 +229,16 @@ class TelemetrySyncService:
 
             if not telemetry_hierarchies:
                 logger.warning(
-                    f"No telemetry hierarchies found or "
-                    f"extracted for charger {charger_id}."
+                    "event=telemetry_sync.no_hierarchies charger_id=%s",
+                    charger_id,
                 )
                 continue
 
-            logger.debug(f"Found hierarchies for {charger_id}: {telemetry_hierarchies}")
+            logger.debug(
+                "event=telemetry_sync.hierarchies_discovered charger_id=%s count=%s",
+                charger_id,
+                len(telemetry_hierarchies),
+            )
 
             # 3b. Iterate through each discovered hierarchy
             hierarchies_processed_count = 0
@@ -210,16 +246,21 @@ class TelemetrySyncService:
                 hierarchies_processed_count += 1
                 self.total_hierarchies_processed += 1
                 logger.debug(
-                    f"Processing hierarchy "
-                    f"{hierarchies_processed_count}/{len(telemetry_hierarchies)}: "
-                    f"'{hierarchy_raw}' for {charger_id}."
+                    "event=telemetry_sync.hierarchy_processing charger_id=%s \
+                         hierarchy=%s index=%s total=%s",
+                    charger_id,
+                    hierarchy_raw,
+                    hierarchies_processed_count,
+                    len(telemetry_hierarchies),
                 )
 
                 # Use hierarchy directly (preserves slashes for MQTT topic matching)
                 hierarchy_db_type = hierarchy_raw
 
                 if not hierarchy_db_type:
-                    logger.warning(f"Skipping empty hierarchy for {charger_id}.")
+                    logger.warning(
+                        "event=telemetry_sync.hierarchy_empty charger_id=%s", charger_id
+                    )
                     continue
 
                 # Check for existing data coverage if gap detection is enabled
@@ -255,37 +296,54 @@ class TelemetrySyncService:
                             if config.enable_incremental_sync:
                                 start_date = latest
                                 end_date = now
-                                logger.info(
-                                    f"Incremental sync: Fetching new data "
-                                    f"after {latest} for {charger_id}/{hierarchy_raw}"
+                                logger.debug(
+                                    "event=telemetry_sync.incremental charger_id=%s \
+                                         hierarchy=%s start=%s end=%s",
+                                    charger_id,
+                                    hierarchy_raw,
+                                    latest,
+                                    now,
                                 )
                             else:
-                                logger.info(
-                                    f"Gap detection: Fetching up to {limit} "
-                                    f"recent records for {charger_id}/{hierarchy_raw}"
+                                logger.debug(
+                                    "event=telemetry_sync.gap_detection_recent \
+                                         charger_id=%s hierarchy=%s limit=%s",
+                                    charger_id,
+                                    hierarchy_raw,
+                                    limit,
                                 )
                         else:
                             # Latest data is too old, restart from retention window
                             start_date = window_start
                             end_date = now
-                            logger.info(
-                                f"Gap recovery: Latest data ({latest}) is older "
-                                f"than {config.retention_days} days. "
-                                f"Restarting sync from {start_date} "
-                                f"for {charger_id}/{hierarchy_raw}"
+                            logger.debug(
+                                "event=telemetry_sync.gap_recovery charger_id=%s \
+                                     hierarchy=%s latest=%s start=%s retention_days=%s",
+                                charger_id,
+                                hierarchy_raw,
+                                latest,
+                                start_date,
+                                config.retention_days,
                             )
                     else:
                         # No existing data, fetch retention window
                         start_date = window_start
                         end_date = now
-                        logger.info(
-                            f"Initial sync: Fetching {config.retention_days} days "
-                            f"from {start_date} for {charger_id}/{hierarchy_raw}"
+                        logger.debug(
+                            "event=telemetry_sync.initial_sync charger_id=%s \
+                                 hierarchy=%s start=%s retention_days=%s",
+                            charger_id,
+                            hierarchy_raw,
+                            start_date,
+                            config.retention_days,
                         )
                 else:
-                    logger.info(
-                        f"Fetching up to {limit} telemetry data points for "
-                        f"{charger_id}/{hierarchy_raw} (gap detection disabled)"
+                    logger.debug(
+                        "event=telemetry_sync.fetch_without_gap_detection \
+                             charger_id=%s hierarchy=%s limit=%s",
+                        charger_id,
+                        hierarchy_raw,
+                        limit,
                     )
 
                 # Fetch telemetry data with pagination support
@@ -314,17 +372,23 @@ class TelemetrySyncService:
                         else 0
                     )
 
-                    logger.info(
-                        f"API response for {charger_id}/{hierarchy_raw}: "
-                        f"{len(items)} items retrieved, "
-                        f"{remaining_count} remaining, "
-                        f"{total_count} total"
+                    logger.debug(
+                        "event=telemetry_sync.api_response charger_id=%s \
+                             hierarchy=%s items=%s remaining=%s total=%s",
+                        charger_id,
+                        hierarchy_raw,
+                        len(items),
+                        remaining_count,
+                        total_count,
                     )
 
                     if config.enable_pagination and remaining_count > 0:
-                        logger.info(
-                            f"Pagination: {remaining_count} more records available "
-                            f"for {charger_id}/{hierarchy_raw}"
+                        logger.debug(
+                            "event=telemetry_sync.pagination_pending charger_id=%s \
+                                 hierarchy=%s remaining=%s",
+                            charger_id,
+                            hierarchy_raw,
+                            remaining_count,
                         )
 
                         # Epsilon to advance cursor and prevent duplicate fetches
@@ -365,8 +429,13 @@ class TelemetrySyncService:
                                         next_start = next_start + epsilon
 
                                         logger.debug(
-                                            f"Pagination call {pagination_calls}: "
-                                            f"Fetching from {next_start}"
+                                            "event=telemetry_sync.pagination_call \
+                                                 charger_id=%s hierarchy=%s \
+                                                     call=%s start=%s",
+                                            charger_id,
+                                            hierarchy_raw,
+                                            pagination_calls,
+                                            next_start,
                                         )
 
                                         # Fetch next page
@@ -392,10 +461,15 @@ class TelemetrySyncService:
                                             else 0
                                         )
 
-                                        logger.info(
-                                            f"Pagination call {pagination_calls}: "
-                                            f"Retrieved {len(next_items)} items, "
-                                            f"{remaining_count} remaining"
+                                        logger.debug(
+                                            "event=telemetry_sync.pagination_result \
+                                                 charger_id=%s hierarchy=%s call=%s \
+                                                     items=%s remaining=%s",
+                                            charger_id,
+                                            hierarchy_raw,
+                                            pagination_calls,
+                                            len(next_items),
+                                            remaining_count,
                                         )
                                     else:
                                         break
@@ -407,23 +481,33 @@ class TelemetrySyncService:
                             and remaining_count > 0
                         ):
                             logger.warning(
-                                f"Pagination limit reached "
-                                f"({config.max_pagination_calls} calls) "
-                                f"for {charger_id}/{hierarchy_raw}. "
-                                f"{remaining_count} records remaining unfetched."
+                                "event=telemetry_sync.pagination_limit_reached \
+                                     charger_id=%s hierarchy=%s \
+                                         max_calls=%s remaining=%s",
+                                charger_id,
+                                hierarchy_raw,
+                                config.max_pagination_calls,
+                                remaining_count,
                             )
                         elif remaining_count == 0:
-                            logger.info(
-                                f"Pagination complete for "
-                                f"{charger_id}/{hierarchy_raw}: "
-                                f"All {len(all_items)} items fetched in "
-                                f"{pagination_calls + 1} calls"
+                            logger.debug(
+                                "event=telemetry_sync.pagination_complete \
+                                    charger_id=%s hierarchy=%s \
+                                         total_items=%s calls=%s",
+                                charger_id,
+                                hierarchy_raw,
+                                len(all_items),
+                                pagination_calls + 1,
                             )
 
                 except Exception as e:
                     logger.error(
-                        f"Failed to fetch telemetry for "
-                        f"{charger_id}/{hierarchy_raw}: {e}"
+                        "event=telemetry_sync.fetch_failed charger_id=%s \
+                             hierarchy=%s error=%s",
+                        charger_id,
+                        hierarchy_raw,
+                        e,
+                        exc_info=True,
                     )
                     continue
 
@@ -431,19 +515,29 @@ class TelemetrySyncService:
                 items = all_items
 
                 if not items:
-                    logger.info(
-                        f"No telemetry items retrieved for "
-                        f"{charger_id} / {hierarchy_raw}"
+                    logger.debug(
+                        "event=telemetry_sync.no_items charger_id=%s \
+                             hierarchy=%s",
+                        charger_id,
+                        hierarchy_raw,
                     )
                     continue
 
                 # Log message reflects potentially large amount of data
-                logger.info(
-                    f"Processing {len(items)} total items "
-                    f"for {charger_id} / {hierarchy_raw}. "
-                    f"Preparing for insertion."
+                logger.debug(
+                    "event=telemetry_sync.items_processing charger_id=%s \
+                         hierarchy=%s items=%s",
+                    charger_id,
+                    hierarchy_raw,
+                    len(items),
                 )
-                logger.debug(f"First 3 items sample: {items[:3]}")
+                logger.debug(
+                    "event=telemetry_sync.items_sample charger_id=%s \
+                         hierarchy=%s sample=%s",
+                    charger_id,
+                    hierarchy_raw,
+                    items[:3],
+                )
 
                 # 3c. Process items and prepare records for database insertion
                 telemetry_records_to_insert = []
@@ -493,36 +587,51 @@ class TelemetrySyncService:
                     except (KeyError, ValueError, TypeError) as item_error:
                         items_skipped_count += 1
                         logger.warning(
-                            f"Skipping item {items_processed_count}/{len(items)} "
-                            f"for {charger_id}/{hierarchy_raw} "
-                            f"due to processing error: {item_error}. Item data: {item}"
+                            "event=telemetry_sync.item_skipped charger_id=%s \
+                                 hierarchy=%s index=%s total=%s error=%s",
+                            charger_id,
+                            hierarchy_raw,
+                            items_processed_count,
+                            len(items),
+                            item_error,
                         )
                         continue
 
                 if items_filtered_by_gap_detection > 0:
-                    logger.info(
-                        f"Gap detection: Filtered "
-                        f"{items_filtered_by_gap_detection}/{len(items)} items "
-                        f"for {charger_id}/{hierarchy_raw} "
-                        f"(already in database coverage)."
+                    logger.debug(
+                        "event=telemetry_sync.items_filtered_by_coverage charger_id=%s \
+                             hierarchy=%s filtered=%s total=%s",
+                        charger_id,
+                        hierarchy_raw,
+                        items_filtered_by_gap_detection,
+                        len(items),
                     )
                 if items_skipped_count > 0:
                     logger.warning(
-                        f"Skipped {items_skipped_count}/{len(items)} items "
-                        f"for {charger_id}/{hierarchy_raw} "
-                        f"due to processing errors."
+                        "event=telemetry_sync.items_skipped charger_id=%s \
+                             hierarchy=%s skipped=%s total=%s",
+                        charger_id,
+                        hierarchy_raw,
+                        items_skipped_count,
+                        len(items),
                     )
                 if not telemetry_records_to_insert:
-                    logger.info(
-                        f"No valid records to insert for {charger_id} / "
-                        f"{hierarchy_raw} after processing {len(items)} items."
+                    logger.debug(
+                        "event=telemetry_sync.no_valid_records charger_id=%s \
+                             hierarchy=%s items=%s",
+                        charger_id,
+                        hierarchy_raw,
+                        len(items),
                     )
                     continue
 
                 # 3d. Bulk insert valid records in batches using ON CONFLICT DO NOTHING
-                logger.info(
-                    f"Inserting {len(telemetry_records_to_insert)} processed "
-                    f"records for {charger_id} / {hierarchy_raw}."
+                logger.debug(
+                    "event=telemetry_sync.insert_prepared charger_id=%s \
+                         hierarchy=%s records=%s",
+                    charger_id,
+                    hierarchy_raw,
+                    len(telemetry_records_to_insert),
                 )
 
                 # Dynamic batch size based on record count for better performance
@@ -550,17 +659,24 @@ class TelemetrySyncService:
                         batch_num += 1
                         batch = telemetry_records_to_insert[i : i + batch_size]
                         logger.debug(
-                            f"Preparing batch {batch_num} ({len(batch)} records) for "
-                            f"{charger_id} / {hierarchy_raw}."
+                            "event=telemetry_sync.batch_preparing charger_id=%s \
+                                 hierarchy=%s batch=%s size=%s",
+                            charger_id,
+                            hierarchy_raw,
+                            batch_num,
+                            len(batch),
                         )
                         stmt = insert(Telemetry).values(batch)
                         stmt = stmt.on_conflict_do_nothing()
-                        result = await self.session.execute(stmt)
+                        await self.session.execute(stmt)
                         pending_batches += 1
                         pending_records += len(batch)
                         logger.debug(
-                            f"Executed batch {batch_num} for "
-                            f"{charger_id} / {hierarchy_raw}."
+                            "event=telemetry_sync.batch_executed charger_id=%s \
+                                 hierarchy=%s batch=%s",
+                            charger_id,
+                            hierarchy_raw,
+                            batch_num,
                         )
 
                     # Commit once after all batches for this hierarchy
@@ -572,8 +688,12 @@ class TelemetrySyncService:
                     self.total_records_inserted += pending_records
 
                     logger.debug(
-                        f"Committed all {batch_num} batches for "
-                        f"{charger_id} / {hierarchy_raw}."
+                        "event=telemetry_sync.batches_committed charger_id=%s \
+                             hierarchy=%s batches=%s records=%s",
+                        charger_id,
+                        hierarchy_raw,
+                        batch_num,
+                        pending_records,
                     )
                 except IntegrityError as ie:
                     await self.session.rollback()
@@ -581,9 +701,13 @@ class TelemetrySyncService:
                     successful_batches = 0
                     self.total_batches_failed += failed_batches
                     logger.error(
-                        f"IntegrityError during batch insert for "
-                        f"{charger_id}/{hierarchy_raw}: {ie}. "
-                        f"Rolling back all {pending_batches} batches."
+                        "event=telemetry_sync.batch_integrity_error charger_id=%s \
+                             hierarchy=%s pending_batches=%s error=%s",
+                        charger_id,
+                        hierarchy_raw,
+                        pending_batches,
+                        ie,
+                        exc_info=True,
                     )
                 except Exception as e:
                     await self.session.rollback()
@@ -591,19 +715,28 @@ class TelemetrySyncService:
                     successful_batches = 0
                     self.total_batches_failed += failed_batches
                     logger.error(
-                        f"Error during batch insert for "
-                        f"{charger_id}/{hierarchy_raw}: {e}. "
-                        f"Rolling back all {pending_batches} batches."
+                        "event=telemetry_sync.batch_insert_failed charger_id=%s \
+                             hierarchy=%s pending_batches=%s error=%s",
+                        charger_id,
+                        hierarchy_raw,
+                        pending_batches,
+                        e,
+                        exc_info=True,
                     )
 
-                logger.info(
-                    f"Batch processing completed for {charger_id}/{hierarchy_raw}: "
-                    f"{successful_batches} successful, {failed_batches} failed"
+                logger.debug(
+                    "event=telemetry_sync.batch_result charger_id=%s \
+                         hierarchy=%s successful=%s failed=%s",
+                    charger_id,
+                    hierarchy_raw,
+                    successful_batches,
+                    failed_batches,
                 )
 
-            logger.info(
-                f"Finished processing {hierarchies_processed_count} hierarchies "
-                f"for Charger ID: {charger_id}."
+            logger.debug(
+                "event=telemetry_sync.charger_complete charger_id=%s hierarchies=%s",
+                charger_id,
+                hierarchies_processed_count,
             )
 
         # Update final metrics
@@ -617,13 +750,15 @@ class TelemetrySyncService:
         self.sync_latency_count += 1
 
         logger.info(
-            f"Telemetry synchronization completed | "
-            f"Chargers: {chargers_processed_count} | "
-            f"Hierarchies: {self.total_hierarchies_processed} | "
-            f"Records: {self.total_records_inserted} | "
-            f"Batches: {self.total_batches_processed} successful, "
-            f"{self.total_batches_failed} failed | "
-            f"Latency: {sync_latency:.2f}s",
+            "event=telemetry_sync.completed chargers=%s \
+                 hierarchies=%s records=%s batches_successful=%s \
+                     batches_failed=%s latency_s=%.2f",
+            chargers_processed_count,
+            self.total_hierarchies_processed,
+            self.total_records_inserted,
+            self.total_batches_processed,
+            self.total_batches_failed,
+            sync_latency,
             extra={
                 **self._log_context,
                 "chargers_processed": chargers_processed_count,

@@ -263,9 +263,33 @@ class RadarOrchestrationService:
                     "checkpoint_interval", defaults.checkpoint_interval
                 )
             ),
+            "RADAR_HEURISTIC_ENABLED": str(
+                performance_config.get("heuristic_enabled", defaults.heuristic_enabled)
+            ).lower(),
+            "RADAR_HEURISTIC_WINDOW_SIZE": str(
+                performance_config.get(
+                    "heuristic_window_size", defaults.heuristic_window_size
+                )
+            ),
+            "RADAR_HEURISTIC_MIN_SAMPLES": str(
+                performance_config.get(
+                    "heuristic_min_samples", defaults.heuristic_min_samples
+                )
+            ),
+            "RADAR_HEURISTIC_ZSCORE_THRESHOLD": str(
+                performance_config.get(
+                    "heuristic_zscore_threshold",
+                    defaults.heuristic_zscore_threshold,
+                )
+            ),
             "RADAR_SENSOR_KEY_STRATEGY": str(
                 performance_config.get(
                     "sensor_key_strategy", defaults.sensor_key_strategy
+                )
+            ),
+            "RADAR_SENSOR_FRESHNESS_SECONDS": str(
+                performance_config.get(
+                    "sensor_freshness_seconds", defaults.sensor_freshness_seconds
                 )
             ),
             # Database Settings
@@ -560,7 +584,7 @@ class RadarOrchestrationService:
             await self.session.rollback()
             failures = "; ".join(removal_failures)
             raise RuntimeError(
-                "Failed to remove one or more managed RADAR workloads: " f"{failures}"
+                f"Failed to remove one or more managed RADAR workloads: {failures}"
             )
 
         delete_result = await self.session.execute(delete(MonitoringService))

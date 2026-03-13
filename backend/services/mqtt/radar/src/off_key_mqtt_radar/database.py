@@ -12,6 +12,7 @@ class with 23+ environment variables.
 import asyncio
 import time
 import logging
+import math
 from datetime import datetime
 from typing import List, Optional, Dict, Any
 from collections import deque
@@ -126,12 +127,12 @@ class DatabaseWriter:
         self._writer_task: Optional[asyncio.Task] = None
         self._shutdown_event = asyncio.Event()
 
-        logger.info("Initialized database writer for RADAR service")
+        logger.info("event=radar.db_writer_initialized")
 
     async def start(self):
         """Start the database writer"""
         if not self.config.db_write_enabled:
-            logger.info("Database writing disabled by configuration")
+            logger.debug("event=radar.db_writer_disabled")
             return
 
         # Initialize session factory lazily to avoid failing when disabled
@@ -144,11 +145,11 @@ class DatabaseWriter:
         # Start writer task
         self._writer_task = asyncio.create_task(self._writer_loop())
 
-        logger.info("Database writer started")
+        logger.info("event=radar.db_writer_started")
 
     async def stop(self):
         """Stop the database writer and flush remaining records"""
-        logger.info("Stopping database writer")
+        logger.info("event=radar.db_writer_stopping")
 
         # Signal shutdown
         self._shutdown_event.set()
@@ -165,7 +166,7 @@ class DatabaseWriter:
         if self.write_queue:
             await self._flush_batch()
 
-        logger.info("Database writer stopped")
+        logger.info("event=radar.db_writer_stopped")
 
     async def write_anomaly(self, result: AnomalyResult):
         """Queue anomaly result for batch writing"""
@@ -209,7 +210,11 @@ class DatabaseWriter:
                 await session.commit()
 
         except Exception as e:
-            logger.error(f"Failed to write service metrics: {e}")
+            logger.error(
+                "event=radar.db_metrics_write_failed error=%s",
+                str(e),
+                exc_info=True,
+            )
             self.total_errors += 1
 
     async def _test_connection(self):
@@ -222,14 +227,18 @@ class DatabaseWriter:
                 # Simple test query
                 result = await session.execute(text("SELECT 1"))
                 result.fetchone()
-                logger.info("Database connection test successful")
+                logger.info("event=radar.db_connection_test_success")
         except Exception as e:
-            logger.error(f"Database connection test failed: {e}")
+            logger.error(
+                "event=radar.db_connection_test_failed error=%s",
+                str(e),
+                exc_info=True,
+            )
             raise
 
     async def _writer_loop(self):
         """Main writer loop for batch processing"""
-        logger.info("Started database writer loop")
+        logger.info("event=radar.db_writer_loop_started")
 
         try:
             while not self._shutdown_event.is_set():
@@ -251,11 +260,15 @@ class DatabaseWriter:
                         await self._flush_batch()
 
         except asyncio.CancelledError:
-            logger.info("Database writer loop cancelled")
+            logger.debug("event=radar.db_writer_loop_cancelled")
         except Exception as e:
-            logger.error(f"Database writer loop error: {e}")
+            logger.error(
+                "event=radar.db_writer_loop_error error=%s",
+                str(e),
+                exc_info=True,
+            )
 
-        logger.info("Database writer loop stopped")
+        logger.info("event=radar.db_writer_loop_stopped")
 
     def _extract_telemetry_type(
         self, topic: str, payload: Optional[Dict[str, Any]] = None
@@ -263,6 +276,25 @@ class DatabaseWriter:
         """Extract telemetry type from MQTT topic."""
         metadata = self.topic_extractor.extract(topic=topic, payload=payload)
         return metadata.telemetry_type if metadata else "unknown"
+
+    @staticmethod
+    def _derive_anomaly_type(result: AnomalyResult) -> str:
+        """Map detector output to stored anomaly semantics."""
+        alignment_context = (result.context or {}).get("alignment", {})
+        if bool(alignment_context.get("aligned_vector")):
+            return "ml_zscore_multivariate"
+        return "ml_zscore_univariate"
+
+    @staticmethod
+    def _derive_anomaly_value(result: AnomalyResult) -> float:
+        """Persist z-score value when available to match trigger semantics."""
+        score_window = (result.context or {}).get("score_window", {})
+        zscore = score_window.get("zscore")
+        if isinstance(zscore, (int, float)):
+            zscore = float(zscore)
+            if math.isfinite(zscore):
+                return zscore
+        return float(result.anomaly_score)
 
     async def _flush_batch(self):
         """Flush current batch to core anomalies table"""
@@ -279,18 +311,19 @@ class DatabaseWriter:
             if anomalies_to_write:
                 async with self.session_factory() as session:
                     # Convert results to core Anomaly records
-                    anomaly_records = [
-                        {
-                            "charger_id": result.charger_id or "unknown",
-                            "timestamp": result.timestamp,
-                            "telemetry_type": self._extract_telemetry_type(
-                                result.topic, result.raw_data
-                            ),
-                            "anomaly_type": "ml_detected",
-                            "anomaly_value": result.anomaly_score,
-                        }
-                        for result in anomalies_to_write
-                    ]
+                    anomaly_records = []
+                    for result in anomalies_to_write:
+                        anomaly_records.append(
+                            {
+                                "charger_id": result.charger_id or "unknown",
+                                "timestamp": result.timestamp,
+                                "telemetry_type": self._extract_telemetry_type(
+                                    result.topic, result.raw_data
+                                ),
+                                "anomaly_type": self._derive_anomaly_type(result),
+                                "anomaly_value": self._derive_anomaly_value(result),
+                            }
+                        )
                     identity_records = [
                         {
                             "charger_id": record["charger_id"],
@@ -318,8 +351,14 @@ class DatabaseWriter:
                     await session.commit()
 
                     logger.info(
-                        f"Wrote {anomaly_count} anomalies to database "
-                        f"(from batch of {batch_size} results)"
+                        "event=radar.db_batch_written anomaly_count=%s batch_size=%s",
+                        anomaly_count,
+                        batch_size,
+                        extra={
+                            "anomaly_types": sorted(
+                                {record["anomaly_type"] for record in anomaly_records}
+                            )
+                        },
                     )
 
             # Update statistics
@@ -332,7 +371,12 @@ class DatabaseWriter:
             self.write_queue.clear()
 
         except Exception as e:
-            logger.error(f"Failed to write batch of {anomaly_count} anomalies: {e}")
+            logger.error(
+                "event=radar.db_batch_write_failed anomaly_count=%s error=%s",
+                anomaly_count,
+                str(e),
+                exc_info=True,
+            )
             self.total_errors += 1
 
             # Implement retry logic
@@ -365,18 +409,19 @@ class DatabaseWriter:
                     await asyncio.sleep(retry_delay)
 
                     async with self.session_factory() as session:
-                        anomaly_records = [
-                            {
-                                "charger_id": result.charger_id or "unknown",
-                                "timestamp": result.timestamp,
-                                "telemetry_type": self._extract_telemetry_type(
-                                    result.topic, result.raw_data
-                                ),
-                                "anomaly_type": "ml_detected",
-                                "anomaly_value": result.anomaly_score,
-                            }
-                            for result in retry_batch
-                        ]
+                        anomaly_records = []
+                        for result in retry_batch:
+                            anomaly_records.append(
+                                {
+                                    "charger_id": result.charger_id or "unknown",
+                                    "timestamp": result.timestamp,
+                                    "telemetry_type": self._extract_telemetry_type(
+                                        result.topic, result.raw_data
+                                    ),
+                                    "anomaly_type": self._derive_anomaly_type(result),
+                                    "anomaly_value": self._derive_anomaly_value(result),
+                                }
+                            )
                         identity_records = [
                             {
                                 "charger_id": record["charger_id"],
@@ -407,19 +452,26 @@ class DatabaseWriter:
 
                         self.total_written += len(retry_batch)
                         logger.info(
-                            f"Successfully retried writing {len(retry_batch)} anomalies"
+                            "event=radar.db_retry_batch_written count=%s",
+                            len(retry_batch),
                         )
                         success = True
                         break  # Exit retry loop on success
 
                 except Exception as e:
-                    logger.error(f"Retry attempt {attempt + 1} failed: {e}")
+                    logger.error(
+                        "event=radar.db_retry_attempt_failed attempt=%s error=%s",
+                        attempt + 1,
+                        str(e),
+                        exc_info=True,
+                    )
                     retry_delay *= 2  # Exponential backoff
 
             if not success:
                 logger.error(
-                    f"Dropping batch of {len(retry_batch)} anomalies "
-                    f"after {max_retries} failed attempts"
+                    "event=radar.db_retry_exhausted dropped_count=%s max_retries=%s",
+                    len(retry_batch),
+                    max_retries,
                 )
                 self.total_errors += 1
 
@@ -497,7 +549,7 @@ async def ensure_radar_metrics_tables():
             metrics_table_exists = result.scalar() is not None
 
             if not metrics_table_exists:
-                logger.info("Creating RADAR service metrics tables...")
+                logger.info("event=radar.db_metrics_tables_creating")
 
                 # Create radar_service_metrics table
                 await session.execute(
@@ -552,14 +604,18 @@ async def ensure_radar_metrics_tables():
                 )
 
                 await session.commit()
-                logger.info("RADAR service metrics tables created successfully")
+                logger.info("event=radar.db_metrics_tables_created")
             else:
-                logger.info("RADAR service metrics tables already exist")
+                logger.debug("event=radar.db_metrics_tables_exist")
 
-        logger.info("Database table verification completed")
+        logger.info("event=radar.db_table_verification_completed")
 
     except Exception as e:
-        logger.error(f"Failed to ensure RADAR metrics tables exist: {e}")
+        logger.error(
+            "event=radar.db_table_verification_failed error=%s",
+            str(e),
+            exc_info=True,
+        )
         logger.warning(
             "Continuing without table creation - "
             "metrics tables should be handled by migrations or manual setup"

@@ -32,6 +32,26 @@ def test_sensor_key_strategy_validation():
         RadarDefaultsConfig(sensor_key_strategy="invalid")
 
 
+def test_heuristic_window_validation():
+    with pytest.raises(ValueError, match="heuristic_min_samples must be <="):
+        RadarDefaultsConfig(heuristic_window_size=20, heuristic_min_samples=25)
+
+
+def test_tactic_settings_expose_heuristic_and_freshness_defaults():
+    settings = TacticSettings(
+        TACTIC_RADAR_DEFAULT_HEURISTIC_WINDOW_SIZE=420,
+        TACTIC_RADAR_DEFAULT_HEURISTIC_MIN_SAMPLES=40,
+        TACTIC_RADAR_DEFAULT_HEURISTIC_ZSCORE_THRESHOLD=4.1,
+        TACTIC_RADAR_DEFAULT_SENSOR_FRESHNESS_SECONDS=18.0,
+    )
+    defaults = settings.config.radar_defaults
+
+    assert defaults.heuristic_window_size == 420
+    assert defaults.heuristic_min_samples == 40
+    assert defaults.heuristic_zscore_threshold == 4.1
+    assert defaults.sensor_freshness_seconds == 18.0
+
+
 def test_radar_container_runtime_settings_build_encoded_database_url():
     settings = RadarContainerRuntimeSettings(
         POSTGRES_USER="db@user",

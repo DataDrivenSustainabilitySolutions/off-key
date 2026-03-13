@@ -7,6 +7,7 @@ import { ChartSkeleton, NoDataFound } from "@/components/LoadingStates";
 import DynamicTelemetryChart from "@/components/DynamicTelemetryChart";
 import { Button } from "@/components/ui/button";
 import { INTERVALS } from "@/lib/constants";
+import { clientLogger } from "@/lib/logger";
 import {
   Tooltip,
   TooltipContent,
@@ -27,7 +28,6 @@ const Details: React.FC = () => {
 
   // Loading states
   const [isLoadingTelemetry, setIsLoadingTelemetry] = useState(true);
-  const [isLoadingAnomalies, setIsLoadingAnomalies] = useState(true);
 
   // Fetch dynamic telemetry data and anomalies
   useEffect(() => {
@@ -36,17 +36,20 @@ const Details: React.FC = () => {
     // Load initial data with loading state tracking
     const loadInitialData = async () => {
       setIsLoadingTelemetry(true);
-      setIsLoadingAnomalies(true);
 
       try {
         await Promise.all([
           loadAllTelemetryTypes(chargerId).finally(() => setIsLoadingTelemetry(false)),
-          loadAnomalies(chargerId).finally(() => setIsLoadingAnomalies(false))
+          loadAnomalies(chargerId),
         ]);
       } catch (error) {
-        console.error('Error loading initial data:', error);
+        clientLogger.error({
+          event: "details.initial_load_failed",
+          message: "Error loading initial details data",
+          error,
+          context: { chargerId },
+        });
         setIsLoadingTelemetry(false);
-        setIsLoadingAnomalies(false);
       }
     };
 

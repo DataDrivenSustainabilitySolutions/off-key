@@ -35,6 +35,14 @@ def _raise_tactic_http_error(error: TacticError) -> None:
     )
 
 
+@router.get("/count")
+async def get_anomaly_count(since: Optional[datetime] = None):
+    try:
+        return await tactic.get_anomaly_count(since=since)
+    except TacticError as e:
+        _raise_tactic_http_error(e)
+
+
 @router.get("")
 async def get_anomalies(
     charger_id: str,

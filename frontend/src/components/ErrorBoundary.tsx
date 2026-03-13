@@ -2,6 +2,7 @@ import React, { Component, ReactNode } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { AlertCircle, RefreshCw } from 'lucide-react';
+import { clientLogger } from "@/lib/logger";
 
 interface Props {
   children: ReactNode;
@@ -38,8 +39,12 @@ export class ErrorBoundary extends Component<Props, State> {
       errorInfo,
     });
 
-    // Log error to console for development
-    console.error('ErrorBoundary caught an error:', error, errorInfo);
+    clientLogger.error({
+      event: "ui.error_boundary_caught",
+      message: "ErrorBoundary caught an error",
+      error,
+      context: { componentStack: errorInfo.componentStack },
+    });
 
     // Call custom error handler if provided
     if (this.props.onError) {
@@ -75,7 +80,7 @@ export class ErrorBoundary extends Component<Props, State> {
             <p className="text-muted-foreground">
               An unexpected error occurred. Please try refreshing the page or contact support if the problem persists.
             </p>
-            
+
             {this.state.error && (
               <details className="text-left">
                 <summary className="cursor-pointer text-sm font-medium mb-2">
@@ -87,7 +92,7 @@ export class ErrorBoundary extends Component<Props, State> {
                 </pre>
               </details>
             )}
-            
+
             <div className="flex gap-2 justify-center">
               <Button
                 onClick={this.handleRetry}
@@ -129,7 +134,7 @@ export const FunctionalErrorBoundary: React.FC<FunctionalErrorBoundaryProps> = (
   return (
     <ErrorBoundary
       fallback={fallback}
-      onError={(error, errorInfo) => {
+      onError={(error) => {
         if (onError) {
           onError(error);
         }
@@ -242,6 +247,6 @@ export function withErrorBoundary<P extends object>(
   );
 
   WrappedComponent.displayName = `withErrorBoundary(${Component.displayName || Component.name})`;
-  
+
   return WrappedComponent;
 }

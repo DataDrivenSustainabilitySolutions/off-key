@@ -419,6 +419,59 @@ class SyncService:
             )
         )
 
+        await self._ensure_anomaly_identity_trigger(conn)
+
+    async def _ensure_anomaly_identity_trigger(self, conn) -> None:
+        """
+        Keep anomaly_identity synchronized for every anomaly insert.
+
+        This enforces the identity invariant at the database layer so
+        all anomaly writers (old/new) remain compatible with read paths
+        that rely on anomaly_identity.
+        """
+        await conn.execute(
+            text(
+                """
+                CREATE OR REPLACE FUNCTION off_key_sync_anomaly_identity()
+                RETURNS TRIGGER AS $$
+                BEGIN
+                    INSERT INTO anomaly_identity (
+                        charger_id,
+                        timestamp,
+                        telemetry_type
+                    )
+                    VALUES (
+                        NEW.charger_id,
+                        NEW.timestamp,
+                        NEW.telemetry_type
+                    )
+                    ON CONFLICT (charger_id, timestamp, telemetry_type)
+                    DO NOTHING;
+                    RETURN NEW;
+                END;
+                $$ LANGUAGE plpgsql;
+                """
+            )
+        )
+
+        await conn.execute(
+            text(
+                """
+                DROP TRIGGER IF EXISTS trg_anomaly_identity_sync ON anomalies;
+                """
+            )
+        )
+        await conn.execute(
+            text(
+                """
+                CREATE TRIGGER trg_anomaly_identity_sync
+                AFTER INSERT ON anomalies
+                FOR EACH ROW
+                EXECUTE FUNCTION off_key_sync_anomaly_identity();
+                """
+            )
+        )
+
     async def _check_database_connection(self) -> bool:
         """
         Check if database connection is available.

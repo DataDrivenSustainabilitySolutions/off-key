@@ -99,6 +99,13 @@ class MonitoringServiceConfig(BaseModel):
     preprocessing_steps: Optional[List[Dict[str, Any]]] = Field(
         default=None, description="Ordered preprocessing steps applied before the model"
     )
+    performance_config: Optional["PerformanceConfig"] = Field(
+        default=None,
+        description=(
+            "Performance and heuristic settings "
+            "(heuristic window/min-samples/z-score, sensor strategy)"
+        ),
+    )
     requirements: Optional[List[str]] = Field(
         None, description="List of pip packages to install"
     )
@@ -113,6 +120,33 @@ class ServiceResponse(BaseModel):
     container_name: str
     status: str
     mqtt_topics: List[str]
+
+
+class PerformanceConfig(BaseModel):
+    heuristic_enabled: Optional[bool] = Field(
+        default=None, description="Enable moving-window z-score trigger"
+    )
+    heuristic_window_size: Optional[int] = Field(
+        default=None, ge=3, description="Moving-window size for z-score baseline"
+    )
+    heuristic_min_samples: Optional[int] = Field(
+        default=None, ge=2, description="Minimum samples before z-score triggering"
+    )
+    heuristic_zscore_threshold: Optional[float] = Field(
+        default=None, gt=0.0, description="Z-score threshold for anomaly trigger"
+    )
+    sensor_key_strategy: Optional[str] = Field(
+        default=None,
+        description="Sensor key extraction strategy (full_hierarchy|top_level|leaf)",
+    )
+    sensor_freshness_seconds: Optional[float] = Field(
+        default=None,
+        gt=0.0,
+        description="Maximum age for aligned sensor values in multivariate mode",
+    )
+
+
+MonitoringServiceConfig.model_rebuild()
 
 
 @router.get("/all", response_model=List[Dict[str, Any]])
@@ -163,7 +197,11 @@ async def start_monitoring_service(
                 preprocessing_steps=config.preprocessing_steps,
                 mqtt_config=None,
                 anomaly_thresholds=None,
-                performance_config=None,
+                performance_config=(
+                    config.performance_config.model_dump(exclude_none=True)
+                    if config.performance_config
+                    else None
+                ),
             )
         else:
             raise HTTPException(

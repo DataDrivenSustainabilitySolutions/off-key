@@ -232,6 +232,18 @@ async def remove_user_favorite(
         _raise_http_from_domain(exc)
 
 
+@router.get("/anomalies/count")
+async def get_anomaly_count(
+    since: Optional[datetime] = Query(None),
+    service: AnomalyService = Depends(get_anomaly_service),
+):
+    try:
+        count = await service.count_anomalies(since=since)
+        return {"count": count}
+    except DomainError as exc:
+        _raise_http_from_domain(exc)
+
+
 @router.get("/anomalies/{charger_id}", response_model=list[AnomalyResponse])
 async def get_charger_anomalies(
     charger_id: str,

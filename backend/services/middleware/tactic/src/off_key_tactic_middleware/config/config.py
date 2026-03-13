@@ -76,6 +76,7 @@ class RadarDefaultsConfig(BaseModel):
     # Default Model Settings
     model_type: str = "isolation_forest"
     sensor_key_strategy: str = "full_hierarchy"
+    sensor_freshness_seconds: float = Field(default=30.0, gt=0.0)
 
     # Default Anomaly Thresholds
     anomaly_threshold_medium: float = Field(default=0.6, ge=0.0, le=1.0)
@@ -87,6 +88,10 @@ class RadarDefaultsConfig(BaseModel):
     batch_timeout: float = Field(default=1.0, ge=0.1, le=3600.0)
     memory_limit_mb: int = Field(default=1000, ge=128, le=16384)
     checkpoint_interval: int = Field(default=10000, ge=100, le=100000)
+    heuristic_enabled: bool = True
+    heuristic_window_size: int = Field(default=300, ge=3, le=100000)
+    heuristic_min_samples: int = Field(default=30, ge=2, le=100000)
+    heuristic_zscore_threshold: float = Field(default=3.0, gt=0.0, le=100.0)
 
     # Default Database Settings
     db_write_enabled: bool = True
@@ -141,6 +146,11 @@ class RadarDefaultsConfig(BaseModel):
                 f"(got {self.anomaly_threshold_medium} "
                 f"<= {self.anomaly_threshold_high} "
                 f"<= {self.anomaly_threshold_critical})"
+            )
+        if self.heuristic_min_samples > self.heuristic_window_size:
+            raise ValueError(
+                "heuristic_min_samples must be <= heuristic_window_size "
+                f"(got {self.heuristic_min_samples} > {self.heuristic_window_size})"
             )
         return self
 
@@ -259,6 +269,9 @@ class TacticSettings(BaseSettings):
     TACTIC_RADAR_DEFAULT_SENSOR_KEY_STRATEGY: str = Field(
         default=DEFAULT_RADAR_DEFAULTS.sensor_key_strategy
     )
+    TACTIC_RADAR_DEFAULT_SENSOR_FRESHNESS_SECONDS: float = Field(
+        default=DEFAULT_RADAR_DEFAULTS.sensor_freshness_seconds
+    )
     TACTIC_RADAR_DEFAULT_ANOMALY_THRESHOLD_MEDIUM: float = Field(
         default=DEFAULT_RADAR_DEFAULTS.anomaly_threshold_medium
     )
@@ -279,6 +292,18 @@ class TacticSettings(BaseSettings):
     )
     TACTIC_RADAR_DEFAULT_CHECKPOINT_INTERVAL: int = Field(
         default=DEFAULT_RADAR_DEFAULTS.checkpoint_interval
+    )
+    TACTIC_RADAR_DEFAULT_HEURISTIC_ENABLED: bool = Field(
+        default=DEFAULT_RADAR_DEFAULTS.heuristic_enabled
+    )
+    TACTIC_RADAR_DEFAULT_HEURISTIC_WINDOW_SIZE: int = Field(
+        default=DEFAULT_RADAR_DEFAULTS.heuristic_window_size
+    )
+    TACTIC_RADAR_DEFAULT_HEURISTIC_MIN_SAMPLES: int = Field(
+        default=DEFAULT_RADAR_DEFAULTS.heuristic_min_samples
+    )
+    TACTIC_RADAR_DEFAULT_HEURISTIC_ZSCORE_THRESHOLD: float = Field(
+        default=DEFAULT_RADAR_DEFAULTS.heuristic_zscore_threshold
     )
     TACTIC_RADAR_DEFAULT_DB_WRITE_ENABLED: bool = Field(
         default=DEFAULT_RADAR_DEFAULTS.db_write_enabled
@@ -390,6 +415,7 @@ class TacticSettings(BaseSettings):
             mqtt_qos=self.TACTIC_RADAR_DEFAULT_MQTT_QOS,
             model_type=self.TACTIC_RADAR_DEFAULT_MODEL_TYPE,
             sensor_key_strategy=self.TACTIC_RADAR_DEFAULT_SENSOR_KEY_STRATEGY,
+            sensor_freshness_seconds=self.TACTIC_RADAR_DEFAULT_SENSOR_FRESHNESS_SECONDS,
             anomaly_threshold_medium=self.TACTIC_RADAR_DEFAULT_ANOMALY_THRESHOLD_MEDIUM,
             anomaly_threshold_high=self.TACTIC_RADAR_DEFAULT_ANOMALY_THRESHOLD_HIGH,
             anomaly_threshold_critical=self.TACTIC_RADAR_DEFAULT_ANOMALY_THRESHOLD_CRITICAL,
@@ -397,6 +423,10 @@ class TacticSettings(BaseSettings):
             batch_timeout=self.TACTIC_RADAR_DEFAULT_BATCH_TIMEOUT,
             memory_limit_mb=self.TACTIC_RADAR_DEFAULT_MEMORY_LIMIT_MB,
             checkpoint_interval=self.TACTIC_RADAR_DEFAULT_CHECKPOINT_INTERVAL,
+            heuristic_enabled=self.TACTIC_RADAR_DEFAULT_HEURISTIC_ENABLED,
+            heuristic_window_size=self.TACTIC_RADAR_DEFAULT_HEURISTIC_WINDOW_SIZE,
+            heuristic_min_samples=self.TACTIC_RADAR_DEFAULT_HEURISTIC_MIN_SAMPLES,
+            heuristic_zscore_threshold=self.TACTIC_RADAR_DEFAULT_HEURISTIC_ZSCORE_THRESHOLD,
             db_write_enabled=self.TACTIC_RADAR_DEFAULT_DB_WRITE_ENABLED,
             db_batch_size=self.TACTIC_RADAR_DEFAULT_DB_BATCH_SIZE,
             db_batch_timeout=self.TACTIC_RADAR_DEFAULT_DB_BATCH_TIMEOUT,

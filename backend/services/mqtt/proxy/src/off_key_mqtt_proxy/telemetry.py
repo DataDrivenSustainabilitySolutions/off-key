@@ -204,14 +204,14 @@ class DatabaseWriter:
 
     async def start(self):
         """Start the database writer"""
-        logger.info("Starting database writer", extra=self._log_context)
+        logger.info("event=db_writer.started", extra=self._log_context)
 
         # Start background tasks
         self._writer_task = asyncio.create_task(self._writer_loop())
         self._health_task = asyncio.create_task(self._health_monitor_loop())
 
         logger.info(
-            "Database writer started successfully",
+            "event=db_writer.startup_complete",
             extra={
                 **self._log_context,
                 "batch_size": self.batch_size,
@@ -222,7 +222,7 @@ class DatabaseWriter:
 
     async def stop(self):
         """Stop the database writer"""
-        logger.info("Stopping database writer", extra=self._log_context)
+        logger.debug("event=db_writer.stopping", extra=self._log_context)
 
         # Signal shutdown
         self._shutdown_event.set()
@@ -245,13 +245,13 @@ class DatabaseWriter:
         # Process remaining batches
         if self.pending_batch.size() > 0:
             logger.info(
-                f"Processing {self.pending_batch.size()} "
-                f"remaining records during shutdown",
+                "event=db_writer.shutdown_flush records_count=%s",
+                self.pending_batch.size(),
                 extra={**self._log_context, "records_count": self.pending_batch.size()},
             )
             await self._process_batch(self.pending_batch)
 
-        logger.info("Database writer stopped", extra=self._log_context)
+        logger.debug("event=db_writer.stopped", extra=self._log_context)
 
     async def write_telemetry_message(self, message: MQTTMessage):
         """
@@ -292,7 +292,12 @@ class DatabaseWriter:
         # Log high-frequency messages intelligently
         if self.total_records_received % 100 == 0:
             logger.debug(
-                f"Queued telemetry record (total: {self.total_records_received})",
+                "event=db_writer.record_queued total_received=%s \
+                     charger_id=%s telemetry_type=%s batch_size=%s",
+                self.total_records_received,
+                record.charger_id,
+                record.telemetry_type,
+                self.pending_batch.size(),
                 extra={
                     **self._log_context,
                     "charger_id": record.charger_id,
@@ -438,10 +443,13 @@ class DatabaseWriter:
                     self._batch_ready_event.clear()
 
         except asyncio.CancelledError:
-            logger.info("Writer loop cancelled", extra=self._log_context)
+            logger.debug(
+                "event=db_writer.writer_loop_cancelled", extra=self._log_context
+            )
         except Exception as e:
             logger.error(
-                f"Unexpected error in writer loop: {e}",
+                "event=db_writer.writer_loop_failed error=%s",
+                e,
                 extra=self._log_context,
                 exc_info=True,
             )
@@ -463,9 +471,14 @@ class DatabaseWriter:
 
                 if attempt > 0:
                     delay = self.config.get_jittered_backoff_delay(attempt - 1)
-                    logger.info(
-                        f"Retrying batch processing "
-                        f"(attempt {attempt + 1}/{max_attempts}) in {delay}s",
+                    logger.warning(
+                        "event=db_writer.batch_retry batch_id=%s batch_size=%s \
+                             attempt=%s max_attempts=%s delay_s=%.3f",
+                        batch_id,
+                        batch.size(),
+                        attempt + 1,
+                        max_attempts,
+                        delay,
                         extra={
                             **self._log_context,
                             "batch_id": batch_id,
@@ -481,8 +494,12 @@ class DatabaseWriter:
                 if success:
                     batch.status = WriteStatus.SUCCESS
                     self.processing_batches.pop(batch_id, None)
-                    logger.info(
-                        "Batch processed successfully",
+                    logger.debug(
+                        "event=db_writer.batch_success batch_id=%s \
+                             batch_size=%s attempt=%s",
+                        batch_id,
+                        batch.size(),
+                        attempt + 1,
                         extra={
                             **self._log_context,
                             "batch_id": batch_id,
@@ -494,7 +511,12 @@ class DatabaseWriter:
 
             except Exception as e:
                 logger.error(
-                    f"Error processing batch (attempt {attempt + 1}): {e}",
+                    "event=db_writer.batch_attempt_failed batch_id=%s \
+                        s batch_size=%s attempt=%s error=%s",
+                    batch_id,
+                    batch.size(),
+                    attempt + 1,
+                    e,
                     extra={
                         **self._log_context,
                         "batch_id": batch_id,
@@ -513,7 +535,10 @@ class DatabaseWriter:
         self.total_batches_failed += 1
 
         logger.error(
-            f"Batch processing failed after {max_attempts} attempts",
+            "event=db_writer.batch_failed batch_id=%s batch_size=%s attempts=%s",
+            batch_id,
+            batch.size(),
+            max_attempts,
             extra={
                 **self._log_context,
                 "batch_id": batch_id,
@@ -567,10 +592,6 @@ class DatabaseWriter:
 
             # Log batch processing with intelligent frequency
             if self.total_batches_processed % 10 == 0 or write_latency > 1.0:
-                message = (
-                    f"Batch processed: {records_written} "
-                    f"records in {write_latency:.3f}s"
-                )
                 extra_data = {
                     **self._log_context,
                     "batch_size": records_written,
@@ -582,9 +603,20 @@ class DatabaseWriter:
                 }
 
                 if write_latency <= 1.0:
-                    logger.info(message, extra=extra_data)
+                    logger.debug(
+                        "event=db_writer.batch_processed batch_size=%s \
+                             write_latency_s=%.3f",
+                        records_written,
+                        write_latency,
+                        extra=extra_data,
+                    )
                 else:
-                    logger.warning(message, extra=extra_data)
+                    logger.warning(
+                        "event=db_writer.batch_slow batch_size=%s write_latency_s=%.3f",
+                        records_written,
+                        write_latency,
+                        extra=extra_data,
+                    )
 
             # Performance logging
             log_performance(
@@ -597,7 +629,9 @@ class DatabaseWriter:
 
         except IntegrityError as e:
             logger.warning(
-                f"Integrity error during batch processing (likely duplicates): {e}",
+                "event=db_writer.batch_integrity_error batch_size=%s error=%s",
+                batch.size(),
+                e,
                 extra={
                     **self._log_context,
                     "batch_size": batch.size(),
@@ -609,18 +643,23 @@ class DatabaseWriter:
 
         except SQLAlchemyError as e:
             logger.error(
-                f"Database error during batch processing: {e}",
+                "event=db_writer.batch_db_error batch_size=%s error=%s",
+                batch.size(),
+                e,
                 extra={
                     **self._log_context,
                     "batch_size": batch.size(),
                     "error": str(e),
                 },
+                exc_info=True,
             )
             return False
 
         except Exception as e:
             logger.error(
-                f"Unexpected error during batch processing: {e}",
+                "event=db_writer.batch_unexpected_error batch_size=%s error=%s",
+                batch.size(),
+                e,
                 extra={
                     **self._log_context,
                     "batch_size": batch.size(),
@@ -703,7 +742,8 @@ class DatabaseWriter:
         await session.execute(stmt)
 
         logger.debug(
-            f"Bulk updated MQTT status for {len(charger_ids)} chargers",
+            "event=db_writer.charger_status_bulk_updated charger_count=%s",
+            len(charger_ids),
             extra={
                 **self._log_context,
                 "charger_count": len(charger_ids),
@@ -775,10 +815,13 @@ class DatabaseWriter:
                     )
 
         except asyncio.CancelledError:
-            logger.info("Health monitor loop cancelled", extra=self._log_context)
+            logger.debug(
+                "event=db_writer.health_monitor_cancelled", extra=self._log_context
+            )
         except Exception as e:
             logger.error(
-                f"Unexpected error in health monitor loop: {e}",
+                "event=db_writer.health_monitor_failed error=%s",
+                e,
                 extra=self._log_context,
                 exc_info=True,
             )

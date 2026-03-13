@@ -1,5 +1,6 @@
 """Use cases for anomaly operations."""
 
+from datetime import datetime
 from typing import Optional
 
 from sqlalchemy.exc import IntegrityError
@@ -47,6 +48,9 @@ class AnomalyService:
             }
             for anomaly_id, anomaly in rows
         ]
+
+    async def count_anomalies(self, *, since: Optional[datetime] = None) -> int:
+        return await self._repository.count_since(since=since)
 
     async def create_anomaly(self, *, payload: AnomalyCreateRequest) -> dict[str, str]:
         anomaly = Anomaly(

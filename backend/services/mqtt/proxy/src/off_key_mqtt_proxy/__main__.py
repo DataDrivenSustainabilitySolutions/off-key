@@ -13,7 +13,11 @@ from .proxy import MQTTProxyService
 from .health_api import run_health_api
 from off_key_core.config.env import load_env
 from off_key_core.config.validation import validate_settings
-from off_key_core.config.logs import load_yaml_config, logger
+from off_key_core.config.logs import (
+    load_yaml_config,
+    logger,
+    log_startup_logging_configuration,
+)
 from .config.config import get_mqtt_settings
 
 # Load logging configuration from YAML files
@@ -24,6 +28,7 @@ load_yaml_config(str(service_logging_config))
 async def main():
     """Main entry point for MQTT proxy service"""
     load_env()
+    log_startup_logging_configuration("mqtt-proxy")
     validate_settings(
         [
             ("mqtt_proxy", lambda: get_mqtt_settings().config),

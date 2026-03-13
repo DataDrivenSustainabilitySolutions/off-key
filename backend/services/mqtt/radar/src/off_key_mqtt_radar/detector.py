@@ -322,8 +322,9 @@ class AnomalyDetectionService:
         try:
             # Log params before validation
             self.logger.info(
-                f"Creating model '{self.config.model_type}'"
-                f" with params: {self.config.model_params}"
+                "event=radar.model_create type=%s params=%s",
+                self.config.model_type,
+                self.config.model_params,
             )
 
             # Use create_model_instance which handles special cases like KNN
@@ -332,10 +333,18 @@ class AnomalyDetectionService:
             )
 
         except ImportError as e:
-            self.logger.error(f"Failed to import model: {e}")
+            self.logger.error(
+                "event=radar.model_import_failed error=%s",
+                str(e),
+                exc_info=True,
+            )
             raise
         except ValueError as e:
-            self.logger.error(f"Invalid model configuration: {e}")
+            self.logger.error(
+                "event=radar.model_config_invalid error=%s",
+                str(e),
+                exc_info=True,
+            )
             raise
 
     def _create_preprocessors(self):
@@ -350,9 +359,16 @@ class AnomalyDetectionService:
                 preprocessors.append(preprocessor_cls(**step.get("params", {})))
             if preprocessors:
                 step_types = [s["type"] for s in validated_steps]
-                self.logger.info(f"Enabled preprocessing pipeline: {step_types}")
+                self.logger.info(
+                    "event=radar.preprocessing_enabled steps=%s",
+                    step_types,
+                )
         except Exception as e:
-            self.logger.error(f"Failed to create preprocessing pipeline: {e}")
+            self.logger.error(
+                "event=radar.preprocessing_create_failed error=%s",
+                str(e),
+                exc_info=True,
+            )
             raise
 
         return preprocessors
@@ -425,9 +441,24 @@ class AnomalyDetectionService:
             )
 
             if is_anomaly:
+                score_window = result.context.get("score_window", {})
                 self.logger.warning(
-                    f"Anomaly detected: score={score:.3f},"
-                    f" severity={severity}, topic={topic}, trigger=moving_window_zscore"
+                    (
+                        f"Anomaly detected: score={score:.3f},"
+                        f" severity={severity}, topic={topic}, "
+                        "trigger=moving_window_zscore"
+                    ),
+                    extra={
+                        "anomaly_score": score,
+                        "zscore": score_window.get("zscore"),
+                        "window_mean": score_window.get(
+                            "window_mean", score_window.get("mean")
+                        ),
+                        "window_std": score_window.get(
+                            "window_std", score_window.get("std_dev")
+                        ),
+                        "history_count": score_window.get("history_count"),
+                    },
                 )
 
             return result
@@ -491,9 +522,12 @@ class AnomalyDetectionService:
                         "(stage=%s): %s",
                         warmup_failure_stage or "unknown",
                         warmup_error,
+                        exc_info=True,
                     )
 
-            self.logger.error(f"Processing error: {e}")
+            self.logger.error(
+                "event=radar.processing_error error=%s", str(e), exc_info=True
+            )
             context = {
                 "error": str(e),
                 "processing_time_ms": (time.time() - start_time) * 1000,
@@ -575,7 +609,15 @@ class AnomalyDetectionService:
             if std_dev > 1e-9:
                 zscore = (score - mean_score) / std_dev
 
-            context.update({"mean": mean_score, "std_dev": std_dev, "zscore": zscore})
+            context.update(
+                {
+                    "mean": mean_score,
+                    "std_dev": std_dev,
+                    "window_mean": mean_score,
+                    "window_std": std_dev,
+                    "zscore": zscore,
+                }
+            )
             context["triggered"] = zscore >= zscore_threshold
 
         self.score_window.append(score)
@@ -653,7 +695,11 @@ class AnomalyDetectionService:
                 self.logger.info(f"Checkpoint saved (unsigned): {checkpoint_path}")
 
         except Exception as e:
-            self.logger.error(f"Failed to save checkpoint: {e}")
+            self.logger.error(
+                "event=radar.checkpoint_save_failed error=%s",
+                str(e),
+                exc_info=True,
+            )
 
     def _get_model_info(self) -> Dict[str, Any]:
         """Get model state information"""
@@ -732,7 +778,7 @@ class ResilientAnomalyDetector:
         self, data: Dict[str, float], topic: str, charger_id: str, reason: str
     ) -> AnomalyResult:
         """Fallback processing when primary fails"""
-        self.logger.warning(f"Using fallback processing: {reason}")
+        self.logger.warning("event=radar.fallback_processing reason=%s", reason)
 
         try:
             if self.fallback_service:
@@ -769,7 +815,11 @@ class ResilientAnomalyDetector:
                 )
 
         except Exception as e:
-            self.logger.error(f"Fallback processing failed: {e}")
+            self.logger.error(
+                "event=radar.fallback_processing_failed error=%s",
+                str(e),
+                exc_info=True,
+            )
             return AnomalyResult(
                 anomaly_score=0.0,
                 is_anomaly=False,
@@ -822,7 +872,7 @@ class ResilientAnomalyDetector:
         if recent_error_rate > self.error_threshold:
             self._open_circuit_breaker()
 
-        self.logger.error(f"Model error: {error}")
+        self.logger.error("event=radar.model_error error=%s", error)
 
     def _record_success(self):
         """Record successful processing"""
@@ -902,9 +952,10 @@ class MemoryManager:
         after_memory = self.get_memory_usage()
         freed_memory = before_memory - after_memory
 
-        self.logger.info(
-            f"Memory cleanup: freed {freed_memory:.1f} MB,"
-            f" collected {collected} objects"
+        self.logger.debug(
+            "event=radar.memory_cleanup freed_mb=%.1f collected=%s",
+            freed_memory,
+            collected,
         )
 
         return freed_memory

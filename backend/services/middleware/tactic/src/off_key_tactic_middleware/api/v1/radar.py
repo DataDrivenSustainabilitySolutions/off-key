@@ -14,6 +14,30 @@ from ...provider import (
 router = APIRouter()
 
 
+class PerformanceConfig(BaseModel):
+    heuristic_enabled: Optional[bool] = Field(
+        default=None, description="Enable moving-window z-score trigger"
+    )
+    heuristic_window_size: Optional[int] = Field(
+        default=None, ge=3, description="Moving-window size for z-score baseline"
+    )
+    heuristic_min_samples: Optional[int] = Field(
+        default=None, ge=2, description="Minimum samples before z-score triggering"
+    )
+    heuristic_zscore_threshold: Optional[float] = Field(
+        default=None, gt=0.0, description="Z-score threshold for anomaly trigger"
+    )
+    sensor_key_strategy: Optional[str] = Field(
+        default=None,
+        description="Sensor key extraction strategy (full_hierarchy|top_level|leaf)",
+    )
+    sensor_freshness_seconds: Optional[float] = Field(
+        default=None,
+        gt=0.0,
+        description="Maximum age for aligned sensor values in multivariate mode",
+    )
+
+
 class RadarConfig(BaseModel):
     """Configuration for creating a RADAR anomaly detection service."""
 
@@ -48,7 +72,7 @@ class RadarConfig(BaseModel):
     )
 
     # Performance Configuration
-    performance_config: Optional[Dict[str, Any]] = Field(
+    performance_config: Optional[PerformanceConfig] = Field(
         default=None, description="Performance and resource settings"
     )
 
@@ -111,7 +135,11 @@ async def start_radar_service(
             preprocessing_steps=config.preprocessing_steps,
             mqtt_config=config.mqtt_config,
             anomaly_thresholds=config.anomaly_thresholds,
-            performance_config=config.performance_config,
+            performance_config=(
+                config.performance_config.model_dump(exclude_none=True)
+                if config.performance_config
+                else None
+            ),
         )
 
         return {

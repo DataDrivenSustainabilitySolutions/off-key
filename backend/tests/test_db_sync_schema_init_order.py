@@ -48,3 +48,21 @@ async def test_initialize_database_migrates_anomalies_before_create_all():
         "migrate_model_registry",
         "create_all",
     ]
+
+
+@pytest.mark.asyncio
+async def test_ensure_anomaly_identity_trigger_is_created_idempotently():
+    service = SyncService()
+    conn = AsyncMock()
+    conn.execute = AsyncMock()
+
+    await service._ensure_anomaly_identity_trigger(conn)
+
+    executed_sql = " ".join(
+        str(call.args[0]) for call in conn.execute.await_args_list if call.args
+    )
+    assert "CREATE OR REPLACE FUNCTION off_key_sync_anomaly_identity()" in executed_sql
+    assert (
+        "DROP TRIGGER IF EXISTS trg_anomaly_identity_sync ON anomalies" in executed_sql
+    )
+    assert "CREATE TRIGGER trg_anomaly_identity_sync" in executed_sql

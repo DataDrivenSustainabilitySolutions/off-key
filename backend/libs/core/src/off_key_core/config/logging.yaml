@@ -8,6 +8,9 @@ formatters:
   detailed:
     format: '%(asctime)s - %(levelname)s - %(name)s - [CID: %(correlation_id)s] - %(message)s'
 
+  json:
+    (): 'off_key_core.config.logs.JsonFormatter'
+
   truncated:
     (): 'off_key_core.config.logs.TruncatingFormatter'
     base_format: '%(asctime)s - %(levelname)s - %(name)s - [CID: %(correlation_id)s] - %(message)s'

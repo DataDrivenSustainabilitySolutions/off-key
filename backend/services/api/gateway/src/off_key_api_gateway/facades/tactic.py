@@ -437,6 +437,19 @@ class Tactic:
             params=params,
         )
 
+    async def get_anomaly_count(
+        self, since: Optional[datetime] = None
+    ) -> Dict[str, int]:
+        """Get total anomaly count, optionally filtered by timestamp."""
+        params: Dict[str, Any] = {}
+        if since:
+            params["since"] = since.isoformat()
+        return await self._make_request(
+            method="GET",
+            endpoint="/api/v1/data/anomalies/count",
+            params=params,
+        )
+
     async def create_anomaly(self, anomaly_data: Dict[str, Any]) -> Dict[str, str]:
         """Create anomaly via TACTIC data service."""
         return await self._make_request(

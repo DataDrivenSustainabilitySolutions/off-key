@@ -26,12 +26,16 @@ def test_logging_settings_normalize_fields(monkeypatch):
     monkeypatch.setenv("LOG_LEVEL", "warning")
     monkeypatch.setenv("LOG_FORMAT", "JSON")
     monkeypatch.setenv("LOG_CORRELATION_HEADER", "X-Request-ID")
+    monkeypatch.setenv("LOG_HEARTBEAT_INTERVAL_SECONDS", "30")
+    monkeypatch.setenv("LOG_REPEAT_SUPPRESSION_SECONDS", "15")
 
     settings = get_logging_settings()
 
     assert settings.LOG_LEVEL == "WARNING"
     assert settings.LOG_FORMAT == "json"
     assert settings.LOG_CORRELATION_HEADER == "X-Request-ID"
+    assert settings.LOG_HEARTBEAT_INTERVAL_SECONDS == 30
+    assert settings.LOG_REPEAT_SUPPRESSION_SECONDS == 15
 
 
 def test_database_settings_reject_invalid_port():

@@ -219,7 +219,10 @@ class DatabaseDestination(MessageDestination):
             self.total_processing_time += processing_time
 
             logger.debug(
-                f"Message processed by database destination in {processing_time:.3f}s",
+                "event=router.destination_processed destination=database \
+                     topic=%s processing_time_s=%.3f",
+                message.topic,
+                processing_time,
                 extra={
                     **self._log_context,
                     "topic": message.topic,
@@ -234,7 +237,10 @@ class DatabaseDestination(MessageDestination):
             self.failure_count += 1
 
             logger.error(
-                f"Database destination processing failed: {e}",
+                "event=router.destination_failed destination=database \
+                     topic=%s error=%s",
+                message.topic,
+                e,
                 extra={**self._log_context, "topic": message.topic, "error": str(e)},
                 exc_info=True,
             )
@@ -266,7 +272,11 @@ class ContainerDestination(MessageDestination):
             self.total_processing_time += processing_time
 
             logger.debug(
-                f"Message processed by container destination in {processing_time:.3f}s",
+                "event=router.destination_processed destination=%s \
+                     topic=%s processing_time_s=%.3f",
+                self.name,
+                message.topic,
+                processing_time,
                 extra={
                     **self._log_context,
                     "container_id": self.container_id,
@@ -283,7 +293,10 @@ class ContainerDestination(MessageDestination):
             self.failure_count += 1
 
             logger.error(
-                f"Container destination processing failed: {e}",
+                "event=router.destination_failed destination=%s topic=%s error=%s",
+                self.name,
+                message.topic,
+                e,
                 extra={
                     **self._log_context,
                     "container_id": self.container_id,
@@ -319,7 +332,10 @@ class WebSocketDestination(MessageDestination):
             self.total_processing_time += processing_time
 
             logger.debug(
-                f"Message processed by WebSocket destination in {processing_time:.3f}s",
+                "event=router.destination_processed destination=websocket \
+                     topic=%s processing_time_s=%.3f",
+                message.topic,
+                processing_time,
                 extra={
                     **self._log_context,
                     "topic": message.topic,
@@ -334,7 +350,10 @@ class WebSocketDestination(MessageDestination):
             self.failure_count += 1
 
             logger.error(
-                f"WebSocket destination processing failed: {e}",
+                "event=router.destination_failed destination=websocket \
+                     topic=%s error=%s",
+                message.topic,
+                e,
                 extra={**self._log_context, "topic": message.topic, "error": str(e)},
                 exc_info=True,
             )
@@ -378,8 +397,11 @@ class BridgeDestination(MessageDestination):
             if success:
                 self.success_count += 1
                 logger.debug(
-                    f"Message bridged from {message.topic} "
-                    f"to {target_topic} in {processing_time:.3f}s",
+                    "event=router.destination_processed destination=mqtt_bridge \
+                         source_topic=%s target_topic=%s processing_time_s=%.3f",
+                    message.topic,
+                    target_topic,
+                    processing_time,
                     extra={
                         **self._log_context,
                         "source_topic": message.topic,
@@ -391,7 +413,10 @@ class BridgeDestination(MessageDestination):
             else:
                 self.failure_count += 1
                 logger.error(
-                    f"Failed to bridge message from {message.topic} to {target_topic}",
+                    "event=router.destination_failed destination=mqtt_bridge \
+                         source_topic=%s target_topic=%s error=publish_failed",
+                    message.topic,
+                    target_topic,
                     extra={
                         **self._log_context,
                         "source_topic": message.topic,
@@ -406,7 +431,11 @@ class BridgeDestination(MessageDestination):
             self.failure_count += 1
 
             logger.error(
-                f"Bridge destination processing failed: {e}",
+                "event=router.destination_failed destination=mqtt_bridge \
+                     source_topic=%s target_topic=%s error=%s",
+                message.topic,
+                self.topic_mapping.get(message.topic, message.topic),
+                e,
                 extra={
                     **self._log_context,
                     "source_topic": message.topic,
@@ -480,14 +509,14 @@ class MessageRouter:
 
     async def start(self):
         """Start the message router"""
-        logger.info("Starting message router", extra=self._log_context)
+        logger.info("event=router.started", extra=self._log_context)
 
         # Start background tasks
         self._cleanup_task = asyncio.create_task(self._cleanup_loop())
         self._metrics_task = asyncio.create_task(self._metrics_loop())
 
         logger.info(
-            "Message router started successfully",
+            "event=router.startup_complete",
             extra={
                 **self._log_context,
                 "max_concurrent_routes": self.max_concurrent_routes,
@@ -498,7 +527,7 @@ class MessageRouter:
 
     async def stop(self):
         """Stop the message router"""
-        logger.info("Stopping message router", extra=self._log_context)
+        logger.debug("event=router.stopping", extra=self._log_context)
 
         # Signal shutdown
         self._shutdown_event.set()
@@ -521,13 +550,16 @@ class MessageRouter:
         # Wait for active routes to complete (race-condition-free)
         # First: Handle already-complete case atomically
         if not self.active_routes:
-            logger.debug("All active routes already completed", extra=self._log_context)
+            logger.debug(
+                "event=router.active_routes_already_completed", extra=self._log_context
+            )
             self._all_routes_completed_event.set()  # Ensure consistent event state
 
         # Second: Only wait if event is not already set (prevents race condition)
         if not self._all_routes_completed_event.is_set():
-            logger.info(
-                f"Waiting for {len(self.active_routes)} active routes to complete",
+            logger.debug(
+                "event=router.await_active_routes active_routes=%s",
+                len(self.active_routes),
                 extra={**self._log_context, "active_routes": len(self.active_routes)},
             )
 
@@ -536,13 +568,15 @@ class MessageRouter:
                     self._all_routes_completed_event.wait(),
                     timeout=self.config.graceful_shutdown_timeout,
                 )
-                logger.info(
-                    "All active routes completed successfully", extra=self._log_context
+                logger.debug(
+                    "event=router.active_routes_completed",
+                    extra=self._log_context,
                 )
             except asyncio.TimeoutError:
                 logger.warning(
-                    f"Graceful shutdown timeout: "
-                    f"{len(self.active_routes)} routes did not complete",
+                    "event=router.shutdown_timeout remaining_routes=%s timeout_s=%s",
+                    len(self.active_routes),
+                    self.config.graceful_shutdown_timeout,
                     extra={
                         **self._log_context,
                         "remaining_routes": len(self.active_routes),
@@ -550,7 +584,7 @@ class MessageRouter:
                     },
                 )
 
-        logger.info("Message router stopped", extra=self._log_context)
+        logger.debug("event=router.stopped", extra=self._log_context)
 
     def add_destination(
         self, destination: MessageDestination, is_default: bool = False
@@ -562,7 +596,10 @@ class MessageRouter:
             self.default_destinations.add(destination.name)
 
         logger.info(
-            f"Added destination: {destination.name}",
+            "event=router.destination_added destination=%s is_default=%s total=%s",
+            destination.name,
+            is_default,
+            len(self.destinations),
             extra={
                 **self._log_context,
                 "destination": destination.name,
@@ -578,7 +615,9 @@ class MessageRouter:
             self.default_destinations.discard(destination_name)
 
             logger.info(
-                f"Removed destination: {destination_name}",
+                "event=router.destination_removed destination=%s total=%s",
+                destination_name,
+                len(self.destinations),
                 extra={
                     **self._log_context,
                     "destination": destination_name,
@@ -591,7 +630,8 @@ class MessageRouter:
         if destination_name in self.destinations:
             self.destinations[destination_name].enabled = True
             logger.info(
-                f"Enabled destination: {destination_name}",
+                "event=router.destination_enabled destination=%s",
+                destination_name,
                 extra={**self._log_context, "destination": destination_name},
             )
 
@@ -600,7 +640,8 @@ class MessageRouter:
         if destination_name in self.destinations:
             self.destinations[destination_name].enabled = False
             logger.warning(
-                f"Disabled destination: {destination_name}",
+                "event=router.destination_disabled destination=%s",
+                destination_name,
                 extra={**self._log_context, "destination": destination_name},
             )
 
@@ -673,7 +714,12 @@ class MessageRouter:
             )
         except asyncio.TimeoutError:
             logger.error(
-                f"Message routing timeout after {self.route_timeout}s",
+                "event=router.routing_timeout timeout_s=%s \
+                     message_id=%s topic=%s destinations=%s",
+                self.route_timeout,
+                route_info.message_id,
+                message.topic,
+                enabled_destinations,
                 extra={
                     **self._log_context,
                     "message_id": route_info.message_id,
@@ -719,10 +765,6 @@ class MessageRouter:
             self.total_messages_routed % 100 == 0
             or route_info.get_success_count() < len(enabled_destinations)
         ):
-            message_text = (
-                f"Message routed: {route_info.get_success_count()}/"
-                f"{len(enabled_destinations)} successful"
-            )
             extra_data = {
                 **self._log_context,
                 "message_id": route_info.message_id,
@@ -735,9 +777,19 @@ class MessageRouter:
             }
 
             if route_info.get_success_count() == len(enabled_destinations):
-                logger.info(message_text, extra=extra_data)
+                logger.debug(
+                    "event=router.routed success=%s total=%s",
+                    route_info.get_success_count(),
+                    len(enabled_destinations),
+                    extra=extra_data,
+                )
             else:
-                logger.warning(message_text, extra=extra_data)
+                logger.warning(
+                    "event=router.routed_partial success=%s total=%s",
+                    route_info.get_success_count(),
+                    len(enabled_destinations),
+                    extra=extra_data,
+                )
 
         return route_info
 
@@ -775,7 +827,11 @@ class MessageRouter:
                 else:
                     if attempt < self.max_retries:
                         logger.debug(
-                            f"Retrying destination {dest_name} (attempt {attempt + 1})",
+                            "event=router.destination_retry destination=%s \
+                                 attempt=%s message_id=%s",
+                            dest_name,
+                            attempt + 1,
+                            route_info.message_id,
                             extra={
                                 **self._log_context,
                                 "destination": dest_name,
@@ -801,8 +857,12 @@ class MessageRouter:
 
                 if attempt < self.max_retries:
                     logger.debug(
-                        f"Exception in destination {dest_name}, "
-                        f"retrying (attempt {attempt + 1}): {e}",
+                        "event=router.destination_retry_exception destination=%s \
+                             attempt=%s message_id=%s error=%s",
+                        dest_name,
+                        attempt + 1,
+                        route_info.message_id,
+                        e,
                         extra={
                             **self._log_context,
                             "destination": dest_name,
@@ -841,15 +901,17 @@ class MessageRouter:
                     ]
 
                     logger.debug(
-                        f"Cleaned up {removed} old completed routes",
+                        "event=router.cleanup_removed_routes count=%s",
+                        removed,
                         extra={**self._log_context, "removed_routes": removed},
                     )
 
         except asyncio.CancelledError:
-            logger.info("Cleanup loop cancelled", extra=self._log_context)
+            logger.debug("event=router.cleanup_cancelled", extra=self._log_context)
         except Exception as e:
             logger.error(
-                f"Unexpected error in cleanup loop: {e}",
+                "event=router.cleanup_failed error=%s",
+                e,
                 extra=self._log_context,
                 exc_info=True,
             )
@@ -865,9 +927,9 @@ class MessageRouter:
                 health = self.get_health_status()
 
                 logger.info(
-                    f"Message router metrics: "
-                    f"{metrics.total_messages_routed} routed, "
-                    f"{metrics.routing_success_rate}% success rate",
+                    "event=router.metrics routed=%s success_rate=%s",
+                    metrics.total_messages_routed,
+                    metrics.routing_success_rate,
                     extra={
                         **self._log_context,
                         "performance_metrics": metrics,
@@ -876,10 +938,11 @@ class MessageRouter:
                 )
 
         except asyncio.CancelledError:
-            logger.info("Metrics loop cancelled", extra=self._log_context)
+            logger.debug("event=router.metrics_cancelled", extra=self._log_context)
         except Exception as e:
             logger.error(
-                f"Unexpected error in metrics loop: {e}",
+                "event=router.metrics_failed error=%s",
+                e,
                 extra=self._log_context,
                 exc_info=True,
             )

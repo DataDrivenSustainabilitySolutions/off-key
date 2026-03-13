@@ -1,6 +1,7 @@
 import React, { createContext, useState, useCallback, ReactNode, useContext } from "react";
 import { apiUtils } from "@/lib/api-client";
 import { API_CONFIG } from "@/lib/api-config";
+import { clientLogger } from "@/lib/logger";
 
 export interface Charger {
   charger_name: string | null;
@@ -106,10 +107,12 @@ export const ChargerProvider: React.FC<{ children: ReactNode }> = ({ children })
                 value2: value2Res[0]?.value ?? null,
               };
             } catch (error) {
-              console.warn(
-                `Error getting telemetry values for charger ${charger.charger_id}`,
-                error
-              );
+              clientLogger.warn({
+                event: "monitoring.telemetry_values_failed",
+                message: "Error getting telemetry values for charger",
+                error,
+                context: { chargerId: charger.charger_id },
+              });
               return {
                 charger_id: charger.charger_id,
                 charger_name: charger.charger_name,
@@ -140,7 +143,11 @@ export const ChargerProvider: React.FC<{ children: ReactNode }> = ({ children })
       const endpoint = API_CONFIG.ENDPOINTS.CHARGERS.SYNC;
       await apiUtils.post(endpoint, null);
     } catch (err) {
-      console.warn("syncChargers failed:", err);
+      clientLogger.warn({
+        event: "chargers.sync_failed",
+        message: "syncChargers failed",
+        error: err,
+      });
       throw err;
     }
   }, []);
@@ -150,7 +157,11 @@ export const ChargerProvider: React.FC<{ children: ReactNode }> = ({ children })
       const endpoint = API_CONFIG.ENDPOINTS.TELEMETRY.SYNC(10000);
       await apiUtils.post(endpoint, null);
     } catch (err) {
-      console.warn("syncTelemetry failed:", err);
+      clientLogger.warn({
+        event: "telemetry.sync_failed",
+        message: "syncTelemetry failed",
+        error: err,
+      });
       throw err;
     }
   }, []);
@@ -160,7 +171,11 @@ export const ChargerProvider: React.FC<{ children: ReactNode }> = ({ children })
       const endpoint = API_CONFIG.ENDPOINTS.TELEMETRY.SYNC(100);
       await apiUtils.post(endpoint, null);
     } catch (err) {
-      console.warn("syncTelemetryShort failed:", err);
+      clientLogger.warn({
+        event: "telemetry.sync_short_failed",
+        message: "syncTelemetryShort failed",
+        error: err,
+      });
       throw err;
     }
   }, []);
@@ -206,7 +221,12 @@ export const ChargerProvider: React.FC<{ children: ReactNode }> = ({ children })
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to load monitoring data';
       setError(errorMessage);
-      console.error("Error loading monitoring data:", err);
+      clientLogger.error({
+        event: "monitoring.load_failed",
+        message: "Error loading monitoring data",
+        error: err,
+        context: { chargerId },
+      });
     } finally {
       setLoading(false);
     }

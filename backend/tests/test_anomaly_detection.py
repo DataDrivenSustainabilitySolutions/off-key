@@ -140,6 +140,42 @@ class TestAnomalyDetectionService:
         assert fourth.is_anomaly is False
         assert fourth.context["score_window"]["enabled"] is False
 
+    def test_trigger_semantics_do_not_use_static_score_thresholds(self):
+        """High raw score alone should not trigger without z-score condition."""
+        from off_key_mqtt_radar.detector import AnomalyDetectionService
+
+        config = SimpleNamespace(
+            model_type="isolation_forest",
+            thresholds={"medium": 0.01, "high": 0.02, "critical": 0.03},
+            checkpoint_interval=1000,
+            heuristic_enabled=True,
+            heuristic_window_size=10,
+            heuristic_min_samples=3,
+            heuristic_zscore_threshold=4.0,
+            preprocessing_steps=[],
+            subscription_topics=[],
+            sensor_key_strategy="full_hierarchy",
+        )
+
+        with patch.object(AnomalyDetectionService, "_create_model") as mock_create:
+            mock_model = MagicMock()
+            # Last point has a higher absolute score, but not a z-score outlier.
+            mock_model.score_one.side_effect = [0.10, 0.11, 0.10, 0.12]
+            mock_model.learn_one = MagicMock()
+            mock_create.return_value = mock_model
+
+            with patch.object(
+                AnomalyDetectionService, "_create_preprocessors", return_value=[]
+            ):
+                service = AnomalyDetectionService(config)
+                service.process_data_point({"x": 1.0})
+                service.process_data_point({"x": 1.1})
+                service.process_data_point({"x": 0.9})
+                fourth = service.process_data_point({"x": 1.2})
+
+        assert fourth.is_anomaly is False
+        assert fourth.context["score_window"]["triggered"] is False
+
     def test_calculate_severity_low(self, anomaly_config):
         """Test severity calculation for low score."""
         from off_key_mqtt_radar.detector import AnomalyDetectionService

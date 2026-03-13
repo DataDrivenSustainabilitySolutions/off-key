@@ -15,7 +15,7 @@ import {
 } from "./ui/dropdown-menu";
 import { Button } from "./ui/button";
 import { useAuth } from "@/auth/AuthContext";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   Tooltip,
   TooltipContent,
@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/tooltip";
 import { ModeToggle } from "./mode-toggle";
 import { FetchContext } from "@/dataFetch/FetchContext";
+import { clientLogger } from "@/lib/logger";
 
 interface RouteProps {
   href: string;
@@ -35,6 +36,7 @@ export const NavigationBar = () => {
   const [isOpen, setIsOpen] = useState<boolean>(false);
   const { isAuthenticated, logout } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [message, setMessage] = useState<string>("");
   const [anomalyCount, setAnomalyCount] = useState<number>(0);
   const fetchContext = useContext(FetchContext);
@@ -70,12 +72,17 @@ export const NavigationBar = () => {
     refreshInFlightRef.current = true;
 
     try {
-      const total = await getAnomalyCount();
+      const lastSeen = localStorage.getItem("off-key:last-seen-anomalies") ?? undefined;
+      const total = await getAnomalyCount(lastSeen);
       if (isMountedRef.current) {
         setAnomalyCount(total);
       }
     } catch (err) {
-      console.error("Failed to refresh anomaly badge count:", err);
+      clientLogger.error({
+        event: "anomalies.badge_refresh_failed",
+        message: "Failed to refresh anomaly badge count",
+        error: err,
+      });
     } finally {
       refreshInFlightRef.current = false;
     }
@@ -96,6 +103,29 @@ export const NavigationBar = () => {
       window.clearInterval(intervalId);
     };
   }, [getAnomalyCount, isAuthenticated, refreshAnomalyCount]);
+
+  useEffect(() => {
+    void refreshAnomalyCount();
+  }, [location.pathname, refreshAnomalyCount]);
+
+  useEffect(() => {
+    const onFocus = () => {
+      void refreshAnomalyCount();
+    };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        void refreshAnomalyCount();
+      }
+    };
+
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, [refreshAnomalyCount]);
 
   return (
     <header className="sticky border-b-[1px] top-0 z-40 w-full bg-white dark:border-b-slate-700 dark:bg-background">

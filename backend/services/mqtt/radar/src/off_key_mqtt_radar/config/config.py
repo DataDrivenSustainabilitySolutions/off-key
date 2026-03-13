@@ -43,6 +43,7 @@ class AnomalyDetectionConfig(BaseModel):
     preprocessing_steps: List[Dict[str, Any]] = Field(default_factory=list)
     subscription_topics: List[str] = Field(default_factory=list)
     sensor_key_strategy: str = "full_hierarchy"
+    sensor_freshness_seconds: float = Field(default=30.0, gt=0.0)
 
     thresholds: Dict[str, float] = Field(
         default_factory=lambda: {"medium": 0.6, "high": 0.8, "critical": 0.9}
@@ -162,6 +163,7 @@ class MQTTRadarConfig(BaseModel):
     )
     subscription_qos: int = 0
     sensor_key_strategy: str = "full_hierarchy"
+    sensor_freshness_seconds: float = Field(default=30.0, gt=0.0)
 
     # Database settings
     db_write_enabled: bool = True
@@ -237,6 +239,7 @@ class RadarSettings(BaseSettings):
     RADAR_SUBSCRIPTION_TOPICS: str = "charger/+/live-telemetry/#"  # Comma-separated
     RADAR_SUBSCRIPTION_QOS: int = 0
     RADAR_SENSOR_KEY_STRATEGY: str = "full_hierarchy"
+    RADAR_SENSOR_FRESHNESS_SECONDS: float = 30.0
 
     # Database
     RADAR_DB_WRITE_ENABLED: bool = True
@@ -309,6 +312,7 @@ class RadarSettings(BaseSettings):
             subscription_topics=topics,
             subscription_qos=self.RADAR_SUBSCRIPTION_QOS,
             sensor_key_strategy=self.RADAR_SENSOR_KEY_STRATEGY,
+            sensor_freshness_seconds=self.RADAR_SENSOR_FRESHNESS_SECONDS,
             db_write_enabled=self.RADAR_DB_WRITE_ENABLED,
             db_batch_size=self.RADAR_DB_BATCH_SIZE,
             db_batch_timeout=self.RADAR_DB_BATCH_TIMEOUT,

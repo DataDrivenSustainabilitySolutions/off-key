@@ -3,16 +3,27 @@ import re
 import time
 import yaml
 import contextvars
+import hashlib
+import ipaddress
+import logging
 import logging.config
 
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Mapping
 from enum import Enum
+
+from .logging import get_logging_settings
 
 # Context variable for request correlation IDs
 correlation_id: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
     "correlation_id", default=None
 )
+
+_SENSITIVE_KEY_PATTERN = re.compile(
+    r"(password|token|secret|api[_-]?key|authorization|cookie|session|email|user|ip)",
+    re.IGNORECASE,
+)
+_STANDARD_RECORD_FIELDS = set(logging.makeLogRecord({}).__dict__.keys())
 
 
 class LogFormat(Enum):
@@ -48,7 +59,15 @@ class JsonFormatter(logging.Formatter):
         if record.exc_info:
             log_data["exception"] = self.formatException(record.exc_info)
 
-        return json.dumps(log_data)
+        extra = {
+            key: value
+            for key, value in record.__dict__.items()
+            if key not in _STANDARD_RECORD_FIELDS and not key.startswith("_")
+        }
+        if extra:
+            log_data["extra"] = extra
+
+        return json.dumps(log_data, default=str)
 
 
 class TruncatingFormatter(logging.Formatter):
@@ -90,13 +109,130 @@ def get_correlation_id() -> Optional[str]:
     return correlation_id.get()
 
 
+def _should_redact(level: int = logging.INFO) -> bool:
+    settings = get_logging_settings()
+    if not settings.LOG_REDACT_PII:
+        return False
+    if settings.LOG_PII_DEBUG_UNMASK and level <= logging.DEBUG:
+        return False
+    return True
+
+
+def _is_sensitive_key(key: str) -> bool:
+    return bool(_SENSITIVE_KEY_PATTERN.search(key))
+
+
+def _mask_text(value: str) -> str:
+    if not value:
+        return ""
+    if len(value) <= 2:
+        return "*" * len(value)
+    return f"{value[0]}***{value[-1]}"
+
+
+def _hash_token(value: str) -> str:
+    digest = hashlib.sha256(value.encode("utf-8")).hexdigest()[:10]
+    return f"sha256:{digest}"
+
+
+def redact_email(email: str, *, level: int = logging.INFO) -> str:
+    """Mask email-like identifiers for logs."""
+    if not _should_redact(level):
+        return email
+    if "@" not in email:
+        return _mask_text(email)
+    local, domain = email.split("@", 1)
+    domain_head = domain.split(".", 1)[0]
+    suffix = ""
+    if "." in domain:
+        _, suffix = domain.split(".", 1)
+        suffix = f".{suffix}"
+    return f"{_mask_text(local)}@{_mask_text(domain_head)}{suffix}"
+
+
+def redact_ip_address(ip_value: Optional[str], *, level: int = logging.INFO) -> str:
+    """Mask IP addresses for logs."""
+    if not ip_value:
+        return "unknown"
+    if not _should_redact(level):
+        return ip_value
+    try:
+        ip_obj = ipaddress.ip_address(ip_value)
+    except ValueError:
+        return _mask_text(ip_value)
+
+    if isinstance(ip_obj, ipaddress.IPv4Address):
+        octets = ip_value.split(".")
+        return ".".join(octets[:3] + ["x"])
+
+    chunks = ip_value.split(":")
+    if len(chunks) <= 2:
+        return "x::x"
+    return ":".join(chunks[:2] + ["x", "x"])
+
+
+def redact_value(value: Any, *, level: int = logging.INFO) -> Any:
+    """Redact sensitive value content for log output."""
+    if value is None:
+        return None
+    if not _should_redact(level):
+        return value
+
+    if isinstance(value, str):
+        lowered = value.lower()
+        if "@" in value:
+            return redact_email(value, level=level)
+        if len(value) > 12 and any(
+            token in lowered for token in ("token", "bearer", "secret", "apikey", "api")
+        ):
+            return _hash_token(value)
+        return _mask_text(value)
+
+    if isinstance(value, (int, float, bool)):
+        return value
+
+    if isinstance(value, Mapping):
+        return redact_query_params(value, level=level)
+
+    return _mask_text(str(value))
+
+
+def redact_query_params(
+    params: Mapping[str, Any], *, level: int = logging.INFO
+) -> Dict[str, Any]:
+    """Return query params with sensitive keys masked."""
+    redacted: Dict[str, Any] = {}
+    for key, value in params.items():
+        if _is_sensitive_key(str(key)):
+            redacted[key] = redact_value(value, level=level)
+            continue
+        if isinstance(value, str) and len(value) > 120:
+            redacted[key] = f"{value[:117]}..."
+            continue
+        redacted[key] = value
+    return redacted
+
+
 def log_performance(
-    operation: str, start_time: float, logger_instance: Optional[logging.Logger] = None
+    operation: str,
+    start_time: float,
+    logger_instance: Optional[logging.Logger] = None,
+    slow_threshold_seconds: float = 1.0,
 ) -> None:
     """Log performance timing for operations."""
     duration = time.time() - start_time
     log_instance = logger_instance or logger
-    log_instance.info(f"Performance: {operation} completed in {duration:.3f}s")
+    if duration >= slow_threshold_seconds:
+        log_instance.warning(
+            "event=performance operation=%s duration_s=%.3f threshold_s=%.3f",
+            operation,
+            duration,
+            slow_threshold_seconds,
+        )
+        return
+    log_instance.debug(
+        "event=performance operation=%s duration_s=%.3f", operation, duration
+    )
 
 
 def log_security_event(
@@ -104,18 +240,54 @@ def log_security_event(
     user_id: Optional[str] = None,
     details: Optional[Dict[str, Any]] = None,
     logger_instance: Optional[logging.Logger] = None,
+    level: Optional[int] = None,
 ) -> None:
     """Log security-related events with consistent format."""
     log_instance = logger_instance or logger
+    resolved_level = level or _infer_security_level(event_type)
 
-    message = f"Security Event: {event_type}"
-    if user_id:
-        message += f" | User: {user_id}"
-    if details:
-        detail_str = " | ".join(f"{k}: {v}" for k, v in details.items())
-        message += f" | {detail_str}"
+    redacted_details = {
+        key: (
+            redact_value(value, level=resolved_level)
+            if _is_sensitive_key(key)
+            else value
+        )
+        for key, value in (details or {}).items()
+    }
+    redacted_user_id = (
+        redact_email(user_id, level=resolved_level)
+        if isinstance(user_id, str) and "@" in user_id
+        else redact_value(user_id, level=resolved_level)
+    )
+    details_repr = redacted_details if redacted_details else {}
 
-    log_instance.warning(message)
+    log_instance.log(
+        resolved_level,
+        "event=security.%s user=%s details=%s",
+        event_type,
+        redacted_user_id or "none",
+        details_repr,
+    )
+
+
+def _infer_security_level(event_type: str) -> int:
+    token = event_type.strip().lower()
+    if any(word in token for word in ("breach", "critical", "compromised")):
+        return logging.ERROR
+    if any(
+        word in token
+        for word in (
+            "fail",
+            "denied",
+            "forbidden",
+            "invalid",
+            "unauthorized",
+            "suspicious",
+            "error",
+        )
+    ):
+        return logging.WARNING
+    return logging.INFO
 
 
 def load_yaml_config(service_config_path: str = None) -> None:
@@ -157,11 +329,70 @@ def load_yaml_config(service_config_path: str = None) -> None:
         # Merge configurations (service config overrides base)
         config = _merge_configs(config, service_config)
 
+    _apply_log_format(config)
+    _ensure_root_handlers(config)
+
     # Disable the lazy logger since we're using YAML config
     _default_logger_instance = "YAML_CONFIGURED"
 
     # Apply the configuration
     logging.config.dictConfig(config)
+
+
+def _apply_log_format(config: Dict[str, Any]) -> None:
+    """Apply LOG_FORMAT override to handler formatter choices."""
+    selected = os.getenv("LOG_FORMAT", LogFormat.SIMPLE.value).strip().lower()
+    handlers = config.get("handlers", {})
+
+    if selected == LogFormat.JSON.value:
+        for handler in handlers.values():
+            handler["formatter"] = "json"
+        return
+
+    for name, handler in handlers.items():
+        if name == "console_truncated":
+            handler["formatter"] = "truncated"
+            continue
+        handler["formatter"] = "detailed"
+
+
+def _ensure_root_handlers(config: Dict[str, Any]) -> None:
+    """Ensure root logger has a fallback handler for unknown logger names."""
+    root_logger = config.setdefault("root", {})
+    handlers = root_logger.get("handlers")
+    if not handlers:
+        root_logger["handlers"] = ["console"]
+
+
+def log_startup_logging_configuration(
+    service_name: str,
+    logger_name: Optional[str] = None,
+    logger_instance: Optional[logging.Logger] = None,
+) -> None:
+    """Emit one startup log describing effective logger wiring."""
+    log_instance = logger_instance or logger
+    settings = get_logging_settings()
+    effective_name = logger_name or _service_logger_name or "root"
+    target_logger = (
+        logging.getLogger()
+        if effective_name == "root"
+        else logging.getLogger(effective_name)
+    )
+    handler_names = [handler.__class__.__name__ for handler in target_logger.handlers]
+    root_handler_names = [
+        handler.__class__.__name__ for handler in logging.getLogger().handlers
+    ]
+
+    log_instance.info(
+        "event=logging_configured service=%s logger=%s \
+             level=%s format=%s handlers=%s root_handlers=%s",
+        service_name,
+        effective_name,
+        logging.getLevelName(target_logger.level),
+        settings.LOG_FORMAT,
+        handler_names,
+        root_handler_names,
+    )
 
 
 def _expand_env_vars(text: str) -> str:
@@ -181,17 +412,12 @@ def _expand_env_vars(text: str) -> str:
             var_name = var_expr
             default_value = ""
 
-        # Handle nested environment variable references
-        result = os.getenv(var_name.strip(), default_value.strip())
+        return os.getenv(var_name.strip(), default_value.strip())
 
-        # If the result contains another ${} reference, expand it recursively
-        if "${" in result:
-            result = _expand_env_vars(result)
-
-        return result
-
-    # Match ${VAR} or ${VAR:default}
-    pattern = r"\$\{([^}]+)\}"
+    # Match only innermost ${VAR} or ${VAR:default} expressions.
+    # This enables reliable nested fallback expansion like:
+    # ${A:${B:${C:INFO}}}
+    pattern = r"\$\{([^${}]*)\}"
 
     # Keep expanding until no more variables are found
     prev_text = None
@@ -257,8 +483,13 @@ __all__ = [
     "load_yaml_config",
     "set_correlation_id",
     "get_correlation_id",
+    "redact_email",
+    "redact_ip_address",
+    "redact_query_params",
+    "redact_value",
     "log_performance",
     "log_security_event",
+    "log_startup_logging_configuration",
     "LogFormat",
     "TruncatingFormatter",
     "CorrelationFilter",

@@ -64,6 +64,14 @@ def test_derive_required_sensors_supports_top_level_strategy():
     }
 
 
+def test_derive_required_sensors_ignores_wildcard_tail_topics():
+    topics = [
+        "charger/+/live-telemetry/#",
+        "charger/+/live-telemetry/+",
+    ]
+    assert TopicParser.derive_required_sensors(topics) == set()
+
+
 def test_extract_sensor_type_rejects_invalid_strategy():
     with pytest.raises(ValueError, match="sensor_key_strategy must be one of"):
         TopicParser.extract_sensor_type(

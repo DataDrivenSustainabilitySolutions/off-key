@@ -2,6 +2,7 @@ import React, { createContext, useState, useCallback, ReactNode, useContext } fr
 import { apiUtils } from "@/lib/api-client";
 import { API_CONFIG } from "@/lib/api-config";
 import { Anomaly } from "@/lib/anomaly-utils";
+import { clientLogger } from "@/lib/logger";
 
 export interface AnomalyContextType {
   // Core anomaly functions
@@ -99,7 +100,12 @@ export const AnomalyProvider: React.FC<{ children: ReactNode }> = ({ children })
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to load anomalies';
       setError(errorMessage);
-      console.error("Error loading anomalies:", err);
+      clientLogger.error({
+        event: "anomalies.load_failed",
+        message: "Error loading anomalies",
+        error: err,
+        context: { chargerId },
+      });
     } finally {
       setLoading(false);
     }
@@ -111,9 +117,10 @@ export const AnomalyProvider: React.FC<{ children: ReactNode }> = ({ children })
 
   const clearAnomalies = useCallback((chargerId?: string) => {
     if (chargerId) {
-      setAnomaliesMap(prev => {
-        const { [chargerId]: removed, ...rest } = prev;
-        return rest;
+      setAnomaliesMap((prev) => {
+        const next = { ...prev };
+        delete next[chargerId];
+        return next;
       });
     } else {
       setAnomaliesMap({});

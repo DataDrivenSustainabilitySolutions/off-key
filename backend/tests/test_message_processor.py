@@ -5,6 +5,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from off_key_mqtt_radar.message_processor import MessageProcessor
+from off_key_mqtt_radar.state_cache import AlignmentUpdate
 
 
 def _build_processor(
@@ -28,53 +29,107 @@ def _build_processor(
 def test_align_features_normalizes_single_sensor_value_key():
     processor = _build_processor(required_sensors=set(), state_cache=None)
 
-    features = processor._align_features(
+    features, alignment = processor._align_features(
         charger_id="charger-1",
         sensor_type="voltage",
         data={"value": 230.5, "quality": 1.0},
     )
 
     assert features == {"voltage": 230.5}
+    assert alignment["alignment_status"] == "direct_pass_through"
 
 
 def test_align_features_uses_sensor_key_when_present():
     processor = _build_processor(required_sensors=set(), state_cache=None)
 
-    features = processor._align_features(
+    features, alignment = processor._align_features(
         charger_id="charger-1",
         sensor_type="current",
         data={"current": 18.2, "other": 3.0},
     )
 
     assert features == {"current": 18.2}
+    assert alignment["aligned_vector"] is False
 
 
 def test_align_features_normalizes_before_state_cache_update():
     state_cache = MagicMock()
-    state_cache.update.return_value = {"voltage": 230.5, "current": 18.2}
+    state_cache.update_with_status.return_value = AlignmentUpdate(
+        status="aligned_emit",
+        features={"voltage": 230.5, "current": 18.2},
+        sensor_ages={"voltage": 0.4, "current": 0.2},
+    )
     processor = _build_processor(
         required_sensors={"voltage", "current"},
         state_cache=state_cache,
     )
 
-    result = processor._align_features(
+    features, alignment = processor._align_features(
         charger_id="charger-1",
         sensor_type="voltage",
         data={"value": 230.5},
     )
 
-    state_cache.update.assert_called_once_with(
+    state_cache.update_with_status.assert_called_once_with(
         "charger-1",
         "voltage",
         {"voltage": 230.5},
     )
-    assert result == {"voltage": 230.5, "current": 18.2}
+    assert features == {"voltage": 230.5, "current": 18.2}
+    assert alignment["alignment_status"] == "aligned_emit"
+    assert alignment["aligned_vector"] is True
+
+
+def test_align_features_waiting_for_all_returns_none():
+    state_cache = MagicMock()
+    state_cache.update_with_status.return_value = AlignmentUpdate(
+        status="waiting_for_all",
+        missing_sensors=("current",),
+        sensor_ages={"voltage": 0.2},
+    )
+    processor = _build_processor(
+        required_sensors={"voltage", "current"},
+        state_cache=state_cache,
+    )
+
+    features, alignment = processor._align_features(
+        charger_id="charger-1",
+        sensor_type="voltage",
+        data={"value": 230.5},
+    )
+
+    assert features is None
+    assert alignment["alignment_status"] == "waiting_for_all"
+    assert alignment["missing_sensors"] == ["current"]
+
+
+def test_align_features_blocks_stale_sensor_data():
+    state_cache = MagicMock()
+    state_cache.update_with_status.return_value = AlignmentUpdate(
+        status="stale_sensor_block",
+        stale_sensors=("current",),
+        sensor_ages={"voltage": 0.4, "current": 45.0},
+    )
+    processor = _build_processor(
+        required_sensors={"voltage", "current"},
+        state_cache=state_cache,
+    )
+
+    features, alignment = processor._align_features(
+        charger_id="charger-1",
+        sensor_type="voltage",
+        data={"value": 230.5},
+    )
+
+    assert features is None
+    assert alignment["alignment_status"] == "stale_sensor_block"
+    assert alignment["stale_sensors"] == ["current"]
 
 
 def test_align_features_keeps_full_hierarchy_sensor_key():
     processor = _build_processor(required_sensors=set(), state_cache=None)
 
-    features = processor._align_features(
+    features, _ = processor._align_features(
         charger_id="charger-1",
         sensor_type="TopLevelPart/SubMetricA",
         data={"value": 12.5, "quality": 1.0},
@@ -83,38 +138,10 @@ def test_align_features_keeps_full_hierarchy_sensor_key():
     assert features == {"TopLevelPart/SubMetricA": 12.5}
 
 
-def test_align_features_passes_full_hierarchy_key_to_state_cache():
-    state_cache = MagicMock()
-    state_cache.update.return_value = {
-        "TopLevelPart/SubMetricA": 12.5,
-        "TopLevelPart/SubMetricB": 9.3,
-    }
-    processor = _build_processor(
-        required_sensors={"TopLevelPart/SubMetricA", "TopLevelPart/SubMetricB"},
-        state_cache=state_cache,
-    )
-
-    result = processor._align_features(
-        charger_id="charger-1",
-        sensor_type="TopLevelPart/SubMetricA",
-        data={"value": 12.5},
-    )
-
-    state_cache.update.assert_called_once_with(
-        "charger-1",
-        "TopLevelPart/SubMetricA",
-        {"TopLevelPart/SubMetricA": 12.5},
-    )
-    assert result == {
-        "TopLevelPart/SubMetricA": 12.5,
-        "TopLevelPart/SubMetricB": 9.3,
-    }
-
-
 def test_align_features_falls_back_to_first_value_when_sensor_and_value_missing():
     processor = _build_processor(required_sensors=set(), state_cache=None)
 
-    features = processor._align_features(
+    features, _ = processor._align_features(
         charger_id="charger-1",
         sensor_type="voltage",
         data={"other_metric": 7.25, "another_metric": 9.5},
@@ -126,7 +153,7 @@ def test_align_features_falls_back_to_first_value_when_sensor_and_value_missing(
 def test_align_features_handles_empty_data_without_crashing():
     processor = _build_processor(required_sensors={"voltage"}, state_cache=None)
 
-    features = processor._align_features(
+    features, _ = processor._align_features(
         charger_id="charger-1",
         sensor_type="voltage",
         data={},
@@ -145,7 +172,7 @@ def test_align_features_skips_state_cache_when_cache_missing():
         state_cache=None,
     )
 
-    features = processor._align_features(
+    features, _ = processor._align_features(
         charger_id="charger-1",
         sensor_type="voltage",
         data={"value": 230.5},

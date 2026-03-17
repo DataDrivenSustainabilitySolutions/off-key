@@ -34,9 +34,21 @@ def event_loop():
 
 
 @pytest.fixture
-def anomaly_config():
+def anomaly_config(monkeypatch):
     """Create a test anomaly detection configuration."""
+    from off_key_mqtt_radar import tactic_client
     from off_key_mqtt_radar.config import AnomalyDetectionConfig
+
+    monkeypatch.setattr(
+        tactic_client,
+        "validate_model_params",
+        lambda _model_type, params=None: params or {},
+    )
+    monkeypatch.setattr(
+        tactic_client,
+        "validate_preprocessing_steps",
+        lambda steps=None: steps or [],
+    )
 
     return AnomalyDetectionConfig(
         model_type="isolation_forest",

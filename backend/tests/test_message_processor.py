@@ -1,11 +1,13 @@
 """Tests for RADAR MessageProcessor feature normalization and alignment."""
 
 from unittest.mock import MagicMock
+from datetime import datetime, timezone
 
 import pytest
 
 from off_key_mqtt_radar.message_processor import MessageProcessor
 from off_key_mqtt_radar.state_cache import AlignmentUpdate
+from off_key_mqtt_radar.models import AnomalyResult, MQTTMessage
 
 
 def _build_processor(
@@ -126,6 +128,30 @@ def test_align_features_blocks_stale_sensor_data():
     assert alignment["stale_sensors"] == ["current"]
 
 
+def test_align_features_waiting_for_barrier_returns_none():
+    state_cache = MagicMock()
+    state_cache.alignment_mode = "strict_barrier"
+    state_cache.update_with_status.return_value = AlignmentUpdate(
+        status="waiting_for_barrier",
+        pending_sensors=("current",),
+        sensor_ages={"voltage": 0.1, "current": 0.0},
+    )
+    processor = _build_processor(
+        required_sensors={"voltage", "current"},
+        state_cache=state_cache,
+    )
+
+    features, alignment = processor._align_features(
+        charger_id="charger-1",
+        sensor_type="voltage",
+        data={"value": 230.5},
+    )
+
+    assert features is None
+    assert alignment["alignment_status"] == "waiting_for_barrier"
+    assert alignment["pending_sensors"] == ["current"]
+
+
 def test_align_features_keeps_full_hierarchy_sensor_key():
     processor = _build_processor(required_sensors=set(), state_cache=None)
 
@@ -189,3 +215,49 @@ def test_message_processor_normalizes_sensor_key_strategy():
 def test_message_processor_rejects_invalid_sensor_key_strategy():
     with pytest.raises(ValueError, match="sensor_key_strategy must be one of"):
         _build_processor(sensor_key_strategy="invalid")
+
+
+def test_detect_anomaly_uses_canonical_sample_timestamp():
+    detector = MagicMock()
+    detector.process_with_resilience.return_value = AnomalyResult(
+        anomaly_score=0.9,
+        is_anomaly=True,
+        severity="high",
+        timestamp=datetime.now(timezone.utc),
+        model_info={},
+        raw_data={"sine": 1.0, "cosine": 0.0},
+        topic="charger/1/live-telemetry/sine",
+        charger_id="1",
+        context={},
+    )
+    security_validator = MagicMock()
+    memory_manager = MagicMock()
+    processor = MessageProcessor(
+        detector=detector,
+        security_validator=security_validator,
+        memory_manager=memory_manager,
+    )
+    message = MQTTMessage(
+        topic="charger/1/live-telemetry/sine",
+        payload=b'{"value": 1.0}',
+        qos=0,
+        retain=False,
+    )
+    sample_ts = 1_800_000_000.0
+    result = processor._detect_anomaly(
+        features={"sine": 1.0, "cosine": 0.0},
+        message=message,
+        charger_id="1",
+        alignment_context={
+            "aligned_vector": True,
+            "alignment_status": "aligned_emit",
+            "sample_timestamp": sample_ts,
+            "sensor_ages": {"sine": 0.1, "cosine": 0.1},
+        },
+    )
+
+    assert result.timestamp == datetime.fromtimestamp(sample_ts, tz=timezone.utc)
+    assert (
+        result.context["canonical_sample_timestamp"]
+        == datetime.fromtimestamp(sample_ts, tz=timezone.utc).isoformat()
+    )

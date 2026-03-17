@@ -18,7 +18,10 @@ import { API_CONFIG } from "@/lib/api-config";
 import toast from "react-hot-toast";
 import { ChevronUp, ChevronDown } from "lucide-react";
 import { getStatusDisplay } from "@/types/monitoring";
-import { formatAnomalyZScore, getAnomalyZScoreClassName } from "@/lib/anomaly-semantics";
+import {
+  formatAnomalyTailProbability,
+  getAnomalyTailProbabilityClassName,
+} from "@/lib/anomaly-semantics";
 
 // Helper function to parse numeric input, preventing NaN storage
 const parseNumericInput = (
@@ -62,12 +65,14 @@ interface Anomaly {
 }
 
 type SensorKeyStrategy = "full_hierarchy" | "top_level" | "leaf";
+type AlignmentMode = "strict_barrier";
 
 type PerformanceConfigState = {
   heuristic_enabled: boolean;
   heuristic_window_size: number;
   heuristic_min_samples: number;
-  heuristic_zscore_threshold: number;
+  heuristic_tail_alpha: number;
+  alignment_mode: AlignmentMode;
   sensor_key_strategy: SensorKeyStrategy;
   sensor_freshness_seconds: number;
 };
@@ -77,6 +82,20 @@ type PreprocessingStepConfig = {
   type: string;
   params: Record<string, any>;
 };
+
+const DEFAULT_MODEL_TYPE = "knn";
+const DEFAULT_MODEL_PARAMS: Record<string, number> = {
+  k: 5,
+  window_size: 2500,
+  warm_up: 500,
+};
+const DEFAULT_PREPROCESSING_STEPS: PreprocessingStepConfig[] = [
+  {
+    id: "pre-0",
+    type: "standard_scaler",
+    params: { with_std: true },
+  },
+];
 
 const PreprocessingSection: React.FC<{
   steps: PreprocessingStepConfig[];
@@ -322,7 +341,7 @@ const AnomaliesSection: React.FC<{
                     <TableHead>Timestamp</TableHead>
                     <TableHead>Telemetry Type</TableHead>
                     <TableHead>Anomaly Type</TableHead>
-                    <TableHead>Z-Score</TableHead>
+                    <TableHead>Tail p-value</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -337,11 +356,11 @@ const AnomaliesSection: React.FC<{
                       <TableCell>{anomaly.anomaly_type}</TableCell>
                       <TableCell>
                         <span
-                          className={`px-2 py-1 rounded-full text-xs font-medium ${getAnomalyZScoreClassName(
+                          className={`px-2 py-1 rounded-full text-xs font-medium ${getAnomalyTailProbabilityClassName(
                             anomaly.anomaly_value
                           )}`}
                         >
-                          {formatAnomalyZScore(anomaly.anomaly_value)}
+                          {formatAnomalyTailProbability(anomaly.anomaly_value)}
                         </span>
                       </TableCell>
                     </TableRow>
@@ -386,21 +405,26 @@ const Monitoring: React.FC = () => {
   );
   const [topicPatternInput, setTopicPatternInput] = useState<string>("");
   const [selectedAlgorithm, setSelectedAlgorithm] = useState<string | null>(
-    null
+    DEFAULT_MODEL_TYPE
   );
   const [availableModels, setAvailableModels] = useState<Record<string, any>>({});
-  const [modelParams, setModelParams] = useState<Record<string, any>>({});
+  const [modelParams, setModelParams] = useState<Record<string, any>>(
+    DEFAULT_MODEL_PARAMS
+  );
   const [isLoadingModels, setIsLoadingModels] = useState(false);
   const [availablePreprocessors, setAvailablePreprocessors] = useState<Record<string, any>>({});
-  const [preprocessingSteps, setPreprocessingSteps] = useState<PreprocessingStepConfig[]>([]);
+  const [preprocessingSteps, setPreprocessingSteps] = useState<PreprocessingStepConfig[]>(
+    DEFAULT_PREPROCESSING_STEPS
+  );
   const [isLoadingPreprocessors, setIsLoadingPreprocessors] = useState(false);
   const [newPreprocessorType, setNewPreprocessorType] = useState<string>("");
-  const nextPreprocessingStepId = useRef(0);
+  const nextPreprocessingStepId = useRef(DEFAULT_PREPROCESSING_STEPS.length);
   const [performanceConfig, setPerformanceConfig] = useState<PerformanceConfigState>({
     heuristic_enabled: true,
-    heuristic_window_size: 300,
-    heuristic_min_samples: 30,
-    heuristic_zscore_threshold: 3.0,
+    heuristic_window_size: 1000,
+    heuristic_min_samples: 300,
+    heuristic_tail_alpha: 0.005,
+    alignment_mode: "strict_barrier",
     sensor_key_strategy: "full_hierarchy",
     sensor_freshness_seconds: 30,
   });
@@ -489,7 +513,12 @@ const Monitoring: React.FC = () => {
   const handleModelSelect = useCallback(
     (modelType: string) => {
       setSelectedAlgorithm(modelType);
-      setModelParams(applyModelDefaults(modelType));
+      const defaults = applyModelDefaults(modelType);
+      if (modelType === DEFAULT_MODEL_TYPE) {
+        setModelParams({ ...defaults, ...DEFAULT_MODEL_PARAMS });
+        return;
+      }
+      setModelParams(defaults);
     },
     [applyModelDefaults]
   );
@@ -552,7 +581,7 @@ const Monitoring: React.FC = () => {
       key:
         | "heuristic_window_size"
         | "heuristic_min_samples"
-        | "heuristic_zscore_threshold"
+        | "heuristic_tail_alpha"
         | "sensor_freshness_seconds",
       rawValue: string
     ) => {
@@ -567,8 +596,8 @@ const Monitoring: React.FC = () => {
             ? Math.max(1, Math.round(parsed))
             : key === "sensor_freshness_seconds"
             ? Math.max(1, parsed)
-            : key === "heuristic_zscore_threshold"
-            ? Math.max(0.1, parsed)
+            : key === "heuristic_tail_alpha"
+            ? Math.min(Math.max(0.0001, parsed), 0.9999)
             : parsed,
       }));
     },
@@ -586,7 +615,7 @@ const Monitoring: React.FC = () => {
     try {
       setIsLoadingServices(true);
       // Include Docker status to get actual container state
-      const response = await apiUtils.get(
+      const response = await apiUtils.get<ActiveService[]>(
         `${API_CONFIG.ENDPOINTS.MONITORING.LIST}?include_docker_status=true`
       );
       setActiveServices(response || []);
@@ -701,7 +730,8 @@ const Monitoring: React.FC = () => {
             heuristic_enabled: performanceConfig.heuristic_enabled,
             heuristic_window_size: performanceConfig.heuristic_window_size,
             heuristic_min_samples: performanceConfig.heuristic_min_samples,
-            heuristic_zscore_threshold: performanceConfig.heuristic_zscore_threshold,
+            heuristic_tail_alpha: performanceConfig.heuristic_tail_alpha,
+            alignment_mode: performanceConfig.alignment_mode,
             sensor_key_strategy: performanceConfig.sensor_key_strategy,
             sensor_freshness_seconds: performanceConfig.sensor_freshness_seconds,
           },
@@ -898,7 +928,7 @@ const Monitoring: React.FC = () => {
                           }))
                         }
                       />
-                      Enable moving-window z-score trigger
+                      Enable trailing-reference tail trigger
                     </label>
                     <div className="flex flex-col">
                       <label className="text-sm font-medium mb-1">Window Size</label>
@@ -931,16 +961,17 @@ const Monitoring: React.FC = () => {
                       />
                     </div>
                     <div className="flex flex-col">
-                      <label className="text-sm font-medium mb-1">Z-Score Threshold</label>
+                      <label className="text-sm font-medium mb-1">Tail Alpha</label>
                       <input
                         type="number"
-                        min={0.1}
-                        step="0.1"
+                        min={0.0001}
+                        max={0.9999}
+                        step="0.0001"
                         className="border rounded px-3 py-2 bg-white text-black dark:bg-neutral-900 dark:text-white"
-                        value={performanceConfig.heuristic_zscore_threshold}
+                        value={performanceConfig.heuristic_tail_alpha}
                         onChange={(event) =>
                           handlePerformanceNumberChange(
-                            "heuristic_zscore_threshold",
+                            "heuristic_tail_alpha",
                             event.target.value
                           )
                         }

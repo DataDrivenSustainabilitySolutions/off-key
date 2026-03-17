@@ -23,6 +23,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import Optional, Self
 
 RADAR_SENSOR_KEY_STRATEGIES = {"full_hierarchy", "top_level", "leaf"}
+RADAR_ALIGNMENT_MODES = {"strict_barrier"}
 
 
 class RadarWorkloadLifecycle(str, Enum):
@@ -77,6 +78,7 @@ class RadarDefaultsConfig(BaseModel):
     model_type: str = "isolation_forest"
     sensor_key_strategy: str = "full_hierarchy"
     sensor_freshness_seconds: float = Field(default=30.0, gt=0.0)
+    alignment_mode: str = "strict_barrier"
 
     # Default Anomaly Thresholds
     anomaly_threshold_medium: float = Field(default=0.6, ge=0.0, le=1.0)
@@ -91,7 +93,7 @@ class RadarDefaultsConfig(BaseModel):
     heuristic_enabled: bool = True
     heuristic_window_size: int = Field(default=300, ge=3, le=100000)
     heuristic_min_samples: int = Field(default=30, ge=2, le=100000)
-    heuristic_zscore_threshold: float = Field(default=3.0, gt=0.0, le=100.0)
+    heuristic_tail_alpha: float = Field(default=0.005, gt=0.0, lt=1.0)
 
     # Default Database Settings
     db_write_enabled: bool = True
@@ -131,6 +133,16 @@ class RadarDefaultsConfig(BaseModel):
         if normalized not in RADAR_SENSOR_KEY_STRATEGIES:
             allowed = ", ".join(sorted(RADAR_SENSOR_KEY_STRATEGIES))
             raise ValueError(f"sensor_key_strategy must be one of: {allowed}")
+        return normalized
+
+    @field_validator("alignment_mode")
+    @classmethod
+    def validate_alignment_mode(cls, v: str) -> str:
+        """Validate multivariate alignment strategy passed to RADAR."""
+        normalized = v.strip().lower()
+        if normalized not in RADAR_ALIGNMENT_MODES:
+            allowed = ", ".join(sorted(RADAR_ALIGNMENT_MODES))
+            raise ValueError(f"alignment_mode must be one of: {allowed}")
         return normalized
 
     @model_validator(mode="after")
@@ -269,6 +281,9 @@ class TacticSettings(BaseSettings):
     TACTIC_RADAR_DEFAULT_SENSOR_KEY_STRATEGY: str = Field(
         default=DEFAULT_RADAR_DEFAULTS.sensor_key_strategy
     )
+    TACTIC_RADAR_DEFAULT_ALIGNMENT_MODE: str = Field(
+        default=DEFAULT_RADAR_DEFAULTS.alignment_mode
+    )
     TACTIC_RADAR_DEFAULT_SENSOR_FRESHNESS_SECONDS: float = Field(
         default=DEFAULT_RADAR_DEFAULTS.sensor_freshness_seconds
     )
@@ -302,8 +317,8 @@ class TacticSettings(BaseSettings):
     TACTIC_RADAR_DEFAULT_HEURISTIC_MIN_SAMPLES: int = Field(
         default=DEFAULT_RADAR_DEFAULTS.heuristic_min_samples
     )
-    TACTIC_RADAR_DEFAULT_HEURISTIC_ZSCORE_THRESHOLD: float = Field(
-        default=DEFAULT_RADAR_DEFAULTS.heuristic_zscore_threshold
+    TACTIC_RADAR_DEFAULT_HEURISTIC_TAIL_ALPHA: float = Field(
+        default=DEFAULT_RADAR_DEFAULTS.heuristic_tail_alpha
     )
     TACTIC_RADAR_DEFAULT_DB_WRITE_ENABLED: bool = Field(
         default=DEFAULT_RADAR_DEFAULTS.db_write_enabled
@@ -415,6 +430,7 @@ class TacticSettings(BaseSettings):
             mqtt_qos=self.TACTIC_RADAR_DEFAULT_MQTT_QOS,
             model_type=self.TACTIC_RADAR_DEFAULT_MODEL_TYPE,
             sensor_key_strategy=self.TACTIC_RADAR_DEFAULT_SENSOR_KEY_STRATEGY,
+            alignment_mode=self.TACTIC_RADAR_DEFAULT_ALIGNMENT_MODE,
             sensor_freshness_seconds=self.TACTIC_RADAR_DEFAULT_SENSOR_FRESHNESS_SECONDS,
             anomaly_threshold_medium=self.TACTIC_RADAR_DEFAULT_ANOMALY_THRESHOLD_MEDIUM,
             anomaly_threshold_high=self.TACTIC_RADAR_DEFAULT_ANOMALY_THRESHOLD_HIGH,
@@ -426,7 +442,7 @@ class TacticSettings(BaseSettings):
             heuristic_enabled=self.TACTIC_RADAR_DEFAULT_HEURISTIC_ENABLED,
             heuristic_window_size=self.TACTIC_RADAR_DEFAULT_HEURISTIC_WINDOW_SIZE,
             heuristic_min_samples=self.TACTIC_RADAR_DEFAULT_HEURISTIC_MIN_SAMPLES,
-            heuristic_zscore_threshold=self.TACTIC_RADAR_DEFAULT_HEURISTIC_ZSCORE_THRESHOLD,
+            heuristic_tail_alpha=self.TACTIC_RADAR_DEFAULT_HEURISTIC_TAIL_ALPHA,
             db_write_enabled=self.TACTIC_RADAR_DEFAULT_DB_WRITE_ENABLED,
             db_batch_size=self.TACTIC_RADAR_DEFAULT_DB_BATCH_SIZE,
             db_batch_timeout=self.TACTIC_RADAR_DEFAULT_DB_BATCH_TIMEOUT,

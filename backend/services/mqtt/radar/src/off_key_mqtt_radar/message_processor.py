@@ -9,6 +9,7 @@ Handles MQTT message processing pipeline:
 """
 
 import time
+from datetime import datetime, timezone
 from typing import Optional, Dict, Any, Tuple
 
 from off_key_core.config.logs import logger
@@ -244,9 +245,13 @@ class MessageProcessor:
             "aligned_vector": bool(
                 alignment_update.features and len(alignment_update.features) > 1
             ),
+            "alignment_mode": getattr(
+                self.state_cache, "alignment_mode", "strict_barrier"
+            ),
             "required_sensor_count": len(self.required_sensors),
             "required_sensors": sorted(self.required_sensors),
             "sensor_ages": alignment_update.sensor_ages,
+            "sample_timestamp": alignment_update.sample_timestamp,
         }
 
         if alignment_update.status == "waiting_for_all":
@@ -277,6 +282,21 @@ class MessageProcessor:
                 },
             )
             base_context["stale_sensors"] = list(alignment_update.stale_sensors)
+            return None, base_context
+
+        if alignment_update.status == "waiting_for_barrier":
+            logger.debug(
+                "Sensor alignment waiting_for_barrier",
+                extra={
+                    **self._log_context,
+                    "event": "waiting_for_barrier",
+                    "charger_id": charger_id,
+                    "sensor_type": sensor_type,
+                    "pending_sensors": list(alignment_update.pending_sensors),
+                    "sensor_ages": alignment_update.sensor_ages,
+                },
+            )
+            base_context["pending_sensors"] = list(alignment_update.pending_sensors)
             return None, base_context
 
         if alignment_update.status == "aligned_emit":
@@ -330,6 +350,13 @@ class MessageProcessor:
         sensor_ages = (alignment_context or {}).get("sensor_ages")
         if isinstance(sensor_ages, dict):
             result.context["sensor_ages"] = sensor_ages
+        sample_timestamp = (alignment_context or {}).get("sample_timestamp")
+        if isinstance(sample_timestamp, (int, float)):
+            canonical_dt = datetime.fromtimestamp(
+                float(sample_timestamp), tz=timezone.utc
+            )
+            result.timestamp = canonical_dt
+            result.context["canonical_sample_timestamp"] = canonical_dt.isoformat()
         self.message_count += 1
         if result.is_anomaly:
             self.anomaly_count += 1
@@ -352,17 +379,18 @@ class MessageProcessor:
         if result.is_anomaly:
             score_window = (result.context or {}).get("score_window", {})
             alignment_context = (result.context or {}).get("alignment", {})
-            zscore = score_window.get("zscore")
-            window_mean = score_window.get("window_mean", score_window.get("mean"))
-            window_std = score_window.get("window_std", score_window.get("std_dev"))
-            history_count = score_window.get("history_count")
+            tail_pvalue = score_window.get("tail_pvalue")
+            reference_count = score_window.get("reference_count")
+            min_samples = score_window.get("min_samples")
+            model_ready = score_window.get("model_ready")
+            learn_skipped = score_window.get("learn_skipped")
             sensor_ages = alignment_context.get("sensor_ages", {})
             if result.severity in ["high", "critical"]:
                 logger.warning(
                     "event=radar.anomaly_detected score=%.3f "
-                    "zscore=%s severity=%s charger=%s",
+                    "tail_pvalue=%s severity=%s charger=%s",
                     result.anomaly_score,
-                    zscore,
+                    tail_pvalue,
                     result.severity,
                     result.charger_id,
                     extra={
@@ -371,19 +399,24 @@ class MessageProcessor:
                         "severity": result.severity,
                         "topic": result.topic,
                         "charger_id": result.charger_id,
-                        "zscore": zscore,
-                        "window_mean": window_mean,
-                        "window_std": window_std,
-                        "history_count": history_count,
+                        "tail_pvalue": tail_pvalue,
+                        "reference_count": reference_count,
+                        "min_samples": min_samples,
+                        "model_ready": model_ready,
+                        "learn_skipped": learn_skipped,
                         "sensor_ages": sensor_ages,
+                        "alignment_status": alignment_context.get("alignment_status"),
+                        "canonical_sample_timestamp": (result.context or {}).get(
+                            "canonical_sample_timestamp"
+                        ),
                     },
                 )
             else:
                 logger.debug(
                     "event=radar.anomaly_detected score=%.3f "
-                    "zscore=%s severity=%s charger=%s",
+                    "tail_pvalue=%s severity=%s charger=%s",
                     result.anomaly_score,
-                    zscore,
+                    tail_pvalue,
                     result.severity,
                     result.charger_id,
                     extra={
@@ -391,11 +424,16 @@ class MessageProcessor:
                         "anomaly_score": result.anomaly_score,
                         "severity": result.severity,
                         "charger_id": result.charger_id,
-                        "zscore": zscore,
-                        "window_mean": window_mean,
-                        "window_std": window_std,
-                        "history_count": history_count,
+                        "tail_pvalue": tail_pvalue,
+                        "reference_count": reference_count,
+                        "min_samples": min_samples,
+                        "model_ready": model_ready,
+                        "learn_skipped": learn_skipped,
                         "sensor_ages": sensor_ages,
+                        "alignment_status": alignment_context.get("alignment_status"),
+                        "canonical_sample_timestamp": (result.context or {}).get(
+                            "canonical_sample_timestamp"
+                        ),
                     },
                 )
 

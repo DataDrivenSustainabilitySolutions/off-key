@@ -63,3 +63,37 @@ def test_sensor_state_cache_waits_until_all_required_sensors_arrive(monkeypatch)
     update = cache.update_with_status("charger-2", "c", {"c": 3.0})
     assert update.status == "aligned_emit"
     assert update.features == {"a": 1.0, "b": 2.0, "c": 3.0}
+
+
+def test_sensor_state_cache_strict_barrier_waits_for_new_values_from_all(monkeypatch):
+    now = {"value": 300.0}
+
+    def _fake_time() -> float:
+        return now["value"]
+
+    monkeypatch.setattr(state_cache_module.time, "time", _fake_time)
+
+    cache = SensorStateCache(
+        required_sensors={"x", "y"},
+        alignment_mode="strict_barrier",
+    )
+
+    assert (
+        cache.update_with_status("charger-3", "x", {"x": 1.0}).status
+        == "waiting_for_all"
+    )
+    now["value"] = 301.0
+    assert (
+        cache.update_with_status("charger-3", "y", {"y": 2.0}).status == "aligned_emit"
+    )
+
+    # Only x updates; strict barrier should wait for y to advance.
+    now["value"] = 302.0
+    waiting = cache.update_with_status("charger-3", "x", {"x": 1.1})
+    assert waiting.status == "waiting_for_barrier"
+    assert waiting.pending_sensors == ("y",)
+
+    now["value"] = 303.0
+    emitted = cache.update_with_status("charger-3", "y", {"y": 2.1})
+    assert emitted.status == "aligned_emit"
+    assert emitted.features == {"x": 1.1, "y": 2.1}

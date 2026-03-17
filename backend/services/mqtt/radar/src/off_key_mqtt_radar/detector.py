@@ -15,7 +15,6 @@ import hashlib
 import hmac
 import re
 import json
-import math
 from datetime import datetime, timezone
 from typing import Dict, Any, Optional, List
 from collections import deque
@@ -155,6 +154,8 @@ class AnomalyDetectionService:
         self.anomaly_count = 0
         self.last_checkpoint = 0
         self.score_window = deque(maxlen=self._get_heuristic_window_size())
+        self.skipped_learning_anomaly_count = 0
+        self.pre_ready_suppressed_count = 0
 
     def _restore_from_checkpoint(self, checkpoint: Dict[str, Any]):
         """Restore state from checkpoint data."""
@@ -164,6 +165,12 @@ class AnomalyDetectionService:
         self.anomaly_count = checkpoint["anomaly_count"]
         self.last_checkpoint = self.processed_count
         self.schema_signature = checkpoint["schema_signature"]
+        self.skipped_learning_anomaly_count = int(
+            checkpoint.get("skipped_learning_anomaly_count", 0)
+        )
+        self.pre_ready_suppressed_count = int(
+            checkpoint.get("pre_ready_suppressed_count", 0)
+        )
         self.score_window = deque(
             (
                 float(v)
@@ -303,12 +310,26 @@ class AnomalyDetectionService:
         sensor_key_strategy = str(
             getattr(config, "sensor_key_strategy", "full_hierarchy")
         )
+        alignment_mode = str(getattr(config, "alignment_mode", "strict_barrier"))
+        heuristic_enabled = bool(getattr(config, "heuristic_enabled", True))
+        heuristic_window_size = int(getattr(config, "heuristic_window_size", 300))
+        heuristic_min_samples = int(getattr(config, "heuristic_min_samples", 30))
+        heuristic_tail_alpha = float(getattr(config, "heuristic_tail_alpha", 0.005))
+        skip_learning_on_anomaly = True
+        threshold_method = "tail_probability"
 
         payload = {
             "model_type": model_type,
             "preprocessing_steps": preprocessing_steps,
             "subscription_topics": sorted(subscription_topics),
             "sensor_key_strategy": sensor_key_strategy,
+            "alignment_mode": alignment_mode,
+            "heuristic_enabled": heuristic_enabled,
+            "heuristic_window_size": heuristic_window_size,
+            "heuristic_min_samples": heuristic_min_samples,
+            "heuristic_tail_alpha": heuristic_tail_alpha,
+            "skip_learning_on_anomaly": skip_learning_on_anomaly,
+            "threshold_method": threshold_method,
         }
         payload_json = json.dumps(payload, sort_keys=True, separators=(",", ":"))
         return hashlib.sha256(payload_json.encode("utf-8")).hexdigest()
@@ -395,19 +416,32 @@ class AnomalyDetectionService:
         start_time = time.time()
         try:
             processed_data = self._transform_pipeline(data)
+            score = float(self.model.score_one(processed_data))
 
-            # Anomaly detection: score first, then learn
-            score = self.model.score_one(processed_data)
-            self.model.learn_one(processed_data)
-
-            # Update preprocessors after scoring to avoid influencing current result.
-            self._learn_pipeline(data)
-
-            score = float(score)
-            heuristic_context = self._evaluate_moving_window_heuristic(score)
+            model_ready = self._is_model_ready_for_triggering()
+            heuristic_context = self._evaluate_moving_window_heuristic(
+                score, model_ready=model_ready
+            )
             heuristic_triggered = bool(heuristic_context.get("triggered", False))
             is_anomaly = heuristic_triggered
             severity = self._calculate_heuristic_severity(heuristic_context)
+            learn_skipped = False
+
+            # Decision-first flow to avoid contaminating model and baseline.
+            if is_anomaly:
+                learn_skipped = True
+                self.skipped_learning_anomaly_count += 1
+            else:
+                self.model.learn_one(processed_data)
+                # Update preprocessors after scoring so current score is unaffected.
+                self._learn_pipeline(data)
+                if model_ready:
+                    self.score_window.append(score)
+            if not model_ready:
+                self.pre_ready_suppressed_count += 1
+
+            heuristic_context["learn_skipped"] = learn_skipped
+            heuristic_context["reference_count_after"] = len(self.score_window)
 
             # Update counters
             self.processed_count += 1
@@ -446,18 +480,15 @@ class AnomalyDetectionService:
                     (
                         f"Anomaly detected: score={score:.3f},"
                         f" severity={severity}, topic={topic}, "
-                        "trigger=moving_window_zscore"
+                        "trigger=tail_probability"
                     ),
                     extra={
                         "anomaly_score": score,
-                        "zscore": score_window.get("zscore"),
-                        "window_mean": score_window.get(
-                            "window_mean", score_window.get("mean")
-                        ),
-                        "window_std": score_window.get(
-                            "window_std", score_window.get("std_dev")
-                        ),
-                        "history_count": score_window.get("history_count"),
+                        "tail_pvalue": score_window.get("tail_pvalue"),
+                        "reference_count": score_window.get("reference_count"),
+                        "tail_alpha": score_window.get("tail_alpha"),
+                        "model_ready": score_window.get("model_ready"),
+                        "learn_skipped": score_window.get("learn_skipped"),
                     },
                 )
 
@@ -565,63 +596,57 @@ class AnomalyDetectionService:
         return None
 
     def _calculate_heuristic_severity(self, heuristic_context: Dict[str, Any]) -> str:
-        """Calculate severity based on moving-window z-score only."""
+        """Calculate severity based on tail probability outlier strength."""
         if not heuristic_context.get("triggered", False):
             return "low"
 
-        zscore = float(heuristic_context.get("zscore", 0.0))
-        threshold = float(heuristic_context.get("zscore_threshold", 3.0))
+        tail_pvalue = float(heuristic_context.get("tail_pvalue", 1.0))
+        tail_alpha = float(heuristic_context.get("tail_alpha", 0.005))
+        if tail_alpha <= 0.0:
+            return "medium"
 
-        if zscore >= threshold * 2.5:
+        if tail_pvalue <= tail_alpha / 10.0:
             return "critical"
-        if zscore >= threshold * 1.75:
+        if tail_pvalue <= tail_alpha / 4.0:
             return "high"
         return "medium"
 
-    def _evaluate_moving_window_heuristic(self, score: float) -> Dict[str, Any]:
-        """Evaluate moving-window z-score trigger for the current service instance."""
+    def _evaluate_moving_window_heuristic(
+        self, score: float, *, model_ready: bool
+    ) -> Dict[str, Any]:
+        """Evaluate trailing-reference tail-probability trigger for this service."""
         heuristic_enabled = bool(getattr(self.config, "heuristic_enabled", True))
-        if not heuristic_enabled:
-            return {"enabled": False, "triggered": False}
-
         min_samples = self._get_heuristic_min_samples()
-        zscore_threshold = self._get_heuristic_zscore_threshold()
-        window_count = len(self.score_window)
+        tail_alpha = self._get_heuristic_tail_alpha()
+        reference_count = len(self.score_window)
+
         context: Dict[str, Any] = {
-            "enabled": True,
+            "enabled": heuristic_enabled,
             "window_size": self.score_window.maxlen,
-            "history_count": window_count,
+            "reference_count": reference_count,
+            "history_count": reference_count,
             "min_samples": min_samples,
-            "zscore_threshold": zscore_threshold,
+            "tail_alpha": tail_alpha,
+            "threshold_method": "tail_probability",
+            "model_ready": model_ready,
             "triggered": False,
-            "warmup": window_count < min_samples,
+            "warmup": reference_count < min_samples or not model_ready,
+            "tail_pvalue": 1.0,
+            "learn_skipped": False,
         }
 
-        if window_count >= min_samples and window_count > 0:
-            mean_score = sum(self.score_window) / window_count
-            variance = (
-                sum((existing - mean_score) ** 2 for existing in self.score_window)
-                / window_count
-            )
-            std_dev = math.sqrt(variance)
+        if not heuristic_enabled:
+            return context
+        if not model_ready:
+            return context
+        if reference_count < min_samples or reference_count <= 0:
+            return context
 
-            zscore = 0.0
-            if std_dev > 1e-9:
-                zscore = (score - mean_score) / std_dev
-
-            context.update(
-                {
-                    "mean": mean_score,
-                    "std_dev": std_dev,
-                    "window_mean": mean_score,
-                    "window_std": std_dev,
-                    "zscore": zscore,
-                }
-            )
-            context["triggered"] = zscore >= zscore_threshold
-
-        self.score_window.append(score)
-        context["history_count_after"] = len(self.score_window)
+        count_ge = sum(1 for existing in self.score_window if existing >= score)
+        tail_pvalue = (1.0 + count_ge) / (reference_count + 1.0)
+        context["tail_pvalue"] = tail_pvalue
+        context["triggered"] = tail_pvalue <= tail_alpha
+        context["warmup"] = False
         return context
 
     def _get_heuristic_window_size(self) -> int:
@@ -641,13 +666,34 @@ class AnomalyDetectionService:
         min_samples = max(min_samples, 2)
         return min(min_samples, self._get_heuristic_window_size())
 
-    def _get_heuristic_zscore_threshold(self) -> float:
-        """Get z-score threshold with safe fallback for legacy config objects."""
+    def _get_heuristic_tail_alpha(self) -> float:
+        """Get tail-probability threshold with safe fallback."""
         try:
-            threshold = float(getattr(self.config, "heuristic_zscore_threshold", 3.0))
+            alpha = float(getattr(self.config, "heuristic_tail_alpha", 0.005))
         except (TypeError, ValueError):
-            threshold = 3.0
-        return threshold if threshold > 0 else 3.0
+            alpha = 0.005
+        if alpha <= 0.0 or alpha >= 1.0:
+            return 0.005
+        return alpha
+
+    def _is_model_ready_for_triggering(self) -> bool:
+        """Return whether model output is ready for anomaly triggering semantics."""
+        if str(getattr(self.config, "model_type", "")).lower() != "knn":
+            return True
+        engine = getattr(self.model, "engine", None)
+        if engine is None:
+            return True
+        try:
+            warm_up = int(getattr(engine, "warm_up", 0))
+        except (TypeError, ValueError):
+            warm_up = 0
+        if warm_up <= 0:
+            return True
+        try:
+            current_size = len(getattr(engine, "window", []))
+        except TypeError:
+            current_size = 0
+        return current_size >= warm_up
 
     def _checkpoint_model(self):
         """Save model and preprocessor checkpoint with HMAC signature.
@@ -674,6 +720,10 @@ class AnomalyDetectionService:
                     "processed_count": self.processed_count,
                     "anomaly_count": self.anomaly_count,
                     "score_window": list(self.score_window),
+                    "skipped_learning_anomaly_count": (
+                        self.skipped_learning_anomaly_count
+                    ),
+                    "pre_ready_suppressed_count": self.pre_ready_suppressed_count,
                     "config": self.config,
                     "service_id": service_id,
                     "schema_signature": self.schema_signature,
@@ -707,6 +757,8 @@ class AnomalyDetectionService:
             "processed_count": self.processed_count,
             "anomaly_count": self.anomaly_count,
             "anomaly_rate": self.anomaly_count / max(self.processed_count, 1),
+            "skipped_learning_anomaly_count": self.skipped_learning_anomaly_count,
+            "pre_ready_suppressed_count": self.pre_ready_suppressed_count,
             "memory_usage_mb": self._get_memory_usage(),
             "avg_processing_time_ms": sum(self.processing_times)
             / max(len(self.processing_times), 1)
@@ -793,8 +845,17 @@ class ResilientAnomalyDetector:
                 # Simple statistical fallback
                 score = self._simple_statistical_anomaly_score(data)
                 heuristic_context = (
-                    self.primary_service._evaluate_moving_window_heuristic(score)
+                    self.primary_service._evaluate_moving_window_heuristic(
+                        score, model_ready=True
+                    )
                 )
+                if not heuristic_context.get("triggered", False) and bool(
+                    heuristic_context.get("model_ready", True)
+                ):
+                    self.primary_service.score_window.append(score)
+                    heuristic_context["reference_count_after"] = len(
+                        self.primary_service.score_window
+                    )
                 return AnomalyResult(
                     anomaly_score=score,
                     is_anomaly=bool(heuristic_context.get("triggered", False)),

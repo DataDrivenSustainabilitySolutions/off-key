@@ -42,7 +42,8 @@ async def test_gateway_start_monitor_forwards_performance_config():
             heuristic_enabled=True,
             heuristic_window_size=600,
             heuristic_min_samples=90,
-            heuristic_zscore_threshold=4.2,
+            heuristic_tail_alpha=0.004,
+            alignment_mode="strict_barrier",
             sensor_key_strategy="leaf",
             sensor_freshness_seconds=25.0,
         ),
@@ -70,7 +71,8 @@ async def test_gateway_start_monitor_forwards_performance_config():
         "heuristic_enabled": True,
         "heuristic_window_size": 600,
         "heuristic_min_samples": 90,
-        "heuristic_zscore_threshold": 4.2,
+        "heuristic_tail_alpha": 0.004,
+        "alignment_mode": "strict_barrier",
         "sensor_key_strategy": "leaf",
         "sensor_freshness_seconds": 25.0,
     }
@@ -102,7 +104,8 @@ def test_tactic_build_radar_environment_maps_performance_to_radar_env(monkeypatc
             "heuristic_enabled": True,
             "heuristic_window_size": 480,
             "heuristic_min_samples": 70,
-            "heuristic_zscore_threshold": 3.8,
+            "heuristic_tail_alpha": 0.006,
+            "alignment_mode": "strict_barrier",
             "sensor_key_strategy": "top_level",
             "sensor_freshness_seconds": 15.0,
         },
@@ -111,6 +114,7 @@ def test_tactic_build_radar_environment_maps_performance_to_radar_env(monkeypatc
     assert env["RADAR_HEURISTIC_ENABLED"] == "true"
     assert env["RADAR_HEURISTIC_WINDOW_SIZE"] == "480"
     assert env["RADAR_HEURISTIC_MIN_SAMPLES"] == "70"
-    assert env["RADAR_HEURISTIC_ZSCORE_THRESHOLD"] == "3.8"
+    assert env["RADAR_HEURISTIC_TAIL_ALPHA"] == "0.006"
+    assert env["RADAR_ALIGNMENT_MODE"] == "strict_barrier"
     assert env["RADAR_SENSOR_KEY_STRATEGY"] == "top_level"
     assert env["RADAR_SENSOR_FRESHNESS_SECONDS"] == "15.0"

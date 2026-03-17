@@ -349,11 +349,17 @@ class ConfigReloader:
             old_config.heuristic_enabled != new_config.heuristic_enabled
             or old_config.heuristic_window_size != new_config.heuristic_window_size
             or old_config.heuristic_min_samples != new_config.heuristic_min_samples
-            or old_config.heuristic_zscore_threshold
-            != new_config.heuristic_zscore_threshold
+            or old_config.heuristic_tail_alpha != new_config.heuristic_tail_alpha
         )
         if heuristic_changed:
             logger.info("Moving-window anomaly heuristic settings changed")
+
+        if old_config.alignment_mode != new_config.alignment_mode:
+            logger.info(
+                "Alignment mode changed: %s -> %s",
+                old_config.alignment_mode,
+                new_config.alignment_mode,
+            )
 
     def _log_config_changes(self, old_config: dict, new_config: dict):
         """Log significant configuration changes"""

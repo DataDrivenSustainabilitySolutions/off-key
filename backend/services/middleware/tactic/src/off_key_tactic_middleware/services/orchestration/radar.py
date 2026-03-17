@@ -275,16 +275,19 @@ class RadarOrchestrationService:
                     "heuristic_min_samples", defaults.heuristic_min_samples
                 )
             ),
-            "RADAR_HEURISTIC_ZSCORE_THRESHOLD": str(
+            "RADAR_HEURISTIC_TAIL_ALPHA": str(
                 performance_config.get(
-                    "heuristic_zscore_threshold",
-                    defaults.heuristic_zscore_threshold,
+                    "heuristic_tail_alpha",
+                    defaults.heuristic_tail_alpha,
                 )
             ),
             "RADAR_SENSOR_KEY_STRATEGY": str(
                 performance_config.get(
                     "sensor_key_strategy", defaults.sensor_key_strategy
                 )
+            ),
+            "RADAR_ALIGNMENT_MODE": str(
+                performance_config.get("alignment_mode", defaults.alignment_mode)
             ),
             "RADAR_SENSOR_FRESHNESS_SECONDS": str(
                 performance_config.get(

@@ -45,13 +45,13 @@ class TestAnomalyDetectionService:
         assert service.anomaly_count == 0
 
     def test_process_data_point_anomaly(self, anomaly_config, sample_telemetry_data):
-        """Test processing an anomalous data point via moving-window heuristic."""
+        """Test processing an anomalous data point via tail-probability heuristic."""
         from off_key_mqtt_radar.detector import AnomalyDetectionService
 
         anomaly_config.heuristic_enabled = True
-        anomaly_config.heuristic_window_size = 10
         anomaly_config.heuristic_min_samples = 3
-        anomaly_config.heuristic_zscore_threshold = 3.0
+        anomaly_config.heuristic_window_size = 10
+        anomaly_config.heuristic_tail_alpha = 0.30
 
         with patch.object(AnomalyDetectionService, "_create_model") as mock_create:
             mock_model = MagicMock()
@@ -77,19 +77,23 @@ class TestAnomalyDetectionService:
                 )
 
         assert result.is_anomaly is True
-        assert result.severity == "critical"
+        assert result.severity == "medium"
         assert result.anomaly_score == 0.85
         assert service.anomaly_count == 1
+        assert result.context["score_window"]["tail_pvalue"] == pytest.approx(0.25)
+        assert result.context["score_window"]["learn_skipped"] is True
+        assert len(service.score_window) == 3
+        assert mock_model.learn_one.call_count == 3
 
     def test_process_data_point_triggers_moving_window_heuristic(self, anomaly_config):
-        """Trigger anomaly when score is a z-score outlier in the service window."""
+        """Trigger anomaly when score is in the configured upper tail."""
         from off_key_mqtt_radar.detector import AnomalyDetectionService
 
         anomaly_config.thresholds = {"medium": 0.6, "high": 0.8, "critical": 0.9}
         anomaly_config.heuristic_enabled = True
-        anomaly_config.heuristic_window_size = 10
         anomaly_config.heuristic_min_samples = 3
-        anomaly_config.heuristic_zscore_threshold = 3.0
+        anomaly_config.heuristic_window_size = 10
+        anomaly_config.heuristic_tail_alpha = 0.30
 
         with patch.object(AnomalyDetectionService, "_create_model") as mock_create:
             mock_model = MagicMock()
@@ -141,7 +145,7 @@ class TestAnomalyDetectionService:
         assert fourth.context["score_window"]["enabled"] is False
 
     def test_trigger_semantics_do_not_use_static_score_thresholds(self):
-        """High raw score alone should not trigger without z-score condition."""
+        """High raw score alone should not trigger without tail condition."""
         from off_key_mqtt_radar.detector import AnomalyDetectionService
 
         config = SimpleNamespace(
@@ -151,7 +155,7 @@ class TestAnomalyDetectionService:
             heuristic_enabled=True,
             heuristic_window_size=10,
             heuristic_min_samples=3,
-            heuristic_zscore_threshold=4.0,
+            heuristic_tail_alpha=0.05,
             preprocessing_steps=[],
             subscription_topics=[],
             sensor_key_strategy="full_hierarchy",
@@ -159,7 +163,7 @@ class TestAnomalyDetectionService:
 
         with patch.object(AnomalyDetectionService, "_create_model") as mock_create:
             mock_model = MagicMock()
-            # Last point has a higher absolute score, but not a z-score outlier.
+            # Last point has a higher absolute score, but not a tail outlier.
             mock_model.score_one.side_effect = [0.10, 0.11, 0.10, 0.12]
             mock_model.learn_one = MagicMock()
             mock_create.return_value = mock_model
@@ -186,7 +190,7 @@ class TestAnomalyDetectionService:
             ):
                 service = AnomalyDetectionService(anomaly_config)
                 severity = service._calculate_heuristic_severity(
-                    {"triggered": False, "zscore": 0.0, "zscore_threshold": 3.0}
+                    {"triggered": False, "tail_pvalue": 1.0, "tail_alpha": 0.005}
                 )
 
         assert severity == "low"
@@ -201,7 +205,7 @@ class TestAnomalyDetectionService:
             ):
                 service = AnomalyDetectionService(anomaly_config)
                 severity = service._calculate_heuristic_severity(
-                    {"triggered": True, "zscore": 3.0, "zscore_threshold": 3.0}
+                    {"triggered": True, "tail_pvalue": 0.005, "tail_alpha": 0.005}
                 )
 
         assert severity == "medium"
@@ -216,7 +220,7 @@ class TestAnomalyDetectionService:
             ):
                 service = AnomalyDetectionService(anomaly_config)
                 severity = service._calculate_heuristic_severity(
-                    {"triggered": True, "zscore": 5.5, "zscore_threshold": 3.0}
+                    {"triggered": True, "tail_pvalue": 0.04, "tail_alpha": 0.2}
                 )
 
         assert severity == "high"
@@ -231,10 +235,85 @@ class TestAnomalyDetectionService:
             ):
                 service = AnomalyDetectionService(anomaly_config)
                 severity = service._calculate_heuristic_severity(
-                    {"triggered": True, "zscore": 8.0, "zscore_threshold": 3.0}
+                    {"triggered": True, "tail_pvalue": 0.01, "tail_alpha": 0.2}
                 )
 
         assert severity == "critical"
+
+    def test_flagged_points_skip_preprocessor_learning(self, anomaly_config):
+        """Flagged points should skip preprocessor learning and reference insertion."""
+        from off_key_mqtt_radar.detector import AnomalyDetectionService
+
+        anomaly_config.heuristic_enabled = True
+        anomaly_config.heuristic_min_samples = 3
+        anomaly_config.heuristic_window_size = 10
+        anomaly_config.heuristic_tail_alpha = 0.30
+
+        mock_preprocessor = MagicMock()
+        mock_preprocessor.transform_one = MagicMock(side_effect=lambda x: x)
+        mock_preprocessor.learn_one = MagicMock()
+
+        with patch.object(AnomalyDetectionService, "_create_model") as mock_create:
+            mock_model = MagicMock()
+            mock_model.score_one.side_effect = [0.10, 0.12, 0.11, 0.85]
+            mock_model.learn_one = MagicMock()
+            mock_create.return_value = mock_model
+
+            with patch.object(
+                AnomalyDetectionService,
+                "_create_preprocessors",
+                return_value=[mock_preprocessor],
+            ):
+                service = AnomalyDetectionService(anomaly_config)
+                for _ in range(4):
+                    service.process_data_point({"x": 1.0})
+
+        assert mock_model.learn_one.call_count == 3
+        assert mock_preprocessor.learn_one.call_count == 3
+        assert len(service.score_window) == 3
+        assert service.skipped_learning_anomaly_count == 1
+
+    def test_knn_prewarmup_samples_do_not_populate_reference_baseline(self):
+        """KNN pre-warmup samples must not seed the trailing score reference."""
+        from off_key_mqtt_radar.detector import AnomalyDetectionService
+
+        config = SimpleNamespace(
+            model_type="knn",
+            model_params={},
+            thresholds={"medium": 0.6, "high": 0.8, "critical": 0.9},
+            checkpoint_interval=1000,
+            heuristic_enabled=True,
+            heuristic_window_size=10,
+            heuristic_min_samples=2,
+            heuristic_tail_alpha=0.2,
+            preprocessing_steps=[],
+            subscription_topics=[],
+            sensor_key_strategy="full_hierarchy",
+        )
+
+        with patch.object(AnomalyDetectionService, "_create_model") as mock_create:
+            mock_model = MagicMock()
+            mock_model.score_one.side_effect = [0.0, 0.0]
+            mock_model.learn_one = MagicMock()
+            mock_model.engine = SimpleNamespace(warm_up=2, window=[])
+
+            def _learn_side_effect(_point):
+                mock_model.engine.window.append(1.0)
+
+            mock_model.learn_one.side_effect = _learn_side_effect
+            mock_create.return_value = mock_model
+
+            with patch.object(
+                AnomalyDetectionService, "_create_preprocessors", return_value=[]
+            ):
+                service = AnomalyDetectionService(config)
+                first = service.process_data_point({"x": 1.0})
+                second = service.process_data_point({"x": 1.1})
+
+        assert first.context["score_window"]["model_ready"] is False
+        assert second.context["score_window"]["model_ready"] is False
+        assert len(service.score_window) == 0
+        assert service.pre_ready_suppressed_count == 2
 
     def test_process_with_preprocessing(self, anomaly_config, sample_telemetry_data):
         """Test that preprocessing is applied correctly."""
@@ -512,7 +591,12 @@ class TestResilientAnomalyDetector:
                 primary_service = AnomalyDetectionService(anomaly_config)
                 detector = ResilientAnomalyDetector(primary_service)
 
-                result = detector.process_with_resilience(sample_telemetry_data)
+                with patch.object(
+                    primary_service,
+                    "process_data_point",
+                    side_effect=RuntimeError("Model error"),
+                ):
+                    result = detector.process_with_resilience(sample_telemetry_data)
 
         assert "fallback_reason" in result.context
         assert detector.error_count > 0
@@ -540,8 +624,13 @@ class TestResilientAnomalyDetector:
                 detector.error_threshold = 0.05  # Lower threshold for test
 
                 # Generate enough errors to trigger circuit breaker
-                for _ in range(15):
-                    detector.process_with_resilience(sample_telemetry_data)
+                with patch.object(
+                    primary_service,
+                    "process_data_point",
+                    side_effect=RuntimeError("Model error"),
+                ):
+                    for _ in range(15):
+                        detector.process_with_resilience(sample_telemetry_data)
 
         assert detector.circuit_breaker_open is True
         assert detector.state == ServiceState.DEGRADED

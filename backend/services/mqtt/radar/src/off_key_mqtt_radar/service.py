@@ -90,10 +90,12 @@ class RadarService:
             self.config.subscription_topics,
             sensor_key_strategy=self.config.sensor_key_strategy,
         )
+        alignment_mode = getattr(self.config, "alignment_mode", "strict_barrier")
         self.state_cache = (
             SensorStateCache(
                 self.required_sensors,
                 max_sensor_age_seconds=self.config.sensor_freshness_seconds,
+                alignment_mode=alignment_mode,
             )
             if self.required_sensors
             else None
@@ -234,16 +236,17 @@ class RadarService:
             model_params=getattr(self.config, "model_params", {}),
             preprocessing_steps=getattr(self.config, "preprocessing_steps", []),
             subscription_topics=getattr(self.config, "subscription_topics", []),
-            sensor_key_strategy=self.config.sensor_key_strategy,
+            sensor_key_strategy=getattr(
+                self.config, "sensor_key_strategy", "full_hierarchy"
+            ),
+            alignment_mode=getattr(self.config, "alignment_mode", "strict_barrier"),
             thresholds=getattr(
                 self.config, "thresholds", {"medium": 0.6, "high": 0.8, "critical": 0.9}
             ),
             heuristic_enabled=getattr(self.config, "heuristic_enabled", True),
             heuristic_window_size=getattr(self.config, "heuristic_window_size", 300),
             heuristic_min_samples=getattr(self.config, "heuristic_min_samples", 30),
-            heuristic_zscore_threshold=getattr(
-                self.config, "heuristic_zscore_threshold", 3.0
-            ),
+            heuristic_tail_alpha=getattr(self.config, "heuristic_tail_alpha", 0.005),
             batch_size=getattr(self.config, "batch_size", 100),
             batch_timeout=getattr(self.config, "batch_timeout", 1.0),
             memory_limit_mb=getattr(self.config, "memory_limit_mb", 1000),
@@ -295,6 +298,9 @@ class RadarService:
                     **self._log_context,
                     "required_sensors": self.required_sensors,
                     "sensor_freshness_seconds": self.config.sensor_freshness_seconds,
+                    "alignment_mode": getattr(
+                        self.config, "alignment_mode", "strict_barrier"
+                    ),
                 },
             )
         else:

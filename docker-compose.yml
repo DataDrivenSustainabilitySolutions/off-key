@@ -50,9 +50,15 @@ services:
       - socket-network
     restart: always
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 10s
-      retries: 5
+      test:
+        - "CMD"
+        - "/app/bin/python"
+        - "-c"
+        - "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=2)"
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
     command: ["uvicorn", "off_key_api_gateway.main:app",
               "--reload", "--reload-dir", "/app/lib/python3.12/site-packages/off_key_api_gateway",
               "--host", "", "--port", "8000"]

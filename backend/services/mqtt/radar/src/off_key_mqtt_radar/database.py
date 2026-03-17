@@ -29,6 +29,7 @@ from .config.runtime import get_radar_database_settings
 from .models import ServiceMetrics, AnomalyResult
 
 logger = logging.getLogger(__name__)
+MULTIVARIATE_TELEMETRY_TYPE = "__multivariate__"
 
 # Lazy-initialized async session factory
 _radar_async_session_factory = None
@@ -277,23 +278,30 @@ class DatabaseWriter:
         metadata = self.topic_extractor.extract(topic=topic, payload=payload)
         return metadata.telemetry_type if metadata else "unknown"
 
+    def _derive_telemetry_type(self, result: AnomalyResult) -> str:
+        """Resolve canonical telemetry type for anomaly persistence."""
+        alignment_context = (result.context or {}).get("alignment", {})
+        if bool(alignment_context.get("aligned_vector")):
+            return MULTIVARIATE_TELEMETRY_TYPE
+        return self._extract_telemetry_type(result.topic, result.raw_data)
+
     @staticmethod
     def _derive_anomaly_type(result: AnomalyResult) -> str:
         """Map detector output to stored anomaly semantics."""
         alignment_context = (result.context or {}).get("alignment", {})
         if bool(alignment_context.get("aligned_vector")):
-            return "ml_zscore_multivariate"
-        return "ml_zscore_univariate"
+            return "ml_tailprob_multivariate"
+        return "ml_tailprob_univariate"
 
     @staticmethod
     def _derive_anomaly_value(result: AnomalyResult) -> float:
-        """Persist z-score value when available to match trigger semantics."""
+        """Persist tail probability when available to match trigger semantics."""
         score_window = (result.context or {}).get("score_window", {})
-        zscore = score_window.get("zscore")
-        if isinstance(zscore, (int, float)):
-            zscore = float(zscore)
-            if math.isfinite(zscore):
-                return zscore
+        tail_pvalue = score_window.get("tail_pvalue")
+        if isinstance(tail_pvalue, (int, float)):
+            tail_pvalue = float(tail_pvalue)
+            if math.isfinite(tail_pvalue):
+                return tail_pvalue
         return float(result.anomaly_score)
 
     async def _flush_batch(self):
@@ -317,9 +325,7 @@ class DatabaseWriter:
                             {
                                 "charger_id": result.charger_id or "unknown",
                                 "timestamp": result.timestamp,
-                                "telemetry_type": self._extract_telemetry_type(
-                                    result.topic, result.raw_data
-                                ),
+                                "telemetry_type": self._derive_telemetry_type(result),
                                 "anomaly_type": self._derive_anomaly_type(result),
                                 "anomaly_value": self._derive_anomaly_value(result),
                             }
@@ -415,8 +421,8 @@ class DatabaseWriter:
                                 {
                                     "charger_id": result.charger_id or "unknown",
                                     "timestamp": result.timestamp,
-                                    "telemetry_type": self._extract_telemetry_type(
-                                        result.topic, result.raw_data
+                                    "telemetry_type": self._derive_telemetry_type(
+                                        result
                                     ),
                                     "anomaly_type": self._derive_anomaly_type(result),
                                     "anomaly_value": self._derive_anomaly_value(result),

@@ -10,6 +10,7 @@ from dotenv import load_dotenv
 from pathlib import Path
 
 SENSOR_KEY_STRATEGIES = {"full_hierarchy", "top_level", "leaf"}
+STRICT_ALIGNMENT_MODE = "strict_barrier"
 
 
 def _normalize_sensor_key_strategy(value: str, field_name: str) -> str:
@@ -18,6 +19,14 @@ def _normalize_sensor_key_strategy(value: str, field_name: str) -> str:
     if normalized not in SENSOR_KEY_STRATEGIES:
         allowed = ", ".join(sorted(SENSOR_KEY_STRATEGIES))
         raise ValueError(f"{field_name} must be one of: {allowed}")
+    return normalized
+
+
+def _normalize_alignment_mode(value: str, field_name: str) -> str:
+    """Normalize and validate alignment mode values."""
+    normalized = value.strip().lower()
+    if normalized != STRICT_ALIGNMENT_MODE:
+        raise ValueError(f"{field_name} must be: {STRICT_ALIGNMENT_MODE}")
     return normalized
 
 
@@ -44,6 +53,7 @@ class AnomalyDetectionConfig(BaseModel):
     subscription_topics: List[str] = Field(default_factory=list)
     sensor_key_strategy: str = "full_hierarchy"
     sensor_freshness_seconds: float = Field(default=30.0, gt=0.0)
+    alignment_mode: str = "strict_barrier"
 
     thresholds: Dict[str, float] = Field(
         default_factory=lambda: {"medium": 0.6, "high": 0.8, "critical": 0.9}
@@ -51,7 +61,7 @@ class AnomalyDetectionConfig(BaseModel):
     heuristic_enabled: bool = True
     heuristic_window_size: int = Field(default=300, ge=3)
     heuristic_min_samples: int = Field(default=30, ge=2)
-    heuristic_zscore_threshold: float = Field(default=3.0, gt=0.0)
+    heuristic_tail_alpha: float = Field(default=0.005, gt=0.0, lt=1.0)
 
     memory_limit_mb: int = 1000
     checkpoint_interval: int = 10000
@@ -68,6 +78,12 @@ class AnomalyDetectionConfig(BaseModel):
     def validate_sensor_key_strategy(cls, value: str) -> str:
         """Validate sensor key strategy for model schema consistency."""
         return _normalize_sensor_key_strategy(value, "sensor_key_strategy")
+
+    @field_validator("alignment_mode")
+    @classmethod
+    def validate_alignment_mode(cls, value: str) -> str:
+        """Validate alignment mode used by state cache and persistence semantics."""
+        return _normalize_alignment_mode(value, "alignment_mode")
 
     @model_validator(mode="after")
     def validate_model_configuration(self) -> Self:
@@ -164,6 +180,7 @@ class MQTTRadarConfig(BaseModel):
     subscription_qos: int = 0
     sensor_key_strategy: str = "full_hierarchy"
     sensor_freshness_seconds: float = Field(default=30.0, gt=0.0)
+    alignment_mode: str = "strict_barrier"
 
     # Database settings
     db_write_enabled: bool = True
@@ -196,7 +213,7 @@ class MQTTRadarConfig(BaseModel):
     heuristic_enabled: bool = True
     heuristic_window_size: int = Field(default=300, ge=3)
     heuristic_min_samples: int = Field(default=30, ge=2)
-    heuristic_zscore_threshold: float = Field(default=3.0, gt=0.0)
+    heuristic_tail_alpha: float = Field(default=0.005, gt=0.0, lt=1.0)
     batch_size: int = 100
     batch_timeout: float = 1.0
     checkpoint_interval: int = 10000
@@ -206,6 +223,12 @@ class MQTTRadarConfig(BaseModel):
     def validate_sensor_key_strategy(cls, value: str) -> str:
         """Validate feature-key strategy used by topic parsing."""
         return _normalize_sensor_key_strategy(value, "sensor_key_strategy")
+
+    @field_validator("alignment_mode")
+    @classmethod
+    def validate_alignment_mode(cls, value: str) -> str:
+        """Validate multivariate alignment strategy."""
+        return _normalize_alignment_mode(value, "alignment_mode")
 
     @model_validator(mode="after")
     def validate_heuristic_window(self) -> Self:
@@ -241,6 +264,7 @@ class RadarSettings(BaseSettings):
     RADAR_SUBSCRIPTION_QOS: int = 0
     RADAR_SENSOR_KEY_STRATEGY: str = "full_hierarchy"
     RADAR_SENSOR_FRESHNESS_SECONDS: float = 30.0
+    RADAR_ALIGNMENT_MODE: str = "strict_barrier"
 
     # Database
     RADAR_DB_WRITE_ENABLED: bool = True
@@ -257,7 +281,7 @@ class RadarSettings(BaseSettings):
     RADAR_HEURISTIC_ENABLED: bool = True
     RADAR_HEURISTIC_WINDOW_SIZE: int = 300
     RADAR_HEURISTIC_MIN_SAMPLES: int = 30
-    RADAR_HEURISTIC_ZSCORE_THRESHOLD: float = 3.0
+    RADAR_HEURISTIC_TAIL_ALPHA: float = 0.005
 
     # Performance
     RADAR_BATCH_SIZE: int = 100
@@ -288,6 +312,12 @@ class RadarSettings(BaseSettings):
     def validate_sensor_key_strategy(cls, value: str) -> str:
         """Validate sensor key strategy from environment."""
         return _normalize_sensor_key_strategy(value, "RADAR_SENSOR_KEY_STRATEGY")
+
+    @field_validator("RADAR_ALIGNMENT_MODE")
+    @classmethod
+    def validate_alignment_mode(cls, value: str) -> str:
+        """Validate alignment mode from environment."""
+        return _normalize_alignment_mode(value, "RADAR_ALIGNMENT_MODE")
 
     @field_validator("ENVIRONMENT")
     @classmethod
@@ -337,6 +367,7 @@ class RadarSettings(BaseSettings):
             subscription_qos=self.RADAR_SUBSCRIPTION_QOS,
             sensor_key_strategy=self.RADAR_SENSOR_KEY_STRATEGY,
             sensor_freshness_seconds=self.RADAR_SENSOR_FRESHNESS_SECONDS,
+            alignment_mode=self.RADAR_ALIGNMENT_MODE,
             db_write_enabled=self.RADAR_DB_WRITE_ENABLED,
             db_batch_size=self.RADAR_DB_BATCH_SIZE,
             db_batch_timeout=self.RADAR_DB_BATCH_TIMEOUT,
@@ -354,7 +385,7 @@ class RadarSettings(BaseSettings):
             heuristic_enabled=self.RADAR_HEURISTIC_ENABLED,
             heuristic_window_size=self.RADAR_HEURISTIC_WINDOW_SIZE,
             heuristic_min_samples=self.RADAR_HEURISTIC_MIN_SAMPLES,
-            heuristic_zscore_threshold=self.RADAR_HEURISTIC_ZSCORE_THRESHOLD,
+            heuristic_tail_alpha=self.RADAR_HEURISTIC_TAIL_ALPHA,
             batch_size=self.RADAR_BATCH_SIZE,
             batch_timeout=self.RADAR_BATCH_TIMEOUT,
             checkpoint_interval=self.RADAR_CHECKPOINT_INTERVAL,

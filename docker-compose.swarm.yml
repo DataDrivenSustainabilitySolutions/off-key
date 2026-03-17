@@ -31,11 +31,16 @@ services:
     networks:
       - app-network
       - socket-network
-#    TODO: This healthcheck doesn't work for now
-#    healthcheck:
-#      test: [ "CMD", "curl", "-f", "http://localhost:8000/health" ]
-#      interval: 10s
-#      retries: 5
+    healthcheck:
+      test:
+        - "CMD"
+        - "/app/bin/python"
+        - "-c"
+        - "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=2)"
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
     deploy:
       mode: replicated
       replicas: 2

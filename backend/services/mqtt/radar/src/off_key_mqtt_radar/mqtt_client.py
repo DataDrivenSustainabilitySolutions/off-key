@@ -449,8 +449,8 @@ class RadarMQTTClient:
         total = rate_limited + queue_full
         if total > 0:
             logger.warning(
-                "event=radar.mqtt_drop_summary total=%s rate_limit=%s \
-                     queue_full=%s queue_size=%s limit=%s",
+                "event=radar.mqtt_drop_summary total=%s rate_limit=%s "
+                "queue_full=%s queue_size=%s limit=%s",
                 total,
                 rate_limited,
                 queue_full,
@@ -468,9 +468,9 @@ class RadarMQTTClient:
         queue_usage = self.message_queue.qsize() / max(self.config.max_queue_size, 1)
         error_rate = self.error_count / max(self.message_count, 1)
         logger.info(
-            "event=radar.mqtt_heartbeat connected=%s queue_usage=%.3f \
-                 message_count=%s error_count=%s \
-                    error_rate=%.4f reconnect_attempts=%s",
+            "event=radar.mqtt_heartbeat connected=%s queue_usage=%.3f "
+            "message_count=%s error_count=%s "
+            "error_rate=%.4f reconnect_attempts=%s",
             self.is_connected,
             queue_usage,
             self.message_count,

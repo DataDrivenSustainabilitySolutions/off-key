@@ -106,7 +106,7 @@ export default function ChargerTable() {
         event: "favorites.toggle_failed",
         message: "Error saving favorite",
         error: err,
-        context: { chargerId, userId, isFavorite },
+        context: { chargerId, isFavorite },
       });
       toast.error('Failed to update favorite status');
       setFavoriteChargerIds((prev) =>

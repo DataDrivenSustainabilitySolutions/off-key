@@ -102,7 +102,7 @@ class TelemetrySyncService:
             if row and row[0] is not None and row[1] is not None:
                 logger.debug(
                     "event=telemetry_sync.coverage_found charger_id=%s \
-                         hierarchy=%s start=%s end=%s",
+                          hierarchy=%s start=%s end=%s",
                     charger_id,
                     hierarchy_type,
                     row[0],

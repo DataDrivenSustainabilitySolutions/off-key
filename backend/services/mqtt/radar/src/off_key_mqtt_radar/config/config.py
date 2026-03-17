@@ -223,6 +223,7 @@ class RadarSettings(BaseSettings):
 
     # Configuration Management
     custom_config_file: Optional[str] = None  # Path to custom config file being watched
+    ENVIRONMENT: str = "development"
 
     # MQTT Configuration
     RADAR_MQTT_BROKER_HOST: str = "localhost"
@@ -287,6 +288,29 @@ class RadarSettings(BaseSettings):
     def validate_sensor_key_strategy(cls, value: str) -> str:
         """Validate sensor key strategy from environment."""
         return _normalize_sensor_key_strategy(value, "RADAR_SENSOR_KEY_STRATEGY")
+
+    @field_validator("ENVIRONMENT")
+    @classmethod
+    def validate_environment(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        allowed = {"development", "test", "staging", "production"}
+        if normalized not in allowed:
+            allowed_text = ", ".join(sorted(allowed))
+            raise ValueError(f"ENVIRONMENT must be one of: {allowed_text}")
+        return normalized
+
+    @model_validator(mode="after")
+    def validate_mqtt_security_posture(self) -> Self:
+        if self.ENVIRONMENT == "production":
+            if not self.RADAR_MQTT_USE_TLS:
+                raise ValueError(
+                    "RADAR_MQTT_USE_TLS must be true when ENVIRONMENT=production"
+                )
+            if not self.RADAR_MQTT_USE_AUTH:
+                raise ValueError(
+                    "RADAR_MQTT_USE_AUTH must be true when ENVIRONMENT=production"
+                )
+        return self
 
     @property
     def config(self) -> MQTTRadarConfig:

@@ -2,6 +2,7 @@ services:
   emqx-main:
     environment:
       EMQX_NODE_NAME: emqx@emqx-main
+      EMQX_NODE__COOKIE: ${EMQX_NODE_COOKIE:-off-key-emqx-cookie-change-me}
       EMQX_CLUSTER__DISCOVERY_STRATEGY: static
       EMQX_CLUSTER__STATIC__SEEDS: "[emqx@emqx-main,emqx@emqx-worker]"
 
@@ -18,8 +19,8 @@ services:
       EMQX_CLUSTER__STATIC__SEEDS: "[emqx@emqx-main,emqx@emqx-worker]"
       # See https://github.com/emqx/emqx/issues/8627#issuecomment-2833234761
       # Only works on fresh boot (no data volume!)
-      EMQX_DASHBOARD__DEFAULT_USERNAME: ddss
-      EMQX_DASHBOARD__DEFAULT_PASSWORD: xMdrOJtNxRA8ZwUtjAHq
+      EMQX_DASHBOARD__DEFAULT_USERNAME: ${EMQX_DASHBOARD_USERNAME:-admin}
+      EMQX_DASHBOARD__DEFAULT_PASSWORD: ${EMQX_DASHBOARD_PASSWORD:?EMQX_DASHBOARD_PASSWORD must be set}
     healthcheck:
       test: [ "CMD", "curl", "-fsS", "http://127.0.0.1:18083/status" ]
       interval: 5s

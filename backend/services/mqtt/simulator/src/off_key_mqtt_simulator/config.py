@@ -80,13 +80,6 @@ class SimulatorConfig(BaseModel):
             raise ValueError("Blip multiplier min must be >= 1.0")
         return value
 
-    @field_validator("blip_multiplier_max")
-    @classmethod
-    def validate_blip_multiplier_max(cls, value: float) -> float:
-        if value < 1.0:
-            raise ValueError("Blip multiplier max must be >= 1.0")
-        return value
-
     @field_validator("value_max")
     @classmethod
     def validate_range_max(cls, value: float, info) -> float:
@@ -98,6 +91,8 @@ class SimulatorConfig(BaseModel):
     @field_validator("blip_multiplier_max")
     @classmethod
     def validate_blip_multiplier_range(cls, value: float, info) -> float:
+        if value < 1.0:
+            raise ValueError("Blip multiplier max must be >= 1.0")
         blip_multiplier_min = info.data.get("blip_multiplier_min")
         if blip_multiplier_min is not None and value < blip_multiplier_min:
             raise ValueError("blip_multiplier_max must be >= blip_multiplier_min")

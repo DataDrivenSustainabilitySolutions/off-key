@@ -565,10 +565,15 @@ class SyncService:
                 )
                 # In MQTT-only mode there is no initial cloud sync phase.
                 self.initial_sync_complete = True
-            else:
+            elif config.source_mode == "api":
                 raise RuntimeError(
                     "SYNC_SOURCE_MODE=api is not supported because API adapters were "
                     "removed. Use SYNC_SOURCE_MODE=mqtt_only."
+                )
+            else:
+                raise RuntimeError(
+                    f"Unknown SYNC_SOURCE_MODE={config.source_mode!r}. "
+                    "Supported modes: mqtt_only (or disable sync with enabled=False)."
                 )
 
             self.is_running = True

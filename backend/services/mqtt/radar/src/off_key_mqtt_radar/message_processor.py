@@ -359,8 +359,8 @@ class MessageProcessor:
             sensor_ages = alignment_context.get("sensor_ages", {})
             if result.severity in ["high", "critical"]:
                 logger.warning(
-                    "event=radar.anomaly_detected score=%.3f \
-                         zscore=%s severity=%s charger=%s",
+                    "event=radar.anomaly_detected score=%.3f "
+                    "zscore=%s severity=%s charger=%s",
                     result.anomaly_score,
                     zscore,
                     result.severity,
@@ -380,8 +380,8 @@ class MessageProcessor:
                 )
             else:
                 logger.debug(
-                    "event=radar.anomaly_detected score=%.3f \
-                         zscore=%s severity=%s charger=%s",
+                    "event=radar.anomaly_detected score=%.3f "
+                    "zscore=%s severity=%s charger=%s",
                     result.anomaly_score,
                     zscore,
                     result.severity,

@@ -47,8 +47,8 @@ class LoggingMiddleware(BaseHTTPMiddleware):
 
             if settings.ENABLE_REQUEST_LOGGING:
                 logger.info(
-                    "event=http.request method=%s path=%s status=%s \
-                         duration_ms=%.2f query=%s user_agent=%s",
+                    "event=http.request method=%s path=%s status=%s "
+                    "duration_ms=%.2f query=%s user_agent=%s",
                     method,
                     path,
                     response.status_code,
@@ -60,12 +60,13 @@ class LoggingMiddleware(BaseHTTPMiddleware):
         except Exception as e:
             duration_ms = (time.time() - start_time) * 1000
             logger.exception(
-                "event=http.request_failed method=%s path=%s \
-                     duration_ms=%.2f query=%s error=%s",
+                "event=http.request_failed method=%s path=%s "
+                "duration_ms=%.2f query=%s user_agent=%s error=%s",
                 method,
                 path,
                 duration_ms,
                 safe_query,
+                safe_user_agent,
                 str(e),
             )
             raise
@@ -94,8 +95,8 @@ class SecurityLoggingMiddleware(BaseHTTPMiddleware):
         # Log suspicious patterns
         if self._is_suspicious_request(request):
             logger.warning(
-                "event=security.suspicious_request ip=%s method=%s \
-                     path=%s user_agent=%s",
+                "event=security.suspicious_request ip=%s method=%s "
+                "path=%s user_agent=%s",
                 client_ip,
                 request.method,
                 path,

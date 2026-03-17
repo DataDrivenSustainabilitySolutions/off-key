@@ -129,8 +129,8 @@ async def send_anomaly_alert_email(anomaly: dict):
         await fm.send_message(message)
 
         logger.warning(
-            "event=mail.anomaly_alert_sent charger_id=%s \
-                 anomaly_type=%s recipient_count=%s",
+            "event=mail.anomaly_alert_sent charger_id=%s "
+            "anomaly_type=%s recipient_count=%s",
             charger_id,
             anomaly_type,
             len(settings.anomaly_alert_recipients_list),
@@ -139,8 +139,8 @@ async def send_anomaly_alert_email(anomaly: dict):
 
     except Exception as e:
         logger.error(
-            "event=mail.anomaly_alert_send_failed charger_id=%s \
-                 anomaly_type=%s error=%s",
+            "event=mail.anomaly_alert_send_failed charger_id=%s "
+            "anomaly_type=%s error=%s",
             charger_id,
             anomaly_type,
             str(e),

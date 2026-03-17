@@ -47,14 +47,17 @@ afterEach(() => {
 describe("clientLogger", () => {
   it("suppresses debug/info in production mode", () => {
     setClientLoggerProductionOverride(true);
+    const debugSpy = vi.spyOn(console, "debug").mockImplementation(() => undefined);
     const infoSpy = vi.spyOn(console, "info").mockImplementation(() => undefined);
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
 
+    clientLogger.debug({ event: "log.debug" });
     clientLogger.info({ event: "log.info" });
     clientLogger.warn({ event: "log.warn" });
     clientLogger.error({ event: "log.error" });
 
+    expect(debugSpy).not.toHaveBeenCalled();
     expect(infoSpy).not.toHaveBeenCalled();
     expect(warnSpy).toHaveBeenCalledTimes(1);
     expect(errorSpy).toHaveBeenCalledTimes(1);

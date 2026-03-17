@@ -65,7 +65,7 @@ class JsonFormatter(logging.Formatter):
             if key not in _STANDARD_RECORD_FIELDS and not key.startswith("_")
         }
         if extra:
-            log_data["extra"] = extra
+            log_data["extra"] = redact_query_params(extra, level=record.levelno)
 
         return json.dumps(log_data, default=str)
 
@@ -162,13 +162,11 @@ def redact_ip_address(ip_value: Optional[str], *, level: int = logging.INFO) -> 
         return _mask_text(ip_value)
 
     if isinstance(ip_obj, ipaddress.IPv4Address):
-        octets = ip_value.split(".")
+        octets = ip_obj.exploded.split(".")
         return ".".join(octets[:3] + ["x"])
 
-    chunks = ip_value.split(":")
-    if len(chunks) <= 2:
-        return "x::x"
-    return ":".join(chunks[:2] + ["x", "x"])
+    groups = ip_obj.exploded.split(":")
+    return ":".join(groups[:4] + ["x", "x", "x", "x"])
 
 
 def redact_value(value: Any, *, level: int = logging.INFO) -> Any:
@@ -384,8 +382,8 @@ def log_startup_logging_configuration(
     ]
 
     log_instance.info(
-        "event=logging_configured service=%s logger=%s \
-             level=%s format=%s handlers=%s root_handlers=%s",
+        "event=logging_configured service=%s logger=%s level=%s "
+        "format=%s handlers=%s root_handlers=%s",
         service_name,
         effective_name,
         logging.getLevelName(target_logger.level),

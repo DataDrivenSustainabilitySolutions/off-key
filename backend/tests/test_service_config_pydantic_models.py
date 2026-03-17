@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from off_key_mqtt_proxy.config.config import MQTTConfig
+from off_key_mqtt_proxy.config.config import MQTTConfig, MQTTSettings
 from off_key_mqtt_radar.config.config import MQTTRadarConfig, RadarSettings
 
 
@@ -93,6 +93,25 @@ def test_radar_settings_parse_sensor_freshness_seconds(monkeypatch):
     assert settings.config.sensor_freshness_seconds == 12.5
 
 
+def test_radar_settings_require_secure_mqtt_in_production(monkeypatch):
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    monkeypatch.setenv("RADAR_MQTT_USE_TLS", "false")
+    monkeypatch.setenv("RADAR_MQTT_USE_AUTH", "false")
+
+    with pytest.raises(ValidationError, match="RADAR_MQTT_USE_TLS"):
+        RadarSettings()
+
+
+def test_radar_settings_allow_insecure_mqtt_in_development(monkeypatch):
+    monkeypatch.setenv("ENVIRONMENT", "development")
+    monkeypatch.setenv("RADAR_MQTT_USE_TLS", "false")
+    monkeypatch.setenv("RADAR_MQTT_USE_AUTH", "false")
+    settings = RadarSettings()
+
+    assert settings.RADAR_MQTT_USE_TLS is False
+    assert settings.RADAR_MQTT_USE_AUTH is False
+
+
 def test_mqtt_config_allows_bridge_auth_fields_when_bridge_disabled():
     MQTTConfig(
         **{
@@ -117,3 +136,22 @@ def test_mqtt_config_requires_bridge_credentials_when_bridge_enabled():
                 "bridge_api_key": "",
             }
         )
+
+
+def test_mqtt_settings_require_secure_mqtt_in_production(monkeypatch):
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    monkeypatch.setenv("MQTT_USE_TLS", "false")
+    monkeypatch.setenv("MQTT_USE_AUTH", "false")
+
+    with pytest.raises(ValidationError, match="MQTT_USE_TLS"):
+        MQTTSettings()
+
+
+def test_mqtt_settings_allow_insecure_mqtt_in_development(monkeypatch):
+    monkeypatch.setenv("ENVIRONMENT", "development")
+    monkeypatch.setenv("MQTT_USE_TLS", "false")
+    monkeypatch.setenv("MQTT_USE_AUTH", "false")
+    settings = MQTTSettings()
+
+    assert settings.MQTT_USE_TLS is False
+    assert settings.MQTT_USE_AUTH is False

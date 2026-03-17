@@ -157,7 +157,6 @@ class RadarOrchestrationService:
         # Create the RADAR workload (Swarm service when available, otherwise container)
         try:
             docker_workload = await self._create_radar_workload(
-                container_name=container_name,
                 service_id=db_service_id,
                 environment=env_vars,
             )
@@ -383,7 +382,6 @@ class RadarOrchestrationService:
 
     async def _create_radar_workload(
         self,
-        container_name: str,
         service_id: str,
         environment: Dict[str, str],
     ) -> Any:
@@ -393,7 +391,6 @@ class RadarOrchestrationService:
         if await self._is_swarm_manager():
             try:
                 return await self._create_radar_swarm_service(
-                    container_name=container_name,
                     service_id=service_id,
                     environment=environment,
                 )
@@ -406,14 +403,12 @@ class RadarOrchestrationService:
                 )
 
         return await self._create_radar_container(
-            container_name=container_name,
             service_id=service_id,
             environment=environment,
         )
 
     async def _create_radar_swarm_service(
         self,
-        container_name: str,
         service_id: str,
         environment: Dict[str, str],
     ) -> Any:
@@ -462,7 +457,6 @@ class RadarOrchestrationService:
 
     async def _create_radar_container(
         self,
-        container_name: str,
         service_id: str,
         environment: Dict[str, str],
     ) -> Any:
@@ -558,13 +552,11 @@ class RadarOrchestrationService:
         Returns:
             Dict[str, int]: Cleanup summary counters.
         """
-        result = await self.session.execute(select(MonitoringService.container_id))
-        db_container_ids = {row[0] for row in result.all() if row[0]}
-
         managed_workload_ids = await self._list_managed_radar_workload_ids()
-        target_ids = db_container_ids | managed_workload_ids
+        target_ids = set(managed_workload_ids)
 
         removed_workloads = 0
+        successfully_removed: set[str] = set()
         removal_failures: list[str] = []
 
         for workload_id in target_ids:
@@ -575,23 +567,32 @@ class RadarOrchestrationService:
                     on_container=lambda c: c.remove(force=True),
                 )
                 removed_workloads += 1
+                successfully_removed.add(workload_id)
             except docker.errors.NotFound:
+                # Workload already absent in Docker; DB row should still be cleaned up.
+                successfully_removed.add(workload_id)
                 continue
             except Exception as exc:
                 removal_failures.append(f"{workload_id}: {exc}")
 
+        db_rows_deleted = 0
+        if successfully_removed:
+            delete_result = await self.session.execute(
+                delete(MonitoringService).where(
+                    MonitoringService.container_id.in_(successfully_removed)
+                )
+            )
+            db_rows_deleted = int(delete_result.rowcount or 0)
+            await self.session.commit()
+
         if removal_failures:
-            await self.session.rollback()
             failures = "; ".join(removal_failures)
             raise RuntimeError(
                 f"Failed to remove one or more managed RADAR workloads: {failures}"
             )
 
-        delete_result = await self.session.execute(delete(MonitoringService))
-        await self.session.commit()
-
         return {
-            "db_rows_deleted": int(delete_result.rowcount or 0),
+            "db_rows_deleted": db_rows_deleted,
             "docker_workloads_removed": removed_workloads,
             "workloads_targeted": len(target_ids),
         }

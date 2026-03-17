@@ -801,7 +801,7 @@ class ResilientAnomalyDetector:
                     severity=self.primary_service._calculate_heuristic_severity(
                         heuristic_context
                     ),
-                    timestamp=datetime.now(),
+                    timestamp=datetime.now(timezone.utc),
                     model_info={"model_used": "statistical"},
                     raw_data=data,
                     topic=topic,

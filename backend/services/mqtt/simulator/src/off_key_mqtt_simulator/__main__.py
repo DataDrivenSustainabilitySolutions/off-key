@@ -100,6 +100,10 @@ class SimulatorService:
         self._client.disconnect()
         logger.info("MQTT simulator stopped")
 
+    def request_shutdown(self) -> None:
+        """Request graceful shutdown; teardown is handled in run()."""
+        self._shutdown_event.set()
+
     async def run(self) -> None:
         await self.start()
         try:
@@ -124,8 +128,8 @@ class SimulatorService:
                         )
                         if blip_injected:
                             logger.info(
-                                "Injected simulator blip | \
-                                    charger=%s feature=%s value=%.4f",
+                                "Injected simulator blip | charger=%s "
+                                "feature=%s value=%.4f",
                                 charger_id,
                                 feature,
                                 bounded_value,
@@ -151,7 +155,7 @@ async def main() -> None:
 
     def _signal_handler(signum, frame):
         logger.info("Received signal %s, stopping MQTT simulator", signum)
-        asyncio.create_task(service.stop())
+        service.request_shutdown()
 
     signal.signal(signal.SIGINT, _signal_handler)
     signal.signal(signal.SIGTERM, _signal_handler)

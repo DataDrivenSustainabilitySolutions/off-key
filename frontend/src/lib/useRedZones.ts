@@ -24,11 +24,24 @@ type DataPoint = {
  * @deprecated Use anomaly-based visualization instead
  */
 export function useRedZones(data: DataPoint[], threshold = TELEMETRY_THRESHOLDS.CPU_TEMPERATURE) {
-  clientLogger.warn({
-    event: "telemetry.red_zones_deprecated",
-    message: "useRedZones is deprecated. Use anomaly-based visualization with createAnomalyZones() instead.",
-  });
+import { useMemo, useEffect } from "react";
+import { TELEMETRY_THRESHOLDS } from './constants';
+import { clientLogger } from "@/lib/logger";
 
+// ... JSDoc comments ...
+
+export function useRedZones(data: DataPoint[], threshold = TELEMETRY_THRESHOLDS.CPU_TEMPERATURE) {
+  useEffect(() => {
+    clientLogger.warn({
+      event: "telemetry.red_zones_deprecated",
+      message: "useRedZones is deprecated. Use anomaly-based visualization with createAnomalyZones() instead.",
+    });
+  }, []);
+
+  return useMemo(() => {
+    // ... zone calculation logic ...
+  }, [data, threshold]);
+}
   return useMemo(() => {
     const zones: { start: string; end: string }[] = [];
     let start: string | null = null;

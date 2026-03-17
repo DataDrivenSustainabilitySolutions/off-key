@@ -128,36 +128,62 @@ def test_load_yaml_config_applies_root_fallback(monkeypatch):
     )
 
 
-def test_module_logger_and_service_logger_both_emit_when_configured(monkeypatch):
+def test_module_logger_and_service_logger_both_emit_when_configured(
+    monkeypatch, tmp_path
+):
     service_config = (
         Path(__file__).resolve().parents[1]
         / "services/mqtt/proxy/src/off_key_mqtt_proxy/config/logging.yaml"
     )
     assert service_config.exists()
 
-    log_file = str(Path.cwd() / "tests" / "logging-test.log")
+    log_file = str(tmp_path / "logging-test.log")
     monkeypatch.setenv("LOG_FILE", log_file)
     monkeypatch.setenv("MQTT_PROXY_LOG_FILE", log_file)
     monkeypatch.setenv("SERVICE_LOG_FILE", log_file)
-    load_yaml_config(str(service_config))
-    capture_stream = io.StringIO()
-
     root_logger = logging.getLogger()
     service_logger = logging.getLogger("off_key_mqtt_proxy")
     module_logger = logging.getLogger("off_key_mqtt_proxy.router")
+    original_root_handlers = list(root_logger.handlers)
+    original_root_level = root_logger.level
+    original_service_handlers = list(service_logger.handlers)
+    original_service_level = service_logger.level
+    original_service_propagate = service_logger.propagate
+    capture_stream = io.StringIO()
 
-    for active_logger in (root_logger, service_logger):
-        for handler in active_logger.handlers:
-            if hasattr(handler, "stream"):
-                handler.stream = capture_stream
+    try:
+        load_yaml_config(str(service_config))
 
-    module_logger.info("event=module_logger_test")
-    core_logger.info("event=service_logger_test")
+        for active_logger in (root_logger, service_logger):
+            for handler in active_logger.handlers:
+                if hasattr(handler, "stream"):
+                    handler.stream = capture_stream
 
-    for active_logger in (root_logger, service_logger):
-        for handler in active_logger.handlers:
-            handler.flush()
+        module_logger.info("event=module_logger_test")
+        core_logger.info("event=service_logger_test")
 
-    output = capture_stream.getvalue()
-    assert "event=module_logger_test" in output
-    assert "event=service_logger_test" in output
+        for active_logger in (root_logger, service_logger):
+            for handler in active_logger.handlers:
+                handler.flush()
+
+        output = capture_stream.getvalue()
+        assert "event=module_logger_test" in output
+        assert "event=service_logger_test" in output
+    finally:
+        for handler in root_logger.handlers:
+            try:
+                handler.close()
+            except Exception:
+                pass
+        for handler in service_logger.handlers:
+            if handler not in root_logger.handlers:
+                try:
+                    handler.close()
+                except Exception:
+                    pass
+
+        root_logger.handlers = original_root_handlers
+        root_logger.setLevel(original_root_level)
+        service_logger.handlers = original_service_handlers
+        service_logger.setLevel(original_service_level)
+        service_logger.propagate = original_service_propagate

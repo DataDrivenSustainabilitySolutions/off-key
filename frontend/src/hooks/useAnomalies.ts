@@ -38,7 +38,12 @@ export const useAnomalies = ({
   const [error, setError] = useState<string | null>(null);
 
   const fetchAnomalies = useCallback(async () => {
-    if (!chargerId) return;
+    if (!chargerId) {
+      setAnomalies([]);
+      setError(null);
+      setLoading(false);
+      return;
+    }
 
     try {
       setError(null);

@@ -75,7 +75,7 @@ class AnomalyService:
             f"Anomaly created | Charger: {payload.charger_id} | "
             f"Type: {payload.anomaly_type} | Value: {payload.anomaly_value}"
         )
-        return {"message": "Anomaly created", "anomaly_id": created_anomaly_id}
+        return {"message": "Anomaly created", "anomaly_id": str(created_anomaly_id)}
 
     async def delete_anomaly(
         self,

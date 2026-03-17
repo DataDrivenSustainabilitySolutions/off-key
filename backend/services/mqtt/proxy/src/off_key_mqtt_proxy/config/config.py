@@ -356,6 +356,7 @@ class MQTTConfig(BaseModel):
 
 class MQTTSettings(BaseSettings):
     model_config = SettingsConfigDict(case_sensitive=True, extra="ignore")
+    ENVIRONMENT: str = "development"
 
     # MQTT Service Configuration
     MQTT_TELEMETRY_ENABLED: bool = True
@@ -441,6 +442,29 @@ class MQTTSettings(BaseSettings):
                 "MQTT_SOURCE_TOPICS must contain at least one topic filter"
             )
         return value
+
+    @field_validator("ENVIRONMENT")
+    @classmethod
+    def validate_environment(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        allowed = {"development", "test", "staging", "production"}
+        if normalized not in allowed:
+            allowed_text = ", ".join(sorted(allowed))
+            raise ValueError(f"ENVIRONMENT must be one of: {allowed_text}")
+        return normalized
+
+    @model_validator(mode="after")
+    def validate_mqtt_security_posture(self) -> Self:
+        if self.ENVIRONMENT == "production":
+            if not self.MQTT_USE_TLS:
+                raise ValueError(
+                    "MQTT_USE_TLS must be true when ENVIRONMENT=production"
+                )
+            if not self.MQTT_USE_AUTH:
+                raise ValueError(
+                    "MQTT_USE_AUTH must be true when ENVIRONMENT=production"
+                )
+        return self
 
     @property
     def config(self) -> MQTTConfig:

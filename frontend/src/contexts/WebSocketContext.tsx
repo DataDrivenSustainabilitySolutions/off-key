@@ -143,7 +143,7 @@ export const WebSocketProvider: React.FC<{ children: ReactNode }> = ({ children 
       clientLogger.warn({
         event: "ws.send_skipped_not_connected",
         message: "WebSocket is not connected. Message not sent",
-        context: { message },
+        context: { messageType: typeof message === 'object' && message !== null && 'type' in message ? (message as {type: unknown}).type : 'unknown' },
       });
     }
   }, []);

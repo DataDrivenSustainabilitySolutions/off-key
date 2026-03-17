@@ -89,7 +89,12 @@ export default function AnomalyTable() {
           <TableBody>
             {data.length > 0 ? (
               data.map((anomaly) => (
-                <TableRow key={anomaly.anomaly_id}>
+                <TableRow
+                  key={
+                    anomaly.anomaly_id ||
+                    `${anomaly.charger_id}-${anomaly.timestamp}-${anomaly.telemetry_type}-${anomaly.anomaly_type}`
+                  }
+                >
                   <TableCell>
                     <Link
                       to={`/details/${anomaly.charger_id}`}

@@ -170,6 +170,19 @@ class AnomalyRepository:
     async def add(self, anomaly: Anomaly) -> str:
         self._session.add(anomaly)
         await self._session.flush()
+        identity_result = await self._session.execute(
+            select(AnomalyIdentity.anomaly_id).where(
+                AnomalyIdentity.charger_id == anomaly.charger_id,
+                AnomalyIdentity.timestamp == anomaly.timestamp,
+                AnomalyIdentity.telemetry_type == anomaly.telemetry_type,
+            )
+        )
+        anomaly_id = identity_result.scalar_one_or_none()
+        if anomaly_id is not None:
+            return str(anomaly_id)
+
+        # Backward-compatible fallback for environments where the
+        # anomaly_identity insert trigger has not been installed yet.
         identity = AnomalyIdentity(
             charger_id=anomaly.charger_id,
             timestamp=anomaly.timestamp,

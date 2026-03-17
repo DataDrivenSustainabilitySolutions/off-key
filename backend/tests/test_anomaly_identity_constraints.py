@@ -8,6 +8,7 @@ from sqlalchemy.exc import IntegrityError
 
 from off_key_core.db.models import Anomaly, AnomalyIdentity
 from off_key_tactic_middleware.domain import ConflictError
+from off_key_tactic_middleware.repositories.data import AnomalyRepository
 from off_key_tactic_middleware.schemas import AnomalyCreateRequest
 from off_key_tactic_middleware.services.data.anomalies import AnomalyService
 
@@ -92,3 +93,53 @@ async def test_delete_anomaly_uses_identity_lookup_and_delete():
     assert response == {"message": "Anomaly deleted"}
     repository.delete.assert_awaited_once_with(anomaly)
     session.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_repository_add_reuses_trigger_created_identity():
+    session = MagicMock()
+    session.flush = AsyncMock()
+    session.refresh = AsyncMock()
+    identity_result = MagicMock()
+    identity_result.scalar_one_or_none.return_value = "existing-id"
+    session.execute = AsyncMock(return_value=identity_result)
+
+    repository = AnomalyRepository(session)
+    anomaly = SimpleNamespace(
+        charger_id="charger-1",
+        timestamp=datetime.now(timezone.utc),
+        telemetry_type="voltage",
+    )
+
+    anomaly_id = await repository.add(anomaly)
+
+    assert anomaly_id == "existing-id"
+    assert session.add.call_count == 1
+    session.refresh.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_repository_add_falls_back_when_identity_missing():
+    session = MagicMock()
+    session.flush = AsyncMock()
+
+    async def _refresh(identity):
+        identity.anomaly_id = "generated-id"
+
+    session.refresh = AsyncMock(side_effect=_refresh)
+    identity_result = MagicMock()
+    identity_result.scalar_one_or_none.return_value = None
+    session.execute = AsyncMock(return_value=identity_result)
+
+    repository = AnomalyRepository(session)
+    anomaly = SimpleNamespace(
+        charger_id="charger-1",
+        timestamp=datetime.now(timezone.utc),
+        telemetry_type="voltage",
+    )
+
+    anomaly_id = await repository.add(anomaly)
+
+    assert anomaly_id == "generated-id"
+    assert session.add.call_count == 2
+    session.refresh.assert_awaited_once()

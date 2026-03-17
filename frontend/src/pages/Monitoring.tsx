@@ -565,6 +565,10 @@ const Monitoring: React.FC = () => {
         [key]:
           key === "heuristic_window_size" || key === "heuristic_min_samples"
             ? Math.max(1, Math.round(parsed))
+            : key === "sensor_freshness_seconds"
+            ? Math.max(1, parsed)
+            : key === "heuristic_zscore_threshold"
+            ? Math.max(0.1, parsed)
             : parsed,
       }));
     },
@@ -744,7 +748,7 @@ const Monitoring: React.FC = () => {
                             Sensor types
                           </Button>
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent className="w100">
+                        <DropdownMenuContent className="w-56">
                           <DropdownMenuLabel>Sensors</DropdownMenuLabel>
                           <DropdownMenuSeparator />
                           {monitoringKeys.map((key) => (
@@ -817,8 +821,8 @@ const Monitoring: React.FC = () => {
                       {(topicMode === "selected_sensors"
                         ? activeKeys.map((sensorType) => `charger/${chargerId}/live-telemetry/${sensorType}`)
                         : parseTopicPatterns(topicPatternInput)
-                      ).map((topic) => (
-                        <li key={topic} className="ml-2">
+                      ).map((topic, index) => (
+                        <li key={`${topic}-${index}`} className="ml-2">
                           {topic}
                         </li>
                       ))}

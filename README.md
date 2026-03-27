@@ -58,8 +58,8 @@ cp .env.ingress.example .env.ingress.local
 ```
 
 Fill required values in `.env.ingress.local`:
-- `INGRESS_TS_AUTHKEY`
 - `INGRESS_UPSTREAM_MQTT_HOST`
+- `INGRESS_TS_AUTHKEY` (required for first login, optional afterward when persisted state exists and `INGRESS_TS_AUTH_ONCE=true`)
 
 Run external ingress mode:
 

@@ -9,7 +9,8 @@ services:
     devices:
       - /dev/net/tun:/dev/net/tun
     environment:
-      - TS_AUTHKEY=${INGRESS_TS_AUTHKEY:?INGRESS_TS_AUTHKEY must be set}
+      - TS_AUTHKEY=${INGRESS_TS_AUTHKEY:-}
+      - TS_AUTH_ONCE=${INGRESS_TS_AUTH_ONCE:-true}
       - TS_EXTRA_ARGS=${INGRESS_TS_EXTRA_ARGS:-}
       - TS_STATE_DIR=/var/lib/tailscale
       - TS_USERSPACE=false

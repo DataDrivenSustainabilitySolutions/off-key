@@ -1,0 +1,58 @@
+services:
+  tailscale-client:
+    image: debian:trixie
+    container_name: tailscale-ambibox
+    restart: unless-stopped
+    volumes:
+      - ./data:/var/lib/tailscale
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    cap_add:
+      - net_admin
+      - sys_module
+    environment:
+      # See https://tailscale.com/blog/docker-tailscale-guide
+      - TS_AUTHKEY=${TS_AUTHKEY:?TS_AUTHKEY must be set}
+      - TS_EXTRA_ARGS=${TS_EXTRA_ARGS:---advertise-tags=tag:iao --accept-dns}
+      - TS_STATE_DIR=/var/lib/tailscale
+    stdin_open: true  # Keep stdin open for interactive session
+    tty: true  # Allocate a terminal
+    healthcheck:
+      test: ["CMD-SHELL", "tailscale status --json | grep -Eq '\"BackendState\"[[:space:]]*:[[:space:]]*\"Running\"'"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    entrypoint: >
+      /bin/bash -c "
+        set -euo pipefail
+        apt-get update
+        apt-get install -y openssh-server curl iproute2
+        curl -fsSL https://tailscale.com/install.sh -o /tmp/tailscale-install.sh
+        sh /tmp/tailscale-install.sh
+        rm -f /tmp/tailscale-install.sh
+        tailscaled &
+        for i in $$(seq 1 30); do
+          if tailscale up --authkey $$TS_AUTHKEY $$TS_EXTRA_ARGS; then
+            break
+          fi
+          if [ \"$$i\" -eq 30 ]; then
+            echo 'tailscale up failed after 30 attempts' >&2
+            exit 1
+          fi
+          sleep 1
+        done
+        service ssh start
+        tail -f /dev/null"
+
+  source-broker:
+    image: eclipse-mosquitto:2.0
+    container_name: source_broker_ambibox
+    depends_on:
+      tailscale-client:
+        condition: service_healthy
+    network_mode: "service:tailscale-client"
+    command: [ "mosquitto", "-c", "/mosquitto/config/mosquitto.conf" ]
+    volumes:
+      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+    restart: unless-stopped

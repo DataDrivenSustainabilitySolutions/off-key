@@ -138,6 +138,10 @@ celerybeat.pid
 
 # Environments
 #.env
+.env.ingress.local
+.env.ingress.*.local
+.env.ingress
+tailscale-ambibox/data/
 compose.env
 dev.env
 .venv

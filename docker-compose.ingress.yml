@@ -1,0 +1,99 @@
+services:
+  ingress-vpn:
+    image: tailscale/tailscale:v1.94.2
+    container_name: ingress_vpn
+    restart: unless-stopped
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    environment:
+      - TS_AUTHKEY=${INGRESS_TS_AUTHKEY:?INGRESS_TS_AUTHKEY must be set}
+      - TS_EXTRA_ARGS=${INGRESS_TS_EXTRA_ARGS:-}
+      - TS_STATE_DIR=/var/lib/tailscale
+      - TS_USERSPACE=false
+    volumes:
+      - ingress_tailscale_state:/var/lib/tailscale
+    networks:
+      app-network:
+        aliases:
+          - source-broker
+          - ingress-vpn
+    healthcheck:
+      test: ["CMD-SHELL", "tailscale status --json | grep -Eq '\"BackendState\"[[:space:]]*:[[:space:]]*\"Running\"'"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  source-broker:
+    depends_on:
+      ingress-vpn:
+        condition: service_healthy
+    network_mode: "service:ingress-vpn"
+    networks: !reset []
+    ports: !reset []
+    volumes: !reset []
+    restart: unless-stopped
+    environment:
+      - INGRESS_UPSTREAM_MQTT_HOST=${INGRESS_UPSTREAM_MQTT_HOST:?INGRESS_UPSTREAM_MQTT_HOST must be set}
+      - INGRESS_UPSTREAM_MQTT_PORT=${INGRESS_UPSTREAM_MQTT_PORT:-1883}
+      - INGRESS_UPSTREAM_MQTT_TOPICS=${INGRESS_UPSTREAM_MQTT_TOPICS:-#}
+      - INGRESS_UPSTREAM_USE_TLS=${INGRESS_UPSTREAM_USE_TLS:-false}
+      - INGRESS_UPSTREAM_TLS_INSECURE=${INGRESS_UPSTREAM_TLS_INSECURE:-false}
+      - INGRESS_UPSTREAM_USERNAME=${INGRESS_UPSTREAM_USERNAME:-}
+      - INGRESS_UPSTREAM_PASSWORD=${INGRESS_UPSTREAM_PASSWORD:-}
+    command:
+      - /bin/sh
+      - -ec
+      - |
+        : "$${INGRESS_UPSTREAM_MQTT_HOST:?INGRESS_UPSTREAM_MQTT_HOST is required}"
+        : "$${INGRESS_UPSTREAM_MQTT_PORT:=1883}"
+        : "$${INGRESS_UPSTREAM_MQTT_TOPICS:=#}"
+
+        {
+          echo "listener 1883 0.0.0.0"
+          echo "allow_anonymous true"
+          echo "persistence false"
+          echo "connection upstream-source"
+          echo "address $${INGRESS_UPSTREAM_MQTT_HOST}:$${INGRESS_UPSTREAM_MQTT_PORT}"
+          echo "cleansession true"
+          echo "try_private false"
+          echo "start_type automatic"
+          echo "notifications false"
+          echo "bridge_protocol_version mqttv311"
+          echo "restart_timeout 5 30"
+        } > /mosquitto/config/mosquitto-ingress.conf
+
+        if [ "$${INGRESS_UPSTREAM_USE_TLS:-false}" = "true" ]; then
+          {
+            echo "bridge_tls_use_os_certs true"
+            echo "bridge_tls_version tlsv1.2"
+          } >> /mosquitto/config/mosquitto-ingress.conf
+
+          if [ "$${INGRESS_UPSTREAM_TLS_INSECURE:-false}" = "true" ]; then
+            echo "bridge_insecure true" >> /mosquitto/config/mosquitto-ingress.conf
+          fi
+        fi
+
+        if [ -n "$${INGRESS_UPSTREAM_USERNAME:-}" ]; then
+          : "$${INGRESS_UPSTREAM_PASSWORD:?INGRESS_UPSTREAM_PASSWORD is required when username is set}"
+          echo "remote_username $${INGRESS_UPSTREAM_USERNAME}" >> /mosquitto/config/mosquitto-ingress.conf
+          echo "remote_password $${INGRESS_UPSTREAM_PASSWORD}" >> /mosquitto/config/mosquitto-ingress.conf
+        fi
+
+        OLD_IFS="$$IFS"
+        IFS=','
+        for TOPIC in $${INGRESS_UPSTREAM_MQTT_TOPICS}; do
+          TOPIC_TRIMMED="$$(echo "$${TOPIC}" | sed 's/^[[:space:]]*//;s/[[:space:]]*$$//')"
+          if [ -n "$${TOPIC_TRIMMED}" ]; then
+            echo "topic $${TOPIC_TRIMMED} in 0" >> /mosquitto/config/mosquitto-ingress.conf
+          fi
+        done
+        IFS="$$OLD_IFS"
+
+        exec mosquitto -c /mosquitto/config/mosquitto-ingress.conf
+
+volumes:
+  ingress_tailscale_state:

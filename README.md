@@ -40,16 +40,14 @@ If you want to start everything including simulator in one command:
 docker compose --profile mqtt-sim up -d --build
 ```
 
-### External ingress mode (VPN-bounded upstream MQTT pull)
+### External ingress mode (Swarm — Tailscale VPN + EMQX bridge)
 
-This mode integrates the ingress satellite into the main project via:
-- base file: `docker-compose.yml`
-- ingress overlay: `docker-compose.ingress.yml`
+Ingress is a Swarm-only overlay. It adds two services to the stack:
+- `tailscale-vpn` — Tailscale in userspace mode, exposes a SOCKS5 proxy on `:1055`
+- `mqtt-tailscale-bridge` — gost TCP forwarder: EMQX connects here on `:1883`, traffic is tunnelled through the Tailscale SOCKS5 proxy to the vendor broker using MagicDNS
 
-The ingress overlay:
-- starts `ingress-vpn` (Tailscale client) on `app-network`
-- overrides `source-broker` to run in the VPN namespace
-- configures Mosquitto bridge pull from provider-owned upstream broker
+No Linux capabilities are required. There is no intermediate Mosquitto broker.
+Auth, TLS, and topic subscriptions are configured in the EMQX bridge (Data Integration → Bridges), not in this compose file.
 
 Setup:
 
@@ -58,55 +56,53 @@ cp .env.ingress.example .env.ingress.local
 ```
 
 Fill required values in `.env.ingress.local`:
-- `INGRESS_UPSTREAM_MQTT_HOST`
-- `INGRESS_TS_AUTHKEY` (required for first login, optional afterward when persisted state exists and `INGRESS_TS_AUTH_ONCE=true`)
+- `INGRESS_UPSTREAM_MQTT_HOST` — `.ts.net` MagicDNS hostname of the vendor broker
+- `INGRESS_TS_AUTHKEY` — required for first login; optional after state is pre-seeded
 
-Run external ingress mode:
+Pre-flight on every backend node:
 
 ```bash
-docker compose --env-file .env --env-file .env.ingress.local \
-  -f docker-compose.yml -f docker-compose.ingress.yml up -d --build
+mkdir -p /opt/stacks/off-key/tailscale-ingress-state
+# Optionally copy tailscaled.state from a pre-authenticated installation:
+# scp tailscaled.state <node>:/opt/stacks/off-key/tailscale-ingress-state/
 ```
 
+Deploy:
+
+```bash
+docker stack deploy \
+  --env-file .env.ingress.local \
+  -c docker-compose.swarm.yml \
+  -c docker-compose.ingress.yml \
+  off-key
+```
+
+After deploy, create an EMQX MQTT bridge (EMQX dashboard → Data Integration → Bridges):
+- Server: `mqtt-tailscale-bridge:1883`
+- Set upstream credentials, TLS, and topic subscriptions there
+
 Notes:
-- local mock remains the default when ingress overlay is not used
-- `mqtt-simulator` stays profile-gated and does not run unless explicitly requested
-- TLS upstream mode is enabled with `INGRESS_UPSTREAM_USE_TLS=true`; set `INGRESS_UPSTREAM_TLS_INSECURE=true` only for non-production test endpoints with mismatched cert hostnames
+- local mock `source-broker` remains the default for local dev; ingress is Swarm-only
 - keep ingress secrets in local env files only; do not commit credentials
 
 ### External ingress smoke verification
 
-Automated smoke script:
+After deploy, verify the bridge is passing traffic:
 
 ```bash
-bash dev/utils/ingress_smoke_test.sh
-```
-
-Optional cleanup (stop/remove started containers after the script exits):
-
-```bash
-INGRESS_SMOKE_CLEANUP=1 bash dev/utils/ingress_smoke_test.sh
-```
-
-Optional manual sequence:
-
-1. Start ingress mode as above.
-2. Publish a test message to upstream through ingress namespace:
-
-```bash
-docker compose --env-file .env --env-file .env.ingress.local \
-  -f docker-compose.yml -f docker-compose.ingress.yml \
-  exec source-broker /bin/sh -ec \
-  'mosquitto_pub -h "$INGRESS_UPSTREAM_MQTT_HOST" -p "${INGRESS_UPSTREAM_MQTT_PORT:-1883}" \
-   -t "charger/charger-manual/live-telemetry/power" \
-   -m "{\"charger_id\":\"charger-manual\",\"telemetry_type\":\"power\",\"value\":42}"'
-```
-
-3. Verify it appears on internal EMQX:
-
-```bash
+# Subscribe to a charger topic via the internal EMQX node
 docker run --rm --network off-key_emqx-network eclipse-mosquitto:2.0 \
-  mosquitto_sub -h emqx-main -p 1883 -t "charger/charger-manual/live-telemetry/power" -C 1 -W 20
+  mosquitto_sub -h emqx-main -p 1883 -t "charger/+/live-telemetry/#" -C 1 -W 30
+```
+
+If the EMQX bridge is connected and the vendor device is publishing, a message should arrive within the timeout. If not, check:
+
+```bash
+# Tailscale status inside the VPN container
+docker exec $(docker ps -q -f name=off-key_tailscale-vpn) tailscale status
+
+# gost bridge logs
+docker service logs off-key_mqtt-tailscale-bridge
 ```
 
 ### EMQX two-node cluster mode

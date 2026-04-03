@@ -10,6 +10,8 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import Self
 
+from off_key_core.config.validation import validate_environment as _validate_environment
+
 from off_key_core.utils.mqtt_topics import (
     DEFAULT_TOPIC_REGEX,
     TopicMetadataExtractor,
@@ -446,12 +448,7 @@ class MQTTSettings(BaseSettings):
     @field_validator("ENVIRONMENT")
     @classmethod
     def validate_environment(cls, value: str) -> str:
-        normalized = value.strip().lower()
-        allowed = {"development", "test", "staging", "production"}
-        if normalized not in allowed:
-            allowed_text = ", ".join(sorted(allowed))
-            raise ValueError(f"ENVIRONMENT must be one of: {allowed_text}")
-        return normalized
+        return _validate_environment(value)
 
     @model_validator(mode="after")
     def validate_mqtt_security_posture(self) -> Self:

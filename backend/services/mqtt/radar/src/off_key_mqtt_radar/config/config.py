@@ -9,6 +9,8 @@ from typing import Any, Dict, List, Optional, Self
 from dotenv import load_dotenv
 from pathlib import Path
 
+from off_key_core.config.validation import validate_environment as _validate_environment
+
 SENSOR_KEY_STRATEGIES = {"full_hierarchy", "top_level", "leaf"}
 STRICT_ALIGNMENT_MODE = "strict_barrier"
 
@@ -322,12 +324,7 @@ class RadarSettings(BaseSettings):
     @field_validator("ENVIRONMENT")
     @classmethod
     def validate_environment(cls, value: str) -> str:
-        normalized = value.strip().lower()
-        allowed = {"development", "test", "staging", "production"}
-        if normalized not in allowed:
-            allowed_text = ", ".join(sorted(allowed))
-            raise ValueError(f"ENVIRONMENT must be one of: {allowed_text}")
-        return normalized
+        return _validate_environment(value)
 
     @model_validator(mode="after")
     def validate_mqtt_security_posture(self) -> Self:

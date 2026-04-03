@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException, Depends, Query, Request
 from typing import List, Dict, Optional, Any
 from pydantic import BaseModel, Field
 
+from off_key_core.schemas.radar import PerformanceConfig
 from ...models.registry import ModelRegistryService
 from ...services.orchestration.radar import (
     RadarOrchestrationService,
@@ -10,39 +11,6 @@ from ...provider import (
     get_model_registry_service,
     get_radar_orchestration_service,
 )
-
-router = APIRouter()
-
-
-class PerformanceConfig(BaseModel):
-    heuristic_enabled: Optional[bool] = Field(
-        default=None, description="Enable trailing-reference tail trigger"
-    )
-    heuristic_window_size: Optional[int] = Field(
-        default=None, ge=3, description="Reference score window size"
-    )
-    heuristic_min_samples: Optional[int] = Field(
-        default=None, ge=2, description="Minimum reference samples before triggering"
-    )
-    heuristic_tail_alpha: Optional[float] = Field(
-        default=None,
-        gt=0.0,
-        lt=1.0,
-        description="Upper-tail probability threshold for anomaly trigger",
-    )
-    alignment_mode: Optional[str] = Field(
-        default=None,
-        description="Alignment mode (strict_barrier)",
-    )
-    sensor_key_strategy: Optional[str] = Field(
-        default=None,
-        description="Sensor key extraction strategy (full_hierarchy|top_level|leaf)",
-    )
-    sensor_freshness_seconds: Optional[float] = Field(
-        default=None,
-        gt=0.0,
-        description="Maximum age for aligned sensor values in multivariate mode",
-    )
 
 
 class RadarConfig(BaseModel):

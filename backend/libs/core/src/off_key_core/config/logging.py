@@ -4,9 +4,10 @@ from typing import Self
 from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from off_key_core.config.validation import validate_environment as _validate_environment
+
 _ALLOWED_LOG_LEVELS = frozenset({"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"})
 _ALLOWED_LOG_FORMATS = frozenset({"simple", "json"})
-_ALLOWED_ENVIRONMENTS = frozenset({"development", "test", "staging", "production"})
 
 
 class LoggingSettings(BaseSettings):
@@ -46,11 +47,7 @@ class LoggingSettings(BaseSettings):
     @field_validator("ENVIRONMENT")
     @classmethod
     def validate_environment(cls, value: str) -> str:
-        normalized = value.strip().lower()
-        if normalized not in _ALLOWED_ENVIRONMENTS:
-            allowed = ", ".join(sorted(_ALLOWED_ENVIRONMENTS))
-            raise ValueError(f"ENVIRONMENT must be one of: {allowed}")
-        return normalized
+        return _validate_environment(value)
 
     @field_validator("LOG_CORRELATION_HEADER")
     @classmethod

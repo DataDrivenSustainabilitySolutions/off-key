@@ -4,6 +4,27 @@ from typing import Any, Callable, Iterable
 
 from pydantic import ValidationError
 
+ALLOWED_ENVIRONMENTS: frozenset[str] = frozenset(
+    {"development", "test", "staging", "production"}
+)
+
+
+def validate_environment(value: str) -> str:
+    """Normalise and validate an ENVIRONMENT setting value.
+
+    Intended for use inside Pydantic @field_validator methods:
+
+        @field_validator("ENVIRONMENT")
+        @classmethod
+        def validate_environment(cls, value: str) -> str:
+            return _validate_environment(value)
+    """
+    normalized = value.strip().lower()
+    if normalized not in ALLOWED_ENVIRONMENTS:
+        allowed = ", ".join(sorted(ALLOWED_ENVIRONMENTS))
+        raise ValueError(f"ENVIRONMENT must be one of: {allowed}")
+    return normalized
+
 
 def _format_validation_error(error: ValidationError) -> list[str]:
     lines: list[str] = []

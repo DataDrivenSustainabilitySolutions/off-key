@@ -11,6 +11,7 @@ from enum import Enum
 from functools import lru_cache
 
 from off_key_core.config.database import build_postgres_database_url
+from off_key_core.config.validation import validate_environment as _validate_environment
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -372,12 +373,7 @@ class TacticSettings(BaseSettings):
     @field_validator("ENVIRONMENT")
     @classmethod
     def validate_environment(cls, value: str) -> str:
-        normalized = value.strip().lower()
-        allowed = {"development", "test", "staging", "production"}
-        if normalized not in allowed:
-            allowed_text = ", ".join(sorted(allowed))
-            raise ValueError(f"ENVIRONMENT must be one of: {allowed_text}")
-        return normalized
+        return _validate_environment(value)
 
     @staticmethod
     def _normalize_lifecycle_policy(raw_value: str) -> RadarWorkloadLifecycle:
@@ -488,12 +484,7 @@ class RadarContainerRuntimeSettings(BaseSettings):
     @field_validator("ENVIRONMENT")
     @classmethod
     def validate_environment(cls, value: str) -> str:
-        normalized = value.strip().lower()
-        allowed = {"development", "test", "staging", "production"}
-        if normalized not in allowed:
-            allowed_text = ", ".join(sorted(allowed))
-            raise ValueError(f"ENVIRONMENT must be one of: {allowed_text}")
-        return normalized
+        return _validate_environment(value)
 
     @property
     def radar_database_url(self) -> str:

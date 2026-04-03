@@ -2,6 +2,7 @@
 
 from .anomalies import AnomalyCreate
 from .favorites import FavoriteCreate
+from .radar import PerformanceConfig
 from .user import (
     ForgotPasswordRequest,
     ResetPasswordRequest,
@@ -15,6 +16,8 @@ __all__ = [
     "AnomalyCreate",
     # Favorite schemas
     "FavoriteCreate",
+    # Radar schemas
+    "PerformanceConfig",
     # User schemas
     "UserCreate",
     "UserLogin",

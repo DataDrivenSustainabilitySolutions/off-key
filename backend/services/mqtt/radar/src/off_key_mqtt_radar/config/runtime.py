@@ -1,10 +1,9 @@
 from functools import lru_cache
 
 from off_key_core.config.database import build_postgres_database_url
+from off_key_core.config.validation import validate_environment as _validate_environment
 from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
-
-_VALID_ENVIRONMENTS = frozenset({"development", "test", "staging", "production"})
 
 
 class RadarDatabaseSettings(BaseSettings):
@@ -177,11 +176,7 @@ class RadarCheckpointSettings(BaseSettings):
     @field_validator("ENVIRONMENT")
     @classmethod
     def validate_environment(cls, value: str) -> str:
-        normalized = value.strip().lower()
-        if normalized not in _VALID_ENVIRONMENTS:
-            allowed = ", ".join(sorted(_VALID_ENVIRONMENTS))
-            raise ValueError(f"ENVIRONMENT must be one of: {allowed}")
-        return normalized
+        return _validate_environment(value)
 
     @model_validator(mode="after")
     def validate_checkpoint_secret_for_environment(self) -> "RadarCheckpointSettings":
@@ -208,11 +203,7 @@ class RadarRuntimeFileSettings(BaseSettings):
     @field_validator("ENVIRONMENT")
     @classmethod
     def validate_environment(cls, value: str) -> str:
-        normalized = value.strip().lower()
-        if normalized not in _VALID_ENVIRONMENTS:
-            allowed = ", ".join(sorted(_VALID_ENVIRONMENTS))
-            raise ValueError(f"ENVIRONMENT must be one of: {allowed}")
-        return normalized
+        return _validate_environment(value)
 
 
 # Cache secret-bearing DB settings once; tests reset this cache when mutating env.

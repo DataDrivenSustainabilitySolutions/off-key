@@ -51,6 +51,7 @@ class SyncService:
             async with get_async_engine().begin() as conn:
                 await conn.execute(text("CREATE EXTENSION IF NOT EXISTS pgcrypto"))
                 await self._migrate_anomaly_identity(conn)
+                await self._migrate_anomaly_value_type(conn)
                 await self._migrate_model_registry_family(conn)
                 await conn.run_sync(Base.metadata.create_all)
 
@@ -420,6 +421,69 @@ class SyncService:
         )
 
         await self._ensure_anomaly_identity_trigger(conn)
+
+    async def _migrate_anomaly_value_type(self, conn) -> None:
+        """
+        Add value_type column to anomalies and backfill existing rows.
+
+        Rows written by the tail-probability detector (anomaly_type starting with
+        'ml_tailprob_') store a p-value in anomaly_value (0–1, lower = more anomalous).
+        All other rows stored a z-score and are marked 'zscore' for the frontend to
+        render them correctly.
+        """
+        anomalies_exists = await conn.scalar(
+            text("SELECT to_regclass('public.anomalies') IS NOT NULL")
+        )
+        if not anomalies_exists:
+            return
+
+        column_exists = await conn.scalar(
+            text(
+                """
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM information_schema.columns
+                    WHERE table_schema = 'public'
+                      AND table_name = 'anomalies'
+                      AND column_name = 'value_type'
+                )
+                """
+            )
+        )
+        if not column_exists:
+            logger.info(
+                "Adding anomalies.value_type column", extra=self._log_context
+            )
+            await conn.execute(
+                text("ALTER TABLE anomalies ADD COLUMN value_type TEXT")
+            )
+
+        await conn.execute(
+            text(
+                """
+                UPDATE anomalies
+                SET value_type = 'tail_pvalue'
+                WHERE anomaly_type IN (
+                    'ml_tailprob_multivariate',
+                    'ml_tailprob_univariate'
+                )
+                  AND value_type IS NULL
+                """
+            )
+        )
+        await conn.execute(
+            text(
+                """
+                UPDATE anomalies
+                SET value_type = 'zscore'
+                WHERE anomaly_type NOT IN (
+                    'ml_tailprob_multivariate',
+                    'ml_tailprob_univariate'
+                )
+                  AND value_type IS NULL
+                """
+            )
+        )
 
     async def _ensure_anomaly_identity_trigger(self, conn) -> None:
         """

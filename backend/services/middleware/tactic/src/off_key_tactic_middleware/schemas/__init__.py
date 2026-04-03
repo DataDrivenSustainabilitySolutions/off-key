@@ -168,6 +168,7 @@ class AnomalyResponse(BaseModel):
     telemetry_type: str
     anomaly_type: str
     anomaly_value: float
+    value_type: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -181,6 +182,7 @@ class AnomalyCreateRequest(BaseModel):
     telemetry_type: str
     anomaly_type: str
     anomaly_value: float
+    value_type: Optional[str] = None
 
 
 # =============================================================================

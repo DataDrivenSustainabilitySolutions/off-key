@@ -66,6 +66,10 @@ export interface Anomaly {
   telemetry_type: string;
   anomaly_type: string;
   anomaly_value: number;
+  // 'tail_pvalue': anomaly_value is a tail probability (0–1, lower = more severe).
+  // 'zscore': anomaly_value is a z-score (legacy rows, higher = more severe).
+  // null: predates this field.
+  value_type: 'tail_pvalue' | 'zscore' | null;
 }
 
 // Status filter options

@@ -13,6 +13,7 @@ export interface Anomaly {
   telemetry_type: string;
   anomaly_type: string;
   anomaly_value: number;
+  value_type: 'tail_pvalue' | 'zscore' | null;
 }
 
 export interface TelemetryPoint {

@@ -196,6 +196,10 @@ class Anomaly(Base):
     telemetry_type = Column(Text, nullable=False, index=True)
     anomaly_type = Column(Text, nullable=False, index=True)
     anomaly_value = Column(Float, nullable=False, index=True)
+    # 'tail_pvalue' for rows written by the tail-probability detector (commit 19+).
+    # 'zscore' for legacy rows written by the z-score heuristic.
+    # NULL for rows predating this column.
+    value_type = Column(Text, nullable=True)
 
     __table_args__ = (
         PrimaryKeyConstraint(

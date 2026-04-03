@@ -328,6 +328,7 @@ class DatabaseWriter:
                                 "telemetry_type": self._derive_telemetry_type(result),
                                 "anomaly_type": self._derive_anomaly_type(result),
                                 "anomaly_value": self._derive_anomaly_value(result),
+                                "value_type": "tail_pvalue",
                             }
                         )
                     identity_records = [

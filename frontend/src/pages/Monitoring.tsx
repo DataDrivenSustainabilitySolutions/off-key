@@ -62,6 +62,7 @@ interface Anomaly {
   telemetry_type: string;
   anomaly_type: string;
   anomaly_value: number;
+  value_type: 'tail_pvalue' | 'zscore' | null;
 }
 
 type SensorKeyStrategy = "full_hierarchy" | "top_level" | "leaf";
@@ -355,13 +356,19 @@ const AnomaliesSection: React.FC<{
                       </TableCell>
                       <TableCell>{anomaly.anomaly_type}</TableCell>
                       <TableCell>
-                        <span
-                          className={`px-2 py-1 rounded-full text-xs font-medium ${getAnomalyTailProbabilityClassName(
-                            anomaly.anomaly_value
-                          )}`}
-                        >
-                          {formatAnomalyTailProbability(anomaly.anomaly_value)}
-                        </span>
+                        {anomaly.value_type === 'tail_pvalue' ? (
+                          <span
+                            className={`px-2 py-1 rounded-full text-xs font-medium ${getAnomalyTailProbabilityClassName(
+                              anomaly.anomaly_value
+                            )}`}
+                          >
+                            {formatAnomalyTailProbability(anomaly.anomaly_value)}
+                          </span>
+                        ) : (
+                          <span className="px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400">
+                            {anomaly.anomaly_value.toFixed(2)} (legacy)
+                          </span>
+                        )}
                       </TableCell>
                     </TableRow>
                   ))}

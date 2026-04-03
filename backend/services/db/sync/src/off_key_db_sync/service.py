@@ -521,14 +521,7 @@ class SyncService:
         await conn.execute(
             text(
                 """
-                DROP TRIGGER IF EXISTS trg_anomaly_identity_sync ON anomalies;
-                """
-            )
-        )
-        await conn.execute(
-            text(
-                """
-                CREATE TRIGGER trg_anomaly_identity_sync
+                CREATE OR REPLACE TRIGGER trg_anomaly_identity_sync
                 AFTER INSERT ON anomalies
                 FOR EACH ROW
                 EXECUTE FUNCTION off_key_sync_anomaly_identity();

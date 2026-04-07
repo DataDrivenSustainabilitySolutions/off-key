@@ -54,12 +54,17 @@ class AnomalyService:
         return await self._repository.count_since(since=since)
 
     async def create_anomaly(self, *, payload: AnomalyCreateRequest) -> dict[str, str]:
+        resolved_value_type = self._resolve_value_type(
+            anomaly_type=payload.anomaly_type,
+            value_type=payload.value_type,
+        )
         anomaly = Anomaly(
             charger_id=payload.charger_id,
             timestamp=payload.timestamp,
             telemetry_type=payload.telemetry_type,
             anomaly_type=payload.anomaly_type,
             anomaly_value=payload.anomaly_value,
+            value_type=resolved_value_type,
         )
 
         try:
@@ -77,6 +82,14 @@ class AnomalyService:
             f"Type: {payload.anomaly_type} | Value: {payload.anomaly_value}"
         )
         return {"message": "Anomaly created", "anomaly_id": str(created_anomaly_id)}
+
+    @staticmethod
+    def _resolve_value_type(*, anomaly_type: str, value_type: Optional[str]) -> str:
+        if value_type is not None:
+            return value_type
+        if anomaly_type.lower().startswith("ml_tailprob_"):
+            return "tail_pvalue"
+        return "zscore"
 
     async def delete_anomaly(
         self,

@@ -95,12 +95,73 @@ async def test_retry_batch_persists_value_type(monkeypatch):
 
     session_factory = MagicMock(return_value=session_cm)
     writer = DatabaseWriter(config, session_factory=session_factory)
-    writer.write_queue = [
+    batch_snapshot = [
         _build_result(aligned_vector=False, tail_pvalue=0.0042, anomaly_score=0.02)
     ]
 
-    await writer._retry_failed_batch()
+    await writer._retry_failed_batch(batch_snapshot=batch_snapshot)
 
     first_insert_stmt = session.execute.await_args_list[0].args[0]
     first_row = first_insert_stmt._multi_values[0][0]
     assert first_row["value_type"] == "tail_pvalue"
+
+
+@pytest.mark.asyncio
+async def test_retry_batch_logs_exhaustion_and_increments_errors(monkeypatch, caplog):
+    config = MagicMock()
+    config.db_batch_size = 100
+    config.db_batch_timeout = 1.0
+    config.db_write_enabled = True
+
+    sleep_mock = AsyncMock()
+    monkeypatch.setattr("off_key_mqtt_radar.database.asyncio.sleep", sleep_mock)
+
+    session = AsyncMock()
+    session.execute = AsyncMock(side_effect=RuntimeError("db down"))
+    session.commit = AsyncMock()
+
+    session_cm = AsyncMock()
+    session_cm.__aenter__.return_value = session
+    session_cm.__aexit__.return_value = None
+
+    writer = DatabaseWriter(config, session_factory=MagicMock(return_value=session_cm))
+    retry_batch = [
+        _build_result(aligned_vector=False, tail_pvalue=0.001, anomaly_score=0.02)
+    ]
+
+    with caplog.at_level("ERROR"):
+        await writer._retry_failed_batch(batch_snapshot=retry_batch)
+
+    assert writer.total_errors == 1
+    assert writer.total_written == 0
+    assert any(
+        "event=radar.db_retry_exhausted" in rec.message for rec in caplog.records
+    )
+
+
+@pytest.mark.asyncio
+async def test_flush_batch_requeues_snapshot_on_unexpected_retry_exception():
+    config = MagicMock()
+    config.db_batch_size = 100
+    config.db_batch_timeout = 1.0
+    config.db_write_enabled = True
+
+    session = AsyncMock()
+    session.execute = AsyncMock()
+    session.commit = AsyncMock()
+
+    session_cm = AsyncMock()
+    session_cm.__aenter__.return_value = session
+    session_cm.__aexit__.return_value = None
+
+    writer = DatabaseWriter(config, session_factory=MagicMock(return_value=session_cm))
+    anomaly = _build_result(aligned_vector=False, tail_pvalue=0.002, anomaly_score=0.02)
+    writer.write_queue = [anomaly]
+
+    writer._execute_upsert = AsyncMock(side_effect=RuntimeError("flush failed"))
+    writer._retry_failed_batch = AsyncMock(side_effect=RuntimeError("retry crashed"))
+
+    await writer._flush_batch()
+
+    assert writer.write_queue == [anomaly]
+    assert writer.total_errors == 2

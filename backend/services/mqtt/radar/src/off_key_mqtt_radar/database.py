@@ -14,7 +14,7 @@ import time
 import logging
 import math
 from datetime import datetime
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Tuple
 from collections import deque
 
 from sqlalchemy import Table, Column, Text, Float, TIMESTAMP, text
@@ -305,57 +305,81 @@ class DatabaseWriter:
                 return tail_pvalue
         return float(result.anomaly_score)
 
+    def _build_records(
+        self,
+        results: List[AnomalyResult],
+    ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+        anomaly_records = []
+        for result in results:
+            anomaly_records.append(
+                {
+                    "charger_id": result.charger_id or "unknown",
+                    "timestamp": result.timestamp,
+                    "telemetry_type": self._derive_telemetry_type(result),
+                    "anomaly_type": self._derive_anomaly_type(result),
+                    "anomaly_value": self._derive_anomaly_value(result),
+                    "value_type": "tail_pvalue",
+                }
+            )
+        identity_records = [
+            {
+                "charger_id": record["charger_id"],
+                "timestamp": record["timestamp"],
+                "telemetry_type": record["telemetry_type"],
+            }
+            for record in anomaly_records
+        ]
+        return anomaly_records, identity_records
+
+    async def _execute_upsert(
+        self,
+        session: AsyncSession,
+        anomaly_records: List[Dict[str, Any]],
+        identity_records: List[Dict[str, Any]],
+    ) -> None:
+        if not anomaly_records:
+            return
+
+        # Use INSERT ... ON CONFLICT DO NOTHING for idempotency
+        # (composite PK: charger_id, timestamp, telemetry_type)
+        stmt = pg_insert(ANOMALY_TABLE).values(anomaly_records)
+        stmt = stmt.on_conflict_do_nothing(
+            index_elements=["charger_id", "timestamp", "telemetry_type"]
+        )
+        await session.execute(stmt)
+
+        identity_stmt = pg_insert(ANOMALY_IDENTITY_TABLE).values(identity_records)
+        identity_stmt = identity_stmt.on_conflict_do_nothing(
+            index_elements=["charger_id", "timestamp", "telemetry_type"]
+        )
+        await session.execute(identity_stmt)
+
     async def _flush_batch(self):
         """Flush current batch to core anomalies table"""
         if not self.write_queue:
             return
 
+        if self.session_factory is None:
+            self.session_factory = get_radar_async_session_factory()
+
+        batch_snapshot = list(self.write_queue)
+        del self.write_queue[: len(batch_snapshot)]
+
         # Only write actual anomalies (is_anomaly=True)
-        anomalies_to_write = [r for r in self.write_queue if r.is_anomaly]
-        batch_size = len(self.write_queue)
+        anomalies_to_write = [r for r in batch_snapshot if r.is_anomaly]
+        batch_size = len(batch_snapshot)
         anomaly_count = len(anomalies_to_write)
         start_time = time.time()
 
         try:
             if anomalies_to_write:
+                anomaly_records, identity_records = self._build_records(
+                    anomalies_to_write
+                )
                 async with self.session_factory() as session:
-                    # Convert results to core Anomaly records
-                    anomaly_records = []
-                    for result in anomalies_to_write:
-                        anomaly_records.append(
-                            {
-                                "charger_id": result.charger_id or "unknown",
-                                "timestamp": result.timestamp,
-                                "telemetry_type": self._derive_telemetry_type(result),
-                                "anomaly_type": self._derive_anomaly_type(result),
-                                "anomaly_value": self._derive_anomaly_value(result),
-                                "value_type": "tail_pvalue",
-                            }
-                        )
-                    identity_records = [
-                        {
-                            "charger_id": record["charger_id"],
-                            "timestamp": record["timestamp"],
-                            "telemetry_type": record["telemetry_type"],
-                        }
-                        for record in anomaly_records
-                    ]
-
-                    # Use INSERT ... ON CONFLICT DO NOTHING for idempotency
-                    # (composite PK: charger_id, timestamp, telemetry_type)
-                    stmt = pg_insert(ANOMALY_TABLE).values(anomaly_records)
-                    stmt = stmt.on_conflict_do_nothing(
-                        index_elements=["charger_id", "timestamp", "telemetry_type"]
+                    await self._execute_upsert(
+                        session, anomaly_records, identity_records
                     )
-                    await session.execute(stmt)
-
-                    identity_stmt = pg_insert(ANOMALY_IDENTITY_TABLE).values(
-                        identity_records
-                    )
-                    identity_stmt = identity_stmt.on_conflict_do_nothing(
-                        index_elements=["charger_id", "timestamp", "telemetry_type"]
-                    )
-                    await session.execute(identity_stmt)
                     await session.commit()
 
                     logger.info(
@@ -375,9 +399,6 @@ class DatabaseWriter:
             self.total_written += anomaly_count
             self.last_write_time = time.time()
 
-            # Clear the queue
-            self.write_queue.clear()
-
         except Exception as e:
             logger.error(
                 "event=radar.db_batch_write_failed anomaly_count=%s error=%s",
@@ -388,9 +409,20 @@ class DatabaseWriter:
             self.total_errors += 1
 
             # Implement retry logic
-            await self._retry_failed_batch()
+            try:
+                await self._retry_failed_batch(batch_snapshot=batch_snapshot)
+            except Exception as retry_exc:
+                self.write_queue = batch_snapshot + self.write_queue
+                self.total_errors += 1
+                logger.error(
+                    "event=radar.db_retry_unexpected_exception "
+                    "requeued_count=%s error=%s",
+                    len(batch_snapshot),
+                    str(retry_exc),
+                    exc_info=True,
+                )
 
-    async def _retry_failed_batch(self):
+    async def _retry_failed_batch(self, *, batch_snapshot: List[AnomalyResult]):
         """Retry writing failed batch with exponential backoff.
 
         Processes anomalies in chunks of 10, retrying each chunk up to
@@ -399,9 +431,11 @@ class DatabaseWriter:
         max_retries = 3
         base_delay = 1.0
 
+        if self.session_factory is None:
+            self.session_factory = get_radar_async_session_factory()
+
         # Only retry actual anomalies
-        anomalies_to_retry = [r for r in self.write_queue if r.is_anomaly]
-        self.write_queue.clear()  # Clear queue immediately to prevent double processing
+        anomalies_to_retry = [r for r in batch_snapshot if r.is_anomaly]
 
         if not anomalies_to_retry:
             return
@@ -411,55 +445,22 @@ class DatabaseWriter:
             retry_batch = anomalies_to_retry[:10]
             retry_delay = base_delay
             success = False
+            anomaly_records, identity_records = self._build_records(retry_batch)
 
             for attempt in range(max_retries):
                 try:
                     await asyncio.sleep(retry_delay)
 
                     async with self.session_factory() as session:
-                        anomaly_records = []
-                        for result in retry_batch:
-                            anomaly_records.append(
-                                {
-                                    "charger_id": result.charger_id or "unknown",
-                                    "timestamp": result.timestamp,
-                                    "telemetry_type": self._derive_telemetry_type(
-                                        result
-                                    ),
-                                    "anomaly_type": self._derive_anomaly_type(result),
-                                    "anomaly_value": self._derive_anomaly_value(result),
-                                    "value_type": "tail_pvalue",
-                                }
-                            )
-                        identity_records = [
-                            {
-                                "charger_id": record["charger_id"],
-                                "timestamp": record["timestamp"],
-                                "telemetry_type": record["telemetry_type"],
-                            }
-                            for record in anomaly_records
-                        ]
-
-                        stmt = pg_insert(ANOMALY_TABLE).values(anomaly_records)
-                        stmt = stmt.on_conflict_do_nothing(
-                            index_elements=["charger_id", "timestamp", "telemetry_type"]
+                        await self._execute_upsert(
+                            session,
+                            anomaly_records,
+                            identity_records,
                         )
-                        await session.execute(stmt)
-
-                        identity_stmt = pg_insert(ANOMALY_IDENTITY_TABLE).values(
-                            identity_records
-                        )
-                        identity_stmt = identity_stmt.on_conflict_do_nothing(
-                            index_elements=[
-                                "charger_id",
-                                "timestamp",
-                                "telemetry_type",
-                            ]
-                        )
-                        await session.execute(identity_stmt)
                         await session.commit()
 
                         self.total_written += len(retry_batch)
+                        self.last_write_time = time.time()
                         logger.info(
                             "event=radar.db_retry_batch_written count=%s",
                             len(retry_batch),

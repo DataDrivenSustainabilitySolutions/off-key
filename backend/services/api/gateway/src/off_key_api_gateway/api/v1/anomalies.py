@@ -17,6 +17,7 @@ class AnomalyCreatePayload(BaseModel):
     telemetry_type: str
     anomaly_type: str
     anomaly_value: float
+    value_type: Optional[str] = None
 
 
 def _get_tactic_error_detail(error: TacticError) -> str:
@@ -67,6 +68,7 @@ async def create_anomaly(
     telemetry_type: str | None = None,
     anomaly_type: str | None = None,
     anomaly_value: float | None = None,
+    value_type: str | None = None,
 ):
     if payload is None:
         if (
@@ -89,6 +91,7 @@ async def create_anomaly(
             telemetry_type=telemetry_type,
             anomaly_type=anomaly_type,
             anomaly_value=anomaly_value,
+            value_type=value_type,
         )
 
     anomaly_data = {
@@ -97,6 +100,7 @@ async def create_anomaly(
         "telemetry_type": payload.telemetry_type,
         "anomaly_type": payload.anomaly_type,
         "anomaly_value": payload.anomaly_value,
+        "value_type": payload.value_type,
     }
 
     try:

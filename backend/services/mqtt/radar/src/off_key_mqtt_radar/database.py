@@ -47,6 +47,7 @@ ANOMALY_TABLE = Table(
     Column("telemetry_type", Text, primary_key=True),
     Column("anomaly_type", Text, nullable=False),
     Column("anomaly_value", Float, nullable=False),
+    Column("value_type", Text, nullable=True),
 )
 ANOMALY_IDENTITY_TABLE = Table(
     "anomaly_identity",
@@ -427,6 +428,7 @@ class DatabaseWriter:
                                     ),
                                     "anomaly_type": self._derive_anomaly_type(result),
                                     "anomaly_value": self._derive_anomaly_value(result),
+                                    "value_type": "tail_pvalue",
                                 }
                             )
                         identity_records = [

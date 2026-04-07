@@ -45,6 +45,7 @@ class AnomalyService:
                 "telemetry_type": anomaly.telemetry_type,
                 "anomaly_type": anomaly.anomaly_type,
                 "anomaly_value": anomaly.anomaly_value,
+                "value_type": anomaly.value_type,
             }
             for anomaly_id, anomaly in rows
         ]

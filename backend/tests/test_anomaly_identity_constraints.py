@@ -96,6 +96,41 @@ async def test_delete_anomaly_uses_identity_lookup_and_delete():
 
 
 @pytest.mark.asyncio
+async def test_list_anomalies_includes_value_type():
+    session = AsyncMock()
+    repository = MagicMock()
+    timestamp = datetime.now(timezone.utc)
+    anomaly = SimpleNamespace(
+        charger_id="charger-1",
+        timestamp=timestamp,
+        telemetry_type="voltage",
+        anomaly_type="ml_tailprob_univariate",
+        anomaly_value=0.0025,
+        value_type="tail_pvalue",
+    )
+    repository.list_by_charger = AsyncMock(return_value=[("anomaly-1", anomaly)])
+
+    service = AnomalyService(session, repository)
+    rows = await service.list_anomalies(
+        charger_id="charger-1",
+        telemetry_type=None,
+        limit=10,
+    )
+
+    assert rows == [
+        {
+            "anomaly_id": "anomaly-1",
+            "charger_id": "charger-1",
+            "timestamp": timestamp,
+            "telemetry_type": "voltage",
+            "anomaly_type": "ml_tailprob_univariate",
+            "anomaly_value": 0.0025,
+            "value_type": "tail_pvalue",
+        }
+    ]
+
+
+@pytest.mark.asyncio
 async def test_repository_add_reuses_trigger_created_identity():
     session = MagicMock()
     session.flush = AsyncMock()

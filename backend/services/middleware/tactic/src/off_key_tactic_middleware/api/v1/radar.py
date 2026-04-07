@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from typing import List, Dict, Optional, Any
 from pydantic import BaseModel, Field
 
@@ -11,6 +11,8 @@ from ...provider import (
     get_model_registry_service,
     get_radar_orchestration_service,
 )
+
+router = APIRouter()
 
 
 class RadarConfig(BaseModel):

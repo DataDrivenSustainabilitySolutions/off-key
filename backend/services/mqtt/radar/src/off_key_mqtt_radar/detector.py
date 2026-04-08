@@ -683,6 +683,7 @@ class AnomalyDetectionService:
         engine = getattr(self.model, "engine", None)
         if engine is None:
             return True
+        # engine.warm_upengine.window introduced in river 0.21 (KNNAnomalyDetector)
         try:
             warm_up = int(getattr(engine, "warm_up", 0))
         except (TypeError, ValueError):

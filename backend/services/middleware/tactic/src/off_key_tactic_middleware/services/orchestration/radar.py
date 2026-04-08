@@ -1,4 +1,5 @@
 import json
+import time
 import uuid
 from functools import lru_cache
 from datetime import datetime
@@ -20,6 +21,11 @@ from ...config.config import (
 
 MANAGED_BY_TACTIC_LABEL = "managed_by=tactic"
 RADAR_SERVICE_TYPE_LABEL = "service_type=radar"
+
+# Swarm manager status is stable over short windows: cache the result to avoid
+# a docker.info() round-trip on every RADAR service creation request.
+_SWARM_CACHE_TTL_SECONDS: float = 30.0
+_swarm_manager_cache: Optional[tuple[bool, float]] = None
 
 
 @lru_cache(maxsize=1)
@@ -361,15 +367,29 @@ class RadarOrchestrationService:
         return get_radar_container_runtime_settings().radar_database_url
 
     async def _is_swarm_manager(self) -> bool:
-        """Return True when Docker engine is an active Swarm manager."""
+        """Return True when Docker engine is an active Swarm manager.
+
+        Result is cached for _SWARM_CACHE_TTL_SECONDS so that burst RADAR
+        creation does not issue a docker.info() call per service. The TTL is
+        short enough to react to cluster topology changes within a reasonable
+        window without retaining stale state indefinitely.
+        """
+        global _swarm_manager_cache
+        now = time.monotonic()
+        if _swarm_manager_cache is not None:
+            cached_result, expiry = _swarm_manager_cache
+            if now < expiry:
+                return cached_result
         try:
             info = await self.async_docker.run(self.async_docker.client.info)
             swarm = info.get("Swarm", {})
             local_node_state = str(swarm.get("LocalNodeState", "")).lower()
-            return local_node_state == "active" and bool(swarm.get("ControlAvailable"))
+            result = local_node_state == "active" and bool(swarm.get("ControlAvailable"))
         except Exception as exc:
             logger.warning("Failed to detect Swarm mode; assuming non-Swarm: %s", exc)
-            return False
+            result = False
+        _swarm_manager_cache = (result, now + _SWARM_CACHE_TTL_SECONDS)
+        return result
 
     @staticmethod
     def _should_fallback_to_container(exc: Exception) -> bool:

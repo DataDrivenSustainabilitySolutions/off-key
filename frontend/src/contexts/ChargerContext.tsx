@@ -2,16 +2,9 @@ import React, { createContext, useState, useCallback, ReactNode, useContext } fr
 import { apiUtils } from "@/lib/api-client";
 import { API_CONFIG } from "@/lib/api-config";
 import { clientLogger } from "@/lib/logger";
+import { Charger, normalizeChargerLastSeen } from "@/types/charger";
 
-export interface Charger {
-  charger_name: string | null;
-  last_seen: string;
-  mqtt_last_message?: string | null;
-  online: boolean;
-  charger_id: string;
-  state: string;
-  created: string;
-}
+export type { Charger };
 
 export interface TelemetryData {
   charger_id: string;
@@ -71,10 +64,7 @@ export const ChargerProvider: React.FC<{ children: ReactNode }> = ({ children })
   const getAllChargers = useCallback(async (): Promise<Charger[]> => {
     const endpoint = API_CONFIG.ENDPOINTS.CHARGERS.AVAILABLE;
     const chargersData = await apiUtils.get<Charger[]>(endpoint);
-    const normalized = chargersData.map((charger) => ({
-      ...charger,
-      last_seen: charger.mqtt_last_message ?? charger.last_seen ?? "",
-    }));
+    const normalized = chargersData.map(normalizeChargerLastSeen);
     setChargers(normalized);
     return normalized;
   }, []);

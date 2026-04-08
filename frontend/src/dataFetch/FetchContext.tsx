@@ -2,6 +2,8 @@ import React, { createContext, useState, useCallback, ReactNode } from "react";
 import { apiUtils } from "@/lib/api-client";
 import { API_CONFIG } from "@/lib/api-config";
 import { clientLogger } from "@/lib/logger";
+import type { Anomaly } from "@/types/charger";
+import { normalizeChargerLastSeen } from "@/types/charger";
 
 // Interface CPU
 export interface Cpu {
@@ -46,15 +48,7 @@ export interface CombinedData {
   last_seen: string;
 }
 
-export interface Anomaly {
-  anomaly_id: string;
-  charger_id: string;
-  timestamp: string;
-  telemetry_type: string;
-  anomaly_type: string;
-  anomaly_value: number;
-  value_type: 'tail_pvalue' | 'zscore' | null;
-}
+export type { Anomaly };
 
 export interface FetchContextType {
   //Functions for direct use in Components
@@ -153,11 +147,7 @@ export const FetchProvider: React.FC<{ children: ReactNode }> = ({
     const resp = await apiUtils.get<Charger[]>(
       API_CONFIG.ENDPOINTS.CHARGERS.AVAILABLE
     );
-    return resp.map((charger) => ({
-      ...charger,
-      // Prefer live MQTT last-message timestamp when available.
-      last_seen: charger.mqtt_last_message ?? charger.last_seen ?? "",
-    }));
+    return resp.map(normalizeChargerLastSeen);
   }, []);
 
   const getFavorites = useCallback(

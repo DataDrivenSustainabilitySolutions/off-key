@@ -28,6 +28,7 @@ import {
   TelemetryTypeData,
   Anomaly,
   getTelemetryCategory,
+  normalizeChargerLastSeen,
 } from "@/types/charger";
 
 // Re-export types for backward compatibility
@@ -151,11 +152,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({
     const response = await apiUtils.get<Charger[]>(
       API_CONFIG.ENDPOINTS.CHARGERS.AVAILABLE
     );
-    const normalized = response.map((charger) => ({
-      ...charger,
-      // Prefer live MQTT timestamp for "last seen" freshness.
-      last_seen: charger.mqtt_last_message ?? charger.last_seen ?? "",
-    }));
+    const normalized = response.map(normalizeChargerLastSeen);
     setChargers(normalized);
     return normalized;
   }, []);

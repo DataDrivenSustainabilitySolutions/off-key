@@ -76,6 +76,20 @@ export interface Anomaly {
 export type StatusFilter = 'all' | 'online' | 'offline';
 
 /**
+ * Normalize charger last-seen timestamp.
+ *
+ * The API may return mqtt_last_message (live MQTT timestamp) alongside
+ * last_seen (DB write time). mqtt_last_message is fresher when present.
+ * Three contexts previously duplicated this inline; they all delegate here.
+ */
+export function normalizeChargerLastSeen(charger: Charger): Charger {
+  return {
+    ...charger,
+    last_seen: charger.mqtt_last_message ?? charger.last_seen ?? "",
+  };
+}
+
+/**
  * Helper function to categorize telemetry type
  */
 export function getTelemetryCategory(telemetryType: string): TelemetryCategory {

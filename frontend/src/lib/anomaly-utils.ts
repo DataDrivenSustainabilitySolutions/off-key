@@ -5,16 +5,9 @@
 
 import { groupTimestampsIntoRanges, findNearestTelemetryPoint, timestampsAreClose } from './time-utils';
 import { INTERVALS } from './constants';
+import type { Anomaly } from '@/types/charger';
 
-export interface Anomaly {
-  anomaly_id: string;
-  charger_id: string;
-  timestamp: string;
-  telemetry_type: string;
-  anomaly_type: string;
-  anomaly_value: number;
-  value_type: 'tail_pvalue' | 'zscore' | null;
-}
+export type { Anomaly };
 
 export interface TelemetryPoint {
   timestamp: string;

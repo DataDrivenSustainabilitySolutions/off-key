@@ -22,6 +22,7 @@ import {
   formatAnomalyTailProbability,
   getAnomalyTailProbabilityClassName,
 } from "@/lib/anomaly-semantics";
+import type { Anomaly } from "@/types/charger";
 
 // Helper function to parse numeric input, preventing NaN storage
 const parseNumericInput = (
@@ -54,15 +55,6 @@ interface ActiveService {
   status: boolean;
   docker_status?: string; // Actual Docker container status
   created_at?: string;
-}
-
-interface Anomaly {
-  charger_id: string;
-  timestamp: string;
-  telemetry_type: string;
-  anomaly_type: string;
-  anomaly_value: number;
-  value_type: 'tail_pvalue' | 'zscore' | null;
 }
 
 type SensorKeyStrategy = "full_hierarchy" | "top_level" | "leaf";

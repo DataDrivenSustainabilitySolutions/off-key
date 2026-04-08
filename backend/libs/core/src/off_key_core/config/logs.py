@@ -20,7 +20,7 @@ correlation_id: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
 )
 
 _SENSITIVE_KEY_PATTERN = re.compile(
-    r"(password|token|secret|api[_-]?key|authorization|cookie|session|email|user|ip)",
+    r"\b(password|token|secret|api[_-]?key|authorization|cookie|session|email|user|ip)\b",
     re.IGNORECASE,
 )
 _STANDARD_RECORD_FIELDS = set(logging.makeLogRecord({}).__dict__.keys())

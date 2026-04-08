@@ -678,7 +678,7 @@ class DatabaseWriter:
         if not charger_ids:
             return
 
-        now = datetime.now()
+        now = datetime.now(timezone.utc)
         rows = [
             {
                 "charger_id": charger_id,
@@ -707,7 +707,7 @@ class DatabaseWriter:
         if not charger_ids:
             return
 
-        now = datetime.now()
+        now = datetime.now(timezone.utc)
 
         # Build CASE expression to preserve per-charger timestamps
         # Use actual timestamp from charger_last_seen, fallback to current time

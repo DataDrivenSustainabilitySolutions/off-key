@@ -12,7 +12,7 @@ from sqlalchemy import select, delete
 from off_key_core.config.logs import logger
 from off_key_core.db.models import MonitoringService
 from ...models.registry import ModelRegistryService
-from ...facades.docker import AsyncDocker
+from ...facades.docker import AsyncDocker, get_workload_docker_status
 from ...config.config import (
     get_radar_container_runtime_settings,
     get_tactic_settings,
@@ -374,6 +374,13 @@ class RadarOrchestrationService:
     @staticmethod
     def _should_fallback_to_container(exc: Exception) -> bool:
         """Detect Swarm-only errors where local container fallback should be used."""
+        if isinstance(exc, docker.errors.APIError):
+            # 503: node is not a Swarm manager or Swarm mode is not active.
+            # 400/406: operation is only valid inside a Swarm context.
+            if exc.status_code in (400, 406, 503):
+                return True
+        # Secondary guard for Docker daemon versions that do not surface a
+        # machine-readable status code for Swarm-specific errors.
         text = str(exc).lower()
         indicators = (
             "cannot be used with services",
@@ -671,41 +678,8 @@ class RadarOrchestrationService:
             return False
 
     async def _get_docker_status(self, container_id: str) -> str:
-        """
-        Check actual Docker container status.
-
-        Args:
-            container_id: Docker service/container ID
-
-        Returns:
-            str: Status string - "running", "complete", "failed",
-                 "no_tasks", "not_found", or "error"
-        """
-        if not container_id:
-            return "no_container_id"
-
-        try:
-            try:
-                docker_service = await self.async_docker.run(
-                    self.async_docker.client.services.get, container_id
-                )
-                tasks = await self.async_docker.run(docker_service.tasks)
-                if tasks:
-                    # Get the most recent task
-                    latest = max(tasks, key=lambda t: t.get("CreatedAt", ""))
-                    return latest.get("Status", {}).get("State", "unknown")
-                return "no_tasks"
-            except docker.errors.NotFound:
-                docker_container = await self.async_docker.run(
-                    self.async_docker.client.containers.get, container_id
-                )
-                await self.async_docker.run(docker_container.reload)
-                return docker_container.status or "unknown"
-        except docker.errors.NotFound:
-            return "not_found"
-        except Exception as e:
-            logger.error(f"Failed to get Docker status for {container_id}: {e}")
-            return "error"
+        """Check actual Docker workload status (Swarm service or container)."""
+        return await get_workload_docker_status(self.async_docker, container_id)
 
     async def list_radar_services(
         self, active_only: bool = False, include_docker_status: bool = False

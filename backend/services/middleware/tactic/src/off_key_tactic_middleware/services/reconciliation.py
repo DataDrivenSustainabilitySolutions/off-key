@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from off_key_core.config.logs import logger
 from off_key_core.db.models import MonitoringService
 from off_key_core.db.base import get_async_session_local
-from ..facades.docker import AsyncDocker
+from ..facades.docker import AsyncDocker, get_workload_docker_status
 
 
 class RadarStatusReconciliationService:
@@ -137,36 +137,5 @@ class RadarStatusReconciliationService:
             logger.info(f"Reconciliation complete: {updates} service(s) updated")
 
     async def _get_docker_status(self, container_id: str) -> str:
-        """Check Docker service status.
-
-        Args:
-            container_id: Docker service/container ID
-
-        Returns:
-            Status string: "running", "complete", "failed", "not_found", etc.
-        """
-        if not container_id:
-            return "no_container_id"
-
-        try:
-            try:
-                docker_service = await self.async_docker.run(
-                    self.async_docker.client.services.get, container_id
-                )
-                tasks = await self.async_docker.run(docker_service.tasks)
-                if tasks:
-                    # Get the most recent task
-                    latest = max(tasks, key=lambda t: t.get("CreatedAt", ""))
-                    return latest.get("Status", {}).get("State", "unknown")
-                return "no_tasks"
-            except docker.errors.NotFound:
-                docker_container = await self.async_docker.run(
-                    self.async_docker.client.containers.get, container_id
-                )
-                await self.async_docker.run(docker_container.reload)
-                return docker_container.status or "unknown"
-        except docker.errors.NotFound:
-            return "not_found"
-        except Exception as e:
-            logger.debug(f"Error checking Docker status for {container_id}: {e}")
-            return "error"
+        """Check Docker workload status (Swarm service or container)."""
+        return await get_workload_docker_status(self.async_docker, container_id)

@@ -46,7 +46,51 @@ async def test_create_anomaly_returns_repository_identity_id():
     call_args = repository.add.await_args.args
     assert len(call_args) == 1
     assert call_args[0].charger_id == payload.charger_id
+    assert call_args[0].value_type == "zscore"
     session.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_create_anomaly_persists_explicit_value_type():
+    session = AsyncMock()
+    repository = MagicMock()
+    repository.add = AsyncMock(return_value="id-1")
+
+    service = AnomalyService(session, repository)
+    payload = AnomalyCreateRequest(
+        charger_id="charger-1",
+        timestamp=datetime.now(timezone.utc),
+        telemetry_type="voltage",
+        anomaly_type="ml_tailprob_univariate",
+        anomaly_value=0.0012,
+        value_type="tail_pvalue",
+    )
+
+    await service.create_anomaly(payload=payload)
+
+    persisted = repository.add.await_args.args[0]
+    assert persisted.value_type == "tail_pvalue"
+
+
+@pytest.mark.asyncio
+async def test_create_anomaly_defaults_tail_pvalue_for_ml_tailprob():
+    session = AsyncMock()
+    repository = MagicMock()
+    repository.add = AsyncMock(return_value="id-1")
+
+    service = AnomalyService(session, repository)
+    payload = AnomalyCreateRequest(
+        charger_id="charger-1",
+        timestamp=datetime.now(timezone.utc),
+        telemetry_type="voltage",
+        anomaly_type="ml_tailprob_multivariate",
+        anomaly_value=0.0023,
+    )
+
+    await service.create_anomaly(payload=payload)
+
+    persisted = repository.add.await_args.args[0]
+    assert persisted.value_type == "tail_pvalue"
 
 
 @pytest.mark.asyncio
@@ -93,6 +137,41 @@ async def test_delete_anomaly_uses_identity_lookup_and_delete():
     assert response == {"message": "Anomaly deleted"}
     repository.delete.assert_awaited_once_with(anomaly)
     session.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_list_anomalies_includes_value_type():
+    session = AsyncMock()
+    repository = MagicMock()
+    timestamp = datetime.now(timezone.utc)
+    anomaly = SimpleNamespace(
+        charger_id="charger-1",
+        timestamp=timestamp,
+        telemetry_type="voltage",
+        anomaly_type="ml_tailprob_univariate",
+        anomaly_value=0.0025,
+        value_type="tail_pvalue",
+    )
+    repository.list_by_charger = AsyncMock(return_value=[("anomaly-1", anomaly)])
+
+    service = AnomalyService(session, repository)
+    rows = await service.list_anomalies(
+        charger_id="charger-1",
+        telemetry_type=None,
+        limit=10,
+    )
+
+    assert rows == [
+        {
+            "anomaly_id": "anomaly-1",
+            "charger_id": "charger-1",
+            "timestamp": timestamp,
+            "telemetry_type": "voltage",
+            "anomaly_type": "ml_tailprob_univariate",
+            "anomaly_value": 0.0025,
+            "value_type": "tail_pvalue",
+        }
+    ]
 
 
 @pytest.mark.asyncio

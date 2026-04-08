@@ -451,12 +451,8 @@ class SyncService:
             )
         )
         if not column_exists:
-            logger.info(
-                "Adding anomalies.value_type column", extra=self._log_context
-            )
-            await conn.execute(
-                text("ALTER TABLE anomalies ADD COLUMN value_type TEXT")
-            )
+            logger.info("Adding anomalies.value_type column", extra=self._log_context)
+            await conn.execute(text("ALTER TABLE anomalies ADD COLUMN value_type TEXT"))
 
         await conn.execute(
             text(

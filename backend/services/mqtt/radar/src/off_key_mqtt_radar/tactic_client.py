@@ -63,7 +63,7 @@ class TacticModelClient:
         self._model_cache = {m["model_type"]: m for m in models}
         self._model_cache_expires_at = time.monotonic() + self._cache_ttl_seconds
         logger.info(
-            "Cached %s models from TACTIC (ttl=%ss)",
+            "event=radar.tactic_models_cached count=%s ttl_s=%s",
             len(models),
             self._cache_ttl_seconds,
         )
@@ -81,7 +81,7 @@ class TacticModelClient:
         self._preprocessor_cache = {p["model_type"]: p for p in preprocessors}
         self._preprocessor_cache_expires_at = time.monotonic() + self._cache_ttl_seconds
         logger.info(
-            "Cached %s preprocessors from TACTIC (ttl=%ss)",
+            "event=radar.tactic_preprocessors_cached count=%s ttl_s=%s",
             len(preprocessors),
             self._cache_ttl_seconds,
         )
@@ -121,13 +121,19 @@ class TacticModelClient:
                     else:
                         error_text = await response.text()
                         logger.error(
-                            f"TACTIC request failed: {response.status} - {error_text}"
+                            "event=radar.tactic_request_failed status=%s error=%s",
+                            response.status,
+                            error_text,
                         )
                         raise TacticModelError(
                             f"TACTIC request failed: {response.status} - {error_text}"
                         )
         except aiohttp.ClientError as e:
-            logger.error(f"TACTIC connection error: {e}")
+            logger.error(
+                "event=radar.tactic_connection_error error=%s",
+                str(e),
+                exc_info=True,
+            )
             raise TacticModelError(f"TACTIC connection error: {e}")
 
     async def get_available_models(self) -> List[Dict[str, Any]]:
@@ -248,7 +254,9 @@ class TacticModelClient:
 
         error_msg = "; ".join(errors) if errors else "unknown"
         logger.error(
-            f"Failed to import model '{model_type}' from any known path: {error_msg}"
+            "event=radar.model_import_paths_exhausted model_type=%s error=%s",
+            model_type,
+            error_msg,
         )
         raise ImportError(f"Cannot import model '{model_type}'. Tried: {import_paths}")
 
@@ -276,7 +284,11 @@ class TacticModelClient:
             from onad.utils.similar.faiss_engine import FaissSimilaritySearchEngine
             from onad.model.distance.knn import KNN
         except ImportError as e:
-            logger.error(f"Failed to import KNN dependencies: {e}")
+            logger.error(
+                "event=radar.knn_dependency_import_failed error=%s",
+                str(e),
+                exc_info=True,
+            )
             raise ImportError(
                 "Cannot import KNN model. Ensure onad is installed with FAISS support."
             ) from e

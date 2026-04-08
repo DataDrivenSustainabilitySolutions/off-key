@@ -8,6 +8,9 @@ formatters:
   detailed:
     format: '%(asctime)s - %(levelname)s - %(name)s - [CID: %(correlation_id)s] - %(message)s'
 
+  json:
+    (): 'off_key_core.config.logs.JsonFormatter'
+
   truncated:
     (): 'off_key_core.config.logs.TruncatingFormatter'
     base_format: '%(asctime)s - %(levelname)s - %(name)s - [CID: %(correlation_id)s] - %(message)s'
@@ -45,11 +48,6 @@ root:
 
 loggers:
   truncated:
-    level: ${SERVICE_LOG_LEVEL:${LOG_LEVEL:INFO}}
-    handlers: [console_truncated, file]
-    propagate: false
-
-  off_key_core.clients.pionix.response:
     level: ${SERVICE_LOG_LEVEL:${LOG_LEVEL:INFO}}
     handlers: [console_truncated, file]
     propagate: false

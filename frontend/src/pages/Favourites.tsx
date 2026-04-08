@@ -10,6 +10,8 @@ import {
 import { NavigationBar } from "@/components/NavigationBar";
 import { useFetch } from "@/dataFetch/UseFetch";
 import type { CombinedData } from "@/dataFetch/FetchContext";
+import { formatLastSeen } from "@/lib/time-utils";
+import { clientLogger } from "@/lib/logger";
 
 export default function ChargerTable() {
   // State variables for UI and data handling
@@ -87,7 +89,12 @@ export default function ChargerTable() {
     try {
       await toggleFavorite(chargerId, 1, isFavorite);
     } catch (err) {
-      console.error("Error saving favorite status:", err);
+      clientLogger.error({
+        event: "favorites.toggle_failed",
+        message: "Error saving favorite status",
+        error: err,
+        context: { chargerId, userId: 1, isFavorite },
+      });
       // Revert if API call fails
       setFavoriteChargerIds((prev) =>
         isFavorite ? [...prev, chargerId] : prev.filter((id) => id !== chargerId)
@@ -176,7 +183,7 @@ export default function ChargerTable() {
                       {card.online ? "active" : "offline"}
                     </span>
                   </p>
-                  <p>Last Seen: {new Date(card.last_seen).toLocaleString()}</p>
+                  <p>Last Seen: {formatLastSeen(card.last_seen)}</p>
                 </CardContent>
                 <CardFooter>
                   <Link
@@ -237,7 +244,7 @@ export default function ChargerTable() {
                       {c.online ? "active" : "offline"}
                     </span>
                   </TableCell>
-                  <TableCell>{new Date(c.last_seen).toLocaleString()}</TableCell>
+                  <TableCell>{formatLastSeen(c.last_seen)}</TableCell>
                   <TableCell>
                     <button
                       onClick={() => handleToggleFavorite(c.charger_id)}

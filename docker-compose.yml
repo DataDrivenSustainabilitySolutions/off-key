@@ -50,9 +50,15 @@ services:
       - socket-network
     restart: always
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 10s
-      retries: 5
+      test:
+        - "CMD"
+        - "/app/bin/python"
+        - "-c"
+        - "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=2)"
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
     command: ["uvicorn", "off_key_api_gateway.main:app",
               "--reload", "--reload-dir", "/app/lib/python3.12/site-packages/off_key_api_gateway",
               "--host", "", "--port", "8000"]
@@ -124,6 +130,8 @@ services:
     restart: always
     environment:
       - RADAR_DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@timescaledb:5432/${POSTGRES_DB}
+    profiles:
+      - standalone-radar
 
   mqtt-proxy:
     build:
@@ -140,6 +148,8 @@ services:
         condition: service_healthy
       emqx-main:
         condition: service_healthy
+      source-broker:
+        condition: service_started
     networks:
       - app-network
       - emqx-network
@@ -159,6 +169,27 @@ services:
       - MQTT_TELEMETRY_ENABLED=true
     volumes:
       - ./logs:/app/logs  # For log persistence
+
+  mqtt-simulator:
+    build:
+      context: ./backend/
+      args:
+        SERVICE_NAME: off-key-mqtt-simulator
+        SERVICE_ROOT: services/mqtt/simulator
+    image: "${MQTT_SIMULATOR_IMAGE:-off-key-mqtt-simulator:latest}"
+    container_name: mqtt_simulator
+    env_file: .env
+    command: [ "/app/bin/python", "-m", "off_key_mqtt_simulator" ]
+    depends_on:
+      source-broker:
+        condition: service_started
+      mqtt-proxy:
+        condition: service_healthy
+    networks:
+      - app-network
+    restart: unless-stopped
+    profiles:
+      - mqtt-sim
 
   db-sync:
     build:
@@ -283,27 +314,24 @@ services:
   emqx-main:
     image: emqx/emqx:5.8.7 # BSL license starting at 5.9!
     hostname: emqx-main
-    domainname: ddss.local
     environment:
-      - "EMQX_NODE_NAME=emqx@emqx-main.ddss.local"
+      # Local single-node default. See docker-compose.cluster.yml for two-node mode.
+      - "EMQX_NODE_NAME=emqx@emqx-main"
       - "EMQX_NODE__COOKIE=${EMQX_NODE_COOKIE:-off-key-emqx-cookie-change-me}"
       - "EMQX_CLUSTER__DISCOVERY_STRATEGY=static"
-      # Use stable service identities resolvable in compose and swarm networks.
-      - "EMQX_CLUSTER__STATIC__SEEDS=[emqx@emqx-main.ddss.local,emqx@emqx-worker.ddss.local]"
+      - "EMQX_CLUSTER__STATIC__SEEDS=[emqx@emqx-main]"
       # See https://github.com/emqx/emqx/issues/8627#issuecomment-2833234761
       # Only works on fresh boot (no data volume!)
-      - "EMQX_DASHBOARD__DEFAULT_USERNAME=ddss"
-      - "EMQX_DASHBOARD__DEFAULT_PASSWORD=xMdrOJtNxRA8ZwUtjAHq"
+      - "EMQX_DASHBOARD__DEFAULT_USERNAME=${EMQX_DASHBOARD_USERNAME:-admin}"
+      - "EMQX_DASHBOARD__DEFAULT_PASSWORD=${EMQX_DASHBOARD_PASSWORD:?EMQX_DASHBOARD_PASSWORD must be set}"
     healthcheck:
-      test: [ "CMD", "/opt/emqx/bin/emqx", "ctl", "status" ]
+      test: [ "CMD", "curl", "-fsS", "http://127.0.0.1:18083/status" ]
       interval: 5s
       timeout: 25s
       retries: 5
     networks:
-      emqx-network:
-        aliases:
-          - emqx-main.ddss.local
-      app-network:
+      - emqx-network
+      - app-network
     ports:
       - 1883:1883
       - 8083:8083
@@ -313,32 +341,19 @@ services:
     # volumes:
     #   - $PWD/emqx1_data:/opt/emqx/data
 
-  emqx-worker:
-    image: emqx/emqx:5.8.7 # BSL license starting at 5.9!
-    hostname: emqx-worker
-    domainname: ddss.local
-    environment:
-      - "EMQX_NODE_NAME=emqx@emqx-worker.ddss.local"
-      - "EMQX_NODE__COOKIE=${EMQX_NODE_COOKIE:-off-key-emqx-cookie-change-me}"
-      - "EMQX_CLUSTER__DISCOVERY_STRATEGY=static"
-      # Use stable service identities resolvable in compose and swarm networks.
-      - "EMQX_CLUSTER__STATIC__SEEDS=[emqx@emqx-main.ddss.local,emqx@emqx-worker.ddss.local]"
-      # See https://github.com/emqx/emqx/issues/8627#issuecomment-2833234761
-      # Only works on fresh boot (no data volume!)
-      - "EMQX_DASHBOARD__DEFAULT_USERNAME=ddss"
-      - "EMQX_DASHBOARD__DEFAULT_PASSWORD=xMdrOJtNxRA8ZwUtjAHq"
-    healthcheck:
-      test: [ "CMD", "/opt/emqx/bin/emqx", "ctl", "status" ]
-      interval: 5s
-      timeout: 25s
-      retries: 5
+  source-broker:
+    image: eclipse-mosquitto:2.0
+    container_name: source_broker
+    command: [ "mosquitto", "-c", "/mosquitto/config/mosquitto.conf" ]
+    volumes:
+      - ./dev/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+    ports:
+      - "127.0.0.1:1884:1883"
     networks:
-      emqx-network:
-        aliases:
-          - emqx-worker.ddss.local
       app-network:
-    # volumes:
-    #   - $PWD/emqx2_data:/opt/emqx/data
+        aliases:
+          - source-broker
+    restart: unless-stopped
 
   memcached:
     image: memcached:latest
@@ -383,13 +398,11 @@ services:
 
 networks:
   app-network:
-    driver: overlay
-    attachable: true
+    driver: bridge
   socket-network:
     driver: bridge
   emqx-network:
-    driver: overlay
-    attachable: true
+    driver: bridge
 
 volumes:
   postgres_data:

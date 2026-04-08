@@ -7,6 +7,7 @@ specifically handling Docker container orchestration for RADAR services.
 
 import asyncio
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 import uvicorn
 from fastapi import FastAPI, Request, Response, status
@@ -14,13 +15,19 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from off_key_core.config.env import load_env
 from off_key_core.config.validation import validate_settings
-from off_key_core.config.logs import logger
+from off_key_core.config.logs import (
+    logger,
+    load_yaml_config,
+    log_startup_logging_configuration,
+)
+from off_key_core.db.base import get_async_session_local
 from .api.v1 import radar, models, data_services
 from .api.v1.admin_models import router as admin_models_router
-from .config.config import get_tactic_settings
+from .config.config import get_tactic_settings, RadarWorkloadLifecycle
 from .services.reconciliation import RadarStatusReconciliationService
 from .facades.docker import AsyncDocker
 from .models.registry import ModelRegistryService, ModelRegistryNotReadyError
+from .services.orchestration.radar import RadarOrchestrationService
 
 
 async def _initialize_model_registry(
@@ -84,6 +91,25 @@ async def _model_registry_recovery_loop(app: FastAPI) -> None:
         await asyncio.sleep(retry_interval)
 
 
+async def _teardown_ephemeral_radar_workloads(app: FastAPI, phase: str) -> None:
+    """Destroy all managed RADAR workloads and clear DB service records."""
+    session_factory = get_async_session_local()
+    async with session_factory() as session:
+        service = RadarOrchestrationService(
+            session=session,
+            model_registry=app.state.model_registry,
+        )
+        summary = await service.teardown_managed_radar_workloads()
+
+    logger.info(
+        "Ephemeral RADAR cleanup complete (%s): targeted=%d removed=%d db_rows=%d",
+        phase,
+        summary["workloads_targeted"],
+        summary["docker_workloads_removed"],
+        summary["db_rows_deleted"],
+    )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """FastAPI lifespan manager for startup and shutdown events."""
@@ -119,6 +145,11 @@ async def lifespan(app: FastAPI):
         )
         raise
 
+    if config.radar_workload_lifecycle == RadarWorkloadLifecycle.EPHEMERAL:
+        await _teardown_ephemeral_radar_workloads(app, phase="startup")
+    else:
+        logger.info("RADAR workload lifecycle is persistent; startup cleanup skipped")
+
     # Start reconciliation service if enabled
     if config.reconciliation_enabled:
         app.state.reconciliation_service = RadarStatusReconciliationService(
@@ -140,6 +171,12 @@ async def lifespan(app: FastAPI):
             logger.info("Status reconciliation stopped")
         except Exception:
             logger.exception("Error stopping reconciliation service")
+
+    if config.radar_workload_lifecycle == RadarWorkloadLifecycle.EPHEMERAL:
+        try:
+            await _teardown_ephemeral_radar_workloads(app, phase="shutdown")
+        except Exception:
+            logger.exception("Failed to teardown ephemeral RADAR workloads")
 
     # Cleanup: close Docker client
     if app.state.docker_client:
@@ -230,6 +267,10 @@ def create_app() -> FastAPI:
 def main() -> None:
     """Main entry point for the TACTIC middleware service."""
     load_env()
+    service_logging_config = Path(__file__).parent / "config" / "logging.yaml"
+    load_yaml_config(str(service_logging_config))
+    log_startup_logging_configuration("tactic")
+
     validate_settings(
         [("tactic", lambda: get_tactic_settings().config)],
         context="TACTIC middleware configuration",

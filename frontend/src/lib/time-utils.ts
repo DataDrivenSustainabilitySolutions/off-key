@@ -33,21 +33,21 @@ export const findNearestTelemetryPoint = (
   maxDiffMs: number = INTERVALS.REAL_TIME_UPDATE // 1 minute tolerance
 ): TelemetryPoint | null => {
   if (telemetryData.length === 0) return null;
-  
+
   const anomalyTime = new Date(anomalyTimestamp).getTime();
   let closestPoint: TelemetryPoint | null = null;
   let minDiff = Infinity;
-  
+
   for (const point of telemetryData) {
     const pointTime = new Date(point.timestamp).getTime();
     const diff = Math.abs(anomalyTime - pointTime);
-    
+
     if (diff < minDiff && diff <= maxDiffMs) {
       minDiff = diff;
       closestPoint = point;
     }
   }
-  
+
   return closestPoint;
 };
 
@@ -60,20 +60,20 @@ export const groupTimestampsIntoRanges = (
   maxGapMs: number = 5 * INTERVALS.REAL_TIME_UPDATE // 5 minutes max gap
 ): Array<{ start: string; end: string }> => {
   if (timestamps.length === 0) return [];
-  
+
   // Sort timestamps chronologically
-  const sorted = [...timestamps].sort((a, b) => 
+  const sorted = [...timestamps].sort((a, b) =>
     new Date(a).getTime() - new Date(b).getTime()
   );
-  
+
   const ranges: Array<{ start: string; end: string }> = [];
   let currentStart = sorted[0];
   let currentEnd = sorted[0];
-  
+
   for (let i = 1; i < sorted.length; i++) {
     const currentTime = new Date(sorted[i]).getTime();
     const lastTime = new Date(currentEnd).getTime();
-    
+
     if (currentTime - lastTime <= maxGapMs) {
       // Extend current range
       currentEnd = sorted[i];
@@ -84,10 +84,10 @@ export const groupTimestampsIntoRanges = (
       currentEnd = sorted[i];
     }
   }
-  
+
   // Add the last range
   ranges.push({ start: currentStart, end: currentEnd });
-  
+
   return ranges;
 };
 
@@ -96,7 +96,7 @@ export const groupTimestampsIntoRanges = (
  */
 export const formatTimestamp = (timestamp: string, format: 'short' | 'long' = 'short'): string => {
   const date = new Date(timestamp);
-  
+
   if (format === 'short') {
     const day = String(date.getDate()).padStart(2, '0');
     const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -105,11 +105,28 @@ export const formatTimestamp = (timestamp: string, format: 'short' | 'long' = 's
     const second = String(date.getSeconds()).padStart(2, '0');
     return `${day}.${month}, ${hour}:${minute}:${second}`;
   }
-  
+
   return date.toLocaleString('en-US', {
     dateStyle: 'short',
     timeStyle: 'medium',
   });
+};
+
+/**
+ * Format charger last-seen values safely.
+ * Returns "Never" when no valid timestamp exists.
+ */
+export const formatLastSeen = (timestamp?: string | null): string => {
+  if (!timestamp) {
+    return "Never";
+  }
+
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) {
+    return "Never";
+  }
+
+  return date.toLocaleString();
 };
 
 /**

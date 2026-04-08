@@ -1,6 +1,9 @@
 import React, { createContext, useState, useCallback, ReactNode } from "react";
 import { apiUtils } from "@/lib/api-client";
 import { API_CONFIG } from "@/lib/api-config";
+import { clientLogger } from "@/lib/logger";
+import type { Anomaly } from "@/types/charger";
+import { normalizeChargerLastSeen } from "@/types/charger";
 
 // Interface CPU
 export interface Cpu {
@@ -22,6 +25,7 @@ export interface TelemetryTypeData {
 export interface Charger {
   charger_name: string | null;
   last_seen: string;
+  mqtt_last_message?: string | null;
   online: boolean;
   charger_id: string;
   state: string;
@@ -44,13 +48,7 @@ export interface CombinedData {
   last_seen: string;
 }
 
-export interface Anomaly {
-  charger_id: string;
-  timestamp: string;
-  telemetry_type: string;
-  anomaly_type: string;
-  anomaly_value: number;
-}
+export type { Anomaly };
 
 export interface FetchContextType {
   //Functions for direct use in Components
@@ -65,11 +63,8 @@ export interface FetchContextType {
   ) => Promise<void>;
   getCombinedChargerData: (chargers: Charger[]) => Promise<CombinedData[]>;
   getAnomalies: (chargerId: string) => Promise<Anomaly[]>;
-  deleteAnomaly: (
-    chargerId: string,
-    timestamp: Date,
-    telemetry_type: string
-  ) => Promise<void>;
+  getAnomalyCount: (since?: string) => Promise<number>;
+  deleteAnomaly: (anomalyId: string) => Promise<void>;
   addAnomaly: (
     chargerId: string,
     timestamp: Date,
@@ -88,7 +83,7 @@ export interface FetchContextType {
   loadMonitoring: (chargerId: string) => Promise<void>;
   loadCpuThermal: (chargerId: string) => Promise<void>;
   loadAnomalies: (chargerId: string) => Promise<void>;
-  
+
   // New dynamic telemetry functions
   loadAllTelemetryTypes: (chargerId: string) => Promise<void>;
   getTelemetryCategory: (telemetryType: string) => 'cpu' | 'system' | 'controller' | 'other';
@@ -98,11 +93,11 @@ export interface FetchContextType {
   cpuThermalMap: Record<string, Cpu[]>;
   monitoringMap: Record<string, Monitoring[]>;
   anomaliesMap: Record<string, Anomaly[]>;
-  
+
   // New dynamic telemetry state
   allTelemetryMap: Record<string, TelemetryTypeData[]>; // chargerId -> array of telemetry types with data
   telemetryTypes: Record<string, string[]>; // chargerId -> array of telemetry type names
-  
+
   // Simple Error indicator if needed
   searchError: boolean;
 }
@@ -121,7 +116,7 @@ export const FetchProvider: React.FC<{ children: ReactNode }> = ({
   const [cpuThermalMap, setCpuThermalMap] = useState<Record<string, Cpu[]>>({});
   const [anomaliesMap, setAnomaliesMap] = useState<Record<string, Anomaly[]>>({});
   const [searchError, setSearchError] = useState(false);
-  
+
   // New dynamic telemetry state
   const [allTelemetryMap, setAllTelemetryMap] = useState<Record<string, TelemetryTypeData[]>>({});
   const [telemetryTypes, setTelemetryTypes] = useState<Record<string, string[]>>({});
@@ -152,7 +147,7 @@ export const FetchProvider: React.FC<{ children: ReactNode }> = ({
     const resp = await apiUtils.get<Charger[]>(
       API_CONFIG.ENDPOINTS.CHARGERS.AVAILABLE
     );
-    return resp;
+    return resp.map(normalizeChargerLastSeen);
   }, []);
 
   const getFavorites = useCallback(
@@ -205,10 +200,12 @@ export const FetchProvider: React.FC<{ children: ReactNode }> = ({
               value2: value2Res[0]?.value ?? null,
             };
           } catch (error) {
-            console.warn(
-              `Error at values from Charger ${charger.charger_id}`,
-              error
-            );
+            clientLogger.warn({
+              event: "monitoring.telemetry_values_failed",
+              message: "Error loading telemetry values for charger",
+              error,
+              context: { chargerId: charger.charger_id },
+            });
             return {
               charger_id: charger.charger_id,
               charger_name: charger.charger_name,
@@ -237,6 +234,14 @@ export const FetchProvider: React.FC<{ children: ReactNode }> = ({
     []
   );
 
+  const getAnomalyCount = useCallback(async (since?: string): Promise<number> => {
+    const url = since
+      ? `${API_CONFIG.ENDPOINTS.ANOMALIES.COUNT}?since=${encodeURIComponent(since)}`
+      : API_CONFIG.ENDPOINTS.ANOMALIES.COUNT;
+    const resp = await apiUtils.get<{ count: number }>(url);
+    return resp.count;
+  }, []);
+
   const addAnomaly = useCallback(
     async (
       chargerId: string,
@@ -257,15 +262,12 @@ export const FetchProvider: React.FC<{ children: ReactNode }> = ({
   );
 
   const deleteAnomaly = useCallback(
-    async (chargerId: string, timestamp: Date, telemetry_type: string) => {
-      const params = new URLSearchParams({
-        charger_id: chargerId,
-        timestamp: timestamp.toISOString(), // in ISO-Format
-        telemetry_type: telemetry_type,
-      });
+    async (anomalyId: string) => {
+      if (!anomalyId) {
+        throw new Error("Anomaly ID is required");
+      }
 
-      const endpoint = `${API_CONFIG.ENDPOINTS.ANOMALIES.DELETE}?${params.toString()}`;
-      await apiUtils.delete(endpoint);
+      await apiUtils.delete(API_CONFIG.ENDPOINTS.ANOMALIES.DELETE(anomalyId));
     },
     []
   );
@@ -276,7 +278,11 @@ export const FetchProvider: React.FC<{ children: ReactNode }> = ({
     try {
       await apiUtils.post(API_CONFIG.ENDPOINTS.CHARGERS.SYNC, null);
     } catch (err) {
-      console.warn("syncChargers failed:", err);
+      clientLogger.warn({
+        event: "chargers.sync_failed",
+        message: "syncChargers failed",
+        error: err,
+      });
     }
   }, []);
 
@@ -287,7 +293,11 @@ export const FetchProvider: React.FC<{ children: ReactNode }> = ({
         null
       );
     } catch (err) {
-      console.warn("syncTelemetry failed:", err);
+      clientLogger.warn({
+        event: "telemetry.sync_failed",
+        message: "syncTelemetry failed",
+        error: err,
+      });
     }
   }, []);
 
@@ -298,7 +308,11 @@ export const FetchProvider: React.FC<{ children: ReactNode }> = ({
         null
       );
     } catch (err) {
-      console.warn("syncTelemetryShort failed:", err);
+      clientLogger.warn({
+        event: "telemetry.sync_short_failed",
+        message: "syncTelemetryShort failed",
+        error: err,
+      });
     }
   }, []);
 
@@ -316,7 +330,11 @@ export const FetchProvider: React.FC<{ children: ReactNode }> = ({
           t.toLowerCase().includes("controllercpuusage")
         );
         if (!cpuUsageKey) {
-          console.warn(`Usage-Key for Charger ${chargerId} not found:`, types);
+          clientLogger.warn({
+            event: "telemetry.cpu_usage_key_missing",
+            message: "CPU usage telemetry key not found",
+            context: { chargerId, types },
+          });
           setSearchError(true);
           return;
         }
@@ -331,7 +349,12 @@ export const FetchProvider: React.FC<{ children: ReactNode }> = ({
         }));
         setSearchError(false);
       } catch (err) {
-        console.error("Error loading CPU Usage:", err);
+        clientLogger.error({
+          event: "telemetry.cpu_usage_load_failed",
+          message: "Error loading CPU usage",
+          error: err,
+          context: { chargerId },
+        });
         setSearchError(true);
       }
     },
@@ -350,10 +373,11 @@ export const FetchProvider: React.FC<{ children: ReactNode }> = ({
           t.toLowerCase().includes("controllertemperaturecpu-thermal")
         );
         if (!cpuThermalKey) {
-          console.warn(
-            `Thermal-Key for Charger ${chargerId} not found:`,
-            types
-          );
+          clientLogger.warn({
+            event: "telemetry.cpu_thermal_key_missing",
+            message: "CPU thermal telemetry key not found",
+            context: { chargerId, types },
+          });
           setSearchError(true);
           return;
         }
@@ -368,7 +392,12 @@ export const FetchProvider: React.FC<{ children: ReactNode }> = ({
         }));
         setSearchError(false);
       } catch (err) {
-        console.error("Error loading CPU Thermal:", err);
+        clientLogger.error({
+          event: "telemetry.cpu_thermal_load_failed",
+          message: "Error loading CPU thermal",
+          error: err,
+          context: { chargerId },
+        });
         setSearchError(true);
       }
     },
@@ -386,10 +415,11 @@ export const FetchProvider: React.FC<{ children: ReactNode }> = ({
           t.toLowerCase().startsWith("controllerstate")
       );
       if (keys.length === 0) {
-        console.warn(
-          `Key with key value "system" in Charger ${chargerId} not found`,
-          types
-        );
+        clientLogger.warn({
+          event: "telemetry.monitoring_keys_missing",
+          message: "Monitoring telemetry keys not found",
+          context: { chargerId, types },
+        });
         setSearchError(true);
         return;
       }
@@ -413,7 +443,12 @@ export const FetchProvider: React.FC<{ children: ReactNode }> = ({
       }));
       setSearchError(false);
     } catch (err) {
-      console.error("Error loading CPU Usage:", err);
+      clientLogger.error({
+        event: "monitoring.load_failed",
+        message: "Error loading monitoring telemetry",
+        error: err,
+        context: { chargerId },
+      });
       setSearchError(true);
     }
   }, []);
@@ -421,7 +456,7 @@ export const FetchProvider: React.FC<{ children: ReactNode }> = ({
   const loadAnomalies = useCallback(async (chargerId: string) => {
     try {
       const anomalies = await getAnomalies(chargerId);
-      
+
       // Store anomalies in the Map
       setAnomaliesMap((prev) => ({
         ...prev,
@@ -429,7 +464,12 @@ export const FetchProvider: React.FC<{ children: ReactNode }> = ({
       }));
       setSearchError(false);
     } catch (err) {
-      console.error("Error loading anomalies:", err);
+      clientLogger.error({
+        event: "anomalies.load_failed",
+        message: "Error loading anomalies",
+        error: err,
+        context: { chargerId },
+      });
       setSearchError(true);
     }
   }, [getAnomalies]);
@@ -451,17 +491,17 @@ export const FetchProvider: React.FC<{ children: ReactNode }> = ({
 
   const loadAllTelemetryTypes = useCallback(async (chargerId: string) => {
     if (!chargerId) return;
-    
+
     try {
       setSearchError(false);
-      
+
       // Get all available telemetry types for this charger
       const types = await getTelemetryTypes(chargerId);
       setTelemetryTypes(prev => ({
         ...prev,
         [chargerId]: types,
       }));
-      
+
       // Load data for all telemetry types
       const telemetryData = await Promise.all(
         types.map(async (type) => {
@@ -474,21 +514,31 @@ export const FetchProvider: React.FC<{ children: ReactNode }> = ({
               data,
             } as TelemetryTypeData;
           } catch (error) {
-            console.warn(`Failed to load data for telemetry type: ${type}`, error);
+            clientLogger.warn({
+              event: "telemetry.type_load_failed",
+              message: "Failed to load data for telemetry type",
+              error,
+              context: { chargerId, telemetryType: type },
+            });
             return null;
           }
         })
       );
-      
+
       // Filter out failed loads and store successful ones
       const successfulData = telemetryData.filter((item): item is TelemetryTypeData => item !== null);
       setAllTelemetryMap(prev => ({
         ...prev,
         [chargerId]: successfulData,
       }));
-      
+
     } catch (err) {
-      console.error("Error loading all telemetry types:", err);
+      clientLogger.error({
+        event: "telemetry.load_all_types_failed",
+        message: "Error loading all telemetry types",
+        error: err,
+        context: { chargerId },
+      });
       setSearchError(true);
     }
   }, [getTelemetryTypes, getTelemetryData, getTelemetryCategory]);
@@ -506,6 +556,7 @@ export const FetchProvider: React.FC<{ children: ReactNode }> = ({
         toggleFavorite,
         getCombinedChargerData,
         getAnomalies,
+        getAnomalyCount,
         addAnomaly,
         deleteAnomaly,
         syncChargers,

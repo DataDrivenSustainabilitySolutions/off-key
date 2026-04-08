@@ -232,6 +232,18 @@ async def remove_user_favorite(
         _raise_http_from_domain(exc)
 
 
+@router.get("/anomalies/count")
+async def get_anomaly_count(
+    since: Optional[datetime] = Query(None),
+    service: AnomalyService = Depends(get_anomaly_service),
+):
+    try:
+        count = await service.count_anomalies(since=since)
+        return {"count": count}
+    except DomainError as exc:
+        _raise_http_from_domain(exc)
+
+
 @router.get("/anomalies/{charger_id}", response_model=list[AnomalyResponse])
 async def get_charger_anomalies(
     charger_id: str,
@@ -260,18 +272,12 @@ async def create_anomaly(
         _raise_http_from_domain(exc)
 
 
-@router.delete("/anomalies/{charger_id}")
+@router.delete("/anomalies/{anomaly_id}")
 async def delete_anomaly(
-    charger_id: str,
-    timestamp: datetime,
-    telemetry_type: str,
+    anomaly_id: str,
     service: AnomalyService = Depends(get_anomaly_service),
 ):
     try:
-        return await service.delete_anomaly(
-            charger_id=charger_id,
-            timestamp=timestamp,
-            telemetry_type=telemetry_type,
-        )
+        return await service.delete_anomaly(anomaly_id=anomaly_id)
     except DomainError as exc:
         _raise_http_from_domain(exc)

@@ -1,8 +1,5 @@
 """
-API-Key Authentication Handler for Pionix Cloud MQTT Access
-
-Simple authentication handler that uses API-Key for MQTT broker access,
-replacing the complex Firebase authentication system.
+Username/API-key authentication helper for MQTT broker access.
 """
 
 from typing import Optional, Tuple
@@ -31,10 +28,7 @@ class ApiKeyAuthError(Exception):
 
 class ApiKeyAuthHandler:
     """
-    Simple API-Key authentication handler for Pionix Cloud MQTT access
-
-    This handler provides MQTT credentials using a username and API key,
-    replacing the complex Firebase JWT token system with a simpler approach.
+    Simple username/API-key authentication handler for MQTT access.
     """
 
     def __init__(self, username: str, api_key: str):
@@ -88,7 +82,7 @@ class ApiKeyAuthHandler:
 
     async def get_mqtt_credentials(self) -> Tuple[str, str]:
         """
-        Get MQTT credentials for Pionix Cloud broker
+        Get MQTT credentials for broker authentication.
 
         Returns:
             Tuple of (username, api_key) for MQTT authentication
@@ -101,7 +95,6 @@ class ApiKeyAuthHandler:
                 "No valid credentials available for MQTT authentication"
             )
 
-        # For Pionix Cloud MQTT: username = user identifier, password = API key
         return self.credentials.username, self.credentials.api_key
 
     async def validate_connection(self) -> bool:

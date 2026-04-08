@@ -11,11 +11,13 @@ from pathlib import Path
 
 from .proxy import MQTTProxyService
 from .health_api import run_health_api
-from off_key_core.clients.provider import get_charger_api_client
 from off_key_core.config.env import load_env
-from off_key_core.config.pionix import get_pionix_settings
 from off_key_core.config.validation import validate_settings
-from off_key_core.config.logs import load_yaml_config, logger
+from off_key_core.config.logs import (
+    load_yaml_config,
+    logger,
+    log_startup_logging_configuration,
+)
 from .config.config import get_mqtt_settings
 
 # Load logging configuration from YAML files
@@ -26,15 +28,14 @@ load_yaml_config(str(service_logging_config))
 async def main():
     """Main entry point for MQTT proxy service"""
     load_env()
+    log_startup_logging_configuration("mqtt-proxy")
     validate_settings(
         [
-            ("pionix", get_pionix_settings),
             ("mqtt_proxy", lambda: get_mqtt_settings().config),
         ],
         context="MQTT proxy configuration",
     )
-    api_client = get_charger_api_client()
-    service = MQTTProxyService(api_client)
+    service = MQTTProxyService()
     settings = get_mqtt_settings()
 
     service_task = asyncio.create_task(

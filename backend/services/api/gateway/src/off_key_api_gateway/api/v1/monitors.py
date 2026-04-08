@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException, Query, Request, Response
 from typing import List, Dict, Optional, Any
 from pydantic import BaseModel, Field
 
+from off_key_core.schemas.radar import PerformanceConfig
 from ...facades.tactic import tactic, TacticError
 from ..rate_limiter import limiter
 
@@ -99,6 +100,13 @@ class MonitoringServiceConfig(BaseModel):
     preprocessing_steps: Optional[List[Dict[str, Any]]] = Field(
         default=None, description="Ordered preprocessing steps applied before the model"
     )
+    performance_config: Optional["PerformanceConfig"] = Field(
+        default=None,
+        description=(
+            "Performance and heuristic settings "
+            "(reference window/min-samples/tail-alpha, sensor strategy)"
+        ),
+    )
     requirements: Optional[List[str]] = Field(
         None, description="List of pip packages to install"
     )
@@ -113,6 +121,9 @@ class ServiceResponse(BaseModel):
     container_name: str
     status: str
     mqtt_topics: List[str]
+
+
+MonitoringServiceConfig.model_rebuild()
 
 
 @router.get("/all", response_model=List[Dict[str, Any]])
@@ -163,7 +174,11 @@ async def start_monitoring_service(
                 preprocessing_steps=config.preprocessing_steps,
                 mqtt_config=None,
                 anomaly_thresholds=None,
-                performance_config=None,
+                performance_config=(
+                    config.performance_config.model_dump(exclude_none=True)
+                    if config.performance_config
+                    else None
+                ),
             )
         else:
             raise HTTPException(

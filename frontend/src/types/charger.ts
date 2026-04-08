@@ -12,6 +12,7 @@ export interface Charger {
   charger_id: string;
   charger_name: string | null;
   last_seen: string;
+  mqtt_last_message?: string | null;
   online: boolean;
   state: string;
   created: string;
@@ -59,15 +60,34 @@ export interface TelemetryTypeData {
 
 // Anomaly detection result
 export interface Anomaly {
+  anomaly_id: string;
   charger_id: string;
   timestamp: string;
   telemetry_type: string;
   anomaly_type: string;
   anomaly_value: number;
+  // 'tail_pvalue': anomaly_value is a tail probability (0–1, lower = more severe).
+  // 'zscore': anomaly_value is a z-score (legacy rows, higher = more severe).
+  // null: predates this field.
+  value_type: 'tail_pvalue' | 'zscore' | null;
 }
 
 // Status filter options
 export type StatusFilter = 'all' | 'online' | 'offline';
+
+/**
+ * Normalize charger last-seen timestamp.
+ *
+ * The API may return mqtt_last_message (live MQTT timestamp) alongside
+ * last_seen (DB write time). mqtt_last_message is fresher when present.
+ * Three contexts previously duplicated this inline; they all delegate here.
+ */
+export function normalizeChargerLastSeen(charger: Charger): Charger {
+  return {
+    ...charger,
+    last_seen: charger.mqtt_last_message ?? charger.last_seen ?? "",
+  };
+}
 
 /**
  * Helper function to categorize telemetry type

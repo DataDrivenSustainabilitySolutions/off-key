@@ -28,6 +28,7 @@ import {
   TelemetryTypeData,
   Anomaly,
   getTelemetryCategory,
+  normalizeChargerLastSeen,
 } from "@/types/charger";
 
 // Re-export types for backward compatibility
@@ -77,11 +78,7 @@ export interface DataContextType {
     anomaly_type: string,
     anomaly_value: number
   ) => Promise<void>;
-  deleteAnomaly: (
-    chargerId: string,
-    timestamp: Date,
-    telemetry_type: string
-  ) => Promise<void>;
+  deleteAnomaly: (anomalyId: string) => Promise<void>;
 
   // Sync functions
   syncChargers: () => Promise<void>;
@@ -155,8 +152,9 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({
     const response = await apiUtils.get<Charger[]>(
       API_CONFIG.ENDPOINTS.CHARGERS.AVAILABLE
     );
-    setChargers(response);
-    return response;
+    const normalized = response.map(normalizeChargerLastSeen);
+    setChargers(normalized);
+    return normalized;
   }, []);
 
   const getCombinedChargerData = useCallback(
@@ -492,20 +490,11 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({
   );
 
   const deleteAnomaly = useCallback(
-    async (
-      chargerId: string,
-      timestamp: Date,
-      telemetry_type: string
-    ): Promise<void> => {
-      const params = new URLSearchParams({
-        charger_id: chargerId,
-        timestamp: timestamp.toISOString(),
-        telemetry_type: telemetry_type,
-      });
-
-      await apiUtils.delete(
-        `${API_CONFIG.ENDPOINTS.ANOMALIES.DELETE}?${params.toString()}`
-      );
+    async (anomalyId: string): Promise<void> => {
+      if (!anomalyId) {
+        throw new Error("Anomaly ID is required");
+      }
+      await apiUtils.delete(API_CONFIG.ENDPOINTS.ANOMALIES.DELETE(anomalyId));
     },
     []
   );

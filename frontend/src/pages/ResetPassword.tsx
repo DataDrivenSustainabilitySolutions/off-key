@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import { clientLogger } from "@/lib/logger";
 
 const ResetPassword: React.FC = () => {
   const [searchParams] = useSearchParams();
@@ -56,7 +57,11 @@ const ResetPassword: React.FC = () => {
       setTimeout(() => navigate('/login'), 3000); // Navigate to login page after 3 seconds
     } catch (err) {
       setError('Server error. Please try again later.');
-      console.error(err);
+      clientLogger.error({
+        event: "auth.reset_password_request_failed",
+        message: "Reset password request failed",
+        error: err,
+      });
     }
   };
 

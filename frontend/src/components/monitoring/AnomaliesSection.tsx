@@ -17,6 +17,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import type { Anomaly } from "@/types/charger";
+import { getAnomalyTailProbabilityClassName, formatAnomalyTailProbability } from "@/lib/anomaly-semantics";
 
 interface AnomaliesSectionProps {
   anomalies: Anomaly[];
@@ -24,19 +25,6 @@ interface AnomaliesSectionProps {
   chargerId?: string;
   onRefresh: () => void;
 }
-
-/**
- * Get severity class based on anomaly score
- */
-const getSeverityClass = (score: number): string => {
-  if (score >= 0.9) {
-    return "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200";
-  }
-  if (score >= 0.7) {
-    return "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200";
-  }
-  return "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200";
-};
 
 // Max anomalies to display in the table
 const MAX_DISPLAYED_ANOMALIES = 50;
@@ -104,13 +92,19 @@ export const AnomaliesSection: React.FC<AnomaliesSectionProps> = ({
                         </TableCell>
                         <TableCell>{anomaly.anomaly_type}</TableCell>
                         <TableCell>
-                          <span
-                            className={`px-2 py-1 rounded-full text-xs font-medium ${getSeverityClass(
-                              anomaly.anomaly_value
-                            )}`}
-                          >
-                            {(anomaly.anomaly_value * 100).toFixed(1)}%
-                          </span>
+                          {anomaly.value_type === 'tail_pvalue' ? (
+                            <span
+                              className={`px-2 py-1 rounded-full text-xs font-medium ${getAnomalyTailProbabilityClassName(
+                                anomaly.anomaly_value
+                              )}`}
+                            >
+                              {formatAnomalyTailProbability(anomaly.anomaly_value)}
+                            </span>
+                          ) : (
+                            <span className="px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400">
+                              {anomaly.anomaly_value.toFixed(2)} (legacy)
+                            </span>
+                          )}
                         </TableCell>
                       </TableRow>
                     ))}

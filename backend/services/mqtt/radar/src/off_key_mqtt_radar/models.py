@@ -14,6 +14,8 @@ from typing import Dict, Any, Optional, List
 from dataclasses import dataclass
 import json
 
+from off_key_core.utils.mqtt_topics import TopicMetadataExtractor
+
 Base = declarative_base()
 
 
@@ -132,6 +134,8 @@ class MQTTMessage:
     retain: bool = False
     timestamp: Optional[datetime] = None
 
+    _topic_extractor = TopicMetadataExtractor()
+
     def get_json_payload(self) -> Dict[str, Any]:
         """Parse payload as JSON"""
         try:
@@ -141,14 +145,8 @@ class MQTTMessage:
 
     def extract_charger_id(self) -> Optional[str]:
         """Extract charger ID from topic pattern"""
-        try:
-            # Assume topic format: charger/{charger_id}/telemetry
-            parts = self.topic.split("/")
-            if len(parts) >= 2 and parts[0] == "charger":
-                return parts[1]
-        except Exception:
-            pass
-        return None
+        metadata = self._topic_extractor.extract(topic=self.topic, payload=None)
+        return metadata.charger_id if metadata else None
 
 
 @dataclass

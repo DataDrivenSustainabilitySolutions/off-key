@@ -18,6 +18,11 @@ import { API_CONFIG } from "@/lib/api-config";
 import toast from "react-hot-toast";
 import { ChevronUp, ChevronDown } from "lucide-react";
 import { getStatusDisplay } from "@/types/monitoring";
+import {
+  formatAnomalyTailProbability,
+  getAnomalyTailProbabilityClassName,
+} from "@/lib/anomaly-semantics";
+import type { Anomaly } from "@/types/charger";
 
 // Helper function to parse numeric input, preventing NaN storage
 const parseNumericInput = (
@@ -35,6 +40,13 @@ const parseNumericInput = (
   return rawValue;
 };
 
+const parseTopicPatterns = (raw: string): string[] => {
+  return raw
+    .split(/[\n,]/)
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
+};
+
 interface ActiveService {
   id: string;
   container_id: string;
@@ -45,19 +57,38 @@ interface ActiveService {
   created_at?: string;
 }
 
-interface Anomaly {
-  charger_id: string;
-  timestamp: string;
-  telemetry_type: string;
-  anomaly_type: string;
-  anomaly_value: number;
-}
+type SensorKeyStrategy = "full_hierarchy" | "top_level" | "leaf";
+type AlignmentMode = "strict_barrier";
+
+type PerformanceConfigState = {
+  heuristic_enabled: boolean;
+  heuristic_window_size: number;
+  heuristic_min_samples: number;
+  heuristic_tail_alpha: number;
+  alignment_mode: AlignmentMode;
+  sensor_key_strategy: SensorKeyStrategy;
+  sensor_freshness_seconds: number;
+};
 
 type PreprocessingStepConfig = {
   id: string;
   type: string;
   params: Record<string, any>;
 };
+
+const DEFAULT_MODEL_TYPE = "knn";
+const DEFAULT_MODEL_PARAMS: Record<string, number> = {
+  k: 5,
+  window_size: 2500,
+  warm_up: 500,
+};
+const DEFAULT_PREPROCESSING_STEPS: PreprocessingStepConfig[] = [
+  {
+    id: "pre-0",
+    type: "standard_scaler",
+    params: { with_std: true },
+  },
+];
 
 const PreprocessingSection: React.FC<{
   steps: PreprocessingStepConfig[];
@@ -298,12 +329,12 @@ const AnomaliesSection: React.FC<{
           ) : (
             <div className="overflow-x-auto max-h-96 overflow-y-auto">
               <Table>
-                <TableHeader>
+                  <TableHeader>
                   <TableRow>
                     <TableHead>Timestamp</TableHead>
                     <TableHead>Telemetry Type</TableHead>
                     <TableHead>Anomaly Type</TableHead>
-                    <TableHead>Score</TableHead>
+                    <TableHead>Tail p-value</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -317,17 +348,19 @@ const AnomaliesSection: React.FC<{
                       </TableCell>
                       <TableCell>{anomaly.anomaly_type}</TableCell>
                       <TableCell>
-                        <span
-                          className={`px-2 py-1 rounded-full text-xs font-medium ${
-                            anomaly.anomaly_value >= 0.9
-                              ? "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200"
-                              : anomaly.anomaly_value >= 0.7
-                              ? "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200"
-                              : "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200"
-                          }`}
-                        >
-                          {(anomaly.anomaly_value * 100).toFixed(1)}%
-                        </span>
+                        {anomaly.value_type === 'tail_pvalue' ? (
+                          <span
+                            className={`px-2 py-1 rounded-full text-xs font-medium ${getAnomalyTailProbabilityClassName(
+                              anomaly.anomaly_value
+                            )}`}
+                          >
+                            {formatAnomalyTailProbability(anomaly.anomaly_value)}
+                          </span>
+                        ) : (
+                          <span className="px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400">
+                            {anomaly.anomaly_value.toFixed(2)} (legacy)
+                          </span>
+                        )}
                       </TableCell>
                     </TableRow>
                   ))}
@@ -366,17 +399,34 @@ const Monitoring: React.FC = () => {
         .map(([key]) => key),
     [visibleMap]
   );
+  const [topicMode, setTopicMode] = useState<"selected_sensors" | "direct_patterns">(
+    "selected_sensors"
+  );
+  const [topicPatternInput, setTopicPatternInput] = useState<string>("");
   const [selectedAlgorithm, setSelectedAlgorithm] = useState<string | null>(
-    null
+    DEFAULT_MODEL_TYPE
   );
   const [availableModels, setAvailableModels] = useState<Record<string, any>>({});
-  const [modelParams, setModelParams] = useState<Record<string, any>>({});
+  const [modelParams, setModelParams] = useState<Record<string, any>>(
+    DEFAULT_MODEL_PARAMS
+  );
   const [isLoadingModels, setIsLoadingModels] = useState(false);
   const [availablePreprocessors, setAvailablePreprocessors] = useState<Record<string, any>>({});
-  const [preprocessingSteps, setPreprocessingSteps] = useState<PreprocessingStepConfig[]>([]);
+  const [preprocessingSteps, setPreprocessingSteps] = useState<PreprocessingStepConfig[]>(
+    DEFAULT_PREPROCESSING_STEPS
+  );
   const [isLoadingPreprocessors, setIsLoadingPreprocessors] = useState(false);
   const [newPreprocessorType, setNewPreprocessorType] = useState<string>("");
-  const nextPreprocessingStepId = useRef(0);
+  const nextPreprocessingStepId = useRef(DEFAULT_PREPROCESSING_STEPS.length);
+  const [performanceConfig, setPerformanceConfig] = useState<PerformanceConfigState>({
+    heuristic_enabled: true,
+    heuristic_window_size: 1000,
+    heuristic_min_samples: 300,
+    heuristic_tail_alpha: 0.005,
+    alignment_mode: "strict_barrier",
+    sensor_key_strategy: "full_hierarchy",
+    sensor_freshness_seconds: 30,
+  });
 
   const [activeServices, setActiveServices] = useState<ActiveService[]>([]);
   const [isLoadingServices, setIsLoadingServices] = useState(false);
@@ -389,6 +439,11 @@ const Monitoring: React.FC = () => {
 
     loadAllTelemetryTypes(chargerId);
   }, [loadAllTelemetryTypes, chargerId]);
+
+  useEffect(() => {
+    if (!chargerId) return;
+    setTopicPatternInput(`charger/${chargerId}/live-telemetry/#`);
+  }, [chargerId]);
 
   const loadModels = useCallback(async () => {
     try {
@@ -457,7 +512,12 @@ const Monitoring: React.FC = () => {
   const handleModelSelect = useCallback(
     (modelType: string) => {
       setSelectedAlgorithm(modelType);
-      setModelParams(applyModelDefaults(modelType));
+      const defaults = applyModelDefaults(modelType);
+      if (modelType === DEFAULT_MODEL_TYPE) {
+        setModelParams({ ...defaults, ...DEFAULT_MODEL_PARAMS });
+        return;
+      }
+      setModelParams(defaults);
     },
     [applyModelDefaults]
   );
@@ -515,6 +575,34 @@ const Monitoring: React.FC = () => {
     });
   }, []);
 
+  const handlePerformanceNumberChange = useCallback(
+    (
+      key:
+        | "heuristic_window_size"
+        | "heuristic_min_samples"
+        | "heuristic_tail_alpha"
+        | "sensor_freshness_seconds",
+      rawValue: string
+    ) => {
+      const parsed = parseFloat(rawValue);
+      if (Number.isNaN(parsed)) {
+        return;
+      }
+      setPerformanceConfig((prev) => ({
+        ...prev,
+        [key]:
+          key === "heuristic_window_size" || key === "heuristic_min_samples"
+            ? Math.max(1, Math.round(parsed))
+            : key === "sensor_freshness_seconds"
+            ? Math.max(1, parsed)
+            : key === "heuristic_tail_alpha"
+            ? Math.min(Math.max(0.0001, parsed), 0.9999)
+            : parsed,
+      }));
+    },
+    []
+  );
+
   useEffect(() => {
     if (monitoringKeys.length === 0) return; // if no keys given do nothing
     if (Object.keys(visibleMap).length > 0) return; // if keys already initialised also do nothing
@@ -526,7 +614,7 @@ const Monitoring: React.FC = () => {
     try {
       setIsLoadingServices(true);
       // Include Docker status to get actual container state
-      const response = await apiUtils.get(
+      const response = await apiUtils.get<ActiveService[]>(
         `${API_CONFIG.ENDPOINTS.MONITORING.LIST}?include_docker_status=true`
       );
       setActiveServices(response || []);
@@ -594,15 +682,26 @@ const Monitoring: React.FC = () => {
   }, [loadAnomalies]);
 
   const submitAnomalyDetection = async () => {
-    if (!selectedAlgorithm || activeKeys.length === 0 || !chargerId) {
-      alert("Please select at least one sensor and an algorithm.");
+    if (!selectedAlgorithm || !chargerId) {
+      alert("Please select an algorithm.");
       return;
     }
 
     try {
-      // Build MQTT topics using charger ID and selected sensors
-      // Format: charger/{charger_id}/live-telemetry/{sensor_type}
-      const mqttTopics = activeKeys.map(sensorType => `charger/${chargerId}/live-telemetry/${sensorType}`);
+      const mqttTopics =
+        topicMode === "selected_sensors"
+          ? activeKeys.map((sensorType) => `charger/${chargerId}/live-telemetry/${sensorType}`)
+          : parseTopicPatterns(topicPatternInput);
+
+      if (mqttTopics.length === 0) {
+        alert("Please select at least one sensor or provide at least one topic pattern.");
+        return;
+      }
+
+      if (performanceConfig.heuristic_min_samples > performanceConfig.heuristic_window_size) {
+        alert("Heuristic min samples must be less than or equal to window size.");
+        return;
+      }
 
       // Generate unique container name
       const containerName = `radar-${chargerId}-${Date.now()}`;
@@ -626,6 +725,15 @@ const Monitoring: React.FC = () => {
               Object.entries(step.params || {}).filter(([, value]) => value !== "" && value !== undefined)
             ),
           })),
+          performance_config: {
+            heuristic_enabled: performanceConfig.heuristic_enabled,
+            heuristic_window_size: performanceConfig.heuristic_window_size,
+            heuristic_min_samples: performanceConfig.heuristic_min_samples,
+            heuristic_tail_alpha: performanceConfig.heuristic_tail_alpha,
+            alignment_mode: performanceConfig.alignment_mode,
+            sensor_key_strategy: performanceConfig.sensor_key_strategy,
+            sensor_freshness_seconds: performanceConfig.sensor_freshness_seconds,
+          },
         }
       );
 
@@ -651,41 +759,100 @@ const Monitoring: React.FC = () => {
               <div className="flex items-start gap-6">
                 {/* Left Side */}
                 <div className="flex flex-col w-2/5">
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button className="w-30 mb-5 mr-3 mt-4 bg-indigo-800 hover:bg-indigo-700 cursor-pointer">
-                        Sensor types
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent className="w100">
-                      <DropdownMenuLabel>Sensors</DropdownMenuLabel>
-                      <DropdownMenuSeparator />
-                      {monitoringKeys.map((key) => (
-                        <DropdownMenuCheckboxItem
-                          key={key}
-                          checked={visibleMap[key]}
-                          onCheckedChange={() =>
-                            setVisibleMap((prev) => ({
-                              ...prev,
-                              [key]: !prev[key],
-                            }))
-                          }
-                          onClick={(e) => e.stopPropagation()}
+                  <label className="text-sm font-semibold mt-4 mb-2">Topic Input Mode</label>
+                  <select
+                    className="border rounded px-3 py-2 bg-white text-black dark:bg-neutral-900 dark:text-white"
+                    value={topicMode}
+                    onChange={(e) => setTopicMode(e.target.value as "selected_sensors" | "direct_patterns")}
+                  >
+                    <option value="selected_sensors">Build from selected sensors</option>
+                    <option value="direct_patterns">Use direct topic patterns</option>
+                  </select>
+
+                  {topicMode === "selected_sensors" ? (
+                    <>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button className="w-30 mb-5 mr-3 mt-4 bg-indigo-800 hover:bg-indigo-700 cursor-pointer">
+                            Sensor types
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent className="w-56">
+                          <DropdownMenuLabel>Sensors</DropdownMenuLabel>
+                          <DropdownMenuSeparator />
+                          {monitoringKeys.map((key) => (
+                            <DropdownMenuCheckboxItem
+                              key={key}
+                              checked={visibleMap[key]}
+                              onCheckedChange={() =>
+                                setVisibleMap((prev) => ({
+                                  ...prev,
+                                  [key]: !prev[key],
+                                }))
+                              }
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              {key}
+                            </DropdownMenuCheckboxItem>
+                          ))}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+
+                      <div className="mt-6">
+                        <h2 className="text-lg font-bold mb-2">
+                          Picked values for the Anomaly Detection:
+                        </h2>
+                        <ul className="list-disc list-inside space-y-1">
+                          {activeKeys.map((key) => (
+                            <li key={key} className="ml-2">
+                              {key}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="mt-4 space-y-3">
+                      <label className="text-sm font-semibold">Topic Patterns</label>
+                      <textarea
+                        className="border rounded px-3 py-2 bg-white text-black dark:bg-neutral-900 dark:text-white min-h-36"
+                        value={topicPatternInput}
+                        onChange={(e) => setTopicPatternInput(e.target.value)}
+                        placeholder="One topic per line or comma-separated. Supports MQTT wildcards + and #."
+                      />
+                      <div className="flex gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => setTopicPatternInput("#")}
                         >
-                          {key}
-                        </DropdownMenuCheckboxItem>
-                      ))}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                          Use all topics (#)
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => setTopicPatternInput(`charger/${chargerId}/live-telemetry/#`)}
+                        >
+                          Charger wildcard
+                        </Button>
+                      </div>
+                      <p className="text-xs text-gray-500">
+                        Parsed topics: {parseTopicPatterns(topicPatternInput).join(", ") || "none"}
+                      </p>
+                    </div>
+                  )}
 
                   <div className="mt-6">
                     <h2 className="text-lg font-bold mb-2">
-                      Picked values for the Anomaly Detection:
+                      Effective Topics:
                     </h2>
                     <ul className="list-disc list-inside space-y-1">
-                      {activeKeys.map((key) => (
-                        <li key={key} className="ml-2">
-                          {key}
+                      {(topicMode === "selected_sensors"
+                        ? activeKeys.map((sensorType) => `charger/${chargerId}/live-telemetry/${sensorType}`)
+                        : parseTopicPatterns(topicPatternInput)
+                      ).map((topic, index) => (
+                        <li key={`${topic}-${index}`} className="ml-2">
+                          {topic}
                         </li>
                       ))}
                     </ul>
@@ -746,6 +913,103 @@ const Monitoring: React.FC = () => {
                       )}
                     </div>
                   )}
+
+                  <div className="mt-8 space-y-3">
+                    <h3 className="text-md font-semibold">Detection Heuristics</h3>
+                    <label className="flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={performanceConfig.heuristic_enabled}
+                        onChange={(event) =>
+                          setPerformanceConfig((prev) => ({
+                            ...prev,
+                            heuristic_enabled: event.target.checked,
+                          }))
+                        }
+                      />
+                      Enable trailing-reference tail trigger
+                    </label>
+                    <div className="flex flex-col">
+                      <label className="text-sm font-medium mb-1">Window Size</label>
+                      <input
+                        type="number"
+                        min={3}
+                        className="border rounded px-3 py-2 bg-white text-black dark:bg-neutral-900 dark:text-white"
+                        value={performanceConfig.heuristic_window_size}
+                        onChange={(event) =>
+                          handlePerformanceNumberChange(
+                            "heuristic_window_size",
+                            event.target.value
+                          )
+                        }
+                      />
+                    </div>
+                    <div className="flex flex-col">
+                      <label className="text-sm font-medium mb-1">Min Samples</label>
+                      <input
+                        type="number"
+                        min={2}
+                        className="border rounded px-3 py-2 bg-white text-black dark:bg-neutral-900 dark:text-white"
+                        value={performanceConfig.heuristic_min_samples}
+                        onChange={(event) =>
+                          handlePerformanceNumberChange(
+                            "heuristic_min_samples",
+                            event.target.value
+                          )
+                        }
+                      />
+                    </div>
+                    <div className="flex flex-col">
+                      <label className="text-sm font-medium mb-1">Tail Alpha</label>
+                      <input
+                        type="number"
+                        min={0.0001}
+                        max={0.9999}
+                        step="0.0001"
+                        className="border rounded px-3 py-2 bg-white text-black dark:bg-neutral-900 dark:text-white"
+                        value={performanceConfig.heuristic_tail_alpha}
+                        onChange={(event) =>
+                          handlePerformanceNumberChange(
+                            "heuristic_tail_alpha",
+                            event.target.value
+                          )
+                        }
+                      />
+                    </div>
+                    <div className="flex flex-col">
+                      <label className="text-sm font-medium mb-1">Sensor Strategy</label>
+                      <select
+                        className="border rounded px-3 py-2 bg-white text-black dark:bg-neutral-900 dark:text-white"
+                        value={performanceConfig.sensor_key_strategy}
+                        onChange={(event) =>
+                          setPerformanceConfig((prev) => ({
+                            ...prev,
+                            sensor_key_strategy: event.target.value as SensorKeyStrategy,
+                          }))
+                        }
+                      >
+                        <option value="full_hierarchy">full_hierarchy</option>
+                        <option value="top_level">top_level</option>
+                        <option value="leaf">leaf</option>
+                      </select>
+                    </div>
+                    <div className="flex flex-col">
+                      <label className="text-sm font-medium mb-1">Sensor Freshness (s)</label>
+                      <input
+                        type="number"
+                        min={1}
+                        step="1"
+                        className="border rounded px-3 py-2 bg-white text-black dark:bg-neutral-900 dark:text-white"
+                        value={performanceConfig.sensor_freshness_seconds}
+                        onChange={(event) =>
+                          handlePerformanceNumberChange(
+                            "sensor_freshness_seconds",
+                            event.target.value
+                          )
+                        }
+                      />
+                    </div>
+                  </div>
 
                   <PreprocessingSection
                     steps={preprocessingSteps}

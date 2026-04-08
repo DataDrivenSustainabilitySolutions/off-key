@@ -11,9 +11,12 @@ from pathlib import Path
 from off_key_core.config.database import get_database_settings
 from off_key_core.config.env import load_env
 from off_key_core.config.logging import get_logging_settings
-from off_key_core.config.pionix import get_pionix_settings
 from off_key_core.config.validation import validate_settings
-from off_key_core.config.logs import load_yaml_config, logger
+from off_key_core.config.logs import (
+    load_yaml_config,
+    logger,
+    log_startup_logging_configuration,
+)
 from .config.config import get_sync_settings
 from .service import SyncService
 from .api import app, set_sync_service
@@ -52,12 +55,12 @@ async def main():
     # Initialize logging before validation so startup failures are structured.
     service_logging_config = Path(__file__).parent / "config" / "logging.yaml"
     load_yaml_config(str(service_logging_config))
+    log_startup_logging_configuration("db-sync")
 
     validate_settings(
         [
             ("logging", get_logging_settings),
             ("database", get_database_settings),
-            ("pionix", get_pionix_settings),
             ("sync", lambda: get_sync_settings().config),
         ],
         context="DB sync configuration",

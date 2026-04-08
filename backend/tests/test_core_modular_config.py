@@ -10,8 +10,6 @@ from off_key_core.config import (
     get_service_endpoints_settings,
     get_telemetry_settings,
 )
-from off_key_core.clients.pionix import PionixClient
-from off_key_core.clients.provider import get_charger_api_client
 from off_key_core.config.database import DatabaseSettings
 from off_key_core.config.validation import validate_settings
 from off_key_core.db import base as db_base
@@ -161,19 +159,15 @@ def test_db_engine_uses_runtime_debug_without_app_name(monkeypatch):
     reset_runtime_caches_for_tests()
 
 
-def test_client_provider_uses_runtime_default_without_app_name(monkeypatch):
-    monkeypatch.setenv("PIONIX_KEY", "super-secret-pionix-key")
-    monkeypatch.setenv("PIONIX_USER_AGENT", "off-key-tests")
-    monkeypatch.delenv("CHARGER_API_PROVIDER", raising=False)
+def test_runtime_settings_only_carries_debug_flag(monkeypatch):
+    monkeypatch.setenv("DEBUG", "false")
     monkeypatch.delenv("APP_NAME", raising=False)
 
     reset_runtime_caches_for_tests()
-
     runtime = get_runtime_settings()
-    client = get_charger_api_client()
 
-    assert runtime.CHARGER_API_PROVIDER == "pionix"
-    assert isinstance(client, PionixClient)
+    assert runtime.DEBUG is False
+    assert not hasattr(runtime, "CHARGER_API_PROVIDER")
 
     reset_runtime_caches_for_tests()
 

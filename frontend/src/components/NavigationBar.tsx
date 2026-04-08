@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useContext, useEffect, useRef, useState } from "react";
 import {
   NavigationMenu,
   NavigationMenuItem,
@@ -15,13 +15,15 @@ import {
 } from "./ui/dropdown-menu";
 import { Button } from "./ui/button";
 import { useAuth } from "@/auth/AuthContext";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { ModeToggle } from "./mode-toggle";
+import { FetchContext } from "@/dataFetch/FetchContext";
+import { clientLogger } from "@/lib/logger";
 
 interface RouteProps {
   href: string;
@@ -34,7 +36,19 @@ export const NavigationBar = () => {
   const [isOpen, setIsOpen] = useState<boolean>(false);
   const { isAuthenticated, logout } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [message, setMessage] = useState<string>("");
+  const [anomalyCount, setAnomalyCount] = useState<number>(0);
+  const fetchContext = useContext(FetchContext);
+  const getAnomalyCount = fetchContext?.getAnomalyCount;
+  const refreshInFlightRef = useRef(false);
+  const isMountedRef = useRef(true);
+
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   const handleLogout = () => {
     logout();
@@ -43,6 +57,75 @@ export const NavigationBar = () => {
       navigate("/login");
     }, 1500);
   };
+
+  const refreshAnomalyCount = useCallback(async () => {
+    if (!isAuthenticated || !getAnomalyCount) {
+      if (isMountedRef.current) {
+        setAnomalyCount(0);
+      }
+      return;
+    }
+
+    if (refreshInFlightRef.current) {
+      return;
+    }
+    refreshInFlightRef.current = true;
+
+    try {
+      const lastSeen = localStorage.getItem("off-key:last-seen-anomalies") ?? undefined;
+      const total = await getAnomalyCount(lastSeen);
+      if (isMountedRef.current) {
+        setAnomalyCount(total);
+      }
+    } catch (err) {
+      clientLogger.error({
+        event: "anomalies.badge_refresh_failed",
+        message: "Failed to refresh anomaly badge count",
+        error: err,
+      });
+    } finally {
+      refreshInFlightRef.current = false;
+    }
+  }, [getAnomalyCount, isAuthenticated]);
+
+  useEffect(() => {
+    void refreshAnomalyCount();
+
+    if (!isAuthenticated || !getAnomalyCount) {
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      void refreshAnomalyCount();
+    }, 30000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [getAnomalyCount, isAuthenticated, refreshAnomalyCount]);
+
+  useEffect(() => {
+    void refreshAnomalyCount();
+  }, [location.pathname, refreshAnomalyCount]);
+
+  useEffect(() => {
+    const onFocus = () => {
+      void refreshAnomalyCount();
+    };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        void refreshAnomalyCount();
+      }
+    };
+
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, [refreshAnomalyCount]);
 
   return (
     <header className="sticky border-b-[1px] top-0 z-40 w-full bg-white dark:border-b-slate-700 dark:bg-background">
@@ -103,13 +186,18 @@ export const NavigationBar = () => {
           <NavigationMenuItem>
             <Tooltip>
               <TooltipTrigger asChild>
-                <Link to="/anomalies" className="flex items-center">
+                <Link to="/anomalies" className="relative flex items-center">
                   <svg xmlns="http://www.w3.org/2000/svg" fill="none"
                     viewBox="0 0 24 24" strokeWidth={1.5}
                     stroke="currentColor" className="size-6">
                     <path strokeLinecap="round" strokeLinejoin="round"
                       d="M3 3v1.5M3 21v-6m0 0 2.77-.693a9 9 0 0 1 6.208.682l.108.054a9 9 0 0 0 6.086.71l3.114-.732a48.524 48.524 0 0 1-.005-10.499l-3.11.732a9 9 0 0 1-6.085-.711l-.108-.054a9 9 0 0 0-6.208-.682L3 4.5M3 15V4.5" />
                   </svg>
+                  {anomalyCount > 0 && (
+                    <span className="absolute -top-2 -right-3 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-bold leading-none text-white">
+                      {anomalyCount > 99 ? "99+" : anomalyCount}
+                    </span>
+                  )}
                 </Link>
               </TooltipTrigger>
               <TooltipContent>Anomalies</TooltipContent>

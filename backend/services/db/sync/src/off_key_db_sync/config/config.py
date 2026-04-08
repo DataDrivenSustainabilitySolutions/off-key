@@ -23,6 +23,7 @@ class SyncConfig(BaseModel):
     # Service Control
     enabled: bool
     sync_on_startup: bool
+    source_mode: str
 
     # Sync Intervals (in seconds)
     chargers_interval: int
@@ -174,6 +175,15 @@ class SyncConfig(BaseModel):
             raise ValueError("Scheduler max instances must be between 1 and 5")
         return v
 
+    @field_validator("source_mode")
+    @classmethod
+    def validate_source_mode(cls, v: str) -> str:
+        normalized = v.strip().lower()
+        allowed = {"mqtt_only", "api"}
+        if normalized not in allowed:
+            raise ValueError(f"Source mode must be one of {sorted(allowed)}")
+        return normalized
+
     @field_validator(
         "charger_sync_success_rate_unhealthy",
         "charger_sync_success_rate_degraded",
@@ -289,6 +299,7 @@ class SyncSettings(BaseSettings):
     # Service Control
     SYNC_ENABLED: bool = True  # Enable background sync service
     SYNC_ON_STARTUP: bool = True  # Run sync immediately on startup
+    SYNC_SOURCE_MODE: str = "mqtt_only"
 
     # Sync Intervals
     SYNC_CHARGERS_INTERVAL: int = (
@@ -353,6 +364,7 @@ class SyncSettings(BaseSettings):
         return SyncConfig(
             enabled=self.SYNC_ENABLED,
             sync_on_startup=self.SYNC_ON_STARTUP,
+            source_mode=self.SYNC_SOURCE_MODE,
             chargers_interval=self.SYNC_CHARGERS_INTERVAL,
             telemetry_interval=self.SYNC_TELEMETRY_INTERVAL,
             telemetry_limit=self.SYNC_TELEMETRY_LIMIT,

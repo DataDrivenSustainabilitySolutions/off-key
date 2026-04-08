@@ -1,6 +1,7 @@
 import React, { createContext, useState, useCallback, ReactNode, useContext } from "react";
 import { apiUtils } from "@/lib/api-client";
 import { API_CONFIG } from "@/lib/api-config";
+import { clientLogger } from "@/lib/logger";
 
 export interface Cpu {
   timestamp: string;
@@ -17,19 +18,19 @@ export interface TelemetryContextType {
   // Core telemetry functions
   getTelemetryTypes: (chargerId: string) => Promise<string[]>;
   getTelemetryData: (chargerId: string, telemetryKey: string) => Promise<Cpu[]>;
-  
+
   // Data loading functions
   loadCpuUsage: (chargerId: string) => Promise<void>;
   loadCpuThermal: (chargerId: string) => Promise<void>;
-  
+
   // State maps
   cpuUsageMap: Record<string, Cpu[]>;
   cpuThermalMap: Record<string, Cpu[]>;
-  
+
   // Loading states
   loading: boolean;
   error: string | null;
-  
+
   // Clear functions
   clearTelemetryData: (chargerId?: string) => void;
 }
@@ -45,7 +46,7 @@ export const TelemetryProvider: React.FC<{ children: ReactNode }> = ({ children 
   const getTelemetryTypes = useCallback(
     async (chargerId: string): Promise<string[]> => {
       if (!chargerId) throw new Error('Charger ID is required');
-      
+
       const endpoint = API_CONFIG.ENDPOINTS.TELEMETRY.TYPES(chargerId);
       return await apiUtils.get<string[]>(endpoint);
     },
@@ -57,7 +58,7 @@ export const TelemetryProvider: React.FC<{ children: ReactNode }> = ({ children 
       if (!chargerId || !telemetryKey) {
         throw new Error('Charger ID and telemetry key are required');
       }
-      
+
       const endpoint = API_CONFIG.ENDPOINTS.TELEMETRY.DATA(chargerId, telemetryKey, 1000);
       return await apiUtils.get<Cpu[]>(endpoint);
     },
@@ -67,22 +68,22 @@ export const TelemetryProvider: React.FC<{ children: ReactNode }> = ({ children 
   const loadCpuUsage = useCallback(
     async (chargerId: string) => {
       if (!chargerId) return;
-      
+
       try {
         setLoading(true);
         setError(null);
-        
+
         const types = await getTelemetryTypes(chargerId);
         const cpuUsageKey = types.find((t) =>
           t.toLowerCase().includes("controllercpuusage")
         );
-        
+
         if (!cpuUsageKey) {
           throw new Error(`CPU Usage key not found for charger ${chargerId}`);
         }
 
         const data = await getTelemetryData(chargerId, cpuUsageKey);
-        
+
         setCpuUsageMap((prev) => ({
           ...prev,
           [chargerId]: data,
@@ -90,7 +91,12 @@ export const TelemetryProvider: React.FC<{ children: ReactNode }> = ({ children 
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : 'Failed to load CPU usage data';
         setError(errorMessage);
-        console.error("Error loading CPU Usage:", err);
+        clientLogger.error({
+          event: "telemetry.cpu_usage_load_failed",
+          message: "Error loading CPU usage",
+          error: err,
+          context: { chargerId },
+        });
       } finally {
         setLoading(false);
       }
@@ -101,22 +107,22 @@ export const TelemetryProvider: React.FC<{ children: ReactNode }> = ({ children 
   const loadCpuThermal = useCallback(
     async (chargerId: string) => {
       if (!chargerId) return;
-      
+
       try {
         setLoading(true);
         setError(null);
-        
+
         const types = await getTelemetryTypes(chargerId);
         const cpuThermalKey = types.find((t) =>
           t.toLowerCase().includes("controllertemperaturecpu-thermal")
         );
-        
+
         if (!cpuThermalKey) {
           throw new Error(`CPU Thermal key not found for charger ${chargerId}`);
         }
 
         const data = await getTelemetryData(chargerId, cpuThermalKey);
-        
+
         setCpuThermalMap((prev) => ({
           ...prev,
           [chargerId]: data,
@@ -124,7 +130,12 @@ export const TelemetryProvider: React.FC<{ children: ReactNode }> = ({ children 
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : 'Failed to load CPU thermal data';
         setError(errorMessage);
-        console.error("Error loading CPU Thermal:", err);
+        clientLogger.error({
+          event: "telemetry.cpu_thermal_load_failed",
+          message: "Error loading CPU thermal",
+          error: err,
+          context: { chargerId },
+        });
       } finally {
         setLoading(false);
       }
@@ -134,13 +145,15 @@ export const TelemetryProvider: React.FC<{ children: ReactNode }> = ({ children 
 
   const clearTelemetryData = useCallback((chargerId?: string) => {
     if (chargerId) {
-      setCpuUsageMap(prev => {
-        const { [chargerId]: removed, ...rest } = prev;
-        return rest;
+      setCpuUsageMap((prev) => {
+        const next = { ...prev };
+        delete next[chargerId];
+        return next;
       });
-      setCpuThermalMap(prev => {
-        const { [chargerId]: removed, ...rest } = prev;
-        return rest;
+      setCpuThermalMap((prev) => {
+        const next = { ...prev };
+        delete next[chargerId];
+        return next;
       });
     } else {
       setCpuUsageMap({});

@@ -3,12 +3,13 @@
 from datetime import datetime
 from typing import Optional
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from off_key_core.config.logs import logger
 from off_key_core.db.models import Anomaly
 
-from ...domain import InfrastructureError, NotFoundError
+from ...domain import ConflictError, InfrastructureError, NotFoundError
 from ...repositories import AnomalyRepository
 from ...schemas import AnomalyCreateRequest
 
@@ -27,38 +28,51 @@ class AnomalyService:
         telemetry_type: Optional[str],
         limit: int,
     ) -> list[dict[str, object]]:
-        anomalies = await self._repository.list_by_charger(
+        rows = await self._repository.list_by_charger(
             charger_id=charger_id,
             telemetry_type=telemetry_type,
             limit=limit,
         )
         logger.info(
-            f"Retrieved {len(anomalies)} anomalies for charger {charger_id} "
+            f"Retrieved {len(rows)} anomalies for charger {charger_id} "
             f"(telemetry_type={telemetry_type})"
         )
         return [
             {
+                "anomaly_id": str(anomaly_id),
                 "charger_id": anomaly.charger_id,
                 "timestamp": anomaly.timestamp,
                 "telemetry_type": anomaly.telemetry_type,
                 "anomaly_type": anomaly.anomaly_type,
                 "anomaly_value": anomaly.anomaly_value,
+                "value_type": anomaly.value_type,
             }
-            for anomaly in anomalies
+            for anomaly_id, anomaly in rows
         ]
 
+    async def count_anomalies(self, *, since: Optional[datetime] = None) -> int:
+        return await self._repository.count_since(since=since)
+
     async def create_anomaly(self, *, payload: AnomalyCreateRequest) -> dict[str, str]:
+        resolved_value_type = self._resolve_value_type(
+            anomaly_type=payload.anomaly_type,
+            value_type=payload.value_type,
+        )
         anomaly = Anomaly(
             charger_id=payload.charger_id,
             timestamp=payload.timestamp,
             telemetry_type=payload.telemetry_type,
             anomaly_type=payload.anomaly_type,
             anomaly_value=payload.anomaly_value,
+            value_type=resolved_value_type,
         )
 
         try:
-            created = await self._repository.add(anomaly)
+            created_anomaly_id = await self._repository.add(anomaly)
             await self._session.commit()
+        except IntegrityError as exc:
+            await self._session.rollback()
+            raise ConflictError("Anomaly already exists") from exc
         except Exception as exc:
             await self._session.rollback()
             raise InfrastructureError(f"Failed to create anomaly: {exc}") from exc
@@ -67,22 +81,26 @@ class AnomalyService:
             f"Anomaly created | Charger: {payload.charger_id} | "
             f"Type: {payload.anomaly_type} | Value: {payload.anomaly_value}"
         )
-        return {"message": "Anomaly created", "anomaly_id": created.charger_id}
+        return {"message": "Anomaly created", "anomaly_id": str(created_anomaly_id)}
+
+    @staticmethod
+    def _resolve_value_type(*, anomaly_type: str, value_type: Optional[str]) -> str:
+        if value_type is not None:
+            return value_type
+        if anomaly_type.lower().startswith("ml_tailprob_"):
+            return "tail_pvalue"
+        return "zscore"
 
     async def delete_anomaly(
         self,
         *,
-        charger_id: str,
-        timestamp: datetime,
-        telemetry_type: str,
+        anomaly_id: str,
     ) -> dict[str, str]:
-        anomaly = await self._repository.get(
-            charger_id=charger_id,
-            timestamp=timestamp,
-            telemetry_type=telemetry_type,
-        )
-        if anomaly is None:
+        row = await self._repository.get_by_anomaly_id(anomaly_id=anomaly_id)
+
+        if row is None:
             raise NotFoundError("Anomaly not found")
+        resolved_anomaly_id, anomaly = row
 
         try:
             await self._repository.delete(anomaly)
@@ -91,5 +109,10 @@ class AnomalyService:
             await self._session.rollback()
             raise InfrastructureError(f"Failed to delete anomaly: {exc}") from exc
 
-        logger.info(f"Deleted anomaly for charger {charger_id} at {timestamp}")
+        logger.info(
+            "Deleted anomaly | Anomaly ID: %s | Charger: %s | Timestamp: %s",
+            resolved_anomaly_id,
+            anomaly.charger_id,
+            anomaly.timestamp,
+        )
         return {"message": "Anomaly deleted"}

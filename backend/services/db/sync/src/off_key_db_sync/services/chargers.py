@@ -60,7 +60,7 @@ class ChargersSyncService:
 
     async def sync_chargers(self):
         """
-        Synchronizes the db with the latest chargers as received from PIONIX Cloud.
+        Synchronizes the db with the latest chargers from an external API source.
         Adds chargers not present in the database.
         Updates information for chargers already present in the database.
         """

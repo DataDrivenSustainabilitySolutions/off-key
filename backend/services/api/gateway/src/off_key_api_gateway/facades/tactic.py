@@ -437,6 +437,19 @@ class Tactic:
             params=params,
         )
 
+    async def get_anomaly_count(
+        self, since: Optional[datetime] = None
+    ) -> Dict[str, int]:
+        """Get total anomaly count, optionally filtered by timestamp."""
+        params: Dict[str, Any] = {}
+        if since:
+            params["since"] = since.isoformat()
+        return await self._make_request(
+            method="GET",
+            endpoint="/api/v1/data/anomalies/count",
+            params=params,
+        )
+
     async def create_anomaly(self, anomaly_data: Dict[str, Any]) -> Dict[str, str]:
         """Create anomaly via TACTIC data service."""
         return await self._make_request(
@@ -447,19 +460,12 @@ class Tactic:
 
     async def delete_anomaly(
         self,
-        charger_id: str,
-        timestamp: datetime,
-        telemetry_type: str,
+        anomaly_id: str,
     ) -> Dict[str, str]:
         """Delete anomaly via TACTIC data service."""
-        params = {
-            "timestamp": timestamp.isoformat(),
-            "telemetry_type": telemetry_type,
-        }
         return await self._make_request(
             method="DELETE",
-            endpoint=f"/api/v1/data/anomalies/{charger_id}",
-            params=params,
+            endpoint=f"/api/v1/data/anomalies/{anomaly_id}",
         )
 
     async def list_available_models(self) -> List[Dict[str, Any]]:

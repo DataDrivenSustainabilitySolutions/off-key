@@ -17,6 +17,7 @@ class AnomalyCreatePayload(BaseModel):
     telemetry_type: str
     anomaly_type: str
     anomaly_value: float
+    value_type: Optional[str] = None
 
 
 def _get_tactic_error_detail(error: TacticError) -> str:
@@ -33,6 +34,14 @@ def _raise_tactic_http_error(error: TacticError) -> None:
         status_code=error.status or status.HTTP_502_BAD_GATEWAY,
         detail=_get_tactic_error_detail(error),
     )
+
+
+@router.get("/count")
+async def get_anomaly_count(since: Optional[datetime] = None):
+    try:
+        return await tactic.get_anomaly_count(since=since)
+    except TacticError as e:
+        _raise_tactic_http_error(e)
 
 
 @router.get("")
@@ -59,6 +68,7 @@ async def create_anomaly(
     telemetry_type: str | None = None,
     anomaly_type: str | None = None,
     anomaly_value: float | None = None,
+    value_type: str | None = None,
 ):
     if payload is None:
         if (
@@ -81,6 +91,7 @@ async def create_anomaly(
             telemetry_type=telemetry_type,
             anomaly_type=anomaly_type,
             anomaly_value=anomaly_value,
+            value_type=value_type,
         )
 
     anomaly_data = {
@@ -89,6 +100,7 @@ async def create_anomaly(
         "telemetry_type": payload.telemetry_type,
         "anomaly_type": payload.anomaly_type,
         "anomaly_value": payload.anomaly_value,
+        "value_type": payload.value_type,
     }
 
     try:
@@ -123,29 +135,18 @@ async def create_anomaly(
     return result
 
 
-@router.delete("")
-async def delete_anomaly_by_fields(
-    charger_id: str,
-    timestamp: datetime,
-    telemetry_type: str,
-):
+@router.delete("/{anomaly_id}")
+async def delete_anomaly(anomaly_id: str):
     try:
-        result = await tactic.delete_anomaly(
-            charger_id=charger_id,
-            timestamp=timestamp,
-            telemetry_type=telemetry_type,
-        )
+        result = await tactic.delete_anomaly(anomaly_id=anomaly_id)
     except TacticError as e:
         if e.status == status.HTTP_404_NOT_FOUND:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Anomaly not found with given parameters",
+                detail="Anomaly not found",
             )
         _raise_tactic_http_error(e)
 
-    logger.info(
-        f"Anomaly deleted | Charger: {charger_id} | "
-        f"Telemetry: {telemetry_type} | Timestamp: {timestamp}"
-    )
+    logger.info(f"Anomaly deleted | Anomaly ID: {anomaly_id}")
 
     return result

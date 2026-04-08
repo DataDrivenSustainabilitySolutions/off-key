@@ -43,18 +43,19 @@ export default function AnomalyTable() {
   };
 
   useEffect(() => {
+    localStorage.setItem("off-key:last-seen-anomalies", new Date().toISOString());
     fetchAllAnomalies();
   }, [fetchContext]);
 
   const handleDelete = async (anomaly: Anomaly) => {
     if (!fetchContext) return;
+    if (!anomaly.anomaly_id) {
+      toast.error("Cannot delete anomaly without anomaly_id");
+      return;
+    }
     try {
-      await fetchContext.deleteAnomaly(
-        anomaly.charger_id,
-        new Date(anomaly.timestamp),
-        anomaly.telemetry_type
-      );
-      
+      await fetchContext.deleteAnomaly(anomaly.anomaly_id);
+
       toast.success('Anomaly deleted successfully');
       await fetchAllAnomalies();
     } catch (err: any) {
@@ -71,7 +72,7 @@ export default function AnomalyTable() {
         <h1 className="text-xl font-bold mb-4">Anomalies</h1>
 
         {error && <p className="text-red-500 mb-4">{error}</p>}
-        
+
         {isLoading && <p className="text-gray-500 mb-4">Loading anomalies...</p>}
 
         <Table>
@@ -87,8 +88,13 @@ export default function AnomalyTable() {
           </TableHeader>
           <TableBody>
             {data.length > 0 ? (
-              data.map((anomaly, index) => (
-                <TableRow key={index}>
+              data.map((anomaly) => (
+                <TableRow
+                  key={
+                    anomaly.anomaly_id ||
+                    `${anomaly.charger_id}-${anomaly.timestamp}-${anomaly.telemetry_type}-${anomaly.anomaly_type}`
+                  }
+                >
                   <TableCell>
                     <Link
                       to={`/details/${anomaly.charger_id}`}
@@ -112,7 +118,7 @@ export default function AnomalyTable() {
                       className="text-red-600 hover:text-red-800 font-bold cursor-pointer"
                       title="delete"
                     >
-                      ✕
+                      X
                     </button>
                   </TableCell>
                 </TableRow>

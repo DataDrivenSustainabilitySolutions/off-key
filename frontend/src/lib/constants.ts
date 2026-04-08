@@ -15,13 +15,13 @@ export const CHART_CONFIG = {
     Y_AXIS_DOMAIN: [30, 80], // Temperature range for Y-axis
     Y_AXIS_TICKS: [40, 50, 60, 70, 80], // Temperature tick marks
   },
-  
+
   // Data refresh intervals
   REFRESH_INTERVALS: {
     TELEMETRY_SYNC: 60 * 1000, // 60 seconds
     REAL_TIME_UPDATE: 60 * 1000, // 60 seconds for real-time data
   },
-  
+
   // Chart styling
   COLORS: {
     PRIMARY_LINE: '#8884d8',
@@ -47,11 +47,11 @@ export const UI_CONFIG = {
     LAST_30_MINUTES: 30,
     LAST_HOUR: 60,
   },
-  
+
   // Pagination
   DEFAULT_LIMIT: 1000, // Default telemetry data limit
   SHORT_SYNC_LIMIT: 100, // Short sync telemetry limit
-  
+
   // Polling intervals for Docker environments
   POLLING_INTERVAL: 1000, // 1 second for file watching
 } as const;
@@ -108,6 +108,7 @@ export const WEBSOCKET_CONFIG = {
 
 // Interval constants for various operations
 export const INTERVALS = {
+  DETAILS_UPDATE: 10 * 1000, // 10 seconds for details page live charts
   TELEMETRY_SYNC: 60 * 1000, // 60 seconds
   REAL_TIME_UPDATE: 60 * 1000, // 60 seconds for real-time data
   WEBSOCKET_HEARTBEAT: 30 * 1000, // 30 seconds heartbeat

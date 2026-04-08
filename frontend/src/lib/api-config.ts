@@ -64,8 +64,9 @@ export const API_CONFIG = {
         `/v1/anomalies?charger_id=${chargerId}`,
       BY_CHARGER_AND_TYPE: (chargerId: string, telemetryType: string) =>
         `/v1/anomalies?charger_id=${chargerId}&telemetry_type=${telemetryType}`,
+      COUNT: '/v1/anomalies/count',
       CREATE: '/v1/anomalies',
-      DELETE: '/v1/anomalies',
+      DELETE: (anomalyId: string) => `/v1/anomalies/${encodeURIComponent(anomalyId)}`,
     },
 
     // Monitoring Services

@@ -7,9 +7,11 @@ including Docker API configuration,
 RADAR orchestration settings, and service-specific parameters.
 """
 
+from enum import Enum
 from functools import lru_cache
 
 from off_key_core.config.database import build_postgres_database_url
+from off_key_core.config.validation import validate_environment as _validate_environment
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -22,6 +24,14 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import Optional, Self
 
 RADAR_SENSOR_KEY_STRATEGIES = {"full_hierarchy", "top_level", "leaf"}
+RADAR_ALIGNMENT_MODES = {"strict_barrier"}
+
+
+class RadarWorkloadLifecycle(str, Enum):
+    """Lifecycle behavior for TACTIC-managed RADAR workloads."""
+
+    EPHEMERAL = "ephemeral"
+    PERSISTENT = "persistent"
 
 
 class DockerConfig(BaseModel):
@@ -68,6 +78,8 @@ class RadarDefaultsConfig(BaseModel):
     # Default Model Settings
     model_type: str = "isolation_forest"
     sensor_key_strategy: str = "full_hierarchy"
+    sensor_freshness_seconds: float = Field(default=30.0, gt=0.0)
+    alignment_mode: str = "strict_barrier"
 
     # Default Anomaly Thresholds
     anomaly_threshold_medium: float = Field(default=0.6, ge=0.0, le=1.0)
@@ -79,6 +91,10 @@ class RadarDefaultsConfig(BaseModel):
     batch_timeout: float = Field(default=1.0, ge=0.1, le=3600.0)
     memory_limit_mb: int = Field(default=1000, ge=128, le=16384)
     checkpoint_interval: int = Field(default=10000, ge=100, le=100000)
+    heuristic_enabled: bool = True
+    heuristic_window_size: int = Field(default=300, ge=3, le=100000)
+    heuristic_min_samples: int = Field(default=30, ge=2, le=100000)
+    heuristic_tail_alpha: float = Field(default=0.005, gt=0.0, lt=1.0)
 
     # Default Database Settings
     db_write_enabled: bool = True
@@ -120,6 +136,16 @@ class RadarDefaultsConfig(BaseModel):
             raise ValueError(f"sensor_key_strategy must be one of: {allowed}")
         return normalized
 
+    @field_validator("alignment_mode")
+    @classmethod
+    def validate_alignment_mode(cls, v: str) -> str:
+        """Validate multivariate alignment strategy passed to RADAR."""
+        normalized = v.strip().lower()
+        if normalized not in RADAR_ALIGNMENT_MODES:
+            allowed = ", ".join(sorted(RADAR_ALIGNMENT_MODES))
+            raise ValueError(f"alignment_mode must be one of: {allowed}")
+        return normalized
+
     @model_validator(mode="after")
     def validate_threshold_ordering(self) -> Self:
         """Validate that anomaly thresholds are in correct order"""
@@ -133,6 +159,11 @@ class RadarDefaultsConfig(BaseModel):
                 f"(got {self.anomaly_threshold_medium} "
                 f"<= {self.anomaly_threshold_high} "
                 f"<= {self.anomaly_threshold_critical})"
+            )
+        if self.heuristic_min_samples > self.heuristic_window_size:
+            raise ValueError(
+                "heuristic_min_samples must be <= heuristic_window_size "
+                f"(got {self.heuristic_min_samples} > {self.heuristic_window_size})"
             )
         return self
 
@@ -165,6 +196,9 @@ class TacticConfig(BaseModel):
     # Status Reconciliation Configuration
     reconciliation_enabled: bool = True
     reconciliation_interval: int = Field(default=60, ge=1, le=86400)
+
+    # Managed RADAR workload lifecycle behavior
+    radar_workload_lifecycle: RadarWorkloadLifecycle = RadarWorkloadLifecycle.EPHEMERAL
 
     # Model Registry Initialization
     model_registry_init_max_retries: int = Field(default=30, ge=1, le=600)
@@ -200,6 +234,7 @@ class TacticSettings(BaseSettings):
     TACTIC_HOST: str = Field(default="0.0.0.0")
     TACTIC_PORT: int = Field(default=8000)
     TACTIC_LOG_LEVEL: str = Field(default="INFO")
+    ENVIRONMENT: str = Field(default="development")
 
     # Docker API Configuration
     TACTIC_DOCKER_API_URL: str = Field(default=DEFAULT_DOCKER_CONFIG.api_url)
@@ -247,6 +282,12 @@ class TacticSettings(BaseSettings):
     TACTIC_RADAR_DEFAULT_SENSOR_KEY_STRATEGY: str = Field(
         default=DEFAULT_RADAR_DEFAULTS.sensor_key_strategy
     )
+    TACTIC_RADAR_DEFAULT_ALIGNMENT_MODE: str = Field(
+        default=DEFAULT_RADAR_DEFAULTS.alignment_mode
+    )
+    TACTIC_RADAR_DEFAULT_SENSOR_FRESHNESS_SECONDS: float = Field(
+        default=DEFAULT_RADAR_DEFAULTS.sensor_freshness_seconds
+    )
     TACTIC_RADAR_DEFAULT_ANOMALY_THRESHOLD_MEDIUM: float = Field(
         default=DEFAULT_RADAR_DEFAULTS.anomaly_threshold_medium
     )
@@ -267,6 +308,18 @@ class TacticSettings(BaseSettings):
     )
     TACTIC_RADAR_DEFAULT_CHECKPOINT_INTERVAL: int = Field(
         default=DEFAULT_RADAR_DEFAULTS.checkpoint_interval
+    )
+    TACTIC_RADAR_DEFAULT_HEURISTIC_ENABLED: bool = Field(
+        default=DEFAULT_RADAR_DEFAULTS.heuristic_enabled
+    )
+    TACTIC_RADAR_DEFAULT_HEURISTIC_WINDOW_SIZE: int = Field(
+        default=DEFAULT_RADAR_DEFAULTS.heuristic_window_size
+    )
+    TACTIC_RADAR_DEFAULT_HEURISTIC_MIN_SAMPLES: int = Field(
+        default=DEFAULT_RADAR_DEFAULTS.heuristic_min_samples
+    )
+    TACTIC_RADAR_DEFAULT_HEURISTIC_TAIL_ALPHA: float = Field(
+        default=DEFAULT_RADAR_DEFAULTS.heuristic_tail_alpha
     )
     TACTIC_RADAR_DEFAULT_DB_WRITE_ENABLED: bool = Field(
         default=DEFAULT_RADAR_DEFAULTS.db_write_enabled
@@ -293,6 +346,7 @@ class TacticSettings(BaseSettings):
     # Status Reconciliation Configuration
     TACTIC_RECONCILIATION_ENABLED: bool = Field(default=True)
     TACTIC_RECONCILIATION_INTERVAL: int = Field(default=60)
+    TACTIC_RADAR_WORKLOAD_LIFECYCLE: Optional[str] = Field(default=None)
 
     # Model Registry Initialization
     TACTIC_MODEL_REGISTRY_INIT_MAX_RETRIES: int = Field(default=30)
@@ -315,6 +369,33 @@ class TacticSettings(BaseSettings):
 
     def _parse_default_constraints(self) -> list[str]:
         return self._split_constraints(self.TACTIC_DOCKER_DEFAULT_CONSTRAINTS)
+
+    @field_validator("ENVIRONMENT")
+    @classmethod
+    def validate_environment(cls, value: str) -> str:
+        return _validate_environment(value)
+
+    @staticmethod
+    def _normalize_lifecycle_policy(raw_value: str) -> RadarWorkloadLifecycle:
+        normalized = raw_value.strip().lower()
+        try:
+            return RadarWorkloadLifecycle(normalized)
+        except ValueError as exc:
+            allowed = ", ".join(policy.value for policy in RadarWorkloadLifecycle)
+            raise ValueError(
+                f"TACTIC_RADAR_WORKLOAD_LIFECYCLE must be one of: {allowed}"
+            ) from exc
+
+    def _resolve_radar_workload_lifecycle(self) -> RadarWorkloadLifecycle:
+        if self.TACTIC_RADAR_WORKLOAD_LIFECYCLE:
+            return self._normalize_lifecycle_policy(
+                self.TACTIC_RADAR_WORKLOAD_LIFECYCLE
+            )
+
+        if self.ENVIRONMENT == "production":
+            return RadarWorkloadLifecycle.PERSISTENT
+
+        return RadarWorkloadLifecycle.EPHEMERAL
 
     @property
     def config(self) -> TacticConfig:
@@ -345,6 +426,8 @@ class TacticSettings(BaseSettings):
             mqtt_qos=self.TACTIC_RADAR_DEFAULT_MQTT_QOS,
             model_type=self.TACTIC_RADAR_DEFAULT_MODEL_TYPE,
             sensor_key_strategy=self.TACTIC_RADAR_DEFAULT_SENSOR_KEY_STRATEGY,
+            alignment_mode=self.TACTIC_RADAR_DEFAULT_ALIGNMENT_MODE,
+            sensor_freshness_seconds=self.TACTIC_RADAR_DEFAULT_SENSOR_FRESHNESS_SECONDS,
             anomaly_threshold_medium=self.TACTIC_RADAR_DEFAULT_ANOMALY_THRESHOLD_MEDIUM,
             anomaly_threshold_high=self.TACTIC_RADAR_DEFAULT_ANOMALY_THRESHOLD_HIGH,
             anomaly_threshold_critical=self.TACTIC_RADAR_DEFAULT_ANOMALY_THRESHOLD_CRITICAL,
@@ -352,6 +435,10 @@ class TacticSettings(BaseSettings):
             batch_timeout=self.TACTIC_RADAR_DEFAULT_BATCH_TIMEOUT,
             memory_limit_mb=self.TACTIC_RADAR_DEFAULT_MEMORY_LIMIT_MB,
             checkpoint_interval=self.TACTIC_RADAR_DEFAULT_CHECKPOINT_INTERVAL,
+            heuristic_enabled=self.TACTIC_RADAR_DEFAULT_HEURISTIC_ENABLED,
+            heuristic_window_size=self.TACTIC_RADAR_DEFAULT_HEURISTIC_WINDOW_SIZE,
+            heuristic_min_samples=self.TACTIC_RADAR_DEFAULT_HEURISTIC_MIN_SAMPLES,
+            heuristic_tail_alpha=self.TACTIC_RADAR_DEFAULT_HEURISTIC_TAIL_ALPHA,
             db_write_enabled=self.TACTIC_RADAR_DEFAULT_DB_WRITE_ENABLED,
             db_batch_size=self.TACTIC_RADAR_DEFAULT_DB_BATCH_SIZE,
             db_batch_timeout=self.TACTIC_RADAR_DEFAULT_DB_BATCH_TIMEOUT,
@@ -371,6 +458,7 @@ class TacticSettings(BaseSettings):
             log_level=self.TACTIC_LOG_LEVEL,
             reconciliation_enabled=self.TACTIC_RECONCILIATION_ENABLED,
             reconciliation_interval=self.TACTIC_RECONCILIATION_INTERVAL,
+            radar_workload_lifecycle=self._resolve_radar_workload_lifecycle(),
             model_registry_init_max_retries=self.TACTIC_MODEL_REGISTRY_INIT_MAX_RETRIES,
             model_registry_init_retry_interval_seconds=(
                 self.TACTIC_MODEL_REGISTRY_INIT_RETRY_INTERVAL_SECONDS
@@ -396,12 +484,7 @@ class RadarContainerRuntimeSettings(BaseSettings):
     @field_validator("ENVIRONMENT")
     @classmethod
     def validate_environment(cls, value: str) -> str:
-        normalized = value.strip().lower()
-        allowed = {"development", "test", "staging", "production"}
-        if normalized not in allowed:
-            allowed_text = ", ".join(sorted(allowed))
-            raise ValueError(f"ENVIRONMENT must be one of: {allowed_text}")
-        return normalized
+        return _validate_environment(value)
 
     @property
     def radar_database_url(self) -> str:

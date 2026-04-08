@@ -153,6 +153,9 @@ class AnomalyDetectionService:
         self.processed_count = 0
         self.anomaly_count = 0
         self.last_checkpoint = 0
+        self.score_window = deque(maxlen=self._get_heuristic_window_size())
+        self.skipped_learning_anomaly_count = 0
+        self.pre_ready_suppressed_count = 0
 
     def _restore_from_checkpoint(self, checkpoint: Dict[str, Any]):
         """Restore state from checkpoint data."""
@@ -162,6 +165,20 @@ class AnomalyDetectionService:
         self.anomaly_count = checkpoint["anomaly_count"]
         self.last_checkpoint = self.processed_count
         self.schema_signature = checkpoint["schema_signature"]
+        self.skipped_learning_anomaly_count = int(
+            checkpoint.get("skipped_learning_anomaly_count", 0)
+        )
+        self.pre_ready_suppressed_count = int(
+            checkpoint.get("pre_ready_suppressed_count", 0)
+        )
+        self.score_window = deque(
+            (
+                float(v)
+                for v in checkpoint.get("score_window", [])
+                if isinstance(v, (int, float))
+            ),
+            maxlen=self._get_heuristic_window_size(),
+        )
 
         self.logger.info(
             f"Restored from checkpoint: {self.processed_count} points processed, "
@@ -219,7 +236,7 @@ class AnomalyDetectionService:
 
         Args:
             checkpoint_path: Path to the pickle checkpoint file
-            config: Current configuration (used for thresholds, etc.)
+            config: Current configuration (used for runtime behavior and validation)
 
         Returns:
             Restored AnomalyDetectionService instance
@@ -293,12 +310,26 @@ class AnomalyDetectionService:
         sensor_key_strategy = str(
             getattr(config, "sensor_key_strategy", "full_hierarchy")
         )
+        alignment_mode = str(getattr(config, "alignment_mode", "strict_barrier"))
+        heuristic_enabled = bool(getattr(config, "heuristic_enabled", True))
+        heuristic_window_size = int(getattr(config, "heuristic_window_size", 300))
+        heuristic_min_samples = int(getattr(config, "heuristic_min_samples", 30))
+        heuristic_tail_alpha = float(getattr(config, "heuristic_tail_alpha", 0.005))
+        skip_learning_on_anomaly = True
+        threshold_method = "tail_probability"
 
         payload = {
             "model_type": model_type,
             "preprocessing_steps": preprocessing_steps,
             "subscription_topics": sorted(subscription_topics),
             "sensor_key_strategy": sensor_key_strategy,
+            "alignment_mode": alignment_mode,
+            "heuristic_enabled": heuristic_enabled,
+            "heuristic_window_size": heuristic_window_size,
+            "heuristic_min_samples": heuristic_min_samples,
+            "heuristic_tail_alpha": heuristic_tail_alpha,
+            "skip_learning_on_anomaly": skip_learning_on_anomaly,
+            "threshold_method": threshold_method,
         }
         payload_json = json.dumps(payload, sort_keys=True, separators=(",", ":"))
         return hashlib.sha256(payload_json.encode("utf-8")).hexdigest()
@@ -312,8 +343,9 @@ class AnomalyDetectionService:
         try:
             # Log params before validation
             self.logger.info(
-                f"Creating model '{self.config.model_type}'"
-                f" with params: {self.config.model_params}"
+                "event=radar.model_create type=%s params=%s",
+                self.config.model_type,
+                self.config.model_params,
             )
 
             # Use create_model_instance which handles special cases like KNN
@@ -322,10 +354,18 @@ class AnomalyDetectionService:
             )
 
         except ImportError as e:
-            self.logger.error(f"Failed to import model: {e}")
+            self.logger.error(
+                "event=radar.model_import_failed error=%s",
+                str(e),
+                exc_info=True,
+            )
             raise
         except ValueError as e:
-            self.logger.error(f"Invalid model configuration: {e}")
+            self.logger.error(
+                "event=radar.model_config_invalid error=%s",
+                str(e),
+                exc_info=True,
+            )
             raise
 
     def _create_preprocessors(self):
@@ -340,9 +380,16 @@ class AnomalyDetectionService:
                 preprocessors.append(preprocessor_cls(**step.get("params", {})))
             if preprocessors:
                 step_types = [s["type"] for s in validated_steps]
-                self.logger.info(f"Enabled preprocessing pipeline: {step_types}")
+                self.logger.info(
+                    "event=radar.preprocessing_enabled steps=%s",
+                    step_types,
+                )
         except Exception as e:
-            self.logger.error(f"Failed to create preprocessing pipeline: {e}")
+            self.logger.error(
+                "event=radar.preprocessing_create_failed error=%s",
+                str(e),
+                exc_info=True,
+            )
             raise
 
         return preprocessors
@@ -369,17 +416,32 @@ class AnomalyDetectionService:
         start_time = time.time()
         try:
             processed_data = self._transform_pipeline(data)
+            score = float(self.model.score_one(processed_data))
 
-            # Anomaly detection: score first, then learn
-            score = self.model.score_one(processed_data)
-            self.model.learn_one(processed_data)
+            model_ready = self._is_model_ready_for_triggering()
+            heuristic_context = self._evaluate_moving_window_heuristic(
+                score, model_ready=model_ready
+            )
+            heuristic_triggered = bool(heuristic_context.get("triggered", False))
+            is_anomaly = heuristic_triggered
+            severity = self._calculate_heuristic_severity(heuristic_context)
+            learn_skipped = False
 
-            # Update preprocessors after scoring to avoid influencing current result.
-            self._learn_pipeline(data)
+            # Decision-first flow to avoid contaminating model and baseline.
+            if is_anomaly:
+                learn_skipped = True
+                self.skipped_learning_anomaly_count += 1
+            else:
+                self.model.learn_one(processed_data)
+                # Update preprocessors after scoring so current score is unaffected.
+                self._learn_pipeline(data)
+                if model_ready:
+                    self.score_window.append(score)
+            if not model_ready:
+                self.pre_ready_suppressed_count += 1
 
-            # Thresholding
-            is_anomaly = score > self.config.thresholds.get("medium", 0.6)
-            severity = self._calculate_severity(score)
+            heuristic_context["learn_skipped"] = learn_skipped
+            heuristic_context["reference_count_after"] = len(self.score_window)
 
             # Update counters
             self.processed_count += 1
@@ -408,13 +470,26 @@ class AnomalyDetectionService:
                 context={
                     "processing_time_ms": processing_time * 1000,
                     "model_type": self.config.model_type,
+                    "score_window": heuristic_context,
                 },
             )
 
             if is_anomaly:
+                score_window = result.context.get("score_window", {})
                 self.logger.warning(
-                    f"Anomaly detected: score={score:.3f},"
-                    f" severity={severity}, topic={topic}"
+                    (
+                        f"Anomaly detected: score={score:.3f},"
+                        f" severity={severity}, topic={topic}, "
+                        "trigger=tail_probability"
+                    ),
+                    extra={
+                        "anomaly_score": score,
+                        "tail_pvalue": score_window.get("tail_pvalue"),
+                        "reference_count": score_window.get("reference_count"),
+                        "tail_alpha": score_window.get("tail_alpha"),
+                        "model_ready": score_window.get("model_ready"),
+                        "learn_skipped": score_window.get("learn_skipped"),
+                    },
                 )
 
             return result
@@ -478,9 +553,12 @@ class AnomalyDetectionService:
                         "(stage=%s): %s",
                         warmup_failure_stage or "unknown",
                         warmup_error,
+                        exc_info=True,
                     )
 
-            self.logger.error(f"Processing error: {e}")
+            self.logger.error(
+                "event=radar.processing_error error=%s", str(e), exc_info=True
+            )
             context = {
                 "error": str(e),
                 "processing_time_ms": (time.time() - start_time) * 1000,
@@ -517,18 +595,106 @@ class AnomalyDetectionService:
             return match.group("stage")
         return None
 
-    def _calculate_severity(self, score: float) -> str:
-        """Calculate anomaly severity level"""
-        thresholds = self.config.thresholds
-
-        if score > thresholds.get("critical", 0.9):
-            return "critical"
-        elif score > thresholds.get("high", 0.8):
-            return "high"
-        elif score > thresholds.get("medium", 0.6):
-            return "medium"
-        else:
+    def _calculate_heuristic_severity(self, heuristic_context: Dict[str, Any]) -> str:
+        """Calculate severity based on tail probability outlier strength."""
+        if not heuristic_context.get("triggered", False):
             return "low"
+
+        tail_pvalue = float(heuristic_context.get("tail_pvalue", 1.0))
+        tail_alpha = float(heuristic_context.get("tail_alpha", 0.005))
+        if tail_alpha <= 0.0:
+            return "medium"
+
+        if tail_pvalue <= tail_alpha / 10.0:
+            return "critical"
+        if tail_pvalue <= tail_alpha / 4.0:
+            return "high"
+        return "medium"
+
+    def _evaluate_moving_window_heuristic(
+        self, score: float, *, model_ready: bool
+    ) -> Dict[str, Any]:
+        """Evaluate trailing-reference tail-probability trigger for this service."""
+        heuristic_enabled = bool(getattr(self.config, "heuristic_enabled", True))
+        min_samples = self._get_heuristic_min_samples()
+        tail_alpha = self._get_heuristic_tail_alpha()
+        reference_count = len(self.score_window)
+
+        context: Dict[str, Any] = {
+            "enabled": heuristic_enabled,
+            "window_size": self.score_window.maxlen,
+            "reference_count": reference_count,
+            "history_count": reference_count,
+            "min_samples": min_samples,
+            "tail_alpha": tail_alpha,
+            "threshold_method": "tail_probability",
+            "model_ready": model_ready,
+            "triggered": False,
+            "warmup": reference_count < min_samples or not model_ready,
+            "tail_pvalue": 1.0,
+            "learn_skipped": False,
+        }
+
+        if not heuristic_enabled:
+            return context
+        if not model_ready:
+            return context
+        if reference_count < min_samples or reference_count <= 0:
+            return context
+
+        count_ge = sum(1 for existing in self.score_window if existing >= score)
+        tail_pvalue = (1.0 + count_ge) / (reference_count + 1.0)
+        context["tail_pvalue"] = tail_pvalue
+        context["triggered"] = tail_pvalue <= tail_alpha
+        context["warmup"] = False
+        return context
+
+    def _get_heuristic_window_size(self) -> int:
+        """Get moving-window size with safe fallback for legacy config objects."""
+        try:
+            return max(int(getattr(self.config, "heuristic_window_size", 300)), 3)
+        except (TypeError, ValueError):
+            return 300
+
+    def _get_heuristic_min_samples(self) -> int:
+        """Get minimum sample count with safe fallback and clamping."""
+        try:
+            min_samples = int(getattr(self.config, "heuristic_min_samples", 30))
+        except (TypeError, ValueError):
+            min_samples = 30
+
+        min_samples = max(min_samples, 2)
+        return min(min_samples, self._get_heuristic_window_size())
+
+    def _get_heuristic_tail_alpha(self) -> float:
+        """Get tail-probability threshold with safe fallback."""
+        try:
+            alpha = float(getattr(self.config, "heuristic_tail_alpha", 0.005))
+        except (TypeError, ValueError):
+            alpha = 0.005
+        if alpha <= 0.0 or alpha >= 1.0:
+            return 0.005
+        return alpha
+
+    def _is_model_ready_for_triggering(self) -> bool:
+        """Return whether model output is ready for anomaly triggering semantics."""
+        if str(getattr(self.config, "model_type", "")).lower() != "knn":
+            return True
+        engine = getattr(self.model, "engine", None)
+        if engine is None:
+            return True
+        # engine.warm_upengine.window introduced in river 0.21 (KNNAnomalyDetector)
+        try:
+            warm_up = int(getattr(engine, "warm_up", 0))
+        except (TypeError, ValueError):
+            warm_up = 0
+        if warm_up <= 0:
+            return True
+        try:
+            current_size = len(getattr(engine, "window", []))
+        except TypeError:
+            current_size = 0
+        return current_size >= warm_up
 
     def _checkpoint_model(self):
         """Save model and preprocessor checkpoint with HMAC signature.
@@ -554,6 +720,11 @@ class AnomalyDetectionService:
                     "preprocessors": self.preprocessors,
                     "processed_count": self.processed_count,
                     "anomaly_count": self.anomaly_count,
+                    "score_window": list(self.score_window),
+                    "skipped_learning_anomaly_count": (
+                        self.skipped_learning_anomaly_count
+                    ),
+                    "pre_ready_suppressed_count": self.pre_ready_suppressed_count,
                     "config": self.config,
                     "service_id": service_id,
                     "schema_signature": self.schema_signature,
@@ -575,7 +746,11 @@ class AnomalyDetectionService:
                 self.logger.info(f"Checkpoint saved (unsigned): {checkpoint_path}")
 
         except Exception as e:
-            self.logger.error(f"Failed to save checkpoint: {e}")
+            self.logger.error(
+                "event=radar.checkpoint_save_failed error=%s",
+                str(e),
+                exc_info=True,
+            )
 
     def _get_model_info(self) -> Dict[str, Any]:
         """Get model state information"""
@@ -583,6 +758,8 @@ class AnomalyDetectionService:
             "processed_count": self.processed_count,
             "anomaly_count": self.anomaly_count,
             "anomaly_rate": self.anomaly_count / max(self.processed_count, 1),
+            "skipped_learning_anomaly_count": self.skipped_learning_anomaly_count,
+            "pre_ready_suppressed_count": self.pre_ready_suppressed_count,
             "memory_usage_mb": self._get_memory_usage(),
             "avg_processing_time_ms": sum(self.processing_times)
             / max(len(self.processing_times), 1)
@@ -654,7 +831,7 @@ class ResilientAnomalyDetector:
         self, data: Dict[str, float], topic: str, charger_id: str, reason: str
     ) -> AnomalyResult:
         """Fallback processing when primary fails"""
-        self.logger.warning(f"Using fallback processing: {reason}")
+        self.logger.warning("event=radar.fallback_processing reason=%s", reason)
 
         try:
             if self.fallback_service:
@@ -668,11 +845,25 @@ class ResilientAnomalyDetector:
             else:
                 # Simple statistical fallback
                 score = self._simple_statistical_anomaly_score(data)
+                heuristic_context = (
+                    self.primary_service._evaluate_moving_window_heuristic(
+                        score, model_ready=True
+                    )
+                )
+                if not heuristic_context.get("triggered", False) and bool(
+                    heuristic_context.get("model_ready", True)
+                ):
+                    self.primary_service.score_window.append(score)
+                    heuristic_context["reference_count_after"] = len(
+                        self.primary_service.score_window
+                    )
                 return AnomalyResult(
                     anomaly_score=score,
-                    is_anomaly=score > 0.7,
-                    severity="medium" if score > 0.7 else "low",
-                    timestamp=datetime.now(),
+                    is_anomaly=bool(heuristic_context.get("triggered", False)),
+                    severity=self.primary_service._calculate_heuristic_severity(
+                        heuristic_context
+                    ),
+                    timestamp=datetime.now(timezone.utc),
                     model_info={"model_used": "statistical"},
                     raw_data=data,
                     topic=topic,
@@ -681,11 +872,16 @@ class ResilientAnomalyDetector:
                         "fallback_reason": reason,
                         "model_used": "statistical",
                         "service_state": ServiceState.DEGRADED.value,
+                        "score_window": heuristic_context,
                     },
                 )
 
         except Exception as e:
-            self.logger.error(f"Fallback processing failed: {e}")
+            self.logger.error(
+                "event=radar.fallback_processing_failed error=%s",
+                str(e),
+                exc_info=True,
+            )
             return AnomalyResult(
                 anomaly_score=0.0,
                 is_anomaly=False,
@@ -738,7 +934,7 @@ class ResilientAnomalyDetector:
         if recent_error_rate > self.error_threshold:
             self._open_circuit_breaker()
 
-        self.logger.error(f"Model error: {error}")
+        self.logger.error("event=radar.model_error error=%s", error)
 
     def _record_success(self):
         """Record successful processing"""
@@ -818,9 +1014,10 @@ class MemoryManager:
         after_memory = self.get_memory_usage()
         freed_memory = before_memory - after_memory
 
-        self.logger.info(
-            f"Memory cleanup: freed {freed_memory:.1f} MB,"
-            f" collected {collected} objects"
+        self.logger.debug(
+            "event=radar.memory_cleanup freed_mb=%.1f collected=%s",
+            freed_memory,
+            collected,
         )
 
         return freed_memory

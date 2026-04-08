@@ -15,7 +15,11 @@ from off_key_core.config.env import load_env
 from off_key_core.config.runtime import get_runtime_settings
 from off_key_core.config.services import get_service_endpoints_settings
 from off_key_core.config.validation import validate_settings
-from off_key_core.config.logs import load_yaml_config, logger
+from off_key_core.config.logs import (
+    load_yaml_config,
+    logger,
+    log_startup_logging_configuration,
+)
 
 from .api.middleware import LoggingMiddleware, SecurityLoggingMiddleware
 from .api.rate_limiter import limiter, rate_limit_exceeded_handler
@@ -55,6 +59,7 @@ if not hasattr(bcrypt, "__about__"):
 # Initialize logging from core + service YAML config
 service_logging_config = Path(__file__).parent / "config" / "logging.yaml"
 load_yaml_config(str(service_logging_config))
+log_startup_logging_configuration("api-gateway")
 
 
 async def wait_for_db_sync(

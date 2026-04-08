@@ -33,6 +33,7 @@ import {
   TooltipProvider,
 } from "@/components/ui/tooltip";
 import type { CombinedChargerData, StatusFilter } from "@/types/charger";
+import { formatLastSeen } from "@/lib/time-utils";
 
 // Hook for filtering logic
 export function useChargerFiltering(
@@ -243,7 +244,7 @@ const ChargerCardGrid: React.FC<ChargerCardGridProps> = ({
               {charger.online ? "active" : "offline"}
             </span>
           </p>
-          <p>Last Seen: {new Date(charger.last_seen).toLocaleString()}</p>
+          <p>Last Seen: {formatLastSeen(charger.last_seen)}</p>
         </CardContent>
         <CardFooter>
           <Link
@@ -314,7 +315,7 @@ const ChargerTable: React.FC<ChargerTableProps> = ({
             </span>
           </TableCell>
           <TableCell>
-            {new Date(charger.last_seen).toLocaleString()}
+            {formatLastSeen(charger.last_seen)}
           </TableCell>
           <TableCell>
             <FavoriteButton

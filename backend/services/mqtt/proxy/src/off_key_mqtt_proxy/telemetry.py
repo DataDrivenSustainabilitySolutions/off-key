@@ -4,7 +4,7 @@ Database Writer for MQTT Telemetry Data
 
 import asyncio
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, List, Optional, Any, Union, Callable
 from dataclasses import dataclass, field
 from collections import defaultdict
@@ -17,6 +17,7 @@ from sqlalchemy import update, case
 
 from off_key_core.config.logs import logger, log_performance
 from off_key_core.db.models import Telemetry, Charger
+from off_key_core.utils.mqtt_topics import TopicMetadataExtractor
 from off_key_core.utils.string import string_to_float
 from off_key_core.utils.enum import HealthStatus
 from .config.config import MQTTConfig
@@ -151,9 +152,15 @@ class DatabaseWriter:
     - Connection health monitoring
     """
 
-    def __init__(self, config: MQTTConfig, session_factory: Callable[[], AsyncSession]):
+    def __init__(
+        self,
+        config: MQTTConfig,
+        session_factory: Callable[[], AsyncSession],
+        topic_extractor: TopicMetadataExtractor,
+    ):
         self.config = config
         self._session_factory = session_factory
+        self.topic_extractor = topic_extractor
 
         # Batching configuration
         self.batch_size = config.batch_size
@@ -197,14 +204,14 @@ class DatabaseWriter:
 
     async def start(self):
         """Start the database writer"""
-        logger.info("Starting database writer", extra=self._log_context)
+        logger.info("event=db_writer.started", extra=self._log_context)
 
         # Start background tasks
         self._writer_task = asyncio.create_task(self._writer_loop())
         self._health_task = asyncio.create_task(self._health_monitor_loop())
 
         logger.info(
-            "Database writer started successfully",
+            "event=db_writer.startup_complete",
             extra={
                 **self._log_context,
                 "batch_size": self.batch_size,
@@ -215,7 +222,7 @@ class DatabaseWriter:
 
     async def stop(self):
         """Stop the database writer"""
-        logger.info("Stopping database writer", extra=self._log_context)
+        logger.debug("event=db_writer.stopping", extra=self._log_context)
 
         # Signal shutdown
         self._shutdown_event.set()
@@ -238,13 +245,13 @@ class DatabaseWriter:
         # Process remaining batches
         if self.pending_batch.size() > 0:
             logger.info(
-                f"Processing {self.pending_batch.size()} "
-                f"remaining records during shutdown",
+                "event=db_writer.shutdown_flush records_count=%s",
+                self.pending_batch.size(),
                 extra={**self._log_context, "records_count": self.pending_batch.size()},
             )
             await self._process_batch(self.pending_batch)
 
-        logger.info("Database writer stopped", extra=self._log_context)
+        logger.debug("event=db_writer.stopped", extra=self._log_context)
 
     async def write_telemetry_message(self, message: MQTTMessage):
         """
@@ -285,7 +292,12 @@ class DatabaseWriter:
         # Log high-frequency messages intelligently
         if self.total_records_received % 100 == 0:
             logger.debug(
-                f"Queued telemetry record (total: {self.total_records_received})",
+                "event=db_writer.record_queued total_received=%s \
+                     charger_id=%s telemetry_type=%s batch_size=%s",
+                self.total_records_received,
+                record.charger_id,
+                record.telemetry_type,
+                self.pending_batch.size(),
                 extra={
                     **self._log_context,
                     "charger_id": record.charger_id,
@@ -302,36 +314,34 @@ class DatabaseWriter:
     async def _parse_telemetry_message(self, message: MQTTMessage) -> ParseResult:
         """Parse MQTT message and return an explicit success or failure object"""
         try:
-            # Extract charger ID from topic
-            # Topic format: charger/{charger_id}/live-telemetry/{hierarchy}
-            topic_parts = message.topic.split("/")
-            if len(topic_parts) < 4 or topic_parts[0] != "charger":
+            payload = message.payload
+            metadata = self.topic_extractor.extract(message.topic, payload)
+            if metadata is None:
                 return ParseFailure(
-                    reason="Invalid topic format",
+                    reason="Topic metadata extraction failed",
                     is_error=False,
-                    log_message=f"Invalid topic format: {message.topic}",
+                    log_message=(
+                        f"Unable to extract metadata from topic: {message.topic}"
+                    ),
                     context={"topic": message.topic},
                 )
 
-            charger_id = topic_parts[1]
-            hierarchy = "/".join(topic_parts[3:])  # Reconstruct hierarchy
-
-            # Use hierarchy directly as telemetry type
-            telemetry_type = hierarchy
+            charger_id = metadata.charger_id
+            telemetry_type = metadata.telemetry_type
             if not telemetry_type:
                 return ParseFailure(
-                    reason="Invalid hierarchy after cleaning",
+                    reason="Missing telemetry type",
                     is_error=False,
-                    log_message=f"Invalid hierarchy after cleaning: {hierarchy}",
+                    log_message=(
+                        f"Missing telemetry type after extraction: {message.topic}"
+                    ),
                     context={
                         "charger_id": charger_id,
-                        "hierarchy": hierarchy,
+                        "topic": message.topic,
                     },
                 )
 
             # Extract value and timestamp from payload
-            payload = message.payload
-
             # Parse timestamp
             timestamp_str = payload.get("timestamp")
             if timestamp_str:
@@ -433,10 +443,13 @@ class DatabaseWriter:
                     self._batch_ready_event.clear()
 
         except asyncio.CancelledError:
-            logger.info("Writer loop cancelled", extra=self._log_context)
+            logger.debug(
+                "event=db_writer.writer_loop_cancelled", extra=self._log_context
+            )
         except Exception as e:
             logger.error(
-                f"Unexpected error in writer loop: {e}",
+                "event=db_writer.writer_loop_failed error=%s",
+                e,
                 extra=self._log_context,
                 exc_info=True,
             )
@@ -458,9 +471,14 @@ class DatabaseWriter:
 
                 if attempt > 0:
                     delay = self.config.get_jittered_backoff_delay(attempt - 1)
-                    logger.info(
-                        f"Retrying batch processing "
-                        f"(attempt {attempt + 1}/{max_attempts}) in {delay}s",
+                    logger.warning(
+                        "event=db_writer.batch_retry batch_id=%s batch_size=%s \
+                             attempt=%s max_attempts=%s delay_s=%.3f",
+                        batch_id,
+                        batch.size(),
+                        attempt + 1,
+                        max_attempts,
+                        delay,
                         extra={
                             **self._log_context,
                             "batch_id": batch_id,
@@ -476,8 +494,12 @@ class DatabaseWriter:
                 if success:
                     batch.status = WriteStatus.SUCCESS
                     self.processing_batches.pop(batch_id, None)
-                    logger.info(
-                        "Batch processed successfully",
+                    logger.debug(
+                        "event=db_writer.batch_success batch_id=%s \
+                             batch_size=%s attempt=%s",
+                        batch_id,
+                        batch.size(),
+                        attempt + 1,
                         extra={
                             **self._log_context,
                             "batch_id": batch_id,
@@ -489,7 +511,12 @@ class DatabaseWriter:
 
             except Exception as e:
                 logger.error(
-                    f"Error processing batch (attempt {attempt + 1}): {e}",
+                    "event=db_writer.batch_attempt_failed batch_id=%s \
+                        s batch_size=%s attempt=%s error=%s",
+                    batch_id,
+                    batch.size(),
+                    attempt + 1,
+                    e,
                     extra={
                         **self._log_context,
                         "batch_id": batch_id,
@@ -508,7 +535,10 @@ class DatabaseWriter:
         self.total_batches_failed += 1
 
         logger.error(
-            f"Batch processing failed after {max_attempts} attempts",
+            "event=db_writer.batch_failed batch_id=%s batch_size=%s attempts=%s",
+            batch_id,
+            batch.size(),
+            max_attempts,
             extra={
                 **self._log_context,
                 "batch_id": batch_id,
@@ -539,6 +569,7 @@ class DatabaseWriter:
 
             async with self._session_factory() as session:
                 try:
+                    await self._upsert_chargers(session, charger_ids)
                     await session.execute(stmt)
                     if charger_ids:
                         await self._update_charger_statuses(session, charger_ids)
@@ -561,10 +592,6 @@ class DatabaseWriter:
 
             # Log batch processing with intelligent frequency
             if self.total_batches_processed % 10 == 0 or write_latency > 1.0:
-                message = (
-                    f"Batch processed: {records_written} "
-                    f"records in {write_latency:.3f}s"
-                )
                 extra_data = {
                     **self._log_context,
                     "batch_size": records_written,
@@ -576,9 +603,20 @@ class DatabaseWriter:
                 }
 
                 if write_latency <= 1.0:
-                    logger.info(message, extra=extra_data)
+                    logger.debug(
+                        "event=db_writer.batch_processed batch_size=%s \
+                             write_latency_s=%.3f",
+                        records_written,
+                        write_latency,
+                        extra=extra_data,
+                    )
                 else:
-                    logger.warning(message, extra=extra_data)
+                    logger.warning(
+                        "event=db_writer.batch_slow batch_size=%s write_latency_s=%.3f",
+                        records_written,
+                        write_latency,
+                        extra=extra_data,
+                    )
 
             # Performance logging
             log_performance(
@@ -591,7 +629,9 @@ class DatabaseWriter:
 
         except IntegrityError as e:
             logger.warning(
-                f"Integrity error during batch processing (likely duplicates): {e}",
+                "event=db_writer.batch_integrity_error batch_size=%s error=%s",
+                batch.size(),
+                e,
                 extra={
                     **self._log_context,
                     "batch_size": batch.size(),
@@ -603,18 +643,9 @@ class DatabaseWriter:
 
         except SQLAlchemyError as e:
             logger.error(
-                f"Database error during batch processing: {e}",
-                extra={
-                    **self._log_context,
-                    "batch_size": batch.size(),
-                    "error": str(e),
-                },
-            )
-            return False
-
-        except Exception as e:
-            logger.error(
-                f"Unexpected error during batch processing: {e}",
+                "event=db_writer.batch_db_error batch_size=%s error=%s",
+                batch.size(),
+                e,
                 extra={
                     **self._log_context,
                     "batch_size": batch.size(),
@@ -624,6 +655,50 @@ class DatabaseWriter:
             )
             return False
 
+        except Exception as e:
+            logger.error(
+                "event=db_writer.batch_unexpected_error batch_size=%s error=%s",
+                batch.size(),
+                e,
+                extra={
+                    **self._log_context,
+                    "batch_size": batch.size(),
+                    "error": str(e),
+                },
+                exc_info=True,
+            )
+            return False
+
+    async def _upsert_chargers(
+        self, session: AsyncSession, charger_ids: set[str]
+    ) -> None:
+        """
+        Ensure chargers exist before telemetry inserts and status updates.
+        """
+        if not charger_ids:
+            return
+
+        now = datetime.now(timezone.utc)
+        rows = [
+            {
+                "charger_id": charger_id,
+                "online": True,
+                "mqtt_connected": True,
+                "mqtt_last_message": self.charger_last_seen.get(charger_id, now),
+                "last_seen": self._format_last_seen(
+                    self.charger_last_seen.get(charger_id, now)
+                ),
+            }
+            for charger_id in charger_ids
+        ]
+
+        stmt = (
+            insert(Charger)
+            .values(rows)
+            .on_conflict_do_nothing(index_elements=["charger_id"])
+        )
+        await session.execute(stmt)
+
     async def _update_charger_statuses(
         self, session: AsyncSession, charger_ids: set
     ) -> None:
@@ -632,7 +707,7 @@ class DatabaseWriter:
         if not charger_ids:
             return
 
-        now = datetime.now()
+        now = datetime.now(timezone.utc)
 
         # Build CASE expression to preserve per-charger timestamps
         # Use actual timestamp from charger_last_seen, fallback to current time
@@ -643,22 +718,46 @@ class DatabaseWriter:
             ],
             else_=now,
         )
+        last_seen_case = case(
+            *[
+                (
+                    Charger.charger_id == cid,
+                    self._format_last_seen(self.charger_last_seen.get(cid, now)),
+                )
+                for cid in charger_ids
+            ],
+            else_=self._format_last_seen(now),
+        )
 
         stmt = (
             update(Charger)
             .where(Charger.charger_id.in_(charger_ids))
-            .values(mqtt_connected=True, mqtt_last_message=timestamp_case)
+            .values(
+                mqtt_connected=True,
+                mqtt_last_message=timestamp_case,
+                last_seen=last_seen_case,
+            )
         )
 
         await session.execute(stmt)
 
         logger.debug(
-            f"Bulk updated MQTT status for {len(charger_ids)} chargers",
+            "event=db_writer.charger_status_bulk_updated charger_count=%s",
+            len(charger_ids),
             extra={
                 **self._log_context,
                 "charger_count": len(charger_ids),
             },
         )
+
+    @staticmethod
+    def _format_last_seen(value: datetime) -> str:
+        """
+        Format datetime into a stable ISO string for the legacy text `last_seen` field.
+        """
+        if value.tzinfo is not None:
+            return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+        return value.isoformat()
 
     async def _update_chargers_after_failure(self, charger_ids: set) -> None:
         """Best-effort status update when inserts fail (duplicates, etc.)."""
@@ -716,10 +815,13 @@ class DatabaseWriter:
                     )
 
         except asyncio.CancelledError:
-            logger.info("Health monitor loop cancelled", extra=self._log_context)
+            logger.debug(
+                "event=db_writer.health_monitor_cancelled", extra=self._log_context
+            )
         except Exception as e:
             logger.error(
-                f"Unexpected error in health monitor loop: {e}",
+                "event=db_writer.health_monitor_failed error=%s",
+                e,
                 extra=self._log_context,
                 exc_info=True,
             )

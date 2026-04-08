@@ -2,6 +2,7 @@ import React, { createContext, useState, useCallback, ReactNode, useContext } fr
 import { apiUtils } from "@/lib/api-client";
 import { API_CONFIG } from "@/lib/api-config";
 import { Anomaly } from "@/lib/anomaly-utils";
+import { clientLogger } from "@/lib/logger";
 
 export interface AnomalyContextType {
   // Core anomaly functions
@@ -13,25 +14,21 @@ export interface AnomalyContextType {
     anomaly_type: string,
     anomaly_value: number
   ) => Promise<void>;
-  deleteAnomaly: (
-    chargerId: string,
-    timestamp: Date,
-    telemetry_type: string
-  ) => Promise<void>;
-  
+  deleteAnomaly: (anomalyId: string) => Promise<void>;
+
   // Data loading functions
   loadAnomalies: (chargerId: string) => Promise<void>;
-  
+
   // State management
   anomaliesMap: Record<string, Anomaly[]>;
-  
+
   // Loading and error states
   loading: boolean;
   error: string | null;
-  
+
   // Clear functions
   clearAnomalies: (chargerId?: string) => void;
-  
+
   // Real-time updates
   refreshAnomalies: (chargerId: string) => Promise<void>;
 }
@@ -46,7 +43,7 @@ export const AnomalyProvider: React.FC<{ children: ReactNode }> = ({ children })
   const getAnomalies = useCallback(
     async (chargerId: string): Promise<Anomaly[]> => {
       if (!chargerId) throw new Error('Charger ID is required');
-      
+
       const endpoint = API_CONFIG.ENDPOINTS.ANOMALIES.BY_CHARGER(chargerId);
       return await apiUtils.get<Anomaly[]>(endpoint);
     },
@@ -64,7 +61,7 @@ export const AnomalyProvider: React.FC<{ children: ReactNode }> = ({ children })
       if (!chargerId || !timestamp || !telemetry_type || !anomaly_type) {
         throw new Error('All anomaly fields are required');
       }
-      
+
       const endpoint = API_CONFIG.ENDPOINTS.ANOMALIES.CREATE;
       await apiUtils.post(endpoint, {
         charger_id: chargerId,
@@ -78,32 +75,24 @@ export const AnomalyProvider: React.FC<{ children: ReactNode }> = ({ children })
   );
 
   const deleteAnomaly = useCallback(
-    async (chargerId: string, timestamp: Date, telemetry_type: string) => {
-      if (!chargerId || !timestamp || !telemetry_type) {
-        throw new Error('Charger ID, timestamp, and telemetry type are required');
+    async (anomalyId: string) => {
+      if (!anomalyId) {
+        throw new Error('Anomaly ID is required');
       }
-      
-      const params = new URLSearchParams({
-        charger_id: chargerId,
-        timestamp: timestamp.toISOString(),
-        telemetry_type: telemetry_type,
-      });
-
-      const endpoint = `${API_CONFIG.ENDPOINTS.ANOMALIES.DELETE}?${params.toString()}`;
-      await apiUtils.delete(endpoint);
+      await apiUtils.delete(API_CONFIG.ENDPOINTS.ANOMALIES.DELETE(anomalyId));
     },
     []
   );
 
   const loadAnomalies = useCallback(async (chargerId: string) => {
     if (!chargerId) return;
-    
+
     try {
       setLoading(true);
       setError(null);
-      
+
       const anomalies = await getAnomalies(chargerId);
-      
+
       setAnomaliesMap((prev) => ({
         ...prev,
         [chargerId]: anomalies,
@@ -111,7 +100,12 @@ export const AnomalyProvider: React.FC<{ children: ReactNode }> = ({ children })
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to load anomalies';
       setError(errorMessage);
-      console.error("Error loading anomalies:", err);
+      clientLogger.error({
+        event: "anomalies.load_failed",
+        message: "Error loading anomalies",
+        error: err,
+        context: { chargerId },
+      });
     } finally {
       setLoading(false);
     }
@@ -123,9 +117,10 @@ export const AnomalyProvider: React.FC<{ children: ReactNode }> = ({ children })
 
   const clearAnomalies = useCallback((chargerId?: string) => {
     if (chargerId) {
-      setAnomaliesMap(prev => {
-        const { [chargerId]: removed, ...rest } = prev;
-        return rest;
+      setAnomaliesMap((prev) => {
+        const next = { ...prev };
+        delete next[chargerId];
+        return next;
       });
     } else {
       setAnomaliesMap({});

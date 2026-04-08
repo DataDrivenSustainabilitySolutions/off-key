@@ -12,7 +12,6 @@ from off_key_core.config.auth import get_auth_settings
 from off_key_core.config.database import get_database_settings
 from off_key_core.config.email import get_email_settings
 from off_key_core.config.logging import get_logging_settings
-from off_key_core.config.pionix import get_pionix_settings
 from off_key_core.config.runtime import get_runtime_settings
 from off_key_core.config.services import _clear_service_endpoints_settings_cache
 from off_key_core.config.telemetry import get_telemetry_settings
@@ -26,7 +25,6 @@ def reset_runtime_caches_for_tests() -> None:
     get_database_settings.cache_clear()
     get_email_settings.cache_clear()
     get_logging_settings.cache_clear()
-    get_pionix_settings.cache_clear()
     get_runtime_settings.cache_clear()
     _clear_service_endpoints_settings_cache()
     get_telemetry_settings.cache_clear()

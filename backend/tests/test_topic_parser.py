@@ -64,6 +64,14 @@ def test_derive_required_sensors_supports_top_level_strategy():
     }
 
 
+def test_derive_required_sensors_ignores_wildcard_tail_topics():
+    topics = [
+        "charger/+/live-telemetry/#",
+        "charger/+/live-telemetry/+",
+    ]
+    assert TopicParser.derive_required_sensors(topics) == set()
+
+
 def test_extract_sensor_type_rejects_invalid_strategy():
     with pytest.raises(ValueError, match="sensor_key_strategy must be one of"):
         TopicParser.extract_sensor_type(
@@ -75,3 +83,22 @@ def test_extract_sensor_type_rejects_invalid_strategy():
 def test_extract_sensor_type_requires_telemetry_segment():
     sensor = TopicParser.extract_sensor_type("charger/charger-1/legacy/TopLevelPart")
     assert sensor is None
+
+
+def test_extract_charger_id_uses_payload_fallback_on_regex_miss():
+    charger_id = TopicParser.extract_charger_id(
+        "tenant-a/site-b/topic",
+        payload={"charger_id": "charger-from-payload", "telemetry_type": "voltage"},
+    )
+    assert charger_id == "charger-from-payload"
+
+
+def test_extract_sensor_type_uses_payload_fallback_on_regex_miss():
+    sensor = TopicParser.extract_sensor_type(
+        "tenant-a/site-b/topic",
+        payload={
+            "charger_id": "charger-from-payload",
+            "telemetry_type": "metrics/voltage",
+        },
+    )
+    assert sensor == "metrics/voltage"

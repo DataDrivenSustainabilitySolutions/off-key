@@ -1,64 +1,32 @@
+"""
+Legacy charger API provider hooks.
+
+The runtime API-provider integration was removed as part of the MQTT-first
+ingestion cutover.
+"""
+
 from functools import lru_cache
 from typing import Optional
 
 from off_key_core.clients.base_client import ChargerAPIClient
-from off_key_core.clients.pionix import PionixClient
-from off_key_core.config.pionix import get_pionix_settings
-from off_key_core.config.runtime import get_runtime_settings
 
 
-def _create_pionix_client() -> PionixClient:
-    """Create a new Pionix client from current modular configuration."""
-    return PionixClient(config=get_pionix_settings().pionix_config)
+class ChargerAPIProviderRemovedError(RuntimeError):
+    """Raised when deprecated API-provider access is requested."""
+
+
+_REMOVAL_MESSAGE = (
+    "Charger API providers were removed in MQTT-first mode. "
+    "Use MQTT topic subscriptions instead."
+)
 
 
 @lru_cache()
 def get_charger_api_client() -> ChargerAPIClient:
-    """
-    Dependency provider for charger API client.
-
-    Returns the appropriate client implementation based on configuration.
-    The client is cached using lru_cache to ensure we reuse the same instance.
-
-    Returns:
-        ChargerAPIClient implementation based on CHARGER_API_PROVIDER setting
-
-    Raises:
-        ValueError: If the configured provider is unknown
-    """
-    runtime_settings = get_runtime_settings()
-    provider = runtime_settings.CHARGER_API_PROVIDER
-
-    if provider == "pionix":
-        return _create_pionix_client()
-    # Future providers can be added here:
-    # elif provider == "fictional":
-    #     from .client.fictional import FictionalClient
-    #     return FictionalClient(config=settings.fictional_config)
-    else:
-        raise ValueError(
-            f"Unknown charger API provider: {provider}. Valid options are: 'pionix'"
-        )
+    """Deprecated provider entrypoint retained for compatibility."""
+    raise ChargerAPIProviderRemovedError(_REMOVAL_MESSAGE)
 
 
 def get_charger_api_client_factory(provider: Optional[str] = None) -> ChargerAPIClient:
-    """
-    Factory function for creating charger API clients.
-
-    This is useful for cases where you need to override the default provider,
-    such as in testing or when using multiple providers simultaneously.
-
-    Args:
-        provider: Optional provider name to override the default
-
-    Returns:
-        ChargerAPIClient implementation for the specified provider
-    """
-    if provider is None:
-        return get_charger_api_client()
-
-    if provider == "pionix":
-        return _create_pionix_client()
-    # Future providers can be added here
-    else:
-        raise ValueError(f"Unknown charger API provider: {provider}")
+    """Deprecated factory retained for compatibility."""
+    raise ChargerAPIProviderRemovedError(_REMOVAL_MESSAGE)

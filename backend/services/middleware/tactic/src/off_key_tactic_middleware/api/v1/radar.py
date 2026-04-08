@@ -1,7 +1,8 @@
-from fastapi import APIRouter, HTTPException, Depends, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from typing import List, Dict, Optional, Any
 from pydantic import BaseModel, Field
 
+from off_key_core.schemas.radar import PerformanceConfig
 from ...models.registry import ModelRegistryService
 from ...services.orchestration.radar import (
     RadarOrchestrationService,
@@ -48,7 +49,7 @@ class RadarConfig(BaseModel):
     )
 
     # Performance Configuration
-    performance_config: Optional[Dict[str, Any]] = Field(
+    performance_config: Optional[PerformanceConfig] = Field(
         default=None, description="Performance and resource settings"
     )
 
@@ -111,7 +112,11 @@ async def start_radar_service(
             preprocessing_steps=config.preprocessing_steps,
             mqtt_config=config.mqtt_config,
             anomaly_thresholds=config.anomaly_thresholds,
-            performance_config=config.performance_config,
+            performance_config=(
+                config.performance_config.model_dump(exclude_none=True)
+                if config.performance_config
+                else None
+            ),
         )
 
         return {

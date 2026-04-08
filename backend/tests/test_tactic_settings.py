@@ -2,6 +2,7 @@ import pytest
 
 from off_key_tactic_middleware.config import (
     RadarContainerRuntimeSettings,
+    RadarWorkloadLifecycle,
     TacticSettings,
     RadarDefaultsConfig,
 )
@@ -30,6 +31,34 @@ def test_sensor_key_strategy_validation():
     with pytest.raises(ValueError):
         RadarDefaultsConfig(sensor_key_strategy="invalid")
 
+    config = RadarDefaultsConfig(alignment_mode="STRICT_BARRIER")
+    assert config.alignment_mode == "strict_barrier"
+
+    with pytest.raises(ValueError):
+        RadarDefaultsConfig(alignment_mode="invalid")
+
+
+def test_heuristic_window_validation():
+    with pytest.raises(ValueError, match="heuristic_min_samples must be <="):
+        RadarDefaultsConfig(heuristic_window_size=20, heuristic_min_samples=25)
+
+
+def test_tactic_settings_expose_heuristic_and_freshness_defaults():
+    settings = TacticSettings(
+        TACTIC_RADAR_DEFAULT_HEURISTIC_WINDOW_SIZE=420,
+        TACTIC_RADAR_DEFAULT_HEURISTIC_MIN_SAMPLES=40,
+        TACTIC_RADAR_DEFAULT_HEURISTIC_TAIL_ALPHA=0.007,
+        TACTIC_RADAR_DEFAULT_ALIGNMENT_MODE="strict_barrier",
+        TACTIC_RADAR_DEFAULT_SENSOR_FRESHNESS_SECONDS=18.0,
+    )
+    defaults = settings.config.radar_defaults
+
+    assert defaults.heuristic_window_size == 420
+    assert defaults.heuristic_min_samples == 40
+    assert defaults.heuristic_tail_alpha == 0.007
+    assert defaults.alignment_mode == "strict_barrier"
+    assert defaults.sensor_freshness_seconds == 18.0
+
 
 def test_radar_container_runtime_settings_build_encoded_database_url():
     settings = RadarContainerRuntimeSettings(
@@ -46,3 +75,21 @@ def test_radar_container_runtime_settings_build_encoded_database_url():
         settings.radar_database_url
         == "postgresql+asyncpg://db%40user:p%40ss@db-host:5432/radar"
     )
+
+
+def test_radar_lifecycle_defaults_to_ephemeral_in_development():
+    settings = TacticSettings(ENVIRONMENT="development")
+    assert settings.config.radar_workload_lifecycle == RadarWorkloadLifecycle.EPHEMERAL
+
+
+def test_radar_lifecycle_defaults_to_persistent_in_production():
+    settings = TacticSettings(ENVIRONMENT="production")
+    assert settings.config.radar_workload_lifecycle == RadarWorkloadLifecycle.PERSISTENT
+
+
+def test_radar_lifecycle_override_is_respected():
+    settings = TacticSettings(
+        ENVIRONMENT="production",
+        TACTIC_RADAR_WORKLOAD_LIFECYCLE="ephemeral",
+    )
+    assert settings.config.radar_workload_lifecycle == RadarWorkloadLifecycle.EPHEMERAL

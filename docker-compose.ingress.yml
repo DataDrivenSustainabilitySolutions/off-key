@@ -1,0 +1,68 @@
+# Tailscale SOCKS5 + gost TCP forwarder
+# Swarm-compatible ingress overlay. No Linux capabilities required.
+#
+# Deploy alongside the base swarm stack:
+#   docker stack deploy \
+#     -c docker-compose.swarm.yml \
+#     -c docker-compose.ingress.yml \
+#     off-key
+#
+# Pre-flight:
+#   1. Create (and optionally seed) the Tailscale state directory on every backend node:
+#        mkdir -p /opt/stacks/off-key/tailscale-ingress-state
+#      Copy tailscaled.state from a pre-authenticated installation to skip the auth key on restart.
+#   2. After the first deploy, configure an EMQX MQTT bridge (Data Integration → Bridges)
+#      pointing to mqtt-tailscale-bridge:1883.
+#      Set upstream credentials, TLS, and topic subscriptions there.
+#
+# See .env.ingress.example for required/optional environment variables.
+
+services:
+  tailscale-vpn:
+    image: tailscale/tailscale:v1.94.2
+    environment:
+      - TS_AUTHKEY=${INGRESS_TS_AUTHKEY:-}
+      - TS_AUTH_ONCE=${INGRESS_TS_AUTH_ONCE:-true}
+      - TS_USERSPACE=true
+      - TS_STATE_DIR=/var/lib/tailscale
+      - TS_SOCKS5_SERVER=0.0.0.0:1055
+      - TS_EXTRA_ARGS=${INGRESS_TS_EXTRA_ARGS:-}
+    volumes:
+      - tailscale_ingress_state:/var/lib/tailscale
+    networks:
+      - emqx-network
+    deploy:
+      replicas: 1
+      placement:
+        constraints: [node.labels.backend == true]
+      restart_policy:
+        condition: any
+
+  mqtt-tailscale-bridge:
+    # Dumb TCP forwarder: EMQX connects here on :1883, gost tunnels it through
+    # the Tailscale SOCKS5 proxy to the upstream .ts.net hostname.
+    # MagicDNS resolution happens inside Tailscale, not in the container's DNS.
+    # Auth, TLS, and topic subscriptions are configured in the EMQX bridge — not here.
+    image: gogost/gost:3
+    command:
+      - "-L=tcp://:1883/${INGRESS_UPSTREAM_MQTT_HOST:?INGRESS_UPSTREAM_MQTT_HOST must be set}:${INGRESS_UPSTREAM_MQTT_PORT:-1883}"
+      - "-F=socks5://tailscale-vpn:1055"
+    networks:
+      - emqx-network
+    deploy:
+      replicas: 1
+      placement:
+        constraints: [node.labels.backend == true]
+      restart_policy:
+        condition: any
+
+volumes:
+  tailscale_ingress_state:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${INGRESS_TS_STATE_DIR:-/opt/stacks/off-key/tailscale-ingress-state}
+
+networks:
+  emqx-network:

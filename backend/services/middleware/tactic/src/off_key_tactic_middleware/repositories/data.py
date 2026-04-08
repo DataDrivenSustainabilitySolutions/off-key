@@ -3,10 +3,17 @@
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import select
+from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from off_key_core.db.models import Charger, Telemetry, User, Favorite, Anomaly
+from off_key_core.db.models import (
+    Anomaly,
+    AnomalyIdentity,
+    Charger,
+    Favorite,
+    Telemetry,
+    User,
+)
 
 
 class ChargerRepository:
@@ -134,35 +141,79 @@ class AnomalyRepository:
         charger_id: str,
         telemetry_type: Optional[str],
         limit: int,
-    ) -> list[Anomaly]:
-        query = select(Anomaly).where(Anomaly.charger_id == charger_id)
+    ) -> list[tuple[str, Anomaly]]:
+        query = (
+            select(AnomalyIdentity.anomaly_id, Anomaly)
+            .join(
+                Anomaly,
+                and_(
+                    Anomaly.charger_id == AnomalyIdentity.charger_id,
+                    Anomaly.timestamp == AnomalyIdentity.timestamp,
+                    Anomaly.telemetry_type == AnomalyIdentity.telemetry_type,
+                ),
+            )
+            .where(Anomaly.charger_id == charger_id)
+        )
         if telemetry_type:
             query = query.where(Anomaly.telemetry_type == telemetry_type)
         query = query.order_by(Anomaly.timestamp.desc()).limit(limit)
         result = await self._session.execute(query)
-        return list(result.scalars().all())
+        return [(anomaly_id, anomaly) for anomaly_id, anomaly in result.all()]
 
-    async def add(self, anomaly: Anomaly) -> Anomaly:
+    async def count_since(self, *, since: Optional[datetime] = None) -> int:
+        query = select(func.count()).select_from(Anomaly)
+        if since is not None:
+            query = query.where(Anomaly.timestamp > since)
+        result = await self._session.execute(query)
+        return result.scalar_one()
+
+    async def add(self, anomaly: Anomaly) -> str:
         self._session.add(anomaly)
         await self._session.flush()
-        await self._session.refresh(anomaly)
-        return anomaly
-
-    async def get(
-        self,
-        *,
-        charger_id: str,
-        timestamp: datetime,
-        telemetry_type: str,
-    ) -> Optional[Anomaly]:
-        result = await self._session.execute(
-            select(Anomaly).where(
-                Anomaly.charger_id == charger_id,
-                Anomaly.timestamp == timestamp,
-                Anomaly.telemetry_type == telemetry_type,
+        identity_result = await self._session.execute(
+            select(AnomalyIdentity.anomaly_id).where(
+                AnomalyIdentity.charger_id == anomaly.charger_id,
+                AnomalyIdentity.timestamp == anomaly.timestamp,
+                AnomalyIdentity.telemetry_type == anomaly.telemetry_type,
             )
         )
-        return result.scalars().first()
+        anomaly_id = identity_result.scalar_one_or_none()
+        if anomaly_id is not None:
+            return str(anomaly_id)
+
+        # Backward-compatible fallback for environments where the
+        # anomaly_identity insert trigger has not been installed yet.
+        identity = AnomalyIdentity(
+            charger_id=anomaly.charger_id,
+            timestamp=anomaly.timestamp,
+            telemetry_type=anomaly.telemetry_type,
+        )
+        self._session.add(identity)
+        await self._session.flush()
+        await self._session.refresh(identity)
+        return str(identity.anomaly_id)
+
+    async def get_by_anomaly_id(
+        self,
+        *,
+        anomaly_id: str,
+    ) -> Optional[tuple[str, Anomaly]]:
+        result = await self._session.execute(
+            select(AnomalyIdentity.anomaly_id, Anomaly)
+            .join(
+                Anomaly,
+                and_(
+                    Anomaly.charger_id == AnomalyIdentity.charger_id,
+                    Anomaly.timestamp == AnomalyIdentity.timestamp,
+                    Anomaly.telemetry_type == AnomalyIdentity.telemetry_type,
+                ),
+            )
+            .where(AnomalyIdentity.anomaly_id == anomaly_id)
+        )
+        row = result.first()
+        if row is None:
+            return None
+        return row[0], row[1]
 
     async def delete(self, anomaly: Anomaly) -> None:
         await self._session.delete(anomaly)

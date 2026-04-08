@@ -1,6 +1,7 @@
 from sqlalchemy import (
     Column,
     Enum,
+    ForeignKeyConstraint,
     Index,
     PrimaryKeyConstraint,
     Text,
@@ -195,6 +196,10 @@ class Anomaly(Base):
     telemetry_type = Column(Text, nullable=False, index=True)
     anomaly_type = Column(Text, nullable=False, index=True)
     anomaly_value = Column(Float, nullable=False, index=True)
+    # 'tail_pvalue' for rows written by the tail-probability detector (commit 19+).
+    # 'zscore' for legacy rows written by the z-score heuristic.
+    # NULL for rows predating this column.
+    value_type = Column(Text, nullable=True)
 
     __table_args__ = (
         PrimaryKeyConstraint(
@@ -217,6 +222,41 @@ event.listen(
     "after_create",
     DDL(f"SELECT create_hypertable('{Anomaly.__tablename__}', 'timestamp');"),
 )
+
+
+class AnomalyIdentity(Base):
+    __tablename__ = "anomaly_identity"
+
+    anomaly_id = Column(
+        Text,
+        primary_key=True,
+        nullable=False,
+        server_default=text("gen_random_uuid()::text"),
+    )
+    charger_id = Column(Text, nullable=False, index=True)
+    timestamp = Column(TIMESTAMP(timezone=True), nullable=False, index=True)
+    telemetry_type = Column(Text, nullable=False, index=True)
+    created = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "charger_id",
+            "timestamp",
+            "telemetry_type",
+            name="uq_anomaly_identity_target",
+        ),
+        ForeignKeyConstraint(
+            ["charger_id", "timestamp", "telemetry_type"],
+            ["anomalies.charger_id", "anomalies.timestamp", "anomalies.telemetry_type"],
+            ondelete="CASCADE",
+            name="fk_anomaly_identity_anomaly",
+        ),
+        Index(
+            "idx_anomaly_identity_charger_timestamp",
+            "charger_id",
+            "timestamp",
+        ),
+    )
 
 
 class ModelRegistry(Base):

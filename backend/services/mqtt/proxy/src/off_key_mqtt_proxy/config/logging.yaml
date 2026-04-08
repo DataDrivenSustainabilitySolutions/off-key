@@ -4,17 +4,22 @@ disable_existing_loggers: false
 # Override root logger to prevent double logging
 root:
   level: ${LOG_LEVEL:INFO}
-  handlers: []
+  handlers: [console]
 
 # Service-specific logger configurations
 loggers:
+  off_key_mqtt_proxy:
+    level: ${SERVICE_LOG_LEVEL:${LOG_LEVEL:INFO}}
+    handlers: [console, file]
+    propagate: false
+
   mqtt-proxy:
     level: ${SERVICE_LOG_LEVEL:${LOG_LEVEL:INFO}}
     handlers: [console, file]
     propagate: false
 
   sqlalchemy.engine.Engine:
-    level: ${SQLALCHEMY_LOG_LEVEL:INFO}
+    level: ${SQLALCHEMY_LOG_LEVEL:WARNING}
     handlers: [console_truncated, file]
     propagate: false
 

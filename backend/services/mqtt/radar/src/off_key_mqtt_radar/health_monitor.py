@@ -10,6 +10,7 @@ from collections import deque
 from datetime import datetime
 from typing import Optional, Dict, Any, List, Deque
 
+from off_key_core.config.logging import get_logging_settings
 from off_key_core.config.logs import logger
 
 from .models import HealthStatus
@@ -55,6 +56,9 @@ class HealthMonitor:
         self._message_processor = None
 
         self._log_context = {"component": "health_monitor"}
+        logging_settings = get_logging_settings()
+        self._summary_interval_seconds = logging_settings.LOG_HEARTBEAT_INTERVAL_SECONDS
+        self._last_summary_log = 0.0
 
     def set_components(
         self,
@@ -115,9 +119,16 @@ class HealthMonitor:
                 except asyncio.TimeoutError:
                     await self._perform_health_check()
         except asyncio.CancelledError:
-            logger.info("Health monitor cancelled", extra=self._log_context)
+            logger.debug(
+                "event=radar.health_monitor_cancelled", extra=self._log_context
+            )
         except Exception as e:
-            logger.error(f"Health monitor error: {e}", extra=self._log_context)
+            logger.error(
+                "event=radar.health_monitor_error error=%s",
+                str(e),
+                extra=self._log_context,
+                exc_info=True,
+            )
 
     async def _perform_health_check(self) -> None:
         """Perform comprehensive health check."""
@@ -132,9 +143,7 @@ class HealthMonitor:
                 for alert in status.active_alerts:
                     logger.warning(f"Active alert: {alert}", extra=self._log_context)
             else:
-                logger.debug(
-                    f"Service health: {status.status}", extra=self._log_context
-                )
+                self._maybe_log_healthy_summary(status)
 
             # Write metrics if database writer is available
             if self._database_writer and status.status != "failed":
@@ -144,7 +153,12 @@ class HealthMonitor:
             self.last_health_check = time.time()
 
         except Exception as e:
-            logger.error(f"Health check failed: {e}", extra=self._log_context)
+            logger.error(
+                "event=radar.health_check_failed error=%s",
+                str(e),
+                extra=self._log_context,
+                exc_info=True,
+            )
 
     def _build_metrics_dict(self, status: HealthStatus) -> Dict[str, Any]:
         """Build metrics dictionary for persistence."""
@@ -268,3 +282,25 @@ class HealthMonitor:
             active_alerts=active_alerts,
             uptime_seconds=uptime,
         )
+
+    def _maybe_log_healthy_summary(self, status: HealthStatus) -> None:
+        now = time.time()
+        if now - self._last_summary_log < self._summary_interval_seconds:
+            return
+
+        metrics = status.metrics
+        logger.info(
+            (
+                "event=radar.health_summary status=%s message_count=%s "
+                "anomaly_rate=%.4f error_rate=%.4f throughput=%.2f "
+                "memory_mb=%.2f"
+            ),
+            status.status,
+            metrics.get("message_count", 0),
+            metrics.get("anomaly_rate", 0.0),
+            metrics.get("error_rate", 0.0),
+            metrics.get("throughput_per_second", 0.0),
+            metrics.get("memory_usage_mb", 0.0),
+            extra=self._log_context,
+        )
+        self._last_summary_log = now

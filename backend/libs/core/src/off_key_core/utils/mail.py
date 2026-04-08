@@ -3,7 +3,12 @@ from functools import lru_cache
 
 from fastapi_mail import FastMail, MessageSchema, ConnectionConfig, MessageType
 from ..config.email import get_email_settings
-from ..config.logs import logger, log_performance, log_security_event
+from ..config.logs import (
+    logger,
+    log_performance,
+    log_security_event,
+    redact_email,
+)
 
 
 @lru_cache(maxsize=1)
@@ -43,12 +48,20 @@ async def send_verification_email(email: str, token: str):
         fm = FastMail(get_mail_config())
         await fm.send_message(message)
 
-        logger.info(f"Verification email sent successfully to {email}")
+        logger.info(
+            "event=mail.verification_sent recipient=%s",
+            redact_email(email),
+        )
         log_security_event("verification_email_sent", email, {"type": "registration"})
         log_performance("send_verification_email", start_time)
 
     except Exception as e:
-        logger.error(f"Failed to send verification email to {email}: {str(e)}")
+        logger.error(
+            "event=mail.verification_send_failed recipient=%s error=%s",
+            redact_email(email),
+            str(e),
+            exc_info=True,
+        )
         log_security_event("verification_email_failed", email, {"error": str(e)})
         raise
 
@@ -70,14 +83,22 @@ async def send_password_reset_email(email: str, token: str):
         fm = FastMail(get_mail_config())
         await fm.send_message(message)
 
-        logger.info(f"Password reset email sent successfully to {email}")
+        logger.info(
+            "event=mail.password_reset_sent recipient=%s",
+            redact_email(email),
+        )
         log_security_event(
             "password_reset_email_sent", email, {"type": "password_reset"}
         )
         log_performance("send_password_reset_email", start_time)
 
     except Exception as e:
-        logger.error(f"Failed to send password reset email to {email}: {str(e)}")
+        logger.error(
+            "event=mail.password_reset_send_failed recipient=%s error=%s",
+            redact_email(email),
+            str(e),
+            exc_info=True,
+        )
         log_security_event("password_reset_email_failed", email, {"error": str(e)})
         raise
 
@@ -108,15 +129,21 @@ async def send_anomaly_alert_email(anomaly: dict):
         await fm.send_message(message)
 
         logger.warning(
-            f"Anomaly alert email sent for charger {charger_id} | "
-            f"Type: {anomaly_type} |"
-            f" Recipients: {len(settings.anomaly_alert_recipients_list)}"
+            "event=mail.anomaly_alert_sent charger_id=%s "
+            "anomaly_type=%s recipient_count=%s",
+            charger_id,
+            anomaly_type,
+            len(settings.anomaly_alert_recipients_list),
         )
         log_performance("send_anomaly_alert_email", start_time)
 
     except Exception as e:
         logger.error(
-            f"Failed to send anomaly alert email for charger {charger_id}: {str(e)} | "
-            f"Anomaly type: {anomaly_type}"
+            "event=mail.anomaly_alert_send_failed charger_id=%s "
+            "anomaly_type=%s error=%s",
+            charger_id,
+            anomaly_type,
+            str(e),
+            exc_info=True,
         )
         raise

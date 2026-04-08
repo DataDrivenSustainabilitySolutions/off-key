@@ -6,10 +6,10 @@ import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
 import { Link } from "react-router-dom";
 import { useAuth } from "@/auth/AuthContext";
-import { useFetch } from "@/dataFetch/UseFetch";
 import { API_CONFIG, getApiUrl } from "@/lib/api-config";
 import { validateEmail, validatePassword, sanitizeInput } from "@/lib/validation";
 import { Eye, EyeOff } from "lucide-react";
+import { clientLogger } from "@/lib/logger";
 
 interface LoginResponse {
   access_token: string;
@@ -76,7 +76,11 @@ const Login: React.FC = () => {
         navigate("/");
       }, 1000); // Reduced delay since no sync needed
     } catch (error) {
-      console.error(error);
+      clientLogger.error({
+        event: "auth.login_request_failed",
+        message: "Login request failed",
+        error,
+      });
       setMessage("An error occurred");
     }
   };

@@ -10,6 +10,7 @@ members = [
     "off-key-db-sync",
     "off-key-mqtt-proxy",
     "off-key-mqtt-radar",
+    "off-key-mqtt-simulator",
     "off-key-tactic-middleware",
 ]
 
@@ -1502,6 +1503,21 @@ requires-dist = [
     { name = "python-dotenv", specifier = ">=1.0.0" },
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0.0" },
     { name = "watchdog", specifier = ">=3.0.0" },
+]
+
+[[package]]
+name = "off-key-mqtt-simulator"
+version = "0.1.0"
+source = { editable = "services/mqtt/simulator" }
+dependencies = [
+    { name = "off-key-core" },
+    { name = "paho-mqtt" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "off-key-core", editable = "libs/core" },
+    { name = "paho-mqtt", specifier = ">=2.1.0" },
 ]
 
 [[package]]

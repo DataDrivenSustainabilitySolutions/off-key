@@ -162,11 +162,13 @@ class FavoriteMutationRequest(BaseModel):
 class AnomalyResponse(BaseModel):
     """Response schema for anomaly data."""
 
+    anomaly_id: str
     charger_id: str
     timestamp: datetime
     telemetry_type: str
     anomaly_type: str
     anomaly_value: float
+    value_type: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -180,6 +182,7 @@ class AnomalyCreateRequest(BaseModel):
     telemetry_type: str
     anomaly_type: str
     anomaly_value: float
+    value_type: Optional[str] = None
 
 
 # =============================================================================

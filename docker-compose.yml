@@ -23,7 +23,7 @@ services:
         - action: rebuild
           path: ./frontend/package.json
         - action: rebuild
-          path: ./frontend/yarn.lock
+          path: ./frontend/package-lock.json
 
   api-gateway:
     build:

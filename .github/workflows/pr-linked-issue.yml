@@ -1,67 +1,25 @@
 name: PR has a valid Issue?
 on:
-  pull_request:
+  pull_request_target:
     branches:
       - main
-    types: [ edited, synchronize, opened, labeled, unlabeled, reopened ]
+    types: [edited, synchronize, opened, labeled, unlabeled, reopened]
 jobs:
   linked-issue-checker:
+    name: PR has a valid Issue?
     runs-on: ubuntu-latest
     permissions:
-      issues: read           # needed to post comments
-      pull-requests: write    # needed to fail the PR check
-      contents: read          # needed to check repository permissions
+      issues: read
+      pull-requests: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: nearform-actions/github-action-check-linked-issues@v1.8.3
-        id: check-linked-issues
-        continue-on-error: true
+      - uses: nearform-actions/github-action-check-linked-issues@7140e2e01aa0c18b8ac61bddf5e89abde1ca760e # v1.8.3
         with:
           exclude-branches: "release/**, dependabot/**"
-          comment: false
-      - name: PR has a valid Issue
-        if: ${{ steps.check-linked-issues.outputs.linked_issues_count > 0 }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PRNUM: ${{ github.event.pull_request.number }}
-        run: |
-          # Update existing comment if it exists
-          EXISTING_COMMENT=$(gh api repos/${{ github.repository }}/issues/$PRNUM/comments \
-            --jq '.[] | select(.body | contains("PR is not linked to any issue")) | .id' | head -1)
-          if [ -n "$EXISTING_COMMENT" ]; then
-            gh api repos/${{ github.repository }}/issues/comments/$EXISTING_COMMENT \
-              -X PATCH \
-              -f body="✅ PR is now linked to a valid issue. Thank you!"
-          fi
+          comment: true
+          custom-body-comment: |
+            This pull request is not linked to an issue from the PR description.
 
-          # Check if the label exists before trying to remove it
-          LABEL_EXISTS=$(gh pr view $PRNUM --json labels --jq '.labels[] | select(.name == "PR:issue-missing") | .name')
-          if [ -n "$LABEL_EXISTS" ]; then
-            gh pr edit $PRNUM --remove-label "PR:issue-missing"
-          fi
-      - name: PR has no valid Issue
-        if: ${{ steps.check-linked-issues.outputs.linked_issues_count == 0 }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PRNUM: ${{ github.event.pull_request.number }}
-        run: |
-          # Check if comment already exists to avoid duplicates
-          EXISTING_COMMENT=$(gh api repos/${{ github.repository }}/issues/$PRNUM/comments \
-            --jq '.[] | select(.body | contains("PR is not linked to any issue")) | .id' | head -1)
-          
-          if [ -z "$EXISTING_COMMENT" ]; then
-            gh pr comment $PRNUM --body "PR is not linked to any issue. Please make sure that:
+            Add a supported keyword such as `Fixes #123` or `Closes owner/repo#123`
+            to the description and push the update.
 
-          1. At least one relevant issue exists.
-          2. The issue gets linked from the GH sidebar OR by a comment using GH's [syntax](https://docs.github.com/en/issues/tracking-your-work-with-issues/using-issues/linking-a-pull-request-to-an-issue#linking-a-pull-request-to-an-issue-using-a-keyword).
-          3. The \`PR:issue-missing\` label gets removed afterwards."
-          fi
-          
-          # Check if the label already exists before trying to add it
-          LABEL_EXISTS=$(gh pr view $PRNUM --json labels --jq '.labels[] | select(.name == "PR:issue-missing") | .name')
-          if [ -z "$LABEL_EXISTS" ]; then
-            gh pr edit $PRNUM --add-label "PR:issue-missing"
-          fi
-
-          echo "❌ PR validation failed: No linked issue found"
-          exit 1
+            Linking from the sidebar does not trigger this check.

@@ -193,3 +193,4 @@ CLAUDE.md
 .claude
 /.pre-commit-cache
 AGENTS.md
+/frontend/.npm-cache

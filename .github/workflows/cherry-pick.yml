@@ -1,8 +1,9 @@
-name: 'Cherry pick demo-frontend into main'
+name: "Cherry pick demo-frontend into main"
+
 on:
-  pull_request:
+  pull_request_target:
     branches:
-      - demo-frontend # Branches where the original PRs will be merged
+      - demo-frontend
     types:
       - closed
 
@@ -11,24 +12,22 @@ permissions:
   pull-requests: write
 
 jobs:
-  test-cherry-pick:
+  cherry-pick:
+    name: Cherry pick merged PR into main
+    if: ${{ github.event.pull_request.merged == true }}
     runs-on: ubuntu-latest
-    name: Test the cherry-pick action
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           fetch-depth: 0
 
       - name: Cherry pick
         id: cherry-pick
-        uses: wireapp/action-auto-cherry-pick@v1.0.2
+        uses: wireapp/action-auto-cherry-pick@a4a732fe8b79e3fae70362e6271b8982be5b1bc1 # v1.0.2
         with:
-          # Branch which will receive the automatic cherry-picks
-          target-branch: 'main'
-          pr-title-suffix: '[🍒 FRONTEND]'
+          target-branch: "main"
+          pr-title-suffix: "[🍒 FRONTEND]"
 
-      - name: Get the output
-        run:
-          echo "The created PR number is ${{
-          steps.cherry-pick.outputs.pr-number }}"
+      - name: Show created PR number
+        run: echo "The created PR number is ${{ steps.cherry-pick.outputs.pr-number }}"

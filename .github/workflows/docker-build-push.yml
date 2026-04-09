@@ -41,6 +41,13 @@ jobs:
           sudo rm -rf /usr/local/lib/android
           sudo rm -rf /opt/ghc
           sudo rm -rf /opt/hostedtoolcache/CodeQL
+          sudo rm -rf /usr/local/share/boost
+          sudo rm -rf /usr/share/swift
+          sudo rm -rf /usr/local/julia*
+          sudo apt-get remove -y '^aspnet.*' '^dotnet-.*' '^llvm-.*' 'php.*' \
+            azure-cli google-cloud-cli google-chrome-stable firefox powershell \
+            mono-devel --fix-missing 2>/dev/null || true
+          sudo apt-get autoremove -y 2>/dev/null || true
           docker system prune -af --volumes || true
           df -h
 
@@ -65,10 +72,13 @@ jobs:
           set -euo pipefail
           services=(frontend api-gateway tactic-middleware mqtt-radar mqtt-proxy db-sync)
           for service in "${services[@]}"; do
-            echo "Building and pushing: ${service}"
-            docker compose build "${service}"
-            docker compose push "${service}"
+            echo "=== Building and pushing: ${service} ==="
             docker image prune -af || true
-            docker builder prune -af || true
+            docker builder prune -f || true
+            df -h
+            # --push streams directly to the registry; the image is never loaded
+            # into the local Docker daemon, so we avoid the 4-8 GB "importing to
+            # docker" step that caused OOM-on-disk failures for large images.
+            docker buildx bake -f docker-compose.yml "${service}" --push
             df -h
           done

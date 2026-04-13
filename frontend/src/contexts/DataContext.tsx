@@ -533,27 +533,33 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({
   const clearData = useCallback((chargerId?: string) => {
     if (chargerId) {
       setCpuUsageMap((prev) => {
-        const { [chargerId]: _, ...rest } = prev;
+        const rest = { ...prev };
+        delete rest[chargerId];
         return rest;
       });
       setCpuThermalMap((prev) => {
-        const { [chargerId]: _, ...rest } = prev;
+        const rest = { ...prev };
+        delete rest[chargerId];
         return rest;
       });
       setMonitoringMap((prev) => {
-        const { [chargerId]: _, ...rest } = prev;
+        const rest = { ...prev };
+        delete rest[chargerId];
         return rest;
       });
       setAnomaliesMap((prev) => {
-        const { [chargerId]: _, ...rest } = prev;
+        const rest = { ...prev };
+        delete rest[chargerId];
         return rest;
       });
       setAllTelemetryMap((prev) => {
-        const { [chargerId]: _, ...rest } = prev;
+        const rest = { ...prev };
+        delete rest[chargerId];
         return rest;
       });
       setTelemetryTypes((prev) => {
-        const { [chargerId]: _, ...rest } = prev;
+        const rest = { ...prev };
+        delete rest[chargerId];
         return rest;
       });
     } else {

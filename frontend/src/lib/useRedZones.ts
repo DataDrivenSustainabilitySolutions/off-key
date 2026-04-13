@@ -1,59 +1,48 @@
-import { useMemo } from "react";
-import { TELEMETRY_THRESHOLDS } from './constants';
+import { useEffect, useMemo } from "react";
+import { TELEMETRY_THRESHOLDS } from "./constants";
 import { clientLogger } from "@/lib/logger";
-
-/**
- * @deprecated This hook is deprecated in favor of anomaly-based visualization.
- * Use createAnomalyZones() from @/lib/anomaly-utils instead.
- *
- * This hook creates red zones based on hardcoded thresholds, which should be
- * replaced with actual anomaly data from the database.
- *
- * Migration guide:
- * 1. Fetch anomalies using loadAnomalies() from FetchContext
- * 2. Filter anomalies by telemetry type using filterAnomalies()
- * 3. Create zones using createAnomalyZones(anomalies, telemetryData)
- */
 
 type DataPoint = {
   timestamp: string;
   value: number;
 };
 
+type RedZone = {
+  start: string;
+  end: string;
+};
+
 /**
- * @deprecated Use anomaly-based visualization instead
+ * @deprecated Use anomaly-based visualization instead.
  */
-export function useRedZones(data: DataPoint[], threshold = TELEMETRY_THRESHOLDS.CPU_TEMPERATURE) {
-import { useMemo, useEffect } from "react";
-import { TELEMETRY_THRESHOLDS } from './constants';
-import { clientLogger } from "@/lib/logger";
-
-// ... JSDoc comments ...
-
-export function useRedZones(data: DataPoint[], threshold = TELEMETRY_THRESHOLDS.CPU_TEMPERATURE) {
+export function useRedZones(
+  data: DataPoint[],
+  threshold = TELEMETRY_THRESHOLDS.CPU_TEMPERATURE
+): RedZone[] {
   useEffect(() => {
     clientLogger.warn({
       event: "telemetry.red_zones_deprecated",
-      message: "useRedZones is deprecated. Use anomaly-based visualization with createAnomalyZones() instead.",
+      message:
+        "useRedZones is deprecated. Use anomaly-based visualization with createAnomalyZones() instead.",
     });
   }, []);
 
   return useMemo(() => {
-    // ... zone calculation logic ...
-  }, [data, threshold]);
-}
-  return useMemo(() => {
-    const zones: { start: string; end: string }[] = [];
+    const zones: RedZone[] = [];
     let start: string | null = null;
 
-    for (let i = 0; i < data.length; i++) {
-      if (data[i].value >= threshold) {
-        if (start === null) start = data[i].timestamp;
-      } else {
-        if (start !== null) {
-          zones.push({ start, end: data[i].timestamp });
-          start = null;
+    for (let index = 0; index < data.length; index += 1) {
+      const point = data[index];
+      if (point.value >= threshold) {
+        if (start === null) {
+          start = point.timestamp;
         }
+        continue;
+      }
+
+      if (start !== null) {
+        zones.push({ start, end: point.timestamp });
+        start = null;
       }
     }
 

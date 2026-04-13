@@ -1,33 +1,59 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { useLocation, Link } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { apiUtils } from '@/lib/api-client';
 import { API_CONFIG } from '@/lib/api-config';
+import { clientLogger } from '@/lib/logger';
 
 const Verification: React.FC = () => {
     const location = useLocation();
     const [status, setStatus] = useState<string>('Verifying your email...');
     const [isSuccess, setIsSuccess] = useState<boolean>(false);
     const [isLoading, setIsLoading] = useState<boolean>(true);
-    const hasVerified = useRef(false);
     const queryParams = new URLSearchParams(location.search);
     const token = queryParams.get('token');
 
     useEffect(() => {
+        let isMounted = true;
+        const controller = new AbortController();
+
         if (token) {
-            apiUtils.get(`${API_CONFIG.ENDPOINTS.AUTH.VERIFY_EMAIL}?token=${token}`)
-                .then(_response => {
+            apiUtils.get(`${API_CONFIG.ENDPOINTS.AUTH.VERIFY_EMAIL}?token=${token}`, {
+                signal: controller.signal,
+            })
+                .then(() => {
+                    if (!isMounted) {
+                        return;
+                    }
                     setStatus('Email verified successfully!');
+                    setIsSuccess(true);
+                    setIsLoading(false);
                 })
-                // .catch(_error => {
-                //     setStatus('Verification failed. Please try again.');
-                // });
+                .catch((error) => {
+                    if (!isMounted || controller.signal.aborted) {
+                        return;
+                    }
+                    clientLogger.error({
+                        event: 'auth.email_verification_failed',
+                        message: 'Email verification request failed',
+                        context: { hasToken: true },
+                        error,
+                    });
+                    setStatus('Verification failed. Please try again.');
+                    setIsSuccess(false);
+                    setIsLoading(false);
+                })
         } else {
             setStatus('Invalid verification link.');
             setIsSuccess(false);
             setIsLoading(false);
         }
+
+        return () => {
+            isMounted = false;
+            controller.abort();
+        };
     }, [token]);
 
     return (

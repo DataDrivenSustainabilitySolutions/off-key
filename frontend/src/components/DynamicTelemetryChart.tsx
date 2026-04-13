@@ -14,13 +14,22 @@ import {
 } from 'recharts';
 import { TelemetryTypeData } from '@/dataFetch/FetchContext';
 import { createAnomalyZones, filterAnomalies, hasAnomaly, getAnomalyStyle, createAnomalyTooltip } from '@/lib/anomaly-utils';
+import type { Anomaly } from '@/types/charger';
 import { isWithinTimeRange } from '@/lib/time-utils';
 import { NoChartsAvailable } from '@/components/LoadingStates';
+
+type ChartDotProps = {
+  cx?: number;
+  cy?: number;
+  payload?: {
+    timestamp?: string;
+  };
+};
 
 interface DynamicTelemetryChartProps {
   telemetryData: TelemetryTypeData;
   chargerId: string;
-  anomalies?: any[]; // Import proper type from anomaly-utils
+  anomalies?: Anomaly[];
 }
 
 export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
@@ -83,15 +92,15 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
   }, [telemetryData.data, fromDate, toDate]);
 
   // Filter anomalies for this telemetry type
-  const telemetryAnomalies = useMemo(() => 
+  const telemetryAnomalies = useMemo(() =>
     filterAnomalies(anomalies, telemetryData.type, fromDate, toDate),
     [anomalies, telemetryData.type, fromDate, toDate]
   );
 
   // Create anomaly zones
-  const anomalyZones = useMemo(() => 
-    createAnomalyZones(telemetryAnomalies, filteredData),
-    [telemetryAnomalies, filteredData]
+  const anomalyZones = useMemo(() =>
+    createAnomalyZones(telemetryAnomalies),
+    [telemetryAnomalies]
   );
 
   if (filteredData.length === 0) {
@@ -189,7 +198,7 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
               <YAxis dataKey="value" />
               <Tooltip />
               <Legend />
-              
+
               {/* Render anomaly zones */}
               {anomalyZones.map((zone, index) => (
                 <ReferenceArea
@@ -201,19 +210,24 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
                   fillOpacity={0.1}
                 />
               ))}
-              
+
               <Line
                 type="monotone"
                 dataKey="value"
                 stroke={getCategoryColor(telemetryData.category)}
                 activeDot={false}
-                dot={(props: any) => {
-                  const { cx, cy, payload } = props;
-                  const anomaly = hasAnomaly(payload?.timestamp, telemetryAnomalies);
+                dot={(props) => {
+                  const { cx, cy, payload } = props as ChartDotProps;
+                  const timestamp = payload?.timestamp;
+                  if (!timestamp) {
+                    return <></>;
+                  }
+
+                  const anomaly = hasAnomaly(timestamp, telemetryAnomalies);
                   if (anomaly && cx !== undefined && cy !== undefined) {
                     const style = getAnomalyStyle(anomaly.anomaly_type);
                     return (
-                      <g key={`anomaly-${payload.timestamp}`}>
+                      <g key={`anomaly-${timestamp}`}>
                         <circle
                           cx={cx}
                           cy={cy}

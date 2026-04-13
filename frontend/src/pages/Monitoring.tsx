@@ -23,6 +23,17 @@ import {
   getAnomalyTailProbabilityClassName,
 } from "@/lib/anomaly-semantics";
 import type { Anomaly } from "@/types/charger";
+import type {
+  ActiveService,
+  ModelDefinition,
+  ModelParams,
+  ParameterSchema,
+  PreprocessingStepConfig,
+  PreprocessorDefinition,
+} from "@/types/monitoring";
+
+type ConfigValue = string | number | boolean;
+type ConfigInputValue = string | boolean;
 
 // Helper function to parse numeric input, preventing NaN storage
 const parseNumericInput = (
@@ -40,22 +51,47 @@ const parseNumericInput = (
   return rawValue;
 };
 
+const parseConfigInput = (
+  rawValue: ConfigInputValue,
+  schemaType?: string
+): ConfigValue => {
+  if (typeof rawValue === "boolean") {
+    return rawValue;
+  }
+
+  return parseNumericInput(rawValue, schemaType);
+};
+
+const isConfigValue = (value: unknown): value is ConfigValue =>
+  typeof value === "string" ||
+  typeof value === "number" ||
+  typeof value === "boolean";
+
+const getInputType = (schemaType?: string): "checkbox" | "number" | "text" => {
+  if (schemaType === "boolean") {
+    return "checkbox";
+  }
+  if (schemaType === "integer" || schemaType === "number") {
+    return "number";
+  }
+  return "text";
+};
+
+const getTextInputValue = (
+  value: string | number | boolean | undefined
+): string | number => {
+  if (typeof value === "boolean") {
+    return value ? "true" : "false";
+  }
+  return value ?? "";
+};
+
 const parseTopicPatterns = (raw: string): string[] => {
   return raw
     .split(/[\n,]/)
     .map((entry) => entry.trim())
     .filter((entry) => entry.length > 0);
 };
-
-interface ActiveService {
-  id: string;
-  container_id: string;
-  container_name: string;
-  mqtt_topics: string[];
-  status: boolean;
-  docker_status?: string; // Actual Docker container status
-  created_at?: string;
-}
 
 type SensorKeyStrategy = "full_hierarchy" | "top_level" | "leaf";
 type AlignmentMode = "strict_barrier";
@@ -70,14 +106,8 @@ type PerformanceConfigState = {
   sensor_freshness_seconds: number;
 };
 
-type PreprocessingStepConfig = {
-  id: string;
-  type: string;
-  params: Record<string, any>;
-};
-
 const DEFAULT_MODEL_TYPE = "knn";
-const DEFAULT_MODEL_PARAMS: Record<string, number> = {
+const DEFAULT_MODEL_PARAMS: ModelParams = {
   k: 5,
   window_size: 2500,
   warm_up: 500,
@@ -92,12 +122,12 @@ const DEFAULT_PREPROCESSING_STEPS: PreprocessingStepConfig[] = [
 
 const PreprocessingSection: React.FC<{
   steps: PreprocessingStepConfig[];
-  availablePreprocessors: Record<string, any>;
+  availablePreprocessors: Record<string, PreprocessorDefinition>;
   newPreprocessorType: string;
   isLoading: boolean;
   onSelectType: (type: string) => void;
   onAdd: () => void;
-  onParamChange: (index: number, key: string, rawValue: string, schemaType?: string) => void;
+  onParamChange: (index: number, key: string, rawValue: ConfigInputValue, schemaType?: string) => void;
   onMoveUp: (index: number) => void;
   onMoveDown: (index: number) => void;
   onRemove: (index: number) => void;
@@ -145,7 +175,8 @@ const PreprocessingSection: React.FC<{
 
     <div className="space-y-4">
       {steps.map((step, index) => {
-        const schemaProps = availablePreprocessors[step.type]?.parameters?.properties || {};
+        const schemaProps: Record<string, ParameterSchema> =
+          availablePreprocessors[step.type]?.parameters?.properties || {};
         return (
           <div key={step.id} className="border rounded p-3 bg-gray-50 dark:bg-neutral-900">
             <div className="flex items-center justify-between">
@@ -180,7 +211,7 @@ const PreprocessingSection: React.FC<{
               {Object.entries(schemaProps).length === 0 && (
                 <p className="text-sm text-gray-500">No parameters.</p>
               )}
-              {Object.entries(schemaProps).map(([key, schema]: [string, any]) => (
+              {Object.entries(schemaProps).map(([key, schema]) => (
                 <div key={key} className="flex flex-col">
                   <label className="text-sm font-medium mb-1">
                     {key}
@@ -189,10 +220,26 @@ const PreprocessingSection: React.FC<{
                     ) : null}
                   </label>
                   <input
-                    type={schema?.type === "integer" || schema?.type === "number" ? "number" : "text"}
+                    type={getInputType(schema?.type)}
                     className="border rounded px-3 py-2 bg-white text-black dark:bg-neutral-900 dark:text-white"
-                    value={step.params?.[key] ?? ""}
-                    onChange={(e) => onParamChange(index, key, e.target.value, schema?.type)}
+                    checked={
+                      schema?.type === "boolean"
+                        ? Boolean(step.params?.[key])
+                        : undefined
+                    }
+                    value={
+                      schema?.type === "boolean"
+                        ? undefined
+                        : getTextInputValue(step.params?.[key])
+                    }
+                    onChange={(e) =>
+                      onParamChange(
+                        index,
+                        key,
+                        schema?.type === "boolean" ? e.target.checked : e.target.value,
+                        schema?.type
+                      )
+                    }
                     min={schema?.minimum}
                     max={schema?.maximum}
                     step="any"
@@ -406,12 +453,12 @@ const Monitoring: React.FC = () => {
   const [selectedAlgorithm, setSelectedAlgorithm] = useState<string | null>(
     DEFAULT_MODEL_TYPE
   );
-  const [availableModels, setAvailableModels] = useState<Record<string, any>>({});
-  const [modelParams, setModelParams] = useState<Record<string, any>>(
+  const [availableModels, setAvailableModels] = useState<Record<string, ModelDefinition>>({});
+  const [modelParams, setModelParams] = useState<ModelParams>(
     DEFAULT_MODEL_PARAMS
   );
   const [isLoadingModels, setIsLoadingModels] = useState(false);
-  const [availablePreprocessors, setAvailablePreprocessors] = useState<Record<string, any>>({});
+  const [availablePreprocessors, setAvailablePreprocessors] = useState<Record<string, PreprocessorDefinition>>({});
   const [preprocessingSteps, setPreprocessingSteps] = useState<PreprocessingStepConfig[]>(
     DEFAULT_PREPROCESSING_STEPS
   );
@@ -448,7 +495,7 @@ const Monitoring: React.FC = () => {
   const loadModels = useCallback(async () => {
     try {
       setIsLoadingModels(true);
-      const response = await apiUtils.get<Record<string, any>>(API_CONFIG.ENDPOINTS.MONITORING.MODELS);
+      const response = await apiUtils.get<Record<string, ModelDefinition>>(API_CONFIG.ENDPOINTS.MONITORING.MODELS);
       setAvailableModels(response || {});
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -465,7 +512,7 @@ const Monitoring: React.FC = () => {
   const loadPreprocessors = useCallback(async () => {
     try {
       setIsLoadingPreprocessors(true);
-      const response = await apiUtils.get<Record<string, any>>(API_CONFIG.ENDPOINTS.MONITORING.PREPROCESSORS);
+      const response = await apiUtils.get<Record<string, PreprocessorDefinition>>(API_CONFIG.ENDPOINTS.MONITORING.PREPROCESSORS);
       setAvailablePreprocessors(response || {});
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -483,9 +530,9 @@ const Monitoring: React.FC = () => {
     (modelType: string) => {
       const modelInfo = availableModels[modelType];
       const properties = modelInfo?.parameters?.properties || {};
-      const defaults: Record<string, any> = {};
-      Object.entries(properties).forEach(([key, schema]: [string, any]) => {
-        if (schema && typeof schema === "object" && schema.default !== undefined) {
+      const defaults: ModelParams = {};
+      Object.entries(properties).forEach(([key, schema]) => {
+        if (schema.default !== undefined && isConfigValue(schema.default)) {
           defaults[key] = schema.default;
         }
       });
@@ -498,9 +545,9 @@ const Monitoring: React.FC = () => {
     (preType: string) => {
       const info = availablePreprocessors[preType];
       const properties = info?.parameters?.properties || {};
-      const defaults: Record<string, any> = {};
-      Object.entries(properties).forEach(([key, schema]: [string, any]) => {
-        if (schema && typeof schema === "object" && schema.default !== undefined) {
+      const defaults: Record<string, ConfigValue> = {};
+      Object.entries(properties).forEach(([key, schema]) => {
+        if (schema.default !== undefined && isConfigValue(schema.default)) {
           defaults[key] = schema.default;
         }
       });
@@ -522,8 +569,8 @@ const Monitoring: React.FC = () => {
     [applyModelDefaults]
   );
 
-  const handleParamChange = useCallback((key: string, rawValue: string, schemaType?: string) => {
-    const parsed = parseNumericInput(rawValue, schemaType);
+  const handleParamChange = useCallback((key: string, rawValue: ConfigInputValue, schemaType?: string) => {
+    const parsed = parseConfigInput(rawValue, schemaType);
     setModelParams((prev) => ({ ...prev, [key]: parsed }));
   }, []);
 
@@ -539,8 +586,8 @@ const Monitoring: React.FC = () => {
   }, [applyPreprocessorDefaults, newPreprocessorType]);
 
   const handlePreprocessorParamChange = useCallback(
-    (index: number, key: string, rawValue: string, schemaType?: string) => {
-      const parsed = parseNumericInput(rawValue, schemaType);
+    (index: number, key: string, rawValue: ConfigInputValue, schemaType?: string) => {
+      const parsed = parseConfigInput(rawValue, schemaType);
       setPreprocessingSteps((prev) => {
         const updated = [...prev];
         updated[index] = {
@@ -891,7 +938,7 @@ const Monitoring: React.FC = () => {
                         <p className="text-sm text-gray-500">No parameters for this model.</p>
                       )}
                       {Object.entries(availableModels[selectedAlgorithm]?.parameters?.properties || {}).map(
-                        ([key, schema]: [string, any]) => (
+                        ([key, schema]) => (
                           <div key={key} className="flex flex-col">
                             <label className="text-sm font-medium mb-1">
                               {key}
@@ -900,10 +947,27 @@ const Monitoring: React.FC = () => {
                               ) : null}
                             </label>
                             <input
-                              type={schema?.type === "integer" || schema?.type === "number" ? "number" : "text"}
+                              type={getInputType(schema?.type)}
                               className="border rounded px-3 py-2 bg-white text-black dark:bg-neutral-900 dark:text-white"
-                              value={modelParams[key] ?? ""}
-                              onChange={(e) => handleParamChange(key, e.target.value, schema?.type)}
+                              checked={
+                                schema?.type === "boolean"
+                                  ? Boolean(modelParams[key])
+                                  : undefined
+                              }
+                              value={
+                                schema?.type === "boolean"
+                                  ? undefined
+                                  : getTextInputValue(modelParams[key])
+                              }
+                              onChange={(e) =>
+                                handleParamChange(
+                                  key,
+                                  schema?.type === "boolean"
+                                    ? e.target.checked
+                                    : e.target.value,
+                                  schema?.type
+                                )
+                              }
                               min={schema?.minimum}
                               max={schema?.maximum}
                               step="any"

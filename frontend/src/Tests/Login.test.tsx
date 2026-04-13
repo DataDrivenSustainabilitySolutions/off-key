@@ -6,13 +6,19 @@ import { AuthProvider } from '@/auth/AuthContext';
 import { FetchProvider } from '../dataFetch/FetchContext';
 import { vi } from 'vitest';
 
+let fetchMock: ReturnType<typeof vi.fn>;
+let originalFetch: typeof global.fetch;
+
 beforeEach(() => {
-    global.fetch = vi.fn();
+    originalFetch = global.fetch;
+    fetchMock = vi.fn();
+    global.fetch = fetchMock as typeof fetch;
     localStorage.clear();
     sessionStorage.clear();
 });
 
 afterEach(() => {
+    global.fetch = originalFetch;
     vi.resetAllMocks();
 });
 
@@ -37,10 +43,12 @@ test('zeigt Felder und Button an', () => {
 });
 
 test('fehlerhafte Login-Daten zeigen Fehlermeldung', async () => {
-    (fetch as any).mockResolvedValueOnce({
-        ok: false,
-        json: async () => ({ detail: 'Test-Fehler' }),
-    });
+    fetchMock.mockResolvedValueOnce(
+        new Response(JSON.stringify({ detail: 'Test-Fehler' }), {
+            status: 401,
+            headers: { 'Content-Type': 'application/json' },
+        })
+    );
 
     renderLogin();
     fireEvent.change(screen.getByLabelText(/E-Mail/i), {
@@ -59,10 +67,15 @@ test('fehlerhafte Login-Daten zeigen Fehlermeldung', async () => {
 test('erfolgreicher Login speichert Token und navigiert', async () => {
     const mockToken = 'abc123';
 
-    (fetch as any).mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ access_token: mockToken, token_type: 'bearer' }),
-    });
+    fetchMock.mockResolvedValueOnce(
+        new Response(
+            JSON.stringify({ access_token: mockToken, token_type: 'bearer' }),
+            {
+                status: 200,
+                headers: { 'Content-Type': 'application/json' },
+            }
+        )
+    );
 
     renderLogin();
     fireEvent.change(screen.getByLabelText(/E-Mail/i), {

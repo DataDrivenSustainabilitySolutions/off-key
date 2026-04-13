@@ -1,5 +1,5 @@
 import { NavigationBar } from "@/components/NavigationBar";
-import { useEffect, useState, useContext } from "react";
+import { useEffect, useState, useContext, useCallback } from "react";
 import {
   Table,
   TableBody,
@@ -19,12 +19,12 @@ export default function AnomalyTable() {
   const [isLoading, setIsLoading] = useState(true);
   const fetchContext = useContext(FetchContext);
 
-  const fetchAllAnomalies = async () => {
+  const fetchAllAnomalies = useCallback(async () => {
+    if (!fetchContext) return;
+
     try {
       setIsLoading(true);
       setError(null);
-      if (!fetchContext) return;
-
       const chargers = await fetchContext.getAllChargers();
       const allAnomalies = await Promise.all(
         chargers.map((charger) =>
@@ -33,19 +33,19 @@ export default function AnomalyTable() {
       );
       const flattenedAnomalies = allAnomalies.flat();
       setData(flattenedAnomalies);
-    } catch (err: any) {
-      const errorMessage = err.message || "Unknown error";
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : "Unknown error";
       setError(errorMessage);
       toast.error(`Failed to load anomalies: ${errorMessage}`);
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [fetchContext]);
 
   useEffect(() => {
     localStorage.setItem("off-key:last-seen-anomalies", new Date().toISOString());
     fetchAllAnomalies();
-  }, [fetchContext]);
+  }, [fetchAllAnomalies]);
 
   const handleDelete = async (anomaly: Anomaly) => {
     if (!fetchContext) return;
@@ -58,8 +58,9 @@ export default function AnomalyTable() {
 
       toast.success('Anomaly deleted successfully');
       await fetchAllAnomalies();
-    } catch (err: any) {
-      const errorMessage = "Error while deleting: " + err.message;
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : "Unknown error";
+      const errorMessage = `Error while deleting: ${detail}`;
       setError(errorMessage);
       toast.error(errorMessage);
     }

@@ -12,17 +12,17 @@ export interface UserContextType {
   ) => Promise<void>;
   addToFavorites: (chargerId: string, userId: number) => Promise<void>;
   removeFromFavorites: (chargerId: string, userId: number) => Promise<void>;
-  
+
   // State management
   userFavorites: Record<number, string[]>;
-  
+
   // Loading and error states
   loading: boolean;
   error: string | null;
-  
+
   // Clear functions
   clearUserData: (userId?: number) => void;
-  
+
   // Helper functions
   isFavorite: (chargerId: string, userId: number) => boolean;
 }
@@ -37,19 +37,19 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const getFavorites = useCallback(
     async (userId: number): Promise<string[]> => {
       if (!userId) throw new Error('User ID is required');
-      
+
       try {
         setLoading(true);
         setError(null);
-        
+
         const endpoint = API_CONFIG.ENDPOINTS.FAVORITES.GET(userId);
         const favorites = await apiUtils.get<string[]>(endpoint);
-        
+
         setUserFavorites(prev => ({
           ...prev,
           [userId]: favorites,
         }));
-        
+
         return favorites;
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : 'Failed to get favorites';
@@ -67,13 +67,13 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       if (!chargerId || !userId) {
         throw new Error('Charger ID and User ID are required');
       }
-      
+
       const endpoint = API_CONFIG.ENDPOINTS.FAVORITES.ADD;
       await apiUtils.post(endpoint, {
         charger_id: chargerId,
         user_id: userId,
       });
-      
+
       // Update local state
       setUserFavorites(prev => ({
         ...prev,
@@ -88,13 +88,13 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       if (!chargerId || !userId) {
         throw new Error('Charger ID and User ID are required');
       }
-      
+
       const endpoint = API_CONFIG.ENDPOINTS.FAVORITES.REMOVE;
       await apiUtils.delete(endpoint, {
         charger_id: chargerId,
         user_id: userId,
       });
-      
+
       // Update local state
       setUserFavorites(prev => ({
         ...prev,
@@ -109,7 +109,7 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       try {
         setLoading(true);
         setError(null);
-        
+
         if (isCurrentlyFavorite) {
           await removeFromFavorites(chargerId, userId);
         } else {
@@ -136,7 +136,8 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const clearUserData = useCallback((userId?: number) => {
     if (userId) {
       setUserFavorites(prev => {
-        const { [userId]: removed, ...rest } = prev;
+        const rest = { ...prev };
+        delete rest[userId];
         return rest;
       });
     } else {

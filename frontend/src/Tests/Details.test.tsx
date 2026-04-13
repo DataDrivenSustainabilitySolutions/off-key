@@ -80,7 +80,8 @@ describe("<Details />", () => {
 
         const fromInputs = screen.queryAllByPlaceholderText(/From/i);
         const toInputs = screen.queryAllByPlaceholderText(/To/i);
-
+        expect(fromInputs.length).toBeGreaterThan(0);
+        expect(toInputs.length).toBeGreaterThan(0);
     });
 
     it("zeigt Link zu Monitoring", async () => {

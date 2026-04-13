@@ -1,0 +1,84 @@
+# .github/workflows/docker-compose-build-and-push.yml
+name: Build & Push via Compose
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read      # for actions/checkout
+  packages: write     # to push to GHCR
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    env:
+      DOCKER_BUILDKIT: "1"
+      COMPOSE_DOCKER_CLI_BUILD: "1"
+
+    steps:
+      - name: set lower case owner name
+        run: |
+            echo "OWNER_LC=${OWNER,,}" >>${GITHUB_ENV}
+        env:
+            OWNER: '${{ github.repository_owner }}'
+
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Show disk usage (before cleanup)
+        run: |
+          df -h
+          docker system df || true
+
+      - name: Free disk space on runner
+        run: |
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /opt/hostedtoolcache/CodeQL
+          sudo rm -rf /usr/local/share/boost
+          sudo rm -rf /usr/share/swift
+          sudo rm -rf /usr/local/julia*
+          sudo apt-get remove -y '^aspnet.*' '^dotnet-.*' '^llvm-.*' 'php.*' \
+            azure-cli google-cloud-cli google-chrome-stable firefox powershell \
+            mono-devel --fix-missing 2>/dev/null || true
+          sudo apt-get autoremove -y 2>/dev/null || true
+          docker system prune -af --volumes || true
+          df -h
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Override image tags to “latest”
+        run: |
+          echo "FRONTEND_IMAGE=ghcr.io/${{ env.OWNER_LC }}/off-key-frontend:latest" >> $GITHUB_ENV
+          echo "API_GATEWAY_IMAGE=ghcr.io/${{ env.OWNER_LC }}/off-key-api-gateway:latest" >> $GITHUB_ENV
+          echo "TACTIC_MIDDLEWARE_IMAGE=ghcr.io/${{ env.OWNER_LC }}/off-key-tactic-middleware:latest" >> $GITHUB_ENV
+          echo "MQTT_RADAR_IMAGE=ghcr.io/${{ env.OWNER_LC }}/off-key-mqtt-radar:latest" >> $GITHUB_ENV
+          echo "MQTT_PROXY_IMAGE=ghcr.io/${{ env.OWNER_LC }}/off-key-mqtt-proxy:latest" >> $GITHUB_ENV
+          echo "DB_SYNC_IMAGE=ghcr.io/${{ env.OWNER_LC }}/off-key-db-sync:latest" >> $GITHUB_ENV
+
+      - name: Build and push services sequentially
+        run: |
+          set -euo pipefail
+          services=(frontend api-gateway tactic-middleware mqtt-radar mqtt-proxy db-sync)
+          for service in "${services[@]}"; do
+            echo "=== Building and pushing: ${service} ==="
+            docker image prune -af || true
+            docker builder prune -f || true
+            df -h
+            # --push streams directly to the registry; the image is never loaded
+            # into the local Docker daemon, so we avoid the 4-8 GB "importing to
+            # docker" step that caused OOM-on-disk failures for large images.
+            docker buildx bake -f docker-compose.yml "${service}" --push
+            df -h
+          done

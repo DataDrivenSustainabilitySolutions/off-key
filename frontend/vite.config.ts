@@ -1,6 +1,7 @@
 import path from "path";
 import tailwindcss from "@tailwindcss/vite";
 import { defineConfig } from "vite";
+import { configDefaults } from "vitest/config";
 import react from "@vitejs/plugin-react";
 import autoprefixer from "autoprefixer";
 
@@ -39,6 +40,7 @@ export default defineConfig({
   },
   test: {
     globals: true,
-    environment: 'jsdom'
+    environment: 'jsdom',
+    exclude: [...configDefaults.exclude, 'e2e/**/*']
   }
 })

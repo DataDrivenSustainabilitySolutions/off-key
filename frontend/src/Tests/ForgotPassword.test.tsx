@@ -9,6 +9,7 @@ global.fetch = vi.fn();
 describe('ForgotPassword', () => {
     beforeEach(() => {
         vi.resetAllMocks();
+        vi.spyOn(console, 'error').mockImplementation(() => undefined);
     });
 
     test('zeigt Eingabefeld und Button', () => {

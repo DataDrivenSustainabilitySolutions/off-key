@@ -49,21 +49,57 @@ export default function ChargerTable() {
   } = useFetch();
 
   useEffect(() => {
+    let cancelled = false;
+
     async function loadData() {
-      setLoading(true);
+      if (!cancelled) {
+        setLoading(true);
+      }
+
       try {
         const chargers = await getAllChargers();
+        if (cancelled) {
+          return;
+        }
+
         const combined = await getCombinedChargerData(chargers);
+        if (cancelled) {
+          return;
+        }
+
         setData(combined);
         if (userId) {
           const favs = await getFavorites(userId);
+          if (cancelled) {
+            return;
+          }
           setFavoriteChargerIds(favs);
         }
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+
+        clientLogger.error({
+          event: "landingpage.load_failed",
+          message: "Failed to load landing page data",
+          error,
+          context: { userId },
+        });
+        setData([]);
+        setFavoriteChargerIds([]);
       } finally {
-        setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+        }
       }
     }
-    loadData();
+
+    void loadData();
+
+    return () => {
+      cancelled = true;
+    };
   }, [getAllChargers, getCombinedChargerData, getFavorites, userId]);
 
   const filteredData = data

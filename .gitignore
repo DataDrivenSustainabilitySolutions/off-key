@@ -194,3 +194,5 @@ CLAUDE.md
 /.pre-commit-cache
 AGENTS.md
 /frontend/.npm-cache
+/frontend/playwright-report
+/frontend/test-results

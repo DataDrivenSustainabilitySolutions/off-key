@@ -742,14 +742,14 @@ class MQTTProxyService:
             }
 
         if self.database_writer:
-            status["components"]["database_writer"] = (
-                self.database_writer.get_health_status()
-            )
+            status["components"][
+                "database_writer"
+            ] = self.database_writer.get_health_status()
 
         if self.message_router:
-            status["components"]["message_router"] = (
-                self.message_router.get_health_status()
-            )
+            status["components"][
+                "message_router"
+            ] = self.message_router.get_health_status()
 
         if self.bridge_client:
             status["components"]["bridge_client"] = {

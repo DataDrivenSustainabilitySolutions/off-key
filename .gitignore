@@ -198,3 +198,5 @@ AGENTS.md
 /frontend/test-results
 /browser-smoke-compose.log
 /browser-smoke-compose-ps.txt
+/deployment-smoke-compose.log
+/deployment-smoke-compose-ps.txt

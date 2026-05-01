@@ -7,7 +7,7 @@ services:
       EMQX_CLUSTER__STATIC__SEEDS: "[emqx@emqx-main,emqx@emqx-worker]"
 
   emqx-worker:
-    image: emqx/emqx:5.8.7 # BSL license starting at 5.9!
+    image: emqx/emqx:6.0.0 # BSL license starting at 5.9!
     hostname: emqx-worker
     depends_on:
       emqx-main:

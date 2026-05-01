@@ -148,8 +148,48 @@ async def test_teardown_managed_radar_workloads_cleans_up_successes_on_partial_f
 
     delete_stmt = session.execute.await_args.args[0]
     stmt_text = str(delete_stmt)
+    stmt_params = delete_stmt.compile().params
     assert "WHERE services.container_id IN" in stmt_text
-    assert "svc-ok" in stmt_text
-    assert "svc-broken" not in stmt_text
+    assert stmt_params == {"container_id_1": ["svc-ok"]}
+    session.commit.assert_awaited_once()
+    session.rollback.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_teardown_managed_radar_workloads_handles_non_swarm_docker(
+    monkeypatch,
+):
+    fake_docker = _FakeAsyncDocker()
+
+    ctr_workload = MagicMock(id="ctr-1")
+    ctr_workload.remove = MagicMock()
+
+    fake_docker.client.services.list = MagicMock(
+        side_effect=docker.errors.APIError("This node is not a swarm manager")
+    )
+    fake_docker.client.containers.list = MagicMock(return_value=[ctr_workload])
+    fake_docker.client.services.get = MagicMock(
+        side_effect=docker.errors.APIError("This node is not a swarm manager")
+    )
+    fake_docker.client.containers.get = MagicMock(return_value=ctr_workload)
+
+    monkeypatch.setattr(radar_module, "get_async_docker", lambda: fake_docker)
+
+    delete_result = MagicMock(rowcount=1)
+
+    session = AsyncMock()
+    session.execute = AsyncMock(return_value=delete_result)
+    session.commit = AsyncMock()
+    session.rollback = AsyncMock()
+
+    service = RadarOrchestrationService(session=session, model_registry=MagicMock())
+    summary = await service.teardown_managed_radar_workloads()
+
+    assert summary["workloads_targeted"] == 1
+    assert summary["docker_workloads_removed"] == 1
+    assert summary["db_rows_deleted"] == 1
+    fake_docker.client.containers.list.assert_called_once()
+    fake_docker.client.containers.get.assert_called_once_with("ctr-1")
+    ctr_workload.remove.assert_called_once()
     session.commit.assert_awaited_once()
     session.rollback.assert_not_awaited()

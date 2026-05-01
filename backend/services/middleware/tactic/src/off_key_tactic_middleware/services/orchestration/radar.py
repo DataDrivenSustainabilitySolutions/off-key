@@ -548,6 +548,14 @@ class RadarOrchestrationService:
             return await self.async_docker.run(on_service, docker_service)
         except docker.errors.NotFound:
             pass
+        except Exception as exc:
+            if not self._should_fallback_to_container(exc):
+                raise
+            logger.debug(
+                "Skipping Swarm service lookup for workload %s: %s",
+                container_id,
+                exc,
+            )
 
         docker_container = await self.async_docker.run(
             self.async_docker.client.containers.get, container_id
@@ -561,10 +569,21 @@ class RadarOrchestrationService:
     async def _list_managed_radar_workload_ids(self) -> set[str]:
         filters = self._managed_radar_label_filters()
 
-        docker_services = await self.async_docker.run(
-            self.async_docker.client.services.list,
-            filters=filters,
-        )
+        try:
+            docker_services = await self.async_docker.run(
+                self.async_docker.client.services.list,
+                filters=filters,
+            )
+        except Exception as exc:
+            if not self._should_fallback_to_container(exc):
+                raise
+            logger.info(
+                "Skipping Swarm service cleanup because this Docker engine does "
+                "not support Swarm services: %s",
+                exc,
+            )
+            docker_services = []
+
         docker_containers = await self.async_docker.run(
             self.async_docker.client.containers.list,
             all=True,

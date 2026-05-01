@@ -149,15 +149,38 @@ jobs:
       - name: Wait for tactic middleware readiness
         run: |
           set -euo pipefail
-          timeout 600 bash -c '
-            until curl -fsS http://localhost:8001/ready; do
-              echo "tactic middleware not ready yet"
+          deadline=$((SECONDS + 600))
+
+          while true; do
+            if curl -fsS http://localhost:8001/ready; then
+              break
+            fi
+
+            status="$(docker inspect --format '{{.State.Status}}' tactic_middleware 2>/dev/null || true)"
+            health="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}missing{{end}}' tactic_middleware 2>/dev/null || true)"
+            restart_count="$(docker inspect --format '{{.RestartCount}}' tactic_middleware 2>/dev/null || echo 0)"
+            echo "tactic_middleware status=$status health=$health restart_count=$restart_count"
+
+            if [[ "$status" == "restarting" || "$status" == "exited" || "$status" == "dead" || "$restart_count" -gt 0 ]]; then
+              echo "::error::tactic_middleware crashed during startup (status=$status health=$health restart_count=$restart_count)"
+              docker inspect tactic_middleware || true
+              docker compose logs --no-color --tail=200 tactic-middleware db-sync socket-proxy timescaledb || true
+              exit 1
+            fi
+
+            if (( SECONDS >= deadline )); then
+              echo "::error::tactic_middleware did not become ready within 600s (status=$status health=$health restart_count=$restart_count)"
               curl -sS http://localhost:8001/health || true
               echo
-              docker inspect --format "tactic_middleware status={{.State.Status}} health={{if .State.Health}}{{.State.Health.Status}}{{else}}missing{{end}}" tactic_middleware 2>/dev/null || true
-              sleep 5
-            done
-          '
+              docker inspect tactic_middleware || true
+              docker compose logs --no-color --tail=200 tactic-middleware db-sync socket-proxy timescaledb || true
+              exit 1
+            fi
+
+            curl -sS http://localhost:8001/health || true
+            echo
+            sleep 5
+          done
 
       - name: Start application services
         run: docker compose up -d --build api-gateway frontend

@@ -52,7 +52,9 @@ class AsyncDocker:
                 logger.warning(f"Error closing Docker client: {e}")
 
 
-async def get_workload_docker_status(async_docker: AsyncDocker, container_id: str) -> str:
+async def get_workload_docker_status(
+    async_docker: AsyncDocker, container_id: str
+) -> str:
     """Return the running status of a Docker workload by ID.
 
     Tries Swarm services first (reads task state), then falls back to plain

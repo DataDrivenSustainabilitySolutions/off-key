@@ -3,7 +3,6 @@ import ForgotPassword from '../pages/ForgotPassword';
 import { vi } from 'vitest';
 import { API_CONFIG, getApiUrl } from '@/lib/api-config';
 
-// @ts-expect-error: TS kennt global.fetch nicht
 global.fetch = vi.fn();
 
 describe('ForgotPassword', () => {

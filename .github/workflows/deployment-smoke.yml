@@ -1,6 +1,12 @@
 name: Deployment Smoke
 
 on:
+  pull_request:
+    paths:
+      - ".github/workflows/deployment-smoke.yml"
+      - "backend/**"
+      - "docker-compose*.yml"
+      - "frontend/**"
   push:
     branches:
       - main
@@ -10,14 +16,17 @@ permissions:
   contents: read
 
 concurrency:
-  group: deployment-smoke-${{ github.ref }}
+  group: deployment-smoke-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
   deployment-smoke:
     name: deployment-smoke
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 35
+
+    env:
+      COMPOSE_PROJECT_NAME: off-key-smoke
 
     steps:
       - name: Checkout
@@ -38,71 +47,190 @@ jobs:
         working-directory: frontend
         run: npx playwright install --with-deps chromium
 
-      - name: Start deployment smoke stack
-        run: docker compose up -d --build frontend mailpit
+      - name: Reset deployment smoke stack
+        run: docker compose down -v --remove-orphans
 
-      - name: Wait for frontend
-        run: |
-          timeout 600 bash -c 'until curl -fsS http://localhost:5173/login > /dev/null; do sleep 5; done'
+      - name: Start base services
+        run: docker compose up -d --build timescaledb socket-proxy mailpit
 
-      - name: Wait for tactic middleware
+      - name: Wait for base services
         run: |
-          timeout 600 bash -c 'until curl -fsS http://localhost:8001/ready > /dev/null; do sleep 5; done'
+          set -euo pipefail
 
-      - name: Wait for API gateway
-        run: |
-          timeout 600 bash -c 'until curl -fsS http://localhost:8000/health > /dev/null; do sleep 5; done'
-
-      - name: Wait for Mailpit
-        run: |
-          timeout 120 bash -c 'until curl -fsS http://localhost:8025/api/v1/messages > /dev/null; do sleep 2; done'
-
-      - name: Verify Docker Compose service states
-        run: |
-          timeout 600 bash -c '
-            set -euo pipefail
-            required_running=(react_client socket_proxy mailpit)
-            required_healthy=(api_gateway tactic_middleware db_sync timescaledb)
+          wait_for_container_health() {
+            local container="$1"
+            local timeout_seconds="$2"
+            local deadline=$((SECONDS + timeout_seconds))
 
             while true; do
-              all_ready=true
+              local status
+              local health
+              status="$(docker inspect --format '{{.State.Status}}' "$container" 2>/dev/null || true)"
+              health="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}missing{{end}}' "$container" 2>/dev/null || true)"
 
-              for container in "${required_running[@]}"; do
-                status="$(docker inspect --format "{{.State.Status}}" "$container" 2>/dev/null || true)"
-                if [[ "$status" != "running" ]]; then
-                  echo "$container status=$status"
-                  all_ready=false
-                fi
-              done
-
-              for container in "${required_healthy[@]}"; do
-                status="$(docker inspect --format "{{.State.Status}}" "$container" 2>/dev/null || true)"
-                health="$(docker inspect --format "{{if .State.Health}}{{.State.Health.Status}}{{else}}missing{{end}}" "$container" 2>/dev/null || true)"
-                if [[ "$status" != "running" || "$health" != "healthy" ]]; then
-                  echo "$container status=$status health=$health"
-                  all_ready=false
-                fi
-              done
-
-              if [[ "$all_ready" == "true" ]]; then
-                exit 0
+              if [[ "$status" == "running" && "$health" == "healthy" ]]; then
+                echo "$container status=$status health=$health"
+                return 0
               fi
 
+              if (( SECONDS >= deadline )); then
+                echo "::error::$container did not become healthy within ${timeout_seconds}s (status=$status health=$health)"
+                docker inspect "$container" || true
+                return 1
+              fi
+
+              echo "$container status=$status health=$health"
+              sleep 5
+            done
+          }
+
+          wait_for_http() {
+            local name="$1"
+            local url="$2"
+            local timeout_seconds="$3"
+            local interval_seconds="${4:-2}"
+            local deadline=$((SECONDS + timeout_seconds))
+
+            while true; do
+              if curl -fsS "$url" > "/tmp/${name}.response"; then
+                echo "$name ready at $url"
+                cat "/tmp/${name}.response"
+                echo
+                return 0
+              fi
+
+              if (( SECONDS >= deadline )); then
+                echo "::error::$name did not become ready within ${timeout_seconds}s at $url"
+                curl -sS "$url" || true
+                echo
+                return 1
+              fi
+
+              sleep "$interval_seconds"
+            done
+          }
+
+          wait_for_container_health timescaledb 240
+          wait_for_http socket-proxy http://localhost:2375/_ping 120 2
+          wait_for_http mailpit http://localhost:8025/api/v1/messages 120 2
+
+      - name: Start db-sync
+        run: docker compose up -d --build db-sync
+
+      - name: Wait for db-sync schema readiness
+        run: |
+          set -euo pipefail
+          deadline=$((SECONDS + 600))
+
+          while true; do
+            status="$(docker inspect --format '{{.State.Status}}' db_sync 2>/dev/null || true)"
+            health="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}missing{{end}}' db_sync 2>/dev/null || true)"
+
+            if [[ "$status" == "running" && "$health" == "healthy" ]]; then
+              echo "db_sync status=$status health=$health"
+              docker exec db_sync /app/bin/python -c "import urllib.request; print(urllib.request.urlopen('http://localhost:8009/ready/schema', timeout=2).read().decode())"
+              break
+            fi
+
+            if (( SECONDS >= deadline )); then
+              echo "::error::db_sync did not become schema-ready within 600s (status=$status health=$health)"
+              docker inspect db_sync || true
+              docker compose logs --no-color db-sync timescaledb || true
+              exit 1
+            fi
+
+            echo "db_sync status=$status health=$health"
+            sleep 5
+          done
+
+      - name: Start tactic middleware
+        run: docker compose up -d --build tactic-middleware
+
+      - name: Wait for tactic middleware readiness
+        run: |
+          set -euo pipefail
+          timeout 600 bash -c '
+            until curl -fsS http://localhost:8001/ready; do
+              echo "tactic middleware not ready yet"
+              curl -sS http://localhost:8001/health || true
+              echo
+              docker inspect --format "tactic_middleware status={{.State.Status}} health={{if .State.Health}}{{.State.Health.Status}}{{else}}missing{{end}}" tactic_middleware 2>/dev/null || true
               sleep 5
             done
           '
+
+      - name: Start application services
+        run: docker compose up -d --build api-gateway frontend
+
+      - name: Wait for application readiness
+        run: |
+          set -euo pipefail
+
+          timeout 600 bash -c '
+            until curl -fsS http://localhost:8000/health; do
+              echo "api-gateway not ready yet"
+              docker inspect --format "api_gateway status={{.State.Status}} health={{if .State.Health}}{{.State.Health.Status}}{{else}}missing{{end}}" api_gateway 2>/dev/null || true
+              sleep 5
+            done
+          '
+
+          timeout 600 bash -c '
+            until curl -fsS http://localhost:5173/login > /dev/null; do
+              echo "frontend not ready yet"
+              docker inspect --format "react_client status={{.State.Status}}" react_client 2>/dev/null || true
+              sleep 5
+            done
+          '
+
+      - name: Verify Docker Compose service states
+        run: |
+          set -euo pipefail
+
+          required_running=(react_client socket_proxy mailpit)
+          required_healthy=(api_gateway tactic_middleware db_sync timescaledb)
+
+          for container in "${required_running[@]}"; do
+            status="$(docker inspect --format '{{.State.Status}}' "$container" 2>/dev/null || true)"
+            echo "$container status=$status"
+            if [[ "$status" != "running" ]]; then
+              exit 1
+            fi
+          done
+
+          for container in "${required_healthy[@]}"; do
+            status="$(docker inspect --format '{{.State.Status}}' "$container" 2>/dev/null || true)"
+            health="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}missing{{end}}' "$container" 2>/dev/null || true)"
+            echo "$container status=$status health=$health"
+            if [[ "$status" != "running" || "$health" != "healthy" ]]; then
+              exit 1
+            fi
+          done
 
       - name: Run deployment smoke test
         working-directory: frontend
         run: npm run test:e2e
 
-      - name: Collect deployment smoke logs
+      - name: Collect deployment smoke diagnostics
         if: failure()
         run: |
-          docker compose ps --all > deployment-smoke-compose-ps.txt || true
+          set +e
+          mkdir -p deployment-smoke-diagnostics
+
+          docker compose ps --all > deployment-smoke-compose-ps.txt
           docker compose logs --no-color \
             frontend api-gateway tactic-middleware db-sync timescaledb socket-proxy mailpit \
-            > deployment-smoke-compose.log || true
+            > deployment-smoke-compose.log
+
+          for container in react_client api_gateway tactic_middleware db_sync timescaledb socket_proxy mailpit; do
+            docker inspect "$container" > "deployment-smoke-diagnostics/${container}.inspect.json" 2>&1
+          done
+
+          curl -sS http://localhost:8001/health > deployment-smoke-diagnostics/tactic-health.json 2>&1
+          curl -sS http://localhost:8001/ready > deployment-smoke-diagnostics/tactic-ready.json 2>&1
+          docker exec db_sync /app/bin/python -c "import urllib.request; print(urllib.request.urlopen('http://localhost:8009/health', timeout=2).read().decode())" > deployment-smoke-diagnostics/db-sync-health.json 2>&1
+          docker exec db_sync /app/bin/python -c "import urllib.request; print(urllib.request.urlopen('http://localhost:8009/ready/schema', timeout=2).read().decode())" > deployment-smoke-diagnostics/db-sync-ready-schema.json 2>&1
+          curl -sS http://localhost:8000/health > deployment-smoke-diagnostics/api-gateway-health.json 2>&1
+          curl -sS http://localhost:2375/_ping > deployment-smoke-diagnostics/socket-proxy-ping.txt 2>&1
 
       - name: Upload deployment smoke artifacts
         if: failure()
@@ -113,9 +241,10 @@ jobs:
           path: |
             deployment-smoke-compose-ps.txt
             deployment-smoke-compose.log
+            deployment-smoke-diagnostics
             frontend/playwright-report
             frontend/test-results
 
       - name: Tear down deployment smoke stack
         if: always()
-        run: docker compose down -v
+        run: docker compose down -v --remove-orphans

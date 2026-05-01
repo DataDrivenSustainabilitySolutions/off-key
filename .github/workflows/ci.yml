@@ -119,7 +119,11 @@ jobs:
 
       - name: Collect browser smoke logs
         if: failure()
-        run: docker compose logs --no-color frontend api-gateway mailpit > browser-smoke-compose.log
+        run: |
+          docker compose ps > browser-smoke-compose-ps.txt
+          docker compose logs --no-color \
+            frontend api-gateway tactic-middleware db-sync timescaledb socket-proxy mailpit \
+            > browser-smoke-compose.log
 
       - name: Upload browser smoke artifacts
         if: failure()
@@ -128,6 +132,7 @@ jobs:
           name: frontend-browser-smoke-artifacts
           if-no-files-found: ignore
           path: |
+            browser-smoke-compose-ps.txt
             browser-smoke-compose.log
             frontend/playwright-report
             frontend/test-results

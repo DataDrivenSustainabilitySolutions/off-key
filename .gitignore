@@ -196,3 +196,5 @@ AGENTS.md
 /frontend/.npm-cache
 /frontend/playwright-report
 /frontend/test-results
+/browser-smoke-compose.log
+/browser-smoke-compose-ps.txt

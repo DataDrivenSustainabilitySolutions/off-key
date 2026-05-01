@@ -71,10 +71,7 @@ const Login: React.FC = () => {
       // Use consolidated login function which handles token storage
       login(data.access_token, rememberMe);
 
-      // Navigate immediately to landing page - data should already be in database
-      setTimeout(() => {
-        navigate("/");
-      }, 1000); // Reduced delay since no sync needed
+      navigate("/");
     } catch (error) {
       clientLogger.error({
         event: "auth.login_request_failed",
@@ -178,14 +175,12 @@ const Login: React.FC = () => {
 
             {/* Links */}
             <div className="text-sm text-center mt-3 space-y-1">
-              <a href="#" className="text-blue-700 hover:underline block">
-                <Link
-                  to="/forgot-password"
-                  className="text-blue-600 hover:underline"
-                >
-                  Forgot password?
-                </Link>
-              </a>
+              <Link
+                to="/forgot-password"
+                className="text-blue-600 hover:underline"
+              >
+                Forgot password?
+              </Link>
             </div>
             <div className="text-xs mt-4 text-center">
               <p>

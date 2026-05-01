@@ -23,13 +23,13 @@ interface TimeInputProps {
   label: string;
 }
 
-const TimeInput: React.FC<TimeInputProps> = ({ 
-  value, 
-  onChange, 
-  max, 
-  min = 0, 
+const TimeInput: React.FC<TimeInputProps> = ({
+  value,
+  onChange,
+  max,
+  min = 0,
   step = 1,
-  label 
+  label
 }) => {
   const handleIncrement = () => {
     const newValue = value + step;
@@ -131,7 +131,7 @@ export const DateTimePicker: React.FC<DateTimePickerProps> = ({
   const handleTimeChange = (newHours: number, newMinutes: number) => {
     setHours(newHours);
     setMinutes(newMinutes);
-    
+
     if (selectedDate) {
       const newDateTime = createDateTime(selectedDate, newHours, newMinutes);
       setSelectedDate(newDateTime);
@@ -197,14 +197,14 @@ export const DateTimePicker: React.FC<DateTimePickerProps> = ({
             onSelect={handleDateSelect}
             initialFocus
           />
-          
+
           {/* Time Selection */}
           <div className="border-t pt-4 mt-3">
             <div className="flex items-center gap-2 mb-4">
               <Clock className="h-4 w-4 text-muted-foreground" />
               <span className="text-sm font-medium">Time</span>
             </div>
-            
+
             <div className="flex items-center justify-center gap-4 mb-4">
               <TimeInput
                 value={hours}
@@ -213,11 +213,11 @@ export const DateTimePicker: React.FC<DateTimePickerProps> = ({
                 min={0}
                 label="Hours"
               />
-              
+
               <div className="flex items-center pt-6">
                 <span className="text-lg font-medium text-muted-foreground">:</span>
               </div>
-              
+
               <TimeInput
                 value={minutes}
                 onChange={handleMinutesChange}
@@ -227,7 +227,7 @@ export const DateTimePicker: React.FC<DateTimePickerProps> = ({
                 label="Minutes"
               />
             </div>
-            
+
             <div className="flex justify-center mb-3">
               <Button
                 size="sm"

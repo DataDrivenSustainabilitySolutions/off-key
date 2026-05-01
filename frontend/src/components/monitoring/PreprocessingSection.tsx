@@ -14,6 +14,8 @@ import type {
   ParameterSchema,
 } from "@/types/monitoring";
 
+type ConfigInputValue = string | boolean;
+
 // Helper function to parse numeric input
 const parseNumericInput = (
   rawValue: string,
@@ -40,13 +42,32 @@ interface PreprocessingSectionProps {
   onParamChange: (
     index: number,
     key: string,
-    rawValue: string,
+    rawValue: ConfigInputValue,
     schemaType?: string
   ) => void;
   onMoveUp: (index: number) => void;
   onMoveDown: (index: number) => void;
   onRemove: (index: number) => void;
 }
+
+const getInputType = (schemaType?: string): "checkbox" | "number" | "text" => {
+  if (schemaType === "boolean") {
+    return "checkbox";
+  }
+  if (schemaType === "integer" || schemaType === "number") {
+    return "number";
+  }
+  return "text";
+};
+
+const getTextInputValue = (
+  value: string | number | boolean | undefined
+): string | number => {
+  if (typeof value === "boolean") {
+    return value ? "true" : "false";
+  }
+  return value ?? "";
+};
 
 export const PreprocessingSection: React.FC<PreprocessingSectionProps> = ({
   steps,
@@ -151,18 +172,25 @@ export const PreprocessingSection: React.FC<PreprocessingSectionProps> = ({
                     )}
                   </label>
                   <input
-                    type={
-                      schema?.type === "integer" || schema?.type === "number"
-                        ? "number"
-                        : "text"
-                    }
+                    type={getInputType(schema?.type)}
                     className="border rounded px-3 py-2 bg-white text-black dark:bg-neutral-900 dark:text-white"
-                    value={step.params?.[key] ?? ""}
+                    checked={
+                      schema?.type === "boolean"
+                        ? Boolean(step.params?.[key])
+                        : undefined
+                    }
+                    value={
+                      schema?.type === "boolean"
+                        ? undefined
+                        : getTextInputValue(step.params?.[key])
+                    }
                     onChange={(e) =>
                       onParamChange(
                         index,
                         key,
-                        e.target.value,
+                        schema?.type === "boolean"
+                          ? e.target.checked
+                          : e.target.value,
                         schema?.type
                       )
                     }

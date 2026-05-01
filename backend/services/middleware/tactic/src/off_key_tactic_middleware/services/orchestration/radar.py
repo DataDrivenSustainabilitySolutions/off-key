@@ -384,7 +384,9 @@ class RadarOrchestrationService:
             info = await self.async_docker.run(self.async_docker.client.info)
             swarm = info.get("Swarm", {})
             local_node_state = str(swarm.get("LocalNodeState", "")).lower()
-            result = local_node_state == "active" and bool(swarm.get("ControlAvailable"))
+            result = local_node_state == "active" and bool(
+                swarm.get("ControlAvailable")
+            )
         except Exception as exc:
             logger.warning("Failed to detect Swarm mode; assuming non-Swarm: %s", exc)
             result = False

@@ -13,9 +13,16 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import type { TelemetryTypeData } from "@/dataFetch/FetchContext";
+
+type TelemetryCategoryGroups = Record<
+  TelemetryTypeData["category"],
+  TelemetryTypeData[]
+>;
 
 const Details: React.FC = () => {
   const { chargerId } = useParams<{ chargerId: string }>();
+  const resolvedChargerId = chargerId ?? "";
 
   // Import functions and data from FetchContext
   const {
@@ -66,16 +73,19 @@ const Details: React.FC = () => {
   }, [chargerId, syncTelemetryShort, loadAllTelemetryTypes, loadAnomalies]);
 
   // Get dynamic telemetry data and anomalies
-  const allTelemetryData = allTelemetryMap[chargerId!] || [];
-  const chargerAnomalies = anomaliesMap[chargerId!] || [];
+  const allTelemetryData = useMemo(
+    () => allTelemetryMap[resolvedChargerId] ?? [],
+    [allTelemetryMap, resolvedChargerId]
+  );
+  const chargerAnomalies = anomaliesMap[resolvedChargerId] ?? [];
 
   // Group telemetry data by category for better organization
   const telemetryByCategory = useMemo(() => {
-    const grouped = {
-      cpu: [] as typeof allTelemetryData,
-      system: [] as typeof allTelemetryData,
-      controller: [] as typeof allTelemetryData,
-      other: [] as typeof allTelemetryData,
+    const grouped: TelemetryCategoryGroups = {
+      cpu: [],
+      system: [],
+      controller: [],
+      other: [],
     };
 
     allTelemetryData.forEach(telemetry => {
@@ -123,7 +133,7 @@ const Details: React.FC = () => {
                   message="No telemetry data available for this charger"
                   onRefresh={() => {
                     setIsLoadingTelemetry(true);
-                    loadAllTelemetryTypes(chargerId!).finally(() => setIsLoadingTelemetry(false));
+                    loadAllTelemetryTypes(resolvedChargerId).finally(() => setIsLoadingTelemetry(false));
                   }}
                 />
               </div>
@@ -137,7 +147,7 @@ const Details: React.FC = () => {
                       <DynamicTelemetryChart
                         key={telemetryData.type}
                         telemetryData={telemetryData}
-                        chargerId={chargerId!}
+                        chargerId={resolvedChargerId}
                         anomalies={chargerAnomalies}
                       />
                     ))}
@@ -152,7 +162,7 @@ const Details: React.FC = () => {
                       <DynamicTelemetryChart
                         key={telemetryData.type}
                         telemetryData={telemetryData}
-                        chargerId={chargerId!}
+                        chargerId={resolvedChargerId}
                         anomalies={chargerAnomalies}
                       />
                     ))}
@@ -167,7 +177,7 @@ const Details: React.FC = () => {
                       <DynamicTelemetryChart
                         key={telemetryData.type}
                         telemetryData={telemetryData}
-                        chargerId={chargerId!}
+                        chargerId={resolvedChargerId}
                         anomalies={chargerAnomalies}
                       />
                     ))}
@@ -182,7 +192,7 @@ const Details: React.FC = () => {
                       <DynamicTelemetryChart
                         key={telemetryData.type}
                         telemetryData={telemetryData}
-                        chargerId={chargerId!}
+                        chargerId={resolvedChargerId}
                         anomalies={chargerAnomalies}
                       />
                     ))}

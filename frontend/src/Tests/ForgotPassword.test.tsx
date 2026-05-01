@@ -1,13 +1,14 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import ForgotPassword from '../pages/ForgotPassword';
 import { vi } from 'vitest';
+import { API_CONFIG, getApiUrl } from '@/lib/api-config';
 
-// @ts-expect-error: TS kennt global.fetch nicht
 global.fetch = vi.fn();
 
 describe('ForgotPassword', () => {
     beforeEach(() => {
         vi.resetAllMocks();
+        vi.spyOn(console, 'error').mockImplementation(() => undefined);
     });
 
     test('zeigt Eingabefeld und Button', () => {
@@ -25,6 +26,7 @@ describe('ForgotPassword', () => {
 
     test('zeigt Erfolgsmeldung nach Submit', async () => {
         (fetch as unknown as vi.Mock).mockResolvedValueOnce({
+            ok: true,
             json: async () => ({ message: 'Reset link gesendet!' }),
         });
 
@@ -40,7 +42,7 @@ describe('ForgotPassword', () => {
         });
 
         expect(fetch).toHaveBeenCalledWith(
-            'http://localhost:8000/v1/auth/forgot-password',
+            getApiUrl(API_CONFIG.ENDPOINTS.AUTH.FORGOT_PASSWORD),
             expect.objectContaining({
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -60,7 +62,25 @@ describe('ForgotPassword', () => {
         fireEvent.click(button);
 
         await waitFor(() => {
-            expect(screen.getByText(/Fehler beim Senden der Anfrage/i)).toBeDefined();
+            expect(screen.getByText(/An error occurred while sending the request./i)).toBeDefined();
+        });
+    });
+
+    test('zeigt Fehlermeldung bei nicht erfolgreicher Antwort', async () => {
+        (fetch as unknown as vi.Mock).mockResolvedValueOnce({
+            ok: false,
+            json: async () => ({ detail: 'Request rejected' }),
+        });
+
+        render(<ForgotPassword />);
+        const input = screen.getByLabelText(/E-Mail/i);
+        const button = screen.getByRole('button', { name: /Reset Password/i });
+
+        fireEvent.change(input, { target: { value: 'reject@example.com' } });
+        fireEvent.click(button);
+
+        await waitFor(() => {
+            expect(screen.getByText(/Request rejected/i)).toBeDefined();
         });
     });
 });

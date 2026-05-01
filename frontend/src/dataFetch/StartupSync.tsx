@@ -11,9 +11,9 @@ const StartupSync: React.FC = () => {
       syncChargers();
       syncTelemetry();
     }
-  }, [isLoading, isAuthenticated]);
+  }, [isLoading, isAuthenticated, syncChargers, syncTelemetry]);
 
-  return null; 
+  return null;
 };
 
 export default StartupSync;

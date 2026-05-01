@@ -9,11 +9,7 @@ uv sync --all-packages --all-groups --frozen
 
 echo "[devcontainer] Installing frontend dependencies..."
 cd "${REPO_ROOT}/frontend"
-corepack enable
-if [[ -f "yarn.lock" ]]; then
-    corepack prepare yarn@1 --activate
-    yarn install --frozen-lockfile
-elif [[ -f "package-lock.json" ]]; then
+if [[ -f "package-lock.json" ]]; then
     npm ci
 else
     npm install

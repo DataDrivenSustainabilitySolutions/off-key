@@ -18,18 +18,31 @@ export interface ClientLogger {
   error: (entry: ClientLogEntry) => void;
 }
 
-type ConsoleMethod = (message?: unknown, ...optionalParams: unknown[]) => void;
 type LogContextOverrides = Partial<Pick<ClientLogEntry, "correlationId" | "requestId">>;
 
 const baseContext: LogContextOverrides = {};
 const isProduction = import.meta.env.PROD;
 let productionOverride: boolean | null = null;
 
-const consoleMethods: Record<ClientLogLevel, ConsoleMethod> = {
-  debug: console.debug.bind(console),
-  info: console.info.bind(console),
-  warn: console.warn.bind(console),
-  error: console.error.bind(console),
+const writeToConsole = (level: ClientLogLevel, payload: ClientLogContext): void => {
+  switch (level) {
+    case "debug":
+      console.debug(payload);
+      break;
+    case "info":
+      console.info(payload);
+      break;
+    case "warn":
+      console.warn(payload);
+      break;
+    case "error":
+      console.error(payload);
+      break;
+    default: {
+      const _exhaustive: never = level;
+      throw new Error(`Unknown log level: ${_exhaustive}`);
+    }
+  }
 };
 
 const serializeError = (value: unknown): ClientLogContext | undefined => {
@@ -93,7 +106,7 @@ const emit = (level: ClientLogLevel, entry: ClientLogEntry): void => {
     payload.error = serializedError;
   }
 
-  consoleMethods[level](payload);
+  writeToConsole(level, payload);
 };
 
 export const setClientLogContext = (context: LogContextOverrides): void => {

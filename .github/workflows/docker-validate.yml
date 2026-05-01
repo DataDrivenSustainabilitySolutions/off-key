@@ -1,0 +1,22 @@
+name: Docker Validate
+
+on:
+  pull_request:
+  merge_group:
+    types:
+      - checks_requested
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docker-validate-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  docker-validate:
+    uses: ./.github/workflows/docker-images.yml
+    secrets: inherit
+    with:
+      publish: false
+      cache-scope-prefix: docker-validate

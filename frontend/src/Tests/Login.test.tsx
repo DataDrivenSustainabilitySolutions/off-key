@@ -1,80 +1,108 @@
-import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
-import Login from '../pages/Login';
-import { AuthProvider } from '@/auth/AuthContext';
-import { FetchProvider } from '../dataFetch/FetchContext';
-import { vi } from 'vitest';
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
+import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
+
+import { AuthProvider } from "@/auth/AuthContext";
+import { tokenManager } from "@/lib/api-client";
+import Login from "../pages/Login";
+
+const mockNavigate = vi.fn();
+
+vi.mock("react-router-dom", async () => {
+  const actual = await vi.importActual<typeof import("react-router-dom")>(
+    "react-router-dom"
+  );
+
+  return {
+    ...actual,
+    useNavigate: () => mockNavigate,
+  };
+});
+
+let fetchMock: ReturnType<typeof vi.fn>;
+let originalFetch: typeof global.fetch;
 
 beforeEach(() => {
-    global.fetch = vi.fn();
-    localStorage.clear();
-    sessionStorage.clear();
+  originalFetch = global.fetch;
+  fetchMock = vi.fn();
+  global.fetch = fetchMock as typeof fetch;
+  localStorage.clear();
+  sessionStorage.clear();
+  mockNavigate.mockReset();
 });
 
 afterEach(() => {
-    vi.resetAllMocks();
+  global.fetch = originalFetch;
+  vi.resetAllMocks();
 });
 
 const renderLogin = () =>
-    render(
-        <AuthProvider>
-            <FetchProvider>
-                <MemoryRouter>
-                    <Login />
-                </MemoryRouter>
-            </FetchProvider>
-        </AuthProvider>
+  render(
+    <AuthProvider>
+      <MemoryRouter>
+        <Login />
+      </MemoryRouter>
+    </AuthProvider>
+  );
+
+describe("Login", () => {
+  it("shows form fields and submit button", () => {
+    renderLogin();
+
+    expect(screen.getByLabelText(/e-mail/i)).toBeTruthy();
+    expect(
+      screen.getByLabelText(/password/i, { selector: "input" })
+    ).toBeTruthy();
+    expect(screen.getByRole("button", { name: /log in/i })).toBeTruthy();
+  });
+
+  it("shows an error message for invalid credentials", async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ detail: "Test-Fehler" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      })
     );
 
-test('zeigt Felder und Button an', () => {
     renderLogin();
-
-    expect(screen.getByLabelText(/E-Mail/i)).toBeTruthy();
-    // fix: gebe explizit an, dass es sich um ein input handeln soll
-    expect(screen.getByLabelText(/Passwort/i, { selector: 'input' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: /log in/i })).toBeTruthy();
-});
-
-test('fehlerhafte Login-Daten zeigen Fehlermeldung', async () => {
-    (fetch as any).mockResolvedValueOnce({
-        ok: false,
-        json: async () => ({ detail: 'Test-Fehler' }),
+    fireEvent.change(screen.getByLabelText(/e-mail/i), {
+      target: { value: "test@example.com" },
     });
-
-    renderLogin();
-    fireEvent.change(screen.getByLabelText(/E-Mail/i), {
-        target: { value: 'test@example.com' },
+    fireEvent.change(screen.getByLabelText(/password/i, { selector: "input" }), {
+      target: { value: "wrongpass" },
     });
-    fireEvent.change(screen.getByLabelText(/Passwort/i, { selector: 'input' }), {
-        target: { value: 'wrongpass' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: /log in/i }));
+    fireEvent.click(screen.getByRole("button", { name: /log in/i }));
 
     await waitFor(() => {
-        expect(screen.queryByText(/Test-Fehler/i)).not.toBeNull();
+      expect(screen.getByText(/test-fehler/i)).toBeTruthy();
     });
-});
+  });
 
-test('erfolgreicher Login speichert Token und navigiert', async () => {
-    const mockToken = 'abc123';
+  it("stores the token and navigates after a successful login", async () => {
+    const mockToken = "abc123";
 
-    (fetch as any).mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ access_token: mockToken, token_type: 'bearer' }),
-    });
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({ access_token: mockToken, token_type: "bearer" }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }
+      )
+    );
 
     renderLogin();
-    fireEvent.change(screen.getByLabelText(/E-Mail/i), {
-        target: { value: 'test@example.com' },
+    fireEvent.change(screen.getByLabelText(/e-mail/i), {
+      target: { value: "test@example.com" },
     });
-    fireEvent.change(screen.getByLabelText(/Passwort/i, { selector: 'input' }), {
-        target: { value: 'correctpass' },
+    fireEvent.change(screen.getByLabelText(/password/i, { selector: "input" }), {
+      target: { value: "correctpass" },
     });
-    fireEvent.click(screen.getByRole('button', { name: /log in/i }));
+    fireEvent.click(screen.getByRole("button", { name: /log in/i }));
 
     await waitFor(() => {
-        const token = sessionStorage.getItem('token') || localStorage.getItem('token');
-        expect(token).toBe(mockToken);
+      expect(tokenManager.getToken()).toBe(mockToken);
     });
+    expect(mockNavigate).toHaveBeenCalledWith("/");
+  });
 });

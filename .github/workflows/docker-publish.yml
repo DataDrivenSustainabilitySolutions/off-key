@@ -1,0 +1,27 @@
+name: Docker Publish
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+  packages: write
+  attestations: write
+  id-token: write
+
+concurrency:
+  group: docker-publish-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    uses: ./.github/workflows/docker-images.yml
+    secrets: inherit
+    with:
+      publish: true
+      cache-scope-prefix: docker-publish
+      cache-fallback-scope-prefix: docker-validate

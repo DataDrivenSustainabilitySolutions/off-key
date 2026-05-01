@@ -358,7 +358,7 @@ export const FetchProvider: React.FC<{ children: ReactNode }> = ({
         setSearchError(true);
       }
     },
-    [getTelemetryTypes, getTelemetryData, syncTelemetry]
+    [getTelemetryTypes, getTelemetryData]
   );
 
   const loadCpuThermal = useCallback(
@@ -401,7 +401,7 @@ export const FetchProvider: React.FC<{ children: ReactNode }> = ({
         setSearchError(true);
       }
     },
-    [getTelemetryTypes, getTelemetryData, syncTelemetry]
+    [getTelemetryTypes, getTelemetryData]
   );
 
   const loadMonitoring = useCallback(async (chargerId: string) => {
@@ -451,7 +451,7 @@ export const FetchProvider: React.FC<{ children: ReactNode }> = ({
       });
       setSearchError(true);
     }
-  }, []);
+  }, [getTelemetryTypes, getTelemetryData]);
 
   const loadAnomalies = useCallback(async (chargerId: string) => {
     try {

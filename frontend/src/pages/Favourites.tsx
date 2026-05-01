@@ -32,27 +32,60 @@ export default function ChargerTable() {
 
   // Load data on mount
   useEffect(() => {
+    let cancelled = false;
+
     async function loadData() {
-      setLoading(true);
+      if (!cancelled) {
+        setLoading(true);
+      }
+
       try {
         // Fetch favorite charger IDs for user 1
         const favoriteIds = await getFavorites(1);
+        if (cancelled) {
+          return;
+        }
         setFavoriteChargerIds(favoriteIds);
 
         // Fetch all chargers and combine them with additional data
         const chargers = await getAllChargers();
+        if (cancelled) {
+          return;
+        }
         const combined = await getCombinedChargerData(chargers);
+        if (cancelled) {
+          return;
+        }
 
         // Filter only favorites for display
         const favs = combined.filter((c) =>
           favoriteIds.includes(c.charger_id)
         );
         setData(favs);
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+
+        clientLogger.error({
+          event: "favorites.load_failed",
+          message: "Failed to load favorites page data",
+          error,
+        });
+        setData([]);
+        setFavoriteChargerIds([]);
       } finally {
-        setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+        }
       }
     }
-    loadData();
+
+    void loadData();
+
+    return () => {
+      cancelled = true;
+    };
   }, [getAllChargers, getCombinedChargerData, getFavorites]);
 
   // Filter chargers based on search input and status filter

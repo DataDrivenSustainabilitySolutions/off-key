@@ -1,38 +1,77 @@
-import React from 'react';
-import { render, screen } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
-import axios from 'axios';
-import { vi } from 'vitest';
-import { FetchProvider } from '../dataFetch/FetchContext';
+import { render, screen } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
+import { beforeEach, describe, expect, test, vi } from "vitest";
 
-import Favourites from '../pages/Favourites';
-import { AuthProvider } from '../auth/AuthContext';  // Pfad anpassen
+import Favourites from "../pages/Favourites";
 
-vi.mock('axios');
+const mockGetFavorites = vi.fn();
+const mockGetAllChargers = vi.fn();
+const mockGetCombinedChargerData = vi.fn();
+const mockToggleFavorite = vi.fn();
 
-describe('Favourites', () => {
-    beforeEach(() => {
-        (axios.get as vi.Mock).mockReset();
-    });
+vi.mock("../dataFetch/UseFetch", () => ({
+  useFetch: () => ({
+    getFavorites: mockGetFavorites,
+    getAllChargers: mockGetAllChargers,
+    getCombinedChargerData: mockGetCombinedChargerData,
+    toggleFavorite: mockToggleFavorite,
+  }),
+}));
 
-    test('renders search input, filters and table headers', async () => {
-        (axios.get as vi.Mock).mockResolvedValue({
-            data: [
-                { id: '1', status: 'online', chargerId: 'CH-001' },
-            ],
-        });
+vi.mock("../components/NavigationBar", () => ({
+  NavigationBar: () => <div data-testid="navigation-bar" />,
+}));
 
-        render(
-            <AuthProvider>
-                <FetchProvider>
-                    <MemoryRouter>
-                        <Favourites />
-                    </MemoryRouter>
-                </FetchProvider>
-            </AuthProvider>
-        );
+describe("Favourites", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGetFavorites.mockResolvedValue(["CH-001"]);
+    mockGetAllChargers.mockResolvedValue([
+      {
+        charger_id: "CH-001",
+        charger_name: "Alpha Charger",
+        last_seen: "2026-04-14T10:00:00Z",
+        online: true,
+        state: "ready",
+        created: "2026-04-14T09:00:00Z",
+      },
+      {
+        charger_id: "CH-002",
+        charger_name: "Beta Charger",
+        last_seen: "2026-04-14T10:00:00Z",
+        online: false,
+        state: "offline",
+        created: "2026-04-14T09:00:00Z",
+      },
+    ]);
+    mockGetCombinedChargerData.mockResolvedValue([
+      {
+        charger_id: "CH-001",
+        charger_name: "Alpha Charger",
+        last_seen: "2026-04-14T10:00:00Z",
+        online: true,
+        state: "ready",
+      },
+      {
+        charger_id: "CH-002",
+        charger_name: "Beta Charger",
+        last_seen: "2026-04-14T10:00:00Z",
+        online: false,
+        state: "offline",
+      },
+    ]);
+  });
 
-        screen.getByPlaceholderText(/Search for charger ID.../i);
-        await screen.findByText(/Charger ID/i);
-    });
+  test("renders search input, filters, and favorite charger data", async () => {
+    render(
+      <MemoryRouter>
+        <Favourites />
+      </MemoryRouter>
+    );
+
+    expect(screen.getByPlaceholderText(/search for charger id/i)).toBeTruthy();
+    expect(await screen.findByText(/charger id/i)).toBeTruthy();
+    expect(screen.getByText("CH-001")).toBeTruthy();
+    expect(screen.queryByText("CH-002")).toBeNull();
+  });
 });

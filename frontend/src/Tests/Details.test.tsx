@@ -1,110 +1,95 @@
-import { describe, it, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
-import { MemoryRouter, Routes, Route } from "react-router-dom";
-import { AuthProvider } from "../auth/AuthContext";
-import { FetchProvider } from "../dataFetch/FetchContext";
+import { render, screen, waitFor } from "@testing-library/react";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
 import Details from "../pages/Details";
 
-// ResizeObserver mock (für recharts)
-global.ResizeObserver = class {
-    observe() { }
-    unobserve() { }
-    disconnect() { }
-};
+const mockLoadAllTelemetryTypes = vi.fn(() => Promise.resolve());
+const mockLoadAnomalies = vi.fn(() => Promise.resolve());
+const mockSyncTelemetryShort = vi.fn(() => Promise.resolve());
+const mockUseFetch = vi.fn();
 
-// Axios mock
-vi.mock("axios", () => ({
-    default: {
-        get: vi.fn((url) => {
-            if (url.includes("metrics")) {
-                return Promise.resolve({
-                    data: [
-                        {
-                            timestamp: new Date().toISOString(),
-                            value: Math.random() * 100,
-                        },
-                    ],
-                });
-            }
-
-            if (url.includes("chargers/123")) {
-                return Promise.resolve({
-                    data: {
-                        charger_id: "123",
-                        charger_name: "Test Charger",
-                    },
-                });
-            }
-
-            return Promise.resolve({ data: [] });
-        }),
-    },
+vi.mock("../dataFetch/UseFetch", () => ({
+  useFetch: () => mockUseFetch(),
 }));
 
-// useRedZones mock
-vi.mock("../lib/useRedZones", () => ({
-    useRedZones: () => [],
+vi.mock("../components/NavigationBar", () => ({
+  NavigationBar: () => <div data-testid="navigation-bar" />,
 }));
 
-function renderWithProviders() {
-    return render(
-        <AuthProvider>
-            <FetchProvider>
-                <MemoryRouter initialEntries={["/details/123"]}>
-                    <Routes>
-                        <Route path="/details/:charger_id" element={<Details />} />
-                    </Routes>
-                </MemoryRouter>
-            </FetchProvider>
-        </AuthProvider>
-    );
+vi.mock("../components/DynamicTelemetryChart", () => ({
+  default: ({ telemetryData }: { telemetryData: { type: string } }) => (
+    <div data-testid="telemetry-chart">{telemetryData.type}</div>
+  ),
+}));
+
+function renderDetails() {
+  return render(
+    <MemoryRouter initialEntries={["/details/123"]}>
+      <Routes>
+        <Route path="/details/:chargerId" element={<Details />} />
+      </Routes>
+    </MemoryRouter>
+  );
 }
 
 describe("<Details />", () => {
-    beforeEach(() => {
-        vi.clearAllMocks();
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockUseFetch.mockReturnValue({
+      allTelemetryMap: {
+        "123": [
+          {
+            type: "controllerCpuUsage",
+            category: "cpu",
+            data: [{ timestamp: "2026-04-14T10:00:00Z", value: 42 }],
+          },
+          {
+            type: "systemVoltage",
+            category: "system",
+            data: [{ timestamp: "2026-04-14T10:00:00Z", value: 12 }],
+          },
+        ],
+      },
+      anomaliesMap: { "123": [] },
+      loadAllTelemetryTypes: mockLoadAllTelemetryTypes,
+      loadAnomalies: mockLoadAnomalies,
+      syncTelemetryShort: mockSyncTelemetryShort,
+    });
+  });
+
+  it("loads telemetry data and renders category sections", async () => {
+    renderDetails();
+
+    await waitFor(() => {
+      expect(mockLoadAllTelemetryTypes).toHaveBeenCalledWith("123");
+      expect(mockLoadAnomalies).toHaveBeenCalledWith("123");
+    });
+    expect(screen.getByText(/cpu metrics/i)).toBeTruthy();
+    expect(screen.getByText(/system metrics/i)).toBeTruthy();
+    expect(screen.getAllByTestId("telemetry-chart")).toHaveLength(2);
+  });
+
+  it("renders the monitoring link for the selected charger", async () => {
+    renderDetails();
+
+    const link = await screen.findByRole("link", { name: /monitoring/i });
+    expect(link.getAttribute("href")).toBe("/monitoring/123");
+  });
+
+  it("shows the empty state when no telemetry is available", async () => {
+    mockUseFetch.mockReturnValue({
+      allTelemetryMap: { "123": [] },
+      anomaliesMap: { "123": [] },
+      loadAllTelemetryTypes: mockLoadAllTelemetryTypes,
+      loadAnomalies: mockLoadAnomalies,
+      syncTelemetryShort: mockSyncTelemetryShort,
     });
 
-    it("zeigt CPU-Karten", async () => {
-        renderWithProviders();
-        const cpu = await screen.findByText(/CPU Usage/i);
-        const thermal = screen.queryByText(/CPU Thermal/i);
+    renderDetails();
 
-        expect(cpu).not.toBeNull();
-        expect(thermal).not.toBeNull();
-    });
-
-    it("zeigt Zeitfilter und Datumseingaben", async () => {
-        renderWithProviders();
-        await screen.findByText(/CPU Usage/i);
-
-        const fromInputs = screen.queryAllByPlaceholderText(/From/i);
-        const toInputs = screen.queryAllByPlaceholderText(/To/i);
-
-    });
-
-    it("zeigt Link zu Monitoring", async () => {
-        renderWithProviders();
-
-        // warte auf Text der erst gerendert wird, wenn charger_id geladen ist
-        await screen.findByText(/CPU Usage/i);
-
-        const link = screen.getByRole("link", { name: /Monitoring/i });
-        expect(link).not.toBeNull();
-    });
-
-
-    it("klappt CPU-Karten ein/aus", async () => {
-        renderWithProviders();
-        await screen.findByText(/CPU Usage/i);
-
-        const buttons = screen.getAllByRole("button");
-        expect(buttons.length).toBeGreaterThan(0);
-
-        fireEvent.click(buttons[0]);
-        fireEvent.click(buttons[1]);
-
-        const stillThere = screen.queryByText(/CPU Usage/i);
-        expect(stillThere).not.toBeNull();
-    });
+    expect(
+      await screen.findByText(/no telemetry data available for this charger/i)
+    ).toBeTruthy();
+  });
 });

@@ -34,9 +34,9 @@ export const ChartSkeleton: React.FC = () => (
 );
 
 // Table loading skeleton
-export const TableSkeleton: React.FC<{ rows?: number; cols?: number }> = ({ 
-  rows = 5, 
-  cols = 4 
+export const TableSkeleton: React.FC<{ rows?: number; cols?: number }> = ({
+  rows = 5,
+  cols = 4
 }) => (
   <Card>
     <CardContent className="pt-6">
@@ -96,7 +96,7 @@ export const ListSkeleton: React.FC<{ items?: number }> = ({ items = 5 }) => (
 );
 
 // Loading spinner
-export const LoadingSpinner: React.FC<{ 
+export const LoadingSpinner: React.FC<{
   size?: 'sm' | 'md' | 'lg';
   className?: string;
 }> = ({ size = 'md', className = '' }) => {
@@ -112,8 +112,8 @@ export const LoadingSpinner: React.FC<{
 };
 
 // Full page loading
-export const FullPageLoading: React.FC<{ message?: string }> = ({ 
-  message = 'Loading...' 
+export const FullPageLoading: React.FC<{ message?: string }> = ({
+  message = 'Loading...'
 }) => (
   <div className="min-h-screen flex items-center justify-center">
     <div className="text-center space-y-4">
@@ -124,8 +124,8 @@ export const FullPageLoading: React.FC<{ message?: string }> = ({
 );
 
 // Inline loading
-export const InlineLoading: React.FC<{ message?: string }> = ({ 
-  message = 'Loading...' 
+export const InlineLoading: React.FC<{ message?: string }> = ({
+  message = 'Loading...'
 }) => (
   <div className="flex items-center justify-center space-x-2 py-8">
     <LoadingSpinner size="sm" />
@@ -170,12 +170,12 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
 );
 
 // No data found
-export const NoDataFound: React.FC<{ 
+export const NoDataFound: React.FC<{
   message?: string;
   onRefresh?: () => void;
-}> = ({ 
+}> = ({
   message = 'No data found',
-  onRefresh 
+  onRefresh
 }) => (
   <EmptyState
     icon={<Database className="h-12 w-12" />}
@@ -228,7 +228,7 @@ export const ConnectionError: React.FC<{ onRetry?: () => void }> = ({ onRetry })
 );
 
 // Search empty state
-export const NoSearchResults: React.FC<{ 
+export const NoSearchResults: React.FC<{
   searchTerm: string;
   onClearSearch?: () => void;
 }> = ({ searchTerm, onClearSearch }) => (
@@ -243,7 +243,7 @@ export const NoSearchResults: React.FC<{
 );
 
 // Data refresh state
-export const DataRefreshState: React.FC<{ 
+export const DataRefreshState: React.FC<{
   lastUpdated?: Date;
   onRefresh?: () => void;
   isRefreshing?: boolean;

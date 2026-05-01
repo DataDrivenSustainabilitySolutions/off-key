@@ -1,52 +1,80 @@
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { AuthProvider } from "@/auth/AuthContext";
-import { FetchProvider } from "@/dataFetch/FetchContext";
+import { beforeEach, describe, expect, test, vi } from "vitest";
+
 import Landingpage from "@/pages/Landingpage";
 
+const mockGetAllChargers = vi.fn();
+const mockGetCombinedChargerData = vi.fn();
+const mockGetFavorites = vi.fn();
+const mockToggleFavorite = vi.fn();
+
+vi.mock("@/dataFetch/UseFetch", () => ({
+  useFetch: () => ({
+    getAllChargers: mockGetAllChargers,
+    getCombinedChargerData: mockGetCombinedChargerData,
+    getFavorites: mockGetFavorites,
+    toggleFavorite: mockToggleFavorite,
+  }),
+}));
+
+vi.mock("@/auth/AuthContext", () => ({
+  useAuth: () => ({ userId: 1 }),
+}));
+
+vi.mock("@/components/NavigationBar", () => ({
+  NavigationBar: () => <div data-testid="navigation-bar" />,
+}));
+
 function renderLandingpage() {
-    render(
-        <AuthProvider>
-            <FetchProvider>
-                <MemoryRouter>
-                    <Landingpage />
-                </MemoryRouter>
-            </FetchProvider>
-        </AuthProvider>
-    );
+  render(
+    <MemoryRouter>
+      <Landingpage />
+    </MemoryRouter>
+  );
 }
 
-describe("Landingpage UI ohne Mocks und ohne toBeInTheDocument", () => {
-    test("zeigt Ladeanzeige an", () => {
-        renderLandingpage();
-        const loading = screen.getByText(/loading data/i);
-        expect(loading).not.toBeNull();
+describe("Landingpage", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGetAllChargers.mockImplementation(
+      () => new Promise(() => undefined)
+    );
+    mockGetCombinedChargerData.mockImplementation(
+      () => new Promise(() => undefined)
+    );
+    mockGetFavorites.mockImplementation(() => new Promise(() => undefined));
+  });
+
+  test("shows a loading indicator before data resolves", () => {
+    renderLandingpage();
+
+    expect(screen.getByText(/loading data/i)).toBeTruthy();
+  });
+
+  test("shows the search field and allows input", async () => {
+    renderLandingpage();
+
+    const input = screen.getByPlaceholderText(/search by charger id/i);
+    fireEvent.change(input, { target: { value: "ABC123" } });
+
+    expect((input as HTMLInputElement).value).toBe("ABC123");
+    await waitFor(() => {
+      expect(mockGetAllChargers).toHaveBeenCalled();
     });
+  });
 
-    test("zeigt Suchfeld und erlaubt Eingabe", () => {
-        renderLandingpage();
-        const input = screen.getByPlaceholderText(/search by charger id/i);
-        expect(input).not.toBeNull();
+  test("shows status filter radio buttons", () => {
+    renderLandingpage();
 
-        fireEvent.change(input, { target: { value: "ABC123" } });
-        expect((input as HTMLInputElement).value).toBe("ABC123");
-    });
+    expect(screen.getByLabelText(/offline/i)).toBeTruthy();
+    expect(screen.getByLabelText(/online/i)).toBeTruthy();
+    expect(screen.getByLabelText(/all/i)).toBeTruthy();
+  });
 
-    test("zeigt Statusfilter Radio-Buttons", () => {
-        renderLandingpage();
+  test("shows the cards-view toggle", () => {
+    renderLandingpage();
 
-        const offline = screen.getByLabelText(/offline/i);
-        const online = screen.getByLabelText(/online/i);
-        const all = screen.getByLabelText(/all/i);
-
-        expect(offline).not.toBeNull();
-        expect(online).not.toBeNull();
-        expect(all).not.toBeNull();
-    });
-
-    test("zeigt Toggle für Kartenansicht", () => {
-        renderLandingpage();
-        const toggle = screen.getByRole("switch");
-        expect(toggle).not.toBeNull();
-    });
+    expect(screen.getByRole("switch")).toBeTruthy();
+  });
 });

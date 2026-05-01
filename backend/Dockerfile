@@ -66,6 +66,17 @@ FROM python:3.12-slim
 # Optional: add the application virtualenv to search path.
 ENV PATH=/app/bin:$PATH
 
+ARG SERVICE_NAME
+ARG IMAGE_VERSION=dev
+ARG GIT_COMMIT=unknown
+
+LABEL org.opencontainers.image.source="https://github.com/DataDrivenSustainabilitySolutions/off-key" \
+      org.opencontainers.image.title="${SERVICE_NAME}" \
+      org.opencontainers.image.description="Runtime image for the ${SERVICE_NAME} service in the Off-Key platform" \
+      org.opencontainers.image.licenses="MIT" \
+      org.opencontainers.image.version="${IMAGE_VERSION}" \
+      org.opencontainers.image.revision="${GIT_COMMIT}"
+
 # Create non-root user
 RUN <<EOT
 groupadd -r app

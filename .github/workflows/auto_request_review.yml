@@ -1,7 +1,7 @@
 name: Auto Request Review
 
 on:
-  pull_request:
+  pull_request_target:
     types: [opened, ready_for_review, reopened]
 
 jobs:
@@ -13,10 +13,12 @@ jobs:
       pull-requests: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
 
       - name: Request review based on files changes and/or groups the author belongs to
-        uses: necojackarc/auto-request-review@v0.13.0
+        uses: necojackarc/auto-request-review@e89da1a8cd7c8c16d9de9c6e763290b6b0e3d424 # v0.13.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           # config: .github/auto_request_review.yml # Config file location override

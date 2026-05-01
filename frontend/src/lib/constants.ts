@@ -114,4 +114,5 @@ export const INTERVALS = {
   WEBSOCKET_HEARTBEAT: 30 * 1000, // 30 seconds heartbeat
   WEBSOCKET_RECONNECT_DELAY: 5 * 1000, // 5 seconds reconnect delay
   POLLING: 1000, // 1 second for file watching
+  ANOMALY_ZONE_GAP: 5 * 60 * 1000, // 5 minutes max gap between anomaly clusters
 } as const;

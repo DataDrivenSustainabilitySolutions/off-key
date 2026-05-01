@@ -3,7 +3,7 @@
  * and creating visual overlays
  */
 
-import { groupTimestampsIntoRanges, findNearestTelemetryPoint, timestampsAreClose } from './time-utils';
+import { groupTimestampsIntoRanges, timestampsAreClose } from './time-utils';
 import { INTERVALS } from './constants';
 import type { Anomaly } from '@/types/charger';
 
@@ -52,8 +52,7 @@ export const matchAnomaliesWithTelemetry = (
  * Groups nearby anomalies into continuous visual zones
  */
 export const createAnomalyZones = (
-  anomalies: Anomaly[],
-  telemetryData: TelemetryPoint[]
+  anomalies: Anomaly[]
 ): RedZone[] => {
   if (anomalies.length === 0) return [];
 
@@ -61,7 +60,7 @@ export const createAnomalyZones = (
   const timestamps = anomalies.map(a => a.timestamp);
 
   // Group into continuous ranges
-  const ranges = groupTimestampsIntoRanges(timestamps, 300000); // 5 minute max gap
+  const ranges = groupTimestampsIntoRanges(timestamps, INTERVALS.ANOMALY_ZONE_GAP);
 
   // Convert ranges to RedZones with associated anomalies
   return ranges.map(range => {

@@ -1,7 +1,7 @@
 name: Enforce team labels on PRs
 
 on:
-  pull_request:
+  pull_request_target:
     branches:
       - main
     types: [opened, labeled, unlabeled, synchronize, reopened]
@@ -11,29 +11,12 @@ jobs:
     name: Check team label
     runs-on: ubuntu-latest
     permissions:
-      issues: write           # needed to post comments
-      pull-requests: write    # needed to fail the PR check
-      contents: read          # needed to check repository permissions
+      issues: write
+      pull-requests: write
 
     steps:
-      - name: Check if PR author is admin
-        id: check-admin
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const { data: permission } = await github.rest.repos.getCollaboratorPermissionLevel({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              username: context.payload.pull_request.user.login
-            });
-            
-            const isAdmin = permission.permission === 'admin';
-            core.setOutput('is_admin', isAdmin);
-            console.log(`User ${context.payload.pull_request.user.login} is admin: ${isAdmin}`);
-
-      - name: Check team labels for non-admin users
-        if: steps.check-admin.outputs.is_admin == 'false'
-        uses: mheap/github-action-required-labels@v5.5.0
+      - name: Require team ownership label
+        uses: mheap/github-action-required-labels@fb29a14a076b0f74099f6198f77750e8fc236016 # v5.5.0
         with:
           labels: |
             team:frontend
@@ -45,16 +28,3 @@ jobs:
             This pull request cannot be merged into `main` because it
             doesn't include a `team:frontend` or `team:backend` label.
             Please add one before merging.
-
-      - name: Check categorization labels for admin users
-        if: steps.check-admin.outputs.is_admin == 'true'
-        uses: mheap/github-action-required-labels@v5.5.0
-        with:
-          use_regex: true
-          labels: ".*"
-          mode: minimum
-          count: 1
-          add_comment: true
-          message: >-
-            As a repository admin, please add at least one categorization label
-            before merging. Consider `team:` labels for development tasks.

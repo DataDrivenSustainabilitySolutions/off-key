@@ -2,7 +2,12 @@
  * Centralized API client with interceptors and error handling
  */
 
-import axios, { AxiosInstance, AxiosError, AxiosResponse, InternalAxiosRequestConfig } from 'axios';
+import axios, {
+  AxiosInstance,
+  AxiosError,
+  AxiosResponse,
+  InternalAxiosRequestConfig,
+} from 'axios';
 import { API_CONFIG, DEFAULT_REQUEST_CONFIG } from './api-config';
 
 // Types for API responses
@@ -11,10 +16,15 @@ export interface ApiError {
   status: number;
 }
 
-export interface ApiResponse<T = any> {
+export interface ApiResponse<T = unknown> {
   data: T;
   status: number;
   message?: string;
+}
+
+export interface ApiRequestOptions {
+  params?: Record<string, unknown>;
+  signal?: AbortSignal;
 }
 
 // Token management
@@ -34,7 +44,7 @@ export const tokenManager = {
     // Clear both storages first
     localStorage.removeItem(TOKEN_KEY);
     sessionStorage.removeItem(TOKEN_KEY);
-    
+
     if (rememberMe) {
       localStorage.setItem(TOKEN_KEY, token);
       localStorage.setItem(STORAGE_TYPE_KEY, 'localStorage');
@@ -72,11 +82,11 @@ const createApiClient = (): AxiosInstance => {
   client.interceptors.request.use(
     (config: InternalAxiosRequestConfig) => {
       const token = tokenManager.getToken();
-      
+
       if (token && !tokenManager.isTokenExpired(token)) {
         config.headers.Authorization = `Bearer ${token}`;
       }
-      
+
       return config;
     },
     (error) => Promise.reject(error)
@@ -120,15 +130,15 @@ export const apiUtils = {
   /**
    * Generic GET request
    */
-  async get<T>(endpoint: string, params?: Record<string, any>): Promise<T> {
-    const response = await apiClient.get<T>(endpoint, { params });
+  async get<T>(endpoint: string, options?: ApiRequestOptions): Promise<T> {
+    const response = await apiClient.get<T>(endpoint, options);
     return response.data;
   },
 
   /**
    * Generic POST request
    */
-  async post<T>(endpoint: string, data?: any): Promise<T> {
+  async post<T>(endpoint: string, data?: unknown): Promise<T> {
     const response = await apiClient.post<T>(endpoint, data);
     return response.data;
   },
@@ -136,7 +146,7 @@ export const apiUtils = {
   /**
    * Generic PUT request
    */
-  async put<T>(endpoint: string, data?: any): Promise<T> {
+  async put<T>(endpoint: string, data?: unknown): Promise<T> {
     const response = await apiClient.put<T>(endpoint, data);
     return response.data;
   },
@@ -144,7 +154,7 @@ export const apiUtils = {
   /**
    * Generic DELETE request
    */
-  async delete<T>(endpoint: string, data?: any): Promise<T> {
+  async delete<T>(endpoint: string, data?: unknown): Promise<T> {
     const config = data ? { data } : undefined;
     const response = await apiClient.delete<T>(endpoint, config);
     return response.data;

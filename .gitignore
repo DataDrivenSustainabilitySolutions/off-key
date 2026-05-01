@@ -193,3 +193,10 @@ CLAUDE.md
 .claude
 /.pre-commit-cache
 AGENTS.md
+/frontend/.npm-cache
+/frontend/playwright-report
+/frontend/test-results
+/browser-smoke-compose.log
+/browser-smoke-compose-ps.txt
+/deployment-smoke-compose.log
+/deployment-smoke-compose-ps.txt

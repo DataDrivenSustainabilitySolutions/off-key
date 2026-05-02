@@ -19,7 +19,7 @@
 
 services:
   tailscale-vpn:
-    image: tailscale/tailscale:v1.94.2
+    image: tailscale/tailscale:v1.96.5
     environment:
       - TS_AUTHKEY=${INGRESS_TS_AUTHKEY:-}
       - TS_AUTH_ONCE=${INGRESS_TS_AUTH_ONCE:-true}

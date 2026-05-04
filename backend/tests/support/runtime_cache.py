@@ -6,7 +6,6 @@ does not become part of the production ``off_key_core.config`` API.
 
 import logging
 
-from off_key_core.clients.provider import get_charger_api_client
 from off_key_core.config.app import get_app_settings
 from off_key_core.config.auth import get_auth_settings
 from off_key_core.config.database import get_database_settings
@@ -28,7 +27,6 @@ def reset_runtime_caches_for_tests() -> None:
     get_runtime_settings.cache_clear()
     _clear_service_endpoints_settings_cache()
     get_telemetry_settings.cache_clear()
-    get_charger_api_client.cache_clear()
 
     try:
         from off_key_core.utils.mail import reset_mail_runtime_caches

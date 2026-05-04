@@ -20,7 +20,6 @@ classifiers = [
 ]
 dependencies = [
     "off-key-core",
-    "apscheduler>=3.11.0",
     "uvicorn>=0.25.0",
     "fastapi[all]>=0.115.8",
 ]

@@ -21,11 +21,8 @@ classifiers = [
 dependencies = [
     "off-key-core",
     "paho-mqtt>=2.1.0",
-    "asyncio-mqtt>=0.16.1",
     "structlog>=23.2.0",
-    "psutil>=5.9.8",
     "uvicorn>=0.25.0",
-    "websockets>=12.0",
 ]
 
 [build-system]

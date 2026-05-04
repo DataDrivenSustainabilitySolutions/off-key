@@ -205,9 +205,6 @@ services:
         condition: service_healthy
     networks:
       - app-network
-    environment:
-      - SYNC_ON_STARTUP=true
-      - SYNC_HOSTNAME=db-sync
     restart: always
     healthcheck:
       test:

@@ -73,11 +73,6 @@ export interface FetchContextType {
     anomaly_value: number
   ) => Promise<void>;
 
-  //Sync Functions
-  syncChargers: () => Promise<void>;
-  syncTelemetry: () => Promise<void>;
-  syncTelemetryShort: () => Promise<void>;
-
   //Functions to write Telemetry Data in Context-State
   loadCpuUsage: (chargerId: string) => Promise<void>;
   loadMonitoring: (chargerId: string) => Promise<void>;
@@ -272,58 +267,11 @@ export const FetchProvider: React.FC<{ children: ReactNode }> = ({
     []
   );
 
-  // Sync functions
-
-  const syncChargers = useCallback(async (): Promise<void> => {
-    try {
-      await apiUtils.post(API_CONFIG.ENDPOINTS.CHARGERS.SYNC, null);
-    } catch (err) {
-      clientLogger.warn({
-        event: "chargers.sync_failed",
-        message: "syncChargers failed",
-        error: err,
-      });
-    }
-  }, []);
-
-  const syncTelemetry = useCallback(async (): Promise<void> => {
-    try {
-      await apiUtils.post(
-        API_CONFIG.ENDPOINTS.TELEMETRY.SYNC(10000),
-        null
-      );
-    } catch (err) {
-      clientLogger.warn({
-        event: "telemetry.sync_failed",
-        message: "syncTelemetry failed",
-        error: err,
-      });
-    }
-  }, []);
-
-  const syncTelemetryShort = useCallback(async (): Promise<void> => {
-    try {
-      await apiUtils.post(
-        API_CONFIG.ENDPOINTS.TELEMETRY.SYNC(100),
-        null
-      );
-    } catch (err) {
-      clientLogger.warn({
-        event: "telemetry.sync_short_failed",
-        message: "syncTelemetryShort failed",
-        error: err,
-      });
-    }
-  }, []);
-
   // Functions to write Telemetry Data in Context State
 
   const loadCpuUsage = useCallback(
     async (chargerId: string) => {
       try {
-        // //Sync Telemetry first
-        // await syncTelemetryShort();
-
         // now get the Keys
         const types = await getTelemetryTypes(chargerId);
         const cpuUsageKey = types.find((t) =>
@@ -364,9 +312,6 @@ export const FetchProvider: React.FC<{ children: ReactNode }> = ({
   const loadCpuThermal = useCallback(
     async (chargerId: string) => {
       try {
-        // //Sync Telemetry first
-        // await syncTelemetryShort();
-
         // now get the Keys
         const types = await getTelemetryTypes(chargerId);
         const cpuThermalKey = types.find((t) =>
@@ -559,9 +504,6 @@ export const FetchProvider: React.FC<{ children: ReactNode }> = ({
         getAnomalyCount,
         addAnomaly,
         deleteAnomaly,
-        syncChargers,
-        syncTelemetry,
-        syncTelemetryShort,
         loadCpuUsage,
         loadMonitoring,
         loadCpuThermal,

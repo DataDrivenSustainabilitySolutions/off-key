@@ -1,9 +1,7 @@
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Query, status
-import httpx
 
-from off_key_core.config.services import get_service_endpoints_settings
 from ...facades.tactic import TacticError, tactic
 
 router = APIRouter()
@@ -23,25 +21,6 @@ def _raise_tactic_http_error(error: TacticError) -> None:
         status_code=error.status or status.HTTP_502_BAD_GATEWAY,
         detail=_get_tactic_error_detail(error),
     )
-
-
-@router.post("/sync")
-async def sync_telemetry(limit: int = 10_000):
-    """Trigger manual telemetry sync via db-sync service."""
-    service_endpoints = get_service_endpoints_settings()
-    try:
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                f"{service_endpoints.db_sync_service_url}/sync/telemetry",
-                params={"limit": limit},
-                timeout=600.0,  # 10 minute timeout for telemetry sync
-            )
-            response.raise_for_status()
-            return response.json()
-    except httpx.HTTPError as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to trigger telemetry sync: {str(e)}"
-        )
 
 
 @router.get("/{charger_id}/type")

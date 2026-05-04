@@ -2,7 +2,7 @@
 ###################################################
 # Builder stage which pulls in all dependencies   #
 ###################################################
-FROM node:24-alpine as builder
+FROM node:25-alpine as builder
 
 ENV NPM_CONFIG_CACHE=/root/.npm
 
@@ -20,7 +20,7 @@ RUN --mount=type=cache,target=/root/.npm \
 ###################################################
 # Create runner                                   #
 ###################################################
-FROM node:24-alpine as runner
+FROM node:25-alpine as runner
 
 LABEL org.opencontainers.image.source="https://github.com/DataDrivenSustainabilitySolutions/off-key"
 

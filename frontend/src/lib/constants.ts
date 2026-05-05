@@ -18,7 +18,6 @@ export const CHART_CONFIG = {
 
   // Data refresh intervals
   REFRESH_INTERVALS: {
-    TELEMETRY_SYNC: 60 * 1000, // 60 seconds
     REAL_TIME_UPDATE: 60 * 1000, // 60 seconds for real-time data
   },
 
@@ -50,7 +49,6 @@ export const UI_CONFIG = {
 
   // Pagination
   DEFAULT_LIMIT: 1000, // Default telemetry data limit
-  SHORT_SYNC_LIMIT: 100, // Short sync telemetry limit
 
   // Polling intervals for Docker environments
   POLLING_INTERVAL: 1000, // 1 second for file watching
@@ -109,7 +107,6 @@ export const WEBSOCKET_CONFIG = {
 // Interval constants for various operations
 export const INTERVALS = {
   DETAILS_UPDATE: 10 * 1000, // 10 seconds for details page live charts
-  TELEMETRY_SYNC: 60 * 1000, // 60 seconds
   REAL_TIME_UPDATE: 60 * 1000, // 60 seconds for real-time data
   WEBSOCKET_HEARTBEAT: 30 * 1000, // 30 seconds heartbeat
   WEBSOCKET_RECONNECT_DELAY: 5 * 1000, // 5 seconds reconnect delay

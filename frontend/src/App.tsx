@@ -1,6 +1,5 @@
 import React from "react";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
-// import Default from "@/pages/Default";
 import Login from "@/pages/Login";
 import Details from "./pages/Details";
 import Registration from "@/pages/Registration";
@@ -26,7 +25,6 @@ const App: React.FC = () => {
         <BrowserRouter>
           <FetchProvider>
             <Routes>
-              {/* <Route path="/" element={<Default />} /> */}
               <Route path="/login" element={<Login />} />
               <Route path="/register" element={<Registration />} />
               <Route path="/verify" element={<Verification />} />

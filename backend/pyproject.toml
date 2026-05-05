@@ -51,9 +51,6 @@ members = [
     "services/mqtt/*",
     "services/middleware/*"
 ]
-exclude = [
-    "services/mqtt/broker"
-]
 
 [project.urls]
 "Homepage" = "https://github.com/DataDrivenSustainabilitySolutions/off-key"

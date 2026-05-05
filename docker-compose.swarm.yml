@@ -47,13 +47,6 @@ services:
       placement:
         constraints:
           - node.role == worker
-#        preferences:
-#          - spread: node.labels.type  # Distribute evenly
-#      TODO: Measure resources with MQTT images
-#      resources:
-#        limits:
-#          cpus: '0.2'
-#          memory: 512M
 
   socket-proxy:
     image: tecnativa/docker-socket-proxy
@@ -164,13 +157,6 @@ services:
       placement:
         constraints:
           - node.role == worker
-  #        preferences:
-  #          - spread: node.labels.type  # Distribute evenly
-  #      TODO: Measure resources with MQTT images
-  #      resources:
-  #        limits:
-  #          cpus: '0.2'
-  #          memory: 512M
 
 networks:
   public-network:

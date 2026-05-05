@@ -1,10 +1,5 @@
 /**
  * Shared charger and telemetry types
- *
- * Consolidates interfaces that were previously duplicated across:
- * - FetchContext.tsx
- * - ChargerContext.tsx
- * - TelemetryContext.tsx
  */
 
 // Base charger data from API

@@ -6,7 +6,6 @@ import Details from "../pages/Details";
 
 const mockLoadAllTelemetryTypes = vi.fn(() => Promise.resolve());
 const mockLoadAnomalies = vi.fn(() => Promise.resolve());
-const mockSyncTelemetryShort = vi.fn(() => Promise.resolve());
 const mockUseFetch = vi.fn();
 
 vi.mock("../dataFetch/UseFetch", () => ({
@@ -54,7 +53,6 @@ describe("<Details />", () => {
       anomaliesMap: { "123": [] },
       loadAllTelemetryTypes: mockLoadAllTelemetryTypes,
       loadAnomalies: mockLoadAnomalies,
-      syncTelemetryShort: mockSyncTelemetryShort,
     });
   });
 
@@ -83,7 +81,6 @@ describe("<Details />", () => {
       anomaliesMap: { "123": [] },
       loadAllTelemetryTypes: mockLoadAllTelemetryTypes,
       loadAnomalies: mockLoadAnomalies,
-      syncTelemetryShort: mockSyncTelemetryShort,
     });
 
     renderDetails();

@@ -1,20 +1,17 @@
 """
 Database Sync Service Orchestrator
 
-Orchestrates database initialization and background synchronization.
-Similar to MQTTProxyService pattern for consistent service architecture.
+Orchestrates database schema initialization and health reporting.
 """
 
 import asyncio
 import signal
-from typing import Optional
+
 from sqlalchemy import text
 
 from off_key_core.config.logs import logger
 from off_key_core.db.base import get_async_engine
 from off_key_core.db.models import Base
-from .config.config import get_sync_settings
-from .services.background_sync import BackgroundSyncService
 
 
 class SyncService:
@@ -23,13 +20,11 @@ class SyncService:
 
     This service:
     1. Initializes database schema
-    2. Manages background sync scheduler lifecycle
-    3. Handles graceful shutdown
-    4. Provides health status
+    2. Handles graceful shutdown
+    3. Provides health status
     """
 
     def __init__(self):
-        self.background_sync: Optional[BackgroundSyncService] = None
         self.is_running = False
         self.initial_sync_complete = False
         self.schema_ready = False
@@ -586,7 +581,6 @@ class SyncService:
 
     async def start(self):
         """Start the database sync service"""
-        config = get_sync_settings().config
         if self.is_running:
             logger.warning(
                 "Database sync service already running", extra=self._log_context
@@ -604,31 +598,7 @@ class SyncService:
             if not await self._initialize_database():
                 raise RuntimeError("Database initialization failed")
 
-            # API source sync jobs are removed; fail fast on unsupported mode.
-            if not config.enabled:
-                logger.info(
-                    "Background sync disabled",
-                    extra={**self._log_context, "sync_enabled": False},
-                )
-                self.initial_sync_complete = True
-            elif config.source_mode == "mqtt_only":
-                logger.info(
-                    "SYNC_SOURCE_MODE=mqtt_only: skipping API sync jobs",
-                    extra={**self._log_context, "source_mode": config.source_mode},
-                )
-                # In MQTT-only mode there is no initial cloud sync phase.
-                self.initial_sync_complete = True
-            elif config.source_mode == "api":
-                raise RuntimeError(
-                    "SYNC_SOURCE_MODE=api is not supported because API adapters were "
-                    "removed. Use SYNC_SOURCE_MODE=mqtt_only."
-                )
-            else:
-                raise RuntimeError(
-                    f"Unknown SYNC_SOURCE_MODE={config.source_mode!r}. "
-                    "Supported modes: mqtt_only (or disable sync with enabled=False)."
-                )
-
+            self.initial_sync_complete = True
             self.is_running = True
 
             logger.info(
@@ -663,13 +633,6 @@ class SyncService:
         self.schema_ready = False
 
         try:
-            # Stop background sync if running
-            if self.background_sync:
-                await self.background_sync.stop()
-                logger.info(
-                    "Background sync scheduler stopped", extra=self._log_context
-                )
-
             shutdown_duration = asyncio.get_event_loop().time() - shutdown_start_time
 
             logger.info(
@@ -724,31 +687,16 @@ class SyncService:
 
     def get_health_status(self):
         """Get current health status"""
-        config = get_sync_settings().config
-        # Service is only healthy if running, schema is ready,
-        # and initial sync completed.
         is_healthy = (
             self.is_running and self.schema_ready and self.initial_sync_complete
         )
 
-        status = {
+        return {
             "status": (
                 "healthy"
                 if is_healthy
                 else ("starting" if self.is_running else "stopped")
             ),
-            "sync_enabled": config.enabled,
-            "source_mode": config.source_mode,
             "schema_ready": self.schema_ready,
             "initial_sync_complete": self.initial_sync_complete,
-            "components": {},
         }
-
-        if self.background_sync:
-            status["components"]["background_sync"] = self.background_sync.get_status()
-
-        return status
-
-    def get_background_sync_service(self) -> Optional[BackgroundSyncService]:
-        """Get background sync service instance for API access"""
-        return self.background_sync

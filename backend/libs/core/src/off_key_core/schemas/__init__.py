@@ -1,6 +1,5 @@
 """Pydantic schemas for off-key-core."""
 
-from .anomalies import AnomalyCreate
 from .favorites import FavoriteCreate
 from .radar import PerformanceConfig
 from .user import (
@@ -12,8 +11,6 @@ from .user import (
 )
 
 __all__ = [
-    # Anomaly schemas
-    "AnomalyCreate",
     # Favorite schemas
     "FavoriteCreate",
     # Radar schemas

@@ -62,7 +62,4 @@ async def test_ensure_anomaly_identity_trigger_is_created_idempotently():
         str(call.args[0]) for call in conn.execute.await_args_list if call.args
     )
     assert "CREATE OR REPLACE FUNCTION off_key_sync_anomaly_identity()" in executed_sql
-    assert (
-        "DROP TRIGGER IF EXISTS trg_anomaly_identity_sync ON anomalies" in executed_sql
-    )
-    assert "CREATE TRIGGER trg_anomaly_identity_sync" in executed_sql
+    assert "CREATE OR REPLACE TRIGGER trg_anomaly_identity_sync" in executed_sql

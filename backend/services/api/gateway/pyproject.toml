@@ -22,8 +22,6 @@ dependencies = [
     "off-key-core",
     "bcrypt==4.0.1",
     "python-jose>=3.4.0",
-    "apscheduler>=3.11.0",
-    "docker>=7.1.0",
     "passlib>=1.7.4",
     "fastapi[all]>=0.115.8",
     "fastapi-mail>=1.4.2",

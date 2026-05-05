@@ -42,14 +42,6 @@ app_settings = get_app_settings()
 runtime_settings = get_runtime_settings()
 service_endpoints = get_service_endpoints_settings()
 
-# Rate limiter setup
-# def get_real_client_ip(request):
-#     return request.client.host
-#
-#
-# limiter = Limiter(key_func=get_real_client_ip)
-
-
 # See https://github.com/pyca/bcrypt/issues/684#issuecomment-2465572106
 import bcrypt  # noqa: E402
 

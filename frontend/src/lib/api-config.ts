@@ -35,13 +35,11 @@ export const API_CONFIG = {
     // Chargers
     CHARGERS: {
       AVAILABLE: '/v1/chargers/available',
-      SYNC: '/v1/chargers/sync',
       BY_ID: (chargerId: string) => `/v1/chargers/${chargerId}`,
     },
 
     // Telemetry
     TELEMETRY: {
-      SYNC: (limit?: number) => `/v1/telemetry/sync${limit ? `?limit=${limit}` : ''}`,
       TYPES: (chargerId: string) => `/v1/telemetry/${chargerId}/type`,
       DATA: (chargerId: string, telemetryType: string, limit?: number) => {
         const params = new URLSearchParams({ type: telemetryType });

@@ -30,7 +30,6 @@ const Details: React.FC = () => {
     anomaliesMap,
     loadAllTelemetryTypes,
     loadAnomalies,
-    syncTelemetryShort,
   } = useFetch();
 
   // Loading states
@@ -63,14 +62,13 @@ const Details: React.FC = () => {
     loadInitialData();
 
     const interval = setInterval(() => {
-      syncTelemetryShort();
       loadAllTelemetryTypes(chargerId);
       loadAnomalies(chargerId);
     }, INTERVALS.DETAILS_UPDATE); // every 10s
 
     // Cleanup on unmount or change
     return () => clearInterval(interval);
-  }, [chargerId, syncTelemetryShort, loadAllTelemetryTypes, loadAnomalies]);
+  }, [chargerId, loadAllTelemetryTypes, loadAnomalies]);
 
   // Get dynamic telemetry data and anomalies
   const allTelemetryData = useMemo(

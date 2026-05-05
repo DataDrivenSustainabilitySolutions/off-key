@@ -10,35 +10,6 @@
 			"name": "Charger",
 			"item": [
 				{
-					"name": "sync_chargers",
-					"request": {
-						"method": "POST",
-						"header": [],
-						"url": {
-							"raw": "http://localhost:8000/v1/chargers/sync",
-							"protocol": "http",
-							"host": [
-								"localhost"
-							],
-							"port": "8000",
-							"path": [
-								"v1",
-								"chargers",
-								"sync"
-							]
-						}
-					},
-					"response": []
-				},
-				{
-					"name": "clean_chargers",
-					"request": {
-						"method": "GET",
-						"header": []
-					},
-					"response": []
-				},
-				{
 					"name": "active",
 					"request": {
 						"method": "GET",
@@ -94,27 +65,6 @@
 		{
 			"name": "Telemetry",
 			"item": [
-				{
-					"name": "sync_telemetry",
-					"request": {
-						"method": "POST",
-						"header": [],
-						"url": {
-							"raw": "http://localhost:8000/v1/telemetry/sync",
-							"protocol": "http",
-							"host": [
-								"localhost"
-							],
-							"port": "8000",
-							"path": [
-								"v1",
-								"telemetry",
-								"sync"
-							]
-						}
-					},
-					"response": []
-				},
 				{
 					"name": "get_telemetry_types",
 					"request": {

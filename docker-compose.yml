@@ -205,9 +205,6 @@ services:
         condition: service_healthy
     networks:
       - app-network
-    environment:
-      - SYNC_ON_STARTUP=true
-      - SYNC_HOSTNAME=db-sync
     restart: always
     healthcheck:
       test:
@@ -220,10 +217,6 @@ services:
       retries: 20
       start_period: 10s
     command: [ "/app/bin/python", "-m", "off_key_db_sync" ]
-    #    command: ["uvicorn", "off_key_db_sync.main:app",
-    #              "--reload", "--reload-dir", "/app/lib/python3.12/site-packages/off_key_db_sync",
-    #              "--host", "", "--port", "8009"]
-    #    command: ["sleep", "10000"]
     develop:
       watch:
         - action: sync
@@ -357,10 +350,8 @@ services:
 
   memcached:
     image: memcached:latest
-    # command: memcached -vv
     ports:
       - "11211:11211"
-    # hostname: "memcached-alpha"
     networks:
       - app-network
 

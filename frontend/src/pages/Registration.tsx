@@ -1,10 +1,14 @@
 import React, { useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Link } from 'react-router-dom';
 import { Eye, EyeOff } from 'lucide-react';
+import {
+  AuthLayout,
+  AUTH_LABEL_CLASS,
+  AUTH_SUBMIT_BUTTON_CLASS,
+} from '@/components/AuthLayout';
 import { clientLogger } from "@/lib/logger";
 
 interface RegistrationResponse {
@@ -71,16 +75,11 @@ const Registration: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-100 px-4">
-      <Card className="w-full max-w-md p-6">
-        <CardHeader>
-          <CardTitle className="text-center text-2xl">Register</CardTitle>
-        </CardHeader>
-        <CardContent>
+    <AuthLayout title="Register">
           <form onSubmit={handleRegister} className="space-y-4">
             {/* Email */}
             <div>
-              <Label htmlFor="email" className="mb-1 block text-sm">E-Mail</Label>
+              <Label htmlFor="email" className={AUTH_LABEL_CLASS}>E-Mail</Label>
               <Input
                 id="email"
                 type="email"
@@ -93,7 +92,7 @@ const Registration: React.FC = () => {
 
             {/* Password */}
             <div className="relative">
-              <Label htmlFor="password" className="mb-1 block text-sm">Passwort</Label>
+              <Label htmlFor="password" className={AUTH_LABEL_CLASS}>Passwort</Label>
               <Input
                 id="password"
                 type={showPassword ? 'text' : 'password'}
@@ -115,7 +114,7 @@ const Registration: React.FC = () => {
 
             {/* Confirm Password */}
               <div className="relative">
-              <Label htmlFor="confirmPassword" className="mb-1 block text-sm">Confirm password</Label>
+              <Label htmlFor="confirmPassword" className={AUTH_LABEL_CLASS}>Confirm password</Label>
               <Input
                 id="confirmPassword"
                 type={showConfirmPassword ? 'text' : 'password'}
@@ -137,7 +136,7 @@ const Registration: React.FC = () => {
             {/* Submit */}
             <Button
               type="submit"
-              className="w-full bg-gradient-to-r from-slate-400 to-slate-300 text-white font-semibold rounded-full transition-all duration-200 hover:bg-gradient-to-r hover:from-slate-500 hover:to-slate-400 hover:scale-105 cursor-pointer"
+              className={AUTH_SUBMIT_BUTTON_CLASS}
             >
               REGISTER
             </Button>
@@ -159,9 +158,7 @@ const Registration: React.FC = () => {
               </p>
             </div>
           </form>
-        </CardContent>
-      </Card>
-    </div>
+    </AuthLayout>
   );
 };
 

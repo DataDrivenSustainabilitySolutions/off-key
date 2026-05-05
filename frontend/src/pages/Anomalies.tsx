@@ -99,7 +99,7 @@ export default function AnomalyTable() {
                   <TableCell>
                     <Link
                       to={`/details/${anomaly.charger_id}`}
-                      className="text-black-600 hover:underline"
+                      className="text-foreground hover:underline"
                     >
                     {anomaly.charger_id}
                     </Link>

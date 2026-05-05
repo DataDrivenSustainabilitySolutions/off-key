@@ -3,6 +3,21 @@ import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Loader2, Database, BarChart3, AlertCircle, RefreshCw, Wifi } from 'lucide-react';
 
+const CHART_SKELETON_BAR_HEIGHTS = [
+  'h-24',
+  'h-32',
+  'h-20',
+  'h-36',
+  'h-28',
+  'h-40',
+  'h-24',
+  'h-44',
+  'h-32',
+  'h-28',
+  'h-36',
+  'h-20',
+];
+
 // Generic loading skeleton
 export const Skeleton: React.FC<{ className?: string }> = ({ className = '' }) => (
   <div className={`animate-pulse bg-muted rounded ${className}`}></div>
@@ -17,10 +32,10 @@ export const ChartSkeleton: React.FC = () => (
     </CardHeader>
     <CardContent className="space-y-4">
       <div className="grid grid-cols-12 gap-2 h-48">
-        {[...Array(12)].map((_, i) => (
+        {CHART_SKELETON_BAR_HEIGHTS.map((barHeight, i) => (
           <div key={i} className="flex flex-col justify-end space-y-1">
             <Skeleton className="h-2 w-full" />
-            <Skeleton className={`w-full h-${Math.floor(Math.random() * 20) + 10}`} />
+            <Skeleton className={`w-full ${barHeight}`} />
           </div>
         ))}
       </div>
@@ -37,26 +52,32 @@ export const ChartSkeleton: React.FC = () => (
 export const TableSkeleton: React.FC<{ rows?: number; cols?: number }> = ({
   rows = 5,
   cols = 4
-}) => (
-  <Card>
-    <CardContent className="pt-6">
-      <div className="space-y-3">
-        <div className="grid grid-cols-4 gap-4">
-          {[...Array(cols)].map((_, i) => (
-            <Skeleton key={i} className="h-4" />
-          ))}
-        </div>
-        {[...Array(rows)].map((_, i) => (
-          <div key={i} className="grid grid-cols-4 gap-4">
-            {[...Array(cols)].map((_, j) => (
-              <Skeleton key={j} className="h-4" />
+}) => {
+  const gridStyle: React.CSSProperties = {
+    gridTemplateColumns: `repeat(${Math.max(cols, 1)}, minmax(0, 1fr))`,
+  };
+
+  return (
+    <Card>
+      <CardContent className="pt-6">
+        <div className="space-y-3">
+          <div className="grid gap-4" style={gridStyle}>
+            {[...Array(cols)].map((_, i) => (
+              <Skeleton key={i} className="h-4" />
             ))}
           </div>
-        ))}
-      </div>
-    </CardContent>
-  </Card>
-);
+          {[...Array(rows)].map((_, i) => (
+            <div key={i} className="grid gap-4" style={gridStyle}>
+              {[...Array(cols)].map((_, j) => (
+                <Skeleton key={j} className="h-4" />
+              ))}
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+};
 
 // Card loading skeleton
 export const CardSkeleton: React.FC = () => (

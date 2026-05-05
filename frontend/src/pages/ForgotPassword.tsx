@@ -1,8 +1,12 @@
 import React, { useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import {
+  AuthLayout,
+  AUTH_LABEL_CLASS,
+  AUTH_SUBMIT_BUTTON_CLASS,
+} from '@/components/AuthLayout';
 import { API_CONFIG, getApiUrl } from '@/lib/api-config';
 import { clientLogger } from '@/lib/logger';
 
@@ -52,16 +56,11 @@ const ForgotPassword: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-100 px-4">
-      <Card className="w-full max-w-md p-6">
-        <CardHeader>
-          <CardTitle className="text-center text-2xl">Forgot password</CardTitle>
-        </CardHeader>
-        <CardContent>
+    <AuthLayout title="Forgot password">
           <form onSubmit={handleSubmit} className="space-y-4">
             {/* Email Input */}
             <div>
-              <Label htmlFor="email" className="mb-1 block text-sm">E-Mail</Label>
+              <Label htmlFor="email" className={AUTH_LABEL_CLASS}>E-Mail</Label>
               <Input
                 id="email"
                 type="email"
@@ -75,7 +74,7 @@ const ForgotPassword: React.FC = () => {
             {/* Submit Button */}
             <Button
               type="submit"
-              className="w-full bg-gradient-to-r from-slate-400 to-slate-300 text-white font-semibold rounded-full transition-all duration-200 hover:bg-gradient-to-r hover:from-slate-500 hover:to-slate-400 hover:scale-105 cursor-pointer"
+              className={AUTH_SUBMIT_BUTTON_CLASS}
             >
               Reset Password
             </Button>
@@ -87,9 +86,7 @@ const ForgotPassword: React.FC = () => {
               </p>
             )}
           </form>
-        </CardContent>
-      </Card>
-    </div>
+    </AuthLayout>
   );
 };
 

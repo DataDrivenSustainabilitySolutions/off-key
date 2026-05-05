@@ -1,7 +1,10 @@
 import { useEffect, useState } from 'react';
 import { useLocation, Link } from 'react-router-dom';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import {
+  AuthLayout,
+  AUTH_SUBMIT_BUTTON_CLASS,
+} from '@/components/AuthLayout';
 import { apiUtils } from '@/lib/api-client';
 import { API_CONFIG } from '@/lib/api-config';
 import { clientLogger } from '@/lib/logger';
@@ -57,41 +60,32 @@ const Verification: React.FC = () => {
     }, [token]);
 
     return (
-        <div className="min-h-screen flex items-center justify-center bg-gray-100 px-4">
-            <Card className="w-full max-w-md p-6">
-                <CardHeader>
-                    <CardTitle className="text-center text-2xl">
-                        Email Verification
-                    </CardTitle>
-                </CardHeader>
-                <CardContent className="text-center space-y-4">
-                    <div className={`text-lg ${isSuccess ? 'text-green-600' : isLoading ? 'text-blue-600' : 'text-red-600'}`}>
-                        {status}
-                    </div>
+        <AuthLayout title="Email Verification" contentClassName="text-center space-y-4">
+            <div className={`text-lg ${isSuccess ? 'text-green-600' : isLoading ? 'text-blue-600' : 'text-red-600'}`}>
+                {status}
+            </div>
 
-                    {isSuccess && (
-                        <Link to="/login">
-                            <Button className="w-full bg-gradient-to-r from-slate-400 to-slate-300 text-white font-semibold rounded-full transition-all duration-200 hover:bg-gradient-to-r hover:from-slate-500 hover:to-slate-400 hover:scale-105 cursor-pointer">
-                                Go to Login
-                            </Button>
-                        </Link>
-                    )}
+            {isSuccess && (
+                <Link to="/login">
+                    <Button className={AUTH_SUBMIT_BUTTON_CLASS}>
+                        Go to Login
+                    </Button>
+                </Link>
+            )}
 
-                    {!isLoading && !isSuccess && (
-                        <div className="space-y-2">
-                            <Link to="/register">
-                                <Button variant="outline" className="w-full">
-                                    Register Again
-                                </Button>
-                            </Link>
-                            <p className="text-sm text-gray-600">
-                                Need help? Contact support
-                            </p>
-                        </div>
-                    )}
-                </CardContent>
-            </Card>
-        </div>
+            {!isLoading && !isSuccess && (
+                <div className="space-y-2">
+                    <Link to="/register">
+                        <Button variant="outline" className="w-full">
+                            Register Again
+                        </Button>
+                    </Link>
+                    <p className="text-sm text-gray-600">
+                        Need help? Contact support
+                    </p>
+                </div>
+            )}
+        </AuthLayout>
     );
 };
 

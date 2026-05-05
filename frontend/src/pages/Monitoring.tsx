@@ -120,6 +120,35 @@ const DEFAULT_PREPROCESSING_STEPS: PreprocessingStepConfig[] = [
   },
 ];
 
+const FORM_CONTROL_CLASS =
+  "border rounded px-3 py-2 bg-white text-black dark:bg-neutral-900 dark:text-white";
+const PRIMARY_ACTION_BUTTON_CLASS = "bg-indigo-800 hover:bg-indigo-700";
+const MONITORING_CARD_CLASS =
+  "ml-16 bg-white shadow-md w-11/12 min-h-96 dark:bg-neutral-950";
+const MONITORING_TALL_CARD_CLASS =
+  "ml-16 bg-white shadow-md w-11/12 min-h-11/12 dark:bg-neutral-950";
+
+const MonitoringSectionCard: React.FC<{
+  title: React.ReactNode;
+  children: React.ReactNode;
+  wrapperClassName?: string;
+  cardClassName?: string;
+  titleClassName?: string;
+}> = ({
+  title,
+  children,
+  wrapperClassName = "flex mt-5",
+  cardClassName = MONITORING_CARD_CLASS,
+  titleClassName = "ml-5 mt-4",
+}) => (
+  <div className={wrapperClassName}>
+    <Card className={cardClassName}>
+      <CardTitle className={titleClassName}>{title}</CardTitle>
+      <CardContent>{children}</CardContent>
+    </Card>
+  </div>
+);
+
 const PreprocessingSection: React.FC<{
   steps: PreprocessingStepConfig[];
   availablePreprocessors: Record<string, PreprocessorDefinition>;
@@ -150,7 +179,7 @@ const PreprocessingSection: React.FC<{
     </div>
     <div className="flex gap-2 items-center mb-3">
       <select
-        className="border rounded px-3 py-2 bg-white text-black dark:bg-neutral-900 dark:text-white"
+        className={FORM_CONTROL_CLASS}
         value={newPreprocessorType}
         onChange={(e) => onSelectType(e.target.value)}
         disabled={isLoading}
@@ -163,7 +192,7 @@ const PreprocessingSection: React.FC<{
         ))}
       </select>
       <Button
-        className="bg-indigo-800 hover:bg-indigo-700"
+        className={PRIMARY_ACTION_BUTTON_CLASS}
         disabled={!newPreprocessorType || isLoading}
         onClick={onAdd}
       >
@@ -221,7 +250,7 @@ const PreprocessingSection: React.FC<{
                   </label>
                   <input
                     type={getInputType(schema?.type)}
-                    className="border rounded px-3 py-2 bg-white text-black dark:bg-neutral-900 dark:text-white"
+                    className={FORM_CONTROL_CLASS}
                     checked={
                       schema?.type === "boolean"
                         ? Boolean(step.params?.[key])
@@ -271,10 +300,7 @@ const ActiveServicesSection: React.FC<{
   }, [services, chargerId]);
 
   return (
-    <div className="flex mt-5">
-      <Card className="ml-16 bg-white shadow-md w-11/12 min-h-96 dark:bg-neutral-950">
-        <CardTitle className="ml-5 mt-4">Active Monitoring Services for Charger {chargerId}</CardTitle>
-        <CardContent>
+    <MonitoringSectionCard title={<>Active Monitoring Services for Charger {chargerId}</>}>
           <div className="mt-4">
             {isLoading ? (
               <div className="flex justify-center items-center py-8">
@@ -342,9 +368,7 @@ const ActiveServicesSection: React.FC<{
               </div>
             )}
           </div>
-        </CardContent>
-      </Card>
-    </div>
+    </MonitoringSectionCard>
   );
 };
 
@@ -354,10 +378,10 @@ const AnomaliesSection: React.FC<{
   chargerId?: string;
   onRefresh: () => void;
 }> = ({ anomalies, isLoading, chargerId, onRefresh }) => (
-  <div className="flex mt-5 mb-5">
-    <Card className="ml-16 bg-white shadow-md w-11/12 min-h-96 dark:bg-neutral-950">
-      <CardTitle className="ml-5 mt-4">Detected Anomalies for Charger {chargerId}</CardTitle>
-      <CardContent>
+  <MonitoringSectionCard
+    title={<>Detected Anomalies for Charger {chargerId}</>}
+    wrapperClassName="flex mt-5 mb-5"
+  >
         <div className="mt-4">
           <div className="flex justify-between items-center mb-4">
             <span className="text-sm text-gray-500">{anomalies.length} anomalies detected</span>
@@ -419,9 +443,7 @@ const AnomaliesSection: React.FC<{
             </div>
           )}
         </div>
-      </CardContent>
-    </Card>
-  </div>
+  </MonitoringSectionCard>
 );
 
 const Monitoring: React.FC = () => {
@@ -796,19 +818,17 @@ const Monitoring: React.FC = () => {
   return (
     <>
       <NavigationBar />
-      <div className="flex mt-5">
-        <Card className="ml-16 bg-white shadow-md w-11/12 min-h-11/12 dark:bg-neutral-950">
-          <div>
-            <CardTitle className="ml-5">
-              Monitoring for the Charger {chargerId}
-            </CardTitle>
-            <CardContent>
+      <MonitoringSectionCard
+        title={<>Monitoring for the Charger {chargerId}</>}
+        cardClassName={MONITORING_TALL_CARD_CLASS}
+        titleClassName="ml-5"
+      >
               <div className="flex items-start gap-6">
                 {/* Left Side */}
                 <div className="flex flex-col w-2/5">
                   <label className="text-sm font-semibold mt-4 mb-2">Topic Input Mode</label>
                   <select
-                    className="border rounded px-3 py-2 bg-white text-black dark:bg-neutral-900 dark:text-white"
+                    className={FORM_CONTROL_CLASS}
                     value={topicMode}
                     onChange={(e) => setTopicMode(e.target.value as "selected_sensors" | "direct_patterns")}
                   >
@@ -820,7 +840,7 @@ const Monitoring: React.FC = () => {
                     <>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <Button className="w-30 mb-5 mr-3 mt-4 bg-indigo-800 hover:bg-indigo-700 cursor-pointer">
+                          <Button className={`w-30 mb-5 mr-3 mt-4 ${PRIMARY_ACTION_BUTTON_CLASS} cursor-pointer`}>
                             Sensor types
                           </Button>
                         </DropdownMenuTrigger>
@@ -862,7 +882,7 @@ const Monitoring: React.FC = () => {
                     <div className="mt-4 space-y-3">
                       <label className="text-sm font-semibold">Topic Patterns</label>
                       <textarea
-                        className="border rounded px-3 py-2 bg-white text-black dark:bg-neutral-900 dark:text-white min-h-36"
+                        className={`${FORM_CONTROL_CLASS} min-h-36`}
                         value={topicPatternInput}
                         onChange={(e) => setTopicPatternInput(e.target.value)}
                         placeholder="One topic per line or comma-separated. Supports MQTT wildcards + and #."
@@ -909,7 +929,7 @@ const Monitoring: React.FC = () => {
                 <div className="flex flex-col w-2/5">
                   <label className="text-sm font-semibold mt-4 mb-2">Algorithm</label>
                   <select
-                    className="border rounded px-3 py-2 bg-white text-black dark:bg-neutral-900 dark:text-white"
+                    className={FORM_CONTROL_CLASS}
                     value={selectedAlgorithm || ""}
                     onChange={(e) => handleModelSelect(e.target.value)}
                     disabled={isLoadingModels}
@@ -948,7 +968,7 @@ const Monitoring: React.FC = () => {
                             </label>
                             <input
                               type={getInputType(schema?.type)}
-                              className="border rounded px-3 py-2 bg-white text-black dark:bg-neutral-900 dark:text-white"
+                              className={FORM_CONTROL_CLASS}
                               checked={
                                 schema?.type === "boolean"
                                   ? Boolean(modelParams[key])
@@ -998,7 +1018,7 @@ const Monitoring: React.FC = () => {
                       <input
                         type="number"
                         min={3}
-                        className="border rounded px-3 py-2 bg-white text-black dark:bg-neutral-900 dark:text-white"
+                        className={FORM_CONTROL_CLASS}
                         value={performanceConfig.heuristic_window_size}
                         onChange={(event) =>
                           handlePerformanceNumberChange(
@@ -1013,7 +1033,7 @@ const Monitoring: React.FC = () => {
                       <input
                         type="number"
                         min={2}
-                        className="border rounded px-3 py-2 bg-white text-black dark:bg-neutral-900 dark:text-white"
+                        className={FORM_CONTROL_CLASS}
                         value={performanceConfig.heuristic_min_samples}
                         onChange={(event) =>
                           handlePerformanceNumberChange(
@@ -1030,7 +1050,7 @@ const Monitoring: React.FC = () => {
                         min={0.0001}
                         max={0.9999}
                         step="0.0001"
-                        className="border rounded px-3 py-2 bg-white text-black dark:bg-neutral-900 dark:text-white"
+                        className={FORM_CONTROL_CLASS}
                         value={performanceConfig.heuristic_tail_alpha}
                         onChange={(event) =>
                           handlePerformanceNumberChange(
@@ -1043,7 +1063,7 @@ const Monitoring: React.FC = () => {
                     <div className="flex flex-col">
                       <label className="text-sm font-medium mb-1">Sensor Strategy</label>
                       <select
-                        className="border rounded px-3 py-2 bg-white text-black dark:bg-neutral-900 dark:text-white"
+                        className={FORM_CONTROL_CLASS}
                         value={performanceConfig.sensor_key_strategy}
                         onChange={(event) =>
                           setPerformanceConfig((prev) => ({
@@ -1063,7 +1083,7 @@ const Monitoring: React.FC = () => {
                         type="number"
                         min={1}
                         step="1"
-                        className="border rounded px-3 py-2 bg-white text-black dark:bg-neutral-900 dark:text-white"
+                        className={FORM_CONTROL_CLASS}
                         value={performanceConfig.sensor_freshness_seconds}
                         onChange={(event) =>
                           handlePerformanceNumberChange(
@@ -1090,15 +1110,12 @@ const Monitoring: React.FC = () => {
                 </div>
               </div>
               <Button
-                className="w-30 mt-4 bg-indigo-800 hover:bg-indigo-700 cursor-pointer"
+                className={`w-30 mt-4 ${PRIMARY_ACTION_BUTTON_CLASS} cursor-pointer`}
                 onClick={submitAnomalyDetection}
               >
                 Send
               </Button>
-            </CardContent>
-          </div>
-        </Card>
-      </div>
+      </MonitoringSectionCard>
 
       <ActiveServicesSection
         services={activeServices}

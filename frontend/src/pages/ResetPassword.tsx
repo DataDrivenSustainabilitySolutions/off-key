@@ -1,9 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import {
+  AuthLayout,
+  AUTH_LABEL_CLASS,
+  AUTH_SUBMIT_BUTTON_CLASS,
+} from '@/components/AuthLayout';
 import { clientLogger } from "@/lib/logger";
 
 const ResetPassword: React.FC = () => {
@@ -66,12 +70,7 @@ const ResetPassword: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-100 px-4">
-      <Card className="w-full max-w-md p-6">
-        <CardHeader>
-          <CardTitle className="text-center text-2xl">Reset password</CardTitle>
-        </CardHeader>
-        <CardContent>
+    <AuthLayout title="Reset password">
           {error && (
             <p className="mb-4 text-center text-sm text-red-600">{error}</p>
           )}
@@ -82,7 +81,7 @@ const ResetPassword: React.FC = () => {
             <form onSubmit={handleSubmit} className="space-y-4">
               {/* Neues Passwort */}
               <div>
-                <Label htmlFor="newPassword" className="mb-1 block text-sm">
+                <Label htmlFor="newPassword" className={AUTH_LABEL_CLASS}>
                   New passwort
                 </Label>
                 <Input
@@ -96,7 +95,7 @@ const ResetPassword: React.FC = () => {
                 />
               </div>
               <div>
-                <Label htmlFor="confirmNewPassword" className="mb-1 block text-sm">
+                <Label htmlFor="confirmNewPassword" className={AUTH_LABEL_CLASS}>
                   Confirm password
                 </Label>
                 <Input
@@ -113,15 +112,13 @@ const ResetPassword: React.FC = () => {
               {/* Reset Button */}
               <Button
                 type="submit"
-                className="w-full bg-gradient-to-r from-slate-400 to-slate-300 text-white font-semibold rounded-full transition-all duration-200 hover:bg-gradient-to-r hover:from-slate-500 hover:to-slate-400 hover:scale-105 cursor-pointer"
+                className={AUTH_SUBMIT_BUTTON_CLASS}
               >
                 Reset password
               </Button>
             </form>
           )}
-        </CardContent>
-      </Card>
-    </div>
+    </AuthLayout>
   );
 };
 

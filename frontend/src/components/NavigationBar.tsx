@@ -135,7 +135,7 @@ export const NavigationBar = () => {
         </div>
       )}
       <NavigationMenu className="w-full flex">
-        <NavigationMenuList className="h-14 px-4 w-screen flex items-center justify-start space-x-10">
+        <NavigationMenuList className="h-14 px-4 w-full flex items-center justify-start space-x-10">
 
           {/* Logo */}
           <NavigationMenuItem className="font-bold flex">

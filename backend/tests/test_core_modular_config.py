@@ -72,7 +72,7 @@ def test_auth_settings_parse_with_only_auth_environment(monkeypatch):
     reset_runtime_caches_for_tests()
 
 
-def test_email_settings_allow_default_alert_recipient(monkeypatch):
+def test_email_settings_parse_with_only_email_environment(monkeypatch):
     monkeypatch.setenv("EMAIL_USERNAME", "sender@example.com")
     monkeypatch.setenv("EMAIL_PASSWORD", "email-secret")
     monkeypatch.setenv("EMAIL_FROM", "sender@example.com")
@@ -83,7 +83,7 @@ def test_email_settings_allow_default_alert_recipient(monkeypatch):
     monkeypatch.setenv("MAIL_SSL_TLS", "false")
     monkeypatch.setenv("USE_CREDENTIALS", "true")
     monkeypatch.setenv("VALIDATE_CERTS", "false")
-    monkeypatch.delenv("ANOMALY_ALERT_RECIPIENTS", raising=False)
+    monkeypatch.setenv("ANOMALY_ALERT_RECIPIENTS", "admin@example.com")
 
     reset_runtime_caches_for_tests()
 
@@ -121,7 +121,14 @@ def test_modular_service_settings_support_https_overrides(monkeypatch):
     reset_runtime_caches_for_tests()
 
 
-def test_db_engine_is_lazily_cached():
+def test_db_engine_is_lazily_cached(monkeypatch):
+    monkeypatch.setenv("POSTGRES_USER", "db_user")
+    monkeypatch.setenv("POSTGRES_PASSWORD", "db_password")
+    monkeypatch.setenv("POSTGRES_DB", "db_name")
+    monkeypatch.setenv("POSTGRES_PORT", "5432")
+    monkeypatch.setenv("POSTGRES_HOST", "localhost")
+    monkeypatch.setenv("DEBUG", "false")
+
     reset_runtime_caches_for_tests()
 
     assert db_base.get_engine.cache_info().currsize == 0
@@ -220,6 +227,7 @@ def test_database_url_encoding_is_consistent_across_runtime_builders(monkeypatch
 
 def test_gateway_validation_specs_no_longer_require_database(monkeypatch):
     monkeypatch.setenv("APP_NAME", "off-key")
+    monkeypatch.setenv("DEBUG", "false")
     monkeypatch.setenv("JWT_SECRET", "super-secret-key-material-123456")
     monkeypatch.setenv("JWT_VERIFICATION_SECRET", "verify-secret-key-material-654321")
     monkeypatch.setenv("ALGORITHM", "HS256")
@@ -235,6 +243,7 @@ def test_gateway_validation_specs_no_longer_require_database(monkeypatch):
     monkeypatch.setenv("MAIL_SSL_TLS", "false")
     monkeypatch.setenv("USE_CREDENTIALS", "true")
     monkeypatch.setenv("VALIDATE_CERTS", "false")
+    monkeypatch.setenv("ANOMALY_ALERT_RECIPIENTS", "admin@example.com")
     monkeypatch.delenv("POSTGRES_USER", raising=False)
     monkeypatch.delenv("POSTGRES_PASSWORD", raising=False)
     monkeypatch.delenv("POSTGRES_DB", raising=False)

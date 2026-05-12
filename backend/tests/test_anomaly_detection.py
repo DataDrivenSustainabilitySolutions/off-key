@@ -16,6 +16,27 @@ from unittest.mock import MagicMock, patch
 from types import SimpleNamespace
 
 
+class _SchemaLearningPreprocessor:
+    """Minimal preprocessor double that requires learning feature names first."""
+
+    def __init__(self):
+        self._seen_features: set[str] = set()
+
+    def transform_one(self, sample: dict[str, float]) -> dict[str, float]:
+        unseen_feature = next(
+            (feature for feature in sample if feature not in self._seen_features),
+            None,
+        )
+        if unseen_feature is not None:
+            raise ValueError(
+                f"Feature '{unseen_feature}' has not been seen during learning."
+            )
+        return sample.copy()
+
+    def learn_one(self, sample: dict[str, float]) -> None:
+        self._seen_features.update(sample)
+
+
 class TestAnomalyDetectionService:
     """Tests for AnomalyDetectionService core functionality."""
 
@@ -402,7 +423,6 @@ class TestAnomalyDetectionService:
 
     def test_process_primes_scaler_on_first_unseen_feature(self):
         """Test scaler cold-start uses schema warm-up instead of failing permanently."""
-        from onad.transform.preprocessing.scaler import StandardScaler
         from off_key_mqtt_radar.detector import AnomalyDetectionService
 
         config = SimpleNamespace(
@@ -423,7 +443,7 @@ class TestAnomalyDetectionService:
             with patch.object(
                 AnomalyDetectionService,
                 "_create_preprocessors",
-                return_value=[StandardScaler()],
+                return_value=[_SchemaLearningPreprocessor()],
             ):
                 service = AnomalyDetectionService(config)
                 result = service.process_data_point({"TopLevelPart": 42.0})
@@ -477,7 +497,6 @@ class TestAnomalyDetectionService:
 
     def test_unseen_feature_after_learning_triggers_single_warmup_then_recovers(self):
         """Test new feature warm-up recovers and subsequent point processes normally."""
-        from onad.transform.preprocessing.scaler import StandardScaler
         from off_key_mqtt_radar.detector import AnomalyDetectionService
 
         config = SimpleNamespace(
@@ -498,7 +517,7 @@ class TestAnomalyDetectionService:
             with patch.object(
                 AnomalyDetectionService,
                 "_create_preprocessors",
-                return_value=[StandardScaler()],
+                return_value=[_SchemaLearningPreprocessor()],
             ):
                 service = AnomalyDetectionService(config)
                 first = service.process_data_point({"A": 1.0})

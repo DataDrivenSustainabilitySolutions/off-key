@@ -77,12 +77,16 @@ def test_radar_container_runtime_settings_build_encoded_database_url():
     )
 
 
-def test_radar_lifecycle_defaults_to_ephemeral_in_development():
+def test_radar_lifecycle_defaults_to_ephemeral_in_development(monkeypatch):
+    monkeypatch.delenv("TACTIC_RADAR_WORKLOAD_LIFECYCLE", raising=False)
+
     settings = TacticSettings(ENVIRONMENT="development")
     assert settings.config.radar_workload_lifecycle == RadarWorkloadLifecycle.EPHEMERAL
 
 
-def test_radar_lifecycle_defaults_to_persistent_in_production():
+def test_radar_lifecycle_defaults_to_persistent_in_production(monkeypatch):
+    monkeypatch.delenv("TACTIC_RADAR_WORKLOAD_LIFECYCLE", raising=False)
+
     settings = TacticSettings(ENVIRONMENT="production")
     assert settings.config.radar_workload_lifecycle == RadarWorkloadLifecycle.PERSISTENT
 

@@ -81,24 +81,24 @@ export function getStatusDisplay(
     case 'running':
       return {
         label: 'Running',
-        className: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
+        className: 'bg-green-100 text-green-800 dark:bg-green-900/35 dark:text-green-200',
       };
     case 'complete':
     case 'completed':
       return {
         label: 'Completed',
-        className: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200',
+        className: 'bg-blue-100 text-blue-800 dark:bg-blue-900/35 dark:text-blue-200',
       };
     case 'failed':
     case 'error':
       return {
         label: 'Failed',
-        className: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200',
+        className: 'bg-red-100 text-red-800 dark:bg-red-900/35 dark:text-red-200',
       };
     case 'not_found':
       return {
         label: 'Not Found',
-        className: 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200',
+        className: 'bg-gray-100 text-gray-800 dark:bg-white/10 dark:text-gray-200',
       };
     case 'pending':
     case 'assigned':
@@ -106,18 +106,18 @@ export function getStatusDisplay(
     case 'starting':
       return {
         label: 'Starting',
-        className: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200',
+        className: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/35 dark:text-yellow-200',
       };
     default:
       if (!dockerStatus && !isActive) {
         return {
           label: 'Inactive',
-          className: 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200',
+          className: 'bg-gray-100 text-gray-800 dark:bg-white/10 dark:text-gray-200',
         };
       }
       return {
         label: dockerStatus || 'Active',
-        className: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200',
+        className: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/35 dark:text-yellow-200',
       };
   }
 }

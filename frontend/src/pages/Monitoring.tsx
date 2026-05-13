@@ -425,7 +425,7 @@ const AnomaliesSection: React.FC<{
                     <TableRow key={`${anomaly.timestamp}-${index}`}>
                       <TableCell className="font-medium">{new Date(anomaly.timestamp).toLocaleString()}</TableCell>
                       <TableCell>
-                        <span className="px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
+                        <span className="px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/35 dark:text-blue-200">
                           {anomaly.telemetry_type}
                         </span>
                       </TableCell>

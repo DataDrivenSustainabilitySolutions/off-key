@@ -53,6 +53,27 @@
   }
 }
 
+@layer utilities {
+  @keyframes live-pulse-ring {
+    0% {
+      box-shadow: 0 0 0 0 rgb(16 185 129 / 0.45);
+      transform: scale(1);
+    }
+    70% {
+      box-shadow: 0 0 0 7px rgb(16 185 129 / 0);
+      transform: scale(1.08);
+    }
+    100% {
+      box-shadow: 0 0 0 0 rgb(16 185 129 / 0);
+      transform: scale(1);
+    }
+  }
+
+  .live-pulse-ring {
+    animation: live-pulse-ring 1.6s ease-out infinite;
+  }
+}
+
 
 @layer base {
   * {

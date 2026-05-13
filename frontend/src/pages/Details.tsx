@@ -14,6 +14,7 @@ import DynamicTelemetryChart from "@/components/DynamicTelemetryChart";
 import { Button } from "@/components/ui/button";
 import { INTERVALS } from "@/lib/constants";
 import { clientLogger } from "@/lib/logger";
+import { cn } from "@/lib/utils";
 import {
   Tooltip,
   TooltipContent,
@@ -25,6 +26,53 @@ type TelemetryCategoryGroups = Record<
   TelemetryTypeData["category"],
   TelemetryTypeData[]
 >;
+
+const RECENT_TELEMETRY_WINDOW_MS = INTERVALS.DETAILS_UPDATE * 6;
+
+const getLatestTelemetryTimestamp = (
+  telemetryData: TelemetryTypeData[]
+): number | undefined => {
+  const timestamps = telemetryData
+    .flatMap((telemetry) => telemetry.data.map((point) => Date.parse(point.timestamp)))
+    .filter((timestamp) => Number.isFinite(timestamp));
+
+  if (timestamps.length === 0) {
+    return undefined;
+  }
+
+  return Math.max(...timestamps);
+};
+
+const LiveTelemetryIndicator: React.FC<{
+  hasRecentTelemetry: boolean;
+  hasTelemetry: boolean;
+}> = ({ hasRecentTelemetry, hasTelemetry }) => {
+  const label = hasRecentTelemetry
+    ? "Live telemetry"
+    : hasTelemetry
+      ? "Telemetry ready"
+      : "Waiting for telemetry";
+
+  return (
+    <div
+      className="inline-flex h-9 items-center gap-2 rounded-md border border-border bg-card px-3 text-sm text-muted-foreground shadow-xs"
+      aria-label={label}
+      title={label}
+    >
+      <span
+        className={cn(
+          "size-2.5 rounded-full",
+          hasRecentTelemetry
+            ? "live-pulse-ring bg-emerald-500"
+            : hasTelemetry
+              ? "bg-amber-400"
+              : "bg-muted-foreground/50"
+        )}
+      />
+      <span className="whitespace-nowrap">{label}</span>
+    </div>
+  );
+};
 
 const Details: React.FC = () => {
   const { chargerId } = useParams<{ chargerId: string }>();
@@ -82,6 +130,18 @@ const Details: React.FC = () => {
     [allTelemetryMap, resolvedChargerId]
   );
   const chargerAnomalies = anomaliesMap[resolvedChargerId] ?? [];
+  const latestTelemetryTimestamp = useMemo(
+    () => getLatestTelemetryTimestamp(allTelemetryData),
+    [allTelemetryData]
+  );
+  const latestTelemetryAgeMs =
+    latestTelemetryTimestamp === undefined
+      ? undefined
+      : Date.now() - latestTelemetryTimestamp;
+  const hasRecentTelemetry =
+    latestTelemetryAgeMs !== undefined &&
+    latestTelemetryAgeMs >= 0 &&
+    latestTelemetryAgeMs <= RECENT_TELEMETRY_WINDOW_MS;
 
   // Group telemetry data by category for better organization
   const telemetryByCategory = useMemo(() => {
@@ -111,19 +171,25 @@ const Details: React.FC = () => {
           title={`Charger ${chargerId}`}
           description="Review telemetry streams, recent anomaly overlays, and operational monitoring setup."
           actions={
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button asChild>
-                  <Link to={`/monitoring/${chargerId}`}>
-                    <Activity className="h-4 w-4" />
-                    Monitoring
-                  </Link>
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="top" align="center">
-                Open Live Monitoring
-              </TooltipContent>
-            </Tooltip>
+            <>
+              <LiveTelemetryIndicator
+                hasRecentTelemetry={hasRecentTelemetry}
+                hasTelemetry={latestTelemetryTimestamp !== undefined}
+              />
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button asChild>
+                    <Link to={`/monitoring/${chargerId}`}>
+                      <Activity className="h-4 w-4" />
+                      Monitoring
+                    </Link>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="top" align="center">
+                  Open Live Monitoring
+                </TooltipContent>
+              </Tooltip>
+            </>
           }
         />
 

@@ -129,7 +129,7 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
 
   if (telemetryData.data.length === 0) {
     return (
-      <Card className="w-full overflow-hidden border-border/80 shadow-xs transition-all duration-300">
+      <Card className="w-full overflow-hidden border-border/80 py-0 shadow-xs transition-all duration-300">
         <div className="flex items-center justify-between gap-3 border-b px-5 py-4">
           <CardTitle className="text-base">{displayName}</CardTitle>
           <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-medium capitalize text-muted-foreground">
@@ -144,10 +144,12 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
   }
 
   return (
-    <Card className={`w-full overflow-hidden border-border/80 shadow-xs transition-all duration-300 ${collapsed ? 'h-16' : 'min-h-96'}`}>
-      <div className="flex flex-col gap-3 border-b px-5 py-4 lg:flex-row lg:items-center lg:justify-between">
-        <div className="flex min-w-0 items-center gap-3">
-          <CardTitle className="truncate text-base">{displayName}</CardTitle>
+    <Card className={`w-full overflow-hidden border-border/80 py-0 shadow-xs transition-all duration-300 ${collapsed ? '' : 'min-h-96'}`}>
+      <div className={`flex gap-3 border-b px-5 py-4 ${collapsed ? 'flex-row items-center justify-between' : 'flex-col lg:flex-row lg:items-center lg:justify-between'}`}>
+        <div className="flex min-w-0 flex-1 items-center gap-3">
+          <CardTitle className={`${collapsed ? 'whitespace-normal break-words' : 'truncate'} text-base`}>
+            {displayName}
+          </CardTitle>
           <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-medium capitalize text-muted-foreground">
             {telemetryData.category}
           </span>

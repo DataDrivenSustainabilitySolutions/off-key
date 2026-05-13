@@ -51,7 +51,7 @@ export function PageHeader({
             {eyebrow}
           </p>
         ) : null}
-        <h1 className="truncate text-2xl font-semibold tracking-normal sm:text-3xl">
+        <h1 className="overflow-visible pb-1 text-2xl font-semibold leading-tight tracking-normal sm:text-3xl">
           {title}
         </h1>
         {description ? (

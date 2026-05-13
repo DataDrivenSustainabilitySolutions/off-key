@@ -463,8 +463,7 @@ const Monitoring: React.FC = () => {
   const activeKeys = useMemo(
     () =>
       Object.entries(visibleMap)
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
-        .filter(([_, visible]) => visible)
+        .filter(([, visible]) => visible)
         .map(([key]) => key),
     [visibleMap]
   );

@@ -5,6 +5,7 @@ from unittest.mock import Mock, patch
 from typing import List
 
 import pytest
+import pytest_asyncio
 
 from off_key_mqtt_proxy.client.messaging import MessageHandler
 from off_key_mqtt_proxy.client.connection import ConnectionManager
@@ -519,7 +520,7 @@ class TestConnectionManagerAsyncEvents:
         """Create test MQTT config"""
         return MQTTSettings().config
 
-    @pytest.fixture
+    @pytest_asyncio.fixture
     async def connection_manager(self, config):
         """Create ConnectionManager instance"""
         manager = ConnectionManager(config)

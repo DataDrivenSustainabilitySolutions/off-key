@@ -213,27 +213,12 @@ class MessageProcessor:
         # Skip alignment if no cache or only single sensor subscribed
         # Single-sensor mode: use normalized sensor-keyed feature.
         if not self.state_cache or not self.required_sensors:
-            return normalized_data, {
-                "alignment_status": "direct_pass_through",
-                "aligned_vector": False,
-                "required_sensor_count": len(self.required_sensors),
-                "sensor_ages": {},
-            }
+            return normalized_data, self._direct_alignment_context()
         if len(self.required_sensors) <= 1:
-            return normalized_data, {
-                "alignment_status": "direct_pass_through",
-                "aligned_vector": False,
-                "required_sensor_count": len(self.required_sensors),
-                "sensor_ages": {},
-            }
+            return normalized_data, self._direct_alignment_context()
 
         if not (charger_id and sensor_type):
-            return normalized_data, {
-                "alignment_status": "direct_pass_through",
-                "aligned_vector": False,
-                "required_sensor_count": len(self.required_sensors),
-                "sensor_ages": {},
-            }
+            return normalized_data, self._direct_alignment_context()
 
         alignment_update: AlignmentUpdate = self.state_cache.update_with_status(
             charger_id,
@@ -313,6 +298,15 @@ class MessageProcessor:
             )
 
         return alignment_update.features, base_context
+
+    def _direct_alignment_context(self) -> Dict[str, Any]:
+        """Build alignment context for messages that bypass multi-sensor alignment."""
+        return {
+            "alignment_status": "direct_pass_through",
+            "aligned_vector": False,
+            "required_sensor_count": len(self.required_sensors),
+            "sensor_ages": {},
+        }
 
     @staticmethod
     def _normalize_sensor_reading(

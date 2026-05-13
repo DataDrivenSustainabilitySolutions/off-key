@@ -4,6 +4,7 @@ from datetime import datetime
 from unittest.mock import Mock, patch, MagicMock
 
 import pytest
+import pytest_asyncio
 
 from off_key_mqtt_radar.mqtt_client import RadarMQTTClient
 from off_key_mqtt_radar.config.config import MQTTRadarConfig
@@ -38,7 +39,7 @@ class TestMQTTAsyncEventHandling:
             client_id_prefix="test",
         )
 
-    @pytest.fixture
+    @pytest_asyncio.fixture
     async def mqtt_client(self, config):
         """Create MQTT client instance with mocked paho client"""
         client = RadarMQTTClient(config)

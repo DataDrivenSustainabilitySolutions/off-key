@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import toast from "react-hot-toast";
+import { useAuth } from "@/auth/AuthContext";
 import {
   ChargerListControls,
   ChargerListResults,
@@ -26,6 +28,7 @@ export default function ChargerTable() {
   const [favoriteChargerIds, setFavoriteChargerIds] = useState<string[]>([]);
   const [data, setData] = useState<CombinedData[]>([]);
 
+  const { userId } = useAuth();
   const {
     getAllChargers,
     getCombinedChargerData,
@@ -42,7 +45,13 @@ export default function ChargerTable() {
       }
 
       try {
-        const favoriteIds = await getFavorites(1);
+        if (userId === null) {
+          setFavoriteChargerIds([]);
+          setData([]);
+          return;
+        }
+
+        const favoriteIds = await getFavorites(userId);
         if (cancelled) {
           return;
         }
@@ -70,6 +79,7 @@ export default function ChargerTable() {
           event: "favorites.load_failed",
           message: "Failed to load favorites page data",
           error,
+          context: { userId },
         });
         setData([]);
         setFavoriteChargerIds([]);
@@ -85,7 +95,7 @@ export default function ChargerTable() {
     return () => {
       cancelled = true;
     };
-  }, [getAllChargers, getCombinedChargerData, getFavorites]);
+  }, [getAllChargers, getCombinedChargerData, getFavorites, userId]);
 
   const filteredData = filterChargerData(data, searchTerm, statusFilter);
   const statusCounts = getChargerStatusCounts(data);
@@ -95,19 +105,24 @@ export default function ChargerTable() {
   };
 
   const handleToggleFavorite = async (chargerId: string) => {
+    if (userId === null) {
+      toast.error("Please log out and log in again to update favorites");
+      return;
+    }
+
     const isFavorite = favoriteChargerIds.includes(chargerId);
     setFavoriteChargerIds((prev) =>
       isFavorite ? prev.filter((id) => id !== chargerId) : [...prev, chargerId]
     );
 
     try {
-      await toggleFavorite(chargerId, 1, isFavorite);
+      await toggleFavorite(chargerId, userId, isFavorite);
     } catch (err) {
       clientLogger.error({
         event: "favorites.toggle_failed",
         message: "Error saving favorite status",
         error: err,
-        context: { chargerId, userId: 1, isFavorite },
+        context: { chargerId, userId, isFavorite },
       });
       setFavoriteChargerIds((prev) =>
         isFavorite ? [...prev, chargerId] : prev.filter((id) => id !== chargerId)

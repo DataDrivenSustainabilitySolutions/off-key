@@ -18,6 +18,7 @@ import { clientLogger } from "@/lib/logger";
 interface LoginResponse {
   access_token: string;
   token_type: string;
+  user_id?: number | string;
 }
 
 const Login: React.FC = () => {
@@ -73,7 +74,7 @@ const Login: React.FC = () => {
       const data: LoginResponse = await response.json();
 
       // Use consolidated login function which handles token storage
-      login(data.access_token, rememberMe);
+      login(data.access_token, rememberMe, data.user_id);
 
       navigate("/");
     } catch (error) {

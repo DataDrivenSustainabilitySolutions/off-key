@@ -137,7 +137,7 @@ async def get_telemetry_data(
 async def authenticate_user(
     login_data: UserLoginRequest,
     service: UserService = Depends(get_user_service),
-) -> dict[str, str]:
+) -> dict[str, object]:
     try:
         return await service.authenticate(
             email=login_data.email,

@@ -45,6 +45,19 @@ const renderLogin = () =>
     </AuthProvider>
   );
 
+const encodeBase64Url = (value: object): string =>
+  btoa(JSON.stringify(value))
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/g, "");
+
+const createUnsignedToken = (payload: object): string =>
+  [
+    encodeBase64Url({ alg: "none", typ: "JWT" }),
+    encodeBase64Url(payload),
+    "",
+  ].join(".");
+
 describe("Login", () => {
   it("shows form fields and submit button", () => {
     renderLogin();
@@ -79,11 +92,19 @@ describe("Login", () => {
   });
 
   it("stores the token and navigates after a successful login", async () => {
-    const mockToken = "abc123";
+    const mockToken = createUnsignedToken({
+      sub: "test@example.com",
+      user_id: 7,
+      exp: Math.floor(Date.now() / 1000) + 3600,
+    });
 
     fetchMock.mockResolvedValueOnce(
       new Response(
-        JSON.stringify({ access_token: mockToken, token_type: "bearer" }),
+        JSON.stringify({
+          access_token: mockToken,
+          token_type: "bearer",
+          user_id: 7,
+        }),
         {
           status: 200,
           headers: { "Content-Type": "application/json" },
@@ -102,6 +123,32 @@ describe("Login", () => {
 
     await waitFor(() => {
       expect(tokenManager.getToken()).toBe(mockToken);
+    });
+    expect(mockNavigate).toHaveBeenCalledWith("/");
+  });
+
+  it("accepts a valid login response even when the token has no user id claim", async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({ access_token: "abc123", token_type: "bearer" }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }
+      )
+    );
+
+    renderLogin();
+    fireEvent.change(screen.getByLabelText(/e-mail/i), {
+      target: { value: "test@example.com" },
+    });
+    fireEvent.change(screen.getByLabelText(/password/i, { selector: "input" }), {
+      target: { value: "correctpass" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /log in/i }));
+
+    await waitFor(() => {
+      expect(tokenManager.getToken()).toBe("abc123");
     });
     expect(mockNavigate).toHaveBeenCalledWith("/");
   });

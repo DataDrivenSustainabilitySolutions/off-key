@@ -56,7 +56,7 @@ export default function ChargerTable() {
         }
 
         setData(combined);
-        if (userId) {
+        if (userId !== null) {
           const favs = await getFavorites(userId);
           if (cancelled) {
             return;
@@ -98,8 +98,8 @@ export default function ChargerTable() {
   };
 
   const handleToggleFavorite = async (chargerId: string) => {
-    if (!userId) {
-      toast.error("Please log in to favorite chargers");
+    if (userId === null) {
+      toast.error("Please log out and log in again to update favorites");
       return;
     }
 

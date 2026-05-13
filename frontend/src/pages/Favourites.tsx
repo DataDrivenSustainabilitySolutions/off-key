@@ -4,6 +4,11 @@ import {
   ChargerListResults,
 } from "@/components/ChargerListView";
 import {
+  MetricCard,
+  PageHeader,
+  PageShell,
+} from "@/components/DashboardLayout";
+import {
   filterChargerData,
   getChargerStatusCounts,
   type ChargerStatusFilter,
@@ -83,7 +88,7 @@ export default function ChargerTable() {
   }, [getAllChargers, getCombinedChargerData, getFavorites]);
 
   const filteredData = filterChargerData(data, searchTerm, statusFilter);
-  const statusCounts = getChargerStatusCounts(filteredData);
+  const statusCounts = getChargerStatusCounts(data);
 
   const handleViewToggle = (checked: boolean) => {
     setIsCardsView(checked);
@@ -113,8 +118,23 @@ export default function ChargerTable() {
   return (
     <>
       <NavigationBar />
-      <div className="p-6">
-        <h1 className="text-xl font-bold mb-4">Favorites</h1>
+      <PageShell>
+        <PageHeader
+          eyebrow="Saved Stations"
+          title="Favorites"
+          description="Keep frequently inspected chargers close and filter them by status."
+        />
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <MetricCard label="Favorites" value={statusCounts.all} helper="Saved chargers" />
+          <MetricCard label="Online" value={statusCounts.online} tone="success" />
+          <MetricCard
+            label="Offline"
+            value={statusCounts.offline}
+            tone={statusCounts.offline > 0 ? "danger" : "default"}
+          />
+        </div>
+
         <ChargerListControls
           searchTerm={searchTerm}
           onSearchTermChange={setSearchTerm}
@@ -138,7 +158,7 @@ export default function ChargerTable() {
           cardStatusLabel="Status"
           tableStatusLabel="Status"
         />
-      </div>
+      </PageShell>
     </>
   );
 }

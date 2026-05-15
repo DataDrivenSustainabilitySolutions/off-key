@@ -6,6 +6,11 @@ import {
   ChargerListResults,
 } from "@/components/ChargerListView";
 import {
+  MetricCard,
+  PageHeader,
+  PageShell,
+} from "@/components/DashboardLayout";
+import {
   filterChargerData,
   getChargerStatusCounts,
   type ChargerStatusFilter,
@@ -51,7 +56,7 @@ export default function ChargerTable() {
         }
 
         setData(combined);
-        if (userId) {
+        if (userId !== null) {
           const favs = await getFavorites(userId);
           if (cancelled) {
             return;
@@ -86,15 +91,15 @@ export default function ChargerTable() {
   }, [getAllChargers, getCombinedChargerData, getFavorites, userId]);
 
   const filteredData = filterChargerData(data, searchTerm, statusFilter);
-  const statusCounts = getChargerStatusCounts(filteredData);
+  const statusCounts = getChargerStatusCounts(data);
 
   const handleViewToggle = (checked: boolean) => {
     setIsCardsView(checked);
   };
 
   const handleToggleFavorite = async (chargerId: string) => {
-    if (!userId) {
-      toast.error("Please log in to favorite chargers");
+    if (userId === null) {
+      toast.error("Please log out and log in again to update favorites");
       return;
     }
 
@@ -123,8 +128,29 @@ export default function ChargerTable() {
   return (
     <>
       <NavigationBar />
+      <PageShell>
+        <PageHeader
+          eyebrow="Fleet Cockpit"
+          title="Charging Stations"
+          description="Monitor charger availability, last contact, and favorites from a single operational view."
+        />
 
-      <div className="p-6">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <MetricCard label="Total" value={statusCounts.all} helper="Known chargers" />
+          <MetricCard
+            label="Online"
+            value={statusCounts.online}
+            helper="Currently active"
+            tone="success"
+          />
+          <MetricCard
+            label="Offline"
+            value={statusCounts.offline}
+            helper="Needs attention"
+            tone={statusCounts.offline > 0 ? "danger" : "default"}
+          />
+        </div>
+
         <ChargerListControls
           searchTerm={searchTerm}
           onSearchTermChange={setSearchTerm}
@@ -151,7 +177,7 @@ export default function ChargerTable() {
           cardStatusLabel="State"
           tableStatusLabel="State"
         />
-      </div>
+      </PageShell>
     </>
   );
 }

@@ -12,6 +12,7 @@ interface DateTimePickerProps {
   onChange: (date: Date | undefined) => void;
   placeholder?: string;
   className?: string;
+  ariaLabel?: string;
 }
 
 interface TimeInputProps {
@@ -61,10 +62,12 @@ const TimeInput: React.FC<TimeInputProps> = ({
       <label className="text-xs text-muted-foreground">{label}</label>
       <div className="flex flex-col items-center">
         <Button
+          type="button"
           variant="ghost"
           size="sm"
           className="h-6 w-8 p-0 hover:bg-muted"
           onClick={handleIncrement}
+          aria-label={`Increase ${label.toLowerCase()}`}
         >
           <ChevronUp className="h-3 w-3" />
         </Button>
@@ -77,10 +80,12 @@ const TimeInput: React.FC<TimeInputProps> = ({
           max={max}
         />
         <Button
+          type="button"
           variant="ghost"
           size="sm"
           className="h-6 w-8 p-0 hover:bg-muted"
           onClick={handleDecrement}
+          aria-label={`Decrease ${label.toLowerCase()}`}
         >
           <ChevronDown className="h-3 w-3" />
         </Button>
@@ -93,16 +98,16 @@ export const DateTimePicker: React.FC<DateTimePickerProps> = ({
   value,
   onChange,
   placeholder = "Pick a date and time",
-  className
+  className,
+  ariaLabel,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(value);
   const [hours, setHours] = useState(value ? value.getHours() : 0);
   const [minutes, setMinutes] = useState(value ? value.getMinutes() : 0);
 
-  // Sync with parent value prop
   useEffect(() => {
-    if (value && value !== selectedDate) {
+    if (value) {
       setSelectedDate(value);
       setHours(value.getHours());
       setMinutes(value.getMinutes());
@@ -111,7 +116,7 @@ export const DateTimePicker: React.FC<DateTimePickerProps> = ({
       setHours(0);
       setMinutes(0);
     }
-  }, [value, selectedDate]);
+  }, [value]);
 
   const createDateTime = (date: Date, hours: number, minutes: number): Date => {
     const newDate = new Date(date);
@@ -178,23 +183,28 @@ export const DateTimePicker: React.FC<DateTimePickerProps> = ({
     <Popover open={isOpen} onOpenChange={setIsOpen}>
       <PopoverTrigger asChild>
         <Button
+          type="button"
           variant="outline"
+          aria-label={ariaLabel || placeholder}
           className={cn(
-            "justify-start text-left font-normal",
+            "min-w-0 justify-start text-left font-normal",
             !value && "text-muted-foreground",
             className
           )}
         >
-          <CalendarIcon className="mr-2 h-4 w-4" />
-          {value ? format(value, "dd.MM.yyyy HH:mm") : placeholder}
+          <CalendarIcon className="mr-2 h-4 w-4 shrink-0" />
+          <span className="truncate">
+            {value ? format(value, "dd.MM.yyyy HH:mm") : placeholder}
+          </span>
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-auto p-0" align="start">
+      <PopoverContent className="w-[20rem] p-0" align="start">
         <div className="p-3">
           <Calendar
             mode="single"
             selected={selectedDate}
             onSelect={handleDateSelect}
+            defaultMonth={selectedDate}
             initialFocus
           />
 
@@ -230,6 +240,7 @@ export const DateTimePicker: React.FC<DateTimePickerProps> = ({
 
             <div className="flex justify-center mb-3">
               <Button
+                type="button"
                 size="sm"
                 variant="outline"
                 onClick={handleNow}
@@ -242,13 +253,13 @@ export const DateTimePicker: React.FC<DateTimePickerProps> = ({
 
           {/* Action Buttons */}
           <div className="flex gap-2 pt-3 border-t">
-            <Button size="sm" variant="outline" onClick={handleToday} className="flex-1">
+            <Button type="button" size="sm" variant="outline" onClick={handleToday} className="flex-1">
               Today
             </Button>
-            <Button size="sm" variant="outline" onClick={handleClear} className="flex-1">
+            <Button type="button" size="sm" variant="outline" onClick={handleClear} className="flex-1">
               Clear
             </Button>
-            <Button size="sm" onClick={handleApply} className="flex-1">
+            <Button type="button" size="sm" onClick={handleApply} className="flex-1">
               Apply
             </Button>
           </div>

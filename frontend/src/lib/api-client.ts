@@ -8,6 +8,7 @@ import axios, {
   AxiosResponse,
   InternalAxiosRequestConfig,
 } from 'axios';
+import { isTokenExpired } from '@/auth/token';
 import { API_CONFIG, DEFAULT_REQUEST_CONFIG } from './api-config';
 
 // Types for API responses
@@ -61,13 +62,7 @@ export const tokenManager = {
   },
 
   isTokenExpired(token: string): boolean {
-    try {
-      const payload = JSON.parse(atob(token.split('.')[1]));
-      const currentTime = Date.now() / 1000;
-      return payload.exp < currentTime;
-    } catch {
-      return true; // If we can't parse it, consider it expired
-    }
+    return isTokenExpired(token);
   }
 };
 

@@ -1,7 +1,12 @@
-import { Card, CardContent, CardTitle } from "@/components/ui/card";
 import { NavigationBar } from "@/components/NavigationBar";
 import { useParams } from "react-router-dom";
 import { useFetch } from "@/dataFetch/UseFetch";
+import {
+  MetricCard,
+  PageHeader,
+  PageShell,
+  SectionPanel,
+} from "@/components/DashboardLayout";
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -16,7 +21,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { apiUtils } from "@/lib/api-client";
 import { API_CONFIG } from "@/lib/api-config";
 import toast from "react-hot-toast";
-import { ChevronUp, ChevronDown } from "lucide-react";
+import { ChevronDown, ChevronUp, RefreshCw, Send, Trash2 } from "lucide-react";
 import { getStatusDisplay } from "@/types/monitoring";
 import {
   formatAnomalyTailProbability,
@@ -121,32 +126,31 @@ const DEFAULT_PREPROCESSING_STEPS: PreprocessingStepConfig[] = [
 ];
 
 const FORM_CONTROL_CLASS =
-  "border rounded px-3 py-2 bg-white text-black dark:bg-neutral-900 dark:text-white";
-const PRIMARY_ACTION_BUTTON_CLASS = "bg-indigo-800 hover:bg-indigo-700";
-const MONITORING_CARD_CLASS =
-  "ml-16 bg-white shadow-md w-11/12 min-h-96 dark:bg-neutral-950";
-const MONITORING_TALL_CARD_CLASS =
-  "ml-16 bg-white shadow-md w-11/12 min-h-11/12 dark:bg-neutral-950";
+  "w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-xs outline-none transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] disabled:pointer-events-none disabled:opacity-50";
+const PRIMARY_ACTION_BUTTON_CLASS = "";
+
+const extractChargerIdFromContainer = (containerName: string): string => {
+  const match = containerName.match(/^radar-(.+)-\d+$/);
+  return match ? match[1] : "Unknown";
+};
 
 const MonitoringSectionCard: React.FC<{
   title: React.ReactNode;
   children: React.ReactNode;
-  wrapperClassName?: string;
-  cardClassName?: string;
-  titleClassName?: string;
-}> = ({
-  title,
-  children,
-  wrapperClassName = "flex mt-5",
-  cardClassName = MONITORING_CARD_CLASS,
-  titleClassName = "ml-5 mt-4",
-}) => (
-  <div className={wrapperClassName}>
-    <Card className={cardClassName}>
-      <CardTitle className={titleClassName}>{title}</CardTitle>
-      <CardContent>{children}</CardContent>
-    </Card>
-  </div>
+  description?: React.ReactNode;
+  actions?: React.ReactNode;
+  className?: string;
+  contentClassName?: string;
+}> = ({ title, children, description, actions, className, contentClassName }) => (
+  <SectionPanel
+    title={title}
+    description={description}
+    actions={actions}
+    className={className}
+    contentClassName={contentClassName}
+  >
+    {children}
+  </SectionPanel>
 );
 
 const PreprocessingSection: React.FC<{
@@ -172,12 +176,15 @@ const PreprocessingSection: React.FC<{
   onMoveDown,
   onRemove,
 }) => (
-  <div className="mt-10">
-    <div className="flex items-center justify-between mb-2">
-      <h3 className="text-md font-semibold">Preprocessing (optional)</h3>
-      {isLoading && <span className="text-xs text-gray-500">Loading...</span>}
+  <div className="space-y-4">
+    <div className="flex items-center justify-between gap-3">
+      <div>
+        <h3 className="text-sm font-semibold">Preprocessing</h3>
+        <p className="mt-1 text-xs text-muted-foreground">Optional transforms before model scoring.</p>
+      </div>
+      {isLoading && <span className="text-xs text-muted-foreground">Loading...</span>}
     </div>
-    <div className="flex gap-2 items-center mb-3">
+    <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
       <select
         className={FORM_CONTROL_CLASS}
         value={newPreprocessorType}
@@ -200,16 +207,20 @@ const PreprocessingSection: React.FC<{
       </Button>
     </div>
 
-    {steps.length === 0 && <p className="text-sm text-gray-500">No preprocessing steps selected.</p>}
+    {steps.length === 0 && (
+      <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+        No preprocessing steps selected.
+      </p>
+    )}
 
-    <div className="space-y-4">
+    <div className="space-y-3">
       {steps.map((step, index) => {
         const schemaProps: Record<string, ParameterSchema> =
           availablePreprocessors[step.type]?.parameters?.properties || {};
         return (
-          <div key={step.id} className="border rounded p-3 bg-gray-50 dark:bg-neutral-900">
-            <div className="flex items-center justify-between">
-              <div className="font-semibold">
+          <div key={step.id} className="rounded-lg border bg-muted/30 p-3">
+            <div className="flex items-center justify-between gap-3">
+              <div className="truncate text-sm font-semibold">
                 {index + 1}. {step.type}
               </div>
               <div className="flex items-center gap-1">
@@ -232,20 +243,21 @@ const PreprocessingSection: React.FC<{
                   <ChevronDown className="h-4 w-4" />
                 </Button>
                 <Button variant="destructive" size="sm" onClick={() => onRemove(index)}>
+                  <Trash2 className="h-4 w-4" />
                   Remove
                 </Button>
               </div>
             </div>
             <div className="mt-3 space-y-3">
               {Object.entries(schemaProps).length === 0 && (
-                <p className="text-sm text-gray-500">No parameters.</p>
+                <p className="text-sm text-muted-foreground">No parameters.</p>
               )}
               {Object.entries(schemaProps).map(([key, schema]) => (
                 <div key={key} className="flex flex-col">
                   <label className="text-sm font-medium mb-1">
                     {key}
                     {schema?.description ? (
-                      <span className="text-xs text-gray-500 ml-1">({schema.description})</span>
+                      <span className="ml-1 text-xs text-muted-foreground">({schema.description})</span>
                     ) : null}
                   </label>
                   <input
@@ -289,32 +301,31 @@ const ActiveServicesSection: React.FC<{
   chargerId?: string;
   onDelete: (containerName: string) => void | Promise<void>;
 }> = ({ services, isLoading, chargerId, onDelete }) => {
-  const extractChargerIdFromContainer = (containerName: string): string => {
-    const match = containerName.match(/^radar-(.+)-\d+$/);
-    return match ? match[1] : "Unknown";
-  };
-
   const chargerSpecificServices = React.useMemo(() => {
     if (!chargerId) return services;
     return services.filter((service) => extractChargerIdFromContainer(service.container_name) === chargerId);
   }, [services, chargerId]);
 
   return (
-    <MonitoringSectionCard title={<>Active Monitoring Services for Charger {chargerId}</>}>
-          <div className="mt-4">
+    <MonitoringSectionCard
+      title="Active Services"
+      description={`Monitoring services for charger ${chargerId}`}
+      contentClassName="p-0"
+    >
+          <div>
             {isLoading ? (
-              <div className="flex justify-center items-center py-8">
-                <div className="text-gray-500">Loading active services...</div>
+              <div className="flex items-center justify-center py-10">
+                <div className="text-sm text-muted-foreground">Loading active services...</div>
               </div>
             ) : chargerSpecificServices.length === 0 ? (
-              <div className="flex justify-center items-center py-8">
-                <div className="text-gray-500">No active monitoring services found for charger {chargerId}</div>
+              <div className="flex items-center justify-center py-10">
+                <div className="text-sm text-muted-foreground">No active monitoring services found for charger {chargerId}</div>
               </div>
             ) : (
-              <div className="overflow-x-auto">
+              <div>
                 <Table>
                   <TableHeader>
-                    <TableRow>
+                    <TableRow className="bg-muted/40 hover:bg-muted/40">
                       <TableHead>Container Name</TableHead>
                       <TableHead>Charger ID</TableHead>
                       <TableHead>MQTT Topics</TableHead>
@@ -351,13 +362,13 @@ const ActiveServicesSection: React.FC<{
                         <TableCell>
                           {service.created_at ? new Date(service.created_at).toLocaleString() : "Unknown"}
                         </TableCell>
-                        <TableCell>
+                        <TableCell className="text-right">
                           <Button
                             variant="destructive"
                             size="sm"
                             onClick={() => onDelete(service.container_name)}
-                            className="bg-red-600 hover:bg-red-700"
                           >
+                            <Trash2 className="h-4 w-4" />
                             Delete
                           </Button>
                         </TableCell>
@@ -379,29 +390,30 @@ const AnomaliesSection: React.FC<{
   onRefresh: () => void;
 }> = ({ anomalies, isLoading, chargerId, onRefresh }) => (
   <MonitoringSectionCard
-    title={<>Detected Anomalies for Charger {chargerId}</>}
-    wrapperClassName="flex mt-5 mb-5"
+    title="Detected Anomalies"
+    description={`${anomalies.length} anomalies for charger ${chargerId}`}
+    actions={
+      <Button variant="outline" size="sm" onClick={onRefresh} disabled={isLoading}>
+        <RefreshCw className={isLoading ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
+        {isLoading ? "Refreshing..." : "Refresh"}
+      </Button>
+    }
+    contentClassName="p-0"
   >
-        <div className="mt-4">
-          <div className="flex justify-between items-center mb-4">
-            <span className="text-sm text-gray-500">{anomalies.length} anomalies detected</span>
-            <Button variant="outline" size="sm" onClick={onRefresh} disabled={isLoading}>
-              {isLoading ? "Refreshing..." : "Refresh"}
-            </Button>
-          </div>
+        <div>
           {isLoading ? (
-            <div className="flex justify-center items-center py-8">
-              <div className="text-gray-500">Loading anomalies...</div>
+            <div className="flex items-center justify-center py-10">
+              <div className="text-sm text-muted-foreground">Loading anomalies...</div>
             </div>
           ) : anomalies.length === 0 ? (
-            <div className="flex justify-center items-center py-8">
-              <div className="text-gray-500">No anomalies detected for charger {chargerId}</div>
+            <div className="flex items-center justify-center py-10">
+              <div className="text-sm text-muted-foreground">No anomalies detected for charger {chargerId}</div>
             </div>
           ) : (
-            <div className="overflow-x-auto max-h-96 overflow-y-auto">
+            <div className="max-h-96 overflow-y-auto">
               <Table>
                   <TableHeader>
-                  <TableRow>
+                  <TableRow className="bg-muted/40 hover:bg-muted/40">
                     <TableHead>Timestamp</TableHead>
                     <TableHead>Telemetry Type</TableHead>
                     <TableHead>Anomaly Type</TableHead>
@@ -413,7 +425,7 @@ const AnomaliesSection: React.FC<{
                     <TableRow key={`${anomaly.timestamp}-${index}`}>
                       <TableCell className="font-medium">{new Date(anomaly.timestamp).toLocaleString()}</TableCell>
                       <TableCell>
-                        <span className="px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
+                        <span className="px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/35 dark:text-blue-200">
                           {anomaly.telemetry_type}
                         </span>
                       </TableCell>
@@ -428,7 +440,7 @@ const AnomaliesSection: React.FC<{
                             {formatAnomalyTailProbability(anomaly.anomaly_value)}
                           </span>
                         ) : (
-                          <span className="px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400">
+                          <span className="rounded-full bg-muted px-2 py-1 text-xs font-medium text-muted-foreground">
                             {anomaly.anomaly_value.toFixed(2)} (legacy)
                           </span>
                         )}
@@ -438,7 +450,7 @@ const AnomaliesSection: React.FC<{
                 </TableBody>
               </Table>
               {anomalies.length > 50 && (
-                <div className="text-center py-2 text-sm text-gray-500">Showing 50 of {anomalies.length} anomalies</div>
+                <div className="border-t py-3 text-center text-sm text-muted-foreground">Showing 50 of {anomalies.length} anomalies</div>
               )}
             </div>
           )}
@@ -501,6 +513,21 @@ const Monitoring: React.FC = () => {
 
   const [anomalies, setAnomalies] = useState<Anomaly[]>([]);
   const [isLoadingAnomalies, setIsLoadingAnomalies] = useState(false);
+
+  const effectiveTopics = useMemo(
+    () =>
+      topicMode === "selected_sensors"
+        ? activeKeys.map((sensorType) => `charger/${chargerId}/live-telemetry/${sensorType}`)
+        : parseTopicPatterns(topicPatternInput),
+    [activeKeys, chargerId, topicMode, topicPatternInput]
+  );
+
+  const chargerServiceCount = useMemo(() => {
+    if (!chargerId) return activeServices.length;
+    return activeServices.filter(
+      (service) => extractChargerIdFromContainer(service.container_name) === chargerId
+    ).length;
+  }, [activeServices, chargerId]);
 
   useEffect(() => {
     if (!chargerId) return;
@@ -756,10 +783,7 @@ const Monitoring: React.FC = () => {
     }
 
     try {
-      const mqttTopics =
-        topicMode === "selected_sensors"
-          ? activeKeys.map((sensorType) => `charger/${chargerId}/live-telemetry/${sensorType}`)
-          : parseTopicPatterns(topicPatternInput);
+      const mqttTopics = effectiveTopics;
 
       if (mqttTopics.length === 0) {
         alert("Please select at least one sensor or provide at least one topic pattern.");
@@ -817,318 +841,345 @@ const Monitoring: React.FC = () => {
   return (
     <>
       <NavigationBar />
-      <MonitoringSectionCard
-        title={<>Monitoring for the Charger {chargerId}</>}
-        cardClassName={MONITORING_TALL_CARD_CLASS}
-        titleClassName="ml-5"
-      >
-              <div className="flex items-start gap-6">
-                {/* Left Side */}
-                <div className="flex flex-col w-2/5">
-                  <label className="text-sm font-semibold mt-4 mb-2">Topic Input Mode</label>
-                  <select
-                    className={FORM_CONTROL_CLASS}
-                    value={topicMode}
-                    onChange={(e) => setTopicMode(e.target.value as "selected_sensors" | "direct_patterns")}
-                  >
-                    <option value="selected_sensors">Build from selected sensors</option>
-                    <option value="direct_patterns">Use direct topic patterns</option>
-                  </select>
+      <PageShell>
+        <PageHeader
+          eyebrow="Monitoring Cockpit"
+          title={`Charger ${chargerId}`}
+          description="Configure anomaly detection topics, model parameters, active services, and recent findings without leaving the charger context."
+        />
 
-                  {topicMode === "selected_sensors" ? (
-                    <>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button className={`w-30 mb-5 mr-3 mt-4 ${PRIMARY_ACTION_BUTTON_CLASS} cursor-pointer`}>
-                            Sensor types
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent className="w-56">
-                          <DropdownMenuLabel>Sensors</DropdownMenuLabel>
-                          <DropdownMenuSeparator />
-                          {monitoringKeys.map((key) => (
-                            <DropdownMenuCheckboxItem
-                              key={key}
-                              checked={visibleMap[key]}
-                              onCheckedChange={() =>
-                                setVisibleMap((prev) => ({
-                                  ...prev,
-                                  [key]: !prev[key],
-                                }))
-                              }
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              {key}
-                            </DropdownMenuCheckboxItem>
-                          ))}
-                        </DropdownMenuContent>
-                      </DropdownMenu>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
+          <MetricCard label="Sensors" value={monitoringKeys.length} helper="Available telemetry types" />
+          <MetricCard label="Topics" value={effectiveTopics.length} helper="Effective MQTT subscriptions" tone="info" />
+          <MetricCard label="Services" value={chargerServiceCount} helper="Active for this charger" tone={chargerServiceCount > 0 ? "success" : "default"} />
+          <MetricCard label="Anomalies" value={anomalies.length} helper="Recently loaded detections" tone={anomalies.length > 0 ? "warning" : "default"} />
+        </div>
 
-                      <div className="mt-6">
-                        <h2 className="text-lg font-bold mb-2">
-                          Picked values for the Anomaly Detection:
-                        </h2>
-                        <ul className="list-disc list-inside space-y-1">
-                          {activeKeys.map((key) => (
-                            <li key={key} className="ml-2">
-                              {key}
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    </>
-                  ) : (
-                    <div className="mt-4 space-y-3">
-                      <label className="text-sm font-semibold">Topic Patterns</label>
-                      <textarea
-                        className={`${FORM_CONTROL_CLASS} min-h-36`}
-                        value={topicPatternInput}
-                        onChange={(e) => setTopicPatternInput(e.target.value)}
-                        placeholder="One topic per line or comma-separated. Supports MQTT wildcards + and #."
-                      />
-                      <div className="flex gap-2">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          onClick={() => setTopicPatternInput("#")}
+        <MonitoringSectionCard
+          title="Detection Setup"
+          description="Build the topic set and model configuration used when starting a monitoring service."
+          actions={
+            <Button onClick={submitAnomalyDetection}>
+              <Send className="h-4 w-4" />
+              Start Monitoring
+            </Button>
+          }
+        >
+          <div className="grid gap-6 lg:grid-cols-2">
+            <div className="space-y-5">
+              <div className="space-y-2">
+                <label className="text-sm font-semibold">Topic Input Mode</label>
+                <select
+                  className={FORM_CONTROL_CLASS}
+                  value={topicMode}
+                  onChange={(e) => setTopicMode(e.target.value as "selected_sensors" | "direct_patterns")}
+                >
+                  <option value="selected_sensors">Build from selected sensors</option>
+                  <option value="direct_patterns">Use direct topic patterns</option>
+                </select>
+              </div>
+
+              {topicMode === "selected_sensors" ? (
+                <div className="space-y-4">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" disabled={monitoringKeys.length === 0}>
+                        Sensor types
+                        <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
+                          {activeKeys.length} selected
+                        </span>
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent className="max-h-80 w-64 overflow-y-auto">
+                      <DropdownMenuLabel>Sensors</DropdownMenuLabel>
+                      <DropdownMenuSeparator />
+                      {monitoringKeys.map((key) => (
+                        <DropdownMenuCheckboxItem
+                          key={key}
+                          checked={visibleMap[key]}
+                          onCheckedChange={() =>
+                            setVisibleMap((prev) => ({
+                              ...prev,
+                              [key]: !prev[key],
+                            }))
+                          }
+                          onClick={(e) => e.stopPropagation()}
                         >
-                          Use all topics (#)
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          onClick={() => setTopicPatternInput(`charger/${chargerId}/live-telemetry/#`)}
-                        >
-                          Charger wildcard
-                        </Button>
-                      </div>
-                      <p className="text-xs text-gray-500">
-                        Parsed topics: {parseTopicPatterns(topicPatternInput).join(", ") || "none"}
-                      </p>
-                    </div>
-                  )}
-
-                  <div className="mt-6">
-                    <h2 className="text-lg font-bold mb-2">
-                      Effective Topics:
-                    </h2>
-                    <ul className="list-disc list-inside space-y-1">
-                      {(topicMode === "selected_sensors"
-                        ? activeKeys.map((sensorType) => `charger/${chargerId}/live-telemetry/${sensorType}`)
-                        : parseTopicPatterns(topicPatternInput)
-                      ).map((topic, index) => (
-                        <li key={`${topic}-${index}`} className="ml-2">
-                          {topic}
-                        </li>
+                          {key}
+                        </DropdownMenuCheckboxItem>
                       ))}
-                    </ul>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+
+                  <div className="rounded-lg border bg-muted/30 p-4">
+                    <h2 className="text-sm font-semibold">Picked values for the Anomaly Detection:</h2>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {activeKeys.length > 0 ? (
+                        activeKeys.map((key) => (
+                          <span key={key} className="rounded-full bg-background px-2.5 py-1 text-xs font-medium">
+                            {key}
+                          </span>
+                        ))
+                      ) : (
+                        <span className="text-sm text-muted-foreground">No sensors selected.</span>
+                      )}
+                    </div>
                   </div>
                 </div>
-                <div className="h-80 border-l border-gray-300 ml-4 mr-4"></div>
-                <div className="flex flex-col w-2/5">
-                  <label className="text-sm font-semibold mt-4 mb-2">Algorithm</label>
-                  <select
-                    className={FORM_CONTROL_CLASS}
-                    value={selectedAlgorithm || ""}
-                    onChange={(e) => handleModelSelect(e.target.value)}
-                    disabled={isLoadingModels}
-                  >
-                    <option value="" disabled>
-                      {isLoadingModels ? "Loading models..." : "Select algorithm"}
-                    </option>
-                    {Object.keys(availableModels).map((key) => (
-                      <option key={key} value={key}>
-                        {key}
-                      </option>
-                    ))}
-                  </select>
-
-                  <div className="mt-10">
-                    <h2 className="text-lg font-bold mb-2">
-                      Picked Algorithm:
-                    </h2>
-                    <p>{selectedAlgorithm || "None selected"}</p>
-                  </div>
-
-                  {selectedAlgorithm && (
-                    <div className="mt-6 space-y-3">
-                      <h3 className="text-md font-semibold">Parameters</h3>
-                      {Object.entries(availableModels[selectedAlgorithm]?.parameters?.properties || {}).length === 0 && (
-                        <p className="text-sm text-gray-500">No parameters for this model.</p>
-                      )}
-                      {Object.entries(availableModels[selectedAlgorithm]?.parameters?.properties || {}).map(
-                        ([key, schema]) => (
-                          <div key={key} className="flex flex-col">
-                            <label className="text-sm font-medium mb-1">
-                              {key}
-                              {schema?.description ? (
-                                <span className="text-xs text-gray-500 ml-1">({schema.description})</span>
-                              ) : null}
-                            </label>
-                            <input
-                              type={getInputType(schema?.type)}
-                              className={FORM_CONTROL_CLASS}
-                              checked={
-                                schema?.type === "boolean"
-                                  ? Boolean(modelParams[key])
-                                  : undefined
-                              }
-                              value={
-                                schema?.type === "boolean"
-                                  ? undefined
-                                  : getTextInputValue(modelParams[key])
-                              }
-                              onChange={(e) =>
-                                handleParamChange(
-                                  key,
-                                  schema?.type === "boolean"
-                                    ? e.target.checked
-                                    : e.target.value,
-                                  schema?.type
-                                )
-                              }
-                              min={schema?.minimum}
-                              max={schema?.maximum}
-                              step="any"
-                            />
-                          </div>
-                        )
-                      )}
-                    </div>
-                  )}
-
-                  <div className="mt-8 space-y-3">
-                    <h3 className="text-md font-semibold">Detection Heuristics</h3>
-                    <label className="flex items-center gap-2 text-sm">
-                      <input
-                        type="checkbox"
-                        checked={performanceConfig.heuristic_enabled}
-                        onChange={(event) =>
-                          setPerformanceConfig((prev) => ({
-                            ...prev,
-                            heuristic_enabled: event.target.checked,
-                          }))
-                        }
-                      />
-                      Enable trailing-reference tail trigger
-                    </label>
-                    <div className="flex flex-col">
-                      <label className="text-sm font-medium mb-1">Window Size</label>
-                      <input
-                        type="number"
-                        min={3}
-                        className={FORM_CONTROL_CLASS}
-                        value={performanceConfig.heuristic_window_size}
-                        onChange={(event) =>
-                          handlePerformanceNumberChange(
-                            "heuristic_window_size",
-                            event.target.value
-                          )
-                        }
-                      />
-                    </div>
-                    <div className="flex flex-col">
-                      <label className="text-sm font-medium mb-1">Min Samples</label>
-                      <input
-                        type="number"
-                        min={2}
-                        className={FORM_CONTROL_CLASS}
-                        value={performanceConfig.heuristic_min_samples}
-                        onChange={(event) =>
-                          handlePerformanceNumberChange(
-                            "heuristic_min_samples",
-                            event.target.value
-                          )
-                        }
-                      />
-                    </div>
-                    <div className="flex flex-col">
-                      <label className="text-sm font-medium mb-1">Tail Alpha</label>
-                      <input
-                        type="number"
-                        min={0.0001}
-                        max={0.9999}
-                        step="0.0001"
-                        className={FORM_CONTROL_CLASS}
-                        value={performanceConfig.heuristic_tail_alpha}
-                        onChange={(event) =>
-                          handlePerformanceNumberChange(
-                            "heuristic_tail_alpha",
-                            event.target.value
-                          )
-                        }
-                      />
-                    </div>
-                    <div className="flex flex-col">
-                      <label className="text-sm font-medium mb-1">Sensor Strategy</label>
-                      <select
-                        className={FORM_CONTROL_CLASS}
-                        value={performanceConfig.sensor_key_strategy}
-                        onChange={(event) =>
-                          setPerformanceConfig((prev) => ({
-                            ...prev,
-                            sensor_key_strategy: event.target.value as SensorKeyStrategy,
-                          }))
-                        }
-                      >
-                        <option value="full_hierarchy">full_hierarchy</option>
-                        <option value="top_level">top_level</option>
-                        <option value="leaf">leaf</option>
-                      </select>
-                    </div>
-                    <div className="flex flex-col">
-                      <label className="text-sm font-medium mb-1">Sensor Freshness (s)</label>
-                      <input
-                        type="number"
-                        min={1}
-                        step="1"
-                        className={FORM_CONTROL_CLASS}
-                        value={performanceConfig.sensor_freshness_seconds}
-                        onChange={(event) =>
-                          handlePerformanceNumberChange(
-                            "sensor_freshness_seconds",
-                            event.target.value
-                          )
-                        }
-                      />
-                    </div>
-                  </div>
-
-                  <PreprocessingSection
-                    steps={preprocessingSteps}
-                    availablePreprocessors={availablePreprocessors}
-                    newPreprocessorType={newPreprocessorType}
-                    isLoading={isLoadingPreprocessors}
-                    onSelectType={setNewPreprocessorType}
-                    onAdd={handleAddPreprocessor}
-                    onParamChange={handlePreprocessorParamChange}
-                    onMoveUp={handleMovePreprocessorUp}
-                    onMoveDown={handleMovePreprocessorDown}
-                    onRemove={handleRemovePreprocessor}
+              ) : (
+                <div className="space-y-3">
+                  <label className="text-sm font-semibold">Topic Patterns</label>
+                  <textarea
+                    className={`${FORM_CONTROL_CLASS} min-h-36`}
+                    value={topicPatternInput}
+                    onChange={(e) => setTopicPatternInput(e.target.value)}
+                    placeholder="One topic per line or comma-separated. Supports MQTT wildcards + and #."
                   />
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setTopicPatternInput("#")}
+                    >
+                      Use all topics (#)
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setTopicPatternInput(`charger/${chargerId}/live-telemetry/#`)}
+                    >
+                      Charger wildcard
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Parsed topics: {parseTopicPatterns(topicPatternInput).join(", ") || "none"}
+                  </p>
+                </div>
+              )}
+
+              <div className="rounded-lg border bg-muted/30 p-4">
+                <h2 className="text-sm font-semibold">Effective Topics:</h2>
+                <div className="mt-3 max-h-56 space-y-2 overflow-y-auto">
+                  {effectiveTopics.length > 0 ? (
+                    effectiveTopics.map((topic, index) => (
+                      <div
+                        key={`${topic}-${index}`}
+                        className="truncate rounded-md bg-background px-3 py-2 font-mono text-xs"
+                        title={topic}
+                      >
+                        {topic}
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-sm text-muted-foreground">No effective topics yet.</p>
+                  )}
                 </div>
               </div>
-              <Button
-                className={`w-30 mt-4 ${PRIMARY_ACTION_BUTTON_CLASS} cursor-pointer`}
-                onClick={submitAnomalyDetection}
-              >
-                Send
-              </Button>
-      </MonitoringSectionCard>
+            </div>
 
-      <ActiveServicesSection
-        services={activeServices}
-        isLoading={isLoadingServices}
-        chargerId={chargerId}
-        onDelete={deleteService}
-      />
+            <div className="space-y-6">
+              <div className="space-y-2">
+                <label className="text-sm font-semibold">Algorithm</label>
+                <select
+                  className={FORM_CONTROL_CLASS}
+                  value={selectedAlgorithm || ""}
+                  onChange={(e) => handleModelSelect(e.target.value)}
+                  disabled={isLoadingModels}
+                >
+                  <option value="" disabled>
+                    {isLoadingModels ? "Loading models..." : "Select algorithm"}
+                  </option>
+                  {Object.keys(availableModels).map((key) => (
+                    <option key={key} value={key}>
+                      {key}
+                    </option>
+                  ))}
+                </select>
+              </div>
 
-      <AnomaliesSection
-        anomalies={anomalies}
-        isLoading={isLoadingAnomalies}
-        chargerId={chargerId}
-        onRefresh={loadAnomalies}
-      />
+              <div className="rounded-lg border bg-muted/30 p-4">
+                <h2 className="text-sm font-semibold">Picked Algorithm:</h2>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  {selectedAlgorithm || "None selected"}
+                </p>
+              </div>
+
+              {selectedAlgorithm && (
+                <div className="space-y-3">
+                  <h3 className="text-sm font-semibold">Parameters</h3>
+                  {Object.entries(availableModels[selectedAlgorithm]?.parameters?.properties || {}).length === 0 && (
+                    <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">No parameters for this model.</p>
+                  )}
+                  {Object.entries(availableModels[selectedAlgorithm]?.parameters?.properties || {}).map(
+                    ([key, schema]) => (
+                      <div key={key} className="flex flex-col">
+                        <label className="mb-1 text-sm font-medium">
+                          {key}
+                          {schema?.description ? (
+                            <span className="ml-1 text-xs text-muted-foreground">({schema.description})</span>
+                          ) : null}
+                        </label>
+                        <input
+                          type={getInputType(schema?.type)}
+                          className={FORM_CONTROL_CLASS}
+                          checked={
+                            schema?.type === "boolean"
+                              ? Boolean(modelParams[key])
+                              : undefined
+                          }
+                          value={
+                            schema?.type === "boolean"
+                              ? undefined
+                              : getTextInputValue(modelParams[key])
+                          }
+                          onChange={(e) =>
+                            handleParamChange(
+                              key,
+                              schema?.type === "boolean"
+                                ? e.target.checked
+                                : e.target.value,
+                              schema?.type
+                            )
+                          }
+                          min={schema?.minimum}
+                          max={schema?.maximum}
+                          step="any"
+                        />
+                      </div>
+                    )
+                  )}
+                </div>
+              )}
+
+              <div className="space-y-3">
+                <h3 className="text-sm font-semibold">Detection Heuristics</h3>
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={performanceConfig.heuristic_enabled}
+                    onChange={(event) =>
+                      setPerformanceConfig((prev) => ({
+                        ...prev,
+                        heuristic_enabled: event.target.checked,
+                      }))
+                    }
+                  />
+                  Enable trailing-reference tail trigger
+                </label>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="flex flex-col">
+                    <label className="mb-1 text-sm font-medium">Window Size</label>
+                    <input
+                      type="number"
+                      min={3}
+                      className={FORM_CONTROL_CLASS}
+                      value={performanceConfig.heuristic_window_size}
+                      onChange={(event) =>
+                        handlePerformanceNumberChange(
+                          "heuristic_window_size",
+                          event.target.value
+                        )
+                      }
+                    />
+                  </div>
+                  <div className="flex flex-col">
+                    <label className="mb-1 text-sm font-medium">Min Samples</label>
+                    <input
+                      type="number"
+                      min={2}
+                      className={FORM_CONTROL_CLASS}
+                      value={performanceConfig.heuristic_min_samples}
+                      onChange={(event) =>
+                        handlePerformanceNumberChange(
+                          "heuristic_min_samples",
+                          event.target.value
+                        )
+                      }
+                    />
+                  </div>
+                  <div className="flex flex-col">
+                    <label className="mb-1 text-sm font-medium">Tail Alpha</label>
+                    <input
+                      type="number"
+                      min={0.0001}
+                      max={0.9999}
+                      step="0.0001"
+                      className={FORM_CONTROL_CLASS}
+                      value={performanceConfig.heuristic_tail_alpha}
+                      onChange={(event) =>
+                        handlePerformanceNumberChange(
+                          "heuristic_tail_alpha",
+                          event.target.value
+                        )
+                      }
+                    />
+                  </div>
+                  <div className="flex flex-col">
+                    <label className="mb-1 text-sm font-medium">Sensor Freshness (s)</label>
+                    <input
+                      type="number"
+                      min={1}
+                      step="1"
+                      className={FORM_CONTROL_CLASS}
+                      value={performanceConfig.sensor_freshness_seconds}
+                      onChange={(event) =>
+                        handlePerformanceNumberChange(
+                          "sensor_freshness_seconds",
+                          event.target.value
+                        )
+                      }
+                    />
+                  </div>
+                </div>
+                <div className="flex flex-col">
+                  <label className="mb-1 text-sm font-medium">Sensor Strategy</label>
+                  <select
+                    className={FORM_CONTROL_CLASS}
+                    value={performanceConfig.sensor_key_strategy}
+                    onChange={(event) =>
+                      setPerformanceConfig((prev) => ({
+                        ...prev,
+                        sensor_key_strategy: event.target.value as SensorKeyStrategy,
+                      }))
+                    }
+                  >
+                    <option value="full_hierarchy">full_hierarchy</option>
+                    <option value="top_level">top_level</option>
+                    <option value="leaf">leaf</option>
+                  </select>
+                </div>
+              </div>
+
+              <PreprocessingSection
+                steps={preprocessingSteps}
+                availablePreprocessors={availablePreprocessors}
+                newPreprocessorType={newPreprocessorType}
+                isLoading={isLoadingPreprocessors}
+                onSelectType={setNewPreprocessorType}
+                onAdd={handleAddPreprocessor}
+                onParamChange={handlePreprocessorParamChange}
+                onMoveUp={handleMovePreprocessorUp}
+                onMoveDown={handleMovePreprocessorDown}
+                onRemove={handleRemovePreprocessor}
+              />
+            </div>
+          </div>
+        </MonitoringSectionCard>
+
+        <ActiveServicesSection
+          services={activeServices}
+          isLoading={isLoadingServices}
+          chargerId={chargerId}
+          onDelete={deleteService}
+        />
+
+        <AnomaliesSection
+          anomalies={anomalies}
+          isLoading={isLoadingAnomalies}
+          chargerId={chargerId}
+          onRefresh={loadAnomalies}
+        />
+      </PageShell>
     </>
   );
 };

@@ -25,7 +25,7 @@ class UserService:
         self._session = session
         self._repository = repository
 
-    async def authenticate(self, *, email: str, password: str) -> dict[str, str]:
+    async def authenticate(self, *, email: str, password: str) -> dict[str, object]:
         user = await self._repository.get_by_email(email=email)
         if user is None:
             raise AuthenticationError("Invalid credentials")
@@ -46,7 +46,7 @@ class UserService:
             raise AuthenticationError("Email not verified")
 
         role = user.role.value if hasattr(user.role, "value") else str(user.role)
-        return {"email": user.email, "role": role}
+        return {"id": user.id, "email": user.email, "role": role}
 
     async def get_by_email(self, *, email: str) -> dict[str, object]:
         user = await self._repository.get_by_email(email=email)

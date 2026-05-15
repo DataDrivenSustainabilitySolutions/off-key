@@ -18,6 +18,10 @@ vi.mock("../dataFetch/UseFetch", () => ({
   }),
 }));
 
+vi.mock("../auth/AuthContext", () => ({
+  useAuth: () => ({ userId: 7 }),
+}));
+
 vi.mock("../components/NavigationBar", () => ({
   NavigationBar: () => <div data-testid="navigation-bar" />,
 }));
@@ -73,5 +77,6 @@ describe("Favourites", () => {
     expect(await screen.findByText(/charger id/i)).toBeTruthy();
     expect(screen.getByText("CH-001")).toBeTruthy();
     expect(screen.queryByText("CH-002")).toBeNull();
+    expect(mockGetFavorites).toHaveBeenCalledWith(7);
   });
 });

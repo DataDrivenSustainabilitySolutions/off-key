@@ -1,44 +1,113 @@
-import { useCallback, useContext, useEffect, useRef, useState } from "react";
+import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import {
+  AlertTriangle,
+  Home,
+  LogIn,
+  LogOut,
+  Menu,
+  Star,
+  UserCircle,
+} from "lucide-react";
+
+import { useAuth } from "@/auth/AuthContext";
+import { FetchContext } from "@/dataFetch/FetchContext";
+import { clientLogger } from "@/lib/logger";
+import { cn } from "@/lib/utils";
 import {
   NavigationMenu,
   NavigationMenuItem,
   NavigationMenuList,
 } from "@/components/ui/navigation-menu";
-import { Sheet, SheetTrigger } from "@/components/ui/sheet";
-import { buttonVariants } from "./ui/button";
-import { Menu } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "./ui/dropdown-menu";
-import { Button } from "./ui/button";
-import { useAuth } from "@/auth/AuthContext";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+} from "@/components/ui/dropdown-menu";
+import { Button } from "@/components/ui/button";
+import {
+  Sheet,
+  SheetClose,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { ModeToggle } from "./mode-toggle";
-import { FetchContext } from "@/dataFetch/FetchContext";
-import { clientLogger } from "@/lib/logger";
 
-interface RouteProps {
+type NavItem = {
   href: string;
   label: string;
+  icon: React.ComponentType<{ className?: string }>;
+};
+
+const primaryNavItems: NavItem[] = [
+  { href: "/", label: "Dashboard", icon: Home },
+  { href: "/favourites", label: "Favorites", icon: Star },
+  { href: "/anomalies", label: "Anomalies", icon: AlertTriangle },
+];
+
+const isActivePath = (pathname: string, href: string) =>
+  href === "/" ? pathname === "/" : pathname.startsWith(href);
+
+type NavLinkProps = {
+  item: NavItem;
+  active: boolean;
+  badge?: number;
+  onClick?: () => void;
+  compact?: boolean;
+};
+
+function NavLinkItem({ item, active, badge, onClick, compact = false }: NavLinkProps) {
+  const Icon = item.icon;
+
+  const link = (
+    <Link
+      to={item.href}
+      onClick={onClick}
+      className={cn(
+        "relative inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground",
+        active && "bg-accent text-accent-foreground",
+        compact && "w-full justify-start"
+      )}
+      aria-current={active ? "page" : undefined}
+    >
+      <Icon className="h-4 w-4" />
+      {!compact ? <span className="hidden lg:inline">{item.label}</span> : item.label}
+      {badge && badge > 0 ? (
+        <span className="ml-1 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-destructive px-1.5 text-[10px] font-semibold leading-none text-destructive-foreground">
+          {badge > 99 ? "99+" : badge}
+        </span>
+      ) : null}
+    </Link>
+  );
+
+  if (compact) {
+    return link;
+  }
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{link}</TooltipTrigger>
+      <TooltipContent>{item.label}</TooltipContent>
+    </Tooltip>
+  );
 }
 
-const routeList: RouteProps[] = [];
-
 export const NavigationBar = () => {
-  const [isOpen, setIsOpen] = useState<boolean>(false);
+  const [isOpen, setIsOpen] = useState(false);
   const { isAuthenticated, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const [message, setMessage] = useState<string>("");
-  const [anomalyCount, setAnomalyCount] = useState<number>(0);
+  const [message, setMessage] = useState("");
+  const [anomalyCount, setAnomalyCount] = useState(0);
   const fetchContext = useContext(FetchContext);
   const getAnomalyCount = fetchContext?.getAnomalyCount;
   const refreshInFlightRef = useRef(false);
@@ -53,7 +122,7 @@ export const NavigationBar = () => {
   const handleLogout = () => {
     logout();
     setMessage("Logout erfolgreich.");
-    setTimeout(() => {
+    window.setTimeout(() => {
       navigate("/login");
     }, 1500);
   };
@@ -72,7 +141,8 @@ export const NavigationBar = () => {
     refreshInFlightRef.current = true;
 
     try {
-      const lastSeen = localStorage.getItem("off-key:last-seen-anomalies") ?? undefined;
+      const lastSeen =
+        localStorage.getItem("off-key:last-seen-anomalies") ?? undefined;
       const total = await getAnomalyCount(lastSeen);
       if (isMountedRef.current) {
         setAnomalyCount(total);
@@ -127,156 +197,115 @@ export const NavigationBar = () => {
     };
   }, [refreshAnomalyCount]);
 
+  const navItems = useMemo(
+    () =>
+      primaryNavItems.map((item) => ({
+        ...item,
+        active: isActivePath(location.pathname, item.href),
+        badge: item.href === "/anomalies" ? anomalyCount : undefined,
+      })),
+    [anomalyCount, location.pathname]
+  );
+
   return (
-    <header className="sticky border-b-[1px] top-0 z-40 w-full bg-white dark:border-b-slate-700 dark:bg-background">
-      {message && (
-        <div className="bg-green-100 text-green-800 p-2 text-center">
+    <header className="sticky top-0 z-40 w-full border-b border-border/80 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/85">
+      {message ? (
+        <div className="border-b border-emerald-200 bg-emerald-50 px-4 py-2 text-center text-sm font-medium text-emerald-800 dark:border-emerald-900/70 dark:bg-emerald-950/30 dark:text-emerald-200">
           {message}
         </div>
-      )}
-      <NavigationMenu className="w-full flex">
-        <NavigationMenuList className="h-14 px-4 w-full flex items-center justify-start space-x-10">
-
-          {/* Logo */}
-          <NavigationMenuItem className="font-bold flex">
+      ) : null}
+      <NavigationMenu className="w-full">
+        <NavigationMenuList className="mx-auto flex h-14 w-full max-w-7xl items-center gap-2 px-4 sm:px-6 lg:px-8">
+          <NavigationMenuItem className="mr-2 flex shrink-0">
             <Link
               to="/"
               rel="noreferrer noopener"
-              className="ml-2 font-bold text-xl flex"
+              className="flex items-center gap-2 rounded-md px-2 py-1.5 text-base font-semibold tracking-normal"
             >
-              off/key
+              <span className="flex size-7 items-center justify-center rounded-md bg-primary text-sm font-bold text-primary-foreground">
+                ok
+              </span>
+              <span>off/key</span>
             </Link>
           </NavigationMenuItem>
 
-          {/* Home */}
-          <NavigationMenuItem>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Link to="/" className="flex items-center">
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none"
-                    viewBox="0 0 24 24" strokeWidth={1.5}
-                    stroke="currentColor" className="size-6">
-                    <path strokeLinecap="round" strokeLinejoin="round"
-                      d="m2.25 12 8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25" />
-                  </svg>
-                </Link>
-              </TooltipTrigger>
-              <TooltipContent>Home</TooltipContent>
-            </Tooltip>
-          </NavigationMenuItem>
+          <nav className="hidden items-center gap-1 md:flex">
+            {navItems.map((item) => (
+              <NavigationMenuItem key={item.href}>
+                <NavLinkItem
+                  item={item}
+                  active={item.active}
+                  badge={item.badge}
+                />
+              </NavigationMenuItem>
+            ))}
+          </nav>
 
-          {/* Favourites */}
-          <NavigationMenuItem>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Link to="/favourites" className="flex items-center">
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none"
-                    viewBox="0 0 24 24" strokeWidth={1.5}
-                    stroke="currentColor" className="size-6">
-                    <path strokeLinecap="round" strokeLinejoin="round"
-                      d="M11.48 3.499a.562.562 0 0 1 1.04 0l2.125 5.111a.563.563 0 0 0 .475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 0 0-.182.557l1.285 5.385a.562.562 0 0 1-.84.61l-4.725-2.885a.562.562 0 0 0-.586 0L6.982 20.54a.562.562 0 0 1-.84-.61l1.285-5.386a.562.562 0 0 0-.182-.557l-4.204-3.602a.562.562 0 0 1 .321-.988l5.518-.442a.563.563 0 0 0 .475-.345L11.48 3.5Z" />
-                  </svg>
-                </Link>
-              </TooltipTrigger>
-              <TooltipContent>Favorites</TooltipContent>
-            </Tooltip>
-          </NavigationMenuItem>
-
-          {/* Anomalies */}
-          <NavigationMenuItem>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Link to="/anomalies" className="relative flex items-center">
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none"
-                    viewBox="0 0 24 24" strokeWidth={1.5}
-                    stroke="currentColor" className="size-6">
-                    <path strokeLinecap="round" strokeLinejoin="round"
-                      d="M3 3v1.5M3 21v-6m0 0 2.77-.693a9 9 0 0 1 6.208.682l.108.054a9 9 0 0 0 6.086.71l3.114-.732a48.524 48.524 0 0 1-.005-10.499l-3.11.732a9 9 0 0 1-6.085-.711l-.108-.054a9 9 0 0 0-6.208-.682L3 4.5M3 15V4.5" />
-                  </svg>
-                  {anomalyCount > 0 && (
-                    <span className="absolute -top-2 -right-3 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-bold leading-none text-white">
-                      {anomalyCount > 99 ? "99+" : anomalyCount}
-                    </span>
-                  )}
-                </Link>
-              </TooltipTrigger>
-              <TooltipContent>Anomalies</TooltipContent>
-            </Tooltip>
-          </NavigationMenuItem>
-
-          {/* Theme + User */}
-          <NavigationMenuItem className="ml-auto flex items-center gap-4">
-            {/* Theme Toggle */}
+          <NavigationMenuItem className="ml-auto flex items-center gap-2">
             <ModeToggle />
 
-            {/* User */}
             {isAuthenticated ? (
               <DropdownMenu>
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <DropdownMenuTrigger asChild>
-                      <button className="flex items-center justify-center cursor-pointer">
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none"
-                          viewBox="0 0 24 24" strokeWidth={1.5}
-                          stroke="currentColor" className="size-6">
-                          <path strokeLinecap="round" strokeLinejoin="round"
-                            d="M17.982 18.725A7.488 7.488 0 0 0 12 15.75a7.488 7.488 0 0 0-5.982 2.975m11.963 0a9 9 0 1 0-11.963 0m11.963 0A8.966 8.966 0 0 1 12 21a8.966 8.966 0 0 1-5.982-2.275M15 9.75a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
-                        </svg>
-                      </button>
+                      <Button variant="ghost" size="icon" aria-label="User menu">
+                        <UserCircle className="h-5 w-5" />
+                      </Button>
                     </DropdownMenuTrigger>
                   </TooltipTrigger>
                   <TooltipContent>User Menu</TooltipContent>
                 </Tooltip>
 
-                <DropdownMenuContent>
+                <DropdownMenuContent align="end">
                   <DropdownMenuItem
                     onClick={() => navigate("/account")}
-                    className="flex items-center gap-2 cursor-pointer"
+                    className="cursor-pointer"
                   >
+                    <UserCircle className="h-4 w-4" />
                     Mein Account
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={handleLogout}>
+                  <DropdownMenuItem onClick={handleLogout} className="cursor-pointer">
+                    <LogOut className="h-4 w-4" />
                     Logout
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
             ) : (
-              <Link to="/login">
-                <Button className="bg-black">Login</Button>
-              </Link>
+              <Button asChild size="sm">
+                <Link to="/login">
+                  <LogIn className="h-4 w-4" />
+                  Login
+                </Link>
+              </Button>
             )}
-          </NavigationMenuItem>
 
-          {/* Mobile Menu */}
-          <span className="flex md:hidden">
             <Sheet open={isOpen} onOpenChange={setIsOpen}>
-              <SheetTrigger className="px-2">
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Menu
-                      className="flex md:hidden h-5 w-5"
-                      onClick={() => setIsOpen(true)}
-                    />
-                  </TooltipTrigger>
-                  <TooltipContent>Menü</TooltipContent>
-                </Tooltip>
+              <SheetTrigger asChild>
+                <Button variant="ghost" size="icon" className="md:hidden" aria-label="Open menu">
+                  <Menu className="h-5 w-5" />
+                </Button>
               </SheetTrigger>
+              <SheetContent side="left" className="w-80">
+                <SheetHeader>
+                  <SheetTitle>off/key</SheetTitle>
+                  <SheetDescription>Navigation</SheetDescription>
+                </SheetHeader>
+                <nav className="flex flex-col gap-1 px-4">
+                  {navItems.map((item) => (
+                    <SheetClose asChild key={item.href}>
+                      <NavLinkItem
+                        item={item}
+                        active={item.active}
+                        badge={item.badge}
+                        compact
+                      />
+                    </SheetClose>
+                  ))}
+                </nav>
+              </SheetContent>
             </Sheet>
-          </span>
-
-          {/* Desktop Navigation (optional) */}
-          <nav className="hidden md:flex gap-2">
-            {routeList.map((route: RouteProps, i) => (
-              <a
-                rel="noreferrer noopener"
-                href={route.href}
-                key={i}
-                className={`text-[17px] ${buttonVariants({ variant: "ghost" })}`}
-              >
-                {route.label}
-              </a>
-            ))}
-          </nav>
+          </NavigationMenuItem>
         </NavigationMenuList>
       </NavigationMenu>
     </header>

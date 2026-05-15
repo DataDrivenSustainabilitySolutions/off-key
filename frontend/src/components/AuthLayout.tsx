@@ -5,12 +5,13 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { AuthBackdrop } from "@/components/AuthBackdrop";
 import { cn } from "@/lib/utils";
 
 export const AUTH_LABEL_CLASS = "mb-1 block text-sm";
 
 export const AUTH_SUBMIT_BUTTON_CLASS =
-  "w-full bg-gradient-to-r from-slate-400 to-slate-300 text-white font-semibold rounded-full transition-all duration-200 hover:bg-gradient-to-r hover:from-slate-500 hover:to-slate-400 hover:scale-105 cursor-pointer";
+  "w-full rounded-full bg-primary text-primary-foreground font-semibold transition-all duration-200 hover:bg-primary/90 hover:scale-[1.01] cursor-pointer";
 
 interface AuthLayoutProps {
   title: string;
@@ -28,7 +29,7 @@ export function AuthLayout({
   const { className: titleClassName, ...restTitleProps } = titleProps ?? {};
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-100 px-4">
+    <AuthBackdrop contentClassName="max-w-md">
       <Card className="w-full max-w-md p-6">
         <CardHeader>
           <CardTitle
@@ -40,6 +41,6 @@ export function AuthLayout({
         </CardHeader>
         <CardContent className={contentClassName}>{children}</CardContent>
       </Card>
-    </div>
+    </AuthBackdrop>
   );
 }

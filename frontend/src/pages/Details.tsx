@@ -1,6 +1,12 @@
-import { Card, CardContent, CardTitle } from "@/components/ui/card";
 import { useState, useEffect, useMemo } from "react";
 import { Link, useParams } from "react-router-dom";
+import { Activity } from "lucide-react";
+
+import {
+  MetricCard,
+  PageHeader,
+  PageShell,
+} from "@/components/DashboardLayout";
 import { NavigationBar } from "@/components/NavigationBar";
 import { useFetch } from "@/dataFetch/UseFetch";
 import { ChartSkeleton, NoDataFound } from "@/components/LoadingStates";
@@ -8,6 +14,7 @@ import DynamicTelemetryChart from "@/components/DynamicTelemetryChart";
 import { Button } from "@/components/ui/button";
 import { INTERVALS } from "@/lib/constants";
 import { clientLogger } from "@/lib/logger";
+import { cn } from "@/lib/utils";
 import {
   Tooltip,
   TooltipContent,
@@ -19,6 +26,53 @@ type TelemetryCategoryGroups = Record<
   TelemetryTypeData["category"],
   TelemetryTypeData[]
 >;
+
+const RECENT_TELEMETRY_WINDOW_MS = INTERVALS.DETAILS_UPDATE * 6;
+
+const getLatestTelemetryTimestamp = (
+  telemetryData: TelemetryTypeData[]
+): number | undefined => {
+  const timestamps = telemetryData
+    .flatMap((telemetry) => telemetry.data.map((point) => Date.parse(point.timestamp)))
+    .filter((timestamp) => Number.isFinite(timestamp));
+
+  if (timestamps.length === 0) {
+    return undefined;
+  }
+
+  return Math.max(...timestamps);
+};
+
+const LiveTelemetryIndicator: React.FC<{
+  hasRecentTelemetry: boolean;
+  hasTelemetry: boolean;
+}> = ({ hasRecentTelemetry, hasTelemetry }) => {
+  const label = hasRecentTelemetry
+    ? "Live telemetry"
+    : hasTelemetry
+      ? "Telemetry ready"
+      : "Waiting for telemetry";
+
+  return (
+    <div
+      className="inline-flex h-9 items-center gap-2 rounded-md border border-border bg-card px-3 text-sm text-muted-foreground shadow-xs"
+      aria-label={label}
+      title={label}
+    >
+      <span
+        className={cn(
+          "size-2.5 rounded-full",
+          hasRecentTelemetry
+            ? "live-pulse-ring bg-emerald-500"
+            : hasTelemetry
+              ? "bg-amber-400"
+              : "bg-muted-foreground/50"
+        )}
+      />
+      <span className="whitespace-nowrap">{label}</span>
+    </div>
+  );
+};
 
 const Details: React.FC = () => {
   const { chargerId } = useParams<{ chargerId: string }>();
@@ -76,6 +130,18 @@ const Details: React.FC = () => {
     [allTelemetryMap, resolvedChargerId]
   );
   const chargerAnomalies = anomaliesMap[resolvedChargerId] ?? [];
+  const latestTelemetryTimestamp = useMemo(
+    () => getLatestTelemetryTimestamp(allTelemetryData),
+    [allTelemetryData]
+  );
+  const latestTelemetryAgeMs =
+    latestTelemetryTimestamp === undefined
+      ? undefined
+      : Date.now() - latestTelemetryTimestamp;
+  const hasRecentTelemetry =
+    latestTelemetryAgeMs !== undefined &&
+    latestTelemetryAgeMs >= 0 &&
+    latestTelemetryAgeMs <= RECENT_TELEMETRY_WINDOW_MS;
 
   // Group telemetry data by category for better organization
   const telemetryByCategory = useMemo(() => {
@@ -99,108 +165,143 @@ const Details: React.FC = () => {
   return (
     <>
       <NavigationBar />
-      <div className="flex mt-5">
-        <Card className="ml-16 bg-white shadow-md w-11/12 min-h-11/12 dark:bg-neutral-950">
-          <CardTitle className="ml-5">Charger {chargerId}</CardTitle>
-          <CardContent>
-            <Link to={`/monitoring/${chargerId}`}>
+      <PageShell>
+        <PageHeader
+          eyebrow="Charger Detail"
+          title={`Charger ${chargerId}`}
+          description="Review telemetry streams, recent anomaly overlays, and operational monitoring setup."
+          actions={
+            <>
+              <LiveTelemetryIndicator
+                hasRecentTelemetry={hasRecentTelemetry}
+                hasTelemetry={latestTelemetryTimestamp !== undefined}
+              />
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button className="mb-5 mr-3 float-right bg-indigo-800 hover:bg-indigo-700 cursor-pointer">
-                    Monitoring
+                  <Button asChild>
+                    <Link to={`/monitoring/${chargerId}`}>
+                      <Activity className="h-4 w-4" />
+                      Monitoring
+                    </Link>
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent side="top" align="center">
                   Open Live Monitoring
                 </TooltipContent>
               </Tooltip>
-            </Link>
+            </>
+          }
+        />
 
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <MetricCard
+            label="Telemetry Series"
+            value={allTelemetryData.length}
+            helper="Available chart streams"
+          />
+          <MetricCard
+            label="Anomalies"
+            value={chargerAnomalies.length}
+            helper="Loaded for this charger"
+            tone={chargerAnomalies.length > 0 ? "warning" : "default"}
+          />
+          <MetricCard
+            label="Categories"
+            value={
+              Object.values(telemetryByCategory).filter((group) => group.length > 0)
+                .length
+            }
+            helper="With current data"
+            tone="info"
+          />
+        </div>
 
-            {/* Future: Add summary cards here if needed */}
+        <section className="space-y-5">
+          <div>
+            <h2 className="text-lg font-semibold">Telemetry</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Charts update automatically while this page is open.
+            </p>
+          </div>
 
-            {/* Dynamic Telemetry Charts */}
-            {isLoadingTelemetry ? (
-              <div className="space-y-4">
-                <ChartSkeleton />
-                <ChartSkeleton />
-              </div>
-            ) : allTelemetryData.length === 0 ? (
-              <div className="h-80">
-                <NoDataFound
-                  message="No telemetry data available for this charger"
-                  onRefresh={() => {
-                    setIsLoadingTelemetry(true);
-                    loadAllTelemetryTypes(resolvedChargerId).finally(() => setIsLoadingTelemetry(false));
-                  }}
-                />
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {/* CPU Category Charts */}
-                {telemetryByCategory.cpu.length > 0 && (
-                  <div className="space-y-4">
-                    <h3 className="text-lg font-semibold text-gray-700 dark:text-gray-300 mb-2">CPU Metrics</h3>
-                    {telemetryByCategory.cpu.map((telemetryData) => (
-                      <DynamicTelemetryChart
-                        key={telemetryData.type}
-                        telemetryData={telemetryData}
-                        chargerId={resolvedChargerId}
-                        anomalies={chargerAnomalies}
-                      />
-                    ))}
-                  </div>
-                )}
+          {isLoadingTelemetry ? (
+            <div className="space-y-4">
+              <ChartSkeleton />
+              <ChartSkeleton />
+            </div>
+          ) : allTelemetryData.length === 0 ? (
+            <div className="h-80">
+              <NoDataFound
+                message="No telemetry data available for this charger"
+                onRefresh={() => {
+                  setIsLoadingTelemetry(true);
+                  loadAllTelemetryTypes(resolvedChargerId).finally(() =>
+                    setIsLoadingTelemetry(false)
+                  );
+                }}
+              />
+            </div>
+          ) : (
+            <div className="space-y-6">
+              {telemetryByCategory.cpu.length > 0 && (
+                <div className="space-y-4">
+                  <h3 className="text-base font-semibold text-muted-foreground">CPU Metrics</h3>
+                  {telemetryByCategory.cpu.map((telemetryData) => (
+                    <DynamicTelemetryChart
+                      key={telemetryData.type}
+                      telemetryData={telemetryData}
+                      chargerId={resolvedChargerId}
+                      anomalies={chargerAnomalies}
+                    />
+                  ))}
+                </div>
+              )}
 
-                {/* System Category Charts */}
-                {telemetryByCategory.system.length > 0 && (
-                  <div className="space-y-4">
-                    <h3 className="text-lg font-semibold text-gray-700 dark:text-gray-300 mb-2">System Metrics</h3>
-                    {telemetryByCategory.system.map((telemetryData) => (
-                      <DynamicTelemetryChart
-                        key={telemetryData.type}
-                        telemetryData={telemetryData}
-                        chargerId={resolvedChargerId}
-                        anomalies={chargerAnomalies}
-                      />
-                    ))}
-                  </div>
-                )}
+              {telemetryByCategory.system.length > 0 && (
+                <div className="space-y-4">
+                  <h3 className="text-base font-semibold text-muted-foreground">System Metrics</h3>
+                  {telemetryByCategory.system.map((telemetryData) => (
+                    <DynamicTelemetryChart
+                      key={telemetryData.type}
+                      telemetryData={telemetryData}
+                      chargerId={resolvedChargerId}
+                      anomalies={chargerAnomalies}
+                    />
+                  ))}
+                </div>
+              )}
 
-                {/* Controller Category Charts */}
-                {telemetryByCategory.controller.length > 0 && (
-                  <div className="space-y-4">
-                    <h3 className="text-lg font-semibold text-gray-700 dark:text-gray-300 mb-2">Controller Metrics</h3>
-                    {telemetryByCategory.controller.map((telemetryData) => (
-                      <DynamicTelemetryChart
-                        key={telemetryData.type}
-                        telemetryData={telemetryData}
-                        chargerId={resolvedChargerId}
-                        anomalies={chargerAnomalies}
-                      />
-                    ))}
-                  </div>
-                )}
+              {telemetryByCategory.controller.length > 0 && (
+                <div className="space-y-4">
+                  <h3 className="text-base font-semibold text-muted-foreground">Controller Metrics</h3>
+                  {telemetryByCategory.controller.map((telemetryData) => (
+                    <DynamicTelemetryChart
+                      key={telemetryData.type}
+                      telemetryData={telemetryData}
+                      chargerId={resolvedChargerId}
+                      anomalies={chargerAnomalies}
+                    />
+                  ))}
+                </div>
+              )}
 
-                {/* Other Category Charts */}
-                {telemetryByCategory.other.length > 0 && (
-                  <div className="space-y-4">
-                    <h3 className="text-lg font-semibold text-gray-700 dark:text-gray-300 mb-2">Other Metrics</h3>
-                    {telemetryByCategory.other.map((telemetryData) => (
-                      <DynamicTelemetryChart
-                        key={telemetryData.type}
-                        telemetryData={telemetryData}
-                        chargerId={resolvedChargerId}
-                        anomalies={chargerAnomalies}
-                      />
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-          </CardContent>
-        </Card >
-      </div >
+              {telemetryByCategory.other.length > 0 && (
+                <div className="space-y-4">
+                  <h3 className="text-base font-semibold text-muted-foreground">Other Metrics</h3>
+                  {telemetryByCategory.other.map((telemetryData) => (
+                    <DynamicTelemetryChart
+                      key={telemetryData.type}
+                      telemetryData={telemetryData}
+                      chargerId={resolvedChargerId}
+                      anomalies={chargerAnomalies}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </section>
+      </PageShell>
     </>
   );
 };

@@ -23,6 +23,55 @@ from ...facades.tactic import TacticError, tactic
 router = APIRouter()
 
 
+def _parse_user_id(value: object) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str) and value.isdigit():
+        return int(value)
+    return None
+
+
+async def _resolve_authenticated_user_id(
+    authenticated_user: dict[str, object],
+) -> int:
+    user_id = _parse_user_id(authenticated_user.get("id"))
+    if user_id is not None:
+        return user_id
+
+    user_id = _parse_user_id(authenticated_user.get("user_id"))
+    if user_id is not None:
+        return user_id
+
+    email = authenticated_user.get("email")
+    if not isinstance(email, str) or not email:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Authentication service response did not include a user email",
+        )
+
+    try:
+        user_record = await tactic.get_user_by_email(email)
+    except TacticError as e:
+        _raise_tactic_http_error(e)
+
+    if not user_record:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Authentication service could not resolve the user profile",
+        )
+
+    user_id = _parse_user_id(user_record.get("id"))
+    if user_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Authentication service response did not include a user id",
+        )
+
+    return user_id
+
+
 def _get_tactic_error_detail(error: TacticError) -> str:
     """Extract API detail from TACTIC error body when available."""
     if isinstance(error.body, dict):
@@ -117,7 +166,13 @@ async def login(user: UserLogin):
             )
         _raise_tactic_http_error(e)
 
-    access_token = create_jwt({"sub": authenticated_user["email"]})
+    user_id = await _resolve_authenticated_user_id(authenticated_user)
+    access_token = create_jwt(
+        {
+            "sub": authenticated_user["email"],
+            "user_id": user_id,
+        }
+    )
 
     safe_email = redact_email(authenticated_user["email"])
     logger.info("event=auth.user_logged_in email=%s", safe_email)
@@ -127,7 +182,11 @@ async def login(user: UserLogin):
         {"role": authenticated_user["role"]},
     )
 
-    return {"access_token": access_token, "token_type": "bearer"}
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "user_id": user_id,
+    }
 
 
 @router.get("/verify-email")

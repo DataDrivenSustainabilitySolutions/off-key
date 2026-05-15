@@ -10,6 +10,7 @@ from dotenv import load_dotenv
 from pathlib import Path
 
 from off_key_core.config.validation import validate_environment as _validate_environment
+from off_key_core.schemas.radar import StaticBaselineConfig
 
 SENSOR_KEY_STRATEGIES = {"full_hierarchy", "top_level", "leaf"}
 # strict_barrier is the only implemented alignment mode. It enforces that all
@@ -53,9 +54,13 @@ class AnomalyDetectionConfig(BaseModel):
 
     model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
+    strategy: str = "adaptive_stream"
     model_type: str = "isolation_forest"  # isolation_forest, adaptive_svm, knn
     model_params: Dict[str, Any] = Field(default_factory=dict)
     preprocessing_steps: List[Dict[str, Any]] = Field(default_factory=list)
+    static_baseline_config: StaticBaselineConfig = Field(
+        default_factory=StaticBaselineConfig
+    )
     subscription_topics: List[str] = Field(default_factory=list)
     sensor_key_strategy: str = "full_hierarchy"
     sensor_freshness_seconds: float = Field(default=30.0, gt=0.0)
@@ -84,6 +89,16 @@ class AnomalyDetectionConfig(BaseModel):
     def validate_sensor_key_strategy(cls, value: str) -> str:
         """Validate sensor key strategy for model schema consistency."""
         return _normalize_sensor_key_strategy(value, "sensor_key_strategy")
+
+    @field_validator("strategy")
+    @classmethod
+    def validate_strategy(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if normalized not in {"static_baseline", "adaptive_stream"}:
+            raise ValueError(
+                "strategy must be one of: adaptive_stream, static_baseline"
+            )
+        return normalized
 
     @field_validator("alignment_mode")
     @classmethod
@@ -210,9 +225,13 @@ class MQTTRadarConfig(BaseModel):
     memory_limit_mb: int = 1000
 
     # Anomaly Detection
+    strategy: str = "adaptive_stream"
     model_type: str = "isolation_forest"
     model_params: Dict[str, Any] = Field(default_factory=dict)
     preprocessing_steps: List[Dict[str, Any]] = Field(default_factory=list)
+    static_baseline_config: StaticBaselineConfig = Field(
+        default_factory=StaticBaselineConfig
+    )
     thresholds: Dict[str, float] = Field(
         default_factory=lambda: {"medium": 0.6, "high": 0.8, "critical": 0.9}
     )
@@ -229,6 +248,16 @@ class MQTTRadarConfig(BaseModel):
     def validate_sensor_key_strategy(cls, value: str) -> str:
         """Validate feature-key strategy used by topic parsing."""
         return _normalize_sensor_key_strategy(value, "sensor_key_strategy")
+
+    @field_validator("strategy")
+    @classmethod
+    def validate_strategy(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if normalized not in {"static_baseline", "adaptive_stream"}:
+            raise ValueError(
+                "strategy must be one of: adaptive_stream, static_baseline"
+            )
+        return normalized
 
     @field_validator("alignment_mode")
     @classmethod
@@ -278,9 +307,12 @@ class RadarSettings(BaseSettings):
     RADAR_DB_BATCH_TIMEOUT: float = 2.0
 
     # Anomaly Detection
+    RADAR_MONITORING_STRATEGY: str = "adaptive_stream"
     RADAR_MODEL_TYPE: str = "isolation_forest"
     RADAR_MODEL_PARAMS: Dict[str, Any] = Field(default_factory=dict)
     RADAR_PREPROCESSING_STEPS: List[Dict[str, Any]] = Field(default_factory=list)
+    RADAR_STATIC_BASELINE_CONFIG: Dict[str, Any] = Field(default_factory=dict)
+    RADAR_ADAPTIVE_STREAM_CONFIG: Dict[str, Any] = Field(default_factory=dict)
     RADAR_ANOMALY_THRESHOLD_MEDIUM: float = 0.6
     RADAR_ANOMALY_THRESHOLD_HIGH: float = 0.8
     RADAR_ANOMALY_THRESHOLD_CRITICAL: float = 0.9
@@ -324,6 +356,17 @@ class RadarSettings(BaseSettings):
     def validate_alignment_mode(cls, value: str) -> str:
         """Validate alignment mode from environment."""
         return _normalize_alignment_mode(value, "RADAR_ALIGNMENT_MODE")
+
+    @field_validator("RADAR_MONITORING_STRATEGY")
+    @classmethod
+    def validate_monitoring_strategy(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if normalized not in {"static_baseline", "adaptive_stream"}:
+            raise ValueError(
+                "RADAR_MONITORING_STRATEGY must be one of: "
+                "adaptive_stream, static_baseline"
+            )
+        return normalized
 
     @field_validator("ENVIRONMENT")
     @classmethod
@@ -376,8 +419,20 @@ class RadarSettings(BaseSettings):
             log_level=self.RADAR_LOG_LEVEL,
             rate_limit_per_minute=self.RADAR_RATE_LIMIT_PER_MINUTE,
             memory_limit_mb=self.RADAR_MEMORY_LIMIT_MB,
+            strategy=self.RADAR_MONITORING_STRATEGY,
             model_type=self.RADAR_MODEL_TYPE,
             model_params=self.RADAR_MODEL_PARAMS,
+            static_baseline_config=StaticBaselineConfig(
+                **{
+                    **self.RADAR_STATIC_BASELINE_CONFIG,
+                    "model_type": self.RADAR_STATIC_BASELINE_CONFIG.get(
+                        "model_type", self.RADAR_MODEL_TYPE
+                    ),
+                    "model_params": self.RADAR_STATIC_BASELINE_CONFIG.get(
+                        "model_params", self.RADAR_MODEL_PARAMS
+                    ),
+                }
+            ),
             thresholds={
                 "medium": self.RADAR_ANOMALY_THRESHOLD_MEDIUM,
                 "high": self.RADAR_ANOMALY_THRESHOLD_HIGH,

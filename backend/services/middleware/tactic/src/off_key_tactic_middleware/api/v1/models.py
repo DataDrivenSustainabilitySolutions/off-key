@@ -6,11 +6,12 @@ Provides REST API for managing model registry and model instances.
 
 import logging
 from typing import Any, Dict, List, Optional
-from fastapi import APIRouter, HTTPException, Depends, Response, status
+from fastapi import APIRouter, HTTPException, Depends, Query, Response, status
 from pydantic import BaseModel, Field
 
 from ...models.registry import ModelRegistryService
 from ...provider import get_model_registry_service
+from off_key_core.schemas.radar import MonitoringStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +31,10 @@ class ModelInfo(BaseModel):
     description: Optional[str] = Field(None, description="Model description")
     complexity: Optional[str] = Field(None, description="Computational complexity")
     memory_usage: Optional[str] = Field(None, description="Memory usage level")
+    strategy: MonitoringStrategy = Field(
+        default="adaptive_stream",
+        description="Monitoring strategy this model supports",
+    )
     import_paths: List[str] = Field(..., description="Python import paths to try")
     parameter_schema: Dict[str, Any] = Field(
         ..., description="JSON schema for parameters"
@@ -94,6 +99,7 @@ class ModelValidationResponse(BaseModel):
 
 @router.get("/", response_model=List[ModelInfo])
 async def list_models(
+    strategy: Optional[MonitoringStrategy] = Query(default=None),
     model_registry: ModelRegistryService = Depends(get_model_registry_service),
 ) -> List[ModelInfo]:
     """
@@ -104,6 +110,8 @@ async def list_models(
     """
     try:
         models = model_registry.get_available_models()
+        if strategy:
+            models = [model for model in models if model.get("strategy") == strategy]
         return [ModelInfo(**model) for model in models]
     except Exception as e:
         logger.error(f"Failed to list models: {e}")

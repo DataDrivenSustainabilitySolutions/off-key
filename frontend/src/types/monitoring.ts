@@ -5,6 +5,8 @@
  */
 
 // Parameter schema from model/preprocessor registry
+export type MonitoringStrategy = 'static_baseline' | 'adaptive_stream';
+
 export interface ParameterSchema {
   type: 'string' | 'number' | 'integer' | 'boolean' | 'array' | 'object';
   description?: string;
@@ -21,6 +23,7 @@ export interface ModelDefinition {
     required?: string[];
   };
   description?: string;
+  strategy?: MonitoringStrategy;
 }
 
 // Preprocessor definition from registry API
@@ -40,6 +43,8 @@ export interface ActiveService {
   mqtt_topics: string[];
   status: boolean;
   docker_status?: string;
+  monitoring_strategy?: MonitoringStrategy;
+  model_type?: string;
   created_at?: string;
 }
 
@@ -50,14 +55,49 @@ export interface PreprocessingStepConfig {
   params: Record<string, string | number | boolean>;
 }
 
+export interface MonitoringPerformanceConfig {
+  heuristic_enabled?: boolean;
+  heuristic_window_size?: number;
+  heuristic_min_samples?: number;
+  heuristic_tail_alpha?: number;
+  alignment_mode: 'strict_barrier';
+  sensor_key_strategy: 'full_hierarchy' | 'top_level' | 'leaf';
+  sensor_freshness_seconds: number;
+}
+
+export interface StaticBaselineRequestConfig {
+  model_type: string;
+  model_params: Record<string, string | number | boolean>;
+  training_window_size: number;
+  calibration_fraction: number;
+  conformal_strategy: 'split';
+  fdr_config: {
+    method: 'saffron';
+    alpha: number;
+    wealth: number;
+    lambda_: number;
+  };
+}
+
+export interface AdaptiveStreamRequestConfig {
+  model_type: string;
+  model_params: Record<string, string | number | boolean>;
+  preprocessing_steps: PreprocessingStepConfig[];
+  performance_config: MonitoringPerformanceConfig;
+}
+
 // Anomaly detection request payload
 export interface AnomalyDetectionRequest {
   container_name: string;
   service_type: 'radar';
   mqtt_topics: string[];
+  strategy: MonitoringStrategy;
   model_type: string;
   model_params: Record<string, string | number | boolean>;
   preprocessing_steps: PreprocessingStepConfig[];
+  performance_config: MonitoringPerformanceConfig;
+  static_baseline_config?: StaticBaselineRequestConfig;
+  adaptive_stream_config?: AdaptiveStreamRequestConfig;
 }
 
 // Model parameters (cleaned for API submission)

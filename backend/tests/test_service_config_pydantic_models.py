@@ -3,6 +3,7 @@ from pydantic import ValidationError
 
 from off_key_mqtt_proxy.config.config import MQTTConfig, MQTTSettings
 from off_key_mqtt_radar.config.config import MQTTRadarConfig, RadarSettings
+from off_key_core.schemas.radar import FdrConfig, StaticBaselineConfig
 
 
 def _base_mqtt_config() -> dict:
@@ -91,6 +92,41 @@ def test_radar_settings_parse_sensor_freshness_seconds(monkeypatch):
     settings = RadarSettings()
 
     assert settings.config.sensor_freshness_seconds == 12.5
+
+
+def test_radar_settings_parse_static_baseline_strategy(monkeypatch):
+    monkeypatch.setenv("RADAR_MONITORING_STRATEGY", "static_baseline")
+    monkeypatch.setenv("RADAR_MODEL_TYPE", "pyod_iforest")
+    monkeypatch.setenv("RADAR_MODEL_PARAMS", '{"n_estimators": 128}')
+    monkeypatch.setenv(
+        "RADAR_STATIC_BASELINE_CONFIG",
+        """
+        {
+          "model_type": "pyod_iforest",
+          "model_params": {"n_estimators": 128},
+          "training_window_size": 240,
+          "calibration_fraction": 0.25,
+          "fdr_config": {
+            "method": "saffron",
+            "alpha": 0.05,
+            "wealth": 0.025,
+            "lambda_": 0.5
+          }
+        }
+        """,
+    )
+
+    cfg = RadarSettings().config
+
+    assert cfg.strategy == "static_baseline"
+    assert cfg.model_type == "pyod_iforest"
+    assert cfg.static_baseline_config.training_window_size == 240
+    assert cfg.static_baseline_config.fdr_config.lambda_ == 0.5
+
+
+def test_static_baseline_fdr_requires_wealth_below_alpha():
+    with pytest.raises(ValidationError, match="wealth must be less than alpha"):
+        StaticBaselineConfig(fdr_config=FdrConfig(alpha=0.05, wealth=0.05, lambda_=0.5))
 
 
 def test_radar_settings_require_secure_mqtt_in_production(monkeypatch):

@@ -64,7 +64,7 @@ export interface Anomaly {
   // 'tail_pvalue': anomaly_value is a tail probability (0–1, lower = more severe).
   // 'zscore': anomaly_value is a z-score (legacy rows, higher = more severe).
   // null: predates this field.
-  value_type: 'tail_pvalue' | 'zscore' | null;
+  value_type: 'tail_pvalue' | 'conformal_pvalue' | 'zscore' | null;
 }
 
 // Status filter options

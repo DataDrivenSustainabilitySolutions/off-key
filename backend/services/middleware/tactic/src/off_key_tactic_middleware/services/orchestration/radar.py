@@ -12,6 +12,7 @@ from sqlalchemy import select, delete
 
 from off_key_core.config.logs import logger
 from off_key_core.db.models import MonitoringService
+from off_key_core.schemas.radar import AdaptiveStreamConfig, StaticBaselineConfig
 from ...models.registry import ModelRegistryService
 from ...facades.docker import AsyncDocker, get_workload_docker_status
 from ...config.config import (
@@ -109,12 +110,15 @@ class RadarOrchestrationService:
         self,
         container_name: str,
         mqtt_topics: List[str],
+        strategy: str = "adaptive_stream",
         model_type: str = "isolation_forest",
         model_params: Optional[Dict[str, Any]] = None,
         preprocessing_steps: Optional[List[Dict[str, Any]]] = None,
         mqtt_config: Optional[Dict[str, Any]] = None,
         anomaly_thresholds: Optional[Dict[str, float]] = None,
         performance_config: Optional[Dict[str, Any]] = None,
+        static_baseline_config: Optional[Dict[str, Any]] = None,
+        adaptive_stream_config: Optional[Dict[str, Any]] = None,
     ) -> MonitoringService:
         """
         Create and start a RADAR Docker service for anomaly detection.
@@ -122,12 +126,15 @@ class RadarOrchestrationService:
         Args:
             container_name (str): Name for the Docker container
             mqtt_topics (List[str]): List of MQTT topics to monitor
+            strategy (str): Monitoring strategy selected by the user
             model_type (str): Type of ML model (isolation_forest, adaptive_svm, knn)
             model_params (Dict, optional): Model-specific parameters
             preprocessing_steps (List[Dict], optional): Preprocessing pipeline steps
             mqtt_config (Dict, optional): MQTT connection configuration
             anomaly_thresholds (Dict, optional): Anomaly detection thresholds
             performance_config (Dict, optional): Performance and resource settings
+            static_baseline_config (Dict, optional): Static conformal settings
+            adaptive_stream_config (Dict, optional): Adaptive stream settings
 
         Returns:
             MonitoringService: The created monitoring service database entry
@@ -152,12 +159,15 @@ class RadarOrchestrationService:
         env_vars = self._build_radar_environment(
             service_id=db_service_id,
             mqtt_topics=mqtt_topics,
+            strategy=strategy,
             model_type=model_type,
             model_params=model_params or {},
             preprocessing_steps=preprocessing_steps or [],
             mqtt_config=mqtt_config or {},
             anomaly_thresholds=anomaly_thresholds or {},
             performance_config=performance_config or {},
+            static_baseline_config=static_baseline_config or {},
+            adaptive_stream_config=adaptive_stream_config or {},
         )
 
         # Create the RADAR workload (Swarm service when available, otherwise container)
@@ -195,12 +205,15 @@ class RadarOrchestrationService:
         self,
         service_id: str,
         mqtt_topics: List[str],
+        strategy: str,
         model_type: str,
         model_params: Dict[str, Any],
         preprocessing_steps: List[Dict[str, Any]],
         mqtt_config: Dict[str, Any],
         anomaly_thresholds: Dict[str, float],
         performance_config: Dict[str, Any],
+        static_baseline_config: Dict[str, Any],
+        adaptive_stream_config: Dict[str, Any],
     ) -> Dict[str, str]:
         """
         Build environment variables for RADAR service based on configuration.
@@ -211,9 +224,52 @@ class RadarOrchestrationService:
         # Get RADAR defaults from configuration
         defaults = get_tactic_settings().config.radar_defaults
         runtime = get_radar_container_runtime_settings()
+        strategy = (strategy or "adaptive_stream").strip().lower()
+        if strategy not in {"static_baseline", "adaptive_stream"}:
+            raise ValueError(
+                "Invalid monitoring strategy. Expected static_baseline or "
+                "adaptive_stream."
+            )
+
+        if strategy == "static_baseline":
+            static_config = StaticBaselineConfig(
+                **{
+                    **static_baseline_config,
+                    "model_type": static_baseline_config.get(
+                        "model_type", model_type or "pyod_iforest"
+                    ),
+                    "model_params": static_baseline_config.get(
+                        "model_params", model_params or {}
+                    ),
+                }
+            )
+            model_type = static_config.model_type
+            model_params = static_config.model_params
+            preprocessing_steps = []
+            static_baseline_config = static_config.model_dump(exclude_none=True)
+        else:
+            adaptive_config = AdaptiveStreamConfig(
+                **{
+                    **adaptive_stream_config,
+                    "model_type": adaptive_stream_config.get(
+                        "model_type", model_type or defaults.model_type
+                    ),
+                    "model_params": adaptive_stream_config.get(
+                        "model_params", model_params or {}
+                    ),
+                    "preprocessing_steps": adaptive_stream_config.get(
+                        "preprocessing_steps", preprocessing_steps or []
+                    ),
+                }
+            )
+            model_type = adaptive_config.model_type
+            model_params = adaptive_config.model_params
+            preprocessing_steps = adaptive_config.preprocessing_steps
+            adaptive_stream_config = adaptive_config.model_dump(exclude_none=True)
 
         env_vars = {
             "SERVICE_ID": service_id,
+            "RADAR_MONITORING_STRATEGY": strategy,
             # TACTIC connectivity for model-registry calls from RADAR containers
             "RADAR_TACTIC_SERVICE_HOST": runtime.TACTIC_SERVICE_HOST,
             "RADAR_TACTIC_SERVICE_PORT": str(runtime.TACTIC_SERVICE_PORT),
@@ -243,6 +299,8 @@ class RadarOrchestrationService:
             "RADAR_SUBSCRIPTION_QOS": str(mqtt_config.get("qos", defaults.mqtt_qos)),
             # Model Configuration
             "RADAR_MODEL_TYPE": model_type or defaults.model_type,
+            "RADAR_STATIC_BASELINE_CONFIG": json.dumps(static_baseline_config),
+            "RADAR_ADAPTIVE_STREAM_CONFIG": json.dumps(adaptive_stream_config),
             # Anomaly Thresholds
             "RADAR_ANOMALY_THRESHOLD_MEDIUM": str(
                 anomaly_thresholds.get("medium", defaults.anomaly_threshold_medium)
@@ -457,6 +515,10 @@ class RadarOrchestrationService:
             "env": get_radar_container_runtime_settings().ENVIRONMENT,
             "service_type": "radar",
             "managed_by": "tactic",
+            "monitoring_strategy": environment.get(
+                "RADAR_MONITORING_STRATEGY", "adaptive_stream"
+            ),
+            "radar_model_type": environment.get("RADAR_MODEL_TYPE", ""),
         }
 
         service_kwargs = {
@@ -502,6 +564,10 @@ class RadarOrchestrationService:
             "env": get_radar_container_runtime_settings().ENVIRONMENT,
             "service_type": "radar",
             "managed_by": "tactic",
+            "monitoring_strategy": environment.get(
+                "RADAR_MONITORING_STRATEGY", "adaptive_stream"
+            ),
+            "radar_model_type": environment.get("RADAR_MODEL_TYPE", ""),
         }
 
         restart_policy: Dict[str, Any] = {
@@ -722,6 +788,32 @@ class RadarOrchestrationService:
         """Check actual Docker workload status (Swarm service or container)."""
         return await get_workload_docker_status(self.async_docker, container_id)
 
+    async def _get_workload_labels(self, container_id: str) -> Dict[str, str]:
+        """Read labels from the RADAR Swarm service or fallback container."""
+        if not container_id:
+            return {}
+        try:
+            try:
+                docker_service = await self.async_docker.run(
+                    self.async_docker.client.services.get, container_id
+                )
+                attrs = getattr(docker_service, "attrs", {}) or {}
+                labels = attrs.get("Spec", {}).get("Labels", {}) or {}
+                return {str(key): str(value) for key, value in labels.items()}
+            except docker.errors.NotFound:
+                docker_container = await self.async_docker.run(
+                    self.async_docker.client.containers.get, container_id
+                )
+                await self.async_docker.run(docker_container.reload)
+                attrs = getattr(docker_container, "attrs", {}) or {}
+                labels = attrs.get("Config", {}).get("Labels", {}) or {}
+                return {str(key): str(value) for key, value in labels.items()}
+        except docker.errors.NotFound:
+            return {}
+        except Exception as exc:
+            logger.debug("Error reading Docker labels for %s: %s", container_id, exc)
+            return {}
+
     async def list_radar_services(
         self, active_only: bool = False, include_docker_status: bool = False
     ) -> List[Dict[str, Any]]:
@@ -761,6 +853,12 @@ class RadarOrchestrationService:
                 service_dict["docker_status"] = await self._get_docker_status(
                     service.container_id
                 )
+                labels = await self._get_workload_labels(service.container_id)
+                if labels:
+                    service_dict["monitoring_strategy"] = labels.get(
+                        "monitoring_strategy"
+                    )
+                    service_dict["model_type"] = labels.get("radar_model_type")
 
             service_list.append(service_dict)
 
@@ -794,6 +892,7 @@ class RadarOrchestrationService:
 
         # Check actual workload status in Docker
         docker_service_status = await self._get_docker_status(service.container_id)
+        labels = await self._get_workload_labels(service.container_id)
 
         return {
             "id": service.id,
@@ -802,6 +901,8 @@ class RadarOrchestrationService:
             "mqtt_topics": service.mqtt_topic,
             "db_status": service.status,
             "docker_status": docker_service_status,
+            "monitoring_strategy": labels.get("monitoring_strategy"),
+            "model_type": labels.get("radar_model_type"),
             "created_at": (
                 service.created_at.isoformat() if service.created_at else None
             ),

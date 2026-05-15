@@ -18,6 +18,7 @@ from datetime import datetime
 from typing import Optional
 
 from off_key_core.config.logs import logger
+from off_key_core.schemas.radar import StaticBaselineConfig
 
 from .config.config import AnomalyDetectionConfig, get_radar_settings
 from .detector import (
@@ -25,6 +26,7 @@ from .detector import (
     ResilientAnomalyDetector,
     MemoryManager,
     SecurityValidator,
+    StaticConformalDetectionService,
 )
 from .mqtt_client import RadarMQTTClient
 from .database import DatabaseWriter, ensure_tables_exist
@@ -191,6 +193,7 @@ class RadarService:
             ("config_watcher", self.config_watcher),
             ("health_monitor", self.health_monitor),
             ("mqtt_client", self.mqtt_client),
+            ("detector", self.detector),
             ("database_writer", self.database_writer),
         ]
 
@@ -232,9 +235,12 @@ class RadarService:
 
         # Create anomaly detection config
         anomaly_config = AnomalyDetectionConfig(
+            strategy=getattr(self.config, "strategy", "adaptive_stream"),
             model_type=getattr(self.config, "model_type", "isolation_forest"),
             model_params=getattr(self.config, "model_params", {}),
             preprocessing_steps=getattr(self.config, "preprocessing_steps", []),
+            static_baseline_config=getattr(self.config, "static_baseline_config", None)
+            or StaticBaselineConfig(),
             subscription_topics=getattr(self.config, "subscription_topics", []),
             sensor_key_strategy=getattr(
                 self.config, "sensor_key_strategy", "full_hierarchy"
@@ -255,13 +261,18 @@ class RadarService:
 
         # Try to restore from checkpoint using extracted manager
         checkpoint_path = self.checkpoint_manager.find_latest_checkpoint()
+        service_cls = (
+            StaticConformalDetectionService
+            if anomaly_config.strategy == "static_baseline"
+            else AnomalyDetectionService
+        )
         if checkpoint_path:
             try:
                 logger.info(
                     f"Found checkpoint, attempting restore: {checkpoint_path}",
                     extra=self._log_context,
                 )
-                primary_service = AnomalyDetectionService.from_checkpoint(
+                primary_service = service_cls.from_checkpoint(
                     checkpoint_path, anomaly_config
                 )
                 logger.info(
@@ -279,16 +290,17 @@ class RadarService:
                     extra=self._log_context,
                     exc_info=True,
                 )
-                primary_service = AnomalyDetectionService(anomaly_config)
+                primary_service = service_cls(anomaly_config)
         else:
             logger.info("No checkpoint found, starting fresh", extra=self._log_context)
-            primary_service = AnomalyDetectionService(anomaly_config)
+            primary_service = service_cls(anomaly_config)
 
         # Create resilient detector (with fallback)
         self.detector = ResilientAnomalyDetector(primary_service)
 
         logger.info(
-            f"Anomaly detection setup complete with model: {anomaly_config.model_type}"
+            "Anomaly detection setup complete with model: "
+            f"{anomaly_config.model_type} strategy={anomaly_config.strategy}"
         )
 
         if self.required_sensors and self.state_cache:

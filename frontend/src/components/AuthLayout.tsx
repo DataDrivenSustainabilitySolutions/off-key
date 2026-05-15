@@ -5,6 +5,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { AuthBackdrop } from "@/components/AuthBackdrop";
 import { cn } from "@/lib/utils";
 
 export const AUTH_LABEL_CLASS = "mb-1 block text-sm";
@@ -28,7 +29,7 @@ export function AuthLayout({
   const { className: titleClassName, ...restTitleProps } = titleProps ?? {};
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background px-4">
+    <AuthBackdrop contentClassName="max-w-md">
       <Card className="w-full max-w-md p-6">
         <CardHeader>
           <CardTitle
@@ -40,6 +41,6 @@ export function AuthLayout({
         </CardHeader>
         <CardContent className={contentClassName}>{children}</CardContent>
       </Card>
-    </div>
+    </AuthBackdrop>
   );
 }

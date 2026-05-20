@@ -24,12 +24,16 @@ import toast from "react-hot-toast";
 import { Activity, ChevronDown, ChevronUp, Database, RefreshCw, Send, Trash2 } from "lucide-react";
 import { getStatusDisplay } from "@/types/monitoring";
 import {
-  formatAnomalyTailProbability,
-  getAnomalyTailProbabilityClassName,
+  formatAnomalyValue,
+  getAnomalyValueClassName,
+  getAnomalyValueLabel,
+  isProbabilityAnomalyValue,
 } from "@/lib/anomaly-semantics";
+import { formatAnomalySensorSet } from "@/lib/anomaly-utils";
 import type { Anomaly } from "@/types/charger";
 import type {
   ActiveService,
+  FdrControlMethod,
   ModelDefinition,
   ModelParams,
   ParameterSchema,
@@ -117,9 +121,11 @@ type StaticBaselineConfigState = {
   model_params: ModelParams;
   training_window_size: number;
   calibration_fraction: number;
+  fdr_method: FdrControlMethod;
   fdr_alpha: number;
   fdr_wealth: number;
   fdr_lambda: number;
+  fdr_cutoff: number;
 };
 
 const DEFAULT_MODEL_TYPE = "knn";
@@ -363,7 +369,7 @@ const ActiveServicesSection: React.FC<{
                             {service.monitoring_strategy === "static_baseline"
                               ? "Static"
                               : service.monitoring_strategy === "adaptive_stream"
-                              ? "Adaptive"
+                              ? "Dynamic"
                               : "Unknown"}
                           </span>
                         </TableCell>
@@ -398,7 +404,7 @@ const ActiveServicesSection: React.FC<{
                             onClick={() => onDelete(service.container_name)}
                           >
                             <Trash2 className="h-4 w-4" />
-                            Delete
+                            Stop
                           </Button>
                         </TableCell>
                       </TableRow>
@@ -445,6 +451,7 @@ const AnomaliesSection: React.FC<{
                   <TableRow className="bg-muted/40 hover:bg-muted/40">
                     <TableHead>Timestamp</TableHead>
                     <TableHead>Telemetry Type</TableHead>
+                    <TableHead>Sensors</TableHead>
                     <TableHead>Anomaly Type</TableHead>
                     <TableHead>p-value</TableHead>
                   </TableRow>
@@ -455,22 +462,38 @@ const AnomaliesSection: React.FC<{
                       <TableCell className="font-medium">{new Date(anomaly.timestamp).toLocaleString()}</TableCell>
                       <TableCell>
                         <span className="px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/35 dark:text-blue-200">
-                          {anomaly.telemetry_type}
+                          {anomaly.telemetry_type === "__multivariate__"
+                            ? "multivariate"
+                            : anomaly.telemetry_type}
                         </span>
+                      </TableCell>
+                      <TableCell
+                        className="max-w-56 truncate text-xs text-muted-foreground"
+                        title={formatAnomalySensorSet(anomaly.sensor_set)}
+                      >
+                        {formatAnomalySensorSet(anomaly.sensor_set)}
                       </TableCell>
                       <TableCell>{anomaly.anomaly_type}</TableCell>
                       <TableCell>
-                        {anomaly.value_type === 'tail_pvalue' || anomaly.value_type === 'conformal_pvalue' ? (
+                        {isProbabilityAnomalyValue(anomaly.value_type) ? (
                           <span
-                            className={`px-2 py-1 rounded-full text-xs font-medium ${getAnomalyTailProbabilityClassName(
-                              anomaly.anomaly_value
+                            className={`px-2 py-1 rounded-full text-xs font-medium ${getAnomalyValueClassName(
+                              anomaly.anomaly_value,
+                              anomaly.value_type
                             )}`}
+                            title={getAnomalyValueLabel(anomaly.value_type)}
                           >
-                            {formatAnomalyTailProbability(anomaly.anomaly_value)}
+                            {formatAnomalyValue(
+                              anomaly.anomaly_value,
+                              anomaly.value_type
+                            )}
                           </span>
                         ) : (
                           <span className="rounded-full bg-muted px-2 py-1 text-xs font-medium text-muted-foreground">
-                            {anomaly.anomaly_value.toFixed(2)} (legacy)
+                            {formatAnomalyValue(
+                              anomaly.anomaly_value,
+                              anomaly.value_type
+                            )} (legacy)
                           </span>
                         )}
                       </TableCell>
@@ -543,12 +566,16 @@ const Monitoring: React.FC = () => {
     useState<StaticBaselineConfigState>({
       model_type: DEFAULT_STATIC_MODEL_TYPE,
       model_params: DEFAULT_STATIC_MODEL_PARAMS,
-      training_window_size: 1000,
+      training_window_size: 1200,
       calibration_fraction: 0.3,
+      fdr_method: "saffron",
       fdr_alpha: 0.05,
       fdr_wealth: 0.025,
       fdr_lambda: 0.5,
+      fdr_cutoff: 0.05,
     });
+  const [showStaticAdvanced, setShowStaticAdvanced] = useState(false);
+  const [showDynamicAdvanced, setShowDynamicAdvanced] = useState(false);
 
   const [activeServices, setActiveServices] = useState<ActiveService[]>([]);
   const [isLoadingServices, setIsLoadingServices] = useState(false);
@@ -643,8 +670,17 @@ const Monitoring: React.FC = () => {
       const modelInfo = availableModels[modelType];
       const properties = modelInfo?.parameters?.properties || {};
       const defaults: ModelParams = {};
+      Object.entries(modelInfo?.default_parameters || {}).forEach(([key, value]) => {
+        if (isConfigValue(value)) {
+          defaults[key] = value;
+        }
+      });
       Object.entries(properties).forEach(([key, schema]) => {
-        if (schema.default !== undefined && isConfigValue(schema.default)) {
+        if (
+          defaults[key] === undefined &&
+          schema.default !== undefined &&
+          isConfigValue(schema.default)
+        ) {
           defaults[key] = schema.default;
         }
       });
@@ -792,7 +828,8 @@ const Monitoring: React.FC = () => {
         | "calibration_fraction"
         | "fdr_alpha"
         | "fdr_wealth"
-        | "fdr_lambda",
+        | "fdr_lambda"
+        | "fdr_cutoff",
       rawValue: string
     ) => {
       const parsed = parseFloat(rawValue);
@@ -835,7 +872,7 @@ const Monitoring: React.FC = () => {
   useEffect(() => {
     if (monitoringKeys.length === 0) return; // if no keys given do nothing
     if (Object.keys(visibleMap).length > 0) return; // if keys already initialised also do nothing
-    setVisibleMap(Object.fromEntries(monitoringKeys.map((k) => [k, false]))); //k = keys, bool = should all be shown per default or not
+    setVisibleMap(Object.fromEntries(monitoringKeys.map((k) => [k, true]))); //k = keys, bool = should all be shown per default or not
   }, [monitoringKeys, visibleMap]);
 
   // Load active services with Docker status
@@ -844,7 +881,7 @@ const Monitoring: React.FC = () => {
       setIsLoadingServices(true);
       // Include Docker status to get actual container state
       const response = await apiUtils.get<ActiveService[]>(
-        `${API_CONFIG.ENDPOINTS.MONITORING.LIST}?include_docker_status=true`
+        `${API_CONFIG.ENDPOINTS.MONITORING.LIST}?active_only=true&include_docker_status=true`
       );
       setActiveServices(response || []);
     } catch (error) {
@@ -873,20 +910,20 @@ const Monitoring: React.FC = () => {
     }
   }, [chargerId]);
 
-  // Delete service
+  // Stop service
   const deleteService = useCallback(async (containerName: string) => {
-    if (!confirm(`Are you sure you want to delete the service "${containerName}"?`)) {
+    if (!confirm(`Stop monitoring service "${containerName}"?`)) {
       return;
     }
 
     try {
       await apiUtils.delete(`${API_CONFIG.ENDPOINTS.MONITORING.STOP}?container_name=${encodeURIComponent(containerName)}`);
-      toast.success(`Service "${containerName}" deleted successfully`);
+      toast.success(`Service "${containerName}" stopped successfully`);
       // Refresh the services list
       await loadActiveServices();
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      toast.error(`Failed to delete service: ${errorMessage}`);
+      toast.error(`Failed to stop service: ${errorMessage}`);
     }
   }, [loadActiveServices]);
 
@@ -936,6 +973,7 @@ const Monitoring: React.FC = () => {
 
       if (
         monitoringStrategy === "static_baseline" &&
+        staticBaselineConfig.fdr_method === "saffron" &&
         staticBaselineConfig.fdr_wealth >= staticBaselineConfig.fdr_alpha
       ) {
         alert("SAFFRON wealth must be less than alpha.");
@@ -1000,12 +1038,18 @@ const Monitoring: React.FC = () => {
                   training_window_size: staticBaselineConfig.training_window_size,
                   calibration_fraction: staticBaselineConfig.calibration_fraction,
                   conformal_strategy: "split",
-                  fdr_config: {
-                    method: "saffron",
-                    alpha: staticBaselineConfig.fdr_alpha,
-                    wealth: staticBaselineConfig.fdr_wealth,
-                    lambda_: staticBaselineConfig.fdr_lambda,
-                  },
+                  fdr_config:
+                    staticBaselineConfig.fdr_method === "saffron"
+                      ? {
+                          method: "saffron",
+                          alpha: staticBaselineConfig.fdr_alpha,
+                          wealth: staticBaselineConfig.fdr_wealth,
+                          lambda_: staticBaselineConfig.fdr_lambda,
+                        }
+                      : {
+                          method: "naive",
+                          cutoff: staticBaselineConfig.fdr_cutoff,
+                        },
                 }
               : undefined,
           adaptive_stream_config:
@@ -1034,9 +1078,9 @@ const Monitoring: React.FC = () => {
       <NavigationBar />
       <PageShell>
         <PageHeader
-          eyebrow="Monitoring Cockpit"
+          eyebrow="Monitoring"
           title={`Charger ${chargerId}`}
-          description="Configure anomaly detection topics, model parameters, active services, and recent findings without leaving the charger context."
+          description="Configure static or dynamic monitoring, inspect active services, and review recent findings for this charger."
         />
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
@@ -1067,7 +1111,7 @@ const Monitoring: React.FC = () => {
               onClick={() => setMonitoringStrategy("static_baseline")}
             >
               <Database className="h-4 w-4" />
-              Static Baseline
+              Static
             </button>
             <button
               type="button"
@@ -1079,7 +1123,7 @@ const Monitoring: React.FC = () => {
               onClick={() => setMonitoringStrategy("adaptive_stream")}
             >
               <Activity className="h-4 w-4" />
-              Adaptive Stream
+              Dynamic
             </button>
           </div>
 
@@ -1128,6 +1172,31 @@ const Monitoring: React.FC = () => {
                       ))}
                     </DropdownMenuContent>
                   </DropdownMenu>
+
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() =>
+                        setVisibleMap(
+                          Object.fromEntries(monitoringKeys.map((key) => [key, true]))
+                        )
+                      }
+                    >
+                      Select all
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() =>
+                        setVisibleMap(
+                          Object.fromEntries(monitoringKeys.map((key) => [key, false]))
+                        )
+                      }
+                    >
+                      Clear
+                    </Button>
+                  </div>
 
                   <div className="rounded-lg border bg-muted/30 p-4">
                     <h2 className="text-sm font-semibold">Picked values for the Anomaly Detection:</h2>
@@ -1259,147 +1328,199 @@ const Monitoring: React.FC = () => {
                   <div className="rounded-lg border bg-muted/30 p-4">
                     <h2 className="text-sm font-semibold">Picked Detector:</h2>
                     <p className="mt-2 text-sm text-muted-foreground">
-                      {staticBaselineConfig.model_type || "None selected"}
+                      {staticModels[staticBaselineConfig.model_type]?.name ||
+                        staticBaselineConfig.model_type ||
+                        "None selected"}
                     </p>
                   </div>
 
-                  {staticBaselineConfig.model_type && (
-                    <div className="space-y-3">
-                      <h3 className="text-sm font-semibold">Detector Parameters</h3>
-                      {Object.entries(staticModels[staticBaselineConfig.model_type]?.parameters?.properties || {}).length === 0 && (
-                        <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">No parameters for this detector.</p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setShowStaticAdvanced((value) => !value)}
+                  >
+                    {showStaticAdvanced ? "Hide configuration" : "Show configuration"}
+                  </Button>
+
+                  {showStaticAdvanced && (
+                    <div className="space-y-6 rounded-lg border bg-muted/30 p-4">
+                      {staticBaselineConfig.model_type && (
+                        <div className="space-y-3">
+                          <h3 className="text-sm font-semibold">Detector Parameters</h3>
+                          {Object.entries(staticModels[staticBaselineConfig.model_type]?.parameters?.properties || {}).length === 0 && (
+                            <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">No parameters for this detector.</p>
+                          )}
+                          {Object.entries(staticModels[staticBaselineConfig.model_type]?.parameters?.properties || {}).map(
+                            ([key, schema]) => (
+                              <div key={key} className="flex flex-col">
+                                <label className="mb-1 text-sm font-medium">
+                                  {key}
+                                  {schema?.description ? (
+                                    <span className="ml-1 text-xs text-muted-foreground">({schema.description})</span>
+                                  ) : null}
+                                </label>
+                                <input
+                                  type={getInputType(schema?.type)}
+                                  className={FORM_CONTROL_CLASS}
+                                  checked={
+                                    schema?.type === "boolean"
+                                      ? Boolean(staticBaselineConfig.model_params[key])
+                                      : undefined
+                                  }
+                                  value={
+                                    schema?.type === "boolean"
+                                      ? undefined
+                                      : getTextInputValue(staticBaselineConfig.model_params[key])
+                                  }
+                                  onChange={(e) =>
+                                    handleStaticParamChange(
+                                      key,
+                                      schema?.type === "boolean"
+                                        ? e.target.checked
+                                        : e.target.value,
+                                      schema?.type
+                                    )
+                                  }
+                                  min={schema?.minimum}
+                                  max={schema?.maximum}
+                                  step="any"
+                                />
+                              </div>
+                            )
+                          )}
+                        </div>
                       )}
-                      {Object.entries(staticModels[staticBaselineConfig.model_type]?.parameters?.properties || {}).map(
-                        ([key, schema]) => (
-                          <div key={key} className="flex flex-col">
-                            <label className="mb-1 text-sm font-medium">
-                              {key}
-                              {schema?.description ? (
-                                <span className="ml-1 text-xs text-muted-foreground">({schema.description})</span>
-                              ) : null}
-                            </label>
+
+                      <div className="space-y-3">
+                        <h3 className="text-sm font-semibold">Training Window</h3>
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <div className="flex flex-col">
+                            <label className="mb-1 text-sm font-medium">Window Size</label>
                             <input
-                              type={getInputType(schema?.type)}
+                              type="number"
+                              min={20}
                               className={FORM_CONTROL_CLASS}
-                              checked={
-                                schema?.type === "boolean"
-                                  ? Boolean(staticBaselineConfig.model_params[key])
-                                  : undefined
-                              }
-                              value={
-                                schema?.type === "boolean"
-                                  ? undefined
-                                  : getTextInputValue(staticBaselineConfig.model_params[key])
-                              }
-                              onChange={(e) =>
-                                handleStaticParamChange(
-                                  key,
-                                  schema?.type === "boolean"
-                                    ? e.target.checked
-                                    : e.target.value,
-                                  schema?.type
+                              value={staticBaselineConfig.training_window_size}
+                              onChange={(event) =>
+                                handleStaticNumberChange(
+                                  "training_window_size",
+                                  event.target.value
                                 )
                               }
-                              min={schema?.minimum}
-                              max={schema?.maximum}
-                              step="any"
                             />
                           </div>
-                        )
-                      )}
+                          <div className="flex flex-col">
+                            <label className="mb-1 text-sm font-medium">Calibration Fraction</label>
+                            <input
+                              type="number"
+                              min={0.01}
+                              max={0.94}
+                              step="0.01"
+                              className={FORM_CONTROL_CLASS}
+                              value={staticBaselineConfig.calibration_fraction}
+                              onChange={(event) =>
+                                handleStaticNumberChange(
+                                  "calibration_fraction",
+                                  event.target.value
+                                )
+                              }
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="space-y-3">
+                        <h3 className="text-sm font-semibold">FDR Control</h3>
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <div className="flex flex-col">
+                            <label className="mb-1 text-sm font-medium">Method</label>
+                            <select
+                              className={FORM_CONTROL_CLASS}
+                              value={staticBaselineConfig.fdr_method}
+                              onChange={(event) =>
+                                setStaticBaselineConfig((prev) => ({
+                                  ...prev,
+                                  fdr_method: event.target.value as FdrControlMethod,
+                                }))
+                              }
+                            >
+                              <option value="saffron">SAFFRON</option>
+                              <option value="naive">Naive p-value cutoff</option>
+                            </select>
+                          </div>
+
+                          {staticBaselineConfig.fdr_method === "naive" && (
+                            <div className="flex flex-col">
+                              <label className="mb-1 text-sm font-medium">Cutoff</label>
+                              <input
+                                type="number"
+                                min={0.0001}
+                                max={0.9999}
+                                step="0.001"
+                                className={FORM_CONTROL_CLASS}
+                                value={staticBaselineConfig.fdr_cutoff}
+                                onChange={(event) =>
+                                  handleStaticNumberChange("fdr_cutoff", event.target.value)
+                                }
+                              />
+                            </div>
+                          )}
+                        </div>
+
+                        {staticBaselineConfig.fdr_method === "saffron" && (
+                          <div className="grid gap-3 sm:grid-cols-3">
+                            <div className="flex flex-col">
+                              <label className="mb-1 text-sm font-medium">Alpha</label>
+                              <input
+                                type="number"
+                                min={0.0001}
+                                max={0.9999}
+                                step="0.001"
+                                className={FORM_CONTROL_CLASS}
+                                value={staticBaselineConfig.fdr_alpha}
+                                onChange={(event) =>
+                                  handleStaticNumberChange("fdr_alpha", event.target.value)
+                                }
+                              />
+                            </div>
+                            <div className="flex flex-col">
+                              <label className="mb-1 text-sm font-medium">Wealth</label>
+                              <input
+                                type="number"
+                                min={0.0001}
+                                max={0.9999}
+                                step="0.001"
+                                className={FORM_CONTROL_CLASS}
+                                value={staticBaselineConfig.fdr_wealth}
+                                onChange={(event) =>
+                                  handleStaticNumberChange("fdr_wealth", event.target.value)
+                                }
+                              />
+                            </div>
+                            <div className="flex flex-col">
+                              <label className="mb-1 text-sm font-medium">Lambda</label>
+                              <input
+                                type="number"
+                                min={0.0001}
+                                max={0.9999}
+                                step="0.001"
+                                className={FORM_CONTROL_CLASS}
+                                value={staticBaselineConfig.fdr_lambda}
+                                onChange={(event) =>
+                                  handleStaticNumberChange("fdr_lambda", event.target.value)
+                                }
+                              />
+                            </div>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   )}
-
-                  <div className="space-y-3">
-                    <h3 className="text-sm font-semibold">Training Window</h3>
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <div className="flex flex-col">
-                        <label className="mb-1 text-sm font-medium">Window Size</label>
-                        <input
-                          type="number"
-                          min={20}
-                          className={FORM_CONTROL_CLASS}
-                          value={staticBaselineConfig.training_window_size}
-                          onChange={(event) =>
-                            handleStaticNumberChange(
-                              "training_window_size",
-                              event.target.value
-                            )
-                          }
-                        />
-                      </div>
-                      <div className="flex flex-col">
-                        <label className="mb-1 text-sm font-medium">Calibration Fraction</label>
-                        <input
-                          type="number"
-                          min={0.01}
-                          max={0.94}
-                          step="0.01"
-                          className={FORM_CONTROL_CLASS}
-                          value={staticBaselineConfig.calibration_fraction}
-                          onChange={(event) =>
-                            handleStaticNumberChange(
-                              "calibration_fraction",
-                              event.target.value
-                            )
-                          }
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="space-y-3">
-                    <h3 className="text-sm font-semibold">SAFFRON</h3>
-                    <div className="grid gap-3 sm:grid-cols-3">
-                      <div className="flex flex-col">
-                        <label className="mb-1 text-sm font-medium">Alpha</label>
-                        <input
-                          type="number"
-                          min={0.0001}
-                          max={0.9999}
-                          step="0.001"
-                          className={FORM_CONTROL_CLASS}
-                          value={staticBaselineConfig.fdr_alpha}
-                          onChange={(event) =>
-                            handleStaticNumberChange("fdr_alpha", event.target.value)
-                          }
-                        />
-                      </div>
-                      <div className="flex flex-col">
-                        <label className="mb-1 text-sm font-medium">Wealth</label>
-                        <input
-                          type="number"
-                          min={0.0001}
-                          max={0.9999}
-                          step="0.001"
-                          className={FORM_CONTROL_CLASS}
-                          value={staticBaselineConfig.fdr_wealth}
-                          onChange={(event) =>
-                            handleStaticNumberChange("fdr_wealth", event.target.value)
-                          }
-                        />
-                      </div>
-                      <div className="flex flex-col">
-                        <label className="mb-1 text-sm font-medium">Lambda</label>
-                        <input
-                          type="number"
-                          min={0.0001}
-                          max={0.9999}
-                          step="0.001"
-                          className={FORM_CONTROL_CLASS}
-                          value={staticBaselineConfig.fdr_lambda}
-                          onChange={(event) =>
-                            handleStaticNumberChange("fdr_lambda", event.target.value)
-                          }
-                        />
-                      </div>
-                    </div>
-                  </div>
                 </>
               ) : (
                 <>
                   <div className="space-y-2">
-                    <label className="text-sm font-semibold">Adaptive Algorithm</label>
+                    <label className="text-sm font-semibold">Dynamic Model</label>
                     <select
                       className={FORM_CONTROL_CLASS}
                       value={selectedAlgorithm || ""}
@@ -1420,135 +1541,149 @@ const Monitoring: React.FC = () => {
                   <div className="rounded-lg border bg-muted/30 p-4">
                     <h2 className="text-sm font-semibold">Picked Algorithm:</h2>
                     <p className="mt-2 text-sm text-muted-foreground">
-                      {selectedAlgorithm || "None selected"}
+                      {selectedAlgorithm
+                        ? adaptiveModels[selectedAlgorithm]?.name || selectedAlgorithm
+                        : "None selected"}
                     </p>
                   </div>
 
-                  {selectedAlgorithm && (
-                    <div className="space-y-3">
-                      <h3 className="text-sm font-semibold">Parameters</h3>
-                      {Object.entries(adaptiveModels[selectedAlgorithm]?.parameters?.properties || {}).length === 0 && (
-                        <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">No parameters for this model.</p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setShowDynamicAdvanced((value) => !value)}
+                  >
+                    {showDynamicAdvanced ? "Hide configuration" : "Show configuration"}
+                  </Button>
+
+                  {showDynamicAdvanced && (
+                    <div className="space-y-6 rounded-lg border bg-muted/30 p-4">
+                      {selectedAlgorithm && (
+                        <div className="space-y-3">
+                          <h3 className="text-sm font-semibold">Parameters</h3>
+                          {Object.entries(adaptiveModels[selectedAlgorithm]?.parameters?.properties || {}).length === 0 && (
+                            <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">No parameters for this model.</p>
+                          )}
+                          {Object.entries(adaptiveModels[selectedAlgorithm]?.parameters?.properties || {}).map(
+                            ([key, schema]) => (
+                              <div key={key} className="flex flex-col">
+                                <label className="mb-1 text-sm font-medium">
+                                  {key}
+                                  {schema?.description ? (
+                                    <span className="ml-1 text-xs text-muted-foreground">({schema.description})</span>
+                                  ) : null}
+                                </label>
+                                <input
+                                  type={getInputType(schema?.type)}
+                                  className={FORM_CONTROL_CLASS}
+                                  checked={
+                                    schema?.type === "boolean"
+                                      ? Boolean(modelParams[key])
+                                      : undefined
+                                  }
+                                  value={
+                                    schema?.type === "boolean"
+                                      ? undefined
+                                      : getTextInputValue(modelParams[key])
+                                  }
+                                  onChange={(e) =>
+                                    handleParamChange(
+                                      key,
+                                      schema?.type === "boolean"
+                                        ? e.target.checked
+                                        : e.target.value,
+                                      schema?.type
+                                    )
+                                  }
+                                  min={schema?.minimum}
+                                  max={schema?.maximum}
+                                  step="any"
+                                />
+                              </div>
+                            )
+                          )}
+                        </div>
                       )}
-                      {Object.entries(adaptiveModels[selectedAlgorithm]?.parameters?.properties || {}).map(
-                        ([key, schema]) => (
-                          <div key={key} className="flex flex-col">
-                            <label className="mb-1 text-sm font-medium">
-                              {key}
-                              {schema?.description ? (
-                                <span className="ml-1 text-xs text-muted-foreground">({schema.description})</span>
-                              ) : null}
-                            </label>
+
+                      <div className="space-y-3">
+                        <h3 className="text-sm font-semibold">Detection Heuristics</h3>
+                        <label className="flex items-center gap-2 text-sm">
+                          <input
+                            type="checkbox"
+                            checked={performanceConfig.heuristic_enabled}
+                            onChange={(event) =>
+                              setPerformanceConfig((prev) => ({
+                                ...prev,
+                                heuristic_enabled: event.target.checked,
+                              }))
+                            }
+                          />
+                          Enable trailing-reference tail trigger
+                        </label>
+                        <div className="grid gap-3 sm:grid-cols-3">
+                          <div className="flex flex-col">
+                            <label className="mb-1 text-sm font-medium">Window Size</label>
                             <input
-                              type={getInputType(schema?.type)}
+                              type="number"
+                              min={3}
                               className={FORM_CONTROL_CLASS}
-                              checked={
-                                schema?.type === "boolean"
-                                  ? Boolean(modelParams[key])
-                                  : undefined
-                              }
-                              value={
-                                schema?.type === "boolean"
-                                  ? undefined
-                                  : getTextInputValue(modelParams[key])
-                              }
-                              onChange={(e) =>
-                                handleParamChange(
-                                  key,
-                                  schema?.type === "boolean"
-                                    ? e.target.checked
-                                    : e.target.value,
-                                  schema?.type
+                              value={performanceConfig.heuristic_window_size}
+                              onChange={(event) =>
+                                handlePerformanceNumberChange(
+                                  "heuristic_window_size",
+                                  event.target.value
                                 )
                               }
-                              min={schema?.minimum}
-                              max={schema?.maximum}
-                              step="any"
                             />
                           </div>
-                        )
-                      )}
+                          <div className="flex flex-col">
+                            <label className="mb-1 text-sm font-medium">Min Samples</label>
+                            <input
+                              type="number"
+                              min={2}
+                              className={FORM_CONTROL_CLASS}
+                              value={performanceConfig.heuristic_min_samples}
+                              onChange={(event) =>
+                                handlePerformanceNumberChange(
+                                  "heuristic_min_samples",
+                                  event.target.value
+                                )
+                              }
+                            />
+                          </div>
+                          <div className="flex flex-col">
+                            <label className="mb-1 text-sm font-medium">Tail Alpha</label>
+                            <input
+                              type="number"
+                              min={0.0001}
+                              max={0.9999}
+                              step="0.0001"
+                              className={FORM_CONTROL_CLASS}
+                              value={performanceConfig.heuristic_tail_alpha}
+                              onChange={(event) =>
+                                handlePerformanceNumberChange(
+                                  "heuristic_tail_alpha",
+                                  event.target.value
+                                )
+                              }
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      <PreprocessingSection
+                        steps={preprocessingSteps}
+                        availablePreprocessors={availablePreprocessors}
+                        newPreprocessorType={newPreprocessorType}
+                        isLoading={isLoadingPreprocessors}
+                        onSelectType={setNewPreprocessorType}
+                        onAdd={handleAddPreprocessor}
+                        onParamChange={handlePreprocessorParamChange}
+                        onMoveUp={handleMovePreprocessorUp}
+                        onMoveDown={handleMovePreprocessorDown}
+                        onRemove={handleRemovePreprocessor}
+                      />
                     </div>
                   )}
-
-                  <div className="space-y-3">
-                    <h3 className="text-sm font-semibold">Detection Heuristics</h3>
-                    <label className="flex items-center gap-2 text-sm">
-                      <input
-                        type="checkbox"
-                        checked={performanceConfig.heuristic_enabled}
-                        onChange={(event) =>
-                          setPerformanceConfig((prev) => ({
-                            ...prev,
-                            heuristic_enabled: event.target.checked,
-                          }))
-                        }
-                      />
-                      Enable trailing-reference tail trigger
-                    </label>
-                    <div className="grid gap-3 sm:grid-cols-3">
-                      <div className="flex flex-col">
-                        <label className="mb-1 text-sm font-medium">Window Size</label>
-                        <input
-                          type="number"
-                          min={3}
-                          className={FORM_CONTROL_CLASS}
-                          value={performanceConfig.heuristic_window_size}
-                          onChange={(event) =>
-                            handlePerformanceNumberChange(
-                              "heuristic_window_size",
-                              event.target.value
-                            )
-                          }
-                        />
-                      </div>
-                      <div className="flex flex-col">
-                        <label className="mb-1 text-sm font-medium">Min Samples</label>
-                        <input
-                          type="number"
-                          min={2}
-                          className={FORM_CONTROL_CLASS}
-                          value={performanceConfig.heuristic_min_samples}
-                          onChange={(event) =>
-                            handlePerformanceNumberChange(
-                              "heuristic_min_samples",
-                              event.target.value
-                            )
-                          }
-                        />
-                      </div>
-                      <div className="flex flex-col">
-                        <label className="mb-1 text-sm font-medium">Tail Alpha</label>
-                        <input
-                          type="number"
-                          min={0.0001}
-                          max={0.9999}
-                          step="0.0001"
-                          className={FORM_CONTROL_CLASS}
-                          value={performanceConfig.heuristic_tail_alpha}
-                          onChange={(event) =>
-                            handlePerformanceNumberChange(
-                              "heuristic_tail_alpha",
-                              event.target.value
-                            )
-                          }
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  <PreprocessingSection
-                    steps={preprocessingSteps}
-                    availablePreprocessors={availablePreprocessors}
-                    newPreprocessorType={newPreprocessorType}
-                    isLoading={isLoadingPreprocessors}
-                    onSelectType={setNewPreprocessorType}
-                    onAdd={handleAddPreprocessor}
-                    onParamChange={handlePreprocessorParamChange}
-                    onMoveUp={handleMovePreprocessorUp}
-                    onMoveDown={handleMovePreprocessorDown}
-                    onRemove={handleRemovePreprocessor}
-                  />
                 </>
               )}
             </div>

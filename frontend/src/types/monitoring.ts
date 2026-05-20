@@ -23,7 +23,10 @@ export interface ModelDefinition {
     required?: string[];
   };
   description?: string;
+  name?: string;
+  family?: string;
   strategy?: MonitoringStrategy;
+  default_parameters?: Record<string, string | number | boolean | null>;
 }
 
 // Preprocessor definition from registry API
@@ -65,18 +68,27 @@ export interface MonitoringPerformanceConfig {
   sensor_freshness_seconds: number;
 }
 
+export type FdrControlMethod = 'saffron' | 'naive';
+
+export type StaticBaselineFdrConfig =
+  | {
+      method: 'saffron';
+      alpha: number;
+      wealth: number;
+      lambda_: number;
+    }
+  | {
+      method: 'naive';
+      cutoff: number;
+    };
+
 export interface StaticBaselineRequestConfig {
   model_type: string;
   model_params: Record<string, string | number | boolean>;
   training_window_size: number;
   calibration_fraction: number;
   conformal_strategy: 'split';
-  fdr_config: {
-    method: 'saffron';
-    alpha: number;
-    wealth: number;
-    lambda_: number;
-  };
+  fdr_config: StaticBaselineFdrConfig;
 }
 
 export interface AdaptiveStreamRequestConfig {
@@ -131,9 +143,28 @@ export function getStatusDisplay(
       };
     case 'failed':
     case 'error':
+    case 'dead':
       return {
         label: 'Failed',
         className: 'bg-red-100 text-red-800 dark:bg-red-900/35 dark:text-red-200',
+      };
+    // Docker reports "exited" for both successful exit code 0 and failures.
+    // Keep this neutral until the API exposes exit code / termination reason.
+    case 'exited':
+      return {
+        label: 'Exited',
+        className: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/35 dark:text-yellow-200',
+      };
+    case 'restarting':
+      return {
+        label: 'Restarting',
+        className: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/35 dark:text-yellow-200',
+      };
+    case 'removed':
+    case 'stopped':
+      return {
+        label: 'Stopped',
+        className: 'bg-gray-100 text-gray-800 dark:bg-white/10 dark:text-gray-200',
       };
     case 'not_found':
       return {

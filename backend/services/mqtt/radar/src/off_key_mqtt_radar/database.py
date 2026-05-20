@@ -10,14 +10,15 @@ class with 23+ environment variables.
 """
 
 import asyncio
-import time
 import logging
 import math
+import time
+from collections import deque
+from collections.abc import Iterable
 from datetime import datetime
 from typing import List, Optional, Dict, Any, Tuple
-from collections import deque
 
-from sqlalchemy import Table, Column, Text, Float, TIMESTAMP, text
+from sqlalchemy import Table, Column, Text, Float, TIMESTAMP, JSON, text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.schema import MetaData
 from sqlalchemy.orm import sessionmaker
@@ -48,6 +49,7 @@ ANOMALY_TABLE = Table(
     Column("anomaly_type", Text, nullable=False),
     Column("anomaly_value", Float, nullable=False),
     Column("value_type", Text, nullable=True),
+    Column("sensor_set", JSON, nullable=True),
 )
 ANOMALY_IDENTITY_TABLE = Table(
     "anomaly_identity",
@@ -320,6 +322,48 @@ class DatabaseWriter:
                 return tail_pvalue
         return float(result.anomaly_score)
 
+    @staticmethod
+    def _normalize_sensor_set(value: Any) -> Optional[List[str]]:
+        if isinstance(value, dict):
+            iterable = value.keys()
+        elif isinstance(value, set):
+            iterable = sorted(value)
+        elif isinstance(value, Iterable) and not isinstance(value, (str, bytes)):
+            iterable = value
+        else:
+            return None
+
+        sensors = []
+        seen = set()
+        for item in iterable:
+            sensor = str(item).strip() if item is not None else ""
+            if sensor and sensor not in seen:
+                sensors.append(sensor)
+                seen.add(sensor)
+        return sensors or None
+
+    def _derive_sensor_set(self, result: AnomalyResult) -> Optional[List[str]]:
+        """Resolve the exact telemetry streams involved in a stored anomaly."""
+        alignment_context = (result.context or {}).get("alignment", {})
+        required_sensors = self._normalize_sensor_set(
+            alignment_context.get("required_sensors")
+        )
+        if required_sensors and (
+            bool(alignment_context.get("aligned_vector")) or len(required_sensors) == 1
+        ):
+            return required_sensors
+
+        feature_source = result.raw_data if isinstance(result.raw_data, dict) else {}
+        feature_sensors = self._normalize_sensor_set(feature_source.keys())
+        if bool(alignment_context.get("aligned_vector")) and feature_sensors:
+            return feature_sensors
+
+        telemetry_type = self._extract_telemetry_type(result.topic, result.raw_data)
+        if telemetry_type and telemetry_type != "unknown":
+            return [telemetry_type]
+
+        return feature_sensors
+
     def _build_records(
         self,
         results: List[AnomalyResult],
@@ -338,6 +382,7 @@ class DatabaseWriter:
                         if self._is_static_conformal_result(result)
                         else "tail_pvalue"
                     ),
+                    "sensor_set": self._derive_sensor_set(result),
                 }
             )
         identity_records = [

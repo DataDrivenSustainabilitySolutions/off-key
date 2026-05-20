@@ -184,3 +184,50 @@ def test_tactic_build_radar_environment_maps_static_strategy_to_radar_env(monkey
     assert static_config["training_window_size"] == 120
     assert static_config["fdr_config"]["method"] == "saffron"
     assert model_registry.validate_model_params.call_args.args[0] == "pyod_iforest"
+
+
+def test_tactic_build_radar_environment_forwards_naive_fdr_config(monkeypatch):
+    model_registry = MagicMock()
+    model_registry.validate_model_params.return_value = {"n_estimators": 100}
+    model_registry.validate_preprocessing_steps.return_value = []
+
+    monkeypatch.setattr(
+        "off_key_tactic_middleware.services.orchestration.radar.get_async_docker",
+        lambda: MagicMock(),
+    )
+    service = RadarOrchestrationService(
+        session=AsyncMock(),
+        model_registry=model_registry,
+    )
+
+    env = service._build_radar_environment(
+        service_id="svc-static",
+        mqtt_topics=["charger/+/live-telemetry/L1"],
+        strategy="static_baseline",
+        model_type="pyod_iforest",
+        model_params={"n_estimators": 100},
+        preprocessing_steps=[],
+        mqtt_config={},
+        anomaly_thresholds={},
+        performance_config={
+            "alignment_mode": "strict_barrier",
+            "sensor_key_strategy": "leaf",
+            "sensor_freshness_seconds": 20.0,
+        },
+        static_baseline_config={
+            "model_type": "pyod_iforest",
+            "model_params": {"n_estimators": 100},
+            "training_window_size": 120,
+            "calibration_fraction": 0.25,
+            "fdr_config": {
+                "method": "naive",
+                "cutoff": 0.02,
+            },
+        },
+        adaptive_stream_config={},
+    )
+
+    static_config = json.loads(env["RADAR_STATIC_BASELINE_CONFIG"])
+
+    assert static_config["fdr_config"]["method"] == "naive"
+    assert static_config["fdr_config"]["cutoff"] == 0.02

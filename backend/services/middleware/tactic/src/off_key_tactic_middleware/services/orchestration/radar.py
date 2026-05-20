@@ -1,9 +1,10 @@
+import asyncio
 import json
 import time
 import uuid
-from functools import lru_cache
 from datetime import datetime
-from typing import List, Dict, Optional, Any, Callable
+from functools import lru_cache
+from typing import Any, Callable, Dict, List, Optional
 
 import docker
 from docker.types import RestartPolicy, ServiceMode, Resources
@@ -176,6 +177,7 @@ class RadarOrchestrationService:
                 service_id=db_service_id,
                 environment=env_vars,
             )
+            await self._validate_radar_workload_started(docker_workload)
 
             # Create monitoring service record
             service_record = MonitoringService(
@@ -506,7 +508,8 @@ class RadarOrchestrationService:
         Helper method to create RADAR Docker service using Pydantic configuration.
         """
         # Get Docker configuration from Pydantic settings
-        docker_config = get_tactic_settings().config.docker
+        tactic_config = get_tactic_settings().config
+        docker_config = tactic_config.docker
 
         labels = {
             "owner": "tactic_middleware",
@@ -519,12 +522,13 @@ class RadarOrchestrationService:
                 "RADAR_MONITORING_STRATEGY", "adaptive_stream"
             ),
             "radar_model_type": environment.get("RADAR_MODEL_TYPE", ""),
+            "radar_image": tactic_config.radar_image,
         }
 
         service_kwargs = {
             "name": f"radar-{service_id}",
             "labels": labels,
-            "image": "off-key-mqtt-radar:latest",
+            "image": tactic_config.radar_image,
             "env": environment,
             "command": ["/app/bin/python", "-m", "off_key_mqtt_radar"],
             "mode": ServiceMode("replicated", replicas=1),
@@ -555,7 +559,8 @@ class RadarOrchestrationService:
         environment: Dict[str, str],
     ) -> Any:
         """Helper method to create RADAR Docker container in non-Swarm mode."""
-        docker_config = get_tactic_settings().config.docker
+        tactic_config = get_tactic_settings().config
+        docker_config = tactic_config.docker
 
         labels = {
             "owner": "tactic_middleware",
@@ -568,6 +573,7 @@ class RadarOrchestrationService:
                 "RADAR_MONITORING_STRATEGY", "adaptive_stream"
             ),
             "radar_model_type": environment.get("RADAR_MODEL_TYPE", ""),
+            "radar_image": tactic_config.radar_image,
         }
 
         restart_policy: Dict[str, Any] = {
@@ -584,7 +590,7 @@ class RadarOrchestrationService:
         container_kwargs = {
             "name": f"radar-{service_id}",
             "labels": labels,
-            "image": "off-key-mqtt-radar:latest",
+            "image": tactic_config.radar_image,
             "environment": environment,
             "command": ["/app/bin/python", "-m", "off_key_mqtt_radar"],
             "detach": True,
@@ -599,6 +605,87 @@ class RadarOrchestrationService:
             **container_kwargs,
         )
         return container
+
+    async def _validate_radar_workload_started(self, docker_workload: Any) -> None:
+        """Fail service creation when RADAR exits or is rejected at startup."""
+        workload_id = getattr(docker_workload, "id", None)
+        if not workload_id:
+            return
+
+        grace_seconds = get_tactic_settings().config.radar_startup_grace_seconds
+        if grace_seconds > 0:
+            await asyncio.sleep(grace_seconds)
+
+        try:
+            docker_service = await self.async_docker.run(
+                self.async_docker.client.services.get, workload_id
+            )
+            tasks = await self.async_docker.run(docker_service.tasks)
+            self._raise_for_failed_swarm_task(workload_id, tasks)
+            return
+        except docker.errors.NotFound:
+            pass
+        except Exception as exc:
+            if not self._should_fallback_to_container(exc):
+                raise
+            logger.debug(
+                "Skipping Swarm startup validation for workload %s: %s",
+                workload_id,
+                exc,
+            )
+
+        try:
+            docker_container = await self.async_docker.run(
+                self.async_docker.client.containers.get, workload_id
+            )
+            await self.async_docker.run(docker_container.reload)
+        except docker.errors.NotFound as exc:
+            raise RuntimeError(
+                f"RADAR workload {workload_id} disappeared during startup"
+            ) from exc
+
+        status = str(getattr(docker_container, "status", "") or "unknown").lower()
+        if status in {"exited", "dead", "restarting"}:
+            logs = await self._get_container_log_tail(docker_container)
+            message = (
+                f"RADAR workload {workload_id} failed during startup "
+                f"(status={status})"
+            )
+            if logs:
+                message = f"{message}. Recent logs:\n{logs}"
+            raise RuntimeError(message)
+
+    @staticmethod
+    def _raise_for_failed_swarm_task(workload_id: str, tasks: List[Dict[str, Any]]):
+        if not tasks:
+            return
+
+        latest_task = max(tasks, key=lambda task: str(task.get("CreatedAt", "")))
+        status = latest_task.get("Status", {}) or {}
+        state = str(status.get("State", "") or "unknown").lower()
+        if state not in {
+            "complete",
+            "failed",
+            "rejected",
+            "shutdown",
+            "orphaned",
+            "remove",
+        }:
+            return
+
+        detail = status.get("Err") or status.get("Message") or "no task error"
+        raise RuntimeError(
+            f"RADAR workload {workload_id} failed during startup "
+            f"(task_state={state}): {detail}"
+        )
+
+    async def _get_container_log_tail(self, docker_container: Any) -> str:
+        raw_logs = await self.async_docker.run(docker_container.logs, tail=120)
+        if isinstance(raw_logs, bytes):
+            logs = raw_logs.decode("utf-8", errors="replace")
+        else:
+            logs = str(raw_logs or "")
+        return logs.strip()[-4000:]
 
     async def _resolve_workload_operation(
         self,
@@ -752,25 +839,18 @@ class RadarOrchestrationService:
                 on_container=lambda c: c.remove(force=True),
             )
 
-            # Delete the service from the database
-            delete_stmt = delete(MonitoringService).where(
-                MonitoringService.container_id == service.container_id
-            )
-            await self.session.execute(delete_stmt)
+            service.status = False
             await self.session.commit()
 
             logger.info(
                 f"RADAR container {container_name} "
-                f"stopped and removed; DB record deleted"
+                f"stopped and removed; DB record marked inactive"
             )
             return True
 
         except docker.errors.NotFound:
             # Container not found in Docker but exists in DB
-            delete_stmt = delete(MonitoringService).where(
-                MonitoringService.container_id == service.container_id
-            )
-            await self.session.execute(delete_stmt)
+            service.status = False
             await self.session.commit()
 
             logger.warning(

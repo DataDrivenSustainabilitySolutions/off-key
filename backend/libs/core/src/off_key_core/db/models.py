@@ -201,6 +201,10 @@ class Anomaly(Base):
     # 'zscore' for legacy rows written by the z-score heuristic.
     # NULL for rows predating this column.
     value_type = Column(Text, nullable=True)
+    # Exact telemetry streams involved in this anomaly. Multivariate rows use this
+    # to highlight only the charts whose sensors contributed to the aligned vector.
+    # NULL means the row predates this column or the writer could not determine it.
+    sensor_set = Column(JSON, nullable=True)
 
     __table_args__ = (
         PrimaryKeyConstraint(

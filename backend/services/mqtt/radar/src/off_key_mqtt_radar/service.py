@@ -18,7 +18,7 @@ from datetime import datetime
 from typing import Optional
 
 from off_key_core.config.logs import logger
-from off_key_core.schemas.radar import StaticBaselineConfig
+from off_key_core.schemas.radar import AdaptiveStreamConfig, StaticBaselineConfig
 
 from .config.config import AnomalyDetectionConfig, get_radar_settings
 from .detector import (
@@ -233,14 +233,37 @@ class RadarService:
         """
         logger.info("Setting up anomaly detection")
 
-        # Create anomaly detection config
-        anomaly_config = AnomalyDetectionConfig(
-            strategy=getattr(self.config, "strategy", "adaptive_stream"),
+        strategy = getattr(self.config, "strategy", "adaptive_stream")
+        static_baseline_config = (
+            getattr(self.config, "static_baseline_config", None)
+            or StaticBaselineConfig()
+        )
+        adaptive_stream_config = getattr(
+            self.config, "adaptive_stream_config", None
+        ) or AdaptiveStreamConfig(
             model_type=getattr(self.config, "model_type", "isolation_forest"),
             model_params=getattr(self.config, "model_params", {}),
             preprocessing_steps=getattr(self.config, "preprocessing_steps", []),
-            static_baseline_config=getattr(self.config, "static_baseline_config", None)
-            or StaticBaselineConfig(),
+        )
+        model_type = getattr(self.config, "model_type", "isolation_forest")
+        model_params = getattr(self.config, "model_params", {})
+        preprocessing_steps = getattr(self.config, "preprocessing_steps", [])
+        if strategy == "static_baseline":
+            model_type = static_baseline_config.model_type
+            model_params = static_baseline_config.model_params
+        else:
+            model_type = adaptive_stream_config.model_type
+            model_params = adaptive_stream_config.model_params
+            preprocessing_steps = adaptive_stream_config.preprocessing_steps
+
+        # Create anomaly detection config
+        anomaly_config = AnomalyDetectionConfig(
+            strategy=strategy,
+            model_type=model_type,
+            model_params=model_params,
+            preprocessing_steps=preprocessing_steps,
+            static_baseline_config=static_baseline_config,
+            adaptive_stream_config=adaptive_stream_config,
             subscription_topics=getattr(self.config, "subscription_topics", []),
             sensor_key_strategy=getattr(
                 self.config, "sensor_key_strategy", "full_hierarchy"
@@ -436,6 +459,7 @@ class RadarService:
 
         except Exception as e:
             logger.error(f"Unexpected error in RADAR service: {e}", exc_info=True)
+            raise
         finally:
             # Ensure cleanup
             await self.stop()

@@ -6,6 +6,7 @@ import pickle
 from off_key_core.schemas.radar import FdrConfig, StaticBaselineConfig
 from off_key_mqtt_radar.config.config import AnomalyDetectionConfig
 from off_key_mqtt_radar.detector import (
+    NaivePValueCutoffController,
     StaticConformalDetectionService,
     StaticConformalState,
 )
@@ -37,7 +38,10 @@ class ControlledExecutor:
         return self.future
 
 
-def _static_config(monkeypatch) -> AnomalyDetectionConfig:
+def _static_config(
+    monkeypatch,
+    fdr_config: FdrConfig | None = None,
+) -> AnomalyDetectionConfig:
     from off_key_mqtt_radar import tactic_client
 
     monkeypatch.setattr(
@@ -61,7 +65,7 @@ def _static_config(monkeypatch) -> AnomalyDetectionConfig:
             model_params={"n_estimators": 100},
             training_window_size=20,
             calibration_fraction=0.25,
-            fdr_config=FdrConfig(alpha=0.05, wealth=0.025, lambda_=0.5),
+            fdr_config=fdr_config or FdrConfig(alpha=0.05, wealth=0.025, lambda_=0.5),
         ),
         checkpoint_interval=100000,
     )
@@ -111,6 +115,54 @@ def test_static_conformal_rejects_schema_mismatch_after_schema_freeze(monkeypatc
     assert "schema_error" in result.context["static_conformal"]
 
 
+def test_static_conformal_naive_cutoff_flags_p_values_at_or_below_cutoff(
+    monkeypatch,
+):
+    config = _static_config(
+        monkeypatch,
+        fdr_config=FdrConfig(method="naive", cutoff=0.05),
+    )
+    service = StaticConformalDetectionService(config)
+    service.conformal_detector = FakeConformalDetector(p_value=0.05)
+    service.fdr_controller = service._create_fdr_controller()
+    service.feature_keys = ["L1", "L2"]
+    service.state = StaticConformalState.READY
+
+    result = service.process_data_point({"L1": 1.0, "L2": 2.0})
+
+    assert result.is_anomaly is True
+    assert result.context["static_conformal"]["fdr_method"] == "naive"
+    assert result.context["static_conformal"]["fdr_threshold"] == 0.05
+    assert result.context["static_conformal"]["tested_count"] == 1
+
+
+def test_static_conformal_naive_cutoff_ignores_p_values_above_cutoff(monkeypatch):
+    config = _static_config(
+        monkeypatch,
+        fdr_config=FdrConfig(method="naive", cutoff=0.05),
+    )
+    service = StaticConformalDetectionService(config)
+    service.conformal_detector = FakeConformalDetector(p_value=0.051)
+    service.fdr_controller = service._create_fdr_controller()
+    service.feature_keys = ["L1", "L2"]
+    service.state = StaticConformalState.READY
+
+    result = service.process_data_point({"L1": 1.0, "L2": 2.0})
+
+    assert result.is_anomaly is False
+    assert result.severity == "low"
+    assert result.context["static_conformal"]["fdr_method"] == "naive"
+    assert result.context["static_conformal"]["tested_count"] == 1
+
+
+def test_naive_p_value_cutoff_controller_tracks_test_count():
+    controller = NaivePValueCutoffController(cutoff=0.05)
+
+    assert controller.test_one(0.05) is True
+    assert controller.test_one(0.0501) is False
+    assert controller.num_test == 2
+
+
 def test_static_conformal_restores_ready_checkpoint(monkeypatch, tmp_path):
     config = _static_config(monkeypatch)
     checkpoint = {
@@ -139,3 +191,53 @@ def test_static_conformal_restores_ready_checkpoint(monkeypatch, tmp_path):
     assert restored.state == StaticConformalState.READY
     assert restored.processed_count == 42
     assert restored.feature_keys == ["L1", "L2"]
+
+
+def test_static_conformal_uses_static_config_model_params(monkeypatch):
+    from off_key_mqtt_radar import tactic_client
+
+    validated_calls = []
+    monkeypatch.setattr(
+        tactic_client,
+        "validate_model_params",
+        lambda model_type, params=None: validated_calls.append(
+            (model_type, params or {})
+        )
+        or params
+        or {},
+    )
+    monkeypatch.setattr(
+        tactic_client,
+        "validate_preprocessing_steps",
+        lambda steps=None: steps or [],
+    )
+    config = AnomalyDetectionConfig(
+        strategy="static_baseline",
+        model_type="pyod_iforest",
+        model_params={},
+        static_baseline_config=StaticBaselineConfig(
+            model_type="pyod_knn",
+            model_params={"n_neighbors": 7, "contamination": 0.08},
+            training_window_size=20,
+        ),
+        checkpoint_interval=100000,
+    )
+    service = StaticConformalDetectionService(config)
+    captured = {}
+
+    def fake_instantiate(model_type, params):
+        captured["model_type"] = model_type
+        captured["params"] = params
+        return object()
+
+    monkeypatch.setattr(service, "_instantiate_pyod_detector", fake_instantiate)
+
+    service._create_pyod_detector()
+
+    assert validated_calls[0] == (
+        "pyod_knn",
+        {"n_neighbors": 7, "contamination": 0.08},
+    )
+    assert captured["model_type"] == "pyod_knn"
+    assert captured["params"]["n_neighbors"] == 7
+    assert captured["params"]["contamination"] == 0.08

@@ -6,8 +6,13 @@
 import { groupTimestampsIntoRanges, timestampsAreClose } from './time-utils';
 import { INTERVALS } from './constants';
 import type { Anomaly } from '@/types/charger';
+import {
+  formatAnomalyValue,
+  getAnomalyValueLabel,
+} from '@/lib/anomaly-semantics';
 
 export type { Anomaly };
+export const MULTIVARIATE_TELEMETRY_TYPE = "__multivariate__";
 
 export interface TelemetryPoint {
   timestamp: string;
@@ -24,6 +29,27 @@ export interface RedZone {
   end: string;
   anomalies: Anomaly[];
 }
+
+export const formatAnomalySensorSet = (
+  sensorSet: Anomaly["sensor_set"]
+): string => {
+  return sensorSet && sensorSet.length > 0 ? sensorSet.join(", ") : "not recorded";
+};
+
+const multivariateAnomalyAppliesToTelemetry = (
+  anomaly: Anomaly,
+  telemetryType: string
+): boolean => {
+  if (anomaly.telemetry_type !== MULTIVARIATE_TELEMETRY_TYPE) {
+    return false;
+  }
+
+  if (!anomaly.sensor_set || anomaly.sensor_set.length === 0) {
+    return true;
+  }
+
+  return anomaly.sensor_set.includes(telemetryType);
+};
 
 /**
  * Match anomalies to telemetry data points by timestamp
@@ -103,7 +129,10 @@ export const filterAnomalies = (
 ): Anomaly[] => {
   return anomalies.filter(anomaly => {
     // Filter by telemetry type
-    if (anomaly.telemetry_type !== telemetryType) {
+    if (
+      anomaly.telemetry_type !== telemetryType &&
+      !multivariateAnomalyAppliesToTelemetry(anomaly, telemetryType)
+    ) {
       return false;
     }
 
@@ -158,10 +187,16 @@ export const getAnomalyStats = (anomalies: Anomaly[]) => {
  */
 export const createAnomalyTooltip = (anomaly: Anomaly): string => {
   const formattedTime = new Date(anomaly.timestamp).toLocaleString();
+  const valueLabel = getAnomalyValueLabel(anomaly.value_type);
+  const formattedValue = formatAnomalyValue(
+    anomaly.anomaly_value,
+    anomaly.value_type
+  );
   return `Anomaly: ${anomaly.anomaly_type}
-Value: ${anomaly.anomaly_value}
+${valueLabel}: ${formattedValue}
 Time: ${formattedTime}
-Type: ${anomaly.telemetry_type}`;
+Type: ${anomaly.telemetry_type}
+Sensors: ${formatAnomalySensorSet(anomaly.sensor_set)}`;
 };
 
 /**
@@ -173,6 +208,10 @@ export const getAnomalyStyle = (anomalyType: string) => {
     'spike': { color: '#f97316', radius: 4, opacity: 0.9 },
     'drop': { color: '#3b82f6', radius: 4, opacity: 0.9 },
     'pattern_break': { color: '#8b5cf6', radius: 3, opacity: 0.7 },
+    'ml_conformal_static_univariate': { color: '#dc2626', radius: 5, opacity: 0.95 },
+    'ml_conformal_static_multivariate': { color: '#991b1b', radius: 6, opacity: 0.95 },
+    'ml_tailprob_univariate': { color: '#ea580c', radius: 4, opacity: 0.9 },
+    'ml_tailprob_multivariate': { color: '#c2410c', radius: 5, opacity: 0.9 },
     'default': { color: '#dc2626', radius: 3, opacity: 0.8 },
   };
 

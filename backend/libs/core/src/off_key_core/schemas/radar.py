@@ -63,14 +63,19 @@ class FdrConfig(BaseModel):
 
     model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
-    method: Literal["saffron"] = "saffron"
+    method: Literal["saffron", "naive"] = "saffron"
     alpha: float = Field(default=0.05, gt=0.0, lt=1.0)
     wealth: float | None = Field(default=None, gt=0.0, lt=1.0)
     lambda_: float = Field(default=0.5, gt=0.0, lt=1.0)
+    cutoff: float = Field(default=0.05, gt=0.0, lt=1.0)
 
     @model_validator(mode="after")
     def validate_saffron_settings(self) -> Self:
-        if self.wealth is not None and self.wealth >= self.alpha:
+        if (
+            self.method == "saffron"
+            and self.wealth is not None
+            and self.wealth >= self.alpha
+        ):
             raise ValueError("wealth must be less than alpha for SAFFRON")
         return self
 
@@ -78,6 +83,11 @@ class FdrConfig(BaseModel):
     def resolved_wealth(self) -> float:
         """Return configured wealth or the default SAFFRON half-alpha wealth."""
         return self.wealth if self.wealth is not None else self.alpha / 2.0
+
+    @property
+    def effective_threshold(self) -> float:
+        """Return the configured rejection threshold for the selected FDR method."""
+        return self.cutoff if self.method == "naive" else self.alpha
 
 
 class StaticBaselineConfig(BaseModel):
@@ -87,7 +97,7 @@ class StaticBaselineConfig(BaseModel):
 
     model_type: str = "pyod_iforest"
     model_params: dict[str, Any] = Field(default_factory=dict)
-    training_window_size: int = Field(default=1000, ge=20, le=1_000_000)
+    training_window_size: int = Field(default=1200, ge=20, le=1_000_000)
     calibration_fraction: float = Field(default=0.3, gt=0.0, lt=0.95)
     conformal_strategy: Literal["split"] = "split"
     seed: int | None = 42

@@ -786,8 +786,21 @@ class StaticConformalState(Enum):
     FAILED = "failed"
 
 
+class NaivePValueCutoffController:
+    """Simple p-value cutoff controller for static conformal monitoring."""
+
+    def __init__(self, cutoff: float):
+        self.cutoff = float(cutoff)
+        self.alpha = self.cutoff
+        self.num_test = 0
+
+    def test_one(self, p_value: float) -> bool:
+        self.num_test += 1
+        return float(p_value) <= self.cutoff
+
+
 class StaticConformalDetectionService:
-    """Train-once static baseline detector using conformal p-values and SAFFRON."""
+    """Train-once static baseline detector using conformal p-values and FDR control."""
 
     def __init__(
         self,
@@ -907,8 +920,12 @@ class StaticConformalDetectionService:
         ]
         payload = {
             "strategy": "static_baseline",
-            "model_type": str(getattr(config, "model_type", "")),
-            "model_params": getattr(config, "model_params", {}) or {},
+            "model_type": str(
+                static_payload.get("model_type", getattr(config, "model_type", ""))
+            ),
+            "model_params": static_payload.get(
+                "model_params", getattr(config, "model_params", {}) or {}
+            ),
             "static_baseline_config": static_payload,
             "subscription_topics": sorted(subscription_topics),
             "sensor_key_strategy": str(
@@ -1051,9 +1068,8 @@ class StaticConformalDetectionService:
         if is_anomaly:
             self.anomaly_count += 1
         severity = self._calculate_conformal_severity(p_value, is_anomaly)
-        alpha_t = float(
-            getattr(self.fdr_controller, "alpha", self.static_config.fdr_config.alpha)
-        )
+        fdr_threshold = self._effective_fdr_threshold()
+        fdr_method = self.static_config.fdr_config.method
 
         result = self._build_result(
             data=data,
@@ -1070,8 +1086,9 @@ class StaticConformalDetectionService:
             extra_context={
                 "p_value": p_value,
                 "fdr_rejected": is_anomaly,
-                "fdr_alpha_t": alpha_t,
-                "fdr_method": "saffron",
+                "fdr_alpha_t": fdr_threshold,
+                "fdr_threshold": fdr_threshold,
+                "fdr_method": fdr_method,
                 "tested_count": int(getattr(self.fdr_controller, "num_test", 0)),
             },
         )
@@ -1085,7 +1102,8 @@ class StaticConformalDetectionService:
                 topic,
                 extra={
                     "conformal_pvalue": p_value,
-                    "fdr_alpha_t": alpha_t,
+                    "fdr_alpha_t": fdr_threshold,
+                    "fdr_method": fdr_method,
                     "model_type": self.config.model_type,
                     "charger_id": charger_id,
                 },
@@ -1138,7 +1156,6 @@ class StaticConformalDetectionService:
     ) -> tuple[Any, Any]:
         import numpy as np
         from nonconform import ConformalDetector, Split
-        from online_fdr.investing.saffron.saffron import Saffron
 
         detector = self._create_pyod_detector()
         conformal_detector = ConformalDetector(
@@ -1153,20 +1170,34 @@ class StaticConformalDetectionService:
         )
         conformal_detector.fit(matrix)
 
-        fdr_config = self.static_config.fdr_config
-        fdr_controller = Saffron(
-            alpha=fdr_config.alpha,
-            wealth=fdr_config.resolved_wealth,
-            lambda_=fdr_config.lambda_,
-        )
+        fdr_controller = self._create_fdr_controller()
         return conformal_detector, fdr_controller
 
+    def _create_fdr_controller(self) -> Any:
+        fdr_config = self.static_config.fdr_config
+        if fdr_config.method == "saffron":
+            from online_fdr.investing.saffron.saffron import Saffron
+
+            return Saffron(
+                alpha=fdr_config.alpha,
+                wealth=fdr_config.resolved_wealth,
+                lambda_=fdr_config.lambda_,
+            )
+        if fdr_config.method == "naive":
+            return NaivePValueCutoffController(cutoff=fdr_config.cutoff)
+        raise ValueError(f"Unsupported FDR method '{fdr_config.method}'")
+
     def _create_pyod_detector(self) -> Any:
-        model_type = self.config.model_type
-        params = dict(self.config.model_params or {})
+        model_type = self.static_config.model_type
+        params = dict(self.static_config.model_params or {})
         if self.static_config.seed is not None:
             params.setdefault("random_state", self.static_config.seed)
 
+        return self._instantiate_pyod_detector(model_type, params)
+
+    def _instantiate_pyod_detector(
+        self, model_type: str, params: Dict[str, Any]
+    ) -> Any:
         if model_type == "pyod_iforest":
             from pyod.models.iforest import IForest
 
@@ -1250,12 +1281,21 @@ class StaticConformalDetectionService:
     def _calculate_conformal_severity(self, p_value: float, is_anomaly: bool) -> str:
         if not is_anomaly:
             return "low"
-        alpha = self.static_config.fdr_config.alpha
-        if p_value <= alpha / 20.0:
+        threshold = self._effective_fdr_threshold()
+        if p_value <= threshold / 20.0:
             return "critical"
-        if p_value <= alpha / 5.0:
+        if p_value <= threshold / 5.0:
             return "high"
         return "medium"
+
+    def _effective_fdr_threshold(self) -> float:
+        controller = self.fdr_controller
+        if controller is not None:
+            for attribute in ("alpha", "cutoff"):
+                value = getattr(controller, attribute, None)
+                if value is not None:
+                    return float(value)
+        return float(self.static_config.fdr_config.effective_threshold)
 
     def _build_result(
         self,

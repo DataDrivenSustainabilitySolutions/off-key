@@ -19,6 +19,7 @@ def _build_result(
     tail_pvalue,
     anomaly_score: float,
     conformal_pvalue=None,
+    required_sensors=None,
 ) -> AnomalyResult:
     detector_context = (
         {"static_conformal": {"p_value": conformal_pvalue}}
@@ -36,7 +37,10 @@ def _build_result(
         charger_id="charger-1",
         context={
             **detector_context,
-            "alignment": {"aligned_vector": aligned_vector},
+            "alignment": {
+                "aligned_vector": aligned_vector,
+                "required_sensors": required_sensors,
+            },
         },
     )
 
@@ -107,6 +111,35 @@ def test_database_writer_uses_topic_telemetry_type_for_univariate():
 
 def test_anomaly_table_metadata_includes_value_type_column():
     assert "value_type" in ANOMALY_TABLE.columns.keys()
+
+
+def test_anomaly_table_metadata_includes_sensor_set_column():
+    assert "sensor_set" in ANOMALY_TABLE.columns.keys()
+
+
+def test_build_records_persists_multivariate_sensor_set():
+    config = MagicMock()
+    writer = DatabaseWriter(config, session_factory=MagicMock())
+    result = _build_result(
+        aligned_vector=True,
+        tail_pvalue=0.004,
+        anomaly_score=0.01,
+        required_sensors=["L1", "L2"],
+    )
+
+    anomaly_records, _ = writer._build_records([result])
+
+    assert anomaly_records[0]["sensor_set"] == ["L1", "L2"]
+
+
+def test_build_records_persists_univariate_sensor_set_from_topic():
+    config = MagicMock()
+    writer = DatabaseWriter(config, session_factory=MagicMock())
+    result = _build_result(aligned_vector=False, tail_pvalue=0.004, anomaly_score=0.01)
+
+    anomaly_records, _ = writer._build_records([result])
+
+    assert anomaly_records[0]["sensor_set"] == ["sine"]
 
 
 @pytest.mark.asyncio

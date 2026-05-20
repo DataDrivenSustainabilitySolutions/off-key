@@ -94,6 +94,7 @@ services:
       - emqx-network
     environment:
       - TACTIC_DOCKER_DEFAULT_NETWORK=${COMPOSE_PROJECT_NAME:-off-key}_app-network
+      - TACTIC_RADAR_IMAGE=${MQTT_RADAR_IMAGE:-off-key-mqtt-radar:latest}
     restart: always
     healthcheck:
       test:

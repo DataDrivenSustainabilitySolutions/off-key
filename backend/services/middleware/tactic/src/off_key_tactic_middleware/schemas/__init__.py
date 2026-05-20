@@ -169,6 +169,7 @@ class AnomalyResponse(BaseModel):
     anomaly_type: str
     anomaly_value: float
     value_type: Optional[str] = None
+    sensor_set: Optional[list[str]] = None
 
     class Config:
         from_attributes = True
@@ -183,6 +184,7 @@ class AnomalyCreateRequest(BaseModel):
     anomaly_type: str
     anomaly_value: float
     value_type: Optional[str] = None
+    sensor_set: Optional[list[str]] = None
 
 
 # =============================================================================

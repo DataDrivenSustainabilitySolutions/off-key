@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException, Query, Request, Response
 from typing import List, Dict, Optional, Any
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+from off_key_core.utils.mqtt_topics import normalize_mqtt_topic_filters
 
 from off_key_core.schemas.radar import (
     AdaptiveStreamConfig,
@@ -132,6 +133,15 @@ class MonitoringServiceConfig(BaseModel):
     environment_variables: Optional[Dict[str, str]] = Field(
         None, description="Additional environment variables"
     )
+
+    @field_validator("mqtt_topics")
+    @classmethod
+    def validate_mqtt_topics(cls, value: List[str]) -> List[str]:
+        return normalize_mqtt_topic_filters(
+            value,
+            require_charger_prefix=True,
+            require_telemetry_topic=True,
+        )
 
 
 class ServiceResponse(BaseModel):
@@ -348,6 +358,11 @@ async def stop_monitoring_service(
             "message": f"Container '{container_name or container_id}'"
             f" stopped successfully",
         }
+    except TacticError as e:
+        raise HTTPException(
+            status_code=e.status or 502,
+            detail=_get_tactic_error_detail(e),
+        )
     except HTTPException:
         raise
     except Exception as e:

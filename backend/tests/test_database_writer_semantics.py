@@ -1,5 +1,6 @@
 """Tests for persisted anomaly semantics in RADAR database writer."""
 
+import asyncio
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 
@@ -247,3 +248,28 @@ async def test_flush_batch_requeues_snapshot_on_unexpected_retry_exception():
 
     assert writer.write_queue == [anomaly]
     assert writer.total_errors == 2
+
+
+@pytest.mark.asyncio
+async def test_flush_batch_requeues_snapshot_on_cancellation():
+    config = MagicMock()
+    config.db_batch_size = 100
+    config.db_batch_timeout = 1.0
+    config.db_write_enabled = True
+
+    session = AsyncMock()
+    session.commit = AsyncMock()
+
+    session_cm = AsyncMock()
+    session_cm.__aenter__.return_value = session
+    session_cm.__aexit__.return_value = None
+
+    writer = DatabaseWriter(config, session_factory=MagicMock(return_value=session_cm))
+    anomaly = _build_result(aligned_vector=False, tail_pvalue=0.002, anomaly_score=0.02)
+    writer.write_queue = [anomaly]
+    writer._execute_upsert = AsyncMock(side_effect=asyncio.CancelledError)
+
+    with pytest.raises(asyncio.CancelledError):
+        await writer._flush_batch()
+
+    assert writer.write_queue == [anomaly]

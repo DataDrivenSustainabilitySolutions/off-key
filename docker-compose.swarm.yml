@@ -52,10 +52,6 @@ services:
     image: tecnativa/docker-socket-proxy
     networks:
       - socket-network
-    ports:
-      - target: 2375
-        published: 2375
-        mode: host
     volumes:
       - "/var/run/docker.sock:/var/run/docker.sock:ro"
     environment:
@@ -76,20 +72,20 @@ services:
       - BUILD=0
       - COMMIT=0
       - CONFIGS=0
-      - CONTAINERS=1 # Traefik, portainer, etc.
+      - CONTAINERS=1 # Required by TACTIC RADAR container fallback and cleanup.
       - DISTRIBUTION=0
       - EXEC=0
-      - IMAGES=1 # Portainer
-      - INFO=1 # Portainer
-      - NETWORKS=1 # Portainer
+      - IMAGES=0
+      - INFO=1 # Required for Swarm manager detection.
+      - NETWORKS=0
       - NODES=0
       - PLUGINS=0
-      - SERVICES=1 # Portainer
+      - SERVICES=1 # Required by TACTIC RADAR Swarm orchestration.
       - SESSION=0
       - SWARM=0
       - SYSTEM=0
-      - TASKS=1 # Portainer
-      - VOLUMES=1 # Portainer
+      - TASKS=1 # Required for Swarm service status checks.
+      - VOLUMES=0
 
   frontend:
     image: "${FRONTEND_IMAGE:-off-key-frontend:latest}"

@@ -1,7 +1,7 @@
 import asyncio
 import time
 from datetime import datetime
-from unittest.mock import Mock, patch
+from unittest.mock import MagicMock, Mock, patch
 from typing import List
 
 import pytest
@@ -26,11 +26,12 @@ This test module covers the following risk scenarios:
 class TestMessageHandlerAsyncEvents:
     """Test suite for MessageHandler async event handling"""
 
-    @pytest.fixture
-    def message_handler(self):
+    @pytest_asyncio.fixture
+    async def message_handler(self):
         """Create MessageHandler instance"""
         handler = MessageHandler(max_queue_size=100)
         yield handler
+        await handler.stop(drain=False)
 
     @pytest.fixture
     def mock_mqtt_message(self):
@@ -107,40 +108,29 @@ class TestMessageHandlerAsyncEvents:
         message_handler._on_message(None, None, mock_msg)
 
     @pytest.mark.asyncio
-    async def test_future_not_awaited_memory_leak(
-        self, message_handler, mock_mqtt_message
-    ):
-        """Test that fire-and-forget futures don't cause memory leaks"""
-        futures_created = []
+    async def test_async_handler_queue_is_bounded(self, mock_mqtt_message):
+        """Test that async handler work is queued with a hard upper bound"""
+        message_handler = MessageHandler(max_queue_size=3, max_concurrent_handlers=1)
+        release_handler = asyncio.Event()
 
         async def slow_handler(message: MQTTMessage):
-            await asyncio.sleep(10)  # Long-running handler
+            await release_handler.wait()
 
         loop = asyncio.get_running_loop()
         message_handler.set_handler(slow_handler, loop)
 
-        # Patch run_coroutine_threadsafe to track futures
-        original_rcts = asyncio.run_coroutine_threadsafe
-
-        def tracked_rcts(coro, loop):
-            future = original_rcts(coro, loop)
-            futures_created.append(future)
-            return future
-
-        with patch("asyncio.run_coroutine_threadsafe", side_effect=tracked_rcts):
-            # Send multiple messages
-            for _ in range(10):
-                message_handler._on_message(None, None, mock_mqtt_message)
+        for _ in range(10):
+            message_handler._on_message(None, None, mock_mqtt_message)
 
         await asyncio.sleep(0.1)
 
-        # Verify futures were created
-        assert len(futures_created) == 10
+        assert message_handler.futures_created <= (
+            message_handler.max_queue_size + message_handler.max_concurrent_handlers
+        )
+        assert message_handler.handler_messages_dropped > 0
 
-        # Clean up pending futures
-        for future in futures_created:
-            if not future.done():
-                future.cancel()
+        release_handler.set()
+        await message_handler.stop(timeout=1.0)
 
     @pytest.mark.asyncio
     async def test_futures_complete_eventually(
@@ -601,6 +591,34 @@ class TestConnectionManagerAsyncEvents:
 
         # No reconnect task should be created
         assert connection_manager._reconnect_task is None
+
+    @pytest.mark.asyncio
+    async def test_connect_clears_stale_connection_event(self, connection_manager):
+        """Test that reconnect attempts cannot reuse a stale success event."""
+        connection_manager._connection_event.set()
+
+        mock_client = MagicMock()
+        mock_client.connect_async = MagicMock()
+        mock_client.loop_start = MagicMock()
+        mock_client.loop_stop = MagicMock()
+        mock_client.disconnect = MagicMock()
+
+        async def fake_wait_for(awaitable, timeout):
+            awaitable.close()
+            assert not connection_manager._connection_event.is_set()
+            raise asyncio.TimeoutError
+
+        with (
+            patch(
+                "off_key_mqtt_proxy.client.connection.mqtt.Client",
+                return_value=mock_client,
+            ),
+            patch("asyncio.wait_for", side_effect=fake_wait_for),
+        ):
+            assert await connection_manager.connect() is False
+
+        mock_client.loop_stop.assert_called_once()
+        mock_client.disconnect.assert_called_once()
 
 
 if __name__ == "__main__":

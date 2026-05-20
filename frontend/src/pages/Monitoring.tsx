@@ -870,10 +870,19 @@ const Monitoring: React.FC = () => {
   }, [adaptiveModels, handleModelSelect, selectedAlgorithm]);
 
   useEffect(() => {
-    if (monitoringKeys.length === 0) return; // if no keys given do nothing
-    if (Object.keys(visibleMap).length > 0) return; // if keys already initialised also do nothing
-    setVisibleMap(Object.fromEntries(monitoringKeys.map((k) => [k, true]))); //k = keys, bool = should all be shown per default or not
-  }, [monitoringKeys, visibleMap]);
+    setVisibleMap((previous) => {
+      const next = Object.fromEntries(
+        monitoringKeys.map((key) => [key, previous[key] ?? true])
+      );
+      const previousKeys = Object.keys(previous);
+      const nextKeys = Object.keys(next);
+      const isUnchanged =
+        previousKeys.length === nextKeys.length &&
+        nextKeys.every((key) => previous[key] === next[key]);
+
+      return isUnchanged ? previous : next;
+    });
+  }, [monitoringKeys]);
 
   // Load active services with Docker status
   const loadActiveServices = useCallback(async () => {
@@ -1226,16 +1235,9 @@ const Monitoring: React.FC = () => {
                     <Button
                       type="button"
                       variant="outline"
-                      onClick={() => setTopicPatternInput("#")}
-                    >
-                      Use all topics (#)
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
                       onClick={() => setTopicPatternInput(`charger/${chargerId}/live-telemetry/#`)}
                     >
-                      Charger wildcard
+                      All charger telemetry
                     </Button>
                   </div>
                   <p className="text-xs text-muted-foreground">

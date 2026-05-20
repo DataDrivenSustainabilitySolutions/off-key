@@ -5,12 +5,15 @@ import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from fastapi import HTTPException
 from starlette.requests import Request
 
 from off_key_api_gateway.api.v1.monitors import (
     MonitoringServiceConfig,
     PerformanceConfig as GatewayPerformanceConfig,
+    TacticError,
     start_monitoring_service,
+    stop_monitoring_service,
 )
 from off_key_tactic_middleware.services.orchestration.radar import (
     RadarOrchestrationService,
@@ -78,6 +81,40 @@ async def test_gateway_start_monitor_forwards_performance_config():
         "sensor_key_strategy": "leaf",
         "sensor_freshness_seconds": 25.0,
     }
+
+
+def test_gateway_monitoring_config_rejects_root_wildcard_topic():
+    with pytest.raises(ValueError, match="Root wildcard"):
+        MonitoringServiceConfig(
+            container_name="radar-charger-1",
+            service_type="radar",
+            mqtt_topics=["#"],
+        )
+
+
+@pytest.mark.asyncio
+async def test_gateway_stop_preserves_tactic_error_status():
+    mock_stop = AsyncMock(
+        side_effect=TacticError(
+            "missing",
+            status=404,
+            body={"detail": "RADAR service not found"},
+        )
+    )
+    with patch(
+        "off_key_api_gateway.api.v1.monitors.tactic.stop_radar_service",
+        mock_stop,
+    ):
+        handler = inspect.unwrap(stop_monitoring_service)
+        with pytest.raises(HTTPException) as exc_info:
+            await handler(
+                request=_build_request(),
+                container_name="missing",
+                container_id=None,
+            )
+
+    assert exc_info.value.status_code == 404
+    assert exc_info.value.detail == "RADAR service not found"
 
 
 def test_tactic_build_radar_environment_maps_performance_to_radar_env(monkeypatch):

@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from typing import List, Dict, Optional, Any
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+from off_key_core.utils.mqtt_topics import normalize_mqtt_topic_filters
 
 from off_key_core.schemas.radar import (
     AdaptiveStreamConfig,
@@ -69,6 +70,15 @@ class RadarConfig(BaseModel):
         default=None,
         description="Adaptive stream detector settings.",
     )
+
+    @field_validator("mqtt_topics")
+    @classmethod
+    def validate_mqtt_topics(cls, value: List[str]) -> List[str]:
+        return normalize_mqtt_topic_filters(
+            value,
+            require_charger_prefix=True,
+            require_telemetry_topic=True,
+        )
 
 
 class RadarServiceResponse(BaseModel):

@@ -3,6 +3,7 @@ Utilities for extracting stable metadata from MQTT topics and payloads.
 """
 
 from dataclasses import dataclass
+from collections.abc import Iterable
 import re
 from typing import Any, Mapping, Optional
 
@@ -93,3 +94,78 @@ class TopicMetadataExtractor:
             return None
 
         return TopicMetadata(charger_id=charger_id, telemetry_type=telemetry_type)
+
+
+def validate_mqtt_topic_filter(
+    topic: str,
+    *,
+    require_charger_prefix: bool = False,
+    require_telemetry_topic: bool = False,
+    allow_root_wildcard: bool = False,
+) -> str:
+    """Validate and normalize an MQTT subscription filter for this domain."""
+    normalized = topic.strip()
+    if not normalized:
+        raise ValueError("MQTT topic filter must not be empty")
+    if "\x00" in normalized:
+        raise ValueError("MQTT topic filter must not contain null characters")
+    if len(normalized.encode("utf-8")) > 65535:
+        raise ValueError("MQTT topic filter exceeds MQTT's 65535-byte limit")
+    if normalized in {"#", "/#"} and not allow_root_wildcard:
+        raise ValueError("Root wildcard subscriptions are not allowed")
+
+    parts = normalized.split("/")
+    if any(part == "" for part in parts):
+        raise ValueError("MQTT topic filter must not contain empty levels")
+
+    for index, part in enumerate(parts):
+        if "#" in part:
+            if part != "#":
+                raise ValueError("MQTT multi-level wildcard '#' must occupy a level")
+            if index != len(parts) - 1:
+                raise ValueError("MQTT multi-level wildcard '#' must be the last level")
+        if "+" in part and part != "+":
+            raise ValueError("MQTT single-level wildcard '+' must occupy a level")
+
+    if require_charger_prefix and parts[0] != "charger":
+        raise ValueError("MQTT topic filter must start with 'charger/'")
+
+    if require_telemetry_topic:
+        if len(parts) < 4:
+            raise ValueError(
+                "MQTT telemetry topic filters must use "
+                "'charger/<id>/telemetry/<type>' or "
+                "'charger/<id>/live-telemetry/<type>'"
+            )
+        if parts[0] != "charger" or parts[2] not in {"telemetry", "live-telemetry"}:
+            raise ValueError(
+                "MQTT telemetry topic filters must use the charger telemetry namespace"
+            )
+
+    return normalized
+
+
+def normalize_mqtt_topic_filters(
+    topics: Iterable[str],
+    *,
+    require_charger_prefix: bool = False,
+    require_telemetry_topic: bool = False,
+    allow_root_wildcard: bool = False,
+) -> list[str]:
+    """Validate, trim, and de-duplicate MQTT subscription filters."""
+    normalized_topics: list[str] = []
+    seen: set[str] = set()
+    for topic in topics:
+        normalized = validate_mqtt_topic_filter(
+            topic,
+            require_charger_prefix=require_charger_prefix,
+            require_telemetry_topic=require_telemetry_topic,
+            allow_root_wildcard=allow_root_wildcard,
+        )
+        if normalized not in seen:
+            normalized_topics.append(normalized)
+            seen.add(normalized)
+
+    if not normalized_topics:
+        raise ValueError("At least one MQTT topic filter is required")
+    return normalized_topics

@@ -6,6 +6,7 @@ management, message queuing, and thread-safe async coordination.
 """
 
 import asyncio
+from contextlib import suppress
 from datetime import datetime
 from typing import Optional, Callable, List, Union, Awaitable
 
@@ -34,7 +35,10 @@ class MessageHandler:
         ] = None
         self.message_queue: List[MQTTMessage] = []
         self._event_loop: Optional[asyncio.AbstractEventLoop] = None
-        self._handler_semaphore: Optional[asyncio.Semaphore] = None
+        self._handler_queue: Optional[
+            asyncio.Queue[tuple[MQTTMessage, Callable[[MQTTMessage], Awaitable[None]]]]
+        ] = None
+        self._handler_workers: List[asyncio.Task] = []
 
         # Metrics
         self.messages_received = 0
@@ -43,6 +47,7 @@ class MessageHandler:
         self.futures_created = 0
         self.futures_completed = 0
         self.futures_failed = 0
+        self.handler_messages_dropped = 0
 
     def set_client(self, client: mqtt.Client) -> None:
         """Set the MQTT client and register message callback"""
@@ -76,10 +81,41 @@ class MessageHandler:
 
         # Initialize semaphore for async handlers to limit concurrency
         if asyncio.iscoroutinefunction(handler) and self._event_loop:
-            self._handler_semaphore = asyncio.Semaphore(self.max_concurrent_handlers)
+            self._ensure_async_workers()
 
     def clear_handler(self) -> None:
         """Clear the current message handler"""
+        self.message_handler = None
+        self._event_loop = None
+
+    async def stop(
+        self,
+        *,
+        drain: bool = True,
+        timeout: Optional[float] = None,
+    ) -> None:
+        """Stop async handler workers after optionally draining queued work."""
+        if drain and self._handler_queue:
+            try:
+                await asyncio.wait_for(self._handler_queue.join(), timeout=timeout)
+            except asyncio.TimeoutError:
+                logger.error(
+                    "Timed out draining async message handler queue; "
+                    "dropping %s queued messages",
+                    self._handler_queue.qsize(),
+                )
+        for task in self._handler_workers:
+            task.cancel()
+        for task in self._handler_workers:
+            with suppress(asyncio.CancelledError):
+                await task
+        self._handler_workers.clear()
+        if self._handler_queue:
+            while not self._handler_queue.empty():
+                with suppress(asyncio.QueueEmpty):
+                    self._handler_queue.get_nowait()
+                    self._handler_queue.task_done()
+        self._handler_queue = None
         self.message_handler = None
         self._event_loop = None
 
@@ -124,6 +160,10 @@ class MessageHandler:
             "futures_created": self.futures_created,
             "futures_completed": self.futures_completed,
             "futures_failed": self.futures_failed,
+            "handler_queue_size": (
+                self._handler_queue.qsize() if self._handler_queue else 0
+            ),
+            "handler_messages_dropped": self.handler_messages_dropped,
         }
 
     def get_message_rate(
@@ -166,31 +206,40 @@ class MessageHandler:
         except Exception as e:
             logger.error(f"Error processing MQTT message: {e}")
 
-    async def _wrapped_handler(self, message: MQTTMessage) -> None:
-        """
-        Wrap handler with semaphore to limit concurrency
+    def _ensure_async_workers(self) -> None:
+        """Ensure a bounded queue and fixed worker pool exist for async handlers."""
+        if not self._event_loop or self._event_loop.is_closed():
+            return
+        if self._handler_queue is None:
+            self._handler_queue = asyncio.Queue(maxsize=self.max_queue_size)
+        self._handler_workers = [
+            task for task in self._handler_workers if not task.done()
+        ]
+        missing_workers = self.max_concurrent_handlers - len(self._handler_workers)
+        for _ in range(max(missing_workers, 0)):
+            self._handler_workers.append(
+                self._event_loop.create_task(self._async_handler_worker())
+            )
 
-        This prevents unbounded future creation by limiting the number
-        of concurrent handler executions.
-        """
-        async with self._handler_semaphore:
-            await self.message_handler(message)
-
-    def _handle_future_result(self, future: asyncio.Future) -> None:
-        """
-        Handle future completion and log any exceptions
-
-        This callback is called when the async message handler completes,
-        ensuring exceptions are not silently lost.
-        """
+    async def _async_handler_worker(self) -> None:
+        """Process queued async message handler work with bounded concurrency."""
+        assert self._handler_queue is not None
         try:
-            # This will raise if handler raised an exception
-            future.result()
-            self.futures_completed += 1
-        except Exception as e:
-            self.futures_failed += 1
-            self.handler_errors += 1
-            logger.error(f"Exception in async message handler: {e}", exc_info=True)
+            while True:
+                message, handler = await self._handler_queue.get()
+                try:
+                    await handler(message)
+                    self.futures_completed += 1
+                except Exception as e:
+                    self.futures_failed += 1
+                    self.handler_errors += 1
+                    logger.error(
+                        f"Exception in async message handler: {e}", exc_info=True
+                    )
+                finally:
+                    self._handler_queue.task_done()
+        except asyncio.CancelledError:
+            raise
 
     def _handle_user_callback(self, message: MQTTMessage) -> None:
         """Handle user-provided message callback (sync or async)"""
@@ -199,16 +248,12 @@ class MessageHandler:
                 # Handle async callback
                 if self._event_loop and not self._event_loop.is_closed():
                     try:
-                        # Schedule in main event loop thread-safely
-                        # with semaphore wrapper.
-                        future = asyncio.run_coroutine_threadsafe(
-                            self._wrapped_handler(message), self._event_loop
+                        handler = self.message_handler
+                        self._event_loop.call_soon_threadsafe(
+                            self._enqueue_async_handler_work,
+                            message,
+                            handler,
                         )
-                        # Track future creation
-                        self.futures_created += 1
-                        # Add callback to handle exceptions and track completion
-                        future.add_done_callback(self._handle_future_result)
-                        # Don't wait for completion to avoid blocking MQTT thread
                     except RuntimeError as e:
                         # Event loop closed between check and call (race condition)
                         logger.error(f"Event loop closed during callback: {e}")
@@ -222,6 +267,31 @@ class MessageHandler:
         except Exception as e:
             self.handler_errors += 1
             logger.error(f"Error in user message handler: {e}")
+
+    def _enqueue_async_handler_work(
+        self,
+        message: MQTTMessage,
+        handler: Callable[[MQTTMessage], Awaitable[None]],
+    ) -> None:
+        """Enqueue async handler work on the event loop thread without blocking MQTT."""
+        if self._handler_queue is None:
+            self._ensure_async_workers()
+        if self._handler_queue is None:
+            self.handler_errors += 1
+            logger.error("Async handler queue is not available")
+            return
+
+        try:
+            self._handler_queue.put_nowait((message, handler))
+            self.futures_created += 1
+        except asyncio.QueueFull:
+            self.handler_messages_dropped += 1
+            self.handler_errors += 1
+            logger.warning(
+                "Async message handler queue full (%s), dropping message from %s",
+                self.max_queue_size,
+                message.topic,
+            )
 
     def _queue_message(self, message: MQTTMessage) -> None:
         """Queue message when no handler is available"""

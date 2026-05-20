@@ -15,6 +15,7 @@ from off_key_core.config.validation import validate_environment as _validate_env
 from off_key_core.utils.mqtt_topics import (
     DEFAULT_TOPIC_REGEX,
     TopicMetadataExtractor,
+    normalize_mqtt_topic_filters,
 )
 
 
@@ -259,10 +260,11 @@ class MQTTConfig(BaseModel):
     @field_validator("source_topics")
     @classmethod
     def validate_source_topics(cls, value: list[str]) -> list[str]:
-        normalized = [topic.strip() for topic in value if topic and topic.strip()]
-        if not normalized:
-            raise ValueError("At least one source topic filter is required")
-        return normalized
+        return normalize_mqtt_topic_filters(
+            value,
+            require_charger_prefix=True,
+            require_telemetry_topic=True,
+        )
 
     @field_validator("topic_payload_charger_key", "topic_payload_type_key")
     @classmethod
@@ -439,10 +441,11 @@ class MQTTSettings(BaseSettings):
     @field_validator("MQTT_SOURCE_TOPICS")
     @classmethod
     def validate_source_topics(cls, value: str) -> str:
-        if not value.strip():
-            raise ValueError(
-                "MQTT_SOURCE_TOPICS must contain at least one topic filter"
-            )
+        normalize_mqtt_topic_filters(
+            value.split(","),
+            require_charger_prefix=True,
+            require_telemetry_topic=True,
+        )
         return value
 
     @field_validator("ENVIRONMENT")

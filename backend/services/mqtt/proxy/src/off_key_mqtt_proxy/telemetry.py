@@ -189,6 +189,8 @@ class DatabaseWriter:
         # Background tasks
         self._writer_task: Optional[asyncio.Task] = None
         self._health_task: Optional[asyncio.Task] = None
+        self._batch_tasks: set[asyncio.Task] = set()
+        self._next_batch_id = 0
         self._shutdown_event = asyncio.Event()
         self._batch_ready_event = asyncio.Event()
 
@@ -226,14 +228,35 @@ class DatabaseWriter:
 
         # Signal shutdown
         self._shutdown_event.set()
+        self._batch_ready_event.set()
 
-        # Cancel background tasks
+        # Let the writer loop hand off any pending batch before shutdown drains
+        # in-flight write tasks.
         if self._writer_task and not self._writer_task.done():
-            self._writer_task.cancel()
             try:
-                await self._writer_task
+                await asyncio.wait_for(
+                    asyncio.shield(self._writer_task),
+                    timeout=max(self.batch_timeout * 2, 5.0),
+                )
+            except asyncio.TimeoutError:
+                self._writer_task.cancel()
+                try:
+                    await self._writer_task
+                except asyncio.CancelledError:
+                    pass
             except asyncio.CancelledError:
                 pass
+
+        # Process remaining batches and wait for all started batches to finish.
+        if self.pending_batch.size() > 0:
+            logger.info(
+                "event=db_writer.shutdown_flush records_count=%s",
+                self.pending_batch.size(),
+                extra={**self._log_context, "records_count": self.pending_batch.size()},
+            )
+            await self._trigger_batch_processing()
+
+        await self._await_batch_tasks()
 
         if self._health_task and not self._health_task.done():
             self._health_task.cancel()
@@ -241,15 +264,6 @@ class DatabaseWriter:
                 await self._health_task
             except asyncio.CancelledError:
                 pass
-
-        # Process remaining batches
-        if self.pending_batch.size() > 0:
-            logger.info(
-                "event=db_writer.shutdown_flush records_count=%s",
-                self.pending_batch.size(),
-                extra={**self._log_context, "records_count": self.pending_batch.size()},
-            )
-            await self._process_batch(self.pending_batch)
 
         logger.debug("event=db_writer.stopped", extra=self._log_context)
 
@@ -343,32 +357,43 @@ class DatabaseWriter:
 
             # Extract value and timestamp from payload
             # Parse timestamp
-            timestamp_str = payload.get("timestamp")
-            if timestamp_str:
+            timestamp_value = payload.get("timestamp")
+            if timestamp_value is not None:
                 try:
-                    if timestamp_str.endswith("Z"):
-                        timestamp = datetime.fromisoformat(
-                            timestamp_str.replace("Z", "+00:00")
+                    if isinstance(timestamp_value, (int, float)):
+                        timestamp = datetime.fromtimestamp(
+                            timestamp_value,
+                            tz=timezone.utc,
                         )
                     else:
-                        timestamp = datetime.fromisoformat(timestamp_str)
+                        timestamp_str = str(timestamp_value).strip()
+                        if not timestamp_str:
+                            raise ValueError("empty timestamp")
+                        if timestamp_str.endswith("Z"):
+                            timestamp = datetime.fromisoformat(
+                                timestamp_str.replace("Z", "+00:00")
+                            )
+                        else:
+                            timestamp = datetime.fromisoformat(timestamp_str)
 
-                    # Convert to naive datetime for database storage
                     if timestamp.tzinfo:
-                        timestamp = timestamp.replace(tzinfo=None)
-                except (ValueError, TypeError) as e:
+                        timestamp = timestamp.astimezone(timezone.utc)
+                    else:
+                        timestamp = timestamp.replace(tzinfo=timezone.utc)
+                except (ValueError, TypeError, OSError) as e:
+                    timestamp_context = str(timestamp_value)
                     return ParseFailure(
                         reason="Invalid timestamp format",
                         is_error=False,
-                        log_message=f"Invalid timestamp format: {timestamp_str}",
+                        log_message=f"Invalid timestamp format: {timestamp_context}",
                         context={
                             "charger_id": charger_id,
-                            "timestamp": timestamp_str,
+                            "timestamp": timestamp_context,
                             "error": str(e),
                         },
                     )
             else:
-                timestamp = datetime.now()
+                timestamp = datetime.now(timezone.utc)
 
             # Parse value
             value = string_to_float(payload.get("value"))
@@ -379,7 +404,7 @@ class DatabaseWriter:
                 timestamp=timestamp,
                 value=value,
                 telemetry_type=telemetry_type,
-                created=datetime.now(),
+                created=datetime.now(timezone.utc),
             )
 
             return ParseSuccess(record=record)
@@ -402,12 +427,48 @@ class DatabaseWriter:
             return
 
         # Move current batch to processing
-        batch_id = f"batch_{int(time.time() * 1000)}"
+        self._next_batch_id += 1
+        batch_id = f"batch_{int(time.time() * 1000)}_{self._next_batch_id}"
         self.processing_batches[batch_id] = self.pending_batch
         self.pending_batch = WriteBatch()
 
         # Process batch in background
-        asyncio.create_task(self._process_batch_with_retry(batch_id))
+        task = asyncio.create_task(self._process_batch_with_retry(batch_id))
+        self._batch_tasks.add(task)
+        task.add_done_callback(self._batch_tasks.discard)
+        return task
+
+    async def _await_batch_tasks(self) -> None:
+        """Wait for all in-flight batch write tasks to settle before shutdown."""
+        if not self._batch_tasks:
+            return
+        done, pending = await asyncio.wait(
+            set(self._batch_tasks),
+            timeout=self.config.graceful_shutdown_timeout,
+        )
+        for task in done:
+            try:
+                task.result()
+            except Exception as exc:
+                logger.error(
+                    "event=db_writer.batch_task_failed_during_shutdown error=%s",
+                    exc,
+                    extra={**self._log_context, "error": str(exc)},
+                    exc_info=True,
+                )
+        if pending:
+            logger.error(
+                "event=db_writer.shutdown_pending_batches count=%s",
+                len(pending),
+                extra={**self._log_context, "pending_batches": len(pending)},
+            )
+            for task in pending:
+                task.cancel()
+            for task in pending:
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
 
     async def _writer_loop(self):
         """Background loop for batch processing"""

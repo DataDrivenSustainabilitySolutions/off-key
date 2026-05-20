@@ -7,6 +7,7 @@ and real-time API endpoints with intelligent logging and error handling.
 
 import asyncio
 import time
+import uuid
 from datetime import datetime
 from typing import Dict, List, Optional, Any, Set
 from dataclasses import dataclass, field
@@ -679,7 +680,7 @@ class MessageRouter:
                 },
             )
             return MessageRouteInfo(
-                message_id=f"msg_{int(time.time() * 1000)}",
+                message_id=self._new_message_id(),
                 topic=message.topic,
                 charger_id=self._extract_charger_id(message.topic),
                 timestamp=message.timestamp,
@@ -688,7 +689,7 @@ class MessageRouter:
 
         # Create route info
         route_info = MessageRouteInfo(
-            message_id=f"msg_{int(time.time() * 1000)}",
+            message_id=self._new_message_id(),
             topic=message.topic,
             charger_id=self._extract_charger_id(message.topic),
             timestamp=message.timestamp,
@@ -696,6 +697,7 @@ class MessageRouter:
         )
 
         # Track active route
+        self._all_routes_completed_event.clear()
         self.active_routes[route_info.message_id] = route_info
 
         # Route message to destinations concurrently
@@ -886,6 +888,10 @@ class MessageRouter:
         """Extract charger ID from MQTT topic"""
         metadata = self.topic_extractor.extract(topic=topic, payload=None)
         return metadata.charger_id if metadata else "unknown"
+
+    @staticmethod
+    def _new_message_id() -> str:
+        return f"msg_{uuid.uuid4().hex}"
 
     async def _cleanup_loop(self):
         """Background cleanup loop"""

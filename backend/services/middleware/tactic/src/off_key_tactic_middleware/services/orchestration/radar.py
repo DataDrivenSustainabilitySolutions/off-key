@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import json
 import time
 import uuid
@@ -14,6 +15,7 @@ from sqlalchemy import select, delete
 from off_key_core.config.logs import logger
 from off_key_core.db.models import MonitoringService
 from off_key_core.schemas.radar import AdaptiveStreamConfig, StaticBaselineConfig
+from off_key_core.utils.mqtt_topics import normalize_mqtt_topic_filters
 from ...models.registry import ModelRegistryService
 from ...facades.docker import AsyncDocker, get_workload_docker_status
 from ...config.config import (
@@ -140,23 +142,13 @@ class RadarOrchestrationService:
         Returns:
             MonitoringService: The created monitoring service database entry
         """
-        # Check if service with this name already exists
-        query = select(MonitoringService).where(
-            MonitoringService.container_name == container_name
+        mqtt_topics = normalize_mqtt_topic_filters(
+            mqtt_topics,
+            require_charger_prefix=True,
+            require_telemetry_topic=True,
         )
-        result = await self.session.execute(query)
-        existing_service = result.scalars().first()
-
-        if existing_service and existing_service.status:
-            logger.info(
-                f"RADAR container {container_name} already exists and is running"
-            )
-            return existing_service
-
-        # Generate a unique service ID
+        strategy = (strategy or "adaptive_stream").strip().lower()
         db_service_id = str(uuid.uuid4())
-
-        # Build environment variables for RADAR service
         env_vars = self._build_radar_environment(
             service_id=db_service_id,
             mqtt_topics=mqtt_topics,
@@ -170,8 +162,27 @@ class RadarOrchestrationService:
             static_baseline_config=static_baseline_config or {},
             adaptive_stream_config=adaptive_stream_config or {},
         )
+        config_fingerprint = self._build_radar_config_fingerprint(env_vars)
+
+        # Check if service with this name already exists
+        query = select(MonitoringService).where(
+            MonitoringService.container_name == container_name
+        )
+        result = await self.session.execute(query)
+        existing_service = result.scalars().first()
+
+        if existing_service:
+            return await self._resolve_existing_service_request(
+                existing_service=existing_service,
+                container_name=container_name,
+                mqtt_topics=mqtt_topics,
+                strategy=strategy,
+                model_type=env_vars.get("RADAR_MODEL_TYPE", ""),
+                config_fingerprint=config_fingerprint,
+            )
 
         # Create the RADAR workload (Swarm service when available, otherwise container)
+        docker_workload: Any = None
         try:
             docker_workload = await self._create_radar_workload(
                 service_id=db_service_id,
@@ -200,8 +211,127 @@ class RadarOrchestrationService:
 
         except Exception as e:
             await self.session.rollback()
+            if docker_workload is not None:
+                await self._remove_created_workload_after_failure(docker_workload)
             logger.error(f"Failed to create RADAR service: {e}")
             raise
+
+    async def _resolve_existing_service_request(
+        self,
+        *,
+        existing_service: MonitoringService,
+        container_name: str,
+        mqtt_topics: List[str],
+        strategy: str,
+        model_type: str,
+        config_fingerprint: str,
+    ) -> MonitoringService:
+        """Reject duplicate names unless the existing active workload matches."""
+        if not existing_service.status:
+            raise ValueError(
+                f"RADAR service name '{container_name}' already exists as an "
+                "inactive service. Use a unique container name."
+            )
+
+        docker_status = await self._get_docker_status(
+            existing_service.container_id or ""
+        )
+        if docker_status != "running":
+            existing_service.status = False
+            await self.session.commit()
+            raise ValueError(
+                f"RADAR service name '{container_name}' is marked active, but its "
+                f"Docker workload is not running (docker_status={docker_status}). "
+                "The stale service was marked inactive; use a unique container name."
+            )
+
+        existing_topics = normalize_mqtt_topic_filters(
+            existing_service.mqtt_topic,
+            require_charger_prefix=True,
+            require_telemetry_topic=True,
+        )
+        if existing_topics != mqtt_topics:
+            raise ValueError(
+                f"RADAR service name '{container_name}' already belongs to a "
+                "running service with different MQTT topics."
+            )
+
+        labels = await self._get_workload_labels(existing_service.container_id or "")
+        existing_fingerprint = labels.get("radar_config_fingerprint")
+        if existing_fingerprint and existing_fingerprint != config_fingerprint:
+            raise ValueError(
+                f"RADAR service name '{container_name}' already belongs to a "
+                "running service with a different RADAR configuration."
+            )
+
+        expected_labels = {
+            "monitoring_strategy": strategy,
+            "radar_model_type": (model_type or "").strip().lower(),
+        }
+        for label_key, expected_value in expected_labels.items():
+            label_value = labels.get(label_key)
+            if label_value and label_value.strip().lower() != expected_value:
+                raise ValueError(
+                    f"RADAR service name '{container_name}' already belongs to a "
+                    f"running service with a different {label_key}."
+                )
+
+        logger.info(
+            "RADAR service %s already exists with matching active workload",
+            container_name,
+        )
+        return existing_service
+
+    @staticmethod
+    def _build_radar_config_fingerprint(environment: Dict[str, str]) -> str:
+        """Build a stable fingerprint for fields that define RADAR behavior."""
+        excluded_keys = {
+            "SERVICE_ID",
+            "RADAR_DATABASE_URL",
+            "RADAR_TACTIC_SERVICE_HOST",
+            "RADAR_TACTIC_SERVICE_PORT",
+            "RADAR_TACTIC_MODEL_REGISTRY_CACHE_TTL_SECONDS",
+        }
+        comparable_environment = {
+            key: value
+            for key, value in environment.items()
+            if key not in excluded_keys
+        }
+        serialized = json.dumps(
+            comparable_environment,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
+
+    async def _remove_created_workload_after_failure(
+        self,
+        docker_workload: Any,
+    ) -> None:
+        """Best-effort cleanup for workloads created before DB persistence failed."""
+        workload_id = getattr(docker_workload, "id", None)
+        if not workload_id:
+            return
+        try:
+            await self._resolve_workload_operation(
+                workload_id,
+                on_service=lambda s: s.remove(),
+                on_container=lambda c: c.remove(force=True),
+            )
+            logger.info(
+                "Removed RADAR workload %s after failed service creation",
+                workload_id,
+            )
+        except docker.errors.NotFound:
+            logger.info(
+                "RADAR workload %s already absent after failed service creation",
+                workload_id,
+            )
+        except Exception:
+            logger.exception(
+                "Failed to remove RADAR workload %s after service creation failure",
+                workload_id,
+            )
 
     def _build_radar_environment(
         self,
@@ -522,6 +652,9 @@ class RadarOrchestrationService:
                 "RADAR_MONITORING_STRATEGY", "adaptive_stream"
             ),
             "radar_model_type": environment.get("RADAR_MODEL_TYPE", ""),
+            "radar_config_fingerprint": self._build_radar_config_fingerprint(
+                environment
+            ),
             "radar_image": tactic_config.radar_image,
         }
 
@@ -573,6 +706,9 @@ class RadarOrchestrationService:
                 "RADAR_MONITORING_STRATEGY", "adaptive_stream"
             ),
             "radar_model_type": environment.get("RADAR_MODEL_TYPE", ""),
+            "radar_config_fingerprint": self._build_radar_config_fingerprint(
+                environment
+            ),
             "radar_image": tactic_config.radar_image,
         }
 

@@ -113,6 +113,7 @@ class RadarService:
 
         logger.info("Starting RADAR service", extra=self._log_context)
         self.start_time = datetime.now()
+        self.shutdown_event.clear()
 
         try:
             # Initialize anomaly detection
@@ -178,7 +179,20 @@ class RadarService:
 
     async def stop(self):
         """Stop the RADAR service"""
-        if not self.is_running:
+        has_started_components = any(
+            [
+                self.config_watcher,
+                self.mqtt_client,
+                self.detector,
+                self.database_writer,
+                self.message_processor,
+            ]
+        )
+        if (
+            not self.is_running
+            and self.shutdown_event.is_set()
+            and not has_started_components
+        ):
             logger.debug("event=radar.service_already_stopped")
             return
 
@@ -219,6 +233,13 @@ class RadarService:
                         str(e),
                         exc_info=True,
                     )
+
+        self.config_watcher = None
+        self.config_reloader = None
+        self.mqtt_client = None
+        self.detector = None
+        self.database_writer = None
+        self.message_processor = None
 
         # Cleanup checkpoint lock file using extracted manager
         self.checkpoint_manager.cleanup_lock()

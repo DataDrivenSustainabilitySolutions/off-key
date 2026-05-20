@@ -293,9 +293,7 @@ class RadarOrchestrationService:
             "RADAR_TACTIC_MODEL_REGISTRY_CACHE_TTL_SECONDS",
         }
         comparable_environment = {
-            key: value
-            for key, value in environment.items()
-            if key not in excluded_keys
+            key: value for key, value in environment.items() if key not in excluded_keys
         }
         serialized = json.dumps(
             comparable_environment,

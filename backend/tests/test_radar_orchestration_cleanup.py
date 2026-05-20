@@ -193,3 +193,110 @@ async def test_teardown_managed_radar_workloads_handles_non_swarm_docker(
     ctr_workload.remove.assert_called_once()
     session.commit.assert_awaited_once()
     session.rollback.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_stop_radar_service_marks_db_row_inactive_after_removing_workload(
+    monkeypatch,
+):
+    fake_docker = _FakeAsyncDocker()
+    db_row = SimpleNamespace(
+        container_id="ctr-1",
+        container_name="radar-static",
+        status=True,
+    )
+    query_result = MagicMock()
+    query_result.scalars.return_value.first.return_value = db_row
+
+    workload = MagicMock(id="ctr-1")
+    workload.remove = MagicMock()
+
+    fake_docker.client.services.get = MagicMock(
+        side_effect=docker.errors.NotFound("missing")
+    )
+    fake_docker.client.containers.get = MagicMock(return_value=workload)
+    monkeypatch.setattr(radar_module, "get_async_docker", lambda: fake_docker)
+
+    session = AsyncMock()
+    session.execute = AsyncMock(return_value=query_result)
+    session.commit = AsyncMock()
+    session.rollback = AsyncMock()
+
+    service = RadarOrchestrationService(session=session, model_registry=MagicMock())
+
+    assert await service.stop_radar_service(container_name="radar-static") is True
+    assert db_row.status is False
+    workload.remove.assert_called_once_with(force=True)
+    session.execute.assert_awaited_once()
+    session.commit.assert_awaited_once()
+    session.rollback.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_stop_radar_service_preserves_db_row_when_workload_is_missing(
+    monkeypatch,
+):
+    fake_docker = _FakeAsyncDocker()
+    db_row = SimpleNamespace(
+        container_id="missing-ctr",
+        container_name="radar-static",
+        status=True,
+    )
+    query_result = MagicMock()
+    query_result.scalars.return_value.first.return_value = db_row
+
+    fake_docker.client.services.get = MagicMock(
+        side_effect=docker.errors.NotFound("missing")
+    )
+    fake_docker.client.containers.get = MagicMock(
+        side_effect=docker.errors.NotFound("missing")
+    )
+    monkeypatch.setattr(radar_module, "get_async_docker", lambda: fake_docker)
+
+    session = AsyncMock()
+    session.execute = AsyncMock(return_value=query_result)
+    session.commit = AsyncMock()
+    session.rollback = AsyncMock()
+
+    service = RadarOrchestrationService(session=session, model_registry=MagicMock())
+
+    assert await service.stop_radar_service(container_name="radar-static") is True
+    assert db_row.status is False
+    session.execute.assert_awaited_once()
+    session.commit.assert_awaited_once()
+    session.rollback.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_startup_validation_raises_with_logs_when_container_exits(
+    monkeypatch,
+):
+    fake_docker = _FakeAsyncDocker()
+    exited_workload = SimpleNamespace(id="ctr-1")
+    exited_container = MagicMock(status="exited")
+    exited_container.reload = MagicMock()
+    exited_container.logs = MagicMock(
+        return_value=b"Failed to start RADAR service: missing dependency"
+    )
+
+    fake_docker.client.services.get = MagicMock(
+        side_effect=docker.errors.NotFound("missing")
+    )
+    fake_docker.client.containers.get = MagicMock(return_value=exited_container)
+    monkeypatch.setattr(radar_module, "get_async_docker", lambda: fake_docker)
+    monkeypatch.setattr(
+        radar_module,
+        "get_tactic_settings",
+        lambda: SimpleNamespace(
+            config=SimpleNamespace(radar_startup_grace_seconds=0.0)
+        ),
+    )
+
+    session = AsyncMock()
+    service = RadarOrchestrationService(session=session, model_registry=MagicMock())
+
+    with pytest.raises(RuntimeError, match="missing dependency"):
+        await service._validate_radar_workload_started(exited_workload)
+
+    exited_container.reload.assert_called_once()
+    exited_container.logs.assert_called_once_with(tail=120)

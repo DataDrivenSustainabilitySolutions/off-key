@@ -17,6 +17,9 @@ yarn-debug.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+# Backend runtime artifacts
+/backend/checkpoints/
+
 # Node.js
 node_modules/
 npm-debug.log*

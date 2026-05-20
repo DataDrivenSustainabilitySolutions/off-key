@@ -22,6 +22,12 @@ from .schemas import (
     OnlineIsolationForestParams,
     AdaptiveSVMParams,
     MondrianIsolationForestParams,
+    PyODHBOSParams,
+    PyODIsolationForestParams,
+    PyODKNNParams,
+    PyODLOFParams,
+    PyODOCSVMParams,
+    PyODPCAParams,
     StandardScalerParams,
     IncrementalPCAParams,
 )
@@ -129,11 +135,8 @@ class ModelRegistryService:
             session.commit()
 
     def _ensure_registry_populated(self, session: Session) -> None:
-        """Populate database registry with default models if empty."""
-        count = session.query(ModelRegistry).count()
-        if count == 0:
-            logger.info("Model registry empty, populating with defaults...")
-            self._populate_default_models(session)
+        """Populate or update built-in registry entries idempotently."""
+        self._populate_default_models(session)
 
     def _ensure_ready(self) -> None:
         if not self._initialized:
@@ -236,9 +239,99 @@ class ModelRegistryService:
             },
         ]
 
+        default_models.extend(
+            [
+                {
+                    "model_type": "pyod_iforest",
+                    "category": "model",
+                    "family": "static_pyod",
+                    "name": "PyOD Isolation Forest",
+                    "description": (
+                        "Static Isolation Forest wrapped by conformal p-values"
+                    ),
+                    "complexity": "medium",
+                    "memory_usage": "medium",
+                    "import_paths": ["pyod.models.iforest.IForest"],
+                    "parameter_schema": PyODIsolationForestParams.model_json_schema(),
+                    "default_parameters": PyODIsolationForestParams().model_dump(),
+                },
+                {
+                    "model_type": "pyod_knn",
+                    "category": "model",
+                    "family": "static_pyod",
+                    "name": "PyOD KNN",
+                    "description": "Static KNN detector wrapped by conformal p-values",
+                    "complexity": "medium",
+                    "memory_usage": "medium",
+                    "import_paths": ["pyod.models.knn.KNN"],
+                    "parameter_schema": PyODKNNParams.model_json_schema(),
+                    "default_parameters": PyODKNNParams().model_dump(),
+                },
+                {
+                    "model_type": "pyod_lof",
+                    "category": "model",
+                    "family": "static_pyod",
+                    "name": "PyOD Local Outlier Factor",
+                    "description": "Static LOF detector wrapped by conformal p-values",
+                    "complexity": "medium",
+                    "memory_usage": "medium",
+                    "import_paths": ["pyod.models.lof.LOF"],
+                    "parameter_schema": PyODLOFParams.model_json_schema(),
+                    "default_parameters": PyODLOFParams().model_dump(),
+                },
+                {
+                    "model_type": "pyod_ocsvm",
+                    "category": "model",
+                    "family": "static_pyod",
+                    "name": "PyOD One-Class SVM",
+                    "description": (
+                        "Static OCSVM detector wrapped by conformal p-values"
+                    ),
+                    "complexity": "high",
+                    "memory_usage": "medium",
+                    "import_paths": ["pyod.models.ocsvm.OCSVM"],
+                    "parameter_schema": PyODOCSVMParams.model_json_schema(),
+                    "default_parameters": PyODOCSVMParams().model_dump(),
+                },
+                {
+                    "model_type": "pyod_hbos",
+                    "category": "model",
+                    "family": "static_pyod",
+                    "name": "PyOD HBOS",
+                    "description": "Static HBOS detector wrapped by conformal p-values",
+                    "complexity": "low",
+                    "memory_usage": "low",
+                    "import_paths": ["pyod.models.hbos.HBOS"],
+                    "parameter_schema": PyODHBOSParams.model_json_schema(),
+                    "default_parameters": PyODHBOSParams().model_dump(),
+                },
+                {
+                    "model_type": "pyod_pca",
+                    "category": "model",
+                    "family": "static_pyod",
+                    "name": "PyOD PCA",
+                    "description": "Static PCA detector wrapped by conformal p-values",
+                    "complexity": "medium",
+                    "memory_usage": "medium",
+                    "import_paths": ["pyod.models.pca.PCA"],
+                    "parameter_schema": PyODPCAParams.model_json_schema(),
+                    "default_parameters": PyODPCAParams().model_dump(),
+                },
+            ]
+        )
+
         for model_data in default_models:
-            model = ModelRegistry(**model_data)
-            session.add(model)
+            existing = (
+                session.query(ModelRegistry)
+                .filter(ModelRegistry.model_type == model_data["model_type"])
+                .first()
+            )
+            if existing:
+                for key, value in model_data.items():
+                    setattr(existing, key, value)
+                existing.is_active = True
+            else:
+                session.add(ModelRegistry(**model_data))
 
     def get_available_models(self) -> List[Dict[str, Any]]:
         """Get all available models from database."""
@@ -268,6 +361,7 @@ class ModelRegistryService:
                     "default_parameters": m.default_parameters,
                     "version": m.version,
                     "requires_special_handling": m.requires_special_handling,
+                    "strategy": self._strategy_for_model(m),
                 }
                 for m in models
             ]
@@ -419,6 +513,14 @@ class ModelRegistryService:
         if category == "model":
             return f"Unknown model type: '{model_type}'"
         return f"Unknown model type: '{model_type}'"
+
+    @staticmethod
+    def _strategy_for_model(model: ModelRegistry) -> str:
+        if str(model.family).lower() == "static_pyod" or str(
+            model.model_type
+        ).startswith("pyod_"):
+            return "static_baseline"
+        return "adaptive_stream"
 
     @staticmethod
     def _get_active_entry(

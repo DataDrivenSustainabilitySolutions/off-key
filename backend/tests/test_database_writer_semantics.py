@@ -18,7 +18,14 @@ def _build_result(
     aligned_vector: bool,
     tail_pvalue,
     anomaly_score: float,
+    conformal_pvalue=None,
+    required_sensors=None,
 ) -> AnomalyResult:
+    detector_context = (
+        {"static_conformal": {"p_value": conformal_pvalue}}
+        if conformal_pvalue is not None
+        else {"score_window": {"tail_pvalue": tail_pvalue}}
+    )
     return AnomalyResult(
         anomaly_score=anomaly_score,
         is_anomaly=True,
@@ -29,8 +36,11 @@ def _build_result(
         topic="charger/charger-1/live-telemetry/sine",
         charger_id="charger-1",
         context={
-            "score_window": {"tail_pvalue": tail_pvalue},
-            "alignment": {"aligned_vector": aligned_vector},
+            **detector_context,
+            "alignment": {
+                "aligned_vector": aligned_vector,
+                "required_sensors": required_sensors,
+            },
         },
     )
 
@@ -55,6 +65,34 @@ def test_database_writer_marks_univariate_anomaly_type():
     assert DatabaseWriter._derive_anomaly_type(result) == "ml_tailprob_univariate"
 
 
+def test_database_writer_marks_static_conformal_multivariate_anomaly_type():
+    result = _build_result(
+        aligned_vector=True,
+        tail_pvalue=None,
+        conformal_pvalue=0.002,
+        anomaly_score=0.002,
+    )
+
+    assert (
+        DatabaseWriter._derive_anomaly_type(result)
+        == "ml_conformal_static_multivariate"
+    )
+    assert DatabaseWriter._derive_anomaly_value(result) == 0.002
+
+
+def test_database_writer_marks_static_conformal_univariate_anomaly_type():
+    result = _build_result(
+        aligned_vector=False,
+        tail_pvalue=None,
+        conformal_pvalue=0.003,
+        anomaly_score=0.003,
+    )
+
+    assert (
+        DatabaseWriter._derive_anomaly_type(result) == "ml_conformal_static_univariate"
+    )
+
+
 def test_database_writer_uses_canonical_multivariate_telemetry_type():
     config = MagicMock()
     writer = DatabaseWriter(config, session_factory=MagicMock())
@@ -73,6 +111,35 @@ def test_database_writer_uses_topic_telemetry_type_for_univariate():
 
 def test_anomaly_table_metadata_includes_value_type_column():
     assert "value_type" in ANOMALY_TABLE.columns.keys()
+
+
+def test_anomaly_table_metadata_includes_sensor_set_column():
+    assert "sensor_set" in ANOMALY_TABLE.columns.keys()
+
+
+def test_build_records_persists_multivariate_sensor_set():
+    config = MagicMock()
+    writer = DatabaseWriter(config, session_factory=MagicMock())
+    result = _build_result(
+        aligned_vector=True,
+        tail_pvalue=0.004,
+        anomaly_score=0.01,
+        required_sensors=["L1", "L2"],
+    )
+
+    anomaly_records, _ = writer._build_records([result])
+
+    assert anomaly_records[0]["sensor_set"] == ["L1", "L2"]
+
+
+def test_build_records_persists_univariate_sensor_set_from_topic():
+    config = MagicMock()
+    writer = DatabaseWriter(config, session_factory=MagicMock())
+    result = _build_result(aligned_vector=False, tail_pvalue=0.004, anomaly_score=0.01)
+
+    anomaly_records, _ = writer._build_records([result])
+
+    assert anomaly_records[0]["sensor_set"] == ["sine"]
 
 
 @pytest.mark.asyncio
@@ -104,6 +171,21 @@ async def test_retry_batch_persists_value_type(monkeypatch):
     first_insert_stmt = session.execute.await_args_list[0].args[0]
     first_row = first_insert_stmt._multi_values[0][0]
     assert first_row["value_type"] == "tail_pvalue"
+
+
+def test_build_records_persists_static_conformal_value_type():
+    config = MagicMock()
+    writer = DatabaseWriter(config, session_factory=MagicMock())
+    result = _build_result(
+        aligned_vector=False,
+        tail_pvalue=None,
+        conformal_pvalue=0.004,
+        anomaly_score=0.004,
+    )
+
+    anomaly_records, _ = writer._build_records([result])
+
+    assert anomaly_records[0]["value_type"] == "conformal_pvalue"
 
 
 @pytest.mark.asyncio

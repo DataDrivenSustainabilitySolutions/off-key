@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import {
   formatAnomalyTailProbability,
+  formatAnomalyValue,
   getAnomalyTailProbabilityClassName,
+  isProbabilityAnomalyValue,
 } from "../lib/anomaly-semantics";
 
 describe("anomaly semantics formatting", () => {
@@ -20,5 +22,10 @@ describe("anomaly semantics formatting", () => {
 
   it("uses yellow severity styling for larger tail probability", () => {
     expect(getAnomalyTailProbabilityClassName(0.03)).toContain("bg-yellow-100");
+  });
+
+  it("treats conformal p-values as probability anomaly values", () => {
+    expect(isProbabilityAnomalyValue("conformal_pvalue")).toBe(true);
+    expect(formatAnomalyValue(0.0031, "conformal_pvalue")).toBe("0.0031");
   });
 });

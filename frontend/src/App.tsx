@@ -13,6 +13,7 @@ import { ProtectedRoute } from "./auth/ProtectedRoute";
 import Landingpage from "./pages/Landingpage";
 import Favourites from "./pages/Favourites";
 import Monitoring from "./pages/Monitoring";
+import Services from "./pages/Services";
 import Account from "./pages/Account";
 import Anomaly from "./pages/Anomalies";
 import { FetchProvider } from "./dataFetch/FetchContext";
@@ -53,6 +54,14 @@ const App: React.FC = () => {
                 element={
                   <ProtectedRoute>
                     <Monitoring />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/services"
+                element={
+                  <ProtectedRoute>
+                    <Services />
                   </ProtectedRoute>
                 }
               />

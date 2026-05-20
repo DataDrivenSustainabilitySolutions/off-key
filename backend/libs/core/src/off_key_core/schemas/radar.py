@@ -1,13 +1,20 @@
 """Shared RADAR request/response schemas used across backend services."""
 
-from typing import Self
+from typing import Any, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-__all__ = ["PerformanceConfig"]
+__all__ = [
+    "AdaptiveStreamConfig",
+    "FdrConfig",
+    "MonitoringStrategy",
+    "PerformanceConfig",
+    "StaticBaselineConfig",
+]
 
 _SENSOR_KEY_STRATEGIES = {"full_hierarchy", "top_level", "leaf"}
 _ALIGNMENT_MODES = {"strict_barrier"}
+MonitoringStrategy = Literal["static_baseline", "adaptive_stream"]
 
 
 class PerformanceConfig(BaseModel):
@@ -49,3 +56,76 @@ class PerformanceConfig(BaseModel):
                 f"(got {self.heuristic_min_samples} > {self.heuristic_window_size})"
             )
         return self
+
+
+class FdrConfig(BaseModel):
+    """Online FDR settings for conformal p-value streams."""
+
+    model_config = ConfigDict(extra="forbid", validate_assignment=True)
+
+    method: Literal["saffron", "naive"] = "saffron"
+    alpha: float = Field(default=0.05, gt=0.0, lt=1.0)
+    wealth: float | None = Field(default=None, gt=0.0, lt=1.0)
+    lambda_: float = Field(default=0.5, gt=0.0, lt=1.0)
+    cutoff: float = Field(default=0.05, gt=0.0, lt=1.0)
+
+    @model_validator(mode="after")
+    def validate_saffron_settings(self) -> Self:
+        if (
+            self.method == "saffron"
+            and self.wealth is not None
+            and self.wealth >= self.alpha
+        ):
+            raise ValueError("wealth must be less than alpha for SAFFRON")
+        return self
+
+    @property
+    def resolved_wealth(self) -> float:
+        """Return configured wealth or the default SAFFRON half-alpha wealth."""
+        return self.wealth if self.wealth is not None else self.alpha / 2.0
+
+    @property
+    def effective_threshold(self) -> float:
+        """Return the configured rejection threshold for the selected FDR method."""
+        return self.cutoff if self.method == "naive" else self.alpha
+
+
+class StaticBaselineConfig(BaseModel):
+    """Configuration for static baseline conformal monitoring."""
+
+    model_config = ConfigDict(extra="forbid", validate_assignment=True)
+
+    model_type: str = "pyod_iforest"
+    model_params: dict[str, Any] = Field(default_factory=dict)
+    training_window_size: int = Field(default=1200, ge=20, le=1_000_000)
+    calibration_fraction: float = Field(default=0.3, gt=0.0, lt=0.95)
+    conformal_strategy: Literal["split"] = "split"
+    seed: int | None = 42
+    fdr_config: FdrConfig = Field(default_factory=FdrConfig)
+
+    @field_validator("model_type")
+    @classmethod
+    def validate_static_model_type(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if not normalized:
+            raise ValueError("model_type must not be empty")
+        return normalized
+
+
+class AdaptiveStreamConfig(BaseModel):
+    """Configuration for adaptive/non-static streaming monitoring."""
+
+    model_config = ConfigDict(extra="forbid", validate_assignment=True)
+
+    model_type: str = "knn"
+    model_params: dict[str, Any] = Field(default_factory=dict)
+    preprocessing_steps: list[dict[str, Any]] = Field(default_factory=list)
+    performance_config: PerformanceConfig = Field(default_factory=PerformanceConfig)
+
+    @field_validator("model_type")
+    @classmethod
+    def validate_adaptive_model_type(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if not normalized:
+            raise ValueError("model_type must not be empty")
+        return normalized

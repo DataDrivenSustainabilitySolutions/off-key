@@ -6,6 +6,7 @@ import {
   LogIn,
   LogOut,
   Menu,
+  ServerCog,
   Star,
   UserCircle,
 } from "lucide-react";
@@ -51,6 +52,7 @@ type NavItem = {
 const primaryNavItems: NavItem[] = [
   { href: "/", label: "Dashboard", icon: Home },
   { href: "/favourites", label: "Favorites", icon: Star },
+  { href: "/services", label: "Services", icon: ServerCog },
   { href: "/anomalies", label: "Anomalies", icon: AlertTriangle },
 ];
 
@@ -214,8 +216,8 @@ export const NavigationBar = () => {
           {message}
         </div>
       ) : null}
-      <NavigationMenu className="w-full">
-        <NavigationMenuList className="mx-auto flex h-14 w-full max-w-7xl items-center gap-2 px-4 sm:px-6 lg:px-8">
+      <NavigationMenu className="w-full max-w-none justify-stretch">
+        <NavigationMenuList className="mx-auto flex h-14 w-full max-w-7xl items-center justify-start gap-2 px-4 sm:px-6 lg:px-8">
           <NavigationMenuItem className="mr-2 flex shrink-0">
             <Link
               to="/"
@@ -229,7 +231,7 @@ export const NavigationBar = () => {
             </Link>
           </NavigationMenuItem>
 
-          <nav className="hidden items-center gap-1 md:flex">
+          <nav className="hidden min-w-0 flex-1 items-center gap-1 md:flex">
             {navItems.map((item) => (
               <NavigationMenuItem key={item.href}>
                 <NavLinkItem
@@ -241,7 +243,7 @@ export const NavigationBar = () => {
             ))}
           </nav>
 
-          <NavigationMenuItem className="ml-auto flex items-center gap-2">
+          <NavigationMenuItem className="ml-auto flex shrink-0 items-center justify-end gap-2">
             <ModeToggle />
 
             {isAuthenticated ? (

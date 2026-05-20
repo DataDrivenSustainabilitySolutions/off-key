@@ -15,6 +15,7 @@ import hashlib
 import hmac
 import re
 import json
+import concurrent.futures
 from datetime import datetime, timezone
 from typing import Dict, Any, Optional, List
 from collections import deque
@@ -776,6 +777,652 @@ class AnomalyDetectionService:
             return 0.0
 
 
+class StaticConformalState(Enum):
+    """Lifecycle states for static conformal monitoring."""
+
+    COLLECTING = "collecting"
+    TRAINING = "training"
+    READY = "ready"
+    FAILED = "failed"
+
+
+class NaivePValueCutoffController:
+    """Simple p-value cutoff controller for static conformal monitoring."""
+
+    def __init__(self, cutoff: float):
+        self.cutoff = float(cutoff)
+        self.alpha = self.cutoff
+        self.num_test = 0
+
+    def test_one(self, p_value: float) -> bool:
+        self.num_test += 1
+        return float(p_value) <= self.cutoff
+
+
+class StaticConformalDetectionService:
+    """Train-once static baseline detector using conformal p-values and FDR control."""
+
+    def __init__(
+        self,
+        config: AnomalyDetectionConfig,
+        checkpoint: Optional[Dict[str, Any]] = None,
+    ):
+        self.config = config
+        self.logger = logging.getLogger(__name__)
+        self.schema_signature = self._build_schema_signature_from_config(config)
+        self.static_config = config.static_baseline_config
+        self.start_time = time.time()
+        self.processing_times: deque = deque(maxlen=1000)
+        self._training_executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+        self._training_future: Optional[concurrent.futures.Future] = None
+        self.training_error: Optional[str] = None
+
+        if checkpoint:
+            self._restore_from_checkpoint(checkpoint)
+        else:
+            self._initialize_fresh()
+
+        self.logger.info(
+            "Initialized static conformal detection service with model: %s "
+            "(restored=%s)",
+            config.model_type,
+            checkpoint is not None,
+        )
+
+    def _initialize_fresh(self) -> None:
+        self.state = StaticConformalState.COLLECTING
+        self.training_buffer: list[Dict[str, float]] = []
+        self.feature_keys: list[str] = []
+        self.conformal_detector = None
+        self.fdr_controller = None
+        self.processed_count = 0
+        self.anomaly_count = 0
+        self.last_checkpoint = 0
+        self.discarded_during_training_count = 0
+        self.schema_mismatch_count = 0
+
+    def shutdown(self) -> None:
+        """Stop background static-baseline training resources."""
+        if self._training_future is not None and not self._training_future.done():
+            self._training_future.cancel()
+        self._training_executor.shutdown(wait=False, cancel_futures=True)
+
+    def _restore_from_checkpoint(self, checkpoint: Dict[str, Any]) -> None:
+        self.state = StaticConformalState(
+            checkpoint.get("static_state", StaticConformalState.COLLECTING.value)
+        )
+        self.training_buffer = list(checkpoint.get("training_buffer", []))
+        self.feature_keys = list(checkpoint.get("feature_keys", []))
+        self.conformal_detector = checkpoint.get("conformal_detector")
+        self.fdr_controller = checkpoint.get("fdr_controller")
+        self.processed_count = int(checkpoint.get("processed_count", 0))
+        self.anomaly_count = int(checkpoint.get("anomaly_count", 0))
+        self.last_checkpoint = self.processed_count
+        self.discarded_during_training_count = int(
+            checkpoint.get("discarded_during_training_count", 0)
+        )
+        self.schema_mismatch_count = int(checkpoint.get("schema_mismatch_count", 0))
+        self.training_error = checkpoint.get("training_error")
+        if self.state == StaticConformalState.TRAINING:
+            # Training futures cannot be restored; restart collection rather than
+            # treating a half-trained checkpoint as ready.
+            self.state = StaticConformalState.COLLECTING
+            self.training_buffer = []
+
+        self.logger.info(
+            "Restored static conformal checkpoint: state=%s processed=%s "
+            "anomalies=%s feature_count=%s",
+            self.state.value,
+            self.processed_count,
+            self.anomaly_count,
+            len(self.feature_keys),
+        )
+
+    @classmethod
+    def from_checkpoint(
+        cls, checkpoint_path: str, config: AnomalyDetectionConfig
+    ) -> "StaticConformalDetectionService":
+        checkpoint = AnomalyDetectionService._load_and_verify_checkpoint(
+            checkpoint_path
+        )
+
+        saved_strategy = checkpoint.get("strategy")
+        if saved_strategy != "static_baseline":
+            raise ValueError(
+                "Checkpoint strategy does not match static_baseline configuration."
+            )
+
+        saved_schema_signature = checkpoint.get("schema_signature")
+        current_schema_signature = cls._build_schema_signature_from_config(config)
+        if (
+            not saved_schema_signature
+            or saved_schema_signature != current_schema_signature
+        ):
+            raise ValueError(
+                "Checkpoint schema signature does not match current static "
+                "configuration. Starting fresh is required."
+            )
+
+        return cls(config, checkpoint=checkpoint)
+
+    @classmethod
+    def _build_schema_signature_from_config(cls, config: Any) -> str:
+        static_config = getattr(config, "static_baseline_config", None)
+        if static_config is not None and hasattr(static_config, "model_dump"):
+            static_payload = static_config.model_dump(exclude_none=True)
+        else:
+            static_payload = {}
+
+        subscription_topics = [
+            str(topic)
+            for topic in (getattr(config, "subscription_topics", []) or [])
+            if topic is not None
+        ]
+        payload = {
+            "strategy": "static_baseline",
+            "model_type": str(
+                static_payload.get("model_type", getattr(config, "model_type", ""))
+            ),
+            "model_params": static_payload.get(
+                "model_params", getattr(config, "model_params", {}) or {}
+            ),
+            "static_baseline_config": static_payload,
+            "subscription_topics": sorted(subscription_topics),
+            "sensor_key_strategy": str(
+                getattr(config, "sensor_key_strategy", "full_hierarchy")
+            ),
+            "alignment_mode": str(getattr(config, "alignment_mode", "strict_barrier")),
+        }
+        payload_json = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+        return hashlib.sha256(payload_json.encode("utf-8")).hexdigest()
+
+    def process_data_point(
+        self, data: Dict[str, float], topic: str = None, charger_id: str = None
+    ) -> AnomalyResult:
+        start_time = time.time()
+        self._complete_training_if_ready()
+
+        if self.state == StaticConformalState.COLLECTING:
+            result = self._process_collecting(data, topic, charger_id, start_time)
+        elif self.state == StaticConformalState.TRAINING:
+            result = self._process_training(data, topic, charger_id, start_time)
+        elif self.state == StaticConformalState.READY:
+            result = self._process_ready(data, topic, charger_id, start_time)
+        else:
+            result = self._process_failed(data, topic, charger_id, start_time)
+
+        should_checkpoint = (
+            self.processed_count
+            and self.processed_count % self.config.checkpoint_interval == 0
+        )
+        if should_checkpoint:
+            self._checkpoint_model()
+        return result
+
+    def _process_collecting(
+        self,
+        data: Dict[str, float],
+        topic: Optional[str],
+        charger_id: Optional[str],
+        start_time: float,
+    ) -> AnomalyResult:
+        schema_error = self._validate_or_freeze_feature_schema(data)
+        self.processed_count += 1
+
+        if schema_error:
+            self.schema_mismatch_count += 1
+            return self._build_result(
+                data=data,
+                processed_features=None,
+                score=1.0,
+                is_anomaly=False,
+                severity="low",
+                topic=topic,
+                charger_id=charger_id,
+                start_time=start_time,
+                phase="schema_mismatch",
+                extra_context={"schema_error": schema_error},
+            )
+
+        self.training_buffer.append(
+            {key: float(data[key]) for key in self.feature_keys}
+        )
+        collected = len(self.training_buffer)
+        if collected >= self.static_config.training_window_size:
+            training_samples = list(self.training_buffer)
+            self.training_buffer = []
+            self.state = StaticConformalState.TRAINING
+            self._training_future = self._training_executor.submit(
+                self._fit_static_baseline, training_samples, list(self.feature_keys)
+            )
+            phase = "training_started"
+        else:
+            phase = "collecting"
+
+        return self._build_result(
+            data=data,
+            processed_features=data,
+            score=1.0,
+            is_anomaly=False,
+            severity="low",
+            topic=topic,
+            charger_id=charger_id,
+            start_time=start_time,
+            phase=phase,
+            extra_context={"collected_samples": collected},
+        )
+
+    def _process_training(
+        self,
+        data: Dict[str, float],
+        topic: Optional[str],
+        charger_id: Optional[str],
+        start_time: float,
+    ) -> AnomalyResult:
+        self.processed_count += 1
+        self.discarded_during_training_count += 1
+        return self._build_result(
+            data=data,
+            processed_features=None,
+            score=1.0,
+            is_anomaly=False,
+            severity="low",
+            topic=topic,
+            charger_id=charger_id,
+            start_time=start_time,
+            phase="training_discarded",
+            extra_context={
+                "discarded_during_training_count": (
+                    self.discarded_during_training_count
+                )
+            },
+        )
+
+    def _process_ready(
+        self,
+        data: Dict[str, float],
+        topic: Optional[str],
+        charger_id: Optional[str],
+        start_time: float,
+    ) -> AnomalyResult:
+        schema_error = self._validate_or_freeze_feature_schema(data)
+        self.processed_count += 1
+        if schema_error:
+            self.schema_mismatch_count += 1
+            return self._build_result(
+                data=data,
+                processed_features=None,
+                score=1.0,
+                is_anomaly=False,
+                severity="low",
+                topic=topic,
+                charger_id=charger_id,
+                start_time=start_time,
+                phase="schema_mismatch",
+                extra_context={"schema_error": schema_error},
+            )
+
+        vector = self._vectorize(data)
+        p_value = self._compute_p_value(vector)
+        is_anomaly = bool(self.fdr_controller.test_one(p_value))
+        if is_anomaly:
+            self.anomaly_count += 1
+        severity = self._calculate_conformal_severity(p_value, is_anomaly)
+        fdr_threshold = self._effective_fdr_threshold()
+        fdr_method = self.static_config.fdr_config.method
+
+        result = self._build_result(
+            data=data,
+            processed_features={
+                key: vector[index] for index, key in enumerate(self.feature_keys)
+            },
+            score=p_value,
+            is_anomaly=is_anomaly,
+            severity=severity,
+            topic=topic,
+            charger_id=charger_id,
+            start_time=start_time,
+            phase="ready",
+            extra_context={
+                "p_value": p_value,
+                "fdr_rejected": is_anomaly,
+                "fdr_alpha_t": fdr_threshold,
+                "fdr_threshold": fdr_threshold,
+                "fdr_method": fdr_method,
+                "tested_count": int(getattr(self.fdr_controller, "num_test", 0)),
+            },
+        )
+
+        if is_anomaly:
+            self.logger.warning(
+                "event=radar.static_conformal_anomaly p_value=%.6f "
+                "severity=%s topic=%s",
+                p_value,
+                severity,
+                topic,
+                extra={
+                    "conformal_pvalue": p_value,
+                    "fdr_alpha_t": fdr_threshold,
+                    "fdr_method": fdr_method,
+                    "model_type": self.config.model_type,
+                    "charger_id": charger_id,
+                },
+            )
+        return result
+
+    def _process_failed(
+        self,
+        data: Dict[str, float],
+        topic: Optional[str],
+        charger_id: Optional[str],
+        start_time: float,
+    ) -> AnomalyResult:
+        self.processed_count += 1
+        return self._build_result(
+            data=data,
+            processed_features=None,
+            score=1.0,
+            is_anomaly=False,
+            severity="unknown",
+            topic=topic,
+            charger_id=charger_id,
+            start_time=start_time,
+            phase="failed",
+            extra_context={"training_error": self.training_error},
+        )
+
+    def _validate_or_freeze_feature_schema(
+        self, data: Dict[str, float]
+    ) -> Optional[str]:
+        keys = sorted(data.keys())
+        if not keys:
+            return "empty feature vector"
+        if not self.feature_keys:
+            self.feature_keys = keys
+            return None
+        if keys != self.feature_keys:
+            missing = sorted(set(self.feature_keys) - set(keys))
+            extra = sorted(set(keys) - set(self.feature_keys))
+            return f"feature schema mismatch missing={missing} extra={extra}"
+        return None
+
+    def _vectorize(self, data: Dict[str, float]) -> List[float]:
+        return [float(data[key]) for key in self.feature_keys]
+
+    def _fit_static_baseline(
+        self,
+        samples: list[Dict[str, float]],
+        feature_keys: list[str],
+    ) -> tuple[Any, Any]:
+        import numpy as np
+        from nonconform import ConformalDetector, Split
+
+        detector = self._create_pyod_detector()
+        conformal_detector = ConformalDetector(
+            detector=detector,
+            strategy=Split(n_calib=self.static_config.calibration_fraction),
+            score_polarity="auto",
+            seed=self.static_config.seed,
+        )
+        matrix = np.asarray(
+            [[float(sample[key]) for key in feature_keys] for sample in samples],
+            dtype=float,
+        )
+        conformal_detector.fit(matrix)
+
+        fdr_controller = self._create_fdr_controller()
+        return conformal_detector, fdr_controller
+
+    def _create_fdr_controller(self) -> Any:
+        fdr_config = self.static_config.fdr_config
+        if fdr_config.method == "saffron":
+            from online_fdr.investing.saffron.saffron import Saffron
+
+            return Saffron(
+                alpha=fdr_config.alpha,
+                wealth=fdr_config.resolved_wealth,
+                lambda_=fdr_config.lambda_,
+            )
+        if fdr_config.method == "naive":
+            return NaivePValueCutoffController(cutoff=fdr_config.cutoff)
+        raise ValueError(f"Unsupported FDR method '{fdr_config.method}'")
+
+    def _create_pyod_detector(self) -> Any:
+        model_type = self.static_config.model_type
+        params = dict(self.static_config.model_params or {})
+        if self.static_config.seed is not None:
+            params.setdefault("random_state", self.static_config.seed)
+
+        return self._instantiate_pyod_detector(model_type, params)
+
+    def _instantiate_pyod_detector(
+        self, model_type: str, params: Dict[str, Any]
+    ) -> Any:
+        if model_type == "pyod_iforest":
+            from pyod.models.iforest import IForest
+
+            return IForest(**params)
+        if model_type == "pyod_knn":
+            params.pop("random_state", None)
+            from pyod.models.knn import KNN
+
+            return KNN(**params)
+        if model_type == "pyod_lof":
+            params.pop("random_state", None)
+            from pyod.models.lof import LOF
+
+            return LOF(**params)
+        if model_type == "pyod_ocsvm":
+            params.pop("random_state", None)
+            from pyod.models.ocsvm import OCSVM
+
+            return OCSVM(**params)
+        if model_type == "pyod_hbos":
+            params.pop("random_state", None)
+            from pyod.models.hbos import HBOS
+
+            return HBOS(**params)
+        if model_type == "pyod_pca":
+            params.pop("random_state", None)
+            from pyod.models.pca import PCA
+
+            return PCA(**params)
+
+        raise ValueError(
+            f"Unsupported static PyOD model '{model_type}'. "
+            "Expected one of pyod_iforest, pyod_knn, pyod_lof, pyod_ocsvm, "
+            "pyod_hbos, pyod_pca."
+        )
+
+    def _complete_training_if_ready(self) -> None:
+        if self.state != StaticConformalState.TRAINING or self._training_future is None:
+            return
+        if not self._training_future.done():
+            return
+
+        try:
+            (
+                self.conformal_detector,
+                self.fdr_controller,
+            ) = self._training_future.result()
+            self.state = StaticConformalState.READY
+            self.training_error = None
+            self._checkpoint_model()
+            self.logger.info(
+                "event=radar.static_conformal_training_complete "
+                "training_window_size=%s feature_count=%s",
+                self.static_config.training_window_size,
+                len(self.feature_keys),
+            )
+        except Exception as exc:
+            self.state = StaticConformalState.FAILED
+            self.training_error = str(exc)
+            self.logger.error(
+                "event=radar.static_conformal_training_failed error=%s",
+                str(exc),
+                exc_info=True,
+            )
+        finally:
+            self._training_future = None
+
+    def _compute_p_value(self, vector: List[float]) -> float:
+        import numpy as np
+
+        p_values = self.conformal_detector.compute_p_values(
+            np.asarray([vector], dtype=float)
+        )
+        p_value = float(p_values[0])
+        if p_value < 0.0:
+            return 0.0
+        if p_value > 1.0:
+            return 1.0
+        return p_value
+
+    def _calculate_conformal_severity(self, p_value: float, is_anomaly: bool) -> str:
+        if not is_anomaly:
+            return "low"
+        threshold = self._effective_fdr_threshold()
+        if p_value <= threshold / 20.0:
+            return "critical"
+        if p_value <= threshold / 5.0:
+            return "high"
+        return "medium"
+
+    def _effective_fdr_threshold(self) -> float:
+        controller = self.fdr_controller
+        if controller is not None:
+            for attribute in ("alpha", "cutoff"):
+                value = getattr(controller, attribute, None)
+                if value is not None:
+                    return float(value)
+        return float(self.static_config.fdr_config.effective_threshold)
+
+    def _build_result(
+        self,
+        *,
+        data: Dict[str, float],
+        processed_features: Optional[Dict[str, float]],
+        score: float,
+        is_anomaly: bool,
+        severity: str,
+        topic: Optional[str],
+        charger_id: Optional[str],
+        start_time: float,
+        phase: str,
+        extra_context: Optional[Dict[str, Any]] = None,
+    ) -> AnomalyResult:
+        processing_time = time.time() - start_time
+        self.processing_times.append(processing_time)
+        context = {
+            "processing_time_ms": processing_time * 1000,
+            "model_type": self.config.model_type,
+            "static_conformal": {
+                "phase": phase,
+                "state": self.state.value,
+                "training_window_size": self.static_config.training_window_size,
+                "calibration_fraction": self.static_config.calibration_fraction,
+                "collected_samples": len(self.training_buffer),
+                "feature_keys": list(self.feature_keys),
+                "discarded_during_training_count": (
+                    self.discarded_during_training_count
+                ),
+                "schema_mismatch_count": self.schema_mismatch_count,
+                **(extra_context or {}),
+            },
+        }
+        return AnomalyResult(
+            anomaly_score=score,
+            is_anomaly=is_anomaly,
+            severity=severity,
+            timestamp=datetime.now(timezone.utc),
+            model_info=self._get_model_info(),
+            raw_data=data,
+            processed_features=processed_features,
+            topic=topic,
+            charger_id=charger_id,
+            context=context,
+        )
+
+    def _checkpoint_model(self) -> None:
+        try:
+            checkpoint_settings = get_radar_checkpoint_settings()
+            checkpoint_dir = checkpoint_settings.RADAR_CHECKPOINT_DIR
+            service_id = checkpoint_settings.SERVICE_ID
+            os.makedirs(checkpoint_dir, exist_ok=True)
+
+            timestamp = int(time.time())
+            checkpoint_name = f"{service_id}_{self.processed_count}_{timestamp}.pkl"
+            checkpoint_path = f"{checkpoint_dir}/{checkpoint_name}"
+            checkpoint_data = pickle.dumps(
+                {
+                    "strategy": "static_baseline",
+                    "static_state": self.state.value,
+                    "training_buffer": self.training_buffer,
+                    "feature_keys": self.feature_keys,
+                    "conformal_detector": self.conformal_detector,
+                    "fdr_controller": self.fdr_controller,
+                    "processed_count": self.processed_count,
+                    "anomaly_count": self.anomaly_count,
+                    "discarded_during_training_count": (
+                        self.discarded_during_training_count
+                    ),
+                    "schema_mismatch_count": self.schema_mismatch_count,
+                    "training_error": self.training_error,
+                    "config": self.config,
+                    "service_id": service_id,
+                    "schema_signature": self.schema_signature,
+                }
+            )
+
+            with open(checkpoint_path, "wb") as f:
+                f.write(checkpoint_data)
+
+            signature = _sign_checkpoint_data(checkpoint_data)
+            if signature:
+                with open(checkpoint_path + ".sig", "w") as f:
+                    f.write(signature)
+                self.logger.info(
+                    "Static conformal checkpoint saved with signature: %s",
+                    checkpoint_path,
+                )
+            else:
+                self.logger.info(
+                    "Static conformal checkpoint saved (unsigned): %s",
+                    checkpoint_path,
+                )
+        except Exception as exc:
+            self.logger.error(
+                "event=radar.static_conformal_checkpoint_save_failed error=%s",
+                str(exc),
+                exc_info=True,
+            )
+
+    def _get_model_info(self) -> Dict[str, Any]:
+        return {
+            "strategy": "static_baseline",
+            "state": self.state.value,
+            "processed_count": self.processed_count,
+            "anomaly_count": self.anomaly_count,
+            "anomaly_rate": self.anomaly_count / max(self.processed_count, 1),
+            "training_window_size": self.static_config.training_window_size,
+            "collected_samples": len(self.training_buffer),
+            "discarded_during_training_count": self.discarded_during_training_count,
+            "schema_mismatch_count": self.schema_mismatch_count,
+            "memory_usage_mb": self._get_memory_usage(),
+            "avg_processing_time_ms": sum(self.processing_times)
+            / max(len(self.processing_times), 1)
+            * 1000,
+            "uptime_seconds": time.time() - self.start_time,
+        }
+
+    def _get_memory_usage(self) -> float:
+        try:
+            process = psutil.Process(os.getpid())
+            return process.memory_info().rss / 1024 / 1024
+        except (psutil.NoSuchProcess, psutil.AccessDenied, OSError):
+            return 0.0
+
+
 class ResilientAnomalyDetector:
     """
     Resilient anomaly detector with error handling and fallback mechanisms
@@ -803,6 +1450,13 @@ class ResilientAnomalyDetector:
         self.circuit_breaker_opened_at = None
 
         self.logger = logging.getLogger(__name__)
+
+    async def stop(self) -> None:
+        """Release resources held by wrapped detector services."""
+        for service in (self.primary_service, self.fallback_service):
+            shutdown = getattr(service, "shutdown", None)
+            if callable(shutdown):
+                shutdown()
 
     def process_with_resilience(
         self, data: Dict[str, float], topic: str = None, charger_id: str = None
@@ -845,6 +1499,25 @@ class ResilientAnomalyDetector:
             else:
                 # Simple statistical fallback
                 score = self._simple_statistical_anomaly_score(data)
+                if not hasattr(
+                    self.primary_service, "_evaluate_moving_window_heuristic"
+                ):
+                    return AnomalyResult(
+                        anomaly_score=score,
+                        is_anomaly=False,
+                        severity="unknown",
+                        timestamp=datetime.now(timezone.utc),
+                        model_info={"model_used": "statistical"},
+                        raw_data=data,
+                        topic=topic,
+                        charger_id=charger_id,
+                        context={
+                            "fallback_reason": reason,
+                            "model_used": "statistical",
+                            "service_state": ServiceState.DEGRADED.value,
+                        },
+                    )
+
                 heuristic_context = (
                     self.primary_service._evaluate_moving_window_heuristic(
                         score, model_ready=True

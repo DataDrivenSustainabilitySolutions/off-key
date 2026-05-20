@@ -10,14 +10,15 @@ class with 23+ environment variables.
 """
 
 import asyncio
-import time
 import logging
 import math
+import time
+from collections import deque
+from collections.abc import Iterable
 from datetime import datetime
 from typing import List, Optional, Dict, Any, Tuple
-from collections import deque
 
-from sqlalchemy import Table, Column, Text, Float, TIMESTAMP, text
+from sqlalchemy import Table, Column, Text, Float, TIMESTAMP, JSON, text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.schema import MetaData
 from sqlalchemy.orm import sessionmaker
@@ -48,6 +49,7 @@ ANOMALY_TABLE = Table(
     Column("anomaly_type", Text, nullable=False),
     Column("anomaly_value", Float, nullable=False),
     Column("value_type", Text, nullable=True),
+    Column("sensor_set", JSON, nullable=True),
 )
 ANOMALY_IDENTITY_TABLE = Table(
     "anomaly_identity",
@@ -287,16 +289,31 @@ class DatabaseWriter:
         return self._extract_telemetry_type(result.topic, result.raw_data)
 
     @staticmethod
+    def _is_static_conformal_result(result: AnomalyResult) -> bool:
+        return isinstance((result.context or {}).get("static_conformal"), dict)
+
+    @staticmethod
     def _derive_anomaly_type(result: AnomalyResult) -> str:
         """Map detector output to stored anomaly semantics."""
         alignment_context = (result.context or {}).get("alignment", {})
+        if DatabaseWriter._is_static_conformal_result(result):
+            if bool(alignment_context.get("aligned_vector")):
+                return "ml_conformal_static_multivariate"
+            return "ml_conformal_static_univariate"
         if bool(alignment_context.get("aligned_vector")):
             return "ml_tailprob_multivariate"
         return "ml_tailprob_univariate"
 
     @staticmethod
     def _derive_anomaly_value(result: AnomalyResult) -> float:
-        """Persist tail probability when available to match trigger semantics."""
+        """Persist the p-value used by the active detector when available."""
+        static_context = (result.context or {}).get("static_conformal", {})
+        conformal_pvalue = static_context.get("p_value")
+        if isinstance(conformal_pvalue, (int, float)):
+            conformal_pvalue = float(conformal_pvalue)
+            if math.isfinite(conformal_pvalue):
+                return conformal_pvalue
+
         score_window = (result.context or {}).get("score_window", {})
         tail_pvalue = score_window.get("tail_pvalue")
         if isinstance(tail_pvalue, (int, float)):
@@ -304,6 +321,48 @@ class DatabaseWriter:
             if math.isfinite(tail_pvalue):
                 return tail_pvalue
         return float(result.anomaly_score)
+
+    @staticmethod
+    def _normalize_sensor_set(value: Any) -> Optional[List[str]]:
+        if isinstance(value, dict):
+            iterable = value.keys()
+        elif isinstance(value, set):
+            iterable = sorted(value)
+        elif isinstance(value, Iterable) and not isinstance(value, (str, bytes)):
+            iterable = value
+        else:
+            return None
+
+        sensors = []
+        seen = set()
+        for item in iterable:
+            sensor = str(item).strip() if item is not None else ""
+            if sensor and sensor not in seen:
+                sensors.append(sensor)
+                seen.add(sensor)
+        return sensors or None
+
+    def _derive_sensor_set(self, result: AnomalyResult) -> Optional[List[str]]:
+        """Resolve the exact telemetry streams involved in a stored anomaly."""
+        alignment_context = (result.context or {}).get("alignment", {})
+        required_sensors = self._normalize_sensor_set(
+            alignment_context.get("required_sensors")
+        )
+        if required_sensors and (
+            bool(alignment_context.get("aligned_vector")) or len(required_sensors) == 1
+        ):
+            return required_sensors
+
+        feature_source = result.raw_data if isinstance(result.raw_data, dict) else {}
+        feature_sensors = self._normalize_sensor_set(feature_source.keys())
+        if bool(alignment_context.get("aligned_vector")) and feature_sensors:
+            return feature_sensors
+
+        telemetry_type = self._extract_telemetry_type(result.topic, result.raw_data)
+        if telemetry_type and telemetry_type != "unknown":
+            return [telemetry_type]
+
+        return feature_sensors
 
     def _build_records(
         self,
@@ -318,7 +377,12 @@ class DatabaseWriter:
                     "telemetry_type": self._derive_telemetry_type(result),
                     "anomaly_type": self._derive_anomaly_type(result),
                     "anomaly_value": self._derive_anomaly_value(result),
-                    "value_type": "tail_pvalue",
+                    "value_type": (
+                        "conformal_pvalue"
+                        if self._is_static_conformal_result(result)
+                        else "tail_pvalue"
+                    ),
+                    "sensor_set": self._derive_sensor_set(result),
                 }
             )
         identity_records = [

@@ -1,6 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { ExternalLink, RefreshCw, Trash2 } from "lucide-react";
+import {
+  Activity,
+  AlertTriangle,
+  CheckCircle2,
+  Database,
+  ExternalLink,
+  RadioTower,
+  RefreshCw,
+  Trash2,
+} from "lucide-react";
 import toast from "react-hot-toast";
 
 import {
@@ -21,6 +30,7 @@ import {
 } from "@/components/ui/table";
 import { apiUtils } from "@/lib/api-client";
 import { API_CONFIG } from "@/lib/api-config";
+import { cn } from "@/lib/utils";
 import { getStatusDisplay } from "@/types/monitoring";
 import type { ActiveService } from "@/types/monitoring";
 
@@ -39,10 +49,70 @@ const getServiceModeLabel = (service: ActiveService): string => {
   return "Unknown";
 };
 
+const getModeBadgeClassName = (service: ActiveService): string => {
+  if (service.monitoring_strategy === "static_baseline") {
+    return "border-sky-200 bg-sky-50 text-sky-800 dark:border-sky-900/60 dark:bg-sky-950/25 dark:text-sky-200";
+  }
+  if (service.monitoring_strategy === "adaptive_stream") {
+    return "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900/60 dark:bg-emerald-950/25 dark:text-emerald-200";
+  }
+  return "border-border bg-muted text-muted-foreground";
+};
+
 const canStopService = (service: ActiveService): boolean => {
   const dockerStatus = service.docker_status?.toLowerCase();
   return !["not_found", "removed", "stopped"].includes(dockerStatus || "");
 };
+
+function StatusBadge({
+  label,
+  className,
+}: {
+  label: string;
+  className?: string;
+}) {
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium",
+        className
+      )}
+    >
+      {label}
+    </span>
+  );
+}
+
+function ModeBadge({ service }: { service: ActiveService }) {
+  const Icon =
+    service.monitoring_strategy === "static_baseline" ? Database : Activity;
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium",
+        getModeBadgeClassName(service)
+      )}
+    >
+      <Icon className="h-3.5 w-3.5" />
+      {getServiceModeLabel(service)}
+    </span>
+  );
+}
+
+function EmptyServicesState() {
+  return (
+    <div className="flex min-h-48 flex-col items-center justify-center px-4 py-10 text-center">
+      <div className="mb-3 flex size-10 items-center justify-center rounded-md border bg-muted/30 text-muted-foreground">
+        <RadioTower className="h-5 w-5" />
+      </div>
+      <div className="text-sm font-medium">No monitoring services found</div>
+      <div className="mt-1 max-w-md text-sm text-muted-foreground">
+        New RADAR workloads will appear here after they are started from a charger
+        monitoring page.
+      </div>
+    </div>
+  );
+}
 
 export default function Services() {
   const [services, setServices] = useState<ActiveService[]>([]);
@@ -90,6 +160,12 @@ export default function Services() {
         .length,
     [services]
   );
+  const dynamicCount = useMemo(
+    () =>
+      services.filter((service) => service.monitoring_strategy === "adaptive_stream")
+        .length,
+    [services]
+  );
 
   const stopService = useCallback(
     async (containerName: string) => {
@@ -130,7 +206,7 @@ export default function Services() {
         />
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
-          <MetricCard label="Services" value={services.length} helper="Tracked" />
+          <MetricCard label="Services" value={services.length} helper="Tracked workloads" />
           <MetricCard
             label="Running"
             value={runningCount}
@@ -151,6 +227,38 @@ export default function Services() {
           />
         </div>
 
+        <div className="flex flex-col gap-3 rounded-md border border-border/80 bg-muted/20 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 items-center gap-3">
+            <div
+              className={cn(
+                "flex size-9 shrink-0 items-center justify-center rounded-md border",
+                missingCount > 0
+                  ? "border-red-200 bg-red-50 text-red-700 dark:border-red-900/60 dark:bg-red-950/25 dark:text-red-200"
+                  : "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/25 dark:text-emerald-200"
+              )}
+            >
+              {missingCount > 0 ? (
+                <AlertTriangle className="h-4 w-4" />
+              ) : (
+                <CheckCircle2 className="h-4 w-4" />
+              )}
+            </div>
+            <div className="min-w-0">
+              <div className="text-sm font-medium">
+                {missingCount > 0
+                  ? `${missingCount} services need attention`
+                  : "Service inventory is clean"}
+              </div>
+              <div className="text-sm text-muted-foreground">
+                {runningCount} running, {staticCount} static, {dynamicCount} dynamic
+              </div>
+            </div>
+          </div>
+          <div className="text-xs text-muted-foreground">
+            Auto-refreshes every 15 seconds
+          </div>
+        </div>
+
         <SectionPanel
           title="Monitoring Services"
           description={
@@ -158,108 +266,135 @@ export default function Services() {
           }
           contentClassName="p-0"
         >
-          <Table>
-            <TableHeader>
-              <TableRow className="bg-muted/40 hover:bg-muted/40">
-                <TableHead>Service</TableHead>
-                <TableHead>Charger</TableHead>
-                <TableHead>Mode</TableHead>
-                <TableHead>Model</TableHead>
-                <TableHead>Topics</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Created</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {isLoading && services.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={8} className="h-24 text-center text-muted-foreground">
-                    Loading services...
-                  </TableCell>
+          {isLoading && services.length === 0 ? (
+            <div className="flex min-h-48 flex-col items-center justify-center px-4 py-10 text-center">
+              <RefreshCw className="mb-3 h-5 w-5 animate-spin text-muted-foreground" />
+              <div className="text-sm font-medium">Loading services</div>
+              <div className="mt-1 text-sm text-muted-foreground">
+                Fetching current workload state.
+              </div>
+            </div>
+          ) : services.length > 0 ? (
+            <Table>
+              <TableHeader>
+                <TableRow className="bg-muted/40 hover:bg-muted/40">
+                  <TableHead>Service</TableHead>
+                  <TableHead>Charger</TableHead>
+                  <TableHead>Mode</TableHead>
+                  <TableHead>Model</TableHead>
+                  <TableHead>Topics</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Created</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
-              ) : services.length > 0 ? (
-                services.map((service) => {
-                  const status = getStatusDisplay(
-                    service.docker_status,
-                    service.status
-                  );
-                  const chargerId = extractChargerIdFromContainer(
-                    service.container_name
-                  );
-                  const isStoppable = canStopService(service);
+              </TableHeader>
+              <TableBody>
+                {services.map((service) => {
+                    const status = getStatusDisplay(
+                      service.docker_status,
+                      service.status
+                    );
+                    const chargerId = extractChargerIdFromContainer(
+                      service.container_name
+                    );
+                    const isStoppable = canStopService(service);
+                    const topicPreview = service.mqtt_topics.slice(0, 2);
 
-                  return (
-                    <TableRow key={service.id}>
-                      <TableCell className="max-w-[16rem] truncate font-medium">
-                        {service.container_name}
-                      </TableCell>
-                      <TableCell>
-                        {chargerId === "Unknown" ? (
-                          chargerId
-                        ) : (
-                          <Link
-                            to={`/monitoring/${chargerId}`}
-                            className="inline-flex items-center gap-1 hover:underline"
+                    return (
+                      <TableRow key={service.id} className="align-top">
+                        <TableCell>
+                          <div className="max-w-[18rem] truncate font-medium">
+                            {service.container_name}
+                          </div>
+                          <div className="mt-1 max-w-[18rem] truncate font-mono text-xs text-muted-foreground">
+                            {service.container_id || service.id}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          {chargerId === "Unknown" ? (
+                            <span className="text-sm text-muted-foreground">
+                              Unknown
+                            </span>
+                          ) : (
+                            <Link
+                              to={`/monitoring/${chargerId}`}
+                              className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-sm font-medium text-primary hover:bg-accent"
+                            >
+                              {chargerId}
+                              <ExternalLink className="h-3.5 w-3.5" />
+                            </Link>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <ModeBadge service={service} />
+                        </TableCell>
+                        <TableCell className="font-mono text-xs">
+                          {service.model_type || "Unknown"}
+                        </TableCell>
+                        <TableCell>
+                          <div
+                            className="flex max-w-[22rem] flex-wrap gap-1.5"
+                            title={service.mqtt_topics.join(", ")}
                           >
-                            {chargerId}
-                            <ExternalLink className="h-3.5 w-3.5" />
-                          </Link>
-                        )}
-                      </TableCell>
-                      <TableCell>{getServiceModeLabel(service)}</TableCell>
-                      <TableCell>{service.model_type || "Unknown"}</TableCell>
-                      <TableCell>
-                        <div
-                          className="max-w-[18rem] truncate"
-                          title={service.mqtt_topics.join(", ")}
-                        >
-                          {service.mqtt_topics.length > 0
-                            ? service.mqtt_topics.join(", ")
-                            : "None"}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <span
-                          className={`rounded-full px-2.5 py-1 text-xs font-medium ${status.className}`}
-                        >
-                          {status.label}
-                        </span>
-                      </TableCell>
-                      <TableCell>
-                        {service.created_at
-                          ? new Date(service.created_at).toLocaleString()
-                          : "Unknown"}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          disabled={!isStoppable}
-                          onClick={() => stopService(service.container_name)}
-                          aria-label={
-                            isStoppable
-                              ? "stop service"
-                              : "service already stopped"
-                          }
-                          className="text-destructive hover:text-destructive"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })
-              ) : (
-                <TableRow>
-                  <TableCell colSpan={8} className="h-24 text-center text-muted-foreground">
-                    No monitoring services found.
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
+                            {topicPreview.length > 0 ? (
+                              <>
+                                {topicPreview.map((topic) => (
+                                  <span
+                                    key={topic}
+                                    className="max-w-[12rem] truncate rounded-full border bg-background px-2 py-1 font-mono text-[11px]"
+                                  >
+                                    {topic}
+                                  </span>
+                                ))}
+                                {service.mqtt_topics.length > topicPreview.length ? (
+                                  <span className="rounded-full bg-muted px-2 py-1 text-[11px] text-muted-foreground">
+                                    +{service.mqtt_topics.length - topicPreview.length}
+                                  </span>
+                                ) : null}
+                              </>
+                            ) : (
+                              <span className="text-sm text-muted-foreground">
+                                None
+                              </span>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <StatusBadge
+                            label={status.label}
+                            className={status.className}
+                          />
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
+                          {service.created_at
+                            ? new Date(service.created_at).toLocaleString()
+                            : "Unknown"}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            disabled={!isStoppable}
+                            onClick={() => stopService(service.container_name)}
+                            aria-label={
+                              isStoppable
+                                ? "stop service"
+                                : "service already stopped"
+                            }
+                            className="text-destructive hover:text-destructive"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+              </TableBody>
+            </Table>
+          ) : (
+            <EmptyServicesState />
+          )}
         </SectionPanel>
       </PageShell>
     </>

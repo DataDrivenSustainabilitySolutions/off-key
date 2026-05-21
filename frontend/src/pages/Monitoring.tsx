@@ -21,7 +21,21 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { apiUtils } from "@/lib/api-client";
 import { API_CONFIG } from "@/lib/api-config";
 import toast from "react-hot-toast";
-import { Activity, ChevronDown, ChevronUp, Database, RefreshCw, Send, Trash2 } from "lucide-react";
+import {
+  Activity,
+  CheckCircle2,
+  ChevronDown,
+  ChevronUp,
+  Database,
+  Layers3,
+  RadioTower,
+  RefreshCw,
+  Send,
+  Settings2,
+  SlidersHorizontal,
+  Trash2,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
 import { getStatusDisplay } from "@/types/monitoring";
 import {
   formatAnomalyValue,
@@ -149,8 +163,32 @@ const DEFAULT_PREPROCESSING_STEPS: PreprocessingStepConfig[] = [
 ];
 
 const FORM_CONTROL_CLASS =
-  "w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-xs outline-none transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] disabled:pointer-events-none disabled:opacity-50";
+  "h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-xs outline-none transition-[color,box-shadow] placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] disabled:pointer-events-none disabled:opacity-50";
 const PRIMARY_ACTION_BUTTON_CLASS = "";
+const FIELD_LABEL_CLASS = "text-sm font-medium text-foreground";
+const FIELD_HELP_CLASS = "mt-1 text-xs leading-5 text-muted-foreground";
+const PANEL_SECTION_CLASS =
+  "min-w-0 space-y-4 border-t border-border/70 pt-5 first:border-t-0 first:pt-0";
+const CHIP_CLASS =
+  "inline-flex max-w-full items-center rounded-full border border-border/70 bg-background px-2.5 py-1 text-xs font-medium text-foreground shadow-xs";
+const QUIET_SURFACE_CLASS =
+  "rounded-md border border-border/70 bg-muted/20 p-4";
+
+const formatStrategyLabel = (strategy?: MonitoringStrategy): string => {
+  if (strategy === "static_baseline") return "Static";
+  if (strategy === "adaptive_stream") return "Dynamic";
+  return "Unknown";
+};
+
+const getStrategyBadgeClassName = (strategy?: MonitoringStrategy): string =>
+  strategy === "static_baseline"
+    ? "border-sky-200 bg-sky-50 text-sky-800 dark:border-sky-900/60 dark:bg-sky-950/25 dark:text-sky-200"
+    : strategy === "adaptive_stream"
+    ? "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900/60 dark:bg-emerald-950/25 dark:text-emerald-200"
+    : "border-border bg-muted text-muted-foreground";
+
+const formatDateTime = (value?: string): string =>
+  value ? new Date(value).toLocaleString() : "Unknown";
 
 const extractChargerIdFromContainer = (containerName: string): string => {
   const match = containerName.match(/^radar-(.+)-\d+$/);
@@ -176,6 +214,69 @@ const MonitoringSectionCard: React.FC<{
   </SectionPanel>
 );
 
+const StatusPill: React.FC<{ label: string; className?: string }> = ({
+  label,
+  className,
+}) => (
+  <span
+    className={cn(
+      "inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium",
+      className
+    )}
+  >
+    {label}
+  </span>
+);
+
+const StrategyPill: React.FC<{ strategy?: MonitoringStrategy }> = ({
+  strategy,
+}) => (
+  <span
+    className={cn(
+      "inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium",
+      getStrategyBadgeClassName(strategy)
+    )}
+  >
+    {formatStrategyLabel(strategy)}
+  </span>
+);
+
+const EmptyState: React.FC<{
+  icon: React.ComponentType<{ className?: string }>;
+  title: string;
+  description: string;
+}> = ({ icon: Icon, title, description }) => (
+  <div className="flex min-h-40 flex-col items-center justify-center px-4 py-10 text-center">
+    <div className="mb-3 flex size-10 items-center justify-center rounded-md border bg-muted/30 text-muted-foreground">
+      <Icon className="h-5 w-5" />
+    </div>
+    <div className="text-sm font-medium">{title}</div>
+    <div className="mt-1 max-w-md text-sm text-muted-foreground">
+      {description}
+    </div>
+  </div>
+);
+
+const SectionEyebrow: React.FC<{
+  icon: React.ComponentType<{ className?: string }>;
+  title: string;
+  description?: string;
+}> = ({ icon: Icon, title, description }) => (
+  <div className="flex items-start gap-3">
+    <div className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-md border bg-background text-muted-foreground">
+      <Icon className="h-4 w-4" />
+    </div>
+    <div className="min-w-0">
+      <h3 className="text-sm font-semibold leading-5">{title}</h3>
+      {description ? (
+        <p className="mt-1 text-xs leading-5 text-muted-foreground">
+          {description}
+        </p>
+      ) : null}
+    </div>
+  </div>
+);
+
 const PreprocessingSection: React.FC<{
   steps: PreprocessingStepConfig[];
   availablePreprocessors: Record<string, PreprocessorDefinition>;
@@ -199,15 +300,18 @@ const PreprocessingSection: React.FC<{
   onMoveDown,
   onRemove,
 }) => (
-  <div className="space-y-4">
-    <div className="flex items-center justify-between gap-3">
-      <div>
-        <h3 className="text-sm font-semibold">Preprocessing</h3>
-        <p className="mt-1 text-xs text-muted-foreground">Optional transforms before model scoring.</p>
-      </div>
-      {isLoading && <span className="text-xs text-muted-foreground">Loading...</span>}
+  <div className={PANEL_SECTION_CLASS}>
+    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+      <SectionEyebrow
+        icon={Layers3}
+        title="Preprocessing"
+        description="Optional transforms before model scoring."
+      />
+      {isLoading ? (
+        <span className="text-xs text-muted-foreground">Loading...</span>
+      ) : null}
     </div>
-    <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+    <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
       <select
         className={FORM_CONTROL_CLASS}
         value={newPreprocessorType}
@@ -226,12 +330,13 @@ const PreprocessingSection: React.FC<{
         disabled={!newPreprocessorType || isLoading}
         onClick={onAdd}
       >
+        <Layers3 className="h-4 w-4" />
         Add
       </Button>
     </div>
 
     {steps.length === 0 && (
-      <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+      <p className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
         No preprocessing steps selected.
       </p>
     )}
@@ -241,46 +346,56 @@ const PreprocessingSection: React.FC<{
         const schemaProps: Record<string, ParameterSchema> =
           availablePreprocessors[step.type]?.parameters?.properties || {};
         return (
-          <div key={step.id} className="rounded-lg border bg-muted/30 p-3">
+          <div key={step.id} className="min-w-0 rounded-md border bg-background p-3">
             <div className="flex items-center justify-between gap-3">
-              <div className="truncate text-sm font-semibold">
-                {index + 1}. {step.type}
+              <div className="flex min-w-0 items-center gap-2">
+                <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-muted text-xs font-semibold text-muted-foreground">
+                  {index + 1}
+                </span>
+                <div className="truncate text-sm font-semibold">{step.type}</div>
               </div>
               <div className="flex items-center gap-1">
                 <Button
                   variant="outline"
-                  size="sm"
+                  size="icon"
                   onClick={() => onMoveUp(index)}
                   disabled={index === 0}
-                  title="Move up"
+                  aria-label="Move preprocessing step up"
                 >
                   <ChevronUp className="h-4 w-4" />
                 </Button>
                 <Button
                   variant="outline"
-                  size="sm"
+                  size="icon"
                   onClick={() => onMoveDown(index)}
                   disabled={index === steps.length - 1}
-                  title="Move down"
+                  aria-label="Move preprocessing step down"
                 >
                   <ChevronDown className="h-4 w-4" />
                 </Button>
-                <Button variant="destructive" size="sm" onClick={() => onRemove(index)}>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="text-destructive hover:text-destructive"
+                  onClick={() => onRemove(index)}
+                  aria-label="Remove preprocessing step"
+                >
                   <Trash2 className="h-4 w-4" />
-                  Remove
                 </Button>
               </div>
             </div>
-            <div className="mt-3 space-y-3">
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
               {Object.entries(schemaProps).length === 0 && (
                 <p className="text-sm text-muted-foreground">No parameters.</p>
               )}
               {Object.entries(schemaProps).map(([key, schema]) => (
                 <div key={key} className="flex flex-col">
-                  <label className="text-sm font-medium mb-1">
+                  <label className="mb-1 text-sm font-medium">
                     {key}
                     {schema?.description ? (
-                      <span className="ml-1 text-xs text-muted-foreground">({schema.description})</span>
+                      <span className="ml-1 text-xs text-muted-foreground">
+                        ({schema.description})
+                      </span>
                     ) : null}
                   </label>
                   <input
@@ -332,88 +447,95 @@ const ActiveServicesSection: React.FC<{
   return (
     <MonitoringSectionCard
       title="Active Services"
-      description={`Monitoring services for charger ${chargerId}`}
+      description={`${chargerSpecificServices.length} services for charger ${chargerId}`}
       contentClassName="p-0"
     >
-          <div>
-            {isLoading ? (
-              <div className="flex items-center justify-center py-10">
-                <div className="text-sm text-muted-foreground">Loading active services...</div>
-              </div>
-            ) : chargerSpecificServices.length === 0 ? (
-              <div className="flex items-center justify-center py-10">
-                <div className="text-sm text-muted-foreground">No active monitoring services found for charger {chargerId}</div>
-              </div>
-            ) : (
-              <div>
-                <Table>
-                  <TableHeader>
-                    <TableRow className="bg-muted/40 hover:bg-muted/40">
-                      <TableHead>Container Name</TableHead>
-                      <TableHead>Charger ID</TableHead>
-                      <TableHead>Strategy</TableHead>
-                      <TableHead>Model</TableHead>
-                      <TableHead>MQTT Topics</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Created At</TableHead>
-                      <TableHead>Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {chargerSpecificServices.map((service) => (
-                      <TableRow key={service.id}>
-                        <TableCell className="font-medium">{service.container_name}</TableCell>
-                        <TableCell>{extractChargerIdFromContainer(service.container_name)}</TableCell>
-                        <TableCell>
-                          <span className="rounded-full bg-muted px-2 py-1 text-xs font-medium">
-                            {service.monitoring_strategy === "static_baseline"
-                              ? "Static"
-                              : service.monitoring_strategy === "adaptive_stream"
-                              ? "Dynamic"
-                              : "Unknown"}
-                          </span>
-                        </TableCell>
-                        <TableCell>{service.model_type || "Unknown"}</TableCell>
-                        <TableCell>
-                          <div className="max-w-xs truncate" title={service.mqtt_topics.join(", ")}>
-                            {service.mqtt_topics.length > 0
-                              ? service.mqtt_topics.slice(0, 2).join(", ") +
-                                (service.mqtt_topics.length > 2 ? ` +${service.mqtt_topics.length - 2} more` : "")
-                              : "No topics"}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          {(() => {
-                            const statusDisplay = getStatusDisplay(service.docker_status, service.status);
-                            return (
-                              <span
-                                className={`px-2 py-1 rounded-full text-xs font-medium ${statusDisplay.className}`}
-                              >
-                                {statusDisplay.label}
-                              </span>
-                            );
-                          })()}
-                        </TableCell>
-                        <TableCell>
-                          {service.created_at ? new Date(service.created_at).toLocaleString() : "Unknown"}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <Button
-                            variant="destructive"
-                            size="sm"
-                            onClick={() => onDelete(service.container_name)}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                            Stop
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            )}
-          </div>
+      {isLoading ? (
+        <EmptyState
+          icon={RefreshCw}
+          title="Loading active services"
+          description="The service list is refreshing from the backend."
+        />
+      ) : chargerSpecificServices.length === 0 ? (
+        <EmptyState
+          icon={RadioTower}
+          title="No active services"
+          description={`Start a monitoring workload to track charger ${chargerId}.`}
+        />
+      ) : (
+        <Table>
+          <TableHeader>
+            <TableRow className="bg-muted/40 hover:bg-muted/40">
+              <TableHead>Service</TableHead>
+              <TableHead>Strategy</TableHead>
+              <TableHead>Model</TableHead>
+              <TableHead>Topics</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead>Created</TableHead>
+              <TableHead className="text-right">Actions</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {chargerSpecificServices.map((service) => {
+              const statusDisplay = getStatusDisplay(
+                service.docker_status,
+                service.status
+              );
+              return (
+                <TableRow key={service.id} className="align-top">
+                  <TableCell>
+                    <div className="max-w-[18rem] truncate font-medium">
+                      {service.container_name}
+                    </div>
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      {extractChargerIdFromContainer(service.container_name)}
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <StrategyPill strategy={service.monitoring_strategy} />
+                  </TableCell>
+                  <TableCell className="font-mono text-xs">
+                    {service.model_type || "Unknown"}
+                  </TableCell>
+                  <TableCell>
+                    <div
+                      className="max-w-xs truncate text-sm"
+                      title={service.mqtt_topics.join(", ")}
+                    >
+                      {service.mqtt_topics.length > 0
+                        ? service.mqtt_topics.slice(0, 2).join(", ") +
+                          (service.mqtt_topics.length > 2
+                            ? ` +${service.mqtt_topics.length - 2} more`
+                            : "")
+                        : "No topics"}
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <StatusPill
+                      label={statusDisplay.label}
+                      className={statusDisplay.className}
+                    />
+                  </TableCell>
+                  <TableCell className="text-sm text-muted-foreground">
+                    {formatDateTime(service.created_at)}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="text-destructive hover:text-destructive"
+                      onClick={() => onDelete(service.container_name)}
+                      aria-label="Stop monitoring service"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
+      )}
     </MonitoringSectionCard>
   );
 };
@@ -435,78 +557,91 @@ const AnomaliesSection: React.FC<{
     }
     contentClassName="p-0"
   >
-        <div>
-          {isLoading ? (
-            <div className="flex items-center justify-center py-10">
-              <div className="text-sm text-muted-foreground">Loading anomalies...</div>
-            </div>
-          ) : anomalies.length === 0 ? (
-            <div className="flex items-center justify-center py-10">
-              <div className="text-sm text-muted-foreground">No anomalies detected for charger {chargerId}</div>
-            </div>
-          ) : (
-            <div className="max-h-96 overflow-y-auto">
-              <Table>
-                  <TableHeader>
-                  <TableRow className="bg-muted/40 hover:bg-muted/40">
-                    <TableHead>Timestamp</TableHead>
-                    <TableHead>Telemetry Type</TableHead>
-                    <TableHead>Sensors</TableHead>
-                    <TableHead>Anomaly Type</TableHead>
-                    <TableHead>p-value</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {anomalies.slice(0, 50).map((anomaly, index) => (
-                    <TableRow key={`${anomaly.timestamp}-${index}`}>
-                      <TableCell className="font-medium">{new Date(anomaly.timestamp).toLocaleString()}</TableCell>
-                      <TableCell>
-                        <span className="px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/35 dark:text-blue-200">
-                          {anomaly.telemetry_type === "__multivariate__"
-                            ? "multivariate"
-                            : anomaly.telemetry_type}
-                        </span>
-                      </TableCell>
-                      <TableCell
-                        className="max-w-56 truncate text-xs text-muted-foreground"
-                        title={formatAnomalySensorSet(anomaly.sensor_set)}
-                      >
-                        {formatAnomalySensorSet(anomaly.sensor_set)}
-                      </TableCell>
-                      <TableCell>{anomaly.anomaly_type}</TableCell>
-                      <TableCell>
-                        {isProbabilityAnomalyValue(anomaly.value_type) ? (
-                          <span
-                            className={`px-2 py-1 rounded-full text-xs font-medium ${getAnomalyValueClassName(
-                              anomaly.anomaly_value,
-                              anomaly.value_type
-                            )}`}
-                            title={getAnomalyValueLabel(anomaly.value_type)}
-                          >
-                            {formatAnomalyValue(
-                              anomaly.anomaly_value,
-                              anomaly.value_type
-                            )}
-                          </span>
-                        ) : (
-                          <span className="rounded-full bg-muted px-2 py-1 text-xs font-medium text-muted-foreground">
-                            {formatAnomalyValue(
-                              anomaly.anomaly_value,
-                              anomaly.value_type
-                            )} (legacy)
-                          </span>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-              {anomalies.length > 50 && (
-                <div className="border-t py-3 text-center text-sm text-muted-foreground">Showing 50 of {anomalies.length} anomalies</div>
-              )}
-            </div>
-          )}
-        </div>
+    {isLoading ? (
+      <EmptyState
+        icon={RefreshCw}
+        title="Loading anomalies"
+        description="Recent detections are being refreshed."
+      />
+    ) : anomalies.length === 0 ? (
+      <EmptyState
+        icon={CheckCircle2}
+        title="No anomalies detected"
+        description={`No recent detections are loaded for charger ${chargerId}.`}
+      />
+    ) : (
+      <div className="max-h-96 overflow-y-auto">
+        <Table>
+          <TableHeader className="sticky top-0 z-10 bg-card">
+            <TableRow className="bg-muted/40 hover:bg-muted/40">
+              <TableHead>Timestamp</TableHead>
+              <TableHead>Telemetry</TableHead>
+              <TableHead>Sensors</TableHead>
+              <TableHead>Type</TableHead>
+              <TableHead>p-value</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {anomalies.slice(0, 50).map((anomaly, index) => (
+              <TableRow key={`${anomaly.timestamp}-${index}`}>
+                <TableCell className="font-medium">
+                  {new Date(anomaly.timestamp).toLocaleString()}
+                </TableCell>
+                <TableCell>
+                  <StatusPill
+                    label={
+                      anomaly.telemetry_type === "__multivariate__"
+                        ? "multivariate"
+                        : anomaly.telemetry_type
+                    }
+                    className="bg-sky-100 text-sky-800 dark:bg-sky-900/35 dark:text-sky-200"
+                  />
+                </TableCell>
+                <TableCell
+                  className="max-w-56 truncate text-xs text-muted-foreground"
+                  title={formatAnomalySensorSet(anomaly.sensor_set)}
+                >
+                  {formatAnomalySensorSet(anomaly.sensor_set)}
+                </TableCell>
+                <TableCell className="font-mono text-xs">
+                  {anomaly.anomaly_type}
+                </TableCell>
+                <TableCell>
+                  {isProbabilityAnomalyValue(anomaly.value_type) ? (
+                    <StatusPill
+                      label={formatAnomalyValue(
+                        anomaly.anomaly_value,
+                        anomaly.value_type
+                      )}
+                      className={getAnomalyValueClassName(
+                        anomaly.anomaly_value,
+                        anomaly.value_type
+                      )}
+                    />
+                  ) : (
+                    <StatusPill
+                      label={`${formatAnomalyValue(
+                        anomaly.anomaly_value,
+                        anomaly.value_type
+                      )} legacy`}
+                      className="bg-muted text-muted-foreground"
+                    />
+                  )}
+                  <span className="sr-only">
+                    {getAnomalyValueLabel(anomaly.value_type)}
+                  </span>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+        {anomalies.length > 50 && (
+          <div className="border-t py-3 text-center text-sm text-muted-foreground">
+            Showing 50 of {anomalies.length} anomalies
+          </div>
+        )}
+      </div>
+    )}
   </MonitoringSectionCard>
 );
 
@@ -1089,7 +1224,7 @@ const Monitoring: React.FC = () => {
         <PageHeader
           eyebrow="Monitoring"
           title={`Charger ${chargerId}`}
-          description="Configure static or dynamic monitoring, inspect active services, and review recent findings for this charger."
+          description="Configure a RADAR workload, inspect active services, and review recent findings for this charger."
         />
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
@@ -1101,7 +1236,7 @@ const Monitoring: React.FC = () => {
 
         <MonitoringSectionCard
           title="Detection Setup"
-          description="Build the topic set and model configuration used when starting a monitoring service."
+          description="Build the topic set and choose the monitoring strategy."
           actions={
             <Button onClick={submitAnomalyDetection}>
               <Send className="h-4 w-4" />
@@ -1109,172 +1244,149 @@ const Monitoring: React.FC = () => {
             </Button>
           }
         >
-          <div className="mb-6 inline-flex rounded-md border bg-muted/30 p-1">
-            <button
-              type="button"
-              className={`inline-flex items-center gap-2 rounded-sm px-3 py-2 text-sm font-medium transition ${
-                monitoringStrategy === "static_baseline"
-                  ? "bg-background text-foreground shadow-xs"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-              onClick={() => setMonitoringStrategy("static_baseline")}
-            >
-              <Database className="h-4 w-4" />
-              Static
-            </button>
-            <button
-              type="button"
-              className={`inline-flex items-center gap-2 rounded-sm px-3 py-2 text-sm font-medium transition ${
-                monitoringStrategy === "adaptive_stream"
-                  ? "bg-background text-foreground shadow-xs"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-              onClick={() => setMonitoringStrategy("adaptive_stream")}
-            >
-              <Activity className="h-4 w-4" />
-              Dynamic
-            </button>
-          </div>
+          <div className="grid min-w-0 gap-8 xl:grid-cols-[minmax(0,1.1fr)_minmax(320px,0.9fr)]">
+            <div className="min-w-0 space-y-6">
+              <div className={PANEL_SECTION_CLASS}>
+                <SectionEyebrow
+                  icon={RadioTower}
+                  title="Telemetry Scope"
+                  description="Choose the telemetry streams this RADAR workload will subscribe to."
+                />
+                <div className="mt-4 space-y-2">
+                  <label className={FIELD_LABEL_CLASS}>Topic Input Mode</label>
+                  <select
+                    className={FORM_CONTROL_CLASS}
+                    value={topicMode}
+                    onChange={(e) =>
+                      setTopicMode(
+                        e.target.value as "selected_sensors" | "direct_patterns"
+                      )
+                    }
+                  >
+                    <option value="selected_sensors">Build from selected sensors</option>
+                    <option value="direct_patterns">Use direct topic patterns</option>
+                  </select>
+                </div>
 
-          <div className="grid gap-6 lg:grid-cols-2">
-            <div className="space-y-5">
-              <div className="space-y-2">
-                <label className="text-sm font-semibold">Topic Input Mode</label>
-                <select
-                  className={FORM_CONTROL_CLASS}
-                  value={topicMode}
-                  onChange={(e) => setTopicMode(e.target.value as "selected_sensors" | "direct_patterns")}
-                >
-                  <option value="selected_sensors">Build from selected sensors</option>
-                  <option value="direct_patterns">Use direct topic patterns</option>
-                </select>
-              </div>
+                {topicMode === "selected_sensors" ? (
+                  <div className="mt-4 space-y-4">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="outline"
+                            disabled={monitoringKeys.length === 0}
+                          >
+                            <Layers3 className="h-4 w-4" />
+                            Sensor types
+                            <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
+                              {activeKeys.length} selected
+                            </span>
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent className="max-h-80 w-64 overflow-y-auto">
+                          <DropdownMenuLabel>Sensors</DropdownMenuLabel>
+                          <DropdownMenuSeparator />
+                          {monitoringKeys.map((key) => (
+                            <DropdownMenuCheckboxItem
+                              key={key}
+                              checked={visibleMap[key]}
+                              onCheckedChange={() =>
+                                setVisibleMap((prev) => ({
+                                  ...prev,
+                                  [key]: !prev[key],
+                                }))
+                              }
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              {key}
+                            </DropdownMenuCheckboxItem>
+                          ))}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
 
-              {topicMode === "selected_sensors" ? (
-                <div className="space-y-4">
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="outline" disabled={monitoringKeys.length === 0}>
-                        Sensor types
-                        <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
-                          {activeKeys.length} selected
-                        </span>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() =>
+                          setVisibleMap(
+                            Object.fromEntries(
+                              monitoringKeys.map((key) => [key, true])
+                            )
+                          )
+                        }
+                      >
+                        Select all
                       </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent className="max-h-80 w-64 overflow-y-auto">
-                      <DropdownMenuLabel>Sensors</DropdownMenuLabel>
-                      <DropdownMenuSeparator />
-                      {monitoringKeys.map((key) => (
-                        <DropdownMenuCheckboxItem
-                          key={key}
-                          checked={visibleMap[key]}
-                          onCheckedChange={() =>
-                            setVisibleMap((prev) => ({
-                              ...prev,
-                              [key]: !prev[key],
-                            }))
-                          }
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          {key}
-                        </DropdownMenuCheckboxItem>
-                      ))}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() =>
+                          setVisibleMap(
+                            Object.fromEntries(
+                              monitoringKeys.map((key) => [key, false])
+                            )
+                          )
+                        }
+                      >
+                        Clear
+                      </Button>
+                    </div>
 
-                  <div className="flex flex-wrap gap-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() =>
-                        setVisibleMap(
-                          Object.fromEntries(monitoringKeys.map((key) => [key, true]))
-                        )
-                      }
-                    >
-                      Select all
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() =>
-                        setVisibleMap(
-                          Object.fromEntries(monitoringKeys.map((key) => [key, false]))
-                        )
-                      }
-                    >
-                      Clear
-                    </Button>
-                  </div>
-
-                  <div className="rounded-lg border bg-muted/30 p-4">
-                    <h2 className="text-sm font-semibold">Picked values for the Anomaly Detection:</h2>
-                    <div className="mt-3 flex flex-wrap gap-2">
+                    <div className="flex max-h-32 min-w-0 flex-wrap gap-2 overflow-y-auto rounded-md border border-dashed p-3">
                       {activeKeys.length > 0 ? (
                         activeKeys.map((key) => (
-                          <span key={key} className="rounded-full bg-background px-2.5 py-1 text-xs font-medium">
+                          <span key={key} className={CHIP_CLASS}>
                             {key}
                           </span>
                         ))
                       ) : (
-                        <span className="text-sm text-muted-foreground">No sensors selected.</span>
+                        <span className="text-sm text-muted-foreground">
+                          No sensors selected.
+                        </span>
                       )}
                     </div>
                   </div>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  <label className="text-sm font-semibold">Topic Patterns</label>
-                  <textarea
-                    className={`${FORM_CONTROL_CLASS} min-h-36`}
-                    value={topicPatternInput}
-                    onChange={(e) => setTopicPatternInput(e.target.value)}
-                    placeholder="One topic per line or comma-separated. Supports MQTT wildcards + and #."
-                  />
-                  <div className="flex flex-wrap gap-2">
+                ) : (
+                  <div className="mt-4 space-y-3">
+                    <label className={FIELD_LABEL_CLASS}>Topic Patterns</label>
+                    <textarea
+                      className={cn(FORM_CONTROL_CLASS, "min-h-32 resize-y")}
+                      value={topicPatternInput}
+                      onChange={(e) => setTopicPatternInput(e.target.value)}
+                      placeholder="One topic per line or comma-separated. Supports MQTT wildcards + and #."
+                    />
                     <Button
                       type="button"
                       variant="outline"
-                      onClick={() => setTopicPatternInput(`charger/${chargerId}/live-telemetry/#`)}
+                      onClick={() =>
+                        setTopicPatternInput(`charger/${chargerId}/live-telemetry/#`)
+                      }
                     >
                       All charger telemetry
                     </Button>
+                    <p className={FIELD_HELP_CLASS}>
+                      Parsed topics:{" "}
+                      {parseTopicPatterns(topicPatternInput).join(", ") || "none"}
+                    </p>
                   </div>
-                  <p className="text-xs text-muted-foreground">
-                    Parsed topics: {parseTopicPatterns(topicPatternInput).join(", ") || "none"}
-                  </p>
-                </div>
-              )}
-
-              <div className="rounded-lg border bg-muted/30 p-4">
-                <h2 className="text-sm font-semibold">Effective Topics:</h2>
-                <div className="mt-3 max-h-56 space-y-2 overflow-y-auto">
-                  {effectiveTopics.length > 0 ? (
-                    effectiveTopics.map((topic, index) => (
-                      <div
-                        key={`${topic}-${index}`}
-                        className="truncate rounded-md bg-background px-3 py-2 font-mono text-xs"
-                        title={topic}
-                      >
-                        {topic}
-                      </div>
-                    ))
-                  ) : (
-                    <p className="text-sm text-muted-foreground">No effective topics yet.</p>
-                  )}
-                </div>
+                )}
               </div>
 
-              <div className="space-y-3 rounded-lg border bg-muted/30 p-4">
-                <h3 className="text-sm font-semibold">Common Runtime</h3>
-                <div className="grid gap-3 sm:grid-cols-2">
+              <div className={PANEL_SECTION_CLASS}>
+                <SectionEyebrow
+                  icon={Settings2}
+                  title="Runtime"
+                  description="Shared subscription behavior for either strategy."
+                />
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
                   <div className="flex flex-col">
-                    <label className="mb-1 text-sm font-medium">Sensor Freshness (s)</label>
+                    <label className={FIELD_LABEL_CLASS}>Sensor Freshness (s)</label>
                     <input
                       type="number"
                       min={1}
                       step="1"
-                      className={FORM_CONTROL_CLASS}
+                      className={cn(FORM_CONTROL_CLASS, "mt-1")}
                       value={performanceConfig.sensor_freshness_seconds}
                       onChange={(event) =>
                         handlePerformanceNumberChange(
@@ -1285,9 +1397,9 @@ const Monitoring: React.FC = () => {
                     />
                   </div>
                   <div className="flex flex-col">
-                    <label className="mb-1 text-sm font-medium">Sensor Strategy</label>
+                    <label className={FIELD_LABEL_CLASS}>Sensor Strategy</label>
                     <select
-                      className={FORM_CONTROL_CLASS}
+                      className={cn(FORM_CONTROL_CLASS, "mt-1")}
                       value={performanceConfig.sensor_key_strategy}
                       onChange={(event) =>
                         setPerformanceConfig((prev) => ({
@@ -1303,15 +1415,85 @@ const Monitoring: React.FC = () => {
                   </div>
                 </div>
               </div>
+
+              <div className={PANEL_SECTION_CLASS}>
+                <SectionEyebrow
+                  icon={RadioTower}
+                  title="Effective Topics"
+                  description={`${effectiveTopics.length} MQTT subscriptions will be sent to the service.`}
+                />
+                <div className="mt-4 max-h-44 min-w-0 space-y-2 overflow-y-auto rounded-md border bg-muted/20 p-3">
+                  {effectiveTopics.length > 0 ? (
+                    effectiveTopics.map((topic, index) => (
+                      <div
+                        key={`${topic}-${index}`}
+                        className="block max-w-full truncate rounded-md bg-background px-3 py-2 font-mono text-xs"
+                        title={topic}
+                      >
+                        {topic}
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-sm text-muted-foreground">
+                      No effective topics yet.
+                    </p>
+                  )}
+                </div>
+              </div>
             </div>
 
-            <div className="space-y-6">
+            <div className="min-w-0 space-y-6">
+              <div className={PANEL_SECTION_CLASS}>
+                <SectionEyebrow
+                  icon={SlidersHorizontal}
+                  title="Strategy"
+                  description="Static trains once on a baseline; Dynamic adapts continuously."
+                />
+                <div className="mt-4 inline-flex rounded-md border bg-muted/30 p-1">
+                  <button
+                    type="button"
+                    aria-pressed={monitoringStrategy === "static_baseline"}
+                    className={cn(
+                      "inline-flex items-center gap-2 rounded-sm px-3 py-2 text-sm font-medium transition",
+                      monitoringStrategy === "static_baseline"
+                        ? "bg-background text-foreground shadow-xs"
+                        : "text-muted-foreground hover:text-foreground"
+                    )}
+                    onClick={() => setMonitoringStrategy("static_baseline")}
+                  >
+                    <Database className="h-4 w-4" aria-hidden="true" />
+                    Static
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed={monitoringStrategy === "adaptive_stream"}
+                    className={cn(
+                      "inline-flex items-center gap-2 rounded-sm px-3 py-2 text-sm font-medium transition",
+                      monitoringStrategy === "adaptive_stream"
+                        ? "bg-background text-foreground shadow-xs"
+                        : "text-muted-foreground hover:text-foreground"
+                    )}
+                    onClick={() => setMonitoringStrategy("adaptive_stream")}
+                  >
+                    <Activity className="h-4 w-4" aria-hidden="true" />
+                    Dynamic
+                  </button>
+                </div>
+              </div>
+
               {monitoringStrategy === "static_baseline" ? (
                 <>
-                  <div className="space-y-2">
-                    <label className="text-sm font-semibold">Static Detector</label>
+                  <div className={PANEL_SECTION_CLASS}>
+                    <SectionEyebrow
+                      icon={Database}
+                      title="Static Baseline"
+                      description="Detector and baseline parameters."
+                    />
+                    <label className="mt-4 block text-sm font-semibold">
+                      Static Detector
+                    </label>
                     <select
-                      className={FORM_CONTROL_CLASS}
+                      className={cn(FORM_CONTROL_CLASS, "mt-2")}
                       value={staticBaselineConfig.model_type}
                       onChange={(e) => handleStaticModelSelect(e.target.value)}
                       disabled={isLoadingModels}
@@ -1325,33 +1507,36 @@ const Monitoring: React.FC = () => {
                         </option>
                       ))}
                     </select>
-                  </div>
-
-                  <div className="rounded-lg border bg-muted/30 p-4">
-                    <h2 className="text-sm font-semibold">Picked Detector:</h2>
-                    <p className="mt-2 text-sm text-muted-foreground">
+                    <div className={cn(QUIET_SURFACE_CLASS, "mt-4")}>
+                      <div className="text-xs font-medium uppercase text-muted-foreground">
+                        Picked Detector
+                      </div>
+                      <p className="mt-2 text-sm font-medium">
                       {staticModels[staticBaselineConfig.model_type]?.name ||
                         staticBaselineConfig.model_type ||
                         "None selected"}
-                    </p>
-                  </div>
+                      </p>
+                    </div>
 
                   <Button
                     type="button"
                     variant="outline"
+                    className="mt-4"
                     onClick={() => setShowStaticAdvanced((value) => !value)}
                   >
+                    <Settings2 className="h-4 w-4" />
                     {showStaticAdvanced ? "Hide configuration" : "Show configuration"}
                   </Button>
 
                   {showStaticAdvanced && (
-                    <div className="space-y-6 rounded-lg border bg-muted/30 p-4">
+                    <div className="mt-5 space-y-6">
                       {staticBaselineConfig.model_type && (
                         <div className="space-y-3">
                           <h3 className="text-sm font-semibold">Detector Parameters</h3>
                           {Object.entries(staticModels[staticBaselineConfig.model_type]?.parameters?.properties || {}).length === 0 && (
-                            <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">No parameters for this detector.</p>
+                            <p className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">No parameters for this detector.</p>
                           )}
+                          <div className="grid gap-3 sm:grid-cols-2">
                           {Object.entries(staticModels[staticBaselineConfig.model_type]?.parameters?.properties || {}).map(
                             ([key, schema]) => (
                               <div key={key} className="flex flex-col">
@@ -1390,6 +1575,7 @@ const Monitoring: React.FC = () => {
                               </div>
                             )
                           )}
+                          </div>
                         </div>
                       )}
 
@@ -1518,13 +1704,21 @@ const Monitoring: React.FC = () => {
                       </div>
                     </div>
                   )}
+                  </div>
                 </>
               ) : (
                 <>
-                  <div className="space-y-2">
-                    <label className="text-sm font-semibold">Dynamic Model</label>
+                  <div className={PANEL_SECTION_CLASS}>
+                    <SectionEyebrow
+                      icon={Activity}
+                      title="Adaptive Stream"
+                      description="Streaming model and adaptive settings."
+                    />
+                    <label className="mt-4 block text-sm font-semibold">
+                      Dynamic Model
+                    </label>
                     <select
-                      className={FORM_CONTROL_CLASS}
+                      className={cn(FORM_CONTROL_CLASS, "mt-2")}
                       value={selectedAlgorithm || ""}
                       onChange={(e) => handleModelSelect(e.target.value)}
                       disabled={isLoadingModels}
@@ -1538,33 +1732,36 @@ const Monitoring: React.FC = () => {
                         </option>
                       ))}
                     </select>
-                  </div>
-
-                  <div className="rounded-lg border bg-muted/30 p-4">
-                    <h2 className="text-sm font-semibold">Picked Algorithm:</h2>
-                    <p className="mt-2 text-sm text-muted-foreground">
+                    <div className={cn(QUIET_SURFACE_CLASS, "mt-4")}>
+                      <div className="text-xs font-medium uppercase text-muted-foreground">
+                        Picked Algorithm
+                      </div>
+                      <p className="mt-2 text-sm font-medium">
                       {selectedAlgorithm
                         ? adaptiveModels[selectedAlgorithm]?.name || selectedAlgorithm
                         : "None selected"}
-                    </p>
-                  </div>
+                      </p>
+                    </div>
 
                   <Button
                     type="button"
                     variant="outline"
+                    className="mt-4"
                     onClick={() => setShowDynamicAdvanced((value) => !value)}
                   >
+                    <Settings2 className="h-4 w-4" />
                     {showDynamicAdvanced ? "Hide configuration" : "Show configuration"}
                   </Button>
 
                   {showDynamicAdvanced && (
-                    <div className="space-y-6 rounded-lg border bg-muted/30 p-4">
+                    <div className="mt-5 space-y-6">
                       {selectedAlgorithm && (
                         <div className="space-y-3">
                           <h3 className="text-sm font-semibold">Parameters</h3>
                           {Object.entries(adaptiveModels[selectedAlgorithm]?.parameters?.properties || {}).length === 0 && (
-                            <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">No parameters for this model.</p>
+                            <p className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">No parameters for this model.</p>
                           )}
+                          <div className="grid gap-3 sm:grid-cols-2">
                           {Object.entries(adaptiveModels[selectedAlgorithm]?.parameters?.properties || {}).map(
                             ([key, schema]) => (
                               <div key={key} className="flex flex-col">
@@ -1603,6 +1800,7 @@ const Monitoring: React.FC = () => {
                               </div>
                             )
                           )}
+                          </div>
                         </div>
                       )}
 
@@ -1686,6 +1884,7 @@ const Monitoring: React.FC = () => {
                       />
                     </div>
                   )}
+                  </div>
                 </>
               )}
             </div>

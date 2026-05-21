@@ -235,14 +235,28 @@ async def test_model_instantiation(
             "validated_parameters": validated_params,
         }
 
-    except ValueError as e:
-        return {"success": False, "error": "validation_error", "message": str(e)}
-    except ImportError as e:
+    except ValueError:
+        logger.warning(
+            "Model validation failed for '%s'",
+            model_type,
+            exc_info=True,
+        )
+        return {
+            "success": False,
+            "error": "validation_error",
+            "message": "Model validation failed. Check model type and parameters.",
+        }
+    except ImportError:
+        logger.exception("Model dependency import failed for '%s'", model_type)
         return {
             "success": False,
             "error": "import_error",
-            "message": f"Cannot import model dependencies: {e}",
+            "message": "Model dependencies are not available.",
         }
-    except Exception as e:
-        logger.error(f"Model test failed for '{model_type}': {e}")
-        return {"success": False, "error": "instantiation_error", "message": str(e)}
+    except Exception:
+        logger.exception("Model test failed for '%s'", model_type)
+        return {
+            "success": False,
+            "error": "instantiation_error",
+            "message": "Model instantiation failed due to an internal error",
+        }

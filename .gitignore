@@ -19,6 +19,7 @@ lerna-debug.log*
 
 # Backend runtime artifacts
 /backend/checkpoints/
+/backend/pytest-cache-files-*/
 
 # Node.js
 node_modules/

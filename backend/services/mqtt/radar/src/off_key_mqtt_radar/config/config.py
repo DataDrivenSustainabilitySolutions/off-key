@@ -15,7 +15,7 @@ from off_key_core.schemas.radar import AdaptiveStreamConfig, StaticBaselineConfi
 SENSOR_KEY_STRATEGIES = {"full_hierarchy", "top_level", "leaf"}
 # strict_barrier is the only implemented alignment mode. It enforces that all
 # sensors in a subscription window must be present before the model is triggered.
-# This constant is not a user-selectable enum — it exists so the validator can
+# This constant is not a user-selectable enum; it exists so the validator can
 # produce a clear error message if a caller passes an unsupported value.
 STRICT_ALIGNMENT_MODE = "strict_barrier"
 

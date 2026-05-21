@@ -6,7 +6,7 @@ These schemas define the data transfer objects used for API requests and respons
 
 from datetime import datetime
 from typing import Any, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from off_key_core.utils.enum import RoleEnum
 
 # =============================================================================
@@ -16,6 +16,8 @@ from off_key_core.utils.enum import RoleEnum
 
 class ChargerResponse(BaseModel):
     """Response schema for charger data."""
+
+    model_config = ConfigDict(from_attributes=True)
 
     charger_id: str
     manufacturer_name: Optional[str] = None
@@ -32,9 +34,6 @@ class ChargerResponse(BaseModel):
     mqtt_subscription_status: Optional[dict] = None
     mqtt_error_count: int = 0
     mqtt_last_error: Optional[str] = None
-
-    class Config:
-        from_attributes = True
 
 
 # =============================================================================
@@ -58,15 +57,14 @@ class TelemetryDataPoint(BaseModel):
 class TelemetryResponse(BaseModel):
     """Response schema for telemetry data."""
 
+    model_config = ConfigDict(from_attributes=True)
+
     charger_id: str
     type: str
     timestamp: datetime
     value: Optional[float]
     data_source: str
     created: Optional[datetime] = None
-
-    class Config:
-        from_attributes = True
 
 
 class TelemetryPaginatedResponse(BaseModel):
@@ -84,15 +82,14 @@ class TelemetryPaginatedResponse(BaseModel):
 class UserResponse(BaseModel):
     """Response schema for user data."""
 
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     email: str
     is_verified: bool
     role: RoleEnum
     updated_at: datetime
     created_at: datetime
-
-    class Config:
-        from_attributes = True
 
 
 class UserCreateRequest(BaseModel):
@@ -133,12 +130,11 @@ class UserPasswordUpdateRequest(BaseModel):
 class FavoriteResponse(BaseModel):
     """Response schema for favorites."""
 
+    model_config = ConfigDict(from_attributes=True)
+
     favorite_id: int
     charger_id: str
     user_id: int
-
-    class Config:
-        from_attributes = True
 
 
 class FavoriteCreateRequest(BaseModel):
@@ -162,6 +158,8 @@ class FavoriteMutationRequest(BaseModel):
 class AnomalyResponse(BaseModel):
     """Response schema for anomaly data."""
 
+    model_config = ConfigDict(from_attributes=True)
+
     anomaly_id: str
     charger_id: str
     timestamp: datetime
@@ -170,9 +168,6 @@ class AnomalyResponse(BaseModel):
     anomaly_value: float
     value_type: Optional[str] = None
     sensor_set: Optional[list[str]] = None
-
-    class Config:
-        from_attributes = True
 
 
 class AnomalyCreateRequest(BaseModel):

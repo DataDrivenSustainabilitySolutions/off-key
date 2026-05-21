@@ -423,7 +423,7 @@ class SyncService:
         Add value_type column to anomalies and backfill existing rows.
 
         Rows written by the tail-probability detector (anomaly_type starting with
-        'ml_tailprob_') store a p-value in anomaly_value (0–1, lower = more anomalous).
+        'ml_tailprob_') store a p-value in anomaly_value (0-1, lower = more anomalous).
         All other rows stored a z-score and are marked 'zscore' for the frontend to
         render them correctly.
         """

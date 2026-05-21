@@ -782,8 +782,7 @@ class RadarOrchestrationService:
         if status in {"exited", "dead", "restarting"}:
             logs = await self._get_container_log_tail(docker_container)
             message = (
-                f"RADAR workload {workload_id} failed during startup "
-                f"(status={status})"
+                f"RADAR workload {workload_id} failed during startup (status={status})"
             )
             if logs:
                 message = f"{message}. Recent logs:\n{logs}"

@@ -11,14 +11,13 @@ These schemas serve multiple purposes:
 """
 
 from typing import Any, Dict, Literal, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ModelHyperparameters(BaseModel):
     """Base class for model hyperparameters"""
 
-    class Config:
-        extra = "forbid"  # Reject unknown parameters
+    model_config = ConfigDict(extra="forbid")
 
 
 # =============================================================================

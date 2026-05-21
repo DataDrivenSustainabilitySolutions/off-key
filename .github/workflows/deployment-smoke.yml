@@ -110,8 +110,35 @@ jobs:
             done
           }
 
+          wait_for_socket_proxy() {
+            local timeout_seconds="$1"
+            local interval_seconds="${2:-2}"
+            local deadline=$((SECONDS + timeout_seconds))
+            local network="${COMPOSE_PROJECT_NAME}_socket-network"
+
+            while true; do
+              if docker run --rm --network "$network" curlimages/curl:8.16.0 \
+                -fsS http://socket-proxy:2375/_ping > /tmp/socket-proxy.response; then
+                echo "socket-proxy ready at http://socket-proxy:2375/_ping on $network"
+                cat /tmp/socket-proxy.response
+                echo
+                return 0
+              fi
+
+              if (( SECONDS >= deadline )); then
+                echo "::error::socket-proxy did not become ready within ${timeout_seconds}s at http://socket-proxy:2375/_ping on $network"
+                docker run --rm --network "$network" curlimages/curl:8.16.0 \
+                  -sS http://socket-proxy:2375/_ping || true
+                echo
+                return 1
+              fi
+
+              sleep "$interval_seconds"
+            done
+          }
+
           wait_for_container_health timescaledb 240
-          wait_for_http socket-proxy http://localhost:2375/_ping 120 2
+          wait_for_socket_proxy 120 2
           wait_for_http mailpit http://localhost:8025/api/v1/messages 120 2
 
       - name: Start db-sync
@@ -253,7 +280,8 @@ jobs:
           docker exec db_sync /app/bin/python -c "import urllib.request; print(urllib.request.urlopen('http://localhost:8009/health', timeout=2).read().decode())" > deployment-smoke-diagnostics/db-sync-health.json 2>&1
           docker exec db_sync /app/bin/python -c "import urllib.request; print(urllib.request.urlopen('http://localhost:8009/ready/schema', timeout=2).read().decode())" > deployment-smoke-diagnostics/db-sync-ready-schema.json 2>&1
           curl -sS http://localhost:8000/health > deployment-smoke-diagnostics/api-gateway-health.json 2>&1
-          curl -sS http://localhost:2375/_ping > deployment-smoke-diagnostics/socket-proxy-ping.txt 2>&1
+          docker run --rm --network "${COMPOSE_PROJECT_NAME}_socket-network" curlimages/curl:8.16.0 \
+            -sS http://socket-proxy:2375/_ping > deployment-smoke-diagnostics/socket-proxy-ping.txt 2>&1
 
       - name: Upload deployment smoke artifacts
         if: failure()

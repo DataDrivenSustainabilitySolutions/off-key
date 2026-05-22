@@ -13,6 +13,7 @@ from off_key_core.config.validation import validate_environment as _validate_env
 from off_key_core.schemas.radar import AdaptiveStreamConfig, StaticBaselineConfig
 
 SENSOR_KEY_STRATEGIES = {"full_hierarchy", "top_level", "leaf"}
+MONITORING_STRATEGIES = {"static_baseline", "adaptive_stream"}
 # strict_barrier is the only implemented alignment mode. It enforces that all
 # sensors in a subscription window must be present before the model is triggered.
 # This constant is not a user-selectable enum; it exists so the validator can
@@ -25,6 +26,15 @@ def _normalize_sensor_key_strategy(value: str, field_name: str) -> str:
     normalized = value.strip().lower()
     if normalized not in SENSOR_KEY_STRATEGIES:
         allowed = ", ".join(sorted(SENSOR_KEY_STRATEGIES))
+        raise ValueError(f"{field_name} must be one of: {allowed}")
+    return normalized
+
+
+def _normalize_strategy(value: str, field_name: str) -> str:
+    """Normalize and validate monitoring strategy values."""
+    normalized = value.strip().lower()
+    if normalized not in MONITORING_STRATEGIES:
+        allowed = ", ".join(sorted(MONITORING_STRATEGIES))
         raise ValueError(f"{field_name} must be one of: {allowed}")
     return normalized
 
@@ -61,7 +71,9 @@ class AnomalyDetectionConfig(BaseModel):
     static_baseline_config: StaticBaselineConfig = Field(
         default_factory=StaticBaselineConfig
     )
-    adaptive_stream_config: Optional[AdaptiveStreamConfig] = None
+    adaptive_stream_config: AdaptiveStreamConfig = Field(
+        default_factory=AdaptiveStreamConfig
+    )
     subscription_topics: List[str] = Field(default_factory=list)
     sensor_key_strategy: str = "full_hierarchy"
     sensor_freshness_seconds: float = Field(default=30.0, gt=0.0)
@@ -94,18 +106,31 @@ class AnomalyDetectionConfig(BaseModel):
     @field_validator("strategy")
     @classmethod
     def validate_strategy(cls, value: str) -> str:
-        normalized = value.strip().lower()
-        if normalized not in {"static_baseline", "adaptive_stream"}:
-            raise ValueError(
-                "strategy must be one of: adaptive_stream, static_baseline"
-            )
-        return normalized
+        return _normalize_strategy(value, "strategy")
 
     @field_validator("alignment_mode")
     @classmethod
     def validate_alignment_mode(cls, value: str) -> str:
         """Validate alignment mode used by state cache and persistence semantics."""
         return _normalize_alignment_mode(value, "alignment_mode")
+
+    @model_validator(mode="before")
+    @classmethod
+    def populate_adaptive_stream_config(cls, data: Any) -> Any:
+        """Preserve top-level adaptive model fields when nested config is omitted."""
+        if not isinstance(data, dict):
+            return data
+        if data.get("adaptive_stream_config") is not None:
+            return data
+
+        return {
+            **data,
+            "adaptive_stream_config": {
+                "model_type": data.get("model_type", "isolation_forest"),
+                "model_params": data.get("model_params", {}),
+                "preprocessing_steps": data.get("preprocessing_steps", []),
+            },
+        }
 
     @model_validator(mode="after")
     def validate_model_configuration(self) -> Self:
@@ -125,7 +150,7 @@ class AnomalyDetectionConfig(BaseModel):
         if self.strategy == "static_baseline":
             effective_model_type = self.static_baseline_config.model_type
             effective_model_params = self.static_baseline_config.model_params
-        elif self.adaptive_stream_config is not None:
+        else:
             effective_model_type = self.adaptive_stream_config.model_type
             effective_model_params = self.adaptive_stream_config.model_params
             effective_preprocessing_steps = (
@@ -269,12 +294,7 @@ class MQTTRadarConfig(BaseModel):
     @field_validator("strategy")
     @classmethod
     def validate_strategy(cls, value: str) -> str:
-        normalized = value.strip().lower()
-        if normalized not in {"static_baseline", "adaptive_stream"}:
-            raise ValueError(
-                "strategy must be one of: adaptive_stream, static_baseline"
-            )
-        return normalized
+        return _normalize_strategy(value, "strategy")
 
     @field_validator("alignment_mode")
     @classmethod
@@ -377,13 +397,7 @@ class RadarSettings(BaseSettings):
     @field_validator("RADAR_MONITORING_STRATEGY")
     @classmethod
     def validate_monitoring_strategy(cls, value: str) -> str:
-        normalized = value.strip().lower()
-        if normalized not in {"static_baseline", "adaptive_stream"}:
-            raise ValueError(
-                "RADAR_MONITORING_STRATEGY must be one of: "
-                "adaptive_stream, static_baseline"
-            )
-        return normalized
+        return _normalize_strategy(value, "RADAR_MONITORING_STRATEGY")
 
     @field_validator("ENVIRONMENT")
     @classmethod

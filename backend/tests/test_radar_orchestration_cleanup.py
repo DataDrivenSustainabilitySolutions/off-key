@@ -424,3 +424,6 @@ async def test_existing_active_service_rejects_config_fingerprint_mismatch(
             mqtt_topics=["charger/+/live-telemetry/#"],
             model_type="knn",
         )
+
+    assert db_row.status is True
+    session.commit.assert_not_awaited()

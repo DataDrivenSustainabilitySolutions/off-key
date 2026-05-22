@@ -56,8 +56,15 @@ async def test_route_message_clears_stale_completion_event_while_active():
     router._all_routes_completed_event.set()
 
     route_task = asyncio.create_task(router.route_message(_message(), ["slow"]))
-    while not router.active_routes:
-        await asyncio.sleep(0)
+    for _ in range(1000):
+        if router.active_routes:
+            break
+        if route_task.done():
+            await route_task
+            pytest.fail("route_message completed before active_routes was populated")
+        await asyncio.sleep(0.0001)
+    else:
+        pytest.fail("active_routes was not populated before the wait limit")
 
     assert not router._all_routes_completed_event.is_set()
 

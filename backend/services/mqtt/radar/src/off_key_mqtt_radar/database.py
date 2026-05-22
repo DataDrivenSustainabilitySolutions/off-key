@@ -162,9 +162,11 @@ class DatabaseWriter:
         # Signal shutdown
         self._shutdown_event.set()
 
-        # Let the writer loop finish any in-progress flush before considering
-        # cancellation. Cancelling while a batch snapshot is out of the queue can
-        # lose records.
+        cancelled_error: Optional[asyncio.CancelledError] = None
+
+        # Let the writer loop finish any in-progress flush before cancelling it.
+        # The shield is intentional: if the caller cancels stop(), the writer task
+        # must not be cancelled while a batch snapshot may be out of the queue.
         if self._writer_task:
             try:
                 await asyncio.wait_for(
@@ -177,11 +179,15 @@ class DatabaseWriter:
                     await self._writer_task
                 except asyncio.CancelledError:
                     pass
+            except asyncio.CancelledError as exc:
+                cancelled_error = exc
 
         # Flush remaining records
         await asyncio.shield(self._flush_batch())
 
         logger.info("event=radar.db_writer_stopped")
+        if cancelled_error is not None:
+            raise cancelled_error
 
     async def write_anomaly(self, result: AnomalyResult):
         """Queue anomaly result for batch writing"""
@@ -505,7 +511,7 @@ class DatabaseWriter:
                         str(retry_exc),
                         exc_info=True,
                     )
-            except BaseException:
+            except asyncio.CancelledError:
                 async with self._queue_lock:
                     self.write_queue = batch_snapshot + self.write_queue
                 raise

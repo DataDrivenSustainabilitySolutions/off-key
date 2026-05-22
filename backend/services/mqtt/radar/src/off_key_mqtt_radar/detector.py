@@ -21,6 +21,8 @@ from typing import Dict, Any, Optional, List
 from collections import deque
 from enum import Enum
 
+import numpy as np
+
 # Model registry for dynamic model loading
 from .tactic_client import (
     create_model_instance,
@@ -1154,7 +1156,6 @@ class StaticConformalDetectionService:
         samples: list[Dict[str, float]],
         feature_keys: list[str],
     ) -> tuple[Any, Any]:
-        import numpy as np
         from nonconform import ConformalDetector, Split
 
         detector = self._create_pyod_detector()
@@ -1266,8 +1267,6 @@ class StaticConformalDetectionService:
             self._training_future = None
 
     def _compute_p_value(self, vector: List[float]) -> float:
-        import numpy as np
-
         p_values = self.conformal_detector.compute_p_values(
             np.asarray([vector], dtype=float)
         )
@@ -1574,8 +1573,6 @@ class ResilientAnomalyDetector:
     def _simple_statistical_anomaly_score(self, data: Dict[str, float]) -> float:
         """Simple statistical anomaly detection as last resort"""
         try:
-            import numpy as np
-
             values = list(data.values())
             if not hasattr(self, "_running_mean"):
                 self._running_mean = np.mean(values)

@@ -11,6 +11,7 @@ from typing import Dict, List, Optional, Any, cast
 import aiohttp
 from off_key_core.config.services import get_service_endpoints_settings
 from off_key_core.config.logs import logger
+from off_key_core.schemas.radar import MonitoringStrategy
 
 
 class TacticError(Exception):
@@ -156,7 +157,7 @@ class Tactic:
         self,
         container_name: str,
         mqtt_topics: List[str],
-        strategy: str = "adaptive_stream",
+        strategy: MonitoringStrategy = "adaptive_stream",
         model_type: str = "isolation_forest",
         model_params: Optional[Dict[str, Any]] = None,
         preprocessing_steps: Optional[List[Dict[str, Any]]] = None,

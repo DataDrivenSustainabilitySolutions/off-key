@@ -2,7 +2,11 @@ import pytest
 from pydantic import ValidationError
 
 from off_key_mqtt_proxy.config.config import MQTTConfig, MQTTSettings
-from off_key_mqtt_radar.config.config import MQTTRadarConfig, RadarSettings
+from off_key_mqtt_radar.config.config import (
+    AnomalyDetectionConfig,
+    MQTTRadarConfig,
+    RadarSettings,
+)
 from off_key_core.schemas.radar import FdrConfig, StaticBaselineConfig
 
 
@@ -59,6 +63,35 @@ def test_mqtt_radar_config_mutable_defaults_are_isolated():
 
     assert cfg_two.thresholds["medium"] == 0.6
     assert cfg_two.subscription_topics == ["charger/+/live-telemetry/#"]
+
+
+def test_anomaly_detection_config_builds_adaptive_stream_config_from_top_level_fields(
+    monkeypatch,
+):
+    from off_key_mqtt_radar import tactic_client
+
+    monkeypatch.setattr(
+        tactic_client,
+        "validate_model_params",
+        lambda _model_type, params=None: params or {},
+    )
+    monkeypatch.setattr(
+        tactic_client,
+        "validate_preprocessing_steps",
+        lambda steps=None: steps or [],
+    )
+
+    cfg = AnomalyDetectionConfig(
+        model_type="isolation_forest",
+        model_params={"num_trees": 50},
+        preprocessing_steps=[{"type": "standard_scaler", "params": {}}],
+    )
+
+    assert cfg.adaptive_stream_config.model_type == "isolation_forest"
+    assert cfg.adaptive_stream_config.model_params == {"num_trees": 50}
+    assert cfg.adaptive_stream_config.preprocessing_steps == [
+        {"type": "standard_scaler", "params": {}}
+    ]
 
 
 def test_radar_settings_parse_json_env_fields(monkeypatch):

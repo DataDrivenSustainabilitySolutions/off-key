@@ -602,10 +602,12 @@ class TestConnectionManagerAsyncEvents:
         mock_client.loop_start = MagicMock()
         mock_client.loop_stop = MagicMock()
         mock_client.disconnect = MagicMock()
+        event_was_cleared = False
 
         async def fake_wait_for(awaitable, timeout):
+            nonlocal event_was_cleared
             awaitable.close()
-            assert not connection_manager._connection_event.is_set()
+            event_was_cleared = not connection_manager._connection_event.is_set()
             raise asyncio.TimeoutError
 
         with (
@@ -617,6 +619,7 @@ class TestConnectionManagerAsyncEvents:
         ):
             assert await connection_manager.connect() is False
 
+        assert event_was_cleared, "_connection_event should be cleared before wait"
         mock_client.loop_stop.assert_called_once()
         mock_client.disconnect.assert_called_once()
 

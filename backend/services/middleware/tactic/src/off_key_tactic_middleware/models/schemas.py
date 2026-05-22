@@ -133,6 +133,21 @@ class AdaptiveSVMParams(ModelHyperparameters):
         lt=1,
         description="Upper bound on outlier fraction, lower bound on support vectors",
     )
+    initial_gamma: float = Field(
+        default=1.0,
+        gt=0,
+        description="Initial RBF kernel width",
+    )
+    buffer_size: int = Field(
+        default=200,
+        ge=10,
+        description="Size of the sample buffer",
+    )
+    sv_budget: int = Field(
+        default=100,
+        ge=10,
+        description="Maximum number of support vectors",
+    )
 
 
 # =============================================================================
@@ -274,21 +289,6 @@ class PyODPCAParams(ModelHyperparameters):
     standardization: bool = Field(
         default=True,
         description="Standardize features before PCA",
-    )
-    initial_gamma: float = Field(
-        default=1.0,
-        gt=0,
-        description="Initial RBF kernel width",
-    )
-    buffer_size: int = Field(
-        default=200,
-        ge=10,
-        description="Size of the sample buffer",
-    )
-    sv_budget: int = Field(
-        default=100,
-        ge=10,
-        description="Maximum number of support vectors",
     )
 
 

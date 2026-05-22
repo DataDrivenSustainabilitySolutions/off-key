@@ -44,6 +44,7 @@ const multivariateAnomalyAppliesToTelemetry = (
     return false;
   }
 
+  // Legacy multivariate anomalies without sensor_set metadata are shown on all charts.
   if (!anomaly.sensor_set || anomaly.sensor_set.length === 0) {
     return true;
   }

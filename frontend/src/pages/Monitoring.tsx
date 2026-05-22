@@ -984,6 +984,17 @@ const Monitoring: React.FC = () => {
     []
   );
 
+  const handleFdrMethodChange = useCallback((method: FdrControlMethod) => {
+    setStaticBaselineConfig((prev) => ({
+      ...prev,
+      fdr_method: method,
+      fdr_wealth:
+        method === "saffron" && prev.fdr_wealth >= prev.fdr_alpha
+          ? Math.max(0.0001, prev.fdr_alpha / 2)
+          : prev.fdr_wealth,
+    }));
+  }, []);
+
   useEffect(() => {
     const staticKeys = Object.keys(staticModels);
     if (staticKeys.length === 0) return;
@@ -1626,10 +1637,9 @@ const Monitoring: React.FC = () => {
                               className={FORM_CONTROL_CLASS}
                               value={staticBaselineConfig.fdr_method}
                               onChange={(event) =>
-                                setStaticBaselineConfig((prev) => ({
-                                  ...prev,
-                                  fdr_method: event.target.value as FdrControlMethod,
-                                }))
+                                handleFdrMethodChange(
+                                  event.target.value as FdrControlMethod
+                                )
                               }
                             >
                               <option value="saffron">SAFFRON</option>

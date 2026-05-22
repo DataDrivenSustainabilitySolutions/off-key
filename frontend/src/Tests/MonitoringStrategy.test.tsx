@@ -144,6 +144,23 @@ describe("<Monitoring /> strategy setup", () => {
     });
   });
 
+  it("clamps stale SAFFRON wealth when switching back from naive FDR", async () => {
+    renderMonitoring();
+
+    fireEvent.click(await screen.findByRole("button", { name: /show configuration/i }));
+    fireEvent.change(screen.getByDisplayValue("0.025"), {
+      target: { value: "0.05" },
+    });
+    fireEvent.change(screen.getByDisplayValue("SAFFRON"), {
+      target: { value: "naive" },
+    });
+    fireEvent.change(screen.getByDisplayValue("Naive p-value cutoff"), {
+      target: { value: "saffron" },
+    });
+
+    expect(await screen.findByDisplayValue("0.025")).toBeTruthy();
+  });
+
   it("switches to the dynamic menu without losing the static menu", async () => {
     renderMonitoring();
 

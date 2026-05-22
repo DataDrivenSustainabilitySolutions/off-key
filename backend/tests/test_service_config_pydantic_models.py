@@ -8,6 +8,7 @@ from off_key_mqtt_radar.config.config import (
     RadarSettings,
 )
 from off_key_core.schemas.radar import FdrConfig, StaticBaselineConfig
+from off_key_tactic_middleware.models.schemas import AdaptiveSVMParams, PyODPCAParams
 
 
 def _base_mqtt_config() -> dict:
@@ -238,6 +239,18 @@ def test_static_baseline_naive_fdr_uses_cutoff_without_saffron_wealth_rule():
     assert config.effective_threshold == 0.02
 
 
+def test_model_registry_schema_defaults_keep_svm_fields_out_of_pyod_pca():
+    pca_defaults = PyODPCAParams().model_dump()
+    svm_defaults = AdaptiveSVMParams().model_dump()
+
+    assert "initial_gamma" not in pca_defaults
+    assert "buffer_size" not in pca_defaults
+    assert "sv_budget" not in pca_defaults
+    assert svm_defaults["initial_gamma"] == 1.0
+    assert svm_defaults["buffer_size"] == 200
+    assert svm_defaults["sv_budget"] == 100
+
+
 def test_radar_settings_require_secure_mqtt_in_production(monkeypatch):
     monkeypatch.setenv("ENVIRONMENT", "production")
     monkeypatch.setenv("RADAR_MQTT_USE_TLS", "false")
@@ -300,3 +313,24 @@ def test_mqtt_settings_allow_insecure_mqtt_in_development(monkeypatch):
 
     assert settings.MQTT_USE_TLS is False
     assert settings.MQTT_USE_AUTH is False
+
+
+def test_mqtt_settings_source_topics_store_normalized_value(monkeypatch):
+    monkeypatch.setenv(
+        "MQTT_SOURCE_TOPICS",
+        (
+            " charger/+/live-telemetry/sine ,"
+            "charger/+/live-telemetry/sine,"
+            " charger/+/live-telemetry/cosine "
+        ),
+    )
+
+    settings = MQTTSettings()
+
+    assert settings.MQTT_SOURCE_TOPICS == (
+        "charger/+/live-telemetry/sine,charger/+/live-telemetry/cosine"
+    )
+    assert settings.config.source_topics == [
+        "charger/+/live-telemetry/sine",
+        "charger/+/live-telemetry/cosine",
+    ]

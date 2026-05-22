@@ -163,6 +163,8 @@ def _resolve_effective_start_config(
     model_type = config.model_type
     model_params = config.model_params or {}
     preprocessing_steps = config.preprocessing_steps or []
+    resolved_static_baseline_config = None
+    resolved_adaptive_stream_config = None
 
     if config.strategy == "static_baseline":
         static_config = config.static_baseline_config or StaticBaselineConfig(
@@ -172,12 +174,14 @@ def _resolve_effective_start_config(
         model_type = static_config.model_type
         model_params = static_config.model_params
         preprocessing_steps = []
+        resolved_static_baseline_config = static_config
     elif config.adaptive_stream_config:
         adaptive_config = config.adaptive_stream_config
         model_type = adaptive_config.model_type
         model_params = adaptive_config.model_params
         preprocessing_steps = adaptive_config.preprocessing_steps
         performance_config = performance_config or adaptive_config.performance_config
+        resolved_adaptive_stream_config = adaptive_config
 
     return {
         "strategy": config.strategy,
@@ -190,13 +194,13 @@ def _resolve_effective_start_config(
             else None
         ),
         "static_baseline_config": (
-            config.static_baseline_config.model_dump(exclude_none=True)
-            if config.static_baseline_config
+            resolved_static_baseline_config.model_dump(exclude_none=True)
+            if resolved_static_baseline_config
             else None
         ),
         "adaptive_stream_config": (
-            config.adaptive_stream_config.model_dump(exclude_none=True)
-            if config.adaptive_stream_config
+            resolved_adaptive_stream_config.model_dump(exclude_none=True)
+            if resolved_adaptive_stream_config
             else None
         ),
     }

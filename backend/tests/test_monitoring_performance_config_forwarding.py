@@ -12,6 +12,7 @@ from off_key_api_gateway.api.v1.monitors import (
     MonitoringServiceConfig,
     PerformanceConfig as GatewayPerformanceConfig,
     TacticError,
+    _resolve_effective_start_config,
     start_monitoring_service,
     stop_monitoring_service,
 )
@@ -90,6 +91,46 @@ def test_gateway_monitoring_config_rejects_root_wildcard_topic():
             service_type="radar",
             mqtt_topics=["#"],
         )
+
+
+def test_gateway_resolves_default_static_baseline_config_from_legacy_fields():
+    config = MonitoringServiceConfig(
+        container_name="radar-charger-1",
+        service_type="radar",
+        mqtt_topics=["charger/+/live-telemetry/sine"],
+        strategy="static_baseline",
+        model_type="pyod_iforest",
+        model_params={"n_estimators": 128},
+    )
+
+    resolved = _resolve_effective_start_config(config)
+
+    assert resolved["model_type"] == "pyod_iforest"
+    assert resolved["model_params"] == {"n_estimators": 128}
+    assert resolved["preprocessing_steps"] == []
+    assert resolved["static_baseline_config"]["model_type"] == "pyod_iforest"
+    assert resolved["static_baseline_config"]["model_params"] == {"n_estimators": 128}
+    assert resolved["static_baseline_config"]["training_window_size"] == 1200
+    assert resolved["adaptive_stream_config"] is None
+
+
+def test_gateway_static_strategy_does_not_forward_adaptive_stream_config():
+    config = MonitoringServiceConfig(
+        container_name="radar-charger-1",
+        service_type="radar",
+        mqtt_topics=["charger/+/live-telemetry/sine"],
+        strategy="static_baseline",
+        model_type="pyod_iforest",
+        adaptive_stream_config={
+            "model_type": "knn",
+            "model_params": {"k": 7},
+        },
+    )
+
+    resolved = _resolve_effective_start_config(config)
+
+    assert resolved["static_baseline_config"]["model_type"] == "pyod_iforest"
+    assert resolved["adaptive_stream_config"] is None
 
 
 @pytest.mark.asyncio

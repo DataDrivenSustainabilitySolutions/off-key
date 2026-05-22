@@ -441,12 +441,12 @@ class MQTTSettings(BaseSettings):
     @field_validator("MQTT_SOURCE_TOPICS")
     @classmethod
     def validate_source_topics(cls, value: str) -> str:
-        normalize_mqtt_topic_filters(
+        normalized = normalize_mqtt_topic_filters(
             value.split(","),
             require_charger_prefix=True,
             require_telemetry_topic=True,
         )
-        return value
+        return ",".join(normalized)
 
     @field_validator("ENVIRONMENT")
     @classmethod

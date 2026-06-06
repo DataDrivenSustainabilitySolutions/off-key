@@ -309,11 +309,12 @@ services:
       - sys_module
     volumes:
       - tailscale-ambibox-state:/var/lib/tailscale
+    env_file: .env
     environment:
       # No TS_AUTHKEY: identity is restored from persisted state volume
       - TS_USERSPACE=true
       - TS_STATE_DIR=/var/lib/tailscale
-      - TS_EXTRA_ARGS=--accept-dns --advertise-tags=tag:iao --hostname=DDSS --login-server=https://vpn.ambibox.de
+      - TS_EXTRA_ARGS=${TAILSCALE_AMBIBOX_EXTRA_ARGS}
       # SOCKS5 proxy on port 1055 — used by emqx-main to reach vendor MQTT over tailnet
       - TS_SOCKS5_SERVER=0.0.0.0:1055
     networks:
@@ -331,7 +332,7 @@ services:
     # for resolution, so Tailscale's MagicDNS handles it — not the container's own DNS.
     image: gogost/gost:3
     command:
-      - "-L=tcp://:1883/acc-2025130000001000230.ts.net:1883"
+      - "-L=tcp://:1883/${TAILSCALE_AMBIBOX_UPSTREAM_HOST}:1883"
       - "-F=socks5://tailscale-ambibox:1055"
     networks:
       - emqx-network

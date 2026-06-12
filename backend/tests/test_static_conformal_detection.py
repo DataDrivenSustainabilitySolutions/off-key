@@ -5,6 +5,7 @@ import pickle
 
 from off_key_core.schemas.radar import FdrConfig, StaticBaselineConfig
 from off_key_mqtt_radar.config.config import AnomalyDetectionConfig
+from off_key_mqtt_radar.config.runtime import clear_radar_runtime_settings_cache
 from off_key_mqtt_radar.detector import (
     NaivePValueCutoffController,
     StaticConformalDetectionService,
@@ -38,9 +39,24 @@ class ControlledExecutor:
         return self.future
 
 
+class InlineExecutor:
+    def submit(self, func, *args, **kwargs):
+        future: concurrent.futures.Future = concurrent.futures.Future()
+        try:
+            future.set_result(func(*args, **kwargs))
+        except Exception as exc:
+            future.set_exception(exc)
+        return future
+
+    def shutdown(self, *_args, **_kwargs):
+        return None
+
+
 def _static_config(
     monkeypatch,
     fdr_config: FdrConfig | None = None,
+    model_params: dict | None = None,
+    model_type: str = "pyod_iforest",
 ) -> AnomalyDetectionConfig:
     from off_key_mqtt_radar import tactic_client
 
@@ -55,14 +71,15 @@ def _static_config(
         lambda steps=None: steps or [],
     )
 
+    model_params = model_params or {"n_estimators": 100}
     return AnomalyDetectionConfig(
         strategy="static_baseline",
-        model_type="pyod_iforest",
-        model_params={"n_estimators": 100},
+        model_type=model_type,
+        model_params=model_params,
         preprocessing_steps=[],
         static_baseline_config=StaticBaselineConfig(
-            model_type="pyod_iforest",
-            model_params={"n_estimators": 100},
+            model_type=model_type,
+            model_params=model_params,
             training_window_size=20,
             calibration_fraction=0.25,
             fdr_config=fdr_config or FdrConfig(alpha=0.05, wealth=0.025, lambda_=0.5),
@@ -161,6 +178,64 @@ def test_naive_p_value_cutoff_controller_tracks_test_count():
     assert controller.test_one(0.05) is True
     assert controller.test_one(0.0501) is False
     assert controller.num_test == 2
+
+
+def test_real_saffron_controller_matches_static_detector_contract(monkeypatch):
+    config = _static_config(monkeypatch)
+    service = StaticConformalDetectionService(config)
+
+    try:
+        controller = service._create_fdr_controller()
+
+        decision = controller.test_one(0.001)
+
+        assert isinstance(decision, bool)
+        assert int(getattr(controller, "num_test", 0)) == 1
+    finally:
+        service.shutdown()
+
+
+def test_static_conformal_real_pyod_nonconform_training_reaches_ready(
+    monkeypatch,
+    tmp_path,
+):
+    monkeypatch.setenv("RADAR_CHECKPOINT_DIR", str(tmp_path))
+    monkeypatch.setenv("SERVICE_ID", "static-conformal-test")
+    clear_radar_runtime_settings_cache()
+    config = _static_config(
+        monkeypatch,
+        fdr_config=FdrConfig(method="naive", cutoff=0.05),
+        model_params={
+            "contamination": 0.1,
+        },
+        model_type="pyod_hbos",
+    )
+    service = StaticConformalDetectionService(config)
+    service._training_executor.shutdown(wait=False, cancel_futures=True)
+    service._training_executor = InlineExecutor()
+
+    try:
+        for index in range(20):
+            result = service.process_data_point(
+                {"L1": float(index), "L2": float(index % 4)}
+            )
+
+        assert result.context["static_conformal"]["phase"] == "training_started"
+        assert service.state == StaticConformalState.TRAINING
+
+        service._complete_training_if_ready()
+
+        assert service.state == StaticConformalState.READY, service.training_error
+
+        result = service.process_data_point({"L1": 100.0, "L2": 20.0})
+        static_context = result.context["static_conformal"]
+        assert static_context["phase"] == "ready"
+        assert static_context["fdr_method"] == "naive"
+        assert 0.0 <= static_context["p_value"] <= 1.0
+        assert 0.0 <= result.anomaly_score <= 1.0
+    finally:
+        service.shutdown()
+        clear_radar_runtime_settings_cache()
 
 
 def test_static_conformal_restores_ready_checkpoint(monkeypatch, tmp_path):

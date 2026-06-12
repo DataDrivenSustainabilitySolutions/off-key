@@ -494,17 +494,45 @@ class ModelRegistryService:
                 )
 
             validated_params = self._validate_params_with_schema(model, params or {})
-
-            if model.requires_special_handling:
-                if model_type == "knn":
-                    return self._create_knn_model(validated_params)
+            if self._is_radar_runtime_model(model):
                 raise ValueError(
-                    f"Model '{model_type}' requires special handling but no handler "
-                    "is registered."
+                    f"Model '{model_type}' is instantiated by the RADAR runtime. "
+                    "TACTIC validates its registry schema only."
                 )
 
-            model_class = self._import_model_class(model_type, model.import_paths)
-            return model_class(**validated_params)
+            return self._instantiate_tactic_runtime_model(model, validated_params)
+
+    def validate_model_instantiation(
+        self, model_type: str, params: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """Validate parameters and runtime ownership for a model.
+
+        Adaptive-stream models are instantiated in TACTIC as a dependency preflight.
+        Static PyOD models are intentionally not instantiated here because their
+        runtime dependencies and lifecycle belong to the RADAR service image.
+        """
+        self._ensure_ready()
+        with Session(get_engine()) as session:
+            model = self._get_active_entry(session, model_type, category="model")
+            if not model:
+                raise ValueError(
+                    self._format_missing_model_message(model_type, "model")
+                )
+
+            validated_params = self._validate_params_with_schema(model, params or {})
+            if self._is_radar_runtime_model(model):
+                return {
+                    "validated_parameters": validated_params,
+                    "instantiated": False,
+                    "runtime_owner": "radar",
+                }
+
+            self._instantiate_tactic_runtime_model(model, validated_params)
+            return {
+                "validated_parameters": validated_params,
+                "instantiated": True,
+                "runtime_owner": "tactic",
+            }
 
     @staticmethod
     def _format_missing_model_message(model_type: str, category: Optional[str]) -> str:
@@ -521,6 +549,25 @@ class ModelRegistryService:
         ).startswith("pyod_"):
             return "static_baseline"
         return "adaptive_stream"
+
+    @classmethod
+    def _is_radar_runtime_model(cls, model: ModelRegistry) -> bool:
+        return cls._strategy_for_model(model) == "static_baseline"
+
+    def _instantiate_tactic_runtime_model(
+        self, model: ModelRegistry, validated_params: Dict[str, Any]
+    ) -> Any:
+        model_type = model.model_type
+        if model.requires_special_handling:
+            if model_type == "knn":
+                return self._create_knn_model(validated_params)
+            raise ValueError(
+                f"Model '{model_type}' requires special handling but no handler "
+                "is registered."
+            )
+
+        model_class = self._import_model_class(model_type, model.import_paths)
+        return model_class(**validated_params)
 
     @staticmethod
     def _get_active_entry(

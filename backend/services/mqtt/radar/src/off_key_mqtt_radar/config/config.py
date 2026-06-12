@@ -2,6 +2,7 @@
 Configuration for MQTT RADAR service
 """
 
+import os
 from functools import lru_cache
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -19,6 +20,15 @@ MONITORING_STRATEGIES = {"static_baseline", "adaptive_stream"}
 # This constant is not a user-selectable enum; it exists so the validator can
 # produce a clear error message if a caller passes an unsupported value.
 STRICT_ALIGNMENT_MODE = "strict_barrier"
+ADAPTIVE_PERFORMANCE_ENV_FIELDS = {
+    "heuristic_enabled": "RADAR_HEURISTIC_ENABLED",
+    "heuristic_window_size": "RADAR_HEURISTIC_WINDOW_SIZE",
+    "heuristic_min_samples": "RADAR_HEURISTIC_MIN_SAMPLES",
+    "heuristic_tail_alpha": "RADAR_HEURISTIC_TAIL_ALPHA",
+    "alignment_mode": "RADAR_ALIGNMENT_MODE",
+    "sensor_key_strategy": "RADAR_SENSOR_KEY_STRATEGY",
+    "sensor_freshness_seconds": "RADAR_SENSOR_FRESHNESS_SECONDS",
+}
 
 
 def _normalize_sensor_key_strategy(value: str, field_name: str) -> str:
@@ -455,6 +465,7 @@ class RadarSettings(BaseSettings):
         adaptive_payload["performance_config"] = {
             **adaptive_performance_config,
             **self.RADAR_ADAPTIVE_STREAM_CONFIG.get("performance_config", {}),
+            **self._explicit_adaptive_performance_config(),
         }
         adaptive_stream_config = AdaptiveStreamConfig(**adaptive_payload)
 
@@ -536,6 +547,15 @@ class RadarSettings(BaseSettings):
             checkpoint_interval=self.RADAR_CHECKPOINT_INTERVAL,
             preprocessing_steps=effective_preprocessing_steps,
         )
+
+    def _explicit_adaptive_performance_config(self) -> Dict[str, Any]:
+        """Return adaptive performance values explicitly supplied at top level."""
+        fields_set = getattr(self, "model_fields_set", set())
+        return {
+            config_field: getattr(self, env_field)
+            for config_field, env_field in ADAPTIVE_PERFORMANCE_ENV_FIELDS.items()
+            if env_field in os.environ or env_field in fields_set
+        }
 
 
 @lru_cache(maxsize=1)

@@ -177,11 +177,16 @@ def _resolve_effective_start_config(
         resolved_static_baseline_config = static_config
     elif config.adaptive_stream_config:
         adaptive_config = config.adaptive_stream_config
+        effective_performance_config = (
+            performance_config or adaptive_config.performance_config
+        )
         model_type = adaptive_config.model_type
         model_params = adaptive_config.model_params
         preprocessing_steps = adaptive_config.preprocessing_steps
-        performance_config = performance_config or adaptive_config.performance_config
-        resolved_adaptive_stream_config = adaptive_config
+        performance_config = effective_performance_config
+        resolved_adaptive_stream_config = adaptive_config.model_copy(
+            update={"performance_config": effective_performance_config}
+        )
 
     return {
         "strategy": config.strategy,

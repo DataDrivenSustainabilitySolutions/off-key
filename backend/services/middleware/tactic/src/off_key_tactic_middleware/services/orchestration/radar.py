@@ -14,7 +14,11 @@ from sqlalchemy import select, delete
 
 from off_key_core.config.logs import logger
 from off_key_core.db.models import MonitoringService
-from off_key_core.schemas.radar import AdaptiveStreamConfig, StaticBaselineConfig
+from off_key_core.schemas.radar import (
+    AdaptiveStreamConfig,
+    PerformanceConfig,
+    StaticBaselineConfig,
+)
 from off_key_core.utils.mqtt_topics import normalize_mqtt_topic_filters
 from ...models.registry import ModelRegistryService
 from ...facades.docker import AsyncDocker, get_workload_docker_status
@@ -30,6 +34,17 @@ RADAR_SERVICE_TYPE_LABEL = "service_type=radar"
 # a docker.info() round-trip on every RADAR service creation request.
 _SWARM_CACHE_TTL_SECONDS: float = 30.0
 _swarm_manager_cache: Optional[tuple[bool, float]] = None
+
+
+def _extract_adaptive_performance_config(values: Dict[str, Any]) -> Dict[str, Any]:
+    """Keep only fields owned by the shared adaptive performance schema."""
+    if not values:
+        return {}
+    return {
+        field_name: values[field_name]
+        for field_name in PerformanceConfig.model_fields
+        if field_name in values
+    }
 
 
 @lru_cache(maxsize=1)
@@ -378,24 +393,45 @@ class RadarOrchestrationService:
             preprocessing_steps = []
             static_baseline_config = static_config.model_dump(exclude_none=True)
         else:
-            adaptive_config = AdaptiveStreamConfig(
-                **{
-                    **adaptive_stream_config,
-                    "model_type": adaptive_stream_config.get(
-                        "model_type", model_type or defaults.model_type
-                    ),
-                    "model_params": adaptive_stream_config.get(
-                        "model_params", model_params or {}
-                    ),
-                    "preprocessing_steps": adaptive_stream_config.get(
-                        "preprocessing_steps", preprocessing_steps or []
-                    ),
-                }
+            nested_performance_config = adaptive_stream_config.get("performance_config")
+            if nested_performance_config is None:
+                nested_performance_config = {}
+            if not isinstance(nested_performance_config, dict):
+                raise ValueError(
+                    "adaptive_stream_config.performance_config must be an object"
+                )
+
+            top_level_adaptive_performance = _extract_adaptive_performance_config(
+                performance_config
             )
+            adaptive_payload = {
+                **adaptive_stream_config,
+                "model_type": adaptive_stream_config.get(
+                    "model_type", model_type or defaults.model_type
+                ),
+                "model_params": adaptive_stream_config.get(
+                    "model_params", model_params or {}
+                ),
+                "preprocessing_steps": adaptive_stream_config.get(
+                    "preprocessing_steps", preprocessing_steps or []
+                ),
+            }
+            if nested_performance_config or top_level_adaptive_performance:
+                adaptive_payload["performance_config"] = {
+                    **nested_performance_config,
+                    **top_level_adaptive_performance,
+                }
+
+            adaptive_config = AdaptiveStreamConfig(**adaptive_payload)
             model_type = adaptive_config.model_type
             model_params = adaptive_config.model_params
             preprocessing_steps = adaptive_config.preprocessing_steps
             adaptive_stream_config = adaptive_config.model_dump(exclude_none=True)
+            if nested_performance_config or top_level_adaptive_performance:
+                performance_config = {
+                    **performance_config,
+                    **adaptive_config.performance_config.model_dump(exclude_none=True),
+                }
 
         env_vars = {
             "SERVICE_ID": service_id,
@@ -524,6 +560,22 @@ class RadarOrchestrationService:
             # Serialize complete params as JSON for container to parse
             # Note: Individual RADAR_MODEL_* params removed - use only JSON
             env_vars["RADAR_MODEL_PARAMS"] = json.dumps(validated_params)
+            if strategy == "static_baseline":
+                static_baseline_config = {
+                    **static_baseline_config,
+                    "model_params": validated_params,
+                }
+                env_vars["RADAR_STATIC_BASELINE_CONFIG"] = json.dumps(
+                    static_baseline_config
+                )
+            else:
+                adaptive_stream_config = {
+                    **adaptive_stream_config,
+                    "model_params": validated_params,
+                }
+                env_vars["RADAR_ADAPTIVE_STREAM_CONFIG"] = json.dumps(
+                    adaptive_stream_config
+                )
 
             logger.info(f"Model params validated for {model_type}: {validated_params}")
 
@@ -537,6 +589,14 @@ class RadarOrchestrationService:
                 preprocessing_steps
             )
             env_vars["RADAR_PREPROCESSING_STEPS"] = json.dumps(validated_steps)
+            if strategy == "adaptive_stream":
+                adaptive_stream_config = {
+                    **adaptive_stream_config,
+                    "preprocessing_steps": validated_steps,
+                }
+                env_vars["RADAR_ADAPTIVE_STREAM_CONFIG"] = json.dumps(
+                    adaptive_stream_config
+                )
             logger.info(f"Preprocessing steps validated: {validated_steps}")
         except ValueError as e:
             logger.error(f"Invalid preprocessing steps: {e}")

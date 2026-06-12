@@ -151,6 +151,41 @@ def test_radar_settings_adaptive_stream_config_overrides_top_level(monkeypatch):
     assert cfg.adaptive_stream_config.performance_config.sensor_key_strategy == "leaf"
 
 
+def test_radar_settings_explicit_performance_env_overrides_adaptive_config(
+    monkeypatch,
+):
+    monkeypatch.setenv("RADAR_MONITORING_STRATEGY", "adaptive_stream")
+    monkeypatch.setenv("RADAR_SENSOR_KEY_STRATEGY", "top_level")
+    monkeypatch.setenv("RADAR_SENSOR_FRESHNESS_SECONDS", "15.0")
+    monkeypatch.setenv(
+        "RADAR_ADAPTIVE_STREAM_CONFIG",
+        """
+        {
+          "model_type": "knn",
+          "model_params": {"k": 7, "window_size": 400, "warm_up": 25},
+          "performance_config": {
+            "sensor_key_strategy": "leaf",
+            "sensor_freshness_seconds": 45.0,
+            "heuristic_window_size": 420,
+            "heuristic_min_samples": 40
+          }
+        }
+        """,
+    )
+
+    cfg = RadarSettings().config
+
+    assert cfg.sensor_key_strategy == "top_level"
+    assert cfg.sensor_freshness_seconds == 15.0
+    assert cfg.heuristic_window_size == 420
+    assert cfg.adaptive_stream_config.performance_config.sensor_key_strategy == (
+        "top_level"
+    )
+    assert cfg.adaptive_stream_config.performance_config.sensor_freshness_seconds == (
+        15.0
+    )
+
+
 def test_radar_settings_reject_non_object_model_params(monkeypatch):
     monkeypatch.setenv("RADAR_MODEL_PARAMS", '["not-a-mapping"]')
 

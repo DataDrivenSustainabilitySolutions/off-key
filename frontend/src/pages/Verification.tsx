@@ -9,49 +9,46 @@ import { apiUtils } from '@/lib/api-client';
 import { API_CONFIG } from '@/lib/api-config';
 import { clientLogger } from '@/lib/logger';
 
-const Verification: React.FC = () => {
-    const location = useLocation();
-    const [status, setStatus] = useState<string>('Verifying your email...');
+const VerificationContent: React.FC<{ token: string | null }> = ({ token }) => {
+    const [status, setStatus] = useState<string>(
+        token ? 'Verifying your email...' : 'Invalid verification link.'
+    );
     const [isSuccess, setIsSuccess] = useState<boolean>(false);
-    const [isLoading, setIsLoading] = useState<boolean>(true);
-    const queryParams = new URLSearchParams(location.search);
-    const token = queryParams.get('token');
+    const [isLoading, setIsLoading] = useState<boolean>(Boolean(token));
 
     useEffect(() => {
+        if (!token) {
+            return;
+        }
+
         let isMounted = true;
         const controller = new AbortController();
 
-        if (token) {
-            apiUtils.get(`${API_CONFIG.ENDPOINTS.AUTH.VERIFY_EMAIL}?token=${token}`, {
-                signal: controller.signal,
+        apiUtils.get(`${API_CONFIG.ENDPOINTS.AUTH.VERIFY_EMAIL}?token=${token}`, {
+            signal: controller.signal,
+        })
+            .then(() => {
+                if (!isMounted) {
+                    return;
+                }
+                setStatus('Email verified successfully!');
+                setIsSuccess(true);
+                setIsLoading(false);
             })
-                .then(() => {
-                    if (!isMounted) {
-                        return;
-                    }
-                    setStatus('Email verified successfully!');
-                    setIsSuccess(true);
-                    setIsLoading(false);
-                })
-                .catch((error) => {
-                    if (!isMounted || controller.signal.aborted) {
-                        return;
-                    }
-                    clientLogger.error({
-                        event: 'auth.email_verification_failed',
-                        message: 'Email verification request failed',
-                        context: { hasToken: true },
-                        error,
-                    });
-                    setStatus('Verification failed. Please try again.');
-                    setIsSuccess(false);
-                    setIsLoading(false);
-                })
-        } else {
-            setStatus('Invalid verification link.');
-            setIsSuccess(false);
-            setIsLoading(false);
-        }
+            .catch((error) => {
+                if (!isMounted || controller.signal.aborted) {
+                    return;
+                }
+                clientLogger.error({
+                    event: 'auth.email_verification_failed',
+                    message: 'Email verification request failed',
+                    context: { hasToken: true },
+                    error,
+                });
+                setStatus('Verification failed. Please try again.');
+                setIsSuccess(false);
+                setIsLoading(false);
+            })
 
         return () => {
             isMounted = false;
@@ -87,6 +84,14 @@ const Verification: React.FC = () => {
             )}
         </AuthLayout>
     );
+};
+
+const Verification: React.FC = () => {
+    const location = useLocation();
+    const queryParams = new URLSearchParams(location.search);
+    const token = queryParams.get('token');
+
+    return <VerificationContent key={token ?? 'missing'} token={token} />;
 };
 
 export default Verification;

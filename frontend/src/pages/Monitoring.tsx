@@ -632,6 +632,9 @@ const AnomaliesSection: React.FC<{
 
 const Monitoring: React.FC = () => {
   const { chargerId } = useParams<{ chargerId: string }>();
+  const defaultTopicPattern = chargerId
+    ? `charger/${chargerId}/live-telemetry/#`
+    : "";
   //map where keys and the boolean are safed for the dropbox checked or not checked symbole
   const [visibleMap, setVisibleMap] = useState<Record<string, boolean>>({});
   //Data from useFetch
@@ -645,16 +648,14 @@ const Monitoring: React.FC = () => {
     [allTelemetryMap, chargerId]
   );
   const activeKeys = useMemo(
-    () =>
-      Object.entries(visibleMap)
-        .filter(([, visible]) => visible)
-        .map(([key]) => key),
-    [visibleMap]
+    () => monitoringKeys.filter((key) => visibleMap[key] ?? true),
+    [monitoringKeys, visibleMap]
   );
   const [topicMode, setTopicMode] = useState<"selected_sensors" | "direct_patterns">(
     "selected_sensors"
   );
-  const [topicPatternInput, setTopicPatternInput] = useState<string>("");
+  const [topicPatternInput, setTopicPatternInput] =
+    useState<string>(defaultTopicPattern);
   const [monitoringStrategy, setMonitoringStrategy] = useState<MonitoringStrategy>(
     "static_baseline"
   );
@@ -748,8 +749,12 @@ const Monitoring: React.FC = () => {
 
   useEffect(() => {
     if (!chargerId) return;
-    setTopicPatternInput(`charger/${chargerId}/live-telemetry/#`);
-  }, [chargerId]);
+    const timeoutId = window.setTimeout(() => {
+      setTopicPatternInput(defaultTopicPattern);
+    }, 0);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [chargerId, defaultTopicPattern]);
 
   const loadModels = useCallback(async () => {
     try {
@@ -765,7 +770,11 @@ const Monitoring: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    loadModels();
+    const timeoutId = window.setTimeout(() => {
+      void loadModels();
+    }, 0);
+
+    return () => window.clearTimeout(timeoutId);
   }, [loadModels]);
 
   const loadPreprocessors = useCallback(async () => {
@@ -782,7 +791,11 @@ const Monitoring: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    loadPreprocessors();
+    const timeoutId = window.setTimeout(() => {
+      void loadPreprocessors();
+    }, 0);
+
+    return () => window.clearTimeout(timeoutId);
   }, [loadPreprocessors]);
 
   const applyModelDefaults = useCallback(
@@ -984,36 +997,30 @@ const Monitoring: React.FC = () => {
     const staticKeys = Object.keys(staticModels);
     if (staticKeys.length === 0) return;
     if (staticBaselineConfig.model_type in staticModels) return;
-    handleStaticModelSelect(
+    const modelType =
       staticKeys.includes(DEFAULT_STATIC_MODEL_TYPE)
         ? DEFAULT_STATIC_MODEL_TYPE
-        : staticKeys[0]
-    );
+        : staticKeys[0];
+    const timeoutId = window.setTimeout(() => {
+      handleStaticModelSelect(modelType);
+    }, 0);
+
+    return () => window.clearTimeout(timeoutId);
   }, [handleStaticModelSelect, staticBaselineConfig.model_type, staticModels]);
 
   useEffect(() => {
     const adaptiveKeys = Object.keys(adaptiveModels);
     if (adaptiveKeys.length === 0) return;
     if (selectedAlgorithm && selectedAlgorithm in adaptiveModels) return;
-    handleModelSelect(
-      adaptiveKeys.includes(DEFAULT_MODEL_TYPE) ? DEFAULT_MODEL_TYPE : adaptiveKeys[0]
-    );
+    const modelType = adaptiveKeys.includes(DEFAULT_MODEL_TYPE)
+      ? DEFAULT_MODEL_TYPE
+      : adaptiveKeys[0];
+    const timeoutId = window.setTimeout(() => {
+      handleModelSelect(modelType);
+    }, 0);
+
+    return () => window.clearTimeout(timeoutId);
   }, [adaptiveModels, handleModelSelect, selectedAlgorithm]);
-
-  useEffect(() => {
-    setVisibleMap((previous) => {
-      const next = Object.fromEntries(
-        monitoringKeys.map((key) => [key, previous[key] ?? true])
-      );
-      const previousKeys = Object.keys(previous);
-      const nextKeys = Object.keys(next);
-      const isUnchanged =
-        previousKeys.length === nextKeys.length &&
-        nextKeys.every((key) => previous[key] === next[key]);
-
-      return isUnchanged ? previous : next;
-    });
-  }, [monitoringKeys]);
 
   // Load active services with Docker status
   const loadActiveServices = useCallback(async () => {
@@ -1069,22 +1076,36 @@ const Monitoring: React.FC = () => {
 
   // Load services on component mount and set up refresh interval
   useEffect(() => {
-    loadActiveServices();
+    const timeoutId = window.setTimeout(() => {
+      void loadActiveServices();
+    }, 0);
 
     // Refresh services every 30 seconds
-    const interval = setInterval(loadActiveServices, 30000);
+    const interval = window.setInterval(() => {
+      void loadActiveServices();
+    }, 30000);
 
-    return () => clearInterval(interval);
+    return () => {
+      window.clearTimeout(timeoutId);
+      window.clearInterval(interval);
+    };
   }, [loadActiveServices]);
 
   // Load anomalies on component mount and set up refresh interval
   useEffect(() => {
-    loadAnomalies();
+    const timeoutId = window.setTimeout(() => {
+      void loadAnomalies();
+    }, 0);
 
     // Refresh anomalies every 30 seconds
-    const anomalyInterval = setInterval(loadAnomalies, 30000);
+    const anomalyInterval = window.setInterval(() => {
+      void loadAnomalies();
+    }, 30000);
 
-    return () => clearInterval(anomalyInterval);
+    return () => {
+      window.clearTimeout(timeoutId);
+      window.clearInterval(anomalyInterval);
+    };
   }, [loadAnomalies]);
 
   const submitAnomalyDetection = async () => {
@@ -1286,11 +1307,11 @@ const Monitoring: React.FC = () => {
                           {monitoringKeys.map((key) => (
                             <DropdownMenuCheckboxItem
                               key={key}
-                              checked={visibleMap[key]}
-                              onCheckedChange={() =>
+                              checked={visibleMap[key] ?? true}
+                              onCheckedChange={(checked) =>
                                 setVisibleMap((prev) => ({
                                   ...prev,
-                                  [key]: !prev[key],
+                                  [key]: checked === true,
                                 }))
                               }
                               onClick={(e) => e.stopPropagation()}

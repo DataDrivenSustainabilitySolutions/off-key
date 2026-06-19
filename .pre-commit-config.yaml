@@ -18,16 +18,10 @@ repos:
       - id: debug-statements # Checks for leftover debugger imports and calls (e.g., pdb, breakpoint()).
       # - id: detect-private-key # Checks for the presence of private keys (use with caution, can have false positives)
 
-  # Black for code formatting
-  - repo: https://github.com/psf/black
-    rev: 24.4.2
-    hooks:
-      - id: black
-
-  # Ruff for linting
+  # Ruff for linting and formatting
   - repo: https://github.com/astral-sh/ruff-pre-commit
     # Check for updates: https://github.com/astral-sh/ruff-pre-commit/releases
-    rev: v0.4.4
+    rev: v0.14.0
     hooks:
       # Run Ruff's linter.
       - id: ruff
@@ -38,3 +32,5 @@ repos:
         args: [--fix, --exit-non-zero-on-fix]
         # Ruff will automatically find and use your pyproject.toml configuration
         # for selected rules, exclusions, target version, etc.
+      # Run Ruff's formatter.
+      - id: ruff-format

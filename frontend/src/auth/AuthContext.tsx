@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from "react";
+import React, { createContext, useContext, useEffect, useState } from "react";
 import { tokenManager } from "@/lib/api-client";
 import { getUserIdFromToken, parseNumericUserId } from "./token";
 
@@ -13,24 +13,33 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+type AuthState = {
+  token: string | null;
+  userId: number | null;
+};
+
+const getInitialAuthState = (): AuthState => {
+  const savedToken = tokenManager.getToken();
+  if (savedToken && !tokenManager.isTokenExpired(savedToken)) {
+    return {
+      token: savedToken,
+      userId: getUserIdFromToken(savedToken),
+    };
+  }
+
+  return { token: null, userId: null };
+};
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
-  const [token, setToken] = useState<string | null>(null);
-  const [userId, setUserId] = useState<number | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [{ token, userId }, setAuthState] = useState(getInitialAuthState);
 
-  // Initialize from stored token using centralized tokenManager
   useEffect(() => {
     const savedToken = tokenManager.getToken();
-    if (savedToken && !tokenManager.isTokenExpired(savedToken)) {
-      setToken(savedToken);
-      setUserId(getUserIdFromToken(savedToken));
-    } else if (savedToken) {
-      // Token exists but is expired - clean up
+    if (savedToken && tokenManager.isTokenExpired(savedToken)) {
       tokenManager.removeToken();
     }
-    setIsLoading(false);
   }, []);
 
   /**
@@ -40,8 +49,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
    */
   const login = (newToken: string, rememberMe = false, nextUserId?: unknown) => {
     tokenManager.setToken(newToken, rememberMe);
-    setToken(newToken);
-    setUserId(getUserIdFromToken(newToken) ?? parseNumericUserId(nextUserId));
+    setAuthState({
+      token: newToken,
+      userId: getUserIdFromToken(newToken) ?? parseNumericUserId(nextUserId),
+    });
   };
 
   /**
@@ -49,11 +60,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
    */
   const logout = () => {
     tokenManager.removeToken();
-    setToken(null);
-    setUserId(null);
+    setAuthState({ token: null, userId: null });
   };
 
   const isAuthenticated = !!token && !tokenManager.isTokenExpired(token);
+  const isLoading = false;
 
   return (
     <AuthContext.Provider

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
@@ -14,20 +14,12 @@ const ResetPassword: React.FC = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
 
-  const [token, setToken] = useState<string | null>(null);
+  const token = searchParams.get('token');
   const [newPassword, setNewPassword] = useState('');
   const [confirmNewPassword, setConfirmNewPassword] = useState('');
   const [message, setMessage] = useState<string>('');
   const [error, setError] = useState<string>('');
-
-  useEffect(() => {
-    const t = searchParams.get('token');
-    if (t) {
-      setToken(t);
-    } else {
-      setError('No token found');
-    }
-  }, [searchParams]);
+  const displayError = error || (!token ? 'No token found' : '');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -71,8 +63,8 @@ const ResetPassword: React.FC = () => {
 
   return (
     <AuthLayout title="Reset password">
-          {error && (
-            <p className="mb-4 text-center text-sm text-red-600">{error}</p>
+          {displayError && (
+            <p className="mb-4 text-center text-sm text-red-600">{displayError}</p>
           )}
           {message && (
             <p className="mb-4 text-center text-sm text-green-600">{message}</p>

@@ -58,7 +58,11 @@ export default function AnomalyTable() {
 
   useEffect(() => {
     localStorage.setItem("off-key:last-seen-anomalies", new Date().toISOString());
-    fetchAllAnomalies();
+    const timeoutId = window.setTimeout(() => {
+      void fetchAllAnomalies();
+    }, 0);
+
+    return () => window.clearTimeout(timeoutId);
   }, [fetchAllAnomalies]);
 
   const sortedData = useMemo(

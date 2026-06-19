@@ -1570,7 +1570,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "aiohttp", specifier = ">=3.14.1" },
+    { name = "aiohttp", specifier = ">=3.9.0" },
     { name = "bcrypt", specifier = "==4.0.1" },
     { name = "fastapi", extras = ["all"], specifier = ">=0.115.8" },
     { name = "fastapi-mail", specifier = ">=1.4.2" },
@@ -1662,7 +1662,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "aiohttp", specifier = ">=3.14.1" },
+    { name = "aiohttp", specifier = ">=3.9.0" },
     { name = "asyncpg", specifier = ">=0.28.0" },
     { name = "nonconform", extras = ["pyod"], specifier = ">=0.1.0" },
     { name = "numpy", specifier = ">=1.24.0" },

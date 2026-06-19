@@ -131,9 +131,6 @@ export const NavigationBar = () => {
 
   const refreshAnomalyCount = useCallback(async () => {
     if (!isAuthenticated || !getAnomalyCount) {
-      if (isMountedRef.current) {
-        setAnomalyCount(0);
-      }
       return;
     }
 
@@ -160,11 +157,16 @@ export const NavigationBar = () => {
     }
   }, [getAnomalyCount, isAuthenticated]);
 
+  const displayedAnomalyCount =
+    isAuthenticated && getAnomalyCount ? anomalyCount : 0;
+
   useEffect(() => {
-    void refreshAnomalyCount();
+    const timeoutId = window.setTimeout(() => {
+      void refreshAnomalyCount();
+    }, 0);
 
     if (!isAuthenticated || !getAnomalyCount) {
-      return;
+      return () => window.clearTimeout(timeoutId);
     }
 
     const intervalId = window.setInterval(() => {
@@ -172,12 +174,17 @@ export const NavigationBar = () => {
     }, 30000);
 
     return () => {
+      window.clearTimeout(timeoutId);
       window.clearInterval(intervalId);
     };
   }, [getAnomalyCount, isAuthenticated, refreshAnomalyCount]);
 
   useEffect(() => {
-    void refreshAnomalyCount();
+    const timeoutId = window.setTimeout(() => {
+      void refreshAnomalyCount();
+    }, 0);
+
+    return () => window.clearTimeout(timeoutId);
   }, [location.pathname, refreshAnomalyCount]);
 
   useEffect(() => {
@@ -204,9 +211,9 @@ export const NavigationBar = () => {
       primaryNavItems.map((item) => ({
         ...item,
         active: isActivePath(location.pathname, item.href),
-        badge: item.href === "/anomalies" ? anomalyCount : undefined,
+        badge: item.href === "/anomalies" ? displayedAnomalyCount : undefined,
       })),
-    [anomalyCount, location.pathname]
+    [displayedAnomalyCount, location.pathname]
   );
 
   return (

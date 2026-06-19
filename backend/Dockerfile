@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 FROM ghcr.io/astral-sh/uv:latest AS uv
-FROM python:3.14-slim-bookworm AS builder
+FROM python:3.12-slim-bookworm AS builder
 
 # Build context MUST be backend/
 
@@ -8,6 +8,7 @@ FROM python:3.14-slim-bookworm AS builder
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         gcc \
+        python3-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy uv
@@ -17,12 +18,12 @@ COPY --from=uv /uv /uvx /bin/
 # - Silence uv complaining about not being able to use hard links,
 # - Tell uv to byte-compile packages for faster application startups,
 # - Prevent uv from accidentally downloading isolated Python builds,
-# - Pick the Python already provided by the base image,
+# - Pick a Python (use `/usr/bin/python3.12` on uv 0.5.0 and later),
 # - Declare `/app` as the target for `uv sync`.
 ENV UV_LINK_MODE=copy \
     UV_COMPILE_BYTECODE=1 \
     UV_PYTHON_DOWNLOADS=never \
-    UV_PYTHON=/usr/local/bin/python3.14 \
+    UV_PYTHON=python3.12 \
     UV_PROJECT_ENVIRONMENT=/app
 
 # Set project path
@@ -32,13 +33,14 @@ WORKDIR /code
 ARG SERVICE_NAME
 ARG SERVICE_ROOT
 
-COPY pyproject.toml uv.lock /code/
-COPY libs/core/pyproject.toml /code/libs/core/pyproject.toml
-COPY ${SERVICE_ROOT}/pyproject.toml /code/${SERVICE_ROOT}/pyproject.toml
-
 # Synchronize DEPENDENCIES without the application itself.
-# This layer is cached until uv.lock or package manifests change.
+# This layer is cached until uv.lock or pyproject.toml change, which are
+# only temporarily mounted into the build container since we don't need
+# them in the production one.
 RUN --mount=type=cache,target=/root/.cache/uv \
+    --mount=type=bind,source=uv.lock,target=uv.lock \
+    --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
+    --mount=type=bind,source=${SERVICE_ROOT}/pyproject.toml,target=${SERVICE_ROOT}/pyproject.toml \
     uv sync \
         --frozen \
         --no-dev \
@@ -46,6 +48,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
         --package ${SERVICE_NAME}
 
 # Copy source code (will NOT be copied into the runtime container)
+COPY pyproject.toml uv.lock /code/
 COPY libs/ /code/libs/
 COPY ${SERVICE_ROOT} /code/${SERVICE_ROOT}
 
@@ -58,7 +61,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
         --package ${SERVICE_NAME}
 
 ########################################################################################################################
-FROM python:3.14-slim-bookworm
+FROM python:3.12-slim
 
 # Optional: add the application virtualenv to search path.
 ENV PATH=/app/bin:$PATH

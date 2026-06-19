@@ -83,7 +83,3 @@ class MQTTMessage:
             qos=msg.qos,
             retain=msg.retain,
         )
-
-
-class MQTTClientError(Exception):
-    """MQTT client error"""

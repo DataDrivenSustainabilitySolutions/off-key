@@ -588,8 +588,7 @@ class ModelRegistryService:
             try:
                 module_path, class_name = import_path.rsplit(".", 1)
                 module = importlib.import_module(module_path)
-                model_class = getattr(module, class_name)
-                return model_class
+                return getattr(module, class_name)
             except (ImportError, AttributeError, ModuleNotFoundError) as e:
                 errors.append(f"{import_path}: {e}")
                 continue

@@ -49,7 +49,6 @@ class MQTTClient:
             config,
             auth_handler,
             on_connected=self._on_connected,
-            on_disconnected=self._on_disconnected,
         )
 
         self.subscription_manager = SubscriptionManager(
@@ -262,7 +261,3 @@ class MQTTClient:
         """Called when connection is established"""
         # Resubscribe to all topics
         await self.subscription_manager.resubscribe_all()
-
-    async def _on_disconnected(self, unexpected: bool) -> None:
-        """Called when connection is lost"""
-        # Could add additional cleanup logic here if needed

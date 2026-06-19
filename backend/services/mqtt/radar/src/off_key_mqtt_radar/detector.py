@@ -225,8 +225,7 @@ class AnomalyDetectionService:
             )
 
         # Deserialize after verification
-        checkpoint = pickle.loads(raw_data)
-        return checkpoint
+        return pickle.loads(raw_data)
 
     @classmethod
     def from_checkpoint(
@@ -254,12 +253,15 @@ class AnomalyDetectionService:
 
         # Validate model type matches
         saved_config = checkpoint.get("config")
-        if saved_config and hasattr(saved_config, "model_type"):
-            if saved_config.model_type != config.model_type:
-                raise ValueError(
-                    f"Checkpoint model type '{saved_config.model_type}' "
-                    f"does not match config model type '{config.model_type}'."
-                )
+        if (
+            saved_config
+            and hasattr(saved_config, "model_type")
+            and saved_config.model_type != config.model_type
+        ):
+            raise ValueError(
+                f"Checkpoint model type '{saved_config.model_type}' "
+                f"does not match config model type '{config.model_type}'."
+            )
 
         saved_schema_signature = checkpoint.get("schema_signature")
         if not saved_schema_signature:
@@ -1495,46 +1497,13 @@ class ResilientAnomalyDetector:
                 result.context["fallback_reason"] = reason
                 result.context["model_used"] = "fallback"
                 return result
-            else:
-                # Simple statistical fallback
-                score = self._simple_statistical_anomaly_score(data)
-                if not hasattr(
-                    self.primary_service, "_evaluate_moving_window_heuristic"
-                ):
-                    return AnomalyResult(
-                        anomaly_score=score,
-                        is_anomaly=False,
-                        severity="unknown",
-                        timestamp=datetime.now(timezone.utc),
-                        model_info={"model_used": "statistical"},
-                        raw_data=data,
-                        topic=topic,
-                        charger_id=charger_id,
-                        context={
-                            "fallback_reason": reason,
-                            "model_used": "statistical",
-                            "service_state": ServiceState.DEGRADED.value,
-                        },
-                    )
-
-                heuristic_context = (
-                    self.primary_service._evaluate_moving_window_heuristic(
-                        score, model_ready=True
-                    )
-                )
-                if not heuristic_context.get("triggered", False) and bool(
-                    heuristic_context.get("model_ready", True)
-                ):
-                    self.primary_service.score_window.append(score)
-                    heuristic_context["reference_count_after"] = len(
-                        self.primary_service.score_window
-                    )
+            # Simple statistical fallback
+            score = self._simple_statistical_anomaly_score(data)
+            if not hasattr(self.primary_service, "_evaluate_moving_window_heuristic"):
                 return AnomalyResult(
                     anomaly_score=score,
-                    is_anomaly=bool(heuristic_context.get("triggered", False)),
-                    severity=self.primary_service._calculate_heuristic_severity(
-                        heuristic_context
-                    ),
+                    is_anomaly=False,
+                    severity="unknown",
                     timestamp=datetime.now(timezone.utc),
                     model_info={"model_used": "statistical"},
                     raw_data=data,
@@ -1544,9 +1513,37 @@ class ResilientAnomalyDetector:
                         "fallback_reason": reason,
                         "model_used": "statistical",
                         "service_state": ServiceState.DEGRADED.value,
-                        "score_window": heuristic_context,
                     },
                 )
+
+            heuristic_context = self.primary_service._evaluate_moving_window_heuristic(
+                score, model_ready=True
+            )
+            if not heuristic_context.get("triggered", False) and bool(
+                heuristic_context.get("model_ready", True)
+            ):
+                self.primary_service.score_window.append(score)
+                heuristic_context["reference_count_after"] = len(
+                    self.primary_service.score_window
+                )
+            return AnomalyResult(
+                anomaly_score=score,
+                is_anomaly=bool(heuristic_context.get("triggered", False)),
+                severity=self.primary_service._calculate_heuristic_severity(
+                    heuristic_context
+                ),
+                timestamp=datetime.now(timezone.utc),
+                model_info={"model_used": "statistical"},
+                raw_data=data,
+                topic=topic,
+                charger_id=charger_id,
+                context={
+                    "fallback_reason": reason,
+                    "model_used": "statistical",
+                    "service_state": ServiceState.DEGRADED.value,
+                    "score_window": heuristic_context,
+                },
+            )
 
         except Exception as e:
             self.logger.error(
@@ -1588,8 +1585,7 @@ class ResilientAnomalyDetector:
 
             # Calculate anomaly score based on deviation
             deviation = abs(current_mean - self._running_mean)
-            score = min(deviation / (self._running_std + 1e-8), 1.0)
-            return score
+            return min(deviation / (self._running_std + 1e-8), 1.0)
 
         except (ImportError, ValueError, TypeError, ZeroDivisionError):
             return 0.0

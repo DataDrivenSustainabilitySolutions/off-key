@@ -644,11 +644,14 @@ class RadarOrchestrationService:
     @staticmethod
     def _should_fallback_to_container(exc: Exception) -> bool:
         """Detect Swarm-only errors where local container fallback should be used."""
-        if isinstance(exc, docker.errors.APIError):
-            # 503: node is not a Swarm manager or Swarm mode is not active.
-            # 400/406: operation is only valid inside a Swarm context.
-            if exc.status_code in (400, 406, 503):
-                return True
+        # 503: node is not a Swarm manager or Swarm mode is not active.
+        # 400/406: operation is only valid inside a Swarm context.
+        if isinstance(exc, docker.errors.APIError) and exc.status_code in (
+            400,
+            406,
+            503,
+        ):
+            return True
         # Secondary guard for Docker daemon versions that do not surface a
         # machine-readable status code for Swarm-specific errors.
         text = str(exc).lower()
@@ -737,12 +740,10 @@ class RadarOrchestrationService:
         if docker_config.default_constraints:
             service_kwargs["constraints"] = docker_config.default_constraints
 
-        container = await self.async_docker.run(
+        return await self.async_docker.run(
             self.async_docker.client.services.create,
             **service_kwargs,
         )
-
-        return container
 
     async def _create_radar_container(
         self,
@@ -794,11 +795,10 @@ class RadarOrchestrationService:
             "nano_cpus": int(float(docker_config.default_cpu_limit) * 1_000_000_000),
         }
 
-        container = await self.async_docker.run(
+        return await self.async_docker.run(
             self.async_docker.client.containers.run,
             **container_kwargs,
         )
-        return container
 
     async def _validate_radar_workload_started(self, docker_workload: Any) -> None:
         """Fail service creation when RADAR exits or is rejected at startup."""

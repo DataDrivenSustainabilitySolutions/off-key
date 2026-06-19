@@ -6,6 +6,7 @@ MonitoringService.status in sync with actual Docker state.
 """
 
 import asyncio
+from contextlib import suppress
 from typing import Optional
 
 import docker
@@ -56,10 +57,8 @@ class RadarStatusReconciliationService:
         self._stop_event.set()
         if self._task:
             self._task.cancel()
-            try:
+            with suppress(asyncio.CancelledError):
                 await self._task
-            except asyncio.CancelledError:
-                pass
 
         # Close Docker client to release socket connections
         if self.async_docker:

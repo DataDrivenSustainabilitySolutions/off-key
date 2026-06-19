@@ -107,8 +107,7 @@ async def list_radar_services(
       for each service. This is slower but provides accurate real-time status.
     """
     try:
-        services = await service.list_radar_services(active_only, include_docker_status)
-        return services
+        return await service.list_radar_services(active_only, include_docker_status)
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to list RADAR services: {str(e)}"

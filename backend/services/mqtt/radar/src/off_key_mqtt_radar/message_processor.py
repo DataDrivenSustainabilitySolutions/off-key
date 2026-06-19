@@ -23,19 +23,13 @@ from .topic_parser import TopicParser
 class MessageProcessingError(Exception):
     """Exception raised during message processing."""
 
-    pass
-
 
 class InvalidPayloadError(MessageProcessingError):
     """Exception raised when payload is invalid JSON."""
 
-    pass
-
 
 class ValidationError(MessageProcessingError):
     """Exception raised when payload fails security validation."""
-
-    pass
 
 
 class MessageProcessor:

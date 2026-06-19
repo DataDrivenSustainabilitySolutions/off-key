@@ -29,8 +29,6 @@ def _default_cache_ttl_seconds() -> float:
 class TacticModelError(Exception):
     """Custom exception for TACTIC model registry errors."""
 
-    pass
-
 
 class TacticModelClient:
     """Client for TACTIC model registry API."""
@@ -114,20 +112,21 @@ class TacticModelClient:
 
         try:
             # Use request-scoped sessions to avoid cross-event-loop session reuse.
-            async with aiohttp.ClientSession(timeout=timeout) as session:
-                async with session.request(method, url, **kwargs) as response:
-                    if response.status == 200:
-                        return await response.json()
-                    else:
-                        error_text = await response.text()
-                        logger.error(
-                            "event=radar.tactic_request_failed status=%s error=%s",
-                            response.status,
-                            error_text,
-                        )
-                        raise TacticModelError(
-                            f"TACTIC request failed: {response.status} - {error_text}"
-                        )
+            async with (
+                aiohttp.ClientSession(timeout=timeout) as session,
+                session.request(method, url, **kwargs) as response,
+            ):
+                if response.status == 200:
+                    return await response.json()
+                error_text = await response.text()
+                logger.error(
+                    "event=radar.tactic_request_failed status=%s error=%s",
+                    response.status,
+                    error_text,
+                )
+                raise TacticModelError(
+                    f"TACTIC request failed: {response.status} - {error_text}"
+                )
         except aiohttp.ClientError as e:
             logger.error(
                 "event=radar.tactic_connection_error error=%s",
@@ -246,8 +245,7 @@ class TacticModelClient:
             try:
                 module_path, class_name = import_path.rsplit(".", 1)
                 module = importlib.import_module(module_path)
-                model_class = getattr(module, class_name)
-                return model_class
+                return getattr(module, class_name)
             except (ImportError, AttributeError, ModuleNotFoundError) as e:
                 errors.append(f"{import_path}: {e}")
                 continue

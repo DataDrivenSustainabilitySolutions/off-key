@@ -14,6 +14,7 @@ Refactored to use extracted components:
 import asyncio
 import signal
 import time
+from contextlib import suppress
 from datetime import datetime
 from typing import Optional
 
@@ -218,10 +219,8 @@ class RadarService:
                         await component.stop()
                     elif hasattr(component, "cancel"):
                         component.cancel()
-                        try:
+                        with suppress(asyncio.CancelledError):
                             await component
-                        except asyncio.CancelledError:
-                            pass
 
                     logger.debug(
                         "event=radar.component_stopped component=%s", component_name
@@ -449,11 +448,11 @@ class RadarService:
                 self.health_monitor.record_processing_time(time.time() - start_time)
 
                 # Write results to database if needed
-                if result.is_anomaly or getattr(
-                    self.config, "write_all_results", False
+                if self.database_writer and (
+                    result.is_anomaly
+                    or getattr(self.config, "write_all_results", False)
                 ):
-                    if self.database_writer:
-                        await self.database_writer.write_anomaly(result)
+                    await self.database_writer.write_anomaly(result)
 
         except Exception as e:
             logger.error(

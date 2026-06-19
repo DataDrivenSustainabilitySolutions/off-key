@@ -1,8 +1,7 @@
 """
 Message Router for MQTT Telemetry Distribution
 
-Routes MQTT messages to multiple destinations including database, processing containers,
-and real-time API endpoints with intelligent logging and error handling.
+Routes MQTT messages to configured destinations with logging and error handling.
 """
 
 import asyncio
@@ -239,119 +238,6 @@ class DatabaseDestination(MessageDestination):
 
             logger.error(
                 "event=router.destination_failed destination=database \
-                     topic=%s error=%s",
-                message.topic,
-                e,
-                extra={**self._log_context, "topic": message.topic, "error": str(e)},
-                exc_info=True,
-            )
-
-            return False
-
-
-class ContainerDestination(MessageDestination):
-    """Container destination for processing services"""
-
-    def __init__(self, container_id: str, endpoint: str, config: Dict[str, Any] = None):
-        super().__init__(f"container_{container_id}", config)
-        self.container_id = container_id
-        self.endpoint = endpoint
-        self.timeout = config.get("timeout", 5.0) if config else 5.0
-
-    async def process_message(self, message: MQTTMessage) -> bool:
-        """Process message by sending to container"""
-        try:
-            start_time = time.time()
-
-            # Send to container (implement HTTP client call here)
-            # For now, simulate processing
-            await asyncio.sleep(0.001)  # Simulate network call
-
-            processing_time = time.time() - start_time
-            self.message_count += 1
-            self.success_count += 1
-            self.total_processing_time += processing_time
-
-            logger.debug(
-                "event=router.destination_processed destination=%s \
-                     topic=%s processing_time_s=%.3f",
-                self.name,
-                message.topic,
-                processing_time,
-                extra={
-                    **self._log_context,
-                    "container_id": self.container_id,
-                    "endpoint": self.endpoint,
-                    "topic": message.topic,
-                    "processing_time": processing_time,
-                },
-            )
-
-            return True
-
-        except Exception as e:
-            self.message_count += 1
-            self.failure_count += 1
-
-            logger.error(
-                "event=router.destination_failed destination=%s topic=%s error=%s",
-                self.name,
-                message.topic,
-                e,
-                extra={
-                    **self._log_context,
-                    "container_id": self.container_id,
-                    "endpoint": self.endpoint,
-                    "topic": message.topic,
-                    "error": str(e),
-                },
-                exc_info=True,
-            )
-
-            return False
-
-
-class WebSocketDestination(MessageDestination):
-    """WebSocket destination for real-time API"""
-
-    def __init__(self, websocket_manager, config: Dict[str, Any] = None):
-        super().__init__("websocket", config)
-        self.websocket_manager = websocket_manager
-
-    async def process_message(self, message: MQTTMessage) -> bool:
-        """Process message by broadcasting to WebSocket clients"""
-        try:
-            start_time = time.time()
-
-            # Broadcast to WebSocket clients (implement WebSocket manager call here)
-            # For now, simulate broadcasting
-            await asyncio.sleep(0.001)  # Simulate broadcast
-
-            processing_time = time.time() - start_time
-            self.message_count += 1
-            self.success_count += 1
-            self.total_processing_time += processing_time
-
-            logger.debug(
-                "event=router.destination_processed destination=websocket \
-                     topic=%s processing_time_s=%.3f",
-                message.topic,
-                processing_time,
-                extra={
-                    **self._log_context,
-                    "topic": message.topic,
-                    "processing_time": processing_time,
-                },
-            )
-
-            return True
-
-        except Exception as e:
-            self.message_count += 1
-            self.failure_count += 1
-
-            logger.error(
-                "event=router.destination_failed destination=websocket \
                      topic=%s error=%s",
                 message.topic,
                 e,

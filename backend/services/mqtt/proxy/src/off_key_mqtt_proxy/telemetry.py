@@ -133,10 +133,6 @@ class WriteBatch:
         return (datetime.now() - self.created_at).total_seconds()
 
 
-class DatabaseWriterError(Exception):
-    """Database writer error"""
-
-
 class DatabaseWriter:
     """
     High-performance database writer for MQTT telemetry data

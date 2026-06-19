@@ -6,7 +6,7 @@ specifically handling Docker container orchestration for RADAR services.
 """
 
 import asyncio
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 
 import uvicorn
@@ -189,10 +189,8 @@ async def lifespan(app: FastAPI):
     recovery_task = getattr(app.state, "model_registry_recovery_task", None)
     if recovery_task:
         recovery_task.cancel()
-        try:
+        with suppress(asyncio.CancelledError):
             await recovery_task
-        except asyncio.CancelledError:
-            pass
         app.state.model_registry_recovery_task = None
 
     app.state.model_registry_ready = False

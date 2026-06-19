@@ -7,6 +7,7 @@ Monitors configuration file changes and triggers reloads automatically.
 import asyncio
 import os
 import time
+from contextlib import suppress
 from pathlib import Path
 from typing import Callable, Optional, Awaitable
 from watchdog.observers import Observer
@@ -203,11 +204,9 @@ class ConfigWatcher:
 
     def _get_file_mtime(self) -> Optional[float]:
         """Get file modification time"""
-        try:
+        with suppress(Exception):
             if self.config_file_path.exists():
                 return self.config_file_path.stat().st_mtime
-        except Exception:
-            pass
         return None
 
 
@@ -327,8 +326,7 @@ class ConfigReloader:
 
         if mqtt_changed:
             logger.info("MQTT connection settings changed - will require reconnection")
-            # Note: Full MQTT reconnection would be complex and might require restart
-            # For now, just log the change
+            # Runtime reconnection requires a service restart.
 
         # Check for topic subscription changes
         if old_config.subscription_topics != new_config.subscription_topics:

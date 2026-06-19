@@ -7,6 +7,7 @@ Monitors service health and provides metrics collection.
 import asyncio
 import time
 from collections import deque
+from contextlib import suppress
 from datetime import datetime
 from typing import Optional, Dict, Any, List, Deque
 
@@ -100,10 +101,8 @@ class HealthMonitor:
         """Stop health monitoring."""
         if self._health_check_task:
             self._health_check_task.cancel()
-            try:
+            with suppress(asyncio.CancelledError):
                 await self._health_check_task
-            except asyncio.CancelledError:
-                pass
         logger.info("Health monitor stopped", extra=self._log_context)
 
     async def _monitor_loop(self) -> None:

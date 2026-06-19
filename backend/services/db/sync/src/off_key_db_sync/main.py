@@ -6,6 +6,7 @@ Orchestrates both the core sync service and optional FastAPI server.
 
 import asyncio
 import uvicorn
+from contextlib import suppress
 from pathlib import Path
 
 from off_key_core.config.database import get_database_settings
@@ -93,10 +94,8 @@ async def main():
         for task in tasks:
             if task.done():
                 continue
-            try:
+            with suppress(asyncio.CancelledError):
                 await task
-            except asyncio.CancelledError:
-                pass
 
         logger.info("Database sync service shutdown complete")
 

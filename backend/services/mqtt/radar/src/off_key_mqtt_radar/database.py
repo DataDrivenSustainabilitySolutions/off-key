@@ -15,6 +15,7 @@ import math
 import time
 from collections import deque
 from collections.abc import Iterable
+from contextlib import suppress
 from datetime import datetime
 from typing import List, Optional, Dict, Any, Tuple
 
@@ -175,10 +176,8 @@ class DatabaseWriter:
                 )
             except asyncio.TimeoutError:
                 self._writer_task.cancel()
-                try:
+                with suppress(asyncio.CancelledError):
                     await self._writer_task
-                except asyncio.CancelledError:
-                    pass
             except asyncio.CancelledError as exc:
                 cancelled_error = exc
 
@@ -619,21 +618,20 @@ class DatabaseWriter:
                 "reason": "high_error_rate",
                 "error_rate": error_rate,
             }
-        elif queue_usage > 0.8:  # Queue building up
+        if queue_usage > 0.8:  # Queue building up
             return {
                 "status": "degraded",
                 "reason": "queue_building_up",
                 "queue_usage": queue_usage,
             }
-        elif not self._writer_task or self._writer_task.done():
+        if not self._writer_task or self._writer_task.done():
             return {"status": "unhealthy", "reason": "writer_task_stopped"}
-        else:
-            return {
-                "status": "healthy",
-                "reason": "ok",
-                "queue_size": len(self.write_queue),
-                "error_rate": error_rate,
-            }
+        return {
+            "status": "healthy",
+            "reason": "ok",
+            "queue_size": len(self.write_queue),
+            "error_rate": error_rate,
+        }
 
 
 async def ensure_radar_metrics_tables():

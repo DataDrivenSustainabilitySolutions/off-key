@@ -80,11 +80,9 @@ async def wait_for_db_sync(
                             f"(status={status}, acceptable={acceptable_statuses})"
                         )
                         return True
-                    else:
-                        logger.info(
-                            f"db-sync service not ready: "
-                            f"{data.get('message', 'unknown')}"
-                        )
+                    logger.info(
+                        f"db-sync service not ready: {data.get('message', 'unknown')}"
+                    )
                 else:
                     logger.info(
                         f"db-sync health check returned status {response.status_code}"
@@ -148,14 +146,12 @@ app.add_middleware(
 app.include_router(v1_router, prefix="/v1", tags=["v1"])
 
 
-# TODO: Rethink healthcheck as a (micro)service. TODO What is considered "healthy" now?
 @app.get("/health", tags=["Health"])
 async def health_check():
     """
-    Health check endpoint that verifies the app and its dependencies are running.
-    Returns status of various components without exposing sensitive information.
+    Return basic API gateway liveness.
     """
-    ...
+    return {"status": "healthy", "service": "api-gateway"}
 
 
 if __name__ == "__main__":

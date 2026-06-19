@@ -9,6 +9,7 @@ import asyncio
 import ssl
 import time
 import uuid
+from contextlib import suppress
 from datetime import datetime
 from typing import Callable, Optional, Awaitable, Dict, Any
 from collections import deque
@@ -104,10 +105,8 @@ class RadarMQTTClient:
 
         if self._reconnect_task and not self._reconnect_task.done():
             self._reconnect_task.cancel()
-            try:
+            with suppress(asyncio.CancelledError):
                 await self._reconnect_task
-            except asyncio.CancelledError:
-                pass
         self._reconnect_task = None
 
         # Disconnect from broker
@@ -119,10 +118,8 @@ class RadarMQTTClient:
         # Cancel message processor
         if self._message_processor_task:
             self._message_processor_task.cancel()
-            try:
+            with suppress(asyncio.CancelledError):
                 await self._message_processor_task
-            except asyncio.CancelledError:
-                pass
 
         self.is_connected = False
         self._emit_drop_summary(force=True)

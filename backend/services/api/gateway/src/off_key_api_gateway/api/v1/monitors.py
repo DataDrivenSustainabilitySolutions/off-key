@@ -229,11 +229,10 @@ async def list_services(
       values like: 'running', 'complete', 'failed', 'not_found', 'error'.
     """
     try:
-        services = await tactic.list_radar_services(
+        return await tactic.list_radar_services(
             active_only=active_only,
             include_docker_status=include_docker_status,
         )
-        return services
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to list monitoring services: {str(e)}"

@@ -113,9 +113,7 @@ def _should_redact(level: int = logging.INFO) -> bool:
     settings = get_logging_settings()
     if not settings.LOG_REDACT_PII:
         return False
-    if settings.LOG_PII_DEBUG_UNMASK and level <= logging.DEBUG:
-        return False
-    return True
+    return not (settings.LOG_PII_DEBUG_UNMASK and level <= logging.DEBUG)
 
 
 def _is_sensitive_key(key: str) -> bool:
@@ -455,9 +453,8 @@ class LazyLogger:
                 return getattr(logging.getLogger(_service_logger_name), name)
             # Fallback to root logger if service name not detected
             return getattr(logging.getLogger(), name)
-        else:
-            # No YAML config loaded - use basic logging
-            return getattr(logging.getLogger("off_key"), name)
+        # No YAML config loaded - use basic logging
+        return getattr(logging.getLogger("off_key"), name)
 
     def __call__(self, *args, **kwargs):
         # Handle cases where logger might be called directly
@@ -468,9 +465,8 @@ class LazyLogger:
                 return logging.getLogger(_service_logger_name)
             # Fallback to root logger if service name not detected
             return logging.getLogger()
-        else:
-            # No YAML config loaded - use basic logging
-            return logging.getLogger("off_key")
+        # No YAML config loaded - use basic logging
+        return logging.getLogger("off_key")
 
 
 logger = LazyLogger()

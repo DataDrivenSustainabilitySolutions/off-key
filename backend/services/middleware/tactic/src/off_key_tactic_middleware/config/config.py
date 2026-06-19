@@ -186,6 +186,8 @@ class TacticConfig(BaseModel):
 
     # RADAR Defaults
     radar_defaults: RadarDefaultsConfig
+    radar_image: str = Field(default="off-key-mqtt-radar:latest", min_length=1)
+    radar_startup_grace_seconds: float = Field(default=5.0, ge=0.0, le=120.0)
 
     # Database Configuration
     database_url: Optional[str] = None
@@ -339,6 +341,8 @@ class TacticSettings(BaseSettings):
     TACTIC_RADAR_DEFAULT_RATE_LIMIT_PER_MINUTE: int = Field(
         default=DEFAULT_RADAR_DEFAULTS.rate_limit_per_minute
     )
+    TACTIC_RADAR_IMAGE: str = Field(default="off-key-mqtt-radar:latest")
+    TACTIC_RADAR_STARTUP_GRACE_SECONDS: float = Field(default=5.0)
 
     # Database Configuration
     TACTIC_DATABASE_URL: Optional[str] = Field(default=None)
@@ -454,6 +458,8 @@ class TacticSettings(BaseSettings):
             port=self.TACTIC_PORT,
             docker=docker_config,
             radar_defaults=radar_defaults_config,
+            radar_image=self.TACTIC_RADAR_IMAGE,
+            radar_startup_grace_seconds=self.TACTIC_RADAR_STARTUP_GRACE_SECONDS,
             database_url=self.TACTIC_DATABASE_URL,
             log_level=self.TACTIC_LOG_LEVEL,
             reconciliation_enabled=self.TACTIC_RECONCILIATION_ENABLED,

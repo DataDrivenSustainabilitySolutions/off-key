@@ -12,9 +12,13 @@ def _build_radar_config(subscription_topics):
         max_feature_count=100,
         max_string_length=1000,
         health_check_interval=30.0,
+        strategy="static_baseline",
+        model_type="pyod_iforest",
+        model_params={},
         subscription_topics=subscription_topics,
         sensor_key_strategy="full_hierarchy",
         sensor_freshness_seconds=30.0,
+        alignment_mode="strict_barrier",
     )
 
 
@@ -33,6 +37,7 @@ def test_radar_service_enables_alignment_for_explicit_sensor_topics(monkeypatch)
 
     assert radar_service.required_sensors == {"sine", "cosine"}
     assert radar_service.state_cache is not None
+    assert radar_service.state_cache.alignment_mode == "strict_barrier"
 
 
 def test_radar_service_disables_alignment_for_wildcard_subscription(monkeypatch):

@@ -47,6 +47,7 @@ class SyncService:
                 await conn.execute(text("CREATE EXTENSION IF NOT EXISTS pgcrypto"))
                 await self._migrate_anomaly_identity(conn)
                 await self._migrate_anomaly_value_type(conn)
+                await self._migrate_anomaly_sensor_set(conn)
                 await self._migrate_model_registry_family(conn)
                 await conn.run_sync(Base.metadata.create_all)
 
@@ -422,7 +423,7 @@ class SyncService:
         Add value_type column to anomalies and backfill existing rows.
 
         Rows written by the tail-probability detector (anomaly_type starting with
-        'ml_tailprob_') store a p-value in anomaly_value (0–1, lower = more anomalous).
+        'ml_tailprob_') store a p-value in anomaly_value (0-1, lower = more anomalous).
         All other rows stored a z-score and are marked 'zscore' for the frontend to
         render them correctly.
         """
@@ -466,12 +467,71 @@ class SyncService:
             text(
                 """
                 UPDATE anomalies
+                SET value_type = 'conformal_pvalue'
+                WHERE anomaly_type IN (
+                    'ml_conformal_static_multivariate',
+                    'ml_conformal_static_univariate'
+                )
+                  AND value_type IS NULL
+                """
+            )
+        )
+        await conn.execute(
+            text(
+                """
+                UPDATE anomalies
                 SET value_type = 'zscore'
                 WHERE anomaly_type NOT IN (
                     'ml_tailprob_multivariate',
-                    'ml_tailprob_univariate'
+                    'ml_tailprob_univariate',
+                    'ml_conformal_static_multivariate',
+                    'ml_conformal_static_univariate'
                 )
                   AND value_type IS NULL
+                """
+            )
+        )
+
+    async def _migrate_anomaly_sensor_set(self, conn) -> None:
+        """
+        Add sensor_set column to anomalies.
+
+        New RADAR writers persist the exact aligned sensor set. Legacy
+        multivariate rows are intentionally left NULL because the exact streams
+        cannot be reconstructed from the persisted payload.
+        """
+        anomalies_exists = await conn.scalar(
+            text("SELECT to_regclass('public.anomalies') IS NOT NULL")
+        )
+        if not anomalies_exists:
+            return
+
+        column_exists = await conn.scalar(
+            text(
+                """
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM information_schema.columns
+                    WHERE table_schema = 'public'
+                      AND table_name = 'anomalies'
+                      AND column_name = 'sensor_set'
+                )
+                """
+            )
+        )
+        if not column_exists:
+            logger.info("Adding anomalies.sensor_set column", extra=self._log_context)
+            await conn.execute(
+                text("ALTER TABLE anomalies ADD COLUMN sensor_set JSONB")
+            )
+
+        await conn.execute(
+            text(
+                """
+                UPDATE anomalies
+                SET sensor_set = jsonb_build_array(telemetry_type)
+                WHERE telemetry_type <> '__multivariate__'
+                  AND sensor_set IS NULL
                 """
             )
         )

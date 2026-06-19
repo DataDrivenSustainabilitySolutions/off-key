@@ -11,6 +11,7 @@ from typing import Dict, List, Optional, Any, cast
 import aiohttp
 from off_key_core.config.services import get_service_endpoints_settings
 from off_key_core.config.logs import logger
+from off_key_core.schemas.radar import MonitoringStrategy
 
 
 class TacticError(Exception):
@@ -156,12 +157,15 @@ class Tactic:
         self,
         container_name: str,
         mqtt_topics: List[str],
+        strategy: MonitoringStrategy = "adaptive_stream",
         model_type: str = "isolation_forest",
         model_params: Optional[Dict[str, Any]] = None,
         preprocessing_steps: Optional[List[Dict[str, Any]]] = None,
         mqtt_config: Optional[Dict[str, Any]] = None,
         anomaly_thresholds: Optional[Dict[str, float]] = None,
         performance_config: Optional[Dict[str, Any]] = None,
+        static_baseline_config: Optional[Dict[str, Any]] = None,
+        adaptive_stream_config: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """
         Start a new RADAR service via TACTIC.
@@ -169,12 +173,15 @@ class Tactic:
         Args:
             container_name: Name for the Docker container
             mqtt_topics: List of MQTT topics to monitor
+            strategy: Monitoring strategy to run inside RADAR
             model_type: ML model type
             model_params: Model-specific parameters
             preprocessing_steps: Optional preprocessing steps for data transformation
             mqtt_config: MQTT configuration
             anomaly_thresholds: Anomaly detection thresholds
             performance_config: Performance settings
+            static_baseline_config: Static baseline detector settings
+            adaptive_stream_config: Adaptive stream detector settings
 
         Returns:
             Dict: Service creation response
@@ -182,6 +189,7 @@ class Tactic:
         payload = {
             "container_name": container_name,
             "mqtt_topics": mqtt_topics,
+            "strategy": strategy,
             "model_type": model_type,
         }
 
@@ -195,6 +203,10 @@ class Tactic:
             payload["anomaly_thresholds"] = anomaly_thresholds
         if performance_config:
             payload["performance_config"] = performance_config
+        if static_baseline_config:
+            payload["static_baseline_config"] = static_baseline_config
+        if adaptive_stream_config:
+            payload["adaptive_stream_config"] = adaptive_stream_config
 
         return await self._make_request(
             method="POST",

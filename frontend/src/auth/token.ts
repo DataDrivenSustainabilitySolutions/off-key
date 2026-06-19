@@ -1,9 +1,10 @@
 export const parseNumericUserId = (value: unknown): number | null => {
-  if (typeof value === "number" && Number.isInteger(value)) {
+  if (typeof value === "number" && Number.isInteger(value) && value > 0) {
     return value;
   }
-  if (typeof value === "string" && /^\d+$/.test(value)) {
-    return Number.parseInt(value, 10);
+  if (typeof value === "string" && /^\d+$/.test(value.trim())) {
+    const id = Number(value.trim());
+    return id > 0 ? id : null;
   }
   return null;
 };

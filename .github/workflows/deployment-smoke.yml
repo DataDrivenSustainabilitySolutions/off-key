@@ -45,9 +45,11 @@ jobs:
         run: npm ci
 
       - name: Reset deployment smoke stack
+        timeout-minutes: 3
         run: docker compose down -v --remove-orphans
 
       - name: Start base services
+        timeout-minutes: 10
         run: docker compose up -d --build timescaledb socket-proxy mailpit
 
       - name: Wait for base services
@@ -139,6 +141,7 @@ jobs:
           wait_for_http mailpit http://localhost:8025/api/v1/messages 120 2
 
       - name: Start db-sync
+        timeout-minutes: 10
         run: docker compose up -d --build db-sync
 
       - name: Wait for db-sync schema readiness
@@ -168,6 +171,7 @@ jobs:
           done
 
       - name: Start tactic middleware
+        timeout-minutes: 10
         run: docker compose up -d --build tactic-middleware
 
       - name: Wait for tactic middleware readiness
@@ -207,6 +211,7 @@ jobs:
           done
 
       - name: Start application services
+        timeout-minutes: 10
         run: docker compose up -d --build api-gateway frontend
 
       - name: Wait for application readiness
@@ -254,11 +259,13 @@ jobs:
           done
 
       - name: Run deployment smoke test
+        timeout-minutes: 5
         working-directory: frontend
         run: npm run test:e2e
 
       - name: Collect deployment smoke diagnostics
         if: failure()
+        timeout-minutes: 5
         run: |
           set +e
           mkdir -p deployment-smoke-diagnostics
@@ -295,4 +302,5 @@ jobs:
 
       - name: Tear down deployment smoke stack
         if: always()
+        timeout-minutes: 5
         run: docker compose down -v --remove-orphans

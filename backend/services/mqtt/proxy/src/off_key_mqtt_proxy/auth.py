@@ -23,8 +23,6 @@ class ApiKeyCredentials:
 class ApiKeyAuthError(Exception):
     """API-Key authentication error"""
 
-    pass
-
 
 class ApiKeyAuthHandler:
     """

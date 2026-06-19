@@ -4,6 +4,7 @@ Main MQTT proxy service orchestrator.
 
 import asyncio
 import signal
+from contextlib import suppress
 from typing import Optional
 
 from off_key_core.config.logs import logger
@@ -177,10 +178,8 @@ class MQTTProxyService:
         """Stop background bridge supervision task."""
         if self.bridge_supervisor_task and not self.bridge_supervisor_task.done():
             self.bridge_supervisor_task.cancel()
-            try:
+            with suppress(asyncio.CancelledError):
                 await self.bridge_supervisor_task
-            except asyncio.CancelledError:
-                pass
         self.bridge_supervisor_task = None
 
     def _build_bridge_config(self) -> MQTTConfig:

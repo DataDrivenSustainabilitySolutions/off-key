@@ -7,6 +7,7 @@ TLS configuration, authentication, and automatic reconnection with backoff.
 
 import asyncio
 import ssl
+from contextlib import suppress
 from datetime import datetime
 from typing import Optional, Callable, Awaitable
 
@@ -131,9 +132,8 @@ class ConnectionManager:
                         await self.on_connected()
 
                     return True
-                else:
-                    logger.error("MQTT connection failed")
-                    return False
+                logger.error("MQTT connection failed")
+                return False
 
             except asyncio.TimeoutError:
                 logger.error("MQTT connection timeout")
@@ -164,10 +164,8 @@ class ConnectionManager:
         # Cancel reconnect task
         if self._reconnect_task and not self._reconnect_task.done():
             self._reconnect_task.cancel()
-            try:
+            with suppress(asyncio.CancelledError):
                 await self._reconnect_task
-            except asyncio.CancelledError:
-                pass
 
         # Disconnect client
         if self.client:

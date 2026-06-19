@@ -8,6 +8,7 @@ and real-time API endpoints with intelligent logging and error handling.
 import asyncio
 import time
 import uuid
+from contextlib import suppress
 from datetime import datetime
 from typing import Dict, List, Optional, Any, Set
 from dataclasses import dataclass, field
@@ -159,7 +160,6 @@ class MessageDestination(ABC):
         Returns:
             True if processing successful, False otherwise
         """
-        pass
 
     def get_metrics(self) -> DestinationMetrics:
         """Get destination metrics"""
@@ -411,21 +411,20 @@ class BridgeDestination(MessageDestination):
                     },
                 )
                 return True
-            else:
-                self.failure_count += 1
-                logger.error(
-                    "event=router.destination_failed destination=mqtt_bridge \
-                         source_topic=%s target_topic=%s error=publish_failed",
-                    message.topic,
-                    target_topic,
-                    extra={
-                        **self._log_context,
-                        "source_topic": message.topic,
-                        "target_topic": target_topic,
-                        "error": "publish_failed",
-                    },
-                )
-                return False
+            self.failure_count += 1
+            logger.error(
+                "event=router.destination_failed destination=mqtt_bridge \
+                     source_topic=%s target_topic=%s error=publish_failed",
+                message.topic,
+                target_topic,
+                extra={
+                    **self._log_context,
+                    "source_topic": message.topic,
+                    "target_topic": target_topic,
+                    "error": "publish_failed",
+                },
+            )
+            return False
 
         except Exception as e:
             self.message_count += 1
@@ -536,17 +535,13 @@ class MessageRouter:
         # Cancel background tasks
         if self._cleanup_task and not self._cleanup_task.done():
             self._cleanup_task.cancel()
-            try:
+            with suppress(asyncio.CancelledError):
                 await self._cleanup_task
-            except asyncio.CancelledError:
-                pass
 
         if self._metrics_task and not self._metrics_task.done():
             self._metrics_task.cancel()
-            try:
+            with suppress(asyncio.CancelledError):
                 await self._metrics_task
-            except asyncio.CancelledError:
-                pass
 
         # Wait for active routes to complete (race-condition-free)
         # First: Handle already-complete case atomically
@@ -826,33 +821,30 @@ class MessageRouter:
                         retry_count=attempt,
                     )
                     return
+                if attempt < self.max_retries:
+                    logger.debug(
+                        "event=router.destination_retry destination=%s \
+                             attempt=%s message_id=%s",
+                        dest_name,
+                        attempt + 1,
+                        route_info.message_id,
+                        extra={
+                            **self._log_context,
+                            "destination": dest_name,
+                            "attempt": attempt + 1,
+                            "message_id": route_info.message_id,
+                        },
+                    )
+                    await asyncio.sleep(self.config.get_jittered_backoff_delay(attempt))
                 else:
-                    if attempt < self.max_retries:
-                        logger.debug(
-                            "event=router.destination_retry destination=%s \
-                                 attempt=%s message_id=%s",
-                            dest_name,
-                            attempt + 1,
-                            route_info.message_id,
-                            extra={
-                                **self._log_context,
-                                "destination": dest_name,
-                                "attempt": attempt + 1,
-                                "message_id": route_info.message_id,
-                            },
-                        )
-                        await asyncio.sleep(
-                            self.config.get_jittered_backoff_delay(attempt)
-                        )
-                    else:
-                        route_info.results[dest_name] = RouteResult(
-                            destination=dest_name,
-                            status=RouteStatus.FAILED,
-                            processing_time=processing_time,
-                            error="Processing failed after retries",
-                            retry_count=attempt,
-                        )
-                        return
+                    route_info.results[dest_name] = RouteResult(
+                        destination=dest_name,
+                        status=RouteStatus.FAILED,
+                        processing_time=processing_time,
+                        error="Processing failed after retries",
+                        retry_count=attempt,
+                    )
+                    return
 
             except Exception as e:
                 processing_time = time.time() - start_time

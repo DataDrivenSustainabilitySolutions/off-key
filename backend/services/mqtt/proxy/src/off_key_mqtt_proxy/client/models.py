@@ -87,5 +87,3 @@ class MQTTMessage:
 
 class MQTTClientError(Exception):
     """MQTT client error"""
-
-    pass

@@ -4,6 +4,7 @@ Database Writer for MQTT Telemetry Data
 
 import asyncio
 import time
+from contextlib import suppress
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Any, Union, Callable
 from dataclasses import dataclass, field
@@ -135,8 +136,6 @@ class WriteBatch:
 class DatabaseWriterError(Exception):
     """Database writer error"""
 
-    pass
-
 
 class DatabaseWriter:
     """
@@ -240,10 +239,8 @@ class DatabaseWriter:
                 )
             except asyncio.TimeoutError:
                 self._writer_task.cancel()
-                try:
+                with suppress(asyncio.CancelledError):
                     await self._writer_task
-                except asyncio.CancelledError:
-                    pass
             except asyncio.CancelledError:
                 pass
 
@@ -260,10 +257,8 @@ class DatabaseWriter:
 
         if self._health_task and not self._health_task.done():
             self._health_task.cancel()
-            try:
+            with suppress(asyncio.CancelledError):
                 await self._health_task
-            except asyncio.CancelledError:
-                pass
 
         logger.debug("event=db_writer.stopped", extra=self._log_context)
 
@@ -424,7 +419,7 @@ class DatabaseWriter:
     async def _trigger_batch_processing(self):
         """Trigger processing of current batch"""
         if self.pending_batch.size() == 0:
-            return
+            return None
 
         # Move current batch to processing
         self._next_batch_id += 1
@@ -465,10 +460,8 @@ class DatabaseWriter:
             for task in pending:
                 task.cancel()
             for task in pending:
-                try:
+                with suppress(asyncio.CancelledError):
                     await task
-                except asyncio.CancelledError:
-                    pass
 
     async def _writer_loop(self):
         """Background loop for batch processing"""

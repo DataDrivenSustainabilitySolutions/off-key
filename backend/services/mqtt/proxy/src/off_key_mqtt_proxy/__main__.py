@@ -7,6 +7,7 @@ occur when a module is both imported as a package component and executed as a sc
 """
 
 import asyncio
+from contextlib import suppress
 from pathlib import Path
 
 from .proxy import MQTTProxyService
@@ -64,10 +65,8 @@ async def main():
         for task in tasks:
             if task.done():
                 continue
-            try:
+            with suppress(asyncio.CancelledError):
                 await task
-            except asyncio.CancelledError:
-                pass
 
         logger.info("MQTT proxy service shutdown complete")
 

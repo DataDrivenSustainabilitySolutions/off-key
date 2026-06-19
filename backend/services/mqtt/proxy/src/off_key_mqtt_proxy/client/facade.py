@@ -189,9 +189,8 @@ class MQTTClient:
                 self.messages_sent += 1
                 logger.debug(f"Published message to {topic}")
                 return True
-            else:
-                logger.error(f"Failed to publish to {topic}: {result.rc}")
-                return False
+            logger.error(f"Failed to publish to {topic}: {result.rc}")
+            return False
 
         except Exception as e:
             logger.error(f"Error publishing to {topic}: {e}")
@@ -267,4 +266,3 @@ class MQTTClient:
     async def _on_disconnected(self, unexpected: bool) -> None:
         """Called when connection is lost"""
         # Could add additional cleanup logic here if needed
-        pass

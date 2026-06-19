@@ -62,12 +62,11 @@ class SubscriptionManager:
                 self.pending_subscriptions.discard(topic)
                 logger.info(f"Successfully subscribed to {topic}")
                 return True
-            else:
-                error_msg = self._get_subscription_error_message(result)
-                logger.error(f"Failed to subscribe to {topic}: {result} - {error_msg}")
-                # Add to pending for retry
-                self.pending_subscriptions.add(topic)
-                return False
+            error_msg = self._get_subscription_error_message(result)
+            logger.error(f"Failed to subscribe to {topic}: {result} - {error_msg}")
+            # Add to pending for retry
+            self.pending_subscriptions.add(topic)
+            return False
 
         except Exception as e:
             logger.error(f"Error subscribing to {topic}: {e}")
@@ -98,9 +97,8 @@ class SubscriptionManager:
                 self.pending_subscriptions.discard(topic)
                 logger.info(f"Successfully unsubscribed from {topic}")
                 return True
-            else:
-                logger.error(f"Failed to unsubscribe from {topic}: {result}")
-                return False
+            logger.error(f"Failed to unsubscribe from {topic}: {result}")
+            return False
 
         except Exception as e:
             logger.error(f"Error unsubscribing from {topic}: {e}")

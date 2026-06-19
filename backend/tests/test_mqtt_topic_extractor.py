@@ -2,7 +2,11 @@
 
 import pytest
 
-from off_key_core.utils.mqtt_topics import TopicMetadataExtractor
+from off_key_core.utils.mqtt_topics import (
+    TopicMetadataExtractor,
+    normalize_mqtt_topic_filters,
+    validate_mqtt_topic_filter,
+)
 
 
 def test_extracts_legacy_topic_shape():
@@ -46,3 +50,48 @@ def test_returns_none_when_neither_topic_nor_payload_has_required_metadata():
 def test_rejects_regex_without_required_named_groups():
     with pytest.raises(ValueError, match="named groups"):
         TopicMetadataExtractor(topic_regex=r"^charger/([^/]+)/(.+)$")
+
+
+def test_normalizes_and_deduplicates_monitoring_topic_filters():
+    topics = normalize_mqtt_topic_filters(
+        [
+            " charger/charger-1/live-telemetry/sine ",
+            "charger/charger-1/live-telemetry/sine",
+            "charger/+/telemetry/#",
+        ],
+        require_charger_prefix=True,
+        require_telemetry_topic=True,
+    )
+
+    assert topics == [
+        "charger/charger-1/live-telemetry/sine",
+        "charger/+/telemetry/#",
+    ]
+
+
+@pytest.mark.parametrize("topic", ["#", "/#", "tenant/charger-1/telemetry/sine"])
+def test_rejects_monitoring_topic_filters_outside_charger_namespace(topic):
+    with pytest.raises(ValueError):
+        validate_mqtt_topic_filter(
+            topic,
+            require_charger_prefix=True,
+            require_telemetry_topic=True,
+        )
+
+
+@pytest.mark.parametrize(
+    "topic",
+    [
+        "charger/#",
+        "charger/charger-1/status",
+        "charger/charger-1/live-telemetry/foo/#/bar",
+        "charger/charger-1/live-telemetry/foo+bar",
+    ],
+)
+def test_rejects_invalid_monitoring_topic_filter_shapes(topic):
+    with pytest.raises(ValueError):
+        validate_mqtt_topic_filter(
+            topic,
+            require_charger_prefix=True,
+            require_telemetry_topic=True,
+        )

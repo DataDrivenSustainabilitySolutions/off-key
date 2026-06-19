@@ -58,6 +58,7 @@ class RadarMQTTClient:
         # Event loop for async coordination
         self._loop: Optional[asyncio.AbstractEventLoop] = None
         self._message_processor_task: Optional[asyncio.Task] = None
+        self._reconnect_task: Optional[asyncio.Task] = None
         self._shutdown_event = asyncio.Event()
         logging_settings = get_logging_settings()
         self._heartbeat_interval_seconds = (
@@ -79,12 +80,18 @@ class RadarMQTTClient:
     async def start(self):
         """Start the MQTT client and message processing"""
         self._loop = asyncio.get_running_loop()
+        self._shutdown_event.clear()
 
         # Start message processor
         self._message_processor_task = asyncio.create_task(self._message_processor())
 
-        # Connect to MQTT broker
-        await self._connect()
+        try:
+            # Initial startup must be connected and subscribed before the service is
+            # considered ready. Background reconnects are only for later failures.
+            await self._connect()
+        except Exception:
+            await self.stop()
+            raise
 
         logger.info("event=radar.mqtt_client_started")
 
@@ -94,6 +101,14 @@ class RadarMQTTClient:
 
         # Signal shutdown
         self._shutdown_event.set()
+
+        if self._reconnect_task and not self._reconnect_task.done():
+            self._reconnect_task.cancel()
+            try:
+                await self._reconnect_task
+            except asyncio.CancelledError:
+                pass
+        self._reconnect_task = None
 
         # Disconnect from broker
         if self.client:
@@ -122,6 +137,7 @@ class RadarMQTTClient:
         try:
             # Create client with unique ID
             client_id = f"{self.config.client_id_prefix}-{uuid.uuid4().hex[:8]}"
+            self.is_connected = False
 
             # Use TCP transport for simplicity (bridge handles WebSocket if needed)
             self.client = mqtt.Client(client_id=client_id, transport="tcp")
@@ -172,10 +188,21 @@ class RadarMQTTClient:
             self.reconnect_attempts = 0
 
         except Exception as e:
+            if self.client:
+                try:
+                    self.client.loop_stop()
+                    self.client.disconnect()
+                except Exception:
+                    logger.debug(
+                        "event=radar.mqtt_failed_client_cleanup_error",
+                        exc_info=True,
+                    )
+                finally:
+                    self.client = None
             logger.error(
                 "event=radar.mqtt_connect_failed error=%s", str(e), exc_info=True
             )
-            await self._schedule_reconnect()
+            raise
 
     def _on_connect(self, client, userdata, flags, rc):
         """MQTT connection callback"""
@@ -220,10 +247,12 @@ class RadarMQTTClient:
         if rc != 0:
             logger.warning("event=radar.mqtt_disconnected_unexpected code=%s", rc)
             # Schedule reconnection
-            if self._loop and not self._shutdown_event.is_set():
-                self._loop.call_soon_threadsafe(
-                    lambda: asyncio.create_task(self._schedule_reconnect())
-                )
+            if (
+                self._loop
+                and not self._loop.is_closed()
+                and not self._shutdown_event.is_set()
+            ):
+                self._loop.call_soon_threadsafe(self._ensure_reconnect_task)
         else:
             logger.info("event=radar.mqtt_disconnected")
 
@@ -342,32 +371,55 @@ class RadarMQTTClient:
 
         logger.info("event=radar.mqtt_message_processor_stopped")
 
-    async def _schedule_reconnect(self):
-        """Schedule reconnection attempt with exponential backoff"""
+    def _ensure_reconnect_task(self) -> None:
+        """Create one background reconnect loop if needed."""
         if self._shutdown_event.is_set():
             return
+        if self._reconnect_task and not self._reconnect_task.done():
+            return
+        self._reconnect_task = asyncio.create_task(self._reconnect_loop())
 
-        if self.reconnect_attempts >= self.max_reconnect_attempts:
+    async def _schedule_reconnect(self):
+        """Compatibility wrapper used by tests and explicit callers."""
+        self._ensure_reconnect_task()
+        await asyncio.sleep(0)
+
+    async def _reconnect_loop(self):
+        """Reconnect with bounded backoff after an established link drops."""
+        while (
+            not self._shutdown_event.is_set()
+            and not self.is_connected
+            and self.reconnect_attempts < self.max_reconnect_attempts
+        ):
+            self.reconnect_attempts += 1
+            delay = min(
+                self.reconnect_delay * (2 ** (self.reconnect_attempts - 1)), 300
+            )
+
+            logger.info(
+                "event=radar.mqtt_reconnect_scheduled attempt=%s delay_s=%.1f",
+                self.reconnect_attempts,
+                delay,
+            )
+            await asyncio.sleep(delay)
+
+            if self._shutdown_event.is_set():
+                return
+
+            try:
+                await self._connect()
+            except Exception as exc:
+                logger.warning(
+                    "event=radar.mqtt_reconnect_attempt_failed attempt=%s error=%s",
+                    self.reconnect_attempts,
+                    exc,
+                )
+
+        if not self.is_connected and not self._shutdown_event.is_set():
             logger.error(
                 "event=radar.mqtt_reconnect_exhausted attempts=%s",
                 self.reconnect_attempts,
             )
-            return
-
-        self.reconnect_attempts += 1
-        delay = min(
-            self.reconnect_delay * (2 ** (self.reconnect_attempts - 1)), 300
-        )  # Max 5 minutes
-
-        logger.info(
-            "event=radar.mqtt_reconnect_scheduled attempt=%s delay_s=%.1f",
-            self.reconnect_attempts,
-            delay,
-        )
-        await asyncio.sleep(delay)
-
-        if not self._shutdown_event.is_set():
-            await self._connect()
 
     def get_connection_info(self) -> Dict[str, Any]:
         """Get connection information for monitoring"""

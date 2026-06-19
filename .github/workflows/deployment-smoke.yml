@@ -22,11 +22,12 @@ concurrency:
 jobs:
   deployment-smoke:
     name: deployment-smoke
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 35
 
     env:
       COMPOSE_PROJECT_NAME: off-key-smoke
+      PLAYWRIGHT_CHROMIUM_CHANNEL: chrome
 
     steps:
       - name: Checkout
@@ -43,15 +44,13 @@ jobs:
         working-directory: frontend
         run: npm ci
 
-      - name: Install Playwright browsers
-        working-directory: frontend
-        run: npx playwright install --with-deps chromium
-
       - name: Reset deployment smoke stack
+        timeout-minutes: 3
         run: docker compose down -v --remove-orphans
 
       - name: Start base services
-        run: docker compose up -d --build timescaledb socket-proxy mailpit
+        timeout-minutes: 10
+        run: docker compose up -d --build timescaledb socket-proxy mailpit emqx-main
 
       - name: Wait for base services
         run: |
@@ -110,11 +109,40 @@ jobs:
             done
           }
 
+          wait_for_socket_proxy() {
+            local timeout_seconds="$1"
+            local interval_seconds="${2:-2}"
+            local deadline=$((SECONDS + timeout_seconds))
+            local network="${COMPOSE_PROJECT_NAME}_socket-network"
+
+            while true; do
+              if docker run --rm --network "$network" curlimages/curl:8.16.0 \
+                -fsS http://socket-proxy:2375/_ping > /tmp/socket-proxy.response; then
+                echo "socket-proxy ready at http://socket-proxy:2375/_ping on $network"
+                cat /tmp/socket-proxy.response
+                echo
+                return 0
+              fi
+
+              if (( SECONDS >= deadline )); then
+                echo "::error::socket-proxy did not become ready within ${timeout_seconds}s at http://socket-proxy:2375/_ping on $network"
+                docker run --rm --network "$network" curlimages/curl:8.16.0 \
+                  -sS http://socket-proxy:2375/_ping || true
+                echo
+                return 1
+              fi
+
+              sleep "$interval_seconds"
+            done
+          }
+
           wait_for_container_health timescaledb 240
-          wait_for_http socket-proxy http://localhost:2375/_ping 120 2
+          wait_for_container_health "$(docker compose ps -q emqx-main)" 240
+          wait_for_socket_proxy 120 2
           wait_for_http mailpit http://localhost:8025/api/v1/messages 120 2
 
       - name: Start db-sync
+        timeout-minutes: 10
         run: docker compose up -d --build db-sync
 
       - name: Wait for db-sync schema readiness
@@ -144,6 +172,7 @@ jobs:
           done
 
       - name: Start tactic middleware
+        timeout-minutes: 10
         run: docker compose up -d --build tactic-middleware
 
       - name: Wait for tactic middleware readiness
@@ -182,7 +211,12 @@ jobs:
             sleep 5
           done
 
+      - name: Build RADAR image
+        timeout-minutes: 10
+        run: docker compose --profile standalone-radar build mqtt-radar
+
       - name: Start application services
+        timeout-minutes: 10
         run: docker compose up -d --build api-gateway frontend
 
       - name: Wait for application readiness
@@ -210,7 +244,8 @@ jobs:
           set -euo pipefail
 
           required_running=(react_client socket_proxy mailpit)
-          required_healthy=(api_gateway tactic_middleware db_sync timescaledb)
+          emqx_container="$(docker compose ps -q emqx-main)"
+          required_healthy=(api_gateway tactic_middleware db_sync timescaledb "$emqx_container")
 
           for container in "${required_running[@]}"; do
             status="$(docker inspect --format '{{.State.Status}}' "$container" 2>/dev/null || true)"
@@ -230,30 +265,34 @@ jobs:
           done
 
       - name: Run deployment smoke test
+        timeout-minutes: 5
         working-directory: frontend
         run: npm run test:e2e
 
       - name: Collect deployment smoke diagnostics
         if: failure()
+        timeout-minutes: 5
         run: |
           set +e
           mkdir -p deployment-smoke-diagnostics
 
           docker compose ps --all > deployment-smoke-compose-ps.txt
           docker compose logs --no-color \
-            frontend api-gateway tactic-middleware db-sync timescaledb socket-proxy mailpit \
+            frontend api-gateway tactic-middleware db-sync timescaledb socket-proxy mailpit emqx-main \
             > deployment-smoke-compose.log
 
           for container in react_client api_gateway tactic_middleware db_sync timescaledb socket_proxy mailpit; do
             docker inspect "$container" > "deployment-smoke-diagnostics/${container}.inspect.json" 2>&1
           done
+          docker inspect "$(docker compose ps -q emqx-main)" > deployment-smoke-diagnostics/emqx-main.inspect.json 2>&1
 
           curl -sS http://localhost:8001/health > deployment-smoke-diagnostics/tactic-health.json 2>&1
           curl -sS http://localhost:8001/ready > deployment-smoke-diagnostics/tactic-ready.json 2>&1
           docker exec db_sync /app/bin/python -c "import urllib.request; print(urllib.request.urlopen('http://localhost:8009/health', timeout=2).read().decode())" > deployment-smoke-diagnostics/db-sync-health.json 2>&1
           docker exec db_sync /app/bin/python -c "import urllib.request; print(urllib.request.urlopen('http://localhost:8009/ready/schema', timeout=2).read().decode())" > deployment-smoke-diagnostics/db-sync-ready-schema.json 2>&1
           curl -sS http://localhost:8000/health > deployment-smoke-diagnostics/api-gateway-health.json 2>&1
-          curl -sS http://localhost:2375/_ping > deployment-smoke-diagnostics/socket-proxy-ping.txt 2>&1
+          docker run --rm --network "${COMPOSE_PROJECT_NAME}_socket-network" curlimages/curl:8.16.0 \
+            -sS http://socket-proxy:2375/_ping > deployment-smoke-diagnostics/socket-proxy-ping.txt 2>&1
 
       - name: Upload deployment smoke artifacts
         if: failure()
@@ -270,4 +309,5 @@ jobs:
 
       - name: Tear down deployment smoke stack
         if: always()
+        timeout-minutes: 5
         run: docker compose down -v --remove-orphans

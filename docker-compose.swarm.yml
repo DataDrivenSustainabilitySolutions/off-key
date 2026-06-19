@@ -3,12 +3,12 @@ services:
   postgres:
     image: timescale/timescaledb:latest-pg15
     env_file: .env
-    ports:
-      - target: 5432
-        published: "${POSTGRES_PORT}"
-        mode: ingress
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
+    #    ports:
+    #      - target: 5432
+    #        published: "${POSTGRES_PORT}"
+    #        mode: ingress
+    #    volumes:
+    #      - postgres_data:/var/lib/postgresql/data
     networks:
       - app-network
     healthcheck:
@@ -17,45 +17,63 @@ services:
       timeout: 5s
       retries: 5
     deploy:
+      replicas: 1
       placement:
-        constraints:
-          - node.role == manager
+        constraints: [node.labels.backend == true ]
+      restart_policy:
+        condition: any
 
   api:
     image: "${API_IMAGE:-off-key-api-gateway:latest}"
     env_file: .env
-    ports:
-      - target: 8000
-        published: "${BACKEND_PORT}"
-        mode: ingress
+    #    ports:
+    #      - target: 8000
+    #        published: "${BACKEND_PORT}"
+    #        mode: ingress
+    networks:
+      - app-network
+    #      - socket-network
+    #    healthcheck:
+    #      test: [ "CMD", "curl", "-f", "http://localhost:8000/health" ]
+    #      interval: 10s
+    #      retries: 5
+    environment:
+      - SYNC_ENABLED=false
+    command: ["uvicorn", "off_key_api_gateway.main:app",
+              "--reload", "--reload-dir", "/app/lib/python3.12/site-packages/off_key_api_gateway",
+              "--host", "", "--port", "8000"]
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints: [node.labels.backend == true ]
+      restart_policy:
+        condition: any
+
+  tactic:
+    image: "${TACTIC_IMAGE:-off-key-tactic-middleware:latest}"
+    env_file: .env
+    #    ports:
+    #      - target: 8001
+    #        published: 8001
+    #        mode: ingress
     networks:
       - app-network
       - socket-network
-    healthcheck:
-      test:
-        - "CMD"
-        - "/app/bin/python"
-        - "-c"
-        - "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=2)"
-      interval: 5s
-      timeout: 5s
-      retries: 20
-      start_period: 10s
+    environment:
+      - TACTIC_DOCKER_DEFAULT_NETWORK=off-key_emqx-network
+    command: [ "/app/bin/python", "-m", "off_key_tactic_middleware" ]
     deploy:
-      mode: replicated
-      replicas: 2
+      replicas: 1
       placement:
-        constraints:
-          - node.role == worker
+        constraints: [node.labels.frontend == true ]
+      restart_policy:
+        condition: any
 
   socket-proxy:
     image: tecnativa/docker-socket-proxy
     networks:
       - socket-network
-    ports:
-      - target: 2375
-        published: 2375
-        mode: host
     volumes:
       - "/var/run/docker.sock:/var/run/docker.sock:ro"
     environment:
@@ -76,98 +94,366 @@ services:
       - BUILD=0
       - COMMIT=0
       - CONFIGS=0
-      - CONTAINERS=1 # Traefik, portainer, etc.
+      - CONTAINERS=1 # Required by TACTIC RADAR container fallback and cleanup.
       - DISTRIBUTION=0
       - EXEC=0
-      - IMAGES=1 # Portainer
-      - INFO=1 # Portainer
-      - NETWORKS=1 # Portainer
+      - IMAGES=0
+      - INFO=1 # Required for Swarm manager detection.
+      - NETWORKS=0
       - NODES=0
       - PLUGINS=0
-      - SERVICES=1 # Portainer
+      - SERVICES=1 # Required by TACTIC RADAR Swarm orchestration.
       - SESSION=0
       - SWARM=0
       - SYSTEM=0
-      - TASKS=1 # Portainer
-      - VOLUMES=1 # Portainer
+      - TASKS=1 # Required for Swarm service status checks.
+      - VOLUMES=0
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      restart_policy:
+        condition: any
 
   frontend:
     image: "${FRONTEND_IMAGE:-off-key-frontend:latest}"
     env_file: .env
-    ports:
-      - target: 5173
-        published: "${FRONTEND_PORT}"
-        mode: ingress
+    #    ports:
+    #      - target: 5173
+    #        published: "${FRONTEND_PORT}"
+    #        mode: ingress
     networks:
       - public-network
       - app-network
-    volumes:
-      - type: bind
-        source: ./frontend
-        target: /src
-      - frontend_node_modules:/src/node_modules
-      - type: volume
-        source: vite_cache
-        target: /src/node_modules/.vite
+    environment:
+      - __VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS=${VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS}
     deploy:
       mode: replicated
-      replicas: 2
+      replicas: 1
       placement:
-        constraints:
-          - node.role == worker
-#        preferences:
-#          - spread: node.labels.type  # Distribute evenly
-#      resources:
-#        limits:
-#          cpus: '1'
-#          memory: 512M
+        constraints: [ node.labels.frontend == true ]
+      restart_policy:
+        condition: any
 
   mailpit:
     image: axllent/mailpit:latest
-    volumes:
-      - ./data:/data
-    ports:
-      - target: 8025
-        published: 8025
-        mode: ingress
-      - target: 1025
-        published: 1025
-        mode: ingress
+    env_file: .env
+    #    volumes:
+    #      - mailpit_data:/data
+    #    ports:
+    #      - target: 8025
+    #        published: 8025
+    #        mode: ingress
+    #      - target: 1025
+    #        published: 1025
+    #        mode: ingress
     networks:
       - public-network
       - app-network
+    # For future reference
+    #configs:
+    #  - source: mailpit_config
+    #    target: /run/docker/mailpit_user_file
+    #environment:
+    #  - MP_UI_AUTH_FILE=/run/docker/mailpit_user_file
     deploy:
+      replicas: 1
       placement:
-        constraints:
-          - node.role == manager
+        constraints: [node.labels.backend == true ]
+      restart_policy:
+        condition: any
+
+  db-sync:
+    image: "${DB_SYNC_IMAGE:-off-key-db-sync:latest}"
+    env_file: .env
+    command: [ "/app/bin/python", "-m", "off_key_db_sync" ]
+    networks:
+      - app-network
+    healthcheck:
+      test: [ "CMD", "/app/bin/python", "-c",
+              "import urllib.request; urllib.request.urlopen('http://localhost:8009/ready/schema', timeout=2)" ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    deploy:
+      replicas: 1
+      placement:
+        constraints: [ node.labels.backend == true ]
+      restart_policy:
+        condition: any
 
   mqtt-proxy:
     image: "${MQTT_PROXY_IMAGE:-off-key-mqtt-proxy:latest}"
     env_file: .env
+    command: ["/app/bin/python", "-m", "off_key_mqtt_proxy"]
     networks:
       - app-network
+      - emqx-network
     environment:
       - SERVICE_TYPE=mqtt_proxy
-      - MQTT_TELEMETRY_ENABLED=true
-    volumes:
-      - ./logs:/app/logs  # For log persistence
+      #  - SERVICE_TYPE=radar
+      - MQTT_TELEMETRY_ENABLED=false
+    #    volumes:
+    #      - mqtt_logs:/app/logs
     deploy:
       mode: replicated
-      replicas: 2
+      replicas: 0
       placement:
-        constraints:
-          - node.role == worker
+        constraints: [ node.labels.backend == true ]
+      restart_policy:
+        condition: any
 
+  mqtt-radar:
+    image: "${MQTT_RADAR_IMAGE:-off-key-mqtt-radar:latest}"
+    env_file: .env
+    command: [ "/app/bin/python", "-m", "off_key_mqtt_radar" ]
+    networks:
+      - app-network
+      - emqx-network
+    deploy:
+      replicas: 1
+      placement:
+        constraints: [ node.labels.backend == true ]
+      restart_policy:
+        condition: any
+
+  #  memcached:
+  #    image: memcached:latest
+  #    ports:
+  #      - target: 11211
+  #        published: 11211
+  #        mode: ingress
+  #    networks:
+  #      - app-network
+  #    deploy:
+  #      replicas: 1
+  #      placement:
+  #        constraints: [ node.labels.backend == true ]
+  #      restart_policy:
+  #        condition: any
+
+  #  mcrouter:
+  #    image: ghcr.io/mszabo-wikia/mcrouter-debian-bookworm:20250621-a099b76
+  #    environment:
+  #      - MC_LOCAL=memcached
+  #      - MC_SERVICE=memcached
+  #    ports:
+  #      - target: 11211
+  #        published: 11210
+  #        mode: ingress
+  #    configs:
+  #      - source: mcrouter_config
+  #        target: /usr/local/mcrouter/config/config.json.template
+  #    command:
+  #      - /bin/bash
+  #      - -c
+  #      - |
+  #        sed "s|\$${MC_LOCAL}|$${MC_LOCAL}|g" /usr/local/mcrouter/config/config.json.template | \
+  #        sed "s|\$${MC_SERVICE}|$${MC_SERVICE}|g" > /usr/local/mcrouter/config/config.json && \
+  #        /usr/bin/mcrouter --config-file=/usr/local/mcrouter/config/config.json \
+  #        -p 11211 \
+  #       --num-proxies=1 \
+  #        --stats-logging-interval=0 \
+  #        --asynclog-disable \
+  #        --probe-timeout-initial=1000 \
+  #        --probe-timeout-max=15000 \
+  #        --reset-inactive-connection-interval=900000 \
+  #        --keepalive-count=6 \
+  #        --keepalive-interval=4 \
+  #        --keepalive-idle=30 \
+  #        --timeouts-until-tko=6
+  #    networks:
+  #      - app-network
+  #    deploy:
+  #      replicas: 1
+  #      placement:
+  #        constraints: [ node.labels.backend == true ]
+  #      restart_policy:
+  #        condition: any
+
+  tailscale-dev-proxy:
+    image: tailscale/tailscale:latest
+    volumes:
+      - tailscale-dev-proxy-state:/var/lib/tailscale
+    configs:
+      - source: ts_serve_cfg
+        target: /etc/tailscale/serve.json
+    environment:
+      - TS_AUTHKEY=${TAILSCALE_DEV_PROXY_AUTHKEY}
+      - TS_HOSTNAME=off-key-dev
+      - TS_USERSPACE=true
+      - TS_STATE_DIR=/var/lib/tailscale
+      - TS_ACCEPT_DNS=false
+      - TS_SERVE_CONFIG=/etc/tailscale/serve.json
+    networks:
+      - app-network
+      - public-network
+      - emqx-network
+    deploy:
+      replicas: ${TAILSCALE_DEV_PROXY_REPLICAS:-0}
+      placement:
+        constraints: [ node.role == manager ]
+      restart_policy:
+        condition: any
+
+  tailscale-ambibox:
+    image: tailscale/tailscale:latest
+    cap_add:
+      - net_admin
+      - sys_module
+    volumes:
+      - tailscale-ambibox-state:/var/lib/tailscale
+    env_file: .env
+    environment:
+      # No TS_AUTHKEY: identity is restored from persisted state volume
+      - TS_USERSPACE=true
+      - TS_STATE_DIR=/var/lib/tailscale
+      - TS_EXTRA_ARGS=${TAILSCALE_AMBIBOX_EXTRA_ARGS}
+      # SOCKS5 proxy on port 1055 — used by emqx-main to reach vendor MQTT over tailnet
+      - TS_SOCKS5_SERVER=0.0.0.0:1055
+    networks:
+      - emqx-network
+    deploy:
+      replicas: 1
+      placement:
+        constraints: [ node.labels.backend == true ]
+      restart_policy:
+        condition: any
+
+  mqtt-tailscale-bridge:
+    # TCP forwarder: EMQX connects here, traffic is forwarded to the vendor MQTT broker
+    # via the Tailscale SOCKS5 proxy. gost passes the .ts.net hostname to the proxy
+    # for resolution, so Tailscale's MagicDNS handles it — not the container's own DNS.
+    image: gogost/gost:3
+    command:
+      - "-L=tcp://:1883/${TAILSCALE_AMBIBOX_UPSTREAM_HOST}:1883"
+      - "-F=socks5://tailscale-ambibox:1055"
+    networks:
+      - emqx-network
+    deploy:
+      replicas: 1
+      placement:
+        constraints: [ node.labels.backend == true ]
+      restart_policy:
+        condition: any
+
+  emqx-main:
+    image: emqx/emqx:5.8.7
+    env_file: .env
+    environment:
+      - "EMQX_NODE_NAME=emqx@emqx-main"
+      - "EMQX_CLUSTER__DISCOVERY_STRATEGY=static"
+      - "EMQX_CLUSTER__STATIC__SEEDS=[emqx@emqx-main]"
+    #    healthcheck:
+    #      test: ["CMD", "/opt/emqx/bin/emqx", "ctl", "status"]
+    #      interval: 5s
+    #      timeout: 25s
+    #      retries: 5
+    networks:
+      emqx-network:
+        aliases:
+          - emqx-main
+    #    ports:
+    #      - target: 1883
+    #        published: 1883
+    #        mode: ingress
+    #      - target: 8083
+    #        published: 8083
+    #        mode: ingress
+    #      - target: 8084
+    #        published: 8084
+    #        mode: ingress
+    #      - target: 8883
+    #        published: 8883
+    #        mode: ingress
+    #      - target: 18083
+    #        published: 18083
+    #        mode: ingress
+    deploy:
+      replicas: 1
+      placement:
+        constraints: [ node.labels.backend == true ]
+      restart_policy:
+        condition: any
+
+  #  emqx-worker:
+  #    image: emqx/emqx:5.8.7
+  #    environment:
+  #      - "EMQX_NODE_NAME=emqx@{{.Node.Hostname}}.emqx-worker"
+  #      - "EMQX_CLUSTER__DISCOVERY_STRATEGY=static"
+  #      - "EMQX_CLUSTER__STATIC__SEEDS=[emqx@tasks.emqx-main,emqx@tasks.emqx-worker]"
+  #    healthcheck:
+  #      test: ["CMD", "/opt/emqx/bin/emqx", "ctl", "status"]
+  #      interval: 5s
+  #      timeout: 25s
+  #      retries: 5
+  #    networks:
+  #      - emqx-network
+  #    deploy:
+  #      replicas: 2
+  #      restart_policy:
+  #        condition: any
+
+
+volumes:
+  tailscale-dev-proxy-state:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /opt/stacks/off-key/tailscale-dev-proxy-data
+
+  tailscale-ambibox-state:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      # Directory must exist on the backend node before stack deploy.
+      # Populate it with the tailscaled.state from the working tailscale installation:
+      #   scp -r ./data-ambibox/ <backend-node>:/opt/stacks/off-key/tailscale-ambibox-data/
+      device: /opt/stacks/off-key/tailscale-ambibox-data
+
+  # volumes:
+  # postgres_data:
+  # vite_cache:
+  #   driver: local
+  # frontend_node_modules:
+
+configs:
+  ts_serve_cfg:
+    file: ./tailscale-serve.json
+
+# For future reference
+# configs:
+#  mailpit_config:
+#    file: ./dev/mailpit-user-file
+
+
+# WARNING: Encrypted overlay is incompatible with Tailscale
+# MTU=1280 for tailscale0 compatibility
 networks:
   public-network:
     driver: overlay
+    attachable: true
+    driver_opts:
+      com.docker.network.driver.mtu: 1280
+      # encrypted: "true"
   app-network:
     driver: overlay
+    driver_opts:
+      com.docker.network.driver.mtu: 1280
+      # encrypted: "true"
+    attachable: true
   socket-network:
     driver: overlay
-
-volumes:
-  postgres_data:
-  vite_cache:
-    driver: local
-  frontend_node_modules:
+    driver_opts:
+      com.docker.network.driver.mtu: 1280
+      # encrypted: "true"
+  emqx-network:
+    driver: overlay
+    attachable: true
+    driver_opts:
+      com.docker.network.driver.mtu: 1280
+      # encrypted: "true"

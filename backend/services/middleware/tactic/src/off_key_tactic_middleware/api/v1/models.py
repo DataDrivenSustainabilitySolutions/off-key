@@ -6,11 +6,12 @@ Provides REST API for managing model registry and model instances.
 
 import logging
 from typing import Any, Dict, List, Optional
-from fastapi import APIRouter, HTTPException, Depends, Response, status
+from fastapi import APIRouter, HTTPException, Depends, Query, Response, status
 from pydantic import BaseModel, Field
 
 from ...models.registry import ModelRegistryService
 from ...provider import get_model_registry_service
+from off_key_core.schemas.radar import MonitoringStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +31,10 @@ class ModelInfo(BaseModel):
     description: Optional[str] = Field(None, description="Model description")
     complexity: Optional[str] = Field(None, description="Computational complexity")
     memory_usage: Optional[str] = Field(None, description="Memory usage level")
+    strategy: MonitoringStrategy = Field(
+        default="adaptive_stream",
+        description="Monitoring strategy this model supports",
+    )
     import_paths: List[str] = Field(..., description="Python import paths to try")
     parameter_schema: Dict[str, Any] = Field(
         ..., description="JSON schema for parameters"
@@ -94,6 +99,7 @@ class ModelValidationResponse(BaseModel):
 
 @router.get("/", response_model=List[ModelInfo])
 async def list_models(
+    strategy: Optional[MonitoringStrategy] = Query(default=None),
     model_registry: ModelRegistryService = Depends(get_model_registry_service),
 ) -> List[ModelInfo]:
     """
@@ -104,6 +110,8 @@ async def list_models(
     """
     try:
         models = model_registry.get_available_models()
+        if strategy:
+            models = [model for model in models if model.get("strategy") == strategy]
         return [ModelInfo(**model) for model in models]
     except Exception as e:
         logger.error(f"Failed to list models: {e}")
@@ -244,28 +252,45 @@ async def create_model_instance(
         Success confirmation with validated parameters
     """
     try:
-        # Validate parameters first
-        validated_params = model_registry.validate_model_params(
+        validation_result = model_registry.validate_model_instantiation(
             request.model_type, request.parameters
         )
-
-        # Test that the model can be instantiated (but don't return it)
-        model_registry.create_model_instance(request.model_type, validated_params)
+        instantiated = validation_result["instantiated"]
+        runtime_owner = validation_result["runtime_owner"]
 
         return {
             "success": True,
-            "message": f"Model '{request.model_type}' created successfully",
+            "message": (
+                f"Model '{request.model_type}' created successfully"
+                if instantiated
+                else (
+                    f"Model '{request.model_type}' parameters validated; "
+                    "instantiation is deferred to the RADAR runtime"
+                )
+            ),
             "model_type": request.model_type,
-            "validated_parameters": validated_params,
+            "validated_parameters": validation_result["validated_parameters"],
+            "instantiated": instantiated,
+            "runtime_owner": runtime_owner,
         }
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except ImportError as e:
-        raise HTTPException(
-            status_code=422, detail=f"Model dependencies not available: {e}"
+    except ValueError:
+        logger.warning(
+            "Model validation failed for '%s'",
+            request.model_type,
+            exc_info=True,
         )
-    except Exception as e:
-        logger.error(f"Failed to create model instance '{request.model_type}': {e}")
+        raise HTTPException(
+            status_code=400,
+            detail="Model validation failed. Check model type and parameters.",
+        )
+    except ImportError:
+        logger.exception("Model dependency import failed for '%s'", request.model_type)
+        raise HTTPException(
+            status_code=422,
+            detail="Model dependencies are not available.",
+        )
+    except Exception:
+        logger.exception("Failed to create model instance '%s'", request.model_type)
         raise HTTPException(status_code=500, detail="Model creation failed")
 
 

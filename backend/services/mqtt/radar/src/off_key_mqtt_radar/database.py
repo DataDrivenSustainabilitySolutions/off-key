@@ -10,14 +10,15 @@ class with 23+ environment variables.
 """
 
 import asyncio
-import time
 import logging
 import math
+import time
+from collections import deque
+from collections.abc import Iterable
 from datetime import datetime
 from typing import List, Optional, Dict, Any, Tuple
-from collections import deque
 
-from sqlalchemy import Table, Column, Text, Float, TIMESTAMP, text
+from sqlalchemy import Table, Column, Text, Float, TIMESTAMP, JSON, text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.schema import MetaData
 from sqlalchemy.orm import sessionmaker
@@ -48,6 +49,7 @@ ANOMALY_TABLE = Table(
     Column("anomaly_type", Text, nullable=False),
     Column("anomaly_value", Float, nullable=False),
     Column("value_type", Text, nullable=True),
+    Column("sensor_set", JSON, nullable=True),
 )
 ANOMALY_IDENTITY_TABLE = Table(
     "anomaly_identity",
@@ -128,6 +130,8 @@ class DatabaseWriter:
         # Control
         self._writer_task: Optional[asyncio.Task] = None
         self._shutdown_event = asyncio.Event()
+        self._queue_lock = asyncio.Lock()
+        self._flush_lock = asyncio.Lock()
 
         logger.info("event=radar.db_writer_initialized")
 
@@ -136,6 +140,8 @@ class DatabaseWriter:
         if not self.config.db_write_enabled:
             logger.debug("event=radar.db_writer_disabled")
             return
+
+        self._shutdown_event.clear()
 
         # Initialize session factory lazily to avoid failing when disabled
         if self.session_factory is None:
@@ -156,32 +162,47 @@ class DatabaseWriter:
         # Signal shutdown
         self._shutdown_event.set()
 
-        # Cancel writer task
+        cancelled_error: Optional[asyncio.CancelledError] = None
+
+        # Let the writer loop finish any in-progress flush before cancelling it.
+        # The shield is intentional: if the caller cancels stop(), the writer task
+        # must not be cancelled while a batch snapshot may be out of the queue.
         if self._writer_task:
-            self._writer_task.cancel()
             try:
-                await self._writer_task
-            except asyncio.CancelledError:
-                pass
+                await asyncio.wait_for(
+                    asyncio.shield(self._writer_task),
+                    timeout=max(self.config.db_batch_timeout * 2, 5.0),
+                )
+            except asyncio.TimeoutError:
+                self._writer_task.cancel()
+                try:
+                    await self._writer_task
+                except asyncio.CancelledError:
+                    pass
+            except asyncio.CancelledError as exc:
+                cancelled_error = exc
 
         # Flush remaining records
-        if self.write_queue:
-            await self._flush_batch()
+        await asyncio.shield(self._flush_batch())
 
         logger.info("event=radar.db_writer_stopped")
+        if cancelled_error is not None:
+            raise cancelled_error
 
     async def write_anomaly(self, result: AnomalyResult):
         """Queue anomaly result for batch writing"""
         if not self.config.db_write_enabled:
             return
 
-        self.write_queue.append(result)
+        async with self._queue_lock:
+            self.write_queue.append(result)
+            should_flush = (
+                len(self.write_queue) >= self.config.db_batch_size
+                or (time.time() - self.last_write_time) > self.config.db_batch_timeout
+            )
 
         # Check if we should flush batch
-        if (
-            len(self.write_queue) >= self.config.db_batch_size
-            or (time.time() - self.last_write_time) > self.config.db_batch_timeout
-        ):
+        if should_flush:
             await self._flush_batch()
 
     async def write_service_metrics(self, metrics: Dict[str, Any]):
@@ -287,16 +308,31 @@ class DatabaseWriter:
         return self._extract_telemetry_type(result.topic, result.raw_data)
 
     @staticmethod
+    def _is_static_conformal_result(result: AnomalyResult) -> bool:
+        return isinstance((result.context or {}).get("static_conformal"), dict)
+
+    @staticmethod
     def _derive_anomaly_type(result: AnomalyResult) -> str:
         """Map detector output to stored anomaly semantics."""
         alignment_context = (result.context or {}).get("alignment", {})
+        if DatabaseWriter._is_static_conformal_result(result):
+            if bool(alignment_context.get("aligned_vector")):
+                return "ml_conformal_static_multivariate"
+            return "ml_conformal_static_univariate"
         if bool(alignment_context.get("aligned_vector")):
             return "ml_tailprob_multivariate"
         return "ml_tailprob_univariate"
 
     @staticmethod
     def _derive_anomaly_value(result: AnomalyResult) -> float:
-        """Persist tail probability when available to match trigger semantics."""
+        """Persist the p-value used by the active detector when available."""
+        static_context = (result.context or {}).get("static_conformal", {})
+        conformal_pvalue = static_context.get("p_value")
+        if isinstance(conformal_pvalue, (int, float)):
+            conformal_pvalue = float(conformal_pvalue)
+            if math.isfinite(conformal_pvalue):
+                return conformal_pvalue
+
         score_window = (result.context or {}).get("score_window", {})
         tail_pvalue = score_window.get("tail_pvalue")
         if isinstance(tail_pvalue, (int, float)):
@@ -304,6 +340,48 @@ class DatabaseWriter:
             if math.isfinite(tail_pvalue):
                 return tail_pvalue
         return float(result.anomaly_score)
+
+    @staticmethod
+    def _normalize_sensor_set(value: Any) -> Optional[List[str]]:
+        if isinstance(value, dict):
+            iterable = value.keys()
+        elif isinstance(value, set):
+            iterable = sorted(value)
+        elif isinstance(value, Iterable) and not isinstance(value, (str, bytes)):
+            iterable = value
+        else:
+            return None
+
+        sensors = []
+        seen = set()
+        for item in iterable:
+            sensor = str(item).strip() if item is not None else ""
+            if sensor and sensor not in seen:
+                sensors.append(sensor)
+                seen.add(sensor)
+        return sensors or None
+
+    def _derive_sensor_set(self, result: AnomalyResult) -> Optional[List[str]]:
+        """Resolve the exact telemetry streams involved in a stored anomaly."""
+        alignment_context = (result.context or {}).get("alignment", {})
+        required_sensors = self._normalize_sensor_set(
+            alignment_context.get("required_sensors")
+        )
+        if required_sensors and (
+            bool(alignment_context.get("aligned_vector")) or len(required_sensors) == 1
+        ):
+            return required_sensors
+
+        feature_source = result.raw_data if isinstance(result.raw_data, dict) else {}
+        feature_sensors = self._normalize_sensor_set(feature_source.keys())
+        if bool(alignment_context.get("aligned_vector")) and feature_sensors:
+            return feature_sensors
+
+        telemetry_type = self._extract_telemetry_type(result.topic, result.raw_data)
+        if telemetry_type and telemetry_type != "unknown":
+            return [telemetry_type]
+
+        return feature_sensors
 
     def _build_records(
         self,
@@ -318,7 +396,12 @@ class DatabaseWriter:
                     "telemetry_type": self._derive_telemetry_type(result),
                     "anomaly_type": self._derive_anomaly_type(result),
                     "anomaly_value": self._derive_anomaly_value(result),
-                    "value_type": "tail_pvalue",
+                    "value_type": (
+                        "conformal_pvalue"
+                        if self._is_static_conformal_result(result)
+                        else "tail_pvalue"
+                    ),
+                    "sensor_set": self._derive_sensor_set(result),
                 }
             )
         identity_records = [
@@ -356,71 +439,82 @@ class DatabaseWriter:
 
     async def _flush_batch(self):
         """Flush current batch to core anomalies table"""
-        if not self.write_queue:
-            return
+        async with self._flush_lock:
+            async with self._queue_lock:
+                if not self.write_queue:
+                    return
 
-        if self.session_factory is None:
-            self.session_factory = get_radar_async_session_factory()
+                batch_snapshot = list(self.write_queue)
+                del self.write_queue[: len(batch_snapshot)]
 
-        batch_snapshot = list(self.write_queue)
-        del self.write_queue[: len(batch_snapshot)]
+            if self.session_factory is None:
+                self.session_factory = get_radar_async_session_factory()
 
-        # Only write actual anomalies (is_anomaly=True)
-        anomalies_to_write = [r for r in batch_snapshot if r.is_anomaly]
-        batch_size = len(batch_snapshot)
-        anomaly_count = len(anomalies_to_write)
-        start_time = time.time()
+            # Only write actual anomalies (is_anomaly=True)
+            anomalies_to_write = [r for r in batch_snapshot if r.is_anomaly]
+            batch_size = len(batch_snapshot)
+            anomaly_count = len(anomalies_to_write)
+            start_time = time.time()
 
-        try:
-            if anomalies_to_write:
-                anomaly_records, identity_records = self._build_records(
-                    anomalies_to_write
-                )
-                async with self.session_factory() as session:
-                    await self._execute_upsert(
-                        session, anomaly_records, identity_records
-                    )
-                    await session.commit()
-
-                    logger.info(
-                        "event=radar.db_batch_written anomaly_count=%s batch_size=%s",
-                        anomaly_count,
-                        batch_size,
-                        extra={
-                            "anomaly_types": sorted(
-                                {record["anomaly_type"] for record in anomaly_records}
-                            )
-                        },
-                    )
-
-            # Update statistics
-            write_time = time.time() - start_time
-            self.write_times.append(write_time)
-            self.total_written += anomaly_count
-            self.last_write_time = time.time()
-
-        except Exception as e:
-            logger.error(
-                "event=radar.db_batch_write_failed anomaly_count=%s error=%s",
-                anomaly_count,
-                str(e),
-                exc_info=True,
-            )
-            self.total_errors += 1
-
-            # Implement retry logic
             try:
-                await self._retry_failed_batch(batch_snapshot=batch_snapshot)
-            except Exception as retry_exc:
-                self.write_queue = batch_snapshot + self.write_queue
-                self.total_errors += 1
+                if anomalies_to_write:
+                    anomaly_records, identity_records = self._build_records(
+                        anomalies_to_write
+                    )
+                    async with self.session_factory() as session:
+                        await self._execute_upsert(
+                            session, anomaly_records, identity_records
+                        )
+                        await session.commit()
+
+                        logger.info(
+                            "event=radar.db_batch_written "
+                            "anomaly_count=%s batch_size=%s",
+                            anomaly_count,
+                            batch_size,
+                            extra={
+                                "anomaly_types": sorted(
+                                    {
+                                        record["anomaly_type"]
+                                        for record in anomaly_records
+                                    }
+                                )
+                            },
+                        )
+
+                # Update statistics
+                write_time = time.time() - start_time
+                self.write_times.append(write_time)
+                self.total_written += anomaly_count
+                self.last_write_time = time.time()
+
+            except Exception as e:
                 logger.error(
-                    "event=radar.db_retry_unexpected_exception "
-                    "requeued_count=%s error=%s",
-                    len(batch_snapshot),
-                    str(retry_exc),
+                    "event=radar.db_batch_write_failed anomaly_count=%s error=%s",
+                    anomaly_count,
+                    str(e),
                     exc_info=True,
                 )
+                self.total_errors += 1
+
+                # Implement retry logic
+                try:
+                    await self._retry_failed_batch(batch_snapshot=batch_snapshot)
+                except Exception as retry_exc:
+                    async with self._queue_lock:
+                        self.write_queue = batch_snapshot + self.write_queue
+                    self.total_errors += 1
+                    logger.error(
+                        "event=radar.db_retry_unexpected_exception "
+                        "requeued_count=%s error=%s",
+                        len(batch_snapshot),
+                        str(retry_exc),
+                        exc_info=True,
+                    )
+            except asyncio.CancelledError:
+                async with self._queue_lock:
+                    self.write_queue = batch_snapshot + self.write_queue
+                raise
 
     async def _retry_failed_batch(self, *, batch_snapshot: List[AnomalyResult]):
         """Retry writing failed batch with exponential backoff.

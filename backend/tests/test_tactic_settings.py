@@ -60,6 +60,16 @@ def test_tactic_settings_expose_heuristic_and_freshness_defaults():
     assert defaults.sensor_freshness_seconds == 18.0
 
 
+def test_tactic_settings_expose_radar_workload_image_and_startup_grace():
+    settings = TacticSettings(
+        TACTIC_RADAR_IMAGE="registry.example/off-key-radar:2026.05.19",
+        TACTIC_RADAR_STARTUP_GRACE_SECONDS=7.5,
+    )
+
+    assert settings.config.radar_image == "registry.example/off-key-radar:2026.05.19"
+    assert settings.config.radar_startup_grace_seconds == 7.5
+
+
 def test_radar_container_runtime_settings_build_encoded_database_url():
     settings = RadarContainerRuntimeSettings(
         POSTGRES_USER="db@user",

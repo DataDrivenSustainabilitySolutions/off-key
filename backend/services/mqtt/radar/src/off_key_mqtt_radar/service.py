@@ -18,6 +18,7 @@ from datetime import datetime
 from typing import Optional
 
 from off_key_core.config.logs import logger
+from off_key_core.schemas.radar import AdaptiveStreamConfig, StaticBaselineConfig
 
 from .config.config import AnomalyDetectionConfig, get_radar_settings
 from .detector import (
@@ -25,6 +26,7 @@ from .detector import (
     ResilientAnomalyDetector,
     MemoryManager,
     SecurityValidator,
+    StaticConformalDetectionService,
 )
 from .mqtt_client import RadarMQTTClient
 from .database import DatabaseWriter, ensure_tables_exist
@@ -111,6 +113,7 @@ class RadarService:
 
         logger.info("Starting RADAR service", extra=self._log_context)
         self.start_time = datetime.now()
+        self.shutdown_event.clear()
 
         try:
             # Initialize anomaly detection
@@ -176,7 +179,20 @@ class RadarService:
 
     async def stop(self):
         """Stop the RADAR service"""
-        if not self.is_running:
+        has_started_components = any(
+            [
+                self.config_watcher,
+                self.mqtt_client,
+                self.detector,
+                self.database_writer,
+                self.message_processor,
+            ]
+        )
+        if (
+            not self.is_running
+            and self.shutdown_event.is_set()
+            and not has_started_components
+        ):
             logger.debug("event=radar.service_already_stopped")
             return
 
@@ -191,6 +207,7 @@ class RadarService:
             ("config_watcher", self.config_watcher),
             ("health_monitor", self.health_monitor),
             ("mqtt_client", self.mqtt_client),
+            ("detector", self.detector),
             ("database_writer", self.database_writer),
         ]
 
@@ -217,6 +234,13 @@ class RadarService:
                         exc_info=True,
                     )
 
+        self.config_watcher = None
+        self.config_reloader = None
+        self.mqtt_client = None
+        self.detector = None
+        self.database_writer = None
+        self.message_processor = None
+
         # Cleanup checkpoint lock file using extracted manager
         self.checkpoint_manager.cleanup_lock()
 
@@ -230,11 +254,37 @@ class RadarService:
         """
         logger.info("Setting up anomaly detection")
 
-        # Create anomaly detection config
-        anomaly_config = AnomalyDetectionConfig(
+        strategy = getattr(self.config, "strategy", "adaptive_stream")
+        static_baseline_config = (
+            getattr(self.config, "static_baseline_config", None)
+            or StaticBaselineConfig()
+        )
+        adaptive_stream_config = getattr(
+            self.config, "adaptive_stream_config", None
+        ) or AdaptiveStreamConfig(
             model_type=getattr(self.config, "model_type", "isolation_forest"),
             model_params=getattr(self.config, "model_params", {}),
             preprocessing_steps=getattr(self.config, "preprocessing_steps", []),
+        )
+        model_type = getattr(self.config, "model_type", "isolation_forest")
+        model_params = getattr(self.config, "model_params", {})
+        preprocessing_steps = getattr(self.config, "preprocessing_steps", [])
+        if strategy == "static_baseline":
+            model_type = static_baseline_config.model_type
+            model_params = static_baseline_config.model_params
+        else:
+            model_type = adaptive_stream_config.model_type
+            model_params = adaptive_stream_config.model_params
+            preprocessing_steps = adaptive_stream_config.preprocessing_steps
+
+        # Create anomaly detection config
+        anomaly_config = AnomalyDetectionConfig(
+            strategy=strategy,
+            model_type=model_type,
+            model_params=model_params,
+            preprocessing_steps=preprocessing_steps,
+            static_baseline_config=static_baseline_config,
+            adaptive_stream_config=adaptive_stream_config,
             subscription_topics=getattr(self.config, "subscription_topics", []),
             sensor_key_strategy=getattr(
                 self.config, "sensor_key_strategy", "full_hierarchy"
@@ -255,13 +305,18 @@ class RadarService:
 
         # Try to restore from checkpoint using extracted manager
         checkpoint_path = self.checkpoint_manager.find_latest_checkpoint()
+        service_cls = (
+            StaticConformalDetectionService
+            if anomaly_config.strategy == "static_baseline"
+            else AnomalyDetectionService
+        )
         if checkpoint_path:
             try:
                 logger.info(
                     f"Found checkpoint, attempting restore: {checkpoint_path}",
                     extra=self._log_context,
                 )
-                primary_service = AnomalyDetectionService.from_checkpoint(
+                primary_service = service_cls.from_checkpoint(
                     checkpoint_path, anomaly_config
                 )
                 logger.info(
@@ -279,16 +334,17 @@ class RadarService:
                     extra=self._log_context,
                     exc_info=True,
                 )
-                primary_service = AnomalyDetectionService(anomaly_config)
+                primary_service = service_cls(anomaly_config)
         else:
             logger.info("No checkpoint found, starting fresh", extra=self._log_context)
-            primary_service = AnomalyDetectionService(anomaly_config)
+            primary_service = service_cls(anomaly_config)
 
         # Create resilient detector (with fallback)
         self.detector = ResilientAnomalyDetector(primary_service)
 
         logger.info(
-            f"Anomaly detection setup complete with model: {anomaly_config.model_type}"
+            "Anomaly detection setup complete with model: "
+            f"{anomaly_config.model_type} strategy={anomaly_config.strategy}"
         )
 
         if self.required_sensors and self.state_cache:
@@ -424,6 +480,7 @@ class RadarService:
 
         except Exception as e:
             logger.error(f"Unexpected error in RADAR service: {e}", exc_info=True)
+            raise
         finally:
             # Ensure cleanup
             await self.stop()

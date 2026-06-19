@@ -18,7 +18,7 @@ def _assert_message_does_not_expose(response: dict, *sensitive_values: str) -> N
 @pytest.mark.asyncio
 async def test_model_instantiation_validation_error_hides_exception_detail():
     registry = MagicMock()
-    registry.validate_model_params.side_effect = ValueError(
+    registry.validate_model_instantiation.side_effect = ValueError(
         "secret validation detail /tmp/internal"
     )
 
@@ -38,14 +38,18 @@ async def test_model_instantiation_validation_error_hides_exception_detail():
         "secret validation detail",
         "/tmp/internal",
     )
-    registry.create_model_instance.assert_not_called()
+    registry.validate_model_instantiation.assert_called_once_with(
+        "isolation_forest",
+        {"n_estimators": 100},
+    )
 
 
 @pytest.mark.asyncio
 async def test_model_instantiation_import_error_hides_exception_detail():
     registry = MagicMock()
-    registry.validate_model_params.return_value = {"n_estimators": 100}
-    registry.create_model_instance.side_effect = ImportError("secret.module.path")
+    registry.validate_model_instantiation.side_effect = ImportError(
+        "secret.module.path"
+    )
 
     response = await call_test_model_instantiation(
         model_type="isolation_forest",
@@ -64,8 +68,9 @@ async def test_model_instantiation_import_error_hides_exception_detail():
 @pytest.mark.asyncio
 async def test_model_instantiation_internal_error_hides_exception_detail():
     registry = MagicMock()
-    registry.validate_model_params.return_value = {"n_estimators": 100}
-    registry.create_model_instance.side_effect = RuntimeError("stack trace secret")
+    registry.validate_model_instantiation.side_effect = RuntimeError(
+        "stack trace secret"
+    )
 
     response = await call_test_model_instantiation(
         model_type="isolation_forest",
@@ -82,9 +87,13 @@ async def test_model_instantiation_internal_error_hides_exception_detail():
 
 
 @pytest.mark.asyncio
-async def test_model_instantiation_success_response_is_unchanged():
+async def test_model_instantiation_success_reports_runtime_owner():
     registry = MagicMock()
-    registry.validate_model_params.return_value = {"n_estimators": 100}
+    registry.validate_model_instantiation.return_value = {
+        "validated_parameters": {"n_estimators": 100},
+        "instantiated": True,
+        "runtime_owner": "tactic",
+    }
 
     response = await call_test_model_instantiation(
         model_type="isolation_forest",
@@ -96,8 +105,10 @@ async def test_model_instantiation_success_response_is_unchanged():
         "success": True,
         "message": "Model 'isolation_forest' instantiated successfully",
         "validated_parameters": {"n_estimators": 100},
+        "instantiated": True,
+        "runtime_owner": "tactic",
     }
-    registry.create_model_instance.assert_called_once_with(
+    registry.validate_model_instantiation.assert_called_once_with(
         "isolation_forest",
         {"n_estimators": 100},
     )

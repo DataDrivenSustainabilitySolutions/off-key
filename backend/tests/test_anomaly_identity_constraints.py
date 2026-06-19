@@ -17,6 +17,10 @@ def test_anomaly_payload_table_has_no_anomaly_id_column():
     assert "anomaly_id" not in Anomaly.__table__.columns.keys()
 
 
+def test_anomaly_payload_table_includes_sensor_set_column():
+    assert "sensor_set" in Anomaly.__table__.columns.keys()
+
+
 def test_anomaly_identity_table_owns_global_anomaly_id_primary_key():
     assert "anomaly_id" in AnomalyIdentity.__table__.columns.keys()
     assert AnomalyIdentity.__table__.columns["anomaly_id"].primary_key is True
@@ -73,6 +77,29 @@ async def test_create_anomaly_persists_explicit_value_type():
 
 
 @pytest.mark.asyncio
+async def test_create_anomaly_persists_normalized_sensor_set():
+    session = AsyncMock()
+    repository = MagicMock()
+    repository.add = AsyncMock(return_value="id-1")
+
+    service = AnomalyService(session, repository)
+    payload = AnomalyCreateRequest(
+        charger_id="charger-1",
+        timestamp=datetime.now(timezone.utc),
+        telemetry_type="__multivariate__",
+        anomaly_type="ml_conformal_static_multivariate",
+        anomaly_value=0.0012,
+        value_type="conformal_pvalue",
+        sensor_set=[" L1 ", "L2", "L1", ""],
+    )
+
+    await service.create_anomaly(payload=payload)
+
+    persisted = repository.add.await_args.args[0]
+    assert persisted.sensor_set == ["L1", "L2"]
+
+
+@pytest.mark.asyncio
 async def test_create_anomaly_defaults_tail_pvalue_for_ml_tailprob():
     session = AsyncMock()
     repository = MagicMock()
@@ -91,6 +118,27 @@ async def test_create_anomaly_defaults_tail_pvalue_for_ml_tailprob():
 
     persisted = repository.add.await_args.args[0]
     assert persisted.value_type == "tail_pvalue"
+
+
+@pytest.mark.asyncio
+async def test_create_anomaly_defaults_conformal_pvalue_for_static_conformal():
+    session = AsyncMock()
+    repository = MagicMock()
+    repository.add = AsyncMock(return_value="id-1")
+
+    service = AnomalyService(session, repository)
+    payload = AnomalyCreateRequest(
+        charger_id="charger-1",
+        timestamp=datetime.now(timezone.utc),
+        telemetry_type="__multivariate__",
+        anomaly_type="ml_conformal_static_multivariate",
+        anomaly_value=0.0023,
+    )
+
+    await service.create_anomaly(payload=payload)
+
+    persisted = repository.add.await_args.args[0]
+    assert persisted.value_type == "conformal_pvalue"
 
 
 @pytest.mark.asyncio
@@ -151,6 +199,7 @@ async def test_list_anomalies_includes_value_type():
         anomaly_type="ml_tailprob_univariate",
         anomaly_value=0.0025,
         value_type="tail_pvalue",
+        sensor_set=["voltage"],
     )
     repository.list_by_charger = AsyncMock(return_value=[("anomaly-1", anomaly)])
 
@@ -170,6 +219,7 @@ async def test_list_anomalies_includes_value_type():
             "anomaly_type": "ml_tailprob_univariate",
             "anomaly_value": 0.0025,
             "value_type": "tail_pvalue",
+            "sensor_set": ["voltage"],
         }
     ]
 

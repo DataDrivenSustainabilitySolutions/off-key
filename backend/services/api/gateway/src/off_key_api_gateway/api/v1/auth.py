@@ -27,9 +27,10 @@ def _parse_user_id(value: object) -> int | None:
     if isinstance(value, bool):
         return None
     if isinstance(value, int):
-        return value
+        return value if value > 0 else None
     if isinstance(value, str) and value.isdigit():
-        return int(value)
+        parsed = int(value)
+        return parsed if parsed > 0 else None
     return None
 
 

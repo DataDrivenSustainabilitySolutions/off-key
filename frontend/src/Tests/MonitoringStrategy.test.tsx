@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { parseNumericInput } from "../lib/monitoring-config";
 import Monitoring from "../pages/Monitoring";
 
 const mockPost = vi.fn(() => Promise.resolve({}));
@@ -75,6 +76,12 @@ describe("<Monitoring /> strategy setup", () => {
       }
       return Promise.resolve([]);
     });
+  });
+
+  it("does not truncate invalid numeric config input", () => {
+    expect(parseNumericInput("1.5", "integer")).toBe("");
+    expect(parseNumericInput("12abc", "number")).toBe("");
+    expect(parseNumericInput("1e2", "number")).toBe(100);
   });
 
   it("submits a static baseline payload from the static menu", async () => {

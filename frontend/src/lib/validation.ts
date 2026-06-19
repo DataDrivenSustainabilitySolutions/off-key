@@ -104,9 +104,14 @@ export const validateChargerId = (chargerId: string): ValidationResult => {
  * Validate user ID (number)
  */
 export const validateUserId = (userId: number | string): ValidationResult => {
-  const id = typeof userId === 'string' ? parseInt(userId) : userId;
+  const id =
+    typeof userId === 'string'
+      ? /^\d+$/.test(userId.trim())
+        ? Number(userId.trim())
+        : NaN
+      : userId;
 
-  if (isNaN(id) || id <= 0) {
+  if (!Number.isInteger(id) || id <= 0) {
     return { isValid: false, message: 'Invalid user ID' };
   }
 
@@ -234,9 +239,14 @@ export const validateNumeric = (
   max?: number,
   fieldName = 'Value'
 ): ValidationResult => {
-  const num = typeof value === 'string' ? parseFloat(value) : value;
+  const num =
+    typeof value === 'string'
+      ? value.trim() === ''
+        ? NaN
+        : Number(value.trim())
+      : value;
 
-  if (isNaN(num)) {
+  if (!Number.isFinite(num)) {
     return { isValid: false, message: `${fieldName} must be a number` };
   }
 

@@ -36,6 +36,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { parseNumericInput } from "@/lib/monitoring-config";
 import { getStatusDisplay } from "@/types/monitoring";
 import {
   formatAnomalyValue,
@@ -57,22 +58,6 @@ import type {
 
 type ConfigValue = string | number | boolean;
 type ConfigInputValue = string | boolean;
-
-// Helper function to parse numeric input, preventing NaN storage
-const parseNumericInput = (
-  rawValue: string,
-  schemaType?: string
-): string | number => {
-  if (rawValue === "") return "";
-
-  if (schemaType === "integer" || schemaType === "number") {
-    const parsed =
-      schemaType === "integer" ? parseInt(rawValue, 10) : parseFloat(rawValue);
-    return Number.isNaN(parsed) ? "" : parsed;
-  }
-
-  return rawValue;
-};
 
 const parseConfigInput = (
   rawValue: ConfigInputValue,

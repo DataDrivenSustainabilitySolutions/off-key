@@ -94,6 +94,7 @@ services:
       - emqx-network
     environment:
       - TACTIC_DOCKER_DEFAULT_NETWORK=${COMPOSE_PROJECT_NAME:-off-key}_app-network
+      - TACTIC_RADAR_IMAGE=${MQTT_RADAR_IMAGE:-off-key-mqtt-radar:latest}
     restart: always
     healthcheck:
       test:
@@ -252,10 +253,6 @@ services:
     networks:
       - socket-network
     privileged: true # true for VM. False for unprivileged LXC container/podman
-    ports:
-    #  - "127.0.0.1:2375:2375" # Port 2375 should only ever get exposed to the internal network. When possible use this line.
-    # To manage multiple docker endpoints within a network, use the following line:
-     - "2375:2375"
     volumes:
       - "/var/run/docker.sock:/var/run/docker.sock:ro"
     environment:
@@ -276,20 +273,20 @@ services:
       - BUILD=0
       - COMMIT=0
       - CONFIGS=0
-      - CONTAINERS=1 # Traefik, portainer, etc.
+      - CONTAINERS=1 # Required by TACTIC RADAR container fallback and cleanup.
       - DISTRIBUTION=0
       - EXEC=0
-      - IMAGES=1 # Portainer
-      - INFO=1 # Portainer
-      - NETWORKS=1 # Portainer
+      - IMAGES=0
+      - INFO=1 # Required for Swarm manager detection.
+      - NETWORKS=0
       - NODES=0
       - PLUGINS=0
-      - SERVICES=1 # Portainer
+      - SERVICES=1 # Required by TACTIC RADAR Swarm orchestration.
       - SESSION=0
       - SWARM=0
       - SYSTEM=0
-      - TASKS=1 # Portainer
-      - VOLUMES=1 # Portainer
+      - TASKS=1 # Required for Swarm service status checks.
+      - VOLUMES=0
 
   mailpit:
     image: axllent/mailpit:latest

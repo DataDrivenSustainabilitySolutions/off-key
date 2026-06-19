@@ -18,6 +18,7 @@ async def test_create_anomaly_forwards_explicit_value_type():
         anomaly_type="ml_tailprob_univariate",
         anomaly_value=0.0011,
         value_type="tail_pvalue",
+        sensor_set=["voltage"],
     )
     mock_create = AsyncMock(
         return_value={"message": "Anomaly created", "anomaly_id": "a-1"}
@@ -38,6 +39,7 @@ async def test_create_anomaly_forwards_explicit_value_type():
     assert response["anomaly_id"] == "a-1"
     forwarded = mock_create.await_args.args[0]
     assert forwarded["value_type"] == "tail_pvalue"
+    assert forwarded["sensor_set"] == ["voltage"]
 
 
 @pytest.mark.asyncio
@@ -68,6 +70,8 @@ async def test_create_anomaly_forwards_none_when_value_type_omitted():
     forwarded = mock_create.await_args.args[0]
     assert "value_type" in forwarded
     assert forwarded["value_type"] is None
+    assert "sensor_set" in forwarded
+    assert forwarded["sensor_set"] is None
 
 
 @pytest.mark.asyncio
@@ -95,7 +99,9 @@ async def test_create_anomaly_query_params_forward_value_type():
             anomaly_type="ml_detected",
             anomaly_value=3.14,
             value_type="zscore",
+            sensor_set=["current"],
         )
 
     forwarded = mock_create.await_args.args[0]
     assert forwarded["value_type"] == "zscore"
+    assert forwarded["sensor_set"] == ["current"]

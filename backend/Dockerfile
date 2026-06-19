@@ -32,14 +32,13 @@ WORKDIR /code
 ARG SERVICE_NAME
 ARG SERVICE_ROOT
 
+COPY pyproject.toml uv.lock /code/
+COPY libs/core/pyproject.toml /code/libs/core/pyproject.toml
+COPY ${SERVICE_ROOT}/pyproject.toml /code/${SERVICE_ROOT}/pyproject.toml
+
 # Synchronize DEPENDENCIES without the application itself.
-# This layer is cached until uv.lock or pyproject.toml change, which are
-# only temporarily mounted into the build container since we don't need
-# them in the production one.
+# This layer is cached until uv.lock or package manifests change.
 RUN --mount=type=cache,target=/root/.cache/uv \
-    --mount=type=bind,source=uv.lock,target=uv.lock \
-    --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
-    --mount=type=bind,source=${SERVICE_ROOT}/pyproject.toml,target=${SERVICE_ROOT}/pyproject.toml \
     uv sync \
         --frozen \
         --no-dev \
@@ -47,7 +46,6 @@ RUN --mount=type=cache,target=/root/.cache/uv \
         --package ${SERVICE_NAME}
 
 # Copy source code (will NOT be copied into the runtime container)
-COPY pyproject.toml uv.lock /code/
 COPY libs/ /code/libs/
 COPY ${SERVICE_ROOT} /code/${SERVICE_ROOT}
 

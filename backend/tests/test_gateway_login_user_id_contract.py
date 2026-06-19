@@ -6,6 +6,13 @@ from off_key_core.config.auth import get_auth_settings
 from off_key_core.schemas.user import UserLogin
 
 
+def test_parse_user_id_rejects_unusable_ids():
+    assert auth_api._parse_user_id(0) is None
+    assert auth_api._parse_user_id(-1) is None
+    assert auth_api._parse_user_id("0") is None
+    assert auth_api._parse_user_id(True) is None
+
+
 def _set_auth_env(monkeypatch) -> None:
     monkeypatch.setenv("JWT_SECRET", "test-jwt-secret-key-material-123456")
     monkeypatch.setenv("JWT_VERIFICATION_SECRET", "test-jwt-verification-secret-654321")

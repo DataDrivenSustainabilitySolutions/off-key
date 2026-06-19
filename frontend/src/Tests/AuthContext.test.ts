@@ -36,4 +36,9 @@ describe("AuthContext token parsing", () => {
 
     expect(getUserIdFromToken(token)).toBe(42);
   });
+
+  it("rejects zero and negative user IDs", () => {
+    expect(getUserIdFromToken(createUnsignedToken({ user_id: 0 }))).toBeNull();
+    expect(getUserIdFromToken(createUnsignedToken({ sub: "-1" }))).toBeNull();
+  });
 });

@@ -61,10 +61,13 @@ export interface Anomaly {
   telemetry_type: string;
   anomaly_type: string;
   anomaly_value: number;
-  // 'tail_pvalue': anomaly_value is a tail probability (0–1, lower = more severe).
+  // 'tail_pvalue': anomaly_value is a tail probability (0-1, lower = more severe).
   // 'zscore': anomaly_value is a z-score (legacy rows, higher = more severe).
   // null: predates this field.
-  value_type: 'tail_pvalue' | 'zscore' | null;
+  value_type: 'tail_pvalue' | 'conformal_pvalue' | 'zscore' | null;
+  // Exact telemetry streams involved in this anomaly. null/undefined indicates
+  // legacy data where the set was not persisted.
+  sensor_set?: string[] | null;
 }
 
 // Status filter options

@@ -22,17 +22,12 @@ import {
 import { FetchContext } from "@/dataFetch/FetchContext";
 import { Anomaly } from "@/dataFetch/FetchContext";
 import {
-  formatAnomalyTailProbability,
-  getAnomalyTailProbabilityClassName,
+  formatAnomalyValue,
+  getAnomalyValueClassName,
+  getAnomalyValueLabel,
+  isProbabilityAnomalyValue,
 } from "@/lib/anomaly-semantics";
-
-function formatAnomalyValue(anomaly: Anomaly) {
-  if (anomaly.value_type === "tail_pvalue") {
-    return formatAnomalyTailProbability(anomaly.anomaly_value);
-  }
-
-  return anomaly.anomaly_value.toFixed(2);
-}
+import { formatAnomalySensorSet } from "@/lib/anomaly-utils";
 
 export default function AnomalyTable() {
   const [data, setData] = useState<Anomaly[]>([]);
@@ -82,8 +77,10 @@ export default function AnomalyTable() {
     [data]
   );
 
-  const tailProbabilityCount = useMemo(
-    () => data.filter((anomaly) => anomaly.value_type === "tail_pvalue").length,
+  const probabilityValueCount = useMemo(
+    () =>
+      data.filter((anomaly) => isProbabilityAnomalyValue(anomaly.value_type))
+        .length,
     [data]
   );
 
@@ -140,9 +137,9 @@ export default function AnomalyTable() {
             tone="info"
           />
           <MetricCard
-            label="Tail p-values"
-            value={tailProbabilityCount}
-            helper="Modern severity signal"
+            label="p-values"
+            value={probabilityValueCount}
+            helper="Tail and conformal"
           />
         </div>
 
@@ -167,15 +164,16 @@ export default function AnomalyTable() {
                 <TableHead>Charger ID</TableHead>
                 <TableHead>Timestamp</TableHead>
                 <TableHead>Telemetry Type</TableHead>
+                <TableHead>Sensors</TableHead>
                 <TableHead>Anomaly Type</TableHead>
-                <TableHead>Anomaly Value</TableHead>
+                <TableHead>Signal</TableHead>
                 <TableHead className="text-right">Delete</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
+                  <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
                     Loading anomalies...
                   </TableCell>
                 </TableRow>
@@ -203,21 +201,30 @@ export default function AnomalyTable() {
                     </TableCell>
                     <TableCell>
                       <span className="rounded-full bg-sky-100 px-2.5 py-1 text-xs font-medium text-sky-800 dark:bg-sky-950/40 dark:text-sky-200">
-                        {anomaly.telemetry_type}
+                        {anomaly.telemetry_type === "__multivariate__"
+                          ? "multivariate"
+                          : anomaly.telemetry_type}
                       </span>
+                    </TableCell>
+                    <TableCell
+                      className="max-w-64 truncate text-xs text-muted-foreground"
+                      title={formatAnomalySensorSet(anomaly.sensor_set)}
+                    >
+                      {formatAnomalySensorSet(anomaly.sensor_set)}
                     </TableCell>
                     <TableCell>{anomaly.anomaly_type}</TableCell>
                     <TableCell>
                       <span
-                        className={
-                          anomaly.value_type === "tail_pvalue"
-                            ? `rounded-full px-2.5 py-1 text-xs font-medium ${getAnomalyTailProbabilityClassName(
-                                anomaly.anomaly_value
-                              )}`
-                            : "rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground"
-                        }
+                        className={`rounded-full px-2.5 py-1 text-xs font-medium ${getAnomalyValueClassName(
+                          anomaly.anomaly_value,
+                          anomaly.value_type
+                        )}`}
+                        title={getAnomalyValueLabel(anomaly.value_type)}
                       >
-                        {formatAnomalyValue(anomaly)}
+                        {formatAnomalyValue(
+                          anomaly.anomaly_value,
+                          anomaly.value_type
+                        )}
                       </span>
                     </TableCell>
                     <TableCell className="text-right">
@@ -236,7 +243,7 @@ export default function AnomalyTable() {
                 ))
               ) : (
                 <TableRow>
-                  <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
+                  <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
                     No data found.
                   </TableCell>
                 </TableRow>

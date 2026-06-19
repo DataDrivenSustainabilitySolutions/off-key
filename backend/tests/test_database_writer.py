@@ -1,5 +1,6 @@
 """Tests for DatabaseWriter batching and health behavior."""
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -91,3 +92,32 @@ async def test_test_connection_uses_session_factory(db_config):
     await writer._test_connection()
 
     session.execute.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_stop_flushes_remaining_records_when_cancelled(db_config, monkeypatch):
+    from off_key_mqtt_radar.database import DatabaseWriter
+
+    writer = DatabaseWriter(db_config, session_factory=AsyncMock())
+    writer._writer_task = asyncio.create_task(asyncio.sleep(60))
+    writer._flush_batch = AsyncMock()
+
+    async def cancelled_wait_for(awaitable, timeout):
+        if hasattr(awaitable, "close"):
+            awaitable.close()
+        raise asyncio.CancelledError
+
+    monkeypatch.setattr(
+        "off_key_mqtt_radar.database.asyncio.wait_for",
+        cancelled_wait_for,
+    )
+
+    with pytest.raises(asyncio.CancelledError):
+        await writer.stop()
+
+    writer._flush_batch.assert_awaited_once()
+    writer._writer_task.cancel()
+    try:
+        await writer._writer_task
+    except asyncio.CancelledError:
+        pass

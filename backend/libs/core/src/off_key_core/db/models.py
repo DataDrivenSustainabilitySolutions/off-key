@@ -196,10 +196,15 @@ class Anomaly(Base):
     telemetry_type = Column(Text, nullable=False, index=True)
     anomaly_type = Column(Text, nullable=False, index=True)
     anomaly_value = Column(Float, nullable=False, index=True)
-    # 'tail_pvalue' for rows written by the tail-probability detector (commit 19+).
+    # 'tail_pvalue' for rows written by the tail-probability detector.
+    # 'conformal_pvalue' for rows written by static conformal monitoring.
     # 'zscore' for legacy rows written by the z-score heuristic.
     # NULL for rows predating this column.
     value_type = Column(Text, nullable=True)
+    # Exact telemetry streams involved in this anomaly. Multivariate rows use this
+    # to highlight only the charts whose sensors contributed to the aligned vector.
+    # NULL means the row predates this column or the writer could not determine it.
+    sensor_set = Column(JSON, nullable=True)
 
     __table_args__ = (
         PrimaryKeyConstraint(

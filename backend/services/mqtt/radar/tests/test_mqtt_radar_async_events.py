@@ -1,7 +1,7 @@
 import asyncio
 import time
 from datetime import datetime
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import AsyncMock, Mock, patch, MagicMock
 
 import pytest
 import pytest_asyncio
@@ -98,6 +98,22 @@ class TestMQTTAsyncEventHandling:
 
         # Queue should be empty (message was dropped)
         assert mqtt_client.message_queue.qsize() == 0
+
+    @pytest.mark.asyncio
+    async def test_start_fails_when_initial_connect_fails(self, config):
+        """Test startup does not mark the client running without MQTT connectivity."""
+        client = RadarMQTTClient(config)
+        client._connect = AsyncMock(side_effect=RuntimeError("connect failed"))
+
+        with pytest.raises(RuntimeError, match="connect failed"):
+            await client.start()
+
+        assert client._shutdown_event.is_set()
+        assert client.is_connected is False
+        assert (
+            client._message_processor_task is None
+            or client._message_processor_task.done()
+        )
 
     @pytest.mark.asyncio
     async def test_event_loop_closed_during_message_handling(self, mqtt_client):
@@ -674,7 +690,8 @@ class TestMQTTReconnectionLogic:
     async def test_reconnection_backoff(self, config):
         """Test exponential backoff in reconnection attempts"""
         client = RadarMQTTClient(config)
-        client.reconnect_delay = 0.1  # Speed up test
+        client.reconnect_delay = 0.01  # Speed up test
+        client.max_reconnect_attempts = 1
 
         # Mock _connect to not actually connect
         async def mock_connect():
@@ -685,6 +702,8 @@ class TestMQTTReconnectionLogic:
 
         # Trigger reconnection
         await client._schedule_reconnect()
+        if client._reconnect_task:
+            await client._reconnect_task
 
         # Should increment attempts
         assert client.reconnect_attempts == 1

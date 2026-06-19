@@ -115,6 +115,10 @@ class MQTTClient:
     async def disconnect(self) -> None:
         """Disconnect from MQTT broker"""
         await self.connection_manager.disconnect()
+        await self.message_handler.stop(
+            drain=True,
+            timeout=self.config.graceful_shutdown_timeout,
+        )
 
     async def stop(self) -> None:
         """Stop MQTT client (implements Stoppable protocol)"""

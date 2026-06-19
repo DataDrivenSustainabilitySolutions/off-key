@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { format } from 'date-fns';
 import { CalendarIcon, Clock, ChevronUp, ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -106,17 +106,18 @@ export const DateTimePicker: React.FC<DateTimePickerProps> = ({
   const [hours, setHours] = useState(value ? value.getHours() : 0);
   const [minutes, setMinutes] = useState(value ? value.getMinutes() : 0);
 
-  useEffect(() => {
-    if (value) {
-      setSelectedDate(value);
-      setHours(value.getHours());
-      setMinutes(value.getMinutes());
-    } else if (!value) {
-      setSelectedDate(undefined);
-      setHours(0);
-      setMinutes(0);
+  const resetDraft = () => {
+    setSelectedDate(value);
+    setHours(value ? value.getHours() : 0);
+    setMinutes(value ? value.getMinutes() : 0);
+  };
+
+  const handleOpenChange = (open: boolean) => {
+    if (open) {
+      resetDraft();
     }
-  }, [value]);
+    setIsOpen(open);
+  };
 
   const createDateTime = (date: Date, hours: number, minutes: number): Date => {
     const newDate = new Date(date);
@@ -180,7 +181,7 @@ export const DateTimePicker: React.FC<DateTimePickerProps> = ({
   };
 
   return (
-    <Popover open={isOpen} onOpenChange={setIsOpen}>
+    <Popover open={isOpen} onOpenChange={handleOpenChange}>
       <PopoverTrigger asChild>
         <Button
           type="button"
@@ -205,7 +206,6 @@ export const DateTimePicker: React.FC<DateTimePickerProps> = ({
             selected={selectedDate}
             onSelect={handleDateSelect}
             defaultMonth={selectedDate}
-            initialFocus
           />
 
           {/* Time Selection */}

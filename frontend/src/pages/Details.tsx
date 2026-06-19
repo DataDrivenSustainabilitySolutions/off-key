@@ -88,6 +88,7 @@ const Details: React.FC = () => {
 
   // Loading states
   const [isLoadingTelemetry, setIsLoadingTelemetry] = useState(true);
+  const [now, setNow] = useState(() => Date.now());
 
   // Fetch dynamic telemetry data and anomalies
   useEffect(() => {
@@ -124,6 +125,14 @@ const Details: React.FC = () => {
     return () => clearInterval(interval);
   }, [chargerId, loadAllTelemetryTypes, loadAnomalies]);
 
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      setNow(Date.now());
+    }, INTERVALS.DETAILS_UPDATE);
+
+    return () => window.clearInterval(interval);
+  }, []);
+
   // Get dynamic telemetry data and anomalies
   const allTelemetryData = useMemo(
     () => allTelemetryMap[resolvedChargerId] ?? [],
@@ -137,7 +146,7 @@ const Details: React.FC = () => {
   const latestTelemetryAgeMs =
     latestTelemetryTimestamp === undefined
       ? undefined
-      : Date.now() - latestTelemetryTimestamp;
+      : now - latestTelemetryTimestamp;
   const hasRecentTelemetry =
     latestTelemetryAgeMs !== undefined &&
     latestTelemetryAgeMs >= 0 &&

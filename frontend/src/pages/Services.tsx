@@ -134,12 +134,17 @@ export default function Services() {
   }, []);
 
   useEffect(() => {
-    void loadServices();
+    const timeoutId = window.setTimeout(() => {
+      void loadServices();
+    }, 0);
     const intervalId = window.setInterval(() => {
       void loadServices();
     }, 15000);
 
-    return () => window.clearInterval(intervalId);
+    return () => {
+      window.clearTimeout(timeoutId);
+      window.clearInterval(intervalId);
+    };
   }, [loadServices]);
 
   const runningCount = useMemo(

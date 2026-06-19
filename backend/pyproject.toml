@@ -56,33 +56,6 @@ members = [
 "Homepage" = "https://github.com/DataDrivenSustainabilitySolutions/off-key"
 "Bugs" = "https://github.com/DataDrivenSustainabilitySolutions/off-key/issues"
 
-[tool.black]
-line-length = 88
-target-version = ['py312']
-
-extend-exclude ='''
-/(
-    \.eggs
-  | \.git
-  | \.hg
-  | \.mypy_cache
-  | \.nox
-  | \.pants\.d
-  | \.pytype
-  | \.ruff_cache
-  | \.svn
-  | \.tox
-  | \.venv
-  | __pypackages__
-  | _build
-  | buck-out
-  | build
-  | dist
-  | node_modules
-  | venv
-)/
-'''
-
 [tool.ruff]
 line-length = 88
 target-version = "py312"

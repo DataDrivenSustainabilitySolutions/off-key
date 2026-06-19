@@ -38,6 +38,9 @@ jobs:
       - name: Sync backend tooling
         run: uv sync --project backend --all-packages --all-groups --frozen
 
+      - name: Test backend
+        run: uv run --project backend python -m pytest -q
+
       - name: Run pre-commit
         run: uv run --project backend pre-commit run --all-files --show-diff-on-failure
 

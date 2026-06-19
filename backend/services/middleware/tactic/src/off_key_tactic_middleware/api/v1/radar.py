@@ -1,8 +1,14 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from typing import List, Dict, Optional, Any
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+from off_key_core.utils.mqtt_topics import normalize_mqtt_topic_filters
 
-from off_key_core.schemas.radar import PerformanceConfig
+from off_key_core.schemas.radar import (
+    AdaptiveStreamConfig,
+    MonitoringStrategy,
+    PerformanceConfig,
+    StaticBaselineConfig,
+)
 from ...models.registry import ModelRegistryService
 from ...services.orchestration.radar import (
     RadarOrchestrationService,
@@ -22,8 +28,12 @@ class RadarConfig(BaseModel):
     mqtt_topics: List[str] = Field(..., description="List of MQTT topics to monitor")
 
     # Model Configuration
+    strategy: MonitoringStrategy = Field(
+        default="adaptive_stream",
+        description="Monitoring strategy used by the RADAR detector.",
+    )
     model_type: str = Field(
-        default="isolation_forest",
+        default="knn",
         description="ML model type. Use GET /api/v1/models/ to see available models.",
     )
     model_params: Optional[Dict[str, Any]] = Field(
@@ -52,6 +62,23 @@ class RadarConfig(BaseModel):
     performance_config: Optional[PerformanceConfig] = Field(
         default=None, description="Performance and resource settings"
     )
+    static_baseline_config: Optional[StaticBaselineConfig] = Field(
+        default=None,
+        description="Static baseline conformal detector settings.",
+    )
+    adaptive_stream_config: Optional[AdaptiveStreamConfig] = Field(
+        default=None,
+        description="Adaptive stream detector settings.",
+    )
+
+    @field_validator("mqtt_topics")
+    @classmethod
+    def validate_mqtt_topics(cls, value: List[str]) -> List[str]:
+        return normalize_mqtt_topic_filters(
+            value,
+            require_charger_prefix=True,
+            require_telemetry_topic=True,
+        )
 
 
 class RadarServiceResponse(BaseModel):
@@ -107,6 +134,7 @@ async def start_radar_service(
         radar_service = await service.create_radar_service(
             container_name=config.container_name,
             mqtt_topics=config.mqtt_topics,
+            strategy=config.strategy,
             model_type=config.model_type,
             model_params=config.model_params,
             preprocessing_steps=config.preprocessing_steps,
@@ -115,6 +143,16 @@ async def start_radar_service(
             performance_config=(
                 config.performance_config.model_dump(exclude_none=True)
                 if config.performance_config
+                else None
+            ),
+            static_baseline_config=(
+                config.static_baseline_config.model_dump(exclude_none=True)
+                if config.static_baseline_config
+                else None
+            ),
+            adaptive_stream_config=(
+                config.adaptive_stream_config.model_dump(exclude_none=True)
+                if config.adaptive_stream_config
                 else None
             ),
         )

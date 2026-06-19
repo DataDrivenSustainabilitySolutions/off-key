@@ -221,18 +221,25 @@ async def test_model_instantiation(
     Useful for validating new model definitions before deployment.
     """
     try:
-        # Test parameter validation
-        validated_params = model_registry.validate_model_params(
+        validation_result = model_registry.validate_model_instantiation(
             model_type, test_parameters or {}
         )
-
-        # Test model instantiation (but don't return the instance)
-        model_registry.create_model_instance(model_type, validated_params)
+        instantiated = validation_result["instantiated"]
+        runtime_owner = validation_result["runtime_owner"]
 
         return {
             "success": True,
-            "message": f"Model '{model_type}' instantiated successfully",
-            "validated_parameters": validated_params,
+            "message": (
+                f"Model '{model_type}' instantiated successfully"
+                if instantiated
+                else (
+                    f"Model '{model_type}' parameters validated; "
+                    "instantiation is deferred to the RADAR runtime"
+                )
+            ),
+            "validated_parameters": validation_result["validated_parameters"],
+            "instantiated": instantiated,
+            "runtime_owner": runtime_owner,
         }
 
     except ValueError:

@@ -2,6 +2,8 @@ import { defineConfig, devices } from "@playwright/test";
 import { env } from "node:process";
 
 const isCI = Boolean(env.CI);
+const chromiumChannel =
+  env.PLAYWRIGHT_CHROMIUM_CHANNEL === "chrome" ? "chrome" : undefined;
 
 export default defineConfig({
   testDir: "./e2e",
@@ -23,13 +25,14 @@ export default defineConfig({
     headless: true,
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
-    video: "retain-on-failure",
+    video: isCI ? "off" : "retain-on-failure",
   },
   projects: [
     {
       name: "chromium",
       use: {
         ...devices["Desktop Chrome"],
+        ...(chromiumChannel ? { channel: chromiumChannel } : {}),
       },
     },
   ],

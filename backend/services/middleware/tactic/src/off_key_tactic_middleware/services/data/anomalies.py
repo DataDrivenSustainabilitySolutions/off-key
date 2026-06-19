@@ -46,6 +46,7 @@ class AnomalyService:
                 "anomaly_type": anomaly.anomaly_type,
                 "anomaly_value": anomaly.anomaly_value,
                 "value_type": anomaly.value_type,
+                "sensor_set": anomaly.sensor_set,
             }
             for anomaly_id, anomaly in rows
         ]
@@ -65,6 +66,7 @@ class AnomalyService:
             anomaly_type=payload.anomaly_type,
             anomaly_value=payload.anomaly_value,
             value_type=resolved_value_type,
+            sensor_set=self._normalize_sensor_set(payload.sensor_set),
         )
 
         try:
@@ -89,7 +91,23 @@ class AnomalyService:
             return value_type
         if anomaly_type.lower().startswith("ml_tailprob_"):
             return "tail_pvalue"
+        if anomaly_type.lower().startswith("ml_conformal_static_"):
+            return "conformal_pvalue"
         return "zscore"
+
+    @staticmethod
+    def _normalize_sensor_set(sensor_set: Optional[list[str]]) -> Optional[list[str]]:
+        if not sensor_set:
+            return None
+
+        normalized = []
+        seen = set()
+        for sensor in sensor_set:
+            sensor_name = sensor.strip()
+            if sensor_name and sensor_name not in seen:
+                normalized.append(sensor_name)
+                seen.add(sensor_name)
+        return normalized or None
 
     async def delete_anomaly(
         self,

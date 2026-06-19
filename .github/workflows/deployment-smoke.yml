@@ -22,11 +22,12 @@ concurrency:
 jobs:
   deployment-smoke:
     name: deployment-smoke
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 35
 
     env:
       COMPOSE_PROJECT_NAME: off-key-smoke
+      PLAYWRIGHT_CHROMIUM_CHANNEL: chrome
 
     steps:
       - name: Checkout
@@ -42,10 +43,6 @@ jobs:
       - name: Install frontend dependencies
         working-directory: frontend
         run: npm ci
-
-      - name: Install Playwright browsers
-        working-directory: frontend
-        run: npx playwright install --with-deps chromium
 
       - name: Reset deployment smoke stack
         run: docker compose down -v --remove-orphans

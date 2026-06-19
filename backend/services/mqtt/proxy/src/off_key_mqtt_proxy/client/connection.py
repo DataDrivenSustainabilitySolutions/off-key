@@ -74,6 +74,8 @@ class ConnectionManager:
             logger.info("MQTT client already connected")
             return True
 
+        self._shutdown_event.clear()
+        self._connection_event.clear()
         self.state = ConnectionState.CONNECTING
         logger.info(
             f"Connecting to MQTT broker at "
@@ -90,9 +92,6 @@ class ConnectionManager:
             # Configure TLS
             if self.config.use_tls:
                 context = ssl.create_default_context()
-                if transport == "websockets":
-                    context.check_hostname = False
-                    context.verify_mode = ssl.CERT_NONE  # For WebSocket connections
                 self.client.tls_set_context(context)
 
             # Set authentication if auth handler is provided
@@ -139,15 +138,18 @@ class ConnectionManager:
             except asyncio.TimeoutError:
                 logger.error("MQTT connection timeout")
                 self.state = ConnectionState.FAILED
+                self._cleanup_failed_client()
                 return False
 
         except ApiKeyAuthError as e:
             logger.error(f"API-Key authentication error: {e}")
             self.state = ConnectionState.FAILED
+            self._cleanup_failed_client()
             return False
         except Exception as e:
             logger.error(f"Unexpected error during MQTT connection: {e}")
             self.state = ConnectionState.FAILED
+            self._cleanup_failed_client()
             return False
 
     async def disconnect(self) -> None:
@@ -176,6 +178,18 @@ class ConnectionManager:
         self._event_loop = None
 
         logger.info("MQTT client disconnected")
+
+    def _cleanup_failed_client(self) -> None:
+        """Stop and discard a paho client that did not reach connected state."""
+        if not self.client:
+            return
+        try:
+            self.client.loop_stop()
+            self.client.disconnect()
+        except Exception:
+            logger.debug("Failed MQTT client cleanup raised", exc_info=True)
+        finally:
+            self.client = None
 
     def get_connection_info(self) -> dict:
         """Get connection information for monitoring"""

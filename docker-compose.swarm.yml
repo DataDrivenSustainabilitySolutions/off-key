@@ -340,7 +340,7 @@ services:
         condition: any
 
   emqx-main:
-    image: emqx/emqx:6.0.0
+    image: emqx/emqx:6.2.1
     env_file: .env
     environment:
       - "EMQX_NODE_NAME=emqx@emqx-main"
@@ -379,7 +379,7 @@ services:
         condition: any
 
   #  emqx-worker:
-  #    image: emqx/emqx:6.0.0
+  #    image: emqx/emqx:6.2.1
   #    environment:
   #      - "EMQX_NODE_NAME=emqx@{{.Node.Hostname}}.emqx-worker"
   #      - "EMQX_CLUSTER__DISCOVERY_STRATEGY=static"

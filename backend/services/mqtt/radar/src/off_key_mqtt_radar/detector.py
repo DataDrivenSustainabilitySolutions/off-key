@@ -785,26 +785,81 @@ class StaticConformalState(Enum):
     """Lifecycle states for static conformal monitoring."""
 
     COLLECTING = "collecting"
+    CALIBRATING = "calibrating"
     TRAINING = "training"
     READY = "ready"
     FAILED = "failed"
 
 
-class NaivePValueCutoffController:
-    """Simple p-value cutoff controller for static conformal monitoring."""
+class RestartedMartingaleAlarmController:
+    """Power martingale alarm with alpha-spent resets."""
 
-    def __init__(self, cutoff: float):
-        self.cutoff = float(cutoff)
-        self.alpha = self.cutoff
-        self.num_test = 0
+    def __init__(
+        self,
+        *,
+        alpha: float,
+        epsilon: float,
+        alarm_count: int = 0,
+        tested_count: int = 0,
+        martingale: Any = None,
+    ):
+        self.method = "power"
+        self.alpha = float(alpha)
+        self.epsilon = float(epsilon)
+        self.alarm_count = int(alarm_count)
+        self.tested_count = int(tested_count)
+        self._martingale = martingale or self._new_martingale()
 
-    def test_one(self, p_value: float) -> bool:
-        self.num_test += 1
-        return float(p_value) <= self.cutoff
+    @classmethod
+    def from_config(cls, config: Any) -> "RestartedMartingaleAlarmController":
+        return cls(alpha=config.alpha, epsilon=config.epsilon)
+
+    @property
+    def num_test(self) -> int:
+        return self.tested_count
+
+    @property
+    def episode_alpha(self) -> float:
+        return self.alpha / (2.0 ** (self.alarm_count + 1))
+
+    @property
+    def restarted_ville_threshold(self) -> float:
+        return 1.0 / self.episode_alpha
+
+    def _new_martingale(self) -> Any:
+        from nonconform.martingales import AlarmConfig, PowerMartingale
+
+        return PowerMartingale(
+            epsilon=self.epsilon,
+            alarm_config=AlarmConfig(
+                restarted_ville_threshold=self.restarted_ville_threshold
+            ),
+        )
+
+    def update(self, p_value: float) -> Dict[str, Any]:
+        state = self._martingale.update(p_value)
+        self.tested_count += 1
+        alarm_fired = "restarted_ville" in state.triggered_alarms
+        context = {
+            "martingale_method": self.method,
+            "epsilon": self.epsilon,
+            "alpha": self.alpha,
+            "episode_alpha": self.episode_alpha,
+            "restarted_ville_threshold": self.restarted_ville_threshold,
+            "restarted_martingale": float(state.restarted_martingale),
+            "alarm_fired": alarm_fired,
+            "alarm_count": self.alarm_count,
+            "tested_count": self.tested_count,
+        }
+        if alarm_fired:
+            self.alarm_count += 1
+            self._martingale = self._new_martingale()
+            context["alarm_count"] = self.alarm_count
+        return context
 
 
 class StaticConformalDetectionService:
-    """Train-once static baseline detector using conformal p-values and FDR control."""
+    """Train-once static baseline detector using conformal p-values and martingales."""
 
     def __init__(
         self,
@@ -836,9 +891,10 @@ class StaticConformalDetectionService:
     def _initialize_fresh(self) -> None:
         self.state = StaticConformalState.COLLECTING
         self.training_buffer: list[Dict[str, float]] = []
+        self.calibration_buffer: list[Dict[str, float]] = []
         self.feature_keys: list[str] = []
         self.conformal_detector = None
-        self.fdr_controller = None
+        self.alarm_controller = self._create_alarm_controller()
         self.processed_count = 0
         self.anomaly_count = 0
         self.last_checkpoint = 0
@@ -856,9 +912,21 @@ class StaticConformalDetectionService:
             checkpoint.get("static_state", StaticConformalState.COLLECTING.value)
         )
         self.training_buffer = list(checkpoint.get("training_buffer", []))
+        self.calibration_buffer = list(checkpoint.get("calibration_buffer", []))
         self.feature_keys = list(checkpoint.get("feature_keys", []))
         self.conformal_detector = checkpoint.get("conformal_detector")
-        self.fdr_controller = checkpoint.get("fdr_controller")
+        self.alarm_controller = checkpoint.get("alarm_controller")
+        if self.alarm_controller is None:
+            legacy_fdr_controller = checkpoint.get("fdr_controller")
+            self.alarm_controller = self._create_alarm_controller(
+                alarm_count=int(checkpoint.get("alarm_count", 0)),
+                tested_count=int(
+                    checkpoint.get(
+                        "tested_count",
+                        getattr(legacy_fdr_controller, "num_test", 0),
+                    )
+                ),
+            )
         self.processed_count = int(checkpoint.get("processed_count", 0))
         self.anomaly_count = int(checkpoint.get("anomaly_count", 0))
         self.last_checkpoint = self.processed_count
@@ -872,6 +940,7 @@ class StaticConformalDetectionService:
             # treating a half-trained checkpoint as ready.
             self.state = StaticConformalState.COLLECTING
             self.training_buffer = []
+            self.calibration_buffer = []
 
         self.logger.info(
             "Restored static conformal checkpoint: state=%s processed=%s "
@@ -898,9 +967,14 @@ class StaticConformalDetectionService:
 
         saved_schema_signature = checkpoint.get("schema_signature")
         current_schema_signature = cls._build_schema_signature_from_config(config)
+        accepted_signatures = {current_schema_signature}
+        if "fdr_controller" in checkpoint:
+            accepted_signatures.add(
+                cls._build_legacy_fdr_schema_signature_from_config(config)
+            )
         if (
             not saved_schema_signature
-            or saved_schema_signature != current_schema_signature
+            or saved_schema_signature not in accepted_signatures
         ):
             raise ValueError(
                 "Checkpoint schema signature does not match current static "
@@ -913,10 +987,30 @@ class StaticConformalDetectionService:
     def _build_schema_signature_from_config(cls, config: Any) -> str:
         static_config = getattr(config, "static_baseline_config", None)
         if static_config is not None and hasattr(static_config, "model_dump"):
-            static_payload = static_config.model_dump(exclude_none=True)
+            static_payload = static_config.model_dump(
+                exclude={"calibration_fraction", "fdr_config"},
+                exclude_none=True,
+            )
         else:
             static_payload = {}
+        return cls._build_static_schema_signature(config, static_payload)
 
+    @classmethod
+    def _build_legacy_fdr_schema_signature_from_config(cls, config: Any) -> str:
+        static_config = getattr(config, "static_baseline_config", None)
+        if static_config is not None and hasattr(static_config, "model_dump"):
+            static_payload = static_config.model_dump(
+                exclude={"calibration_window_size", "martingale_config"},
+                exclude_none=True,
+            )
+        else:
+            static_payload = {}
+        return cls._build_static_schema_signature(config, static_payload)
+
+    @classmethod
+    def _build_static_schema_signature(
+        cls, config: Any, static_payload: dict[str, Any]
+    ) -> str:
         subscription_topics = [
             str(topic)
             for topic in (getattr(config, "subscription_topics", []) or [])
@@ -948,6 +1042,8 @@ class StaticConformalDetectionService:
 
         if self.state == StaticConformalState.COLLECTING:
             result = self._process_collecting(data, topic, charger_id, start_time)
+        elif self.state == StaticConformalState.CALIBRATING:
+            result = self._process_calibrating(data, topic, charger_id, start_time)
         elif self.state == StaticConformalState.TRAINING:
             result = self._process_training(data, topic, charger_id, start_time)
         elif self.state == StaticConformalState.READY:
@@ -993,13 +1089,8 @@ class StaticConformalDetectionService:
         )
         collected = len(self.training_buffer)
         if collected >= self.static_config.training_window_size:
-            training_samples = list(self.training_buffer)
-            self.training_buffer = []
-            self.state = StaticConformalState.TRAINING
-            self._training_future = self._training_executor.submit(
-                self._fit_static_baseline, training_samples, list(self.feature_keys)
-            )
-            phase = "training_started"
+            self.state = StaticConformalState.CALIBRATING
+            phase = "calibrating"
         else:
             phase = "collecting"
 
@@ -1013,7 +1104,65 @@ class StaticConformalDetectionService:
             charger_id=charger_id,
             start_time=start_time,
             phase=phase,
-            extra_context={"collected_samples": collected},
+            extra_context={"training_collected_samples": collected},
+        )
+
+    def _process_calibrating(
+        self,
+        data: Dict[str, float],
+        topic: Optional[str],
+        charger_id: Optional[str],
+        start_time: float,
+    ) -> AnomalyResult:
+        schema_error = self._validate_or_freeze_feature_schema(data)
+        self.processed_count += 1
+
+        if schema_error:
+            self.schema_mismatch_count += 1
+            return self._build_result(
+                data=data,
+                processed_features=None,
+                score=1.0,
+                is_anomaly=False,
+                severity="low",
+                topic=topic,
+                charger_id=charger_id,
+                start_time=start_time,
+                phase="schema_mismatch",
+                extra_context={"schema_error": schema_error},
+            )
+
+        self.calibration_buffer.append(
+            {key: float(data[key]) for key in self.feature_keys}
+        )
+        calibration_collected = len(self.calibration_buffer)
+        if calibration_collected >= self.static_config.calibration_window_size:
+            training_samples = list(self.training_buffer)
+            calibration_samples = list(self.calibration_buffer)
+            self.training_buffer = []
+            self.calibration_buffer = []
+            self.state = StaticConformalState.TRAINING
+            self._training_future = self._training_executor.submit(
+                self._fit_static_baseline,
+                training_samples,
+                calibration_samples,
+                list(self.feature_keys),
+            )
+            phase = "training_started"
+        else:
+            phase = "calibrating"
+
+        return self._build_result(
+            data=data,
+            processed_features=data,
+            score=1.0,
+            is_anomaly=False,
+            severity="low",
+            topic=topic,
+            charger_id=charger_id,
+            start_time=start_time,
+            phase=phase,
+            extra_context={"calibration_collected_samples": calibration_collected},
         )
 
     def _process_training(
@@ -1068,12 +1217,17 @@ class StaticConformalDetectionService:
 
         vector = self._vectorize(data)
         p_value = self._compute_p_value(vector)
-        is_anomaly = bool(self.fdr_controller.test_one(p_value))
+        if self.alarm_controller is None:
+            self.alarm_controller = self._create_alarm_controller()
+        alarm_context = self.alarm_controller.update(p_value)
+        is_anomaly = bool(alarm_context["alarm_fired"])
         if is_anomaly:
             self.anomaly_count += 1
-        severity = self._calculate_conformal_severity(p_value, is_anomaly)
-        fdr_threshold = self._effective_fdr_threshold()
-        fdr_method = self.static_config.fdr_config.method
+        severity = self._calculate_conformal_severity(
+            p_value,
+            is_anomaly,
+            float(alarm_context["episode_alpha"]),
+        )
 
         result = self._build_result(
             data=data,
@@ -1089,25 +1243,26 @@ class StaticConformalDetectionService:
             phase="ready",
             extra_context={
                 "p_value": p_value,
-                "fdr_rejected": is_anomaly,
-                "fdr_alpha_t": fdr_threshold,
-                "fdr_threshold": fdr_threshold,
-                "fdr_method": fdr_method,
-                "tested_count": int(getattr(self.fdr_controller, "num_test", 0)),
+                **alarm_context,
             },
         )
 
         if is_anomaly:
             self.logger.warning(
-                "event=radar.static_conformal_anomaly p_value=%.6f "
-                "severity=%s topic=%s",
+                "event=radar.static_conformal_martingale_alarm p_value=%.6f "
+                "restarted_martingale=%.6f severity=%s topic=%s",
                 p_value,
+                float(alarm_context["restarted_martingale"]),
                 severity,
                 topic,
                 extra={
                     "conformal_pvalue": p_value,
-                    "fdr_alpha_t": fdr_threshold,
-                    "fdr_method": fdr_method,
+                    "martingale_method": alarm_context["martingale_method"],
+                    "episode_alpha": alarm_context["episode_alpha"],
+                    "restarted_ville_threshold": (
+                        alarm_context["restarted_ville_threshold"]
+                    ),
+                    "alarm_count": alarm_context["alarm_count"],
                     "model_type": self.config.model_type,
                     "charger_id": charger_id,
                 },
@@ -1155,40 +1310,49 @@ class StaticConformalDetectionService:
 
     def _fit_static_baseline(
         self,
-        samples: list[Dict[str, float]],
+        training_samples: list[Dict[str, float]],
+        calibration_samples: list[Dict[str, float]],
         feature_keys: list[str],
     ) -> tuple[Any, Any]:
         from nonconform import ConformalDetector, Split
 
         detector = self._create_pyod_detector()
+        training_matrix = np.asarray(
+            [
+                [float(sample[key]) for key in feature_keys]
+                for sample in training_samples
+            ],
+            dtype=float,
+        )
+        calibration_matrix = np.asarray(
+            [
+                [float(sample[key]) for key in feature_keys]
+                for sample in calibration_samples
+            ],
+            dtype=float,
+        )
+        detector.fit(training_matrix)
         conformal_detector = ConformalDetector(
             detector=detector,
-            strategy=Split(n_calib=self.static_config.calibration_fraction),
+            strategy=Split(n_calib=0.1),
             score_polarity="auto",
             seed=self.static_config.seed,
         )
-        matrix = np.asarray(
-            [[float(sample[key]) for key in feature_keys] for sample in samples],
-            dtype=float,
+        conformal_detector.calibrate(calibration_matrix)
+
+        alarm_controller = self._create_alarm_controller()
+        return conformal_detector, alarm_controller
+
+    def _create_alarm_controller(
+        self, *, alarm_count: int = 0, tested_count: int = 0
+    ) -> RestartedMartingaleAlarmController:
+        martingale_config = self.static_config.martingale_config
+        return RestartedMartingaleAlarmController(
+            alpha=martingale_config.alpha,
+            epsilon=martingale_config.epsilon,
+            alarm_count=alarm_count,
+            tested_count=tested_count,
         )
-        conformal_detector.fit(matrix)
-
-        fdr_controller = self._create_fdr_controller()
-        return conformal_detector, fdr_controller
-
-    def _create_fdr_controller(self) -> Any:
-        fdr_config = self.static_config.fdr_config
-        if fdr_config.method == "saffron":
-            from online_fdr.investing.saffron.saffron import Saffron
-
-            return Saffron(
-                alpha=fdr_config.alpha,
-                wealth=fdr_config.resolved_wealth,
-                lambda_=fdr_config.lambda_,
-            )
-        if fdr_config.method == "naive":
-            return NaivePValueCutoffController(cutoff=fdr_config.cutoff)
-        raise ValueError(f"Unsupported FDR method '{fdr_config.method}'")
 
     def _create_pyod_detector(self) -> Any:
         model_type = self.static_config.model_type
@@ -1246,15 +1410,17 @@ class StaticConformalDetectionService:
         try:
             (
                 self.conformal_detector,
-                self.fdr_controller,
+                self.alarm_controller,
             ) = self._training_future.result()
             self.state = StaticConformalState.READY
             self.training_error = None
             self._checkpoint_model()
             self.logger.info(
                 "event=radar.static_conformal_training_complete "
-                "training_window_size=%s feature_count=%s",
+                "training_window_size=%s calibration_window_size=%s "
+                "feature_count=%s",
                 self.static_config.training_window_size,
+                self.static_config.calibration_window_size,
                 len(self.feature_keys),
             )
         except Exception as exc:
@@ -1279,24 +1445,16 @@ class StaticConformalDetectionService:
             return 1.0
         return p_value
 
-    def _calculate_conformal_severity(self, p_value: float, is_anomaly: bool) -> str:
+    def _calculate_conformal_severity(
+        self, p_value: float, is_anomaly: bool, threshold: float
+    ) -> str:
         if not is_anomaly:
             return "low"
-        threshold = self._effective_fdr_threshold()
         if p_value <= threshold / 20.0:
             return "critical"
         if p_value <= threshold / 5.0:
             return "high"
         return "medium"
-
-    def _effective_fdr_threshold(self) -> float:
-        controller = self.fdr_controller
-        if controller is not None:
-            for attribute in ("alpha", "cutoff"):
-                value = getattr(controller, attribute, None)
-                if value is not None:
-                    return float(value)
-        return float(self.static_config.fdr_config.effective_threshold)
 
     def _build_result(
         self,
@@ -1321,8 +1479,10 @@ class StaticConformalDetectionService:
                 "phase": phase,
                 "state": self.state.value,
                 "training_window_size": self.static_config.training_window_size,
-                "calibration_fraction": self.static_config.calibration_fraction,
+                "calibration_window_size": (self.static_config.calibration_window_size),
                 "collected_samples": len(self.training_buffer),
+                "training_collected_samples": len(self.training_buffer),
+                "calibration_collected_samples": len(self.calibration_buffer),
                 "feature_keys": list(self.feature_keys),
                 "discarded_during_training_count": (
                     self.discarded_during_training_count
@@ -1359,9 +1519,20 @@ class StaticConformalDetectionService:
                     "strategy": "static_baseline",
                     "static_state": self.state.value,
                     "training_buffer": self.training_buffer,
+                    "calibration_buffer": self.calibration_buffer,
                     "feature_keys": self.feature_keys,
                     "conformal_detector": self.conformal_detector,
-                    "fdr_controller": self.fdr_controller,
+                    "alarm_controller": self.alarm_controller,
+                    "alarm_count": (
+                        self.alarm_controller.alarm_count
+                        if self.alarm_controller is not None
+                        else 0
+                    ),
+                    "tested_count": (
+                        self.alarm_controller.tested_count
+                        if self.alarm_controller is not None
+                        else 0
+                    ),
                     "processed_count": self.processed_count,
                     "anomaly_count": self.anomaly_count,
                     "discarded_during_training_count": (
@@ -1406,7 +1577,20 @@ class StaticConformalDetectionService:
             "anomaly_count": self.anomaly_count,
             "anomaly_rate": self.anomaly_count / max(self.processed_count, 1),
             "training_window_size": self.static_config.training_window_size,
+            "calibration_window_size": self.static_config.calibration_window_size,
             "collected_samples": len(self.training_buffer),
+            "training_collected_samples": len(self.training_buffer),
+            "calibration_collected_samples": len(self.calibration_buffer),
+            "alarm_count": (
+                self.alarm_controller.alarm_count
+                if self.alarm_controller is not None
+                else 0
+            ),
+            "tested_count": (
+                self.alarm_controller.tested_count
+                if self.alarm_controller is not None
+                else 0
+            ),
             "discarded_during_training_count": self.discarded_during_training_count,
             "schema_mismatch_count": self.schema_mismatch_count,
             "memory_usage_mb": self._get_memory_usage(),

@@ -68,27 +68,19 @@ export interface MonitoringPerformanceConfig {
   sensor_freshness_seconds: number;
 }
 
-export type FdrControlMethod = 'saffron' | 'naive';
-
-export type StaticBaselineFdrConfig =
-  | {
-      method: 'saffron';
-      alpha: number;
-      wealth: number;
-      lambda_: number;
-    }
-  | {
-      method: 'naive';
-      cutoff: number;
-    };
+export interface StaticMartingaleConfig {
+  method: 'power';
+  epsilon: number;
+  alpha: number;
+}
 
 export interface StaticBaselineRequestConfig {
   model_type: string;
   model_params: Record<string, string | number | boolean>;
   training_window_size: number;
-  calibration_fraction: number;
+  calibration_window_size: number;
   conformal_strategy: 'split';
-  fdr_config: StaticBaselineFdrConfig;
+  martingale_config: StaticMartingaleConfig;
 }
 
 export interface AdaptiveStreamRequestConfig {

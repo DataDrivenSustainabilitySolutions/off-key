@@ -36,7 +36,6 @@ import {
   Trash2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { parseNumericInput } from "@/lib/monitoring-config";
 import { getStatusDisplay } from "@/types/monitoring";
 import {
   formatAnomalyValue,
@@ -48,7 +47,6 @@ import { formatAnomalySensorSet } from "@/lib/anomaly-utils";
 import type { Anomaly } from "@/types/charger";
 import type {
   ActiveService,
-  FdrControlMethod,
   ModelDefinition,
   ModelParams,
   ParameterSchema,
@@ -58,16 +56,10 @@ import type {
 
 type ConfigValue = string | number | boolean;
 type ConfigInputValue = string | boolean;
-
-const parseConfigInput = (
-  rawValue: ConfigInputValue,
-  schemaType?: string
-): ConfigValue => {
-  if (typeof rawValue === "boolean") {
-    return rawValue;
-  }
-
-  return parseNumericInput(rawValue, schemaType);
+type FieldErrors = Record<string, string>;
+type InputErrorProps = {
+  "aria-invalid"?: boolean;
+  "aria-describedby"?: string;
 };
 
 const isConfigValue = (value: unknown): value is ConfigValue =>
@@ -101,30 +93,123 @@ const parseTopicPatterns = (raw: string): string[] => {
     .filter((entry) => entry.length > 0);
 };
 
+const getFieldErrorId = (fieldKey: string): string =>
+  `monitoring-${fieldKey.replace(/[^a-zA-Z0-9_-]/g, "-")}-error`;
+
+const parseDraftNumber = ({
+  fieldKey,
+  label,
+  value,
+  schemaType,
+  min,
+  max,
+  required = true,
+  errors,
+}: {
+  fieldKey: string;
+  label: string;
+  value: unknown;
+  schemaType: "integer" | "number";
+  min?: number;
+  max?: number;
+  required?: boolean;
+  errors: FieldErrors;
+}): number | undefined => {
+  const raw = String(value ?? "").trim();
+  if (raw === "") {
+    if (required) errors[fieldKey] = `${label} is required.`;
+    return undefined;
+  }
+
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed)) {
+    errors[fieldKey] = `${label} must be a number.`;
+    return undefined;
+  }
+  if (schemaType === "integer" && !Number.isInteger(parsed)) {
+    errors[fieldKey] = `${label} must be an integer.`;
+    return undefined;
+  }
+  if (min !== undefined && parsed < min) {
+    errors[fieldKey] = `${label} must be at least ${min}.`;
+    return undefined;
+  }
+  if (max !== undefined && parsed > max) {
+    errors[fieldKey] = `${label} must be at most ${max}.`;
+    return undefined;
+  }
+  return parsed;
+};
+
+const coerceConfigParams = (
+  params: ModelParams | Record<string, ConfigValue> | undefined,
+  properties: Record<string, ParameterSchema>,
+  requiredKeys: string[] | undefined,
+  prefix: string,
+  errors: FieldErrors
+): ModelParams => {
+  const cleaned: ModelParams = {};
+  const required = new Set(requiredKeys || []);
+  const keys = new Set([
+    ...Object.keys(params || {}),
+    ...required,
+  ]);
+
+  keys.forEach((key) => {
+    const value = params?.[key];
+    const schema = properties[key];
+    const fieldKey = `${prefix}.${key}`;
+    const isEmpty = value === "" || value === undefined;
+
+    if (schema?.type === "boolean") {
+      cleaned[key] = Boolean(value);
+      return;
+    }
+    if (isEmpty) {
+      if (required.has(key)) errors[fieldKey] = `${key} is required.`;
+      return;
+    }
+    if (schema?.type === "integer" || schema?.type === "number") {
+      const parsed = parseDraftNumber({
+        fieldKey,
+        label: key,
+        value,
+        schemaType: schema.type,
+        min: schema.minimum,
+        max: schema.maximum,
+        required: required.has(key),
+        errors,
+      });
+      if (parsed !== undefined) cleaned[key] = parsed;
+      return;
+    }
+    if (isConfigValue(value)) cleaned[key] = value;
+  });
+
+  return cleaned;
+};
+
 type SensorKeyStrategy = "full_hierarchy" | "top_level" | "leaf";
 type AlignmentMode = "strict_barrier";
 type MonitoringStrategy = "static_baseline" | "adaptive_stream";
 
 type PerformanceConfigState = {
   heuristic_enabled: boolean;
-  heuristic_window_size: number;
-  heuristic_min_samples: number;
-  heuristic_tail_alpha: number;
+  heuristic_window_size: string;
+  heuristic_min_samples: string;
+  heuristic_tail_alpha: string;
   alignment_mode: AlignmentMode;
   sensor_key_strategy: SensorKeyStrategy;
-  sensor_freshness_seconds: number;
+  sensor_freshness_seconds: string;
 };
 
 type StaticBaselineConfigState = {
   model_type: string;
   model_params: ModelParams;
-  training_window_size: number;
-  calibration_fraction: number;
-  fdr_method: FdrControlMethod;
-  fdr_alpha: number;
-  fdr_wealth: number;
-  fdr_lambda: number;
-  fdr_cutoff: number;
+  training_window_size: string;
+  calibration_window_size: string;
+  martingale_alpha: string;
+  martingale_epsilon: string;
 };
 
 const DEFAULT_MODEL_TYPE = "knn";
@@ -148,10 +233,11 @@ const DEFAULT_PREPROCESSING_STEPS: PreprocessingStepConfig[] = [
 ];
 
 const FORM_CONTROL_CLASS =
-  "h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-xs outline-none transition-[color,box-shadow] placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] disabled:pointer-events-none disabled:opacity-50";
+  "h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-xs outline-none transition-[color,box-shadow] placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 disabled:pointer-events-none disabled:opacity-50";
 const PRIMARY_ACTION_BUTTON_CLASS = "";
 const FIELD_LABEL_CLASS = "text-sm font-medium text-foreground";
 const FIELD_HELP_CLASS = "mt-1 text-xs leading-5 text-muted-foreground";
+const FIELD_ERROR_CLASS = "mt-1 text-xs leading-5 text-destructive";
 const PANEL_SECTION_CLASS =
   "min-w-0 space-y-4 border-t border-border/70 pt-5 first:border-t-0 first:pt-0";
 const CHIP_CLASS =
@@ -163,6 +249,19 @@ const formatStrategyLabel = (strategy?: MonitoringStrategy): string => {
   if (strategy === "static_baseline") return "Static";
   if (strategy === "adaptive_stream") return "Dynamic";
   return "Unknown";
+};
+
+const FieldError: React.FC<{ fieldKey: string; errors: FieldErrors }> = ({
+  fieldKey,
+  errors,
+}) => {
+  const message = errors[fieldKey];
+  if (!message) return null;
+  return (
+    <p id={getFieldErrorId(fieldKey)} className={FIELD_ERROR_CLASS}>
+      {message}
+    </p>
+  );
 };
 
 const getStrategyBadgeClassName = (strategy?: MonitoringStrategy): string =>
@@ -267,6 +366,8 @@ const PreprocessingSection: React.FC<{
   availablePreprocessors: Record<string, PreprocessorDefinition>;
   newPreprocessorType: string;
   isLoading: boolean;
+  fieldErrors: FieldErrors;
+  inputErrorProps: (fieldKey: string) => InputErrorProps;
   onSelectType: (type: string) => void;
   onAdd: () => void;
   onParamChange: (index: number, key: string, rawValue: ConfigInputValue, schemaType?: string) => void;
@@ -278,6 +379,8 @@ const PreprocessingSection: React.FC<{
   availablePreprocessors,
   newPreprocessorType,
   isLoading,
+  fieldErrors,
+  inputErrorProps,
   onSelectType,
   onAdd,
   onParamChange,
@@ -373,43 +476,50 @@ const PreprocessingSection: React.FC<{
               {Object.entries(schemaProps).length === 0 && (
                 <p className="text-sm text-muted-foreground">No parameters.</p>
               )}
-              {Object.entries(schemaProps).map(([key, schema]) => (
-                <div key={key} className="flex flex-col">
-                  <label className="mb-1 text-sm font-medium">
-                    {key}
-                    {schema?.description ? (
-                      <span className="ml-1 text-xs text-muted-foreground">
-                        ({schema.description})
-                      </span>
-                    ) : null}
-                  </label>
-                  <input
-                    type={getInputType(schema?.type)}
-                    className={FORM_CONTROL_CLASS}
-                    checked={
-                      schema?.type === "boolean"
-                        ? Boolean(step.params?.[key])
-                        : undefined
-                    }
-                    value={
-                      schema?.type === "boolean"
-                        ? undefined
-                        : getTextInputValue(step.params?.[key])
-                    }
-                    onChange={(e) =>
-                      onParamChange(
-                        index,
-                        key,
-                        schema?.type === "boolean" ? e.target.checked : e.target.value,
-                        schema?.type
-                      )
-                    }
-                    min={schema?.minimum}
-                    max={schema?.maximum}
-                    step="any"
-                  />
-                </div>
-              ))}
+              {Object.entries(schemaProps).map(([key, schema]) => {
+                const fieldKey = `preprocessors.${index}.params.${key}`;
+                return (
+                  <div key={key} className="flex flex-col">
+                    <label className="mb-1 text-sm font-medium">
+                      {key}
+                      {schema?.description ? (
+                        <span className="ml-1 text-xs text-muted-foreground">
+                          ({schema.description})
+                        </span>
+                      ) : null}
+                    </label>
+                    <input
+                      type={getInputType(schema?.type)}
+                      className={FORM_CONTROL_CLASS}
+                      checked={
+                        schema?.type === "boolean"
+                          ? Boolean(step.params?.[key])
+                          : undefined
+                      }
+                      value={
+                        schema?.type === "boolean"
+                          ? undefined
+                          : getTextInputValue(step.params?.[key])
+                      }
+                      onChange={(e) =>
+                        onParamChange(
+                          index,
+                          key,
+                          schema?.type === "boolean"
+                            ? e.target.checked
+                            : e.target.value,
+                          schema?.type
+                        )
+                      }
+                      min={schema?.minimum}
+                      max={schema?.maximum}
+                      step="any"
+                      {...inputErrorProps(fieldKey)}
+                    />
+                    <FieldError fieldKey={fieldKey} errors={fieldErrors} />
+                  </div>
+                );
+              })}
             </div>
           </div>
         );
@@ -676,25 +786,23 @@ const Monitoring: React.FC = () => {
   const nextPreprocessingStepId = useRef(DEFAULT_PREPROCESSING_STEPS.length);
   const [performanceConfig, setPerformanceConfig] = useState<PerformanceConfigState>({
     heuristic_enabled: true,
-    heuristic_window_size: 1000,
-    heuristic_min_samples: 300,
-    heuristic_tail_alpha: 0.005,
+    heuristic_window_size: "1000",
+    heuristic_min_samples: "300",
+    heuristic_tail_alpha: "0.005",
     alignment_mode: "strict_barrier",
     sensor_key_strategy: "full_hierarchy",
-    sensor_freshness_seconds: 30,
+    sensor_freshness_seconds: "30",
   });
   const [staticBaselineConfig, setStaticBaselineConfig] =
     useState<StaticBaselineConfigState>({
       model_type: DEFAULT_STATIC_MODEL_TYPE,
       model_params: DEFAULT_STATIC_MODEL_PARAMS,
-      training_window_size: 1200,
-      calibration_fraction: 0.3,
-      fdr_method: "saffron",
-      fdr_alpha: 0.05,
-      fdr_wealth: 0.025,
-      fdr_lambda: 0.5,
-      fdr_cutoff: 0.05,
+      training_window_size: "1200",
+      calibration_window_size: "360",
+      martingale_alpha: "0.01",
+      martingale_epsilon: "0.5",
     });
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [showStaticAdvanced, setShowStaticAdvanced] = useState(false);
   const [showDynamicAdvanced, setShowDynamicAdvanced] = useState(false);
 
@@ -739,6 +847,26 @@ const Monitoring: React.FC = () => {
         )
       ),
     [availableModels]
+  );
+
+  const clearFieldError = useCallback((fieldKey: string) => {
+    setFieldErrors((prev) => {
+      if (!prev[fieldKey]) return prev;
+      const next = { ...prev };
+      delete next[fieldKey];
+      return next;
+    });
+  }, []);
+
+  const inputErrorProps = useCallback(
+    (fieldKey: string): InputErrorProps =>
+      fieldErrors[fieldKey]
+        ? {
+            "aria-invalid": true,
+            "aria-describedby": getFieldErrorId(fieldKey),
+          }
+        : {},
+    [fieldErrors]
   );
 
   useEffect(() => {
@@ -866,17 +994,19 @@ const Monitoring: React.FC = () => {
   );
 
   const handleParamChange = useCallback((key: string, rawValue: ConfigInputValue, schemaType?: string) => {
-    const parsed = parseConfigInput(rawValue, schemaType);
-    setModelParams((prev) => ({ ...prev, [key]: parsed }));
-  }, []);
+    void schemaType;
+    setModelParams((prev) => ({ ...prev, [key]: rawValue }));
+    clearFieldError(`dynamic.model_params.${key}`);
+  }, [clearFieldError]);
 
   const handleStaticParamChange = useCallback((key: string, rawValue: ConfigInputValue, schemaType?: string) => {
-    const parsed = parseConfigInput(rawValue, schemaType);
+    void schemaType;
     setStaticBaselineConfig((prev) => ({
       ...prev,
-      model_params: { ...prev.model_params, [key]: parsed },
+      model_params: { ...prev.model_params, [key]: rawValue },
     }));
-  }, []);
+    clearFieldError(`static.model_params.${key}`);
+  }, [clearFieldError]);
 
   const handleAddPreprocessor = useCallback(() => {
     if (!newPreprocessorType) return;
@@ -890,18 +1020,18 @@ const Monitoring: React.FC = () => {
   }, [applyPreprocessorDefaults, newPreprocessorType]);
 
   const handlePreprocessorParamChange = useCallback(
-    (index: number, key: string, rawValue: ConfigInputValue, schemaType?: string) => {
-      const parsed = parseConfigInput(rawValue, schemaType);
+    (index: number, key: string, rawValue: ConfigInputValue) => {
       setPreprocessingSteps((prev) => {
         const updated = [...prev];
         updated[index] = {
           ...updated[index],
-          params: { ...(updated[index].params || {}), [key]: parsed },
+          params: { ...(updated[index].params || {}), [key]: rawValue },
         };
         return updated;
       });
+      clearFieldError(`preprocessors.${index}.params.${key}`);
     },
-    []
+    [clearFieldError]
   );
 
   const handleRemovePreprocessor = useCallback((index: number) => {
@@ -935,63 +1065,32 @@ const Monitoring: React.FC = () => {
         | "sensor_freshness_seconds",
       rawValue: string
     ) => {
-      const parsed = parseFloat(rawValue);
-      if (Number.isNaN(parsed)) {
-        return;
-      }
       setPerformanceConfig((prev) => ({
         ...prev,
-        [key]:
-          key === "heuristic_window_size" || key === "heuristic_min_samples"
-            ? Math.max(1, Math.round(parsed))
-            : key === "sensor_freshness_seconds"
-            ? Math.max(1, parsed)
-            : key === "heuristic_tail_alpha"
-            ? Math.min(Math.max(0.0001, parsed), 0.9999)
-            : parsed,
+        [key]: rawValue,
       }));
+      clearFieldError(`performance.${key}`);
     },
-    []
+    [clearFieldError]
   );
 
   const handleStaticNumberChange = useCallback(
     (
       key:
         | "training_window_size"
-        | "calibration_fraction"
-        | "fdr_alpha"
-        | "fdr_wealth"
-        | "fdr_lambda"
-        | "fdr_cutoff",
+        | "calibration_window_size"
+        | "martingale_alpha"
+        | "martingale_epsilon",
       rawValue: string
     ) => {
-      const parsed = parseFloat(rawValue);
-      if (Number.isNaN(parsed)) {
-        return;
-      }
       setStaticBaselineConfig((prev) => ({
         ...prev,
-        [key]:
-          key === "training_window_size"
-            ? Math.max(20, Math.round(parsed))
-            : key === "calibration_fraction"
-            ? Math.min(Math.max(0.01, parsed), 0.94)
-            : Math.min(Math.max(0.0001, parsed), 0.9999),
+        [key]: rawValue,
       }));
+      clearFieldError(`static.${key}`);
     },
-    []
+    [clearFieldError]
   );
-
-  const handleFdrMethodChange = useCallback((method: FdrControlMethod) => {
-    setStaticBaselineConfig((prev) => ({
-      ...prev,
-      fdr_method: method,
-      fdr_wealth:
-        method === "saffron" && prev.fdr_wealth >= prev.fdr_alpha
-          ? Math.max(0.0001, prev.fdr_alpha / 2)
-          : prev.fdr_wealth,
-    }));
-  }, []);
 
   useEffect(() => {
     const staticKeys = Object.keys(staticModels);
@@ -1127,54 +1226,160 @@ const Monitoring: React.FC = () => {
         return;
       }
 
-      if (performanceConfig.heuristic_min_samples > performanceConfig.heuristic_window_size) {
-        alert("Heuristic min samples must be less than or equal to window size.");
-        return;
-      }
-
-      if (
-        monitoringStrategy === "static_baseline" &&
-        staticBaselineConfig.fdr_method === "saffron" &&
-        staticBaselineConfig.fdr_wealth >= staticBaselineConfig.fdr_alpha
-      ) {
-        alert("SAFFRON wealth must be less than alpha.");
-        return;
-      }
-
       // Generate unique container name
       const containerName = `radar-${chargerId}-${Date.now()}`;
+      const errors: FieldErrors = {};
+      const selectedModelInfo =
+        monitoringStrategy === "static_baseline"
+          ? staticModels[selectedModelType]
+          : adaptiveModels[selectedModelType];
 
-      // Clean params (drop empty strings)
       const activeModelParams =
         monitoringStrategy === "static_baseline"
           ? staticBaselineConfig.model_params
           : modelParams;
-      const cleanedParams = Object.fromEntries(
-        Object.entries(activeModelParams || {}).filter(([, value]) => value !== "" && value !== undefined)
+      const cleanedParams = coerceConfigParams(
+        activeModelParams,
+        selectedModelInfo?.parameters?.properties || {},
+        selectedModelInfo?.parameters?.required,
+        monitoringStrategy === "static_baseline"
+          ? "static.model_params"
+          : "dynamic.model_params",
+        errors
       );
 
       const cleanedPreprocessingSteps =
         monitoringStrategy === "adaptive_stream"
-          ? preprocessingSteps.map((step) => ({
+          ? preprocessingSteps.map((step, index) => ({
               type: step.type,
-              params: Object.fromEntries(
-                Object.entries(step.params || {}).filter(([, value]) => value !== "" && value !== undefined)
+              params: coerceConfigParams(
+                step.params || {},
+                availablePreprocessors[step.type]?.parameters?.properties || {},
+                availablePreprocessors[step.type]?.parameters?.required,
+                `preprocessors.${index}.params`,
+                errors
               ),
             }))
           : [];
 
+      const sensorFreshnessSeconds = parseDraftNumber({
+        fieldKey: "performance.sensor_freshness_seconds",
+        label: "Sensor freshness",
+        value: performanceConfig.sensor_freshness_seconds,
+        schemaType: "number",
+        min: 1,
+        errors,
+      });
+
+      const heuristicWindowSize =
+        monitoringStrategy === "adaptive_stream"
+          ? parseDraftNumber({
+              fieldKey: "performance.heuristic_window_size",
+              label: "Heuristic window size",
+              value: performanceConfig.heuristic_window_size,
+              schemaType: "integer",
+              min: 3,
+              errors,
+            })
+          : undefined;
+      const heuristicMinSamples =
+        monitoringStrategy === "adaptive_stream"
+          ? parseDraftNumber({
+              fieldKey: "performance.heuristic_min_samples",
+              label: "Heuristic min samples",
+              value: performanceConfig.heuristic_min_samples,
+              schemaType: "integer",
+              min: 2,
+              errors,
+            })
+          : undefined;
+      const heuristicTailAlpha =
+        monitoringStrategy === "adaptive_stream"
+          ? parseDraftNumber({
+              fieldKey: "performance.heuristic_tail_alpha",
+              label: "Heuristic tail alpha",
+              value: performanceConfig.heuristic_tail_alpha,
+              schemaType: "number",
+              min: 0.0001,
+              max: 0.9999,
+              errors,
+            })
+          : undefined;
+      if (
+        heuristicWindowSize !== undefined &&
+        heuristicMinSamples !== undefined &&
+        heuristicMinSamples > heuristicWindowSize
+      ) {
+        errors["performance.heuristic_min_samples"] =
+          "Heuristic min samples must be less than or equal to window size.";
+      }
+
+      const trainingWindowSize =
+        monitoringStrategy === "static_baseline"
+          ? parseDraftNumber({
+              fieldKey: "static.training_window_size",
+              label: "Training window size",
+              value: staticBaselineConfig.training_window_size,
+              schemaType: "integer",
+              min: 20,
+              errors,
+            })
+          : undefined;
+      const calibrationWindowSize =
+        monitoringStrategy === "static_baseline"
+          ? parseDraftNumber({
+              fieldKey: "static.calibration_window_size",
+              label: "Calibration samples",
+              value: staticBaselineConfig.calibration_window_size,
+              schemaType: "integer",
+              min: 1,
+              errors,
+            })
+          : undefined;
+      const martingaleAlpha =
+        monitoringStrategy === "static_baseline"
+          ? parseDraftNumber({
+              fieldKey: "static.martingale_alpha",
+              label: "Martingale alpha",
+              value: staticBaselineConfig.martingale_alpha,
+              schemaType: "number",
+              min: 0.0001,
+              max: 0.9999,
+              errors,
+            })
+          : undefined;
+      const martingaleEpsilon =
+        monitoringStrategy === "static_baseline"
+          ? parseDraftNumber({
+              fieldKey: "static.martingale_epsilon",
+              label: "Martingale epsilon",
+              value: staticBaselineConfig.martingale_epsilon,
+              schemaType: "number",
+              min: 0.0001,
+              max: 1,
+              errors,
+            })
+          : undefined;
+
+      if (Object.keys(errors).length > 0) {
+        setFieldErrors(errors);
+        toast.error("Fix highlighted configuration fields before starting monitoring.");
+        return;
+      }
+      setFieldErrors({});
+
       const commonPerformanceConfig = {
         alignment_mode: performanceConfig.alignment_mode,
         sensor_key_strategy: performanceConfig.sensor_key_strategy,
-        sensor_freshness_seconds: performanceConfig.sensor_freshness_seconds,
+        sensor_freshness_seconds: sensorFreshnessSeconds!,
       };
 
       const adaptivePerformanceConfig = {
         ...commonPerformanceConfig,
         heuristic_enabled: performanceConfig.heuristic_enabled,
-        heuristic_window_size: performanceConfig.heuristic_window_size,
-        heuristic_min_samples: performanceConfig.heuristic_min_samples,
-        heuristic_tail_alpha: performanceConfig.heuristic_tail_alpha,
+        heuristic_window_size: heuristicWindowSize!,
+        heuristic_min_samples: heuristicMinSamples!,
+        heuristic_tail_alpha: heuristicTailAlpha!,
       };
 
       await apiUtils.post(
@@ -1196,21 +1401,14 @@ const Monitoring: React.FC = () => {
               ? {
                   model_type: staticBaselineConfig.model_type,
                   model_params: cleanedParams,
-                  training_window_size: staticBaselineConfig.training_window_size,
-                  calibration_fraction: staticBaselineConfig.calibration_fraction,
+                  training_window_size: trainingWindowSize!,
+                  calibration_window_size: calibrationWindowSize!,
                   conformal_strategy: "split",
-                  fdr_config:
-                    staticBaselineConfig.fdr_method === "saffron"
-                      ? {
-                          method: "saffron",
-                          alpha: staticBaselineConfig.fdr_alpha,
-                          wealth: staticBaselineConfig.fdr_wealth,
-                          lambda_: staticBaselineConfig.fdr_lambda,
-                        }
-                      : {
-                          method: "naive",
-                          cutoff: staticBaselineConfig.fdr_cutoff,
-                        },
+                  martingale_config: {
+                    method: "power",
+                    alpha: martingaleAlpha!,
+                    epsilon: martingaleEpsilon!,
+                  },
                 }
               : undefined,
           adaptive_stream_config:
@@ -1411,6 +1609,11 @@ const Monitoring: React.FC = () => {
                           event.target.value
                         )
                       }
+                      {...inputErrorProps("performance.sensor_freshness_seconds")}
+                    />
+                    <FieldError
+                      fieldKey="performance.sensor_freshness_seconds"
+                      errors={fieldErrors}
                     />
                   </div>
                   <div className="flex flex-col">
@@ -1555,42 +1758,47 @@ const Monitoring: React.FC = () => {
                           )}
                           <div className="grid gap-3 sm:grid-cols-2">
                           {Object.entries(staticModels[staticBaselineConfig.model_type]?.parameters?.properties || {}).map(
-                            ([key, schema]) => (
-                              <div key={key} className="flex flex-col">
-                                <label className="mb-1 text-sm font-medium">
-                                  {key}
-                                  {schema?.description ? (
-                                    <span className="ml-1 text-xs text-muted-foreground">({schema.description})</span>
-                                  ) : null}
-                                </label>
-                                <input
-                                  type={getInputType(schema?.type)}
-                                  className={FORM_CONTROL_CLASS}
-                                  checked={
-                                    schema?.type === "boolean"
-                                      ? Boolean(staticBaselineConfig.model_params[key])
-                                      : undefined
-                                  }
-                                  value={
-                                    schema?.type === "boolean"
-                                      ? undefined
-                                      : getTextInputValue(staticBaselineConfig.model_params[key])
-                                  }
-                                  onChange={(e) =>
-                                    handleStaticParamChange(
-                                      key,
+                            ([key, schema]) => {
+                              const fieldKey = `static.model_params.${key}`;
+                              return (
+                                <div key={key} className="flex flex-col">
+                                  <label className="mb-1 text-sm font-medium">
+                                    {key}
+                                    {schema?.description ? (
+                                      <span className="ml-1 text-xs text-muted-foreground">({schema.description})</span>
+                                    ) : null}
+                                  </label>
+                                  <input
+                                    type={getInputType(schema?.type)}
+                                    className={FORM_CONTROL_CLASS}
+                                    checked={
                                       schema?.type === "boolean"
-                                        ? e.target.checked
-                                        : e.target.value,
-                                      schema?.type
-                                    )
-                                  }
-                                  min={schema?.minimum}
-                                  max={schema?.maximum}
-                                  step="any"
-                                />
-                              </div>
-                            )
+                                        ? Boolean(staticBaselineConfig.model_params[key])
+                                        : undefined
+                                    }
+                                    value={
+                                      schema?.type === "boolean"
+                                        ? undefined
+                                        : getTextInputValue(staticBaselineConfig.model_params[key])
+                                    }
+                                    onChange={(e) =>
+                                      handleStaticParamChange(
+                                        key,
+                                        schema?.type === "boolean"
+                                          ? e.target.checked
+                                          : e.target.value,
+                                        schema?.type
+                                      )
+                                    }
+                                    min={schema?.minimum}
+                                    max={schema?.maximum}
+                                    step="any"
+                                    {...inputErrorProps(fieldKey)}
+                                  />
+                                  <FieldError fieldKey={fieldKey} errors={fieldErrors} />
+                                </div>
+                              );
+                            }
                           )}
                           </div>
                         </div>
@@ -1612,111 +1820,78 @@ const Monitoring: React.FC = () => {
                                   event.target.value
                                 )
                               }
+                              {...inputErrorProps("static.training_window_size")}
+                            />
+                            <FieldError
+                              fieldKey="static.training_window_size"
+                              errors={fieldErrors}
                             />
                           </div>
                           <div className="flex flex-col">
-                            <label className="mb-1 text-sm font-medium">Calibration Fraction</label>
+                            <label className="mb-1 text-sm font-medium">Calibration Samples</label>
                             <input
                               type="number"
-                              min={0.01}
-                              max={0.94}
-                              step="0.01"
+                              min={1}
                               className={FORM_CONTROL_CLASS}
-                              value={staticBaselineConfig.calibration_fraction}
+                              value={staticBaselineConfig.calibration_window_size}
                               onChange={(event) =>
                                 handleStaticNumberChange(
-                                  "calibration_fraction",
+                                  "calibration_window_size",
                                   event.target.value
                                 )
                               }
+                              {...inputErrorProps("static.calibration_window_size")}
+                            />
+                            <FieldError
+                              fieldKey="static.calibration_window_size"
+                              errors={fieldErrors}
                             />
                           </div>
                         </div>
                       </div>
 
                       <div className="space-y-3">
-                        <h3 className="text-sm font-semibold">FDR Control</h3>
+                        <h3 className="text-sm font-semibold">Martingale Alarm</h3>
                         <div className="grid gap-3 sm:grid-cols-2">
                           <div className="flex flex-col">
-                            <label className="mb-1 text-sm font-medium">Method</label>
-                            <select
+                            <label className="mb-1 text-sm font-medium">Alpha</label>
+                            <input
+                              type="number"
+                              min={0.0001}
+                              max={0.9999}
+                              step="0.001"
                               className={FORM_CONTROL_CLASS}
-                              value={staticBaselineConfig.fdr_method}
+                              value={staticBaselineConfig.martingale_alpha}
                               onChange={(event) =>
-                                handleFdrMethodChange(
-                                  event.target.value as FdrControlMethod
-                                )
+                                handleStaticNumberChange("martingale_alpha", event.target.value)
                               }
-                            >
-                              <option value="saffron">SAFFRON</option>
-                              <option value="naive">Naive p-value cutoff</option>
-                            </select>
+                              {...inputErrorProps("static.martingale_alpha")}
+                            />
+                            <FieldError
+                              fieldKey="static.martingale_alpha"
+                              errors={fieldErrors}
+                            />
                           </div>
-
-                          {staticBaselineConfig.fdr_method === "naive" && (
-                            <div className="flex flex-col">
-                              <label className="mb-1 text-sm font-medium">Cutoff</label>
-                              <input
-                                type="number"
-                                min={0.0001}
-                                max={0.9999}
-                                step="0.001"
-                                className={FORM_CONTROL_CLASS}
-                                value={staticBaselineConfig.fdr_cutoff}
-                                onChange={(event) =>
-                                  handleStaticNumberChange("fdr_cutoff", event.target.value)
-                                }
-                              />
-                            </div>
-                          )}
+                          <div className="flex flex-col">
+                            <label className="mb-1 text-sm font-medium">Epsilon</label>
+                            <input
+                              type="number"
+                              min={0.0001}
+                              max={1}
+                              step="0.01"
+                              className={FORM_CONTROL_CLASS}
+                              value={staticBaselineConfig.martingale_epsilon}
+                              onChange={(event) =>
+                                handleStaticNumberChange("martingale_epsilon", event.target.value)
+                              }
+                              {...inputErrorProps("static.martingale_epsilon")}
+                            />
+                            <FieldError
+                              fieldKey="static.martingale_epsilon"
+                              errors={fieldErrors}
+                            />
+                          </div>
                         </div>
-
-                        {staticBaselineConfig.fdr_method === "saffron" && (
-                          <div className="grid gap-3 sm:grid-cols-3">
-                            <div className="flex flex-col">
-                              <label className="mb-1 text-sm font-medium">Alpha</label>
-                              <input
-                                type="number"
-                                min={0.0001}
-                                max={0.9999}
-                                step="0.001"
-                                className={FORM_CONTROL_CLASS}
-                                value={staticBaselineConfig.fdr_alpha}
-                                onChange={(event) =>
-                                  handleStaticNumberChange("fdr_alpha", event.target.value)
-                                }
-                              />
-                            </div>
-                            <div className="flex flex-col">
-                              <label className="mb-1 text-sm font-medium">Wealth</label>
-                              <input
-                                type="number"
-                                min={0.0001}
-                                max={0.9999}
-                                step="0.001"
-                                className={FORM_CONTROL_CLASS}
-                                value={staticBaselineConfig.fdr_wealth}
-                                onChange={(event) =>
-                                  handleStaticNumberChange("fdr_wealth", event.target.value)
-                                }
-                              />
-                            </div>
-                            <div className="flex flex-col">
-                              <label className="mb-1 text-sm font-medium">Lambda</label>
-                              <input
-                                type="number"
-                                min={0.0001}
-                                max={0.9999}
-                                step="0.001"
-                                className={FORM_CONTROL_CLASS}
-                                value={staticBaselineConfig.fdr_lambda}
-                                onChange={(event) =>
-                                  handleStaticNumberChange("fdr_lambda", event.target.value)
-                                }
-                              />
-                            </div>
-                          </div>
-                        )}
                       </div>
                     </div>
                   )}
@@ -1779,42 +1954,47 @@ const Monitoring: React.FC = () => {
                           )}
                           <div className="grid gap-3 sm:grid-cols-2">
                           {Object.entries(adaptiveModels[selectedAlgorithm]?.parameters?.properties || {}).map(
-                            ([key, schema]) => (
-                              <div key={key} className="flex flex-col">
-                                <label className="mb-1 text-sm font-medium">
-                                  {key}
-                                  {schema?.description ? (
-                                    <span className="ml-1 text-xs text-muted-foreground">({schema.description})</span>
-                                  ) : null}
-                                </label>
-                                <input
-                                  type={getInputType(schema?.type)}
-                                  className={FORM_CONTROL_CLASS}
-                                  checked={
-                                    schema?.type === "boolean"
-                                      ? Boolean(modelParams[key])
-                                      : undefined
-                                  }
-                                  value={
-                                    schema?.type === "boolean"
-                                      ? undefined
-                                      : getTextInputValue(modelParams[key])
-                                  }
-                                  onChange={(e) =>
-                                    handleParamChange(
-                                      key,
+                            ([key, schema]) => {
+                              const fieldKey = `dynamic.model_params.${key}`;
+                              return (
+                                <div key={key} className="flex flex-col">
+                                  <label className="mb-1 text-sm font-medium">
+                                    {key}
+                                    {schema?.description ? (
+                                      <span className="ml-1 text-xs text-muted-foreground">({schema.description})</span>
+                                    ) : null}
+                                  </label>
+                                  <input
+                                    type={getInputType(schema?.type)}
+                                    className={FORM_CONTROL_CLASS}
+                                    checked={
                                       schema?.type === "boolean"
-                                        ? e.target.checked
-                                        : e.target.value,
-                                      schema?.type
-                                    )
-                                  }
-                                  min={schema?.minimum}
-                                  max={schema?.maximum}
-                                  step="any"
-                                />
-                              </div>
-                            )
+                                        ? Boolean(modelParams[key])
+                                        : undefined
+                                    }
+                                    value={
+                                      schema?.type === "boolean"
+                                        ? undefined
+                                        : getTextInputValue(modelParams[key])
+                                    }
+                                    onChange={(e) =>
+                                      handleParamChange(
+                                        key,
+                                        schema?.type === "boolean"
+                                          ? e.target.checked
+                                          : e.target.value,
+                                        schema?.type
+                                      )
+                                    }
+                                    min={schema?.minimum}
+                                    max={schema?.maximum}
+                                    step="any"
+                                    {...inputErrorProps(fieldKey)}
+                                  />
+                                  <FieldError fieldKey={fieldKey} errors={fieldErrors} />
+                                </div>
+                              );
+                            }
                           )}
                           </div>
                         </div>
@@ -1849,6 +2029,11 @@ const Monitoring: React.FC = () => {
                                   event.target.value
                                 )
                               }
+                              {...inputErrorProps("performance.heuristic_window_size")}
+                            />
+                            <FieldError
+                              fieldKey="performance.heuristic_window_size"
+                              errors={fieldErrors}
                             />
                           </div>
                           <div className="flex flex-col">
@@ -1864,6 +2049,11 @@ const Monitoring: React.FC = () => {
                                   event.target.value
                                 )
                               }
+                              {...inputErrorProps("performance.heuristic_min_samples")}
+                            />
+                            <FieldError
+                              fieldKey="performance.heuristic_min_samples"
+                              errors={fieldErrors}
                             />
                           </div>
                           <div className="flex flex-col">
@@ -1881,6 +2071,11 @@ const Monitoring: React.FC = () => {
                                   event.target.value
                                 )
                               }
+                              {...inputErrorProps("performance.heuristic_tail_alpha")}
+                            />
+                            <FieldError
+                              fieldKey="performance.heuristic_tail_alpha"
+                              errors={fieldErrors}
                             />
                           </div>
                         </div>
@@ -1891,6 +2086,8 @@ const Monitoring: React.FC = () => {
                         availablePreprocessors={availablePreprocessors}
                         newPreprocessorType={newPreprocessorType}
                         isLoading={isLoadingPreprocessors}
+                        fieldErrors={fieldErrors}
+                        inputErrorProps={inputErrorProps}
                         onSelectType={setNewPreprocessorType}
                         onAdd={handleAddPreprocessor}
                         onParamChange={handlePreprocessorParamChange}

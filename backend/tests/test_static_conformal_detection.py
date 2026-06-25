@@ -1,13 +1,16 @@
-"""Unit tests for static conformal RADAR detector lifecycle."""
+"""Unit tests for static chronological conformal RADAR monitoring."""
 
 import concurrent.futures
+import hashlib
+import json
 import pickle
 
-from off_key_core.schemas.radar import FdrConfig, StaticBaselineConfig
+import pytest
+from off_key_core.schemas.radar import StaticBaselineConfig, StaticMartingaleConfig
 from off_key_mqtt_radar.config.config import AnomalyDetectionConfig
 from off_key_mqtt_radar.config.runtime import clear_radar_runtime_settings_cache
 from off_key_mqtt_radar.detector import (
-    NaivePValueCutoffController,
+    RestartedMartingaleAlarmController,
     StaticConformalDetectionService,
     StaticConformalState,
 )
@@ -21,14 +24,8 @@ class FakeConformalDetector:
         return [self.p_value]
 
 
-class FakeSaffron:
-    def __init__(self):
-        self.alpha = 0.05
-        self.num_test = 0
-
-    def test_one(self, p_value: float) -> bool:
-        self.num_test += 1
-        return p_value <= 0.01
+class FakeLegacyController:
+    num_test = 13
 
 
 class ControlledExecutor:
@@ -52,11 +49,34 @@ class InlineExecutor:
         return None
 
 
+def _legacy_fdr_static_signature(config: AnomalyDetectionConfig) -> str:
+    static_payload = config.static_baseline_config.model_dump(
+        exclude={"calibration_window_size", "martingale_config"},
+        exclude_none=True,
+    )
+    payload = {
+        "strategy": "static_baseline",
+        "model_type": str(static_payload.get("model_type", config.model_type)),
+        "model_params": static_payload.get("model_params", config.model_params or {}),
+        "static_baseline_config": static_payload,
+        "subscription_topics": sorted(
+            str(topic) for topic in (config.subscription_topics or [])
+        ),
+        "sensor_key_strategy": config.sensor_key_strategy,
+        "alignment_mode": config.alignment_mode,
+    }
+    payload_json = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(payload_json.encode("utf-8")).hexdigest()
+
+
 def _static_config(
     monkeypatch,
-    fdr_config: FdrConfig | None = None,
+    *,
+    martingale_config: StaticMartingaleConfig | None = None,
     model_params: dict | None = None,
     model_type: str = "pyod_iforest",
+    training_window_size: int = 20,
+    calibration_window_size: int = 5,
 ) -> AnomalyDetectionConfig:
     from off_key_mqtt_radar import tactic_client
 
@@ -80,15 +100,16 @@ def _static_config(
         static_baseline_config=StaticBaselineConfig(
             model_type=model_type,
             model_params=model_params,
-            training_window_size=20,
-            calibration_fraction=0.25,
-            fdr_config=fdr_config or FdrConfig(alpha=0.05, wealth=0.025, lambda_=0.5),
+            training_window_size=training_window_size,
+            calibration_window_size=calibration_window_size,
+            martingale_config=martingale_config
+            or StaticMartingaleConfig(alpha=0.9, epsilon=0.5),
         ),
         checkpoint_interval=100000,
     )
 
 
-def test_static_conformal_collects_trains_discards_then_detects(monkeypatch):
+def test_static_conformal_collects_calibrates_trains_then_detects(monkeypatch):
     config = _static_config(monkeypatch)
     service = StaticConformalDetectionService(config)
     executor = ControlledExecutor()
@@ -96,24 +117,40 @@ def test_static_conformal_collects_trains_discards_then_detects(monkeypatch):
 
     for index in range(19):
         result = service.process_data_point({"L1": float(index), "L2": 1.0})
-        assert result.context["static_conformal"]["phase"] == "collecting"
+        static_context = result.context["static_conformal"]
+        assert static_context["phase"] == "collecting"
+        assert "p_value" not in static_context
 
-    training_started = service.process_data_point({"L1": 20.0, "L2": 1.0})
+    calibration_started = service.process_data_point({"L1": 20.0, "L2": 1.0})
+    assert calibration_started.context["static_conformal"]["phase"] == "calibrating"
+    assert service.state == StaticConformalState.CALIBRATING
+
+    for index in range(4):
+        result = service.process_data_point({"L1": 21.0 + index, "L2": 1.0})
+        assert result.context["static_conformal"]["phase"] == "calibrating"
+
+    training_started = service.process_data_point({"L1": 25.0, "L2": 1.0})
     assert training_started.context["static_conformal"]["phase"] == "training_started"
     assert service.state == StaticConformalState.TRAINING
 
-    discarded = service.process_data_point({"L1": 21.0, "L2": 1.0})
+    discarded = service.process_data_point({"L1": 26.0, "L2": 1.0})
     assert discarded.context["static_conformal"]["phase"] == "training_discarded"
     assert service.discarded_during_training_count == 1
 
-    executor.future.set_result((FakeConformalDetector(), FakeSaffron()))
+    executor.future.set_result(
+        (FakeConformalDetector(p_value=0.000001), service._create_alarm_controller())
+    )
     anomaly = service.process_data_point({"L1": 100.0, "L2": 9.0})
+    static_context = anomaly.context["static_conformal"]
 
-    assert anomaly.is_anomaly is True
-    assert anomaly.anomaly_score == 0.001
-    assert anomaly.context["static_conformal"]["p_value"] == 0.001
-    assert anomaly.context["static_conformal"]["fdr_method"] == "saffron"
     assert service.state == StaticConformalState.READY
+    assert anomaly.is_anomaly is True
+    assert anomaly.anomaly_score == 0.000001
+    assert static_context["p_value"] == 0.000001
+    assert static_context["martingale_method"] == "power"
+    assert static_context["alarm_fired"] is True
+    assert static_context["alarm_count"] == 1
+    assert static_context["tested_count"] == 1
 
 
 def test_static_conformal_rejects_schema_mismatch_after_schema_freeze(monkeypatch):
@@ -121,7 +158,7 @@ def test_static_conformal_rejects_schema_mismatch_after_schema_freeze(monkeypatc
     service = StaticConformalDetectionService(config)
 
     service.conformal_detector = FakeConformalDetector()
-    service.fdr_controller = FakeSaffron()
+    service.alarm_controller = service._create_alarm_controller()
     service.feature_keys = ["L1", "L2"]
     service.state = StaticConformalState.READY
 
@@ -132,67 +169,34 @@ def test_static_conformal_rejects_schema_mismatch_after_schema_freeze(monkeypatc
     assert "schema_error" in result.context["static_conformal"]
 
 
-def test_static_conformal_naive_cutoff_flags_p_values_at_or_below_cutoff(
-    monkeypatch,
-):
-    config = _static_config(
-        monkeypatch,
-        fdr_config=FdrConfig(method="naive", cutoff=0.05),
-    )
+def test_static_conformal_martingale_ignores_non_crossing_p_values(monkeypatch):
+    config = _static_config(monkeypatch)
     service = StaticConformalDetectionService(config)
-    service.conformal_detector = FakeConformalDetector(p_value=0.05)
-    service.fdr_controller = service._create_fdr_controller()
+    service.conformal_detector = FakeConformalDetector(p_value=1.0)
+    service.alarm_controller = service._create_alarm_controller()
     service.feature_keys = ["L1", "L2"]
     service.state = StaticConformalState.READY
 
     result = service.process_data_point({"L1": 1.0, "L2": 2.0})
-
-    assert result.is_anomaly is True
-    assert result.context["static_conformal"]["fdr_method"] == "naive"
-    assert result.context["static_conformal"]["fdr_threshold"] == 0.05
-    assert result.context["static_conformal"]["tested_count"] == 1
-
-
-def test_static_conformal_naive_cutoff_ignores_p_values_above_cutoff(monkeypatch):
-    config = _static_config(
-        monkeypatch,
-        fdr_config=FdrConfig(method="naive", cutoff=0.05),
-    )
-    service = StaticConformalDetectionService(config)
-    service.conformal_detector = FakeConformalDetector(p_value=0.051)
-    service.fdr_controller = service._create_fdr_controller()
-    service.feature_keys = ["L1", "L2"]
-    service.state = StaticConformalState.READY
-
-    result = service.process_data_point({"L1": 1.0, "L2": 2.0})
+    static_context = result.context["static_conformal"]
 
     assert result.is_anomaly is False
     assert result.severity == "low"
-    assert result.context["static_conformal"]["fdr_method"] == "naive"
-    assert result.context["static_conformal"]["tested_count"] == 1
+    assert static_context["alarm_fired"] is False
+    assert static_context["tested_count"] == 1
 
 
-def test_naive_p_value_cutoff_controller_tracks_test_count():
-    controller = NaivePValueCutoffController(cutoff=0.05)
+def test_restarted_martingale_controller_alpha_spends_after_alarm():
+    controller = RestartedMartingaleAlarmController(alpha=0.9, epsilon=0.5)
 
-    assert controller.test_one(0.05) is True
-    assert controller.test_one(0.0501) is False
-    assert controller.num_test == 2
+    first_threshold = controller.restarted_ville_threshold
+    result = controller.update(0.000001)
 
-
-def test_real_saffron_controller_matches_static_detector_contract(monkeypatch):
-    config = _static_config(monkeypatch)
-    service = StaticConformalDetectionService(config)
-
-    try:
-        controller = service._create_fdr_controller()
-
-        decision = controller.test_one(0.001)
-
-        assert isinstance(decision, bool)
-        assert int(getattr(controller, "num_test", 0)) == 1
-    finally:
-        service.shutdown()
+    assert result["alarm_fired"] is True
+    assert result["alarm_count"] == 1
+    assert controller.alarm_count == 1
+    assert controller.tested_count == 1
+    assert controller.restarted_ville_threshold > first_threshold
 
 
 def test_static_conformal_real_pyod_nonconform_training_reaches_ready(
@@ -204,7 +208,7 @@ def test_static_conformal_real_pyod_nonconform_training_reaches_ready(
     clear_radar_runtime_settings_cache()
     config = _static_config(
         monkeypatch,
-        fdr_config=FdrConfig(method="naive", cutoff=0.05),
+        martingale_config=StaticMartingaleConfig(alpha=0.01, epsilon=0.5),
         model_params={
             "contamination": 0.1,
         },
@@ -220,6 +224,14 @@ def test_static_conformal_real_pyod_nonconform_training_reaches_ready(
                 {"L1": float(index), "L2": float(index % 4)}
             )
 
+        assert result.context["static_conformal"]["phase"] == "calibrating"
+        assert service.state == StaticConformalState.CALIBRATING
+
+        for index in range(5):
+            result = service.process_data_point(
+                {"L1": float(20 + index), "L2": float(index % 4)}
+            )
+
         assert result.context["static_conformal"]["phase"] == "training_started"
         assert service.state == StaticConformalState.TRAINING
 
@@ -230,7 +242,7 @@ def test_static_conformal_real_pyod_nonconform_training_reaches_ready(
         result = service.process_data_point({"L1": 100.0, "L2": 20.0})
         static_context = result.context["static_conformal"]
         assert static_context["phase"] == "ready"
-        assert static_context["fdr_method"] == "naive"
+        assert static_context["martingale_method"] == "power"
         assert 0.0 <= static_context["p_value"] <= 1.0
         assert 0.0 <= result.anomaly_score <= 1.0
     finally:
@@ -240,13 +252,17 @@ def test_static_conformal_real_pyod_nonconform_training_reaches_ready(
 
 def test_static_conformal_restores_ready_checkpoint(monkeypatch, tmp_path):
     config = _static_config(monkeypatch)
+    alarm_controller = RestartedMartingaleAlarmController(
+        alpha=0.9, epsilon=0.5, alarm_count=2, tested_count=7
+    )
     checkpoint = {
         "strategy": "static_baseline",
         "static_state": "ready",
         "training_buffer": [],
+        "calibration_buffer": [],
         "feature_keys": ["L1", "L2"],
         "conformal_detector": FakeConformalDetector(),
-        "fdr_controller": FakeSaffron(),
+        "alarm_controller": alarm_controller,
         "processed_count": 42,
         "anomaly_count": 3,
         "discarded_during_training_count": 2,
@@ -266,6 +282,59 @@ def test_static_conformal_restores_ready_checkpoint(monkeypatch, tmp_path):
     assert restored.state == StaticConformalState.READY
     assert restored.processed_count == 42
     assert restored.feature_keys == ["L1", "L2"]
+    assert restored.alarm_controller.alarm_count == 2
+    assert restored.alarm_controller.tested_count == 7
+
+
+def test_static_conformal_legacy_checkpoint_gets_fresh_alarm_controller(
+    monkeypatch,
+    tmp_path,
+):
+    config = _static_config(monkeypatch)
+    checkpoint = {
+        "strategy": "static_baseline",
+        "static_state": "ready",
+        "training_buffer": [],
+        "feature_keys": ["L1", "L2"],
+        "conformal_detector": FakeConformalDetector(),
+        "fdr_controller": FakeLegacyController(),
+        "processed_count": 42,
+        "anomaly_count": 3,
+        "schema_signature": _legacy_fdr_static_signature(config),
+    }
+    checkpoint_path = tmp_path / "legacy-static.pkl"
+    checkpoint_path.write_bytes(pickle.dumps(checkpoint))
+
+    restored = StaticConformalDetectionService.from_checkpoint(
+        str(checkpoint_path), config
+    )
+
+    assert restored.state == StaticConformalState.READY
+    assert isinstance(restored.alarm_controller, RestartedMartingaleAlarmController)
+    assert restored.alarm_controller.tested_count == 13
+
+
+def test_static_conformal_legacy_checkpoint_rejects_signature_mismatch(
+    monkeypatch,
+    tmp_path,
+):
+    config = _static_config(monkeypatch)
+    checkpoint = {
+        "strategy": "static_baseline",
+        "static_state": "ready",
+        "training_buffer": [],
+        "feature_keys": ["L1", "L2"],
+        "conformal_detector": FakeConformalDetector(),
+        "fdr_controller": FakeLegacyController(),
+        "processed_count": 42,
+        "anomaly_count": 3,
+        "schema_signature": "different-signature",
+    }
+    checkpoint_path = tmp_path / "legacy-static-mismatch.pkl"
+    checkpoint_path.write_bytes(pickle.dumps(checkpoint))
+
+    with pytest.raises(ValueError, match="schema signature"):
+        StaticConformalDetectionService.from_checkpoint(str(checkpoint_path), config)
 
 
 def test_static_conformal_uses_static_config_model_params(monkeypatch):
@@ -294,6 +363,7 @@ def test_static_conformal_uses_static_config_model_params(monkeypatch):
             model_type="pyod_knn",
             model_params={"n_neighbors": 7, "contamination": 0.08},
             training_window_size=20,
+            calibration_window_size=5,
         ),
         checkpoint_interval=100000,
     )

@@ -9,6 +9,7 @@ __all__ = [
     "FdrConfig",
     "MonitoringStrategy",
     "PerformanceConfig",
+    "StaticMartingaleConfig",
     "StaticBaselineConfig",
 ]
 
@@ -90,6 +91,16 @@ class FdrConfig(BaseModel):
         return self.cutoff if self.method == "naive" else self.alpha
 
 
+class StaticMartingaleConfig(BaseModel):
+    """Restarted martingale alarm settings for static conformal monitoring."""
+
+    model_config = ConfigDict(extra="forbid", validate_assignment=True)
+
+    method: Literal["power"] = "power"
+    epsilon: float = Field(default=0.5, gt=0.0, le=1.0)
+    alpha: float = Field(default=0.01, gt=0.0, lt=1.0)
+
+
 class StaticBaselineConfig(BaseModel):
     """Configuration for static baseline conformal monitoring."""
 
@@ -98,10 +109,45 @@ class StaticBaselineConfig(BaseModel):
     model_type: str = "pyod_iforest"
     model_params: dict[str, Any] = Field(default_factory=dict)
     training_window_size: int = Field(default=1200, ge=20, le=1_000_000)
+    calibration_window_size: int = Field(default=360, ge=1, le=1_000_000)
     calibration_fraction: float = Field(default=0.3, gt=0.0, lt=0.95)
     conformal_strategy: Literal["split"] = "split"
     seed: int | None = 42
+    martingale_config: StaticMartingaleConfig = Field(
+        default_factory=StaticMartingaleConfig
+    )
     fdr_config: FdrConfig = Field(default_factory=FdrConfig)
+
+    @model_validator(mode="before")
+    @classmethod
+    def populate_legacy_calibration_window(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+        if "calibration_window_size" in data:
+            return data
+
+        try:
+            training_window_size = int(
+                data.get(
+                    "training_window_size",
+                    cls.model_fields["training_window_size"].default,
+                )
+            )
+            calibration_fraction = float(
+                data.get(
+                    "calibration_fraction",
+                    cls.model_fields["calibration_fraction"].default,
+                )
+            )
+        except (TypeError, ValueError):
+            return data
+
+        return {
+            **data,
+            "calibration_window_size": max(
+                1, round(training_window_size * calibration_fraction)
+            ),
+        }
 
     @field_validator("model_type")
     @classmethod

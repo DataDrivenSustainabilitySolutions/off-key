@@ -2,7 +2,6 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { parseNumericInput } from "../lib/monitoring-config";
 import Monitoring from "../pages/Monitoring";
 
 const mockPost = vi.fn(() => Promise.resolve({}));
@@ -78,12 +77,6 @@ describe("<Monitoring /> strategy setup", () => {
     });
   });
 
-  it("does not truncate invalid numeric config input", () => {
-    expect(parseNumericInput("1.5", "integer")).toBe("");
-    expect(parseNumericInput("12abc", "number")).toBe("");
-    expect(parseNumericInput("1e2", "number")).toBe(100);
-  });
-
   it("submits a static baseline payload from the static menu", async () => {
     renderMonitoring();
 
@@ -100,7 +93,13 @@ describe("<Monitoring /> strategy setup", () => {
     expect(payload.strategy).toBe("static_baseline");
     expect(payload.model_type).toBe("pyod_iforest");
     expect(payload.static_baseline_config.training_window_size).toBe(1200);
-    expect(payload.static_baseline_config.fdr_config.method).toBe("saffron");
+    expect(payload.static_baseline_config.calibration_window_size).toBe(360);
+    expect(payload.static_baseline_config.martingale_config).toEqual({
+      method: "power",
+      alpha: 0.01,
+      epsilon: 0.5,
+    });
+    expect(payload.static_baseline_config.fdr_config).toBeUndefined();
     expect(payload.adaptive_stream_config).toBeUndefined();
   });
 
@@ -122,50 +121,97 @@ describe("<Monitoring /> strategy setup", () => {
     expect(payload.performance_config.alignment_mode).toBe("strict_barrier");
   });
 
-  it("submits a naive static FDR cutoff payload without SAFFRON validation", async () => {
+  it("submits static martingale alarm settings", async () => {
     renderMonitoring();
 
     fireEvent.click(await screen.findByRole("button", { name: /show configuration/i }));
-    fireEvent.change(screen.getByDisplayValue("0.025"), {
-      target: { value: "0.05" },
+    fireEvent.change(screen.getByDisplayValue("360"), {
+      target: { value: "400" },
     });
-    fireEvent.change(screen.getByDisplayValue("SAFFRON"), {
-      target: { value: "naive" },
-    });
-    fireEvent.change(screen.getByDisplayValue("0.05"), {
+    fireEvent.change(screen.getByDisplayValue("0.01"), {
       target: { value: "0.02" },
     });
-
-    expect(screen.queryByText(/^Alpha$/i)).toBeNull();
-    expect(screen.queryByText(/^Wealth$/i)).toBeNull();
-    expect(screen.queryByText(/^Lambda$/i)).toBeNull();
+    fireEvent.change(screen.getByDisplayValue("0.5"), {
+      target: { value: "0.75" },
+    });
 
     fireEvent.click(screen.getByRole("button", { name: /start monitoring/i }));
 
     await waitFor(() => expect(mockPost).toHaveBeenCalled());
     const payload = mockPost.mock.calls[0][1];
 
-    expect(payload.static_baseline_config.fdr_config).toEqual({
-      method: "naive",
-      cutoff: 0.02,
+    expect(payload.static_baseline_config.calibration_window_size).toBe(400);
+    expect(payload.static_baseline_config.martingale_config).toEqual({
+      method: "power",
+      alpha: 0.02,
+      epsilon: 0.75,
     });
   });
 
-  it("clamps stale SAFFRON wealth when switching back from naive FDR", async () => {
+  it("lets static numeric fields be cleared while editing", async () => {
     renderMonitoring();
 
     fireEvent.click(await screen.findByRole("button", { name: /show configuration/i }));
-    fireEvent.change(screen.getByDisplayValue("0.025"), {
-      target: { value: "0.05" },
-    });
-    fireEvent.change(screen.getByDisplayValue("SAFFRON"), {
-      target: { value: "naive" },
-    });
-    fireEvent.change(screen.getByDisplayValue("Naive p-value cutoff"), {
-      target: { value: "saffron" },
-    });
+    const staticWindowInput = await screen.findByDisplayValue("1200");
 
-    expect(await screen.findByDisplayValue("0.025")).toBeTruthy();
+    fireEvent.change(staticWindowInput, { target: { value: "" } });
+
+    expect((staticWindowInput as HTMLInputElement).value).toBe("");
+  });
+
+  it("blocks below-min static values until fixed", async () => {
+    renderMonitoring();
+
+    fireEvent.click(await screen.findByRole("button", { name: /show configuration/i }));
+    const staticWindowInput = await screen.findByDisplayValue("1200");
+
+    fireEvent.change(staticWindowInput, { target: { value: "10" } });
+    fireEvent.click(screen.getByRole("button", { name: /start monitoring/i }));
+
+    expect((staticWindowInput as HTMLInputElement).value).toBe("10");
+    expect(mockPost).not.toHaveBeenCalled();
+    expect(
+      await screen.findByText("Training window size must be at least 20.")
+    ).toBeTruthy();
+
+    fireEvent.change(staticWindowInput, { target: { value: "2000" } });
+    fireEvent.click(screen.getByRole("button", { name: /start monitoring/i }));
+
+    await waitFor(() => expect(mockPost).toHaveBeenCalled());
+    const payload = mockPost.mock.calls[0][1];
+    expect(payload.static_baseline_config.training_window_size).toBe(2000);
+  });
+
+  it("keeps invalid detector integer drafts visible and blocks submit", async () => {
+    renderMonitoring();
+
+    fireEvent.click(await screen.findByRole("button", { name: /show configuration/i }));
+    const estimatorsInput = await screen.findByDisplayValue("100");
+
+    fireEvent.change(estimatorsInput, { target: { value: "1.5" } });
+    fireEvent.click(screen.getByRole("button", { name: /start monitoring/i }));
+
+    expect((estimatorsInput as HTMLInputElement).value).toBe("1.5");
+    expect(mockPost).not.toHaveBeenCalled();
+    expect(await screen.findByText("n_estimators must be an integer.")).toBeTruthy();
+
+    fireEvent.change(estimatorsInput, { target: { value: "101" } });
+    fireEvent.click(screen.getByRole("button", { name: /start monitoring/i }));
+
+    await waitFor(() => expect(mockPost).toHaveBeenCalled());
+    const payload = mockPost.mock.calls[0][1];
+    expect(payload.static_baseline_config.model_params.n_estimators).toBe(101);
+  });
+
+  it("does not render legacy static FDR controls", async () => {
+    renderMonitoring();
+
+    fireEvent.click(await screen.findByRole("button", { name: /show configuration/i }));
+
+    expect(screen.queryByText(/FDR Control/i)).toBeNull();
+    expect(screen.queryByDisplayValue("SAFFRON")).toBeNull();
+    expect(screen.queryByDisplayValue("Naive p-value cutoff")).toBeNull();
+    expect(await screen.findByText(/Martingale Alarm/i)).toBeTruthy();
   });
 
   it("switches to the dynamic menu without losing the static menu", async () => {

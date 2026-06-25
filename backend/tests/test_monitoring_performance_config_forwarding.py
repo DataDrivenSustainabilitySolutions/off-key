@@ -111,6 +111,13 @@ def test_gateway_resolves_default_static_baseline_config_from_legacy_fields():
     assert resolved["static_baseline_config"]["model_type"] == "pyod_iforest"
     assert resolved["static_baseline_config"]["model_params"] == {"n_estimators": 128}
     assert resolved["static_baseline_config"]["training_window_size"] == 1200
+    assert resolved["static_baseline_config"]["calibration_window_size"] == 360
+    assert resolved["static_baseline_config"]["martingale_config"] == {
+        "method": "power",
+        "epsilon": 0.5,
+        "alpha": 0.01,
+    }
+    assert "fdr_config" not in resolved["static_baseline_config"]
     assert resolved["adaptive_stream_config"] is None
 
 
@@ -353,12 +360,11 @@ def test_tactic_build_radar_environment_maps_static_strategy_to_radar_env(monkey
             "model_type": "pyod_iforest",
             "model_params": {"n_estimators": 100},
             "training_window_size": 120,
-            "calibration_fraction": 0.25,
-            "fdr_config": {
-                "method": "saffron",
-                "alpha": 0.05,
-                "wealth": 0.025,
-                "lambda_": 0.5,
+            "calibration_window_size": 30,
+            "martingale_config": {
+                "method": "power",
+                "alpha": 0.01,
+                "epsilon": 0.5,
             },
         },
         adaptive_stream_config={},
@@ -370,15 +376,21 @@ def test_tactic_build_radar_environment_maps_static_strategy_to_radar_env(monkey
     assert env["RADAR_MODEL_TYPE"] == "pyod_iforest"
     assert env["RADAR_PREPROCESSING_STEPS"] == "[]"
     assert static_config["training_window_size"] == 120
+    assert static_config["calibration_window_size"] == 30
+    assert static_config["martingale_config"] == {
+        "method": "power",
+        "epsilon": 0.5,
+        "alpha": 0.01,
+    }
+    assert "fdr_config" not in static_config
     assert static_config["model_params"] == {
         "n_estimators": 100,
         "contamination": 0.1,
     }
-    assert static_config["fdr_config"]["method"] == "saffron"
     assert model_registry.validate_model_params.call_args.args[0] == "pyod_iforest"
 
 
-def test_tactic_build_radar_environment_forwards_naive_fdr_config(monkeypatch):
+def test_tactic_build_radar_environment_accepts_legacy_fdr_config(monkeypatch):
     model_registry = MagicMock()
     model_registry.validate_model_params.return_value = {"n_estimators": 100}
     model_registry.validate_preprocessing_steps.return_value = []
@@ -421,5 +433,10 @@ def test_tactic_build_radar_environment_forwards_naive_fdr_config(monkeypatch):
 
     static_config = json.loads(env["RADAR_STATIC_BASELINE_CONFIG"])
 
-    assert static_config["fdr_config"]["method"] == "naive"
-    assert static_config["fdr_config"]["cutoff"] == 0.02
+    assert static_config["calibration_window_size"] == 30
+    assert "fdr_config" not in static_config
+    assert static_config["martingale_config"] == {
+        "method": "power",
+        "epsilon": 0.5,
+        "alpha": 0.01,
+    }

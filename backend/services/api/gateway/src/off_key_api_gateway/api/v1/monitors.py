@@ -199,7 +199,10 @@ def _resolve_effective_start_config(
             else None
         ),
         "static_baseline_config": (
-            resolved_static_baseline_config.model_dump(exclude_none=True)
+            resolved_static_baseline_config.model_dump(
+                exclude_none=True,
+                exclude={"calibration_fraction", "fdr_config"},
+            )
             if resolved_static_baseline_config
             else None
         ),

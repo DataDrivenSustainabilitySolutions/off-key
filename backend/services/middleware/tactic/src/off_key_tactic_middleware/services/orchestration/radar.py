@@ -391,7 +391,10 @@ class RadarOrchestrationService:
             model_type = static_config.model_type
             model_params = static_config.model_params
             preprocessing_steps = []
-            static_baseline_config = static_config.model_dump(exclude_none=True)
+            static_baseline_config = static_config.model_dump(
+                exclude_none=True,
+                exclude={"calibration_fraction", "fdr_config"},
+            )
         else:
             nested_performance_config = adaptive_stream_config.get("performance_config")
             if nested_performance_config is None:

@@ -7,7 +7,11 @@ from off_key_mqtt_radar.config.config import (
     MQTTRadarConfig,
     RadarSettings,
 )
-from off_key_core.schemas.radar import FdrConfig, StaticBaselineConfig
+from off_key_core.schemas.radar import (
+    FdrConfig,
+    StaticBaselineConfig,
+    StaticMartingaleConfig,
+)
 from off_key_tactic_middleware.models.schemas import AdaptiveSVMParams, PyODPCAParams
 
 
@@ -211,12 +215,11 @@ def test_radar_settings_parse_static_baseline_strategy(monkeypatch):
           "model_type": "pyod_iforest",
           "model_params": {"n_estimators": 128},
           "training_window_size": 240,
-          "calibration_fraction": 0.25,
-          "fdr_config": {
-            "method": "saffron",
-            "alpha": 0.05,
-            "wealth": 0.025,
-            "lambda_": 0.5
+          "calibration_window_size": 80,
+          "martingale_config": {
+            "method": "power",
+            "alpha": 0.01,
+            "epsilon": 0.5
           }
         }
         """,
@@ -228,7 +231,8 @@ def test_radar_settings_parse_static_baseline_strategy(monkeypatch):
     assert cfg.model_type == "pyod_iforest"
     assert cfg.model_params["n_estimators"] == 128
     assert cfg.static_baseline_config.training_window_size == 240
-    assert cfg.static_baseline_config.fdr_config.lambda_ == 0.5
+    assert cfg.static_baseline_config.calibration_window_size == 80
+    assert cfg.static_baseline_config.martingale_config.alpha == 0.01
 
 
 def test_radar_settings_static_config_is_effective_model_source(monkeypatch):
@@ -272,6 +276,26 @@ def test_static_baseline_naive_fdr_uses_cutoff_without_saffron_wealth_rule():
     assert config.method == "naive"
     assert config.cutoff == 0.02
     assert config.effective_threshold == 0.02
+
+
+def test_static_baseline_legacy_calibration_fraction_sets_window_size():
+    config = StaticBaselineConfig(training_window_size=100, calibration_fraction=0.25)
+
+    assert config.calibration_window_size == 25
+
+
+def test_static_baseline_training_window_uses_default_calibration_fraction():
+    config = StaticBaselineConfig(training_window_size=240)
+
+    assert config.calibration_window_size == 72
+
+
+def test_static_baseline_martingale_defaults_to_power():
+    config = StaticMartingaleConfig()
+
+    assert config.method == "power"
+    assert config.alpha == 0.01
+    assert config.epsilon == 0.5
 
 
 def test_model_registry_schema_defaults_keep_svm_fields_out_of_pyod_pca():

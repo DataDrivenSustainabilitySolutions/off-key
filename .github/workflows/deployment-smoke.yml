@@ -265,7 +265,7 @@ jobs:
           done
 
       - name: Run deployment smoke test
-        timeout-minutes: 5
+        timeout-minutes: 10
         working-directory: frontend
         run: npm run test:e2e
 

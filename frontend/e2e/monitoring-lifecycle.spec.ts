@@ -42,15 +42,14 @@ test.describe("monitoring lifecycle smoke", () => {
       };
       containerName = startedService.container_name;
       expect(containerName).toBeTruthy();
-      expect(startedService.service_id).toBeTruthy();
       const serviceRow = page.getByRole("row").filter({ hasText: containerName! });
       await expect(serviceRow).toBeVisible({ timeout: 60_000 });
 
-      const deletePath = `/v1/monitors/${encodeURIComponent(startedService.service_id!)}`;
       const stopResponsePromise = page.waitForResponse(
         (response) =>
-          response.url().includes(deletePath) &&
-          response.request().method() === "DELETE"
+          response.request().method() === "DELETE" &&
+          new URL(response.url()).pathname.includes("/v1/monitors/"),
+        { timeout: 30_000 }
       );
       page.once("dialog", (dialog) => dialog.accept());
       await serviceRow

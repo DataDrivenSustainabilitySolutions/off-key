@@ -7,22 +7,33 @@ MonitoringService.status in sync with actual Docker state.
 
 import asyncio
 from contextlib import suppress
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import datetime, timedelta, timezone
+from typing import Any, Optional
 
 import docker
 import docker.errors
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from off_key_core.config.logs import logger
-from off_key_core.db.models import MonitoringService
+from off_key_core.db.models import MonitoringService, MqttTopic
 from off_key_core.db.base import get_async_session_local
 from off_key_core.schemas.radar import RadarOperationalStatus
 from ..facades.docker import AsyncDocker, get_workload_docker_status
 
-_FAILED_WORKLOAD_STATES = {"dead", "error", "exited", "failed", "rejected"}
+_FAILED_WORKLOAD_STATES = {"dead", "exited", "failed", "rejected"}
+_STOPPED_WORKLOAD_STATES = {
+    "complete",
+    "completed",
+    "no_container_id",
+    "no_tasks",
+    "not_found",
+    "removed",
+    "stopped",
+}
+_TERMINAL_OPERATIONAL_STAGES = {"failed", "stopped"}
+_RETRY_LATER_WORKLOAD_STATES = {"error", "unknown"}
 
 
 class RadarStatusReconciliationService:
@@ -37,13 +48,18 @@ class RadarStatusReconciliationService:
     are properly marked as inactive in the database.
     """
 
-    def __init__(self, interval_seconds: int = 60):
+    def __init__(
+        self,
+        interval_seconds: int = 60,
+        terminal_service_retention_hours: int = 24,
+    ):
         """Initialize the reconciliation service.
 
         Args:
             interval_seconds: How often to run reconciliation (default: 60s)
         """
         self.interval_seconds = interval_seconds
+        self.terminal_service_retention_hours = terminal_service_retention_hours
         self.async_docker = AsyncDocker()
         self._task: Optional[asyncio.Task] = None
         self._stop_event = asyncio.Event()
@@ -115,8 +131,7 @@ class RadarStatusReconciliationService:
         Args:
             session: Database session to use for queries and updates
         """
-        # Get all services marked as active
-        query = select(MonitoringService).where(MonitoringService.status.is_(True))
+        query = select(MonitoringService)
         result = await session.execute(query)
         services = result.scalars().all()
 
@@ -124,11 +139,39 @@ class RadarStatusReconciliationService:
             return
 
         updates = 0
+        deleted = 0
         for service in services:
             docker_status = await self._get_docker_status(service.container_id)
+            docker_state = (docker_status or "").strip().lower()
+            terminal_state = (
+                docker_state in _FAILED_WORKLOAD_STATES
+                or docker_state in _STOPPED_WORKLOAD_STATES
+            )
 
-            # If Docker says it's not running, mark as inactive
-            if docker_status != "running":
+            if docker_state in _RETRY_LATER_WORKLOAD_STATES:
+                logger.warning(
+                    "Skipping service '%s' reconciliation until Docker status "
+                    "is verifiable (docker_status=%s)",
+                    service.container_name,
+                    docker_state,
+                )
+                continue
+
+            if docker_state == "running":
+                if not service.status:
+                    service.status = True
+                    self._mark_revived(service)
+                    updates += 1
+                    logger.info(
+                        "Service '%s' marked active again (docker_status=running)",
+                        service.container_name,
+                    )
+                continue
+
+            if not terminal_state:
+                continue
+
+            if service.status:
                 service.status = False
                 self._apply_terminal_operational_status(service, docker_status)
                 updates += 1
@@ -137,8 +180,122 @@ class RadarStatusReconciliationService:
                     f"(docker_status={docker_status})"
                 )
 
+            if self._is_purge_due(service):
+                removed_workload = await self._remove_workload_if_present(
+                    service.container_id
+                )
+                deleted += await self._delete_service_row(session, service.id)
+                logger.info(
+                    "Purged terminal RADAR service '%s' "
+                    "(docker_status=%s, workload_removed=%s)",
+                    service.container_name,
+                    docker_status,
+                    removed_workload,
+                )
+
         if updates > 0:
             logger.info(f"Reconciliation complete: {updates} service(s) updated")
+        if deleted > 0:
+            logger.info(f"Reconciliation purged {deleted} terminal service row(s)")
+
+    def _is_purge_due(self, service: MonitoringService) -> bool:
+        if service.status:
+            return False
+
+        reference_time = self._coerce_utc(
+            service.operational_updated_at or service.created_at
+        )
+        if reference_time is None:
+            return self.terminal_service_retention_hours == 0
+
+        cutoff = datetime.now(timezone.utc) - timedelta(
+            hours=self.terminal_service_retention_hours
+        )
+        return reference_time <= cutoff
+
+    @staticmethod
+    def _coerce_utc(value: Any) -> Optional[datetime]:
+        if value is None:
+            return None
+        if isinstance(value, str):
+            try:
+                value = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            except ValueError:
+                return None
+        if value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc)
+
+    @staticmethod
+    async def _delete_service_row(session: AsyncSession, service_id: str) -> int:
+        await session.execute(
+            delete(MqttTopic).where(MqttTopic.service_id == service_id)
+        )
+        delete_result = await session.execute(
+            delete(MonitoringService).where(MonitoringService.id == service_id)
+        )
+        return int(delete_result.rowcount or 0)
+
+    async def _remove_workload_if_present(self, container_id: Optional[str]) -> bool:
+        if not container_id:
+            return False
+        try:
+            try:
+                docker_service = await self.async_docker.run(
+                    self.async_docker.client.services.get, container_id
+                )
+                await self.async_docker.run(docker_service.remove)
+                return True
+            except docker.errors.NotFound:
+                pass
+            except Exception as exc:
+                if not self._should_fallback_to_container(exc):
+                    raise
+                logger.debug(
+                    "Skipping Swarm service removal for workload %s: %s",
+                    container_id,
+                    exc,
+                )
+
+            docker_container = await self.async_docker.run(
+                self.async_docker.client.containers.get, container_id
+            )
+            await self.async_docker.run(docker_container.remove, force=True)
+            return True
+        except docker.errors.NotFound:
+            return False
+
+    @staticmethod
+    def _should_fallback_to_container(exc: Exception) -> bool:
+        if isinstance(exc, docker.errors.APIError) and exc.status_code in (
+            400,
+            406,
+            503,
+        ):
+            return True
+        text = str(exc).lower()
+        return "this node is not a swarm manager" in text or "swarm mode" in text
+
+    @staticmethod
+    def _mark_revived(service: MonitoringService) -> None:
+        raw_status = service.operational_status or {}
+        stage = ""
+        if isinstance(raw_status, dict):
+            stage = (raw_status.get("stage") or "").strip().lower()
+        stage = stage or (service.operational_stage or "").strip().lower()
+        if stage not in _TERMINAL_OPERATIONAL_STAGES:
+            return
+
+        status = RadarOperationalStatus(
+            stage="starting",
+            detail="Runtime heartbeat has not arrived",
+            message_count=0,
+            processed_message_count=0,
+            is_stale=True,
+        ).model_dump(mode="json", exclude_none=True)
+        service.operational_stage = "starting"
+        service.operational_status = status
+        service.operational_updated_at = None
 
     @staticmethod
     def _apply_terminal_operational_status(

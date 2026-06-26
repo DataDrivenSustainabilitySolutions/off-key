@@ -49,10 +49,13 @@ async def test_teardown_managed_radar_workloads_removes_workloads_and_clears_db(
 
     monkeypatch.setattr(radar_module, "get_async_docker", lambda: fake_docker)
 
-    delete_result = MagicMock(rowcount=1)
+    service_id_result = MagicMock()
+    service_id_result.scalars.return_value.all.return_value = ["svc-1"]
 
     session = AsyncMock()
-    session.execute = AsyncMock(return_value=delete_result)
+    session.execute = AsyncMock(
+        side_effect=[service_id_result, MagicMock(rowcount=0), MagicMock(rowcount=1)]
+    )
     session.commit = AsyncMock()
     session.rollback = AsyncMock()
 
@@ -62,8 +65,10 @@ async def test_teardown_managed_radar_workloads_removes_workloads_and_clears_db(
     assert summary["workloads_targeted"] == 2
     assert summary["docker_workloads_removed"] == 2
     assert summary["db_rows_deleted"] == 1
-    delete_stmt = session.execute.await_args.args[0]
-    assert "WHERE services.container_id IN" in str(delete_stmt)
+    statements = [call.args[0] for call in session.execute.await_args_list]
+    assert "WHERE services.container_id IN" in str(statements[0])
+    assert "DELETE FROM mqtt_topics" in str(statements[1])
+    assert "DELETE FROM services" in str(statements[2])
     session.commit.assert_awaited_once()
     session.rollback.assert_not_awaited()
 
@@ -132,9 +137,12 @@ async def test_teardown_managed_radar_workloads_cleans_up_successes_on_partial_f
 
     monkeypatch.setattr(radar_module, "get_async_docker", lambda: fake_docker)
 
-    delete_result = MagicMock(rowcount=1)
+    service_id_result = MagicMock()
+    service_id_result.scalars.return_value.all.return_value = ["svc-ok"]
     session = AsyncMock()
-    session.execute = AsyncMock(return_value=delete_result)
+    session.execute = AsyncMock(
+        side_effect=[service_id_result, MagicMock(rowcount=0), MagicMock(rowcount=1)]
+    )
     session.commit = AsyncMock()
     session.rollback = AsyncMock()
 
@@ -146,7 +154,7 @@ async def test_teardown_managed_radar_workloads_cleans_up_successes_on_partial_f
     ):
         await service.teardown_managed_radar_workloads()
 
-    delete_stmt = session.execute.await_args.args[0]
+    delete_stmt = session.execute.await_args_list[0].args[0]
     stmt_text = str(delete_stmt)
     stmt_params = delete_stmt.compile().params
     assert "WHERE services.container_id IN" in stmt_text
@@ -175,10 +183,13 @@ async def test_teardown_managed_radar_workloads_handles_non_swarm_docker(
 
     monkeypatch.setattr(radar_module, "get_async_docker", lambda: fake_docker)
 
-    delete_result = MagicMock(rowcount=1)
+    service_id_result = MagicMock()
+    service_id_result.scalars.return_value.all.return_value = ["svc-1"]
 
     session = AsyncMock()
-    session.execute = AsyncMock(return_value=delete_result)
+    session.execute = AsyncMock(
+        side_effect=[service_id_result, MagicMock(rowcount=0), MagicMock(rowcount=1)]
+    )
     session.commit = AsyncMock()
     session.rollback = AsyncMock()
 
@@ -196,11 +207,12 @@ async def test_teardown_managed_radar_workloads_handles_non_swarm_docker(
 
 
 @pytest.mark.asyncio
-async def test_stop_radar_service_marks_db_row_inactive_after_removing_workload(
+async def test_stop_radar_service_deletes_db_row_after_removing_workload(
     monkeypatch,
 ):
     fake_docker = _FakeAsyncDocker()
     db_row = SimpleNamespace(
+        id="svc-1",
         container_id="ctr-1",
         container_name="radar-static",
         status=True,
@@ -218,26 +230,29 @@ async def test_stop_radar_service_marks_db_row_inactive_after_removing_workload(
     monkeypatch.setattr(radar_module, "get_async_docker", lambda: fake_docker)
 
     session = AsyncMock()
-    session.execute = AsyncMock(return_value=query_result)
+    service_delete_result = MagicMock(rowcount=1)
+    session.execute = AsyncMock(
+        side_effect=[query_result, MagicMock(rowcount=0), service_delete_result]
+    )
     session.commit = AsyncMock()
     session.rollback = AsyncMock()
 
     service = RadarOrchestrationService(session=session, model_registry=MagicMock())
 
     assert await service.stop_radar_service(container_name="radar-static") is True
-    assert db_row.status is False
     workload.remove.assert_called_once_with(force=True)
-    session.execute.assert_awaited_once()
+    assert session.execute.await_count == 3
     session.commit.assert_awaited_once()
     session.rollback.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_stop_radar_service_preserves_db_row_when_workload_is_missing(
+async def test_stop_radar_service_deletes_db_row_when_workload_is_missing(
     monkeypatch,
 ):
     fake_docker = _FakeAsyncDocker()
     db_row = SimpleNamespace(
+        id="svc-1",
         container_id="missing-ctr",
         container_name="radar-static",
         status=True,
@@ -254,17 +269,93 @@ async def test_stop_radar_service_preserves_db_row_when_workload_is_missing(
     monkeypatch.setattr(radar_module, "get_async_docker", lambda: fake_docker)
 
     session = AsyncMock()
-    session.execute = AsyncMock(return_value=query_result)
+    service_delete_result = MagicMock(rowcount=1)
+    session.execute = AsyncMock(
+        side_effect=[query_result, MagicMock(rowcount=0), service_delete_result]
+    )
     session.commit = AsyncMock()
     session.rollback = AsyncMock()
 
     service = RadarOrchestrationService(session=session, model_registry=MagicMock())
 
     assert await service.stop_radar_service(container_name="radar-static") is True
-    assert db_row.status is False
-    session.execute.assert_awaited_once()
+    assert session.execute.await_count == 3
     session.commit.assert_awaited_once()
     session.rollback.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_delete_radar_service_removes_running_workload_and_db_rows(monkeypatch):
+    fake_docker = _FakeAsyncDocker()
+    db_row = SimpleNamespace(
+        id="svc-1",
+        container_id="ctr-1",
+        container_name="radar-static",
+        status=True,
+    )
+    query_result = MagicMock()
+    query_result.scalars.return_value.first.return_value = db_row
+
+    workload = MagicMock(id="ctr-1")
+    workload.remove = MagicMock()
+
+    fake_docker.client.services.get = MagicMock(
+        side_effect=docker.errors.NotFound("missing")
+    )
+    fake_docker.client.containers.get = MagicMock(return_value=workload)
+    monkeypatch.setattr(radar_module, "get_async_docker", lambda: fake_docker)
+
+    session = AsyncMock()
+    session.execute = AsyncMock(
+        side_effect=[query_result, MagicMock(rowcount=0), MagicMock(rowcount=1)]
+    )
+    session.commit = AsyncMock()
+    session.rollback = AsyncMock()
+
+    service = RadarOrchestrationService(session=session, model_registry=MagicMock())
+
+    assert await service.delete_radar_service("svc-1") is True
+    workload.remove.assert_called_once_with(force=True)
+    assert session.execute.await_count == 3
+    session.commit.assert_awaited_once()
+    session.rollback.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_delete_radar_service_leaves_db_row_when_workload_remove_fails(
+    monkeypatch,
+):
+    fake_docker = _FakeAsyncDocker()
+    db_row = SimpleNamespace(
+        id="svc-1",
+        container_id="ctr-1",
+        container_name="radar-static",
+        status=True,
+    )
+    query_result = MagicMock()
+    query_result.scalars.return_value.first.return_value = db_row
+
+    workload = MagicMock(id="ctr-1")
+    workload.remove = MagicMock(side_effect=RuntimeError("boom"))
+
+    fake_docker.client.services.get = MagicMock(
+        side_effect=docker.errors.NotFound("missing")
+    )
+    fake_docker.client.containers.get = MagicMock(return_value=workload)
+    monkeypatch.setattr(radar_module, "get_async_docker", lambda: fake_docker)
+
+    session = AsyncMock()
+    session.execute = AsyncMock(return_value=query_result)
+    session.commit = AsyncMock()
+    session.rollback = AsyncMock()
+
+    service = RadarOrchestrationService(session=session, model_registry=MagicMock())
+
+    assert await service.delete_radar_service("svc-1") is False
+    workload.remove.assert_called_once_with(force=True)
+    session.execute.assert_awaited_once()
+    session.commit.assert_not_awaited()
+    session.rollback.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -344,23 +435,30 @@ async def test_create_radar_service_removes_workload_when_db_commit_fails(
 
 
 @pytest.mark.asyncio
-async def test_existing_active_service_with_missing_workload_is_marked_inactive(
+async def test_existing_active_service_with_missing_workload_is_recreated(
     monkeypatch,
 ):
     fake_docker = _FakeAsyncDocker()
     monkeypatch.setattr(radar_module, "get_async_docker", lambda: fake_docker)
 
     db_row = SimpleNamespace(
+        id="old-svc",
         container_id="missing-workload",
         container_name="radar-stale",
         mqtt_topic=["charger/+/live-telemetry/#"],
         status=True,
+        operational_status={},
+        operational_stage="starting",
+        operational_updated_at=None,
     )
     query_result = MagicMock()
     query_result.scalars.return_value.first.return_value = db_row
 
     session = AsyncMock()
-    session.execute = AsyncMock(return_value=query_result)
+    session.execute = AsyncMock(
+        side_effect=[query_result, MagicMock(rowcount=0), MagicMock(rowcount=1)]
+    )
+    session.add = MagicMock()
     session.commit = AsyncMock()
 
     service = RadarOrchestrationService(session=session, model_registry=MagicMock())
@@ -373,16 +471,21 @@ async def test_existing_active_service_with_missing_workload_is_marked_inactive(
         }
     )
     service._get_docker_status = AsyncMock(return_value="not_found")
+    service._create_radar_workload = AsyncMock(
+        return_value=SimpleNamespace(id="new-workload")
+    )
+    service._validate_radar_workload_started = AsyncMock()
 
-    with pytest.raises(ValueError, match="marked active"):
-        await service.create_radar_service(
-            container_name="radar-stale",
-            mqtt_topics=["charger/+/live-telemetry/#"],
-            model_type="knn",
-        )
+    created = await service.create_radar_service(
+        container_name="radar-stale",
+        mqtt_topics=["charger/+/live-telemetry/#"],
+        model_type="knn",
+    )
 
-    assert db_row.status is False
-    session.commit.assert_awaited_once()
+    assert created.container_name == "radar-stale"
+    assert created.container_id == "new-workload"
+    assert session.commit.await_count == 2
+    session.add.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -393,6 +496,7 @@ async def test_existing_active_service_rejects_config_fingerprint_mismatch(
     monkeypatch.setattr(radar_module, "get_async_docker", lambda: fake_docker)
 
     db_row = SimpleNamespace(
+        id="svc-existing",
         container_id="workload-1",
         container_name="radar-existing",
         mqtt_topic=["charger/+/live-telemetry/#"],

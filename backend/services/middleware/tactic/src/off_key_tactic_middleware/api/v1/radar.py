@@ -254,6 +254,39 @@ async def stop_radar_service(
         )
 
 
+@router.delete("/radar/services/{service_id}")
+async def delete_radar_service(
+    request: Request,
+    service_id: str,
+    service: RadarOrchestrationService = Depends(get_radar_orchestration_service),
+):
+    """
+    Stops any backing RADAR workload and deletes the service record.
+    """
+    try:
+        success = await service.delete_radar_service(service_id)
+
+        if not success:
+            raise HTTPException(
+                status_code=404,
+                detail=(
+                    f"RADAR service '{service_id}' not found or could not be deleted"
+                ),
+            )
+
+        return {
+            "status": "deleted",
+            "service_id": service_id,
+            "message": f"RADAR service '{service_id}' deleted successfully",
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to delete RADAR service: {str(e)}"
+        )
+
+
 @router.get("/radar/models/", response_model=List[Dict[str, Any]])
 async def list_available_models(
     request: Request,

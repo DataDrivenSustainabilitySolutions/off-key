@@ -2,9 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import {
   getOperationalStageDisplay,
+  getServiceDeleteActionDisplay,
   getStatusDisplay,
 } from "../types/monitoring";
-import type { OperationalStage } from "../types/monitoring";
+import type { ActiveService, OperationalStage } from "../types/monitoring";
 
 describe("monitoring status display", () => {
   it("shows exited workloads as neutral until exit codes are available", () => {
@@ -50,5 +51,44 @@ describe("operational stage display", () => {
 
     expect(status.label).toBe(label);
     expect(status.className).toContain(color);
+  });
+});
+
+describe("service delete action display", () => {
+  const baseService: ActiveService = {
+    id: "svc-1",
+    container_id: "ctr-1",
+    container_name: "radar-charger-1",
+    mqtt_topics: ["charger/charger-1/live-telemetry/sine"],
+    status: true,
+    operational_status: {
+      stage: "operational",
+      message_count: 0,
+      processed_message_count: 0,
+      is_stale: false,
+    },
+  };
+
+  it("uses stop-and-delete copy for running services", () => {
+    const action = getServiceDeleteActionDisplay({
+      ...baseService,
+      docker_status: "running",
+    });
+
+    expect(action.confirmation).toBe(
+      'Stop and delete service "radar-charger-1"?'
+    );
+    expect(action.ariaLabel).toBe("stop and delete service");
+  });
+
+  it("uses record-delete copy for terminal service rows", () => {
+    const action = getServiceDeleteActionDisplay({
+      ...baseService,
+      status: false,
+      docker_status: "not_found",
+    });
+
+    expect(action.confirmation).toBe('Delete service record "radar-charger-1"?');
+    expect(action.ariaLabel).toBe("delete service record");
   });
 });

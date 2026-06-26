@@ -246,6 +246,16 @@ class Tactic:
             params=params,
         )
 
+    async def delete_radar_service(self, service_id: str) -> Dict[str, Any]:
+        """Delete a RADAR service and any backing workload via TACTIC."""
+        if not service_id:
+            raise TacticError("service_id is required to delete a service")
+
+        return await self._make_request(
+            method="DELETE",
+            endpoint=f"/api/v1/orchestration/radar/services/{service_id}",
+        )
+
     async def list_radar_services(
         self, active_only: bool = False, include_docker_status: bool = False
     ) -> List[Dict[str, Any]]:

@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete
 
 from off_key_core.config.logs import logger
-from off_key_core.db.models import MonitoringService
+from off_key_core.db.models import MonitoringService, MqttTopic
 from off_key_core.schemas.radar import (
     AdaptiveStreamConfig,
     PerformanceConfig,
@@ -198,7 +198,7 @@ class RadarOrchestrationService:
         existing_service = result.scalars().first()
 
         if existing_service:
-            return await self._resolve_existing_service_request(
+            resolved_service = await self._resolve_existing_service_request(
                 existing_service=existing_service,
                 container_name=container_name,
                 mqtt_topics=mqtt_topics,
@@ -206,6 +206,8 @@ class RadarOrchestrationService:
                 model_type=env_vars.get("RADAR_MODEL_TYPE", ""),
                 config_fingerprint=config_fingerprint,
             )
+            if resolved_service:
+                return resolved_service
 
         # Create the RADAR workload (Swarm service when available, otherwise container)
         docker_workload: Any = None
@@ -256,26 +258,34 @@ class RadarOrchestrationService:
         strategy: str,
         model_type: str,
         config_fingerprint: str,
-    ) -> MonitoringService:
-        """Reject duplicate names unless the existing active workload matches."""
-        if not existing_service.status:
-            raise ValueError(
-                f"RADAR service name '{container_name}' already exists as an "
-                "inactive service. Use a unique container name."
-            )
-
+    ) -> Optional[MonitoringService]:
+        """Reuse a matching live workload or clear a stale row before recreation."""
         docker_status = await self._get_docker_status(
             existing_service.container_id or ""
         )
+        if docker_status == "error":
+            raise ValueError(
+                f"RADAR service name '{container_name}' already exists, but "
+                "Docker status could not be verified. Try again after Docker "
+                "connectivity recovers."
+            )
+
         if docker_status != "running":
             existing_service.status = False
             self._apply_terminal_operational_status(existing_service, docker_status)
+            await self._delete_service_rows_by_ids([existing_service.id])
             await self.session.commit()
-            raise ValueError(
-                f"RADAR service name '{container_name}' is marked active, but its "
-                f"Docker workload is not running (docker_status={docker_status}). "
-                "The stale service was marked inactive; use a unique container name."
+            logger.info(
+                "Deleted stale RADAR service row %s before recreating %s "
+                "(docker_status=%s)",
+                existing_service.id,
+                container_name,
+                docker_status,
             )
+            return None
+
+        if not existing_service.status:
+            existing_service.status = True
 
         existing_topics = normalize_mqtt_topic_filters(
             existing_service.mqtt_topic,
@@ -994,12 +1004,13 @@ class RadarOrchestrationService:
 
         db_rows_deleted = 0
         if successfully_removed:
-            delete_result = await self.session.execute(
-                delete(MonitoringService).where(
+            service_id_result = await self.session.execute(
+                select(MonitoringService.id).where(
                     MonitoringService.container_id.in_(successfully_removed)
                 )
             )
-            db_rows_deleted = int(delete_result.rowcount or 0)
+            service_ids = list(service_id_result.scalars().all())
+            db_rows_deleted = await self._delete_service_rows_by_ids(service_ids)
             await self.session.commit()
 
         if removal_failures:
@@ -1013,6 +1024,60 @@ class RadarOrchestrationService:
             "docker_workloads_removed": removed_workloads,
             "workloads_targeted": len(target_ids),
         }
+
+    async def _delete_service_rows_by_ids(self, service_ids: list[str]) -> int:
+        if not service_ids:
+            return 0
+
+        await self.session.execute(
+            delete(MqttTopic).where(MqttTopic.service_id.in_(service_ids))
+        )
+        delete_result = await self.session.execute(
+            delete(MonitoringService).where(MonitoringService.id.in_(service_ids))
+        )
+        return int(delete_result.rowcount or 0)
+
+    async def _remove_workload_for_delete(self, container_id: Optional[str]) -> bool:
+        if not container_id:
+            return False
+        try:
+            await self._resolve_workload_operation(
+                container_id,
+                on_service=lambda s: s.remove(),
+                on_container=lambda c: c.remove(force=True),
+            )
+            return True
+        except docker.errors.NotFound:
+            return False
+
+    async def _delete_service(self, service: MonitoringService) -> bool:
+        try:
+            removed_workload = await self._remove_workload_for_delete(
+                service.container_id
+            )
+            deleted_rows = await self._delete_service_rows_by_ids([service.id])
+            await self.session.commit()
+            logger.info(
+                "Deleted RADAR service %s (workload_removed=%s)",
+                service.id,
+                removed_workload,
+            )
+            return deleted_rows > 0
+        except Exception as e:
+            await self.session.rollback()
+            logger.error("Failed to delete RADAR service %s: %s", service.id, e)
+            return False
+
+    async def delete_radar_service(self, service_id: str) -> bool:
+        stmt = select(MonitoringService).where(MonitoringService.id == service_id)
+        result = await self.session.execute(stmt)
+        service = result.scalars().first()
+
+        if not service:
+            logger.warning("No RADAR service found with id: %s", service_id)
+            return False
+
+        return await self._delete_service(service)
 
     async def stop_radar_service(
         self, container_name: Optional[str] = None, container_id: Optional[str] = None
@@ -1044,40 +1109,7 @@ class RadarOrchestrationService:
             )
             return False
 
-        try:
-            # Stop and remove the Docker workload (service or container)
-            await self._resolve_workload_operation(
-                service.container_id,
-                on_service=lambda s: s.remove(),
-                on_container=lambda c: c.remove(force=True),
-            )
-
-            service.status = False
-            self._apply_terminal_operational_status(service, "stopped")
-            await self.session.commit()
-
-            logger.info(
-                f"RADAR container {container_name} "
-                f"stopped and removed; DB record marked inactive"
-            )
-            return True
-
-        except docker.errors.NotFound:
-            # Container not found in Docker but exists in DB
-            service.status = False
-            self._apply_terminal_operational_status(service, "not_found")
-            await self.session.commit()
-
-            logger.warning(
-                f"RADAR container {container_name} not found in Docker "
-                f"but marked as inactive in DB"
-            )
-            return True
-
-        except Exception as e:
-            await self.session.rollback()
-            logger.error(f"Failed to stop RADAR container {container_name}: {e}")
-            return False
+        return await self._delete_service(service)
 
     async def _get_docker_status(self, container_id: str) -> str:
         """Check actual Docker workload status (Swarm service or container)."""

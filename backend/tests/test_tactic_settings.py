@@ -64,10 +64,12 @@ def test_tactic_settings_expose_radar_workload_image_and_startup_grace():
     settings = TacticSettings(
         TACTIC_RADAR_IMAGE="registry.example/off-key-radar:2026.05.19",
         TACTIC_RADAR_STARTUP_GRACE_SECONDS=7.5,
+        TACTIC_TERMINAL_SERVICE_RETENTION_HOURS=12,
     )
 
     assert settings.config.radar_image == "registry.example/off-key-radar:2026.05.19"
     assert settings.config.radar_startup_grace_seconds == 7.5
+    assert settings.config.terminal_service_retention_hours == 12
 
 
 def test_radar_container_runtime_settings_build_encoded_database_url():

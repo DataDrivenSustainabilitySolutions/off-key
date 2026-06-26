@@ -198,6 +198,7 @@ class TacticConfig(BaseModel):
     # Status Reconciliation Configuration
     reconciliation_enabled: bool = True
     reconciliation_interval: int = Field(default=60, ge=1, le=86400)
+    terminal_service_retention_hours: int = Field(default=24, ge=0, le=8760)
 
     # Managed RADAR workload lifecycle behavior
     radar_workload_lifecycle: RadarWorkloadLifecycle = RadarWorkloadLifecycle.EPHEMERAL
@@ -350,6 +351,7 @@ class TacticSettings(BaseSettings):
     # Status Reconciliation Configuration
     TACTIC_RECONCILIATION_ENABLED: bool = Field(default=True)
     TACTIC_RECONCILIATION_INTERVAL: int = Field(default=60)
+    TACTIC_TERMINAL_SERVICE_RETENTION_HOURS: int = Field(default=24)
     TACTIC_RADAR_WORKLOAD_LIFECYCLE: Optional[str] = Field(default=None)
 
     # Model Registry Initialization
@@ -464,6 +466,9 @@ class TacticSettings(BaseSettings):
             log_level=self.TACTIC_LOG_LEVEL,
             reconciliation_enabled=self.TACTIC_RECONCILIATION_ENABLED,
             reconciliation_interval=self.TACTIC_RECONCILIATION_INTERVAL,
+            terminal_service_retention_hours=(
+                self.TACTIC_TERMINAL_SERVICE_RETENTION_HOURS
+            ),
             radar_workload_lifecycle=self._resolve_radar_workload_lifecycle(),
             model_registry_init_max_retries=self.TACTIC_MODEL_REGISTRY_INIT_MAX_RETRIES,
             model_registry_init_retry_interval_seconds=(

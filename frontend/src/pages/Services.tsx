@@ -33,6 +33,7 @@ import { API_CONFIG } from "@/lib/api-config";
 import { cn } from "@/lib/utils";
 import {
   getOperationalStageDisplay,
+  getServiceDeleteActionDisplay,
   getStatusDisplay,
 } from "@/types/monitoring";
 import type { ActiveService } from "@/types/monitoring";
@@ -60,11 +61,6 @@ const getModeBadgeClassName = (service: ActiveService): string => {
     return "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900/60 dark:bg-emerald-950/25 dark:text-emerald-200";
   }
   return "border-border bg-muted text-muted-foreground";
-};
-
-const canStopService = (service: ActiveService): boolean => {
-  const dockerStatus = service.docker_status?.toLowerCase();
-  return !["not_found", "removed", "stopped"].includes(dockerStatus || "");
 };
 
 function StatusBadge({
@@ -212,23 +208,20 @@ export default function Services() {
     [services]
   );
 
-  const stopService = useCallback(
-    async (containerName: string) => {
-      if (!confirm(`Stop and remove monitoring service "${containerName}"?`)) {
+  const deleteService = useCallback(
+    async (service: ActiveService) => {
+      const action = getServiceDeleteActionDisplay(service);
+      if (!confirm(action.confirmation)) {
         return;
       }
 
       try {
-        await apiUtils.delete(
-          `${API_CONFIG.ENDPOINTS.MONITORING.STOP}?container_name=${encodeURIComponent(
-            containerName
-          )}`
-        );
-        toast.success(`Service "${containerName}" stopped`);
+        await apiUtils.delete(API_CONFIG.ENDPOINTS.MONITORING.DELETE(service.id));
+        toast.success(action.success);
         await loadServices();
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        toast.error(`Failed to stop service: ${message}`);
+        toast.error(`Failed to delete service: ${message}`);
       }
     },
     [loadServices]
@@ -343,7 +336,7 @@ export default function Services() {
                     const chargerId = extractChargerIdFromContainer(
                       service.container_name
                     );
-                    const isStoppable = canStopService(service);
+                    const deleteAction = getServiceDeleteActionDisplay(service);
                     const topicPreview = service.mqtt_topics.slice(0, 2);
 
                     return (
@@ -424,13 +417,8 @@ export default function Services() {
                             type="button"
                             variant="ghost"
                             size="icon"
-                            disabled={!isStoppable}
-                            onClick={() => stopService(service.container_name)}
-                            aria-label={
-                              isStoppable
-                                ? "stop service"
-                                : "service already stopped"
-                            }
+                            onClick={() => deleteService(service)}
+                            aria-label={deleteAction.ariaLabel}
                             className="text-destructive hover:text-destructive"
                           >
                             <Trash2 className="h-4 w-4" />

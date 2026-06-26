@@ -382,6 +382,39 @@ async def stop_monitoring_service(
         )
 
 
+@router.delete("/{service_id}")
+@shared_limit_execute
+async def delete_monitoring_service(request: Request, service_id: str):
+    """
+    Stops any backing workload and deletes a monitoring service record.
+    """
+    try:
+        response = await tactic.delete_radar_service(service_id)
+
+        if response.get("status") != "deleted":
+            raise HTTPException(
+                status_code=404,
+                detail=f"Service '{service_id}' not found or could not be deleted",
+            )
+
+        return {
+            "status": "deleted",
+            "service_id": service_id,
+            "message": f"Service '{service_id}' deleted successfully",
+        }
+    except TacticError as e:
+        raise HTTPException(
+            status_code=e.status or 502,
+            detail=_get_tactic_error_detail(e),
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to delete monitoring service: {str(e)}"
+        )
+
+
 @router.get("/models", response_model=Dict[str, Any])
 @shared_limit_fetch
 async def list_available_models_endpoint(

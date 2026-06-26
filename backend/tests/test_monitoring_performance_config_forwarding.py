@@ -15,6 +15,7 @@ from off_key_api_gateway.api.v1.monitors import (
     PerformanceConfig as GatewayPerformanceConfig,
     TacticError,
     _resolve_effective_start_config,
+    delete_monitoring_service,
     start_monitoring_service,
     stop_monitoring_service,
 )
@@ -203,6 +204,42 @@ async def test_gateway_stop_preserves_tactic_error_status():
                 container_name="missing",
                 container_id=None,
             )
+
+    assert exc_info.value.status_code == 404
+    assert exc_info.value.detail == "RADAR service not found"
+
+
+@pytest.mark.asyncio
+async def test_gateway_delete_uses_service_id_endpoint():
+    mock_delete = AsyncMock(return_value={"status": "deleted", "service_id": "svc-1"})
+    with patch(
+        "off_key_api_gateway.api.v1.monitors.tactic.delete_radar_service",
+        mock_delete,
+    ):
+        handler = inspect.unwrap(delete_monitoring_service)
+        response = await handler(request=_build_request(), service_id="svc-1")
+
+    assert response["status"] == "deleted"
+    assert response["service_id"] == "svc-1"
+    mock_delete.assert_awaited_once_with("svc-1")
+
+
+@pytest.mark.asyncio
+async def test_gateway_delete_preserves_tactic_error_status():
+    mock_delete = AsyncMock(
+        side_effect=TacticError(
+            "missing",
+            status=404,
+            body={"detail": "RADAR service not found"},
+        )
+    )
+    with patch(
+        "off_key_api_gateway.api.v1.monitors.tactic.delete_radar_service",
+        mock_delete,
+    ):
+        handler = inspect.unwrap(delete_monitoring_service)
+        with pytest.raises(HTTPException) as exc_info:
+            await handler(request=_build_request(), service_id="missing")
 
     assert exc_info.value.status_code == 404
     assert exc_info.value.detail == "RADAR service not found"

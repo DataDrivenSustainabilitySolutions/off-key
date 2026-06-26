@@ -38,6 +38,7 @@ import {
 import { cn } from "@/lib/utils";
 import {
   getOperationalStageDisplay,
+  getServiceDeleteActionDisplay,
   getStatusDisplay,
 } from "@/types/monitoring";
 import {
@@ -574,7 +575,7 @@ const ActiveServicesSection: React.FC<{
   services: ActiveService[];
   isLoading: boolean;
   chargerId?: string;
-  onDelete: (containerName: string) => void | Promise<void>;
+  onDelete: (service: ActiveService) => void | Promise<void>;
 }> = ({ services, isLoading, chargerId, onDelete }) => {
   const chargerSpecificServices = React.useMemo(() => {
     if (!chargerId) return services;
@@ -618,6 +619,7 @@ const ActiveServicesSection: React.FC<{
                 service.docker_status,
                 service.status
               );
+              const deleteAction = getServiceDeleteActionDisplay(service);
               return (
                 <TableRow key={service.id} className="align-top">
                   <TableCell>
@@ -664,8 +666,8 @@ const ActiveServicesSection: React.FC<{
                       variant="ghost"
                       size="icon"
                       className="text-destructive hover:text-destructive"
-                      onClick={() => onDelete(service.container_name)}
-                      aria-label="Stop monitoring service"
+                      onClick={() => onDelete(service)}
+                      aria-label={deleteAction.ariaLabel}
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>
@@ -1202,19 +1204,20 @@ const Monitoring: React.FC = () => {
   }, [chargerId]);
 
   // Stop service
-  const deleteService = useCallback(async (containerName: string) => {
-    if (!confirm(`Stop monitoring service "${containerName}"?`)) {
+  const deleteService = useCallback(async (service: ActiveService) => {
+    const action = getServiceDeleteActionDisplay(service);
+    if (!confirm(action.confirmation)) {
       return;
     }
 
     try {
-      await apiUtils.delete(`${API_CONFIG.ENDPOINTS.MONITORING.STOP}?container_name=${encodeURIComponent(containerName)}`);
-      toast.success(`Service "${containerName}" stopped successfully`);
+      await apiUtils.delete(API_CONFIG.ENDPOINTS.MONITORING.DELETE(service.id));
+      toast.success(action.success);
       // Refresh the services list
       await loadActiveServices();
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      toast.error(`Failed to stop service: ${errorMessage}`);
+      toast.error(`Failed to delete service: ${errorMessage}`);
     }
   }, [loadActiveServices]);
 

@@ -142,6 +142,37 @@ export interface StatusDisplay {
   className: string;
 }
 
+export interface ServiceDeleteActionDisplay {
+  confirmation: string;
+  success: string;
+  ariaLabel: string;
+}
+
+export function getServiceDeleteActionDisplay(
+  service: ActiveService
+): ServiceDeleteActionDisplay {
+  const dockerStatus = service.docker_status?.toLowerCase();
+  const terminalStatuses = [
+    'complete',
+    'completed',
+    'dead',
+    'error',
+    'exited',
+    'failed',
+    'not_found',
+    'removed',
+    'stopped',
+  ];
+  const isRunning = service.status && !terminalStatuses.includes(dockerStatus || '');
+  const action = isRunning ? 'Stop and delete service' : 'Delete service record';
+
+  return {
+    confirmation: `${action} "${service.container_name}"?`,
+    success: `Service "${service.container_name}" deleted`,
+    ariaLabel: action.toLowerCase(),
+  };
+}
+
 export function getOperationalStageDisplay(
   status: OperationalStatus
 ): StatusDisplay {

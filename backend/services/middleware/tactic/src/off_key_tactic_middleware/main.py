@@ -153,7 +153,8 @@ async def lifespan(app: FastAPI):
     # Start reconciliation service if enabled
     if config.reconciliation_enabled:
         app.state.reconciliation_service = RadarStatusReconciliationService(
-            interval_seconds=config.reconciliation_interval
+            interval_seconds=config.reconciliation_interval,
+            terminal_service_retention_hours=(config.terminal_service_retention_hours),
         )
         await app.state.reconciliation_service.start()
         interval = config.reconciliation_interval

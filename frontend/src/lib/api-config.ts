@@ -71,6 +71,7 @@ export const API_CONFIG = {
     MONITORING: {
       START: '/v1/monitors/start',
       STOP: '/v1/monitors/stop',
+      DELETE: (serviceId: string) => `/v1/monitors/${encodeURIComponent(serviceId)}`,
       LIST: '/v1/monitors/all',
       DETAILS: '/v1/monitors',
       MODELS: '/v1/monitors/models',

@@ -157,6 +157,10 @@ class RadarService:
             await self._setup_config_watcher()
 
             self.is_running = True
+            if self.database_writer:
+                await self.database_writer.write_service_metrics(
+                    self.health_monitor.build_metrics_snapshot()
+                )
 
             logger.info(
                 "RADAR service started successfully",

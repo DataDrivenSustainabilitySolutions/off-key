@@ -48,6 +48,7 @@ class SyncService:
                 await self._migrate_anomaly_identity(conn)
                 await self._migrate_anomaly_value_type(conn)
                 await self._migrate_anomaly_sensor_set(conn)
+                await self._migrate_service_operational_status(conn)
                 await self._migrate_model_registry_family(conn)
                 await conn.run_sync(Base.metadata.create_all)
 
@@ -488,6 +489,84 @@ class SyncService:
                     'ml_conformal_static_univariate'
                 )
                   AND value_type IS NULL
+                """
+            )
+        )
+
+    async def _migrate_service_operational_status(self, conn) -> None:
+        """Add runtime operational status columns to existing service rows."""
+        services_exists = await conn.scalar(
+            text("SELECT to_regclass('public.services') IS NOT NULL")
+        )
+        if not services_exists:
+            return
+
+        for column_name, column_definition in (
+            ("operational_stage", "TEXT"),
+            ("operational_status", "JSONB"),
+            ("operational_updated_at", "TIMESTAMPTZ"),
+        ):
+            column_exists = await conn.scalar(
+                text(
+                    """
+                    SELECT EXISTS (
+                        SELECT 1
+                        FROM information_schema.columns
+                        WHERE table_schema = 'public'
+                          AND table_name = 'services'
+                          AND column_name = :column_name
+                    )
+                    """
+                ),
+                {"column_name": column_name},
+            )
+            if not column_exists:
+                logger.info(
+                    "Adding services.%s column",
+                    column_name,
+                    extra=self._log_context,
+                )
+                await conn.execute(
+                    text(
+                        f"ALTER TABLE services ADD COLUMN "
+                        f"{column_name} {column_definition}"
+                    )
+                )
+
+        await conn.execute(
+            text(
+                """
+                UPDATE services
+                SET operational_stage = CASE
+                    WHEN status IS TRUE THEN 'starting'
+                    ELSE 'stopped'
+                END
+                WHERE operational_stage IS NULL OR btrim(operational_stage) = ''
+                """
+            )
+        )
+        await conn.execute(
+            text(
+                """
+                UPDATE services
+                SET operational_status = jsonb_build_object(
+                    'stage', operational_stage,
+                    'message_count', 0,
+                    'processed_message_count', 0,
+                    'is_stale', false
+                )
+                WHERE operational_status IS NULL
+                """
+            )
+        )
+        await conn.execute(
+            text(
+                """
+                ALTER TABLE services
+                ALTER COLUMN operational_stage SET DEFAULT 'stopped',
+                ALTER COLUMN operational_stage SET NOT NULL,
+                ALTER COLUMN operational_status SET DEFAULT '{}'::jsonb,
+                ALTER COLUMN operational_status SET NOT NULL
                 """
             )
         )

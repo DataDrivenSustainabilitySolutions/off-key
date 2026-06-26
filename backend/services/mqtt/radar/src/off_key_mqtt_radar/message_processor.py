@@ -76,9 +76,11 @@ class MessageProcessor:
         )
 
         # Metrics
+        self.received_message_count = 0
         self.message_count = 0
         self.anomaly_count = 0
         self.error_count = 0
+        self.last_alignment_status: Optional[str] = None
 
         self._log_context = {"component": "message_processor"}
 
@@ -113,6 +115,7 @@ class MessageProcessor:
             sanitized_data = self._sanitize_payload(data, message)
             if sanitized_data is None:
                 return None
+            self.received_message_count += 1
 
             # Step 3: Extract metadata
             charger_id = TopicParser.extract_charger_id(message.topic, payload=data)
@@ -126,6 +129,7 @@ class MessageProcessor:
             aligned_features, alignment_context = self._align_features(
                 charger_id, sensor_type, sanitized_data
             )
+            self.last_alignment_status = alignment_context.get("alignment_status")
             if aligned_features is None:
                 return None
 
@@ -438,9 +442,11 @@ class MessageProcessor:
     def get_metrics(self) -> Dict[str, Any]:
         """Get current processing metrics."""
         return {
-            "message_count": self.message_count,
+            "message_count": self.received_message_count,
+            "processed_message_count": self.message_count,
             "anomaly_count": self.anomaly_count,
             "error_count": self.error_count,
             "anomaly_rate": self.anomaly_count / max(self.message_count, 1),
-            "error_rate": self.error_count / max(self.message_count, 1),
+            "error_rate": self.error_count / max(self.received_message_count, 1),
+            "last_alignment_status": self.last_alignment_status,
         }

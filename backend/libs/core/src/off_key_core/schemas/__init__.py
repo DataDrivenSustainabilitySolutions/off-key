@@ -1,7 +1,7 @@
 """Pydantic schemas for off-key-core."""
 
 from .favorites import FavoriteCreate
-from .radar import PerformanceConfig
+from .radar import PerformanceConfig, RadarOperationalStatus
 from .user import (
     ForgotPasswordRequest,
     ResetPasswordRequest,
@@ -15,6 +15,7 @@ __all__ = [
     "FavoriteCreate",
     # Radar schemas
     "PerformanceConfig",
+    "RadarOperationalStatus",
     # User schemas
     "UserCreate",
     "UserLogin",

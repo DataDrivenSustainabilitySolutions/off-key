@@ -10,13 +10,14 @@ class with 23+ environment variables.
 """
 
 import asyncio
+import json
 import logging
 import math
 import time
 from collections import deque
 from collections.abc import Iterable
 from contextlib import suppress
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional, Dict, Any, Tuple
 
 from sqlalchemy import Table, Column, Text, Float, TIMESTAMP, JSON, text
@@ -25,9 +26,10 @@ from sqlalchemy.schema import MetaData
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
+from off_key_core.schemas.radar import RadarOperationalStatus
 from off_key_core.utils.mqtt_topics import TopicMetadataExtractor
 from .config.config import MQTTRadarConfig
-from .config.runtime import get_radar_database_settings
+from .config.runtime import get_radar_checkpoint_settings, get_radar_database_settings
 from .models import ServiceMetrics, AnomalyResult
 
 logger = logging.getLogger(__name__)
@@ -229,6 +231,9 @@ class DatabaseWriter:
                 )
 
                 session.add(service_metrics)
+                await self._update_service_operational_status(
+                    session, metrics.get("operational_status")
+                )
                 await session.commit()
 
         except Exception as e:
@@ -238,6 +243,44 @@ class DatabaseWriter:
                 exc_info=True,
             )
             self.total_errors += 1
+
+    async def _update_service_operational_status(
+        self,
+        session: AsyncSession,
+        status: Any,
+    ) -> None:
+        if not isinstance(status, dict):
+            return
+
+        service_id = get_radar_checkpoint_settings().SERVICE_ID
+        if not service_id:
+            return
+
+        normalized = RadarOperationalStatus(**status)
+        updated_at = normalized.updated_at or datetime.now(timezone.utc)
+        if updated_at.tzinfo is None:
+            updated_at = updated_at.replace(tzinfo=timezone.utc)
+        payload = normalized.model_copy(update={"updated_at": updated_at}).model_dump(
+            mode="json", exclude_none=True
+        )
+
+        await session.execute(
+            text(
+                """
+                UPDATE services
+                SET operational_stage = :stage,
+                    operational_status = CAST(:status_payload AS jsonb),
+                    operational_updated_at = :updated_at
+                WHERE id = :service_id
+                """
+            ),
+            {
+                "stage": normalized.stage,
+                "status_payload": json.dumps(payload),
+                "updated_at": updated_at,
+                "service_id": service_id,
+            },
+        )
 
     async def _test_connection(self):
         """Test database connection"""

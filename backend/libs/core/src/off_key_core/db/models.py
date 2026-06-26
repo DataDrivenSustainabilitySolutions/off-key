@@ -18,6 +18,7 @@ from sqlalchemy import (
     ForeignKey,
     text,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 
 from .base import Base
 from ..utils.enum import RoleEnum
@@ -157,6 +158,11 @@ class MonitoringService(Base):
     mqtt_topic = Column(JSON, nullable=False)
     created_at = Column(DateTime, default=func.now())
     status = Column(Boolean, default=True)
+    operational_stage = Column(Text, nullable=False, default="stopped")
+    operational_status = Column(
+        JSON().with_variant(JSONB(), "postgresql"), nullable=False, default=dict
+    )
+    operational_updated_at = Column(DateTime(timezone=True), nullable=True)
 
 
 class MqttTopic(Base):

@@ -2,6 +2,8 @@
 
 import inspect
 import json
+from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -440,3 +442,43 @@ def test_tactic_build_radar_environment_accepts_legacy_fdr_config(monkeypatch):
         "epsilon": 0.5,
         "alpha": 0.01,
     }
+
+
+def test_tactic_operational_status_marks_failed_from_docker_exit():
+    service = SimpleNamespace(
+        status=True,
+        operational_stage="operational",
+        operational_status={
+            "stage": "operational",
+            "message_count": 5,
+            "processed_message_count": 5,
+            "is_stale": False,
+        },
+        operational_updated_at=datetime.now(timezone.utc),
+    )
+
+    status = RadarOrchestrationService._derive_operational_status(service, "exited")
+
+    assert status["stage"] == "failed"
+    assert status["error"] == "Docker workload is exited"
+    assert status["is_stale"] is False
+
+
+def test_tactic_operational_status_marks_running_heartbeat_stale():
+    service = SimpleNamespace(
+        status=True,
+        operational_stage="collecting_training",
+        operational_status={
+            "stage": "collecting_training",
+            "message_count": 10,
+            "processed_message_count": 8,
+            "is_stale": False,
+        },
+        operational_updated_at=datetime.now(timezone.utc) - timedelta(seconds=180),
+    )
+
+    status = RadarOrchestrationService._derive_operational_status(service, "running")
+
+    assert status["stage"] == "collecting_training"
+    assert status["is_stale"] is True
+    assert status["detail"] == "Runtime heartbeat is stale"

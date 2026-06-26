@@ -1,5 +1,6 @@
 """Shared RADAR request/response schemas used across backend services."""
 
+from datetime import datetime
 from typing import Any, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -9,6 +10,9 @@ __all__ = [
     "FdrConfig",
     "MonitoringStrategy",
     "PerformanceConfig",
+    "RadarOperationalProgress",
+    "RadarOperationalStage",
+    "RadarOperationalStatus",
     "StaticMartingaleConfig",
     "StaticBaselineConfig",
 ]
@@ -16,6 +20,42 @@ __all__ = [
 _SENSOR_KEY_STRATEGIES = {"full_hierarchy", "top_level", "leaf"}
 _ALIGNMENT_MODES = {"strict_barrier"}
 MonitoringStrategy = Literal["static_baseline", "adaptive_stream"]
+RadarOperationalStage = Literal[
+    "starting",
+    "waiting_for_data",
+    "collecting_training",
+    "collecting_calibration",
+    "training",
+    "operational",
+    "degraded",
+    "failed",
+    "stopped",
+]
+
+
+class RadarOperationalProgress(BaseModel):
+    """Progress toward a bounded RADAR operational stage."""
+
+    model_config = ConfigDict(extra="forbid", validate_assignment=True)
+
+    current: int = Field(default=0, ge=0)
+    target: int = Field(gt=0)
+
+
+class RadarOperationalStatus(BaseModel):
+    """Current runtime stage reported by a RADAR workload."""
+
+    model_config = ConfigDict(extra="forbid", validate_assignment=True)
+
+    stage: RadarOperationalStage = "starting"
+    detail: str | None = None
+    progress: RadarOperationalProgress | None = None
+    message_count: int = Field(default=0, ge=0)
+    processed_message_count: int = Field(default=0, ge=0)
+    last_alignment_status: str | None = None
+    error: str | None = None
+    updated_at: datetime | None = None
+    is_stale: bool = False
 
 
 class PerformanceConfig(BaseModel):

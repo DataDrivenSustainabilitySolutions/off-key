@@ -8,11 +8,12 @@ import asyncio
 import time
 from collections import deque
 from contextlib import suppress
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List, Deque
 
 from off_key_core.config.logging import get_logging_settings
 from off_key_core.config.logs import logger
+from off_key_core.schemas.radar import RadarOperationalStatus
 
 from .models import HealthStatus
 
@@ -145,9 +146,10 @@ class HealthMonitor:
                 self._maybe_log_healthy_summary(status)
 
             # Write metrics if database writer is available
-            if self._database_writer and status.status != "failed":
-                metrics = self._build_metrics_dict(status)
-                await self._database_writer.write_service_metrics(metrics)
+            if self._database_writer:
+                await self._database_writer.write_service_metrics(
+                    self.build_metrics_snapshot(status)
+                )
 
             self.last_health_check = time.time()
 
@@ -159,20 +161,27 @@ class HealthMonitor:
                 exc_info=True,
             )
 
+    def build_metrics_snapshot(
+        self, status: HealthStatus | None = None
+    ) -> Dict[str, Any]:
+        """Build the current metrics payload for persistence."""
+        return self._build_metrics_dict(status or self.get_health_status())
+
     def _build_metrics_dict(self, status: HealthStatus) -> Dict[str, Any]:
         """Build metrics dictionary for persistence."""
         processor_metrics = (
             self._message_processor.get_metrics() if self._message_processor else {}
         )
+        processed_count = processor_metrics.get(
+            "processed_message_count", processor_metrics.get("message_count", 0)
+        )
 
         return {
-            "total_messages_processed": processor_metrics.get("message_count", 0),
+            "total_messages_processed": processed_count,
             "total_anomalies_detected": processor_metrics.get("anomaly_count", 0),
             "anomaly_rate": processor_metrics.get("anomaly_rate", 0),
             "avg_processing_time_ms": self._calculate_avg_processing_time(),
-            "throughput_per_second": self._calculate_throughput(
-                processor_metrics.get("message_count", 0)
-            ),
+            "throughput_per_second": self._calculate_throughput(processed_count),
             "memory_usage_mb": (
                 self._memory_manager.get_memory_usage() if self._memory_manager else 0
             ),
@@ -180,6 +189,7 @@ class HealthMonitor:
             "error_rate": processor_metrics.get("error_rate", 0),
             "service_status": status.status,
             "active_alerts": status.active_alerts,
+            "operational_status": status.metrics.get("operational_status"),
         }
 
     def record_processing_time(self, processing_time: float) -> None:
@@ -260,18 +270,29 @@ class HealthMonitor:
         metrics = {
             "uptime_seconds": uptime,
             "message_count": processor_metrics.get("message_count", 0),
+            "processed_message_count": processor_metrics.get(
+                "processed_message_count", processor_metrics.get("message_count", 0)
+            ),
             "anomaly_count": processor_metrics.get("anomaly_count", 0),
             "anomaly_rate": processor_metrics.get("anomaly_rate", 0),
             "error_count": processor_metrics.get("error_count", 0),
             "error_rate": processor_metrics.get("error_rate", 0),
+            "last_alignment_status": processor_metrics.get("last_alignment_status"),
             "avg_processing_time_ms": self._calculate_avg_processing_time(),
             "throughput_per_second": self._calculate_throughput(
-                processor_metrics.get("message_count", 0)
+                processor_metrics.get(
+                    "processed_message_count", processor_metrics.get("message_count", 0)
+                )
             ),
             "memory_usage_mb": (
                 self._memory_manager.get_memory_usage() if self._memory_manager else 0
             ),
         }
+        metrics["operational_status"] = self._build_operational_status(
+            service_status=status,
+            components=components,
+            processor_metrics=processor_metrics,
+        )
 
         return HealthStatus(
             status=status,
@@ -281,6 +302,90 @@ class HealthMonitor:
             active_alerts=active_alerts,
             uptime_seconds=uptime,
         )
+
+    def _build_operational_status(
+        self,
+        *,
+        service_status: str,
+        components: Dict[str, Any],
+        processor_metrics: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        detector_health = components.get("anomaly_detector", {}) or {}
+        detector_stats = detector_health.get("primary_service_stats", {}) or {}
+        message_count = int(processor_metrics.get("message_count", 0) or 0)
+        processed_count = int(
+            processor_metrics.get("processed_message_count", message_count) or 0
+        )
+        last_alignment_status = processor_metrics.get("last_alignment_status")
+
+        stage = "waiting_for_data"
+        detail = None
+        progress = None
+        error = detector_stats.get("training_error")
+
+        detector_state = detector_health.get("state")
+        if service_status == "failed" or detector_state == "failed":
+            stage = "failed"
+            detail = "RADAR runtime failed"
+        elif detector_stats.get("state") == "failed":
+            stage = "failed"
+            detail = "Static baseline training failed"
+        elif service_status == "degraded" or detector_state == "degraded":
+            stage = "degraded"
+            detail = "RADAR runtime is degraded"
+        elif processed_count <= 0:
+            stage = "waiting_for_data"
+            detail = (
+                "Waiting for aligned sensor data"
+                if last_alignment_status
+                and last_alignment_status != "direct_pass_through"
+                else "Waiting for telemetry"
+            )
+        elif detector_stats.get("strategy") == "static_baseline":
+            stage, detail, progress = self._static_operational_stage(detector_stats)
+        else:
+            stage = "operational"
+
+        return RadarOperationalStatus(
+            stage=stage,
+            detail=detail,
+            progress=progress,
+            message_count=message_count,
+            processed_message_count=processed_count,
+            last_alignment_status=last_alignment_status,
+            error=error,
+            updated_at=datetime.now(timezone.utc),
+            is_stale=False,
+        ).model_dump(mode="json", exclude_none=True)
+
+    @staticmethod
+    def _static_operational_stage(
+        detector_stats: Dict[str, Any],
+    ) -> tuple[str, str | None, Dict[str, int] | None]:
+        state = detector_stats.get("state")
+        if state == "collecting":
+            current = int(detector_stats.get("training_collected_samples", 0) or 0)
+            target = int(detector_stats.get("training_window_size", 1) or 1)
+            return (
+                "collecting_training",
+                f"{current}/{target} training samples",
+                {"current": current, "target": max(target, 1)},
+            )
+        if state == "calibrating":
+            current = int(detector_stats.get("calibration_collected_samples", 0) or 0)
+            target = int(detector_stats.get("calibration_window_size", 1) or 1)
+            return (
+                "collecting_calibration",
+                f"{current}/{target} calibration samples",
+                {"current": current, "target": max(target, 1)},
+            )
+        if state == "training":
+            return "training", "Fitting static baseline", None
+        if state == "ready":
+            return "operational", None, None
+        if state == "failed":
+            return "failed", "Static baseline training failed", None
+        return "waiting_for_data", "Waiting for telemetry", None
 
     def _maybe_log_healthy_summary(self, status: HealthStatus) -> None:
         now = time.time()

@@ -39,12 +39,41 @@ export interface PreprocessorDefinition {
 }
 
 // Active monitoring service
+export type OperationalStage =
+  | 'starting'
+  | 'waiting_for_data'
+  | 'collecting_training'
+  | 'collecting_calibration'
+  | 'training'
+  | 'operational'
+  | 'degraded'
+  | 'failed'
+  | 'stopped';
+
+export interface OperationalProgress {
+  current: number;
+  target: number;
+}
+
+export interface OperationalStatus {
+  stage: OperationalStage;
+  detail?: string | null;
+  progress?: OperationalProgress | null;
+  message_count: number;
+  processed_message_count: number;
+  last_alignment_status?: string | null;
+  error?: string | null;
+  updated_at?: string | null;
+  is_stale: boolean;
+}
+
 export interface ActiveService {
   id: string;
   container_id: string;
   container_name: string;
   mqtt_topics: string[];
   status: boolean;
+  operational_status: OperationalStatus;
   docker_status?: string;
   monitoring_strategy?: MonitoringStrategy;
   model_type?: string;
@@ -111,6 +140,58 @@ export type ModelParams = Record<string, string | number | boolean>;
 export interface StatusDisplay {
   label: string;
   className: string;
+}
+
+export function getOperationalStageDisplay(
+  status: OperationalStatus
+): StatusDisplay {
+  switch (status.stage) {
+    case 'starting':
+      return {
+        label: 'Starting',
+        className: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/35 dark:text-yellow-200',
+      };
+    case 'waiting_for_data':
+      return {
+        label: 'Waiting for data',
+        className: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/35 dark:text-yellow-200',
+      };
+    case 'collecting_training':
+      return {
+        label: 'Collecting training data',
+        className: 'bg-sky-100 text-sky-800 dark:bg-sky-900/35 dark:text-sky-200',
+      };
+    case 'collecting_calibration':
+      return {
+        label: 'Calibrating',
+        className: 'bg-blue-100 text-blue-800 dark:bg-blue-900/35 dark:text-blue-200',
+      };
+    case 'training':
+      return {
+        label: 'Training',
+        className: 'bg-blue-100 text-blue-800 dark:bg-blue-900/35 dark:text-blue-200',
+      };
+    case 'operational':
+      return {
+        label: 'Operational',
+        className: 'bg-green-100 text-green-800 dark:bg-green-900/35 dark:text-green-200',
+      };
+    case 'degraded':
+      return {
+        label: 'Degraded',
+        className: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/35 dark:text-yellow-200',
+      };
+    case 'failed':
+      return {
+        label: 'Failed',
+        className: 'bg-red-100 text-red-800 dark:bg-red-900/35 dark:text-red-200',
+      };
+    case 'stopped':
+      return {
+        label: 'Stopped',
+        className: 'bg-gray-100 text-gray-800 dark:bg-white/10 dark:text-gray-200',
+      };
+  }
 }
 
 /**

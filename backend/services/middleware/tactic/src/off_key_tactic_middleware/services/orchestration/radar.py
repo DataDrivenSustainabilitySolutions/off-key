@@ -3,7 +3,7 @@ import hashlib
 import json
 import time
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from functools import lru_cache
 from typing import Any, Callable, Dict, List, Optional
 
@@ -17,6 +17,7 @@ from off_key_core.db.models import MonitoringService
 from off_key_core.schemas.radar import (
     AdaptiveStreamConfig,
     PerformanceConfig,
+    RadarOperationalStatus,
     StaticBaselineConfig,
 )
 from off_key_core.utils.mqtt_topics import normalize_mqtt_topic_filters
@@ -34,6 +35,16 @@ RADAR_SERVICE_TYPE_LABEL = "service_type=radar"
 # a docker.info() round-trip on every RADAR service creation request.
 _SWARM_CACHE_TTL_SECONDS: float = 30.0
 _swarm_manager_cache: Optional[tuple[bool, float]] = None
+_RUNTIME_STATUS_STALE_AFTER_SECONDS = 120.0
+_FAILED_WORKLOAD_STATES = {"dead", "error", "exited", "failed", "rejected"}
+_STOPPED_WORKLOAD_STATES = {
+    "complete",
+    "completed",
+    "no_container_id",
+    "not_found",
+    "removed",
+    "stopped",
+}
 
 
 def _extract_adaptive_performance_config(values: Dict[str, Any]) -> Dict[str, Any]:
@@ -213,6 +224,11 @@ class RadarOrchestrationService:
                 mqtt_topic=mqtt_topics,
                 created_at=datetime.now(),
                 status=True,
+                operational_stage="starting",
+                operational_status=RadarOperationalStatus(stage="starting").model_dump(
+                    mode="json", exclude_none=True
+                ),
+                operational_updated_at=None,
             )
 
             # Add to database
@@ -253,6 +269,7 @@ class RadarOrchestrationService:
         )
         if docker_status != "running":
             existing_service.status = False
+            self._apply_terminal_operational_status(existing_service, docker_status)
             await self.session.commit()
             raise ValueError(
                 f"RADAR service name '{container_name}' is marked active, but its "
@@ -1036,6 +1053,7 @@ class RadarOrchestrationService:
             )
 
             service.status = False
+            self._apply_terminal_operational_status(service, "stopped")
             await self.session.commit()
 
             logger.info(
@@ -1047,6 +1065,7 @@ class RadarOrchestrationService:
         except docker.errors.NotFound:
             # Container not found in Docker but exists in DB
             service.status = False
+            self._apply_terminal_operational_status(service, "not_found")
             await self.session.commit()
 
             logger.warning(
@@ -1090,6 +1109,126 @@ class RadarOrchestrationService:
             logger.debug("Error reading Docker labels for %s: %s", container_id, exc)
             return {}
 
+    @staticmethod
+    def _coerce_utc(value: Any) -> Optional[datetime]:
+        if value is None:
+            return None
+        if isinstance(value, str):
+            try:
+                value = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            except ValueError:
+                return None
+        if value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc)
+
+    @classmethod
+    def _normalize_operational_status(
+        cls,
+        service: MonitoringService,
+    ) -> Dict[str, Any]:
+        raw_status = service.operational_status or {}
+        if not isinstance(raw_status, dict):
+            raw_status = {}
+
+        updated_at = cls._coerce_utc(
+            raw_status.get("updated_at") or service.operational_updated_at
+        )
+        payload = {
+            **raw_status,
+            "stage": raw_status.get("stage")
+            or service.operational_stage
+            or ("starting" if service.status else "stopped"),
+            "message_count": raw_status.get("message_count", 0),
+            "processed_message_count": raw_status.get("processed_message_count", 0),
+            "updated_at": updated_at,
+            "is_stale": bool(raw_status.get("is_stale", False)),
+        }
+        return RadarOperationalStatus(**payload).model_dump(
+            mode="json", exclude_none=True
+        )
+
+    @classmethod
+    def _derive_operational_status(
+        cls,
+        service: MonitoringService,
+        docker_status: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        status = cls._normalize_operational_status(service)
+        docker_state = (docker_status or "").strip().lower()
+
+        if docker_state in _FAILED_WORKLOAD_STATES:
+            return cls._override_operational_status(
+                status,
+                "failed",
+                f"Docker workload is {docker_state}",
+                error=f"Docker workload is {docker_state}",
+            )
+        if docker_state in _STOPPED_WORKLOAD_STATES:
+            return cls._override_operational_status(
+                status,
+                "stopped",
+                f"Docker workload is {docker_state}",
+            )
+        if not service.status:
+            return cls._override_operational_status(
+                status, "stopped", "Service stopped"
+            )
+
+        if docker_state == "running":
+            updated_at = cls._coerce_utc(service.operational_updated_at)
+            if updated_at is None:
+                return cls._mark_operational_status_stale(
+                    status, "Runtime heartbeat has not arrived"
+                )
+            age_seconds = (datetime.now(timezone.utc) - updated_at).total_seconds()
+            if age_seconds > _RUNTIME_STATUS_STALE_AFTER_SECONDS:
+                return cls._mark_operational_status_stale(
+                    status, "Runtime heartbeat is stale"
+                )
+
+        return status
+
+    @staticmethod
+    def _override_operational_status(
+        status: Dict[str, Any],
+        stage: str,
+        detail: str,
+        error: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        payload = {
+            **status,
+            "stage": stage,
+            "detail": detail,
+            "error": error if error is not None else status.get("error"),
+            "updated_at": datetime.now(timezone.utc),
+            "is_stale": False,
+        }
+        return RadarOperationalStatus(**payload).model_dump(
+            mode="json", exclude_none=True
+        )
+
+    @staticmethod
+    def _mark_operational_status_stale(
+        status: Dict[str, Any],
+        detail: str,
+    ) -> Dict[str, Any]:
+        payload = {**status, "detail": detail, "is_stale": True}
+        return RadarOperationalStatus(**payload).model_dump(
+            mode="json", exclude_none=True
+        )
+
+    @classmethod
+    def _apply_terminal_operational_status(
+        cls,
+        service: MonitoringService,
+        docker_status: str,
+    ) -> None:
+        status = cls._derive_operational_status(service, docker_status)
+        service.operational_stage = status["stage"]
+        service.operational_status = status
+        service.operational_updated_at = cls._coerce_utc(status.get("updated_at"))
+
     async def list_radar_services(
         self, active_only: bool = False, include_docker_status: bool = False
     ) -> List[Dict[str, Any]]:
@@ -1119,6 +1258,7 @@ class RadarOrchestrationService:
                 "container_name": service.container_name,
                 "mqtt_topics": service.mqtt_topic,
                 "status": service.status,
+                "operational_status": self._derive_operational_status(service),
                 "created_at": (
                     service.created_at.isoformat() if service.created_at else None
                 ),
@@ -1126,8 +1266,10 @@ class RadarOrchestrationService:
 
             # Optionally check actual Docker state
             if include_docker_status:
-                service_dict["docker_status"] = await self._get_docker_status(
-                    service.container_id
+                docker_status = await self._get_docker_status(service.container_id)
+                service_dict["docker_status"] = docker_status
+                service_dict["operational_status"] = self._derive_operational_status(
+                    service, docker_status
                 )
                 labels = await self._get_workload_labels(service.container_id)
                 if labels:
@@ -1177,6 +1319,9 @@ class RadarOrchestrationService:
             "mqtt_topics": service.mqtt_topic,
             "db_status": service.status,
             "docker_status": docker_service_status,
+            "operational_status": self._derive_operational_status(
+                service, docker_service_status
+            ),
             "monitoring_strategy": labels.get("monitoring_strategy"),
             "model_type": labels.get("radar_model_type"),
             "created_at": (

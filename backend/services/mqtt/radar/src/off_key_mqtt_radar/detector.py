@@ -760,9 +760,12 @@ class AnomalyDetectionService:
     def _get_model_info(self) -> Dict[str, Any]:
         """Get model state information"""
         return {
+            "strategy": "adaptive_stream",
             "processed_count": self.processed_count,
             "anomaly_count": self.anomaly_count,
             "anomaly_rate": self.anomaly_count / max(self.processed_count, 1),
+            "reference_count": len(self.score_window),
+            "min_samples": self._get_heuristic_min_samples(),
             "skipped_learning_anomaly_count": self.skipped_learning_anomaly_count,
             "pre_ready_suppressed_count": self.pre_ready_suppressed_count,
             "memory_usage_mb": self._get_memory_usage(),
@@ -1581,6 +1584,7 @@ class StaticConformalDetectionService:
             "collected_samples": len(self.training_buffer),
             "training_collected_samples": len(self.training_buffer),
             "calibration_collected_samples": len(self.calibration_buffer),
+            "training_error": self.training_error,
             "alarm_count": (
                 self.alarm_controller.alarm_count
                 if self.alarm_controller is not None

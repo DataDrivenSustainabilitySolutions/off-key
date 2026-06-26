@@ -36,7 +36,10 @@ import {
   Trash2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { getStatusDisplay } from "@/types/monitoring";
+import {
+  getOperationalStageDisplay,
+  getStatusDisplay,
+} from "@/types/monitoring";
 import {
   formatAnomalyValue,
   getAnomalyValueClassName,
@@ -49,6 +52,7 @@ import type {
   ActiveService,
   ModelDefinition,
   ModelParams,
+  OperationalStatus,
   ParameterSchema,
   PreprocessingStepConfig,
   PreprocessorDefinition,
@@ -311,6 +315,44 @@ const StatusPill: React.FC<{ label: string; className?: string }> = ({
     {label}
   </span>
 );
+
+const OperationalStageSummary: React.FC<{ status: OperationalStatus }> = ({
+  status,
+}) => {
+  const stage = getOperationalStageDisplay(status);
+  const progress = status.progress;
+  const percent = progress
+    ? Math.min(100, Math.round((progress.current / Math.max(progress.target, 1)) * 100))
+    : 0;
+
+  return (
+    <div className="mt-2">
+      <StatusPill label={stage.label} className={stage.className} />
+      {progress ? (
+        <div className="mt-2 w-36">
+          <div className="mb-1 text-xs text-muted-foreground">
+            {progress.current}/{progress.target}
+          </div>
+          <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+            <div
+              className="h-full rounded-full bg-primary"
+              style={{ width: `${percent}%` }}
+            />
+          </div>
+        </div>
+      ) : status.detail ? (
+        <div className="mt-1 max-w-40 text-xs text-muted-foreground">
+          {status.detail}
+        </div>
+      ) : null}
+      {status.is_stale ? (
+        <div className="mt-1 text-xs text-yellow-700 dark:text-yellow-300">
+          Stale heartbeat
+        </div>
+      ) : null}
+    </div>
+  );
+};
 
 const StrategyPill: React.FC<{ strategy?: MonitoringStrategy }> = ({
   strategy,
@@ -609,6 +651,9 @@ const ActiveServicesSection: React.FC<{
                     <StatusPill
                       label={statusDisplay.label}
                       className={statusDisplay.className}
+                    />
+                    <OperationalStageSummary
+                      status={service.operational_status}
                     />
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground">

@@ -4,7 +4,10 @@ from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from sqlalchemy.dialects import postgresql
+from sqlalchemy.schema import CreateTable
 
+from off_key_core.db.models import MonitoringService
 from off_key_db_sync.service import SyncService
 
 
@@ -28,6 +31,9 @@ async def test_initialize_database_migrates_anomalies_before_create_all():
     async def _record_sensor_set_migration(_conn):
         call_order.append("migrate_anomaly_sensor_set")
 
+    async def _record_service_status_migration(_conn):
+        call_order.append("migrate_service_operational_status")
+
     async def _record_registry_migration(_conn):
         call_order.append("migrate_model_registry")
 
@@ -37,6 +43,9 @@ async def test_initialize_database_migrates_anomalies_before_create_all():
     )
     service._migrate_anomaly_sensor_set = AsyncMock(
         side_effect=_record_sensor_set_migration
+    )
+    service._migrate_service_operational_status = AsyncMock(
+        side_effect=_record_service_status_migration
     )
     service._migrate_model_registry_family = AsyncMock(
         side_effect=_record_registry_migration
@@ -59,6 +68,7 @@ async def test_initialize_database_migrates_anomalies_before_create_all():
         "migrate_anomaly_identity",
         "migrate_anomaly_value_type",
         "migrate_anomaly_sensor_set",
+        "migrate_service_operational_status",
         "migrate_model_registry",
         "create_all",
     ]
@@ -111,3 +121,34 @@ async def test_migrate_anomaly_sensor_set_adds_column_and_backfills_univariate()
     assert "ALTER TABLE anomalies ADD COLUMN sensor_set JSONB" in executed_sql
     assert "jsonb_build_array(telemetry_type)" in executed_sql
     assert "telemetry_type <> '__multivariate__'" in executed_sql
+
+
+@pytest.mark.asyncio
+async def test_migrate_service_operational_status_adds_and_backfills_columns():
+    service = SyncService()
+    conn = AsyncMock()
+    conn.scalar = AsyncMock(side_effect=[True, False, False, False])
+    conn.execute = AsyncMock()
+
+    await service._migrate_service_operational_status(conn)
+
+    executed_sql = " ".join(
+        str(call.args[0]) for call in conn.execute.await_args_list if call.args
+    )
+    assert "ALTER TABLE services ADD COLUMN operational_stage TEXT" in executed_sql
+    assert "ALTER TABLE services ADD COLUMN operational_status JSONB" in executed_sql
+    assert (
+        "ALTER TABLE services ADD COLUMN operational_updated_at TIMESTAMPTZ"
+        in executed_sql
+    )
+    assert "WHEN status IS TRUE THEN 'starting'" in executed_sql
+    assert "'processed_message_count', 0" in executed_sql
+    assert "ALTER COLUMN operational_stage SET NOT NULL" in executed_sql
+
+
+def test_monitoring_service_operational_status_uses_postgresql_jsonb():
+    ddl = str(
+        CreateTable(MonitoringService.__table__).compile(dialect=postgresql.dialect())
+    )
+
+    assert "operational_status JSONB" in ddl

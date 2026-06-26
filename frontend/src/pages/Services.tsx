@@ -31,7 +31,10 @@ import {
 import { apiUtils } from "@/lib/api-client";
 import { API_CONFIG } from "@/lib/api-config";
 import { cn } from "@/lib/utils";
-import { getStatusDisplay } from "@/types/monitoring";
+import {
+  getOperationalStageDisplay,
+  getStatusDisplay,
+} from "@/types/monitoring";
 import type { ActiveService } from "@/types/monitoring";
 
 const extractChargerIdFromContainer = (containerName: string): string => {
@@ -96,6 +99,43 @@ function ModeBadge({ service }: { service: ActiveService }) {
       <Icon className="h-3.5 w-3.5" />
       {getServiceModeLabel(service)}
     </span>
+  );
+}
+
+function StageSummary({ service }: { service: ActiveService }) {
+  const operational = service.operational_status;
+  const stage = getOperationalStageDisplay(operational);
+  const progress = operational.progress;
+  const percent = progress
+    ? Math.min(100, Math.round((progress.current / Math.max(progress.target, 1)) * 100))
+    : 0;
+
+  return (
+    <div className="min-w-40">
+      <StatusBadge label={stage.label} className={stage.className} />
+      {progress ? (
+        <div className="mt-2 w-36">
+          <div className="mb-1 text-xs text-muted-foreground">
+            {progress.current}/{progress.target}
+          </div>
+          <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+            <div
+              className="h-full rounded-full bg-primary"
+              style={{ width: `${percent}%` }}
+            />
+          </div>
+        </div>
+      ) : operational.detail ? (
+        <div className="mt-1 max-w-40 text-xs text-muted-foreground">
+          {operational.detail}
+        </div>
+      ) : null}
+      {operational.is_stale ? (
+        <div className="mt-1 text-xs text-yellow-700 dark:text-yellow-300">
+          Stale heartbeat
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -289,6 +329,7 @@ export default function Services() {
                   <TableHead>Model</TableHead>
                   <TableHead>Topics</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead>Stage</TableHead>
                   <TableHead>Created</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
@@ -369,6 +410,9 @@ export default function Services() {
                             label={status.label}
                             className={status.className}
                           />
+                        </TableCell>
+                        <TableCell>
+                          <StageSummary service={service} />
                         </TableCell>
                         <TableCell className="text-sm text-muted-foreground">
                           {service.created_at

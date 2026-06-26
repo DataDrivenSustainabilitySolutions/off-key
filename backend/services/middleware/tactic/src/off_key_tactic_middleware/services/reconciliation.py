@@ -7,6 +7,7 @@ MonitoringService.status in sync with actual Docker state.
 
 import asyncio
 from contextlib import suppress
+from datetime import datetime, timezone
 from typing import Optional
 
 import docker
@@ -18,7 +19,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from off_key_core.config.logs import logger
 from off_key_core.db.models import MonitoringService
 from off_key_core.db.base import get_async_session_local
+from off_key_core.schemas.radar import RadarOperationalStatus
 from ..facades.docker import AsyncDocker, get_workload_docker_status
+
+_FAILED_WORKLOAD_STATES = {"dead", "error", "exited", "failed", "rejected"}
 
 
 class RadarStatusReconciliationService:
@@ -126,6 +130,7 @@ class RadarStatusReconciliationService:
             # If Docker says it's not running, mark as inactive
             if docker_status != "running":
                 service.status = False
+                self._apply_terminal_operational_status(service, docker_status)
                 updates += 1
                 logger.info(
                     f"Service '{service.container_name}' marked inactive "
@@ -134,6 +139,33 @@ class RadarStatusReconciliationService:
 
         if updates > 0:
             logger.info(f"Reconciliation complete: {updates} service(s) updated")
+
+    @staticmethod
+    def _apply_terminal_operational_status(
+        service: MonitoringService,
+        docker_status: str,
+    ) -> None:
+        docker_state = (docker_status or "").strip().lower()
+        stage = "failed" if docker_state in _FAILED_WORKLOAD_STATES else "stopped"
+        detail = f"Docker workload is {docker_state or 'not running'}"
+        now = datetime.now(timezone.utc)
+        existing = service.operational_status or {}
+        if not isinstance(existing, dict):
+            existing = {}
+        status = RadarOperationalStatus(
+            stage=stage,
+            detail=detail,
+            progress=existing.get("progress"),
+            message_count=existing.get("message_count", 0),
+            processed_message_count=existing.get("processed_message_count", 0),
+            last_alignment_status=existing.get("last_alignment_status"),
+            error=detail if stage == "failed" else None,
+            updated_at=now,
+            is_stale=False,
+        ).model_dump(mode="json", exclude_none=True)
+        service.operational_stage = stage
+        service.operational_status = status
+        service.operational_updated_at = now
 
     async def _get_docker_status(self, container_id: str) -> str:
         """Check Docker workload status (Swarm service or container)."""

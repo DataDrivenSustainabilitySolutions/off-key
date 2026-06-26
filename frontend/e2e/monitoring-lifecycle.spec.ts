@@ -8,6 +8,7 @@ test.describe("monitoring lifecycle smoke", () => {
     request,
   }) => {
     const chargerId = "e2e-smoke";
+    let serviceId: string | undefined;
     let containerName: string | undefined;
     let authToken: string | null = null;
 
@@ -40,7 +41,9 @@ test.describe("monitoring lifecycle smoke", () => {
         service_id?: string;
         container_name?: string;
       };
+      serviceId = startedService.service_id;
       containerName = startedService.container_name;
+      expect(serviceId).toBeTruthy();
       expect(containerName).toBeTruthy();
       const serviceRow = page.getByRole("row").filter({ hasText: containerName! });
       await expect(serviceRow).toBeVisible({ timeout: 60_000 });
@@ -49,7 +52,7 @@ test.describe("monitoring lifecycle smoke", () => {
         (response) =>
           response.request().method() === "DELETE" &&
           new URL(response.url()).pathname.includes("/v1/monitors/"),
-        { timeout: 30_000 }
+        { timeout: 75_000 }
       );
       page.once("dialog", (dialog) => dialog.accept());
       await serviceRow
@@ -59,11 +62,17 @@ test.describe("monitoring lifecycle smoke", () => {
       const stopResponse = await stopResponsePromise;
       expect(stopResponse.ok()).toBeTruthy();
       await expect(page.getByText(/no active services/i)).toBeVisible({
-        timeout: 30_000,
+        timeout: 60_000,
       });
+      serviceId = undefined;
       containerName = undefined;
     } finally {
-      if (containerName && authToken) {
+      if (serviceId && authToken) {
+        await request.delete(`/api/v1/monitors/${encodeURIComponent(serviceId)}`, {
+          failOnStatusCode: false,
+          headers: { Authorization: `Bearer ${authToken}` },
+        });
+      } else if (containerName && authToken) {
         await request.delete(
           `/api/v1/monitors/stop?container_name=${encodeURIComponent(containerName)}`,
           {

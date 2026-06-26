@@ -1211,7 +1211,11 @@ const Monitoring: React.FC = () => {
     }
 
     try {
-      await apiUtils.delete(API_CONFIG.ENDPOINTS.MONITORING.DELETE(service.id));
+      await apiUtils.delete(
+        API_CONFIG.ENDPOINTS.MONITORING.DELETE(service.id),
+        undefined,
+        { timeout: API_CONFIG.MONITORING_LIFECYCLE_TIMEOUT }
+      );
       toast.success(action.success);
       // Refresh the services list
       await loadActiveServices();
@@ -1468,7 +1472,8 @@ const Monitoring: React.FC = () => {
                   performance_config: adaptivePerformanceConfig,
                 }
               : undefined,
-        }
+        },
+        { timeout: API_CONFIG.MONITORING_LIFECYCLE_TIMEOUT }
       );
 
       toast.success(`Monitoring service started successfully! Container: ${containerName}`);

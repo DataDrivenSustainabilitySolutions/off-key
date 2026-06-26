@@ -26,6 +26,7 @@ export interface ApiResponse<T = unknown> {
 export interface ApiRequestOptions {
   params?: Record<string, unknown>;
   signal?: AbortSignal;
+  timeout?: number;
 }
 
 // Token management
@@ -133,8 +134,12 @@ export const apiUtils = {
   /**
    * Generic POST request
    */
-  async post<T>(endpoint: string, data?: unknown): Promise<T> {
-    const response = await apiClient.post<T>(endpoint, data);
+  async post<T>(
+    endpoint: string,
+    data?: unknown,
+    options?: ApiRequestOptions
+  ): Promise<T> {
+    const response = await apiClient.post<T>(endpoint, data, options);
     return response.data;
   },
 
@@ -149,8 +154,12 @@ export const apiUtils = {
   /**
    * Generic DELETE request
    */
-  async delete<T>(endpoint: string, data?: unknown): Promise<T> {
-    const config = data ? { data } : undefined;
+  async delete<T>(
+    endpoint: string,
+    data?: unknown,
+    options?: ApiRequestOptions
+  ): Promise<T> {
+    const config = data === undefined ? options : { ...options, data };
     const response = await apiClient.delete<T>(endpoint, config);
     return response.data;
   }

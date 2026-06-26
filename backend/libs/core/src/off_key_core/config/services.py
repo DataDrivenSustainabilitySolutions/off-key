@@ -15,6 +15,7 @@ class ServiceEndpointsSettings(BaseSettings):
     TACTIC_SERVICE_SCHEME: str = "http"
     TACTIC_SERVICE_HOST: str = "middleware_tactic"
     TACTIC_SERVICE_PORT: int = Field(default=8000, ge=1, le=65535)
+    TACTIC_SERVICE_REQUEST_TIMEOUT_SECONDS: float = Field(default=60.0, gt=0)
     TACTIC_MODEL_REGISTRY_CACHE_TTL_SECONDS: float = Field(default=60.0, gt=0)
 
     @property

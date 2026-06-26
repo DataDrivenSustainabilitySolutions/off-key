@@ -29,8 +29,11 @@ class Tactic:
     """
 
     def __init__(self):
-        self.base_url = get_service_endpoints_settings().tactic_service_base_url
-        self.timeout = aiohttp.ClientTimeout(total=30)
+        settings = get_service_endpoints_settings()
+        self.base_url = settings.tactic_service_base_url
+        self.timeout = aiohttp.ClientTimeout(
+            total=settings.TACTIC_SERVICE_REQUEST_TIMEOUT_SECONDS
+        )
         self._session: Optional[aiohttp.ClientSession] = None
         self._max_retries = 2
         logger.info(f"Tactic facade initialized with base URL: {self.base_url}")

@@ -216,7 +216,11 @@ export default function Services() {
       }
 
       try {
-        await apiUtils.delete(API_CONFIG.ENDPOINTS.MONITORING.DELETE(service.id));
+        await apiUtils.delete(
+          API_CONFIG.ENDPOINTS.MONITORING.DELETE(service.id),
+          undefined,
+          { timeout: API_CONFIG.MONITORING_LIFECYCLE_TIMEOUT }
+        );
         toast.success(action.success);
         await loadServices();
       } catch (error) {

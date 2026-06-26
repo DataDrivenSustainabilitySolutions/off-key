@@ -5,6 +5,7 @@ import docker
 import pytest
 
 from off_key_tactic_middleware.services.orchestration import radar as radar_module
+from off_key_tactic_middleware.facades.docker import get_workload_docker_status
 from off_key_tactic_middleware.services.orchestration.radar import (
     RadarOrchestrationService,
 )
@@ -161,6 +162,24 @@ async def test_teardown_managed_radar_workloads_cleans_up_successes_on_partial_f
     assert stmt_params == {"container_id_1": ["svc-ok"]}
     session.commit.assert_awaited_once()
     session.rollback.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_workload_status_falls_back_to_container_when_swarm_unavailable():
+    fake_docker = _FakeAsyncDocker()
+    container = MagicMock(status="running")
+    container.reload = MagicMock()
+
+    fake_docker.client.services.get = MagicMock(
+        side_effect=docker.errors.APIError("This node is not a swarm manager")
+    )
+    fake_docker.client.containers.get = MagicMock(return_value=container)
+
+    status = await get_workload_docker_status(fake_docker, "ctr-1")
+
+    assert status == "running"
+    fake_docker.client.containers.get.assert_called_once_with("ctr-1")
+    container.reload.assert_called_once()
 
 
 @pytest.mark.asyncio

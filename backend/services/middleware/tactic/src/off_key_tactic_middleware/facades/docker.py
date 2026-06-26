@@ -52,6 +52,21 @@ class AsyncDocker:
                 logger.warning(f"Error closing Docker client: {e}")
 
 
+def _should_fallback_to_container(exc: Exception) -> bool:
+    if isinstance(exc, docker.errors.APIError) and exc.status_code in (400, 406, 503):
+        return True
+    text = str(exc).lower()
+    return any(
+        indicator in text
+        for indicator in (
+            "cannot be used with services",
+            "only networks scoped to the swarm can be used",
+            "this node is not a swarm manager",
+            "swarm mode is not active",
+        )
+    )
+
+
 async def get_workload_docker_status(
     async_docker: AsyncDocker, container_id: str
 ) -> str:
@@ -79,11 +94,21 @@ async def get_workload_docker_status(
                 return latest.get("Status", {}).get("State", "unknown")
             return "no_tasks"
         except docker.errors.NotFound:
-            docker_container = await async_docker.run(
-                async_docker.client.containers.get, container_id
+            pass
+        except Exception as exc:
+            if not _should_fallback_to_container(exc):
+                raise
+            logger.debug(
+                "Skipping Swarm service status lookup for workload %s: %s",
+                container_id,
+                exc,
             )
-            await async_docker.run(docker_container.reload)
-            return docker_container.status or "unknown"
+
+        docker_container = await async_docker.run(
+            async_docker.client.containers.get, container_id
+        )
+        await async_docker.run(docker_container.reload)
+        return docker_container.status or "unknown"
     except docker.errors.NotFound:
         return "not_found"
     except Exception as exc:

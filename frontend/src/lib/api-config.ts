@@ -20,7 +20,7 @@ const getApiBaseUrl = (): string => {
 export const API_CONFIG = {
   BASE_URL: getApiBaseUrl(),
   TIMEOUT: 10000, // 10 seconds
-  MONITORING_LIFECYCLE_TIMEOUT: 60000, // 60 seconds
+  MONITORING_LIFECYCLE_TIMEOUT: 210000, // 210 seconds
 
   // API Endpoints
   ENDPOINTS: {

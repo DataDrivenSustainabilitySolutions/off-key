@@ -115,7 +115,7 @@ def test_modular_service_settings_support_https_overrides(monkeypatch):
 
     assert service_endpoints.SYNC_SERVICE_SCHEME == "https"
     assert service_endpoints.TACTIC_SERVICE_SCHEME == "https"
-    assert service_endpoints.TACTIC_SERVICE_REQUEST_TIMEOUT_SECONDS == 60.0
+    assert service_endpoints.TACTIC_SERVICE_REQUEST_TIMEOUT_SECONDS == 180.0
     assert service_endpoints.db_sync_service_url.startswith("https://")
     assert service_endpoints.tactic_service_base_url.startswith("https://")
 

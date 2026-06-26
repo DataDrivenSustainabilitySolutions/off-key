@@ -5,12 +5,15 @@ import { registerVerifyAndLogin } from "./helpers/auth";
 test.describe("monitoring lifecycle smoke", () => {
   test("starts and stops a RADAR workload from the monitoring page", async ({
     page,
+    request,
   }) => {
     const chargerId = "e2e-smoke";
     let containerName: string | undefined;
+    let authToken: string | null = null;
 
     try {
       await registerVerifyAndLogin(page);
+      authToken = await page.evaluate(() => sessionStorage.getItem("auth_token"));
       await page.goto(`/monitoring/${chargerId}`);
 
       await expect(
@@ -34,21 +37,24 @@ test.describe("monitoring lifecycle smoke", () => {
       expect(startResponse.ok()).toBeTruthy();
 
       const startedService = (await startResponse.json()) as {
+        service_id?: string;
         container_name?: string;
       };
       containerName = startedService.container_name;
       expect(containerName).toBeTruthy();
+      expect(startedService.service_id).toBeTruthy();
       const serviceRow = page.getByRole("row").filter({ hasText: containerName! });
       await expect(serviceRow).toBeVisible({ timeout: 60_000 });
 
+      const deletePath = `/v1/monitors/${encodeURIComponent(startedService.service_id!)}`;
       const stopResponsePromise = page.waitForResponse(
         (response) =>
-          response.url().includes("/v1/monitors/stop") &&
+          response.url().includes(deletePath) &&
           response.request().method() === "DELETE"
       );
       page.once("dialog", (dialog) => dialog.accept());
       await serviceRow
-        .getByRole("button", { name: /stop monitoring service/i })
+        .getByRole("button", { name: /stop and delete service/i })
         .click();
 
       const stopResponse = await stopResponsePromise;
@@ -58,13 +64,12 @@ test.describe("monitoring lifecycle smoke", () => {
       });
       containerName = undefined;
     } finally {
-      const token = await page.evaluate(() => sessionStorage.getItem("auth_token"));
-      if (containerName && token) {
-        await page.request.delete(
+      if (containerName && authToken) {
+        await request.delete(
           `/api/v1/monitors/stop?container_name=${encodeURIComponent(containerName)}`,
           {
             failOnStatusCode: false,
-            headers: { Authorization: `Bearer ${token}` },
+            headers: { Authorization: `Bearer ${authToken}` },
           }
         );
       }

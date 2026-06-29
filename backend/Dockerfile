@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 FROM ghcr.io/astral-sh/uv:latest AS uv
-FROM python:3.12-slim-bookworm AS builder
+FROM python:3.14-slim-bookworm AS builder
 
 # Build context MUST be backend/
 
@@ -61,7 +61,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
         --package ${SERVICE_NAME}
 
 ########################################################################################################################
-FROM python:3.12-slim
+FROM python:3.14-slim
 
 # Optional: add the application virtualenv to search path.
 ENV PATH=/app/bin:$PATH

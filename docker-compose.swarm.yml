@@ -206,7 +206,7 @@ services:
         condition: any
 
   mqtt-radar:
-    image: "${MQTT_RADAR_IMAGE:-off-key-mqtt-radar:latest}"
+    image: "${MQTT_RADAR_IMAGE:-ghcr.io/datadrivensustainabilitysolutions/off-key-mqtt-radar:latest}"
     env_file: .env
     command: [ "/app/bin/python", "-m", "off_key_mqtt_radar" ]
     networks:

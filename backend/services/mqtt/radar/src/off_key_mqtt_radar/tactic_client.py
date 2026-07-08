@@ -279,16 +279,26 @@ class TacticModelClient:
     def _create_knn_model(self, validated_params: Dict[str, Any]) -> Any:
         """Create KNN model with FaissSimilaritySearchEngine."""
         try:
-            from onad.utils.similar.faiss_engine import FaissSimilaritySearchEngine
-            from onad.model.distance.knn import KNN
-        except ImportError as e:
+            import importlib
+
+            module_path, class_name = (
+                "aberrant.utils.similar.faiss_engine",
+                "FaissSimilaritySearchEngine",
+            )
+            module = importlib.import_module(module_path)
+            FaissSimilaritySearchEngine = getattr(module, class_name)
+
+            module_path, class_name = "aberrant.model.distance.knn", "KNN"
+            module = importlib.import_module(module_path)
+            KNN = getattr(module, class_name)
+        except (ImportError, AttributeError, ModuleNotFoundError) as e:
             logger.error(
                 "event=radar.knn_dependency_import_failed error=%s",
                 str(e),
                 exc_info=True,
             )
             raise ImportError(
-                "Cannot import KNN model. Ensure onad is installed with FAISS support."
+                "Cannot import KNN model. Ensure aberrant[faiss] is installed."
             ) from e
 
         params = validated_params.copy()

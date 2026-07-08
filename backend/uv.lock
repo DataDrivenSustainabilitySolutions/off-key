@@ -23,6 +23,21 @@ members = [
 ]
 
 [[package]]
+name = "aberrant"
+version = "0.5.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "faiss-cpu" },
+    { name = "numpy" },
+    { name = "scipy" },
+    { name = "tqdm" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/e3/ac/c0fa68449eca6bf0d2aa3e2c1e13834cdeaa40efe4291f2fb42447f9d3ab/aberrant-0.5.0.tar.gz", hash = "sha256:385bd6cdc841e66cd4a4bd6d4ad7a198c661b47118459dd55217026b2f82bc4d", size = 255272, upload-time = "2026-03-06T16:34:01.638Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/12/19/dda01cbe0439c1d21f4bb275419c4dbd9275233ae1871edc09e197c09567/aberrant-0.5.0-py3-none-any.whl", hash = "sha256:e7d5163fa1819c1d865c20c4dcec3421b68b9d8d19bb80bf9586bf3c320e6506", size = 94863, upload-time = "2026-03-06T16:33:59.835Z" },
+]
+
+[[package]]
 name = "aiohappyeyeballs"
 version = "2.6.1"
 source = { registry = "https://pypi.org/simple" }
@@ -1645,12 +1660,12 @@ name = "off-key-mqtt-radar"
 version = "0.1.0"
 source = { editable = "services/mqtt/radar" }
 dependencies = [
+    { name = "aberrant" },
     { name = "aiohttp" },
     { name = "asyncpg" },
     { name = "nonconform", extra = ["pyod"] },
     { name = "numpy" },
     { name = "off-key-core" },
-    { name = "onad" },
     { name = "paho-mqtt" },
     { name = "psutil" },
     { name = "pydantic-settings" },
@@ -1661,12 +1676,12 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "aberrant", extras = ["faiss"] },
     { name = "aiohttp", specifier = ">=3.9.0" },
     { name = "asyncpg", specifier = ">=0.28.0" },
     { name = "nonconform", extras = ["pyod"], specifier = ">=0.1.0" },
     { name = "numpy", specifier = ">=1.24.0" },
     { name = "off-key-core", editable = "libs/core" },
-    { name = "onad", specifier = ">=0.3.0" },
     { name = "paho-mqtt", specifier = ">=1.6.0" },
     { name = "psutil", specifier = ">=5.9.0" },
     { name = "pydantic-settings", specifier = ">=2.0.0" },
@@ -1715,21 +1730,6 @@ requires-dist = [
     { name = "pydantic-settings", specifier = ">=2.0.0" },
     { name = "sqlalchemy", specifier = ">=2.0.0" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.24.0" },
-]
-
-[[package]]
-name = "onad"
-version = "0.3.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "faiss-cpu" },
-    { name = "numpy" },
-    { name = "scipy" },
-    { name = "tqdm" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/5e/ac/79c28353349b2e1f9968233c83c36d224deeb0a2c073e5cd628e1f6320c2/onad-0.3.0.tar.gz", hash = "sha256:4fb46d3e38a2f5631b5bc7d891c0115e8832a6db587234fcdf7ce52f9a3cc3da", size = 247252, upload-time = "2025-12-03T10:35:48.37Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/2f/36/1cebd6b253b421a647a47249a150d1fb19574e9e7c4bb1d38d3be093148b/onad-0.3.0-py3-none-any.whl", hash = "sha256:142c5e814cb3b9dba71d982a2a5a6ded5305e1fa7aa585f82ebbc8b77dad1b28", size = 62916, upload-time = "2025-12-03T10:35:46.93Z" },
 ]
 
 [[package]]

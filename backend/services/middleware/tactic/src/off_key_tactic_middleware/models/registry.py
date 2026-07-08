@@ -131,12 +131,37 @@ class ModelRegistryService:
                     f"Fix these model types and retry: {missing_types}"
                 )
 
+            self._normalize_legacy_import_paths(session)
             self._ensure_registry_populated(session)
             session.commit()
 
     def _ensure_registry_populated(self, session: Session) -> None:
         """Populate or update built-in registry entries idempotently."""
         self._populate_default_models(session)
+
+    @staticmethod
+    def _normalize_legacy_import_path(import_path: str) -> str:
+        return (
+            import_path.replace("onad.", "aberrant.", 1)
+            if import_path.startswith("onad.")
+            else import_path
+        )
+
+    def _normalize_legacy_import_paths(self, session: Session) -> None:
+        """Rewrite persisted model import paths from legacy onad.* to aberrant.*."""
+        changed = False
+        for model_entry in session.query(ModelRegistry).all():
+            import_paths = model_entry.import_paths or []
+            normalized = [
+                self._normalize_legacy_import_path(import_path)
+                for import_path in import_paths
+            ]
+            if normalized != import_paths:
+                model_entry.import_paths = normalized
+                changed = True
+
+        if changed:
+            logger.info("Normalized legacy onad import paths to aberrant namespace.")
 
     def _ensure_ready(self) -> None:
         if not self._initialized:
@@ -159,7 +184,7 @@ class ModelRegistryService:
                 ),
                 "complexity": "low",
                 "memory_usage": "medium",
-                "import_paths": ["onad.model.distance.knn.KNN"],
+                "import_paths": ["aberrant.model.distance.knn.KNN"],
                 "parameter_schema": IncrementalKNNParams.model_json_schema(),
                 "default_parameters": IncrementalKNNParams().model_dump(),
                 "requires_special_handling": True,  # KNN needs similarity engine
@@ -175,7 +200,7 @@ class ModelRegistryService:
                 ),
                 "complexity": "medium",
                 "memory_usage": "medium",
-                "import_paths": ["onad.model.iforest.online.OnlineIsolationForest"],
+                "import_paths": ["aberrant.model.iforest.online.OnlineIsolationForest"],
                 "parameter_schema": OnlineIsolationForestParams.model_json_schema(),
                 "default_parameters": OnlineIsolationForestParams().model_dump(),
             },
@@ -187,7 +212,7 @@ class ModelRegistryService:
                 "description": "Mondrian Forest - fast streaming anomaly detection",
                 "complexity": "low",
                 "memory_usage": "low",
-                "import_paths": ["onad.model.iforest.mondrian.MondrianForest"],
+                "import_paths": ["aberrant.model.iforest.mondrian.MondrianForest"],
                 "parameter_schema": MondrianIsolationForestParams.model_json_schema(),
                 "default_parameters": MondrianIsolationForestParams().model_dump(),
             },
@@ -201,7 +226,7 @@ class ModelRegistryService:
                 "complexity": "high",
                 "memory_usage": "high",
                 "import_paths": [
-                    "onad.model.svm.adaptive.IncrementalOneClassSVMAdaptiveKernel"
+                    "aberrant.model.svm.adaptive.IncrementalOneClassSVMAdaptiveKernel"
                 ],
                 "parameter_schema": AdaptiveSVMParams.model_json_schema(),
                 "default_parameters": AdaptiveSVMParams().model_dump(),
@@ -217,7 +242,9 @@ class ModelRegistryService:
                 ),
                 "complexity": "low",
                 "memory_usage": "low",
-                "import_paths": ["onad.transform.preprocessing.scaler.StandardScaler"],
+                "import_paths": [
+                    "aberrant.transform.preprocessing.scaler.StandardScaler"
+                ],
                 "parameter_schema": StandardScalerParams.model_json_schema(),
                 "default_parameters": StandardScalerParams().model_dump(),
             },
@@ -232,7 +259,7 @@ class ModelRegistryService:
                 "complexity": "medium",
                 "memory_usage": "medium",
                 "import_paths": [
-                    "onad.transform.projection.incremental_pca.IncrementalPCA"
+                    "aberrant.transform.projection.incremental_pca.IncrementalPCA"
                 ],
                 "parameter_schema": IncrementalPCAParams.model_json_schema(),
                 "default_parameters": IncrementalPCAParams().model_dump(),
@@ -458,15 +485,23 @@ class ModelRegistryService:
 
         return validated_steps
 
+    @staticmethod
+    def _import_class(import_path: str) -> Type:
+        module_path, class_name = import_path.rsplit(".", 1)
+        module = importlib.import_module(module_path)
+        return getattr(module, class_name)
+
     def _create_knn_model(self, validated_params: Dict[str, Any]) -> Any:
         """Create KNN model with FaissSimilaritySearchEngine."""
         try:
-            from onad.utils.similar.faiss_engine import FaissSimilaritySearchEngine
-            from onad.model.distance.knn import KNN
-        except ImportError as e:
+            FaissSimilaritySearchEngine = self._import_class(
+                "aberrant.utils.similar.faiss_engine.FaissSimilaritySearchEngine"
+            )
+            KNN = self._import_class("aberrant.model.distance.knn.KNN")
+        except (ImportError, AttributeError, ModuleNotFoundError) as e:
             logger.error(f"Failed to import KNN dependencies: {e}")
             raise ImportError(
-                "Cannot import KNN model. Ensure onad is installed with FAISS support."
+                "Cannot import KNN model. Ensure aberrant[faiss] is installed."
             ) from e
 
         params = validated_params.copy()
@@ -586,9 +621,7 @@ class ModelRegistryService:
         errors = []
         for import_path in import_paths:
             try:
-                module_path, class_name = import_path.rsplit(".", 1)
-                module = importlib.import_module(module_path)
-                return getattr(module, class_name)
+                return ModelRegistryService._import_class(import_path)
             except (ImportError, AttributeError, ModuleNotFoundError) as e:
                 errors.append(f"{import_path}: {e}")
                 continue

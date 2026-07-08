@@ -29,7 +29,7 @@ class IncrementalKNNParams(ModelHyperparameters):
     """
     Hyperparameters for K-Nearest Neighbors anomaly detector.
 
-    Note: KNN in onad requires a FaissSimilaritySearchEngine object which is
+    Note: KNN in aberrant requires a FaissSimilaritySearchEngine object which is
     created internally by the registry based on window_size and warm_up params.
     """
 
@@ -298,7 +298,7 @@ class PyODPCAParams(ModelHyperparameters):
 
 
 class StandardScalerParams(ModelHyperparameters):
-    """Hyperparameters for incremental standard scaler from ONAD."""
+    """Hyperparameters for incremental standard scaler from ABERRANT."""
 
     with_std: bool = Field(
         default=True,
@@ -307,7 +307,7 @@ class StandardScalerParams(ModelHyperparameters):
 
 
 class IncrementalPCAParams(ModelHyperparameters):
-    """Hyperparameters for incremental PCA from ONAD."""
+    """Hyperparameters for incremental PCA from ABERRANT."""
 
     n_components: int = Field(
         default=10,

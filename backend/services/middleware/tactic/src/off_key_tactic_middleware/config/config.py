@@ -187,7 +187,7 @@ class TacticConfig(BaseModel):
     # RADAR Defaults
     radar_defaults: RadarDefaultsConfig
     radar_image: str = Field(
-        default="ghcr.io/datadrivensustainabilitysolutions/off-key-mqtt-radar:latest",
+        default="off-key-mqtt-radar:latest",
         min_length=1,
     )
     radar_startup_grace_seconds: float = Field(default=5.0, ge=0.0, le=120.0)
@@ -345,9 +345,7 @@ class TacticSettings(BaseSettings):
     TACTIC_RADAR_DEFAULT_RATE_LIMIT_PER_MINUTE: int = Field(
         default=DEFAULT_RADAR_DEFAULTS.rate_limit_per_minute
     )
-    TACTIC_RADAR_IMAGE: str = Field(
-        default="ghcr.io/datadrivensustainabilitysolutions/off-key-mqtt-radar:latest"
-    )
+    TACTIC_RADAR_IMAGE: str = Field(default="off-key-mqtt-radar:latest")
     TACTIC_RADAR_STARTUP_GRACE_SECONDS: float = Field(default=5.0)
 
     # Database Configuration

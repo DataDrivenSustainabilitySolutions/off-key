@@ -57,31 +57,34 @@ export const findNearestTelemetryPoint = (
  */
 export const groupTimestampsIntoRanges = (
   timestamps: string[],
-  maxGapMs: number = 5 * INTERVALS.REAL_TIME_UPDATE // 5 minutes max gap
+  maxGapMs: number = 5 * INTERVALS.REAL_TIME_UPDATE, // 5 minutes max gap
+  areAlreadySorted: boolean = false
 ): Array<{ start: string; end: string }> => {
   if (timestamps.length === 0) return [];
 
-  // Sort timestamps chronologically
-  const sorted = [...timestamps].sort((a, b) =>
-    new Date(a).getTime() - new Date(b).getTime()
-  );
+  // Sort timestamps chronologically unless already sorted.
+  const sorted = areAlreadySorted
+    ? [...timestamps]
+    : [...timestamps].sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
 
   const ranges: Array<{ start: string; end: string }> = [];
   let currentStart = sorted[0];
   let currentEnd = sorted[0];
+  let currentEndTime = new Date(currentEnd).getTime();
 
   for (let i = 1; i < sorted.length; i++) {
     const currentTime = new Date(sorted[i]).getTime();
-    const lastTime = new Date(currentEnd).getTime();
 
-    if (currentTime - lastTime <= maxGapMs) {
+    if (currentTime - currentEndTime <= maxGapMs) {
       // Extend current range
       currentEnd = sorted[i];
+      currentEndTime = currentTime;
     } else {
       // Start new range
       ranges.push({ start: currentStart, end: currentEnd });
       currentStart = sorted[i];
       currentEnd = sorted[i];
+      currentEndTime = currentTime;
     }
   }
 

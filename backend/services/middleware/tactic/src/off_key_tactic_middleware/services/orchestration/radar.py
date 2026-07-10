@@ -22,7 +22,13 @@ from off_key_core.schemas.radar import (
 )
 from off_key_core.utils.mqtt_topics import normalize_mqtt_topic_filters
 from ...models.registry import ModelRegistryService
-from ...facades.docker import AsyncDocker, get_workload_docker_status
+from ...facades.docker import (
+    AsyncDocker,
+    _extract_latest_workload_state,
+    should_fallback_to_container,
+    with_workload_fallback,
+)
+from ...services.time_utils import coerce_utc
 from ...config.config import (
     get_radar_container_runtime_settings,
     get_tactic_settings,
@@ -44,6 +50,15 @@ _STOPPED_WORKLOAD_STATES = {
     "not_found",
     "removed",
     "stopped",
+}
+_DEFAULT_MEMORY_BYTES = 536_870_912
+_MEMORY_SIZE_MULTIPLIERS = {
+    "k": 1024,
+    "m": 1024 * 1024,
+    "g": 1024 * 1024 * 1024,
+    "kb": 1024,
+    "mb": 1024 * 1024,
+    "gb": 1024 * 1024 * 1024,
 }
 
 
@@ -69,11 +84,6 @@ def get_async_docker() -> AsyncDocker:
     return AsyncDocker()
 
 
-def reset_async_docker_cache_for_tests() -> None:
-    """Clear cached AsyncDocker singleton for deterministic tests/tooling."""
-    get_async_docker.cache_clear()
-
-
 def _parse_memory_string(memory_str: str) -> int:
     """
     Convert memory string (e.g., '512m', '1g', '1024') to bytes.
@@ -85,7 +95,7 @@ def _parse_memory_string(memory_str: str) -> int:
         int: Memory in bytes
     """
     if not memory_str:
-        return 536870912  # Default 512MB in bytes
+        return _DEFAULT_MEMORY_BYTES  # Default 512MB in bytes
 
     memory_str = memory_str.lower().strip()
 
@@ -94,16 +104,7 @@ def _parse_memory_string(memory_str: str) -> int:
         return int(memory_str)
 
     # Parse with suffixes
-    multipliers = {
-        "k": 1024,
-        "m": 1024 * 1024,
-        "g": 1024 * 1024 * 1024,
-        "kb": 1024,
-        "mb": 1024 * 1024,
-        "gb": 1024 * 1024 * 1024,
-    }
-
-    for suffix, multiplier in multipliers.items():
+    for suffix, multiplier in _MEMORY_SIZE_MULTIPLIERS.items():
         if memory_str.endswith(suffix):
             number_part = memory_str[: -len(suffix)].strip()
             try:
@@ -112,10 +113,10 @@ def _parse_memory_string(memory_str: str) -> int:
                 logger.warning(
                     f"Invalid memory format: {memory_str}, using default 512MB"
                 )
-                return 536870912
+                return _DEFAULT_MEMORY_BYTES
 
     logger.warning(f"Unknown memory format: {memory_str}, using default 512MB")
-    return 536870912
+    return _DEFAULT_MEMORY_BYTES
 
 
 class RadarOrchestrationService:
@@ -260,7 +261,7 @@ class RadarOrchestrationService:
         config_fingerprint: str,
     ) -> Optional[MonitoringService]:
         """Reuse a matching live workload or clear a stale row before recreation."""
-        docker_status = await self._get_docker_status(
+        docker_status, labels = await self._get_docker_status_and_labels(
             existing_service.container_id or ""
         )
         if docker_status == "error":
@@ -298,7 +299,6 @@ class RadarOrchestrationService:
                 "running service with different MQTT topics."
             )
 
-        labels = await self._get_workload_labels(existing_service.container_id or "")
         existing_fingerprint = labels.get("radar_config_fingerprint")
         if existing_fingerprint and existing_fingerprint != config_fingerprint:
             raise ValueError(
@@ -671,28 +671,6 @@ class RadarOrchestrationService:
         _swarm_manager_cache = (result, now + _SWARM_CACHE_TTL_SECONDS)
         return result
 
-    @staticmethod
-    def _should_fallback_to_container(exc: Exception) -> bool:
-        """Detect Swarm-only errors where local container fallback should be used."""
-        # 503: node is not a Swarm manager or Swarm mode is not active.
-        # 400/406: operation is only valid inside a Swarm context.
-        if isinstance(exc, docker.errors.APIError) and exc.status_code in (
-            400,
-            406,
-            503,
-        ):
-            return True
-        # Secondary guard for Docker daemon versions that do not surface a
-        # machine-readable status code for Swarm-specific errors.
-        text = str(exc).lower()
-        indicators = (
-            "cannot be used with services",
-            "only networks scoped to the swarm can be used",
-            "this node is not a swarm manager",
-            "swarm mode is not active",
-        )
-        return any(indicator in text for indicator in indicators)
-
     async def _create_radar_workload(
         self,
         service_id: str,
@@ -708,7 +686,7 @@ class RadarOrchestrationService:
                     environment=environment,
                 )
             except Exception as exc:
-                if not self._should_fallback_to_container(exc):
+                if not should_fallback_to_container(exc):
                     raise
                 logger.warning(
                     "Swarm RADAR creation failed; falling back to container mode: %s",
@@ -720,19 +698,10 @@ class RadarOrchestrationService:
             environment=environment,
         )
 
-    async def _create_radar_swarm_service(
-        self,
-        service_id: str,
-        environment: Dict[str, str],
-    ) -> Any:
-        """
-        Helper method to create RADAR Docker service using Pydantic configuration.
-        """
-        # Get Docker configuration from Pydantic settings
-        tactic_config = get_tactic_settings().config
-        docker_config = tactic_config.docker
-
-        labels = {
+    def _build_radar_workload_labels(
+        self, environment: Dict[str, str], radar_image: str
+    ) -> Dict[str, str]:
+        return {
             "owner": "tactic_middleware",
             "started_at": datetime.utcnow().isoformat() + "Z",
             "purpose": "RADAR anomaly detection service",
@@ -746,8 +715,24 @@ class RadarOrchestrationService:
             "radar_config_fingerprint": self._build_radar_config_fingerprint(
                 environment
             ),
-            "radar_image": tactic_config.radar_image,
+            "radar_image": radar_image,
         }
+
+    async def _create_radar_swarm_service(
+        self,
+        service_id: str,
+        environment: Dict[str, str],
+    ) -> Any:
+        """
+        Helper method to create RADAR Docker service using Pydantic configuration.
+        """
+        # Get Docker configuration from Pydantic settings
+        tactic_config = get_tactic_settings().config
+        docker_config = tactic_config.docker
+
+        labels = self._build_radar_workload_labels(
+            environment=environment, radar_image=tactic_config.radar_image
+        )
 
         service_kwargs = {
             "name": f"radar-{service_id}",
@@ -784,22 +769,9 @@ class RadarOrchestrationService:
         tactic_config = get_tactic_settings().config
         docker_config = tactic_config.docker
 
-        labels = {
-            "owner": "tactic_middleware",
-            "started_at": datetime.utcnow().isoformat() + "Z",
-            "purpose": "RADAR anomaly detection service",
-            "env": get_radar_container_runtime_settings().ENVIRONMENT,
-            "service_type": "radar",
-            "managed_by": "tactic",
-            "monitoring_strategy": environment.get(
-                "RADAR_MONITORING_STRATEGY", "adaptive_stream"
-            ),
-            "radar_model_type": environment.get("RADAR_MODEL_TYPE", ""),
-            "radar_config_fingerprint": self._build_radar_config_fingerprint(
-                environment
-            ),
-            "radar_image": tactic_config.radar_image,
-        }
+        labels = self._build_radar_workload_labels(
+            environment=environment, radar_image=tactic_config.radar_image
+        )
 
         restart_policy: Dict[str, Any] = {
             "Name": docker_config.default_restart_policy,
@@ -850,7 +822,7 @@ class RadarOrchestrationService:
         except docker.errors.NotFound:
             pass
         except Exception as exc:
-            if not self._should_fallback_to_container(exc):
+            if not should_fallback_to_container(exc):
                 raise
             logger.debug(
                 "Skipping Swarm startup validation for workload %s: %s",
@@ -882,9 +854,14 @@ class RadarOrchestrationService:
     def _raise_for_failed_swarm_task(workload_id: str, tasks: List[Dict[str, Any]]):
         if not tasks:
             return
+        task_items = [task for task in tasks if isinstance(task, dict)]
+        if not task_items:
+            return
 
-        latest_task = max(tasks, key=lambda task: str(task.get("CreatedAt", "")))
-        status = latest_task.get("Status", {}) or {}
+        latest_task = max(task_items, key=lambda task: str(task.get("CreatedAt", "")))
+        status = latest_task.get("Status")
+        if not isinstance(status, dict):
+            status = {}
         state = str(status.get("State", "") or "unknown").lower()
         if state not in {
             "complete",
@@ -917,26 +894,12 @@ class RadarOrchestrationService:
         on_container: Callable[[Any], Any],
     ) -> Any:
         """Apply operation to Swarm service or fallback container by ID."""
-        try:
-            docker_service = await self.async_docker.run(
-                self.async_docker.client.services.get, container_id
-            )
-            return await self.async_docker.run(on_service, docker_service)
-        except docker.errors.NotFound:
-            pass
-        except Exception as exc:
-            if not self._should_fallback_to_container(exc):
-                raise
-            logger.debug(
-                "Skipping Swarm service lookup for workload %s: %s",
-                container_id,
-                exc,
-            )
-
-        docker_container = await self.async_docker.run(
-            self.async_docker.client.containers.get, container_id
+        return await with_workload_fallback(
+            self.async_docker,
+            container_id,
+            on_service=on_service,
+            on_container=on_container,
         )
-        return await self.async_docker.run(on_container, docker_container)
 
     @staticmethod
     def _managed_radar_label_filters() -> Dict[str, List[str]]:
@@ -951,7 +914,7 @@ class RadarOrchestrationService:
                 filters=filters,
             )
         except Exception as exc:
-            if not self._should_fallback_to_container(exc):
+            if not should_fallback_to_container(exc):
                 raise
             logger.info(
                 "Skipping Swarm service cleanup because this Docker engine does "
@@ -1092,8 +1055,18 @@ class RadarOrchestrationService:
         Returns:
             bool: True if service was stopped, False otherwise
         """
+        if (not container_name and not container_id) or (
+            container_name and container_id
+        ):
+            logger.warning(
+                "Invalid stop request: provide exactly one identifier "
+                "(container_name or container_id)"
+            )
+            return False
+
         # Find the service in the database
         stmt = select(MonitoringService)
+        lookup_target = container_name or container_id
 
         if container_name:
             stmt = stmt.where(MonitoringService.container_name == container_name)
@@ -1105,54 +1078,65 @@ class RadarOrchestrationService:
 
         if not service:
             logger.warning(
-                f"No RADAR service found with container name: {container_name}"
+                "No RADAR service found with identifier: %s",
+                lookup_target,
             )
             return False
 
         return await self._delete_service(service)
 
-    async def _get_docker_status(self, container_id: str) -> str:
-        """Check actual Docker workload status (Swarm service or container)."""
-        return await get_workload_docker_status(self.async_docker, container_id)
-
-    async def _get_workload_labels(self, container_id: str) -> Dict[str, str]:
-        """Read labels from the RADAR Swarm service or fallback container."""
+    async def _get_docker_status_and_labels(
+        self, container_id: str
+    ) -> tuple[str, Dict[str, str]]:
         if not container_id:
-            return {}
+            return "no_container_id", {}
+
         try:
             try:
                 docker_service = await self.async_docker.run(
                     self.async_docker.client.services.get, container_id
                 )
+                tasks = await self.async_docker.run(docker_service.tasks)
+                status = _extract_latest_workload_state(tasks)
                 attrs = getattr(docker_service, "attrs", {}) or {}
                 labels = attrs.get("Spec", {}).get("Labels", {}) or {}
-                return {str(key): str(value) for key, value in labels.items()}
+                return status, {str(key): str(value) for key, value in labels.items()}
             except docker.errors.NotFound:
-                docker_container = await self.async_docker.run(
-                    self.async_docker.client.containers.get, container_id
+                pass
+            except Exception as exc:
+                if not should_fallback_to_container(exc):
+                    logger.debug(
+                        "Error checking Docker workload metadata for %s: %s",
+                        container_id,
+                        exc,
+                    )
+                    return "error", {}
+                logger.debug(
+                    "Skipping Swarm workload metadata lookup for %s: %s",
+                    container_id,
+                    exc,
                 )
-                await self.async_docker.run(docker_container.reload)
-                attrs = getattr(docker_container, "attrs", {}) or {}
-                labels = attrs.get("Config", {}).get("Labels", {}) or {}
-                return {str(key): str(value) for key, value in labels.items()}
-        except docker.errors.NotFound:
-            return {}
-        except Exception as exc:
-            logger.debug("Error reading Docker labels for %s: %s", container_id, exc)
-            return {}
 
-    @staticmethod
-    def _coerce_utc(value: Any) -> Optional[datetime]:
-        if value is None:
-            return None
-        if isinstance(value, str):
-            try:
-                value = datetime.fromisoformat(value.replace("Z", "+00:00"))
-            except ValueError:
-                return None
-        if value.tzinfo is None:
-            return value.replace(tzinfo=timezone.utc)
-        return value.astimezone(timezone.utc)
+            docker_container = await self.async_docker.run(
+                self.async_docker.client.containers.get, container_id
+            )
+            await self.async_docker.run(docker_container.reload)
+            status = (
+                str(getattr(docker_container, "status", "") or "unknown").lower()
+                or "unknown"
+            )
+            attrs = getattr(docker_container, "attrs", {}) or {}
+            labels = attrs.get("Config", {}).get("Labels", {}) or {}
+            return status, {str(key): str(value) for key, value in labels.items()}
+        except docker.errors.NotFound:
+            return "not_found", {}
+        except Exception as exc:
+            logger.debug(
+                "Error checking Docker workload metadata for %s: %s", container_id, exc
+            )
+            return "error", {}
+
+    _coerce_utc = staticmethod(coerce_utc)
 
     @classmethod
     def _normalize_operational_status(
@@ -1298,12 +1282,13 @@ class RadarOrchestrationService:
 
             # Optionally check actual Docker state
             if include_docker_status:
-                docker_status = await self._get_docker_status(service.container_id)
+                docker_status, labels = await self._get_docker_status_and_labels(
+                    service.container_id
+                )
                 service_dict["docker_status"] = docker_status
                 service_dict["operational_status"] = self._derive_operational_status(
                     service, docker_status
                 )
-                labels = await self._get_workload_labels(service.container_id)
                 if labels:
                     service_dict["monitoring_strategy"] = labels.get(
                         "monitoring_strategy"
@@ -1327,6 +1312,15 @@ class RadarOrchestrationService:
         Returns:
             Optional[Dict]: Service details or None if not found
         """
+        if (not container_name and not container_id) or (
+            container_name and container_id
+        ):
+            logger.warning(
+                "Invalid get request: provide exactly one identifier "
+                "(container_name or container_id)"
+            )
+            return None
+
         stmt = select(MonitoringService)
 
         if container_name:
@@ -1341,8 +1335,9 @@ class RadarOrchestrationService:
             return None
 
         # Check actual workload status in Docker
-        docker_service_status = await self._get_docker_status(service.container_id)
-        labels = await self._get_workload_labels(service.container_id)
+        docker_service_status, labels = await self._get_docker_status_and_labels(
+            service.container_id
+        )
 
         return {
             "id": service.id,

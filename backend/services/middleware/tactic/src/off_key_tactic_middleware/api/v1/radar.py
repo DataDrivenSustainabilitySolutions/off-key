@@ -232,18 +232,19 @@ async def stop_radar_service(
         )
 
     try:
+        lookup_target = container_name if container_name else container_id
         success = await service.stop_radar_service(container_name, container_id)
 
         if not success:
             raise HTTPException(
                 status_code=404,
-                detail=f"RADAR service '{container_name}'"
+                detail=f"RADAR service '{lookup_target}'"
                 f" not found or could not be stopped",
             )
 
         return {
             "status": "stopped",
-            "message": f"RADAR service '{container_name}'"
+            "message": f"RADAR service '{lookup_target}'"
             f" stopped and deleted successfully",
         }
     except HTTPException:

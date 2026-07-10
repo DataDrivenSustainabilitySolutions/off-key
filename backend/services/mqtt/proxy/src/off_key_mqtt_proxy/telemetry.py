@@ -241,11 +241,12 @@ class DatabaseWriter:
                 pass
 
         # Process remaining batches and wait for all started batches to finish.
-        if self.pending_batch.size() > 0:
+        pending_batch_size = self.pending_batch.size()
+        if pending_batch_size > 0:
             logger.info(
                 "event=db_writer.shutdown_flush records_count=%s",
-                self.pending_batch.size(),
-                extra={**self._log_context, "records_count": self.pending_batch.size()},
+                pending_batch_size,
+                extra={**self._log_context, "records_count": pending_batch_size},
             )
             await self._trigger_batch_processing()
 
@@ -289,6 +290,7 @@ class DatabaseWriter:
         # Add to batch
         self.pending_batch.add_record(record)
         self.total_records_received += 1
+        pending_batch_size = self.pending_batch.size()
 
         # Update charger tracking
         self.charger_last_seen[record.charger_id] = record.timestamp
@@ -302,18 +304,18 @@ class DatabaseWriter:
                 self.total_records_received,
                 record.charger_id,
                 record.telemetry_type,
-                self.pending_batch.size(),
+                pending_batch_size,
                 extra={
                     **self._log_context,
                     "charger_id": record.charger_id,
                     "telemetry_type": record.telemetry_type,
-                    "batch_size": self.pending_batch.size(),
+                    "batch_size": pending_batch_size,
                     "total_received": self.total_records_received,
                 },
             )
 
         # Check if batch is ready for processing due to size
-        if self.pending_batch.size() >= self.batch_size:
+        if pending_batch_size >= self.batch_size:
             self._batch_ready_event.set()
 
     async def _parse_telemetry_message(self, message: MQTTMessage) -> ParseResult:
@@ -360,12 +362,9 @@ class DatabaseWriter:
                         timestamp_str = str(timestamp_value).strip()
                         if not timestamp_str:
                             raise ValueError("empty timestamp")
-                        if timestamp_str.endswith("Z"):
-                            timestamp = datetime.fromisoformat(
-                                timestamp_str.replace("Z", "+00:00")
-                            )
-                        else:
-                            timestamp = datetime.fromisoformat(timestamp_str)
+                        timestamp = datetime.fromisoformat(
+                            timestamp_str.replace("Z", "+00:00")
+                        )
 
                     if timestamp.tzinfo:
                         timestamp = timestamp.astimezone(timezone.utc)
@@ -473,17 +472,19 @@ class DatabaseWriter:
 
                 except asyncio.TimeoutError:
                     # Timeout reached - check for aged batch
+                    pending_batch_size = self.pending_batch.size()
+                    pending_batch_age = self.pending_batch.get_age_seconds()
                     if (
-                        self.pending_batch.size() > 0
-                        and self.pending_batch.get_age_seconds() >= self.batch_timeout
+                        pending_batch_size > 0
+                        and pending_batch_age >= self.batch_timeout
                     ):
                         logger.debug(
                             f"Batch timeout reached, "
-                            f"processing {self.pending_batch.size()} records",
+                            f"processing {pending_batch_size} records",
                             extra={
                                 **self._log_context,
-                                "batch_size": self.pending_batch.size(),
-                                "batch_age": self.pending_batch.get_age_seconds(),
+                                "batch_size": pending_batch_size,
+                                "batch_age": pending_batch_age,
                             },
                         )
                         await self._trigger_batch_processing()
@@ -511,6 +512,7 @@ class DatabaseWriter:
             return
 
         max_attempts = self.max_retries + 1
+        batch_size = batch.size()
 
         for attempt in range(max_attempts):
             try:
@@ -525,14 +527,14 @@ class DatabaseWriter:
                         "event=db_writer.batch_retry batch_id=%s batch_size=%s \
                              attempt=%s max_attempts=%s delay_s=%.3f",
                         batch_id,
-                        batch.size(),
+                        batch_size,
                         attempt + 1,
                         max_attempts,
                         delay,
                         extra={
                             **self._log_context,
                             "batch_id": batch_id,
-                            "batch_size": batch.size(),
+                            "batch_size": batch_size,
                             "retry_count": attempt,
                             "delay": delay,
                         },
@@ -548,12 +550,12 @@ class DatabaseWriter:
                         "event=db_writer.batch_success batch_id=%s \
                              batch_size=%s attempt=%s",
                         batch_id,
-                        batch.size(),
+                        batch_size,
                         attempt + 1,
                         extra={
                             **self._log_context,
                             "batch_id": batch_id,
-                            "batch_size": batch.size(),
+                            "batch_size": batch_size,
                             "attempt": attempt + 1,
                         },
                     )
@@ -562,15 +564,15 @@ class DatabaseWriter:
             except Exception as e:
                 logger.error(
                     "event=db_writer.batch_attempt_failed batch_id=%s \
-                        s batch_size=%s attempt=%s error=%s",
+                        batch_size=%s attempt=%s error=%s",
                     batch_id,
-                    batch.size(),
+                    batch_size,
                     attempt + 1,
                     e,
                     extra={
                         **self._log_context,
                         "batch_id": batch_id,
-                        "batch_size": batch.size(),
+                        "batch_size": batch_size,
                         "attempt": attempt + 1,
                         "error": str(e),
                     },
@@ -580,6 +582,7 @@ class DatabaseWriter:
 
         # All attempts failed
         batch.status = WriteStatus.FAILED
+        self.total_records_failed += batch_size
         self.failed_batches.append(batch)
         self.processing_batches.pop(batch_id, None)
         self.total_batches_failed += 1
@@ -587,12 +590,12 @@ class DatabaseWriter:
         logger.error(
             "event=db_writer.batch_failed batch_id=%s batch_size=%s attempts=%s",
             batch_id,
-            batch.size(),
+            batch_size,
             max_attempts,
             extra={
                 **self._log_context,
                 "batch_id": batch_id,
-                "batch_size": batch.size(),
+                "batch_size": batch_size,
                 "last_error": batch.last_error,
                 "charger_ids": list(batch.get_charger_ids()),
             },
@@ -600,7 +603,8 @@ class DatabaseWriter:
 
     async def _process_batch(self, batch: WriteBatch) -> bool:
         """Process a batch of telemetry records"""
-        if batch.size() == 0:
+        batch_size = batch.size()
+        if batch_size == 0:
             return True
 
         start_time = time.time()
@@ -620,7 +624,13 @@ class DatabaseWriter:
             async with self._session_factory() as session:
                 try:
                     await self._upsert_chargers(session, charger_ids)
-                    await session.execute(stmt)
+                    insert_result = await session.execute(stmt)
+                    rowcount = insert_result.rowcount
+                    records_written = (
+                        batch_size
+                        if rowcount is None or rowcount < 0
+                        else int(rowcount)
+                    )
                     if charger_ids:
                         await self._update_charger_statuses(session, charger_ids)
                     await session.commit()
@@ -629,9 +639,10 @@ class DatabaseWriter:
                     raise
 
             # Update metrics
-            records_written = len(
-                records_data
-            )  # Approximate, actual may be less due to conflicts
+            # Approximate; conflicts may lower written rows.
+            # Use insert result count instead of input size for accurate throughput.
+            # Some drivers return None or -1; fallback to batch size to preserve
+            # prior semantics where execution counts were unavailable.
             self.total_records_written += records_written
             self.total_batches_processed += 1
 
@@ -680,11 +691,11 @@ class DatabaseWriter:
         except IntegrityError as e:
             logger.warning(
                 "event=db_writer.batch_integrity_error batch_size=%s error=%s",
-                batch.size(),
+                batch_size,
                 e,
                 extra={
                     **self._log_context,
-                    "batch_size": batch.size(),
+                    "batch_size": batch_size,
                     "error": str(e),
                 },
             )
@@ -694,11 +705,11 @@ class DatabaseWriter:
         except SQLAlchemyError as e:
             logger.error(
                 "event=db_writer.batch_db_error batch_size=%s error=%s",
-                batch.size(),
+                batch_size,
                 e,
                 extra={
                     **self._log_context,
-                    "batch_size": batch.size(),
+                    "batch_size": batch_size,
                     "error": str(e),
                 },
                 exc_info=True,
@@ -708,11 +719,11 @@ class DatabaseWriter:
         except Exception as e:
             logger.error(
                 "event=db_writer.batch_unexpected_error batch_size=%s error=%s",
-                batch.size(),
+                batch_size,
                 e,
                 extra={
                     **self._log_context,
-                    "batch_size": batch.size(),
+                    "batch_size": batch_size,
                     "error": str(e),
                 },
                 exc_info=True,
@@ -920,13 +931,18 @@ class DatabaseWriter:
         # Check for high latency
         if metrics.average_write_latency > 5.0:
             status = HealthStatus.UNHEALTHY
-        elif metrics.average_write_latency > 2.0:
+        elif (
+            metrics.average_write_latency > 2.0 and status is not HealthStatus.UNHEALTHY
+        ):
             status = HealthStatus.DEGRADED
 
         # Check for too many pending batches
         if metrics.processing_batches_count > 10:
             status = HealthStatus.UNHEALTHY
-        elif metrics.processing_batches_count > 5:
+        elif (
+            metrics.processing_batches_count > 5
+            and status is not HealthStatus.UNHEALTHY
+        ):
             status = HealthStatus.DEGRADED
 
         return WriterHealthStatus(

@@ -16,7 +16,7 @@ import {
 import { TelemetryTypeData } from '@/dataFetch/FetchContext';
 import { createAnomalyZones, filterAnomalies, hasAnomaly, getAnomalyStyle, createAnomalyTooltip } from '@/lib/anomaly-utils';
 import type { Anomaly } from '@/types/charger';
-import { isWithinTimeRange } from '@/lib/time-utils';
+import { formatTimestamp, isWithinTimeRange } from '@/lib/time-utils';
 import { NoChartsAvailable } from '@/components/LoadingStates';
 
 type ChartDotProps = {
@@ -32,6 +32,13 @@ interface DynamicTelemetryChartProps {
   chargerId: string;
   anomalies?: Anomaly[];
 }
+
+const CATEGORY_COLORS: Record<string, string> = {
+  cpu: '#0f9f8e',
+  system: '#2563eb',
+  controller: '#d97706',
+  other: '#7c3aed',
+};
 
 export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
   telemetryData,
@@ -51,24 +58,7 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
 
   // Get category color for the chart line
   const getCategoryColor = (category: string): string => {
-    switch (category) {
-      case 'cpu': return '#0f9f8e';
-      case 'system': return '#2563eb';
-      case 'controller': return '#d97706';
-      case 'other': return '#7c3aed';
-      default: return '#0f9f8e';
-    }
-  };
-
-  // Format timestamp for display
-  const formatDateMultiline = (value: string) => {
-    const date = new Date(value);
-    const day = String(date.getDate()).padStart(2, '0');
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const hour = String(date.getHours()).padStart(2, '0');
-    const minute = String(date.getMinutes()).padStart(2, '0');
-    const second = String(date.getSeconds()).padStart(2, '0');
-    return `${day}.${month}, ${hour}:${minute}:${second}`;
+    return CATEGORY_COLORS[category] ?? '#0f9f8e';
   };
 
   const applyRelativeRange = useCallback((hours: number) => {
@@ -126,6 +116,7 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
     createAnomalyZones(telemetryAnomalies),
     [telemetryAnomalies]
   );
+  const chartData = useMemo(() => [...filteredData].reverse(), [filteredData]);
 
   if (telemetryData.data.length === 0) {
     return (
@@ -227,7 +218,7 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
           ) : (
             <ResponsiveContainer width="100%" height={300}>
               <LineChart
-                data={filteredData.slice().reverse()}
+                data={chartData}
                 margin={{
                   top: 5,
                   right: 30,
@@ -238,7 +229,7 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
                 <CartesianGrid strokeDasharray="5 5" stroke="hsl(var(--border))" />
                 <XAxis
                   dataKey="timestamp"
-                  tickFormatter={formatDateMultiline}
+                  tickFormatter={(value) => formatTimestamp(value)}
                 />
                 <YAxis dataKey="value" />
                 <Tooltip />

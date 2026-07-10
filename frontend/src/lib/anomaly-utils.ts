@@ -14,21 +14,13 @@ import {
 export type { Anomaly };
 export const MULTIVARIATE_TELEMETRY_TYPE = "__multivariate__";
 
-export interface TelemetryPoint {
-  timestamp: string;
-  value: number;
-}
-
-export interface EnhancedTelemetryPoint extends TelemetryPoint {
-  hasAnomaly: boolean;
-  anomaly?: Anomaly;
-}
-
 export interface RedZone {
   start: string;
   end: string;
   anomalies: Anomaly[];
 }
+
+const ISO_TIMESTAMP_REGEX = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})?$/u;
 
 export const formatAnomalySensorSet = (
   sensorSet: Anomaly["sensor_set"]
@@ -52,26 +44,19 @@ const multivariateAnomalyAppliesToTelemetry = (
   return anomaly.sensor_set.includes(telemetryType);
 };
 
-/**
- * Match anomalies to telemetry data points by timestamp
- * Returns enhanced telemetry points with anomaly information
- */
-export const matchAnomaliesWithTelemetry = (
-  telemetryData: TelemetryPoint[],
-  anomalies: Anomaly[]
-): EnhancedTelemetryPoint[] => {
-  return telemetryData.map(point => {
-    // Find anomaly that matches this telemetry point's timestamp
-    const matchingAnomaly = anomalies.find(anomaly =>
-      timestampsAreClose(point.timestamp, anomaly.timestamp, 5 * INTERVALS.POLLING) // 5 second tolerance
-    );
-
-    return {
-      ...point,
-      hasAnomaly: !!matchingAnomaly,
-      anomaly: matchingAnomaly,
-    };
-  });
+const ANOMALY_STYLES: Record<
+  string,
+  { color: string; radius: number; opacity: number }
+> = {
+  threshold_exceeded: { color: "#ef4444", radius: 3, opacity: 0.8 },
+  spike: { color: "#f97316", radius: 4, opacity: 0.9 },
+  drop: { color: "#3b82f6", radius: 4, opacity: 0.9 },
+  pattern_break: { color: "#8b5cf6", radius: 3, opacity: 0.7 },
+  ml_conformal_static_univariate: { color: "#dc2626", radius: 5, opacity: 0.95 },
+  ml_conformal_static_multivariate: { color: "#991b1b", radius: 6, opacity: 0.95 },
+  ml_tailprob_univariate: { color: "#ea580c", radius: 4, opacity: 0.9 },
+  ml_tailprob_multivariate: { color: "#c2410c", radius: 5, opacity: 0.9 },
+  default: { color: "#dc2626", radius: 3, opacity: 0.8 },
 };
 
 /**
@@ -83,27 +68,71 @@ export const createAnomalyZones = (
 ): RedZone[] => {
   if (anomalies.length === 0) return [];
 
-  // Get all anomaly timestamps
-  const timestamps = anomalies.map(a => a.timestamp);
+  const parseIsoTimestamp = (value: string): number | null => {
+    if (!ISO_TIMESTAMP_REGEX.test(value)) {
+      return null;
+    }
+    const timestampMs = Date.parse(value);
+    return Number.isFinite(timestampMs) ? timestampMs : null;
+  };
+
+  const validAnomalies = anomalies
+    .map(anomaly => {
+      const timestampMs = parseIsoTimestamp(anomaly.timestamp);
+      if (timestampMs === null) {
+        return null;
+      }
+      return { anomaly, timestampMs };
+    })
+    .filter((item): item is { anomaly: Anomaly; timestampMs: number } => item !== null)
+    .sort((left, right) => left.timestampMs - right.timestampMs);
+
+  if (validAnomalies.length === 0) return [];
+
+  // Keep the original strings because Recharts uses timestamp values as
+  // categorical coordinates. Equivalent normalized strings (for example,
+  // \`...00Z\` and \`...00.000Z\`) are not interchangeable on that axis.
+  const timestamps = validAnomalies.map(({ anomaly }) => anomaly.timestamp);
 
   // Group into continuous ranges
-  const ranges = groupTimestampsIntoRanges(timestamps, INTERVALS.ANOMALY_ZONE_GAP);
+  const ranges = groupTimestampsIntoRanges(
+    timestamps,
+    INTERVALS.ANOMALY_ZONE_GAP,
+    true
+  );
 
-  // Convert ranges to RedZones with associated anomalies
-  return ranges.map(range => {
-    const zoneAnomalies = anomalies.filter(anomaly => {
-      const anomalyTime = new Date(anomaly.timestamp).getTime();
-      const startTime = new Date(range.start).getTime();
-      const endTime = new Date(range.end).getTime();
-      return anomalyTime >= startTime && anomalyTime <= endTime;
-    });
+  const zones: RedZone[] = [];
+  let anomalyIndex = 0;
 
-    return {
+  for (const range of ranges) {
+    const zoneAnomalies: Anomaly[] = [];
+    const startTime = new Date(range.start).getTime();
+    const endTime = new Date(range.end).getTime();
+
+    while (
+      anomalyIndex < validAnomalies.length &&
+      validAnomalies[anomalyIndex].timestampMs < startTime
+    ) {
+      anomalyIndex += 1;
+    }
+
+    while (
+      anomalyIndex < validAnomalies.length &&
+      validAnomalies[anomalyIndex].timestampMs <= endTime
+    ) {
+      const { anomaly } = validAnomalies[anomalyIndex];
+      zoneAnomalies.push(anomaly);
+      anomalyIndex += 1;
+    }
+
+    zones.push({
       start: range.start,
       end: range.end,
       anomalies: zoneAnomalies,
-    };
-  });
+    });
+  }
+
+  return zones;
 };
 
 /**
@@ -153,37 +182,6 @@ export const filterAnomalies = (
 };
 
 /**
- * Get anomaly statistics for a dataset
- */
-export const getAnomalyStats = (anomalies: Anomaly[]) => {
-  const stats = {
-    total: anomalies.length,
-    byType: {} as Record<string, number>,
-    byTelemetryType: {} as Record<string, number>,
-    severityDistribution: {} as Record<string, number>,
-    timeRange: {
-      earliest: '',
-      latest: '',
-    },
-  };
-
-  if (anomalies.length === 0) return stats;
-
-  // Count by anomaly type
-  anomalies.forEach(anomaly => {
-    stats.byType[anomaly.anomaly_type] = (stats.byType[anomaly.anomaly_type] || 0) + 1;
-    stats.byTelemetryType[anomaly.telemetry_type] = (stats.byTelemetryType[anomaly.telemetry_type] || 0) + 1;
-  });
-
-  // Find time range
-  const timestamps = anomalies.map(a => new Date(a.timestamp).getTime()).sort();
-  stats.timeRange.earliest = new Date(timestamps[0]).toISOString();
-  stats.timeRange.latest = new Date(timestamps[timestamps.length - 1]).toISOString();
-
-  return stats;
-};
-
-/**
  * Create tooltip content for anomaly visualization
  */
 export const createAnomalyTooltip = (anomaly: Anomaly): string => {
@@ -204,17 +202,5 @@ Sensors: ${formatAnomalySensorSet(anomaly.sensor_set)}`;
  * Determine the visual style for an anomaly based on its type
  */
 export const getAnomalyStyle = (anomalyType: string) => {
-  const styles: Record<string, { color: string; radius: number; opacity: number }> = {
-    'threshold_exceeded': { color: '#ef4444', radius: 3, opacity: 0.8 },
-    'spike': { color: '#f97316', radius: 4, opacity: 0.9 },
-    'drop': { color: '#3b82f6', radius: 4, opacity: 0.9 },
-    'pattern_break': { color: '#8b5cf6', radius: 3, opacity: 0.7 },
-    'ml_conformal_static_univariate': { color: '#dc2626', radius: 5, opacity: 0.95 },
-    'ml_conformal_static_multivariate': { color: '#991b1b', radius: 6, opacity: 0.95 },
-    'ml_tailprob_univariate': { color: '#ea580c', radius: 4, opacity: 0.9 },
-    'ml_tailprob_multivariate': { color: '#c2410c', radius: 5, opacity: 0.9 },
-    'default': { color: '#dc2626', radius: 3, opacity: 0.8 },
-  };
-
-  return styles[anomalyType] || styles.default;
+  return ANOMALY_STYLES[anomalyType] || ANOMALY_STYLES.default;
 };

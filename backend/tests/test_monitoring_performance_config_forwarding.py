@@ -210,6 +210,41 @@ async def test_gateway_stop_preserves_tactic_error_status():
 
 
 @pytest.mark.asyncio
+async def test_gateway_stop_validates_identifier():
+    handler = inspect.unwrap(stop_monitoring_service)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await handler(request=_build_request(), container_name=None, container_id=None)
+    assert exc_info.value.status_code == 400
+
+    with pytest.raises(HTTPException) as exc_info:
+        await handler(
+            request=_build_request(),
+            container_name="radar-a",
+            container_id="ctr-a",
+        )
+    assert exc_info.value.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_gateway_stop_forwards_container_identifier():
+    mock_stop = AsyncMock(return_value={"status": "stopped", "message": "ok"})
+    with patch(
+        "off_key_api_gateway.api.v1.monitors.tactic.stop_radar_service",
+        mock_stop,
+    ):
+        handler = inspect.unwrap(stop_monitoring_service)
+        response = await handler(
+            request=_build_request(),
+            container_name=None,
+            container_id="ctr-1",
+        )
+
+    assert response["status"] == "stopped"
+    mock_stop.assert_awaited_once_with(container_name=None, container_id="ctr-1")
+
+
+@pytest.mark.asyncio
 async def test_gateway_delete_uses_service_id_endpoint():
     mock_delete = AsyncMock(return_value={"status": "deleted", "service_id": "svc-1"})
     with patch(

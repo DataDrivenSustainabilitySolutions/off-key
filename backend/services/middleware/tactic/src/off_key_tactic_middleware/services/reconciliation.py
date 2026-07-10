@@ -8,10 +8,9 @@ MonitoringService.status in sync with actual Docker state.
 import asyncio
 from contextlib import suppress
 from datetime import datetime, timedelta, timezone
-from typing import Any, Optional
+from typing import Optional
 
 import docker
-import docker.errors
 from sqlalchemy import delete, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,7 +19,12 @@ from off_key_core.config.logs import logger
 from off_key_core.db.models import MonitoringService, MqttTopic
 from off_key_core.db.base import get_async_session_local
 from off_key_core.schemas.radar import RadarOperationalStatus
-from ..facades.docker import AsyncDocker, get_workload_docker_status
+from .time_utils import coerce_utc
+from ..facades.docker import (
+    AsyncDocker,
+    get_workload_docker_status,
+    with_workload_fallback,
+)
 
 _FAILED_WORKLOAD_STATES = {"dead", "exited", "failed", "rejected"}
 _STOPPED_WORKLOAD_STATES = {
@@ -213,18 +217,7 @@ class RadarStatusReconciliationService:
         )
         return reference_time <= cutoff
 
-    @staticmethod
-    def _coerce_utc(value: Any) -> Optional[datetime]:
-        if value is None:
-            return None
-        if isinstance(value, str):
-            try:
-                value = datetime.fromisoformat(value.replace("Z", "+00:00"))
-            except ValueError:
-                return None
-        if value.tzinfo is None:
-            return value.replace(tzinfo=timezone.utc)
-        return value.astimezone(timezone.utc)
+    _coerce_utc = staticmethod(coerce_utc)
 
     @staticmethod
     async def _delete_service_row(session: AsyncSession, service_id: str) -> int:
@@ -240,41 +233,15 @@ class RadarStatusReconciliationService:
         if not container_id:
             return False
         try:
-            try:
-                docker_service = await self.async_docker.run(
-                    self.async_docker.client.services.get, container_id
-                )
-                await self.async_docker.run(docker_service.remove)
-                return True
-            except docker.errors.NotFound:
-                pass
-            except Exception as exc:
-                if not self._should_fallback_to_container(exc):
-                    raise
-                logger.debug(
-                    "Skipping Swarm service removal for workload %s: %s",
-                    container_id,
-                    exc,
-                )
-
-            docker_container = await self.async_docker.run(
-                self.async_docker.client.containers.get, container_id
+            await with_workload_fallback(
+                self.async_docker,
+                container_id,
+                on_service=lambda s: s.remove(),
+                on_container=lambda c: c.remove(force=True),
             )
-            await self.async_docker.run(docker_container.remove, force=True)
             return True
         except docker.errors.NotFound:
             return False
-
-    @staticmethod
-    def _should_fallback_to_container(exc: Exception) -> bool:
-        if isinstance(exc, docker.errors.APIError) and exc.status_code in (
-            400,
-            406,
-            503,
-        ):
-            return True
-        text = str(exc).lower()
-        return "this node is not a swarm manager" in text or "swarm mode" in text
 
     @staticmethod
     def _mark_revived(service: MonitoringService) -> None:

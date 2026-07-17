@@ -76,8 +76,8 @@ export function ChargerListControls({
   );
 
   return (
-    <div className="rounded-lg border bg-card p-3 shadow-xs">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+    <div className="rounded-2xl border border-border/65 bg-card p-4 shadow-[0_1px_2px_hsl(220_20%_10%/0.025)]">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div className="relative min-w-0 flex-1">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
@@ -90,18 +90,18 @@ export function ChargerListControls({
         </div>
 
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
             <span className="text-sm font-medium text-muted-foreground">
               {statusLabel}
             </span>
-            <div className="flex rounded-md border bg-background p-1">
+            <div className="grid grid-cols-3 rounded-xl border border-border/70 bg-muted/35 p-1">
               {statusOptions.map((option) => (
                 <label
                   key={option.value}
                   className={cn(
-                    "flex cursor-pointer items-center gap-2 rounded px-3 py-1.5 text-sm text-muted-foreground transition-colors",
+                    "flex cursor-pointer items-center gap-2 rounded-lg px-3 py-1.5 text-sm text-muted-foreground transition-[color,background-color,box-shadow]",
                     statusFilter === option.value &&
-                      "bg-primary text-primary-foreground"
+                      "bg-card text-foreground shadow-xs"
                   )}
                 >
                   <input
@@ -109,7 +109,7 @@ export function ChargerListControls({
                     value={option.value}
                     checked={statusFilter === option.value}
                     onChange={() => onStatusFilterChange(option.value)}
-                    className="h-3.5 w-3.5 accent-primary"
+                    className="sr-only"
                   />
                   {option.label} ({counts[option.countKey]})
                 </label>
@@ -117,7 +117,7 @@ export function ChargerListControls({
             </div>
           </div>
 
-          <div className="flex items-center gap-2 rounded-md border bg-background px-2 py-1.5">
+          <div className="flex items-center gap-2 rounded-xl border border-border/70 bg-muted/35 px-2.5 py-1.5">
             <List className="h-4 w-4 text-muted-foreground" />
             {viewToggleTooltip ? (
               <TooltipProvider>
@@ -151,13 +151,14 @@ function ChargerStatusBadge({ online }: { online: boolean }) {
   return (
     <span
       className={cn(
-        "inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium",
+        "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium",
         online
-          ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200"
-          : "bg-red-100 text-red-800 dark:bg-red-950/40 dark:text-red-200"
+          ? "border-emerald-200/80 bg-emerald-50 text-emerald-800 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-200"
+          : "border-red-200/80 bg-red-50 text-red-800 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-200"
       )}
     >
-      {online ? "active" : "offline"}
+      <span className={cn("size-1.5 rounded-full", online ? "bg-emerald-500" : "bg-red-500")} />
+      {online ? "Online" : "Offline"}
     </span>
   );
 }
@@ -194,8 +195,9 @@ export function ChargerListResults({
 }: ChargerListResultsProps) {
   if (loading) {
     return (
-      <div className="rounded-lg border bg-card p-6 text-sm text-muted-foreground">
-        Loading data...
+      <div className="flex min-h-32 items-center justify-center rounded-2xl border border-border/65 bg-card p-6 text-sm text-muted-foreground">
+        <span className="mr-2 size-2 animate-pulse rounded-full bg-primary" />
+        Loading data
       </div>
     );
   }
@@ -215,7 +217,7 @@ export function ChargerListResults({
             return (
               <Card
                 key={card.charger_id}
-                className="gap-0 overflow-hidden border-border/80 shadow-xs transition-colors hover:border-primary/40"
+                className="gap-0 overflow-hidden py-0 transition-[border-color,box-shadow,transform] hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-md"
               >
                 <CardHeader className="pb-4">
                   <div className="flex items-start justify-between gap-3">
@@ -243,7 +245,7 @@ export function ChargerListResults({
                     <span className="text-right">{formatLastSeen(card.last_seen)}</span>
                   </div>
                 </CardContent>
-                <CardFooter className="border-t px-6 py-4">
+                <CardFooter className="border-t border-border/60 px-6 py-4">
                   <Button asChild variant="outline" size="sm" className="w-full">
                     <Link to={`/details/${card.charger_id}`}>More details</Link>
                   </Button>
@@ -257,10 +259,10 @@ export function ChargerListResults({
   }
 
   return (
-    <div className="overflow-hidden rounded-lg border bg-card shadow-xs">
+    <div className="overflow-hidden rounded-2xl border border-border/65 bg-card shadow-[0_1px_2px_hsl(220_20%_10%/0.025)]">
       <Table>
         <TableHeader>
-          <TableRow className="bg-muted/40 hover:bg-muted/40">
+          <TableRow className="bg-muted/30 hover:bg-muted/30">
             <TableHead>Charger ID</TableHead>
             <TableHead>Name</TableHead>
             <TableHead>{tableStatusLabel}</TableHead>

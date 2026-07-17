@@ -8,12 +8,21 @@ Handles model checkpoint persistence with:
 """
 
 import glob
+import hashlib
+import hmac
 import os
+import pickle
 import time
+import uuid
+from typing import Any
 from typing import Optional
 
 from off_key_core.config.logs import logger
 from .config.runtime import get_radar_checkpoint_settings
+
+
+_CHECKPOINT_MAGIC = b"OFFKEY-CHECKPOINT-V1\n"
+_checkpoint_secret_warning_logged = False
 
 
 class CheckpointManager:
@@ -47,30 +56,90 @@ class CheckpointManager:
         self._claimed_lock_path: Optional[str] = None
         self._log_context = {"component": "checkpoint_manager"}
 
-    def find_latest_checkpoint(self) -> Optional[str]:
-        """
-        Find the most recent checkpoint file for this service.
+    @staticmethod
+    def _checkpoint_secret() -> bytes:
+        return get_radar_checkpoint_settings().checkpoint_secret_bytes
 
-        Checkpoints are namespaced by SERVICE_ID to support multiple RADAR
-        containers running independently.
+    @classmethod
+    def _sign(cls, payload: bytes) -> str:
+        secret = cls._checkpoint_secret()
+        if not secret:
+            return ""
+        return hmac.new(secret, payload, hashlib.sha256).hexdigest()
 
-        Returns:
-            Path to the latest checkpoint file, or None if not found.
-        """
+    @classmethod
+    def _verify(cls, payload: bytes, signature: str) -> bool:
+        global _checkpoint_secret_warning_logged
+        secret = cls._checkpoint_secret()
+        if not secret:
+            if not _checkpoint_secret_warning_logged:
+                logger.warning(
+                    "RADAR_CHECKPOINT_SECRET is not configured; checkpoint "
+                    "signature verification is disabled outside production"
+                )
+                _checkpoint_secret_warning_logged = True
+            return True
+        if not signature:
+            return False
+        expected = hmac.new(secret, payload, hashlib.sha256).hexdigest()
+        return hmac.compare_digest(expected, signature)
+
+    def candidate_paths(self) -> list[str]:
         pattern = os.path.join(self.checkpoint_dir, f"{self.service_id}_*.pkl")
-        checkpoints = glob.glob(pattern)
+        return sorted(glob.glob(pattern), key=self._safe_getmtime, reverse=True)
 
-        if not checkpoints:
-            return None
+    def claim(self, checkpoint_path: str) -> bool:
+        return self._try_claim_checkpoint(checkpoint_path)
 
-        # Sort by mtime descending and try to claim the most recent
-        checkpoints_sorted = sorted(checkpoints, key=self._safe_getmtime, reverse=True)
+    def save(self, checkpoint: dict[str, Any], processed_count: int) -> str:
+        os.makedirs(self.checkpoint_dir, exist_ok=True)
+        timestamp = int(time.time())
+        filename = f"{self.service_id}_{processed_count}_{timestamp}.pkl"
+        checkpoint_path = os.path.join(self.checkpoint_dir, filename)
+        temporary_path = f"{checkpoint_path}.tmp-{uuid.uuid4().hex}"
+        payload = pickle.dumps(checkpoint)
+        signature = self._sign(payload).encode("ascii")
+        envelope = _CHECKPOINT_MAGIC + signature + b"\n" + payload
 
-        for checkpoint_path in checkpoints_sorted:
-            if self._try_claim_checkpoint(checkpoint_path):
-                return checkpoint_path
+        try:
+            with open(temporary_path, "xb") as checkpoint_file:
+                checkpoint_file.write(envelope)
+                checkpoint_file.flush()
+                os.fsync(checkpoint_file.fileno())
+            os.replace(temporary_path, checkpoint_path)
+        finally:
+            if os.path.exists(temporary_path):
+                os.remove(temporary_path)
 
-        return None
+        return checkpoint_path
+
+    def load(self, checkpoint_path: str) -> dict[str, Any]:
+        with open(checkpoint_path, "rb") as checkpoint_file:
+            stored = checkpoint_file.read()
+
+        if stored.startswith(_CHECKPOINT_MAGIC):
+            encoded_signature, separator, payload = stored[
+                len(_CHECKPOINT_MAGIC) :
+            ].partition(b"\n")
+            if not separator:
+                raise ValueError("Checkpoint envelope is incomplete")
+            signature = encoded_signature.decode("ascii")
+        else:
+            payload = stored
+            signature_path = checkpoint_path + ".sig"
+            signature = ""
+            if os.path.exists(signature_path):
+                with open(signature_path, encoding="utf-8") as signature_file:
+                    signature = signature_file.read().strip()
+
+        if not self._verify(payload, signature):
+            raise ValueError(
+                f"Checkpoint signature verification failed: {checkpoint_path}"
+            )
+        checkpoint = pickle.loads(payload)
+        if not isinstance(checkpoint, dict):
+            raise ValueError("Checkpoint payload must be a dictionary")
+        return checkpoint
 
     def _safe_getmtime(self, path: str) -> float:
         """

@@ -7,12 +7,10 @@ of MQTT telemetry data with resilient error handling and monitoring.
 
 import logging
 import time
-import pickle
 import os
 import psutil
 import gc
 import hashlib
-import hmac
 import re
 import json
 import concurrent.futures
@@ -23,15 +21,8 @@ from enum import Enum
 
 import numpy as np
 
-# Model registry for dynamic model loading
-from .tactic_client import (
-    create_model_instance,
-    validate_preprocessing_steps,
-    get_preprocessor_class,
-)
-
 from .config.config import AnomalyDetectionConfig
-from .config.runtime import get_radar_checkpoint_settings
+from .checkpoint_manager import CheckpointManager
 from .models import AnomalyResult
 
 
@@ -39,7 +30,6 @@ from .models import AnomalyResult
 # Checkpoint Security
 # =============================================================================
 
-_checkpoint_secret_warning_logged = False
 _UNSEEN_FEATURE_PATTERN = re.compile(
     r"Feature ['\"](?P<feature>[^'\"]+)['\"] has not been seen during learning"
 )
@@ -58,45 +48,6 @@ _DEFAULT_METADATA_FEATURE_KEYS = frozenset(
 )
 
 
-def _get_checkpoint_secret() -> bytes:
-    """Get checkpoint signing secret from runtime configuration."""
-    return get_radar_checkpoint_settings().checkpoint_secret_bytes
-
-
-def _sign_checkpoint_data(data: bytes) -> str:
-    """Create HMAC signature for checkpoint data."""
-    secret = _get_checkpoint_secret()
-    if not secret:
-        return ""
-    return hmac.new(secret, data, hashlib.sha256).hexdigest()
-
-
-def _verify_checkpoint_signature(data: bytes, signature: str) -> bool:
-    """Verify HMAC signature for checkpoint data.
-
-    If no secret is configured, verification is skipped (returns True).
-    This allows backwards compatibility with unsigned checkpoints in dev.
-    """
-    global _checkpoint_secret_warning_logged
-    logger = logging.getLogger(__name__)
-
-    secret = _get_checkpoint_secret()
-    if not secret:
-        # Log warning once per process to avoid spam
-        if not _checkpoint_secret_warning_logged:
-            logger.warning(
-                "RADAR_CHECKPOINT_SECRET not configured - checkpoint signature "
-                "verification is DISABLED. Set this environment variable in "
-                "production to protect against checkpoint tampering."
-            )
-            _checkpoint_secret_warning_logged = True
-        return True  # Skip verification if no secret configured
-    if not signature:
-        return False  # Signature required when secret is set
-    expected = hmac.new(secret, data, hashlib.sha256).hexdigest()
-    return hmac.compare_digest(expected, signature)
-
-
 class ServiceState(Enum):
     """Service health states"""
 
@@ -104,684 +55,6 @@ class ServiceState(Enum):
     DEGRADED = "degraded"
     FAILED = "failed"
     UNKNOWN = "unknown"
-
-
-class AnomalyDetectionService:
-    """
-    Core anomaly detection service following guide.md patterns
-
-    Implements:
-    - Multiple model support (Isolation Forest, SVM, KNN)
-    - Preprocessing pipeline
-    - Memory management
-    - Model checkpointing
-    - Performance monitoring
-    """
-
-    def __init__(
-        self,
-        config: AnomalyDetectionConfig,
-        checkpoint: Optional[Dict[str, Any]] = None,
-    ):
-        """Initialize anomaly detection service.
-
-        Args:
-            config: Service configuration
-            checkpoint: Optional checkpoint data to restore from. If provided,
-                       the model and preprocessors are restored from the checkpoint
-                       instead of being created fresh.
-        """
-        self.config = config
-        self.logger = logging.getLogger(__name__)
-        self.schema_signature = self._build_schema_signature_from_config(config)
-
-        # Performance tracking (always fresh)
-        self.start_time = time.time()
-        self.processing_times: deque = deque(maxlen=1000)
-
-        if checkpoint:
-            self._restore_from_checkpoint(checkpoint)
-        else:
-            self._initialize_fresh()
-
-        self.logger.info(
-            f"Initialized anomaly detection service with model: {config.model_type}"
-            f" (restored={checkpoint is not None})"
-        )
-
-    def _initialize_fresh(self):
-        """Initialize fresh model and preprocessors."""
-        self.model = self._create_model()
-        self.preprocessors = self._create_preprocessors()
-        self.processed_count = 0
-        self.anomaly_count = 0
-        self.last_checkpoint = 0
-        self.score_window = deque(maxlen=self._get_heuristic_window_size())
-        self.skipped_learning_anomaly_count = 0
-        self.pre_ready_suppressed_count = 0
-
-    def _restore_from_checkpoint(self, checkpoint: Dict[str, Any]):
-        """Restore state from checkpoint data."""
-        self.model = checkpoint["model"]
-        self.preprocessors = checkpoint.get("preprocessors", [])
-        self.processed_count = checkpoint["processed_count"]
-        self.anomaly_count = checkpoint["anomaly_count"]
-        self.last_checkpoint = self.processed_count
-        self.schema_signature = checkpoint["schema_signature"]
-        self.skipped_learning_anomaly_count = int(
-            checkpoint.get("skipped_learning_anomaly_count", 0)
-        )
-        self.pre_ready_suppressed_count = int(
-            checkpoint.get("pre_ready_suppressed_count", 0)
-        )
-        self.score_window = deque(
-            (
-                float(v)
-                for v in checkpoint.get("score_window", [])
-                if isinstance(v, (int, float))
-            ),
-            maxlen=self._get_heuristic_window_size(),
-        )
-
-        self.logger.info(
-            f"Restored from checkpoint: {self.processed_count} points processed, "
-            f"{self.anomaly_count} anomalies detected, "
-            f"{len(self.preprocessors)} preprocessors restored"
-        )
-
-    @classmethod
-    def _load_and_verify_checkpoint(cls, checkpoint_path: str) -> Dict[str, Any]:
-        """Load checkpoint file with signature verification.
-
-        Args:
-            checkpoint_path: Path to the checkpoint file
-
-        Returns:
-            Verified checkpoint data
-
-        Raises:
-            ValueError: If signature verification fails
-            FileNotFoundError: If checkpoint file doesn't exist
-        """
-        logger = logging.getLogger(__name__)
-
-        # Read raw bytes for signature verification
-        with open(checkpoint_path, "rb") as f:
-            raw_data = f.read()
-
-        # Check for signature file
-        sig_path = checkpoint_path + ".sig"
-        signature = ""
-        if os.path.exists(sig_path):
-            with open(sig_path, "r") as f:
-                signature = f.read().strip()
-
-        # Verify signature
-        if not _verify_checkpoint_signature(raw_data, signature):
-            logger.error(f"Checkpoint signature verification failed: {checkpoint_path}")
-            raise ValueError(
-                f"Checkpoint signature verification failed. "
-                f"The checkpoint file may have been tampered with: {checkpoint_path}"
-            )
-
-        # Deserialize after verification
-        return pickle.loads(raw_data)
-
-    @classmethod
-    def from_checkpoint(
-        cls, checkpoint_path: str, config: AnomalyDetectionConfig
-    ) -> "AnomalyDetectionService":
-        """Restore service from a checkpoint file.
-
-        This restores the learned state of both the model and preprocessors,
-        allowing the service to resume from where it left off.
-
-        Args:
-            checkpoint_path: Path to the pickle checkpoint file
-            config: Current configuration (used for runtime behavior and validation)
-
-        Returns:
-            Restored AnomalyDetectionService instance
-
-        Raises:
-            ValueError: If checkpoint signature fails or model type mismatches
-        """
-        logger = logging.getLogger(__name__)
-
-        # Load and verify checkpoint
-        checkpoint = cls._load_and_verify_checkpoint(checkpoint_path)
-
-        # Validate model type matches
-        saved_config = checkpoint.get("config")
-        if (
-            saved_config
-            and hasattr(saved_config, "model_type")
-            and saved_config.model_type != config.model_type
-        ):
-            raise ValueError(
-                f"Checkpoint model type '{saved_config.model_type}' "
-                f"does not match config model type '{config.model_type}'."
-            )
-
-        saved_schema_signature = checkpoint.get("schema_signature")
-        if not saved_schema_signature:
-            raise ValueError(
-                "Checkpoint is missing a schema signature. "
-                "This checkpoint format is no longer supported."
-            )
-
-        current_schema_signature = cls._build_schema_signature_from_config(config)
-        if saved_schema_signature != current_schema_signature:
-            raise ValueError(
-                "Checkpoint schema signature does not match current configuration. "
-                "Starting with a fresh model is required."
-            )
-
-        logger.info(f"Loading verified checkpoint: {checkpoint_path}")
-        return cls(config, checkpoint=checkpoint)
-
-    @staticmethod
-    def _normalize_preprocessing_steps_for_signature(
-        preprocessing_steps: Any,
-    ) -> List[Dict[str, Any]]:
-        """Normalize preprocessing definition into a stable, serializable structure."""
-        normalized_steps: List[Dict[str, Any]] = []
-        if not isinstance(preprocessing_steps, list):
-            return normalized_steps
-
-        for step in preprocessing_steps:
-            if not isinstance(step, dict):
-                continue
-            step_type = str(step.get("type", ""))
-            params = step.get("params") or {}
-            if not isinstance(params, dict):
-                params = {}
-            normalized_steps.append({"type": step_type, "params": params})
-
-        return normalized_steps
-
-    @classmethod
-    def _build_schema_signature_from_config(cls, config: Any) -> str:
-        """Compute a stable schema signature for checkpoint compatibility checks."""
-        model_type = str(getattr(config, "model_type", ""))
-        preprocessing_steps = cls._normalize_preprocessing_steps_for_signature(
-            getattr(config, "preprocessing_steps", [])
-        )
-        subscription_topics = [
-            str(topic)
-            for topic in (getattr(config, "subscription_topics", []) or [])
-            if topic is not None
-        ]
-        sensor_key_strategy = str(
-            getattr(config, "sensor_key_strategy", "full_hierarchy")
-        )
-        alignment_mode = str(getattr(config, "alignment_mode", "strict_barrier"))
-        heuristic_enabled = bool(getattr(config, "heuristic_enabled", True))
-        heuristic_window_size = int(getattr(config, "heuristic_window_size", 300))
-        heuristic_min_samples = int(getattr(config, "heuristic_min_samples", 30))
-        heuristic_tail_alpha = float(getattr(config, "heuristic_tail_alpha", 0.005))
-        skip_learning_on_anomaly = True
-        threshold_method = "tail_probability"
-
-        payload = {
-            "model_type": model_type,
-            "preprocessing_steps": preprocessing_steps,
-            "subscription_topics": sorted(subscription_topics),
-            "sensor_key_strategy": sensor_key_strategy,
-            "alignment_mode": alignment_mode,
-            "heuristic_enabled": heuristic_enabled,
-            "heuristic_window_size": heuristic_window_size,
-            "heuristic_min_samples": heuristic_min_samples,
-            "heuristic_tail_alpha": heuristic_tail_alpha,
-            "skip_learning_on_anomaly": skip_learning_on_anomaly,
-            "threshold_method": threshold_method,
-        }
-        payload_json = json.dumps(payload, sort_keys=True, separators=(",", ":"))
-        return hashlib.sha256(payload_json.encode("utf-8")).hexdigest()
-
-    def _create_model(self):
-        """Factory method for model creation using registry.
-
-        Uses create_model_instance which handles special cases like KNN
-        that require additional setup (e.g., similarity engine).
-        """
-        try:
-            # Log params before validation
-            self.logger.info(
-                "event=radar.model_create type=%s params=%s",
-                self.config.model_type,
-                self.config.model_params,
-            )
-
-            # Use create_model_instance which handles special cases like KNN
-            return create_model_instance(
-                self.config.model_type, self.config.model_params
-            )
-
-        except ImportError as e:
-            self.logger.error(
-                "event=radar.model_import_failed error=%s",
-                str(e),
-                exc_info=True,
-            )
-            raise
-        except ValueError as e:
-            self.logger.error(
-                "event=radar.model_config_invalid error=%s",
-                str(e),
-                exc_info=True,
-            )
-            raise
-
-    def _create_preprocessors(self):
-        """Create preprocessing pipeline from validated config."""
-        preprocessors = []
-        try:
-            validated_steps = validate_preprocessing_steps(
-                getattr(self.config, "preprocessing_steps", [])
-            )
-            for step in validated_steps:
-                preprocessor_cls = get_preprocessor_class(step["type"])
-                preprocessors.append(preprocessor_cls(**step.get("params", {})))
-            if preprocessors:
-                step_types = [s["type"] for s in validated_steps]
-                self.logger.info(
-                    "event=radar.preprocessing_enabled steps=%s",
-                    step_types,
-                )
-        except Exception as e:
-            self.logger.error(
-                "event=radar.preprocessing_create_failed error=%s",
-                str(e),
-                exc_info=True,
-            )
-            raise
-
-        return preprocessors
-
-    def _transform_pipeline(self, sample: Dict[str, float]) -> Dict[str, float]:
-        """Apply the preprocessing pipeline using current learned state."""
-        transformed = sample.copy()
-        for preprocessor in self.preprocessors:
-            transformed = preprocessor.transform_one(transformed)
-        return transformed
-
-    def _learn_pipeline(self, sample: Dict[str, float]) -> None:
-        """Learn preprocessors stage-by-stage using each stage's transformed output."""
-        stage_input = sample.copy()
-        for i, preprocessor in enumerate(self.preprocessors):
-            preprocessor.learn_one(stage_input)
-            if i < len(self.preprocessors) - 1:
-                stage_input = preprocessor.transform_one(stage_input)
-
-    def process_data_point(
-        self, data: Dict[str, float], topic: str = None, charger_id: str = None
-    ) -> AnomalyResult:
-        """Process single data point and return anomaly result"""
-        start_time = time.time()
-        try:
-            processed_data = self._transform_pipeline(data)
-            score = float(self.model.score_one(processed_data))
-
-            model_ready = self._is_model_ready_for_triggering()
-            heuristic_context = self._evaluate_moving_window_heuristic(
-                score, model_ready=model_ready
-            )
-            heuristic_triggered = bool(heuristic_context.get("triggered", False))
-            is_anomaly = heuristic_triggered
-            severity = self._calculate_heuristic_severity(heuristic_context)
-            learn_skipped = False
-
-            # Decision-first flow to avoid contaminating model and baseline.
-            if is_anomaly:
-                learn_skipped = True
-                self.skipped_learning_anomaly_count += 1
-            else:
-                self.model.learn_one(processed_data)
-                # Update preprocessors after scoring so current score is unaffected.
-                self._learn_pipeline(data)
-                if model_ready:
-                    self.score_window.append(score)
-            if not model_ready:
-                self.pre_ready_suppressed_count += 1
-
-            heuristic_context["learn_skipped"] = learn_skipped
-            heuristic_context["reference_count_after"] = len(self.score_window)
-
-            # Update counters
-            self.processed_count += 1
-            if is_anomaly:
-                self.anomaly_count += 1
-
-            # Record processing time
-            processing_time = time.time() - start_time
-            self.processing_times.append(processing_time)
-
-            # Periodic operations
-            if self.processed_count % self.config.checkpoint_interval == 0:
-                self._checkpoint_model()
-
-            # Create result
-            result = AnomalyResult(
-                anomaly_score=score,
-                is_anomaly=is_anomaly,
-                severity=severity,
-                timestamp=datetime.now(timezone.utc),
-                model_info=self._get_model_info(),
-                raw_data=data,
-                processed_features=processed_data,
-                topic=topic,
-                charger_id=charger_id,
-                context={
-                    "processing_time_ms": processing_time * 1000,
-                    "model_type": self.config.model_type,
-                    "score_window": heuristic_context,
-                },
-            )
-
-            if is_anomaly:
-                score_window = result.context.get("score_window", {})
-                self.logger.warning(
-                    (
-                        f"Anomaly detected: score={score:.3f},"
-                        f" severity={severity}, topic={topic}, "
-                        "trigger=tail_probability"
-                    ),
-                    extra={
-                        "anomaly_score": score,
-                        "tail_pvalue": score_window.get("tail_pvalue"),
-                        "reference_count": score_window.get("reference_count"),
-                        "tail_alpha": score_window.get("tail_alpha"),
-                        "model_ready": score_window.get("model_ready"),
-                        "learn_skipped": score_window.get("learn_skipped"),
-                    },
-                )
-
-            return result
-
-        except Exception as e:
-            unseen_feature = self._extract_unseen_feature_name(str(e))
-            warmup_failure_stage = None
-            if unseen_feature is not None:
-                try:
-                    try:
-                        self._learn_pipeline(data)
-                    except Exception as preprocess_learn_error:
-                        raise RuntimeError(
-                            f"preprocessor_learn: {preprocess_learn_error}"
-                        ) from preprocess_learn_error
-
-                    try:
-                        processed_data = self._transform_pipeline(data)
-                    except Exception as transform_error:
-                        raise RuntimeError(
-                            f"transform_after_warmup: {transform_error}"
-                        ) from transform_error
-
-                    try:
-                        self.model.learn_one(processed_data)
-                    except Exception as model_learn_error:
-                        raise RuntimeError(
-                            f"model_learn: {model_learn_error}"
-                        ) from model_learn_error
-                    self.processed_count += 1
-                    processing_time = time.time() - start_time
-                    self.processing_times.append(processing_time)
-                    self.logger.warning(
-                        "Primed model with unseen feature '%s'; "
-                        "skipping anomaly scoring for this point",
-                        unseen_feature,
-                    )
-                    return AnomalyResult(
-                        anomaly_score=0.0,
-                        is_anomaly=False,
-                        severity="low",
-                        timestamp=datetime.now(timezone.utc),
-                        model_info=self._get_model_info(),
-                        raw_data=data,
-                        processed_features=processed_data,
-                        topic=topic,
-                        charger_id=charger_id,
-                        context={
-                            "processing_time_ms": processing_time * 1000,
-                            "model_type": self.config.model_type,
-                            "schema_warmup": True,
-                            "unseen_feature": unseen_feature,
-                        },
-                    )
-                except Exception as warmup_error:
-                    warmup_failure_stage = self._extract_warmup_failure_stage(
-                        str(warmup_error)
-                    )
-                    self.logger.error(
-                        "Model warm-up after unseen-feature error failed "
-                        "(stage=%s): %s",
-                        warmup_failure_stage or "unknown",
-                        warmup_error,
-                        exc_info=True,
-                    )
-
-            self.logger.error(
-                "event=radar.processing_error error=%s", str(e), exc_info=True
-            )
-            context = {
-                "error": str(e),
-                "processing_time_ms": (time.time() - start_time) * 1000,
-            }
-            if unseen_feature is not None:
-                context["unseen_feature"] = unseen_feature
-            if warmup_failure_stage is not None:
-                context["warmup_failure_stage"] = warmup_failure_stage
-            return AnomalyResult(
-                anomaly_score=0.0,
-                is_anomaly=False,
-                severity="unknown",
-                timestamp=datetime.now(timezone.utc),
-                model_info={"error": str(e)},
-                raw_data=data,
-                topic=topic,
-                charger_id=charger_id,
-                context=context,
-            )
-
-    @staticmethod
-    def _extract_unseen_feature_name(error_message: str) -> Optional[str]:
-        """Extract unseen feature name from model error message when present."""
-        match = _UNSEEN_FEATURE_PATTERN.search(error_message)
-        if match:
-            return match.group("feature")
-        return None
-
-    @staticmethod
-    def _extract_warmup_failure_stage(error_message: str) -> Optional[str]:
-        """Extract warm-up stage name from prefixed exception message."""
-        match = _WARMUP_STAGE_PATTERN.search(error_message)
-        if match:
-            return match.group("stage")
-        return None
-
-    def _calculate_heuristic_severity(self, heuristic_context: Dict[str, Any]) -> str:
-        """Calculate severity based on tail probability outlier strength."""
-        if not heuristic_context.get("triggered", False):
-            return "low"
-
-        tail_pvalue = float(heuristic_context.get("tail_pvalue", 1.0))
-        tail_alpha = float(heuristic_context.get("tail_alpha", 0.005))
-        if tail_alpha <= 0.0:
-            return "medium"
-
-        if tail_pvalue <= tail_alpha / 10.0:
-            return "critical"
-        if tail_pvalue <= tail_alpha / 4.0:
-            return "high"
-        return "medium"
-
-    def _evaluate_moving_window_heuristic(
-        self, score: float, *, model_ready: bool
-    ) -> Dict[str, Any]:
-        """Evaluate trailing-reference tail-probability trigger for this service."""
-        heuristic_enabled = bool(getattr(self.config, "heuristic_enabled", True))
-        min_samples = self._get_heuristic_min_samples()
-        tail_alpha = self._get_heuristic_tail_alpha()
-        reference_count = len(self.score_window)
-
-        context: Dict[str, Any] = {
-            "enabled": heuristic_enabled,
-            "window_size": self.score_window.maxlen,
-            "reference_count": reference_count,
-            "history_count": reference_count,
-            "min_samples": min_samples,
-            "tail_alpha": tail_alpha,
-            "threshold_method": "tail_probability",
-            "model_ready": model_ready,
-            "triggered": False,
-            "warmup": reference_count < min_samples or not model_ready,
-            "tail_pvalue": 1.0,
-            "learn_skipped": False,
-        }
-
-        if not heuristic_enabled:
-            return context
-        if not model_ready:
-            return context
-        if reference_count < min_samples or reference_count <= 0:
-            return context
-
-        count_ge = sum(1 for existing in self.score_window if existing >= score)
-        tail_pvalue = (1.0 + count_ge) / (reference_count + 1.0)
-        context["tail_pvalue"] = tail_pvalue
-        context["triggered"] = tail_pvalue <= tail_alpha
-        context["warmup"] = False
-        return context
-
-    def _get_heuristic_window_size(self) -> int:
-        """Get moving-window size with safe fallback for legacy config objects."""
-        try:
-            return max(int(getattr(self.config, "heuristic_window_size", 300)), 3)
-        except (TypeError, ValueError):
-            return 300
-
-    def _get_heuristic_min_samples(self) -> int:
-        """Get minimum sample count with safe fallback and clamping."""
-        try:
-            min_samples = int(getattr(self.config, "heuristic_min_samples", 30))
-        except (TypeError, ValueError):
-            min_samples = 30
-
-        min_samples = max(min_samples, 2)
-        return min(min_samples, self._get_heuristic_window_size())
-
-    def _get_heuristic_tail_alpha(self) -> float:
-        """Get tail-probability threshold with safe fallback."""
-        try:
-            alpha = float(getattr(self.config, "heuristic_tail_alpha", 0.005))
-        except (TypeError, ValueError):
-            alpha = 0.005
-        if alpha <= 0.0 or alpha >= 1.0:
-            return 0.005
-        return alpha
-
-    def _is_model_ready_for_triggering(self) -> bool:
-        """Return whether model output is ready for anomaly triggering semantics."""
-        if str(getattr(self.config, "model_type", "")).lower() != "knn":
-            return True
-        engine = getattr(self.model, "engine", None)
-        if engine is None:
-            return True
-        # engine.warm_upengine.window introduced in river 0.21 (KNNAnomalyDetector)
-        try:
-            warm_up = int(getattr(engine, "warm_up", 0))
-        except (TypeError, ValueError):
-            warm_up = 0
-        if warm_up <= 0:
-            return True
-        try:
-            current_size = len(getattr(engine, "window", []))
-        except TypeError:
-            current_size = 0
-        return current_size >= warm_up
-
-    def _checkpoint_model(self):
-        """Save model and preprocessor checkpoint with HMAC signature.
-
-        Checkpoints are namespaced by SERVICE_ID to support multiple RADAR
-        containers running independently. If RADAR_CHECKPOINT_SECRET is set,
-        the checkpoint is signed with HMAC-SHA256.
-        """
-        try:
-            checkpoint_settings = get_radar_checkpoint_settings()
-            checkpoint_dir = checkpoint_settings.RADAR_CHECKPOINT_DIR
-            service_id = checkpoint_settings.SERVICE_ID
-            os.makedirs(checkpoint_dir, exist_ok=True)
-
-            timestamp = int(time.time())
-            checkpoint_name = f"{service_id}_{self.processed_count}_{timestamp}.pkl"
-            checkpoint_path = f"{checkpoint_dir}/{checkpoint_name}"
-
-            # Serialize checkpoint data
-            checkpoint_data = pickle.dumps(
-                {
-                    "model": self.model,
-                    "preprocessors": self.preprocessors,
-                    "processed_count": self.processed_count,
-                    "anomaly_count": self.anomaly_count,
-                    "score_window": list(self.score_window),
-                    "skipped_learning_anomaly_count": (
-                        self.skipped_learning_anomaly_count
-                    ),
-                    "pre_ready_suppressed_count": self.pre_ready_suppressed_count,
-                    "config": self.config,
-                    "service_id": service_id,
-                    "schema_signature": self.schema_signature,
-                }
-            )
-
-            # Write checkpoint file
-            with open(checkpoint_path, "wb") as f:
-                f.write(checkpoint_data)
-
-            # Write signature file if secret is configured
-            signature = _sign_checkpoint_data(checkpoint_data)
-            if signature:
-                sig_path = checkpoint_path + ".sig"
-                with open(sig_path, "w") as f:
-                    f.write(signature)
-                self.logger.info(f"Checkpoint saved with signature: {checkpoint_path}")
-            else:
-                self.logger.info(f"Checkpoint saved (unsigned): {checkpoint_path}")
-
-        except Exception as e:
-            self.logger.error(
-                "event=radar.checkpoint_save_failed error=%s",
-                str(e),
-                exc_info=True,
-            )
-
-    def _get_model_info(self) -> Dict[str, Any]:
-        """Get model state information"""
-        return {
-            "strategy": "adaptive_stream",
-            "processed_count": self.processed_count,
-            "anomaly_count": self.anomaly_count,
-            "anomaly_rate": self.anomaly_count / max(self.processed_count, 1),
-            "reference_count": len(self.score_window),
-            "min_samples": self._get_heuristic_min_samples(),
-            "skipped_learning_anomaly_count": self.skipped_learning_anomaly_count,
-            "pre_ready_suppressed_count": self.pre_ready_suppressed_count,
-            "memory_usage_mb": self._get_memory_usage(),
-            "avg_processing_time_ms": sum(self.processing_times)
-            / max(len(self.processing_times), 1)
-            * 1000,
-            "uptime_seconds": time.time() - self.start_time,
-        }
-
-    def _get_memory_usage(self) -> float:
-        """Get current memory usage in MB"""
-        try:
-            process = psutil.Process(os.getpid())
-            return process.memory_info().rss / 1024 / 1024
-        except (psutil.NoSuchProcess, psutil.AccessDenied, OSError):
-            return 0.0
 
 
 class StaticConformalState(Enum):
@@ -795,39 +68,63 @@ class StaticConformalState(Enum):
 
 
 class RestartedMartingaleAlarmController:
-    """Power martingale alarm with alpha-spent resets."""
+    """Power e-process using nonconform's native restarted mixture."""
+
+    FIXED_RESTARTED_VILLE_THRESHOLD = 100.0
 
     def __init__(
         self,
         *,
-        alpha: float,
         epsilon: float,
+        restarted_ville_threshold: float = FIXED_RESTARTED_VILLE_THRESHOLD,
         alarm_count: int = 0,
         tested_count: int = 0,
         martingale: Any = None,
+        alarm_active: bool = False,
     ):
         self.method = "power"
-        self.alpha = float(alpha)
         self.epsilon = float(epsilon)
+        self._validate_threshold(restarted_ville_threshold)
+        self.restarted_ville_threshold = float(restarted_ville_threshold)
         self.alarm_count = int(alarm_count)
         self.tested_count = int(tested_count)
+        self._alarm_active = bool(alarm_active)
         self._martingale = martingale or self._new_martingale()
 
     @classmethod
     def from_config(cls, config: Any) -> "RestartedMartingaleAlarmController":
-        return cls(alpha=config.alpha, epsilon=config.epsilon)
+        return cls(
+            epsilon=config.epsilon,
+            restarted_ville_threshold=config.restarted_ville_threshold,
+        )
+
+    @classmethod
+    def _validate_threshold(cls, value: float) -> None:
+        if float(value) != cls.FIXED_RESTARTED_VILLE_THRESHOLD:
+            raise ValueError(
+                "restarted_ville_threshold is fixed at "
+                f"{cls.FIXED_RESTARTED_VILLE_THRESHOLD:g}."
+            )
+
+    def __setstate__(self, state: Dict[str, Any]) -> None:
+        """Upgrade alpha-spending checkpoints to a fresh native mixture."""
+        legacy_alpha = state.get("alpha")
+        self.method = "power"
+        self.epsilon = float(state.get("epsilon", 0.5))
+        self.restarted_ville_threshold = self.FIXED_RESTARTED_VILLE_THRESHOLD
+        self.alarm_count = int(state.get("alarm_count", 0))
+        self.tested_count = int(state.get("tested_count", 0))
+        self._alarm_active = False
+        self._legacy_alpha = legacy_alpha
+        if legacy_alpha is None:
+            self._martingale = state.get("_martingale") or self._new_martingale()
+            self._alarm_active = bool(state.get("_alarm_active", False))
+        else:
+            self._martingale = self._new_martingale()
 
     @property
     def num_test(self) -> int:
         return self.tested_count
-
-    @property
-    def episode_alpha(self) -> float:
-        return self.alpha / (2.0 ** (self.alarm_count + 1))
-
-    @property
-    def restarted_ville_threshold(self) -> float:
-        return 1.0 / self.episode_alpha
 
     def _new_martingale(self) -> Any:
         from nonconform.martingales import AlarmConfig, PowerMartingale
@@ -842,22 +139,51 @@ class RestartedMartingaleAlarmController:
     def update(self, p_value: float) -> Dict[str, Any]:
         state = self._martingale.update(p_value)
         self.tested_count += 1
-        alarm_fired = "restarted_ville" in state.triggered_alarms
+        threshold_crossed = (
+            "restarted_ville" in state.triggered_alarms
+            or state.restarted_martingale >= self.restarted_ville_threshold
+        )
+        alarm_fired = threshold_crossed and not self._alarm_active
+        self._alarm_active = threshold_crossed
+        if alarm_fired:
+            self.alarm_count += 1
+
+        if p_value == 0.0:
+            log_e_value = float("inf") if self.epsilon < 1.0 else 0.0
+        else:
+            log_e_value = float(
+                np.log(self.epsilon) + (self.epsilon - 1.0) * np.log(p_value)
+            )
+        max_log_float = float(np.log(np.finfo(float).max))
+        e_value = (
+            float(np.exp(log_e_value))
+            if np.isfinite(log_e_value) and log_e_value <= max_log_float
+            else float("inf")
+        )
+        finite_e_value = e_value if np.isfinite(e_value) else None
+        restarted_martingale = float(state.restarted_martingale)
+        finite_restarted_martingale = (
+            restarted_martingale if np.isfinite(restarted_martingale) else None
+        )
+        log_restarted_martingale = float(state.log_restarted_martingale)
+        finite_log_restarted_martingale = (
+            log_restarted_martingale if np.isfinite(log_restarted_martingale) else None
+        )
         context = {
             "martingale_method": self.method,
             "epsilon": self.epsilon,
-            "alpha": self.alpha,
-            "episode_alpha": self.episode_alpha,
+            "e_value": finite_e_value,
+            "e_value_is_infinite": finite_e_value is None,
+            "log_e_value": log_e_value if np.isfinite(log_e_value) else None,
             "restarted_ville_threshold": self.restarted_ville_threshold,
-            "restarted_martingale": float(state.restarted_martingale),
+            "restarted_martingale": finite_restarted_martingale,
+            "restarted_martingale_is_infinite": (finite_restarted_martingale is None),
+            "log_restarted_martingale": finite_log_restarted_martingale,
             "alarm_fired": alarm_fired,
+            "alarm_active": self._alarm_active,
             "alarm_count": self.alarm_count,
             "tested_count": self.tested_count,
         }
-        if alarm_fired:
-            self.alarm_count += 1
-            self._martingale = self._new_martingale()
-            context["alarm_count"] = self.alarm_count
         return context
 
 
@@ -945,6 +271,21 @@ class StaticConformalDetectionService:
             self.training_buffer = []
             self.calibration_buffer = []
 
+        if self.state == StaticConformalState.READY:
+            missing_ready_state = []
+            if not self.feature_keys:
+                missing_ready_state.append("feature_keys")
+            if self.conformal_detector is None:
+                missing_ready_state.append("conformal_detector")
+            if self.alarm_controller is None:
+                missing_ready_state.append("alarm_controller")
+            if missing_ready_state:
+                missing = ", ".join(missing_ready_state)
+                raise ValueError(
+                    "Static checkpoint is marked ready but is missing required "
+                    f"state: {missing}. Starting fresh is required."
+                )
+
         self.logger.info(
             "Restored static conformal checkpoint: state=%s processed=%s "
             "anomalies=%s feature_count=%s",
@@ -958,9 +299,7 @@ class StaticConformalDetectionService:
     def from_checkpoint(
         cls, checkpoint_path: str, config: AnomalyDetectionConfig
     ) -> "StaticConformalDetectionService":
-        checkpoint = AnomalyDetectionService._load_and_verify_checkpoint(
-            checkpoint_path
-        )
+        checkpoint = CheckpointManager().load(checkpoint_path)
 
         saved_strategy = checkpoint.get("strategy")
         if saved_strategy != "static_baseline":
@@ -974,6 +313,14 @@ class StaticConformalDetectionService:
         if "fdr_controller" in checkpoint:
             accepted_signatures.add(
                 cls._build_legacy_fdr_schema_signature_from_config(config)
+            )
+        legacy_controller = checkpoint.get("alarm_controller")
+        legacy_alpha = getattr(legacy_controller, "_legacy_alpha", None)
+        if legacy_alpha is not None:
+            accepted_signatures.add(
+                cls._build_legacy_alpha_schema_signature_from_config(
+                    config, float(legacy_alpha)
+                )
             )
         if (
             not saved_schema_signature
@@ -991,7 +338,7 @@ class StaticConformalDetectionService:
         static_config = getattr(config, "static_baseline_config", None)
         if static_config is not None and hasattr(static_config, "model_dump"):
             static_payload = static_config.model_dump(
-                exclude={"calibration_fraction", "fdr_config"},
+                exclude={"calibration_fraction"},
                 exclude_none=True,
             )
         else:
@@ -1006,6 +353,24 @@ class StaticConformalDetectionService:
                 exclude={"calibration_window_size", "martingale_config"},
                 exclude_none=True,
             )
+        else:
+            static_payload = {}
+        return cls._build_static_schema_signature(config, static_payload)
+
+    @classmethod
+    def _build_legacy_alpha_schema_signature_from_config(
+        cls, config: Any, alpha: float
+    ) -> str:
+        static_config = getattr(config, "static_baseline_config", None)
+        if static_config is not None and hasattr(static_config, "model_dump"):
+            static_payload = static_config.model_dump(
+                exclude={"calibration_fraction"},
+                exclude_none=True,
+            )
+            martingale_payload = dict(static_payload.get("martingale_config", {}))
+            martingale_payload.pop("restarted_ville_threshold", None)
+            martingale_payload["alpha"] = alpha
+            static_payload["martingale_config"] = martingale_payload
         else:
             static_payload = {}
         return cls._build_static_schema_signature(config, static_payload)
@@ -1229,7 +594,7 @@ class StaticConformalDetectionService:
         severity = self._calculate_conformal_severity(
             p_value,
             is_anomaly,
-            float(alarm_context["episode_alpha"]),
+            1.0 / float(alarm_context["restarted_ville_threshold"]),
         )
 
         result = self._build_result(
@@ -1253,15 +618,14 @@ class StaticConformalDetectionService:
         if is_anomaly:
             self.logger.warning(
                 "event=radar.static_conformal_martingale_alarm p_value=%.6f "
-                "restarted_martingale=%.6f severity=%s topic=%s",
+                "restarted_martingale=%s severity=%s topic=%s",
                 p_value,
-                float(alarm_context["restarted_martingale"]),
+                alarm_context["restarted_martingale"] or "inf",
                 severity,
                 topic,
                 extra={
                     "conformal_pvalue": p_value,
                     "martingale_method": alarm_context["martingale_method"],
-                    "episode_alpha": alarm_context["episode_alpha"],
                     "restarted_ville_threshold": (
                         alarm_context["restarted_ville_threshold"]
                     ),
@@ -1351,8 +715,8 @@ class StaticConformalDetectionService:
     ) -> RestartedMartingaleAlarmController:
         martingale_config = self.static_config.martingale_config
         return RestartedMartingaleAlarmController(
-            alpha=martingale_config.alpha,
             epsilon=martingale_config.epsilon,
+            restarted_ville_threshold=(martingale_config.restarted_ville_threshold),
             alarm_count=alarm_count,
             tested_count=tested_count,
         )
@@ -1437,15 +801,28 @@ class StaticConformalDetectionService:
         finally:
             self._training_future = None
 
+    def refresh_background_state(self) -> None:
+        """Publish completed background training without waiting for new input."""
+        self._complete_training_if_ready()
+
     def _compute_p_value(self, vector: List[float]) -> float:
-        p_values = self.conformal_detector.compute_p_values(
-            np.asarray([vector], dtype=float)
-        )
+        p_values = np.asarray(
+            self.conformal_detector.compute_p_values(np.asarray([vector], dtype=float)),
+            dtype=float,
+        ).reshape(-1)
+        if p_values.size != 1:
+            raise ValueError(
+                "Static conformal detector must return exactly one p-value "
+                f"for one inference sample; got {p_values.size}."
+            )
         p_value = float(p_values[0])
-        if p_value < 0.0:
-            return 0.0
-        if p_value > 1.0:
-            return 1.0
+        if not np.isfinite(p_value):
+            raise ValueError("Static conformal detector returned a non-finite p-value.")
+        if not 0.0 <= p_value <= 1.0:
+            raise ValueError(
+                "Static conformal detector returned a p-value outside [0, 1]: "
+                f"{p_value}."
+            )
         return p_value
 
     def _calculate_conformal_severity(
@@ -1509,62 +886,46 @@ class StaticConformalDetectionService:
 
     def _checkpoint_model(self) -> None:
         try:
-            checkpoint_settings = get_radar_checkpoint_settings()
-            checkpoint_dir = checkpoint_settings.RADAR_CHECKPOINT_DIR
-            service_id = checkpoint_settings.SERVICE_ID
-            os.makedirs(checkpoint_dir, exist_ok=True)
+            checkpoint_manager = CheckpointManager()
+            service_id = checkpoint_manager.service_id
+            checkpoint_data = {
+                "strategy": "static_baseline",
+                "static_state": self.state.value,
+                "training_buffer": self.training_buffer,
+                "calibration_buffer": self.calibration_buffer,
+                "feature_keys": self.feature_keys,
+                "conformal_detector": self.conformal_detector,
+                "alarm_controller": self.alarm_controller,
+                "alarm_count": (
+                    self.alarm_controller.alarm_count
+                    if self.alarm_controller is not None
+                    else 0
+                ),
+                "tested_count": (
+                    self.alarm_controller.tested_count
+                    if self.alarm_controller is not None
+                    else 0
+                ),
+                "processed_count": self.processed_count,
+                "anomaly_count": self.anomaly_count,
+                "discarded_during_training_count": (
+                    self.discarded_during_training_count
+                ),
+                "schema_mismatch_count": self.schema_mismatch_count,
+                "training_error": self.training_error,
+                "config": self.config,
+                "service_id": service_id,
+                "schema_signature": self.schema_signature,
+            }
 
-            timestamp = int(time.time())
-            checkpoint_name = f"{service_id}_{self.processed_count}_{timestamp}.pkl"
-            checkpoint_path = f"{checkpoint_dir}/{checkpoint_name}"
-            checkpoint_data = pickle.dumps(
-                {
-                    "strategy": "static_baseline",
-                    "static_state": self.state.value,
-                    "training_buffer": self.training_buffer,
-                    "calibration_buffer": self.calibration_buffer,
-                    "feature_keys": self.feature_keys,
-                    "conformal_detector": self.conformal_detector,
-                    "alarm_controller": self.alarm_controller,
-                    "alarm_count": (
-                        self.alarm_controller.alarm_count
-                        if self.alarm_controller is not None
-                        else 0
-                    ),
-                    "tested_count": (
-                        self.alarm_controller.tested_count
-                        if self.alarm_controller is not None
-                        else 0
-                    ),
-                    "processed_count": self.processed_count,
-                    "anomaly_count": self.anomaly_count,
-                    "discarded_during_training_count": (
-                        self.discarded_during_training_count
-                    ),
-                    "schema_mismatch_count": self.schema_mismatch_count,
-                    "training_error": self.training_error,
-                    "config": self.config,
-                    "service_id": service_id,
-                    "schema_signature": self.schema_signature,
-                }
+            checkpoint_path = checkpoint_manager.save(
+                checkpoint_data,
+                processed_count=self.processed_count,
             )
-
-            with open(checkpoint_path, "wb") as f:
-                f.write(checkpoint_data)
-
-            signature = _sign_checkpoint_data(checkpoint_data)
-            if signature:
-                with open(checkpoint_path + ".sig", "w") as f:
-                    f.write(signature)
-                self.logger.info(
-                    "Static conformal checkpoint saved with signature: %s",
-                    checkpoint_path,
-                )
-            else:
-                self.logger.info(
-                    "Static conformal checkpoint saved (unsigned): %s",
-                    checkpoint_path,
-                )
+            self.logger.info(
+                "Static conformal checkpoint saved atomically: %s",
+                checkpoint_path,
+            )
         except Exception as exc:
             self.logger.error(
                 "event=radar.static_conformal_checkpoint_save_failed error=%s",
@@ -1620,8 +981,8 @@ class ResilientAnomalyDetector:
 
     def __init__(
         self,
-        primary_service: AnomalyDetectionService,
-        fallback_service: Optional[AnomalyDetectionService] = None,
+        primary_service: Any,
+        fallback_service: Optional[Any] = None,
     ):
         self.primary_service = primary_service
         self.fallback_service = fallback_service
@@ -1685,41 +1046,13 @@ class ResilientAnomalyDetector:
                 result.context["fallback_reason"] = reason
                 result.context["model_used"] = "fallback"
                 return result
-            # Simple statistical fallback
+            # Diagnostic fallback only. A fallback score is not calibrated and
+            # must never be promoted to conformal evidence or an alarm.
             score = self._simple_statistical_anomaly_score(data)
-            if not hasattr(self.primary_service, "_evaluate_moving_window_heuristic"):
-                return AnomalyResult(
-                    anomaly_score=score,
-                    is_anomaly=False,
-                    severity="unknown",
-                    timestamp=datetime.now(timezone.utc),
-                    model_info={"model_used": "statistical"},
-                    raw_data=data,
-                    topic=topic,
-                    charger_id=charger_id,
-                    context={
-                        "fallback_reason": reason,
-                        "model_used": "statistical",
-                        "service_state": ServiceState.DEGRADED.value,
-                    },
-                )
-
-            heuristic_context = self.primary_service._evaluate_moving_window_heuristic(
-                score, model_ready=True
-            )
-            if not heuristic_context.get("triggered", False) and bool(
-                heuristic_context.get("model_ready", True)
-            ):
-                self.primary_service.score_window.append(score)
-                heuristic_context["reference_count_after"] = len(
-                    self.primary_service.score_window
-                )
             return AnomalyResult(
                 anomaly_score=score,
-                is_anomaly=bool(heuristic_context.get("triggered", False)),
-                severity=self.primary_service._calculate_heuristic_severity(
-                    heuristic_context
-                ),
+                is_anomaly=False,
+                severity="unknown",
                 timestamp=datetime.now(timezone.utc),
                 model_info={"model_used": "statistical"},
                 raw_data=data,
@@ -1729,7 +1062,6 @@ class ResilientAnomalyDetector:
                     "fallback_reason": reason,
                     "model_used": "statistical",
                     "service_state": ServiceState.DEGRADED.value,
-                    "score_window": heuristic_context,
                 },
             )
 
@@ -1830,6 +1162,11 @@ class ResilientAnomalyDetector:
 
     def get_health_info(self) -> Dict[str, Any]:
         """Get health information"""
+        refresh_background_state = getattr(
+            self.primary_service, "refresh_background_state", None
+        )
+        if callable(refresh_background_state):
+            refresh_background_state()
         return {
             "state": self.state.value,
             "circuit_breaker_open": self.circuit_breaker_open,

@@ -4,6 +4,7 @@ import pytest
 
 from off_key_core.utils.mqtt_topics import (
     TopicMetadataExtractor,
+    mqtt_topic_filters_overlap,
     normalize_mqtt_topic_filters,
     validate_mqtt_topic_filter,
 )
@@ -95,3 +96,43 @@ def test_rejects_invalid_monitoring_topic_filter_shapes(topic):
             require_charger_prefix=True,
             require_telemetry_topic=True,
         )
+
+
+@pytest.mark.parametrize(
+    ("left", "right", "expected"),
+    [
+        (
+            "charger/+/live-telemetry/#",
+            "charger/A/live-telemetry/L1",
+            True,
+        ),
+        (
+            "charger/A/live-telemetry/+",
+            "charger/A/live-telemetry/L1",
+            True,
+        ),
+        (
+            "charger/A/live-telemetry/#",
+            "charger/A/live-telemetry",
+            True,
+        ),
+        (
+            "charger/A/live-telemetry/L1",
+            "charger/B/live-telemetry/L1",
+            False,
+        ),
+        (
+            "charger/A/telemetry/L1",
+            "charger/A/live-telemetry/L1",
+            False,
+        ),
+        (
+            "charger/A/live-telemetry/L1",
+            "charger/A/live-telemetry/L1/phase",
+            False,
+        ),
+    ],
+)
+def test_detects_mqtt_filter_intersections(left, right, expected):
+    assert mqtt_topic_filters_overlap(left, right) is expected
+    assert mqtt_topic_filters_overlap(right, left) is expected

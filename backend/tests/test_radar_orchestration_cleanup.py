@@ -323,7 +323,7 @@ async def test_get_docker_status_and_labels_prefers_service_path():
             "Spec": {
                 "Labels": {
                     "radar_model_type": "knn",
-                    "monitoring_strategy": "adaptive_stream",
+                    "monitoring_strategy": "static_baseline",
                 }
             }
         },
@@ -339,7 +339,7 @@ async def test_get_docker_status_and_labels_prefers_service_path():
     assert status == "exited"
     assert labels == {
         "radar_model_type": "knn",
-        "monitoring_strategy": "adaptive_stream",
+        "monitoring_strategy": "static_baseline",
     }
     fake_docker.client.services.get.assert_called_once_with("ctr-1")
     fake_docker.client.containers.get.assert_not_called()
@@ -354,7 +354,7 @@ async def test_get_docker_status_and_labels_returns_no_tasks_from_service():
             "Spec": {
                 "Labels": {
                     "radar_model_type": "knn",
-                    "monitoring_strategy": "adaptive_stream",
+                    "monitoring_strategy": "static_baseline",
                 }
             }
         },
@@ -370,7 +370,7 @@ async def test_get_docker_status_and_labels_returns_no_tasks_from_service():
     assert status == "no_tasks"
     assert labels == {
         "radar_model_type": "knn",
-        "monitoring_strategy": "adaptive_stream",
+        "monitoring_strategy": "static_baseline",
     }
     fake_docker.client.services.get.assert_called_once_with("ctr-1")
     fake_docker.client.containers.get.assert_not_called()
@@ -721,7 +721,7 @@ async def test_get_radar_service_resolves_by_container_id(monkeypatch):
         attrs={
             "Config": {
                 "Labels": {
-                    "monitoring_strategy": "adaptive_stream",
+                    "monitoring_strategy": "static_baseline",
                     "radar_model_type": "knn",
                 }
             }
@@ -744,7 +744,7 @@ async def test_get_radar_service_resolves_by_container_id(monkeypatch):
     assert detail["id"] == "svc-1"
     assert detail["container_name"] == "radar-static"
     assert detail["docker_status"] == "running"
-    assert detail["monitoring_strategy"] == "adaptive_stream"
+    assert detail["monitoring_strategy"] == "static_baseline"
     assert detail["model_type"] == "knn"
     assert fake_docker.client.containers.get.call_count >= 1
     assert container.reload.call_count >= 1
@@ -769,7 +769,7 @@ async def test_get_radar_service_resolves_by_container_name(monkeypatch):
 
     container = MagicMock(
         status="running",
-        attrs={"Config": {"Labels": {"monitoring_strategy": "adaptive_stream"}}},
+        attrs={"Config": {"Labels": {"monitoring_strategy": "static_baseline"}}},
         reload=MagicMock(),
     )
     fake_docker.client.services.get = MagicMock(
@@ -788,7 +788,7 @@ async def test_get_radar_service_resolves_by_container_name(monkeypatch):
     assert detail["container_id"] == "ctr-2"
     assert detail["container_name"] == "radar-static-name"
     assert detail["docker_status"] == "running"
-    assert detail["monitoring_strategy"] == "adaptive_stream"
+    assert detail["monitoring_strategy"] == "static_baseline"
     assert detail["model_type"] is None
     assert fake_docker.client.containers.get.call_count >= 1
 
@@ -1039,9 +1039,9 @@ async def test_create_radar_service_removes_workload_when_db_commit_fails(
     service._build_radar_environment = MagicMock(
         return_value={
             "SERVICE_ID": "service-1",
-            "RADAR_SUBSCRIPTION_TOPICS": "charger/+/live-telemetry/#",
-            "RADAR_MONITORING_STRATEGY": "adaptive_stream",
-            "RADAR_MODEL_TYPE": "knn",
+            "RADAR_SUBSCRIPTION_TOPICS": "charger/charger-1/live-telemetry/sine",
+            "RADAR_MONITORING_STRATEGY": "static_baseline",
+            "RADAR_MODEL_TYPE": "pyod_iforest",
         }
     )
     service._create_radar_workload = AsyncMock(return_value=workload)
@@ -1051,7 +1051,7 @@ async def test_create_radar_service_removes_workload_when_db_commit_fails(
     with pytest.raises(RuntimeError, match="commit failed"):
         await service.create_radar_service(
             container_name="radar-duplicate",
-            mqtt_topics=["charger/+/live-telemetry/#"],
+            mqtt_topics=["charger/charger-1/live-telemetry/sine"],
             model_type="knn",
         )
 
@@ -1070,7 +1070,7 @@ async def test_existing_active_service_with_missing_workload_is_recreated(
         id="old-svc",
         container_id="missing-workload",
         container_name="radar-stale",
-        mqtt_topic=["charger/+/live-telemetry/#"],
+        mqtt_topic=["charger/charger-1/live-telemetry/sine"],
         status=True,
         operational_status={},
         operational_stage="starting",
@@ -1080,8 +1080,15 @@ async def test_existing_active_service_with_missing_workload_is_recreated(
     query_result.scalars.return_value.first.return_value = db_row
 
     session = AsyncMock()
+    ownership_result = MagicMock()
+    ownership_result.scalars.return_value.all.return_value = []
     session.execute = AsyncMock(
-        side_effect=[query_result, MagicMock(rowcount=0), MagicMock(rowcount=1)]
+        side_effect=[
+            ownership_result,
+            query_result,
+            MagicMock(rowcount=0),
+            MagicMock(rowcount=1),
+        ]
     )
     session.add = MagicMock()
     session.commit = AsyncMock()
@@ -1090,9 +1097,9 @@ async def test_existing_active_service_with_missing_workload_is_recreated(
     service._build_radar_environment = MagicMock(
         return_value={
             "SERVICE_ID": "service-1",
-            "RADAR_SUBSCRIPTION_TOPICS": "charger/+/live-telemetry/#",
-            "RADAR_MONITORING_STRATEGY": "adaptive_stream",
-            "RADAR_MODEL_TYPE": "knn",
+            "RADAR_SUBSCRIPTION_TOPICS": "charger/charger-1/live-telemetry/sine",
+            "RADAR_MONITORING_STRATEGY": "static_baseline",
+            "RADAR_MODEL_TYPE": "pyod_iforest",
         }
     )
     service._get_docker_status_and_labels = AsyncMock(return_value=("not_found", {}))
@@ -1103,8 +1110,8 @@ async def test_existing_active_service_with_missing_workload_is_recreated(
 
     created = await service.create_radar_service(
         container_name="radar-stale",
-        mqtt_topics=["charger/+/live-telemetry/#"],
-        model_type="knn",
+        mqtt_topics=["charger/charger-1/live-telemetry/sine"],
+        model_type="pyod_iforest",
     )
 
     assert created.container_name == "radar-stale"
@@ -1124,7 +1131,7 @@ async def test_existing_active_service_rejects_config_fingerprint_mismatch(
         id="svc-existing",
         container_id="workload-1",
         container_name="radar-existing",
-        mqtt_topic=["charger/+/live-telemetry/#"],
+        mqtt_topic=["charger/charger-1/live-telemetry/sine"],
         status=True,
     )
     query_result = MagicMock()
@@ -1137,8 +1144,8 @@ async def test_existing_active_service_rejects_config_fingerprint_mismatch(
     service._build_radar_environment = MagicMock(
         return_value={
             "SERVICE_ID": "service-1",
-            "RADAR_SUBSCRIPTION_TOPICS": "charger/+/live-telemetry/#",
-            "RADAR_MONITORING_STRATEGY": "adaptive_stream",
+            "RADAR_SUBSCRIPTION_TOPICS": "charger/charger-1/live-telemetry/sine",
+            "RADAR_MONITORING_STRATEGY": "static_baseline",
             "RADAR_MODEL_TYPE": "knn",
         }
     )
@@ -1149,7 +1156,7 @@ async def test_existing_active_service_rejects_config_fingerprint_mismatch(
     with pytest.raises(ValueError, match="different RADAR configuration"):
         await service.create_radar_service(
             container_name="radar-existing",
-            mqtt_topics=["charger/+/live-telemetry/#"],
+            mqtt_topics=["charger/charger-1/live-telemetry/sine"],
             model_type="knn",
         )
 

@@ -1,10 +1,9 @@
 from fastapi import APIRouter, HTTPException, Query, Request, Response
 from typing import List, Dict, Optional, Any
-from pydantic import BaseModel, Field, field_validator
-from off_key_core.utils.mqtt_topics import normalize_mqtt_topic_filters
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+from off_key_core.utils.mqtt_topics import normalize_static_monitoring_topics
 
 from off_key_core.schemas.radar import (
-    AdaptiveStreamConfig,
     MonitoringStrategy,
     PerformanceConfig,
     StaticBaselineConfig,
@@ -45,7 +44,7 @@ def _normalize_models_for_gateway(
             "name": model.get("name"),
             "description": model.get("description", ""),
             "family": model["family"],
-            "strategy": model.get("strategy", "adaptive_stream"),
+            "strategy": model.get("strategy", "static_baseline"),
             "complexity": model.get("complexity", "unknown"),
             "memory_usage": model.get("memory_usage", "unknown"),
             "parameters": model.get("parameter_schema", model.get("parameters", {})),
@@ -57,40 +56,9 @@ def _normalize_models_for_gateway(
     return normalized
 
 
-def _normalize_preprocessors_for_gateway(
-    preprocessors_from_tactic: List[Dict[str, Any]],
-) -> Dict[str, Dict[str, Any]]:
-    """
-    Normalize TACTIC preprocessor list into gateway's existing
-    dictionary response shape.
-
-    Data source stays TACTIC; only the transport shape is adapted for consumers.
-    """
-    normalized: Dict[str, Dict[str, Any]] = {}
-    for preprocessor in preprocessors_from_tactic:
-        model_type = preprocessor.get("model_type")
-        if not model_type:
-            continue
-
-        normalized[model_type] = {
-            "name": preprocessor.get("name"),
-            "description": preprocessor.get("description", ""),
-            "family": preprocessor["family"],
-            "parameters": preprocessor.get(
-                "parameter_schema",
-                preprocessor.get("parameters", {}),
-            ),
-            "default_parameters": preprocessor.get("default_parameters", {}),
-            "version": preprocessor.get("version"),
-            "requires_special_handling": preprocessor.get(
-                "requires_special_handling", False
-            ),
-        }
-
-    return normalized
-
-
 class MonitoringServiceConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     container_name: str = Field(
         ..., description="Name for the monitoring service container"
     )
@@ -99,33 +67,23 @@ class MonitoringServiceConfig(BaseModel):
     )
     mqtt_topics: List[str] = Field(..., description="List of MQTT topics to monitor")
     strategy: MonitoringStrategy = Field(
-        default="adaptive_stream",
-        description="Monitoring strategy: static_baseline or adaptive_stream",
+        default="static_baseline",
+        description="Static baseline monitoring strategy",
     )
     model_type: str = Field(
-        default="knn",
+        default="pyod_iforest",
         description="Legacy/effective ML model type for the selected strategy",
     )
     model_params: Optional[Dict[str, Any]] = Field(
         default=None, description="Model-specific parameters"
     )
-    preprocessing_steps: Optional[List[Dict[str, Any]]] = Field(
-        default=None, description="Ordered preprocessing steps applied before the model"
-    )
     performance_config: Optional["PerformanceConfig"] = Field(
         default=None,
-        description=(
-            "Performance and heuristic settings "
-            "(reference window/min-samples/tail-alpha, sensor strategy)"
-        ),
+        description=("Sensor alignment and runtime settings"),
     )
     static_baseline_config: Optional["StaticBaselineConfig"] = Field(
         default=None,
         description="Static baseline conformal detector settings",
-    )
-    adaptive_stream_config: Optional["AdaptiveStreamConfig"] = Field(
-        default=None,
-        description="Adaptive/non-static stream detector settings",
     )
     requirements: Optional[List[str]] = Field(
         None, description="List of pip packages to install"
@@ -137,11 +95,7 @@ class MonitoringServiceConfig(BaseModel):
     @field_validator("mqtt_topics")
     @classmethod
     def validate_mqtt_topics(cls, value: List[str]) -> List[str]:
-        return normalize_mqtt_topic_filters(
-            value,
-            require_charger_prefix=True,
-            require_telemetry_topic=True,
-        )
+        return normalize_static_monitoring_topics(value)
 
 
 class ServiceResponse(BaseModel):
@@ -158,58 +112,31 @@ MonitoringServiceConfig.model_rebuild()
 def _resolve_effective_start_config(
     config: MonitoringServiceConfig,
 ) -> Dict[str, Any]:
-    """Resolve new strategy-specific config while preserving legacy payloads."""
+    """Resolve the static monitoring configuration."""
     performance_config = config.performance_config
     model_type = config.model_type
     model_params = config.model_params or {}
-    preprocessing_steps = config.preprocessing_steps or []
-    resolved_static_baseline_config = None
-    resolved_adaptive_stream_config = None
-
-    if config.strategy == "static_baseline":
-        static_config = config.static_baseline_config or StaticBaselineConfig(
-            model_type=model_type,
-            model_params=model_params,
-        )
-        model_type = static_config.model_type
-        model_params = static_config.model_params
-        preprocessing_steps = []
-        resolved_static_baseline_config = static_config
-    elif config.adaptive_stream_config:
-        adaptive_config = config.adaptive_stream_config
-        effective_performance_config = (
-            performance_config or adaptive_config.performance_config
-        )
-        model_type = adaptive_config.model_type
-        model_params = adaptive_config.model_params
-        preprocessing_steps = adaptive_config.preprocessing_steps
-        performance_config = effective_performance_config
-        resolved_adaptive_stream_config = adaptive_config.model_copy(
-            update={"performance_config": effective_performance_config}
-        )
+    static_config = config.static_baseline_config or StaticBaselineConfig(
+        model_type=model_type,
+        model_params=model_params,
+    )
+    model_type = static_config.model_type
+    model_params = static_config.model_params
 
     return {
         "strategy": config.strategy,
         "model_type": model_type,
         "model_params": model_params,
-        "preprocessing_steps": preprocessing_steps,
         "performance_config": (
             performance_config.model_dump(exclude_none=True)
             if performance_config
             else None
         ),
         "static_baseline_config": (
-            resolved_static_baseline_config.model_dump(
+            static_config.model_dump(
                 exclude_none=True,
-                exclude={"calibration_fraction", "fdr_config"},
+                exclude={"calibration_fraction"},
             )
-            if resolved_static_baseline_config
-            else None
-        ),
-        "adaptive_stream_config": (
-            resolved_adaptive_stream_config.model_dump(exclude_none=True)
-            if resolved_adaptive_stream_config
-            else None
         ),
     }
 
@@ -242,6 +169,27 @@ async def list_services(
         )
 
 
+@router.get("/evidence", response_model=List[Dict[str, Any]])
+@shared_limit_fetch
+async def get_monitoring_evidence(
+    request: Request,
+    charger_id: str,
+    telemetry_type: Optional[str] = None,
+    limit: int = Query(default=2000, ge=1, le=10000),
+):
+    try:
+        return await tactic.get_monitoring_evidence(
+            charger_id=charger_id,
+            telemetry_type=telemetry_type,
+            limit=limit,
+        )
+    except TacticError as error:
+        raise HTTPException(
+            status_code=error.status or 502,
+            detail=_get_tactic_error_detail(error),
+        )
+
+
 @router.post("/start", response_model=ServiceResponse)
 @shared_limit_execute
 async def start_monitoring_service(
@@ -260,12 +208,9 @@ async def start_monitoring_service(
                 strategy=effective_config["strategy"],
                 model_type=effective_config["model_type"],
                 model_params=effective_config["model_params"],
-                preprocessing_steps=effective_config["preprocessing_steps"],
                 mqtt_config=None,
-                anomaly_thresholds=None,
                 performance_config=effective_config["performance_config"],
                 static_baseline_config=effective_config["static_baseline_config"],
-                adaptive_stream_config=effective_config["adaptive_stream_config"],
             )
         else:
             raise HTTPException(
@@ -457,30 +402,4 @@ async def list_available_models_endpoint(
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to get available models: {str(e)}"
-        )
-
-
-@router.get("/preprocessors", response_model=Dict[str, Any])
-@shared_limit_fetch
-async def list_available_preprocessors_endpoint(request: Request, response: Response):
-    """List available preprocessing steps and their parameters.
-
-    Examples: standard scaler, PCA.
-
-    Response is cacheable for 5 minutes since preprocessor definitions rarely change.
-    """
-    # Enable client-side caching - preprocessors rarely change
-    response.headers["Cache-Control"] = "public, max-age=300"
-    try:
-        preprocessors = await tactic.list_available_preprocessors()
-        return _normalize_preprocessors_for_gateway(preprocessors)
-    except TacticError as e:
-        raise HTTPException(
-            status_code=e.status or 502,
-            detail=_get_tactic_error_detail(e),
-        )
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to get available preprocessors: {str(e)}",
         )

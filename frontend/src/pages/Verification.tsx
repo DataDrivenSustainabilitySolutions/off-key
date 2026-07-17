@@ -77,7 +77,7 @@ const VerificationContent: React.FC<{ token: string | null }> = ({ token }) => {
                             Register Again
                         </Button>
                     </Link>
-                    <p className="text-sm text-gray-600">
+                    <p className="text-sm text-muted-foreground">
                         Need help? Contact support
                     </p>
                 </div>

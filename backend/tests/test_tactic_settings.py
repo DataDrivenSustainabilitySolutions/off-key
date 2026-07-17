@@ -15,13 +15,12 @@ def test_split_constraints_parses_csv():
     assert settings._parse_default_constraints() == ["node.role == worker", "rack==1"]
 
 
-def test_threshold_ordering_validation():
-    with pytest.raises(ValueError):
-        RadarDefaultsConfig(
-            anomaly_threshold_medium=0.9,
-            anomaly_threshold_high=0.5,
-            anomaly_threshold_critical=0.7,
-        )
+def test_radar_defaults_normalize_names_without_classifying_family():
+    assert RadarDefaultsConfig(model_type="PYOD_IFOREST").model_type == "pyod_iforest"
+    assert RadarDefaultsConfig(model_type="CUSTOM_STATIC").model_type == "custom_static"
+
+    with pytest.raises(ValueError, match="must not be empty"):
+        RadarDefaultsConfig(model_type="  ")
 
 
 def test_sensor_key_strategy_validation():
@@ -38,24 +37,13 @@ def test_sensor_key_strategy_validation():
         RadarDefaultsConfig(alignment_mode="invalid")
 
 
-def test_heuristic_window_validation():
-    with pytest.raises(ValueError, match="heuristic_min_samples must be <="):
-        RadarDefaultsConfig(heuristic_window_size=20, heuristic_min_samples=25)
-
-
-def test_tactic_settings_expose_heuristic_and_freshness_defaults():
+def test_tactic_settings_expose_static_alignment_defaults():
     settings = TacticSettings(
-        TACTIC_RADAR_DEFAULT_HEURISTIC_WINDOW_SIZE=420,
-        TACTIC_RADAR_DEFAULT_HEURISTIC_MIN_SAMPLES=40,
-        TACTIC_RADAR_DEFAULT_HEURISTIC_TAIL_ALPHA=0.007,
         TACTIC_RADAR_DEFAULT_ALIGNMENT_MODE="strict_barrier",
         TACTIC_RADAR_DEFAULT_SENSOR_FRESHNESS_SECONDS=18.0,
     )
     defaults = settings.config.radar_defaults
 
-    assert defaults.heuristic_window_size == 420
-    assert defaults.heuristic_min_samples == 40
-    assert defaults.heuristic_tail_alpha == 0.007
     assert defaults.alignment_mode == "strict_barrier"
     assert defaults.sensor_freshness_seconds == 18.0
 

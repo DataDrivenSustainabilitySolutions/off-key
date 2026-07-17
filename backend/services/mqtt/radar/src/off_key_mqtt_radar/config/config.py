@@ -2,7 +2,6 @@
 Configuration for MQTT RADAR service
 """
 
-import os
 from functools import lru_cache
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -11,24 +10,16 @@ from dotenv import load_dotenv
 from pathlib import Path
 
 from off_key_core.config.validation import validate_environment as _validate_environment
-from off_key_core.schemas.radar import AdaptiveStreamConfig, StaticBaselineConfig
+from off_key_core.schemas.radar import StaticBaselineConfig
+from off_key_core.utils.mqtt_topics import normalize_static_monitoring_topics
 
 SENSOR_KEY_STRATEGIES = {"full_hierarchy", "top_level", "leaf"}
-MONITORING_STRATEGIES = {"static_baseline", "adaptive_stream"}
+MONITORING_STRATEGIES = {"static_baseline"}
 # strict_barrier is the only implemented alignment mode. It enforces that all
 # sensors in a subscription window must be present before the model is triggered.
 # This constant is not a user-selectable enum; it exists so the validator can
 # produce a clear error message if a caller passes an unsupported value.
 STRICT_ALIGNMENT_MODE = "strict_barrier"
-ADAPTIVE_PERFORMANCE_ENV_FIELDS = {
-    "heuristic_enabled": "RADAR_HEURISTIC_ENABLED",
-    "heuristic_window_size": "RADAR_HEURISTIC_WINDOW_SIZE",
-    "heuristic_min_samples": "RADAR_HEURISTIC_MIN_SAMPLES",
-    "heuristic_tail_alpha": "RADAR_HEURISTIC_TAIL_ALPHA",
-    "alignment_mode": "RADAR_ALIGNMENT_MODE",
-    "sensor_key_strategy": "RADAR_SENSOR_KEY_STRATEGY",
-    "sensor_freshness_seconds": "RADAR_SENSOR_FRESHNESS_SECONDS",
-}
 
 
 def _normalize_sensor_key_strategy(value: str, field_name: str) -> str:
@@ -74,28 +65,16 @@ class AnomalyDetectionConfig(BaseModel):
 
     model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
-    strategy: str = "adaptive_stream"
-    model_type: str = "isolation_forest"  # isolation_forest, adaptive_svm, knn
+    strategy: str = "static_baseline"
+    model_type: str = "pyod_iforest"
     model_params: Dict[str, Any] = Field(default_factory=dict)
-    preprocessing_steps: List[Dict[str, Any]] = Field(default_factory=list)
     static_baseline_config: StaticBaselineConfig = Field(
         default_factory=StaticBaselineConfig
-    )
-    adaptive_stream_config: AdaptiveStreamConfig = Field(
-        default_factory=AdaptiveStreamConfig
     )
     subscription_topics: List[str] = Field(default_factory=list)
     sensor_key_strategy: str = "full_hierarchy"
     sensor_freshness_seconds: float = Field(default=30.0, gt=0.0)
     alignment_mode: str = "strict_barrier"
-
-    thresholds: Dict[str, float] = Field(
-        default_factory=lambda: {"medium": 0.6, "high": 0.8, "critical": 0.9}
-    )
-    heuristic_enabled: bool = True
-    heuristic_window_size: int = Field(default=300, ge=3)
-    heuristic_min_samples: int = Field(default=30, ge=2)
-    heuristic_tail_alpha: float = Field(default=0.005, gt=0.0, lt=1.0)
 
     memory_limit_mb: int = 1000
     checkpoint_interval: int = 10000
@@ -124,48 +103,17 @@ class AnomalyDetectionConfig(BaseModel):
         """Validate alignment mode used by state cache and persistence semantics."""
         return _normalize_alignment_mode(value, "alignment_mode")
 
-    @model_validator(mode="before")
-    @classmethod
-    def populate_adaptive_stream_config(cls, data: Any) -> Any:
-        """Preserve top-level adaptive model fields when nested config is omitted."""
-        if not isinstance(data, dict):
-            return data
-        if data.get("adaptive_stream_config") is not None:
-            return data
-
-        return {
-            **data,
-            "adaptive_stream_config": {
-                "model_type": data.get("model_type", "isolation_forest"),
-                "model_params": data.get("model_params", {}),
-                "preprocessing_steps": data.get("preprocessing_steps", []),
-            },
-        }
-
     @model_validator(mode="after")
     def validate_model_configuration(self) -> Self:
-        """Validate model_params and preprocessing_steps against registry schemas.
+        """Validate static model parameters against the registry schema.
 
         This ensures invalid configurations fail fast at startup rather than
         during model instantiation. Validation is pure - no mutation.
         """
-        from ..tactic_client import (
-            validate_model_params,
-            validate_preprocessing_steps,
-        )
+        from ..tactic_client import validate_model_params
 
-        effective_model_type = self.model_type
-        effective_model_params = self.model_params
-        effective_preprocessing_steps = self.preprocessing_steps
-        if self.strategy == "static_baseline":
-            effective_model_type = self.static_baseline_config.model_type
-            effective_model_params = self.static_baseline_config.model_params
-        else:
-            effective_model_type = self.adaptive_stream_config.model_type
-            effective_model_params = self.adaptive_stream_config.model_params
-            effective_preprocessing_steps = (
-                self.adaptive_stream_config.preprocessing_steps
-            )
+        effective_model_type = self.static_baseline_config.model_type
+        effective_model_params = self.static_baseline_config.model_params
 
         # Validate model parameters against the registry schema (raises if invalid)
         try:
@@ -175,56 +123,7 @@ class AnomalyDetectionConfig(BaseModel):
                 f"Invalid model parameters for '{effective_model_type}': {e}"
             ) from e
 
-        # Validate preprocessing steps (raises if invalid)
-        try:
-            validate_preprocessing_steps(effective_preprocessing_steps)
-        except ValueError as e:
-            raise ValueError(f"Invalid preprocessing configuration: {e}") from e
-
-        if self.heuristic_min_samples > self.heuristic_window_size:
-            raise ValueError(
-                "heuristic_min_samples must be less than or equal to "
-                "heuristic_window_size"
-            )
-
         return self
-
-    @classmethod
-    def create_normalized(
-        cls,
-        model_type: str = "isolation_forest",
-        model_params: Optional[Dict[str, Any]] = None,
-        preprocessing_steps: Optional[List[Dict[str, Any]]] = None,
-        **kwargs,
-    ) -> "AnomalyDetectionConfig":
-        """Factory that normalizes params before creating instance.
-
-        Use this when you want default values applied and parameters
-        normalized according to the registry schemas.
-
-        Args:
-            model_type: Model type identifier
-            model_params: Raw model parameters (will be normalized)
-            preprocessing_steps: Raw preprocessing steps (will be normalized)
-            **kwargs: Other AnomalyDetectionConfig fields
-
-        Returns:
-            AnomalyDetectionConfig with normalized parameters
-        """
-        from ..tactic_client import (
-            validate_model_params,
-            validate_preprocessing_steps,
-        )
-
-        normalized_params = validate_model_params(model_type, model_params or {})
-        normalized_steps = validate_preprocessing_steps(preprocessing_steps or [])
-
-        return cls(
-            model_type=model_type,
-            model_params=normalized_params,
-            preprocessing_steps=normalized_steps,
-            **kwargs,
-        )
 
 
 class MQTTRadarConfig(BaseModel):
@@ -245,7 +144,7 @@ class MQTTRadarConfig(BaseModel):
 
     # Subscription settings
     subscription_topics: List[str] = Field(
-        default_factory=lambda: ["charger/+/live-telemetry/#"]
+        default_factory=lambda: ["charger/charger-sim-1/live-telemetry/sine"]
     )
     subscription_qos: int = 0
     sensor_key_strategy: str = "full_hierarchy"
@@ -274,23 +173,12 @@ class MQTTRadarConfig(BaseModel):
     memory_limit_mb: int = 1000
 
     # Anomaly Detection
-    strategy: str = "adaptive_stream"
-    model_type: str = "isolation_forest"
+    strategy: str = "static_baseline"
+    model_type: str = "pyod_iforest"
     model_params: Dict[str, Any] = Field(default_factory=dict)
-    preprocessing_steps: List[Dict[str, Any]] = Field(default_factory=list)
     static_baseline_config: StaticBaselineConfig = Field(
         default_factory=StaticBaselineConfig
     )
-    adaptive_stream_config: AdaptiveStreamConfig = Field(
-        default_factory=AdaptiveStreamConfig
-    )
-    thresholds: Dict[str, float] = Field(
-        default_factory=lambda: {"medium": 0.6, "high": 0.8, "critical": 0.9}
-    )
-    heuristic_enabled: bool = True
-    heuristic_window_size: int = Field(default=300, ge=3)
-    heuristic_min_samples: int = Field(default=30, ge=2)
-    heuristic_tail_alpha: float = Field(default=0.005, gt=0.0, lt=1.0)
     batch_size: int = 100
     batch_timeout: float = 1.0
     checkpoint_interval: int = 10000
@@ -300,6 +188,12 @@ class MQTTRadarConfig(BaseModel):
     def validate_sensor_key_strategy(cls, value: str) -> str:
         """Validate feature-key strategy used by topic parsing."""
         return _normalize_sensor_key_strategy(value, "sensor_key_strategy")
+
+    @field_validator("subscription_topics")
+    @classmethod
+    def validate_subscription_topics(cls, value: List[str]) -> List[str]:
+        """Keep the runtime feature schema concrete and single-charger."""
+        return normalize_static_monitoring_topics(value)
 
     @field_validator("strategy")
     @classmethod
@@ -311,16 +205,6 @@ class MQTTRadarConfig(BaseModel):
     def validate_alignment_mode(cls, value: str) -> str:
         """Validate multivariate alignment strategy."""
         return _normalize_alignment_mode(value, "alignment_mode")
-
-    @model_validator(mode="after")
-    def validate_heuristic_window(self) -> Self:
-        """Validate moving-window heuristic configuration."""
-        if self.heuristic_min_samples > self.heuristic_window_size:
-            raise ValueError(
-                "heuristic_min_samples must be less than or equal to "
-                "heuristic_window_size"
-            )
-        return self
 
 
 class RadarSettings(BaseSettings):
@@ -342,7 +226,9 @@ class RadarSettings(BaseSettings):
     RADAR_MQTT_API_KEY: str = ""
 
     # Topics
-    RADAR_SUBSCRIPTION_TOPICS: str = "charger/+/live-telemetry/#"  # Comma-separated
+    RADAR_SUBSCRIPTION_TOPICS: str = (
+        "charger/charger-sim-1/live-telemetry/sine"  # Comma-separated
+    )
     RADAR_SUBSCRIPTION_QOS: int = 0
     RADAR_SENSOR_KEY_STRATEGY: str = "full_hierarchy"
     RADAR_SENSOR_FRESHNESS_SECONDS: float = 30.0
@@ -354,19 +240,10 @@ class RadarSettings(BaseSettings):
     RADAR_DB_BATCH_TIMEOUT: float = 2.0
 
     # Anomaly Detection
-    RADAR_MONITORING_STRATEGY: str = "adaptive_stream"
-    RADAR_MODEL_TYPE: str = "isolation_forest"
+    RADAR_MONITORING_STRATEGY: str = "static_baseline"
+    RADAR_MODEL_TYPE: str = "pyod_iforest"
     RADAR_MODEL_PARAMS: Dict[str, Any] = Field(default_factory=dict)
-    RADAR_PREPROCESSING_STEPS: List[Dict[str, Any]] = Field(default_factory=list)
     RADAR_STATIC_BASELINE_CONFIG: Dict[str, Any] = Field(default_factory=dict)
-    RADAR_ADAPTIVE_STREAM_CONFIG: Dict[str, Any] = Field(default_factory=dict)
-    RADAR_ANOMALY_THRESHOLD_MEDIUM: float = 0.6
-    RADAR_ANOMALY_THRESHOLD_HIGH: float = 0.8
-    RADAR_ANOMALY_THRESHOLD_CRITICAL: float = 0.9
-    RADAR_HEURISTIC_ENABLED: bool = True
-    RADAR_HEURISTIC_WINDOW_SIZE: int = 300
-    RADAR_HEURISTIC_MIN_SAMPLES: int = 30
-    RADAR_HEURISTIC_TAIL_ALPHA: float = 0.005
 
     # Performance
     RADAR_BATCH_SIZE: int = 100
@@ -432,43 +309,15 @@ class RadarSettings(BaseSettings):
         """Create MQTTRadarConfig from environment settings"""
 
         # Parse topics
-        topics = [
-            topic.strip()
-            for topic in self.RADAR_SUBSCRIPTION_TOPICS.split(",")
-            if topic.strip()
-        ]
-        if not topics:
-            raise ValueError("At least one subscription topic is required")
+        topics = normalize_static_monitoring_topics(
+            [
+                topic.strip()
+                for topic in self.RADAR_SUBSCRIPTION_TOPICS.split(",")
+                if topic.strip()
+            ]
+        )
 
         strategy = self.RADAR_MONITORING_STRATEGY
-        adaptive_performance_config = {
-            "heuristic_enabled": self.RADAR_HEURISTIC_ENABLED,
-            "heuristic_window_size": self.RADAR_HEURISTIC_WINDOW_SIZE,
-            "heuristic_min_samples": self.RADAR_HEURISTIC_MIN_SAMPLES,
-            "heuristic_tail_alpha": self.RADAR_HEURISTIC_TAIL_ALPHA,
-            "alignment_mode": self.RADAR_ALIGNMENT_MODE,
-            "sensor_key_strategy": self.RADAR_SENSOR_KEY_STRATEGY,
-            "sensor_freshness_seconds": self.RADAR_SENSOR_FRESHNESS_SECONDS,
-        }
-        adaptive_payload = {
-            **self.RADAR_ADAPTIVE_STREAM_CONFIG,
-            "model_type": self.RADAR_ADAPTIVE_STREAM_CONFIG.get(
-                "model_type", self.RADAR_MODEL_TYPE
-            ),
-            "model_params": self.RADAR_ADAPTIVE_STREAM_CONFIG.get(
-                "model_params", self.RADAR_MODEL_PARAMS
-            ),
-            "preprocessing_steps": self.RADAR_ADAPTIVE_STREAM_CONFIG.get(
-                "preprocessing_steps", self.RADAR_PREPROCESSING_STEPS
-            ),
-        }
-        adaptive_payload["performance_config"] = {
-            **adaptive_performance_config,
-            **self.RADAR_ADAPTIVE_STREAM_CONFIG.get("performance_config", {}),
-            **self._explicit_adaptive_performance_config(),
-        }
-        adaptive_stream_config = AdaptiveStreamConfig(**adaptive_payload)
-
         static_baseline_config = StaticBaselineConfig(
             **{
                 **self.RADAR_STATIC_BASELINE_CONFIG,
@@ -480,33 +329,6 @@ class RadarSettings(BaseSettings):
                 ),
             }
         )
-        effective_model_type = self.RADAR_MODEL_TYPE
-        effective_model_params = self.RADAR_MODEL_PARAMS
-        effective_preprocessing_steps = self.RADAR_PREPROCESSING_STEPS
-        effective_sensor_key_strategy = self.RADAR_SENSOR_KEY_STRATEGY
-        effective_sensor_freshness_seconds = self.RADAR_SENSOR_FRESHNESS_SECONDS
-        effective_alignment_mode = self.RADAR_ALIGNMENT_MODE
-        effective_heuristic_enabled = self.RADAR_HEURISTIC_ENABLED
-        effective_heuristic_window_size = self.RADAR_HEURISTIC_WINDOW_SIZE
-        effective_heuristic_min_samples = self.RADAR_HEURISTIC_MIN_SAMPLES
-        effective_heuristic_tail_alpha = self.RADAR_HEURISTIC_TAIL_ALPHA
-        if strategy == "static_baseline":
-            effective_model_type = static_baseline_config.model_type
-            effective_model_params = static_baseline_config.model_params
-        else:
-            performance_config = adaptive_stream_config.performance_config
-            effective_model_type = adaptive_stream_config.model_type
-            effective_model_params = adaptive_stream_config.model_params
-            effective_preprocessing_steps = adaptive_stream_config.preprocessing_steps
-            effective_sensor_key_strategy = performance_config.sensor_key_strategy
-            effective_sensor_freshness_seconds = (
-                performance_config.sensor_freshness_seconds
-            )
-            effective_alignment_mode = performance_config.alignment_mode
-            effective_heuristic_enabled = performance_config.heuristic_enabled
-            effective_heuristic_window_size = performance_config.heuristic_window_size
-            effective_heuristic_min_samples = performance_config.heuristic_min_samples
-            effective_heuristic_tail_alpha = performance_config.heuristic_tail_alpha
 
         return MQTTRadarConfig(
             broker_host=self.RADAR_MQTT_BROKER_HOST,
@@ -518,9 +340,9 @@ class RadarSettings(BaseSettings):
             api_key=self.RADAR_MQTT_API_KEY,
             subscription_topics=topics,
             subscription_qos=self.RADAR_SUBSCRIPTION_QOS,
-            sensor_key_strategy=effective_sensor_key_strategy,
-            sensor_freshness_seconds=effective_sensor_freshness_seconds,
-            alignment_mode=effective_alignment_mode,
+            sensor_key_strategy=self.RADAR_SENSOR_KEY_STRATEGY,
+            sensor_freshness_seconds=self.RADAR_SENSOR_FRESHNESS_SECONDS,
+            alignment_mode=self.RADAR_ALIGNMENT_MODE,
             db_write_enabled=self.RADAR_DB_WRITE_ENABLED,
             db_batch_size=self.RADAR_DB_BATCH_SIZE,
             db_batch_timeout=self.RADAR_DB_BATCH_TIMEOUT,
@@ -529,33 +351,13 @@ class RadarSettings(BaseSettings):
             rate_limit_per_minute=self.RADAR_RATE_LIMIT_PER_MINUTE,
             memory_limit_mb=self.RADAR_MEMORY_LIMIT_MB,
             strategy=strategy,
-            model_type=effective_model_type,
-            model_params=effective_model_params,
+            model_type=static_baseline_config.model_type,
+            model_params=static_baseline_config.model_params,
             static_baseline_config=static_baseline_config,
-            adaptive_stream_config=adaptive_stream_config,
-            thresholds={
-                "medium": self.RADAR_ANOMALY_THRESHOLD_MEDIUM,
-                "high": self.RADAR_ANOMALY_THRESHOLD_HIGH,
-                "critical": self.RADAR_ANOMALY_THRESHOLD_CRITICAL,
-            },
-            heuristic_enabled=effective_heuristic_enabled,
-            heuristic_window_size=effective_heuristic_window_size,
-            heuristic_min_samples=effective_heuristic_min_samples,
-            heuristic_tail_alpha=effective_heuristic_tail_alpha,
             batch_size=self.RADAR_BATCH_SIZE,
             batch_timeout=self.RADAR_BATCH_TIMEOUT,
             checkpoint_interval=self.RADAR_CHECKPOINT_INTERVAL,
-            preprocessing_steps=effective_preprocessing_steps,
         )
-
-    def _explicit_adaptive_performance_config(self) -> Dict[str, Any]:
-        """Return adaptive performance values explicitly supplied at top level."""
-        fields_set = getattr(self, "model_fields_set", set())
-        return {
-            config_field: getattr(self, env_field)
-            for config_field, env_field in ADAPTIVE_PERFORMANCE_ENV_FIELDS.items()
-            if env_field in os.environ or env_field in fields_set
-        }
 
 
 @lru_cache(maxsize=1)

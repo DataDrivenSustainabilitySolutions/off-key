@@ -127,7 +127,7 @@ export default function AnomalyTable() {
           }
         />
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4">
           <MetricCard
             label="Anomalies"
             value={data.length}
@@ -164,7 +164,7 @@ export default function AnomalyTable() {
         >
           <Table>
             <TableHeader>
-              <TableRow className="bg-muted/40 hover:bg-muted/40">
+              <TableRow className="bg-muted/30 hover:bg-muted/30">
                 <TableHead>Charger ID</TableHead>
                 <TableHead>Timestamp</TableHead>
                 <TableHead>Telemetry Type</TableHead>

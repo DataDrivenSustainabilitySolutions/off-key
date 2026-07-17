@@ -23,6 +23,37 @@ To run the standalone RADAR service manually:
 docker compose --profile standalone-radar up -d mqtt-radar
 ```
 
+Standalone RADAR also requires concrete topics for one charger. Configure
+`RADAR_SUBSCRIPTION_TOPICS` as a comma-separated sensor list; wildcard topics are
+rejected because they cannot define a stable multivariate feature schema.
+
+### Monitoring architecture
+
+The monitoring UI presents two lanes:
+
+- **Static relationships** is the only executable lane. It is intended for an
+  aligned sensor set such as L1/L2/L3 whose dependency structure is expected to
+  remain stable.
+- **Temporally dependent streams** is a UI facade only. It deliberately has no
+  model catalog, preprocessing pipeline, API contract, or runtime implementation.
+
+A static service consumes consecutive, non-overlapping phases: baseline training,
+calibration, and online inference. Inference produces conformal p-values, converts
+them to power e-values, and feeds the native restarted-mixture martingale from
+`nonconform`. The Ville threshold is fixed at `100`; an anomaly is emitted only on
+a new threshold crossing.
+
+Every ready-phase inference is persisted in `monitoring_evidence`, including the
+p-value, finite or infinite e-value state, restarted martingale, threshold, sensor
+set, and alarm flag. The gateway exposes this evidence for telemetry charts, where
+the restarted martingale is drawn on a logarithmic secondary axis with the threshold
+overlay.
+
+An MQTT sensor stream may belong to only one active monitoring service. TACTIC
+serializes claims in PostgreSQL and rejects overlapping MQTT filters, including `+`
+and `#` wildcard overlap. Topic namespaces are literal: for example, `telemetry`
+and `live-telemetry` do not overlap.
+
 ### MQTT simulator profile (local only)
 
 `mqtt-simulator` is profile-gated (`mqtt-sim`) and is intended for local synthetic

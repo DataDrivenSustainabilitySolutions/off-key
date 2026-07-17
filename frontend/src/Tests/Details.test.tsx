@@ -7,6 +7,11 @@ import Details from "../pages/Details";
 const mockLoadAllTelemetryTypes = vi.fn(() => Promise.resolve());
 const mockLoadAnomalies = vi.fn(() => Promise.resolve());
 const mockUseFetch = vi.fn();
+const mockApiGet = vi.fn(() => Promise.resolve([]));
+
+vi.mock("../lib/api-client", () => ({
+  apiUtils: { get: (...args: unknown[]) => mockApiGet(...args) },
+}));
 
 vi.mock("../dataFetch/UseFetch", () => ({
   useFetch: () => mockUseFetch(),
@@ -35,6 +40,7 @@ function renderDetails() {
 describe("<Details />", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockApiGet.mockResolvedValue([]);
     mockUseFetch.mockReturnValue({
       allTelemetryMap: {
         "123": [

@@ -121,42 +121,6 @@ def test_static_detector_operational_stage_mapping(
     assert operational["is_stale"] is False
 
 
-def test_adaptive_detector_waits_until_first_processed_input():
-    monitor = HealthMonitor()
-    monitor.start_time = datetime.now()
-    monitor.set_components(
-        detector=_FakeDetector({"strategy": "adaptive_stream"}),
-        message_processor=_FakeMessageProcessor(
-            {
-                "message_count": 2,
-                "processed_message_count": 0,
-                "last_alignment_status": "waiting_for_all",
-            }
-        ),
-    )
-
-    waiting = monitor.get_health_status().metrics["operational_status"]
-    assert waiting["stage"] == "waiting_for_data"
-    assert waiting["message_count"] == 2
-    assert waiting["processed_message_count"] == 0
-    assert waiting["last_alignment_status"] == "waiting_for_all"
-
-    monitor.set_components(
-        detector=_FakeDetector({"strategy": "adaptive_stream"}),
-        message_processor=_FakeMessageProcessor(
-            {
-                "message_count": 3,
-                "processed_message_count": 1,
-                "last_alignment_status": "direct_pass_through",
-            }
-        ),
-    )
-
-    operational = monitor.get_health_status().metrics["operational_status"]
-    assert operational["stage"] == "operational"
-    assert operational["processed_message_count"] == 1
-
-
 @pytest.mark.asyncio
 async def test_database_writer_updates_service_operational_status(monkeypatch):
     class _Session:

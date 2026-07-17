@@ -4,8 +4,9 @@
  * Replaces Record<string, any> usage in Monitoring.tsx
  */
 
-// Parameter schema from model/preprocessor registry
-export type MonitoringStrategy = 'static_baseline' | 'adaptive_stream';
+// Parameter schema from the static model registry
+export type MonitoringStrategy = 'static_baseline';
+export type MonitoringLane = 'static' | 'dynamic';
 
 export interface ParameterSchema {
   type: 'string' | 'number' | 'integer' | 'boolean' | 'array' | 'object';
@@ -25,17 +26,8 @@ export interface ModelDefinition {
   description?: string;
   name?: string;
   family?: string;
-  strategy?: MonitoringStrategy;
+  strategy?: string;
   default_parameters?: Record<string, string | number | boolean | null>;
-}
-
-// Preprocessor definition from registry API
-export interface PreprocessorDefinition {
-  parameters: {
-    properties: Record<string, ParameterSchema>;
-    required?: string[];
-  };
-  description?: string;
 }
 
 // Active monitoring service
@@ -75,23 +67,12 @@ export interface ActiveService {
   status: boolean;
   operational_status: OperationalStatus;
   docker_status?: string;
-  monitoring_strategy?: MonitoringStrategy;
+  monitoring_strategy?: string;
   model_type?: string;
   created_at?: string;
 }
 
-// Preprocessing step configuration
-export interface PreprocessingStepConfig {
-  id?: string;
-  type: string;
-  params: Record<string, string | number | boolean>;
-}
-
 export interface MonitoringPerformanceConfig {
-  heuristic_enabled?: boolean;
-  heuristic_window_size?: number;
-  heuristic_min_samples?: number;
-  heuristic_tail_alpha?: number;
   alignment_mode: 'strict_barrier';
   sensor_key_strategy: 'full_hierarchy' | 'top_level' | 'leaf';
   sensor_freshness_seconds: number;
@@ -100,7 +81,7 @@ export interface MonitoringPerformanceConfig {
 export interface StaticMartingaleConfig {
   method: 'power';
   epsilon: number;
-  alpha: number;
+  restarted_ville_threshold: 100;
 }
 
 export interface StaticBaselineRequestConfig {
@@ -112,13 +93,6 @@ export interface StaticBaselineRequestConfig {
   martingale_config: StaticMartingaleConfig;
 }
 
-export interface AdaptiveStreamRequestConfig {
-  model_type: string;
-  model_params: Record<string, string | number | boolean>;
-  preprocessing_steps: PreprocessingStepConfig[];
-  performance_config: MonitoringPerformanceConfig;
-}
-
 // Anomaly detection request payload
 export interface AnomalyDetectionRequest {
   container_name: string;
@@ -127,10 +101,25 @@ export interface AnomalyDetectionRequest {
   strategy: MonitoringStrategy;
   model_type: string;
   model_params: Record<string, string | number | boolean>;
-  preprocessing_steps: PreprocessingStepConfig[];
   performance_config: MonitoringPerformanceConfig;
-  static_baseline_config?: StaticBaselineRequestConfig;
-  adaptive_stream_config?: AdaptiveStreamRequestConfig;
+  static_baseline_config: StaticBaselineRequestConfig;
+}
+
+export interface MonitoringEvidence {
+  service_id: string;
+  timestamp: string;
+  sequence_number: number;
+  charger_id: string;
+  sensor_set: string[];
+  p_value: number;
+  e_value: number | null;
+  e_value_is_infinite: boolean;
+  log_e_value: number | null;
+  restarted_martingale: number | null;
+  restarted_martingale_is_infinite: boolean;
+  log_restarted_martingale: number | null;
+  threshold: number;
+  alarm: boolean;
 }
 
 // Model parameters (cleaned for API submission)

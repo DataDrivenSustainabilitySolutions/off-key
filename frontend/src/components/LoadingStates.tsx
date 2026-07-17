@@ -20,12 +20,12 @@ const CHART_SKELETON_BAR_HEIGHTS = [
 
 // Generic loading skeleton
 export const Skeleton: React.FC<{ className?: string }> = ({ className = '' }) => (
-  <div className={`animate-pulse bg-muted rounded ${className}`}></div>
+  <div className={`animate-pulse rounded-lg bg-muted ${className}`}></div>
 );
 
 // Chart loading skeleton
 export const ChartSkeleton: React.FC = () => (
-  <Card className="w-full h-80">
+  <Card className="h-80 w-full">
     <CardHeader>
       <Skeleton className="h-6 w-48" />
       <Skeleton className="h-4 w-32" />
@@ -128,7 +128,7 @@ export const LoadingSpinner: React.FC<{
   };
 
   return (
-    <Loader2 className={`animate-spin ${sizeClasses[size]} ${className}`} />
+    <Loader2 className={`animate-spin text-primary ${sizeClasses[size]} ${className}`} />
   );
 };
 
@@ -136,8 +136,8 @@ export const LoadingSpinner: React.FC<{
 export const FullPageLoading: React.FC<{ message?: string }> = ({
   message = 'Loading...'
 }) => (
-  <div className="min-h-screen flex items-center justify-center">
-    <div className="text-center space-y-4">
+  <div className="app-canvas flex min-h-screen items-center justify-center">
+    <div className="space-y-4 text-center">
       <LoadingSpinner size="lg" />
       <p className="text-muted-foreground">{message}</p>
     </div>
@@ -172,14 +172,14 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
   description,
   action,
 }) => (
-  <Card className="w-full">
-    <CardContent className="flex flex-col items-center justify-center py-12 text-center">
-      <div className="mb-4 text-muted-foreground">
-        {icon || <Database className="h-12 w-12" />}
+  <Card className="w-full border-dashed bg-card/70 shadow-none">
+    <CardContent className="flex flex-col items-center justify-center px-6 py-12 text-center">
+      <div className="mb-4 flex size-11 items-center justify-center rounded-xl border border-border/70 bg-muted/45 text-muted-foreground [&_svg]:size-5">
+        {icon || <Database />}
       </div>
-      <h3 className="text-lg font-semibold mb-2">{title}</h3>
+      <h3 className="mb-2 text-base font-semibold">{title}</h3>
       {description && (
-        <p className="text-muted-foreground mb-4 max-w-sm">{description}</p>
+        <p className="mb-4 max-w-sm text-sm leading-6 text-muted-foreground">{description}</p>
       )}
       {action && (
         <Button onClick={action.onClick} variant="outline">
@@ -199,7 +199,7 @@ export const NoDataFound: React.FC<{
   onRefresh
 }) => (
   <EmptyState
-    icon={<Database className="h-12 w-12" />}
+    icon={<Database />}
     title={message}
     description="There's no data available for the selected criteria. Try adjusting your filters or check back later."
     action={onRefresh ? {
@@ -212,7 +212,7 @@ export const NoDataFound: React.FC<{
 // No anomalies found
 export const NoAnomaliesFound: React.FC<{ onRefresh?: () => void }> = ({ onRefresh }) => (
   <EmptyState
-    icon={<AlertCircle className="h-12 w-12" />}
+    icon={<AlertCircle />}
     title="No anomalies detected"
     description="No anomalies have been detected for the selected time period. This is good news!"
     action={onRefresh ? {
@@ -225,7 +225,7 @@ export const NoAnomaliesFound: React.FC<{ onRefresh?: () => void }> = ({ onRefre
 // No charts available
 export const NoChartsAvailable: React.FC<{ onRefresh?: () => void }> = ({ onRefresh }) => (
   <EmptyState
-    icon={<BarChart3 className="h-12 w-12" />}
+    icon={<BarChart3 />}
     title="No chart data available"
     description="Unable to display charts. Data may still be loading or unavailable."
     action={onRefresh ? {
@@ -238,7 +238,7 @@ export const NoChartsAvailable: React.FC<{ onRefresh?: () => void }> = ({ onRefr
 // Connection error
 export const ConnectionError: React.FC<{ onRetry?: () => void }> = ({ onRetry }) => (
   <EmptyState
-    icon={<Wifi className="h-12 w-12" />}
+    icon={<Wifi />}
     title="Connection error"
     description="Unable to connect to the server. Please check your internet connection and try again."
     action={onRetry ? {

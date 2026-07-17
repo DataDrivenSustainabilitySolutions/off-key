@@ -135,7 +135,7 @@ export default function ChargerTable() {
           description="Monitor charger availability, last contact, and favorites from a single operational view."
         />
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4">
           <MetricCard label="Total" value={statusCounts.all} helper="Known chargers" />
           <MetricCard
             label="Online"

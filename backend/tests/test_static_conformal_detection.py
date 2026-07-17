@@ -10,6 +10,7 @@ from off_key_core.schemas.radar import StaticBaselineConfig, StaticMartingaleCon
 from off_key_mqtt_radar.config.config import AnomalyDetectionConfig
 from off_key_mqtt_radar.config.runtime import clear_radar_runtime_settings_cache
 from off_key_mqtt_radar.detector import (
+    ResilientAnomalyDetector,
     RestartedMartingaleAlarmController,
     StaticConformalDetectionService,
     StaticConformalState,
@@ -22,6 +23,14 @@ class FakeConformalDetector:
 
     def compute_p_values(self, _matrix):
         return [self.p_value]
+
+
+class FakeMalformedConformalDetector:
+    def __init__(self, p_values):
+        self.p_values = p_values
+
+    def compute_p_values(self, _matrix):
+        return self.p_values
 
 
 class FakeLegacyController:
@@ -85,25 +94,17 @@ def _static_config(
         "validate_model_params",
         lambda _model_type, params=None: params or {},
     )
-    monkeypatch.setattr(
-        tactic_client,
-        "validate_preprocessing_steps",
-        lambda steps=None: steps or [],
-    )
-
     model_params = model_params or {"n_estimators": 100}
     return AnomalyDetectionConfig(
         strategy="static_baseline",
         model_type=model_type,
         model_params=model_params,
-        preprocessing_steps=[],
         static_baseline_config=StaticBaselineConfig(
             model_type=model_type,
             model_params=model_params,
             training_window_size=training_window_size,
             calibration_window_size=calibration_window_size,
-            martingale_config=martingale_config
-            or StaticMartingaleConfig(alpha=0.9, epsilon=0.5),
+            martingale_config=martingale_config or StaticMartingaleConfig(epsilon=0.5),
         ),
         checkpoint_interval=100000,
     )
@@ -112,6 +113,7 @@ def _static_config(
 def test_static_conformal_collects_calibrates_trains_then_detects(monkeypatch):
     config = _static_config(monkeypatch)
     service = StaticConformalDetectionService(config)
+    service._checkpoint_model = lambda: None
     executor = ControlledExecutor()
     service._training_executor = executor
 
@@ -186,17 +188,72 @@ def test_static_conformal_martingale_ignores_non_crossing_p_values(monkeypatch):
     assert static_context["tested_count"] == 1
 
 
-def test_restarted_martingale_controller_alpha_spends_after_alarm():
-    controller = RestartedMartingaleAlarmController(alpha=0.9, epsilon=0.5)
+@pytest.mark.parametrize(
+    "p_values",
+    [[], [0.1, 0.2], [float("nan")], [-0.1], [1.1]],
+)
+def test_static_conformal_rejects_malformed_p_value_output(monkeypatch, p_values):
+    service = StaticConformalDetectionService(_static_config(monkeypatch))
+    service.conformal_detector = FakeMalformedConformalDetector(p_values)
 
-    first_threshold = controller.restarted_ville_threshold
+    with pytest.raises(ValueError, match="p-value"):
+        service._compute_p_value([1.0, 2.0])
+
+
+def test_static_health_poll_completes_finished_background_training(monkeypatch):
+    service = StaticConformalDetectionService(_static_config(monkeypatch))
+    executor = ControlledExecutor()
+    service._training_executor = executor
+    service._checkpoint_model = lambda: None
+    service.state = StaticConformalState.TRAINING
+    service._training_future = executor.future
+    executor.future.set_result(
+        (FakeConformalDetector(p_value=0.5), service._create_alarm_controller())
+    )
+
+    health_info = ResilientAnomalyDetector(service).get_health_info()
+
+    assert health_info["primary_service_stats"]["state"] == "ready"
+    assert service.state == StaticConformalState.READY
+    assert service._training_future is None
+
+
+def test_restarted_martingale_controller_uses_native_fixed_mixture():
+    controller = RestartedMartingaleAlarmController(epsilon=0.5)
+
     result = controller.update(0.000001)
+    repeated = controller.update(0.000001)
 
     assert result["alarm_fired"] is True
     assert result["alarm_count"] == 1
+    assert result["e_value"] == pytest.approx(500.0)
+    assert result["restarted_ville_threshold"] == 100.0
+    assert repeated["alarm_fired"] is False
+    assert repeated["alarm_active"] is True
     assert controller.alarm_count == 1
-    assert controller.tested_count == 1
-    assert controller.restarted_ville_threshold > first_threshold
+    assert controller.tested_count == 2
+    assert controller.restarted_ville_threshold == 100.0
+
+
+def test_restarted_martingale_controller_serializes_infinite_evidence_as_null():
+    controller = RestartedMartingaleAlarmController(epsilon=0.5)
+
+    result = controller.update(0.0)
+
+    assert result["e_value"] is None
+    assert result["e_value_is_infinite"] is True
+    assert result["restarted_martingale"] is None
+    assert result["restarted_martingale_is_infinite"] is True
+
+
+def test_restarted_martingale_controller_handles_finite_log_overflow():
+    controller = RestartedMartingaleAlarmController(epsilon=0.01)
+
+    result = controller.update(float.fromhex("0x0.0000000000001p-1022"))
+
+    assert result["log_e_value"] is not None
+    assert result["e_value"] is None
+    assert result["e_value_is_infinite"] is True
 
 
 def test_static_conformal_real_pyod_nonconform_training_reaches_ready(
@@ -208,7 +265,7 @@ def test_static_conformal_real_pyod_nonconform_training_reaches_ready(
     clear_radar_runtime_settings_cache()
     config = _static_config(
         monkeypatch,
-        martingale_config=StaticMartingaleConfig(alpha=0.01, epsilon=0.5),
+        martingale_config=StaticMartingaleConfig(epsilon=0.5),
         model_params={
             "contamination": 0.1,
         },
@@ -253,7 +310,7 @@ def test_static_conformal_real_pyod_nonconform_training_reaches_ready(
 def test_static_conformal_restores_ready_checkpoint(monkeypatch, tmp_path):
     config = _static_config(monkeypatch)
     alarm_controller = RestartedMartingaleAlarmController(
-        alpha=0.9, epsilon=0.5, alarm_count=2, tested_count=7
+        epsilon=0.5, alarm_count=2, tested_count=7
     )
     checkpoint = {
         "strategy": "static_baseline",
@@ -284,6 +341,45 @@ def test_static_conformal_restores_ready_checkpoint(monkeypatch, tmp_path):
     assert restored.feature_keys == ["L1", "L2"]
     assert restored.alarm_controller.alarm_count == 2
     assert restored.alarm_controller.tested_count == 7
+
+
+@pytest.mark.parametrize(
+    ("missing_key", "expected_message"),
+    [
+        ("feature_keys", "feature_keys"),
+        ("conformal_detector", "conformal_detector"),
+    ],
+)
+def test_static_conformal_rejects_incomplete_ready_checkpoint(
+    monkeypatch,
+    tmp_path,
+    missing_key,
+    expected_message,
+):
+    config = _static_config(monkeypatch)
+    checkpoint = {
+        "strategy": "static_baseline",
+        "static_state": "ready",
+        "training_buffer": [],
+        "calibration_buffer": [],
+        "feature_keys": ["L1", "L2"],
+        "conformal_detector": FakeConformalDetector(),
+        "alarm_controller": RestartedMartingaleAlarmController(epsilon=0.5),
+        "processed_count": 42,
+        "anomaly_count": 3,
+        "schema_signature": (
+            StaticConformalDetectionService._build_schema_signature_from_config(config)
+        ),
+    }
+    if missing_key == "feature_keys":
+        checkpoint[missing_key] = []
+    else:
+        checkpoint[missing_key] = None
+    checkpoint_path = tmp_path / f"missing-{missing_key}.pkl"
+    checkpoint_path.write_bytes(pickle.dumps(checkpoint))
+
+    with pytest.raises(ValueError, match=expected_message):
+        StaticConformalDetectionService.from_checkpoint(str(checkpoint_path), config)
 
 
 def test_static_conformal_legacy_checkpoint_gets_fresh_alarm_controller(
@@ -349,11 +445,6 @@ def test_static_conformal_uses_static_config_model_params(monkeypatch):
         )
         or params
         or {},
-    )
-    monkeypatch.setattr(
-        tactic_client,
-        "validate_preprocessing_steps",
-        lambda steps=None: steps or [],
     )
     config = AnomalyDetectionConfig(
         strategy="static_baseline",

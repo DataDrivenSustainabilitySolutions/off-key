@@ -16,20 +16,15 @@ from jsonschema.exceptions import ValidationError as JsonSchemaValidationError
 
 from off_key_core.db.models import ModelRegistry
 from off_key_core.db.base import get_engine
+from off_key_core.models import STATIC_MODEL_FAMILY, STATIC_MONITORING_STRATEGY
 
 from .schemas import (
-    IncrementalKNNParams,
-    OnlineIsolationForestParams,
-    AdaptiveSVMParams,
-    MondrianIsolationForestParams,
     PyODHBOSParams,
     PyODIsolationForestParams,
     PyODKNNParams,
     PyODLOFParams,
     PyODOCSVMParams,
     PyODPCAParams,
-    StandardScalerParams,
-    IncrementalPCAParams,
 )
 
 logger = logging.getLogger(__name__)
@@ -131,37 +126,12 @@ class ModelRegistryService:
                     f"Fix these model types and retry: {missing_types}"
                 )
 
-            self._normalize_legacy_import_paths(session)
             self._ensure_registry_populated(session)
             session.commit()
 
     def _ensure_registry_populated(self, session: Session) -> None:
         """Populate or update built-in registry entries idempotently."""
         self._populate_default_models(session)
-
-    @staticmethod
-    def _normalize_legacy_import_path(import_path: str) -> str:
-        return (
-            import_path.replace("onad.", "aberrant.", 1)
-            if import_path.startswith("onad.")
-            else import_path
-        )
-
-    def _normalize_legacy_import_paths(self, session: Session) -> None:
-        """Rewrite persisted model import paths from legacy onad.* to aberrant.*."""
-        changed = False
-        for model_entry in session.query(ModelRegistry).all():
-            import_paths = model_entry.import_paths or []
-            normalized = [
-                self._normalize_legacy_import_path(import_path)
-                for import_path in import_paths
-            ]
-            if normalized != import_paths:
-                model_entry.import_paths = normalized
-                changed = True
-
-        if changed:
-            logger.info("Normalized legacy onad import paths to aberrant namespace.")
 
     def _ensure_ready(self) -> None:
         if not self._initialized:
@@ -171,181 +141,91 @@ class ModelRegistryService:
             )
 
     def _populate_default_models(self, session: Session):
-        """Populate default model definitions."""
+        """Populate static defaults and retire the removed dynamic catalog."""
+        session.query(ModelRegistry).filter(
+            or_(
+                ModelRegistry.category != "model",
+                ModelRegistry.family.is_(None),
+                ModelRegistry.family != STATIC_MODEL_FAMILY,
+            )
+        ).update({ModelRegistry.is_active: False}, synchronize_session=False)
+
         default_models = [
-            # Distance-based Models
             {
-                "model_type": "knn",
+                "model_type": "pyod_iforest",
                 "category": "model",
-                "family": "distance",
-                "name": "Incremental K-Nearest Neighbors",
+                "family": STATIC_MODEL_FAMILY,
+                "name": "PyOD Isolation Forest",
                 "description": (
-                    "Incremental K-Nearest Neighbors for streaming anomaly detection"
-                ),
-                "complexity": "low",
-                "memory_usage": "medium",
-                "import_paths": ["aberrant.model.distance.knn.KNN"],
-                "parameter_schema": IncrementalKNNParams.model_json_schema(),
-                "default_parameters": IncrementalKNNParams().model_dump(),
-                "requires_special_handling": True,  # KNN needs similarity engine
-            },
-            # Forest-based Models
-            {
-                "model_type": "isolation_forest",
-                "category": "model",
-                "family": "forest",
-                "name": "Online Isolation Forest",
-                "description": (
-                    "Online Isolation Forest for streaming anomaly detection"
+                    "Static Isolation Forest wrapped by conformal p-values"
                 ),
                 "complexity": "medium",
                 "memory_usage": "medium",
-                "import_paths": ["aberrant.model.iforest.online.OnlineIsolationForest"],
-                "parameter_schema": OnlineIsolationForestParams.model_json_schema(),
-                "default_parameters": OnlineIsolationForestParams().model_dump(),
+                "import_paths": ["pyod.models.iforest.IForest"],
+                "parameter_schema": PyODIsolationForestParams.model_json_schema(),
+                "default_parameters": PyODIsolationForestParams().model_dump(),
             },
             {
-                "model_type": "mondrian_forest",
+                "model_type": "pyod_knn",
                 "category": "model",
-                "family": "forest",
-                "name": "Mondrian Forest",
-                "description": "Mondrian Forest - fast streaming anomaly detection",
-                "complexity": "low",
-                "memory_usage": "low",
-                "import_paths": ["aberrant.model.iforest.mondrian.MondrianForest"],
-                "parameter_schema": MondrianIsolationForestParams.model_json_schema(),
-                "default_parameters": MondrianIsolationForestParams().model_dump(),
+                "family": STATIC_MODEL_FAMILY,
+                "name": "PyOD KNN",
+                "description": "Static KNN detector wrapped by conformal p-values",
+                "complexity": "medium",
+                "memory_usage": "medium",
+                "import_paths": ["pyod.models.knn.KNN"],
+                "parameter_schema": PyODKNNParams.model_json_schema(),
+                "default_parameters": PyODKNNParams().model_dump(),
             },
-            # SVM-based Models
             {
-                "model_type": "adaptive_svm",
+                "model_type": "pyod_lof",
                 "category": "model",
-                "family": "svm",
-                "name": "Adaptive One-Class SVM",
-                "description": "Adaptive One-Class SVM with incremental kernel updates",
+                "family": STATIC_MODEL_FAMILY,
+                "name": "PyOD Local Outlier Factor",
+                "description": "Static LOF detector wrapped by conformal p-values",
+                "complexity": "medium",
+                "memory_usage": "medium",
+                "import_paths": ["pyod.models.lof.LOF"],
+                "parameter_schema": PyODLOFParams.model_json_schema(),
+                "default_parameters": PyODLOFParams().model_dump(),
+            },
+            {
+                "model_type": "pyod_ocsvm",
+                "category": "model",
+                "family": STATIC_MODEL_FAMILY,
+                "name": "PyOD One-Class SVM",
+                "description": ("Static OCSVM detector wrapped by conformal p-values"),
                 "complexity": "high",
-                "memory_usage": "high",
-                "import_paths": [
-                    "aberrant.model.svm.adaptive.IncrementalOneClassSVMAdaptiveKernel"
-                ],
-                "parameter_schema": AdaptiveSVMParams.model_json_schema(),
-                "default_parameters": AdaptiveSVMParams().model_dump(),
+                "memory_usage": "medium",
+                "import_paths": ["pyod.models.ocsvm.OCSVM"],
+                "parameter_schema": PyODOCSVMParams.model_json_schema(),
+                "default_parameters": PyODOCSVMParams().model_dump(),
             },
-            # Preprocessors
             {
-                "model_type": "standard_scaler",
-                "category": "preprocessor",
-                "family": "scaling",
-                "name": "Standard Scaler",
-                "description": (
-                    "Standardize features by removing mean and scaling to unit variance"
-                ),
+                "model_type": "pyod_hbos",
+                "category": "model",
+                "family": STATIC_MODEL_FAMILY,
+                "name": "PyOD HBOS",
+                "description": "Static HBOS detector wrapped by conformal p-values",
                 "complexity": "low",
                 "memory_usage": "low",
-                "import_paths": [
-                    "aberrant.transform.preprocessing.scaler.StandardScaler"
-                ],
-                "parameter_schema": StandardScalerParams.model_json_schema(),
-                "default_parameters": StandardScalerParams().model_dump(),
+                "import_paths": ["pyod.models.hbos.HBOS"],
+                "parameter_schema": PyODHBOSParams.model_json_schema(),
+                "default_parameters": PyODHBOSParams().model_dump(),
             },
             {
-                "model_type": "pca",
-                "category": "preprocessor",
-                "family": "projection",
-                "name": "Incremental PCA",
-                "description": (
-                    "Incremental PCA for dimensionality reduction on streams"
-                ),
+                "model_type": "pyod_pca",
+                "category": "model",
+                "family": STATIC_MODEL_FAMILY,
+                "name": "PyOD PCA",
+                "description": "Static PCA detector wrapped by conformal p-values",
                 "complexity": "medium",
                 "memory_usage": "medium",
-                "import_paths": [
-                    "aberrant.transform.projection.incremental_pca.IncrementalPCA"
-                ],
-                "parameter_schema": IncrementalPCAParams.model_json_schema(),
-                "default_parameters": IncrementalPCAParams().model_dump(),
+                "import_paths": ["pyod.models.pca.PCA"],
+                "parameter_schema": PyODPCAParams.model_json_schema(),
+                "default_parameters": PyODPCAParams().model_dump(),
             },
         ]
-
-        default_models.extend(
-            [
-                {
-                    "model_type": "pyod_iforest",
-                    "category": "model",
-                    "family": "static_pyod",
-                    "name": "PyOD Isolation Forest",
-                    "description": (
-                        "Static Isolation Forest wrapped by conformal p-values"
-                    ),
-                    "complexity": "medium",
-                    "memory_usage": "medium",
-                    "import_paths": ["pyod.models.iforest.IForest"],
-                    "parameter_schema": PyODIsolationForestParams.model_json_schema(),
-                    "default_parameters": PyODIsolationForestParams().model_dump(),
-                },
-                {
-                    "model_type": "pyod_knn",
-                    "category": "model",
-                    "family": "static_pyod",
-                    "name": "PyOD KNN",
-                    "description": "Static KNN detector wrapped by conformal p-values",
-                    "complexity": "medium",
-                    "memory_usage": "medium",
-                    "import_paths": ["pyod.models.knn.KNN"],
-                    "parameter_schema": PyODKNNParams.model_json_schema(),
-                    "default_parameters": PyODKNNParams().model_dump(),
-                },
-                {
-                    "model_type": "pyod_lof",
-                    "category": "model",
-                    "family": "static_pyod",
-                    "name": "PyOD Local Outlier Factor",
-                    "description": "Static LOF detector wrapped by conformal p-values",
-                    "complexity": "medium",
-                    "memory_usage": "medium",
-                    "import_paths": ["pyod.models.lof.LOF"],
-                    "parameter_schema": PyODLOFParams.model_json_schema(),
-                    "default_parameters": PyODLOFParams().model_dump(),
-                },
-                {
-                    "model_type": "pyod_ocsvm",
-                    "category": "model",
-                    "family": "static_pyod",
-                    "name": "PyOD One-Class SVM",
-                    "description": (
-                        "Static OCSVM detector wrapped by conformal p-values"
-                    ),
-                    "complexity": "high",
-                    "memory_usage": "medium",
-                    "import_paths": ["pyod.models.ocsvm.OCSVM"],
-                    "parameter_schema": PyODOCSVMParams.model_json_schema(),
-                    "default_parameters": PyODOCSVMParams().model_dump(),
-                },
-                {
-                    "model_type": "pyod_hbos",
-                    "category": "model",
-                    "family": "static_pyod",
-                    "name": "PyOD HBOS",
-                    "description": "Static HBOS detector wrapped by conformal p-values",
-                    "complexity": "low",
-                    "memory_usage": "low",
-                    "import_paths": ["pyod.models.hbos.HBOS"],
-                    "parameter_schema": PyODHBOSParams.model_json_schema(),
-                    "default_parameters": PyODHBOSParams().model_dump(),
-                },
-                {
-                    "model_type": "pyod_pca",
-                    "category": "model",
-                    "family": "static_pyod",
-                    "name": "PyOD PCA",
-                    "description": "Static PCA detector wrapped by conformal p-values",
-                    "complexity": "medium",
-                    "memory_usage": "medium",
-                    "import_paths": ["pyod.models.pca.PCA"],
-                    "parameter_schema": PyODPCAParams.model_json_schema(),
-                    "default_parameters": PyODPCAParams().model_dump(),
-                },
-            ]
-        )
 
         for model_data in default_models:
             existing = (
@@ -370,6 +250,7 @@ class ModelRegistryService:
                     and_(
                         ModelRegistry.is_active,
                         ModelRegistry.category == "model",
+                        ModelRegistry.family == STATIC_MODEL_FAMILY,
                     )
                 )
                 .all()
@@ -391,36 +272,6 @@ class ModelRegistryService:
                     "strategy": self._strategy_for_model(m),
                 }
                 for m in models
-            ]
-
-    def get_available_preprocessors(self) -> List[Dict[str, Any]]:
-        """Get all available preprocessors from database."""
-        self._ensure_ready()
-        with Session(get_engine()) as session:
-            preprocessors = (
-                session.query(ModelRegistry)
-                .filter(
-                    and_(
-                        ModelRegistry.is_active,
-                        ModelRegistry.category == "preprocessor",
-                    )
-                )
-                .all()
-            )
-
-            return [
-                {
-                    "model_type": p.model_type,
-                    "family": p.family,
-                    "name": p.name,
-                    "description": p.description,
-                    "import_paths": p.import_paths,
-                    "parameter_schema": p.parameter_schema,
-                    "default_parameters": p.default_parameters,
-                    "version": p.version,
-                    "requires_special_handling": p.requires_special_handling,
-                }
-                for p in preprocessors
             ]
 
     def get_model_class(self, model_type: str) -> Type:
@@ -460,66 +311,16 @@ class ModelRegistryService:
 
             return self._validate_params_with_schema(model, params)
 
-    def validate_preprocessing_steps(
-        self, steps: Optional[List[Dict[str, Any]]]
-    ) -> List[Dict[str, Any]]:
-        """Validate and normalize preprocessing steps against registry."""
-        self._ensure_ready()
-        if not steps:
-            return []
-
-        validated_steps = []
-        for step in steps:
-            if not isinstance(step, dict):
-                raise ValueError("Each preprocessing step must be an object")
-
-            step_type = step.get("type")
-            if not step_type:
-                raise ValueError("Each preprocessing step must include a 'type' field")
-
-            params = step.get("params") or {}
-            validated_params = self.validate_model_params(
-                step_type, params, category="preprocessor"
-            )
-            validated_steps.append({"type": step_type, "params": validated_params})
-
-        return validated_steps
-
     @staticmethod
     def _import_class(import_path: str) -> Type:
         module_path, class_name = import_path.rsplit(".", 1)
         module = importlib.import_module(module_path)
         return getattr(module, class_name)
 
-    def _create_knn_model(self, validated_params: Dict[str, Any]) -> Any:
-        """Create KNN model with FaissSimilaritySearchEngine."""
-        try:
-            FaissSimilaritySearchEngine = self._import_class(
-                "aberrant.utils.similar.faiss_engine.FaissSimilaritySearchEngine"
-            )
-            KNN = self._import_class("aberrant.model.distance.knn.KNN")
-        except (ImportError, AttributeError, ModuleNotFoundError) as e:
-            logger.error(f"Failed to import KNN dependencies: {e}")
-            raise ImportError(
-                "Cannot import KNN model. Ensure aberrant[faiss] is installed."
-            ) from e
-
-        params = validated_params.copy()
-        window_size = params.pop("window_size", 1000)
-        warm_up = params.pop("warm_up", 50)
-        k = params.get("k", 5)
-
-        similarity_engine = FaissSimilaritySearchEngine(
-            window_size=window_size,
-            warm_up=warm_up,
-        )
-
-        return KNN(k=k, similarity_engine=similarity_engine)
-
     def create_model_instance(
         self, model_type: str, params: Optional[Dict[str, Any]] = None
     ) -> Any:
-        """Create a model instance with validated parameters."""
+        """Reject in-process execution; RADAR owns all static model instances."""
         self._ensure_ready()
         with Session(get_engine()) as session:
             model = self._get_active_entry(session, model_type, category="model")
@@ -527,25 +328,16 @@ class ModelRegistryService:
                 raise ValueError(
                     self._format_missing_model_message(model_type, "model")
                 )
-
-            validated_params = self._validate_params_with_schema(model, params or {})
-            if self._is_radar_runtime_model(model):
-                raise ValueError(
-                    f"Model '{model_type}' is instantiated by the RADAR runtime. "
-                    "TACTIC validates its registry schema only."
-                )
-
-            return self._instantiate_tactic_runtime_model(model, validated_params)
+            self._validate_params_with_schema(model, params or {})
+            raise ValueError(
+                f"Model '{model_type}' is instantiated by the RADAR runtime. "
+                "TACTIC validates its registry schema only."
+            )
 
     def validate_model_instantiation(
         self, model_type: str, params: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
-        """Validate parameters and runtime ownership for a model.
-
-        Adaptive-stream models are instantiated in TACTIC as a dependency preflight.
-        Static PyOD models are intentionally not instantiated here because their
-        runtime dependencies and lifecycle belong to the RADAR service image.
-        """
+        """Validate static parameters without instantiating RADAR-owned models."""
         self._ensure_ready()
         with Session(get_engine()) as session:
             model = self._get_active_entry(session, model_type, category="model")
@@ -555,54 +347,21 @@ class ModelRegistryService:
                 )
 
             validated_params = self._validate_params_with_schema(model, params or {})
-            if self._is_radar_runtime_model(model):
-                return {
-                    "validated_parameters": validated_params,
-                    "instantiated": False,
-                    "runtime_owner": "radar",
-                }
-
-            self._instantiate_tactic_runtime_model(model, validated_params)
             return {
                 "validated_parameters": validated_params,
-                "instantiated": True,
-                "runtime_owner": "tactic",
+                "instantiated": False,
+                "runtime_owner": "radar",
             }
 
     @staticmethod
     def _format_missing_model_message(model_type: str, category: Optional[str]) -> str:
-        if category == "preprocessor":
-            return f"Unknown preprocessor type: '{model_type}'"
         if category == "model":
             return f"Unknown model type: '{model_type}'"
         return f"Unknown model type: '{model_type}'"
 
     @staticmethod
     def _strategy_for_model(model: ModelRegistry) -> str:
-        if str(model.family).lower() == "static_pyod" or str(
-            model.model_type
-        ).startswith("pyod_"):
-            return "static_baseline"
-        return "adaptive_stream"
-
-    @classmethod
-    def _is_radar_runtime_model(cls, model: ModelRegistry) -> bool:
-        return cls._strategy_for_model(model) == "static_baseline"
-
-    def _instantiate_tactic_runtime_model(
-        self, model: ModelRegistry, validated_params: Dict[str, Any]
-    ) -> Any:
-        model_type = model.model_type
-        if model.requires_special_handling:
-            if model_type == "knn":
-                return self._create_knn_model(validated_params)
-            raise ValueError(
-                f"Model '{model_type}' requires special handling but no handler "
-                "is registered."
-            )
-
-        model_class = self._import_model_class(model_type, model.import_paths)
-        return model_class(**validated_params)
+        return STATIC_MONITORING_STRATEGY
 
     @staticmethod
     def _get_active_entry(
@@ -611,6 +370,8 @@ class ModelRegistryService:
         query = session.query(ModelRegistry).filter(
             ModelRegistry.model_type == model_type,
             ModelRegistry.is_active,
+            ModelRegistry.category == "model",
+            ModelRegistry.family == STATIC_MODEL_FAMILY,
         )
         if category:
             query = query.filter(ModelRegistry.category == category)

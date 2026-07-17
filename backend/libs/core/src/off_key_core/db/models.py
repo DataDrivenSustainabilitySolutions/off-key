@@ -21,6 +21,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB
 
 from .base import Base
+from .table_contracts import monitoring_evidence_table
 from ..utils.enum import RoleEnum
 from ..config import get_retention_days
 from ..config.logs import logger
@@ -235,6 +236,47 @@ event.listen(
 )
 
 
+class MonitoringEvidence(Base):
+    """Per-inference conformal and e-process evidence for chart overlays."""
+
+    __table__ = monitoring_evidence_table(Base.metadata)
+
+
+event.listen(
+    MonitoringEvidence.__table__,
+    "after_create",
+    DDL(
+        "SELECT create_hypertable('monitoring_evidence', 'timestamp', "
+        "if_not_exists => true);"
+    ),
+)
+
+
+def _add_monitoring_evidence_retention_policy(target, connection, **kw):
+    connection.execute(
+        text(
+            f"""
+            SELECT add_retention_policy(
+                'monitoring_evidence',
+                INTERVAL '{_RETENTION_DAYS} days',
+                if_not_exists => true
+            );
+            """
+        )
+    )
+    logger.info(
+        "TimescaleDB retention policy set for 'monitoring_evidence': %s days",
+        _RETENTION_DAYS,
+    )
+
+
+event.listen(
+    MonitoringEvidence.__table__,
+    "after_create",
+    _add_monitoring_evidence_retention_policy,
+)
+
+
 class AnomalyIdentity(Base):
     __tablename__ = "anomaly_identity"
 
@@ -282,7 +324,7 @@ class ModelRegistry(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     model_type = Column(Text, unique=True, nullable=False, index=True)
-    category = Column(Text, nullable=False, index=True)  # 'model' or 'preprocessor'
+    category = Column(Text, nullable=False, index=True)  # currently 'model'
     family = Column(Text, nullable=False, index=True)  # 'forest', 'distance', etc.
 
     # Model metadata

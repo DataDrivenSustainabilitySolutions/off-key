@@ -30,7 +30,7 @@ export function AuthLayout({
 
   return (
     <AuthBackdrop contentClassName="max-w-md">
-      <Card className="w-full max-w-md p-6">
+      <Card className="w-full max-w-md gap-5 border-white/35 bg-card/95 pb-7 shadow-2xl shadow-black/10 backdrop-blur-xl dark:border-white/10">
         <CardHeader>
           <CardTitle
             className={cn("text-center text-2xl", titleClassName)}
@@ -39,7 +39,7 @@ export function AuthLayout({
             {title}
           </CardTitle>
         </CardHeader>
-        <CardContent className={contentClassName}>{children}</CardContent>
+        <CardContent className={cn("pb-0", contentClassName)}>{children}</CardContent>
       </Card>
     </AuthBackdrop>
   );

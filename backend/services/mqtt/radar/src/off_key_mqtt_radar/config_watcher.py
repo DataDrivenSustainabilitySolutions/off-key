@@ -342,16 +342,6 @@ class ConfigReloader:
             if hasattr(self.service, "memory_manager"):
                 self.service.memory_manager.max_memory_mb = new_config.memory_limit_mb
 
-        # Check for moving-window heuristic changes
-        heuristic_changed = (
-            old_config.heuristic_enabled != new_config.heuristic_enabled
-            or old_config.heuristic_window_size != new_config.heuristic_window_size
-            or old_config.heuristic_min_samples != new_config.heuristic_min_samples
-            or old_config.heuristic_tail_alpha != new_config.heuristic_tail_alpha
-        )
-        if heuristic_changed:
-            logger.info("Moving-window anomaly heuristic settings changed")
-
         if old_config.alignment_mode != new_config.alignment_mode:
             logger.info(
                 "Alignment mode changed: %s -> %s",

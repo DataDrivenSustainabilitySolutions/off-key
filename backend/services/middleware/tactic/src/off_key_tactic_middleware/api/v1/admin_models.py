@@ -5,9 +5,11 @@ Provides admin endpoints for dynamically adding, updating, and managing models.
 """
 
 import logging
-from typing import Any, Dict, List, Optional
+import re
+from typing import Any, Dict, List, Literal, Optional
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, Field, field_validator
+from off_key_core.models import STATIC_MODEL_FAMILY
 
 from ...domain import DomainError, ConflictError, NotFoundError, InfrastructureError
 from ...models.registry import ModelRegistryService
@@ -36,10 +38,12 @@ class CreateModelRequest(BaseModel):
     """Request to create a new model in registry."""
 
     model_type: str = Field(..., description="Unique model type identifier")
-    category: str = Field(..., description="'model' or 'preprocessor'")
+    category: Literal["model"] = Field(
+        default="model", description="Static model registry category"
+    )
     family: str = Field(
         ...,
-        description="Domain family (e.g., model: 'forest'; preprocessor: 'scaling')",
+        description="Static detector family",
     )
     name: str = Field(..., description="Human-readable model name")
     description: Optional[str] = Field(None, description="Model description")
@@ -57,20 +61,23 @@ class CreateModelRequest(BaseModel):
         default=False, description="Requires custom instantiation logic"
     )
 
-    @field_validator("category")
+    @field_validator("model_type")
     @classmethod
-    def validate_category(cls, value: str) -> str:
+    def validate_model_type(cls, value: str) -> str:
         normalized = value.strip().lower()
-        if normalized not in {"model", "preprocessor"}:
-            raise ValueError("category must be either 'model' or 'preprocessor'")
+        if not re.fullmatch(r"[a-z][a-z0-9_]*", normalized):
+            raise ValueError(
+                "model_type must start with a letter and contain only "
+                "lowercase letters, numbers, and underscores"
+            )
         return normalized
 
     @field_validator("family")
     @classmethod
     def validate_family(cls, value: str) -> str:
         normalized = value.strip().lower()
-        if not normalized:
-            raise ValueError("family must not be empty")
+        if normalized != STATIC_MODEL_FAMILY:
+            raise ValueError(f"family must be {STATIC_MODEL_FAMILY}")
         return normalized
 
 
@@ -81,7 +88,7 @@ class UpdateModelRequest(BaseModel):
     description: Optional[str] = Field(None, description="Model description")
     family: Optional[str] = Field(
         None,
-        description="Domain family (e.g., model: 'forest'; preprocessor: 'scaling')",
+        description="Static detector family",
     )
     complexity: Optional[str] = Field(None, description="Computational complexity")
     memory_usage: Optional[str] = Field(None, description="Memory usage level")
@@ -106,8 +113,8 @@ class UpdateModelRequest(BaseModel):
         if value is None:
             return value
         normalized = value.strip().lower()
-        if not normalized:
-            raise ValueError("family must not be empty")
+        if normalized != STATIC_MODEL_FAMILY:
+            raise ValueError(f"family must be {STATIC_MODEL_FAMILY}")
         return normalized
 
 

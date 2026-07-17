@@ -1,18 +1,13 @@
 import pytest
 from pydantic import ValidationError
 
+from off_key_core.schemas.radar import StaticBaselineConfig, StaticMartingaleConfig
 from off_key_mqtt_proxy.config.config import MQTTConfig, MQTTSettings
 from off_key_mqtt_radar.config.config import (
     AnomalyDetectionConfig,
     MQTTRadarConfig,
     RadarSettings,
 )
-from off_key_core.schemas.radar import (
-    FdrConfig,
-    StaticBaselineConfig,
-    StaticMartingaleConfig,
-)
-from off_key_tactic_middleware.models.schemas import AdaptiveSVMParams, PyODPCAParams
 
 
 def _base_mqtt_config() -> dict:
@@ -47,15 +42,9 @@ def _base_mqtt_config() -> dict:
 
 def test_mqtt_config_mutable_defaults_are_isolated():
     cfg_one = MQTTConfig(**_base_mqtt_config())
-    cfg_two = MQTTConfig(
-        **{
-            **_base_mqtt_config(),
-            "mqtt_api_key": "secret-key-456",
-        }
-    )
+    cfg_two = MQTTConfig(**{**_base_mqtt_config(), "mqtt_api_key": "secret-key-456"})
 
     cfg_one.bridge_topic_mapping["charger/+/telemetry"] = "radar/+/telemetry"
-
     assert cfg_two.bridge_topic_mapping == {}
 
 
@@ -63,16 +52,39 @@ def test_mqtt_radar_config_mutable_defaults_are_isolated():
     cfg_one = MQTTRadarConfig()
     cfg_two = MQTTRadarConfig()
 
-    cfg_one.thresholds["medium"] = 0.1
-    cfg_one.subscription_topics.append("charger/+/extra")
+    cfg_one.subscription_topics.append("charger/charger-sim-1/live-telemetry/cosine")
+    cfg_one.static_baseline_config.model_params["n_estimators"] = 8
 
-    assert cfg_two.thresholds["medium"] == 0.6
-    assert cfg_two.subscription_topics == ["charger/+/live-telemetry/#"]
+    assert cfg_two.subscription_topics == ["charger/charger-sim-1/live-telemetry/sine"]
+    assert cfg_two.static_baseline_config.model_params == {}
 
 
-def test_anomaly_detection_config_builds_adaptive_stream_config_from_top_level_fields(
-    monkeypatch,
-):
+@pytest.mark.parametrize(
+    "topics, message",
+    [
+        (["charger/+/live-telemetry/sine"], "concrete MQTT topics"),
+        (
+            [
+                "charger/charger-a/live-telemetry/sine",
+                "charger/charger-b/live-telemetry/cosine",
+            ],
+            "exactly one charger",
+        ),
+        (
+            [
+                "charger/charger-a/telemetry/sine",
+                "charger/charger-a/live-telemetry/sine",
+            ],
+            "same sensor path",
+        ),
+    ],
+)
+def test_mqtt_radar_config_rejects_ambiguous_static_sensor_assignments(topics, message):
+    with pytest.raises(ValidationError, match=message):
+        MQTTRadarConfig(subscription_topics=topics)
+
+
+def test_anomaly_detection_config_rejects_removed_adaptive_fields(monkeypatch):
     from off_key_mqtt_radar import tactic_client
 
     monkeypatch.setattr(
@@ -80,128 +92,12 @@ def test_anomaly_detection_config_builds_adaptive_stream_config_from_top_level_f
         "validate_model_params",
         lambda _model_type, params=None: params or {},
     )
-    monkeypatch.setattr(
-        tactic_client,
-        "validate_preprocessing_steps",
-        lambda steps=None: steps or [],
-    )
 
-    cfg = AnomalyDetectionConfig(
-        model_type="isolation_forest",
-        model_params={"num_trees": 50},
-        preprocessing_steps=[{"type": "standard_scaler", "params": {}}],
-    )
+    with pytest.raises(ValidationError, match="preprocessing_steps"):
+        AnomalyDetectionConfig(preprocessing_steps=[])
 
-    assert cfg.adaptive_stream_config.model_type == "isolation_forest"
-    assert cfg.adaptive_stream_config.model_params == {"num_trees": 50}
-    assert cfg.adaptive_stream_config.preprocessing_steps == [
-        {"type": "standard_scaler", "params": {}}
-    ]
-
-
-def test_radar_settings_parse_json_env_fields(monkeypatch):
-    monkeypatch.setenv(
-        "RADAR_MODEL_PARAMS",
-        '{"contamination": 0.02, "n_estimators": 250}',
-    )
-    monkeypatch.setenv(
-        "RADAR_PREPROCESSING_STEPS",
-        '[{"type": "moving_average", "params": {"window_size": 5}}]',
-    )
-
-    settings = RadarSettings()
-    cfg = settings.config
-
-    assert settings.RADAR_MODEL_PARAMS["n_estimators"] == 250
-    assert settings.RADAR_PREPROCESSING_STEPS[0]["type"] == "moving_average"
-    assert cfg.model_params["contamination"] == 0.02
-    assert cfg.preprocessing_steps[0]["params"]["window_size"] == 5
-
-
-def test_radar_settings_adaptive_stream_config_overrides_top_level(monkeypatch):
-    monkeypatch.setenv("RADAR_MONITORING_STRATEGY", "adaptive_stream")
-    monkeypatch.setenv("RADAR_MODEL_TYPE", "isolation_forest")
-    monkeypatch.setenv("RADAR_MODEL_PARAMS", '{"num_trees": 50}')
-    monkeypatch.setenv(
-        "RADAR_ADAPTIVE_STREAM_CONFIG",
-        """
-        {
-          "model_type": "knn",
-          "model_params": {"k": 7, "window_size": 400, "warm_up": 25},
-          "preprocessing_steps": [
-            {"type": "standard_scaler", "params": {}}
-          ],
-          "performance_config": {
-            "sensor_key_strategy": "leaf",
-            "sensor_freshness_seconds": 12.5,
-            "heuristic_window_size": 420,
-            "heuristic_min_samples": 40
-          }
-        }
-        """,
-    )
-
-    cfg = RadarSettings().config
-
-    assert cfg.strategy == "adaptive_stream"
-    assert cfg.model_type == "knn"
-    assert cfg.model_params == {"k": 7, "window_size": 400, "warm_up": 25}
-    assert cfg.preprocessing_steps == [{"type": "standard_scaler", "params": {}}]
-    assert cfg.sensor_key_strategy == "leaf"
-    assert cfg.sensor_freshness_seconds == 12.5
-    assert cfg.heuristic_window_size == 420
-    assert cfg.heuristic_min_samples == 40
-    assert cfg.adaptive_stream_config.model_type == "knn"
-    assert cfg.adaptive_stream_config.performance_config.sensor_key_strategy == "leaf"
-
-
-def test_radar_settings_explicit_performance_env_overrides_adaptive_config(
-    monkeypatch,
-):
-    monkeypatch.setenv("RADAR_MONITORING_STRATEGY", "adaptive_stream")
-    monkeypatch.setenv("RADAR_SENSOR_KEY_STRATEGY", "top_level")
-    monkeypatch.setenv("RADAR_SENSOR_FRESHNESS_SECONDS", "15.0")
-    monkeypatch.setenv(
-        "RADAR_ADAPTIVE_STREAM_CONFIG",
-        """
-        {
-          "model_type": "knn",
-          "model_params": {"k": 7, "window_size": 400, "warm_up": 25},
-          "performance_config": {
-            "sensor_key_strategy": "leaf",
-            "sensor_freshness_seconds": 45.0,
-            "heuristic_window_size": 420,
-            "heuristic_min_samples": 40
-          }
-        }
-        """,
-    )
-
-    cfg = RadarSettings().config
-
-    assert cfg.sensor_key_strategy == "top_level"
-    assert cfg.sensor_freshness_seconds == 15.0
-    assert cfg.heuristic_window_size == 420
-    assert cfg.adaptive_stream_config.performance_config.sensor_key_strategy == (
-        "top_level"
-    )
-    assert cfg.adaptive_stream_config.performance_config.sensor_freshness_seconds == (
-        15.0
-    )
-
-
-def test_radar_settings_reject_non_object_model_params(monkeypatch):
-    monkeypatch.setenv("RADAR_MODEL_PARAMS", '["not-a-mapping"]')
-
-    with pytest.raises(ValidationError):
-        RadarSettings()
-
-
-def test_radar_settings_parse_sensor_freshness_seconds(monkeypatch):
-    monkeypatch.setenv("RADAR_SENSOR_FRESHNESS_SECONDS", "12.5")
-    settings = RadarSettings()
-
-    assert settings.config.sensor_freshness_seconds == 12.5
+    with pytest.raises(ValidationError, match="static_baseline"):
+        AnomalyDetectionConfig(strategy="adaptive_stream")
 
 
 def test_radar_settings_parse_static_baseline_strategy(monkeypatch):
@@ -218,8 +114,8 @@ def test_radar_settings_parse_static_baseline_strategy(monkeypatch):
           "calibration_window_size": 80,
           "martingale_config": {
             "method": "power",
-            "alpha": 0.01,
-            "epsilon": 0.5
+            "epsilon": 0.5,
+            "restarted_ville_threshold": 100
           }
         }
         """,
@@ -232,11 +128,17 @@ def test_radar_settings_parse_static_baseline_strategy(monkeypatch):
     assert cfg.model_params["n_estimators"] == 128
     assert cfg.static_baseline_config.training_window_size == 240
     assert cfg.static_baseline_config.calibration_window_size == 80
-    assert cfg.static_baseline_config.martingale_config.alpha == 0.01
+    assert cfg.static_baseline_config.martingale_config.restarted_ville_threshold == 100
+
+
+def test_radar_settings_reject_adaptive_strategy(monkeypatch):
+    monkeypatch.setenv("RADAR_MONITORING_STRATEGY", "adaptive_stream")
+
+    with pytest.raises(ValidationError, match="static_baseline"):
+        RadarSettings()
 
 
 def test_radar_settings_static_config_is_effective_model_source(monkeypatch):
-    monkeypatch.setenv("RADAR_MONITORING_STRATEGY", "static_baseline")
     monkeypatch.setenv("RADAR_MODEL_TYPE", "pyod_iforest")
     monkeypatch.setenv("RADAR_MODEL_PARAMS", '{"n_estimators": 128}')
     monkeypatch.setenv(
@@ -251,63 +153,42 @@ def test_radar_settings_static_config_is_effective_model_source(monkeypatch):
     )
 
     cfg = RadarSettings().config
-
     assert cfg.model_type == "pyod_knn"
     assert cfg.model_params == {"n_neighbors": 7, "contamination": 0.08}
-    assert cfg.static_baseline_config.model_type == "pyod_knn"
 
 
-def test_static_baseline_fdr_requires_wealth_below_alpha():
-    with pytest.raises(ValidationError, match="wealth must be less than alpha"):
-        StaticBaselineConfig(fdr_config=FdrConfig(alpha=0.05, wealth=0.05, lambda_=0.5))
+def test_radar_settings_reject_non_object_model_params(monkeypatch):
+    monkeypatch.setenv("RADAR_MODEL_PARAMS", '["not-a-mapping"]')
+
+    with pytest.raises(ValidationError):
+        RadarSettings()
 
 
-def test_static_baseline_fdr_defaults_to_saffron():
-    config = FdrConfig()
-
-    assert config.method == "saffron"
-    assert config.alpha == 0.05
-    assert config.effective_threshold == 0.05
-
-
-def test_static_baseline_naive_fdr_uses_cutoff_without_saffron_wealth_rule():
-    config = FdrConfig(method="naive", cutoff=0.02, alpha=0.05, wealth=0.05)
-
-    assert config.method == "naive"
-    assert config.cutoff == 0.02
-    assert config.effective_threshold == 0.02
+def test_radar_settings_parse_sensor_freshness_seconds(monkeypatch):
+    monkeypatch.setenv("RADAR_SENSOR_FRESHNESS_SECONDS", "12.5")
+    assert RadarSettings().config.sensor_freshness_seconds == 12.5
 
 
 def test_static_baseline_legacy_calibration_fraction_sets_window_size():
     config = StaticBaselineConfig(training_window_size=100, calibration_fraction=0.25)
-
     assert config.calibration_window_size == 25
 
 
-def test_static_baseline_training_window_uses_default_calibration_fraction():
-    config = StaticBaselineConfig(training_window_size=240)
-
-    assert config.calibration_window_size == 72
-
-
-def test_static_baseline_martingale_defaults_to_power():
+def test_static_martingale_contract_is_native_and_fixed():
     config = StaticMartingaleConfig()
-
     assert config.method == "power"
-    assert config.alpha == 0.01
     assert config.epsilon == 0.5
+    assert config.restarted_ville_threshold == 100
+
+    with pytest.raises(ValidationError):
+        StaticMartingaleConfig(restarted_ville_threshold=50)
+    with pytest.raises(ValidationError, match="alpha"):
+        StaticMartingaleConfig(alpha=0.01)
 
 
-def test_model_registry_schema_defaults_keep_svm_fields_out_of_pyod_pca():
-    pca_defaults = PyODPCAParams().model_dump()
-    svm_defaults = AdaptiveSVMParams().model_dump()
-
-    assert "initial_gamma" not in pca_defaults
-    assert "buffer_size" not in pca_defaults
-    assert "sv_budget" not in pca_defaults
-    assert svm_defaults["initial_gamma"] == 1.0
-    assert svm_defaults["buffer_size"] == 200
-    assert svm_defaults["sv_budget"] == 100
+def test_static_baseline_rejects_removed_fdr_config():
+    with pytest.raises(ValidationError, match="fdr_config"):
+        StaticBaselineConfig(fdr_config={})
 
 
 def test_radar_settings_require_secure_mqtt_in_production(monkeypatch):
@@ -324,7 +205,6 @@ def test_radar_settings_allow_insecure_mqtt_in_development(monkeypatch):
     monkeypatch.setenv("RADAR_MQTT_USE_TLS", "false")
     monkeypatch.setenv("RADAR_MQTT_USE_AUTH", "false")
     settings = RadarSettings()
-
     assert settings.RADAR_MQTT_USE_TLS is False
     assert settings.RADAR_MQTT_USE_AUTH is False
 
@@ -369,7 +249,6 @@ def test_mqtt_settings_allow_insecure_mqtt_in_development(monkeypatch):
     monkeypatch.setenv("MQTT_USE_TLS", "false")
     monkeypatch.setenv("MQTT_USE_AUTH", "false")
     settings = MQTTSettings()
-
     assert settings.MQTT_USE_TLS is False
     assert settings.MQTT_USE_AUTH is False
 
@@ -385,7 +264,6 @@ def test_mqtt_settings_source_topics_store_normalized_value(monkeypatch):
     )
 
     settings = MQTTSettings()
-
     assert settings.MQTT_SOURCE_TOPICS == (
         "charger/+/live-telemetry/sine,charger/+/live-telemetry/cosine"
     )

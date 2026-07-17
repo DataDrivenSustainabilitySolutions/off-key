@@ -10,17 +10,19 @@ from typing import Any, Callable, Dict, List, Optional
 import docker
 from docker.types import RestartPolicy, ServiceMode, Resources
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, delete
+from sqlalchemy import select, delete, text
 
 from off_key_core.config.logs import logger
 from off_key_core.db.models import MonitoringService, MqttTopic
 from off_key_core.schemas.radar import (
-    AdaptiveStreamConfig,
-    PerformanceConfig,
     RadarOperationalStatus,
     StaticBaselineConfig,
 )
-from off_key_core.utils.mqtt_topics import normalize_mqtt_topic_filters
+from off_key_core.utils.mqtt_topics import (
+    mqtt_topic_filters_overlap,
+    normalize_mqtt_topic_filters,
+    normalize_static_monitoring_topics,
+)
 from ...models.registry import ModelRegistryService
 from ...facades.docker import (
     AsyncDocker,
@@ -60,17 +62,6 @@ _MEMORY_SIZE_MULTIPLIERS = {
     "mb": 1024 * 1024,
     "gb": 1024 * 1024 * 1024,
 }
-
-
-def _extract_adaptive_performance_config(values: Dict[str, Any]) -> Dict[str, Any]:
-    """Keep only fields owned by the shared adaptive performance schema."""
-    if not values:
-        return {}
-    return {
-        field_name: values[field_name]
-        for field_name in PerformanceConfig.model_fields
-        if field_name in values
-    }
 
 
 @lru_cache(maxsize=1)
@@ -140,15 +131,12 @@ class RadarOrchestrationService:
         self,
         container_name: str,
         mqtt_topics: List[str],
-        strategy: str = "adaptive_stream",
-        model_type: str = "isolation_forest",
+        strategy: str = "static_baseline",
+        model_type: str = "pyod_iforest",
         model_params: Optional[Dict[str, Any]] = None,
-        preprocessing_steps: Optional[List[Dict[str, Any]]] = None,
         mqtt_config: Optional[Dict[str, Any]] = None,
-        anomaly_thresholds: Optional[Dict[str, float]] = None,
         performance_config: Optional[Dict[str, Any]] = None,
         static_baseline_config: Optional[Dict[str, Any]] = None,
-        adaptive_stream_config: Optional[Dict[str, Any]] = None,
     ) -> MonitoringService:
         """
         Create and start a RADAR Docker service for anomaly detection.
@@ -157,24 +145,21 @@ class RadarOrchestrationService:
             container_name (str): Name for the Docker container
             mqtt_topics (List[str]): List of MQTT topics to monitor
             strategy (str): Monitoring strategy selected by the user
-            model_type (str): Type of ML model (isolation_forest, adaptive_svm, knn)
+            model_type (str): Static PyOD model type
             model_params (Dict, optional): Model-specific parameters
-            preprocessing_steps (List[Dict], optional): Preprocessing pipeline steps
             mqtt_config (Dict, optional): MQTT connection configuration
-            anomaly_thresholds (Dict, optional): Anomaly detection thresholds
             performance_config (Dict, optional): Performance and resource settings
             static_baseline_config (Dict, optional): Static conformal settings
-            adaptive_stream_config (Dict, optional): Adaptive stream settings
 
         Returns:
             MonitoringService: The created monitoring service database entry
         """
-        mqtt_topics = normalize_mqtt_topic_filters(
-            mqtt_topics,
-            require_charger_prefix=True,
-            require_telemetry_topic=True,
+        mqtt_topics = normalize_static_monitoring_topics(mqtt_topics)
+        strategy = (strategy or "static_baseline").strip().lower()
+        await self._assert_topics_available(
+            mqtt_topics=mqtt_topics,
+            container_name=container_name,
         )
-        strategy = (strategy or "adaptive_stream").strip().lower()
         db_service_id = str(uuid.uuid4())
         env_vars = self._build_radar_environment(
             service_id=db_service_id,
@@ -182,12 +167,9 @@ class RadarOrchestrationService:
             strategy=strategy,
             model_type=model_type,
             model_params=model_params or {},
-            preprocessing_steps=preprocessing_steps or [],
             mqtt_config=mqtt_config or {},
-            anomaly_thresholds=anomaly_thresholds or {},
             performance_config=performance_config or {},
             static_baseline_config=static_baseline_config or {},
-            adaptive_stream_config=adaptive_stream_config or {},
         )
         config_fingerprint = self._build_radar_config_fingerprint(env_vars)
 
@@ -249,6 +231,58 @@ class RadarOrchestrationService:
                 await self._remove_created_workload_after_failure(docker_workload)
             logger.error(f"Failed to create RADAR service: {e}")
             raise
+
+    async def _assert_topics_available(
+        self, *, mqtt_topics: List[str], container_name: str
+    ) -> None:
+        """Serialize claims and reject overlap with another active service."""
+        bind = getattr(self.session, "bind", None)
+        dialect_name = getattr(getattr(bind, "dialect", None), "name", None)
+        if dialect_name == "postgresql":
+            await self.session.execute(
+                text(
+                    "SELECT pg_advisory_xact_lock("
+                    "hashtext('off-key-radar-sensor-assignments'))"
+                )
+            )
+
+        active_services = await self._reconcile_active_topic_claims()
+        for active_service in active_services:
+            if active_service.container_name == container_name:
+                continue
+            active_topics = active_service.mqtt_topic or []
+            for requested_topic in mqtt_topics:
+                for active_topic in active_topics:
+                    if mqtt_topic_filters_overlap(requested_topic, str(active_topic)):
+                        raise ValueError(
+                            f"MQTT topic '{requested_topic}' overlaps active service "
+                            f"'{active_service.container_name}' topic "
+                            f"'{active_topic}'. A sensor stream can belong to only "
+                            "one monitoring service."
+                        )
+
+    async def _reconcile_active_topic_claims(self) -> list[MonitoringService]:
+        result = await self.session.execute(
+            select(MonitoringService).where(MonitoringService.status.is_(True))
+        )
+        claimants: list[MonitoringService] = []
+        reconciled = False
+        terminal_states = _FAILED_WORKLOAD_STATES | _STOPPED_WORKLOAD_STATES
+
+        for service in result.scalars().all():
+            docker_status, _ = await self._get_docker_status_and_labels(
+                getattr(service, "container_id", "") or ""
+            )
+            if docker_status in terminal_states:
+                service.status = False
+                self._apply_terminal_operational_status(service, docker_status)
+                reconciled = True
+                continue
+            claimants.append(service)
+
+        if reconciled:
+            await self.session.flush()
+        return claimants
 
     async def _resolve_existing_service_request(
         self,
@@ -380,12 +414,9 @@ class RadarOrchestrationService:
         strategy: str,
         model_type: str,
         model_params: Dict[str, Any],
-        preprocessing_steps: List[Dict[str, Any]],
         mqtt_config: Dict[str, Any],
-        anomaly_thresholds: Dict[str, float],
         performance_config: Dict[str, Any],
         static_baseline_config: Dict[str, Any],
-        adaptive_stream_config: Dict[str, Any],
     ) -> Dict[str, str]:
         """
         Build environment variables for RADAR service based on configuration.
@@ -393,75 +424,33 @@ class RadarOrchestrationService:
         Maps the input parameters to RADAR-specific environment variables using
         Pydantic configuration defaults.
         """
-        # Get RADAR defaults from configuration
+        strategy = (strategy or "static_baseline").strip().lower()
+        if strategy != "static_baseline":
+            raise ValueError(
+                "Invalid monitoring strategy. Only static_baseline can be started; "
+                "dynamic monitoring is not implemented."
+            )
+        # Resolve environment only after rejecting an unsupported lane.
         defaults = get_tactic_settings().config.radar_defaults
         runtime = get_radar_container_runtime_settings()
-        strategy = (strategy or "adaptive_stream").strip().lower()
-        if strategy not in {"static_baseline", "adaptive_stream"}:
-            raise ValueError(
-                "Invalid monitoring strategy. Expected static_baseline or "
-                "adaptive_stream."
-            )
 
-        if strategy == "static_baseline":
-            static_config = StaticBaselineConfig(
-                **{
-                    **static_baseline_config,
-                    "model_type": static_baseline_config.get(
-                        "model_type", model_type or "pyod_iforest"
-                    ),
-                    "model_params": static_baseline_config.get(
-                        "model_params", model_params or {}
-                    ),
-                }
-            )
-            model_type = static_config.model_type
-            model_params = static_config.model_params
-            preprocessing_steps = []
-            static_baseline_config = static_config.model_dump(
-                exclude_none=True,
-                exclude={"calibration_fraction", "fdr_config"},
-            )
-        else:
-            nested_performance_config = adaptive_stream_config.get("performance_config")
-            if nested_performance_config is None:
-                nested_performance_config = {}
-            if not isinstance(nested_performance_config, dict):
-                raise ValueError(
-                    "adaptive_stream_config.performance_config must be an object"
-                )
-
-            top_level_adaptive_performance = _extract_adaptive_performance_config(
-                performance_config
-            )
-            adaptive_payload = {
-                **adaptive_stream_config,
-                "model_type": adaptive_stream_config.get(
-                    "model_type", model_type or defaults.model_type
+        static_config = StaticBaselineConfig(
+            **{
+                **static_baseline_config,
+                "model_type": static_baseline_config.get(
+                    "model_type", model_type or "pyod_iforest"
                 ),
-                "model_params": adaptive_stream_config.get(
+                "model_params": static_baseline_config.get(
                     "model_params", model_params or {}
                 ),
-                "preprocessing_steps": adaptive_stream_config.get(
-                    "preprocessing_steps", preprocessing_steps or []
-                ),
             }
-            if nested_performance_config or top_level_adaptive_performance:
-                adaptive_payload["performance_config"] = {
-                    **nested_performance_config,
-                    **top_level_adaptive_performance,
-                }
-
-            adaptive_config = AdaptiveStreamConfig(**adaptive_payload)
-            model_type = adaptive_config.model_type
-            model_params = adaptive_config.model_params
-            preprocessing_steps = adaptive_config.preprocessing_steps
-            adaptive_stream_config = adaptive_config.model_dump(exclude_none=True)
-            if nested_performance_config or top_level_adaptive_performance:
-                performance_config = {
-                    **performance_config,
-                    **adaptive_config.performance_config.model_dump(exclude_none=True),
-                }
+        )
+        model_type = static_config.model_type
+        model_params = static_config.model_params
+        static_baseline_config = static_config.model_dump(
+            exclude_none=True,
+            exclude={"calibration_fraction"},
+        )
 
         env_vars = {
             "SERVICE_ID": service_id,
@@ -496,17 +485,6 @@ class RadarOrchestrationService:
             # Model Configuration
             "RADAR_MODEL_TYPE": model_type or defaults.model_type,
             "RADAR_STATIC_BASELINE_CONFIG": json.dumps(static_baseline_config),
-            "RADAR_ADAPTIVE_STREAM_CONFIG": json.dumps(adaptive_stream_config),
-            # Anomaly Thresholds
-            "RADAR_ANOMALY_THRESHOLD_MEDIUM": str(
-                anomaly_thresholds.get("medium", defaults.anomaly_threshold_medium)
-            ),
-            "RADAR_ANOMALY_THRESHOLD_HIGH": str(
-                anomaly_thresholds.get("high", defaults.anomaly_threshold_high)
-            ),
-            "RADAR_ANOMALY_THRESHOLD_CRITICAL": str(
-                anomaly_thresholds.get("critical", defaults.anomaly_threshold_critical)
-            ),
             # Performance Settings
             "RADAR_BATCH_SIZE": str(
                 performance_config.get("batch_size", defaults.batch_size)
@@ -520,25 +498,6 @@ class RadarOrchestrationService:
             "RADAR_CHECKPOINT_INTERVAL": str(
                 performance_config.get(
                     "checkpoint_interval", defaults.checkpoint_interval
-                )
-            ),
-            "RADAR_HEURISTIC_ENABLED": str(
-                performance_config.get("heuristic_enabled", defaults.heuristic_enabled)
-            ).lower(),
-            "RADAR_HEURISTIC_WINDOW_SIZE": str(
-                performance_config.get(
-                    "heuristic_window_size", defaults.heuristic_window_size
-                )
-            ),
-            "RADAR_HEURISTIC_MIN_SAMPLES": str(
-                performance_config.get(
-                    "heuristic_min_samples", defaults.heuristic_min_samples
-                )
-            ),
-            "RADAR_HEURISTIC_TAIL_ALPHA": str(
-                performance_config.get(
-                    "heuristic_tail_alpha",
-                    defaults.heuristic_tail_alpha,
                 )
             ),
             "RADAR_SENSOR_KEY_STRATEGY": str(
@@ -590,47 +549,19 @@ class RadarOrchestrationService:
             # Serialize complete params as JSON for container to parse
             # Note: Individual RADAR_MODEL_* params removed - use only JSON
             env_vars["RADAR_MODEL_PARAMS"] = json.dumps(validated_params)
-            if strategy == "static_baseline":
-                static_baseline_config = {
-                    **static_baseline_config,
-                    "model_params": validated_params,
-                }
-                env_vars["RADAR_STATIC_BASELINE_CONFIG"] = json.dumps(
-                    static_baseline_config
-                )
-            else:
-                adaptive_stream_config = {
-                    **adaptive_stream_config,
-                    "model_params": validated_params,
-                }
-                env_vars["RADAR_ADAPTIVE_STREAM_CONFIG"] = json.dumps(
-                    adaptive_stream_config
-                )
+            static_baseline_config = {
+                **static_baseline_config,
+                "model_params": validated_params,
+            }
+            env_vars["RADAR_STATIC_BASELINE_CONFIG"] = json.dumps(
+                static_baseline_config
+            )
 
             logger.info(f"Model params validated for {model_type}: {validated_params}")
 
         except ValueError as e:
             logger.error(f"Invalid model parameters for {model_type}: {e}")
             raise ValueError(f"Invalid model parameters: {e}")
-
-        # Validate preprocessing steps
-        try:
-            validated_steps = self.model_registry.validate_preprocessing_steps(
-                preprocessing_steps
-            )
-            env_vars["RADAR_PREPROCESSING_STEPS"] = json.dumps(validated_steps)
-            if strategy == "adaptive_stream":
-                adaptive_stream_config = {
-                    **adaptive_stream_config,
-                    "preprocessing_steps": validated_steps,
-                }
-                env_vars["RADAR_ADAPTIVE_STREAM_CONFIG"] = json.dumps(
-                    adaptive_stream_config
-                )
-            logger.info(f"Preprocessing steps validated: {validated_steps}")
-        except ValueError as e:
-            logger.error(f"Invalid preprocessing steps: {e}")
-            raise ValueError(f"Invalid preprocessing steps: {e}")
 
         return env_vars
 
@@ -709,7 +640,7 @@ class RadarOrchestrationService:
             "service_type": "radar",
             "managed_by": "tactic",
             "monitoring_strategy": environment.get(
-                "RADAR_MONITORING_STRATEGY", "adaptive_stream"
+                "RADAR_MONITORING_STRATEGY", "static_baseline"
             ),
             "radar_model_type": environment.get("RADAR_MODEL_TYPE", ""),
             "radar_config_fingerprint": self._build_radar_config_fingerprint(

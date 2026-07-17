@@ -76,7 +76,8 @@ export const API_CONFIG = {
       LIST: '/v1/monitors/all',
       DETAILS: '/v1/monitors',
       MODELS: '/v1/monitors/models',
-      PREPROCESSORS: '/v1/monitors/preprocessors',
+      EVIDENCE: (chargerId: string) =>
+        `/v1/monitors/evidence?charger_id=${encodeURIComponent(chargerId)}`,
     },
 
     // Monitoring & Anomaly Detection

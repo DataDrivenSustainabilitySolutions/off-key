@@ -34,6 +34,18 @@ vi.mock("../components/NavigationBar", () => ({
   NavigationBar: () => <div data-testid="navigation-bar" />,
 }));
 
+const modelCatalog = {
+  pyod_iforest: {
+    strategy: "static_baseline",
+    parameters: {
+      properties: {
+        n_estimators: { type: "integer", default: 100 },
+        contamination: { type: "number", default: 0.1 },
+      },
+    },
+  },
+};
+
 function renderMonitoring() {
   return render(
     <MemoryRouter initialEntries={["/monitoring/charger-1"]}>
@@ -44,47 +56,25 @@ function renderMonitoring() {
   );
 }
 
-describe("<Monitoring /> strategy setup", () => {
+describe("<Monitoring /> static setup", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.spyOn(window, "alert").mockImplementation(() => undefined);
     mockGet.mockImplementation((url: string) => {
-      if (url.includes("/models")) {
-        return Promise.resolve({
-          pyod_iforest: {
-            strategy: "static_baseline",
-            parameters: {
-              properties: {
-                n_estimators: { type: "integer", default: 100 },
-                contamination: { type: "number", default: 0.1 },
-              },
-            },
-          },
-          knn: {
-            strategy: "adaptive_stream",
-            parameters: {
-              properties: {
-                k: { type: "integer", default: 5 },
-              },
-            },
-          },
-        });
-      }
-      if (url.includes("/preprocessors")) {
-        return Promise.resolve({});
-      }
+      if (url.includes("/models")) return Promise.resolve(modelCatalog);
       return Promise.resolve([]);
     });
   });
 
-  it("submits a static baseline payload from the static menu", async () => {
+  it("submits the static baseline contract", async () => {
     renderMonitoring();
 
     await screen.findByText(/topic input mode/i);
     fireEvent.change(screen.getAllByRole("combobox")[0], {
       target: { value: "direct_patterns" },
     });
-
+    fireEvent.change(screen.getByRole("textbox"), {
+      target: { value: "charger/charger-1/live-telemetry/L1" },
+    });
     fireEvent.click(screen.getByRole("button", { name: /start monitoring/i }));
 
     await waitFor(() => expect(mockPost).toHaveBeenCalled());
@@ -96,14 +86,14 @@ describe("<Monitoring /> strategy setup", () => {
     expect(payload.static_baseline_config.calibration_window_size).toBe(360);
     expect(payload.static_baseline_config.martingale_config).toEqual({
       method: "power",
-      alpha: 0.01,
       epsilon: 0.5,
+      restarted_ville_threshold: 100,
     });
-    expect(payload.static_baseline_config.fdr_config).toBeUndefined();
     expect(payload.adaptive_stream_config).toBeUndefined();
+    expect(payload.preprocessing_steps).toBeUndefined();
   });
 
-  it("submits concrete static sensor topics for multivariate alignment", async () => {
+  it("submits concrete sensor topics for multivariate alignment", async () => {
     renderMonitoring();
 
     await screen.findByText(/topic input mode/i);
@@ -112,7 +102,6 @@ describe("<Monitoring /> strategy setup", () => {
     await waitFor(() => expect(mockPost).toHaveBeenCalled());
     const payload = mockPost.mock.calls[0][1];
 
-    expect(payload.strategy).toBe("static_baseline");
     expect(payload.mqtt_topics).toEqual([
       "charger/charger-1/live-telemetry/L1",
       "charger/charger-1/live-telemetry/L2",
@@ -121,123 +110,105 @@ describe("<Monitoring /> strategy setup", () => {
     expect(payload.performance_config.alignment_mode).toBe("strict_barrier");
   });
 
-  it("submits static martingale alarm settings", async () => {
+  it("submits editable epsilon with the fixed native threshold", async () => {
     renderMonitoring();
 
-    fireEvent.click(await screen.findByRole("button", { name: /show configuration/i }));
-    fireEvent.change(screen.getByDisplayValue("360"), {
+    fireEvent.change(await screen.findByDisplayValue("360"), {
       target: { value: "400" },
     });
-    fireEvent.change(screen.getByDisplayValue("0.01"), {
-      target: { value: "0.02" },
-    });
+    fireEvent.click(screen.getByRole("button", { name: /show advanced settings/i }));
     fireEvent.change(screen.getByDisplayValue("0.5"), {
       target: { value: "0.75" },
     });
-
     fireEvent.click(screen.getByRole("button", { name: /start monitoring/i }));
 
     await waitFor(() => expect(mockPost).toHaveBeenCalled());
     const payload = mockPost.mock.calls[0][1];
-
     expect(payload.static_baseline_config.calibration_window_size).toBe(400);
     expect(payload.static_baseline_config.martingale_config).toEqual({
       method: "power",
-      alpha: 0.02,
       epsilon: 0.75,
+      restarted_ville_threshold: 100,
     });
   });
 
-  it("lets static numeric fields be cleared while editing", async () => {
+  it("lets numeric fields be cleared while editing", async () => {
     renderMonitoring();
 
-    fireEvent.click(await screen.findByRole("button", { name: /show configuration/i }));
-    const staticWindowInput = await screen.findByDisplayValue("1200");
-
-    fireEvent.change(staticWindowInput, { target: { value: "" } });
-
-    expect((staticWindowInput as HTMLInputElement).value).toBe("");
+    const trainingInput = await screen.findByDisplayValue("1200");
+    fireEvent.change(trainingInput, { target: { value: "" } });
+    expect((trainingInput as HTMLInputElement).value).toBe("");
   });
 
-  it("blocks below-min static values until fixed", async () => {
+  it("blocks below-min training sizes until fixed", async () => {
     renderMonitoring();
 
-    fireEvent.click(await screen.findByRole("button", { name: /show configuration/i }));
-    const staticWindowInput = await screen.findByDisplayValue("1200");
-
-    fireEvent.change(staticWindowInput, { target: { value: "10" } });
+    const trainingInput = await screen.findByDisplayValue("1200");
+    fireEvent.change(trainingInput, { target: { value: "10" } });
     fireEvent.click(screen.getByRole("button", { name: /start monitoring/i }));
 
-    expect((staticWindowInput as HTMLInputElement).value).toBe("10");
     expect(mockPost).not.toHaveBeenCalled();
-    expect(
-      await screen.findByText("Training window size must be at least 20.")
-    ).toBeTruthy();
+    expect(await screen.findByText("Training samples must be at least 20.")).toBeTruthy();
 
-    fireEvent.change(staticWindowInput, { target: { value: "2000" } });
+    fireEvent.change(trainingInput, { target: { value: "2000" } });
     fireEvent.click(screen.getByRole("button", { name: /start monitoring/i }));
-
     await waitFor(() => expect(mockPost).toHaveBeenCalled());
-    const payload = mockPost.mock.calls[0][1];
-    expect(payload.static_baseline_config.training_window_size).toBe(2000);
+    expect(mockPost.mock.calls[0][1].static_baseline_config.training_window_size).toBe(2000);
   });
 
   it("keeps invalid detector integer drafts visible and blocks submit", async () => {
     renderMonitoring();
 
-    fireEvent.click(await screen.findByRole("button", { name: /show configuration/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /show advanced settings/i }));
     const estimatorsInput = await screen.findByDisplayValue("100");
-
     fireEvent.change(estimatorsInput, { target: { value: "1.5" } });
     fireEvent.click(screen.getByRole("button", { name: /start monitoring/i }));
 
     expect((estimatorsInput as HTMLInputElement).value).toBe("1.5");
     expect(mockPost).not.toHaveBeenCalled();
-    expect(await screen.findByText("n_estimators must be an integer.")).toBeTruthy();
+    expect(await screen.findByText("N Estimators must be an integer.")).toBeTruthy();
 
     fireEvent.change(estimatorsInput, { target: { value: "101" } });
     fireEvent.click(screen.getByRole("button", { name: /start monitoring/i }));
-
     await waitFor(() => expect(mockPost).toHaveBeenCalled());
-    const payload = mockPost.mock.calls[0][1];
-    expect(payload.static_baseline_config.model_params.n_estimators).toBe(101);
+    expect(mockPost.mock.calls[0][1].static_baseline_config.model_params.n_estimators).toBe(101);
   });
 
-  it("does not render legacy static FDR controls", async () => {
+  it("renders dynamic as a non-interactive facade with no adaptive controls", async () => {
     renderMonitoring();
 
-    fireEvent.click(await screen.findByRole("button", { name: /show configuration/i }));
-
+    expect(await screen.findByText("Temporally dependent streams")).toBeTruthy();
+    expect(screen.getByText("Coming later")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /dynamic/i })).toBeNull();
+    expect(screen.queryByText(/dynamic model/i)).toBeNull();
     expect(screen.queryByText(/FDR Control/i)).toBeNull();
-    expect(screen.queryByDisplayValue("SAFFRON")).toBeNull();
-    expect(screen.queryByDisplayValue("Naive p-value cutoff")).toBeNull();
-    expect(await screen.findByText(/Martingale Alarm/i)).toBeTruthy();
+    expect(screen.getByText(/Fixed Ville threshold/i)).toBeTruthy();
   });
 
-  it("switches to the dynamic menu without losing the static menu", async () => {
+  it("disables sensors claimed by an overlapping active service", async () => {
+    mockGet.mockImplementation((url: string) => {
+      if (url.includes("/models")) return Promise.resolve(modelCatalog);
+      if (url.includes("/monitors/all")) {
+        return Promise.resolve([{
+          id: 7,
+          container_name: "radar-existing",
+          mqtt_topics: ["charger/charger-1/live-telemetry/L1"],
+          status: "running",
+        }]);
+      }
+      return Promise.resolve([]);
+    });
     renderMonitoring();
 
-    fireEvent.click(await screen.findByRole("button", { name: /dynamic/i }));
+    expect(await screen.findByText("Assigned to radar-existing")).toBeTruthy();
+    const l1Checkbox = screen.getByText("Assigned to radar-existing").closest("label")?.querySelector("input");
+    expect((l1Checkbox as HTMLInputElement | undefined)?.disabled).toBe(true);
 
-    expect(await screen.findByText(/dynamic model/i)).toBeTruthy();
-
-    fireEvent.click(screen.getByRole("button", { name: /^static$/i }));
-
-    expect(await screen.findByText(/static detector/i)).toBeTruthy();
-  });
-
-  it("preserves static draft values while viewing the adaptive menu", async () => {
-    renderMonitoring();
-
-    fireEvent.click(await screen.findByRole("button", { name: /show configuration/i }));
-    const staticWindowInput = await screen.findByDisplayValue("1200");
-    fireEvent.change(staticWindowInput, { target: { value: "2400" } });
-
-    fireEvent.click(screen.getByRole("button", { name: /dynamic/i }));
-    expect(await screen.findByText(/dynamic model/i)).toBeTruthy();
-
-    fireEvent.click(screen.getByRole("button", { name: /^static$/i }));
-
-    expect(await screen.findByDisplayValue("2400")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /start monitoring/i }));
+    await waitFor(() => expect(mockPost).toHaveBeenCalled());
+    expect(mockPost.mock.calls[0][1].mqtt_topics).toEqual([
+      "charger/charger-1/live-telemetry/L2",
+      "charger/charger-1/live-telemetry/L3",
+    ]);
   });
 });

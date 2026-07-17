@@ -47,18 +47,12 @@ const getServiceModeLabel = (service: ActiveService): string => {
   if (service.monitoring_strategy === "static_baseline") {
     return "Static";
   }
-  if (service.monitoring_strategy === "adaptive_stream") {
-    return "Dynamic";
-  }
-  return "Unknown";
+  return service.monitoring_strategy ? "Retired" : "Unknown";
 };
 
 const getModeBadgeClassName = (service: ActiveService): string => {
   if (service.monitoring_strategy === "static_baseline") {
     return "border-sky-200 bg-sky-50 text-sky-800 dark:border-sky-900/60 dark:bg-sky-950/25 dark:text-sky-200";
-  }
-  if (service.monitoring_strategy === "adaptive_stream") {
-    return "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900/60 dark:bg-emerald-950/25 dark:text-emerald-200";
   }
   return "border-border bg-muted text-muted-foreground";
 };
@@ -137,8 +131,8 @@ function StageSummary({ service }: { service: ActiveService }) {
 
 function EmptyServicesState() {
   return (
-    <div className="flex min-h-48 flex-col items-center justify-center px-4 py-10 text-center">
-      <div className="mb-3 flex size-10 items-center justify-center rounded-md border bg-muted/30 text-muted-foreground">
+    <div className="flex min-h-52 flex-col items-center justify-center px-4 py-10 text-center">
+      <div className="mb-4 flex size-11 items-center justify-center rounded-xl border border-border/70 bg-muted/35 text-muted-foreground">
         <RadioTower className="h-5 w-5" />
       </div>
       <div className="text-sm font-medium">No monitoring services found</div>
@@ -201,13 +195,6 @@ export default function Services() {
         .length,
     [services]
   );
-  const dynamicCount = useMemo(
-    () =>
-      services.filter((service) => service.monitoring_strategy === "adaptive_stream")
-        .length,
-    [services]
-  );
-
   const deleteService = useCallback(
     async (service: ActiveService) => {
       const action = getServiceDeleteActionDisplay(service);
@@ -247,7 +234,7 @@ export default function Services() {
           }
         />
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
           <MetricCard label="Services" value={services.length} helper="Tracked workloads" />
           <MetricCard
             label="Running"
@@ -269,11 +256,11 @@ export default function Services() {
           />
         </div>
 
-        <div className="flex flex-col gap-3 rounded-md border border-border/80 bg-muted/20 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-3 rounded-2xl border border-border/65 bg-card px-4 py-4 shadow-[0_1px_2px_hsl(220_20%_10%/0.025)] sm:flex-row sm:items-center sm:justify-between sm:px-5">
           <div className="flex min-w-0 items-center gap-3">
             <div
               className={cn(
-                "flex size-9 shrink-0 items-center justify-center rounded-md border",
+                "flex size-9 shrink-0 items-center justify-center rounded-xl border",
                 missingCount > 0
                   ? "border-red-200 bg-red-50 text-red-700 dark:border-red-900/60 dark:bg-red-950/25 dark:text-red-200"
                   : "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/25 dark:text-emerald-200"
@@ -292,7 +279,7 @@ export default function Services() {
                   : "Service inventory is clean"}
               </div>
               <div className="text-sm text-muted-foreground">
-                {runningCount} running, {staticCount} static, {dynamicCount} dynamic
+                {runningCount} running, {staticCount} static
               </div>
             </div>
           </div>
@@ -319,7 +306,7 @@ export default function Services() {
           ) : services.length > 0 ? (
             <Table>
               <TableHeader>
-                <TableRow className="bg-muted/40 hover:bg-muted/40">
+                <TableRow className="bg-muted/30 hover:bg-muted/30">
                   <TableHead>Service</TableHead>
                   <TableHead>Charger</TableHead>
                   <TableHead>Mode</TableHead>
@@ -384,7 +371,7 @@ export default function Services() {
                                 {topicPreview.map((topic) => (
                                   <span
                                     key={topic}
-                                    className="max-w-[12rem] truncate rounded-full border bg-background px-2 py-1 font-mono text-[11px]"
+                                    className="max-w-[12rem] truncate rounded-lg border border-border/70 bg-muted/25 px-2 py-1 font-mono text-[11px]"
                                   >
                                     {topic}
                                   </span>

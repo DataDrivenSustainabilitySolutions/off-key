@@ -11,7 +11,6 @@ from pydantic import BaseModel, Field
 
 from ...models.registry import ModelRegistryService
 from ...provider import get_model_registry_service
-from off_key_core.schemas.radar import MonitoringStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -31,9 +30,9 @@ class ModelInfo(BaseModel):
     description: Optional[str] = Field(None, description="Model description")
     complexity: Optional[str] = Field(None, description="Computational complexity")
     memory_usage: Optional[str] = Field(None, description="Memory usage level")
-    strategy: MonitoringStrategy = Field(
-        default="adaptive_stream",
-        description="Monitoring strategy this model supports",
+    strategy: str = Field(
+        default="static_baseline",
+        description="Executable static monitoring lane",
     )
     import_paths: List[str] = Field(..., description="Python import paths to try")
     parameter_schema: Dict[str, Any] = Field(
@@ -43,29 +42,6 @@ class ModelInfo(BaseModel):
         ..., description="Default parameter values"
     )
     version: str = Field(..., description="Model version")
-    requires_special_handling: bool = Field(
-        ..., description="Requires custom instantiation logic"
-    )
-
-
-class PreprocessorInfo(BaseModel):
-    """Preprocessor information response."""
-
-    model_type: str = Field(..., description="Preprocessor type identifier")
-    family: str = Field(
-        ...,
-        description="Preprocessor family (e.g., 'scaling', 'projection')",
-    )
-    name: str = Field(..., description="Human-readable preprocessor name")
-    description: Optional[str] = Field(None, description="Preprocessor description")
-    import_paths: List[str] = Field(..., description="Python import paths to try")
-    parameter_schema: Dict[str, Any] = Field(
-        ..., description="JSON schema for parameters"
-    )
-    default_parameters: Dict[str, Any] = Field(
-        ..., description="Default parameter values"
-    )
-    version: str = Field(..., description="Preprocessor version")
     requires_special_handling: bool = Field(
         ..., description="Requires custom instantiation logic"
     )
@@ -99,7 +75,7 @@ class ModelValidationResponse(BaseModel):
 
 @router.get("/", response_model=List[ModelInfo])
 async def list_models(
-    strategy: Optional[MonitoringStrategy] = Query(default=None),
+    strategy: Optional[str] = Query(default=None),
     model_registry: ModelRegistryService = Depends(get_model_registry_service),
 ) -> List[ModelInfo]:
     """
@@ -116,60 +92,6 @@ async def list_models(
     except Exception as e:
         logger.error(f"Failed to list models: {e}")
         raise HTTPException(status_code=500, detail="Failed to retrieve models")
-
-
-@router.get("/preprocessors", response_model=List[PreprocessorInfo])
-async def list_preprocessors(
-    model_registry: ModelRegistryService = Depends(get_model_registry_service),
-) -> List[PreprocessorInfo]:
-    """
-    Get list of all available preprocessors.
-
-    Returns comprehensive information about each preprocessor including
-    parameter schemas and metadata.
-    """
-    try:
-        preprocessors = model_registry.get_available_preprocessors()
-        return [PreprocessorInfo(**prep) for prep in preprocessors]
-    except Exception as e:
-        logger.error(f"Failed to list preprocessors: {e}")
-        raise HTTPException(status_code=500, detail="Failed to retrieve preprocessors")
-
-
-@router.get("/preprocessors/info/{preprocessor_type}", response_model=PreprocessorInfo)
-async def get_preprocessor_info(
-    preprocessor_type: str,
-    model_registry: ModelRegistryService = Depends(get_model_registry_service),
-) -> PreprocessorInfo:
-    """
-    Get detailed information about a specific preprocessor.
-
-    Args:
-        preprocessor_type: The preprocessor type identifier
-
-    Returns:
-        Detailed preprocessor information including schema and defaults
-    """
-    try:
-        preprocessors = model_registry.get_available_preprocessors()
-        preprocessor = next(
-            (p for p in preprocessors if p["model_type"] == preprocessor_type), None
-        )
-
-        if not preprocessor:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Preprocessor '{preprocessor_type}' not found",
-            )
-
-        return PreprocessorInfo(**preprocessor)
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Failed to get preprocessor info for '{preprocessor_type}': {e}")
-        raise HTTPException(
-            status_code=500, detail="Failed to retrieve preprocessor information"
-        )
 
 
 @router.get("/info/{model_type}", response_model=ModelInfo)
@@ -326,13 +248,10 @@ async def model_registry_health(
     """
     try:
         models = model_registry.get_available_models()
-        preprocessors = model_registry.get_available_preprocessors()
-
         return {
             "status": "healthy",
             "models_available": len(models),
-            "preprocessors_available": len(preprocessors),
-            "total_components": len(models) + len(preprocessors),
+            "total_components": len(models),
         }
     except Exception:
         logger.exception("Model registry health check failed")

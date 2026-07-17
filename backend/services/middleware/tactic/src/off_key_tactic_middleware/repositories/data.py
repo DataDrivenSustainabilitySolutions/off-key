@@ -11,6 +11,7 @@ from off_key_core.db.models import (
     AnomalyIdentity,
     Charger,
     Favorite,
+    MonitoringEvidence,
     Telemetry,
     User,
 )
@@ -217,3 +218,26 @@ class AnomalyRepository:
 
     async def delete(self, anomaly: Anomaly) -> None:
         await self._session.delete(anomaly)
+
+
+class MonitoringEvidenceRepository:
+    """Read-only persistence operations for static monitoring evidence."""
+
+    def __init__(self, session: AsyncSession):
+        self._session = session
+
+    async def list_by_charger(
+        self,
+        *,
+        charger_id: str,
+        telemetry_type: Optional[str],
+        limit: int,
+    ) -> list[MonitoringEvidence]:
+        query = select(MonitoringEvidence).where(
+            MonitoringEvidence.charger_id == charger_id
+        )
+        if telemetry_type:
+            query = query.where(MonitoringEvidence.sensor_set.op("?")(telemetry_type))
+        query = query.order_by(MonitoringEvidence.timestamp.desc()).limit(limit)
+        result = await self._session.execute(query)
+        return list(result.scalars().all())

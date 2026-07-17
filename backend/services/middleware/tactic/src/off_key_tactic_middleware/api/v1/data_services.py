@@ -22,6 +22,7 @@ from ...provider import (
     get_anomaly_service,
     get_charger_query_service,
     get_favorite_service,
+    get_monitoring_evidence_service,
     get_telemetry_query_service,
     get_user_service,
 )
@@ -30,6 +31,7 @@ from ...schemas import (
     AnomalyResponse,
     ChargerResponse,
     FavoriteMutationRequest,
+    MonitoringEvidenceResponse,
     UserCreateRequest,
     UserLoginRequest,
     UserPasswordUpdateRequest,
@@ -39,6 +41,7 @@ from ...services.data import (
     AnomalyService,
     ChargerQueryService,
     FavoriteService,
+    MonitoringEvidenceService,
     TelemetryQueryService,
     UserService,
 )
@@ -242,6 +245,23 @@ async def get_anomaly_count(
         return {"count": count}
     except DomainError as exc:
         _raise_http_from_domain(exc)
+
+
+@router.get(
+    "/monitoring-evidence/{charger_id}",
+    response_model=list[MonitoringEvidenceResponse],
+)
+async def get_monitoring_evidence(
+    charger_id: str,
+    telemetry_type: Optional[str] = Query(None),
+    limit: int = Query(2000, ge=1, le=10000),
+    service: MonitoringEvidenceService = Depends(get_monitoring_evidence_service),
+):
+    return await service.list_evidence(
+        charger_id=charger_id,
+        telemetry_type=telemetry_type,
+        limit=limit,
+    )
 
 
 @router.get("/anomalies/{charger_id}", response_model=list[AnomalyResponse])

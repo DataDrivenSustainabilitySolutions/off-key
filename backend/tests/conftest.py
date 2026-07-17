@@ -29,80 +29,8 @@ def event_loop():
 
 
 # ============================================================================
-# Configuration Fixtures
-# ============================================================================
-
-
-@pytest.fixture
-def anomaly_config(monkeypatch):
-    """Create a test anomaly detection configuration."""
-    from off_key_mqtt_radar import tactic_client
-    from off_key_mqtt_radar.config import AnomalyDetectionConfig
-
-    monkeypatch.setattr(
-        tactic_client,
-        "validate_model_params",
-        lambda _model_type, params=None: params or {},
-    )
-    monkeypatch.setattr(
-        tactic_client,
-        "validate_preprocessing_steps",
-        lambda steps=None: steps or [],
-    )
-
-    return AnomalyDetectionConfig(
-        model_type="isolation_forest",
-        model_params={"n_estimators": 100, "contamination": 0.1},
-        preprocessing_steps=[],
-        thresholds={"medium": 0.6, "high": 0.8, "critical": 0.9},
-        batch_size=100,
-        batch_timeout=1.0,
-        memory_limit_mb=500,
-        checkpoint_interval=1000,
-    )
-
-
-@pytest.fixture
-def radar_config():
-    """Create a test RADAR service configuration."""
-    return MagicMock(
-        subscription_topics=["charger/+/telemetry/cpu"],
-        model_type="isolation_forest",
-        model_params={},
-        preprocessing_steps=[],
-        thresholds={"medium": 0.6, "high": 0.8, "critical": 0.9},
-        batch_size=100,
-        batch_timeout=1.0,
-        memory_limit_mb=500,
-        checkpoint_interval=1000,
-        health_check_interval=30.0,
-        db_write_enabled=False,
-        max_feature_count=100,
-        max_string_length=1000,
-    )
-
-
-# ============================================================================
 # Mock Fixtures
 # ============================================================================
-
-
-@pytest.fixture
-def mock_model():
-    """Create a mock anomaly detection model."""
-    model = MagicMock()
-    model.score_one = MagicMock(return_value=0.5)
-    model.learn_one = MagicMock()
-    return model
-
-
-@pytest.fixture
-def mock_preprocessor():
-    """Create a mock preprocessor."""
-    preprocessor = MagicMock()
-    preprocessor.transform_one = MagicMock(side_effect=lambda x: x)
-    preprocessor.learn_one = MagicMock()
-    return preprocessor
 
 
 @pytest.fixture

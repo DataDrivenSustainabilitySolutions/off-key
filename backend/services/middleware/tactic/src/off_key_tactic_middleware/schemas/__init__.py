@@ -182,6 +182,25 @@ class AnomalyCreateRequest(BaseModel):
     sensor_set: Optional[list[str]] = None
 
 
+class MonitoringEvidenceResponse(BaseModel):
+    """Persisted static conformal evidence for a charted sensor."""
+
+    service_id: str
+    timestamp: datetime
+    sequence_number: int
+    charger_id: str
+    sensor_set: list[str]
+    p_value: float
+    e_value: Optional[float] = None
+    e_value_is_infinite: bool
+    log_e_value: Optional[float] = None
+    restarted_martingale: Optional[float] = None
+    restarted_martingale_is_infinite: bool
+    log_restarted_martingale: Optional[float] = None
+    threshold: float
+    alarm: bool
+
+
 # =============================================================================
 # Generic Response Schemas
 # =============================================================================

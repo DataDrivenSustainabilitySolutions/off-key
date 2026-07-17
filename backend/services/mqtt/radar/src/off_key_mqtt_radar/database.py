@@ -20,12 +20,21 @@ from contextlib import suppress
 from datetime import datetime, timezone
 from typing import List, Optional, Dict, Any, Tuple
 
-from sqlalchemy import Table, Column, Text, Float, TIMESTAMP, JSON, text
+from sqlalchemy import (
+    Table,
+    Column,
+    Text,
+    Float,
+    TIMESTAMP,
+    JSON,
+    text,
+)
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.schema import MetaData
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
+from off_key_core.db.table_contracts import monitoring_evidence_table
 from off_key_core.schemas.radar import RadarOperationalStatus
 from off_key_core.utils.mqtt_topics import TopicMetadataExtractor
 from .config.config import MQTTRadarConfig
@@ -34,6 +43,15 @@ from .models import ServiceMetrics, AnomalyResult
 
 logger = logging.getLogger(__name__)
 MULTIVARIATE_TELEMETRY_TYPE = "__multivariate__"
+
+
+def _optional_finite_float(value: Any) -> Optional[float]:
+    """Return a JSON/database-safe finite float or ``None``."""
+    if not isinstance(value, (int, float)):
+        return None
+    normalized = float(value)
+    return normalized if math.isfinite(normalized) else None
+
 
 # Lazy-initialized async session factory
 _radar_async_session_factory = None
@@ -67,6 +85,7 @@ ANOMALY_IDENTITY_TABLE = Table(
     Column("timestamp", TIMESTAMP(timezone=True), nullable=False),
     Column("telemetry_type", Text, nullable=False),
 )
+MONITORING_EVIDENCE_TABLE = monitoring_evidence_table(_anomaly_metadata)
 
 
 def get_radar_async_session_factory():
@@ -127,6 +146,7 @@ class DatabaseWriter:
 
         # Performance tracking
         self.total_written = 0
+        self.total_evidence_written = 0
         self.total_errors = 0
         self.write_times = deque(maxlen=100)
 
@@ -190,8 +210,8 @@ class DatabaseWriter:
         if cancelled_error is not None:
             raise cancelled_error
 
-    async def write_anomaly(self, result: AnomalyResult):
-        """Queue anomaly result for batch writing"""
+    async def write_result(self, result: AnomalyResult):
+        """Queue a static inference result for evidence and optional alarm writing."""
         if not self.config.db_write_enabled:
             return
 
@@ -205,6 +225,10 @@ class DatabaseWriter:
         # Check if we should flush batch
         if should_flush:
             await self._flush_batch()
+
+    async def write_anomaly(self, result: AnomalyResult):
+        """Queue a result; retained as the public writer entry point."""
+        await self.write_result(result)
 
     async def write_service_metrics(self, metrics: Dict[str, Any]):
         """Write service performance metrics"""
@@ -354,6 +378,13 @@ class DatabaseWriter:
         return isinstance((result.context or {}).get("static_conformal"), dict)
 
     @staticmethod
+    def _is_static_ready_result(result: AnomalyResult) -> bool:
+        static_context = (result.context or {}).get("static_conformal")
+        return (
+            isinstance(static_context, dict) and static_context.get("phase") == "ready"
+        )
+
+    @staticmethod
     def _derive_anomaly_type(result: AnomalyResult) -> str:
         """Map detector output to stored anomaly semantics."""
         alignment_context = (result.context or {}).get("alignment", {})
@@ -456,6 +487,56 @@ class DatabaseWriter:
         ]
         return anomaly_records, identity_records
 
+    def _build_evidence_records(
+        self, results: List[AnomalyResult]
+    ) -> List[Dict[str, Any]]:
+        service_id = get_radar_checkpoint_settings().SERVICE_ID
+        if not service_id:
+            return []
+
+        records = []
+        for result in results:
+            if not self._is_static_ready_result(result):
+                continue
+            context = (result.context or {}).get("static_conformal", {})
+            p_value = context.get("p_value")
+            sequence_number = context.get("tested_count")
+            threshold = context.get("restarted_ville_threshold")
+            if not isinstance(p_value, (int, float)) or not math.isfinite(p_value):
+                continue
+            if not isinstance(sequence_number, int) or sequence_number < 1:
+                continue
+            if not isinstance(threshold, (int, float)) or not math.isfinite(threshold):
+                continue
+
+            records.append(
+                {
+                    "service_id": service_id,
+                    "timestamp": result.timestamp,
+                    "sequence_number": sequence_number,
+                    "charger_id": result.charger_id or "unknown",
+                    "sensor_set": self._derive_sensor_set(result) or [],
+                    "p_value": float(p_value),
+                    "e_value": _optional_finite_float(context.get("e_value")),
+                    "e_value_is_infinite": bool(
+                        context.get("e_value_is_infinite", False)
+                    ),
+                    "log_e_value": _optional_finite_float(context.get("log_e_value")),
+                    "restarted_martingale": _optional_finite_float(
+                        context.get("restarted_martingale")
+                    ),
+                    "restarted_martingale_is_infinite": bool(
+                        context.get("restarted_martingale_is_infinite", False)
+                    ),
+                    "log_restarted_martingale": _optional_finite_float(
+                        context.get("log_restarted_martingale")
+                    ),
+                    "threshold": float(threshold),
+                    "alarm": bool(context.get("alarm_fired", False)),
+                }
+            )
+        return records
+
     async def _execute_upsert(
         self,
         session: AsyncSession,
@@ -479,6 +560,19 @@ class DatabaseWriter:
         )
         await session.execute(identity_stmt)
 
+    async def _execute_evidence_upsert(
+        self,
+        session: AsyncSession,
+        evidence_records: List[Dict[str, Any]],
+    ) -> None:
+        if not evidence_records:
+            return
+        statement = pg_insert(MONITORING_EVIDENCE_TABLE).values(evidence_records)
+        statement = statement.on_conflict_do_nothing(
+            index_elements=["service_id", "timestamp", "sequence_number"]
+        )
+        await session.execute(statement)
+
     async def _flush_batch(self):
         """Flush current batch to core anomalies table"""
         async with self._flush_lock:
@@ -492,14 +586,16 @@ class DatabaseWriter:
             if self.session_factory is None:
                 self.session_factory = get_radar_async_session_factory()
 
+            persistence_candidates = self._persistence_candidates(batch_snapshot)
             # Only write actual anomalies (is_anomaly=True)
-            anomalies_to_write = [r for r in batch_snapshot if r.is_anomaly]
+            anomalies_to_write = [r for r in persistence_candidates if r.is_anomaly]
+            evidence_records = self._build_evidence_records(batch_snapshot)
             batch_size = len(batch_snapshot)
             anomaly_count = len(anomalies_to_write)
             start_time = time.time()
 
             try:
-                if anomalies_to_write:
+                if anomalies_to_write or evidence_records:
                     anomaly_records, identity_records = self._build_records(
                         anomalies_to_write
                     )
@@ -507,12 +603,14 @@ class DatabaseWriter:
                         await self._execute_upsert(
                             session, anomaly_records, identity_records
                         )
+                        await self._execute_evidence_upsert(session, evidence_records)
                         await session.commit()
 
                         logger.info(
                             "event=radar.db_batch_written "
-                            "anomaly_count=%s batch_size=%s",
+                            "anomaly_count=%s evidence_count=%s batch_size=%s",
                             anomaly_count,
+                            len(evidence_records),
                             batch_size,
                             extra={
                                 "anomaly_types": sorted(
@@ -528,8 +626,12 @@ class DatabaseWriter:
                 write_time = time.time() - start_time
                 self.write_times.append(write_time)
                 self.total_written += anomaly_count
+                self.total_evidence_written += len(evidence_records)
                 self.last_write_time = time.time()
 
+            except asyncio.CancelledError:
+                await self._requeue_results(persistence_candidates)
+                raise
             except Exception as e:
                 logger.error(
                     "event=radar.db_batch_write_failed anomaly_count=%s error=%s",
@@ -539,12 +641,17 @@ class DatabaseWriter:
                 )
                 self.total_errors += 1
 
-                # Implement retry logic
                 try:
-                    await self._retry_failed_batch(batch_snapshot=batch_snapshot)
+                    retry_succeeded = await self._retry_failed_batch(
+                        batch_snapshot=persistence_candidates
+                    )
+                    if not retry_succeeded:
+                        await self._requeue_results(persistence_candidates)
+                except asyncio.CancelledError:
+                    await self._requeue_results(persistence_candidates)
+                    raise
                 except Exception as retry_exc:
-                    async with self._queue_lock:
-                        self.write_queue = batch_snapshot + self.write_queue
+                    await self._requeue_results(persistence_candidates)
                     self.total_errors += 1
                     logger.error(
                         "event=radar.db_retry_unexpected_exception "
@@ -553,16 +660,27 @@ class DatabaseWriter:
                         str(retry_exc),
                         exc_info=True,
                     )
-            except asyncio.CancelledError:
-                async with self._queue_lock:
-                    self.write_queue = batch_snapshot + self.write_queue
-                raise
 
-    async def _retry_failed_batch(self, *, batch_snapshot: List[AnomalyResult]):
+    @staticmethod
+    def _persistence_candidates(
+        batch_snapshot: List[AnomalyResult],
+    ) -> List[AnomalyResult]:
+        return [
+            result
+            for result in batch_snapshot
+            if result.is_anomaly or DatabaseWriter._is_static_ready_result(result)
+        ]
+
+    async def _requeue_results(self, results: List[AnomalyResult]) -> None:
+        if not results:
+            return
+        async with self._queue_lock:
+            self.write_queue = list(results) + self.write_queue
+
+    async def _retry_failed_batch(self, *, batch_snapshot: List[AnomalyResult]) -> bool:
         """Retry writing failed batch with exponential backoff.
 
-        Processes anomalies in chunks of 10, retrying each chunk up to
-        max_retries times before moving to the next chunk.
+        The outer flush retains ownership of the snapshot and live queue.
         """
         max_retries = 3
         base_delay = 1.0
@@ -570,18 +688,22 @@ class DatabaseWriter:
         if self.session_factory is None:
             self.session_factory = get_radar_async_session_factory()
 
-        # Only retry actual anomalies
-        anomalies_to_retry = [r for r in batch_snapshot if r.is_anomaly]
+        results_to_retry = self._persistence_candidates(batch_snapshot)
 
-        if not anomalies_to_retry:
-            return
+        if not results_to_retry:
+            return True
 
+        exhausted_results: List[AnomalyResult] = []
         # Process in chunks of 10
-        while anomalies_to_retry:
-            retry_batch = anomalies_to_retry[:10]
+        while results_to_retry:
+            retry_batch = results_to_retry[:10]
             retry_delay = base_delay
             success = False
-            anomaly_records, identity_records = self._build_records(retry_batch)
+            anomaly_records = self._build_records(
+                [result for result in retry_batch if result.is_anomaly]
+            )
+            anomaly_rows, identity_records = anomaly_records
+            evidence_records = self._build_evidence_records(retry_batch)
 
             for attempt in range(max_retries):
                 try:
@@ -590,12 +712,14 @@ class DatabaseWriter:
                     async with self.session_factory() as session:
                         await self._execute_upsert(
                             session,
-                            anomaly_records,
+                            anomaly_rows,
                             identity_records,
                         )
+                        await self._execute_evidence_upsert(session, evidence_records)
                         await session.commit()
 
-                        self.total_written += len(retry_batch)
+                        self.total_written += len(anomaly_rows)
+                        self.total_evidence_written += len(evidence_records)
                         self.last_write_time = time.time()
                         logger.info(
                             "event=radar.db_retry_batch_written count=%s",
@@ -615,14 +739,17 @@ class DatabaseWriter:
 
             if not success:
                 logger.error(
-                    "event=radar.db_retry_exhausted dropped_count=%s max_retries=%s",
+                    "event=radar.db_retry_exhausted requeued_count=%s max_retries=%s",
                     len(retry_batch),
                     max_retries,
                 )
                 self.total_errors += 1
+                exhausted_results.extend(retry_batch)
 
             # Remove processed batch (whether success or failure)
-            anomalies_to_retry = anomalies_to_retry[10:]
+            results_to_retry = results_to_retry[10:]
+
+        return not exhausted_results
 
     def get_performance_metrics(self) -> Dict[str, Any]:
         """Get database writer performance metrics"""
@@ -637,6 +764,7 @@ class DatabaseWriter:
 
         return {
             "total_written": self.total_written,
+            "total_evidence_written": self.total_evidence_written,
             "total_errors": self.total_errors,
             "error_rate": self.total_errors
             / max(self.total_written + self.total_errors, 1),
@@ -748,10 +876,11 @@ async def ensure_radar_metrics_tables():
                     )
                 )
 
-                await session.commit()
                 logger.info("event=radar.db_metrics_tables_created")
             else:
                 logger.debug("event=radar.db_metrics_tables_exist")
+
+            await session.commit()
 
         logger.info("event=radar.db_table_verification_completed")
 

@@ -75,13 +75,13 @@ function NavLinkItem({ item, active, badge, onClick, compact = false }: NavLinkP
       to={item.href}
       onClick={onClick}
       className={cn(
-        "relative inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground",
-        active && "bg-accent text-accent-foreground",
+        "relative inline-flex h-9 items-center gap-2 rounded-lg px-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent/65 hover:text-foreground",
+        active && "bg-primary/[0.08] text-primary",
         compact && "w-full justify-start"
       )}
       aria-current={active ? "page" : undefined}
     >
-      <Icon className="h-4 w-4" />
+      <Icon className={cn("h-4 w-4", active && "text-primary")} />
       {!compact ? <span className="hidden lg:inline">{item.label}</span> : item.label}
       {badge && badge > 0 ? (
         <span className="ml-1 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-destructive px-1.5 text-[10px] font-semibold leading-none text-destructive-foreground">
@@ -217,24 +217,24 @@ export const NavigationBar = () => {
   );
 
   return (
-    <header className="sticky top-0 z-40 w-full border-b border-border/80 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/85">
+    <header className="sticky top-0 z-40 w-full border-b border-border/60 bg-background/90 backdrop-blur-xl supports-[backdrop-filter]:bg-background/78">
       {message ? (
         <div className="border-b border-emerald-200 bg-emerald-50 px-4 py-2 text-center text-sm font-medium text-emerald-800 dark:border-emerald-900/70 dark:bg-emerald-950/30 dark:text-emerald-200">
           {message}
         </div>
       ) : null}
       <NavigationMenu className="w-full max-w-none justify-stretch">
-        <NavigationMenuList className="mx-auto flex h-14 w-full max-w-7xl items-center justify-start gap-2 px-4 sm:px-6 lg:px-8">
+        <NavigationMenuList className="mx-auto flex h-16 w-full max-w-7xl items-center justify-start gap-2 px-4 sm:px-6 lg:px-8">
           <NavigationMenuItem className="mr-2 flex shrink-0">
             <Link
               to="/"
               rel="noreferrer noopener"
-              className="flex items-center gap-2 rounded-md px-2 py-1.5 text-base font-semibold tracking-normal"
+              className="group flex items-center gap-2.5 rounded-lg py-1.5 pr-2 text-base font-semibold tracking-[-0.02em]"
             >
-              <span className="flex size-7 items-center justify-center rounded-md bg-primary text-sm font-bold text-primary-foreground">
+              <span className="flex size-8 items-center justify-center rounded-lg bg-primary text-[11px] font-bold tracking-[-0.04em] text-primary-foreground shadow-sm transition-transform group-hover:scale-[1.03]">
                 ok
               </span>
-              <span>off/key</span>
+              <span>off<span className="text-primary">/</span>key</span>
             </Link>
           </NavigationMenuItem>
 
@@ -272,7 +272,7 @@ export const NavigationBar = () => {
                     className="cursor-pointer"
                   >
                     <UserCircle className="h-4 w-4" />
-                    Mein Account
+                    Account
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={handleLogout} className="cursor-pointer">
                     <LogOut className="h-4 w-4" />

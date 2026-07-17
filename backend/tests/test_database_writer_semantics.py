@@ -213,10 +213,12 @@ async def test_retry_batch_logs_exhaustion_and_increments_errors(monkeypatch, ca
     ]
 
     with caplog.at_level("ERROR"):
-        await writer._retry_failed_batch(batch_snapshot=retry_batch)
+        succeeded = await writer._retry_failed_batch(batch_snapshot=retry_batch)
 
+    assert succeeded is False
     assert writer.total_errors == 1
     assert writer.total_written == 0
+    assert writer.write_queue == []
     assert any(
         "event=radar.db_retry_exhausted" in rec.message for rec in caplog.records
     )
@@ -248,6 +250,22 @@ async def test_flush_batch_requeues_snapshot_on_unexpected_retry_exception():
 
     assert writer.write_queue == [anomaly]
     assert writer.total_errors == 2
+
+
+@pytest.mark.asyncio
+async def test_flush_batch_requeues_snapshot_when_retry_is_cancelled():
+    config = MagicMock(db_batch_size=100, db_batch_timeout=1.0)
+    config.db_write_enabled = True
+    writer = DatabaseWriter(config, session_factory=MagicMock())
+    anomaly = _build_result(aligned_vector=False, tail_pvalue=0.002, anomaly_score=0.02)
+    writer.write_queue = [anomaly]
+    writer._execute_upsert = AsyncMock(side_effect=RuntimeError("flush failed"))
+    writer._retry_failed_batch = AsyncMock(side_effect=asyncio.CancelledError)
+
+    with pytest.raises(asyncio.CancelledError):
+        await writer._flush_batch()
+
+    assert writer.write_queue == [anomaly]
 
 
 @pytest.mark.asyncio

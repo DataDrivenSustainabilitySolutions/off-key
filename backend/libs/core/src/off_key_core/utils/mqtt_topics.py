@@ -169,3 +169,58 @@ def normalize_mqtt_topic_filters(
     if not normalized_topics:
         raise ValueError("At least one MQTT topic filter is required")
     return normalized_topics
+
+
+def normalize_static_monitoring_topics(topics: Iterable[str]) -> list[str]:
+    """Validate concrete, single-charger topics for a static feature schema."""
+    normalized = normalize_mqtt_topic_filters(
+        topics,
+        require_charger_prefix=True,
+        require_telemetry_topic=True,
+    )
+    if any(level in {"+", "#"} for topic in normalized for level in topic.split("/")):
+        raise ValueError(
+            "Static monitoring requires concrete MQTT topics; wildcards are not "
+            "valid sensor assignments"
+        )
+    charger_ids = {topic.split("/")[1] for topic in normalized}
+    if len(charger_ids) != 1:
+        raise ValueError(
+            "A static monitoring service must belong to exactly one charger"
+        )
+    sensor_paths = ["/".join(topic.split("/")[3:]) for topic in normalized]
+    if len(sensor_paths) != len(set(sensor_paths)):
+        raise ValueError(
+            "A static monitoring service cannot assign the same sensor path from "
+            "both telemetry namespaces"
+        )
+    return normalized
+
+
+def mqtt_topic_filters_overlap(left: str, right: str) -> bool:
+    """Return whether two valid MQTT filters can match at least one topic.
+
+    Namespace levels are compared literally. In particular, ``telemetry`` and
+    ``live-telemetry`` remain distinct. ``+`` consumes exactly one level and a
+    trailing ``#`` consumes zero or more levels.
+    """
+    left_levels = validate_mqtt_topic_filter(left, allow_root_wildcard=True).split("/")
+    right_levels = validate_mqtt_topic_filter(right, allow_root_wildcard=True).split(
+        "/"
+    )
+
+    index = 0
+    while index < len(left_levels) and index < len(right_levels):
+        left_level = left_levels[index]
+        right_level = right_levels[index]
+        if left_level == "#" or right_level == "#":
+            return True
+        if left_level != "+" and right_level != "+" and left_level != right_level:
+            return False
+        index += 1
+
+    if index == len(left_levels) == len(right_levels):
+        return True
+    if index < len(left_levels):
+        return index == len(left_levels) - 1 and left_levels[index] == "#"
+    return index == len(right_levels) - 1 and right_levels[index] == "#"

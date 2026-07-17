@@ -133,7 +133,7 @@ const Login: React.FC = () => {
           )}
           <button
             type="button"
-            className="absolute right-3 top-9 text-gray-500"
+            className="absolute right-3 top-9 text-muted-foreground transition-colors hover:text-foreground"
             onClick={() => setShowPassword(!showPassword)}
             aria-label="Show password"
           >

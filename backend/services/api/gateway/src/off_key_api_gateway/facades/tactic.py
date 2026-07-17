@@ -160,15 +160,12 @@ class Tactic:
         self,
         container_name: str,
         mqtt_topics: List[str],
-        strategy: MonitoringStrategy = "adaptive_stream",
-        model_type: str = "isolation_forest",
+        strategy: MonitoringStrategy = "static_baseline",
+        model_type: str = "pyod_iforest",
         model_params: Optional[Dict[str, Any]] = None,
-        preprocessing_steps: Optional[List[Dict[str, Any]]] = None,
         mqtt_config: Optional[Dict[str, Any]] = None,
-        anomaly_thresholds: Optional[Dict[str, float]] = None,
         performance_config: Optional[Dict[str, Any]] = None,
         static_baseline_config: Optional[Dict[str, Any]] = None,
-        adaptive_stream_config: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """
         Start a new RADAR service via TACTIC.
@@ -179,12 +176,9 @@ class Tactic:
             strategy: Monitoring strategy to run inside RADAR
             model_type: ML model type
             model_params: Model-specific parameters
-            preprocessing_steps: Optional preprocessing steps for data transformation
             mqtt_config: MQTT configuration
-            anomaly_thresholds: Anomaly detection thresholds
             performance_config: Performance settings
             static_baseline_config: Static baseline detector settings
-            adaptive_stream_config: Adaptive stream detector settings
 
         Returns:
             Dict: Service creation response
@@ -198,18 +192,12 @@ class Tactic:
 
         if model_params:
             payload["model_params"] = model_params
-        if preprocessing_steps:
-            payload["preprocessing_steps"] = preprocessing_steps
         if mqtt_config:
             payload["mqtt_config"] = mqtt_config
-        if anomaly_thresholds:
-            payload["anomaly_thresholds"] = anomaly_thresholds
         if performance_config:
             payload["performance_config"] = performance_config
         if static_baseline_config:
             payload["static_baseline_config"] = static_baseline_config
-        if adaptive_stream_config:
-            payload["adaptive_stream_config"] = adaptive_stream_config
 
         return await self._make_request(
             method="POST",
@@ -475,6 +463,23 @@ class Tactic:
             params=params,
         )
 
+    async def get_monitoring_evidence(
+        self,
+        *,
+        charger_id: str,
+        telemetry_type: Optional[str] = None,
+        limit: int = 2000,
+    ) -> List[Dict[str, Any]]:
+        """Get persisted static evidence for a charger and optional sensor."""
+        params: Dict[str, Any] = {"limit": limit}
+        if telemetry_type:
+            params["telemetry_type"] = telemetry_type
+        return await self._make_request(
+            method="GET",
+            endpoint=f"/api/v1/data/monitoring-evidence/{charger_id}",
+            params=params,
+        )
+
     async def create_anomaly(self, anomaly_data: Dict[str, Any]) -> Dict[str, str]:
         """Create anomaly via TACTIC data service."""
         return await self._make_request(
@@ -498,13 +503,6 @@ class Tactic:
         return await self._make_request(
             method="GET",
             endpoint="/api/v1/models/",
-        )
-
-    async def list_available_preprocessors(self) -> List[Dict[str, Any]]:
-        """List preprocessors from TACTIC model registry API."""
-        return await self._make_request(
-            method="GET",
-            endpoint="/api/v1/models/preprocessors",
         )
 
 

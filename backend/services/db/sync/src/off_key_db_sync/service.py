@@ -7,11 +7,16 @@ Orchestrates database schema initialization and health reporting.
 import asyncio
 import signal
 
-from sqlalchemy import text
+from sqlalchemy import bindparam, text
 
 from off_key_core.config.logs import logger
 from off_key_core.db.base import get_async_engine
 from off_key_core.db.models import Base
+from off_key_core.models import (
+    BUILTIN_STATIC_MODEL_TYPES,
+    RETIRED_MODEL_FAMILY,
+    STATIC_MODEL_FAMILY,
+)
 
 
 class SyncService:
@@ -97,25 +102,34 @@ class SyncService:
                 text("ALTER TABLE model_registry ADD COLUMN family TEXT")
             )
 
-        # Backfill legacy rows for built-in registry entries.
+        # Backfill the retained static catalog and mark legacy dynamic rows retired.
+        family_backfill = text(
+            """
+                UPDATE model_registry
+                SET family = CASE
+                    WHEN model_type IN :builtins THEN :static_family
+                    ELSE :retired_family
+                END
+                WHERE family IS NULL OR btrim(family) = ''
+                """
+        ).bindparams(bindparam("builtins", expanding=True))
+        await conn.execute(
+            family_backfill,
+            {
+                "builtins": tuple(sorted(BUILTIN_STATIC_MODEL_TYPES)),
+                "static_family": STATIC_MODEL_FAMILY,
+                "retired_family": RETIRED_MODEL_FAMILY,
+            },
+        )
         await conn.execute(
             text(
                 """
                 UPDATE model_registry
-                SET family = CASE
-                    WHEN model_type = 'knn' THEN 'distance'
-                    WHEN model_type IN (
-                        'isolation_forest',
-                        'mondrian_forest'
-                    ) THEN 'forest'
-                    WHEN model_type = 'adaptive_svm' THEN 'svm'
-                    WHEN model_type = 'standard_scaler' THEN 'scaling'
-                    WHEN model_type = 'pca' THEN 'projection'
-                    ELSE family
-                END
-                WHERE family IS NULL OR btrim(family) = ''
+                SET is_active = FALSE
+                WHERE family != :static_family
                 """
-            )
+            ),
+            {"static_family": STATIC_MODEL_FAMILY},
         )
         await conn.execute(
             text(

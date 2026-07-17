@@ -1,10 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from typing import List, Dict, Optional, Any
-from pydantic import BaseModel, Field, field_validator
-from off_key_core.utils.mqtt_topics import normalize_mqtt_topic_filters
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+from off_key_core.utils.mqtt_topics import normalize_static_monitoring_topics
 
 from off_key_core.schemas.radar import (
-    AdaptiveStreamConfig,
     MonitoringStrategy,
     PerformanceConfig,
     StaticBaselineConfig,
@@ -24,16 +23,18 @@ router = APIRouter()
 class RadarConfig(BaseModel):
     """Configuration for creating a RADAR anomaly detection service."""
 
+    model_config = ConfigDict(extra="forbid")
+
     container_name: str = Field(..., description="Name for the Docker container")
     mqtt_topics: List[str] = Field(..., description="List of MQTT topics to monitor")
 
     # Model Configuration
     strategy: MonitoringStrategy = Field(
-        default="adaptive_stream",
-        description="Monitoring strategy used by the RADAR detector.",
+        default="static_baseline",
+        description="Static baseline monitoring strategy.",
     )
     model_type: str = Field(
-        default="knn",
+        default="pyod_iforest",
         description="ML model type. Use GET /api/v1/models/ to see available models.",
     )
     model_params: Optional[Dict[str, Any]] = Field(
@@ -41,21 +42,9 @@ class RadarConfig(BaseModel):
         description="Model-specific hyperparameters. Use GET /api/v1/models/ to see"
         " available parameters for each model.",
     )
-    preprocessing_steps: Optional[List[Dict[str, Any]]] = Field(
-        default=None,
-        description="Ordered preprocessing steps applied before the model."
-        " Use GET /api/v1/models/preprocessors to see available options.",
-    )
-
     # MQTT Configuration
     mqtt_config: Optional[Dict[str, Any]] = Field(
         default=None, description="MQTT connection settings"
-    )
-
-    # Anomaly Detection Configuration
-    anomaly_thresholds: Optional[Dict[str, float]] = Field(
-        default=None,
-        description="Anomaly detection thresholds (medium, high, critical)",
     )
 
     # Performance Configuration
@@ -66,19 +55,11 @@ class RadarConfig(BaseModel):
         default=None,
         description="Static baseline conformal detector settings.",
     )
-    adaptive_stream_config: Optional[AdaptiveStreamConfig] = Field(
-        default=None,
-        description="Adaptive stream detector settings.",
-    )
 
     @field_validator("mqtt_topics")
     @classmethod
     def validate_mqtt_topics(cls, value: List[str]) -> List[str]:
-        return normalize_mqtt_topic_filters(
-            value,
-            require_charger_prefix=True,
-            require_telemetry_topic=True,
-        )
+        return normalize_static_monitoring_topics(value)
 
 
 class RadarServiceResponse(BaseModel):
@@ -136,9 +117,7 @@ async def start_radar_service(
             strategy=config.strategy,
             model_type=config.model_type,
             model_params=config.model_params,
-            preprocessing_steps=config.preprocessing_steps,
             mqtt_config=config.mqtt_config,
-            anomaly_thresholds=config.anomaly_thresholds,
             performance_config=(
                 config.performance_config.model_dump(exclude_none=True)
                 if config.performance_config
@@ -147,11 +126,6 @@ async def start_radar_service(
             static_baseline_config=(
                 config.static_baseline_config.model_dump(exclude_none=True)
                 if config.static_baseline_config
-                else None
-            ),
-            adaptive_stream_config=(
-                config.adaptive_stream_config.model_dump(exclude_none=True)
-                if config.adaptive_stream_config
                 else None
             ),
         )
@@ -312,18 +286,4 @@ async def list_available_models(
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to get available models: {str(e)}"
-        )
-
-
-@router.get("/radar/preprocessors/", response_model=List[Dict[str, Any]])
-async def list_available_preprocessors(
-    request: Request,
-    model_registry: ModelRegistryService = Depends(get_model_registry_service),
-):
-    """List available preprocessing steps and their hyperparameters."""
-    try:
-        return model_registry.get_available_preprocessors()
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to get available preprocessors: {str(e)}"
         )

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { Link, useParams } from "react-router-dom";
 import { Activity } from "lucide-react";
 
@@ -21,6 +21,9 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import type { TelemetryTypeData } from "@/dataFetch/FetchContext";
+import { apiUtils } from "@/lib/api-client";
+import { API_CONFIG } from "@/lib/api-config";
+import type { MonitoringEvidence } from "@/types/monitoring";
 
 type TelemetryCategoryGroups = Record<
   TelemetryTypeData["category"],
@@ -55,7 +58,7 @@ const LiveTelemetryIndicator: React.FC<{
 
   return (
     <div
-      className="inline-flex h-9 items-center gap-2 rounded-md border border-border bg-card px-3 text-sm text-muted-foreground shadow-xs"
+      className="inline-flex h-9 items-center gap-2 rounded-lg border border-border/70 bg-card px-3 text-sm text-muted-foreground shadow-xs"
       aria-label={label}
       title={label}
     >
@@ -88,7 +91,25 @@ const Details: React.FC = () => {
 
   // Loading states
   const [isLoadingTelemetry, setIsLoadingTelemetry] = useState(true);
+  const [monitoringEvidence, setMonitoringEvidence] = useState<MonitoringEvidence[]>([]);
   const [now, setNow] = useState(() => Date.now());
+
+  const loadMonitoringEvidence = useCallback(async () => {
+    if (!chargerId) return;
+    try {
+      const evidence = await apiUtils.get<MonitoringEvidence[]>(
+        API_CONFIG.ENDPOINTS.MONITORING.EVIDENCE(chargerId)
+      );
+      setMonitoringEvidence(evidence ?? []);
+    } catch (error) {
+      clientLogger.error({
+        event: "details.monitoring_evidence_load_failed",
+        message: "Error loading monitoring evidence",
+        error,
+        context: { chargerId },
+      });
+    }
+  }, [chargerId]);
 
   // Fetch dynamic telemetry data and anomalies
   useEffect(() => {
@@ -102,6 +123,7 @@ const Details: React.FC = () => {
         await Promise.all([
           loadAllTelemetryTypes(chargerId).finally(() => setIsLoadingTelemetry(false)),
           loadAnomalies(chargerId),
+          loadMonitoringEvidence(),
         ]);
       } catch (error) {
         clientLogger.error({
@@ -119,11 +141,12 @@ const Details: React.FC = () => {
     const interval = setInterval(() => {
       loadAllTelemetryTypes(chargerId);
       loadAnomalies(chargerId);
+      loadMonitoringEvidence();
     }, INTERVALS.DETAILS_UPDATE); // every 10s
 
     // Cleanup on unmount or change
     return () => clearInterval(interval);
-  }, [chargerId, loadAllTelemetryTypes, loadAnomalies]);
+  }, [chargerId, loadAllTelemetryTypes, loadAnomalies, loadMonitoringEvidence]);
 
   useEffect(() => {
     const interval = window.setInterval(() => {
@@ -202,7 +225,7 @@ const Details: React.FC = () => {
           }
         />
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4">
           <MetricCard
             label="Telemetry Series"
             value={allTelemetryData.length}
@@ -226,11 +249,16 @@ const Details: React.FC = () => {
         </div>
 
         <section className="space-y-5">
-          <div>
-            <h2 className="text-lg font-semibold">Telemetry</h2>
+          <div className="flex items-end justify-between gap-4 border-b border-border/60 pb-4">
+            <div>
+            <h2 className="text-lg font-semibold tracking-[-0.02em]">Telemetry</h2>
             <p className="mt-1 text-sm text-muted-foreground">
               Charts update automatically while this page is open.
             </p>
+            </div>
+            <span className="hidden rounded-full border border-border/70 bg-card px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground sm:inline-flex">
+              Auto refresh
+            </span>
           </div>
 
           {isLoadingTelemetry ? (
@@ -254,13 +282,14 @@ const Details: React.FC = () => {
             <div className="space-y-6">
               {telemetryByCategory.cpu.length > 0 && (
                 <div className="space-y-4">
-                  <h3 className="text-base font-semibold text-muted-foreground">CPU Metrics</h3>
+                  <h3 className="text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">CPU Metrics</h3>
                   {telemetryByCategory.cpu.map((telemetryData) => (
                     <DynamicTelemetryChart
                       key={telemetryData.type}
                       telemetryData={telemetryData}
                       chargerId={resolvedChargerId}
                       anomalies={chargerAnomalies}
+                      evidence={monitoringEvidence}
                     />
                   ))}
                 </div>
@@ -268,13 +297,14 @@ const Details: React.FC = () => {
 
               {telemetryByCategory.system.length > 0 && (
                 <div className="space-y-4">
-                  <h3 className="text-base font-semibold text-muted-foreground">System Metrics</h3>
+                  <h3 className="text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">System Metrics</h3>
                   {telemetryByCategory.system.map((telemetryData) => (
                     <DynamicTelemetryChart
                       key={telemetryData.type}
                       telemetryData={telemetryData}
                       chargerId={resolvedChargerId}
                       anomalies={chargerAnomalies}
+                      evidence={monitoringEvidence}
                     />
                   ))}
                 </div>
@@ -282,13 +312,14 @@ const Details: React.FC = () => {
 
               {telemetryByCategory.controller.length > 0 && (
                 <div className="space-y-4">
-                  <h3 className="text-base font-semibold text-muted-foreground">Controller Metrics</h3>
+                  <h3 className="text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">Controller Metrics</h3>
                   {telemetryByCategory.controller.map((telemetryData) => (
                     <DynamicTelemetryChart
                       key={telemetryData.type}
                       telemetryData={telemetryData}
                       chargerId={resolvedChargerId}
                       anomalies={chargerAnomalies}
+                      evidence={monitoringEvidence}
                     />
                   ))}
                 </div>
@@ -296,13 +327,14 @@ const Details: React.FC = () => {
 
               {telemetryByCategory.other.length > 0 && (
                 <div className="space-y-4">
-                  <h3 className="text-base font-semibold text-muted-foreground">Other Metrics</h3>
+                  <h3 className="text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">Other Metrics</h3>
                   {telemetryByCategory.other.map((telemetryData) => (
                     <DynamicTelemetryChart
                       key={telemetryData.type}
                       telemetryData={telemetryData}
                       chargerId={resolvedChargerId}
                       anomalies={chargerAnomalies}
+                      evidence={monitoringEvidence}
                     />
                   ))}
                 </div>

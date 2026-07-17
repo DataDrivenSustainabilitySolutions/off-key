@@ -19,11 +19,10 @@ from datetime import datetime
 from typing import Optional
 
 from off_key_core.config.logs import logger
-from off_key_core.schemas.radar import AdaptiveStreamConfig, StaticBaselineConfig
+from off_key_core.schemas.radar import StaticBaselineConfig
 
 from .config.config import AnomalyDetectionConfig, get_radar_settings
 from .detector import (
-    AnomalyDetectionService,
     ResilientAnomalyDetector,
     MemoryManager,
     SecurityValidator,
@@ -257,63 +256,39 @@ class RadarService:
         """
         logger.info("Setting up anomaly detection")
 
-        strategy = getattr(self.config, "strategy", "adaptive_stream")
+        strategy = getattr(self.config, "strategy", "static_baseline")
+        if strategy != "static_baseline":
+            raise ValueError(
+                "RADAR only executes the static_baseline strategy. Dynamic "
+                "monitoring is a disabled product lane and has no runtime yet."
+            )
         static_baseline_config = (
             getattr(self.config, "static_baseline_config", None)
             or StaticBaselineConfig()
         )
-        adaptive_stream_config = getattr(
-            self.config, "adaptive_stream_config", None
-        ) or AdaptiveStreamConfig(
-            model_type=getattr(self.config, "model_type", "isolation_forest"),
-            model_params=getattr(self.config, "model_params", {}),
-            preprocessing_steps=getattr(self.config, "preprocessing_steps", []),
-        )
-        model_type = getattr(self.config, "model_type", "isolation_forest")
-        model_params = getattr(self.config, "model_params", {})
-        preprocessing_steps = getattr(self.config, "preprocessing_steps", [])
-        if strategy == "static_baseline":
-            model_type = static_baseline_config.model_type
-            model_params = static_baseline_config.model_params
-        else:
-            model_type = adaptive_stream_config.model_type
-            model_params = adaptive_stream_config.model_params
-            preprocessing_steps = adaptive_stream_config.preprocessing_steps
 
         # Create anomaly detection config
         anomaly_config = AnomalyDetectionConfig(
             strategy=strategy,
-            model_type=model_type,
-            model_params=model_params,
-            preprocessing_steps=preprocessing_steps,
+            model_type=static_baseline_config.model_type,
+            model_params=static_baseline_config.model_params,
             static_baseline_config=static_baseline_config,
-            adaptive_stream_config=adaptive_stream_config,
             subscription_topics=getattr(self.config, "subscription_topics", []),
             sensor_key_strategy=getattr(
                 self.config, "sensor_key_strategy", "full_hierarchy"
             ),
             alignment_mode=getattr(self.config, "alignment_mode", "strict_barrier"),
-            thresholds=getattr(
-                self.config, "thresholds", {"medium": 0.6, "high": 0.8, "critical": 0.9}
-            ),
-            heuristic_enabled=getattr(self.config, "heuristic_enabled", True),
-            heuristic_window_size=getattr(self.config, "heuristic_window_size", 300),
-            heuristic_min_samples=getattr(self.config, "heuristic_min_samples", 30),
-            heuristic_tail_alpha=getattr(self.config, "heuristic_tail_alpha", 0.005),
             batch_size=getattr(self.config, "batch_size", 100),
             batch_timeout=getattr(self.config, "batch_timeout", 1.0),
             memory_limit_mb=getattr(self.config, "memory_limit_mb", 1000),
             checkpoint_interval=getattr(self.config, "checkpoint_interval", 10000),
         )
 
-        # Try to restore from checkpoint using extracted manager
-        checkpoint_path = self.checkpoint_manager.find_latest_checkpoint()
-        service_cls = (
-            StaticConformalDetectionService
-            if anomaly_config.strategy == "static_baseline"
-            else AnomalyDetectionService
-        )
-        if checkpoint_path:
+        service_cls = StaticConformalDetectionService
+        primary_service = None
+        for checkpoint_path in self.checkpoint_manager.candidate_paths():
+            if not self.checkpoint_manager.claim(checkpoint_path):
+                continue
             try:
                 logger.info(
                     f"Found checkpoint, attempting restore: {checkpoint_path}",
@@ -330,6 +305,7 @@ class RadarService:
                         "processed_count": primary_service.processed_count,
                     },
                 )
+                break
             except Exception as e:
                 logger.warning(
                     "event=radar.checkpoint_restore_failed error=%s",
@@ -337,8 +313,9 @@ class RadarService:
                     extra=self._log_context,
                     exc_info=True,
                 )
-                primary_service = service_cls(anomaly_config)
-        else:
+                self.checkpoint_manager.cleanup_lock()
+
+        if primary_service is None:
             logger.info("No checkpoint found, starting fresh", extra=self._log_context)
             primary_service = service_cls(anomaly_config)
 
@@ -452,11 +429,12 @@ class RadarService:
                 self.health_monitor.record_processing_time(time.time() - start_time)
 
                 # Write results to database if needed
-                if self.database_writer and (
-                    result.is_anomaly
-                    or getattr(self.config, "write_all_results", False)
-                ):
-                    await self.database_writer.write_anomaly(result)
+                static_context = (result.context or {}).get("static_conformal", {})
+                should_persist = (
+                    result.is_anomaly or static_context.get("phase") == "ready"
+                )
+                if self.database_writer and should_persist:
+                    await self.database_writer.write_result(result)
 
         except Exception as e:
             logger.error(

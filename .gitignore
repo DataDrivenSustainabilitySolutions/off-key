@@ -205,3 +205,10 @@ AGENTS.md
 /browser-smoke-compose-ps.txt
 /deployment-smoke-compose.log
 /deployment-smoke-compose-ps.txt
+
+.pytest_cache/
+**/.pytest_cache/
+__pycache__/
+*.py[cod]
+.venv/
+.git/

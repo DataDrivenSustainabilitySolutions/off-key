@@ -15,6 +15,7 @@ from .repositories import (
     FavoriteRepository,
     AnomalyRepository,
     ModelRegistryAdminRepository,
+    MonitoringEvidenceRepository,
 )
 from .services.orchestration.radar import RadarOrchestrationService
 from .services.admin_models import ModelRegistryAdminService
@@ -24,6 +25,7 @@ from .services.data import (
     UserService,
     FavoriteService,
     AnomalyService,
+    MonitoringEvidenceService,
 )
 
 
@@ -93,6 +95,13 @@ def get_anomaly_service(
 ) -> AnomalyService:
     """Dependency provider for anomaly use cases."""
     return AnomalyService(session, AnomalyRepository(session))
+
+
+def get_monitoring_evidence_service(
+    session: AsyncSession = Depends(get_db_async),
+) -> MonitoringEvidenceService:
+    """Dependency provider for monitoring-evidence queries."""
+    return MonitoringEvidenceService(MonitoringEvidenceRepository(session))
 
 
 def get_model_registry_admin_service(

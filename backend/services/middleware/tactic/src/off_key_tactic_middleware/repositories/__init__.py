@@ -6,6 +6,7 @@ from .data import (
     UserRepository,
     FavoriteRepository,
     AnomalyRepository,
+    MonitoringEvidenceRepository,
 )
 from .admin_models import ModelRegistryAdminRepository
 
@@ -15,5 +16,6 @@ __all__ = [
     "UserRepository",
     "FavoriteRepository",
     "AnomalyRepository",
+    "MonitoringEvidenceRepository",
     "ModelRegistryAdminRepository",
 ]

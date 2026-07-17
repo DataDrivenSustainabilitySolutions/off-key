@@ -140,7 +140,7 @@ export default function ChargerTable() {
           description="Keep frequently inspected chargers close and filter them by status."
         />
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4">
           <MetricCard label="Favorites" value={statusCounts.all} helper="Saved chargers" />
           <MetricCard label="Online" value={statusCounts.online} tone="success" />
           <MetricCard

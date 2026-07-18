@@ -28,10 +28,11 @@ test.describe("monitoring lifecycle smoke", () => {
       ).toBeVisible();
 
       await page.getByRole("combobox").first().selectOption("direct_patterns");
-      await page.getByRole("button", { name: /all charger telemetry/i }).click();
-      await expect(
-        page.getByPlaceholder(/one topic per line/i)
-      ).toHaveValue(`charger/${chargerId}/live-telemetry/#`);
+      const topicPatternInput = page.getByRole("textbox");
+      await topicPatternInput.fill(`charger/${chargerId}/live-telemetry/#`);
+      await expect(topicPatternInput).toHaveValue(
+        `charger/${chargerId}/live-telemetry/#`
+      );
 
       const startResponsePromise = page.waitForResponse(
         (response) =>

@@ -10,6 +10,7 @@ test.describe("monitoring lifecycle smoke", () => {
     playwright,
   }) => {
     const chargerId = "e2e-smoke";
+    const topic = `charger/${chargerId}/live-telemetry/L1`;
     let serviceId: string | undefined;
     let containerName: string | undefined;
     let authToken: string | null = null;
@@ -29,10 +30,8 @@ test.describe("monitoring lifecycle smoke", () => {
 
       await page.getByRole("combobox").first().selectOption("direct_patterns");
       const topicPatternInput = page.getByRole("textbox");
-      await topicPatternInput.fill(`charger/${chargerId}/live-telemetry/#`);
-      await expect(topicPatternInput).toHaveValue(
-        `charger/${chargerId}/live-telemetry/#`
-      );
+      await topicPatternInput.fill(topic);
+      await expect(topicPatternInput).toHaveValue(topic);
 
       const startResponsePromise = page.waitForResponse(
         (response) =>

@@ -67,9 +67,7 @@ test.describe("monitoring lifecycle smoke", () => {
 
       const stopResponse = await stopResponsePromise;
       expect(stopResponse.ok()).toBeTruthy();
-      await expect(page.getByText(/no active services/i)).toBeVisible({
-        timeout: 60_000,
-      });
+      await expect(serviceRow).toBeHidden({ timeout: 60_000 });
       serviceId = undefined;
       containerName = undefined;
     } finally {

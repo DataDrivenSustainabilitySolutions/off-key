@@ -1,7 +1,5 @@
 import { expect, test } from "@playwright/test";
 
-import { registerVerifyAndLogin } from "./helpers/auth";
-
 test.describe("monitoring lifecycle smoke", () => {
   test.setTimeout(300_000);
 
@@ -20,9 +18,9 @@ test.describe("monitoring lifecycle smoke", () => {
     });
 
     try {
-      await registerVerifyAndLogin(page);
-      authToken = await page.evaluate(() => sessionStorage.getItem("auth_token"));
       await page.goto(`/monitoring/${chargerId}`);
+      authToken = await page.evaluate(() => localStorage.getItem("auth_token"));
+      expect(authToken).toBeTruthy();
 
       await expect(
         page.getByRole("heading", { name: `Charger ${chargerId}` })

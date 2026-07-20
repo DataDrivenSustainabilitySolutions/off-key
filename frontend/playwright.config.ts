@@ -1,9 +1,17 @@
 import { defineConfig, devices } from "@playwright/test";
 import { env } from "node:process";
+import { fileURLToPath } from "node:url";
 
 const isCI = Boolean(env.CI);
 const chromiumChannel =
   env.PLAYWRIGHT_CHROMIUM_CHANNEL === "chrome" ? "chrome" : undefined;
+const authStateFile = fileURLToPath(
+  new URL("./test-results/.auth/user.json", import.meta.url)
+);
+const chromiumUse = {
+  ...devices["Desktop Chrome"],
+  ...(chromiumChannel ? { channel: chromiumChannel } : {}),
+};
 
 export default defineConfig({
   testDir: "./e2e",
@@ -29,11 +37,18 @@ export default defineConfig({
   },
   projects: [
     {
+      name: "auth-setup",
+      testMatch: /auth\.setup\.ts/,
+      use: chromiumUse,
+    },
+    {
       name: "chromium",
+      testIgnore: /.*\.setup\.ts/,
       use: {
-        ...devices["Desktop Chrome"],
-        ...(chromiumChannel ? { channel: chromiumChannel } : {}),
+        ...chromiumUse,
+        storageState: authStateFile,
       },
+      dependencies: ["auth-setup"],
     },
   ],
 });

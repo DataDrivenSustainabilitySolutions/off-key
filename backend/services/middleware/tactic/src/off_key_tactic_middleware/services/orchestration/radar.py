@@ -448,10 +448,7 @@ class RadarOrchestrationService:
         )
         model_type = static_config.model_type
         model_params = static_config.model_params
-        static_baseline_config = static_config.model_dump(
-            exclude_none=True,
-            exclude={"calibration_fraction"},
-        )
+        static_baseline_config = static_config.model_dump(exclude_none=True)
 
         env_vars = {
             "SERVICE_ID": service_id,

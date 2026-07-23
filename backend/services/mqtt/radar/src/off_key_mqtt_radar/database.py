@@ -894,7 +894,3 @@ async def ensure_radar_metrics_tables():
             "Continuing without table creation - "
             "metrics tables should be handled by migrations or manual setup"
         )
-
-
-# Keep alias for backward compatibility
-ensure_tables_exist = ensure_radar_metrics_tables

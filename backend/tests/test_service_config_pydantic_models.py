@@ -168,9 +168,9 @@ def test_radar_settings_parse_sensor_freshness_seconds(monkeypatch):
     assert RadarSettings().config.sensor_freshness_seconds == 12.5
 
 
-def test_static_baseline_legacy_calibration_fraction_sets_window_size():
-    config = StaticBaselineConfig(training_window_size=100, calibration_fraction=0.25)
-    assert config.calibration_window_size == 25
+def test_static_baseline_rejects_removed_calibration_fraction():
+    with pytest.raises(ValidationError, match="calibration_fraction"):
+        StaticBaselineConfig(training_window_size=100, calibration_fraction=0.25)
 
 
 def test_static_martingale_contract_is_native_and_fixed():

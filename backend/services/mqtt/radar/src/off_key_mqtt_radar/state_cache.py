@@ -91,13 +91,6 @@ class SensorStateCache:
         self._last_cleanup = time.time()
         self._cleanup_interval = 300  # Run cleanup every 5 minutes
 
-    def update(
-        self, charger_id: str, sensor_type: str, values: dict[str, float]
-    ) -> dict[str, float] | None:
-        """Backward-compatible shorthand for update_with_status()."""
-        update = self.update_with_status(charger_id, sensor_type, values)
-        return update.features
-
     def update_with_status(
         self, charger_id: str, sensor_type: str, values: dict[str, float]
     ) -> AlignmentUpdate:

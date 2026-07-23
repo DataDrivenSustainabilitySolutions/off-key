@@ -1,8 +1,6 @@
 """Unit tests for static chronological conformal RADAR monitoring."""
 
 import concurrent.futures
-import hashlib
-import json
 import pickle
 
 import pytest
@@ -33,10 +31,6 @@ class FakeMalformedConformalDetector:
         return self.p_values
 
 
-class FakeLegacyController:
-    num_test = 13
-
-
 class ControlledExecutor:
     def __init__(self):
         self.future: concurrent.futures.Future = concurrent.futures.Future()
@@ -56,26 +50,6 @@ class InlineExecutor:
 
     def shutdown(self, *_args, **_kwargs):
         return None
-
-
-def _legacy_fdr_static_signature(config: AnomalyDetectionConfig) -> str:
-    static_payload = config.static_baseline_config.model_dump(
-        exclude={"calibration_window_size", "martingale_config"},
-        exclude_none=True,
-    )
-    payload = {
-        "strategy": "static_baseline",
-        "model_type": str(static_payload.get("model_type", config.model_type)),
-        "model_params": static_payload.get("model_params", config.model_params or {}),
-        "static_baseline_config": static_payload,
-        "subscription_topics": sorted(
-            str(topic) for topic in (config.subscription_topics or [])
-        ),
-        "sensor_key_strategy": config.sensor_key_strategy,
-        "alignment_mode": config.alignment_mode,
-    }
-    payload_json = json.dumps(payload, sort_keys=True, separators=(",", ":"))
-    return hashlib.sha256(payload_json.encode("utf-8")).hexdigest()
 
 
 def _static_config(
@@ -348,6 +322,7 @@ def test_static_conformal_restores_ready_checkpoint(monkeypatch, tmp_path):
     [
         ("feature_keys", "feature_keys"),
         ("conformal_detector", "conformal_detector"),
+        ("alarm_controller", "alarm_controller"),
     ],
 )
 def test_static_conformal_rejects_incomplete_ready_checkpoint(
@@ -379,57 +354,6 @@ def test_static_conformal_rejects_incomplete_ready_checkpoint(
     checkpoint_path.write_bytes(pickle.dumps(checkpoint))
 
     with pytest.raises(ValueError, match=expected_message):
-        StaticConformalDetectionService.from_checkpoint(str(checkpoint_path), config)
-
-
-def test_static_conformal_legacy_checkpoint_gets_fresh_alarm_controller(
-    monkeypatch,
-    tmp_path,
-):
-    config = _static_config(monkeypatch)
-    checkpoint = {
-        "strategy": "static_baseline",
-        "static_state": "ready",
-        "training_buffer": [],
-        "feature_keys": ["L1", "L2"],
-        "conformal_detector": FakeConformalDetector(),
-        "fdr_controller": FakeLegacyController(),
-        "processed_count": 42,
-        "anomaly_count": 3,
-        "schema_signature": _legacy_fdr_static_signature(config),
-    }
-    checkpoint_path = tmp_path / "legacy-static.pkl"
-    checkpoint_path.write_bytes(pickle.dumps(checkpoint))
-
-    restored = StaticConformalDetectionService.from_checkpoint(
-        str(checkpoint_path), config
-    )
-
-    assert restored.state == StaticConformalState.READY
-    assert isinstance(restored.alarm_controller, RestartedMartingaleAlarmController)
-    assert restored.alarm_controller.tested_count == 13
-
-
-def test_static_conformal_legacy_checkpoint_rejects_signature_mismatch(
-    monkeypatch,
-    tmp_path,
-):
-    config = _static_config(monkeypatch)
-    checkpoint = {
-        "strategy": "static_baseline",
-        "static_state": "ready",
-        "training_buffer": [],
-        "feature_keys": ["L1", "L2"],
-        "conformal_detector": FakeConformalDetector(),
-        "fdr_controller": FakeLegacyController(),
-        "processed_count": 42,
-        "anomaly_count": 3,
-        "schema_signature": "different-signature",
-    }
-    checkpoint_path = tmp_path / "legacy-static-mismatch.pkl"
-    checkpoint_path.write_bytes(pickle.dumps(checkpoint))
-
-    with pytest.raises(ValueError, match="schema signature"):
         StaticConformalDetectionService.from_checkpoint(str(checkpoint_path), config)
 
 

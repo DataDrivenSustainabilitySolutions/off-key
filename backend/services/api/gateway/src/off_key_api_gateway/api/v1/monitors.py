@@ -133,12 +133,7 @@ def _resolve_effective_start_config(
             if performance_config
             else None
         ),
-        "static_baseline_config": (
-            static_config.model_dump(
-                exclude_none=True,
-                exclude={"calibration_fraction"},
-            )
-        ),
+        "static_baseline_config": static_config.model_dump(exclude_none=True),
     }
 
 

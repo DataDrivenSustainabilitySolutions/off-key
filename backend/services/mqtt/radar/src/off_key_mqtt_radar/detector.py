@@ -105,26 +105,6 @@ class RestartedMartingaleAlarmController:
                 f"{cls.FIXED_RESTARTED_VILLE_THRESHOLD:g}."
             )
 
-    def __setstate__(self, state: dict[str, Any]) -> None:
-        """Upgrade alpha-spending checkpoints to a fresh native mixture."""
-        legacy_alpha = state.get("alpha")
-        self.method = "power"
-        self.epsilon = float(state.get("epsilon", 0.5))
-        self.restarted_ville_threshold = self.FIXED_RESTARTED_VILLE_THRESHOLD
-        self.alarm_count = int(state.get("alarm_count", 0))
-        self.tested_count = int(state.get("tested_count", 0))
-        self._alarm_active = False
-        self._legacy_alpha = legacy_alpha
-        if legacy_alpha is None:
-            self._martingale = state.get("_martingale") or self._new_martingale()
-            self._alarm_active = bool(state.get("_alarm_active", False))
-        else:
-            self._martingale = self._new_martingale()
-
-    @property
-    def num_test(self) -> int:
-        return self.tested_count
-
     def _new_martingale(self) -> Any:
         from nonconform.martingales import AlarmConfig, PowerMartingale
 
@@ -244,16 +224,10 @@ class StaticConformalDetectionService:
         self.feature_keys = list(checkpoint.get("feature_keys", []))
         self.conformal_detector = checkpoint.get("conformal_detector")
         self.alarm_controller = checkpoint.get("alarm_controller")
-        if self.alarm_controller is None:
-            legacy_fdr_controller = checkpoint.get("fdr_controller")
-            self.alarm_controller = self._create_alarm_controller(
-                alarm_count=int(checkpoint.get("alarm_count", 0)),
-                tested_count=int(
-                    checkpoint.get(
-                        "tested_count",
-                        getattr(legacy_fdr_controller, "num_test", 0),
-                    )
-                ),
+        if not isinstance(self.alarm_controller, RestartedMartingaleAlarmController):
+            raise ValueError(
+                "Static checkpoint is missing a valid alarm_controller. "
+                "Starting fresh is required."
             )
         self.processed_count = int(checkpoint.get("processed_count", 0))
         self.anomaly_count = int(checkpoint.get("anomaly_count", 0))
@@ -276,8 +250,6 @@ class StaticConformalDetectionService:
                 missing_ready_state.append("feature_keys")
             if self.conformal_detector is None:
                 missing_ready_state.append("conformal_detector")
-            if self.alarm_controller is None:
-                missing_ready_state.append("alarm_controller")
             if missing_ready_state:
                 missing = ", ".join(missing_ready_state)
                 raise ValueError(
@@ -308,23 +280,7 @@ class StaticConformalDetectionService:
 
         saved_schema_signature = checkpoint.get("schema_signature")
         current_schema_signature = cls._build_schema_signature_from_config(config)
-        accepted_signatures = {current_schema_signature}
-        if "fdr_controller" in checkpoint:
-            accepted_signatures.add(
-                cls._build_legacy_fdr_schema_signature_from_config(config)
-            )
-        legacy_controller = checkpoint.get("alarm_controller")
-        legacy_alpha = getattr(legacy_controller, "_legacy_alpha", None)
-        if legacy_alpha is not None:
-            accepted_signatures.add(
-                cls._build_legacy_alpha_schema_signature_from_config(
-                    config, float(legacy_alpha)
-                )
-            )
-        if (
-            not saved_schema_signature
-            or saved_schema_signature not in accepted_signatures
-        ):
+        if saved_schema_signature != current_schema_signature:
             raise ValueError(
                 "Checkpoint schema signature does not match current static "
                 "configuration. Starting fresh is required."
@@ -336,40 +292,7 @@ class StaticConformalDetectionService:
     def _build_schema_signature_from_config(cls, config: Any) -> str:
         static_config = getattr(config, "static_baseline_config", None)
         if static_config is not None and hasattr(static_config, "model_dump"):
-            static_payload = static_config.model_dump(
-                exclude={"calibration_fraction"},
-                exclude_none=True,
-            )
-        else:
-            static_payload = {}
-        return cls._build_static_schema_signature(config, static_payload)
-
-    @classmethod
-    def _build_legacy_fdr_schema_signature_from_config(cls, config: Any) -> str:
-        static_config = getattr(config, "static_baseline_config", None)
-        if static_config is not None and hasattr(static_config, "model_dump"):
-            static_payload = static_config.model_dump(
-                exclude={"calibration_window_size", "martingale_config"},
-                exclude_none=True,
-            )
-        else:
-            static_payload = {}
-        return cls._build_static_schema_signature(config, static_payload)
-
-    @classmethod
-    def _build_legacy_alpha_schema_signature_from_config(
-        cls, config: Any, alpha: float
-    ) -> str:
-        static_config = getattr(config, "static_baseline_config", None)
-        if static_config is not None and hasattr(static_config, "model_dump"):
-            static_payload = static_config.model_dump(
-                exclude={"calibration_fraction"},
-                exclude_none=True,
-            )
-            martingale_payload = dict(static_payload.get("martingale_config", {}))
-            martingale_payload.pop("restarted_ville_threshold", None)
-            martingale_payload["alpha"] = alpha
-            static_payload["martingale_config"] = martingale_payload
+            static_payload = static_config.model_dump(exclude_none=True)
         else:
             static_payload = {}
         return cls._build_static_schema_signature(config, static_payload)
@@ -707,15 +630,11 @@ class StaticConformalDetectionService:
         alarm_controller = self._create_alarm_controller()
         return conformal_detector, alarm_controller
 
-    def _create_alarm_controller(
-        self, *, alarm_count: int = 0, tested_count: int = 0
-    ) -> RestartedMartingaleAlarmController:
+    def _create_alarm_controller(self) -> RestartedMartingaleAlarmController:
         martingale_config = self.static_config.martingale_config
         return RestartedMartingaleAlarmController(
             epsilon=martingale_config.epsilon,
             restarted_ville_threshold=(martingale_config.restarted_ville_threshold),
-            alarm_count=alarm_count,
-            tested_count=tested_count,
         )
 
     def _create_pyod_detector(self) -> Any:
@@ -893,16 +812,6 @@ class StaticConformalDetectionService:
                 "feature_keys": self.feature_keys,
                 "conformal_detector": self.conformal_detector,
                 "alarm_controller": self.alarm_controller,
-                "alarm_count": (
-                    self.alarm_controller.alarm_count
-                    if self.alarm_controller is not None
-                    else 0
-                ),
-                "tested_count": (
-                    self.alarm_controller.tested_count
-                    if self.alarm_controller is not None
-                    else 0
-                ),
                 "processed_count": self.processed_count,
                 "anomaly_count": self.anomaly_count,
                 "discarded_during_training_count": (

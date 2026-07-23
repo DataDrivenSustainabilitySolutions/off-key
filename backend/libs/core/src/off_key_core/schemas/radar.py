@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 __all__ = [
     "MonitoringStrategy",
@@ -103,43 +103,11 @@ class StaticBaselineConfig(BaseModel):
     model_params: dict[str, Any] = Field(default_factory=dict)
     training_window_size: int = Field(default=1200, ge=20, le=1_000_000)
     calibration_window_size: int = Field(default=360, ge=1, le=1_000_000)
-    calibration_fraction: float = Field(default=0.3, gt=0.0, lt=0.95)
     conformal_strategy: Literal["split"] = "split"
     seed: int | None = 42
     martingale_config: StaticMartingaleConfig = Field(
         default_factory=StaticMartingaleConfig
     )
-
-    @model_validator(mode="before")
-    @classmethod
-    def populate_legacy_calibration_window(cls, data: Any) -> Any:
-        if not isinstance(data, dict):
-            return data
-        if "calibration_window_size" in data:
-            return data
-
-        try:
-            training_window_size = int(
-                data.get(
-                    "training_window_size",
-                    cls.model_fields["training_window_size"].default,
-                )
-            )
-            calibration_fraction = float(
-                data.get(
-                    "calibration_fraction",
-                    cls.model_fields["calibration_fraction"].default,
-                )
-            )
-        except (TypeError, ValueError):
-            return data
-
-        return {
-            **data,
-            "calibration_window_size": max(
-                1, round(training_window_size * calibration_fraction)
-            ),
-        }
 
     @field_validator("model_type")
     @classmethod

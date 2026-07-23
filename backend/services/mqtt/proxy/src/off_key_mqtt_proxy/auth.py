@@ -45,16 +45,12 @@ class ApiKeyAuthHandler:
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        await self.close()
+        await self.stop()
 
     async def stop(self):
         """Stop authentication handler (implements Stoppable protocol)"""
         # No cleanup needed for API key authentication
         logger.debug("API-Key authentication handler stopped")
-
-    async def close(self):
-        """Close authentication handler (legacy method, delegates to stop)"""
-        await self.stop()
 
     async def authenticate(self) -> ApiKeyCredentials:
         """

@@ -23,7 +23,7 @@ from off_key_core.schemas.radar import StaticBaselineConfig
 from .checkpoint_manager import CheckpointManager
 from .config.config import AnomalyDetectionConfig, get_radar_settings
 from .config_watcher import ConfigReloader, ConfigWatcher
-from .database import DatabaseWriter, ensure_tables_exist
+from .database import DatabaseWriter, ensure_radar_metrics_tables
 from .detector import (
     MemoryManager,
     ResilientAnomalyDetector,
@@ -131,7 +131,7 @@ class RadarService:
 
             # Initialize database writer only when enabled
             if self.config.db_write_enabled:
-                await ensure_tables_exist()
+                await ensure_radar_metrics_tables()
                 await self._setup_database_writer()
             else:
                 logger.debug(

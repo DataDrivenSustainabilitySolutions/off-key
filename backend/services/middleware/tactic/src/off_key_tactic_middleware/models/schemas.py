@@ -10,7 +10,8 @@ These schemas serve multiple purposes:
 3. Type safety - IDE support and runtime validation
 """
 
-from typing import Literal, Optional
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -40,7 +41,7 @@ class PyODIsolationForestParams(ModelHyperparameters):
         lt=0.5,
         description="Expected outlier fraction used by PyOD internals",
     )
-    random_state: Optional[int] = Field(
+    random_state: int | None = Field(
         default=42,
         description="Random seed for reproducible static training",
     )
@@ -141,7 +142,7 @@ class PyODHBOSParams(ModelHyperparameters):
 class PyODPCAParams(ModelHyperparameters):
     """Hyperparameters for PyOD PCA static baselines."""
 
-    n_components: Optional[int] = Field(
+    n_components: int | None = Field(
         default=None,
         ge=1,
         description="Number of principal components; None lets PyOD choose",

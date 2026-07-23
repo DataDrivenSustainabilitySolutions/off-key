@@ -3,12 +3,11 @@ from unittest.mock import AsyncMock, MagicMock
 
 import docker
 import pytest
-
-from off_key_tactic_middleware.services.orchestration import radar as radar_module
 from off_key_tactic_middleware.facades.docker import (
     get_workload_docker_status,
     should_fallback_to_container,
 )
+from off_key_tactic_middleware.services.orchestration import radar as radar_module
 from off_key_tactic_middleware.services.orchestration.radar import (
     RadarOrchestrationService,
 )

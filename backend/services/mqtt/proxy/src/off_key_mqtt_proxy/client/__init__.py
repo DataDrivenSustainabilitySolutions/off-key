@@ -4,10 +4,10 @@ Modular MQTT client implementation with separated concerns for better
 maintainability and testability.
 """
 
-from .models import ConnectionState, MQTTMessage
 from .connection import ConnectionManager
-from .subscriptions import SubscriptionManager
 from .messaging import MessageHandler
+from .models import ConnectionState, MQTTMessage
+from .subscriptions import SubscriptionManager
 
 __all__ = [
     "ConnectionState",

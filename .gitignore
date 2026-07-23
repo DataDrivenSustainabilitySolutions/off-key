@@ -27,9 +27,8 @@ npm-debug.log*
 yarn-error.log*
 .pnp/
 .pnp.js
-node_modules
-dist
-dist-ssr
+dist/
+dist-ssr/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -196,6 +195,7 @@ docker-compose.local-swarm.yml
 # Coding Assistant
 CLAUDE.md
 .claude
+/.tmp/
 /.pre-commit-cache
 AGENTS.md
 /frontend/.npm-cache
@@ -206,9 +206,5 @@ AGENTS.md
 /deployment-smoke-compose.log
 /deployment-smoke-compose-ps.txt
 
-.pytest_cache/
-**/.pytest_cache/
-__pycache__/
-*.py[cod]
 .venv/
 .git/

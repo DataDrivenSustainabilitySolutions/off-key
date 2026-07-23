@@ -5,10 +5,10 @@ Contains the core data classes and enums used across all MQTT client components.
 """
 
 import json
-from datetime import datetime
 from dataclasses import dataclass
+from datetime import datetime
 from enum import Enum
-from typing import Dict, Any, List, Optional
+from typing import Any
 
 import paho.mqtt.client as mqtt
 from off_key_core.config.logs import logger
@@ -32,11 +32,11 @@ class ClientConnectionInfo:
     state: str
     broker_host: str
     broker_port: int
-    client_id: Optional[str]
-    connection_start_time: Optional[str]
+    client_id: str | None
+    connection_start_time: str | None
     reconnect_attempts: int
-    subscriptions: List[str]
-    pending_subscriptions: List[str]
+    subscriptions: list[str]
+    pending_subscriptions: list[str]
     messages_sent: int
 
 
@@ -53,8 +53,8 @@ class ClientHealthStatus:
     active_subscriptions: int
     reconnect_attempts: int
     queue_size: int
-    last_message_time: Optional[str]
-    last_message_age_seconds: Optional[float]
+    last_message_time: str | None
+    last_message_age_seconds: float | None
 
 
 @dataclass
@@ -62,7 +62,7 @@ class MQTTMessage:
     """MQTT message data structure"""
 
     topic: str
-    payload: Dict[str, Any]
+    payload: dict[str, Any]
     timestamp: datetime
     qos: int
     retain: bool

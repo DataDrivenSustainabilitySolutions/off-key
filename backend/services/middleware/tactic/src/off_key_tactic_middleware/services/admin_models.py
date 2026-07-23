@@ -1,6 +1,6 @@
 """Use-case service for model-registry admin endpoints."""
 
-from typing import Any, Optional
+from typing import Any
 
 from off_key_core.config.logs import logger
 from off_key_core.db.models import ModelRegistry
@@ -74,7 +74,7 @@ class ModelRegistryAdminService:
         self,
         *,
         include_inactive: bool,
-        category: Optional[str],
+        category: str | None,
     ) -> list[dict[str, Any]]:
         try:
             models = self._repository.list_models(

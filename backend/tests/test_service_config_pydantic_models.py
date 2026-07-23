@@ -1,6 +1,4 @@
 import pytest
-from pydantic import ValidationError
-
 from off_key_core.schemas.radar import StaticBaselineConfig, StaticMartingaleConfig
 from off_key_mqtt_proxy.config.config import MQTTConfig, MQTTSettings
 from off_key_mqtt_radar.config.config import (
@@ -8,6 +6,7 @@ from off_key_mqtt_radar.config.config import (
     MQTTRadarConfig,
     RadarSettings,
 )
+from pydantic import ValidationError
 
 
 def _base_mqtt_config() -> dict:

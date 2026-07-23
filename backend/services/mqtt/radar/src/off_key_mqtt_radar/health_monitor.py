@@ -8,8 +8,8 @@ import asyncio
 import time
 from collections import deque
 from contextlib import suppress
-from datetime import datetime, timezone
-from typing import Optional, Dict, Any, List, Deque
+from datetime import UTC, datetime
+from typing import Any
 
 from off_key_core.config.logging import get_logging_settings
 from off_key_core.config.logs import logger
@@ -42,13 +42,13 @@ class HealthMonitor:
             max_processing_times: Max processing times to track
         """
         self.health_check_interval = health_check_interval
-        self.processing_times: Deque[float] = deque(maxlen=max_processing_times)
+        self.processing_times: deque[float] = deque(maxlen=max_processing_times)
 
         # Service state
-        self.start_time: Optional[datetime] = None
+        self.start_time: datetime | None = None
         self.last_health_check = time.time()
-        self._shutdown_event: Optional[asyncio.Event] = None
-        self._health_check_task: Optional[asyncio.Task] = None
+        self._shutdown_event: asyncio.Event | None = None
+        self._health_check_task: asyncio.Task | None = None
 
         # Component references (set via set_components)
         self._mqtt_client = None
@@ -116,7 +116,7 @@ class HealthMonitor:
                         timeout=self.health_check_interval,
                     )
                     break  # Shutdown event was set
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     await self._perform_health_check()
         except asyncio.CancelledError:
             logger.debug(
@@ -163,11 +163,11 @@ class HealthMonitor:
 
     def build_metrics_snapshot(
         self, status: HealthStatus | None = None
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Build the current metrics payload for persistence."""
         return self._build_metrics_dict(status or self.get_health_status())
 
-    def _build_metrics_dict(self, status: HealthStatus) -> Dict[str, Any]:
+    def _build_metrics_dict(self, status: HealthStatus) -> dict[str, Any]:
         """Build metrics dictionary for persistence."""
         processor_metrics = (
             self._message_processor.get_metrics() if self._message_processor else {}
@@ -213,8 +213,8 @@ class HealthMonitor:
 
     def get_health_status(self) -> HealthStatus:
         """Get comprehensive health status."""
-        components: Dict[str, Any] = {}
-        active_alerts: List[str] = []
+        components: dict[str, Any] = {}
+        active_alerts: list[str] = []
 
         # Check MQTT client
         if self._mqtt_client:
@@ -307,9 +307,9 @@ class HealthMonitor:
         self,
         *,
         service_status: str,
-        components: Dict[str, Any],
-        processor_metrics: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        components: dict[str, Any],
+        processor_metrics: dict[str, Any],
+    ) -> dict[str, Any]:
         detector_health = components.get("anomaly_detector", {}) or {}
         detector_stats = detector_health.get("primary_service_stats", {}) or {}
         message_count = int(processor_metrics.get("message_count", 0) or 0)
@@ -354,14 +354,14 @@ class HealthMonitor:
             processed_message_count=processed_count,
             last_alignment_status=last_alignment_status,
             error=error,
-            updated_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(UTC),
             is_stale=False,
         ).model_dump(mode="json", exclude_none=True)
 
     @staticmethod
     def _static_operational_stage(
-        detector_stats: Dict[str, Any],
-    ) -> tuple[str, str | None, Dict[str, int] | None]:
+        detector_stats: dict[str, Any],
+    ) -> tuple[str, str | None, dict[str, int] | None]:
         state = detector_stats.get("state")
         if state == "collecting":
             current = int(detector_stats.get("training_collected_samples", 0) or 0)

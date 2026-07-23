@@ -1,11 +1,10 @@
 """Use cases for user/account/auth operations."""
 
 import bcrypt
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from off_key_core.config.logs import logger
 from off_key_core.db.models import User
 from off_key_core.utils.enum import RoleEnum
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...domain import (
     AuthenticationError,

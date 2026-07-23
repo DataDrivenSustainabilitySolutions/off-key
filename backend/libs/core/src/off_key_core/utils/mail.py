@@ -1,12 +1,13 @@
 import time
 from functools import lru_cache
 
-from fastapi_mail import FastMail, MessageSchema, ConnectionConfig, MessageType
+from fastapi_mail import ConnectionConfig, FastMail, MessageSchema, MessageType
+
 from ..config.email import get_email_settings
 from ..config.logs import (
-    logger,
     log_performance,
     log_security_event,
+    logger,
     redact_email,
 )
 

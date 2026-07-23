@@ -5,7 +5,6 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-
 from off_key_mqtt_radar import service as radar_service_module
 from off_key_mqtt_radar.database import DatabaseWriter
 from off_key_mqtt_radar.health_monitor import HealthMonitor

@@ -1,9 +1,7 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from sqlalchemy.exc import IntegrityError, SQLAlchemyError
-
 from off_key_core.utils.enum import HealthStatus
 from off_key_core.utils.mqtt_topics import TopicMetadataExtractor
 from off_key_mqtt_proxy.client.models import MQTTMessage
@@ -13,6 +11,7 @@ from off_key_mqtt_proxy.telemetry import (
     ParseSuccess,
     WriteBatch,
 )
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 
 def _writer() -> DatabaseWriter:
@@ -33,7 +32,7 @@ async def test_parse_telemetry_message_converts_offset_timestamp_to_utc():
     message = MQTTMessage(
         topic="charger/charger-1/live-telemetry/sine",
         payload={"timestamp": "2024-01-01T12:00:00+02:00", "value": "2.5"},
-        timestamp=datetime.now(timezone.utc),
+        timestamp=datetime.now(UTC),
         qos=0,
         retain=False,
     )
@@ -41,7 +40,7 @@ async def test_parse_telemetry_message_converts_offset_timestamp_to_utc():
     result = await writer._parse_telemetry_message(message)
 
     assert isinstance(result, ParseSuccess)
-    assert result.record.timestamp == datetime(2024, 1, 1, 10, 0, tzinfo=timezone.utc)
+    assert result.record.timestamp == datetime(2024, 1, 1, 10, 0, tzinfo=UTC)
     assert result.record.created.tzinfo is not None
 
 
@@ -51,7 +50,7 @@ async def test_parse_telemetry_message_treats_naive_timestamp_as_utc():
     message = MQTTMessage(
         topic="charger/charger-1/live-telemetry/sine",
         payload={"timestamp": "2024-01-01T12:00:00", "value": "2.5"},
-        timestamp=datetime.now(timezone.utc),
+        timestamp=datetime.now(UTC),
         qos=0,
         retain=False,
     )
@@ -59,7 +58,7 @@ async def test_parse_telemetry_message_treats_naive_timestamp_as_utc():
     result = await writer._parse_telemetry_message(message)
 
     assert isinstance(result, ParseSuccess)
-    assert result.record.timestamp == datetime(2024, 1, 1, 12, 0, tzinfo=timezone.utc)
+    assert result.record.timestamp == datetime(2024, 1, 1, 12, 0, tzinfo=UTC)
 
 
 @pytest.mark.asyncio
@@ -68,7 +67,7 @@ async def test_parse_telemetry_message_invalid_topic_returns_safe_failure():
     message = MQTTMessage(
         topic="charger/abc/live-telemetry",
         payload={"timestamp": "2024-01-01T12:00:00+00:00", "value": "2.5"},
-        timestamp=datetime.now(timezone.utc),
+        timestamp=datetime.now(UTC),
         qos=0,
         retain=False,
     )
@@ -85,7 +84,7 @@ async def test_parse_telemetry_message_invalid_timestamp_returns_safe_failure():
     message = MQTTMessage(
         topic="charger/charger-1/live-telemetry/sine",
         payload={"timestamp": "not-a-date", "value": "2.5"},
-        timestamp=datetime.now(timezone.utc),
+        timestamp=datetime.now(UTC),
         qos=0,
         retain=False,
     )
@@ -103,7 +102,7 @@ async def test_parse_telemetry_message_invalid_timezone_offset_returns_safe_fail
     message = MQTTMessage(
         topic="charger/charger-1/live-telemetry/sine",
         payload={"timestamp": "2024-01-01T12:00:00+25:00", "value": "2.5"},
-        timestamp=datetime.now(timezone.utc),
+        timestamp=datetime.now(UTC),
         qos=0,
         retain=False,
     )
@@ -121,7 +120,7 @@ async def test_parse_telemetry_message_utc_suffix_timestamp():
     message = MQTTMessage(
         topic="charger/charger-1/live-telemetry/sine",
         payload={"timestamp": "2024-01-01T12:00:00Z", "value": "2.5"},
-        timestamp=datetime.now(timezone.utc),
+        timestamp=datetime.now(UTC),
         qos=0,
         retain=False,
     )
@@ -129,7 +128,7 @@ async def test_parse_telemetry_message_utc_suffix_timestamp():
     result = await writer._parse_telemetry_message(message)
 
     assert isinstance(result, ParseSuccess)
-    assert result.record.timestamp == datetime(2024, 1, 1, 12, 0, tzinfo=timezone.utc)
+    assert result.record.timestamp == datetime(2024, 1, 1, 12, 0, tzinfo=UTC)
 
 
 @pytest.mark.asyncio
@@ -138,7 +137,7 @@ async def test_parse_telemetry_message_unix_epoch_timestamp():
     message = MQTTMessage(
         topic="charger/charger-1/live-telemetry/sine",
         payload={"timestamp": 1704110400, "value": "2.5"},
-        timestamp=datetime.now(timezone.utc),
+        timestamp=datetime.now(UTC),
         qos=0,
         retain=False,
     )
@@ -146,9 +145,7 @@ async def test_parse_telemetry_message_unix_epoch_timestamp():
     result = await writer._parse_telemetry_message(message)
 
     assert isinstance(result, ParseSuccess)
-    assert result.record.timestamp == datetime.fromtimestamp(
-        1704110400, tz=timezone.utc
-    )
+    assert result.record.timestamp == datetime.fromtimestamp(1704110400, tz=UTC)
 
 
 @pytest.mark.asyncio
@@ -157,7 +154,7 @@ async def test_parse_telemetry_message_invalid_value_is_treated_as_none():
     message = MQTTMessage(
         topic="charger/charger-1/live-telemetry/sine",
         payload={"timestamp": "2024-01-01T12:00:00+00:00", "value": "not-a-number"},
-        timestamp=datetime.now(timezone.utc),
+        timestamp=datetime.now(UTC),
         qos=0,
         retain=False,
     )
@@ -182,7 +179,7 @@ async def test_process_batch_uses_rowcount_for_written_records():
     message = MQTTMessage(
         topic="charger/charger-1/live-telemetry/sine",
         payload={"timestamp": "2024-01-01T12:00:00+00:00", "value": "2.5"},
-        timestamp=datetime.now(timezone.utc),
+        timestamp=datetime.now(UTC),
         qos=0,
         retain=False,
     )
@@ -218,7 +215,7 @@ async def test_process_batch_falls_back_to_batch_size_when_rowcount_is_none():
     message = MQTTMessage(
         topic="charger/charger-1/live-telemetry/sine",
         payload={"timestamp": "2024-01-01T12:00:00+00:00", "value": "2.5"},
-        timestamp=datetime.now(timezone.utc),
+        timestamp=datetime.now(UTC),
         qos=0,
         retain=False,
     )
@@ -254,7 +251,7 @@ async def test_process_batch_falls_back_to_batch_size_when_rowcount_is_negative(
     message = MQTTMessage(
         topic="charger/charger-1/live-telemetry/sine",
         payload={"timestamp": "2024-01-01T12:00:00+00:00", "value": "2.5"},
-        timestamp=datetime.now(timezone.utc),
+        timestamp=datetime.now(UTC),
         qos=0,
         retain=False,
     )
@@ -289,7 +286,7 @@ async def test_process_batch_integrity_error_treated_as_success(monkeypatch):
     message = MQTTMessage(
         topic="charger/charger-1/live-telemetry/sine",
         payload={"timestamp": "2024-01-01T12:00:00+00:00", "value": "2.5"},
-        timestamp=datetime.now(timezone.utc),
+        timestamp=datetime.now(UTC),
         qos=0,
         retain=False,
     )
@@ -320,7 +317,7 @@ async def test_process_batch_sqlalchemy_error_propagates_as_failure():
     message = MQTTMessage(
         topic="charger/charger-1/live-telemetry/sine",
         payload={"timestamp": "2024-01-01T12:00:00+00:00", "value": "2.5"},
-        timestamp=datetime.now(timezone.utc),
+        timestamp=datetime.now(UTC),
         qos=0,
         retain=False,
     )
@@ -349,7 +346,7 @@ async def test_batch_retry_failure_increments_failed_record_metrics(monkeypatch)
     message = MQTTMessage(
         topic="charger/charger-1/live-telemetry/sine",
         payload={"timestamp": "2024-01-01T12:00:00+00:00", "value": "2.5"},
-        timestamp=datetime.now(timezone.utc),
+        timestamp=datetime.now(UTC),
         qos=0,
         retain=False,
     )
@@ -359,7 +356,7 @@ async def test_batch_retry_failure_increments_failed_record_metrics(monkeypatch)
     message_two = MQTTMessage(
         topic="charger/charger-1/live-telemetry/sine",
         payload={"timestamp": "2024-01-01T12:00:01+00:00", "value": "3.5"},
-        timestamp=datetime.now(timezone.utc),
+        timestamp=datetime.now(UTC),
         qos=0,
         retain=False,
     )
@@ -389,7 +386,7 @@ async def test_batch_retry_success_keeps_failed_metrics_at_zero(monkeypatch):
     message = MQTTMessage(
         topic="charger/charger-1/live-telemetry/sine",
         payload={"timestamp": "2024-01-01T12:00:00+00:00", "value": "2.5"},
-        timestamp=datetime.now(timezone.utc),
+        timestamp=datetime.now(UTC),
         qos=0,
         retain=False,
     )

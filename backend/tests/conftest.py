@@ -9,11 +9,10 @@ Provides common fixtures for:
 """
 
 import asyncio
-import pytest
-from unittest.mock import MagicMock, AsyncMock
-from typing import Dict
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+from unittest.mock import AsyncMock, MagicMock
 
+import pytest
 
 # ============================================================================
 # Async Support
@@ -62,7 +61,7 @@ def mock_database_writer():
 
 
 @pytest.fixture
-def sample_telemetry_data() -> Dict[str, float]:
+def sample_telemetry_data() -> dict[str, float]:
     """Sample telemetry data for testing."""
     return {
         "cpu_usage": 45.5,
@@ -82,7 +81,7 @@ def sample_mqtt_message():
         payload=b'{"cpu_usage": 45.5, "temperature": 65.2}',
         qos=1,
         retain=False,
-        timestamp=datetime.now(timezone.utc),
+        timestamp=datetime.now(UTC),
     )
 
 
@@ -95,7 +94,7 @@ def sample_anomaly_result():
         anomaly_score=0.85,
         is_anomaly=True,
         severity="high",
-        timestamp=datetime.now(timezone.utc),
+        timestamp=datetime.now(UTC),
         model_info={"model_type": "isolation_forest"},
         raw_data={"cpu_usage": 95.5},
         topic="charger/charger-001/telemetry/cpu",

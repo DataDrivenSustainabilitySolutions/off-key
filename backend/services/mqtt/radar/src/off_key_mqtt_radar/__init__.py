@@ -9,8 +9,8 @@ __title__ = "off-key-mqtt-radar"
 __description__ = "MQTT Real-Time Anomaly Detector for Analysis and Reporting"
 __author__ = "Oliver Hennhoefer, Fernando Saba"
 
+from .models import AnomalyResult, HealthStatus, MQTTMessage
 from .service import RadarService, get_radar_service
-from .models import AnomalyResult, MQTTMessage, HealthStatus
 
 __all__ = [
     "RadarService",

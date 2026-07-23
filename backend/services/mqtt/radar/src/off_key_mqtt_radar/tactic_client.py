@@ -4,12 +4,13 @@ TACTIC Model Registry Client for RADAR Service.
 Replaces direct core package imports with HTTP calls to TACTIC middleware.
 """
 
-import logging
-import aiohttp
 import asyncio
-import time
 import concurrent.futures
-from typing import Dict, Any, List, Optional
+import logging
+import time
+from typing import Any
+
+import aiohttp
 
 from .config.runtime import get_radar_tactic_client_settings
 
@@ -35,11 +36,11 @@ class TacticModelClient:
 
     def __init__(
         self,
-        base_url: Optional[str] = None,
-        cache_ttl_seconds: Optional[float] = None,
+        base_url: str | None = None,
+        cache_ttl_seconds: float | None = None,
     ):
         self.base_url = (base_url or _default_tactic_base_url()).rstrip("/")
-        self._model_cache: Dict[str, Dict[str, Any]] = {}
+        self._model_cache: dict[str, dict[str, Any]] = {}
         self._cache_ttl_seconds = cache_ttl_seconds or _default_cache_ttl_seconds()
         self._model_cache_expires_at = 0.0
 
@@ -115,14 +116,14 @@ class TacticModelClient:
             )
             raise TacticModelError(f"TACTIC connection error: {e}")
 
-    async def get_available_models(self) -> List[Dict[str, Any]]:
+    async def get_available_models(self) -> list[dict[str, Any]]:
         """Get list of available models."""
         await self._refresh_model_cache()
         return list(self._model_cache.values())
 
     async def validate_model_params(
-        self, model_type: str, params: Optional[Dict[str, Any]] = None
-    ) -> Dict[str, Any]:
+        self, model_type: str, params: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
         """Validate model parameters against schema."""
         request_data = {"model_type": model_type, "parameters": params or {}}
 
@@ -137,8 +138,8 @@ class TacticModelClient:
 
     # Synchronous wrapper methods for compatibility with existing code
     def validate_model_params_sync(
-        self, model_type: str, params: Optional[Dict[str, Any]] = None
-    ) -> Dict[str, Any]:
+        self, model_type: str, params: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
         """Synchronous wrapper for validate_model_params."""
         return self._run_coroutine_sync(self.validate_model_params(model_type, params))
 
@@ -157,8 +158,8 @@ def get_tactic_client() -> TacticModelClient:
 
 # Compatibility functions for existing RADAR code
 def validate_model_params(
-    model_type: str, params: Optional[Dict[str, Any]] = None
-) -> Dict[str, Any]:
+    model_type: str, params: dict[str, Any] | None = None
+) -> dict[str, Any]:
     """Compatibility wrapper for core.models.validate_model_params."""
     client = get_tactic_client()
     return client.validate_model_params_sync(model_type, params)

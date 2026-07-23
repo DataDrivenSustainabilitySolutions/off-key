@@ -6,14 +6,15 @@ Provides admin endpoints for dynamically adding, updating, and managing models.
 
 import logging
 import re
-from typing import Any, Dict, List, Literal, Optional
-from fastapi import APIRouter, HTTPException, Depends
-from pydantic import BaseModel, Field, field_validator
-from off_key_core.models import STATIC_MODEL_FAMILY
+from typing import Any, Literal
 
-from ...domain import DomainError, ConflictError, NotFoundError, InfrastructureError
+from fastapi import APIRouter, Depends, HTTPException
+from off_key_core.models import STATIC_MODEL_FAMILY
+from pydantic import BaseModel, Field, field_validator
+
+from ...domain import ConflictError, DomainError, InfrastructureError, NotFoundError
 from ...models.registry import ModelRegistryService
-from ...provider import get_model_registry_service, get_model_registry_admin_service
+from ...provider import get_model_registry_admin_service, get_model_registry_service
 from ...services.admin_models import ModelRegistryAdminService
 
 logger = logging.getLogger(__name__)
@@ -46,14 +47,14 @@ class CreateModelRequest(BaseModel):
         description="Static detector family",
     )
     name: str = Field(..., description="Human-readable model name")
-    description: Optional[str] = Field(None, description="Model description")
-    complexity: Optional[str] = Field("medium", description="Computational complexity")
-    memory_usage: Optional[str] = Field("medium", description="Memory usage level")
-    import_paths: List[str] = Field(..., description="Python import paths to try")
-    parameter_schema: Dict[str, Any] = Field(
+    description: str | None = Field(None, description="Model description")
+    complexity: str | None = Field("medium", description="Computational complexity")
+    memory_usage: str | None = Field("medium", description="Memory usage level")
+    import_paths: list[str] = Field(..., description="Python import paths to try")
+    parameter_schema: dict[str, Any] = Field(
         ..., description="JSON schema for parameters"
     )
-    default_parameters: Dict[str, Any] = Field(
+    default_parameters: dict[str, Any] = Field(
         default_factory=dict, description="Default parameter values"
     )
     version: str = Field(default="1.0.0", description="Model version")
@@ -84,32 +85,32 @@ class CreateModelRequest(BaseModel):
 class UpdateModelRequest(BaseModel):
     """Request to update an existing model."""
 
-    name: Optional[str] = Field(None, description="Human-readable model name")
-    description: Optional[str] = Field(None, description="Model description")
-    family: Optional[str] = Field(
+    name: str | None = Field(None, description="Human-readable model name")
+    description: str | None = Field(None, description="Model description")
+    family: str | None = Field(
         None,
         description="Static detector family",
     )
-    complexity: Optional[str] = Field(None, description="Computational complexity")
-    memory_usage: Optional[str] = Field(None, description="Memory usage level")
-    import_paths: Optional[List[str]] = Field(
+    complexity: str | None = Field(None, description="Computational complexity")
+    memory_usage: str | None = Field(None, description="Memory usage level")
+    import_paths: list[str] | None = Field(
         None, description="Python import paths to try"
     )
-    parameter_schema: Optional[Dict[str, Any]] = Field(
+    parameter_schema: dict[str, Any] | None = Field(
         None, description="JSON schema for parameters"
     )
-    default_parameters: Optional[Dict[str, Any]] = Field(
+    default_parameters: dict[str, Any] | None = Field(
         None, description="Default parameter values"
     )
-    version: Optional[str] = Field(None, description="Model version")
-    is_active: Optional[bool] = Field(None, description="Whether model is active")
-    requires_special_handling: Optional[bool] = Field(
+    version: str | None = Field(None, description="Model version")
+    is_active: bool | None = Field(None, description="Whether model is active")
+    requires_special_handling: bool | None = Field(
         None, description="Requires custom instantiation logic"
     )
 
     @field_validator("family")
     @classmethod
-    def validate_family(cls, value: Optional[str]) -> Optional[str]:
+    def validate_family(cls, value: str | None) -> str | None:
         if value is None:
             return value
         normalized = value.strip().lower()
@@ -126,12 +127,12 @@ class ModelRegistryResponse(BaseModel):
     category: str
     family: str
     name: str
-    description: Optional[str]
-    complexity: Optional[str]
-    memory_usage: Optional[str]
-    import_paths: List[str]
-    parameter_schema: Dict[str, Any]
-    default_parameters: Dict[str, Any]
+    description: str | None
+    complexity: str | None
+    memory_usage: str | None
+    import_paths: list[str]
+    parameter_schema: dict[str, Any]
+    default_parameters: dict[str, Any]
     version: str
     is_active: bool
     requires_special_handling: bool
@@ -183,7 +184,7 @@ async def update_model(
 async def delete_model(
     model_type: str,
     service: ModelRegistryAdminService = Depends(get_model_registry_admin_service),
-) -> Dict[str, str]:
+) -> dict[str, str]:
     """
     Delete (deactivate) a model from the registry.
 
@@ -195,12 +196,12 @@ async def delete_model(
         _raise_http_from_domain(exc)
 
 
-@router.get("/", response_model=List[ModelRegistryResponse])
+@router.get("/", response_model=list[ModelRegistryResponse])
 async def list_all_models(
     include_inactive: bool = False,
-    category: Optional[str] = None,
+    category: str | None = None,
     service: ModelRegistryAdminService = Depends(get_model_registry_admin_service),
-) -> List[ModelRegistryResponse]:
+) -> list[ModelRegistryResponse]:
     """
     List all models in registry, including inactive ones.
 
@@ -219,9 +220,9 @@ async def list_all_models(
 @router.post("/{model_type}/test")
 async def test_model_instantiation(
     model_type: str,
-    test_parameters: Optional[Dict[str, Any]] = None,
+    test_parameters: dict[str, Any] | None = None,
     model_registry: ModelRegistryService = Depends(get_model_registry_service),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Test that a model can be instantiated with given parameters.
 

@@ -14,7 +14,6 @@ import logging
 import time
 from dataclasses import dataclass, field
 from threading import Lock
-from typing import Dict, List, Optional, Set, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -26,9 +25,7 @@ DEFAULT_MAX_SENSOR_AGE_SECONDS = 30.0
 DEFAULT_MAX_CHARGERS = 10000
 
 
-def _extract_numeric_value(
-    values: Dict[str, float], sensor_type: str
-) -> Optional[float]:
+def _extract_numeric_value(values: dict[str, float], sensor_type: str) -> float | None:
     """
     Extract a single numeric value to represent this sensor.
     Preference order:
@@ -58,7 +55,7 @@ class SensorStateCache:
 
     def __init__(
         self,
-        required_sensors: Set[str],
+        required_sensors: set[str],
         ttl_seconds: float = DEFAULT_TTL_SECONDS,
         max_sensor_age_seconds: float = DEFAULT_MAX_SENSOR_AGE_SECONDS,
         max_chargers: int = DEFAULT_MAX_CHARGERS,
@@ -85,9 +82,9 @@ class SensorStateCache:
         if self.alignment_mode != "strict_barrier":
             raise ValueError("alignment_mode must be: strict_barrier")
         # cache[charger_id][sensor_type] = {"values": {...}, "timestamp": float}
-        self.cache: Dict[str, Dict[str, Dict[str, object]]] = {}
+        self.cache: dict[str, dict[str, dict[str, object]]] = {}
         # Tracks last emitted sensor update sequence in strict-barrier mode.
-        self._last_emitted_versions: Dict[str, Dict[str, int]] = {}
+        self._last_emitted_versions: dict[str, dict[str, int]] = {}
         self._next_update_seq = 0
         self.strict_barrier_emit_count = 0
         self.strict_barrier_wait_count = 0
@@ -95,15 +92,15 @@ class SensorStateCache:
         self._cleanup_interval = 300  # Run cleanup every 5 minutes
 
     def update(
-        self, charger_id: str, sensor_type: str, values: Dict[str, float]
-    ) -> Optional[Dict[str, float]]:
+        self, charger_id: str, sensor_type: str, values: dict[str, float]
+    ) -> dict[str, float] | None:
         """Backward-compatible shorthand for update_with_status()."""
         update = self.update_with_status(charger_id, sensor_type, values)
         return update.features
 
     def update_with_status(
-        self, charger_id: str, sensor_type: str, values: Dict[str, float]
-    ) -> "AlignmentUpdate":
+        self, charger_id: str, sensor_type: str, values: dict[str, float]
+    ) -> AlignmentUpdate:
         """
         Update cache with a new sensor reading.
 
@@ -153,7 +150,7 @@ class SensorStateCache:
                     sensor_ages=sensor_ages,
                 )
 
-            pending_sensors: List[str] = []
+            pending_sensors: list[str] = []
             last_emitted = self._last_emitted_versions.setdefault(charger_id, {})
             for sensor in self.required_sensor_order:
                 current_seq = int(charger_cache[sensor].get("seq", 0))
@@ -167,7 +164,7 @@ class SensorStateCache:
                     sensor_ages=sensor_ages,
                 )
 
-            aligned: Dict[str, float] = {}
+            aligned: dict[str, float] = {}
             for sensor in self.required_sensor_order:
                 latest = charger_cache[sensor]["values"]
                 value = _extract_numeric_value(latest, sensor)
@@ -199,10 +196,10 @@ class SensorStateCache:
             )
 
     def _collect_sensor_ages(
-        self, charger_cache: Dict[str, Dict[str, object]], current_time: float
-    ) -> Dict[str, float]:
+        self, charger_cache: dict[str, dict[str, object]], current_time: float
+    ) -> dict[str, float]:
         """Collect age in seconds for each required sensor that has a cached value."""
-        ages: Dict[str, float] = {}
+        ages: dict[str, float] = {}
         for sensor in self.required_sensors:
             sensor_entry = charger_cache.get(sensor)
             if not sensor_entry:
@@ -216,7 +213,7 @@ class SensorStateCache:
 
         Must be called while holding the lock.
         """
-        stale_chargers: List[str] = []
+        stale_chargers: list[str] = []
         stale_sensor_entries = 0
 
         for charger_id, sensors in self.cache.items():
@@ -257,7 +254,7 @@ class SensorStateCache:
         Must be called while holding the lock.
         """
         # Build list of (charger_id, latest_timestamp)
-        charger_times: List[Tuple[str, float]] = []
+        charger_times: list[tuple[str, float]] = []
         for charger_id, sensors in self.cache.items():
             latest_ts = max(
                 (s.get("timestamp", 0) for s in sensors.values()),
@@ -287,7 +284,7 @@ class SensorStateCache:
             self.cache.clear()
             self._last_emitted_versions.clear()
 
-    def get_stats(self) -> Dict[str, int]:
+    def get_stats(self) -> dict[str, int]:
         """Get cache statistics."""
         with self._lock:
             total_sensors = sum(len(sensors) for sensors in self.cache.values())
@@ -308,9 +305,9 @@ class AlignmentUpdate:
     """Structured alignment outcome for observability and flow control."""
 
     status: str
-    features: Optional[Dict[str, float]] = None
-    missing_sensors: Tuple[str, ...] = ()
-    pending_sensors: Tuple[str, ...] = ()
-    stale_sensors: Tuple[str, ...] = ()
-    sensor_ages: Dict[str, float] = field(default_factory=dict)
-    sample_timestamp: Optional[float] = None
+    features: dict[str, float] | None = None
+    missing_sensors: tuple[str, ...] = ()
+    pending_sensors: tuple[str, ...] = ()
+    stale_sensors: tuple[str, ...] = ()
+    sensor_ages: dict[str, float] = field(default_factory=dict)
+    sample_timestamp: float | None = None

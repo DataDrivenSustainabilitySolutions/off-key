@@ -15,11 +15,10 @@ import pickle
 import time
 import uuid
 from typing import Any
-from typing import Optional
 
 from off_key_core.config.logs import logger
-from .config.runtime import get_radar_checkpoint_settings
 
+from .config.runtime import get_radar_checkpoint_settings
 
 _CHECKPOINT_MAGIC = b"OFFKEY-CHECKPOINT-V1\n"
 _checkpoint_secret_warning_logged = False
@@ -37,8 +36,8 @@ class CheckpointManager:
 
     def __init__(
         self,
-        checkpoint_dir: Optional[str] = None,
-        service_id: Optional[str] = None,
+        checkpoint_dir: str | None = None,
+        service_id: str | None = None,
         stale_lock_age_seconds: int = 3600,
     ):
         """
@@ -53,7 +52,7 @@ class CheckpointManager:
         self.checkpoint_dir = checkpoint_dir or runtime.RADAR_CHECKPOINT_DIR
         self.service_id = service_id or runtime.SERVICE_ID
         self.stale_lock_age_seconds = stale_lock_age_seconds
-        self._claimed_lock_path: Optional[str] = None
+        self._claimed_lock_path: str | None = None
         self._log_context = {"component": "checkpoint_manager"}
 
     @staticmethod
@@ -257,6 +256,6 @@ class CheckpointManager:
                 self._claimed_lock_path = None
 
     @property
-    def claimed_lock_path(self) -> Optional[str]:
+    def claimed_lock_path(self) -> str | None:
         """Get the path of the currently claimed lock, if any."""
         return self._claimed_lock_path

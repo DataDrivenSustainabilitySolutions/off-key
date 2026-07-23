@@ -2,11 +2,10 @@
 FastAPI application for database schema service health checks.
 """
 
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator
 
 from fastapi import FastAPI, HTTPException
-
 from off_key_core.config.logs import logger
 
 # Global reference to sync service (set by main)

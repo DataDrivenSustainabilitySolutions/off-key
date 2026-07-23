@@ -1,7 +1,6 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from jose import jwt
-
 from off_key_api_gateway.services.auth import (
     create_reset_token,
     create_verification_token,
@@ -48,7 +47,7 @@ def test_verify_verification_token_rejects_missing_required_claims(monkeypatch):
     token = jwt.encode(
         {
             "sub": "user@example.com",
-            "exp": datetime.now(timezone.utc) + timedelta(minutes=5),
+            "exp": datetime.now(UTC) + timedelta(minutes=5),
             "iss": settings.JWT_ISSUER,
             "aud": settings.JWT_AUDIENCE,
         },
@@ -65,7 +64,7 @@ def test_verify_reset_token_rejects_wrong_audience(monkeypatch):
     token = jwt.encode(
         {
             "sub": "user@example.com",
-            "exp": datetime.now(timezone.utc) + timedelta(minutes=5),
+            "exp": datetime.now(UTC) + timedelta(minutes=5),
             "iss": settings.JWT_ISSUER,
             "aud": "unexpected-audience",
             "token_type": "password_reset",

@@ -1,11 +1,11 @@
 """Application services for TACTIC data APIs."""
 
+from .anomalies import AnomalyService
 from .chargers import ChargerQueryService
+from .favorites import FavoriteService
+from .monitoring_evidence import MonitoringEvidenceService
 from .telemetry import TelemetryQueryService
 from .users import UserService
-from .favorites import FavoriteService
-from .anomalies import AnomalyService
-from .monitoring_evidence import MonitoringEvidenceService
 
 __all__ = [
     "ChargerQueryService",

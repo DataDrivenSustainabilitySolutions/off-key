@@ -1,7 +1,6 @@
 import pytest
-from pydantic import ValidationError
-
 from off_key_core.config.email import get_email_settings
+from pydantic import ValidationError
 
 
 def _set_base_email_env(monkeypatch) -> None:

@@ -9,14 +9,14 @@ Handles MQTT message processing pipeline:
 """
 
 import time
-from datetime import datetime, timezone
-from typing import Optional, Dict, Any, Tuple
+from datetime import UTC, datetime
+from typing import Any
 
 from off_key_core.config.logs import logger
 
-from .models import MQTTMessage, AnomalyResult
-from .detector import ResilientAnomalyDetector, SecurityValidator, MemoryManager
-from .state_cache import SensorStateCache, AlignmentUpdate
+from .detector import MemoryManager, ResilientAnomalyDetector, SecurityValidator
+from .models import AnomalyResult, MQTTMessage
+from .state_cache import AlignmentUpdate, SensorStateCache
 from .topic_parser import TopicParser
 
 
@@ -50,8 +50,8 @@ class MessageProcessor:
         detector: ResilientAnomalyDetector,
         security_validator: SecurityValidator,
         memory_manager: MemoryManager,
-        state_cache: Optional[SensorStateCache] = None,
-        required_sensors: Optional[set] = None,
+        state_cache: SensorStateCache | None = None,
+        required_sensors: set | None = None,
         sensor_key_strategy: str = "full_hierarchy",
     ):
         """
@@ -80,7 +80,7 @@ class MessageProcessor:
         self.message_count = 0
         self.anomaly_count = 0
         self.error_count = 0
-        self.last_alignment_status: Optional[str] = None
+        self.last_alignment_status: str | None = None
 
         self._log_context = {"component": "message_processor"}
 
@@ -93,7 +93,7 @@ class MessageProcessor:
             raise ValueError(f"sensor_key_strategy must be one of: {allowed}")
         return normalized
 
-    async def process_message(self, message: MQTTMessage) -> Optional[AnomalyResult]:
+    async def process_message(self, message: MQTTMessage) -> AnomalyResult | None:
         """
         Process an MQTT message through the detection pipeline.
 
@@ -176,7 +176,7 @@ class MessageProcessor:
             self.error_count += 1
             return None
 
-    def _parse_payload(self, message: MQTTMessage) -> Optional[Dict[str, Any]]:
+    def _parse_payload(self, message: MQTTMessage) -> dict[str, Any] | None:
         """Parse raw MQTT payload into JSON."""
         try:
             return message.get_json_payload()
@@ -184,8 +184,8 @@ class MessageProcessor:
             raise InvalidPayloadError(str(e)) from e
 
     def _sanitize_payload(
-        self, data: Dict[str, Any], message: MQTTMessage
-    ) -> Optional[Dict[str, float]]:
+        self, data: dict[str, Any], message: MQTTMessage
+    ) -> dict[str, float] | None:
         """Validate and sanitize incoming message payload."""
         try:
             sanitized = self.security_validator.validate_and_sanitize(data)
@@ -201,10 +201,10 @@ class MessageProcessor:
 
     def _align_features(
         self,
-        charger_id: Optional[str],
-        sensor_type: Optional[str],
-        data: Dict[str, float],
-    ) -> Tuple[Optional[Dict[str, float]], Dict[str, Any]]:
+        charger_id: str | None,
+        sensor_type: str | None,
+        data: dict[str, float],
+    ) -> tuple[dict[str, float] | None, dict[str, Any]]:
         """Align multi-sensor streams if required."""
         normalized_data = self._normalize_sensor_reading(sensor_type, data)
 
@@ -223,7 +223,7 @@ class MessageProcessor:
             sensor_type,
             normalized_data,
         )
-        base_context: Dict[str, Any] = {
+        base_context: dict[str, Any] = {
             "alignment_status": alignment_update.status,
             "aligned_vector": bool(
                 alignment_update.features and len(alignment_update.features) > 1
@@ -297,7 +297,7 @@ class MessageProcessor:
 
         return alignment_update.features, base_context
 
-    def _direct_alignment_context(self) -> Dict[str, Any]:
+    def _direct_alignment_context(self) -> dict[str, Any]:
         """Build alignment context for messages that bypass multi-sensor alignment."""
         return {
             "alignment_status": "direct_pass_through",
@@ -308,8 +308,8 @@ class MessageProcessor:
 
     @staticmethod
     def _normalize_sensor_reading(
-        sensor_type: Optional[str], data: Dict[str, float]
-    ) -> Dict[str, float]:
+        sensor_type: str | None, data: dict[str, float]
+    ) -> dict[str, float]:
         """Normalize payload to a stable feature key based on sensor type.
 
         Priority order: sensor_type key, then "value", then first available key.
@@ -328,10 +328,10 @@ class MessageProcessor:
 
     def _detect_anomaly(
         self,
-        features: Dict[str, float],
+        features: dict[str, float],
         message: MQTTMessage,
-        charger_id: Optional[str],
-        alignment_context: Optional[Dict[str, Any]] = None,
+        charger_id: str | None,
+        alignment_context: dict[str, Any] | None = None,
     ) -> AnomalyResult:
         """Run the anomaly detector and return result."""
         result = self.detector.process_with_resilience(
@@ -344,9 +344,7 @@ class MessageProcessor:
             result.context["sensor_ages"] = sensor_ages
         sample_timestamp = (alignment_context or {}).get("sample_timestamp")
         if isinstance(sample_timestamp, (int, float)):
-            canonical_dt = datetime.fromtimestamp(
-                float(sample_timestamp), tz=timezone.utc
-            )
+            canonical_dt = datetime.fromtimestamp(float(sample_timestamp), tz=UTC)
             result.timestamp = canonical_dt
             result.context["canonical_sample_timestamp"] = canonical_dt.isoformat()
         self.message_count += 1
@@ -439,7 +437,7 @@ class MessageProcessor:
                 extra=self._log_context,
             )
 
-    def get_metrics(self) -> Dict[str, Any]:
+    def get_metrics(self) -> dict[str, Any]:
         """Get current processing metrics."""
         return {
             "message_count": self.received_message_count,

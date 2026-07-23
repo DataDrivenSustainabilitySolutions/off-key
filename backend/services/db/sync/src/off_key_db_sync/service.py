@@ -7,8 +7,6 @@ Orchestrates database schema initialization and health reporting.
 import asyncio
 import signal
 
-from sqlalchemy import bindparam, text
-
 from off_key_core.config.logs import logger
 from off_key_core.db.base import get_async_engine
 from off_key_core.db.models import Base
@@ -17,6 +15,7 @@ from off_key_core.models import (
     RETIRED_MODEL_FAMILY,
     STATIC_MODEL_FAMILY,
 )
+from sqlalchemy import bindparam, text
 
 
 class SyncService:

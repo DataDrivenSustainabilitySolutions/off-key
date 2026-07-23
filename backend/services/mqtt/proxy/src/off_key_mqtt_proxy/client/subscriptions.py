@@ -5,8 +5,6 @@ Manages all MQTT topic subscriptions including active subscriptions,
 pending subscriptions, and resubscription after reconnection.
 """
 
-from typing import Set, Optional
-
 import paho.mqtt.client as mqtt
 from off_key_core.config.logs import logger
 
@@ -23,8 +21,8 @@ class SubscriptionManager:
         self.default_qos = default_qos
 
         # Subscription tracking
-        self.subscriptions: Set[str] = set()
-        self.pending_subscriptions: Set[str] = set()
+        self.subscriptions: set[str] = set()
+        self.pending_subscriptions: set[str] = set()
 
     def set_client(self, client: mqtt.Client) -> None:
         """Set the MQTT client and register callbacks"""
@@ -32,7 +30,7 @@ class SubscriptionManager:
         self.client.on_subscribe = self._on_subscribe
         self.client.on_unsubscribe = self._on_unsubscribe
 
-    async def subscribe(self, topic: str, qos: Optional[int] = None) -> bool:
+    async def subscribe(self, topic: str, qos: int | None = None) -> bool:
         """
         Subscribe to MQTT topic
 
@@ -120,15 +118,15 @@ class SubscriptionManager:
         # Clear pending after attempting to resubscribe
         self.pending_subscriptions.clear()
 
-    def get_subscriptions(self) -> Set[str]:
+    def get_subscriptions(self) -> set[str]:
         """Get current active subscriptions"""
         return self.subscriptions.copy()
 
-    def get_pending_subscriptions(self) -> Set[str]:
+    def get_pending_subscriptions(self) -> set[str]:
         """Get pending subscriptions"""
         return self.pending_subscriptions.copy()
 
-    def get_all_topics(self) -> Set[str]:
+    def get_all_topics(self) -> set[str]:
         """Get all topics (active + pending)"""
         return self.subscriptions.union(self.pending_subscriptions)
 

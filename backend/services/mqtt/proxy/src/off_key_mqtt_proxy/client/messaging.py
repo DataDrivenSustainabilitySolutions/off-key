@@ -6,12 +6,13 @@ management, message queuing, and thread-safe async coordination.
 """
 
 import asyncio
+from collections.abc import Awaitable, Callable
 from contextlib import suppress
 from datetime import datetime
-from typing import Optional, Callable, List, Union, Awaitable
 
 import paho.mqtt.client as mqtt
 from off_key_core.config.logs import logger
+
 from .models import MQTTMessage
 
 
@@ -28,21 +29,22 @@ class MessageHandler:
         self.max_concurrent_handlers = max_concurrent_handlers
 
         # Message handling
-        self.message_handler: Optional[
-            Union[
-                Callable[[MQTTMessage], None], Callable[[MQTTMessage], Awaitable[None]]
-            ]
-        ] = None
-        self.message_queue: List[MQTTMessage] = []
-        self._event_loop: Optional[asyncio.AbstractEventLoop] = None
-        self._handler_queue: Optional[
+        self.message_handler: (
+            Callable[[MQTTMessage], None]
+            | Callable[[MQTTMessage], Awaitable[None]]
+            | None
+        ) = None
+        self.message_queue: list[MQTTMessage] = []
+        self._event_loop: asyncio.AbstractEventLoop | None = None
+        self._handler_queue: (
             asyncio.Queue[tuple[MQTTMessage, Callable[[MQTTMessage], Awaitable[None]]]]
-        ] = None
-        self._handler_workers: List[asyncio.Task] = []
+            | None
+        ) = None
+        self._handler_workers: list[asyncio.Task] = []
 
         # Metrics
         self.messages_received = 0
-        self.last_message_time: Optional[datetime] = None
+        self.last_message_time: datetime | None = None
         self.handler_errors = 0
         self.futures_created = 0
         self.futures_completed = 0
@@ -56,10 +58,9 @@ class MessageHandler:
 
     def set_handler(
         self,
-        handler: Union[
-            Callable[[MQTTMessage], None], Callable[[MQTTMessage], Awaitable[None]]
-        ],
-        event_loop: Optional[asyncio.AbstractEventLoop] = None,
+        handler: Callable[[MQTTMessage], None]
+        | Callable[[MQTTMessage], Awaitable[None]],
+        event_loop: asyncio.AbstractEventLoop | None = None,
     ) -> None:
         """
         Set message handler callback
@@ -92,13 +93,13 @@ class MessageHandler:
         self,
         *,
         drain: bool = True,
-        timeout: Optional[float] = None,
+        timeout: float | None = None,
     ) -> None:
         """Stop async handler workers after optionally draining queued work."""
         if drain and self._handler_queue:
             try:
                 await asyncio.wait_for(self._handler_queue.join(), timeout=timeout)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 logger.error(
                     "Timed out draining async message handler queue; "
                     "dropping %s queued messages",
@@ -119,7 +120,7 @@ class MessageHandler:
         self.message_handler = None
         self._event_loop = None
 
-    def get_queued_messages(self, count: Optional[int] = None) -> List[MQTTMessage]:
+    def get_queued_messages(self, count: int | None = None) -> list[MQTTMessage]:
         """
         Get messages from the queue
 
@@ -166,9 +167,7 @@ class MessageHandler:
             "handler_messages_dropped": self.handler_messages_dropped,
         }
 
-    def get_message_rate(
-        self, connection_start_time: Optional[datetime] = None
-    ) -> float:
+    def get_message_rate(self, connection_start_time: datetime | None = None) -> float:
         """
         Calculate message rate since connection started
 

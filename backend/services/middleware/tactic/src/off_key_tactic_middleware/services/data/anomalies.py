@@ -1,13 +1,11 @@
 """Use cases for anomaly operations."""
 
 from datetime import datetime
-from typing import Optional
-
-from sqlalchemy.exc import IntegrityError
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from off_key_core.config.logs import logger
 from off_key_core.db.models import Anomaly
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...domain import ConflictError, InfrastructureError, NotFoundError
 from ...repositories import AnomalyRepository
@@ -25,7 +23,7 @@ class AnomalyService:
         self,
         *,
         charger_id: str,
-        telemetry_type: Optional[str],
+        telemetry_type: str | None,
         limit: int,
     ) -> list[dict[str, object]]:
         rows = await self._repository.list_by_charger(
@@ -51,7 +49,7 @@ class AnomalyService:
             for anomaly_id, anomaly in rows
         ]
 
-    async def count_anomalies(self, *, since: Optional[datetime] = None) -> int:
+    async def count_anomalies(self, *, since: datetime | None = None) -> int:
         return await self._repository.count_since(since=since)
 
     async def create_anomaly(self, *, payload: AnomalyCreateRequest) -> dict[str, str]:
@@ -86,7 +84,7 @@ class AnomalyService:
         return {"message": "Anomaly created", "anomaly_id": str(created_anomaly_id)}
 
     @staticmethod
-    def _resolve_value_type(*, anomaly_type: str, value_type: Optional[str]) -> str:
+    def _resolve_value_type(*, anomaly_type: str, value_type: str | None) -> str:
         if value_type is not None:
             return value_type
         if anomaly_type.lower().startswith("ml_tailprob_"):
@@ -96,7 +94,7 @@ class AnomalyService:
         return "zscore"
 
     @staticmethod
-    def _normalize_sensor_set(sensor_set: Optional[list[str]]) -> Optional[list[str]]:
+    def _normalize_sensor_set(sensor_set: list[str] | None) -> list[str] | None:
         if not sensor_set:
             return None
 

@@ -1,11 +1,10 @@
 """Tests for gateway anomaly value_type forwarding semantics."""
 
-from datetime import datetime, timezone
 import inspect
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
 
 import pytest
-
 from off_key_api_gateway.api.v1.anomalies import AnomalyCreatePayload, create_anomaly
 
 
@@ -13,7 +12,7 @@ from off_key_api_gateway.api.v1.anomalies import AnomalyCreatePayload, create_an
 async def test_create_anomaly_forwards_explicit_value_type():
     payload = AnomalyCreatePayload(
         charger_id="charger-1",
-        timestamp=datetime.now(timezone.utc),
+        timestamp=datetime.now(UTC),
         telemetry_type="voltage",
         anomaly_type="ml_tailprob_univariate",
         anomaly_value=0.0011,
@@ -46,7 +45,7 @@ async def test_create_anomaly_forwards_explicit_value_type():
 async def test_create_anomaly_forwards_none_when_value_type_omitted():
     payload = AnomalyCreatePayload(
         charger_id="charger-2",
-        timestamp=datetime.now(timezone.utc),
+        timestamp=datetime.now(UTC),
         telemetry_type="temperature",
         anomaly_type="ml_tailprob_multivariate",
         anomaly_value=0.0045,
@@ -76,7 +75,7 @@ async def test_create_anomaly_forwards_none_when_value_type_omitted():
 
 @pytest.mark.asyncio
 async def test_create_anomaly_query_params_forward_value_type():
-    timestamp = datetime.now(timezone.utc)
+    timestamp = datetime.now(UTC)
     mock_create = AsyncMock(
         return_value={"message": "Anomaly created", "anomaly_id": "a-3"}
     )

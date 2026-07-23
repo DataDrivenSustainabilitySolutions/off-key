@@ -17,35 +17,35 @@ import time
 from collections import deque
 from collections.abc import Iterable
 from contextlib import suppress
-from datetime import datetime, timezone
-from typing import List, Optional, Dict, Any, Tuple
-
-from sqlalchemy import (
-    Table,
-    Column,
-    Text,
-    Float,
-    TIMESTAMP,
-    JSON,
-    text,
-)
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
-from sqlalchemy.schema import MetaData
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.dialects.postgresql import insert as pg_insert
+from datetime import UTC, datetime
+from typing import Any
 
 from off_key_core.db.table_contracts import monitoring_evidence_table
 from off_key_core.schemas.radar import RadarOperationalStatus
 from off_key_core.utils.mqtt_topics import TopicMetadataExtractor
+from sqlalchemy import (
+    JSON,
+    TIMESTAMP,
+    Column,
+    Float,
+    Table,
+    Text,
+    text,
+)
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.schema import MetaData
+
 from .config.config import MQTTRadarConfig
 from .config.runtime import get_radar_checkpoint_settings, get_radar_database_settings
-from .models import ServiceMetrics, AnomalyResult
+from .models import AnomalyResult, ServiceMetrics
 
 logger = logging.getLogger(__name__)
 MULTIVARIATE_TELEMETRY_TYPE = "__multivariate__"
 
 
-def _optional_finite_float(value: Any) -> Optional[float]:
+def _optional_finite_float(value: Any) -> float | None:
     """Return a JSON/database-safe finite float or ``None``."""
     if not isinstance(value, (int, float)):
         return None
@@ -141,7 +141,7 @@ class DatabaseWriter:
         self.session_factory = session_factory
 
         # Batch processing
-        self.write_queue: List[AnomalyResult] = []
+        self.write_queue: list[AnomalyResult] = []
         self.last_write_time = time.time()
 
         # Performance tracking
@@ -151,7 +151,7 @@ class DatabaseWriter:
         self.write_times = deque(maxlen=100)
 
         # Control
-        self._writer_task: Optional[asyncio.Task] = None
+        self._writer_task: asyncio.Task | None = None
         self._shutdown_event = asyncio.Event()
         self._queue_lock = asyncio.Lock()
         self._flush_lock = asyncio.Lock()
@@ -185,7 +185,7 @@ class DatabaseWriter:
         # Signal shutdown
         self._shutdown_event.set()
 
-        cancelled_error: Optional[asyncio.CancelledError] = None
+        cancelled_error: asyncio.CancelledError | None = None
 
         # Let the writer loop finish any in-progress flush before cancelling it.
         # The shield is intentional: if the caller cancels stop(), the writer task
@@ -196,7 +196,7 @@ class DatabaseWriter:
                     asyncio.shield(self._writer_task),
                     timeout=max(self.config.db_batch_timeout * 2, 5.0),
                 )
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 self._writer_task.cancel()
                 with suppress(asyncio.CancelledError):
                     await self._writer_task
@@ -230,7 +230,7 @@ class DatabaseWriter:
         """Queue a result; retained as the public writer entry point."""
         await self.write_result(result)
 
-    async def write_service_metrics(self, metrics: Dict[str, Any]):
+    async def write_service_metrics(self, metrics: dict[str, Any]):
         """Write service performance metrics"""
         if not self.config.db_write_enabled:
             return
@@ -281,9 +281,9 @@ class DatabaseWriter:
             return
 
         normalized = RadarOperationalStatus(**status)
-        updated_at = normalized.updated_at or datetime.now(timezone.utc)
+        updated_at = normalized.updated_at or datetime.now(UTC)
         if updated_at.tzinfo is None:
-            updated_at = updated_at.replace(tzinfo=timezone.utc)
+            updated_at = updated_at.replace(tzinfo=UTC)
         payload = normalized.model_copy(update={"updated_at": updated_at}).model_dump(
             mode="json", exclude_none=True
         )
@@ -339,7 +339,7 @@ class DatabaseWriter:
                     )
                     # Shutdown event was set
                     break
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     # Timeout reached, check if we should flush
                     if (
                         self.write_queue
@@ -360,7 +360,7 @@ class DatabaseWriter:
         logger.info("event=radar.db_writer_loop_stopped")
 
     def _extract_telemetry_type(
-        self, topic: str, payload: Optional[Dict[str, Any]] = None
+        self, topic: str, payload: dict[str, Any] | None = None
     ) -> str:
         """Extract telemetry type from MQTT topic."""
         metadata = self.topic_extractor.extract(topic=topic, payload=payload)
@@ -415,7 +415,7 @@ class DatabaseWriter:
         return float(result.anomaly_score)
 
     @staticmethod
-    def _normalize_sensor_set(value: Any) -> Optional[List[str]]:
+    def _normalize_sensor_set(value: Any) -> list[str] | None:
         if isinstance(value, dict):
             iterable = value.keys()
         elif isinstance(value, set):
@@ -434,7 +434,7 @@ class DatabaseWriter:
                 seen.add(sensor)
         return sensors or None
 
-    def _derive_sensor_set(self, result: AnomalyResult) -> Optional[List[str]]:
+    def _derive_sensor_set(self, result: AnomalyResult) -> list[str] | None:
         """Resolve the exact telemetry streams involved in a stored anomaly."""
         alignment_context = (result.context or {}).get("alignment", {})
         required_sensors = self._normalize_sensor_set(
@@ -458,8 +458,8 @@ class DatabaseWriter:
 
     def _build_records(
         self,
-        results: List[AnomalyResult],
-    ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+        results: list[AnomalyResult],
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
         anomaly_records = []
         for result in results:
             anomaly_records.append(
@@ -488,8 +488,8 @@ class DatabaseWriter:
         return anomaly_records, identity_records
 
     def _build_evidence_records(
-        self, results: List[AnomalyResult]
-    ) -> List[Dict[str, Any]]:
+        self, results: list[AnomalyResult]
+    ) -> list[dict[str, Any]]:
         service_id = get_radar_checkpoint_settings().SERVICE_ID
         if not service_id:
             return []
@@ -540,8 +540,8 @@ class DatabaseWriter:
     async def _execute_upsert(
         self,
         session: AsyncSession,
-        anomaly_records: List[Dict[str, Any]],
-        identity_records: List[Dict[str, Any]],
+        anomaly_records: list[dict[str, Any]],
+        identity_records: list[dict[str, Any]],
     ) -> None:
         if not anomaly_records:
             return
@@ -563,7 +563,7 @@ class DatabaseWriter:
     async def _execute_evidence_upsert(
         self,
         session: AsyncSession,
-        evidence_records: List[Dict[str, Any]],
+        evidence_records: list[dict[str, Any]],
     ) -> None:
         if not evidence_records:
             return
@@ -663,21 +663,21 @@ class DatabaseWriter:
 
     @staticmethod
     def _persistence_candidates(
-        batch_snapshot: List[AnomalyResult],
-    ) -> List[AnomalyResult]:
+        batch_snapshot: list[AnomalyResult],
+    ) -> list[AnomalyResult]:
         return [
             result
             for result in batch_snapshot
             if result.is_anomaly or DatabaseWriter._is_static_ready_result(result)
         ]
 
-    async def _requeue_results(self, results: List[AnomalyResult]) -> None:
+    async def _requeue_results(self, results: list[AnomalyResult]) -> None:
         if not results:
             return
         async with self._queue_lock:
             self.write_queue = list(results) + self.write_queue
 
-    async def _retry_failed_batch(self, *, batch_snapshot: List[AnomalyResult]) -> bool:
+    async def _retry_failed_batch(self, *, batch_snapshot: list[AnomalyResult]) -> bool:
         """Retry writing failed batch with exponential backoff.
 
         The outer flush retains ownership of the snapshot and live queue.
@@ -693,7 +693,7 @@ class DatabaseWriter:
         if not results_to_retry:
             return True
 
-        exhausted_results: List[AnomalyResult] = []
+        exhausted_results: list[AnomalyResult] = []
         # Process in chunks of 10
         while results_to_retry:
             retry_batch = results_to_retry[:10]
@@ -751,7 +751,7 @@ class DatabaseWriter:
 
         return not exhausted_results
 
-    def get_performance_metrics(self) -> Dict[str, Any]:
+    def get_performance_metrics(self) -> dict[str, Any]:
         """Get database writer performance metrics"""
         avg_write_time = 0.0
         if self.write_times:
@@ -775,7 +775,7 @@ class DatabaseWriter:
             "write_enabled": self.config.db_write_enabled,
         }
 
-    def get_health_status(self) -> Dict[str, Any]:
+    def get_health_status(self) -> dict[str, Any]:
         """Get database writer health status"""
         if not self.config.db_write_enabled:
             return {"status": "disabled", "reason": "write_disabled_in_config"}

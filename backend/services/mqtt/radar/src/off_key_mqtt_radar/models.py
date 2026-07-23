@@ -6,15 +6,15 @@ managed by off_key_core. This module contains only auxiliary models for service
 metrics and model checkpoints.
 """
 
-from sqlalchemy import Column, Integer, String, Float, DateTime, JSON
-from sqlalchemy.orm import declarative_base
-from sqlalchemy.sql import func
-from datetime import datetime
-from typing import Dict, Any, Optional, List
-from dataclasses import dataclass
 import json
+from dataclasses import dataclass
+from datetime import datetime
+from typing import Any
 
 from off_key_core.utils.mqtt_topics import TopicMetadataExtractor
+from sqlalchemy import JSON, Column, DateTime, Float, Integer, String
+from sqlalchemy.orm import declarative_base
+from sqlalchemy.sql import func
 
 Base = declarative_base()
 
@@ -97,14 +97,14 @@ class AnomalyResult:
     is_anomaly: bool
     severity: str
     timestamp: datetime
-    model_info: Dict[str, Any]
-    raw_data: Dict[str, Any]
-    processed_features: Optional[Dict[str, Any]] = None
-    topic: Optional[str] = None
-    charger_id: Optional[str] = None
-    context: Optional[Dict[str, Any]] = None
+    model_info: dict[str, Any]
+    raw_data: dict[str, Any]
+    processed_features: dict[str, Any] | None = None
+    topic: str | None = None
+    charger_id: str | None = None
+    context: dict[str, Any] | None = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for serialization"""
         return {
             "anomaly_score": self.anomaly_score,
@@ -132,18 +132,18 @@ class MQTTMessage:
     payload: bytes
     qos: int = 0
     retain: bool = False
-    timestamp: Optional[datetime] = None
+    timestamp: datetime | None = None
 
     _topic_extractor = TopicMetadataExtractor()
 
-    def get_json_payload(self) -> Dict[str, Any]:
+    def get_json_payload(self) -> dict[str, Any]:
         """Parse payload as JSON"""
         try:
             return json.loads(self.payload.decode("utf-8"))
         except (json.JSONDecodeError, UnicodeDecodeError) as e:
             raise ValueError(f"Invalid JSON payload: {e}")
 
-    def extract_charger_id(self) -> Optional[str]:
+    def extract_charger_id(self) -> str | None:
         """Extract charger ID from topic pattern"""
         metadata = self._topic_extractor.extract(topic=self.topic, payload=None)
         return metadata.charger_id if metadata else None
@@ -155,12 +155,12 @@ class HealthStatus:
 
     status: str  # healthy, degraded, failed, unknown
     timestamp: datetime
-    components: Dict[str, Dict[str, Any]]
-    metrics: Dict[str, Any]
-    active_alerts: List[str]
+    components: dict[str, dict[str, Any]]
+    metrics: dict[str, Any]
+    active_alerts: list[str]
     uptime_seconds: float
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary"""
         return {
             "status": self.status,

@@ -6,8 +6,8 @@ import json
 from typing import Any
 
 import uvicorn
-
 from off_key_core.config.logs import logger
+
 from .config.config import get_mqtt_settings
 from .proxy import MQTTProxyService
 

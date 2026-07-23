@@ -10,16 +10,17 @@ import asyncio
 from contextlib import suppress
 from pathlib import Path
 
-from .proxy import MQTTProxyService
-from .health_api import run_health_api
 from off_key_core.config.env import load_env
-from off_key_core.config.validation import validate_settings
 from off_key_core.config.logs import (
     load_yaml_config,
-    logger,
     log_startup_logging_configuration,
+    logger,
 )
+from off_key_core.config.validation import validate_settings
+
 from .config.config import get_mqtt_settings
+from .health_api import run_health_api
+from .proxy import MQTTProxyService
 
 # Load logging configuration from YAML files
 service_logging_config = Path(__file__).parent / "config" / "logging.yaml"

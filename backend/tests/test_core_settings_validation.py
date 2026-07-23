@@ -1,9 +1,8 @@
 import pytest
-from pydantic import ValidationError
-
 from off_key_core.config.database import DatabaseSettings
 from off_key_core.config.logging import get_logging_settings
 from off_key_core.config.runtime import get_runtime_settings
+from pydantic import ValidationError
 
 
 @pytest.fixture(autouse=True)

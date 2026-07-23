@@ -6,6 +6,7 @@ This module serves as the main entry point when running the service with
 """
 
 import asyncio
+
 from .main import main
 
 if __name__ == "__main__":

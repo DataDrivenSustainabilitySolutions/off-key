@@ -1,9 +1,8 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
-
 from off_key_tactic_middleware.services.data.monitoring_evidence import (
     MonitoringEvidenceService,
 )
@@ -30,7 +29,7 @@ def _evidence(sequence_number: int, timestamp: datetime):
 
 @pytest.mark.asyncio
 async def test_evidence_service_returns_chart_points_in_time_order():
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     repository = AsyncMock()
     repository.list_by_charger.return_value = [
         _evidence(2, now),

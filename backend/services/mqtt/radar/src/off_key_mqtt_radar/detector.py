@@ -5,26 +5,25 @@ Implements anomaly detection patterns from guide.md for real-time processing
 of MQTT telemetry data with resilient error handling and monitoring.
 """
 
-import logging
-import time
-import os
-import psutil
+import concurrent.futures
 import gc
 import hashlib
-import re
 import json
-import concurrent.futures
-from datetime import datetime, timezone
-from typing import Dict, Any, Optional, List
+import logging
+import os
+import re
+import time
 from collections import deque
+from datetime import UTC, datetime
 from enum import Enum
+from typing import Any
 
 import numpy as np
+import psutil
 
-from .config.config import AnomalyDetectionConfig
 from .checkpoint_manager import CheckpointManager
+from .config.config import AnomalyDetectionConfig
 from .models import AnomalyResult
-
 
 # =============================================================================
 # Checkpoint Security
@@ -106,7 +105,7 @@ class RestartedMartingaleAlarmController:
                 f"{cls.FIXED_RESTARTED_VILLE_THRESHOLD:g}."
             )
 
-    def __setstate__(self, state: Dict[str, Any]) -> None:
+    def __setstate__(self, state: dict[str, Any]) -> None:
         """Upgrade alpha-spending checkpoints to a fresh native mixture."""
         legacy_alpha = state.get("alpha")
         self.method = "power"
@@ -136,7 +135,7 @@ class RestartedMartingaleAlarmController:
             ),
         )
 
-    def update(self, p_value: float) -> Dict[str, Any]:
+    def update(self, p_value: float) -> dict[str, Any]:
         state = self._martingale.update(p_value)
         self.tested_count += 1
         threshold_crossed = (
@@ -193,7 +192,7 @@ class StaticConformalDetectionService:
     def __init__(
         self,
         config: AnomalyDetectionConfig,
-        checkpoint: Optional[Dict[str, Any]] = None,
+        checkpoint: dict[str, Any] | None = None,
     ):
         self.config = config
         self.logger = logging.getLogger(__name__)
@@ -202,8 +201,8 @@ class StaticConformalDetectionService:
         self.start_time = time.time()
         self.processing_times: deque = deque(maxlen=1000)
         self._training_executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
-        self._training_future: Optional[concurrent.futures.Future] = None
-        self.training_error: Optional[str] = None
+        self._training_future: concurrent.futures.Future | None = None
+        self.training_error: str | None = None
 
         if checkpoint:
             self._restore_from_checkpoint(checkpoint)
@@ -219,8 +218,8 @@ class StaticConformalDetectionService:
 
     def _initialize_fresh(self) -> None:
         self.state = StaticConformalState.COLLECTING
-        self.training_buffer: list[Dict[str, float]] = []
-        self.calibration_buffer: list[Dict[str, float]] = []
+        self.training_buffer: list[dict[str, float]] = []
+        self.calibration_buffer: list[dict[str, float]] = []
         self.feature_keys: list[str] = []
         self.conformal_detector = None
         self.alarm_controller = self._create_alarm_controller()
@@ -236,7 +235,7 @@ class StaticConformalDetectionService:
             self._training_future.cancel()
         self._training_executor.shutdown(wait=False, cancel_futures=True)
 
-    def _restore_from_checkpoint(self, checkpoint: Dict[str, Any]) -> None:
+    def _restore_from_checkpoint(self, checkpoint: dict[str, Any]) -> None:
         self.state = StaticConformalState(
             checkpoint.get("static_state", StaticConformalState.COLLECTING.value)
         )
@@ -403,7 +402,7 @@ class StaticConformalDetectionService:
         return hashlib.sha256(payload_json.encode("utf-8")).hexdigest()
 
     def process_data_point(
-        self, data: Dict[str, float], topic: str = None, charger_id: str = None
+        self, data: dict[str, float], topic: str = None, charger_id: str = None
     ) -> AnomalyResult:
         start_time = time.time()
         self._complete_training_if_ready()
@@ -429,9 +428,9 @@ class StaticConformalDetectionService:
 
     def _process_collecting(
         self,
-        data: Dict[str, float],
-        topic: Optional[str],
-        charger_id: Optional[str],
+        data: dict[str, float],
+        topic: str | None,
+        charger_id: str | None,
         start_time: float,
     ) -> AnomalyResult:
         schema_error = self._validate_or_freeze_feature_schema(data)
@@ -477,9 +476,9 @@ class StaticConformalDetectionService:
 
     def _process_calibrating(
         self,
-        data: Dict[str, float],
-        topic: Optional[str],
-        charger_id: Optional[str],
+        data: dict[str, float],
+        topic: str | None,
+        charger_id: str | None,
         start_time: float,
     ) -> AnomalyResult:
         schema_error = self._validate_or_freeze_feature_schema(data)
@@ -535,9 +534,9 @@ class StaticConformalDetectionService:
 
     def _process_training(
         self,
-        data: Dict[str, float],
-        topic: Optional[str],
-        charger_id: Optional[str],
+        data: dict[str, float],
+        topic: str | None,
+        charger_id: str | None,
         start_time: float,
     ) -> AnomalyResult:
         self.processed_count += 1
@@ -561,9 +560,9 @@ class StaticConformalDetectionService:
 
     def _process_ready(
         self,
-        data: Dict[str, float],
-        topic: Optional[str],
-        charger_id: Optional[str],
+        data: dict[str, float],
+        topic: str | None,
+        charger_id: str | None,
         start_time: float,
     ) -> AnomalyResult:
         schema_error = self._validate_or_freeze_feature_schema(data)
@@ -638,9 +637,9 @@ class StaticConformalDetectionService:
 
     def _process_failed(
         self,
-        data: Dict[str, float],
-        topic: Optional[str],
-        charger_id: Optional[str],
+        data: dict[str, float],
+        topic: str | None,
+        charger_id: str | None,
         start_time: float,
     ) -> AnomalyResult:
         self.processed_count += 1
@@ -657,9 +656,7 @@ class StaticConformalDetectionService:
             extra_context={"training_error": self.training_error},
         )
 
-    def _validate_or_freeze_feature_schema(
-        self, data: Dict[str, float]
-    ) -> Optional[str]:
+    def _validate_or_freeze_feature_schema(self, data: dict[str, float]) -> str | None:
         keys = sorted(data.keys())
         if not keys:
             return "empty feature vector"
@@ -672,13 +669,13 @@ class StaticConformalDetectionService:
             return f"feature schema mismatch missing={missing} extra={extra}"
         return None
 
-    def _vectorize(self, data: Dict[str, float]) -> List[float]:
+    def _vectorize(self, data: dict[str, float]) -> list[float]:
         return [float(data[key]) for key in self.feature_keys]
 
     def _fit_static_baseline(
         self,
-        training_samples: list[Dict[str, float]],
-        calibration_samples: list[Dict[str, float]],
+        training_samples: list[dict[str, float]],
+        calibration_samples: list[dict[str, float]],
         feature_keys: list[str],
     ) -> tuple[Any, Any]:
         from nonconform import ConformalDetector, Split
@@ -730,7 +727,7 @@ class StaticConformalDetectionService:
         return self._instantiate_pyod_detector(model_type, params)
 
     def _instantiate_pyod_detector(
-        self, model_type: str, params: Dict[str, Any]
+        self, model_type: str, params: dict[str, Any]
     ) -> Any:
         if model_type == "pyod_iforest":
             from pyod.models.iforest import IForest
@@ -805,7 +802,7 @@ class StaticConformalDetectionService:
         """Publish completed background training without waiting for new input."""
         self._complete_training_if_ready()
 
-    def _compute_p_value(self, vector: List[float]) -> float:
+    def _compute_p_value(self, vector: list[float]) -> float:
         p_values = np.asarray(
             self.conformal_detector.compute_p_values(np.asarray([vector], dtype=float)),
             dtype=float,
@@ -839,16 +836,16 @@ class StaticConformalDetectionService:
     def _build_result(
         self,
         *,
-        data: Dict[str, float],
-        processed_features: Optional[Dict[str, float]],
+        data: dict[str, float],
+        processed_features: dict[str, float] | None,
         score: float,
         is_anomaly: bool,
         severity: str,
-        topic: Optional[str],
-        charger_id: Optional[str],
+        topic: str | None,
+        charger_id: str | None,
         start_time: float,
         phase: str,
-        extra_context: Optional[Dict[str, Any]] = None,
+        extra_context: dict[str, Any] | None = None,
     ) -> AnomalyResult:
         processing_time = time.time() - start_time
         self.processing_times.append(processing_time)
@@ -875,7 +872,7 @@ class StaticConformalDetectionService:
             anomaly_score=score,
             is_anomaly=is_anomaly,
             severity=severity,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
             model_info=self._get_model_info(),
             raw_data=data,
             processed_features=processed_features,
@@ -933,7 +930,7 @@ class StaticConformalDetectionService:
                 exc_info=True,
             )
 
-    def _get_model_info(self) -> Dict[str, Any]:
+    def _get_model_info(self) -> dict[str, Any]:
         return {
             "strategy": "static_baseline",
             "state": self.state.value,
@@ -982,7 +979,7 @@ class ResilientAnomalyDetector:
     def __init__(
         self,
         primary_service: Any,
-        fallback_service: Optional[Any] = None,
+        fallback_service: Any | None = None,
     ):
         self.primary_service = primary_service
         self.fallback_service = fallback_service
@@ -1009,7 +1006,7 @@ class ResilientAnomalyDetector:
                 shutdown()
 
     def process_with_resilience(
-        self, data: Dict[str, float], topic: str = None, charger_id: str = None
+        self, data: dict[str, float], topic: str = None, charger_id: str = None
     ) -> AnomalyResult:
         """Process data point with error handling and fallback"""
         try:
@@ -1032,7 +1029,7 @@ class ResilientAnomalyDetector:
             return self._fallback_processing(data, topic, charger_id, str(e))
 
     def _fallback_processing(
-        self, data: Dict[str, float], topic: str, charger_id: str, reason: str
+        self, data: dict[str, float], topic: str, charger_id: str, reason: str
     ) -> AnomalyResult:
         """Fallback processing when primary fails"""
         self.logger.warning("event=radar.fallback_processing reason=%s", reason)
@@ -1053,7 +1050,7 @@ class ResilientAnomalyDetector:
                 anomaly_score=score,
                 is_anomaly=False,
                 severity="unknown",
-                timestamp=datetime.now(timezone.utc),
+                timestamp=datetime.now(UTC),
                 model_info={"model_used": "statistical"},
                 raw_data=data,
                 topic=topic,
@@ -1087,7 +1084,7 @@ class ResilientAnomalyDetector:
                 },
             )
 
-    def _simple_statistical_anomaly_score(self, data: Dict[str, float]) -> float:
+    def _simple_statistical_anomaly_score(self, data: dict[str, float]) -> float:
         """Simple statistical anomaly detection as last resort"""
         try:
             values = list(data.values())
@@ -1160,7 +1157,7 @@ class ResilientAnomalyDetector:
         """Get current service state"""
         return self.state
 
-    def get_health_info(self) -> Dict[str, Any]:
+    def get_health_info(self) -> dict[str, Any]:
         """Get health information"""
         refresh_background_state = getattr(
             self.primary_service, "refresh_background_state", None
@@ -1221,7 +1218,7 @@ class SecurityValidator:
         self,
         max_feature_count=100,
         max_string_length=1000,
-        metadata_feature_keys: Optional[set[str]] = None,
+        metadata_feature_keys: set[str] | None = None,
     ):
         self.max_feature_count = max_feature_count
         self.max_string_length = max_string_length
@@ -1229,7 +1226,7 @@ class SecurityValidator:
         self.metadata_feature_keys = {key.lower() for key in keys}
         self.logger = logging.getLogger(__name__)
 
-    def validate_and_sanitize(self, data: Dict[str, Any]) -> Dict[str, float]:
+    def validate_and_sanitize(self, data: dict[str, Any]) -> dict[str, float]:
         """Validate and sanitize input data to numeric format"""
         if not isinstance(data, dict):
             raise ValueError("Input must be a dictionary")

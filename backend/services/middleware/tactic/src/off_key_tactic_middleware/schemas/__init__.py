@@ -5,9 +5,10 @@ These schemas define the data transfer objects used for API requests and respons
 """
 
 from datetime import datetime
-from typing import Any, Optional
-from pydantic import BaseModel, ConfigDict, Field
+from typing import Any
+
 from off_key_core.utils.enum import RoleEnum
+from pydantic import BaseModel, ConfigDict, Field
 
 # =============================================================================
 # Charger Schemas
@@ -20,20 +21,20 @@ class ChargerResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     charger_id: str
-    manufacturer_name: Optional[str] = None
-    charger_name: Optional[str] = None
-    firmware_version: Optional[str] = None
-    last_seen: Optional[str] = None
-    state: Optional[str] = None
+    manufacturer_name: str | None = None
+    charger_name: str | None = None
+    firmware_version: str | None = None
+    last_seen: str | None = None
+    state: str | None = None
     online: bool
-    created: Optional[datetime] = None
+    created: datetime | None = None
 
     # MQTT status fields
     mqtt_connected: bool = False
-    mqtt_last_message: Optional[datetime] = None
-    mqtt_subscription_status: Optional[dict] = None
+    mqtt_last_message: datetime | None = None
+    mqtt_subscription_status: dict | None = None
     mqtt_error_count: int = 0
-    mqtt_last_error: Optional[str] = None
+    mqtt_last_error: str | None = None
 
 
 # =============================================================================
@@ -51,7 +52,7 @@ class TelemetryDataPoint(BaseModel):
     """Single telemetry data point."""
 
     timestamp: str
-    value: Optional[float]
+    value: float | None
 
 
 class TelemetryResponse(BaseModel):
@@ -62,9 +63,9 @@ class TelemetryResponse(BaseModel):
     charger_id: str
     type: str
     timestamp: datetime
-    value: Optional[float]
+    value: float | None
     data_source: str
-    created: Optional[datetime] = None
+    created: datetime | None = None
 
 
 class TelemetryPaginatedResponse(BaseModel):
@@ -97,7 +98,7 @@ class UserCreateRequest(BaseModel):
 
     email: str = Field(..., max_length=255)
     hashed_password: str
-    verification_token: Optional[str] = None
+    verification_token: str | None = None
     role: RoleEnum = RoleEnum.user
 
 
@@ -111,9 +112,9 @@ class UserLoginRequest(BaseModel):
 class UserUpdateRequest(BaseModel):
     """Request schema for updating user."""
 
-    hashed_password: Optional[str] = None
-    is_verified: Optional[bool] = None
-    verification_token: Optional[str] = None
+    hashed_password: str | None = None
+    is_verified: bool | None = None
+    verification_token: str | None = None
 
 
 class UserPasswordUpdateRequest(BaseModel):
@@ -166,8 +167,8 @@ class AnomalyResponse(BaseModel):
     telemetry_type: str
     anomaly_type: str
     anomaly_value: float
-    value_type: Optional[str] = None
-    sensor_set: Optional[list[str]] = None
+    value_type: str | None = None
+    sensor_set: list[str] | None = None
 
 
 class AnomalyCreateRequest(BaseModel):
@@ -178,8 +179,8 @@ class AnomalyCreateRequest(BaseModel):
     telemetry_type: str
     anomaly_type: str
     anomaly_value: float
-    value_type: Optional[str] = None
-    sensor_set: Optional[list[str]] = None
+    value_type: str | None = None
+    sensor_set: list[str] | None = None
 
 
 class MonitoringEvidenceResponse(BaseModel):
@@ -191,12 +192,12 @@ class MonitoringEvidenceResponse(BaseModel):
     charger_id: str
     sensor_set: list[str]
     p_value: float
-    e_value: Optional[float] = None
+    e_value: float | None = None
     e_value_is_infinite: bool
-    log_e_value: Optional[float] = None
-    restarted_martingale: Optional[float] = None
+    log_e_value: float | None = None
+    restarted_martingale: float | None = None
     restarted_martingale_is_infinite: bool
-    log_restarted_martingale: Optional[float] = None
+    log_restarted_martingale: float | None = None
     threshold: float
     alarm: bool
 

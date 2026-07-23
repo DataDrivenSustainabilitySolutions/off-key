@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, status
-
 from off_key_core.schemas.favorites import FavoriteCreate
+
 from ...facades.tactic import TacticError, tactic
 
 router = APIRouter()

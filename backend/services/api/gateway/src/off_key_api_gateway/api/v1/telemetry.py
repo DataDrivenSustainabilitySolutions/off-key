@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, HTTPException, Query, status
 
@@ -47,9 +47,9 @@ async def get_telemetry(
     # Normalize to UTC to keep cursor behavior stable across clients.
     if after_timestamp is not None:
         after_timestamp = (
-            after_timestamp.replace(tzinfo=timezone.utc)
+            after_timestamp.replace(tzinfo=UTC)
             if after_timestamp.tzinfo is None
-            else after_timestamp.astimezone(timezone.utc)
+            else after_timestamp.astimezone(UTC)
         )
 
     try:

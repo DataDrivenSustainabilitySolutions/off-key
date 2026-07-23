@@ -1,10 +1,10 @@
 """Time-related utilities shared by tactic services."""
 
-from datetime import datetime, timezone
-from typing import Any, Optional
+from datetime import UTC, datetime
+from typing import Any
 
 
-def coerce_utc(value: Any) -> Optional[datetime]:
+def coerce_utc(value: Any) -> datetime | None:
     """Parse `value` into a timezone-aware UTC datetime."""
     if value is None:
         return None
@@ -20,5 +20,5 @@ def coerce_utc(value: Any) -> Optional[datetime]:
         return None
 
     if tzinfo is None:
-        return value.replace(tzinfo=timezone.utc)
-    return value.astimezone(timezone.utc)
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)

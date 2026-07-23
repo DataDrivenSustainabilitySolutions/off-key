@@ -2,7 +2,6 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-
 from off_key_tactic_middleware.services.orchestration.radar import (
     RadarOrchestrationService,
 )

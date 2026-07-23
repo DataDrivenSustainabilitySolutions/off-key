@@ -1,24 +1,24 @@
 from fastapi import APIRouter, HTTPException, status
 from off_key_core.config.auth import get_auth_settings
-
-from off_key_core.config.logs import logger, log_security_event, redact_email
+from off_key_core.config.logs import log_security_event, logger, redact_email
 from off_key_core.schemas.user import (
     ForgotPasswordRequest,
     ResetPasswordRequest,
     UserCreate,
     UserLogin,
 )
+from off_key_core.utils.enum import RoleEnum
+from off_key_core.utils.mail import send_password_reset_email, send_verification_email
+
+from ...facades.tactic import TacticError, tactic
 from ...services.auth import (
+    create_jwt,
     create_reset_token,
     create_verification_token,
     get_password_hash,
-    create_jwt,
     verify_reset_token,
     verify_verification_token,
 )
-from off_key_core.utils.enum import RoleEnum
-from off_key_core.utils.mail import send_verification_email, send_password_reset_email
-from ...facades.tactic import TacticError, tactic
 
 router = APIRouter()
 

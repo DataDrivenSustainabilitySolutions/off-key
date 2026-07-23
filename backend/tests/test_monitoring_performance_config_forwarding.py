@@ -2,27 +2,28 @@
 
 import inspect
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import HTTPException
-from pydantic import ValidationError
-from starlette.requests import Request
-
 from off_key_api_gateway.api.v1.monitors import (
     MonitoringServiceConfig,
-    PerformanceConfig as GatewayPerformanceConfig,
     TacticError,
     _resolve_effective_start_config,
     delete_monitoring_service,
     start_monitoring_service,
     stop_monitoring_service,
 )
+from off_key_api_gateway.api.v1.monitors import (
+    PerformanceConfig as GatewayPerformanceConfig,
+)
 from off_key_tactic_middleware.services.orchestration.radar import (
     RadarOrchestrationService,
 )
+from pydantic import ValidationError
+from starlette.requests import Request
 
 
 def _build_request() -> Request:
@@ -295,7 +296,7 @@ def test_tactic_operational_status_marks_failed_from_docker_exit():
             "processed_message_count": 5,
             "is_stale": False,
         },
-        operational_updated_at=datetime.now(timezone.utc),
+        operational_updated_at=datetime.now(UTC),
     )
     status = RadarOrchestrationService._derive_operational_status(service, "exited")
     assert status["stage"] == "failed"
@@ -313,7 +314,7 @@ def test_tactic_operational_status_marks_running_heartbeat_stale():
             "processed_message_count": 8,
             "is_stale": False,
         },
-        operational_updated_at=datetime.now(timezone.utc) - timedelta(seconds=180),
+        operational_updated_at=datetime.now(UTC) - timedelta(seconds=180),
     )
     status = RadarOrchestrationService._derive_operational_status(service, "running")
     assert status["stage"] == "collecting_training"

@@ -5,8 +5,9 @@ Provides REST API for managing model registry and model instances.
 """
 
 import logging
-from typing import Any, Dict, List, Optional
-from fastapi import APIRouter, HTTPException, Depends, Query, Response, status
+from typing import Any
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from pydantic import BaseModel, Field
 
 from ...models.registry import ModelRegistryService
@@ -27,18 +28,18 @@ class ModelInfo(BaseModel):
         description="Model family (e.g., 'distance', 'forest', 'svm')",
     )
     name: str = Field(..., description="Human-readable model name")
-    description: Optional[str] = Field(None, description="Model description")
-    complexity: Optional[str] = Field(None, description="Computational complexity")
-    memory_usage: Optional[str] = Field(None, description="Memory usage level")
+    description: str | None = Field(None, description="Model description")
+    complexity: str | None = Field(None, description="Computational complexity")
+    memory_usage: str | None = Field(None, description="Memory usage level")
     strategy: str = Field(
         default="static_baseline",
         description="Executable static monitoring lane",
     )
-    import_paths: List[str] = Field(..., description="Python import paths to try")
-    parameter_schema: Dict[str, Any] = Field(
+    import_paths: list[str] = Field(..., description="Python import paths to try")
+    parameter_schema: dict[str, Any] = Field(
         ..., description="JSON schema for parameters"
     )
-    default_parameters: Dict[str, Any] = Field(
+    default_parameters: dict[str, Any] = Field(
         ..., description="Default parameter values"
     )
     version: str = Field(..., description="Model version")
@@ -51,14 +52,14 @@ class ModelInstanceRequest(BaseModel):
     """Request to create a model instance."""
 
     model_type: str = Field(..., description="Model type identifier")
-    parameters: Optional[Dict[str, Any]] = Field(None, description="Model parameters")
+    parameters: dict[str, Any] | None = Field(None, description="Model parameters")
 
 
 class ModelValidationRequest(BaseModel):
     """Request to validate model parameters."""
 
     model_type: str = Field(..., description="Model type identifier")
-    parameters: Optional[Dict[str, Any]] = Field(
+    parameters: dict[str, Any] | None = Field(
         None, description="Parameters to validate"
     )
 
@@ -67,17 +68,17 @@ class ModelValidationResponse(BaseModel):
     """Model parameter validation response."""
 
     valid: bool = Field(..., description="Whether parameters are valid")
-    validated_parameters: Optional[Dict[str, Any]] = Field(
+    validated_parameters: dict[str, Any] | None = Field(
         None, description="Validated parameters with defaults"
     )
-    error: Optional[str] = Field(None, description="Validation error message")
+    error: str | None = Field(None, description="Validation error message")
 
 
-@router.get("/", response_model=List[ModelInfo])
+@router.get("/", response_model=list[ModelInfo])
 async def list_models(
-    strategy: Optional[str] = Query(default=None),
+    strategy: str | None = Query(default=None),
     model_registry: ModelRegistryService = Depends(get_model_registry_service),
-) -> List[ModelInfo]:
+) -> list[ModelInfo]:
     """
     Get list of all available models.
 
@@ -159,7 +160,7 @@ async def validate_model_parameters(
 async def create_model_instance(
     request: ModelInstanceRequest,
     model_registry: ModelRegistryService = Depends(get_model_registry_service),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Create and initialize a model instance.
 
@@ -216,10 +217,10 @@ async def create_model_instance(
         raise HTTPException(status_code=500, detail="Model creation failed")
 
 
-@router.get("/categories/models", response_model=List[str])
+@router.get("/categories/models", response_model=list[str])
 async def get_model_categories(
     model_registry: ModelRegistryService = Depends(get_model_registry_service),
-) -> List[str]:
+) -> list[str]:
     """
     Get list of unique model families.
 
@@ -239,7 +240,7 @@ async def get_model_categories(
 async def model_registry_health(
     response: Response,
     model_registry: ModelRegistryService = Depends(get_model_registry_service),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Health check for model registry service.
 

@@ -12,22 +12,22 @@ from pathlib import Path
 import uvicorn
 from fastapi import FastAPI, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
-
 from off_key_core.config.env import load_env
-from off_key_core.config.validation import validate_settings
 from off_key_core.config.logs import (
-    logger,
     load_yaml_config,
     log_startup_logging_configuration,
+    logger,
 )
+from off_key_core.config.validation import validate_settings
 from off_key_core.db.base import get_async_session_local
-from .api.v1 import radar, models, data_services
+
+from .api.v1 import data_services, models, radar
 from .api.v1.admin_models import router as admin_models_router
-from .config.config import get_tactic_settings, RadarWorkloadLifecycle
-from .services.reconciliation import RadarStatusReconciliationService
+from .config.config import RadarWorkloadLifecycle, get_tactic_settings
 from .facades.docker import AsyncDocker
-from .models.registry import ModelRegistryService, ModelRegistryNotReadyError
+from .models.registry import ModelRegistryNotReadyError, ModelRegistryService
 from .services.orchestration.radar import RadarOrchestrationService
+from .services.reconciliation import RadarStatusReconciliationService
 
 
 async def _initialize_model_registry(

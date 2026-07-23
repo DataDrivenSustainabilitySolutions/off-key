@@ -10,15 +10,16 @@ import sys
 from pathlib import Path
 
 from off_key_core.config.env import load_env
-from off_key_core.config.validation import validate_settings
 from off_key_core.config.logs import (
     load_yaml_config,
-    logger,
     log_startup_logging_configuration,
+    logger,
 )
-from .service import get_radar_service
+from off_key_core.config.validation import validate_settings
+
 from .config.config import get_radar_settings, load_configuration
 from .config.runtime import get_radar_runtime_file_settings
+from .service import get_radar_service
 
 
 def setup_logging():

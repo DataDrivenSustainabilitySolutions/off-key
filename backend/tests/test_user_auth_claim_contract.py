@@ -2,7 +2,6 @@ from types import SimpleNamespace
 
 import bcrypt
 import pytest
-
 from off_key_tactic_middleware.services.data.users import UserService
 
 

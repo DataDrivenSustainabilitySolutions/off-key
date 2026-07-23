@@ -1,21 +1,22 @@
-import os
-import re
-import time
-import yaml
 import contextvars
 import hashlib
 import ipaddress
 import logging
 import logging.config
-
-from pathlib import Path
-from typing import Optional, Dict, Any, Mapping
+import os
+import re
+import time
+from collections.abc import Mapping
 from enum import Enum
+from pathlib import Path
+from typing import Any
+
+import yaml
 
 from .logging import get_logging_settings
 
 # Context variable for request correlation IDs
-correlation_id: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
+correlation_id: contextvars.ContextVar[str | None] = contextvars.ContextVar(
     "correlation_id", default=None
 )
 
@@ -104,7 +105,7 @@ def set_correlation_id(request_id: str) -> None:
     correlation_id.set(request_id)
 
 
-def get_correlation_id() -> Optional[str]:
+def get_correlation_id() -> str | None:
     """Get current correlation ID."""
     return correlation_id.get()
 
@@ -148,7 +149,7 @@ def redact_email(email: str, *, level: int = logging.INFO) -> str:
     return f"{_mask_text(local)}@{_mask_text(domain_head)}{suffix}"
 
 
-def redact_ip_address(ip_value: Optional[str], *, level: int = logging.INFO) -> str:
+def redact_ip_address(ip_value: str | None, *, level: int = logging.INFO) -> str:
     """Mask IP addresses for logs."""
     if not ip_value:
         return "unknown"
@@ -195,9 +196,9 @@ def redact_value(value: Any, *, level: int = logging.INFO) -> Any:
 
 def redact_query_params(
     params: Mapping[str, Any], *, level: int = logging.INFO
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Return query params with sensitive keys masked."""
-    redacted: Dict[str, Any] = {}
+    redacted: dict[str, Any] = {}
     for key, value in params.items():
         if _is_sensitive_key(str(key)):
             redacted[key] = redact_value(value, level=level)
@@ -212,7 +213,7 @@ def redact_query_params(
 def log_performance(
     operation: str,
     start_time: float,
-    logger_instance: Optional[logging.Logger] = None,
+    logger_instance: logging.Logger | None = None,
     slow_threshold_seconds: float = 1.0,
 ) -> None:
     """Log performance timing for operations."""
@@ -233,10 +234,10 @@ def log_performance(
 
 def log_security_event(
     event_type: str,
-    user_id: Optional[str] = None,
-    details: Optional[Dict[str, Any]] = None,
-    logger_instance: Optional[logging.Logger] = None,
-    level: Optional[int] = None,
+    user_id: str | None = None,
+    details: dict[str, Any] | None = None,
+    logger_instance: logging.Logger | None = None,
+    level: int | None = None,
 ) -> None:
     """Log security-related events with consistent format."""
     log_instance = logger_instance or logger
@@ -301,7 +302,7 @@ def load_yaml_config(service_config_path: str = None) -> None:
     # Load base configuration from core
     core_config_path = Path(__file__).parent / "logging.yaml"
 
-    with open(core_config_path, "r") as f:
+    with open(core_config_path) as f:
         config_text = f.read()
         # Expand environment variables
         config_text = _expand_env_vars(config_text)
@@ -309,7 +310,7 @@ def load_yaml_config(service_config_path: str = None) -> None:
 
     # Load and merge service-specific configuration if provided
     if service_config_path and os.path.exists(service_config_path):
-        with open(service_config_path, "r") as f:
+        with open(service_config_path) as f:
             service_config_text = f.read()
             # Expand environment variables
             service_config_text = _expand_env_vars(service_config_text)
@@ -335,7 +336,7 @@ def load_yaml_config(service_config_path: str = None) -> None:
     logging.config.dictConfig(config)
 
 
-def _apply_log_format(config: Dict[str, Any]) -> None:
+def _apply_log_format(config: dict[str, Any]) -> None:
     """Apply LOG_FORMAT override to handler formatter choices."""
     selected = os.getenv("LOG_FORMAT", LogFormat.SIMPLE.value).strip().lower()
     handlers = config.get("handlers", {})
@@ -352,7 +353,7 @@ def _apply_log_format(config: Dict[str, Any]) -> None:
         handler["formatter"] = "detailed"
 
 
-def _ensure_root_handlers(config: Dict[str, Any]) -> None:
+def _ensure_root_handlers(config: dict[str, Any]) -> None:
     """Ensure root logger has a fallback handler for unknown logger names."""
     root_logger = config.setdefault("root", {})
     handlers = root_logger.get("handlers")
@@ -362,8 +363,8 @@ def _ensure_root_handlers(config: Dict[str, Any]) -> None:
 
 def log_startup_logging_configuration(
     service_name: str,
-    logger_name: Optional[str] = None,
-    logger_instance: Optional[logging.Logger] = None,
+    logger_name: str | None = None,
+    logger_instance: logging.Logger | None = None,
 ) -> None:
     """Emit one startup log describing effective logger wiring."""
     log_instance = logger_instance or logger
@@ -424,7 +425,7 @@ def _expand_env_vars(text: str) -> str:
     return text
 
 
-def _merge_configs(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
+def _merge_configs(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
     """Merge two configuration dictionaries."""
     result = base.copy()
 

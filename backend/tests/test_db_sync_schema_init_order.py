@@ -4,11 +4,10 @@ from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from sqlalchemy.dialects import postgresql
-from sqlalchemy.schema import CreateTable
-
 from off_key_core.db.models import MonitoringService
 from off_key_db_sync.service import SyncService
+from sqlalchemy.dialects import postgresql
+from sqlalchemy.schema import CreateTable
 
 
 @pytest.mark.asyncio

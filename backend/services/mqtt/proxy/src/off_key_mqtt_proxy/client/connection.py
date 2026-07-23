@@ -7,14 +7,15 @@ TLS configuration, authentication, and automatic reconnection with backoff.
 
 import asyncio
 import ssl
+from collections.abc import Awaitable, Callable
 from contextlib import suppress
 from datetime import datetime
-from typing import Optional, Callable, Awaitable
 
 import paho.mqtt.client as mqtt
 from off_key_core.config.logs import logger
+
+from ..auth import ApiKeyAuthError, ApiKeyAuthHandler
 from ..config.config import MQTTConfig
-from ..auth import ApiKeyAuthHandler, ApiKeyAuthError
 from .models import ConnectionState
 
 
@@ -29,9 +30,9 @@ class ConnectionManager:
     def __init__(
         self,
         config: MQTTConfig,
-        auth_handler: Optional[ApiKeyAuthHandler] = None,
-        on_connected: Optional[Callable[[], Awaitable[None]]] = None,
-        on_disconnected: Optional[Callable[[bool], Awaitable[None]]] = None,
+        auth_handler: ApiKeyAuthHandler | None = None,
+        on_connected: Callable[[], Awaitable[None]] | None = None,
+        on_disconnected: Callable[[bool], Awaitable[None]] | None = None,
     ):
         self.config = config
         self.auth_handler = auth_handler
@@ -40,16 +41,16 @@ class ConnectionManager:
 
         # Connection state
         self.state = ConnectionState.DISCONNECTED
-        self.client: Optional[mqtt.Client] = None
+        self.client: mqtt.Client | None = None
         self.last_connection_attempt = 0
         self.reconnect_attempts = 0
-        self.connection_start_time: Optional[datetime] = None
+        self.connection_start_time: datetime | None = None
 
         # Async coordination
         self._connection_event = asyncio.Event()
         self._shutdown_event = asyncio.Event()
-        self._reconnect_task: Optional[asyncio.Task] = None
-        self._event_loop: Optional[asyncio.AbstractEventLoop] = None
+        self._reconnect_task: asyncio.Task | None = None
+        self._event_loop: asyncio.AbstractEventLoop | None = None
 
     @property
     def is_connected(self) -> bool:
@@ -135,7 +136,7 @@ class ConnectionManager:
                 logger.error("MQTT connection failed")
                 return False
 
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 logger.error("MQTT connection timeout")
                 self.state = ConnectionState.FAILED
                 self._cleanup_failed_client()

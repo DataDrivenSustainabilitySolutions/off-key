@@ -1,6 +1,5 @@
 import pytest
 from fastapi import HTTPException
-
 from off_key_tactic_middleware.api.v1.admin_models import (
     test_model_instantiation as admin_test_model_instantiation,
 )

@@ -7,24 +7,23 @@ MonitoringService.status in sync with actual Docker state.
 
 import asyncio
 from contextlib import suppress
-from datetime import datetime, timedelta, timezone
-from typing import Optional
+from datetime import UTC, datetime, timedelta
 
 import docker
+from off_key_core.config.logs import logger
+from off_key_core.db.base import get_async_session_local
+from off_key_core.db.models import MonitoringService, MqttTopic
+from off_key_core.schemas.radar import RadarOperationalStatus
 from sqlalchemy import delete, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from off_key_core.config.logs import logger
-from off_key_core.db.models import MonitoringService, MqttTopic
-from off_key_core.db.base import get_async_session_local
-from off_key_core.schemas.radar import RadarOperationalStatus
-from .time_utils import coerce_utc
 from ..facades.docker import (
     AsyncDocker,
     get_workload_docker_status,
     with_workload_fallback,
 )
+from .time_utils import coerce_utc
 
 _FAILED_WORKLOAD_STATES = {"dead", "exited", "failed", "rejected"}
 _STOPPED_WORKLOAD_STATES = {
@@ -65,7 +64,7 @@ class RadarStatusReconciliationService:
         self.interval_seconds = interval_seconds
         self.terminal_service_retention_hours = terminal_service_retention_hours
         self.async_docker = AsyncDocker()
-        self._task: Optional[asyncio.Task] = None
+        self._task: asyncio.Task | None = None
         self._stop_event = asyncio.Event()
 
     async def start(self):
@@ -115,7 +114,7 @@ class RadarStatusReconciliationService:
                     timeout=self.interval_seconds,
                 )
                 break  # Stop event was set
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 continue  # Timeout reached, run again
 
     async def _reconcile(self):
@@ -212,7 +211,7 @@ class RadarStatusReconciliationService:
         if reference_time is None:
             return self.terminal_service_retention_hours == 0
 
-        cutoff = datetime.now(timezone.utc) - timedelta(
+        cutoff = datetime.now(UTC) - timedelta(
             hours=self.terminal_service_retention_hours
         )
         return reference_time <= cutoff
@@ -229,7 +228,7 @@ class RadarStatusReconciliationService:
         )
         return int(delete_result.rowcount or 0)
 
-    async def _remove_workload_if_present(self, container_id: Optional[str]) -> bool:
+    async def _remove_workload_if_present(self, container_id: str | None) -> bool:
         if not container_id:
             return False
         try:
@@ -272,7 +271,7 @@ class RadarStatusReconciliationService:
         docker_state = (docker_status or "").strip().lower()
         stage = "failed" if docker_state in _FAILED_WORKLOAD_STATES else "stopped"
         detail = f"Docker workload is {docker_state or 'not running'}"
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         existing = service.operational_status or {}
         if not isinstance(existing, dict):
             existing = {}

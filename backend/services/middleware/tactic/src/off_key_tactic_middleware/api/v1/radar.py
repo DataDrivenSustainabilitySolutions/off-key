@@ -1,20 +1,21 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from typing import List, Dict, Optional, Any
-from pydantic import BaseModel, ConfigDict, Field, field_validator
-from off_key_core.utils.mqtt_topics import normalize_static_monitoring_topics
+from typing import Any
 
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from off_key_core.schemas.radar import (
     MonitoringStrategy,
     PerformanceConfig,
     StaticBaselineConfig,
 )
+from off_key_core.utils.mqtt_topics import normalize_static_monitoring_topics
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
 from ...models.registry import ModelRegistryService
-from ...services.orchestration.radar import (
-    RadarOrchestrationService,
-)
 from ...provider import (
     get_model_registry_service,
     get_radar_orchestration_service,
+)
+from ...services.orchestration.radar import (
+    RadarOrchestrationService,
 )
 
 router = APIRouter()
@@ -26,7 +27,7 @@ class RadarConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     container_name: str = Field(..., description="Name for the Docker container")
-    mqtt_topics: List[str] = Field(..., description="List of MQTT topics to monitor")
+    mqtt_topics: list[str] = Field(..., description="List of MQTT topics to monitor")
 
     # Model Configuration
     strategy: MonitoringStrategy = Field(
@@ -37,28 +38,28 @@ class RadarConfig(BaseModel):
         default="pyod_iforest",
         description="ML model type. Use GET /api/v1/models/ to see available models.",
     )
-    model_params: Optional[Dict[str, Any]] = Field(
+    model_params: dict[str, Any] | None = Field(
         default=None,
         description="Model-specific hyperparameters. Use GET /api/v1/models/ to see"
         " available parameters for each model.",
     )
     # MQTT Configuration
-    mqtt_config: Optional[Dict[str, Any]] = Field(
+    mqtt_config: dict[str, Any] | None = Field(
         default=None, description="MQTT connection settings"
     )
 
     # Performance Configuration
-    performance_config: Optional[PerformanceConfig] = Field(
+    performance_config: PerformanceConfig | None = Field(
         default=None, description="Performance and resource settings"
     )
-    static_baseline_config: Optional[StaticBaselineConfig] = Field(
+    static_baseline_config: StaticBaselineConfig | None = Field(
         default=None,
         description="Static baseline conformal detector settings.",
     )
 
     @field_validator("mqtt_topics")
     @classmethod
-    def validate_mqtt_topics(cls, value: List[str]) -> List[str]:
+    def validate_mqtt_topics(cls, value: list[str]) -> list[str]:
         return normalize_static_monitoring_topics(value)
 
 
@@ -69,10 +70,10 @@ class RadarServiceResponse(BaseModel):
     container_id: str
     container_name: str
     status: str
-    mqtt_topics: List[str]
+    mqtt_topics: list[str]
 
 
-@router.get("/radar/services/", response_model=List[Dict[str, Any]])
+@router.get("/radar/services/", response_model=list[dict[str, Any]])
 async def list_radar_services(
     request: Request,
     active_only: bool = False,
@@ -145,11 +146,11 @@ async def start_radar_service(
         )
 
 
-@router.get("/radar/services/details/", response_model=Dict[str, Any])
+@router.get("/radar/services/details/", response_model=dict[str, Any])
 async def get_radar_service_details(
     request: Request,
-    container_name: Optional[str] = Query(default=None),
-    container_id: Optional[str] = Query(default=None),
+    container_name: str | None = Query(default=None),
+    container_id: str | None = Query(default=None),
     service: RadarOrchestrationService = Depends(get_radar_orchestration_service),
 ):
     """
@@ -185,8 +186,8 @@ async def get_radar_service_details(
 @router.delete("/radar/services/stop/")
 async def stop_radar_service(
     request: Request,
-    container_name: Optional[str] = Query(default=None),
-    container_id: Optional[str] = Query(default=None),
+    container_name: str | None = Query(default=None),
+    container_id: str | None = Query(default=None),
     service: RadarOrchestrationService = Depends(get_radar_orchestration_service),
 ):
     """
@@ -262,7 +263,7 @@ async def delete_radar_service(
         )
 
 
-@router.get("/radar/models/", response_model=List[Dict[str, Any]])
+@router.get("/radar/models/", response_model=list[dict[str, Any]])
 async def list_available_models(
     request: Request,
     model_registry: ModelRegistryService = Depends(get_model_registry_service),

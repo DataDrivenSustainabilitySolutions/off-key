@@ -1,12 +1,11 @@
 import pytest
-from pydantic import ValidationError
-
 from off_key_mqtt_radar.config.runtime import (
     clear_radar_runtime_settings_cache,
     get_radar_checkpoint_settings,
     get_radar_database_settings,
     get_radar_tactic_client_settings,
 )
+from pydantic import ValidationError
 
 
 @pytest.fixture(autouse=True)

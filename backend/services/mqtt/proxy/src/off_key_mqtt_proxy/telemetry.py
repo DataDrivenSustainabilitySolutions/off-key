@@ -4,25 +4,26 @@ Database Writer for MQTT Telemetry Data
 
 import asyncio
 import time
-from contextlib import suppress
-from datetime import datetime, timezone
-from typing import Dict, List, Optional, Any, Union, Callable
-from dataclasses import dataclass, field
 from collections import defaultdict
+from collections.abc import Callable
+from contextlib import suppress
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from enum import Enum
+from typing import Any
 
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.dialects.postgresql import insert
-from sqlalchemy.exc import IntegrityError, SQLAlchemyError
-from sqlalchemy import update, case
-
-from off_key_core.config.logs import logger, log_performance
-from off_key_core.db.models import Telemetry, Charger
+from off_key_core.config.logs import log_performance, logger
+from off_key_core.db.models import Charger, Telemetry
+from off_key_core.utils.enum import HealthStatus
 from off_key_core.utils.mqtt_topics import TopicMetadataExtractor
 from off_key_core.utils.string import string_to_float
-from off_key_core.utils.enum import HealthStatus
-from .config.config import MQTTConfig
+from sqlalchemy import case, update
+from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from .client.models import MQTTMessage
+from .config.config import MQTTConfig
 
 
 @dataclass
@@ -40,7 +41,7 @@ class WriterPerformanceMetrics:
     processing_batches_count: int
     failed_batches_count: int
     unique_chargers_seen: int
-    total_messages_by_charger: Dict[str, int]
+    total_messages_by_charger: dict[str, int]
 
 
 @dataclass
@@ -69,12 +70,12 @@ class TelemetryRecord:
 
     charger_id: str
     timestamp: datetime
-    value: Optional[float]
+    value: float | None
     telemetry_type: str
     created: datetime
     data_source: str = "mqtt"
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for database insertion"""
         return {
             "charger_id": self.charger_id,
@@ -100,21 +101,21 @@ class ParseFailure:
     reason: str
     is_error: bool  # True for unexpected errors, False for safe skips
     log_message: str
-    context: Dict[str, Any]
+    context: dict[str, Any]
 
 
-ParseResult = Union[ParseSuccess, ParseFailure]
+ParseResult = ParseSuccess | ParseFailure
 
 
 @dataclass
 class WriteBatch:
     """Batch of telemetry records for database insertion"""
 
-    records: List[TelemetryRecord] = field(default_factory=list)
+    records: list[TelemetryRecord] = field(default_factory=list)
     created_at: datetime = field(default_factory=datetime.now)
     status: WriteStatus = WriteStatus.PENDING
     retry_count: int = 0
-    last_error: Optional[str] = None
+    last_error: str | None = None
 
     def add_record(self, record: TelemetryRecord):
         """Add record to batch"""
@@ -165,8 +166,8 @@ class DatabaseWriter:
 
         # Write queues
         self.pending_batch = WriteBatch()
-        self.processing_batches: Dict[str, WriteBatch] = {}
-        self.failed_batches: List[WriteBatch] = []
+        self.processing_batches: dict[str, WriteBatch] = {}
+        self.failed_batches: list[WriteBatch] = []
 
         # Performance metrics
         self.total_records_received = 0
@@ -178,12 +179,12 @@ class DatabaseWriter:
         self.write_latency_count = 0
 
         # Charger status tracking
-        self.charger_last_seen: Dict[str, datetime] = {}
-        self.charger_message_counts: Dict[str, int] = defaultdict(int)
+        self.charger_last_seen: dict[str, datetime] = {}
+        self.charger_message_counts: dict[str, int] = defaultdict(int)
 
         # Background tasks
-        self._writer_task: Optional[asyncio.Task] = None
-        self._health_task: Optional[asyncio.Task] = None
+        self._writer_task: asyncio.Task | None = None
+        self._health_task: asyncio.Task | None = None
         self._batch_tasks: set[asyncio.Task] = set()
         self._next_batch_id = 0
         self._shutdown_event = asyncio.Event()
@@ -233,7 +234,7 @@ class DatabaseWriter:
                     asyncio.shield(self._writer_task),
                     timeout=max(self.batch_timeout * 2, 5.0),
                 )
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 self._writer_task.cancel()
                 with suppress(asyncio.CancelledError):
                     await self._writer_task
@@ -356,7 +357,7 @@ class DatabaseWriter:
                     if isinstance(timestamp_value, (int, float)):
                         timestamp = datetime.fromtimestamp(
                             timestamp_value,
-                            tz=timezone.utc,
+                            tz=UTC,
                         )
                     else:
                         timestamp_str = str(timestamp_value).strip()
@@ -367,9 +368,9 @@ class DatabaseWriter:
                         )
 
                     if timestamp.tzinfo:
-                        timestamp = timestamp.astimezone(timezone.utc)
+                        timestamp = timestamp.astimezone(UTC)
                     else:
-                        timestamp = timestamp.replace(tzinfo=timezone.utc)
+                        timestamp = timestamp.replace(tzinfo=UTC)
                 except (ValueError, TypeError, OSError) as e:
                     timestamp_context = str(timestamp_value)
                     return ParseFailure(
@@ -383,7 +384,7 @@ class DatabaseWriter:
                         },
                     )
             else:
-                timestamp = datetime.now(timezone.utc)
+                timestamp = datetime.now(UTC)
 
             # Parse value
             value = string_to_float(payload.get("value"))
@@ -394,7 +395,7 @@ class DatabaseWriter:
                 timestamp=timestamp,
                 value=value,
                 telemetry_type=telemetry_type,
-                created=datetime.now(timezone.utc),
+                created=datetime.now(UTC),
             )
 
             return ParseSuccess(record=record)
@@ -470,7 +471,7 @@ class DatabaseWriter:
                     # Batch ready due to size - process immediately
                     await self._trigger_batch_processing()
 
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     # Timeout reached - check for aged batch
                     pending_batch_size = self.pending_batch.size()
                     pending_batch_age = self.pending_batch.get_age_seconds()
@@ -739,7 +740,7 @@ class DatabaseWriter:
         if not charger_ids:
             return
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         rows = [
             {
                 "charger_id": charger_id,
@@ -768,7 +769,7 @@ class DatabaseWriter:
         if not charger_ids:
             return
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         # Build CASE expression to preserve per-charger timestamps
         # Use actual timestamp from charger_last_seen, fallback to current time
@@ -817,7 +818,7 @@ class DatabaseWriter:
         Format datetime into a stable ISO string for the legacy text `last_seen` field.
         """
         if value.tzinfo is not None:
-            return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+            return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
         return value.isoformat()
 
     async def _update_chargers_after_failure(self, charger_ids: set) -> None:

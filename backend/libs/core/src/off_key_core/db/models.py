@@ -1,30 +1,30 @@
 from sqlalchemy import (
+    DDL,
+    JSON,
+    TIMESTAMP,
+    Boolean,
     Column,
+    DateTime,
     Enum,
+    Float,
+    ForeignKey,
     ForeignKeyConstraint,
     Index,
+    Integer,
     PrimaryKeyConstraint,
     Text,
-    Boolean,
-    DateTime,
-    func,
-    TIMESTAMP,
-    Float,
     UniqueConstraint,
     event,
-    DDL,
-    Integer,
-    JSON,
-    ForeignKey,
+    func,
     text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 
-from .base import Base
-from .table_contracts import monitoring_evidence_table
-from ..utils.enum import RoleEnum
 from ..config import get_retention_days
 from ..config.logs import logger
+from ..utils.enum import RoleEnum
+from .base import Base
+from .table_contracts import monitoring_evidence_table
 
 # Cache retention days at module load to prevent mid-run environment changes
 _RETENTION_DAYS = get_retention_days()

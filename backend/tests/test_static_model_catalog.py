@@ -1,9 +1,8 @@
 import pytest
-from pydantic import ValidationError
-
 from off_key_core.models import STATIC_MODEL_FAMILY
 from off_key_tactic_middleware.api.v1.admin_models import CreateModelRequest
 from off_key_tactic_middleware.config.config import RadarDefaultsConfig
+from pydantic import ValidationError
 
 
 def _request(**overrides) -> CreateModelRequest:

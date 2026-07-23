@@ -6,7 +6,7 @@ invoke application services, and map domain errors to HTTP responses.
 """
 
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
@@ -120,7 +120,7 @@ async def get_telemetry_data(
     charger_id: str,
     telemetry_type: str = Query(..., alias="type"),
     limit: int = Query(1000, ge=1, le=10000),
-    after_timestamp: Optional[datetime] = Query(None),
+    after_timestamp: datetime | None = Query(None),
     paginated: bool = Query(False),
     service: TelemetryQueryService = Depends(get_telemetry_query_service),
 ) -> list[dict[str, Any]] | dict[str, Any]:
@@ -237,7 +237,7 @@ async def remove_user_favorite(
 
 @router.get("/anomalies/count")
 async def get_anomaly_count(
-    since: Optional[datetime] = Query(None),
+    since: datetime | None = Query(None),
     service: AnomalyService = Depends(get_anomaly_service),
 ):
     try:
@@ -253,7 +253,7 @@ async def get_anomaly_count(
 )
 async def get_monitoring_evidence(
     charger_id: str,
-    telemetry_type: Optional[str] = Query(None),
+    telemetry_type: str | None = Query(None),
     limit: int = Query(2000, ge=1, le=10000),
     service: MonitoringEvidenceService = Depends(get_monitoring_evidence_service),
 ):
@@ -267,7 +267,7 @@ async def get_monitoring_evidence(
 @router.get("/anomalies/{charger_id}", response_model=list[AnomalyResponse])
 async def get_charger_anomalies(
     charger_id: str,
-    telemetry_type: Optional[str] = Query(None),
+    telemetry_type: str | None = Query(None),
     limit: int = Query(500, ge=1, le=1000),
     service: AnomalyService = Depends(get_anomaly_service),
 ):

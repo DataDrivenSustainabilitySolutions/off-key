@@ -8,15 +8,15 @@ that allows runtime addition of new models without code changes.
 import asyncio
 import importlib
 import logging
-from typing import Any, Dict, Type, Optional, List
-from sqlalchemy.orm import Session
-from sqlalchemy import and_, inspect, text, or_, func
+from typing import Any
+
 from jsonschema import validate as jsonschema_validate
 from jsonschema.exceptions import ValidationError as JsonSchemaValidationError
-
-from off_key_core.db.models import ModelRegistry
 from off_key_core.db.base import get_engine
+from off_key_core.db.models import ModelRegistry
 from off_key_core.models import STATIC_MODEL_FAMILY, STATIC_MONITORING_STRATEGY
+from sqlalchemy import and_, func, inspect, or_, text
+from sqlalchemy.orm import Session
 
 from .schemas import (
     PyODHBOSParams,
@@ -55,7 +55,7 @@ class ModelRegistryService:
         Runs at service startup. This avoids DB access at import time and makes
         startup behavior explicit and retryable.
         """
-        last_error: Optional[Exception] = None
+        last_error: Exception | None = None
 
         for attempt in range(1, max_retries + 1):
             try:
@@ -240,7 +240,7 @@ class ModelRegistryService:
             else:
                 session.add(ModelRegistry(**model_data))
 
-    def get_available_models(self) -> List[Dict[str, Any]]:
+    def get_available_models(self) -> list[dict[str, Any]]:
         """Get all available models from database."""
         self._ensure_ready()
         with Session(get_engine()) as session:
@@ -274,7 +274,7 @@ class ModelRegistryService:
                 for m in models
             ]
 
-    def get_model_class(self, model_type: str) -> Type:
+    def get_model_class(self, model_type: str) -> type:
         """Dynamically import and return the model class."""
         self._ensure_ready()
         with Session(get_engine()) as session:
@@ -296,9 +296,9 @@ class ModelRegistryService:
     def validate_model_params(
         self,
         model_type: str,
-        params: Optional[Dict[str, Any]] = None,
-        category: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        params: dict[str, Any] | None = None,
+        category: str | None = None,
+    ) -> dict[str, Any]:
         """Validate and normalize model parameters using DB-backed schema."""
         self._ensure_ready()
         params = params or {}
@@ -312,13 +312,13 @@ class ModelRegistryService:
             return self._validate_params_with_schema(model, params)
 
     @staticmethod
-    def _import_class(import_path: str) -> Type:
+    def _import_class(import_path: str) -> type:
         module_path, class_name = import_path.rsplit(".", 1)
         module = importlib.import_module(module_path)
         return getattr(module, class_name)
 
     def create_model_instance(
-        self, model_type: str, params: Optional[Dict[str, Any]] = None
+        self, model_type: str, params: dict[str, Any] | None = None
     ) -> Any:
         """Reject in-process execution; RADAR owns all static model instances."""
         self._ensure_ready()
@@ -335,8 +335,8 @@ class ModelRegistryService:
             )
 
     def validate_model_instantiation(
-        self, model_type: str, params: Optional[Dict[str, Any]] = None
-    ) -> Dict[str, Any]:
+        self, model_type: str, params: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
         """Validate static parameters without instantiating RADAR-owned models."""
         self._ensure_ready()
         with Session(get_engine()) as session:
@@ -354,7 +354,7 @@ class ModelRegistryService:
             }
 
     @staticmethod
-    def _format_missing_model_message(model_type: str, category: Optional[str]) -> str:
+    def _format_missing_model_message(model_type: str, category: str | None) -> str:
         if category == "model":
             return f"Unknown model type: '{model_type}'"
         return f"Unknown model type: '{model_type}'"
@@ -365,8 +365,8 @@ class ModelRegistryService:
 
     @staticmethod
     def _get_active_entry(
-        session: Session, model_type: str, category: Optional[str] = None
-    ) -> Optional[ModelRegistry]:
+        session: Session, model_type: str, category: str | None = None
+    ) -> ModelRegistry | None:
         query = session.query(ModelRegistry).filter(
             ModelRegistry.model_type == model_type,
             ModelRegistry.is_active,
@@ -378,7 +378,7 @@ class ModelRegistryService:
         return query.first()
 
     @staticmethod
-    def _import_model_class(model_type: str, import_paths: List[str]) -> Type:
+    def _import_model_class(model_type: str, import_paths: list[str]) -> type:
         errors = []
         for import_path in import_paths:
             try:
@@ -397,8 +397,8 @@ class ModelRegistryService:
 
     @staticmethod
     def _validate_params_with_schema(
-        model: ModelRegistry, params: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        model: ModelRegistry, params: dict[str, Any]
+    ) -> dict[str, Any]:
         defaults = model.default_parameters or {}
         merged = {**defaults, **params}
 

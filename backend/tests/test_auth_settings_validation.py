@@ -1,7 +1,6 @@
 import pytest
-from pydantic import ValidationError
-
 from off_key_core.config.auth import get_auth_settings
+from pydantic import ValidationError
 
 
 @pytest.fixture

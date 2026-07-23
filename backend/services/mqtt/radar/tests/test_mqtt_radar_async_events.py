@@ -1,14 +1,13 @@
 import asyncio
 import time
 from datetime import datetime
-from unittest.mock import AsyncMock, Mock, patch, MagicMock
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
 import pytest_asyncio
-
-from off_key_mqtt_radar.mqtt_client import RadarMQTTClient
 from off_key_mqtt_radar.config.config import MQTTRadarConfig
 from off_key_mqtt_radar.models import MQTTMessage
+from off_key_mqtt_radar.mqtt_client import RadarMQTTClient
 
 """
 This test module covers the following risk scenarios:

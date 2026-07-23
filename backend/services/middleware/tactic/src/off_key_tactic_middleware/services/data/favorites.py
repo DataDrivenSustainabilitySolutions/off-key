@@ -1,9 +1,8 @@
 """Use cases for favorite charger operations."""
 
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from off_key_core.config.logs import logger
 from off_key_core.db.models import Favorite
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...domain import ConflictError, InfrastructureError, NotFoundError
 from ...repositories import FavoriteRepository

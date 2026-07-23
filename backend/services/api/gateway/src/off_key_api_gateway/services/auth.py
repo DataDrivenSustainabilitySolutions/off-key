@@ -1,7 +1,8 @@
+from datetime import UTC, datetime, timedelta
+
 from jose import JWTError, jwt
-from datetime import datetime, timedelta, timezone
-from passlib.context import CryptContext
 from off_key_core.config.auth import get_auth_settings
+from passlib.context import CryptContext
 
 password_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 _REQUIRED_SCOPED_CLAIMS = ("sub", "exp", "iss", "aud", "token_type")
@@ -18,7 +19,7 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 def create_jwt(data: dict, expires_delta: timedelta = None) -> str:
     settings = get_auth_settings()
     to_encode = data.copy()
-    expire = datetime.now(timezone.utc) + (
+    expire = datetime.now(UTC) + (
         expires_delta
         if expires_delta
         else timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
@@ -41,7 +42,7 @@ def create_verification_token(email: str, expires_minutes: int = 120) -> str:
     settings = get_auth_settings()
     to_encode = {
         "sub": email,
-        "exp": datetime.now(timezone.utc) + timedelta(minutes=expires_minutes),
+        "exp": datetime.now(UTC) + timedelta(minutes=expires_minutes),
         "iss": settings.JWT_ISSUER,
         "aud": settings.JWT_AUDIENCE,
         "token_type": "email_verification",
@@ -84,7 +85,7 @@ def create_reset_token(email: str, expires_minutes: int = 120) -> str:
     settings = get_auth_settings()
     to_encode = {
         "sub": email,
-        "exp": datetime.now(timezone.utc) + timedelta(minutes=expires_minutes),
+        "exp": datetime.now(UTC) + timedelta(minutes=expires_minutes),
         "iss": settings.JWT_ISSUER,
         "aud": settings.JWT_AUDIENCE,
         "token_type": "password_reset",

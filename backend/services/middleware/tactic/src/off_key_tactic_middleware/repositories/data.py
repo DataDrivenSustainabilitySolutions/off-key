@@ -1,10 +1,6 @@
 """SQLAlchemy repositories for TACTIC data-service use cases."""
 
 from datetime import datetime
-from typing import Optional
-
-from sqlalchemy import and_, func, select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from off_key_core.db.models import (
     Anomaly,
@@ -15,6 +11,8 @@ from off_key_core.db.models import (
     Telemetry,
     User,
 )
+from sqlalchemy import and_, func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 class ChargerRepository:
@@ -71,7 +69,7 @@ class TelemetryRepository:
         charger_id: str,
         telemetry_type: str,
         limit: int,
-        after_timestamp: Optional[datetime],
+        after_timestamp: datetime | None,
     ) -> list[Telemetry]:
         query = select(Telemetry).where(
             Telemetry.charger_id == charger_id,
@@ -91,7 +89,7 @@ class UserRepository:
     def __init__(self, session: AsyncSession):
         self._session = session
 
-    async def get_by_email(self, *, email: str) -> Optional[User]:
+    async def get_by_email(self, *, email: str) -> User | None:
         result = await self._session.execute(select(User).where(User.email == email))
         return result.scalars().first()
 
@@ -114,7 +112,7 @@ class FavoriteRepository:
         )
         return list(result.scalars().all())
 
-    async def get(self, *, user_id: int, charger_id: str) -> Optional[Favorite]:
+    async def get(self, *, user_id: int, charger_id: str) -> Favorite | None:
         result = await self._session.execute(
             select(Favorite).where(
                 Favorite.user_id == user_id,
@@ -140,7 +138,7 @@ class AnomalyRepository:
         self,
         *,
         charger_id: str,
-        telemetry_type: Optional[str],
+        telemetry_type: str | None,
         limit: int,
     ) -> list[tuple[str, Anomaly]]:
         query = (
@@ -161,7 +159,7 @@ class AnomalyRepository:
         result = await self._session.execute(query)
         return [(anomaly_id, anomaly) for anomaly_id, anomaly in result.all()]
 
-    async def count_since(self, *, since: Optional[datetime] = None) -> int:
+    async def count_since(self, *, since: datetime | None = None) -> int:
         query = select(func.count()).select_from(Anomaly)
         if since is not None:
             query = query.where(Anomaly.timestamp > since)
@@ -198,7 +196,7 @@ class AnomalyRepository:
         self,
         *,
         anomaly_id: str,
-    ) -> Optional[tuple[str, Anomaly]]:
+    ) -> tuple[str, Anomaly] | None:
         result = await self._session.execute(
             select(AnomalyIdentity.anomaly_id, Anomaly)
             .join(
@@ -230,7 +228,7 @@ class MonitoringEvidenceRepository:
         self,
         *,
         charger_id: str,
-        telemetry_type: Optional[str],
+        telemetry_type: str | None,
         limit: int,
     ) -> list[MonitoringEvidence]:
         query = select(MonitoringEvidence).where(

@@ -5,22 +5,23 @@ Orchestrates both the core sync service and optional FastAPI server.
 """
 
 import asyncio
-import uvicorn
 from contextlib import suppress
 from pathlib import Path
 
+import uvicorn
 from off_key_core.config.database import get_database_settings
 from off_key_core.config.env import load_env
 from off_key_core.config.logging import get_logging_settings
-from off_key_core.config.validation import validate_settings
 from off_key_core.config.logs import (
     load_yaml_config,
-    logger,
     log_startup_logging_configuration,
+    logger,
 )
+from off_key_core.config.validation import validate_settings
+
+from .api import app, set_sync_service
 from .config.config import get_sync_settings
 from .service import SyncService
-from .api import app, set_sync_service
 
 
 async def run_api_server(sync_service: SyncService):

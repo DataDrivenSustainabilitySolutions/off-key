@@ -3,15 +3,15 @@ Configuration for MQTT RADAR service
 """
 
 from functools import lru_cache
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
-from typing import Any, Dict, List, Optional, Self
-from dotenv import load_dotenv
 from pathlib import Path
+from typing import Any, Self
 
+from dotenv import load_dotenv
 from off_key_core.config.validation import validate_environment as _validate_environment
 from off_key_core.schemas.radar import StaticBaselineConfig
 from off_key_core.utils.mqtt_topics import normalize_static_monitoring_topics
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 SENSOR_KEY_STRATEGIES = {"full_hierarchy", "top_level", "leaf"}
 MONITORING_STRATEGIES = {"static_baseline"}
@@ -48,7 +48,7 @@ def _normalize_alignment_mode(value: str, field_name: str) -> str:
     return normalized
 
 
-def load_configuration(custom_config_file: Optional[str] = None):
+def load_configuration(custom_config_file: str | None = None):
     """Load configuration from environment and optional custom file"""
     # Load custom configuration file if specified
     if custom_config_file:
@@ -67,11 +67,11 @@ class AnomalyDetectionConfig(BaseModel):
 
     strategy: str = "static_baseline"
     model_type: str = "pyod_iforest"
-    model_params: Dict[str, Any] = Field(default_factory=dict)
+    model_params: dict[str, Any] = Field(default_factory=dict)
     static_baseline_config: StaticBaselineConfig = Field(
         default_factory=StaticBaselineConfig
     )
-    subscription_topics: List[str] = Field(default_factory=list)
+    subscription_topics: list[str] = Field(default_factory=list)
     sensor_key_strategy: str = "full_hierarchy"
     sensor_freshness_seconds: float = Field(default=30.0, gt=0.0)
     alignment_mode: str = "strict_barrier"
@@ -143,7 +143,7 @@ class MQTTRadarConfig(BaseModel):
     api_key: str = ""
 
     # Subscription settings
-    subscription_topics: List[str] = Field(
+    subscription_topics: list[str] = Field(
         default_factory=lambda: ["charger/charger-sim-1/live-telemetry/sine"]
     )
     subscription_qos: int = 0
@@ -175,7 +175,7 @@ class MQTTRadarConfig(BaseModel):
     # Anomaly Detection
     strategy: str = "static_baseline"
     model_type: str = "pyod_iforest"
-    model_params: Dict[str, Any] = Field(default_factory=dict)
+    model_params: dict[str, Any] = Field(default_factory=dict)
     static_baseline_config: StaticBaselineConfig = Field(
         default_factory=StaticBaselineConfig
     )
@@ -191,7 +191,7 @@ class MQTTRadarConfig(BaseModel):
 
     @field_validator("subscription_topics")
     @classmethod
-    def validate_subscription_topics(cls, value: List[str]) -> List[str]:
+    def validate_subscription_topics(cls, value: list[str]) -> list[str]:
         """Keep the runtime feature schema concrete and single-charger."""
         return normalize_static_monitoring_topics(value)
 
@@ -211,7 +211,7 @@ class RadarSettings(BaseSettings):
     """Environment-based settings for RADAR service"""
 
     # Configuration Management
-    custom_config_file: Optional[str] = None  # Path to custom config file being watched
+    custom_config_file: str | None = None  # Path to custom config file being watched
     ENVIRONMENT: str = "development"
 
     # MQTT Configuration
@@ -242,8 +242,8 @@ class RadarSettings(BaseSettings):
     # Anomaly Detection
     RADAR_MONITORING_STRATEGY: str = "static_baseline"
     RADAR_MODEL_TYPE: str = "pyod_iforest"
-    RADAR_MODEL_PARAMS: Dict[str, Any] = Field(default_factory=dict)
-    RADAR_STATIC_BASELINE_CONFIG: Dict[str, Any] = Field(default_factory=dict)
+    RADAR_MODEL_PARAMS: dict[str, Any] = Field(default_factory=dict)
+    RADAR_STATIC_BASELINE_CONFIG: dict[str, Any] = Field(default_factory=dict)
 
     # Performance
     RADAR_BATCH_SIZE: int = 100

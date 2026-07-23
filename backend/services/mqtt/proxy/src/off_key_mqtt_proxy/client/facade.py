@@ -7,23 +7,25 @@ API while delegating responsibilities to specialized managers.
 """
 
 import json
+from collections.abc import Awaitable, Callable
 from datetime import datetime
-from typing import Optional, Dict, Any, Callable, Union, Awaitable
+from typing import Any
 
 import paho.mqtt.client as mqtt
 from off_key_core.config.logs import logger
 from off_key_core.utils.enum import HealthStatus
-from ..config.config import MQTTConfig
+
 from ..auth import ApiKeyAuthHandler
+from ..config.config import MQTTConfig
+from .connection import ConnectionManager
+from .messaging import MessageHandler
 from .models import (
-    ConnectionState,
-    MQTTMessage,
     ClientConnectionInfo,
     ClientHealthStatus,
+    ConnectionState,
+    MQTTMessage,
 )
-from .connection import ConnectionManager
 from .subscriptions import SubscriptionManager
-from .messaging import MessageHandler
 
 
 class MQTTClient:
@@ -39,7 +41,7 @@ class MQTTClient:
     """
 
     def __init__(
-        self, config: MQTTConfig, auth_handler: Optional[ApiKeyAuthHandler] = None
+        self, config: MQTTConfig, auth_handler: ApiKeyAuthHandler | None = None
     ):
         self.config = config
         self.auth_handler = auth_handler
@@ -82,9 +84,8 @@ class MQTTClient:
 
     def set_message_handler(
         self,
-        handler: Union[
-            Callable[[MQTTMessage], None], Callable[[MQTTMessage], Awaitable[None]]
-        ],
+        handler: Callable[[MQTTMessage], None]
+        | Callable[[MQTTMessage], Awaitable[None]],
     ) -> None:
         """
         Set message handler callback
@@ -123,7 +124,7 @@ class MQTTClient:
         """Stop MQTT client (implements Stoppable protocol)"""
         await self.disconnect()
 
-    async def subscribe(self, topic: str, qos: Optional[int] = None) -> bool:
+    async def subscribe(self, topic: str, qos: int | None = None) -> bool:
         """
         Subscribe to MQTT topic
 
@@ -157,7 +158,7 @@ class MQTTClient:
         return await self.subscription_manager.unsubscribe(topic)
 
     async def publish(
-        self, topic: str, payload: Dict[str, Any], qos: int = 0, retain: bool = False
+        self, topic: str, payload: dict[str, Any], qos: int = 0, retain: bool = False
     ) -> bool:
         """
         Publish message to MQTT topic
@@ -249,7 +250,7 @@ class MQTTClient:
             ),
         )
 
-    def get_queued_messages(self, count: Optional[int] = None):
+    def get_queued_messages(self, count: int | None = None):
         """Get messages from the message queue"""
         return self.message_handler.get_queued_messages(count)
 

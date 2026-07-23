@@ -1,12 +1,13 @@
 import asyncio
 import time
+from collections.abc import Callable
+from typing import Any
 
 import docker
 from docker import DockerClient
-from typing import Callable, Any
-from off_key_core.config.logs import logger, log_performance
-from ..config.config import get_tactic_settings
+from off_key_core.config.logs import log_performance, logger
 
+from ..config.config import get_tactic_settings
 
 _SWARM_FALLBACK_INDICATORS = (
     "cannot be used with services",

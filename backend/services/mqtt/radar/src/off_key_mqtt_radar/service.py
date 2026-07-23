@@ -16,26 +16,26 @@ import signal
 import time
 from contextlib import suppress
 from datetime import datetime
-from typing import Optional
 
 from off_key_core.config.logs import logger
 from off_key_core.schemas.radar import StaticBaselineConfig
 
+from .checkpoint_manager import CheckpointManager
 from .config.config import AnomalyDetectionConfig, get_radar_settings
+from .config_watcher import ConfigReloader, ConfigWatcher
+from .database import DatabaseWriter, ensure_tables_exist
 from .detector import (
-    ResilientAnomalyDetector,
     MemoryManager,
+    ResilientAnomalyDetector,
     SecurityValidator,
     StaticConformalDetectionService,
 )
-from .mqtt_client import RadarMQTTClient
-from .database import DatabaseWriter, ensure_tables_exist
-from .models import MQTTMessage, HealthStatus as RadarHealthStatus
-from .config_watcher import ConfigWatcher, ConfigReloader
-from .state_cache import SensorStateCache
-from .checkpoint_manager import CheckpointManager
-from .message_processor import MessageProcessor
 from .health_monitor import HealthMonitor
+from .message_processor import MessageProcessor
+from .models import HealthStatus as RadarHealthStatus
+from .models import MQTTMessage
+from .mqtt_client import RadarMQTTClient
+from .state_cache import SensorStateCache
 from .topic_parser import TopicParser
 
 
@@ -55,9 +55,9 @@ class RadarService:
         self.config = get_radar_settings().config
 
         # Core components
-        self.mqtt_client: Optional[RadarMQTTClient] = None
-        self.detector: Optional[ResilientAnomalyDetector] = None
-        self.database_writer: Optional[DatabaseWriter] = None
+        self.mqtt_client: RadarMQTTClient | None = None
+        self.detector: ResilientAnomalyDetector | None = None
+        self.database_writer: DatabaseWriter | None = None
 
         # Supporting components
         self.memory_manager = MemoryManager(
@@ -73,16 +73,16 @@ class RadarService:
         self.health_monitor = HealthMonitor(
             health_check_interval=self.config.health_check_interval
         )
-        self.message_processor: Optional[MessageProcessor] = None
+        self.message_processor: MessageProcessor | None = None
 
         # Service state
         self.is_running = False
-        self.start_time: Optional[datetime] = None
+        self.start_time: datetime | None = None
         self.shutdown_event = asyncio.Event()
 
         # Configuration watching and reloading
-        self.config_watcher: Optional[ConfigWatcher] = None
-        self.config_reloader: Optional[ConfigReloader] = None
+        self.config_watcher: ConfigWatcher | None = None
+        self.config_reloader: ConfigReloader | None = None
 
         # Logging context
         self._log_context = {"service": "radar", "component": "main"}
@@ -472,7 +472,7 @@ class RadarService:
 
 
 # Global service instance
-_radar_service: Optional[RadarService] = None
+_radar_service: RadarService | None = None
 
 
 def get_radar_service() -> RadarService:

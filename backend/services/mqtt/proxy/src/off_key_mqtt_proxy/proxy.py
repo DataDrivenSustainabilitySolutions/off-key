@@ -5,7 +5,6 @@ Main MQTT proxy service orchestrator.
 import asyncio
 import signal
 from contextlib import suppress
-from typing import Optional
 
 from off_key_core.config.logs import logger
 from off_key_core.db.base import get_async_session_local
@@ -29,19 +28,19 @@ class MQTTProxyService:
         self.topic_extractor = self.config.build_topic_extractor()
 
         # Core components
-        self.auth_handler: Optional[ApiKeyAuthHandler] = None
-        self.mqtt_client: Optional[MQTTClient] = None
-        self.database_writer: Optional[DatabaseWriter] = None
-        self.message_router: Optional[MessageRouter] = None
+        self.auth_handler: ApiKeyAuthHandler | None = None
+        self.mqtt_client: MQTTClient | None = None
+        self.database_writer: DatabaseWriter | None = None
+        self.message_router: MessageRouter | None = None
 
         # Source subscription state
         self.source_subscription_status: dict[str, bool] = {}
 
         # Bridge components
-        self.bridge_auth_handler: Optional[ApiKeyAuthHandler] = None
-        self.bridge_client: Optional[MQTTClient] = None
-        self.bridge_destination: Optional[BridgeDestination] = None
-        self.bridge_supervisor_task: Optional[asyncio.Task] = None
+        self.bridge_auth_handler: ApiKeyAuthHandler | None = None
+        self.bridge_client: MQTTClient | None = None
+        self.bridge_destination: BridgeDestination | None = None
+        self.bridge_supervisor_task: asyncio.Task | None = None
         self.bridge_connected_event = asyncio.Event()
 
         # Service state
@@ -274,8 +273,8 @@ class MQTTProxyService:
         logger.info("event=proxy.bridge_setting_up", extra=self._log_context)
         await self._cleanup_existing_bridge_components()
 
-        bridge_auth_handler: Optional[ApiKeyAuthHandler] = None
-        bridge_client: Optional[MQTTClient] = None
+        bridge_auth_handler: ApiKeyAuthHandler | None = None
+        bridge_client: MQTTClient | None = None
 
         try:
             if self.config.bridge_use_auth:
@@ -349,7 +348,7 @@ class MQTTProxyService:
         try:
             await asyncio.wait_for(self.shutdown_event.wait(), timeout=timeout)
             return True
-        except asyncio.TimeoutError:
+        except TimeoutError:
             return False
 
     async def _bridge_supervisor_loop(self) -> None:
@@ -440,8 +439,8 @@ class MQTTProxyService:
             )
 
     async def _safe_component_shutdown(
-        self, name: str, component: Stoppable, timeout: Optional[float] = None
-    ) -> Optional[Exception]:
+        self, name: str, component: Stoppable, timeout: float | None = None
+    ) -> Exception | None:
         """
         Safely shutdown a component with timeout protection.
 
@@ -466,7 +465,7 @@ class MQTTProxyService:
             )
             return None
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             error = TimeoutError(
                 f"Component {name} shutdown timed out after {timeout}s"
             )
@@ -597,7 +596,7 @@ class MQTTProxyService:
                 extra={**self._log_context, "shutdown_duration": shutdown_duration},
             )
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             shutdown_duration = asyncio.get_event_loop().time() - shutdown_start_time
             logger.critical(
                 "event=proxy.shutdown_timeout graceful_timeout_s=%s \

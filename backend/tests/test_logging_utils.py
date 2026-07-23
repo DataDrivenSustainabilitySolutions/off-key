@@ -2,20 +2,20 @@ import io
 import json
 import logging
 import logging.config
-
 from pathlib import Path
 
 import pytest
-
 from off_key_core.config.logging import get_logging_settings
 from off_key_core.config.logs import (
     JsonFormatter,
-    _expand_env_vars,
     _apply_log_format,
     _ensure_root_handlers,
+    _expand_env_vars,
     load_yaml_config,
-    logger as core_logger,
     redact_query_params,
+)
+from off_key_core.config.logs import (
+    logger as core_logger,
 )
 
 

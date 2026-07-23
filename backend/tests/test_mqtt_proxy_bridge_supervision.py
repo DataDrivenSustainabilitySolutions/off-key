@@ -3,7 +3,6 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from off_key_mqtt_proxy.proxy import MQTTProxyService
 
 

@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from . import charger, telemetry, auth, favorites, monitors, anomalies
+from . import anomalies, auth, charger, favorites, monitors, telemetry
 
 router = APIRouter()
 

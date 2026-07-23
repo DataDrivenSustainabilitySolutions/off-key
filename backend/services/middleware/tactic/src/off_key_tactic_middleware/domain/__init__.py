@@ -1,12 +1,12 @@
 """Domain primitives for TACTIC data services."""
 
 from .errors import (
-    DomainError,
-    NotFoundError,
-    ConflictError,
     AuthenticationError,
-    ValidationError,
+    ConflictError,
+    DomainError,
     InfrastructureError,
+    NotFoundError,
+    ValidationError,
 )
 
 __all__ = [

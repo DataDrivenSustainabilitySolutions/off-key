@@ -9,10 +9,11 @@ import asyncio
 import ssl
 import time
 import uuid
+from collections import deque
+from collections.abc import Awaitable, Callable
 from contextlib import suppress
 from datetime import datetime
-from typing import Callable, Optional, Awaitable, Dict, Any
-from collections import deque
+from typing import Any
 
 import paho.mqtt.client as mqtt
 from off_key_core.config.logging import get_logging_settings
@@ -35,8 +36,8 @@ class RadarMQTTClient:
 
     def __init__(self, config: MQTTRadarConfig):
         self.config = config
-        self.client: Optional[mqtt.Client] = None
-        self.message_handler: Optional[Callable[[MQTTMessage], Awaitable[None]]] = None
+        self.client: mqtt.Client | None = None
+        self.message_handler: Callable[[MQTTMessage], Awaitable[None]] | None = None
 
         # Connection state
         self.is_connected = False
@@ -57,9 +58,9 @@ class RadarMQTTClient:
         self.last_message_time = None
 
         # Event loop for async coordination
-        self._loop: Optional[asyncio.AbstractEventLoop] = None
-        self._message_processor_task: Optional[asyncio.Task] = None
-        self._reconnect_task: Optional[asyncio.Task] = None
+        self._loop: asyncio.AbstractEventLoop | None = None
+        self._message_processor_task: asyncio.Task | None = None
+        self._reconnect_task: asyncio.Task | None = None
         self._shutdown_event = asyncio.Event()
         logging_settings = get_logging_settings()
         self._heartbeat_interval_seconds = (
@@ -70,7 +71,7 @@ class RadarMQTTClient:
         )
         self._last_drop_summary_time = time.time()
         self._last_heartbeat_time = time.time()
-        self._drop_counts: Dict[str, int] = {"rate_limit": 0, "queue_full": 0}
+        self._drop_counts: dict[str, int] = {"rate_limit": 0, "queue_full": 0}
 
         logger.info(
             "event=radar.mqtt_client_initialized broker=%s:%s",
@@ -345,7 +346,7 @@ class RadarMQTTClient:
 
                     self._emit_heartbeat()
 
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     self._emit_heartbeat()
                     continue
                 except Exception as e:
@@ -418,7 +419,7 @@ class RadarMQTTClient:
                 self.reconnect_attempts,
             )
 
-    def get_connection_info(self) -> Dict[str, Any]:
+    def get_connection_info(self) -> dict[str, Any]:
         """Get connection information for monitoring"""
         uptime = None
         if self.connection_time:
@@ -449,7 +450,7 @@ class RadarMQTTClient:
             },
         }
 
-    def get_health_status(self) -> Dict[str, Any]:
+    def get_health_status(self) -> dict[str, Any]:
         """Get health status information"""
         if not self.is_connected:
             return {

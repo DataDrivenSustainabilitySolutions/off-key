@@ -1,10 +1,9 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
+
 import docker
-
 import pytest
-
 from off_key_tactic_middleware.services.reconciliation import (
     RadarStatusReconciliationService,
 )
@@ -32,7 +31,7 @@ def _service(
         operational_stage=stage,
         operational_status={"stage": stage, "is_stale": False},
         operational_updated_at=updated_at,
-        created_at=created_at or datetime.now(timezone.utc),
+        created_at=created_at or datetime.now(UTC),
     )
 
 
@@ -57,7 +56,7 @@ class _FakeAsyncDocker:
 
 @pytest.mark.asyncio
 async def test_reconciliation_purges_old_terminal_rows_and_keeps_recent_rows():
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     old_service = _service(
         service_id="old",
         status=False,
@@ -191,7 +190,7 @@ async def test_reconciliation_keeps_running_rows_even_with_stale_heartbeat():
         service_id="running",
         status=True,
         stage="operational",
-        updated_at=datetime.now(timezone.utc) - timedelta(days=7),
+        updated_at=datetime.now(UTC) - timedelta(days=7),
     )
     reconciliation = _reconciler(
         retention_hours=0,
@@ -212,7 +211,7 @@ async def test_reconciliation_keeps_running_rows_even_with_stale_heartbeat():
 def test_coerce_utc_parses_iso_utc_string():
     assert RadarStatusReconciliationService._coerce_utc(
         "2024-01-01T00:00:00Z"
-    ) == datetime(2024, 1, 1, 0, 0, tzinfo=timezone.utc)
+    ) == datetime(2024, 1, 1, 0, 0, tzinfo=UTC)
 
 
 def test_coerce_utc_returns_none_on_invalid_value():
@@ -222,7 +221,7 @@ def test_coerce_utc_returns_none_on_invalid_value():
 def test_coerce_utc_adds_utc_timezone_for_naive_datetime():
     naive = datetime(2024, 1, 1, 12, 0, 0)
     coerce = RadarStatusReconciliationService._coerce_utc(naive)
-    assert coerce == naive.replace(tzinfo=timezone.utc)
+    assert coerce == naive.replace(tzinfo=UTC)
 
 
 def test_coerce_utc_converts_aware_timestamp_to_utc():
@@ -230,7 +229,7 @@ def test_coerce_utc_converts_aware_timestamp_to_utc():
     aware = datetime(2024, 1, 1, 12, 0, 0, tzinfo=local_tz)
     coerce = RadarStatusReconciliationService._coerce_utc(aware)
 
-    assert coerce == datetime(2024, 1, 1, 20, 0, 0, tzinfo=timezone.utc)
+    assert coerce == datetime(2024, 1, 1, 20, 0, 0, tzinfo=UTC)
 
 
 def test_is_purge_due_returns_true_when_reference_time_missing_and_retention_is_zero():

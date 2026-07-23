@@ -3,7 +3,6 @@
 from unittest.mock import MagicMock
 
 import pytest
-
 from off_key_tactic_middleware.api.v1.admin_models import (
     test_model_instantiation as call_test_model_instantiation,
 )

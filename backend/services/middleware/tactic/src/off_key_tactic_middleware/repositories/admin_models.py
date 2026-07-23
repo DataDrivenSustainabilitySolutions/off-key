@@ -1,10 +1,7 @@
 """Repository for model-registry admin persistence operations."""
 
-from typing import Optional
-
-from sqlalchemy.orm import Session
-
 from off_key_core.db.models import ModelRegistry
+from sqlalchemy.orm import Session
 
 
 class ModelRegistryAdminRepository:
@@ -13,7 +10,7 @@ class ModelRegistryAdminRepository:
     def __init__(self, session: Session):
         self._session = session
 
-    def get_by_model_type(self, *, model_type: str) -> Optional[ModelRegistry]:
+    def get_by_model_type(self, *, model_type: str) -> ModelRegistry | None:
         return (
             self._session.query(ModelRegistry)
             .filter(ModelRegistry.model_type == model_type)
@@ -24,7 +21,7 @@ class ModelRegistryAdminRepository:
         self,
         *,
         include_inactive: bool,
-        category: Optional[str],
+        category: str | None,
     ) -> list[ModelRegistry]:
         query = self._session.query(ModelRegistry)
 

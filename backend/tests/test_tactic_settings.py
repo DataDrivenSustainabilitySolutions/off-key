@@ -1,10 +1,9 @@
 import pytest
-
 from off_key_tactic_middleware.config import (
     RadarContainerRuntimeSettings,
+    RadarDefaultsConfig,
     RadarWorkloadLifecycle,
     TacticSettings,
-    RadarDefaultsConfig,
 )
 
 

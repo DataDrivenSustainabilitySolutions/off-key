@@ -2,7 +2,6 @@
 Username/API-key authentication helper for MQTT broker access.
 """
 
-from typing import Optional, Tuple
 from dataclasses import dataclass
 
 from off_key_core.config.logs import logger
@@ -32,7 +31,7 @@ class ApiKeyAuthHandler:
     def __init__(self, username: str, api_key: str):
         self.username = username
         self.api_key = api_key
-        self.credentials: Optional[ApiKeyCredentials] = None
+        self.credentials: ApiKeyCredentials | None = None
 
         # Validate credentials on initialization
         if not username or not api_key:
@@ -78,7 +77,7 @@ class ApiKeyAuthHandler:
         )
         return self.credentials
 
-    async def get_mqtt_credentials(self) -> Tuple[str, str]:
+    async def get_mqtt_credentials(self) -> tuple[str, str]:
         """
         Get MQTT credentials for broker authentication.
 

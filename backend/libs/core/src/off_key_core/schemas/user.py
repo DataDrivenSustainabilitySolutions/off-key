@@ -1,5 +1,3 @@
-from typing import Optional
-
 from pydantic import BaseModel, EmailStr
 
 __all__ = [
@@ -14,7 +12,7 @@ __all__ = [
 class UserCreate(BaseModel):
     email: EmailStr
     password: str
-    role: Optional[str] = "user"
+    role: str | None = "user"
 
 
 class UserLogin(BaseModel):

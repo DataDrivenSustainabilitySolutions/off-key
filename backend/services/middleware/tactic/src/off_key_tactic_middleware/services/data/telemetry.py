@@ -1,7 +1,7 @@
 """Use cases for telemetry data queries."""
 
 from datetime import datetime
-from typing import Optional, Any
+from typing import Any
 
 from off_key_core.config.logs import logger
 
@@ -25,7 +25,7 @@ class TelemetryQueryService:
         charger_id: str,
         telemetry_type: str,
         limit: int,
-        after_timestamp: Optional[datetime],
+        after_timestamp: datetime | None,
         paginated: bool,
     ) -> list[dict[str, Any]] | dict[str, Any]:
         records = await self._repository.list_data(

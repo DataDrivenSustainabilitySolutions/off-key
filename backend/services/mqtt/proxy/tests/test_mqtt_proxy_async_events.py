@@ -2,13 +2,11 @@ import asyncio
 import time
 from datetime import datetime
 from unittest.mock import MagicMock, Mock, patch
-from typing import List
 
 import pytest
 import pytest_asyncio
-
-from off_key_mqtt_proxy.client.messaging import MessageHandler
 from off_key_mqtt_proxy.client.connection import ConnectionManager
+from off_key_mqtt_proxy.client.messaging import MessageHandler
 from off_key_mqtt_proxy.client.models import MQTTMessage
 from off_key_mqtt_proxy.config.config import MQTTSettings
 
@@ -212,7 +210,7 @@ class TestMessageHandlerAsyncEvents:
     @pytest.mark.asyncio
     async def test_exception_doesnt_stop_processing(self, message_handler):
         """Test that handler exception doesn't stop subsequent messages"""
-        processed_messages: List[str] = []
+        processed_messages: list[str] = []
 
         async def selective_failing_handler(message: MQTTMessage):
             if "fail" in message.topic:
@@ -608,7 +606,7 @@ class TestConnectionManagerAsyncEvents:
             nonlocal event_was_cleared
             awaitable.close()
             event_was_cleared = not connection_manager._connection_event.is_set()
-            raise asyncio.TimeoutError
+            raise TimeoutError
 
         with (
             patch(

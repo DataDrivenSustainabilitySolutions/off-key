@@ -2,8 +2,9 @@
 Shared pytest fixtures and configuration for MQTT Proxy tests
 """
 
-import pytest
 import asyncio
+
+import pytest
 from dotenv import load_dotenv
 
 

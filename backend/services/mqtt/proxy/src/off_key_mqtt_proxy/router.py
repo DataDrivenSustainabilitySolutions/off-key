@@ -7,18 +7,19 @@ Routes MQTT messages to configured destinations with logging and error handling.
 import asyncio
 import time
 import uuid
-from contextlib import suppress
-from datetime import datetime
-from typing import Dict, List, Optional, Any, Set
-from dataclasses import dataclass, field
-from enum import Enum
 from abc import ABC, abstractmethod
+from contextlib import suppress
+from dataclasses import dataclass, field
+from datetime import datetime
+from enum import Enum
+from typing import Any
 
 from off_key_core.config.logs import logger
-from off_key_core.utils.mqtt_topics import TopicMetadataExtractor
 from off_key_core.utils.enum import HealthStatus
-from .config.config import MQTTConfig
+from off_key_core.utils.mqtt_topics import TopicMetadataExtractor
+
 from .client.models import MQTTMessage
+from .config.config import MQTTConfig
 
 
 @dataclass
@@ -55,7 +56,7 @@ class RouterPerformanceMetrics:
     active_routes: int
     total_destinations: int
     enabled_destinations: int
-    destination_metrics: List[DestinationMetrics]
+    destination_metrics: list[DestinationMetrics]
 
 
 @dataclass
@@ -64,7 +65,7 @@ class RouterHealthStatus:
 
     status: HealthStatus
     messages_per_second: float
-    unhealthy_destinations: List[str]
+    unhealthy_destinations: list[str]
     performance: RouterPerformanceMetrics
 
 
@@ -85,7 +86,7 @@ class RouteResult:
     destination: str
     status: RouteStatus
     processing_time: float
-    error: Optional[str] = None
+    error: str | None = None
     retry_count: int = 0
 
 
@@ -97,10 +98,10 @@ class MessageRouteInfo:
     topic: str
     charger_id: str
     timestamp: datetime
-    destinations: List[str]
-    results: Dict[str, RouteResult] = field(default_factory=dict)
+    destinations: list[str]
+    results: dict[str, RouteResult] = field(default_factory=dict)
     started_at: datetime = field(default_factory=datetime.now)
-    completed_at: Optional[datetime] = None
+    completed_at: datetime | None = None
 
     def is_completed(self) -> bool:
         """Check if routing is completed for all destinations"""
@@ -114,7 +115,7 @@ class MessageRouteInfo:
             if result.status == RouteStatus.SUCCESS
         )
 
-    def get_failed_destinations(self) -> List[str]:
+    def get_failed_destinations(self) -> list[str]:
         """Get list of failed destinations"""
         return [
             dest
@@ -132,7 +133,7 @@ class MessageRouteInfo:
 class MessageDestination(ABC):
     """Abstract base class for message destinations"""
 
-    def __init__(self, name: str, config: Dict[str, Any] = None):
+    def __init__(self, name: str, config: dict[str, Any] = None):
         self.name = name
         self.config = config or {}
         self.enabled = True
@@ -202,7 +203,7 @@ class MessageDestination(ABC):
 class DatabaseDestination(MessageDestination):
     """Database destination for telemetry data"""
 
-    def __init__(self, database_writer, config: Dict[str, Any] = None):
+    def __init__(self, database_writer, config: dict[str, Any] = None):
         super().__init__("database", config)
         self.database_writer = database_writer
 
@@ -254,8 +255,8 @@ class BridgeDestination(MessageDestination):
     def __init__(
         self,
         target_client,
-        topic_mapping: Dict[str, str] = None,
-        config: Dict[str, Any] = None,
+        topic_mapping: dict[str, str] = None,
+        config: dict[str, Any] = None,
     ):
         super().__init__("mqtt_bridge", config)
         self.target_client = target_client
@@ -351,18 +352,18 @@ class MessageRouter:
     def __init__(
         self,
         config: MQTTConfig,
-        topic_extractor: Optional[TopicMetadataExtractor] = None,
+        topic_extractor: TopicMetadataExtractor | None = None,
     ):
         self.config = config
         self.topic_extractor = topic_extractor or config.build_topic_extractor()
 
         # Destinations
-        self.destinations: Dict[str, MessageDestination] = {}
-        self.default_destinations: Set[str] = set()
+        self.destinations: dict[str, MessageDestination] = {}
+        self.default_destinations: set[str] = set()
 
         # Message routing
-        self.active_routes: Dict[str, MessageRouteInfo] = {}
-        self.completed_routes: List[MessageRouteInfo] = []
+        self.active_routes: dict[str, MessageRouteInfo] = {}
+        self.completed_routes: list[MessageRouteInfo] = []
         self.max_completed_routes = 1000
 
         # Performance metrics
@@ -378,8 +379,8 @@ class MessageRouter:
         self.max_retries = 2
 
         # Background tasks
-        self._cleanup_task: Optional[asyncio.Task] = None
-        self._metrics_task: Optional[asyncio.Task] = None
+        self._cleanup_task: asyncio.Task | None = None
+        self._metrics_task: asyncio.Task | None = None
         self._shutdown_event = asyncio.Event()
         self._all_routes_completed_event = asyncio.Event()
 
@@ -454,7 +455,7 @@ class MessageRouter:
                     "event=router.active_routes_completed",
                     extra=self._log_context,
                 )
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 logger.warning(
                     "event=router.shutdown_timeout remaining_routes=%s timeout_s=%s",
                     len(self.active_routes),
@@ -528,7 +529,7 @@ class MessageRouter:
             )
 
     async def route_message(
-        self, message: MQTTMessage, destinations: Optional[List[str]] = None
+        self, message: MQTTMessage, destinations: list[str] | None = None
     ) -> MessageRouteInfo:
         """
         Route message to destinations
@@ -595,7 +596,7 @@ class MessageRouter:
                 asyncio.gather(*tasks, return_exceptions=True),
                 timeout=self.route_timeout,
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.error(
                 "event=router.routing_timeout timeout_s=%s \
                      message_id=%s topic=%s destinations=%s",

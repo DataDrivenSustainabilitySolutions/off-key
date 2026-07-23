@@ -1,7 +1,5 @@
 """Read use cases for persisted static monitoring evidence."""
 
-from typing import Optional
-
 from ...repositories import MonitoringEvidenceRepository
 
 
@@ -15,7 +13,7 @@ class MonitoringEvidenceService:
         self,
         *,
         charger_id: str,
-        telemetry_type: Optional[str],
+        telemetry_type: str | None,
         limit: int,
     ) -> list[dict[str, object]]:
         rows = await self._repository.list_by_charger(

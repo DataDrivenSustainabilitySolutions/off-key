@@ -1,6 +1,5 @@
 import pytest
 from jose import jwt
-
 from off_key_api_gateway.api.v1 import auth as auth_api
 from off_key_core.config.auth import get_auth_settings
 from off_key_core.schemas.user import UserLogin

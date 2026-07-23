@@ -93,6 +93,8 @@ exclude = [
 select = [
     "E",  # pycodestyle errors (excluding some stylistic ones handled by formatters)
     "F",  # Pyflakes
+    "I",  # isort-compatible import ordering
+    "UP", # Python upgrade and deprecated typing syntax
 ]
 ignore = []
 fixable = ["ALL"]

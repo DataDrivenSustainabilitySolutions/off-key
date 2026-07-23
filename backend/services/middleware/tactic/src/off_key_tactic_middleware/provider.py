@@ -2,31 +2,31 @@
 Dependency injection providers for TACTIC middleware service.
 """
 
+from fastapi import Depends, HTTPException, Request
+from off_key_core.db.base import get_db_async, get_db_sync_transactional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
-from fastapi import Depends, HTTPException, Request
 
-from off_key_core.db.base import get_db_async, get_db_sync_transactional
 from .models.registry import ModelRegistryService
 from .repositories import (
-    ChargerRepository,
-    TelemetryRepository,
-    UserRepository,
-    FavoriteRepository,
     AnomalyRepository,
+    ChargerRepository,
+    FavoriteRepository,
     ModelRegistryAdminRepository,
     MonitoringEvidenceRepository,
+    TelemetryRepository,
+    UserRepository,
 )
-from .services.orchestration.radar import RadarOrchestrationService
 from .services.admin_models import ModelRegistryAdminService
 from .services.data import (
+    AnomalyService,
     ChargerQueryService,
+    FavoriteService,
+    MonitoringEvidenceService,
     TelemetryQueryService,
     UserService,
-    FavoriteService,
-    AnomalyService,
-    MonitoringEvidenceService,
 )
+from .services.orchestration.radar import RadarOrchestrationService
 
 
 def get_model_registry_service(request: Request) -> ModelRegistryService:

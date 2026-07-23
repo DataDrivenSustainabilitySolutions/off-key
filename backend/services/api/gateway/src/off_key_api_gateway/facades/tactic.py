@@ -6,18 +6,18 @@ import asyncio
 import json
 from datetime import datetime
 from functools import lru_cache
-from typing import Dict, List, Optional, Any, cast
+from typing import Any, cast
 
 import aiohttp
-from off_key_core.config.services import get_service_endpoints_settings
 from off_key_core.config.logs import logger
+from off_key_core.config.services import get_service_endpoints_settings
 from off_key_core.schemas.radar import MonitoringStrategy
 
 
 class TacticError(Exception):
     """Typed error for TACTIC HTTP failures."""
 
-    def __init__(self, message: str, status: Optional[int] = None, body: Any = None):
+    def __init__(self, message: str, status: int | None = None, body: Any = None):
         super().__init__(message)
         self.status = status
         self.body = body
@@ -34,7 +34,7 @@ class Tactic:
         self.timeout = aiohttp.ClientTimeout(
             total=settings.TACTIC_SERVICE_REQUEST_TIMEOUT_SECONDS
         )
-        self._session: Optional[aiohttp.ClientSession] = None
+        self._session: aiohttp.ClientSession | None = None
         self._max_retries = 2
         logger.info(f"Tactic facade initialized with base URL: {self.base_url}")
 
@@ -53,8 +53,8 @@ class Tactic:
         self,
         method: str,
         endpoint: str,
-        json_data: Optional[Dict] = None,
-        params: Optional[Dict] = None,
+        json_data: dict | None = None,
+        params: dict | None = None,
     ) -> Any:
         """
         Make an HTTP request to the TACTIC service.
@@ -124,7 +124,7 @@ class Tactic:
                 logger.error(f"TACTIC request error: {method} {url} - {str(e)}")
                 raise TacticError(f"TACTIC request error: {str(e)}")
 
-    def _normalize_query_params(self, params: Optional[Dict]) -> Optional[Dict]:
+    def _normalize_query_params(self, params: dict | None) -> dict | None:
         """
         Normalize query params for aiohttp/yarl compatibility.
 
@@ -134,7 +134,7 @@ class Tactic:
         if params is None:
             return None
 
-        normalized: Dict[str, Any] = {}
+        normalized: dict[str, Any] = {}
         for key, value in params.items():
             if value is None:
                 continue
@@ -159,14 +159,14 @@ class Tactic:
     async def start_radar_service(
         self,
         container_name: str,
-        mqtt_topics: List[str],
+        mqtt_topics: list[str],
         strategy: MonitoringStrategy = "static_baseline",
         model_type: str = "pyod_iforest",
-        model_params: Optional[Dict[str, Any]] = None,
-        mqtt_config: Optional[Dict[str, Any]] = None,
-        performance_config: Optional[Dict[str, Any]] = None,
-        static_baseline_config: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
+        model_params: dict[str, Any] | None = None,
+        mqtt_config: dict[str, Any] | None = None,
+        performance_config: dict[str, Any] | None = None,
+        static_baseline_config: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         """
         Start a new RADAR service via TACTIC.
 
@@ -207,9 +207,9 @@ class Tactic:
 
     async def stop_radar_service(
         self,
-        container_name: Optional[str] = None,
-        container_id: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        container_name: str | None = None,
+        container_id: str | None = None,
+    ) -> dict[str, Any]:
         """
         Stop a RADAR service via TACTIC.
 
@@ -237,7 +237,7 @@ class Tactic:
             params=params,
         )
 
-    async def delete_radar_service(self, service_id: str) -> Dict[str, Any]:
+    async def delete_radar_service(self, service_id: str) -> dict[str, Any]:
         """Delete a RADAR service and any backing workload via TACTIC."""
         if not service_id:
             raise TacticError("service_id is required to delete a service")
@@ -249,7 +249,7 @@ class Tactic:
 
     async def list_radar_services(
         self, active_only: bool = False, include_docker_status: bool = False
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """
         List RADAR services via TACTIC.
 
@@ -274,9 +274,9 @@ class Tactic:
 
     async def get_radar_service_details(
         self,
-        container_name: Optional[str] = None,
-        container_id: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        container_name: str | None = None,
+        container_id: str | None = None,
+    ) -> dict[str, Any]:
         """
         Get RADAR service details via TACTIC.
 
@@ -309,7 +309,7 @@ class Tactic:
         skip: int = 0,
         limit: int = 100,
         active_only: bool = False,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Get chargers from TACTIC data service."""
         params = {
             "skip": skip,
@@ -324,7 +324,7 @@ class Tactic:
 
     async def get_active_charger_ids(
         self, skip: int = 0, limit: int = 100
-    ) -> Dict[str, List[str]]:
+    ) -> dict[str, list[str]]:
         """Get active charger IDs from TACTIC data service."""
         params = {"skip": skip, "limit": limit}
         return await self._make_request(
@@ -333,7 +333,7 @@ class Tactic:
             params=params,
         )
 
-    async def get_telemetry_types(self, charger_id: str, limit: int = 100) -> List[str]:
+    async def get_telemetry_types(self, charger_id: str, limit: int = 100) -> list[str]:
         """Get telemetry types for a charger from TACTIC data service."""
         params = {"limit": limit}
         return await self._make_request(
@@ -347,11 +347,11 @@ class Tactic:
         charger_id: str,
         telemetry_type: str,
         limit: int = 1000,
-        after_timestamp: Optional[datetime] = None,
+        after_timestamp: datetime | None = None,
         paginated: bool = False,
     ) -> Any:
         """Get telemetry data from TACTIC data service."""
-        params: Dict[str, Any] = {
+        params: dict[str, Any] = {
             "type": telemetry_type,
             "limit": limit,
             "paginated": paginated,
@@ -365,7 +365,7 @@ class Tactic:
             params=params,
         )
 
-    async def get_user_by_email(self, email: str) -> Optional[Dict[str, Any]]:
+    async def get_user_by_email(self, email: str) -> dict[str, Any] | None:
         """Get user by email from TACTIC data service."""
         try:
             return await self._make_request(
@@ -377,7 +377,7 @@ class Tactic:
                 return None
             raise
 
-    async def create_user(self, user_data: Dict[str, Any]) -> Dict[str, Any]:
+    async def create_user(self, user_data: dict[str, Any]) -> dict[str, Any]:
         """Create user via TACTIC data service."""
         return await self._make_request(
             method="POST",
@@ -385,7 +385,7 @@ class Tactic:
             json_data=user_data,
         )
 
-    async def authenticate_user(self, email: str, password: str) -> Dict[str, Any]:
+    async def authenticate_user(self, email: str, password: str) -> dict[str, Any]:
         """Validate user credentials via TACTIC data service."""
         return await self._make_request(
             method="POST",
@@ -393,7 +393,7 @@ class Tactic:
             json_data={"email": email, "password": password},
         )
 
-    async def verify_user_email(self, email: str) -> Dict[str, str]:
+    async def verify_user_email(self, email: str) -> dict[str, str]:
         """Verify user email via TACTIC data service."""
         return await self._make_request(
             method="PATCH",
@@ -402,7 +402,7 @@ class Tactic:
 
     async def update_user_password(
         self, email: str, new_password_hash: str
-    ) -> Dict[str, str]:
+    ) -> dict[str, str]:
         """Update user password via TACTIC data service."""
         return await self._make_request(
             method="PATCH",
@@ -410,14 +410,14 @@ class Tactic:
             json_data={"new_password_hash": new_password_hash},
         )
 
-    async def get_user_favorites(self, user_id: int) -> List[str]:
+    async def get_user_favorites(self, user_id: int) -> list[str]:
         """Get user favorites from TACTIC data service."""
         return await self._make_request(
             method="GET",
             endpoint=f"/api/v1/data/users/{user_id}/favorites",
         )
 
-    async def add_user_favorite(self, user_id: int, charger_id: str) -> Dict[str, str]:
+    async def add_user_favorite(self, user_id: int, charger_id: str) -> dict[str, str]:
         """Add user favorite via TACTIC data service."""
         return await self._make_request(
             method="POST",
@@ -427,7 +427,7 @@ class Tactic:
 
     async def remove_user_favorite(
         self, user_id: int, charger_id: str
-    ) -> Dict[str, str]:
+    ) -> dict[str, str]:
         """Remove user favorite via TACTIC data service."""
         return await self._make_request(
             method="DELETE",
@@ -438,10 +438,10 @@ class Tactic:
         self,
         charger_id: str,
         limit: int = 500,
-        telemetry_type: Optional[str] = None,
-    ) -> List[Dict[str, Any]]:
+        telemetry_type: str | None = None,
+    ) -> list[dict[str, Any]]:
         """Get anomalies for charger from TACTIC data service."""
-        params: Dict[str, Any] = {"limit": limit}
+        params: dict[str, Any] = {"limit": limit}
         if telemetry_type:
             params["telemetry_type"] = telemetry_type
         return await self._make_request(
@@ -450,11 +450,9 @@ class Tactic:
             params=params,
         )
 
-    async def get_anomaly_count(
-        self, since: Optional[datetime] = None
-    ) -> Dict[str, int]:
+    async def get_anomaly_count(self, since: datetime | None = None) -> dict[str, int]:
         """Get total anomaly count, optionally filtered by timestamp."""
-        params: Dict[str, Any] = {}
+        params: dict[str, Any] = {}
         if since:
             params["since"] = since.isoformat()
         return await self._make_request(
@@ -467,11 +465,11 @@ class Tactic:
         self,
         *,
         charger_id: str,
-        telemetry_type: Optional[str] = None,
+        telemetry_type: str | None = None,
         limit: int = 2000,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Get persisted static evidence for a charger and optional sensor."""
-        params: Dict[str, Any] = {"limit": limit}
+        params: dict[str, Any] = {"limit": limit}
         if telemetry_type:
             params["telemetry_type"] = telemetry_type
         return await self._make_request(
@@ -480,7 +478,7 @@ class Tactic:
             params=params,
         )
 
-    async def create_anomaly(self, anomaly_data: Dict[str, Any]) -> Dict[str, str]:
+    async def create_anomaly(self, anomaly_data: dict[str, Any]) -> dict[str, str]:
         """Create anomaly via TACTIC data service."""
         return await self._make_request(
             method="POST",
@@ -491,14 +489,14 @@ class Tactic:
     async def delete_anomaly(
         self,
         anomaly_id: str,
-    ) -> Dict[str, str]:
+    ) -> dict[str, str]:
         """Delete anomaly via TACTIC data service."""
         return await self._make_request(
             method="DELETE",
             endpoint=f"/api/v1/data/anomalies/{anomaly_id}",
         )
 
-    async def list_available_models(self) -> List[Dict[str, Any]]:
+    async def list_available_models(self) -> list[dict[str, Any]]:
         """List models from TACTIC model registry API."""
         return await self._make_request(
             method="GET",

@@ -1,16 +1,15 @@
-from datetime import datetime, timezone
+import uuid
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
-import uuid
 
 import pytest
-from sqlalchemy.exc import IntegrityError
-
 from off_key_core.db.models import Anomaly, AnomalyIdentity
 from off_key_tactic_middleware.domain import ConflictError
 from off_key_tactic_middleware.repositories.data import AnomalyRepository
 from off_key_tactic_middleware.schemas import AnomalyCreateRequest
 from off_key_tactic_middleware.services.data.anomalies import AnomalyService
+from sqlalchemy.exc import IntegrityError
 
 
 def test_anomaly_payload_table_has_no_anomaly_id_column():
@@ -37,7 +36,7 @@ async def test_create_anomaly_returns_repository_identity_id():
     service = AnomalyService(session, repository)
     payload = AnomalyCreateRequest(
         charger_id="charger-1",
-        timestamp=datetime.now(timezone.utc),
+        timestamp=datetime.now(UTC),
         telemetry_type="voltage",
         anomaly_type="ml_detected",
         anomaly_value=0.91,
@@ -63,7 +62,7 @@ async def test_create_anomaly_persists_explicit_value_type():
     service = AnomalyService(session, repository)
     payload = AnomalyCreateRequest(
         charger_id="charger-1",
-        timestamp=datetime.now(timezone.utc),
+        timestamp=datetime.now(UTC),
         telemetry_type="voltage",
         anomaly_type="ml_tailprob_univariate",
         anomaly_value=0.0012,
@@ -85,7 +84,7 @@ async def test_create_anomaly_persists_normalized_sensor_set():
     service = AnomalyService(session, repository)
     payload = AnomalyCreateRequest(
         charger_id="charger-1",
-        timestamp=datetime.now(timezone.utc),
+        timestamp=datetime.now(UTC),
         telemetry_type="__multivariate__",
         anomaly_type="ml_conformal_static_multivariate",
         anomaly_value=0.0012,
@@ -108,7 +107,7 @@ async def test_create_anomaly_defaults_tail_pvalue_for_ml_tailprob():
     service = AnomalyService(session, repository)
     payload = AnomalyCreateRequest(
         charger_id="charger-1",
-        timestamp=datetime.now(timezone.utc),
+        timestamp=datetime.now(UTC),
         telemetry_type="voltage",
         anomaly_type="ml_tailprob_multivariate",
         anomaly_value=0.0023,
@@ -129,7 +128,7 @@ async def test_create_anomaly_defaults_conformal_pvalue_for_static_conformal():
     service = AnomalyService(session, repository)
     payload = AnomalyCreateRequest(
         charger_id="charger-1",
-        timestamp=datetime.now(timezone.utc),
+        timestamp=datetime.now(UTC),
         telemetry_type="__multivariate__",
         anomaly_type="ml_conformal_static_multivariate",
         anomaly_value=0.0023,
@@ -156,7 +155,7 @@ async def test_create_anomaly_maps_integrity_error_to_conflict():
     service = AnomalyService(session, repository)
     payload = AnomalyCreateRequest(
         charger_id="charger-1",
-        timestamp=datetime.now(timezone.utc),
+        timestamp=datetime.now(UTC),
         telemetry_type="voltage",
         anomaly_type="ml_detected",
         anomaly_value=0.91,
@@ -174,7 +173,7 @@ async def test_delete_anomaly_uses_identity_lookup_and_delete():
     repository = MagicMock()
     anomaly = SimpleNamespace(
         charger_id="charger-1",
-        timestamp=datetime.now(timezone.utc),
+        timestamp=datetime.now(UTC),
     )
     repository.get_by_anomaly_id = AsyncMock(return_value=("id-1", anomaly))
     repository.delete = AsyncMock()
@@ -191,7 +190,7 @@ async def test_delete_anomaly_uses_identity_lookup_and_delete():
 async def test_list_anomalies_includes_value_type():
     session = AsyncMock()
     repository = MagicMock()
-    timestamp = datetime.now(timezone.utc)
+    timestamp = datetime.now(UTC)
     anomaly = SimpleNamespace(
         charger_id="charger-1",
         timestamp=timestamp,
@@ -236,7 +235,7 @@ async def test_repository_add_reuses_trigger_created_identity():
     repository = AnomalyRepository(session)
     anomaly = SimpleNamespace(
         charger_id="charger-1",
-        timestamp=datetime.now(timezone.utc),
+        timestamp=datetime.now(UTC),
         telemetry_type="voltage",
     )
 
@@ -263,7 +262,7 @@ async def test_repository_add_falls_back_when_identity_missing():
     repository = AnomalyRepository(session)
     anomaly = SimpleNamespace(
         charger_id="charger-1",
-        timestamp=datetime.now(timezone.utc),
+        timestamp=datetime.now(UTC),
         telemetry_type="voltage",
     )
 

@@ -1,11 +1,10 @@
-from typing import Optional
+from datetime import datetime
 
 from fastapi import APIRouter, Body, HTTPException, status
-from datetime import datetime
+from off_key_core.config.logs import logger
+from off_key_core.utils.mail import send_anomaly_alert_email
 from pydantic import BaseModel
 
-from off_key_core.utils.mail import send_anomaly_alert_email
-from off_key_core.config.logs import logger
 from ...facades.tactic import TacticError, tactic
 
 router = APIRouter()
@@ -17,8 +16,8 @@ class AnomalyCreatePayload(BaseModel):
     telemetry_type: str
     anomaly_type: str
     anomaly_value: float
-    value_type: Optional[str] = None
-    sensor_set: Optional[list[str]] = None
+    value_type: str | None = None
+    sensor_set: list[str] | None = None
 
 
 def _get_tactic_error_detail(error: TacticError) -> str:
@@ -38,7 +37,7 @@ def _raise_tactic_http_error(error: TacticError) -> None:
 
 
 @router.get("/count")
-async def get_anomaly_count(since: Optional[datetime] = None):
+async def get_anomaly_count(since: datetime | None = None):
     try:
         return await tactic.get_anomaly_count(since=since)
     except TacticError as e:
@@ -48,7 +47,7 @@ async def get_anomaly_count(since: Optional[datetime] = None):
 @router.get("")
 async def get_anomalies(
     charger_id: str,
-    telemetry_type: Optional[str] = None,
+    telemetry_type: str | None = None,
     limit: int = 500,
 ):
     try:

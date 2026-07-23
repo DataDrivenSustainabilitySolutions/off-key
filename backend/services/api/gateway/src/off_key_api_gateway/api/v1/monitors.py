@@ -1,14 +1,15 @@
-from fastapi import APIRouter, HTTPException, Query, Request, Response
-from typing import List, Dict, Optional, Any
-from pydantic import BaseModel, ConfigDict, Field, field_validator
-from off_key_core.utils.mqtt_topics import normalize_static_monitoring_topics
+from typing import Any, Optional
 
+from fastapi import APIRouter, HTTPException, Query, Request, Response
 from off_key_core.schemas.radar import (
     MonitoringStrategy,
     PerformanceConfig,
     StaticBaselineConfig,
 )
-from ...facades.tactic import tactic, TacticError
+from off_key_core.utils.mqtt_topics import normalize_static_monitoring_topics
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from ...facades.tactic import TacticError, tactic
 from ..rate_limiter import limiter
 
 router = APIRouter()
@@ -27,14 +28,14 @@ def _get_tactic_error_detail(error: TacticError) -> str:
 
 
 def _normalize_models_for_gateway(
-    models_from_tactic: List[Dict[str, Any]],
-) -> Dict[str, Dict[str, Any]]:
+    models_from_tactic: list[dict[str, Any]],
+) -> dict[str, dict[str, Any]]:
     """
     Normalize TACTIC model list into gateway's existing dictionary response shape.
 
     Data source stays TACTIC; only the transport shape is adapted for consumers.
     """
-    normalized: Dict[str, Dict[str, Any]] = {}
+    normalized: dict[str, dict[str, Any]] = {}
     for model in models_from_tactic:
         model_type = model.get("model_type")
         if not model_type:
@@ -65,7 +66,7 @@ class MonitoringServiceConfig(BaseModel):
     service_type: str = Field(
         default="radar", description="Type of monitoring service (radar, custom, etc.)"
     )
-    mqtt_topics: List[str] = Field(..., description="List of MQTT topics to monitor")
+    mqtt_topics: list[str] = Field(..., description="List of MQTT topics to monitor")
     strategy: MonitoringStrategy = Field(
         default="static_baseline",
         description="Static baseline monitoring strategy",
@@ -74,7 +75,7 @@ class MonitoringServiceConfig(BaseModel):
         default="pyod_iforest",
         description="Legacy/effective ML model type for the selected strategy",
     )
-    model_params: Optional[Dict[str, Any]] = Field(
+    model_params: dict[str, Any] | None = Field(
         default=None, description="Model-specific parameters"
     )
     performance_config: Optional["PerformanceConfig"] = Field(
@@ -85,16 +86,16 @@ class MonitoringServiceConfig(BaseModel):
         default=None,
         description="Static baseline conformal detector settings",
     )
-    requirements: Optional[List[str]] = Field(
+    requirements: list[str] | None = Field(
         None, description="List of pip packages to install"
     )
-    environment_variables: Optional[Dict[str, str]] = Field(
+    environment_variables: dict[str, str] | None = Field(
         None, description="Additional environment variables"
     )
 
     @field_validator("mqtt_topics")
     @classmethod
-    def validate_mqtt_topics(cls, value: List[str]) -> List[str]:
+    def validate_mqtt_topics(cls, value: list[str]) -> list[str]:
         return normalize_static_monitoring_topics(value)
 
 
@@ -103,7 +104,7 @@ class ServiceResponse(BaseModel):
     container_id: str
     container_name: str
     status: str
-    mqtt_topics: List[str]
+    mqtt_topics: list[str]
 
 
 MonitoringServiceConfig.model_rebuild()
@@ -111,7 +112,7 @@ MonitoringServiceConfig.model_rebuild()
 
 def _resolve_effective_start_config(
     config: MonitoringServiceConfig,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Resolve the static monitoring configuration."""
     performance_config = config.performance_config
     model_type = config.model_type
@@ -141,7 +142,7 @@ def _resolve_effective_start_config(
     }
 
 
-@router.get("/all", response_model=List[Dict[str, Any]])
+@router.get("/all", response_model=list[dict[str, Any]])
 @shared_limit_fetch
 async def list_services(
     request: Request,
@@ -169,12 +170,12 @@ async def list_services(
         )
 
 
-@router.get("/evidence", response_model=List[Dict[str, Any]])
+@router.get("/evidence", response_model=list[dict[str, Any]])
 @shared_limit_fetch
 async def get_monitoring_evidence(
     request: Request,
     charger_id: str,
-    telemetry_type: Optional[str] = None,
+    telemetry_type: str | None = None,
     limit: int = Query(default=2000, ge=1, le=10000),
 ):
     try:
@@ -232,12 +233,12 @@ async def start_monitoring_service(
         )
 
 
-@router.get("", response_model=Dict[str, Any])
+@router.get("", response_model=dict[str, Any])
 @shared_limit_fetch
 async def get_service_details(
     request: Request,
-    container_name: Optional[str] = Query(default=None),
-    container_id: Optional[str] = Query(default=None),
+    container_name: str | None = Query(default=None),
+    container_id: str | None = Query(default=None),
 ):
     """
     Gets details for a specific monitoring service by container name or ID.
@@ -276,8 +277,8 @@ async def get_service_details(
 @shared_limit_execute
 async def stop_monitoring_service(
     request: Request,
-    container_name: Optional[str] = Query(default=None),
-    container_id: Optional[str] = Query(default=None),
+    container_name: str | None = Query(default=None),
+    container_id: str | None = Query(default=None),
 ):
     """
     Stops and removes a running monitoring service container via TACTIC.
@@ -360,12 +361,12 @@ async def delete_monitoring_service(request: Request, service_id: str):
         )
 
 
-@router.get("/models", response_model=Dict[str, Any])
+@router.get("/models", response_model=dict[str, Any])
 @shared_limit_fetch
 async def list_available_models_endpoint(
     request: Request,
     response: Response,
-    strategy: Optional[MonitoringStrategy] = Query(default=None),
+    strategy: MonitoringStrategy | None = Query(default=None),
 ):
     """
     Lists all available anomaly detection models and their hyperparameters.

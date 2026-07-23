@@ -1,10 +1,9 @@
 """Tests for detector resilience, input validation, and memory utilities."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import MagicMock
 
 import pytest
-
 from off_key_mqtt_radar.detector import (
     MemoryManager,
     ResilientAnomalyDetector,
@@ -19,7 +18,7 @@ def _result(score: float = 0.5, *, is_anomaly: bool = False) -> AnomalyResult:
         anomaly_score=score,
         is_anomaly=is_anomaly,
         severity="unknown",
-        timestamp=datetime.now(timezone.utc),
+        timestamp=datetime.now(UTC),
         model_info={"strategy": "static_baseline"},
         raw_data={"value": 1.0},
         context={},

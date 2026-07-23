@@ -1,6 +1,7 @@
 """Configuration for MQTT simulator service."""
 
 from functools import lru_cache
+
 from pydantic import BaseModel, ConfigDict, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 

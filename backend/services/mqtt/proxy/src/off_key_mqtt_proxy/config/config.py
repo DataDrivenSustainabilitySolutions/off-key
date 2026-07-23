@@ -2,21 +2,19 @@
 MQTT proxy configuration.
 """
 
-from functools import lru_cache
 import random
 import uuid
-
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from functools import lru_cache
 from typing import Self
 
 from off_key_core.config.validation import validate_environment as _validate_environment
-
 from off_key_core.utils.mqtt_topics import (
     DEFAULT_TOPIC_REGEX,
     TopicMetadataExtractor,
     normalize_mqtt_topic_filters,
 )
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class MQTTConfig(BaseModel):

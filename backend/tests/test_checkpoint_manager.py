@@ -2,7 +2,6 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
-
 from off_key_core.schemas.radar import StaticBaselineConfig
 from off_key_mqtt_radar.checkpoint_manager import CheckpointManager
 from off_key_mqtt_radar.detector import StaticConformalDetectionService

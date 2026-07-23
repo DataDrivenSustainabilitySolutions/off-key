@@ -1,16 +1,15 @@
 """MQTT simulator service entrypoint."""
 
 import asyncio
-from datetime import datetime, timezone
 import json
 import math
 import random
 import signal
 import ssl
 import uuid
+from datetime import UTC, datetime
 
 import paho.mqtt.client as mqtt
-
 from off_key_core.config.env import load_env
 from off_key_core.config.logs import logger
 from off_key_core.config.validation import validate_settings
@@ -66,7 +65,7 @@ class SimulatorService:
             self.config.payload_charger_key: charger_id,
             self.config.payload_type_key: feature,
             "value": round(value, 4),
-            "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+            "timestamp": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
         }
 
     def _build_topic(self, charger_id: str, feature: str) -> str:

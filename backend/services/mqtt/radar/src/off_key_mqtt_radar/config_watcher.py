@@ -7,13 +7,13 @@ Monitors configuration file changes and triggers reloads automatically.
 import asyncio
 import os
 import time
+from collections.abc import Awaitable, Callable
 from contextlib import suppress
 from pathlib import Path
-from typing import Callable, Optional, Awaitable
-from watchdog.observers import Observer
-from watchdog.events import FileSystemEventHandler
 
 from off_key_core.config.logs import logger
+from watchdog.events import FileSystemEventHandler
+from watchdog.observers import Observer
 
 
 class ConfigFileHandler(FileSystemEventHandler):
@@ -75,8 +75,8 @@ class ConfigWatcher:
     ):
         self.config_file_path = Path(config_file_path)
         self.reload_callback = reload_callback
-        self.observer: Optional[Observer] = None
-        self.handler: Optional[ConfigFileHandler] = None
+        self.observer: Observer | None = None
+        self.handler: ConfigFileHandler | None = None
         self.is_watching = False
 
         # Validate config file exists
@@ -163,7 +163,7 @@ class ConfigWatcher:
 
             # Check if file is readable
             try:
-                with open(self.config_file_path, "r") as f:
+                with open(self.config_file_path) as f:
                     f.read(1)  # Try to read first byte
             except Exception as e:
                 logger.error(
@@ -202,7 +202,7 @@ class ConfigWatcher:
         except Exception:
             return False
 
-    def _get_file_mtime(self) -> Optional[float]:
+    def _get_file_mtime(self) -> float | None:
         """Get file modification time"""
         with suppress(Exception):
             if self.config_file_path.exists():

@@ -2,11 +2,10 @@
 Utilities for extracting stable metadata from MQTT topics and payloads.
 """
 
-from dataclasses import dataclass
-from collections.abc import Iterable
 import re
-from typing import Any, Mapping, Optional
-
+from collections.abc import Iterable, Mapping
+from dataclasses import dataclass
+from typing import Any
 
 DEFAULT_TOPIC_REGEX = (
     r"^charger/(?P<charger_id>[^/]+)/(?:telemetry|live-telemetry)/"
@@ -56,7 +55,7 @@ class TopicMetadataExtractor:
         return compiled
 
     @staticmethod
-    def _normalize_value(value: Any) -> Optional[str]:
+    def _normalize_value(value: Any) -> str | None:
         if value is None:
             return None
         if isinstance(value, str):
@@ -67,13 +66,13 @@ class TopicMetadataExtractor:
     def extract(
         self,
         topic: str,
-        payload: Optional[Mapping[str, Any]] = None,
-    ) -> Optional[TopicMetadata]:
+        payload: Mapping[str, Any] | None = None,
+    ) -> TopicMetadata | None:
         """
         Extract metadata using regex first, then payload fallback.
         """
-        charger_id: Optional[str] = None
-        telemetry_type: Optional[str] = None
+        charger_id: str | None = None
+        telemetry_type: str | None = None
 
         topic_match = self._compiled_regex.match(topic)
         if topic_match:

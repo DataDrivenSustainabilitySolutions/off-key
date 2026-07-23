@@ -1,13 +1,12 @@
 """Tests for RADAR MessageProcessor feature normalization and alignment."""
 
+from datetime import UTC, datetime
 from unittest.mock import MagicMock
-from datetime import datetime, timezone
 
 import pytest
-
 from off_key_mqtt_radar.message_processor import MessageProcessor
-from off_key_mqtt_radar.state_cache import AlignmentUpdate
 from off_key_mqtt_radar.models import AnomalyResult, MQTTMessage
+from off_key_mqtt_radar.state_cache import AlignmentUpdate
 
 
 def _build_processor(
@@ -223,7 +222,7 @@ def test_detect_anomaly_uses_canonical_sample_timestamp():
         anomaly_score=0.9,
         is_anomaly=True,
         severity="high",
-        timestamp=datetime.now(timezone.utc),
+        timestamp=datetime.now(UTC),
         model_info={},
         raw_data={"sine": 1.0, "cosine": 0.0},
         topic="charger/1/live-telemetry/sine",
@@ -256,8 +255,8 @@ def test_detect_anomaly_uses_canonical_sample_timestamp():
         },
     )
 
-    assert result.timestamp == datetime.fromtimestamp(sample_ts, tz=timezone.utc)
+    assert result.timestamp == datetime.fromtimestamp(sample_ts, tz=UTC)
     assert (
         result.context["canonical_sample_timestamp"]
-        == datetime.fromtimestamp(sample_ts, tz=timezone.utc).isoformat()
+        == datetime.fromtimestamp(sample_ts, tz=UTC).isoformat()
     )

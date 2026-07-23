@@ -1,15 +1,14 @@
 """Tests for persisted anomaly semantics in RADAR database writer."""
 
 import asyncio
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-
 from off_key_mqtt_radar.database import (
     ANOMALY_TABLE,
-    DatabaseWriter,
     MULTIVARIATE_TELEMETRY_TYPE,
+    DatabaseWriter,
 )
 from off_key_mqtt_radar.models import AnomalyResult
 
@@ -31,7 +30,7 @@ def _build_result(
         anomaly_score=anomaly_score,
         is_anomaly=True,
         severity="high",
-        timestamp=datetime.now(timezone.utc),
+        timestamp=datetime.now(UTC),
         model_info={"model_type": "isolation_forest"},
         raw_data={"value": 1.0},
         topic="charger/charger-1/live-telemetry/sine",

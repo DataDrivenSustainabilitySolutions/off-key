@@ -20,7 +20,6 @@ from pydantic import (
     field_validator,
 )
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from typing import Optional
 
 RADAR_SENSOR_KEY_STRATEGIES = {"full_hierarchy", "top_level", "leaf"}
 RADAR_ALIGNMENT_MODES = {"strict_barrier"}
@@ -162,7 +161,7 @@ class TacticConfig(BaseModel):
     radar_startup_grace_seconds: float = Field(default=5.0, ge=0.0, le=120.0)
 
     # Database Configuration
-    database_url: Optional[str] = None
+    database_url: str | None = None
 
     # Logging Configuration
     log_level: str = "INFO"
@@ -299,13 +298,13 @@ class TacticSettings(BaseSettings):
     TACTIC_RADAR_STARTUP_GRACE_SECONDS: float = Field(default=5.0)
 
     # Database Configuration
-    TACTIC_DATABASE_URL: Optional[str] = Field(default=None)
+    TACTIC_DATABASE_URL: str | None = Field(default=None)
 
     # Status Reconciliation Configuration
     TACTIC_RECONCILIATION_ENABLED: bool = Field(default=True)
     TACTIC_RECONCILIATION_INTERVAL: int = Field(default=60)
     TACTIC_TERMINAL_SERVICE_RETENTION_HOURS: int = Field(default=24)
-    TACTIC_RADAR_WORKLOAD_LIFECYCLE: Optional[str] = Field(default=None)
+    TACTIC_RADAR_WORKLOAD_LIFECYCLE: str | None = Field(default=None)
 
     # Model Registry Initialization
     TACTIC_MODEL_REGISTRY_INIT_MAX_RETRIES: int = Field(default=30)

@@ -2,7 +2,8 @@
 Topic parser utilities for RADAR.
 """
 
-from typing import Any, Mapping, Optional, Set
+from collections.abc import Mapping
+from typing import Any
 
 from off_key_core.utils.mqtt_topics import TopicMetadataExtractor
 
@@ -26,9 +27,9 @@ class TopicParser:
     @staticmethod
     def extract_charger_id(
         topic: str,
-        payload: Optional[Mapping[str, Any]] = None,
-        extractor: Optional[TopicMetadataExtractor] = None,
-    ) -> Optional[str]:
+        payload: Mapping[str, Any] | None = None,
+        extractor: TopicMetadataExtractor | None = None,
+    ) -> str | None:
         parser = extractor or TopicParser._default_extractor
         metadata = parser.extract(topic=topic, payload=payload)
         if not metadata or metadata.charger_id in {"+", "#"}:
@@ -39,9 +40,9 @@ class TopicParser:
     def extract_sensor_type(
         topic: str,
         sensor_key_strategy: str = "full_hierarchy",
-        payload: Optional[Mapping[str, Any]] = None,
-        extractor: Optional[TopicMetadataExtractor] = None,
-    ) -> Optional[str]:
+        payload: Mapping[str, Any] | None = None,
+        extractor: TopicMetadataExtractor | None = None,
+    ) -> str | None:
         strategy = TopicParser._validate_sensor_key_strategy(sensor_key_strategy)
         parser = extractor or TopicParser._default_extractor
         metadata = parser.extract(topic=topic, payload=payload)
@@ -65,9 +66,9 @@ class TopicParser:
     def derive_required_sensors(
         topics: list[str],
         sensor_key_strategy: str = "full_hierarchy",
-        extractor: Optional[TopicMetadataExtractor] = None,
-    ) -> Set[str]:
-        sensors: Set[str] = set()
+        extractor: TopicMetadataExtractor | None = None,
+    ) -> set[str]:
+        sensors: set[str] = set()
         for topic in topics:
             sensor = TopicParser.extract_sensor_type(
                 topic,

@@ -1,7 +1,6 @@
 """Tests for RADAR TopicParser feature key extraction."""
 
 import pytest
-
 from off_key_mqtt_radar.topic_parser import TopicParser
 
 

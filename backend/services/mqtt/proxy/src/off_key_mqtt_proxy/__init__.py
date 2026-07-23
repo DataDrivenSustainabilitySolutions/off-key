@@ -12,9 +12,9 @@ Components:
 - Topic-pattern subscription management
 """
 
-from .proxy import MQTTProxyService
-from .config.config import MQTTConfig
 from .client.facade import MQTTClient
 from .client.models import MQTTMessage
+from .config.config import MQTTConfig
+from .proxy import MQTTProxyService
 
 __all__ = ["MQTTProxyService", "MQTTConfig", "MQTTClient", "MQTTMessage"]

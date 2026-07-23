@@ -1,19 +1,18 @@
 import time
 import uuid
-from typing import Callable
+from collections.abc import Callable
 
 from fastapi import Request, Response
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.types import ASGIApp
-
 from off_key_core.config.logging import get_logging_settings
 from off_key_core.config.logs import (
-    set_correlation_id,
     log_performance,
     logger,
     redact_ip_address,
     redact_query_params,
+    set_correlation_id,
 )
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.types import ASGIApp
 
 
 class LoggingMiddleware(BaseHTTPMiddleware):

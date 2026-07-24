@@ -117,12 +117,12 @@ class Tactic:
                 logger.error(f"TACTIC client error: {method} {url} - {str(e)}")
                 raise TacticError(
                     f"Failed to communicate with TACTIC service: {str(e)}"
-                )
+                ) from e
             except TacticError:
                 raise
             except Exception as e:
                 logger.error(f"TACTIC request error: {method} {url} - {str(e)}")
-                raise TacticError(f"TACTIC request error: {str(e)}")
+                raise TacticError(f"TACTIC request error: {str(e)}") from e
 
     def _normalize_query_params(self, params: dict | None) -> dict | None:
         """

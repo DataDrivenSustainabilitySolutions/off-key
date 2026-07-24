@@ -10,21 +10,13 @@ from off_key_core.utils.mqtt_topics import normalize_static_monitoring_topics
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from ...facades.tactic import TacticError, tactic
+from ..errors import raise_tactic_http_error
 from ..rate_limiter import limiter
 
 router = APIRouter()
 
 shared_limit_fetch = limiter.shared_limit("60/minute", scope="services")
 shared_limit_execute = limiter.shared_limit("20/minute", scope="services")
-
-
-def _get_tactic_error_detail(error: TacticError) -> str:
-    """Extract API detail from TACTIC error body when available."""
-    if isinstance(error.body, dict):
-        detail = error.body.get("detail")
-        if detail:
-            return str(detail)
-    return str(error)
 
 
 def _normalize_models_for_gateway(
@@ -162,7 +154,7 @@ async def list_services(
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to list monitoring services: {str(e)}"
-        )
+        ) from e
 
 
 @router.get("/evidence", response_model=list[dict[str, Any]])
@@ -180,10 +172,7 @@ async def get_monitoring_evidence(
             limit=limit,
         )
     except TacticError as error:
-        raise HTTPException(
-            status_code=error.status or 502,
-            detail=_get_tactic_error_detail(error),
-        )
+        raise_tactic_http_error(error)
 
 
 @router.post("/start", response_model=ServiceResponse)
@@ -216,16 +205,13 @@ async def start_monitoring_service(
 
         return response
     except TacticError as e:
-        raise HTTPException(
-            status_code=e.status or 502,
-            detail=_get_tactic_error_detail(e),
-        )
+        raise_tactic_http_error(e)
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to start monitoring service: {str(e)}"
-        )
+        ) from e
 
 
 @router.get("", response_model=dict[str, Any])
@@ -265,7 +251,7 @@ async def get_service_details(
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to get service details: {str(e)}"
-        )
+        ) from e
 
 
 @router.delete("/stop")
@@ -311,16 +297,13 @@ async def stop_monitoring_service(
             f" stopped successfully",
         }
     except TacticError as e:
-        raise HTTPException(
-            status_code=e.status or 502,
-            detail=_get_tactic_error_detail(e),
-        )
+        raise_tactic_http_error(e)
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to stop monitoring service: {str(e)}"
-        )
+        ) from e
 
 
 @router.delete("/{service_id}")
@@ -344,16 +327,13 @@ async def delete_monitoring_service(request: Request, service_id: str):
             "message": f"Service '{service_id}' deleted successfully",
         }
     except TacticError as e:
-        raise HTTPException(
-            status_code=e.status or 502,
-            detail=_get_tactic_error_detail(e),
-        )
+        raise_tactic_http_error(e)
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to delete monitoring service: {str(e)}"
-        )
+        ) from e
 
 
 @router.get("/models", response_model=dict[str, Any])
@@ -391,11 +371,8 @@ async def list_available_models_endpoint(
             }
         return normalized
     except TacticError as e:
-        raise HTTPException(
-            status_code=e.status or 502,
-            detail=_get_tactic_error_detail(e),
-        )
+        raise_tactic_http_error(e)
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to get available models: {str(e)}"
-        )
+        ) from e

@@ -1,26 +1,11 @@
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, Query
 
 from ...facades.tactic import TacticError, tactic
+from ..errors import raise_tactic_http_error
 
 router = APIRouter()
-
-
-def _get_tactic_error_detail(error: TacticError) -> str:
-    """Extract API detail from TACTIC error body when available."""
-    if isinstance(error.body, dict):
-        detail = error.body.get("detail")
-        if detail:
-            return str(detail)
-    return str(error)
-
-
-def _raise_tactic_http_error(error: TacticError) -> None:
-    raise HTTPException(
-        status_code=error.status or status.HTTP_502_BAD_GATEWAY,
-        detail=_get_tactic_error_detail(error),
-    )
 
 
 @router.get("/{charger_id}/type")
@@ -33,7 +18,7 @@ async def get_telemetry_types_from_id(
     try:
         return await tactic.get_telemetry_types(charger_id=charger_id, limit=limit)
     except TacticError as e:
-        _raise_tactic_http_error(e)
+        raise_tactic_http_error(e)
 
 
 @router.get("/{charger_id}/data")
@@ -61,4 +46,4 @@ async def get_telemetry(
             paginated=paginated,
         )
     except TacticError as e:
-        _raise_tactic_http_error(e)
+        raise_tactic_http_error(e)

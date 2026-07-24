@@ -19,6 +19,7 @@ from ...services.auth import (
     verify_reset_token,
     verify_verification_token,
 )
+from ..errors import raise_tactic_http_error
 
 router = APIRouter()
 
@@ -55,7 +56,7 @@ async def _resolve_authenticated_user_id(
     try:
         user_record = await tactic.get_user_by_email(email)
     except TacticError as e:
-        _raise_tactic_http_error(e)
+        raise_tactic_http_error(e)
 
     if not user_record:
         raise HTTPException(
@@ -73,29 +74,13 @@ async def _resolve_authenticated_user_id(
     return user_id
 
 
-def _get_tactic_error_detail(error: TacticError) -> str:
-    """Extract API detail from TACTIC error body when available."""
-    if isinstance(error.body, dict):
-        detail = error.body.get("detail")
-        if detail:
-            return str(detail)
-    return str(error)
-
-
-def _raise_tactic_http_error(error: TacticError) -> None:
-    raise HTTPException(
-        status_code=error.status or status.HTTP_502_BAD_GATEWAY,
-        detail=_get_tactic_error_detail(error),
-    )
-
-
 @router.post("/register")
 async def register(user: UserCreate):
     settings = get_auth_settings()
     try:
         existing_user = await tactic.get_user_by_email(user.email)
     except TacticError as e:
-        _raise_tactic_http_error(e)
+        raise_tactic_http_error(e)
 
     if existing_user:
         raise HTTPException(
@@ -122,8 +107,8 @@ async def register(user: UserCreate):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Email already registered",
-            )
-        _raise_tactic_http_error(e)
+            ) from e
+        raise_tactic_http_error(e)
 
     safe_email = redact_email(user.email)
     logger.info("event=auth.user_registered email=%s role=%s", safe_email, user_role)
@@ -144,7 +129,7 @@ async def register(user: UserCreate):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to send verification email: {e}",
-        )
+        ) from e
 
     return {
         "message": "Registration successful! Check your email to verify your account."
@@ -165,7 +150,7 @@ async def login(user: UserLogin):
                 user.email,
                 {"status": e.status},
             )
-        _raise_tactic_http_error(e)
+        raise_tactic_http_error(e)
 
     user_id = await _resolve_authenticated_user_id(authenticated_user)
     access_token = create_jwt(
@@ -203,7 +188,7 @@ async def verify_email(token: str):
     try:
         user = await tactic.get_user_by_email(email)
     except TacticError as e:
-        _raise_tactic_http_error(e)
+        raise_tactic_http_error(e)
 
     if not user:
         logger.warning("event=auth.verification_user_missing email=%s", safe_email)
@@ -220,7 +205,7 @@ async def verify_email(token: str):
     try:
         result = await tactic.verify_user_email(email)
     except TacticError as e:
-        _raise_tactic_http_error(e)
+        raise_tactic_http_error(e)
 
     logger.info("event=auth.verification_success email=%s", safe_email)
     log_security_event(
@@ -240,7 +225,7 @@ async def forgot_password(user: ForgotPasswordRequest):
     try:
         existing_user = await tactic.get_user_by_email(email)
     except TacticError as e:
-        _raise_tactic_http_error(e)
+        raise_tactic_http_error(e)
 
     if existing_user:
         reset_token = create_reset_token(existing_user["email"])
@@ -261,7 +246,7 @@ async def forgot_password(user: ForgotPasswordRequest):
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Error sending the password reset email.",
-            )
+            ) from e
 
     # Always return the same response
     # Regardless of whether user exists (no user enumeration leak)
@@ -277,7 +262,7 @@ async def reset_password(req: ResetPasswordRequest):
     try:
         user = await tactic.get_user_by_email(email)
     except TacticError as e:
-        _raise_tactic_http_error(e)
+        raise_tactic_http_error(e)
 
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -287,7 +272,7 @@ async def reset_password(req: ResetPasswordRequest):
     try:
         await tactic.update_user_password(email, new_password_hash)
     except TacticError as e:
-        _raise_tactic_http_error(e)
+        raise_tactic_http_error(e)
 
     logger.info("event=auth.password_reset_success email=%s", redact_email(email))
     log_security_event("password_reset_success", email, {"reset_method": "email_token"})

@@ -4,6 +4,7 @@ FROM node:26-alpine AS dependencies
 WORKDIR /src
 ENV NPM_CONFIG_CACHE=/home/node/.npm
 
+RUN chown node:node /src
 COPY --chown=node:node package.json package-lock.json ./
 USER node
 RUN --mount=type=cache,target=/home/node/.npm,uid=1000,gid=1000 npm ci

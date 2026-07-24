@@ -4,18 +4,18 @@ import { beforeEach, describe, expect, test, vi } from "vitest";
 
 import Landingpage from "@/pages/Landingpage";
 
-const mockGetAllChargers = vi.fn();
-const mockGetCombinedChargerData = vi.fn();
-const mockGetFavorites = vi.fn();
-const mockToggleFavorite = vi.fn();
-
-vi.mock("@/dataFetch/UseFetch", () => ({
-  useFetch: () => ({
-    getAllChargers: mockGetAllChargers,
-    getCombinedChargerData: mockGetCombinedChargerData,
-    getFavorites: mockGetFavorites,
-    toggleFavorite: mockToggleFavorite,
+const { mockGetAllChargers, mockGetFavorites, mockToggleFavorite } = vi.hoisted(
+  () => ({
+    mockGetAllChargers: vi.fn(),
+    mockGetFavorites: vi.fn(),
+    mockToggleFavorite: vi.fn(),
   }),
+);
+
+vi.mock("@/lib/charger-api", () => ({
+  getAllChargers: mockGetAllChargers,
+  getFavorites: mockGetFavorites,
+  toggleFavorite: mockToggleFavorite,
 }));
 
 vi.mock("@/auth/AuthContext", () => ({
@@ -38,9 +38,6 @@ describe("Landingpage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockGetAllChargers.mockImplementation(
-      () => new Promise(() => undefined)
-    );
-    mockGetCombinedChargerData.mockImplementation(
       () => new Promise(() => undefined)
     );
     mockGetFavorites.mockImplementation(() => new Promise(() => undefined));

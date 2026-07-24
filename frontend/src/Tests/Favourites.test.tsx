@@ -4,18 +4,18 @@ import { beforeEach, describe, expect, test, vi } from "vitest";
 
 import Favourites from "../pages/Favourites";
 
-const mockGetFavorites = vi.fn();
-const mockGetAllChargers = vi.fn();
-const mockGetCombinedChargerData = vi.fn();
-const mockToggleFavorite = vi.fn();
-
-vi.mock("../dataFetch/UseFetch", () => ({
-  useFetch: () => ({
-    getFavorites: mockGetFavorites,
-    getAllChargers: mockGetAllChargers,
-    getCombinedChargerData: mockGetCombinedChargerData,
-    toggleFavorite: mockToggleFavorite,
+const { mockGetFavorites, mockGetAllChargers, mockToggleFavorite } = vi.hoisted(
+  () => ({
+    mockGetFavorites: vi.fn(),
+    mockGetAllChargers: vi.fn(),
+    mockToggleFavorite: vi.fn(),
   }),
+);
+
+vi.mock("../lib/charger-api", () => ({
+  getFavorites: mockGetFavorites,
+  getAllChargers: mockGetAllChargers,
+  toggleFavorite: mockToggleFavorite,
 }));
 
 vi.mock("../auth/AuthContext", () => ({
@@ -46,22 +46,6 @@ describe("Favourites", () => {
         online: false,
         state: "offline",
         created: "2026-04-14T09:00:00Z",
-      },
-    ]);
-    mockGetCombinedChargerData.mockResolvedValue([
-      {
-        charger_id: "CH-001",
-        charger_name: "Alpha Charger",
-        last_seen: "2026-04-14T10:00:00Z",
-        online: true,
-        state: "ready",
-      },
-      {
-        charger_id: "CH-002",
-        charger_name: "Beta Charger",
-        last_seen: "2026-04-14T10:00:00Z",
-        online: false,
-        state: "offline",
       },
     ]);
   });

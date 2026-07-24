@@ -7,7 +7,6 @@ import Monitoring from "../pages/Monitoring";
 const mockPost = vi.fn(() => Promise.resolve({}));
 const mockGet = vi.fn();
 const mockDelete = vi.fn();
-const mockLoadAllTelemetryTypes = vi.fn(() => Promise.resolve());
 
 vi.mock("../lib/api-client", () => ({
   apiUtils: {
@@ -15,19 +14,6 @@ vi.mock("../lib/api-client", () => ({
     post: (...args: unknown[]) => mockPost(...args),
     delete: (...args: unknown[]) => mockDelete(...args),
   },
-}));
-
-vi.mock("../dataFetch/UseFetch", () => ({
-  useFetch: () => ({
-    allTelemetryMap: {
-      "charger-1": [
-        { type: "L1", data: [] },
-        { type: "L2", data: [] },
-        { type: "L3", data: [] },
-      ],
-    },
-    loadAllTelemetryTypes: mockLoadAllTelemetryTypes,
-  }),
 }));
 
 vi.mock("../components/NavigationBar", () => ({
@@ -61,6 +47,7 @@ describe("<Monitoring /> static setup", () => {
     vi.clearAllMocks();
     mockGet.mockImplementation((url: string) => {
       if (url.includes("/models")) return Promise.resolve(modelCatalog);
+      if (url.endsWith("/type")) return Promise.resolve(["L1", "L2", "L3"]);
       return Promise.resolve([]);
     });
   });
@@ -97,6 +84,7 @@ describe("<Monitoring /> static setup", () => {
     renderMonitoring();
 
     await screen.findByText(/topic input mode/i);
+    await screen.findAllByText("L1");
     fireEvent.click(screen.getByRole("button", { name: /start monitoring/i }));
 
     await waitFor(() => expect(mockPost).toHaveBeenCalled());
@@ -196,6 +184,7 @@ describe("<Monitoring /> static setup", () => {
           status: "running",
         }]);
       }
+      if (url.endsWith("/type")) return Promise.resolve(["L1", "L2", "L3"]);
       return Promise.resolve([]);
     });
     renderMonitoring();

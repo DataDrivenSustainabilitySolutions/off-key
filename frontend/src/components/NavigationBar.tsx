@@ -1,4 +1,4 @@
-import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   AlertTriangle,
@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 
 import { useAuth } from "@/auth/AuthContext";
-import { FetchContext } from "@/dataFetch/FetchContext";
+import { getAnomalyCount } from "@/lib/charger-api";
 import { clientLogger } from "@/lib/logger";
 import { cn } from "@/lib/utils";
 import {
@@ -110,8 +110,6 @@ export const NavigationBar = () => {
   const location = useLocation();
   const [message, setMessage] = useState("");
   const [anomalyCount, setAnomalyCount] = useState(0);
-  const fetchContext = useContext(FetchContext);
-  const getAnomalyCount = fetchContext?.getAnomalyCount;
   const refreshInFlightRef = useRef(false);
   const isMountedRef = useRef(true);
 
@@ -130,7 +128,7 @@ export const NavigationBar = () => {
   };
 
   const refreshAnomalyCount = useCallback(async () => {
-    if (!isAuthenticated || !getAnomalyCount) {
+    if (!isAuthenticated) {
       return;
     }
 
@@ -155,17 +153,17 @@ export const NavigationBar = () => {
     } finally {
       refreshInFlightRef.current = false;
     }
-  }, [getAnomalyCount, isAuthenticated]);
+  }, [isAuthenticated]);
 
   const displayedAnomalyCount =
-    isAuthenticated && getAnomalyCount ? anomalyCount : 0;
+    isAuthenticated ? anomalyCount : 0;
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
       void refreshAnomalyCount();
     }, 0);
 
-    if (!isAuthenticated || !getAnomalyCount) {
+    if (!isAuthenticated) {
       return () => window.clearTimeout(timeoutId);
     }
 
@@ -177,7 +175,7 @@ export const NavigationBar = () => {
       window.clearTimeout(timeoutId);
       window.clearInterval(intervalId);
     };
-  }, [getAnomalyCount, isAuthenticated, refreshAnomalyCount]);
+  }, [isAuthenticated, refreshAnomalyCount]);
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {

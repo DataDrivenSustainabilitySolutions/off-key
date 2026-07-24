@@ -37,7 +37,6 @@ export default tseslint.config(
             'navigationMenuTriggerStyle',
             'useAuth',
             'useTheme',
-            'FetchContext',
           ],
         },
       ],

@@ -16,9 +16,13 @@ import {
   type ChargerStatusFilter,
 } from "@/lib/charger-list-utils";
 import { NavigationBar } from "@/components/NavigationBar";
-import { useFetch } from "@/dataFetch/UseFetch";
-import type { CombinedData } from "@/dataFetch/FetchContext";
+import {
+  getAllChargers,
+  getFavorites,
+  toggleFavorite,
+} from "@/lib/charger-api";
 import { clientLogger } from "@/lib/logger";
+import type { Charger } from "@/types/charger";
 
 export default function ChargerTable() {
   const [loading, setLoading] = useState(true);
@@ -26,15 +30,9 @@ export default function ChargerTable() {
   const [statusFilter, setStatusFilter] = useState<ChargerStatusFilter>("all");
   const [isCardsView, setIsCardsView] = useState(false);
   const [favoriteChargerIds, setFavoriteChargerIds] = useState<string[]>([]);
-  const [data, setData] = useState<CombinedData[]>([]);
+  const [data, setData] = useState<Charger[]>([]);
 
   const { userId } = useAuth();
-  const {
-    getAllChargers,
-    getCombinedChargerData,
-    toggleFavorite,
-    getFavorites,
-  } = useFetch();
 
   useEffect(() => {
     let cancelled = false;
@@ -50,12 +48,7 @@ export default function ChargerTable() {
           return;
         }
 
-        const combined = await getCombinedChargerData(chargers);
-        if (cancelled) {
-          return;
-        }
-
-        setData(combined);
+        setData(chargers);
         if (userId !== null) {
           const favs = await getFavorites(userId);
           if (cancelled) {
@@ -88,7 +81,7 @@ export default function ChargerTable() {
     return () => {
       cancelled = true;
     };
-  }, [getAllChargers, getCombinedChargerData, getFavorites, userId]);
+  }, [userId]);
 
   const filteredData = filterChargerData(data, searchTerm, statusFilter);
   const statusCounts = getChargerStatusCounts(data);

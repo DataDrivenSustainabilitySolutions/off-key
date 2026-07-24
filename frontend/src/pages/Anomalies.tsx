@@ -1,4 +1,4 @@
-import { useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { RefreshCw, Trash2 } from "lucide-react";
 import toast from "react-hot-toast";
@@ -19,8 +19,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { FetchContext } from "@/dataFetch/FetchContext";
-import { Anomaly } from "@/dataFetch/FetchContext";
 import {
   formatAnomalyValue,
   getAnomalyValueClassName,
@@ -28,33 +26,36 @@ import {
   isProbabilityAnomalyValue,
 } from "@/lib/anomaly-semantics";
 import { formatAnomalySensorSet } from "@/lib/anomaly-utils";
+import {
+  deleteAnomaly,
+  getAllChargers,
+  getAnomalies,
+} from "@/lib/charger-api";
+import { getErrorMessage } from "@/lib/errors";
+import type { Anomaly } from "@/types/charger";
 
 export default function AnomalyTable() {
   const [data, setData] = useState<Anomaly[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const fetchContext = useContext(FetchContext);
 
   const fetchAllAnomalies = useCallback(async () => {
-    if (!fetchContext) return;
-
     try {
       setIsLoading(true);
       setError(null);
-      const chargers = await fetchContext.getAllChargers();
+      const chargers = await getAllChargers();
       const allAnomalies = await Promise.all(
-        chargers.map((charger) => fetchContext.getAnomalies(charger.charger_id))
+        chargers.map((charger) => getAnomalies(charger.charger_id))
       );
-      const flattenedAnomalies = allAnomalies.flat();
-      setData(flattenedAnomalies);
+      setData(allAnomalies.flat());
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : "Unknown error";
+      const errorMessage = getErrorMessage(err);
       setError(errorMessage);
       toast.error(`Failed to load anomalies: ${errorMessage}`);
     } finally {
       setIsLoading(false);
     }
-  }, [fetchContext]);
+  }, []);
 
   useEffect(() => {
     localStorage.setItem("off-key:last-seen-anomalies", new Date().toISOString());
@@ -89,18 +90,17 @@ export default function AnomalyTable() {
   );
 
   const handleDelete = async (anomaly: Anomaly) => {
-    if (!fetchContext) return;
     if (!anomaly.anomaly_id) {
       toast.error("Cannot delete anomaly without anomaly_id");
       return;
     }
     try {
-      await fetchContext.deleteAnomaly(anomaly.anomaly_id);
+      await deleteAnomaly(anomaly.anomaly_id);
 
       toast.success("Anomaly deleted successfully");
       await fetchAllAnomalies();
     } catch (err) {
-      const detail = err instanceof Error ? err.message : "Unknown error";
+      const detail = getErrorMessage(err);
       const errorMessage = `Error while deleting: ${detail}`;
       setError(errorMessage);
       toast.error(errorMessage);

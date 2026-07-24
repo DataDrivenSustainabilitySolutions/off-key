@@ -14,9 +14,8 @@ import {
   ReferenceLine,
   Tooltip,
 } from 'recharts';
-import { TelemetryTypeData } from '@/dataFetch/FetchContext';
 import { createAnomalyZones, filterAnomalies, hasAnomaly, getAnomalyStyle, createAnomalyTooltip } from '@/lib/anomaly-utils';
-import type { Anomaly } from '@/types/charger';
+import type { Anomaly, TelemetryTypeData } from '@/types/charger';
 import { formatTimestamp, isWithinTimeRange } from '@/lib/time-utils';
 import { NoChartsAvailable } from '@/components/LoadingStates';
 import type { MonitoringEvidence } from '@/types/monitoring';

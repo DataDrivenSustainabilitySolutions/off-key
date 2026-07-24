@@ -4,9 +4,9 @@ import {
   PageShell,
 } from "@/components/DashboardLayout";
 import { NavigationBar } from "@/components/NavigationBar";
-import { useFetch } from "@/dataFetch/UseFetch";
 import { API_CONFIG } from "@/lib/api-config";
 import { apiUtils } from "@/lib/api-client";
+import { getTelemetryTypes } from "@/lib/charger-api";
 import { getErrorMessage } from "@/lib/errors";
 import type { Anomaly } from "@/types/charger";
 import { getServiceDeleteActionDisplay } from "@/types/monitoring";
@@ -21,7 +21,7 @@ import { StaticMonitoringSetup } from "./monitoring/StaticMonitoringSetup";
 
 function Monitoring() {
   const { chargerId = "" } = useParams<{ chargerId: string }>();
-  const { allTelemetryMap, loadAllTelemetryTypes } = useFetch();
+  const [sensorTypes, setSensorTypes] = useState<string[]>([]);
   const [models, setModels] = useState<Record<string, ModelDefinition>>({});
   const [services, setServices] = useState<ActiveService[]>([]);
   const [anomalies, setAnomalies] = useState<Anomaly[]>([]);
@@ -29,10 +29,6 @@ function Monitoring() {
   const [loadingAnomalies, setLoadingAnomalies] = useState(false);
   const [loadingModels, setLoadingModels] = useState(false);
 
-  const sensorTypes = useMemo(
-    () => (allTelemetryMap[chargerId] ?? []).map((entry) => entry.type),
-    [allTelemetryMap, chargerId],
-  );
   const staticModels = useMemo(
     () =>
       Object.fromEntries(
@@ -74,6 +70,19 @@ function Monitoring() {
     }
   }, []);
 
+  const loadSensorTypes = useCallback(async () => {
+    if (!chargerId) {
+      setSensorTypes([]);
+      return;
+    }
+    try {
+      setSensorTypes(await getTelemetryTypes(chargerId));
+    } catch (error) {
+      setSensorTypes([]);
+      toast.error(`Failed to load telemetry types: ${getErrorMessage(error)}`);
+    }
+  }, [chargerId]);
+
   const loadServices = useCallback(async () => {
     setLoadingServices(true);
     try {
@@ -104,8 +113,9 @@ function Monitoring() {
   }, [chargerId]);
 
   useEffect(() => {
-    if (chargerId) void loadAllTelemetryTypes(chargerId);
-  }, [chargerId, loadAllTelemetryTypes]);
+    const timeout = window.setTimeout(() => void loadSensorTypes(), 0);
+    return () => window.clearTimeout(timeout);
+  }, [loadSensorTypes]);
 
   useEffect(() => {
     const initialLoad = window.setTimeout(() => {

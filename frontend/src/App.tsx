@@ -7,7 +7,6 @@ import { AuthProvider } from "@/auth/AuthContext";
 import { ProtectedRoute } from "@/auth/ProtectedRoute";
 import { FullPageLoading } from "@/components/LoadingStates";
 import { ThemeProvider } from "@/components/theme-provider";
-import { FetchProvider } from "@/dataFetch/FetchContext";
 
 const Account = lazy(() => import("@/pages/Account"));
 const Anomalies = lazy(() => import("@/pages/Anomalies"));
@@ -54,9 +53,7 @@ const App = () => (
   <ThemeProvider defaultTheme="system" storageKey="vite-ui-theme">
     <AuthProvider>
       <BrowserRouter>
-        <FetchProvider>
-          <AppRoutes />
-        </FetchProvider>
+        <AppRoutes />
       </BrowserRouter>
     </AuthProvider>
     <Toaster

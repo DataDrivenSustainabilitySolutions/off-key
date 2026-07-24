@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Link, useParams } from "react-router-dom";
 import { Activity } from "lucide-react";
 
@@ -8,7 +8,6 @@ import {
   PageShell,
 } from "@/components/DashboardLayout";
 import { NavigationBar } from "@/components/NavigationBar";
-import { useFetch } from "@/dataFetch/UseFetch";
 import { ChartSkeleton, NoDataFound } from "@/components/LoadingStates";
 import DynamicTelemetryChart from "@/components/DynamicTelemetryChart";
 import { Button } from "@/components/ui/button";
@@ -20,10 +19,11 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import type { TelemetryTypeData } from "@/dataFetch/FetchContext";
 import { apiUtils } from "@/lib/api-client";
 import { API_CONFIG } from "@/lib/api-config";
+import { getAllTelemetryData, getAnomalies } from "@/lib/charger-api";
 import type { MonitoringEvidence } from "@/types/monitoring";
+import type { Anomaly, TelemetryTypeData } from "@/types/charger";
 
 type TelemetryCategoryGroups = Record<
   TelemetryTypeData["category"],
@@ -81,72 +81,85 @@ const Details: React.FC = () => {
   const { chargerId } = useParams<{ chargerId: string }>();
   const resolvedChargerId = chargerId ?? "";
 
-  // Import functions and data from FetchContext
-  const {
-    allTelemetryMap,
-    anomaliesMap,
-    loadAllTelemetryTypes,
-    loadAnomalies,
-  } = useFetch();
-
-  // Loading states
   const [isLoadingTelemetry, setIsLoadingTelemetry] = useState(true);
+  const [allTelemetryData, setAllTelemetryData] = useState<TelemetryTypeData[]>([]);
+  const [chargerAnomalies, setChargerAnomalies] = useState<Anomaly[]>([]);
   const [monitoringEvidence, setMonitoringEvidence] = useState<MonitoringEvidence[]>([]);
   const [now, setNow] = useState(() => Date.now());
+  const [refreshRequest, setRefreshRequest] = useState(0);
 
-  const loadMonitoringEvidence = useCallback(async () => {
-    if (!chargerId) return;
-    try {
-      const evidence = await apiUtils.get<MonitoringEvidence[]>(
-        API_CONFIG.ENDPOINTS.MONITORING.EVIDENCE(chargerId)
-      );
-      setMonitoringEvidence(evidence ?? []);
-    } catch (error) {
-      clientLogger.error({
-        event: "details.monitoring_evidence_load_failed",
-        message: "Error loading monitoring evidence",
-        error,
-        context: { chargerId },
-      });
-    }
-  }, [chargerId]);
-
-  // Fetch dynamic telemetry data and anomalies
   useEffect(() => {
-    if (!chargerId) return;
+    if (!chargerId) {
+      return;
+    }
 
-    // Load initial data with loading state tracking
-    const loadInitialData = async () => {
-      setIsLoadingTelemetry(true);
+    let cancelled = false;
+    let refreshInFlight = false;
 
-      try {
-        await Promise.all([
-          loadAllTelemetryTypes(chargerId).finally(() => setIsLoadingTelemetry(false)),
-          loadAnomalies(chargerId),
-          loadMonitoringEvidence(),
+    const refresh = async (showLoading = false) => {
+      if (refreshInFlight) return;
+      refreshInFlight = true;
+      if (showLoading) setIsLoadingTelemetry(true);
+
+      const [telemetryResult, anomaliesResult, evidenceResult] =
+        await Promise.allSettled([
+          getAllTelemetryData(chargerId),
+          getAnomalies(chargerId),
+          apiUtils.get<MonitoringEvidence[]>(
+            API_CONFIG.ENDPOINTS.MONITORING.EVIDENCE(chargerId),
+          ),
         ]);
-      } catch (error) {
-        clientLogger.error({
-          event: "details.initial_load_failed",
-          message: "Error loading initial details data",
-          error,
-          context: { chargerId },
-        });
-        setIsLoadingTelemetry(false);
+
+      if (!cancelled) {
+        if (telemetryResult.status === "fulfilled") {
+          setAllTelemetryData(telemetryResult.value);
+        } else {
+          clientLogger.error({
+            event: "details.telemetry_load_failed",
+            message: "Error loading charger telemetry",
+            error: telemetryResult.reason,
+            context: { chargerId },
+          });
+        }
+
+        if (anomaliesResult.status === "fulfilled") {
+          setChargerAnomalies(anomaliesResult.value);
+        } else {
+          clientLogger.error({
+            event: "details.anomalies_load_failed",
+            message: "Error loading charger anomalies",
+            error: anomaliesResult.reason,
+            context: { chargerId },
+          });
+        }
+
+        if (evidenceResult.status === "fulfilled") {
+          setMonitoringEvidence(evidenceResult.value ?? []);
+        } else {
+          clientLogger.error({
+            event: "details.monitoring_evidence_load_failed",
+            message: "Error loading monitoring evidence",
+            error: evidenceResult.reason,
+            context: { chargerId },
+          });
+        }
+
+        if (showLoading) setIsLoadingTelemetry(false);
       }
+      refreshInFlight = false;
     };
 
-    loadInitialData();
+    void refresh(true);
+    const interval = window.setInterval(
+      () => void refresh(),
+      INTERVALS.DETAILS_UPDATE,
+    );
 
-    const interval = setInterval(() => {
-      loadAllTelemetryTypes(chargerId);
-      loadAnomalies(chargerId);
-      loadMonitoringEvidence();
-    }, INTERVALS.DETAILS_UPDATE); // every 10s
-
-    // Cleanup on unmount or change
-    return () => clearInterval(interval);
-  }, [chargerId, loadAllTelemetryTypes, loadAnomalies, loadMonitoringEvidence]);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [chargerId, refreshRequest]);
 
   useEffect(() => {
     const interval = window.setInterval(() => {
@@ -156,12 +169,6 @@ const Details: React.FC = () => {
     return () => window.clearInterval(interval);
   }, []);
 
-  // Get dynamic telemetry data and anomalies
-  const allTelemetryData = useMemo(
-    () => allTelemetryMap[resolvedChargerId] ?? [],
-    [allTelemetryMap, resolvedChargerId]
-  );
-  const chargerAnomalies = anomaliesMap[resolvedChargerId] ?? [];
   const latestTelemetryTimestamp = useMemo(
     () => getLatestTelemetryTimestamp(allTelemetryData),
     [allTelemetryData]
@@ -272,9 +279,7 @@ const Details: React.FC = () => {
                 message="No telemetry data available for this charger"
                 onRefresh={() => {
                   setIsLoadingTelemetry(true);
-                  loadAllTelemetryTypes(resolvedChargerId).finally(() =>
-                    setIsLoadingTelemetry(false)
-                  );
+                  setRefreshRequest((request) => request + 1);
                 }}
               />
             </div>

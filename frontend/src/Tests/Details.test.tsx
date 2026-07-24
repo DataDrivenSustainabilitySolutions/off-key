@@ -4,17 +4,17 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import Details from "../pages/Details";
 
-const mockLoadAllTelemetryTypes = vi.fn(() => Promise.resolve());
-const mockLoadAnomalies = vi.fn(() => Promise.resolve());
-const mockUseFetch = vi.fn();
+const mockLoadAllTelemetryTypes = vi.fn();
+const mockLoadAnomalies = vi.fn();
 const mockApiGet = vi.fn(() => Promise.resolve([]));
 
 vi.mock("../lib/api-client", () => ({
   apiUtils: { get: (...args: unknown[]) => mockApiGet(...args) },
 }));
 
-vi.mock("../dataFetch/UseFetch", () => ({
-  useFetch: () => mockUseFetch(),
+vi.mock("../lib/charger-api", () => ({
+  getAllTelemetryData: (...args: unknown[]) => mockLoadAllTelemetryTypes(...args),
+  getAnomalies: (...args: unknown[]) => mockLoadAnomalies(...args),
 }));
 
 vi.mock("../components/NavigationBar", () => ({
@@ -41,25 +41,19 @@ describe("<Details />", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockApiGet.mockResolvedValue([]);
-    mockUseFetch.mockReturnValue({
-      allTelemetryMap: {
-        "123": [
-          {
-            type: "controllerCpuUsage",
-            category: "cpu",
-            data: [{ timestamp: "2026-04-14T10:00:00Z", value: 42 }],
-          },
-          {
-            type: "systemVoltage",
-            category: "system",
-            data: [{ timestamp: "2026-04-14T10:00:00Z", value: 12 }],
-          },
-        ],
+    mockLoadAllTelemetryTypes.mockResolvedValue([
+      {
+        type: "controllerCpuUsage",
+        category: "cpu",
+        data: [{ timestamp: "2026-04-14T10:00:00Z", value: 42 }],
       },
-      anomaliesMap: { "123": [] },
-      loadAllTelemetryTypes: mockLoadAllTelemetryTypes,
-      loadAnomalies: mockLoadAnomalies,
-    });
+      {
+        type: "systemVoltage",
+        category: "system",
+        data: [{ timestamp: "2026-04-14T10:00:00Z", value: 12 }],
+      },
+    ]);
+    mockLoadAnomalies.mockResolvedValue([]);
   });
 
   it("loads telemetry data and renders category sections", async () => {
@@ -82,12 +76,7 @@ describe("<Details />", () => {
   });
 
   it("shows the empty state when no telemetry is available", async () => {
-    mockUseFetch.mockReturnValue({
-      allTelemetryMap: { "123": [] },
-      anomaliesMap: { "123": [] },
-      loadAllTelemetryTypes: mockLoadAllTelemetryTypes,
-      loadAnomalies: mockLoadAnomalies,
-    });
+    mockLoadAllTelemetryTypes.mockResolvedValue([]);
 
     renderDetails();
 

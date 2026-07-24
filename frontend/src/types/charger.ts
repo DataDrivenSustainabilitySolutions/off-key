@@ -19,30 +19,6 @@ export interface TelemetryDataPoint {
   value: number;
 }
 
-// Telemetry data with charger association
-export interface TelemetryData {
-  charger_id: string;
-  timestamp: string;
-  value: number;
-}
-
-// Combined charger data with optional telemetry values
-export interface CombinedChargerData {
-  charger_id: string;
-  charger_name: string | null;
-  online: boolean;
-  state: string;
-  last_seen: string;
-  value1?: number | null; // CPU usage
-  value2?: number | null; // CPU thermal
-}
-
-// Monitoring data point (system metrics)
-export interface MonitoringData {
-  type: string;
-  value: number;
-}
-
 // Telemetry type categorization
 export type TelemetryCategory = 'cpu' | 'system' | 'controller' | 'other';
 
@@ -69,9 +45,6 @@ export interface Anomaly {
   // legacy data where the set was not persisted.
   sensor_set?: string[] | null;
 }
-
-// Status filter options
-export type StatusFilter = 'all' | 'online' | 'offline';
 
 /**
  * Normalize charger last-seen timestamp.

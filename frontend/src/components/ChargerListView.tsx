@@ -26,10 +26,10 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import type { CombinedData } from "@/dataFetch/FetchContext";
 import type { ChargerStatusFilter } from "@/lib/charger-list-utils";
 import { formatLastSeen } from "@/lib/time-utils";
 import { cn } from "@/lib/utils";
+import type { Charger } from "@/types/charger";
 
 interface ChargerListControlsProps {
   searchTerm: string;
@@ -140,7 +140,7 @@ export function ChargerListControls({
 interface ChargerListResultsProps {
   loading: boolean;
   isCardsView: boolean;
-  data: CombinedData[];
+  data: Charger[];
   favoriteChargerIds: string[];
   onToggleFavorite: (chargerId: string) => void;
   cardStatusLabel: string;

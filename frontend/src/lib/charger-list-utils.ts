@@ -1,9 +1,9 @@
-import type { CombinedData } from "@/dataFetch/FetchContext";
+import type { Charger } from "@/types/charger";
 
 export type ChargerStatusFilter = "all" | "online" | "offline";
 
 export const filterChargerData = (
-  data: CombinedData[],
+  data: Charger[],
   searchTerm: string,
   statusFilter: ChargerStatusFilter
 ) =>
@@ -20,7 +20,7 @@ export const filterChargerData = (
       return true;
     });
 
-export const getChargerStatusCounts = (data: CombinedData[]) => ({
+export const getChargerStatusCounts = (data: Charger[]) => ({
   all: data.length,
   online: data.filter((charger) => charger.online).length,
   offline: data.filter((charger) => !charger.online).length,

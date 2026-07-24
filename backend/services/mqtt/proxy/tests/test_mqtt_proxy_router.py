@@ -3,14 +3,15 @@ from datetime import UTC, datetime
 from unittest.mock import MagicMock
 
 import pytest
+from off_key_core.utils.enum import HealthStatus
 from off_key_mqtt_proxy.client.models import MQTTMessage
-from off_key_mqtt_proxy.router import MessageDestination, MessageRouter
+from off_key_mqtt_proxy.destinations import MessageDestination
+from off_key_mqtt_proxy.router import MessageRouter
 
 
 def _config():
     config = MagicMock()
     config.worker_threads = 1
-    config.cleanup_interval = 60.0
     config.metrics_interval = 60.0
     config.graceful_shutdown_timeout = 5.0
     config.get_jittered_backoff_delay.return_value = 0.0
@@ -69,4 +70,34 @@ async def test_route_message_clears_stale_completion_event_while_active():
 
     release.set()
     await route_task
+    assert router._all_routes_completed_event.is_set()
+
+
+def test_idle_destination_is_healthy_during_bootstrap():
+    router = MessageRouter(config=_config())
+    destination = SlowDestination(asyncio.Event())
+    router.add_destination(destination)
+
+    assert destination.get_health_status().status is HealthStatus.HEALTHY
+    assert router.get_health_status().status is HealthStatus.HEALTHY
+
+
+@pytest.mark.asyncio
+async def test_cancelled_route_releases_active_route_tracking():
+    router = MessageRouter(config=_config())
+    router.add_destination(SlowDestination(asyncio.Event()))
+
+    route_task = asyncio.create_task(router.route_message(_message(), ["slow"]))
+    for _ in range(1000):
+        if router.active_routes:
+            break
+        await asyncio.sleep(0.0001)
+    else:
+        pytest.fail("active route was not registered before the wait limit")
+
+    route_task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await route_task
+
+    assert router.active_routes == {}
     assert router._all_routes_completed_event.is_set()

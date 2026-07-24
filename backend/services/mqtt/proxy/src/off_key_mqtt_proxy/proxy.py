@@ -14,7 +14,8 @@ from .auth import ApiKeyAuthHandler
 from .client.facade import MQTTClient
 from .config.config import MQTTConfig, get_mqtt_settings
 from .core.interfaces import ShutdownFailedError, Stoppable
-from .router import BridgeDestination, DatabaseDestination, MessageRouter
+from .destinations import BridgeDestination, DatabaseDestination
+from .router import MessageRouter
 from .telemetry import DatabaseWriter
 
 

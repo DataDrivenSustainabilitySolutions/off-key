@@ -65,7 +65,6 @@ class MQTTConfig(BaseModel):
     retry_jitter_magnitude: float = 0.2
 
     # Background Task Intervals
-    cleanup_interval: float = 60.0
     metrics_interval: float = 300.0
     health_monitor_interval: float = 30.0
 
@@ -218,13 +217,6 @@ class MQTTConfig(BaseModel):
             raise ValueError(
                 "Retry jitter magnitude must be between 0.0 (0%) and 0.5 (50%)"
             )
-        return value
-
-    @field_validator("cleanup_interval")
-    @classmethod
-    def validate_cleanup_interval(cls, value: float) -> float:
-        if not 10.0 <= value <= 3600.0:
-            raise ValueError("Cleanup interval must be between 10.0 and 3600.0 seconds")
         return value
 
     @field_validator("metrics_interval")
@@ -401,7 +393,6 @@ class MQTTSettings(BaseSettings):
     MQTT_RETRY_JITTER_MAGNITUDE: float = 0.2
 
     # Background Task Intervals
-    MQTT_CLEANUP_INTERVAL: float = 60.0
     MQTT_METRICS_INTERVAL: float = 300.0
     MQTT_HEALTH_MONITOR_INTERVAL: float = 30.0
 
@@ -501,7 +492,6 @@ class MQTTSettings(BaseSettings):
             retry_exponential_base=self.MQTT_RETRY_EXPONENTIAL_BASE,
             retry_jitter_enabled=self.MQTT_RETRY_JITTER_ENABLED,
             retry_jitter_magnitude=self.MQTT_RETRY_JITTER_MAGNITUDE,
-            cleanup_interval=self.MQTT_CLEANUP_INTERVAL,
             metrics_interval=self.MQTT_METRICS_INTERVAL,
             health_monitor_interval=self.MQTT_HEALTH_MONITOR_INTERVAL,
             shutdown_timeout=self.MQTT_SHUTDOWN_TIMEOUT,

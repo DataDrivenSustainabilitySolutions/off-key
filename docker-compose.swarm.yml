@@ -1,12 +1,14 @@
 services:
 
-  postgres:
+  timescaledb:
     image: timescale/timescaledb:latest-pg15
     env_file: .env
+    volumes:
+      - timescaledb-data:/var/lib/postgresql/data
     networks:
       - app-network
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
+      test: [ "CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\"" ]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -17,14 +19,19 @@ services:
       restart_policy:
         condition: any
 
-  api:
-    image: "${API_IMAGE:-off-key-api-gateway:latest}"
+  api-gateway:
+    image: "${API_GATEWAY_IMAGE:-off-key-api-gateway:latest}"
     env_file: .env
     networks:
       - app-network
-    command: ["uvicorn", "off_key_api_gateway.main:app",
-              "--reload", "--reload-dir", "/app/lib/python3.12/site-packages/off_key_api_gateway",
-              "--host", "", "--port", "8000"]
+    command: ["uvicorn", "off_key_api_gateway.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    healthcheck:
+      test: [ "CMD", "/app/bin/python", "-c",
+              "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=2)" ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
     deploy:
       mode: replicated
       replicas: 1
@@ -33,19 +40,27 @@ services:
       restart_policy:
         condition: any
 
-  tactic:
-    image: "${TACTIC_IMAGE:-off-key-tactic-middleware:latest}"
+  tactic-middleware:
+    image: "${TACTIC_MIDDLEWARE_IMAGE:-off-key-tactic-middleware:latest}"
     env_file: .env
     networks:
       - app-network
       - socket-network
     environment:
-      - TACTIC_DOCKER_DEFAULT_NETWORK=off-key_emqx-network
+      - TACTIC_DOCKER_DEFAULT_NETWORK=off-key_app-network
+      - TACTIC_RADAR_IMAGE=${MQTT_RADAR_IMAGE:-ghcr.io/datadrivensustainabilitysolutions/off-key-mqtt-radar:latest}
     command: [ "/app/bin/python", "-m", "off_key_tactic_middleware" ]
+    healthcheck:
+      test: [ "CMD", "/app/bin/python", "-c",
+              "import urllib.request; urllib.request.urlopen('http://localhost:8000/ready', timeout=2)" ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
     deploy:
       replicas: 1
       placement:
-        constraints: [node.labels.frontend == true ]
+        constraints: [node.labels.backend == true ]
       restart_policy:
         condition: any
 
@@ -102,7 +117,7 @@ services:
       - public-network
       - app-network
     environment:
-      - __VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS=${VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS:-}
+      - API_UPSTREAM=api-gateway:8000
     deploy:
       mode: replicated
       replicas: 1
@@ -152,23 +167,17 @@ services:
       - app-network
       - emqx-network
     environment:
-      - MQTT_TELEMETRY_ENABLED=false
+      - MQTT_BROKER_HOST=emqx-main
+      - MQTT_TELEMETRY_ENABLED=true
+    healthcheck:
+      test: [ "CMD", "/app/bin/python", "-c",
+              "import urllib.request; urllib.request.urlopen('http://localhost:8010/ready/bridge', timeout=2)" ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
     deploy:
       mode: replicated
-      replicas: 0
-      placement:
-        constraints: [ node.labels.backend == true ]
-      restart_policy:
-        condition: any
-
-  mqtt-radar:
-    image: "${MQTT_RADAR_IMAGE:-ghcr.io/datadrivensustainabilitysolutions/off-key-mqtt-radar:latest}"
-    env_file: .env
-    command: [ "/app/bin/python", "-m", "off_key_mqtt_radar" ]
-    networks:
-      - app-network
-      - emqx-network
-    deploy:
       replicas: 1
       placement:
         constraints: [ node.labels.backend == true ]
@@ -180,18 +189,30 @@ services:
     env_file: .env
     environment:
       - "EMQX_NODE_NAME=emqx@emqx-main"
+      - "EMQX_NODE__COOKIE=${EMQX_NODE_COOKIE:-off-key-emqx-cookie-change-me}"
       - "EMQX_CLUSTER__DISCOVERY_STRATEGY=static"
       - "EMQX_CLUSTER__STATIC__SEEDS=[emqx@emqx-main]"
+      - "EMQX_DASHBOARD__DEFAULT_USERNAME=${EMQX_DASHBOARD_USERNAME:-admin}"
+      - "EMQX_DASHBOARD__DEFAULT_PASSWORD=${EMQX_DASHBOARD_PASSWORD:?EMQX_DASHBOARD_PASSWORD must be set}"
+    healthcheck:
+      test: [ "CMD", "curl", "-fsS", "http://127.0.0.1:18083/status" ]
+      interval: 5s
+      timeout: 25s
+      retries: 5
     networks:
       emqx-network:
         aliases:
           - emqx-main
+      app-network:
     deploy:
       replicas: 1
       placement:
         constraints: [ node.labels.backend == true ]
       restart_policy:
         condition: any
+
+volumes:
+  timescaledb-data:
 
 # Overlay encryption is intentionally disabled because it is incompatible with
 # the Tailscale ingress path. MTU 1280 preserves Tailscale compatibility.

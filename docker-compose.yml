@@ -3,16 +3,25 @@ services:
 ###               INTERNAL SERVICES                 ###
 ### =============================================== ###
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      target: development
     image: "${FRONTEND_IMAGE:-off-key-frontend:latest}"
     container_name: react_client
     env_file: .env
     ports:
       - "${FRONTEND_PORT}:5173"
     depends_on:
-      - api-gateway
+      api-gateway:
+        condition: service_healthy
     networks:
-      - socket-network
+      - app-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1:5173/"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
     develop:
       watch:
         - action: sync
@@ -47,7 +56,6 @@ services:
         condition: service_healthy
     networks:
       - app-network
-      - socket-network
     restart: always
     healthcheck:
       test:
@@ -61,7 +69,7 @@ services:
       start_period: 10s
     command: ["uvicorn", "off_key_api_gateway.main:app",
               "--reload", "--reload-dir", "/app/lib/python3.12/site-packages/off_key_api_gateway",
-              "--host", "", "--port", "8000"]
+              "--host", "0.0.0.0", "--port", "8000"]
     develop:
       watch:
         - action: sync
@@ -240,7 +248,7 @@ services:
     networks:
       - app-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -251,7 +259,6 @@ services:
     restart: always
     networks:
       - socket-network
-    privileged: true # true for VM. False for unprivileged LXC container/podman
     volumes:
       - "/var/run/docker.sock:/var/run/docker.sock:ro"
     environment:

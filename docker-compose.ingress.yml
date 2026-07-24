@@ -2,10 +2,13 @@
 # Swarm-compatible ingress overlay. No Linux capabilities required.
 #
 # Deploy alongside the base swarm stack:
-#   docker stack deploy \
-#     -c docker-compose.swarm.yml \
-#     -c docker-compose.ingress.yml \
-#     off-key
+#   docker compose \
+#     --env-file .env \
+#     --env-file .env.ingress.local \
+#     -f docker-compose.swarm.yml \
+#     -f docker-compose.ingress.yml \
+#     config \
+#     | docker stack deploy --with-registry-auth -c - off-key
 #
 # Pre-flight:
 #   1. Create (and optionally seed) the Tailscale state directory on every backend node:

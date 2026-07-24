@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-FROM ghcr.io/astral-sh/uv:latest AS uv
+FROM ghcr.io/astral-sh/uv:0.9.9 AS uv
 FROM python:3.12-slim-bookworm AS builder
 
 # Build context MUST be backend/
@@ -12,7 +12,6 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy uv
-# TODO (SECURITY): Attest origin
 COPY --from=uv /uv /uvx /bin/
 
 # - Silence uv complaining about not being able to use hard links,
@@ -61,7 +60,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
         --package ${SERVICE_NAME}
 
 ########################################################################################################################
-FROM python:3.12-slim
+FROM python:3.12-slim-bookworm
 
 # Optional: add the application virtualenv to search path.
 ENV PATH=/app/bin:$PATH

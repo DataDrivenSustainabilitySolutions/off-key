@@ -47,6 +47,26 @@ jobs:
       - name: Configure local smoke environment
         run: cp .env.example .env
 
+      - name: Validate deployment models
+        env:
+          INGRESS_UPSTREAM_MQTT_HOST: broker.example.ts.net
+        run: |
+          docker compose config --quiet
+          docker compose \
+            -f docker-compose.yml \
+            -f docker-compose.cluster.yml \
+            config --quiet
+          docker compose \
+            --env-file .env \
+            -f docker-compose.swarm.yml \
+            config --quiet
+          docker compose \
+            --env-file .env \
+            --env-file .env.ingress.example \
+            -f docker-compose.swarm.yml \
+            -f docker-compose.ingress.yml \
+            config --quiet
+
       - name: Reset deployment smoke stack
         timeout-minutes: 3
         run: docker compose down -v --remove-orphans

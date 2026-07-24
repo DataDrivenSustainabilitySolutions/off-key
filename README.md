@@ -113,11 +113,13 @@ mkdir -p /opt/stacks/off-key/tailscale-ingress-state
 Deploy:
 
 ```bash
-docker stack deploy \
+docker compose \
+  --env-file .env \
   --env-file .env.ingress.local \
-  -c docker-compose.swarm.yml \
-  -c docker-compose.ingress.yml \
-  off-key
+  -f docker-compose.swarm.yml \
+  -f docker-compose.ingress.yml \
+  config \
+  | docker stack deploy --with-registry-auth -c - off-key
 ```
 
 After deploy, create an EMQX MQTT bridge (EMQX dashboard → Data Integration → Bridges):
@@ -157,6 +159,22 @@ docker compose -f docker-compose.yml -f docker-compose.cluster.yml up -d --build
 ```
 
 This adds `emqx-worker` and updates EMQX seeds for a two-node cluster.
+
+### Swarm deployment
+
+Set production credentials and pinned image references in `.env`, then render
+the Compose model before handing it to Swarm:
+
+```bash
+docker compose \
+  --env-file .env \
+  -f docker-compose.swarm.yml \
+  config \
+  | docker stack deploy --with-registry-auth -c - off-key
+```
+
+The render step is required because `docker stack deploy` does not load Compose
+environment files for variable interpolation.
 
 ### Switching modes
 

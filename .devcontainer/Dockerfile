@@ -16,4 +16,4 @@ RUN find /etc/apt -type f \( -name "*.list" -o -name "*.sources" \) -exec sed -i
     && rm -rf /var/lib/apt/lists/*
 
 # Install uv and uvx from the official image.
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
+COPY --from=ghcr.io/astral-sh/uv:0.9.9 /uv /uvx /usr/local/bin/

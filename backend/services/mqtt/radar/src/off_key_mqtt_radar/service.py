@@ -24,17 +24,15 @@ from .checkpoint_manager import CheckpointManager
 from .config.config import AnomalyDetectionConfig, get_radar_settings
 from .config_watcher import ConfigReloader, ConfigWatcher
 from .database import DatabaseWriter, ensure_radar_metrics_tables
-from .detector import (
-    MemoryManager,
-    ResilientAnomalyDetector,
-    SecurityValidator,
-    StaticConformalDetectionService,
-)
+from .detector import StaticConformalDetectionService
+from .feature_validation import TelemetryFeatureValidator
 from .health_monitor import HealthMonitor
+from .memory import MemoryManager
 from .message_processor import MessageProcessor
 from .models import HealthStatus as RadarHealthStatus
 from .models import MQTTMessage
 from .mqtt_client import RadarMQTTClient
+from .resilience import ResilientAnomalyDetector
 from .state_cache import SensorStateCache
 from .topic_parser import TopicParser
 
@@ -63,7 +61,7 @@ class RadarService:
         self.memory_manager = MemoryManager(
             max_memory_mb=self.config.memory_limit_mb, cleanup_threshold=0.8
         )
-        self.security_validator = SecurityValidator(
+        self.feature_validator = TelemetryFeatureValidator(
             max_feature_count=self.config.max_feature_count,
             max_string_length=self.config.max_string_length,
         )
@@ -122,7 +120,7 @@ class RadarService:
             # Initialize message processor
             self.message_processor = MessageProcessor(
                 detector=self.detector,
-                security_validator=self.security_validator,
+                feature_validator=self.feature_validator,
                 memory_manager=self.memory_manager,
                 state_cache=self.state_cache,
                 required_sensors=self.required_sensors,

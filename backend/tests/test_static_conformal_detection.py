@@ -8,11 +8,11 @@ from off_key_core.schemas.radar import StaticBaselineConfig, StaticMartingaleCon
 from off_key_mqtt_radar.config.config import AnomalyDetectionConfig
 from off_key_mqtt_radar.config.runtime import clear_radar_runtime_settings_cache
 from off_key_mqtt_radar.detector import (
-    ResilientAnomalyDetector,
     RestartedMartingaleAlarmController,
     StaticConformalDetectionService,
     StaticConformalState,
 )
+from off_key_mqtt_radar.resilience import ResilientAnomalyDetector
 
 
 class FakeConformalDetector:

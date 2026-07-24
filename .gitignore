@@ -196,6 +196,7 @@ docker-compose.local-swarm.yml
 CLAUDE.md
 .claude
 /.tmp/
+/.codex/
 /.pre-commit-cache
 AGENTS.md
 /frontend/.npm-cache

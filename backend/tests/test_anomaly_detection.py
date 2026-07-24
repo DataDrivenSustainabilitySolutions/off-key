@@ -4,13 +4,10 @@ from datetime import UTC, datetime
 from unittest.mock import MagicMock
 
 import pytest
-from off_key_mqtt_radar.detector import (
-    MemoryManager,
-    ResilientAnomalyDetector,
-    SecurityValidator,
-    ServiceState,
-)
+from off_key_mqtt_radar.feature_validation import TelemetryFeatureValidator
+from off_key_mqtt_radar.memory import MemoryManager
 from off_key_mqtt_radar.models import AnomalyResult
+from off_key_mqtt_radar.resilience import ResilientAnomalyDetector, ServiceState
 
 
 def _result(score: float = 0.5, *, is_anomaly: bool = False) -> AnomalyResult:
@@ -40,7 +37,7 @@ class _DetectorDouble:
             raise self.error
         return self.result
 
-    def _get_model_info(self):
+    def get_model_info(self):
         return {"strategy": "static_baseline"}
 
 
@@ -95,11 +92,12 @@ class TestResilientAnomalyDetector:
         primary.refresh_background_state.assert_called_once_with()
         assert health["state"] == "healthy"
         assert health["primary_service_stats"]["strategy"] == "static_baseline"
+        assert health["uptime_seconds"] >= 0
 
 
-class TestSecurityValidator:
+class TestTelemetryFeatureValidator:
     def test_validate_valid_data(self):
-        validator = SecurityValidator()
+        validator = TelemetryFeatureValidator()
         result = validator.validate_and_sanitize(
             {"cpu": 45.5, "memory": 1024, "temp": 65.2}
         )
@@ -107,28 +105,39 @@ class TestSecurityValidator:
 
     def test_validate_rejects_non_dict(self):
         with pytest.raises(ValueError, match="Input must be a dictionary"):
-            SecurityValidator().validate_and_sanitize("not a dict")
+            TelemetryFeatureValidator().validate_and_sanitize("not a dict")
 
     def test_validate_rejects_too_many_features(self):
         data = {f"feature_{index}": index for index in range(10)}
         with pytest.raises(ValueError, match="Too many features"):
-            SecurityValidator(max_feature_count=5).validate_and_sanitize(data)
+            TelemetryFeatureValidator(max_feature_count=5).validate_and_sanitize(data)
 
     def test_validate_handles_string_values(self):
-        result = SecurityValidator().validate_and_sanitize(
+        result = TelemetryFeatureValidator().validate_and_sanitize(
             {"numeric_string": "42.5", "text": "hello"}
         )
         assert result["numeric_string"] == 42.5
-        assert isinstance(result["text"], float)
+        assert "text" not in result
 
     def test_validate_filters_out_of_range_values(self):
-        result = SecurityValidator().validate_and_sanitize(
-            {"normal": 100.0, "too_big": 1e11, "too_small": -1e11}
+        result = TelemetryFeatureValidator().validate_and_sanitize(
+            {
+                "normal": 100.0,
+                "too_big": 1e11,
+                "too_small": -1e11,
+                "not_finite": float("nan"),
+            }
         )
         assert result == {"normal": 100.0}
 
+    def test_validate_preserves_boolean_telemetry(self):
+        result = TelemetryFeatureValidator().validate_and_sanitize(
+            {"enabled": True, "faulted": False}
+        )
+        assert result == {"enabled": 1.0, "faulted": 0.0}
+
     def test_validate_drops_metadata_timestamp_keys(self):
-        result = SecurityValidator().validate_and_sanitize(
+        result = TelemetryFeatureValidator().validate_and_sanitize(
             {"value": 12.5, "timestamp": "2026-02-13T12:23:40Z"}
         )
         assert result == {"value": 12.5}

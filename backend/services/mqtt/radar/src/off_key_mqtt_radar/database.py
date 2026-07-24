@@ -47,7 +47,7 @@ MULTIVARIATE_TELEMETRY_TYPE = "__multivariate__"
 
 def _optional_finite_float(value: Any) -> float | None:
     """Return a JSON/database-safe finite float or ``None``."""
-    if not isinstance(value, (int, float)):
+    if not isinstance(value, int | float):
         return None
     normalized = float(value)
     return normalized if math.isfinite(normalized) else None
@@ -401,14 +401,14 @@ class DatabaseWriter:
         """Persist the p-value used by the active detector when available."""
         static_context = (result.context or {}).get("static_conformal", {})
         conformal_pvalue = static_context.get("p_value")
-        if isinstance(conformal_pvalue, (int, float)):
+        if isinstance(conformal_pvalue, int | float):
             conformal_pvalue = float(conformal_pvalue)
             if math.isfinite(conformal_pvalue):
                 return conformal_pvalue
 
         score_window = (result.context or {}).get("score_window", {})
         tail_pvalue = score_window.get("tail_pvalue")
-        if isinstance(tail_pvalue, (int, float)):
+        if isinstance(tail_pvalue, int | float):
             tail_pvalue = float(tail_pvalue)
             if math.isfinite(tail_pvalue):
                 return tail_pvalue
@@ -420,7 +420,7 @@ class DatabaseWriter:
             iterable = value.keys()
         elif isinstance(value, set):
             iterable = sorted(value)
-        elif isinstance(value, Iterable) and not isinstance(value, (str, bytes)):
+        elif isinstance(value, Iterable) and not isinstance(value, str | bytes):
             iterable = value
         else:
             return None
@@ -502,11 +502,11 @@ class DatabaseWriter:
             p_value = context.get("p_value")
             sequence_number = context.get("tested_count")
             threshold = context.get("restarted_ville_threshold")
-            if not isinstance(p_value, (int, float)) or not math.isfinite(p_value):
+            if not isinstance(p_value, int | float) or not math.isfinite(p_value):
                 continue
             if not isinstance(sequence_number, int) or sequence_number < 1:
                 continue
-            if not isinstance(threshold, (int, float)) or not math.isfinite(threshold):
+            if not isinstance(threshold, int | float) or not math.isfinite(threshold):
                 continue
 
             records.append(

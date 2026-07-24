@@ -15,11 +15,11 @@ def _build_processor(
     sensor_key_strategy: str = "full_hierarchy",
 ) -> MessageProcessor:
     detector = MagicMock()
-    security_validator = MagicMock()
+    feature_validator = MagicMock()
     memory_manager = MagicMock()
     return MessageProcessor(
         detector=detector,
-        security_validator=security_validator,
+        feature_validator=feature_validator,
         memory_manager=memory_manager,
         state_cache=state_cache,
         required_sensors=required_sensors,
@@ -229,11 +229,11 @@ def test_detect_anomaly_uses_canonical_sample_timestamp():
         charger_id="1",
         context={},
     )
-    security_validator = MagicMock()
+    feature_validator = MagicMock()
     memory_manager = MagicMock()
     processor = MessageProcessor(
         detector=detector,
-        security_validator=security_validator,
+        feature_validator=feature_validator,
         memory_manager=memory_manager,
     )
     message = MQTTMessage(

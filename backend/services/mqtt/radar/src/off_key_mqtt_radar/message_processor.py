@@ -14,8 +14,10 @@ from typing import Any
 
 from off_key_core.config.logs import logger
 
-from .detector import MemoryManager, ResilientAnomalyDetector, SecurityValidator
+from .feature_validation import TelemetryFeatureValidator
+from .memory import MemoryManager
 from .models import AnomalyResult, MQTTMessage
+from .resilience import ResilientAnomalyDetector
 from .state_cache import AlignmentUpdate, SensorStateCache
 from .topic_parser import TopicParser
 
@@ -48,7 +50,7 @@ class MessageProcessor:
     def __init__(
         self,
         detector: ResilientAnomalyDetector,
-        security_validator: SecurityValidator,
+        feature_validator: TelemetryFeatureValidator,
         memory_manager: MemoryManager,
         state_cache: SensorStateCache | None = None,
         required_sensors: set | None = None,
@@ -59,7 +61,7 @@ class MessageProcessor:
 
         Args:
             detector: Anomaly detection component
-            security_validator: Input validation component
+            feature_validator: Input validation component
             memory_manager: Memory management component
             state_cache: Optional sensor state cache for alignment
             required_sensors: Set of required sensors for alignment
@@ -67,7 +69,7 @@ class MessageProcessor:
                 Allowed values: "full_hierarchy", "top_level", "leaf".
         """
         self.detector = detector
-        self.security_validator = security_validator
+        self.feature_validator = feature_validator
         self.memory_manager = memory_manager
         self.state_cache = state_cache
         self.required_sensors = required_sensors or set()
@@ -188,7 +190,7 @@ class MessageProcessor:
     ) -> dict[str, float] | None:
         """Validate and sanitize incoming message payload."""
         try:
-            sanitized = self.security_validator.validate_and_sanitize(data)
+            sanitized = self.feature_validator.validate_and_sanitize(data)
             if not sanitized:
                 logger.debug(
                     f"No valid features in message from {message.topic}",
@@ -343,7 +345,7 @@ class MessageProcessor:
         if isinstance(sensor_ages, dict):
             result.context["sensor_ages"] = sensor_ages
         sample_timestamp = (alignment_context or {}).get("sample_timestamp")
-        if isinstance(sample_timestamp, (int, float)):
+        if isinstance(sample_timestamp, int | float):
             canonical_dt = datetime.fromtimestamp(float(sample_timestamp), tz=UTC)
             result.timestamp = canonical_dt
             result.context["canonical_sample_timestamp"] = canonical_dt.isoformat()

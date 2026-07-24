@@ -29,7 +29,7 @@ def test_three_sensor_cadence_simulation_blocks_stale_vectors(monkeypatch):
             return False
 
     detector = _Detector()
-    security_validator = _Validator()
+    feature_validator = _Validator()
     memory_manager = _MemoryManager()
 
     cache = SensorStateCache(
@@ -38,7 +38,7 @@ def test_three_sensor_cadence_simulation_blocks_stale_vectors(monkeypatch):
     )
     processor = MessageProcessor(
         detector=detector,  # detector is unused in this alignment-focused simulation
-        security_validator=security_validator,
+        feature_validator=feature_validator,
         memory_manager=memory_manager,
         state_cache=cache,
         required_sensors={"s1", "s2", "s3"},

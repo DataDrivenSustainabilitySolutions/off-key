@@ -33,15 +33,15 @@ def _extract_numeric_value(values: dict[str, float], sensor_type: str) -> float 
     2) A "value" key
     3) The sole value if only one is present
     """
-    if sensor_type in values and isinstance(values[sensor_type], (int, float)):
+    if sensor_type in values and isinstance(values[sensor_type], int | float):
         return float(values[sensor_type])
 
-    if "value" in values and isinstance(values["value"], (int, float)):
+    if "value" in values and isinstance(values["value"], int | float):
         return float(values["value"])
 
     if len(values) == 1:
         only_value = next(iter(values.values()))
-        if isinstance(only_value, (int, float)):
+        if isinstance(only_value, int | float):
             return float(only_value)
 
     return None

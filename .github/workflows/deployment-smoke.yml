@@ -44,6 +44,9 @@ jobs:
         working-directory: frontend
         run: npm ci
 
+      - name: Configure local smoke environment
+        run: cp .env.example .env
+
       - name: Reset deployment smoke stack
         timeout-minutes: 3
         run: docker compose down -v --remove-orphans

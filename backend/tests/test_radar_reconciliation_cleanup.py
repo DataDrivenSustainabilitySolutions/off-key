@@ -4,6 +4,9 @@ from unittest.mock import AsyncMock, MagicMock
 
 import docker
 import pytest
+from off_key_tactic_middleware.services.radar_status import (
+    apply_terminal_operational_status,
+)
 from off_key_tactic_middleware.services.reconciliation import (
     RadarStatusReconciliationService,
 )
@@ -288,12 +291,8 @@ def test_apply_terminal_operational_status_marks_error_only_for_failed_state():
     failed_service = _service(service_id="failed", status=False, stage="operational")
     stopped_service = _service(service_id="stopped", status=False, stage="operational")
 
-    RadarStatusReconciliationService._apply_terminal_operational_status(
-        failed_service, "failed"
-    )
-    RadarStatusReconciliationService._apply_terminal_operational_status(
-        stopped_service, "stopped"
-    )
+    apply_terminal_operational_status(failed_service, "failed")
+    apply_terminal_operational_status(stopped_service, "stopped")
 
     assert failed_service.operational_stage == "failed"
     assert failed_service.operational_status["error"] == "Docker workload is failed"

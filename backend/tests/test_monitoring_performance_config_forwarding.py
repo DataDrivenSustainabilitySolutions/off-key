@@ -19,8 +19,11 @@ from off_key_api_gateway.api.v1.monitors import (
 from off_key_api_gateway.api.v1.monitors import (
     PerformanceConfig as GatewayPerformanceConfig,
 )
-from off_key_tactic_middleware.services.orchestration.radar import (
-    RadarOrchestrationService,
+from off_key_tactic_middleware.services.orchestration.radar_environment import (
+    build_radar_environment,
+)
+from off_key_tactic_middleware.services.radar_status import (
+    derive_operational_status,
 )
 from pydantic import ValidationError
 from starlette.requests import Request
@@ -208,25 +211,19 @@ async def test_gateway_delete_preserves_tactic_error_status():
     assert exc_info.value.status_code == 404
 
 
-def _orchestration_service(monkeypatch, validated_params=None):
+def _model_registry(validated_params=None):
     registry = MagicMock()
     registry.validate_model_params.return_value = validated_params or {
         "n_estimators": 100,
         "contamination": 0.1,
     }
-    monkeypatch.setattr(
-        "off_key_tactic_middleware.services.orchestration.radar.get_async_docker",
-        lambda: MagicMock(),
-    )
-    service = RadarOrchestrationService(session=AsyncMock(), model_registry=registry)
-    monkeypatch.setattr(service, "_build_database_url", lambda: "postgresql://test")
-    return service, registry
+    return registry
 
 
-def test_tactic_builds_static_environment(monkeypatch):
-    service, registry = _orchestration_service(monkeypatch)
+def test_tactic_builds_static_environment():
+    registry = _model_registry()
 
-    env = service._build_radar_environment(
+    env = build_radar_environment(
         service_id="svc-static",
         mqtt_topics=[
             "charger/+/live-telemetry/L1",
@@ -253,6 +250,7 @@ def test_tactic_builds_static_environment(monkeypatch):
                 "restarted_ville_threshold": 100,
             },
         },
+        model_registry=registry,
     )
 
     static_config = json.loads(env["RADAR_STATIC_BASELINE_CONFIG"])
@@ -270,11 +268,11 @@ def test_tactic_builds_static_environment(monkeypatch):
     assert registry.validate_model_params.call_args.args[0] == "pyod_iforest"
 
 
-def test_tactic_environment_rejects_dynamic_strategy(monkeypatch):
-    service, _ = _orchestration_service(monkeypatch)
+def test_tactic_environment_rejects_dynamic_strategy():
+    registry = _model_registry()
 
     with pytest.raises(ValueError, match="dynamic monitoring is not implemented"):
-        service._build_radar_environment(
+        build_radar_environment(
             service_id="svc-dynamic",
             mqtt_topics=["charger/+/live-telemetry/L1"],
             strategy="adaptive_stream",
@@ -283,6 +281,7 @@ def test_tactic_environment_rejects_dynamic_strategy(monkeypatch):
             mqtt_config={},
             performance_config={},
             static_baseline_config={},
+            model_registry=registry,
         )
 
 
@@ -298,7 +297,7 @@ def test_tactic_operational_status_marks_failed_from_docker_exit():
         },
         operational_updated_at=datetime.now(UTC),
     )
-    status = RadarOrchestrationService._derive_operational_status(service, "exited")
+    status = derive_operational_status(service, "exited")
     assert status["stage"] == "failed"
     assert status["error"] == "Docker workload is exited"
     assert status["is_stale"] is False
@@ -316,7 +315,7 @@ def test_tactic_operational_status_marks_running_heartbeat_stale():
         },
         operational_updated_at=datetime.now(UTC) - timedelta(seconds=180),
     )
-    status = RadarOrchestrationService._derive_operational_status(service, "running")
+    status = derive_operational_status(service, "running")
     assert status["stage"] == "collecting_training"
     assert status["is_stale"] is True
     assert status["detail"] == "Runtime heartbeat is stale"

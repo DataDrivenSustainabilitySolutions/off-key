@@ -23,18 +23,12 @@ from ..facades.docker import (
     get_workload_docker_status,
     with_workload_fallback,
 )
+from .radar_status import (
+    TERMINAL_WORKLOAD_STATES,
+    apply_terminal_operational_status,
+)
 from .time_utils import coerce_utc
 
-_FAILED_WORKLOAD_STATES = {"dead", "exited", "failed", "rejected"}
-_STOPPED_WORKLOAD_STATES = {
-    "complete",
-    "completed",
-    "no_container_id",
-    "no_tasks",
-    "not_found",
-    "removed",
-    "stopped",
-}
 _TERMINAL_OPERATIONAL_STAGES = {"failed", "stopped"}
 _RETRY_LATER_WORKLOAD_STATES = {"error", "unknown"}
 
@@ -146,10 +140,7 @@ class RadarStatusReconciliationService:
         for service in services:
             docker_status = await self._get_docker_status(service.container_id)
             docker_state = (docker_status or "").strip().lower()
-            terminal_state = (
-                docker_state in _FAILED_WORKLOAD_STATES
-                or docker_state in _STOPPED_WORKLOAD_STATES
-            )
+            terminal_state = docker_state in TERMINAL_WORKLOAD_STATES
 
             if docker_state in _RETRY_LATER_WORKLOAD_STATES:
                 logger.warning(
@@ -176,7 +167,7 @@ class RadarStatusReconciliationService:
 
             if service.status:
                 service.status = False
-                self._apply_terminal_operational_status(service, docker_status)
+                apply_terminal_operational_status(service, docker_status)
                 updates += 1
                 logger.info(
                     f"Service '{service.container_name}' marked inactive "
@@ -262,33 +253,6 @@ class RadarStatusReconciliationService:
         service.operational_stage = "starting"
         service.operational_status = status
         service.operational_updated_at = None
-
-    @staticmethod
-    def _apply_terminal_operational_status(
-        service: MonitoringService,
-        docker_status: str,
-    ) -> None:
-        docker_state = (docker_status or "").strip().lower()
-        stage = "failed" if docker_state in _FAILED_WORKLOAD_STATES else "stopped"
-        detail = f"Docker workload is {docker_state or 'not running'}"
-        now = datetime.now(UTC)
-        existing = service.operational_status or {}
-        if not isinstance(existing, dict):
-            existing = {}
-        status = RadarOperationalStatus(
-            stage=stage,
-            detail=detail,
-            progress=existing.get("progress"),
-            message_count=existing.get("message_count", 0),
-            processed_message_count=existing.get("processed_message_count", 0),
-            last_alignment_status=existing.get("last_alignment_status"),
-            error=detail if stage == "failed" else None,
-            updated_at=now,
-            is_stale=False,
-        ).model_dump(mode="json", exclude_none=True)
-        service.operational_stage = stage
-        service.operational_status = status
-        service.operational_updated_at = now
 
     async def _get_docker_status(self, container_id: str) -> str:
         """Check Docker workload status (Swarm service or container)."""

@@ -1,10 +1,8 @@
 import asyncio
-import hashlib
-import json
 import time
 import uuid
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import datetime
 from functools import lru_cache
 from typing import Any
 
@@ -12,10 +10,7 @@ import docker
 from docker.types import Resources, RestartPolicy, ServiceMode
 from off_key_core.config.logs import logger
 from off_key_core.db.models import MonitoringService, MqttTopic
-from off_key_core.schemas.radar import (
-    RadarOperationalStatus,
-    StaticBaselineConfig,
-)
+from off_key_core.schemas.radar import RadarOperationalStatus
 from off_key_core.utils.mqtt_topics import (
     mqtt_topic_filters_overlap,
     normalize_mqtt_topic_filters,
@@ -24,10 +19,7 @@ from off_key_core.utils.mqtt_topics import (
 from sqlalchemy import delete, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ...config.config import (
-    get_radar_container_runtime_settings,
-    get_tactic_settings,
-)
+from ...config.config import get_tactic_settings
 from ...facades.docker import (
     AsyncDocker,
     _extract_latest_workload_state,
@@ -35,7 +27,16 @@ from ...facades.docker import (
     with_workload_fallback,
 )
 from ...models.registry import ModelRegistryService
-from ...services.time_utils import coerce_utc
+from ..radar_status import (
+    TERMINAL_WORKLOAD_STATES,
+    apply_terminal_operational_status,
+    derive_operational_status,
+)
+from .radar_environment import (
+    build_radar_config_fingerprint,
+    build_radar_environment,
+    build_radar_workload_labels,
+)
 
 MANAGED_BY_TACTIC_LABEL = "managed_by=tactic"
 RADAR_SERVICE_TYPE_LABEL = "service_type=radar"
@@ -44,16 +45,6 @@ RADAR_SERVICE_TYPE_LABEL = "service_type=radar"
 # a docker.info() round-trip on every RADAR service creation request.
 _SWARM_CACHE_TTL_SECONDS: float = 30.0
 _swarm_manager_cache: tuple[bool, float] | None = None
-_RUNTIME_STATUS_STALE_AFTER_SECONDS = 120.0
-_FAILED_WORKLOAD_STATES = {"dead", "error", "exited", "failed", "rejected"}
-_STOPPED_WORKLOAD_STATES = {
-    "complete",
-    "completed",
-    "no_container_id",
-    "not_found",
-    "removed",
-    "stopped",
-}
 _DEFAULT_MEMORY_BYTES = 536_870_912
 _MEMORY_SIZE_MULTIPLIERS = {
     "k": 1024,
@@ -162,7 +153,7 @@ class RadarOrchestrationService:
             container_name=container_name,
         )
         db_service_id = str(uuid.uuid4())
-        env_vars = self._build_radar_environment(
+        env_vars = build_radar_environment(
             service_id=db_service_id,
             mqtt_topics=mqtt_topics,
             strategy=strategy,
@@ -171,8 +162,9 @@ class RadarOrchestrationService:
             mqtt_config=mqtt_config or {},
             performance_config=performance_config or {},
             static_baseline_config=static_baseline_config or {},
+            model_registry=self.model_registry,
         )
-        config_fingerprint = self._build_radar_config_fingerprint(env_vars)
+        config_fingerprint = build_radar_config_fingerprint(env_vars)
 
         # Check if service with this name already exists
         query = select(MonitoringService).where(
@@ -268,15 +260,13 @@ class RadarOrchestrationService:
         )
         claimants: list[MonitoringService] = []
         reconciled = False
-        terminal_states = _FAILED_WORKLOAD_STATES | _STOPPED_WORKLOAD_STATES
-
         for service in result.scalars().all():
             docker_status, _ = await self._get_docker_status_and_labels(
                 getattr(service, "container_id", "") or ""
             )
-            if docker_status in terminal_states:
+            if docker_status in TERMINAL_WORKLOAD_STATES:
                 service.status = False
-                self._apply_terminal_operational_status(service, docker_status)
+                apply_terminal_operational_status(service, docker_status)
                 reconciled = True
                 continue
             claimants.append(service)
@@ -308,7 +298,7 @@ class RadarOrchestrationService:
 
         if docker_status != "running":
             existing_service.status = False
-            self._apply_terminal_operational_status(existing_service, docker_status)
+            apply_terminal_operational_status(existing_service, docker_status)
             await self._delete_service_rows_by_ids([existing_service.id])
             await self.session.commit()
             logger.info(
@@ -359,26 +349,6 @@ class RadarOrchestrationService:
         )
         return existing_service
 
-    @staticmethod
-    def _build_radar_config_fingerprint(environment: dict[str, str]) -> str:
-        """Build a stable fingerprint for fields that define RADAR behavior."""
-        excluded_keys = {
-            "SERVICE_ID",
-            "RADAR_DATABASE_URL",
-            "RADAR_TACTIC_SERVICE_HOST",
-            "RADAR_TACTIC_SERVICE_PORT",
-            "RADAR_TACTIC_MODEL_REGISTRY_CACHE_TTL_SECONDS",
-        }
-        comparable_environment = {
-            key: value for key, value in environment.items() if key not in excluded_keys
-        }
-        serialized = json.dumps(
-            comparable_environment,
-            sort_keys=True,
-            separators=(",", ":"),
-        )
-        return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
-
     async def _remove_created_workload_after_failure(
         self,
         docker_workload: Any,
@@ -407,171 +377,6 @@ class RadarOrchestrationService:
                 "Failed to remove RADAR workload %s after service creation failure",
                 workload_id,
             )
-
-    def _build_radar_environment(
-        self,
-        service_id: str,
-        mqtt_topics: list[str],
-        strategy: str,
-        model_type: str,
-        model_params: dict[str, Any],
-        mqtt_config: dict[str, Any],
-        performance_config: dict[str, Any],
-        static_baseline_config: dict[str, Any],
-    ) -> dict[str, str]:
-        """
-        Build environment variables for RADAR service based on configuration.
-
-        Maps the input parameters to RADAR-specific environment variables using
-        Pydantic configuration defaults.
-        """
-        strategy = (strategy or "static_baseline").strip().lower()
-        if strategy != "static_baseline":
-            raise ValueError(
-                "Invalid monitoring strategy. Only static_baseline can be started; "
-                "dynamic monitoring is not implemented."
-            )
-        # Resolve environment only after rejecting an unsupported lane.
-        defaults = get_tactic_settings().config.radar_defaults
-        runtime = get_radar_container_runtime_settings()
-
-        static_config = StaticBaselineConfig(
-            **{
-                **static_baseline_config,
-                "model_type": static_baseline_config.get(
-                    "model_type", model_type or "pyod_iforest"
-                ),
-                "model_params": static_baseline_config.get(
-                    "model_params", model_params or {}
-                ),
-            }
-        )
-        model_type = static_config.model_type
-        model_params = static_config.model_params
-        static_baseline_config = static_config.model_dump(exclude_none=True)
-
-        env_vars = {
-            "SERVICE_ID": service_id,
-            "RADAR_MONITORING_STRATEGY": strategy,
-            # TACTIC connectivity for model-registry calls from RADAR containers
-            "RADAR_TACTIC_SERVICE_HOST": runtime.TACTIC_SERVICE_HOST,
-            "RADAR_TACTIC_SERVICE_PORT": str(runtime.TACTIC_SERVICE_PORT),
-            "RADAR_TACTIC_MODEL_REGISTRY_CACHE_TTL_SECONDS": str(
-                runtime.TACTIC_MODEL_REGISTRY_CACHE_TTL_SECONDS
-            ),
-            # MQTT Configuration
-            "RADAR_MQTT_BROKER_HOST": mqtt_config.get(
-                "host", defaults.mqtt_broker_host
-            ),
-            "RADAR_MQTT_BROKER_PORT": str(
-                mqtt_config.get("port", defaults.mqtt_broker_port)
-            ),
-            "RADAR_MQTT_USE_TLS": str(
-                mqtt_config.get("use_tls", defaults.mqtt_use_tls)
-            ).lower(),
-            "RADAR_MQTT_CLIENT_ID_PREFIX": mqtt_config.get(
-                "client_id_prefix", defaults.mqtt_client_id_prefix
-            ),
-            "RADAR_MQTT_USE_AUTH": str(
-                mqtt_config.get("use_auth", defaults.mqtt_use_auth)
-            ).lower(),
-            "RADAR_MQTT_USERNAME": mqtt_config.get("username", ""),
-            "RADAR_MQTT_API_KEY": mqtt_config.get("api_key", ""),
-            # Subscription Topics
-            "RADAR_SUBSCRIPTION_TOPICS": ",".join(mqtt_topics),
-            "RADAR_SUBSCRIPTION_QOS": str(mqtt_config.get("qos", defaults.mqtt_qos)),
-            # Model Configuration
-            "RADAR_MODEL_TYPE": model_type or defaults.model_type,
-            "RADAR_STATIC_BASELINE_CONFIG": json.dumps(static_baseline_config),
-            # Performance Settings
-            "RADAR_BATCH_SIZE": str(
-                performance_config.get("batch_size", defaults.batch_size)
-            ),
-            "RADAR_BATCH_TIMEOUT": str(
-                performance_config.get("batch_timeout", defaults.batch_timeout)
-            ),
-            "RADAR_MEMORY_LIMIT_MB": str(
-                performance_config.get("memory_limit_mb", defaults.memory_limit_mb)
-            ),
-            "RADAR_CHECKPOINT_INTERVAL": str(
-                performance_config.get(
-                    "checkpoint_interval", defaults.checkpoint_interval
-                )
-            ),
-            "RADAR_SENSOR_KEY_STRATEGY": str(
-                performance_config.get(
-                    "sensor_key_strategy", defaults.sensor_key_strategy
-                )
-            ),
-            "RADAR_ALIGNMENT_MODE": str(
-                performance_config.get("alignment_mode", defaults.alignment_mode)
-            ),
-            "RADAR_SENSOR_FRESHNESS_SECONDS": str(
-                performance_config.get(
-                    "sensor_freshness_seconds", defaults.sensor_freshness_seconds
-                )
-            ),
-            # Database Settings
-            "RADAR_DB_WRITE_ENABLED": str(
-                performance_config.get("db_write_enabled", defaults.db_write_enabled)
-            ).lower(),
-            "RADAR_DB_BATCH_SIZE": str(
-                performance_config.get("db_batch_size", defaults.db_batch_size)
-            ),
-            "RADAR_DB_BATCH_TIMEOUT": str(
-                performance_config.get("db_batch_timeout", defaults.db_batch_timeout)
-            ),
-            # Database URL - avoid Settings dependency in radar containers
-            "RADAR_DATABASE_URL": self._build_database_url(),
-            # Health and Monitoring
-            "RADAR_HEALTH_CHECK_INTERVAL": str(
-                performance_config.get(
-                    "health_check_interval", defaults.health_check_interval
-                )
-            ),
-            "RADAR_LOG_LEVEL": performance_config.get("log_level", defaults.log_level),
-            "RADAR_RATE_LIMIT_PER_MINUTE": str(
-                performance_config.get(
-                    "rate_limit_per_minute", defaults.rate_limit_per_minute
-                )
-            ),
-        }
-
-        # Validate and serialize model parameters using registry
-        try:
-            # Validate model_params against the registry schema
-            validated_params = self.model_registry.validate_model_params(
-                model_type, model_params, category="model"
-            )
-
-            # Serialize complete params as JSON for container to parse
-            # Note: Individual RADAR_MODEL_* params removed - use only JSON
-            env_vars["RADAR_MODEL_PARAMS"] = json.dumps(validated_params)
-            static_baseline_config = {
-                **static_baseline_config,
-                "model_params": validated_params,
-            }
-            env_vars["RADAR_STATIC_BASELINE_CONFIG"] = json.dumps(
-                static_baseline_config
-            )
-
-            logger.info(f"Model params validated for {model_type}: {validated_params}")
-
-        except ValueError as e:
-            logger.error(f"Invalid model parameters for {model_type}: {e}")
-            raise ValueError(f"Invalid model parameters: {e}")
-
-        return env_vars
-
-    def _build_database_url(self) -> str:
-        """
-        Build async database URL from environment variables.
-
-        This allows radar containers to connect to the database without
-        depending on the full Settings class which requires many unrelated
-        environment variables.
-        """
-        return get_radar_container_runtime_settings().radar_database_url
 
     async def _is_swarm_manager(self) -> bool:
         """Return True when Docker engine is an active Swarm manager.
@@ -627,26 +432,6 @@ class RadarOrchestrationService:
             environment=environment,
         )
 
-    def _build_radar_workload_labels(
-        self, environment: dict[str, str], radar_image: str
-    ) -> dict[str, str]:
-        return {
-            "owner": "tactic_middleware",
-            "started_at": datetime.utcnow().isoformat() + "Z",
-            "purpose": "RADAR anomaly detection service",
-            "env": get_radar_container_runtime_settings().ENVIRONMENT,
-            "service_type": "radar",
-            "managed_by": "tactic",
-            "monitoring_strategy": environment.get(
-                "RADAR_MONITORING_STRATEGY", "static_baseline"
-            ),
-            "radar_model_type": environment.get("RADAR_MODEL_TYPE", ""),
-            "radar_config_fingerprint": self._build_radar_config_fingerprint(
-                environment
-            ),
-            "radar_image": radar_image,
-        }
-
     async def _create_radar_swarm_service(
         self,
         service_id: str,
@@ -659,7 +444,7 @@ class RadarOrchestrationService:
         tactic_config = get_tactic_settings().config
         docker_config = tactic_config.docker
 
-        labels = self._build_radar_workload_labels(
+        labels = build_radar_workload_labels(
             environment=environment, radar_image=tactic_config.radar_image
         )
 
@@ -698,7 +483,7 @@ class RadarOrchestrationService:
         tactic_config = get_tactic_settings().config
         docker_config = tactic_config.docker
 
-        labels = self._build_radar_workload_labels(
+        labels = build_radar_workload_labels(
             environment=environment, radar_image=tactic_config.radar_image
         )
 
@@ -1065,115 +850,6 @@ class RadarOrchestrationService:
             )
             return "error", {}
 
-    _coerce_utc = staticmethod(coerce_utc)
-
-    @classmethod
-    def _normalize_operational_status(
-        cls,
-        service: MonitoringService,
-    ) -> dict[str, Any]:
-        raw_status = service.operational_status or {}
-        if not isinstance(raw_status, dict):
-            raw_status = {}
-
-        updated_at = cls._coerce_utc(
-            raw_status.get("updated_at") or service.operational_updated_at
-        )
-        payload = {
-            **raw_status,
-            "stage": raw_status.get("stage")
-            or service.operational_stage
-            or ("starting" if service.status else "stopped"),
-            "message_count": raw_status.get("message_count", 0),
-            "processed_message_count": raw_status.get("processed_message_count", 0),
-            "updated_at": updated_at,
-            "is_stale": bool(raw_status.get("is_stale", False)),
-        }
-        return RadarOperationalStatus(**payload).model_dump(
-            mode="json", exclude_none=True
-        )
-
-    @classmethod
-    def _derive_operational_status(
-        cls,
-        service: MonitoringService,
-        docker_status: str | None = None,
-    ) -> dict[str, Any]:
-        status = cls._normalize_operational_status(service)
-        docker_state = (docker_status or "").strip().lower()
-
-        if docker_state in _FAILED_WORKLOAD_STATES:
-            return cls._override_operational_status(
-                status,
-                "failed",
-                f"Docker workload is {docker_state}",
-                error=f"Docker workload is {docker_state}",
-            )
-        if docker_state in _STOPPED_WORKLOAD_STATES:
-            return cls._override_operational_status(
-                status,
-                "stopped",
-                f"Docker workload is {docker_state}",
-            )
-        if not service.status:
-            return cls._override_operational_status(
-                status, "stopped", "Service stopped"
-            )
-
-        if docker_state == "running":
-            updated_at = cls._coerce_utc(service.operational_updated_at)
-            if updated_at is None:
-                return cls._mark_operational_status_stale(
-                    status, "Runtime heartbeat has not arrived"
-                )
-            age_seconds = (datetime.now(UTC) - updated_at).total_seconds()
-            if age_seconds > _RUNTIME_STATUS_STALE_AFTER_SECONDS:
-                return cls._mark_operational_status_stale(
-                    status, "Runtime heartbeat is stale"
-                )
-
-        return status
-
-    @staticmethod
-    def _override_operational_status(
-        status: dict[str, Any],
-        stage: str,
-        detail: str,
-        error: str | None = None,
-    ) -> dict[str, Any]:
-        payload = {
-            **status,
-            "stage": stage,
-            "detail": detail,
-            "error": error if error is not None else status.get("error"),
-            "updated_at": datetime.now(UTC),
-            "is_stale": False,
-        }
-        return RadarOperationalStatus(**payload).model_dump(
-            mode="json", exclude_none=True
-        )
-
-    @staticmethod
-    def _mark_operational_status_stale(
-        status: dict[str, Any],
-        detail: str,
-    ) -> dict[str, Any]:
-        payload = {**status, "detail": detail, "is_stale": True}
-        return RadarOperationalStatus(**payload).model_dump(
-            mode="json", exclude_none=True
-        )
-
-    @classmethod
-    def _apply_terminal_operational_status(
-        cls,
-        service: MonitoringService,
-        docker_status: str,
-    ) -> None:
-        status = cls._derive_operational_status(service, docker_status)
-        service.operational_stage = status["stage"]
-        service.operational_status = status
-        service.operational_updated_at = cls._coerce_utc(status.get("updated_at"))
-
     async def list_radar_services(
         self, active_only: bool = False, include_docker_status: bool = False
     ) -> list[dict[str, Any]]:
@@ -1203,7 +879,7 @@ class RadarOrchestrationService:
                 "container_name": service.container_name,
                 "mqtt_topics": service.mqtt_topic,
                 "status": service.status,
-                "operational_status": self._derive_operational_status(service),
+                "operational_status": derive_operational_status(service),
                 "created_at": (
                     service.created_at.isoformat() if service.created_at else None
                 ),
@@ -1215,7 +891,7 @@ class RadarOrchestrationService:
                     service.container_id
                 )
                 service_dict["docker_status"] = docker_status
-                service_dict["operational_status"] = self._derive_operational_status(
+                service_dict["operational_status"] = derive_operational_status(
                     service, docker_status
                 )
                 if labels:
@@ -1275,7 +951,7 @@ class RadarOrchestrationService:
             "mqtt_topics": service.mqtt_topic,
             "db_status": service.status,
             "docker_status": docker_service_status,
-            "operational_status": self._derive_operational_status(
+            "operational_status": derive_operational_status(
                 service, docker_service_status
             ),
             "monitoring_strategy": labels.get("monitoring_strategy"),

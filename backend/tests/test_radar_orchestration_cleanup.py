@@ -1034,15 +1034,19 @@ async def test_create_radar_service_removes_workload_when_db_commit_fails(
     session.rollback = AsyncMock()
 
     workload = SimpleNamespace(id="workload-1")
-    service = RadarOrchestrationService(session=session, model_registry=MagicMock())
-    service._build_radar_environment = MagicMock(
-        return_value={
-            "SERVICE_ID": "service-1",
-            "RADAR_SUBSCRIPTION_TOPICS": "charger/charger-1/live-telemetry/sine",
-            "RADAR_MONITORING_STRATEGY": "static_baseline",
-            "RADAR_MODEL_TYPE": "pyod_iforest",
-        }
+    monkeypatch.setattr(
+        radar_module,
+        "build_radar_environment",
+        MagicMock(
+            return_value={
+                "SERVICE_ID": "service-1",
+                "RADAR_SUBSCRIPTION_TOPICS": "charger/charger-1/live-telemetry/sine",
+                "RADAR_MONITORING_STRATEGY": "static_baseline",
+                "RADAR_MODEL_TYPE": "pyod_iforest",
+            }
+        ),
     )
+    service = RadarOrchestrationService(session=session, model_registry=MagicMock())
     service._create_radar_workload = AsyncMock(return_value=workload)
     service._validate_radar_workload_started = AsyncMock()
     service._remove_created_workload_after_failure = AsyncMock()
@@ -1092,15 +1096,19 @@ async def test_existing_active_service_with_missing_workload_is_recreated(
     session.add = MagicMock()
     session.commit = AsyncMock()
 
-    service = RadarOrchestrationService(session=session, model_registry=MagicMock())
-    service._build_radar_environment = MagicMock(
-        return_value={
-            "SERVICE_ID": "service-1",
-            "RADAR_SUBSCRIPTION_TOPICS": "charger/charger-1/live-telemetry/sine",
-            "RADAR_MONITORING_STRATEGY": "static_baseline",
-            "RADAR_MODEL_TYPE": "pyod_iforest",
-        }
+    monkeypatch.setattr(
+        radar_module,
+        "build_radar_environment",
+        MagicMock(
+            return_value={
+                "SERVICE_ID": "service-1",
+                "RADAR_SUBSCRIPTION_TOPICS": "charger/charger-1/live-telemetry/sine",
+                "RADAR_MONITORING_STRATEGY": "static_baseline",
+                "RADAR_MODEL_TYPE": "pyod_iforest",
+            }
+        ),
     )
+    service = RadarOrchestrationService(session=session, model_registry=MagicMock())
     service._get_docker_status_and_labels = AsyncMock(return_value=("not_found", {}))
     service._create_radar_workload = AsyncMock(
         return_value=SimpleNamespace(id="new-workload")
@@ -1139,15 +1147,19 @@ async def test_existing_active_service_rejects_config_fingerprint_mismatch(
     session = AsyncMock()
     session.execute = AsyncMock(return_value=query_result)
 
-    service = RadarOrchestrationService(session=session, model_registry=MagicMock())
-    service._build_radar_environment = MagicMock(
-        return_value={
-            "SERVICE_ID": "service-1",
-            "RADAR_SUBSCRIPTION_TOPICS": "charger/charger-1/live-telemetry/sine",
-            "RADAR_MONITORING_STRATEGY": "static_baseline",
-            "RADAR_MODEL_TYPE": "knn",
-        }
+    monkeypatch.setattr(
+        radar_module,
+        "build_radar_environment",
+        MagicMock(
+            return_value={
+                "SERVICE_ID": "service-1",
+                "RADAR_SUBSCRIPTION_TOPICS": "charger/charger-1/live-telemetry/sine",
+                "RADAR_MONITORING_STRATEGY": "static_baseline",
+                "RADAR_MODEL_TYPE": "knn",
+            }
+        ),
     )
+    service = RadarOrchestrationService(session=session, model_registry=MagicMock())
     service._get_docker_status_and_labels = AsyncMock(
         return_value=("running", {"radar_config_fingerprint": "different"})
     )

@@ -338,7 +338,7 @@ class MQTTProxyService:
                 )
             return False
 
-    async def _wait_for_shutdown_or_timeout(self, timeout: float) -> bool:
+    async def _wait_for_shutdown_or_timeout(self, timeout_seconds: float) -> bool:
         """
         Wait for either shutdown signal or timeout.
 
@@ -346,7 +346,7 @@ class MQTTProxyService:
             True if shutdown was signaled, False if timeout elapsed.
         """
         try:
-            await asyncio.wait_for(self.shutdown_event.wait(), timeout=timeout)
+            await asyncio.wait_for(self.shutdown_event.wait(), timeout=timeout_seconds)
             return True
         except TimeoutError:
             return False
@@ -439,7 +439,10 @@ class MQTTProxyService:
             )
 
     async def _safe_component_shutdown(
-        self, name: str, component: Stoppable, timeout: float | None = None
+        self,
+        name: str,
+        component: Stoppable,
+        timeout_seconds: float | None = None,
     ) -> Exception | None:
         """
         Safely shutdown a component with timeout protection.
@@ -447,36 +450,40 @@ class MQTTProxyService:
         Args:
             name: Component name for logging
             component: Component to shut down
-            timeout: Shutdown timeout in seconds (uses config default if None)
+            timeout_seconds: Shutdown timeout in seconds (uses config default if None)
 
         Returns:
             Exception if shutdown failed, None if successful
         """
-        if timeout is None:
-            timeout = self.config.shutdown_timeout
+        if timeout_seconds is None:
+            timeout_seconds = self.config.shutdown_timeout
 
         try:
-            await asyncio.wait_for(component.stop(), timeout=timeout)
+            await asyncio.wait_for(component.stop(), timeout=timeout_seconds)
             logger.debug(
                 "event=proxy.component_stopped component_name=%s timeout_s=%s",
                 name,
-                timeout,
-                extra={**self._log_context, "component": name, "timeout": timeout},
+                timeout_seconds,
+                extra={
+                    **self._log_context,
+                    "component": name,
+                    "timeout": timeout_seconds,
+                },
             )
             return None
 
         except TimeoutError:
             error = TimeoutError(
-                f"Component {name} shutdown timed out after {timeout}s"
+                f"Component {name} shutdown timed out after {timeout_seconds}s"
             )
             logger.error(
                 "event=proxy.component_shutdown_timeout component_name=%s timeout_s=%s",
                 name,
-                timeout,
+                timeout_seconds,
                 extra={
                     **self._log_context,
                     "component": name,
-                    "timeout": timeout,
+                    "timeout": timeout_seconds,
                     "error": "timeout",
                 },
             )
@@ -639,7 +646,7 @@ class MQTTProxyService:
                 signum,
                 extra=self._log_context,
             )
-            asyncio.create_task(self.stop())
+            self.shutdown_event.set()
 
         signal.signal(signal.SIGINT, signal_handler)
         signal.signal(signal.SIGTERM, signal_handler)

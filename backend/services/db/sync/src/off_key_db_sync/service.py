@@ -810,7 +810,7 @@ class SyncService:
                 f"Received signal {signum}, initiating graceful shutdown",
                 extra=self._log_context,
             )
-            asyncio.create_task(self.stop())
+            self.shutdown_event.set()
 
         signal.signal(signal.SIGINT, signal_handler)
         signal.signal(signal.SIGTERM, signal_handler)

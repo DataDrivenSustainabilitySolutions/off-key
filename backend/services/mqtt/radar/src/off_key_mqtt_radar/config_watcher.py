@@ -156,24 +156,12 @@ class ConfigWatcher:
         try:
             logger.debug("event=radar.config_change_processing")
 
-            # Validate file exists and is readable
+            # The reload callback owns opening and parsing the file. Probing it here
+            # would duplicate I/O and introduce a time-of-check/time-of-use race.
             if not self.config_file_path.exists():
                 logger.error("event=radar.config_file_deleted")
                 return
 
-            # Check if file is readable
-            try:
-                with open(self.config_file_path) as f:
-                    f.read(1)  # Try to read first byte
-            except Exception as e:
-                logger.error(
-                    "event=radar.config_file_unreadable error=%s",
-                    str(e),
-                    exc_info=True,
-                )
-                return
-
-            # Call the reload callback
             await self.reload_callback()
 
         except Exception as e:

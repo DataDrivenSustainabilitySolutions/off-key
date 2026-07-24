@@ -445,7 +445,7 @@ class RadarService:
         # Set up signal handlers
         def signal_handler(signum, frame):
             logger.info(f"Received signal {signum}, initiating graceful shutdown")
-            asyncio.create_task(self.stop())
+            self.shutdown_event.set()
 
         signal.signal(signal.SIGINT, signal_handler)
         signal.signal(signal.SIGTERM, signal_handler)

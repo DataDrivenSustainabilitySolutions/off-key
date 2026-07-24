@@ -115,6 +115,48 @@ class TestMQTTAsyncEventHandling:
         )
 
     @pytest.mark.asyncio
+    async def test_connect_completes_from_success_callback(self, config):
+        """The Paho callback resolves the connection attempt without polling."""
+        paho_client = MagicMock()
+        paho_client.subscribe.return_value = (0, 1)
+        paho_client.loop_start.side_effect = lambda: paho_client.on_connect(
+            paho_client, None, None, 0
+        )
+        client = RadarMQTTClient(config)
+
+        with patch(
+            "off_key_mqtt_radar.mqtt_client.mqtt.Client", return_value=paho_client
+        ):
+            await asyncio.wait_for(client._connect(), timeout=0.5)
+
+        assert client.is_connected is True
+        assert client._connection_result is None
+        paho_client.subscribe.assert_called_once()
+        await client.stop()
+
+    @pytest.mark.asyncio
+    async def test_connect_fails_from_refusal_callback(self, config):
+        """A broker refusal fails immediately instead of waiting for a timeout."""
+        paho_client = MagicMock()
+        paho_client.loop_start.side_effect = lambda: paho_client.on_connect(
+            paho_client, None, None, 5
+        )
+        client = RadarMQTTClient(config)
+
+        with (
+            patch(
+                "off_key_mqtt_radar.mqtt_client.mqtt.Client",
+                return_value=paho_client,
+            ),
+            pytest.raises(RuntimeError, match="not authorized"),
+        ):
+            await asyncio.wait_for(client._connect(), timeout=0.5)
+
+        assert client.is_connected is False
+        assert client._connection_result is None
+        assert client.client is None
+
+    @pytest.mark.asyncio
     async def test_event_loop_closed_during_message_handling(self, mqtt_client):
         """Test handling message when event loop closes between check and execution"""
         # Start client and simulate successful connection

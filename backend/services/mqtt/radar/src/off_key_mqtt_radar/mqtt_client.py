@@ -59,6 +59,7 @@ class RadarMQTTClient:
 
         # Event loop for async coordination
         self._loop: asyncio.AbstractEventLoop | None = None
+        self._connection_result: asyncio.Future[None] | None = None
         self._message_processor_task: asyncio.Task | None = None
         self._reconnect_task: asyncio.Task | None = None
         self._shutdown_event = asyncio.Event()
@@ -133,6 +134,11 @@ class RadarMQTTClient:
     async def _connect(self):
         """Connect to MQTT broker with authentication and TLS support"""
         try:
+            loop = asyncio.get_running_loop()
+            self._loop = loop
+            connection_result = loop.create_future()
+            self._connection_result = connection_result
+
             # Create client with unique ID
             client_id = f"{self.config.client_id_prefix}-{uuid.uuid4().hex[:8]}"
             self.is_connected = False
@@ -168,18 +174,17 @@ class RadarMQTTClient:
             # Start network loop
             self.client.loop_start()
 
-            # Wait for connection (with timeout)
-            connection_timeout = 30.0
-            start_time = time.time()
-
-            while (
-                not self.is_connected
-                and (time.time() - start_time) < connection_timeout
-            ):
-                await asyncio.sleep(0.1)
-
-            if not self.is_connected:
-                raise RuntimeError("Failed to connect to MQTT broker within timeout")
+            # Paho invokes connection callbacks on its network thread. The callback
+            # resolves this future on the asyncio thread without polling shared state.
+            try:
+                await asyncio.wait_for(connection_result, timeout=30.0)
+            except TimeoutError as error:
+                raise RuntimeError(
+                    "Failed to connect to MQTT broker within timeout"
+                ) from error
+            finally:
+                if self._connection_result is connection_result:
+                    self._connection_result = None
 
             logger.info("event=radar.mqtt_connected")
             self.connection_time = datetime.now()
@@ -201,6 +206,21 @@ class RadarMQTTClient:
                 "event=radar.mqtt_connect_failed error=%s", str(e), exc_info=True
             )
             raise
+
+    def _notify_connection_result(self, error: RuntimeError | None = None) -> None:
+        """Resolve the active connection attempt on the asyncio event loop."""
+        if not self._loop or self._loop.is_closed():
+            return
+        self._loop.call_soon_threadsafe(self._complete_connection_attempt, error)
+
+    def _complete_connection_attempt(self, error: RuntimeError | None) -> None:
+        connection_result = self._connection_result
+        if not connection_result or connection_result.done():
+            return
+        if error:
+            connection_result.set_exception(error)
+        else:
+            connection_result.set_result(None)
 
     def _on_connect(self, client, userdata, flags, rc):
         """MQTT connection callback"""
@@ -224,6 +244,7 @@ class RadarMQTTClient:
                         str(e),
                         exc_info=True,
                     )
+            self._notify_connection_result()
 
         else:
             error_messages = {
@@ -237,10 +258,14 @@ class RadarMQTTClient:
             error_msg = error_messages.get(rc, f"Unknown error code {rc}")
             logger.error("event=radar.mqtt_connection_refused error=%s", error_msg)
             self.is_connected = False
+            self._notify_connection_result(RuntimeError(error_msg))
 
     def _on_disconnect(self, client, userdata, rc):
         """MQTT disconnection callback"""
         self.is_connected = False
+        self._notify_connection_result(
+            RuntimeError("Disconnected before MQTT connection was established")
+        )
 
         if rc != 0:
             logger.warning("event=radar.mqtt_disconnected_unexpected code=%s", rc)

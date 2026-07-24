@@ -34,10 +34,6 @@ def test_checkpoint_manager_saves_and_loads_one_atomic_envelope(tmp_path, monkey
 async def test_service_falls_back_to_older_valid_checkpoint(monkeypatch):
     attempts = []
     restored = MagicMock(processed_count=42)
-    monkeypatch.setattr(
-        "off_key_mqtt_radar.tactic_client.validate_model_params",
-        lambda model_type, params: params,
-    )
 
     def restore(path, config):
         attempts.append(path)

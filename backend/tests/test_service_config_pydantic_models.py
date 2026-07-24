@@ -83,15 +83,7 @@ def test_mqtt_radar_config_rejects_ambiguous_static_sensor_assignments(topics, m
         MQTTRadarConfig(subscription_topics=topics)
 
 
-def test_anomaly_detection_config_rejects_removed_adaptive_fields(monkeypatch):
-    from off_key_mqtt_radar import tactic_client
-
-    monkeypatch.setattr(
-        tactic_client,
-        "validate_model_params",
-        lambda _model_type, params=None: params or {},
-    )
-
+def test_anomaly_detection_config_rejects_removed_adaptive_fields():
     with pytest.raises(ValidationError, match="preprocessing_steps"):
         AnomalyDetectionConfig(preprocessing_steps=[])
 

@@ -103,28 +103,6 @@ class AnomalyDetectionConfig(BaseModel):
         """Validate alignment mode used by state cache and persistence semantics."""
         return _normalize_alignment_mode(value, "alignment_mode")
 
-    @model_validator(mode="after")
-    def validate_model_configuration(self) -> Self:
-        """Validate static model parameters against the registry schema.
-
-        This ensures invalid configurations fail fast at startup rather than
-        during model instantiation. Validation is pure - no mutation.
-        """
-        from ..tactic_client import validate_model_params
-
-        effective_model_type = self.static_baseline_config.model_type
-        effective_model_params = self.static_baseline_config.model_params
-
-        # Validate model parameters against the registry schema (raises if invalid)
-        try:
-            validate_model_params(effective_model_type, effective_model_params)
-        except ValueError as e:
-            raise ValueError(
-                f"Invalid model parameters for '{effective_model_type}': {e}"
-            ) from e
-
-        return self
-
 
 class MQTTRadarConfig(BaseModel):
     """MQTT RADAR service configuration"""

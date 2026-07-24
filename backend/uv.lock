@@ -1601,7 +1601,6 @@ name = "off-key-mqtt-radar"
 version = "0.1.0"
 source = { editable = "services/mqtt/radar" }
 dependencies = [
-    { name = "aiohttp" },
     { name = "asyncpg" },
     { name = "nonconform", extra = ["pyod"] },
     { name = "numpy" },
@@ -1616,7 +1615,6 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "aiohttp", specifier = ">=3.9.0" },
     { name = "asyncpg", specifier = ">=0.28.0" },
     { name = "nonconform", extras = ["pyod"], specifier = ">=0.1.0" },
     { name = "numpy", specifier = ">=1.24.0" },

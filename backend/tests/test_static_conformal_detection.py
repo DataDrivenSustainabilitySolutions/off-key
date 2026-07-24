@@ -53,7 +53,6 @@ class InlineExecutor:
 
 
 def _static_config(
-    monkeypatch,
     *,
     martingale_config: StaticMartingaleConfig | None = None,
     model_params: dict | None = None,
@@ -61,13 +60,6 @@ def _static_config(
     training_window_size: int = 20,
     calibration_window_size: int = 5,
 ) -> AnomalyDetectionConfig:
-    from off_key_mqtt_radar import tactic_client
-
-    monkeypatch.setattr(
-        tactic_client,
-        "validate_model_params",
-        lambda _model_type, params=None: params or {},
-    )
     model_params = model_params or {"n_estimators": 100}
     return AnomalyDetectionConfig(
         strategy="static_baseline",
@@ -85,7 +77,7 @@ def _static_config(
 
 
 def test_static_conformal_collects_calibrates_trains_then_detects(monkeypatch):
-    config = _static_config(monkeypatch)
+    config = _static_config()
     service = StaticConformalDetectionService(config)
     service._checkpoint_model = lambda: None
     executor = ControlledExecutor()
@@ -130,7 +122,7 @@ def test_static_conformal_collects_calibrates_trains_then_detects(monkeypatch):
 
 
 def test_static_conformal_rejects_schema_mismatch_after_schema_freeze(monkeypatch):
-    config = _static_config(monkeypatch)
+    config = _static_config()
     service = StaticConformalDetectionService(config)
 
     service.conformal_detector = FakeConformalDetector()
@@ -146,7 +138,7 @@ def test_static_conformal_rejects_schema_mismatch_after_schema_freeze(monkeypatc
 
 
 def test_static_conformal_martingale_ignores_non_crossing_p_values(monkeypatch):
-    config = _static_config(monkeypatch)
+    config = _static_config()
     service = StaticConformalDetectionService(config)
     service.conformal_detector = FakeConformalDetector(p_value=1.0)
     service.alarm_controller = service._create_alarm_controller()
@@ -167,7 +159,7 @@ def test_static_conformal_martingale_ignores_non_crossing_p_values(monkeypatch):
     [[], [0.1, 0.2], [float("nan")], [-0.1], [1.1]],
 )
 def test_static_conformal_rejects_malformed_p_value_output(monkeypatch, p_values):
-    service = StaticConformalDetectionService(_static_config(monkeypatch))
+    service = StaticConformalDetectionService(_static_config())
     service.conformal_detector = FakeMalformedConformalDetector(p_values)
 
     with pytest.raises(ValueError, match="p-value"):
@@ -175,7 +167,7 @@ def test_static_conformal_rejects_malformed_p_value_output(monkeypatch, p_values
 
 
 def test_static_health_poll_completes_finished_background_training(monkeypatch):
-    service = StaticConformalDetectionService(_static_config(monkeypatch))
+    service = StaticConformalDetectionService(_static_config())
     executor = ControlledExecutor()
     service._training_executor = executor
     service._checkpoint_model = lambda: None
@@ -238,7 +230,6 @@ def test_static_conformal_real_pyod_nonconform_training_reaches_ready(
     monkeypatch.setenv("SERVICE_ID", "static-conformal-test")
     clear_radar_runtime_settings_cache()
     config = _static_config(
-        monkeypatch,
         martingale_config=StaticMartingaleConfig(epsilon=0.5),
         model_params={
             "contamination": 0.1,
@@ -282,7 +273,7 @@ def test_static_conformal_real_pyod_nonconform_training_reaches_ready(
 
 
 def test_static_conformal_restores_ready_checkpoint(monkeypatch, tmp_path):
-    config = _static_config(monkeypatch)
+    config = _static_config()
     alarm_controller = RestartedMartingaleAlarmController(
         epsilon=0.5, alarm_count=2, tested_count=7
     )
@@ -331,7 +322,7 @@ def test_static_conformal_rejects_incomplete_ready_checkpoint(
     missing_key,
     expected_message,
 ):
-    config = _static_config(monkeypatch)
+    config = _static_config()
     checkpoint = {
         "strategy": "static_baseline",
         "static_state": "ready",
@@ -358,18 +349,6 @@ def test_static_conformal_rejects_incomplete_ready_checkpoint(
 
 
 def test_static_conformal_uses_static_config_model_params(monkeypatch):
-    from off_key_mqtt_radar import tactic_client
-
-    validated_calls = []
-    monkeypatch.setattr(
-        tactic_client,
-        "validate_model_params",
-        lambda model_type, params=None: validated_calls.append(
-            (model_type, params or {})
-        )
-        or params
-        or {},
-    )
     config = AnomalyDetectionConfig(
         strategy="static_baseline",
         model_type="pyod_iforest",
@@ -394,10 +373,6 @@ def test_static_conformal_uses_static_config_model_params(monkeypatch):
 
     service._create_pyod_detector()
 
-    assert validated_calls[0] == (
-        "pyod_knn",
-        {"n_neighbors": 7, "contamination": 0.08},
-    )
     assert captured["model_type"] == "pyod_knn"
     assert captured["params"]["n_neighbors"] == 7
     assert captured["params"]["contamination"] == 0.08

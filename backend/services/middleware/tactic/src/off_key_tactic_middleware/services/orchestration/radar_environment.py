@@ -17,9 +17,6 @@ from ...models.registry import ModelRegistryService
 _FINGERPRINT_EXCLUDED_KEYS = {
     "SERVICE_ID",
     "RADAR_DATABASE_URL",
-    "RADAR_TACTIC_SERVICE_HOST",
-    "RADAR_TACTIC_SERVICE_PORT",
-    "RADAR_TACTIC_MODEL_REGISTRY_CACHE_TTL_SECONDS",
 }
 
 
@@ -98,11 +95,6 @@ def build_radar_environment(
     environment = {
         "SERVICE_ID": service_id,
         "RADAR_MONITORING_STRATEGY": strategy,
-        "RADAR_TACTIC_SERVICE_HOST": runtime.TACTIC_SERVICE_HOST,
-        "RADAR_TACTIC_SERVICE_PORT": str(runtime.TACTIC_SERVICE_PORT),
-        "RADAR_TACTIC_MODEL_REGISTRY_CACHE_TTL_SECONDS": str(
-            runtime.TACTIC_MODEL_REGISTRY_CACHE_TTL_SECONDS
-        ),
         "RADAR_MQTT_BROKER_HOST": mqtt_config.get("host", defaults.mqtt_broker_host),
         "RADAR_MQTT_BROKER_PORT": str(
             mqtt_config.get("port", defaults.mqtt_broker_port)

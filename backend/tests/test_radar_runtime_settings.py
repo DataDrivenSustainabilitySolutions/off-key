@@ -3,7 +3,6 @@ from off_key_mqtt_radar.config.runtime import (
     clear_radar_runtime_settings_cache,
     get_radar_checkpoint_settings,
     get_radar_database_settings,
-    get_radar_tactic_client_settings,
 )
 from pydantic import ValidationError
 
@@ -70,36 +69,6 @@ def test_radar_database_settings_rejects_incomplete_postgres_env(monkeypatch):
 
     with pytest.raises(ValidationError):
         get_radar_database_settings()
-
-
-def test_radar_tactic_client_settings_base_url_precedence(monkeypatch):
-    monkeypatch.setenv("RADAR_TACTIC_BASE_URL", "http://custom-tactic:9000/")
-    monkeypatch.setenv("TACTIC_SERVICE_BASE_URL", "http://ignored:8000")
-
-    settings = get_radar_tactic_client_settings()
-
-    assert settings.base_url == "http://custom-tactic:9000"
-
-
-def test_radar_tactic_client_settings_base_url_ignores_invalid_fallback_port(
-    monkeypatch,
-):
-    monkeypatch.setenv("RADAR_TACTIC_BASE_URL", "http://custom-tactic:9000/")
-    monkeypatch.setenv("TACTIC_SERVICE_PORT", "invalid-port")
-    monkeypatch.setenv("RADAR_TACTIC_SERVICE_PORT", "still-invalid")
-
-    settings = get_radar_tactic_client_settings()
-
-    assert settings.base_url == "http://custom-tactic:9000"
-
-
-def test_radar_tactic_client_settings_cache_ttl_precedence(monkeypatch):
-    monkeypatch.setenv("RADAR_TACTIC_MODEL_REGISTRY_CACHE_TTL_SECONDS", "90")
-    monkeypatch.setenv("TACTIC_MODEL_REGISTRY_CACHE_TTL_SECONDS", "60")
-
-    settings = get_radar_tactic_client_settings()
-
-    assert settings.cache_ttl_seconds == 90.0
 
 
 def test_radar_checkpoint_settings_expose_secret_bytes(monkeypatch):

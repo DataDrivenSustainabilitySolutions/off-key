@@ -427,9 +427,6 @@ class RadarContainerRuntimeSettings(BaseSettings):
 
     model_config = SettingsConfigDict(case_sensitive=True, extra="ignore")
 
-    TACTIC_SERVICE_HOST: str = "tactic-middleware"
-    TACTIC_SERVICE_PORT: int = Field(default=8000, ge=1, le=65535)
-    TACTIC_MODEL_REGISTRY_CACHE_TTL_SECONDS: float = Field(default=60.0, gt=0)
     POSTGRES_USER: str = "postgres"
     POSTGRES_PASSWORD: SecretStr = SecretStr("postgres")
     POSTGRES_HOST: str = "timescaledb"

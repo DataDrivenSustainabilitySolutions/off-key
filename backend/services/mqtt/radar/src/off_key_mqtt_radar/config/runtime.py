@@ -2,7 +2,7 @@ from functools import lru_cache
 
 from off_key_core.config.database import build_postgres_database_url
 from off_key_core.config.validation import validate_environment as _validate_environment
-from pydantic import Field, SecretStr, field_validator, model_validator
+from pydantic import SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -90,71 +90,6 @@ class RadarDatabaseSettings(BaseSettings):
         )
 
 
-class RadarTacticClientSettings(BaseSettings):
-    """Runtime TACTIC connectivity settings for RADAR service internals."""
-
-    model_config = SettingsConfigDict(case_sensitive=True, extra="ignore")
-
-    RADAR_TACTIC_BASE_URL: str | None = None
-    TACTIC_SERVICE_BASE_URL: str | None = None
-    RADAR_TACTIC_SERVICE_HOST: str | None = None
-    TACTIC_SERVICE_HOST: str = "tactic-middleware"
-    RADAR_TACTIC_SERVICE_PORT: str | None = None
-    TACTIC_SERVICE_PORT: str = "8000"
-    RADAR_TACTIC_MODEL_REGISTRY_CACHE_TTL_SECONDS: float | None = Field(
-        default=None, gt=0
-    )
-    TACTIC_MODEL_REGISTRY_CACHE_TTL_SECONDS: float = Field(default=60.0, gt=0)
-
-    @staticmethod
-    def _normalize_base_url(value: str | None) -> str | None:
-        if not value:
-            return None
-        return value.strip().rstrip("/")
-
-    @staticmethod
-    def _parse_port(value: str | None, env_name: str) -> int:
-        if value is None:
-            raise ValueError(f"{env_name} must be set")
-        normalized = value.strip()
-        try:
-            port = int(normalized)
-        except ValueError as exc:
-            raise ValueError(
-                f"{env_name} must be an integer between 1 and 65535"
-            ) from exc
-        if not (1 <= port <= 65535):
-            raise ValueError(f"{env_name} must be an integer between 1 and 65535")
-        return port
-
-    @property
-    def base_url(self) -> str:
-        configured = self._normalize_base_url(self.RADAR_TACTIC_BASE_URL)
-        if configured:
-            return configured
-        fallback = self._normalize_base_url(self.TACTIC_SERVICE_BASE_URL)
-        if fallback:
-            return fallback
-
-        host = (self.RADAR_TACTIC_SERVICE_HOST or "").strip() or (
-            self.TACTIC_SERVICE_HOST.strip()
-        )
-        radar_port = (self.RADAR_TACTIC_SERVICE_PORT or "").strip()
-        if radar_port:
-            port = self._parse_port(radar_port, "RADAR_TACTIC_SERVICE_PORT")
-        else:
-            port = self._parse_port(self.TACTIC_SERVICE_PORT, "TACTIC_SERVICE_PORT")
-
-        return f"http://{host}:{port}"
-
-    @property
-    def cache_ttl_seconds(self) -> float:
-        return (
-            self.RADAR_TACTIC_MODEL_REGISTRY_CACHE_TTL_SECONDS
-            or self.TACTIC_MODEL_REGISTRY_CACHE_TTL_SECONDS
-        )
-
-
 class RadarCheckpointSettings(BaseSettings):
     """Runtime checkpoint settings for RADAR service internals."""
 
@@ -212,11 +147,6 @@ def get_radar_database_settings() -> RadarDatabaseSettings:
     return RadarDatabaseSettings()
 
 
-@lru_cache(maxsize=1)
-def get_radar_tactic_client_settings() -> RadarTacticClientSettings:
-    return RadarTacticClientSettings()
-
-
 # Cache checkpoint secret settings once; tests reset this cache when mutating env.
 @lru_cache(maxsize=1)
 def get_radar_checkpoint_settings() -> RadarCheckpointSettings:
@@ -230,6 +160,5 @@ def get_radar_runtime_file_settings() -> RadarRuntimeFileSettings:
 
 def clear_radar_runtime_settings_cache() -> None:
     get_radar_database_settings.cache_clear()
-    get_radar_tactic_client_settings.cache_clear()
     get_radar_checkpoint_settings.cache_clear()
     get_radar_runtime_file_settings.cache_clear()

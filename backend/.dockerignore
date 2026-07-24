@@ -1,24 +1,38 @@
-.git
-.github
-.gitignore
-.idea
-.vscode
+# Editor and version-control metadata
+**/.git
+**/.github
+**/.gitignore
+**/.idea
+**/.vscode
+**/*.swp
 
-.venv
-.mypy_cache
-.pytest_cache
-.ruff_cache
-__pycache__
-*.pyc
-*.pyo
-*.pyd
-*.swp
+# Local environments and package-manager caches
+**/.venv*
+**/.*-venv*
+**/.uv-cache
+**/.codex-uv-cache
 
-tests
-pytest-cache-files-*
-.coverage
-htmlcov
-coverage.xml
+# Python bytecode and tool caches
+**/__pycache__
+**/*.pyc
+**/*.pyo
+**/*.pyd
+**/.mypy_cache
+**/.pytest_cache
+**/.ruff_cache
 
-.env
-.env.*
+# Tests, coverage, and build artifacts
+**/tests
+**/pytest-cache-files-*
+**/.coverage
+**/coverage.xml
+**/htmlcov
+**/build
+**/dist
+**/*.egg-info
+
+# Runtime and local-only state
+**/checkpoints
+**/logs
+**/.env
+**/.env.*

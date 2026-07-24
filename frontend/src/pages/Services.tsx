@@ -29,6 +29,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { apiUtils } from "@/lib/api-client";
+import { getErrorMessage } from "@/lib/errors";
 import { API_CONFIG } from "@/lib/api-config";
 import { cn } from "@/lib/utils";
 import {
@@ -156,7 +157,7 @@ export default function Services() {
       );
       setServices(response || []);
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = getErrorMessage(error);
       toast.error(`Failed to load services: ${message}`);
     } finally {
       setIsLoading(false);
@@ -211,7 +212,7 @@ export default function Services() {
         toast.success(action.success);
         await loadServices();
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
+        const message = getErrorMessage(error);
         toast.error(`Failed to delete service: ${message}`);
       }
     },

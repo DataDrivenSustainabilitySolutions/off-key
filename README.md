@@ -66,6 +66,19 @@ serializes claims in PostgreSQL and rejects overlapping MQTT filters, including 
 and `#` wildcard overlap. Topic namespaces are literal: for example, `telemetry`
 and `live-telemetry` do not overlap.
 
+### RADAR runtime image (local only)
+
+TACTIC starts one RADAR workload for each monitoring service. Build its local
+runtime image before creating a monitoring service for the first time:
+
+```bash
+docker compose build mqtt-radar
+```
+
+This builds `off-key-mqtt-radar:latest` without starting the profile-gated
+standalone RADAR container. Rebuild it after RADAR dependencies or source code
+change.
+
 ### MQTT simulator profile (local only)
 
 `mqtt-simulator` is profile-gated (`mqtt-sim`) and is intended for local synthetic

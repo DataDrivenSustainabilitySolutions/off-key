@@ -140,17 +140,23 @@ jobs:
 
             while true; do
               if docker run --rm --network "$network" curlimages/curl:8.16.0 \
-                -fsS http://socket-proxy:2375/_ping > /tmp/socket-proxy.response; then
+                -fsS http://socket-proxy:2375/_ping > /tmp/socket-proxy.response \
+                && docker run --rm --network "$network" curlimages/curl:8.16.0 \
+                  -fsS http://socket-proxy:2375/images/json \
+                  > /tmp/socket-proxy-images.response; then
                 echo "socket-proxy ready at http://socket-proxy:2375/_ping on $network"
                 cat /tmp/socket-proxy.response
                 echo
+                echo "socket-proxy image API is available"
                 return 0
               fi
 
               if (( SECONDS >= deadline )); then
-                echo "::error::socket-proxy did not become ready within ${timeout_seconds}s at http://socket-proxy:2375/_ping on $network"
+                echo "::error::socket-proxy ping/image APIs did not become ready within ${timeout_seconds}s on $network"
                 docker run --rm --network "$network" curlimages/curl:8.16.0 \
                   -sS http://socket-proxy:2375/_ping || true
+                docker run --rm --network "$network" curlimages/curl:8.16.0 \
+                  -sS http://socket-proxy:2375/images/json || true
                 echo
                 return 1
               fi

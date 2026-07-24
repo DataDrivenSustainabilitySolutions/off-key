@@ -102,7 +102,7 @@ services:
       - emqx-network
     environment:
       - TACTIC_DOCKER_DEFAULT_NETWORK=${COMPOSE_PROJECT_NAME:-off-key}_app-network
-      - TACTIC_RADAR_IMAGE=${MQTT_RADAR_IMAGE:-ghcr.io/datadrivensustainabilitysolutions/off-key-mqtt-radar:latest}
+      - TACTIC_RADAR_IMAGE=${MQTT_RADAR_IMAGE:-off-key-mqtt-radar:latest}
     restart: always
     healthcheck:
       test:
@@ -122,7 +122,7 @@ services:
       args:
         SERVICE_NAME: off-key-mqtt-radar
         SERVICE_ROOT: services/mqtt/radar
-    image: "${MQTT_RADAR_IMAGE:-ghcr.io/datadrivensustainabilitysolutions/off-key-mqtt-radar:latest}"
+    image: "${MQTT_RADAR_IMAGE:-off-key-mqtt-radar:latest}"
     container_name: mqtt_radar
     env_file: .env
     command: [ "/app/bin/python", "-m", "off_key_mqtt_radar" ]
@@ -282,7 +282,7 @@ services:
       - CONTAINERS=1 # Required by TACTIC RADAR container fallback and cleanup.
       - DISTRIBUTION=0
       - EXEC=0
-      - IMAGES=0
+      - IMAGES=1 # Required when TACTIC pulls a missing RADAR image.
       - INFO=1 # Required for Swarm manager detection.
       - NETWORKS=0
       - NODES=0

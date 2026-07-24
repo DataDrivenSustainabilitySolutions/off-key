@@ -2,6 +2,7 @@ import io
 import json
 import logging
 import logging.config
+from contextlib import suppress
 from pathlib import Path
 
 import pytest
@@ -171,16 +172,12 @@ def test_module_logger_and_service_logger_both_emit_when_configured(
         assert "event=service_logger_test" in output
     finally:
         for handler in root_logger.handlers:
-            try:
+            with suppress(Exception):
                 handler.close()
-            except Exception:
-                pass
         for handler in service_logger.handlers:
             if handler not in root_logger.handlers:
-                try:
+                with suppress(Exception):
                     handler.close()
-                except Exception:
-                    pass
 
         root_logger.handlers = original_root_handlers
         root_logger.setLevel(original_root_level)

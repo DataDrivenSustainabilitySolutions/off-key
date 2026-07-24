@@ -93,12 +93,14 @@ class MessageHandler:
         self,
         *,
         drain: bool = True,
-        timeout: float | None = None,
+        timeout_seconds: float | None = None,
     ) -> None:
         """Stop async handler workers after optionally draining queued work."""
         if drain and self._handler_queue:
             try:
-                await asyncio.wait_for(self._handler_queue.join(), timeout=timeout)
+                await asyncio.wait_for(
+                    self._handler_queue.join(), timeout=timeout_seconds
+                )
             except TimeoutError:
                 logger.error(
                     "Timed out draining async message handler queue; "
@@ -223,22 +225,17 @@ class MessageHandler:
     async def _async_handler_worker(self) -> None:
         """Process queued async message handler work with bounded concurrency."""
         assert self._handler_queue is not None
-        try:
-            while True:
-                message, handler = await self._handler_queue.get()
-                try:
-                    await handler(message)
-                    self.futures_completed += 1
-                except Exception as e:
-                    self.futures_failed += 1
-                    self.handler_errors += 1
-                    logger.error(
-                        f"Exception in async message handler: {e}", exc_info=True
-                    )
-                finally:
-                    self._handler_queue.task_done()
-        except asyncio.CancelledError:
-            raise
+        while True:
+            message, handler = await self._handler_queue.get()
+            try:
+                await handler(message)
+                self.futures_completed += 1
+            except Exception as e:
+                self.futures_failed += 1
+                self.handler_errors += 1
+                logger.error(f"Exception in async message handler: {e}", exc_info=True)
+            finally:
+                self._handler_queue.task_done()
 
     def _handle_user_callback(self, message: MQTTMessage) -> None:
         """Handle user-provided message callback (sync or async)"""

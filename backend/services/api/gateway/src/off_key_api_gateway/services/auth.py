@@ -16,7 +16,7 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     return password_context.verify(plain_password, hashed_password)
 
 
-def create_jwt(data: dict, expires_delta: timedelta = None) -> str:
+def create_jwt(data: dict, expires_delta: timedelta | None = None) -> str:
     settings = get_auth_settings()
     to_encode = data.copy()
     expire = datetime.now(UTC) + (

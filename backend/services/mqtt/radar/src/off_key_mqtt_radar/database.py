@@ -460,23 +460,22 @@ class DatabaseWriter:
         self,
         results: list[AnomalyResult],
     ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-        anomaly_records = []
-        for result in results:
-            anomaly_records.append(
-                {
-                    "charger_id": result.charger_id or "unknown",
-                    "timestamp": result.timestamp,
-                    "telemetry_type": self._derive_telemetry_type(result),
-                    "anomaly_type": self._derive_anomaly_type(result),
-                    "anomaly_value": self._derive_anomaly_value(result),
-                    "value_type": (
-                        "conformal_pvalue"
-                        if self._is_static_conformal_result(result)
-                        else "tail_pvalue"
-                    ),
-                    "sensor_set": self._derive_sensor_set(result),
-                }
-            )
+        anomaly_records = [
+            {
+                "charger_id": result.charger_id or "unknown",
+                "timestamp": result.timestamp,
+                "telemetry_type": self._derive_telemetry_type(result),
+                "anomaly_type": self._derive_anomaly_type(result),
+                "anomaly_value": self._derive_anomaly_value(result),
+                "value_type": (
+                    "conformal_pvalue"
+                    if self._is_static_conformal_result(result)
+                    else "tail_pvalue"
+                ),
+                "sensor_set": self._derive_sensor_set(result),
+            }
+            for result in results
+        ]
         identity_records = [
             {
                 "charger_id": record["charger_id"],

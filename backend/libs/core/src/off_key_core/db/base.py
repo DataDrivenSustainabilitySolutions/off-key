@@ -110,7 +110,7 @@ async def get_db_async():
             await db.commit()
         except Exception as e:
             await db.rollback()
-            logger.warning(f"Database transaction rolled back: {str(e)}")
+            logger.warning(f"Database transaction rolled back: {e!s}")
             raise
 
 
@@ -128,7 +128,7 @@ def get_db_sync():
         db.commit()
     except Exception as e:
         db.rollback()
-        logger.warning(f"Database transaction rolled back: {str(e)}")
+        logger.warning(f"Database transaction rolled back: {e!s}")
         raise
     finally:
         db.close()

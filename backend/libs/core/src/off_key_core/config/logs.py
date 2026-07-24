@@ -95,7 +95,7 @@ class TruncatingFormatter(logging.Formatter):
             if len(message_part) > self.truncate_length:
                 message_part = message_part[: self.truncate_length] + "..."
 
-            return " - ".join(prefix_parts + [message_part])
+            return " - ".join([*prefix_parts, message_part])
 
         return formatted_msg
 
@@ -162,10 +162,10 @@ def redact_ip_address(ip_value: str | None, *, level: int = logging.INFO) -> str
 
     if isinstance(ip_obj, ipaddress.IPv4Address):
         octets = ip_obj.exploded.split(".")
-        return ".".join(octets[:3] + ["x"])
+        return ".".join([*octets[:3], "x"])
 
     groups = ip_obj.exploded.split(":")
-    return ":".join(groups[:4] + ["x", "x", "x", "x"])
+    return ":".join([*groups[:4], "x", "x", "x", "x"])
 
 
 def redact_value(value: Any, *, level: int = logging.INFO) -> Any:
@@ -287,7 +287,7 @@ def _infer_security_level(event_type: str) -> int:
     return logging.INFO
 
 
-def load_yaml_config(service_config_path: str = None) -> None:
+def load_yaml_config(service_config_path: str | None = None) -> None:
     """
     Load logging configuration from YAML files.
 
@@ -474,18 +474,18 @@ logger = LazyLogger()
 
 
 __all__ = [
-    "logger",
-    "load_yaml_config",
-    "set_correlation_id",
+    "CorrelationFilter",
+    "LogFormat",
+    "TruncatingFormatter",
     "get_correlation_id",
+    "load_yaml_config",
+    "log_performance",
+    "log_security_event",
+    "log_startup_logging_configuration",
+    "logger",
     "redact_email",
     "redact_ip_address",
     "redact_query_params",
     "redact_value",
-    "log_performance",
-    "log_security_event",
-    "log_startup_logging_configuration",
-    "LogFormat",
-    "TruncatingFormatter",
-    "CorrelationFilter",
+    "set_correlation_id",
 ]

@@ -1,5 +1,6 @@
 import asyncio
 import time
+from contextlib import suppress
 from datetime import datetime
 from unittest.mock import MagicMock, Mock, patch
 
@@ -128,7 +129,7 @@ class TestMessageHandlerAsyncEvents:
         assert message_handler.handler_messages_dropped > 0
 
         release_handler.set()
-        await message_handler.stop(timeout=1.0)
+        await message_handler.stop(timeout_seconds=1.0)
 
     @pytest.mark.asyncio
     async def test_futures_complete_eventually(
@@ -516,10 +517,8 @@ class TestConnectionManagerAsyncEvents:
         # Cleanup
         if manager._reconnect_task and not manager._reconnect_task.done():
             manager._reconnect_task.cancel()
-            try:
+            with suppress(asyncio.CancelledError):
                 await manager._reconnect_task
-            except asyncio.CancelledError:
-                pass
 
     # Event Loop Coordination Tests
     # ==============================
@@ -602,7 +601,7 @@ class TestConnectionManagerAsyncEvents:
         mock_client.disconnect = MagicMock()
         event_was_cleared = False
 
-        async def fake_wait_for(awaitable, timeout):
+        async def fake_wait_for(awaitable, timeout):  # noqa: ASYNC109
             nonlocal event_was_cleared
             awaitable.close()
             event_was_cleared = not connection_manager._connection_event.is_set()

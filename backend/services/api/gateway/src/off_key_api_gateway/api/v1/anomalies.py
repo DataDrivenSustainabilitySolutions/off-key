@@ -116,7 +116,7 @@ async def create_anomaly(
     except Exception as e:
         logger.error(
             f"Failed to send anomaly alert email for charger {payload.charger_id}: "
-            f"{str(e)}"
+            f"{e!s}"
         )
         # Don't fail the anomaly creation if email fails
 

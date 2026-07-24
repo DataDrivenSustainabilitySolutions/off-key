@@ -117,7 +117,7 @@ class MQTTClient:
         await self.connection_manager.disconnect()
         await self.message_handler.stop(
             drain=True,
-            timeout=self.config.graceful_shutdown_timeout,
+            timeout_seconds=self.config.graceful_shutdown_timeout,
         )
 
     async def stop(self) -> None:

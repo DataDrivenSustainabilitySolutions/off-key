@@ -31,7 +31,7 @@ _RETENTION_DAYS = get_retention_days()
 
 
 class User(Base):
-    __tablename__ = "users"  # noqa
+    __tablename__ = "users"
 
     id = Column(Integer, primary_key=True, index=True)
     email = Column(Text, unique=True, index=True, nullable=False)
@@ -46,7 +46,7 @@ class User(Base):
 
 
 class Charger(Base):
-    __tablename__ = "chargers"  # noqa
+    __tablename__ = "chargers"
 
     charger_id = Column(Text, primary_key=True, unique=True, index=True, nullable=False)
     manufacturer_name = Column(Text, unique=False, index=True, nullable=True)
@@ -75,7 +75,7 @@ class Charger(Base):
 
 
 class Telemetry(Base):
-    __tablename__ = "telemetry"  # noqa
+    __tablename__ = "telemetry"
 
     charger_id = Column(
         Text, primary_key=True, unique=False, index=True, nullable=False

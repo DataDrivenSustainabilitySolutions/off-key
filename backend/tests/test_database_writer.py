@@ -1,6 +1,7 @@
 """Tests for DatabaseWriter batching and health behavior."""
 
 import asyncio
+from contextlib import suppress
 from dataclasses import replace
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
@@ -244,7 +245,7 @@ async def test_stop_flushes_remaining_records_when_cancelled(db_config, monkeypa
     writer._writer_task = asyncio.create_task(asyncio.sleep(60))
     writer._flush_batch = AsyncMock()
 
-    async def cancelled_wait_for(awaitable, timeout):
+    async def cancelled_wait_for(awaitable, timeout):  # noqa: ASYNC109
         if hasattr(awaitable, "close"):
             awaitable.close()
         raise asyncio.CancelledError
@@ -259,7 +260,5 @@ async def test_stop_flushes_remaining_records_when_cancelled(db_config, monkeypa
 
     writer._flush_batch.assert_awaited_once()
     writer._writer_task.cancel()
-    try:
+    with suppress(asyncio.CancelledError):
         await writer._writer_task
-    except asyncio.CancelledError:
-        pass

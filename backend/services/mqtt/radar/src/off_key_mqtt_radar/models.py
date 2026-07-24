@@ -140,8 +140,8 @@ class MQTTMessage:
         """Parse payload as JSON"""
         try:
             return json.loads(self.payload.decode("utf-8"))
-        except (json.JSONDecodeError, UnicodeDecodeError) as e:
-            raise ValueError(f"Invalid JSON payload: {e}")
+        except (json.JSONDecodeError, UnicodeDecodeError) as error:
+            raise ValueError(f"Invalid JSON payload: {error}") from error
 
     def extract_charger_id(self) -> str | None:
         """Extract charger ID from topic pattern"""

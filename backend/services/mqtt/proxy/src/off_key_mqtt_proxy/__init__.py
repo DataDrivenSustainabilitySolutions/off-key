@@ -17,4 +17,4 @@ from .client.models import MQTTMessage
 from .config.config import MQTTConfig
 from .proxy import MQTTProxyService
 
-__all__ = ["MQTTProxyService", "MQTTConfig", "MQTTClient", "MQTTMessage"]
+__all__ = ["MQTTClient", "MQTTConfig", "MQTTMessage", "MQTTProxyService"]

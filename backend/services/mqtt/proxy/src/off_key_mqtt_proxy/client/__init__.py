@@ -10,9 +10,9 @@ from .models import ConnectionState, MQTTMessage
 from .subscriptions import SubscriptionManager
 
 __all__ = [
+    "ConnectionManager",
     "ConnectionState",
     "MQTTMessage",
-    "ConnectionManager",
-    "SubscriptionManager",
     "MessageHandler",
+    "SubscriptionManager",
 ]

@@ -92,8 +92,8 @@ async def list_radar_services(
         return await service.list_radar_services(active_only, include_docker_status)
     except Exception as e:
         raise HTTPException(
-            status_code=500, detail=f"Failed to list RADAR services: {str(e)}"
-        )
+            status_code=500, detail=f"Failed to list RADAR services: {e!s}"
+        ) from e
 
 
 @router.post("/radar/services/start/", response_model=RadarServiceResponse)
@@ -139,11 +139,11 @@ async def start_radar_service(
             "mqtt_topics": radar_service.mqtt_topic,
         }
     except ValueError as e:
-        raise HTTPException(status_code=422, detail=str(e))
+        raise HTTPException(status_code=422, detail=str(e)) from e
     except Exception as e:
         raise HTTPException(
-            status_code=500, detail=f"Failed to start RADAR service: {str(e)}"
-        )
+            status_code=500, detail=f"Failed to start RADAR service: {e!s}"
+        ) from e
 
 
 @router.get("/radar/services/details/", response_model=dict[str, Any])
@@ -179,8 +179,8 @@ async def get_radar_service_details(
         raise
     except Exception as e:
         raise HTTPException(
-            status_code=500, detail=f"Failed to get RADAR service details: {str(e)}"
-        )
+            status_code=500, detail=f"Failed to get RADAR service details: {e!s}"
+        ) from e
 
 
 @router.delete("/radar/services/stop/")
@@ -226,8 +226,8 @@ async def stop_radar_service(
         raise
     except Exception as e:
         raise HTTPException(
-            status_code=500, detail=f"Failed to stop RADAR service: {str(e)}"
-        )
+            status_code=500, detail=f"Failed to stop RADAR service: {e!s}"
+        ) from e
 
 
 @router.delete("/radar/services/{service_id}")
@@ -259,8 +259,8 @@ async def delete_radar_service(
         raise
     except Exception as e:
         raise HTTPException(
-            status_code=500, detail=f"Failed to delete RADAR service: {str(e)}"
-        )
+            status_code=500, detail=f"Failed to delete RADAR service: {e!s}"
+        ) from e
 
 
 @router.get("/radar/models/", response_model=list[dict[str, Any]])
@@ -286,5 +286,5 @@ async def list_available_models(
         return model_registry.get_available_models()
     except Exception as e:
         raise HTTPException(
-            status_code=500, detail=f"Failed to get available models: {str(e)}"
-        )
+            status_code=500, detail=f"Failed to get available models: {e!s}"
+        ) from e

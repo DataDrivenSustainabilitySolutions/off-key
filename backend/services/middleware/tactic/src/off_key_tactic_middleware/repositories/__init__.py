@@ -11,11 +11,11 @@ from .data import (
 )
 
 __all__ = [
+    "AnomalyRepository",
     "ChargerRepository",
+    "FavoriteRepository",
+    "ModelRegistryAdminRepository",
+    "MonitoringEvidenceRepository",
     "TelemetryRepository",
     "UserRepository",
-    "FavoriteRepository",
-    "AnomalyRepository",
-    "MonitoringEvidenceRepository",
-    "ModelRegistryAdminRepository",
 ]

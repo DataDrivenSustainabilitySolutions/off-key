@@ -104,7 +104,7 @@ class TestTelemetryFeatureValidator:
         assert result == {"cpu": 45.5, "memory": 1024.0, "temp": 65.2}
 
     def test_validate_rejects_non_dict(self):
-        with pytest.raises(ValueError, match="Input must be a dictionary"):
+        with pytest.raises(TypeError, match="Input must be a dictionary"):
             TelemetryFeatureValidator().validate_and_sanitize("not a dict")
 
     def test_validate_rejects_too_many_features(self):

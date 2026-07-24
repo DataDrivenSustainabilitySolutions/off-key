@@ -153,7 +153,7 @@ async def list_services(
         )
     except Exception as e:
         raise HTTPException(
-            status_code=500, detail=f"Failed to list monitoring services: {str(e)}"
+            status_code=500, detail=f"Failed to list monitoring services: {e!s}"
         ) from e
 
 
@@ -210,7 +210,7 @@ async def start_monitoring_service(
         raise
     except Exception as e:
         raise HTTPException(
-            status_code=500, detail=f"Failed to start monitoring service: {str(e)}"
+            status_code=500, detail=f"Failed to start monitoring service: {e!s}"
         ) from e
 
 
@@ -250,7 +250,7 @@ async def get_service_details(
         raise
     except Exception as e:
         raise HTTPException(
-            status_code=500, detail=f"Failed to get service details: {str(e)}"
+            status_code=500, detail=f"Failed to get service details: {e!s}"
         ) from e
 
 
@@ -302,7 +302,7 @@ async def stop_monitoring_service(
         raise
     except Exception as e:
         raise HTTPException(
-            status_code=500, detail=f"Failed to stop monitoring service: {str(e)}"
+            status_code=500, detail=f"Failed to stop monitoring service: {e!s}"
         ) from e
 
 
@@ -332,7 +332,7 @@ async def delete_monitoring_service(request: Request, service_id: str):
         raise
     except Exception as e:
         raise HTTPException(
-            status_code=500, detail=f"Failed to delete monitoring service: {str(e)}"
+            status_code=500, detail=f"Failed to delete monitoring service: {e!s}"
         ) from e
 
 
@@ -374,5 +374,5 @@ async def list_available_models_endpoint(
         raise_tactic_http_error(e)
     except Exception as e:
         raise HTTPException(
-            status_code=500, detail=f"Failed to get available models: {str(e)}"
+            status_code=500, detail=f"Failed to get available models: {e!s}"
         ) from e

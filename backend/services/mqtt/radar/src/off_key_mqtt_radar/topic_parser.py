@@ -3,7 +3,7 @@ Topic parser utilities for RADAR.
 """
 
 from collections.abc import Mapping
-from typing import Any
+from typing import Any, ClassVar
 
 from off_key_core.utils.mqtt_topics import TopicMetadataExtractor
 
@@ -13,7 +13,11 @@ class TopicParser:
     Parse MQTT topics using the shared extraction contract.
     """
 
-    SENSOR_KEY_STRATEGIES = {"full_hierarchy", "top_level", "leaf"}
+    SENSOR_KEY_STRATEGIES: ClassVar[set[str]] = {
+        "full_hierarchy",
+        "top_level",
+        "leaf",
+    }
     _default_extractor = TopicMetadataExtractor()
 
     @staticmethod

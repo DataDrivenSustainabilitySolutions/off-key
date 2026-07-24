@@ -81,7 +81,6 @@ class SensorStateCache:
         self.alignment_mode = alignment_mode.strip().lower()
         if self.alignment_mode != "strict_barrier":
             raise ValueError("alignment_mode must be: strict_barrier")
-        # cache[charger_id][sensor_type] = {"values": {...}, "timestamp": float}
         self.cache: dict[str, dict[str, dict[str, object]]] = {}
         # Tracks last emitted sensor update sequence in strict-barrier mode.
         self._last_emitted_versions: dict[str, dict[str, int]] = {}

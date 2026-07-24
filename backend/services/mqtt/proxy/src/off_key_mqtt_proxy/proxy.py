@@ -604,7 +604,7 @@ class MQTTProxyService:
                 extra={**self._log_context, "shutdown_duration": shutdown_duration},
             )
 
-        except TimeoutError:
+        except TimeoutError as error:
             shutdown_duration = asyncio.get_event_loop().time() - shutdown_start_time
             logger.critical(
                 "event=proxy.shutdown_timeout graceful_timeout_s=%s \
@@ -621,7 +621,7 @@ class MQTTProxyService:
             raise TimeoutError(
                 f"MQTT proxy service shutdown timed out after "
                 f"{self.config.graceful_shutdown_timeout}s"
-            )
+            ) from error
 
     async def _handle_mqtt_message(self, message):
         """Handle incoming MQTT messages."""

@@ -137,7 +137,7 @@ class CheckpointManager:
             )
         checkpoint = pickle.loads(payload)
         if not isinstance(checkpoint, dict):
-            raise ValueError("Checkpoint payload must be a dictionary")
+            raise TypeError("Checkpoint payload must be a dictionary")
         return checkpoint
 
     def _safe_getmtime(self, path: str) -> float:

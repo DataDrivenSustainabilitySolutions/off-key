@@ -13,15 +13,15 @@ from sqlalchemy.exc import IntegrityError
 
 
 def test_anomaly_payload_table_has_no_anomaly_id_column():
-    assert "anomaly_id" not in Anomaly.__table__.columns.keys()
+    assert "anomaly_id" not in Anomaly.__table__.columns
 
 
 def test_anomaly_payload_table_includes_sensor_set_column():
-    assert "sensor_set" in Anomaly.__table__.columns.keys()
+    assert "sensor_set" in Anomaly.__table__.columns
 
 
 def test_anomaly_identity_table_owns_global_anomaly_id_primary_key():
-    assert "anomaly_id" in AnomalyIdentity.__table__.columns.keys()
+    assert "anomaly_id" in AnomalyIdentity.__table__.columns
     assert AnomalyIdentity.__table__.columns["anomaly_id"].primary_key is True
     assert AnomalyIdentity.__table__.columns["anomaly_id"].server_default is not None
 

@@ -52,7 +52,7 @@ class SubscriptionManager:
             return False
 
         try:
-            result, mid = self.client.subscribe(topic, qos)
+            result, _mid = self.client.subscribe(topic, qos)
 
             if result == mqtt.MQTT_ERR_SUCCESS:
                 self.subscriptions.add(topic)
@@ -88,7 +88,7 @@ class SubscriptionManager:
             return False
 
         try:
-            result, mid = self.client.unsubscribe(topic)
+            result, _mid = self.client.unsubscribe(topic)
 
             if result == mqtt.MQTT_ERR_SUCCESS:
                 self.subscriptions.discard(topic)

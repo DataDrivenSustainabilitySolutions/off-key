@@ -11,15 +11,12 @@ from .user import (
 )
 
 __all__ = [
-    # Favorite schemas
     "FavoriteCreate",
-    # Radar schemas
+    "ForgotPasswordRequest",
     "PerformanceConfig",
     "RadarOperationalStatus",
-    # User schemas
+    "ResetPasswordRequest",
     "UserCreate",
     "UserLogin",
     "UserVerification",
-    "ForgotPasswordRequest",
-    "ResetPasswordRequest",
 ]

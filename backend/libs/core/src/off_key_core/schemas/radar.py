@@ -11,8 +11,8 @@ __all__ = [
     "RadarOperationalProgress",
     "RadarOperationalStage",
     "RadarOperationalStatus",
-    "StaticMartingaleConfig",
     "StaticBaselineConfig",
+    "StaticMartingaleConfig",
 ]
 
 _SENSOR_KEY_STRATEGIES = {"full_hierarchy", "top_level", "leaf"}

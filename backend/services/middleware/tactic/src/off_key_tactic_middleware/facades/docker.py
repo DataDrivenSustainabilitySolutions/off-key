@@ -46,7 +46,7 @@ class AsyncDocker:
         except Exception as e:
             logger.error(
                 f"Failed to initialize Docker client |"
-                f" URL: {config.base_url} | Error: {str(e)}"
+                f" URL: {config.base_url} | Error: {e!s}"
             )
             raise
 
@@ -61,7 +61,7 @@ class AsyncDocker:
                 log_performance(f"docker_{func_name}", start_time)
                 return result
         except Exception as e:
-            logger.error(f"Docker operation failed: {func_name} | Error: {str(e)}")
+            logger.error(f"Docker operation failed: {func_name} | Error: {e!s}")
             raise
 
     def close(self) -> None:

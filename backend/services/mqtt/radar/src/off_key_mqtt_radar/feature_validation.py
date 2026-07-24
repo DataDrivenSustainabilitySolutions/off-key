@@ -35,7 +35,7 @@ class TelemetryFeatureValidator:
 
     def validate_and_sanitize(self, data: dict[str, Any]) -> dict[str, float]:
         if not isinstance(data, dict):
-            raise ValueError("Input must be a dictionary")
+            raise TypeError("Input must be a dictionary")
         if len(data) > self.max_feature_count:
             raise ValueError(
                 f"Too many features: {len(data)} > {self.max_feature_count}"

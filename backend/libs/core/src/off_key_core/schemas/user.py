@@ -1,11 +1,11 @@
 from pydantic import BaseModel, EmailStr
 
 __all__ = [
+    "ForgotPasswordRequest",
+    "ResetPasswordRequest",
     "UserCreate",
     "UserLogin",
     "UserVerification",
-    "ForgotPasswordRequest",
-    "ResetPasswordRequest",
 ]
 
 

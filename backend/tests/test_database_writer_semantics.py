@@ -110,11 +110,11 @@ def test_database_writer_uses_topic_telemetry_type_for_univariate():
 
 
 def test_anomaly_table_metadata_includes_value_type_column():
-    assert "value_type" in ANOMALY_TABLE.columns.keys()
+    assert "value_type" in ANOMALY_TABLE.columns
 
 
 def test_anomaly_table_metadata_includes_sensor_set_column():
-    assert "sensor_set" in ANOMALY_TABLE.columns.keys()
+    assert "sensor_set" in ANOMALY_TABLE.columns
 
 
 def test_build_records_persists_multivariate_sensor_set():

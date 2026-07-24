@@ -115,7 +115,7 @@ class MQTTRadarConfig(BaseModel):
     use_tls: bool = False
     client_id_prefix: str = "radar"
 
-    # Authentication (optional)
+    # Optional authentication
     use_auth: bool = False
     username: str = ""
     api_key: str = ""

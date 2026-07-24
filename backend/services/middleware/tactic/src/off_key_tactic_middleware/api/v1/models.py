@@ -92,7 +92,7 @@ async def list_models(
         return [ModelInfo(**model) for model in models]
     except Exception as e:
         logger.error(f"Failed to list models: {e}")
-        raise HTTPException(status_code=500, detail="Failed to retrieve models")
+        raise HTTPException(status_code=500, detail="Failed to retrieve models") from e
 
 
 @router.get("/info/{model_type}", response_model=ModelInfo)
@@ -125,7 +125,7 @@ async def get_model_info(
         logger.error(f"Failed to get model info for '{model_type}': {e}")
         raise HTTPException(
             status_code=500, detail="Failed to retrieve model information"
-        )
+        ) from e
 
 
 @router.post("/validate", response_model=ModelValidationResponse)
@@ -153,7 +153,9 @@ async def validate_model_parameters(
         return ModelValidationResponse(valid=False, error=str(e))
     except Exception as e:
         logger.error(f"Failed to validate parameters for '{request.model_type}': {e}")
-        raise HTTPException(status_code=500, detail="Parameter validation failed")
+        raise HTTPException(
+            status_code=500, detail="Parameter validation failed"
+        ) from e
 
 
 @router.post("/create-instance", status_code=200)
@@ -196,7 +198,7 @@ async def create_model_instance(
             "instantiated": instantiated,
             "runtime_owner": runtime_owner,
         }
-    except ValueError:
+    except ValueError as error:
         logger.warning(
             "Model validation failed for '%s'",
             request.model_type,
@@ -205,16 +207,16 @@ async def create_model_instance(
         raise HTTPException(
             status_code=400,
             detail="Model validation failed. Check model type and parameters.",
-        )
-    except ImportError:
+        ) from error
+    except ImportError as error:
         logger.exception("Model dependency import failed for '%s'", request.model_type)
         raise HTTPException(
             status_code=422,
             detail="Model dependencies are not available.",
-        )
-    except Exception:
+        ) from error
+    except Exception as error:
         logger.exception("Failed to create model instance '%s'", request.model_type)
-        raise HTTPException(status_code=500, detail="Model creation failed")
+        raise HTTPException(status_code=500, detail="Model creation failed") from error
 
 
 @router.get("/categories/models", response_model=list[str])
@@ -233,7 +235,9 @@ async def get_model_categories(
         return sorted(families)
     except Exception as e:
         logger.error(f"Failed to get model families: {e}")
-        raise HTTPException(status_code=500, detail="Failed to retrieve model families")
+        raise HTTPException(
+            status_code=500, detail="Failed to retrieve model families"
+        ) from e
 
 
 @router.get("/health")

@@ -224,27 +224,21 @@ class ErrorResponse(BaseModel):
 # =============================================================================
 
 __all__ = [
-    # Charger
+    "AnomalyCreateRequest",
+    "AnomalyResponse",
     "ChargerResponse",
-    # Telemetry
-    "TelemetryTypeResponse",
-    "TelemetryDataPoint",
-    "TelemetryResponse",
-    "TelemetryPaginatedResponse",
-    # User
-    "UserResponse",
-    "UserCreateRequest",
-    "UserLoginRequest",
-    "UserUpdateRequest",
-    "UserPasswordUpdateRequest",
-    # Favorite
-    "FavoriteResponse",
+    "ErrorResponse",
     "FavoriteCreateRequest",
     "FavoriteMutationRequest",
-    # Anomaly
-    "AnomalyResponse",
-    "AnomalyCreateRequest",
-    # Generic
+    "FavoriteResponse",
     "MessageResponse",
-    "ErrorResponse",
+    "TelemetryDataPoint",
+    "TelemetryPaginatedResponse",
+    "TelemetryResponse",
+    "TelemetryTypeResponse",
+    "UserCreateRequest",
+    "UserLoginRequest",
+    "UserPasswordUpdateRequest",
+    "UserResponse",
+    "UserUpdateRequest",
 ]

@@ -142,13 +142,15 @@ async def test_gateway_stop_preserves_tactic_error_status():
             "missing", status=404, body={"detail": "RADAR service not found"}
         )
     )
-    with patch(
-        "off_key_api_gateway.api.v1.monitors.tactic.stop_radar_service", mock_stop
+    with (
+        patch(
+            "off_key_api_gateway.api.v1.monitors.tactic.stop_radar_service", mock_stop
+        ),
+        pytest.raises(HTTPException) as exc_info,
     ):
-        with pytest.raises(HTTPException) as exc_info:
-            await inspect.unwrap(stop_monitoring_service)(
-                request=_build_request(), container_name="missing", container_id=None
-            )
+        await inspect.unwrap(stop_monitoring_service)(
+            request=_build_request(), container_name="missing", container_id=None
+        )
     assert exc_info.value.status_code == 404
 
 
@@ -201,13 +203,16 @@ async def test_gateway_delete_preserves_tactic_error_status():
             "missing", status=404, body={"detail": "RADAR service not found"}
         )
     )
-    with patch(
-        "off_key_api_gateway.api.v1.monitors.tactic.delete_radar_service", mock_delete
+    with (
+        patch(
+            "off_key_api_gateway.api.v1.monitors.tactic.delete_radar_service",
+            mock_delete,
+        ),
+        pytest.raises(HTTPException) as exc_info,
     ):
-        with pytest.raises(HTTPException) as exc_info:
-            await inspect.unwrap(delete_monitoring_service)(
-                request=_build_request(), service_id="missing"
-            )
+        await inspect.unwrap(delete_monitoring_service)(
+            request=_build_request(), service_id="missing"
+        )
     assert exc_info.value.status_code == 404
 
 

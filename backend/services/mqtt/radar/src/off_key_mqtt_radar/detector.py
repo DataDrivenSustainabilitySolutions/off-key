@@ -203,7 +203,7 @@ class StaticConformalDetectionService:
         self.conformal_detector = checkpoint.get("conformal_detector")
         self.alarm_controller = checkpoint.get("alarm_controller")
         if not isinstance(self.alarm_controller, RestartedMartingaleAlarmController):
-            raise ValueError(
+            raise TypeError(
                 "Static checkpoint is missing a valid alarm_controller. "
                 "Starting fresh is required."
             )
@@ -303,7 +303,10 @@ class StaticConformalDetectionService:
         return hashlib.sha256(payload_json.encode("utf-8")).hexdigest()
 
     def process_data_point(
-        self, data: dict[str, float], topic: str = None, charger_id: str = None
+        self,
+        data: dict[str, float],
+        topic: str | None = None,
+        charger_id: str | None = None,
     ) -> AnomalyResult:
         start_time = time.time()
         self._complete_training_if_ready()

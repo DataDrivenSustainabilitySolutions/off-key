@@ -110,19 +110,19 @@ class Tactic:
                     backoff = 0.2 * attempt
                     logger.warning(
                         f"TACTIC client error (attempt {attempt}/{self._max_retries}): "
-                        f"{method} {url} - {str(e)}; retrying in {backoff:.1f}s"
+                        f"{method} {url} - {e!s}; retrying in {backoff:.1f}s"
                     )
                     await asyncio.sleep(backoff)
                     continue
-                logger.error(f"TACTIC client error: {method} {url} - {str(e)}")
+                logger.error(f"TACTIC client error: {method} {url} - {e!s}")
                 raise TacticError(
-                    f"Failed to communicate with TACTIC service: {str(e)}"
+                    f"Failed to communicate with TACTIC service: {e!s}"
                 ) from e
             except TacticError:
                 raise
             except Exception as e:
-                logger.error(f"TACTIC request error: {method} {url} - {str(e)}")
-                raise TacticError(f"TACTIC request error: {str(e)}") from e
+                logger.error(f"TACTIC request error: {method} {url} - {e!s}")
+                raise TacticError(f"TACTIC request error: {e!s}") from e
 
     def _normalize_query_params(self, params: dict | None) -> dict | None:
         """

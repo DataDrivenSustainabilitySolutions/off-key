@@ -56,8 +56,9 @@ def validate_settings(
     lines = [f"{context} validation failed:"]
     for name, exc in failures:
         if isinstance(exc, ValidationError):
-            for detail in _format_validation_error(exc):
-                lines.append(f"{name}: {detail}")
+            lines.extend(
+                f"{name}: {detail}" for detail in _format_validation_error(exc)
+            )
         else:
             lines.append(f"{name}: {exc}")
 

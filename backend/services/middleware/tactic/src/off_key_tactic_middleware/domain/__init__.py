@@ -10,10 +10,10 @@ from .errors import (
 )
 
 __all__ = [
-    "DomainError",
-    "NotFoundError",
-    "ConflictError",
     "AuthenticationError",
-    "ValidationError",
+    "ConflictError",
+    "DomainError",
     "InfrastructureError",
+    "NotFoundError",
+    "ValidationError",
 ]

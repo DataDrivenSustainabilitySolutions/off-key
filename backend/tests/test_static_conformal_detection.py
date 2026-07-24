@@ -309,17 +309,18 @@ def test_static_conformal_restores_ready_checkpoint(monkeypatch, tmp_path):
 
 
 @pytest.mark.parametrize(
-    ("missing_key", "expected_message"),
+    ("missing_key", "expected_exception", "expected_message"),
     [
-        ("feature_keys", "feature_keys"),
-        ("conformal_detector", "conformal_detector"),
-        ("alarm_controller", "alarm_controller"),
+        ("feature_keys", ValueError, "feature_keys"),
+        ("conformal_detector", ValueError, "conformal_detector"),
+        ("alarm_controller", TypeError, "alarm_controller"),
     ],
 )
 def test_static_conformal_rejects_incomplete_ready_checkpoint(
     monkeypatch,
     tmp_path,
     missing_key,
+    expected_exception,
     expected_message,
 ):
     config = _static_config()
@@ -344,7 +345,7 @@ def test_static_conformal_rejects_incomplete_ready_checkpoint(
     checkpoint_path = tmp_path / f"missing-{missing_key}.pkl"
     checkpoint_path.write_bytes(pickle.dumps(checkpoint))
 
-    with pytest.raises(ValueError, match=expected_message):
+    with pytest.raises(expected_exception, match=expected_message):
         StaticConformalDetectionService.from_checkpoint(str(checkpoint_path), config)
 
 

@@ -8,10 +8,10 @@ from .telemetry import TelemetryQueryService
 from .users import UserService
 
 __all__ = [
+    "AnomalyService",
     "ChargerQueryService",
+    "FavoriteService",
+    "MonitoringEvidenceService",
     "TelemetryQueryService",
     "UserService",
-    "FavoriteService",
-    "AnomalyService",
-    "MonitoringEvidenceService",
 ]

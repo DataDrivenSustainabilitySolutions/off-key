@@ -1,5 +1,6 @@
 import asyncio
 import time
+from contextlib import suppress
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
@@ -75,10 +76,8 @@ class TestMQTTAsyncEventHandling:
                 and not client._message_processor_task.done()
             ):
                 client._message_processor_task.cancel()
-                try:
+                with suppress(asyncio.CancelledError):
                     await client._message_processor_task
-                except asyncio.CancelledError:
-                    pass
 
     @pytest.mark.asyncio
     async def test_event_loop_not_initialized(self, mqtt_client):
@@ -603,10 +602,8 @@ class TestMQTTAsyncEventHandling:
             mock_client.connect_async.side_effect = Exception("Connection failed")
 
             # Attempt connection should handle failure
-            try:
+            with suppress(Exception):
                 await mqtt_client._connect()
-            except Exception:
-                pass
 
             # Should track reconnection attempts
             assert mqtt_client.reconnect_attempts >= 0

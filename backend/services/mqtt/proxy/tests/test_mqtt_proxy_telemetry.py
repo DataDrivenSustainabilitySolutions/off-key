@@ -5,12 +5,9 @@ import pytest
 from off_key_core.utils.enum import HealthStatus
 from off_key_core.utils.mqtt_topics import TopicMetadataExtractor
 from off_key_mqtt_proxy.client.models import MQTTMessage
-from off_key_mqtt_proxy.telemetry import (
-    DatabaseWriter,
-    ParseFailure,
-    ParseSuccess,
-    WriteBatch,
-)
+from off_key_mqtt_proxy.telemetry import DatabaseWriter
+from off_key_mqtt_proxy.telemetry_models import ParseFailure, ParseSuccess, WriteBatch
+from off_key_mqtt_proxy.telemetry_parsing import parse_telemetry_message
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 
@@ -26,8 +23,7 @@ def _writer() -> DatabaseWriter:
     )
 
 
-@pytest.mark.asyncio
-async def test_parse_telemetry_message_converts_offset_timestamp_to_utc():
+def test_parse_telemetry_message_converts_offset_timestamp_to_utc():
     writer = _writer()
     message = MQTTMessage(
         topic="charger/charger-1/live-telemetry/sine",
@@ -37,15 +33,14 @@ async def test_parse_telemetry_message_converts_offset_timestamp_to_utc():
         retain=False,
     )
 
-    result = await writer._parse_telemetry_message(message)
+    result = parse_telemetry_message(message, writer.topic_extractor)
 
     assert isinstance(result, ParseSuccess)
     assert result.record.timestamp == datetime(2024, 1, 1, 10, 0, tzinfo=UTC)
     assert result.record.created.tzinfo is not None
 
 
-@pytest.mark.asyncio
-async def test_parse_telemetry_message_treats_naive_timestamp_as_utc():
+def test_parse_telemetry_message_treats_naive_timestamp_as_utc():
     writer = _writer()
     message = MQTTMessage(
         topic="charger/charger-1/live-telemetry/sine",
@@ -55,14 +50,13 @@ async def test_parse_telemetry_message_treats_naive_timestamp_as_utc():
         retain=False,
     )
 
-    result = await writer._parse_telemetry_message(message)
+    result = parse_telemetry_message(message, writer.topic_extractor)
 
     assert isinstance(result, ParseSuccess)
     assert result.record.timestamp == datetime(2024, 1, 1, 12, 0, tzinfo=UTC)
 
 
-@pytest.mark.asyncio
-async def test_parse_telemetry_message_invalid_topic_returns_safe_failure():
+def test_parse_telemetry_message_invalid_topic_returns_safe_failure():
     writer = _writer()
     message = MQTTMessage(
         topic="charger/abc/live-telemetry",
@@ -72,14 +66,13 @@ async def test_parse_telemetry_message_invalid_topic_returns_safe_failure():
         retain=False,
     )
 
-    result = await writer._parse_telemetry_message(message)
+    result = parse_telemetry_message(message, writer.topic_extractor)
 
     assert isinstance(result, ParseFailure)
     assert not result.is_error
 
 
-@pytest.mark.asyncio
-async def test_parse_telemetry_message_invalid_timestamp_returns_safe_failure():
+def test_parse_telemetry_message_invalid_timestamp_returns_safe_failure():
     writer = _writer()
     message = MQTTMessage(
         topic="charger/charger-1/live-telemetry/sine",
@@ -89,15 +82,14 @@ async def test_parse_telemetry_message_invalid_timestamp_returns_safe_failure():
         retain=False,
     )
 
-    result = await writer._parse_telemetry_message(message)
+    result = parse_telemetry_message(message, writer.topic_extractor)
 
     assert isinstance(result, ParseFailure)
     assert not result.is_error
     assert result.reason == "Invalid timestamp format"
 
 
-@pytest.mark.asyncio
-async def test_parse_telemetry_message_invalid_timezone_offset_returns_safe_failure():
+def test_parse_telemetry_message_invalid_timezone_offset_returns_safe_failure():
     writer = _writer()
     message = MQTTMessage(
         topic="charger/charger-1/live-telemetry/sine",
@@ -107,15 +99,14 @@ async def test_parse_telemetry_message_invalid_timezone_offset_returns_safe_fail
         retain=False,
     )
 
-    result = await writer._parse_telemetry_message(message)
+    result = parse_telemetry_message(message, writer.topic_extractor)
 
     assert isinstance(result, ParseFailure)
     assert not result.is_error
     assert result.reason == "Invalid timestamp format"
 
 
-@pytest.mark.asyncio
-async def test_parse_telemetry_message_utc_suffix_timestamp():
+def test_parse_telemetry_message_utc_suffix_timestamp():
     writer = _writer()
     message = MQTTMessage(
         topic="charger/charger-1/live-telemetry/sine",
@@ -125,14 +116,13 @@ async def test_parse_telemetry_message_utc_suffix_timestamp():
         retain=False,
     )
 
-    result = await writer._parse_telemetry_message(message)
+    result = parse_telemetry_message(message, writer.topic_extractor)
 
     assert isinstance(result, ParseSuccess)
     assert result.record.timestamp == datetime(2024, 1, 1, 12, 0, tzinfo=UTC)
 
 
-@pytest.mark.asyncio
-async def test_parse_telemetry_message_unix_epoch_timestamp():
+def test_parse_telemetry_message_unix_epoch_timestamp():
     writer = _writer()
     message = MQTTMessage(
         topic="charger/charger-1/live-telemetry/sine",
@@ -142,14 +132,13 @@ async def test_parse_telemetry_message_unix_epoch_timestamp():
         retain=False,
     )
 
-    result = await writer._parse_telemetry_message(message)
+    result = parse_telemetry_message(message, writer.topic_extractor)
 
     assert isinstance(result, ParseSuccess)
     assert result.record.timestamp == datetime.fromtimestamp(1704110400, tz=UTC)
 
 
-@pytest.mark.asyncio
-async def test_parse_telemetry_message_invalid_value_is_treated_as_none():
+def test_parse_telemetry_message_invalid_value_is_treated_as_none():
     writer = _writer()
     message = MQTTMessage(
         topic="charger/charger-1/live-telemetry/sine",
@@ -159,7 +148,7 @@ async def test_parse_telemetry_message_invalid_value_is_treated_as_none():
         retain=False,
     )
 
-    result = await writer._parse_telemetry_message(message)
+    result = parse_telemetry_message(message, writer.topic_extractor)
 
     assert isinstance(result, ParseSuccess)
     assert result.record.value is None
@@ -183,7 +172,7 @@ async def test_process_batch_uses_rowcount_for_written_records():
         qos=0,
         retain=False,
     )
-    result = await writer._parse_telemetry_message(message)
+    result = parse_telemetry_message(message, writer.topic_extractor)
     assert isinstance(result, ParseSuccess)
 
     session = AsyncMock()
@@ -219,7 +208,7 @@ async def test_process_batch_falls_back_to_batch_size_when_rowcount_is_none():
         qos=0,
         retain=False,
     )
-    result = await writer._parse_telemetry_message(message)
+    result = parse_telemetry_message(message, writer.topic_extractor)
     assert isinstance(result, ParseSuccess)
 
     session = AsyncMock()
@@ -255,7 +244,7 @@ async def test_process_batch_falls_back_to_batch_size_when_rowcount_is_negative(
         qos=0,
         retain=False,
     )
-    result = await writer._parse_telemetry_message(message)
+    result = parse_telemetry_message(message, writer.topic_extractor)
     assert isinstance(result, ParseSuccess)
 
     session = AsyncMock()
@@ -290,7 +279,7 @@ async def test_process_batch_integrity_error_treated_as_success(monkeypatch):
         qos=0,
         retain=False,
     )
-    result = await writer._parse_telemetry_message(message)
+    result = parse_telemetry_message(message, writer.topic_extractor)
     assert isinstance(result, ParseSuccess)
 
     session = AsyncMock()
@@ -321,7 +310,7 @@ async def test_process_batch_sqlalchemy_error_propagates_as_failure():
         qos=0,
         retain=False,
     )
-    result = await writer._parse_telemetry_message(message)
+    result = parse_telemetry_message(message, writer.topic_extractor)
     assert isinstance(result, ParseSuccess)
 
     session = AsyncMock()
@@ -350,7 +339,7 @@ async def test_batch_retry_failure_increments_failed_record_metrics(monkeypatch)
         qos=0,
         retain=False,
     )
-    result_one = await writer._parse_telemetry_message(message)
+    result_one = parse_telemetry_message(message, writer.topic_extractor)
     assert isinstance(result_one, ParseSuccess)
 
     message_two = MQTTMessage(
@@ -360,7 +349,7 @@ async def test_batch_retry_failure_increments_failed_record_metrics(monkeypatch)
         qos=0,
         retain=False,
     )
-    result_two = await writer._parse_telemetry_message(message_two)
+    result_two = parse_telemetry_message(message_two, writer.topic_extractor)
     assert isinstance(result_two, ParseSuccess)
 
     batch_id = "test-batch"
@@ -390,7 +379,7 @@ async def test_batch_retry_success_keeps_failed_metrics_at_zero(monkeypatch):
         qos=0,
         retain=False,
     )
-    result = await writer._parse_telemetry_message(message)
+    result = parse_telemetry_message(message, writer.topic_extractor)
     assert isinstance(result, ParseSuccess)
 
     batch_id = "test-batch"

@@ -7,16 +7,14 @@ import time
 from collections import defaultdict
 from collections.abc import Callable
 from contextlib import suppress
-from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from enum import Enum
-from typing import Any
+from types import TracebackType
+from typing import Self
 
 from off_key_core.config.logs import log_performance, logger
 from off_key_core.db.models import Charger, Telemetry
 from off_key_core.utils.enum import HealthStatus
 from off_key_core.utils.mqtt_topics import TopicMetadataExtractor
-from off_key_core.utils.string import string_to_float
 from sqlalchemy import case, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
@@ -24,114 +22,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from .client.models import MQTTMessage
 from .config.config import MQTTConfig
-
-
-@dataclass
-class WriterPerformanceMetrics:
-    """Database writer performance metrics"""
-
-    total_records_received: int
-    total_records_written: int
-    total_records_failed: int
-    total_batches_processed: int
-    total_batches_failed: int
-    batch_success_rate: float
-    average_write_latency: float
-    pending_batch_size: int
-    processing_batches_count: int
-    failed_batches_count: int
-    unique_chargers_seen: int
-    total_messages_by_charger: dict[str, int]
-
-
-@dataclass
-class WriterHealthStatus:
-    """Database writer health status"""
-
-    status: HealthStatus
-    records_per_second: float
-    batches_per_minute: float
-    performance: WriterPerformanceMetrics
-
-
-class WriteStatus(Enum):
-    """Database write status"""
-
-    PENDING = "pending"
-    PROCESSING = "processing"
-    SUCCESS = "success"
-    FAILED = "failed"
-    RETRYING = "retrying"
-
-
-@dataclass
-class TelemetryRecord:
-    """Telemetry record for database insertion"""
-
-    charger_id: str
-    timestamp: datetime
-    value: float | None
-    telemetry_type: str
-    created: datetime
-    data_source: str = "mqtt"
-
-    def to_dict(self) -> dict[str, Any]:
-        """Convert to dictionary for database insertion"""
-        return {
-            "charger_id": self.charger_id,
-            "timestamp": self.timestamp,
-            "value": self.value,
-            "type": self.telemetry_type,
-            "data_source": self.data_source,
-            "created": self.created,
-        }
-
-
-@dataclass
-class ParseSuccess:
-    """Represents a successfully parsed telemetry record"""
-
-    record: TelemetryRecord
-
-
-@dataclass
-class ParseFailure:
-    """Represents a failed parsing attempt, with context"""
-
-    reason: str
-    is_error: bool  # True for unexpected errors, False for safe skips
-    log_message: str
-    context: dict[str, Any]
-
-
-ParseResult = ParseSuccess | ParseFailure
-
-
-@dataclass
-class WriteBatch:
-    """Batch of telemetry records for database insertion"""
-
-    records: list[TelemetryRecord] = field(default_factory=list)
-    created_at: datetime = field(default_factory=datetime.now)
-    status: WriteStatus = WriteStatus.PENDING
-    retry_count: int = 0
-    last_error: str | None = None
-
-    def add_record(self, record: TelemetryRecord):
-        """Add record to batch"""
-        self.records.append(record)
-
-    def size(self) -> int:
-        """Get batch size"""
-        return len(self.records)
-
-    def get_charger_ids(self) -> set:
-        """Get unique charger IDs in batch"""
-        return {record.charger_id for record in self.records}
-
-    def get_age_seconds(self) -> float:
-        """Get batch age in seconds"""
-        return (datetime.now() - self.created_at).total_seconds()
+from .telemetry_models import (
+    ParseFailure,
+    WriteBatch,
+    WriterHealthStatus,
+    WriterPerformanceMetrics,
+    WriteStatus,
+)
+from .telemetry_parsing import parse_telemetry_message
 
 
 class DatabaseWriter:
@@ -153,7 +51,7 @@ class DatabaseWriter:
         config: MQTTConfig,
         session_factory: Callable[[], AsyncSession],
         topic_extractor: TopicMetadataExtractor,
-    ):
+    ) -> None:
         self.config = config
         self._session_factory = session_factory
         self.topic_extractor = topic_extractor
@@ -183,9 +81,9 @@ class DatabaseWriter:
         self.charger_message_counts: dict[str, int] = defaultdict(int)
 
         # Background tasks
-        self._writer_task: asyncio.Task | None = None
-        self._health_task: asyncio.Task | None = None
-        self._batch_tasks: set[asyncio.Task] = set()
+        self._writer_task: asyncio.Task[None] | None = None
+        self._health_task: asyncio.Task[None] | None = None
+        self._batch_tasks: set[asyncio.Task[None]] = set()
         self._next_batch_id = 0
         self._shutdown_event = asyncio.Event()
         self._batch_ready_event = asyncio.Event()
@@ -193,14 +91,19 @@ class DatabaseWriter:
         # Logging context
         self._log_context = {"component": "database_writer", "service": "mqtt_proxy"}
 
-    async def __aenter__(self):
+    async def __aenter__(self) -> Self:
         await self.start()
         return self
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> None:
         await self.stop()
 
-    async def start(self):
+    async def start(self) -> None:
         """Start the database writer"""
         logger.info("event=db_writer.started", extra=self._log_context)
 
@@ -218,7 +121,7 @@ class DatabaseWriter:
             },
         )
 
-    async def stop(self):
+    async def stop(self) -> None:
         """Stop the database writer"""
         logger.debug("event=db_writer.stopping", extra=self._log_context)
 
@@ -260,7 +163,7 @@ class DatabaseWriter:
 
         logger.debug("event=db_writer.stopped", extra=self._log_context)
 
-    async def write_telemetry_message(self, message: MQTTMessage):
+    async def write_telemetry_message(self, message: MQTTMessage) -> None:
         """
         Write MQTT telemetry message to database
 
@@ -268,7 +171,7 @@ class DatabaseWriter:
             message: MQTT message containing telemetry data
         """
         # Parse message with explicit result handling
-        parse_result = await self._parse_telemetry_message(message)
+        parse_result = parse_telemetry_message(message, self.topic_extractor)
 
         if isinstance(parse_result, ParseFailure):
             # Handle failure with centralized logging
@@ -319,100 +222,7 @@ class DatabaseWriter:
         if pending_batch_size >= self.batch_size:
             self._batch_ready_event.set()
 
-    async def _parse_telemetry_message(self, message: MQTTMessage) -> ParseResult:
-        """Parse MQTT message and return an explicit success or failure object"""
-        try:
-            payload = message.payload
-            metadata = self.topic_extractor.extract(message.topic, payload)
-            if metadata is None:
-                return ParseFailure(
-                    reason="Topic metadata extraction failed",
-                    is_error=False,
-                    log_message=(
-                        f"Unable to extract metadata from topic: {message.topic}"
-                    ),
-                    context={"topic": message.topic},
-                )
-
-            charger_id = metadata.charger_id
-            telemetry_type = metadata.telemetry_type
-            if not telemetry_type:
-                return ParseFailure(
-                    reason="Missing telemetry type",
-                    is_error=False,
-                    log_message=(
-                        f"Missing telemetry type after extraction: {message.topic}"
-                    ),
-                    context={
-                        "charger_id": charger_id,
-                        "topic": message.topic,
-                    },
-                )
-
-            # Extract value and timestamp from payload
-            # Parse timestamp
-            timestamp_value = payload.get("timestamp")
-            if timestamp_value is not None:
-                try:
-                    if isinstance(timestamp_value, (int, float)):
-                        timestamp = datetime.fromtimestamp(
-                            timestamp_value,
-                            tz=UTC,
-                        )
-                    else:
-                        timestamp_str = str(timestamp_value).strip()
-                        if not timestamp_str:
-                            raise ValueError("empty timestamp")
-                        timestamp = datetime.fromisoformat(
-                            timestamp_str.replace("Z", "+00:00")
-                        )
-
-                    if timestamp.tzinfo:
-                        timestamp = timestamp.astimezone(UTC)
-                    else:
-                        timestamp = timestamp.replace(tzinfo=UTC)
-                except (ValueError, TypeError, OSError) as e:
-                    timestamp_context = str(timestamp_value)
-                    return ParseFailure(
-                        reason="Invalid timestamp format",
-                        is_error=False,
-                        log_message=f"Invalid timestamp format: {timestamp_context}",
-                        context={
-                            "charger_id": charger_id,
-                            "timestamp": timestamp_context,
-                            "error": str(e),
-                        },
-                    )
-            else:
-                timestamp = datetime.now(UTC)
-
-            # Parse value
-            value = string_to_float(payload.get("value"))
-
-            # Create record
-            record = TelemetryRecord(
-                charger_id=charger_id,
-                timestamp=timestamp,
-                value=value,
-                telemetry_type=telemetry_type,
-                created=datetime.now(UTC),
-            )
-
-            return ParseSuccess(record=record)
-
-        except Exception as e:
-            return ParseFailure(
-                reason="Unexpected parsing error",
-                is_error=True,
-                log_message=f"Error parsing telemetry message: {e}",
-                context={
-                    "topic": message.topic,
-                    "payload": message.payload,
-                    "error": str(e),
-                },
-            )
-
-    async def _trigger_batch_processing(self):
+    async def _trigger_batch_processing(self) -> asyncio.Task[None] | None:
         """Trigger processing of current batch"""
         if self.pending_batch.size() == 0:
             return None
@@ -459,7 +269,7 @@ class DatabaseWriter:
                 with suppress(asyncio.CancelledError):
                     await task
 
-    async def _writer_loop(self):
+    async def _writer_loop(self) -> None:
         """Background loop for batch processing"""
         try:
             while not self._shutdown_event.is_set():
@@ -506,7 +316,7 @@ class DatabaseWriter:
                 exc_info=True,
             )
 
-    async def _process_batch_with_retry(self, batch_id: str):
+    async def _process_batch_with_retry(self, batch_id: str) -> None:
         """Process batch with retry logic"""
         batch = self.processing_batches.get(batch_id)
         if not batch:
@@ -847,7 +657,7 @@ class DatabaseWriter:
                 extra={**self._log_context, "error": str(exc)},
             )
 
-    async def _health_monitor_loop(self):
+    async def _health_monitor_loop(self) -> None:
         """Background health monitoring loop"""
         try:
             while not self._shutdown_event.is_set():

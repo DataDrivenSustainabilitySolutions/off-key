@@ -52,9 +52,7 @@ async def test_initialize_database_migrates_anomalies_before_create_all():
     service._migrate_model_registry_family = AsyncMock(
         side_effect=_record_registry_migration
     )
-    service._ensure_chart_query_indexes = AsyncMock(
-        side_effect=_record_chart_indexes
-    )
+    service._ensure_chart_query_indexes = AsyncMock(side_effect=_record_chart_indexes)
 
     @asynccontextmanager
     async def _begin():
@@ -96,8 +94,7 @@ async def test_ensure_chart_query_indexes_are_idempotent():
     assert "ON telemetry (charger_id, type, created, timestamp)" in executed_sql
     assert (
         "ON monitoring_evidence "
-        "(charger_id, created, timestamp, service_id, sequence_number)"
-        in executed_sql
+        "(charger_id, created, timestamp, service_id, sequence_number)" in executed_sql
     )
 
 

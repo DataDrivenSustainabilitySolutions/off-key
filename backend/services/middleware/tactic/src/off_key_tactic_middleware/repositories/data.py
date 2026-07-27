@@ -100,8 +100,7 @@ class TelemetryRepository:
         query = query.limit(limit)
         result = await self._session.execute(query)
         return [
-            (timestamp, value, created)
-            for timestamp, value, created in result.all()
+            (timestamp, value, created) for timestamp, value, created in result.all()
         ]
 
 

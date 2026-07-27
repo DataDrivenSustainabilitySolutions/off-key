@@ -105,8 +105,8 @@ def get_radar_async_session_factory():
         engine = create_async_engine(
             database_url,
             pool_pre_ping=True,
-            pool_size=5,
-            max_overflow=10,
+            pool_size=2,
+            max_overflow=0,
         )
 
         _radar_async_session_factory = sessionmaker(
@@ -153,6 +153,7 @@ class DatabaseWriter:
         # Control
         self._writer_task: asyncio.Task | None = None
         self._shutdown_event = asyncio.Event()
+        self._flush_event = asyncio.Event()
         self._queue_lock = asyncio.Lock()
         self._flush_lock = asyncio.Lock()
 
@@ -165,6 +166,7 @@ class DatabaseWriter:
             return
 
         self._shutdown_event.clear()
+        self._flush_event.clear()
 
         # Initialize session factory lazily to avoid failing when disabled
         if self.session_factory is None:
@@ -184,6 +186,7 @@ class DatabaseWriter:
 
         # Signal shutdown
         self._shutdown_event.set()
+        self._flush_event.set()
 
         cancelled_error: asyncio.CancelledError | None = None
 
@@ -217,13 +220,18 @@ class DatabaseWriter:
 
         async with self._queue_lock:
             self.write_queue.append(result)
+            queue_size = len(self.write_queue)
             should_flush = (
-                len(self.write_queue) >= self.config.db_batch_size
+                queue_size >= self.config.db_batch_size
                 or (time.time() - self.last_write_time) > self.config.db_batch_timeout
             )
 
-        # Check if we should flush batch
+        # Keep the MQTT consumer off the database I/O path during normal operation.
         if should_flush:
+            self._flush_event.set()
+
+        # Preserve bounded backpressure if persistence cannot keep up.
+        if queue_size >= self.config.max_queue_size:
             await self._flush_batch()
 
     async def write_anomaly(self, result: AnomalyResult):
@@ -330,23 +338,19 @@ class DatabaseWriter:
         logger.info("event=radar.db_writer_loop_started")
 
         try:
-            while not self._shutdown_event.is_set():
+            while True:
                 try:
-                    # Wait for batch timeout
                     await asyncio.wait_for(
-                        self._shutdown_event.wait(),
+                        self._flush_event.wait(),
                         timeout=self.config.db_batch_timeout,
                     )
-                    # Shutdown event was set
-                    break
                 except TimeoutError:
-                    # Timeout reached, check if we should flush
-                    if (
-                        self.write_queue
-                        and (time.time() - self.last_write_time)
-                        > self.config.db_batch_timeout
-                    ):
-                        await self._flush_batch()
+                    pass
+
+                self._flush_event.clear()
+                await self._flush_batch()
+                if self._shutdown_event.is_set():
+                    break
 
         except asyncio.CancelledError:
             logger.debug("event=radar.db_writer_loop_cancelled")

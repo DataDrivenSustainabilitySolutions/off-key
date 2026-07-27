@@ -36,6 +36,9 @@ async def test_initialize_database_migrates_anomalies_before_create_all():
     async def _record_registry_migration(_conn):
         call_order.append("migrate_model_registry")
 
+    async def _record_chart_indexes(_conn):
+        call_order.append("ensure_chart_query_indexes")
+
     service._migrate_anomaly_identity = AsyncMock(side_effect=_record_anomaly_migration)
     service._migrate_anomaly_value_type = AsyncMock(
         side_effect=_record_value_type_migration
@@ -48,6 +51,9 @@ async def test_initialize_database_migrates_anomalies_before_create_all():
     )
     service._migrate_model_registry_family = AsyncMock(
         side_effect=_record_registry_migration
+    )
+    service._ensure_chart_query_indexes = AsyncMock(
+        side_effect=_record_chart_indexes
     )
 
     @asynccontextmanager
@@ -70,7 +76,29 @@ async def test_initialize_database_migrates_anomalies_before_create_all():
         "migrate_service_operational_status",
         "migrate_model_registry",
         "create_all",
+        "ensure_chart_query_indexes",
     ]
+
+
+@pytest.mark.asyncio
+async def test_ensure_chart_query_indexes_are_idempotent():
+    service = SyncService()
+    conn = AsyncMock()
+    conn.execute = AsyncMock()
+
+    await service._ensure_chart_query_indexes(conn)
+
+    executed_sql = " ".join(
+        str(call.args[0]) for call in conn.execute.await_args_list if call.args
+    )
+    assert "CREATE INDEX IF NOT EXISTS" in executed_sql
+    assert "ON telemetry (charger_id, type, timestamp DESC)" in executed_sql
+    assert "ON telemetry (charger_id, type, created, timestamp)" in executed_sql
+    assert (
+        "ON monitoring_evidence "
+        "(charger_id, created, timestamp, service_id, sequence_number)"
+        in executed_sql
+    )
 
 
 @pytest.mark.asyncio

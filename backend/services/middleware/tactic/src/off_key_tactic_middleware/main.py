@@ -20,6 +20,7 @@ from off_key_core.config.logs import (
 )
 from off_key_core.config.validation import validate_settings
 from off_key_core.db.base import get_async_session_local
+from starlette.middleware.gzip import GZipMiddleware
 
 from .api.v1 import data_services, models, radar
 from .api.v1.admin_models import router as admin_models_router
@@ -220,6 +221,7 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=5)
 
     # Include API routers
     app.include_router(

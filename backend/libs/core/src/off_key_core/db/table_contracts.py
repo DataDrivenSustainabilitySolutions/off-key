@@ -50,6 +50,14 @@ def monitoring_evidence_table(metadata: MetaData) -> Table:
             "timestamp",
         ),
         Index(
+            "idx_monitoring_evidence_charger_created_cursor",
+            "charger_id",
+            "created",
+            "timestamp",
+            "service_id",
+            "sequence_number",
+        ),
+        Index(
             "idx_monitoring_evidence_service_sequence",
             "service_id",
             "sequence_number",

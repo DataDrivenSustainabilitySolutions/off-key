@@ -14,6 +14,7 @@ def db_config():
     config = MagicMock()
     config.db_batch_size = 2
     config.db_batch_timeout = 5.0
+    config.max_queue_size = 100
     config.db_write_enabled = True
     return config
 
@@ -32,12 +33,47 @@ async def test_write_anomaly_adds_to_queue(db_config, sample_anomaly_result):
 
 
 @pytest.mark.asyncio
-async def test_write_anomaly_flushes_when_batch_size_reached(
+async def test_write_anomaly_signals_writer_when_batch_size_reached(
     db_config,
     sample_anomaly_result,
 ):
     from off_key_mqtt_radar.database import DatabaseWriter
 
+    writer = DatabaseWriter(db_config, session_factory=AsyncMock())
+    writer._flush_batch = AsyncMock()
+
+    await writer.write_anomaly(sample_anomaly_result)
+    await writer.write_anomaly(sample_anomaly_result)
+
+    assert writer._flush_event.is_set()
+    writer._flush_batch.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_writer_loop_flushes_signalled_batch(db_config):
+    from off_key_mqtt_radar.database import DatabaseWriter
+
+    writer = DatabaseWriter(db_config, session_factory=AsyncMock())
+    writer._flush_batch = AsyncMock()
+
+    task = asyncio.create_task(writer._writer_loop())
+    writer._flush_event.set()
+    await asyncio.sleep(0)
+    writer._shutdown_event.set()
+    writer._flush_event.set()
+    await task
+
+    assert writer._flush_batch.await_count >= 1
+
+
+@pytest.mark.asyncio
+async def test_write_anomaly_applies_backpressure_at_queue_limit(
+    db_config,
+    sample_anomaly_result,
+):
+    from off_key_mqtt_radar.database import DatabaseWriter
+
+    db_config.max_queue_size = 2
     writer = DatabaseWriter(db_config, session_factory=AsyncMock())
     writer._flush_batch = AsyncMock()
 

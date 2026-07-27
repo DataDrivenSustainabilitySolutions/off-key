@@ -348,6 +348,8 @@ class Tactic:
         telemetry_type: str,
         limit: int = 1000,
         after_timestamp: datetime | None = None,
+        after_created: datetime | None = None,
+        after_event_timestamp: datetime | None = None,
         paginated: bool = False,
     ) -> Any:
         """Get telemetry data from TACTIC data service."""
@@ -358,6 +360,13 @@ class Tactic:
         }
         if after_timestamp is not None:
             params["after_timestamp"] = after_timestamp.isoformat()
+        if after_created is not None:
+            if after_event_timestamp is None:
+                raise TacticError(
+                    "after_event_timestamp is required when after_created is provided"
+                )
+            params["after_created"] = after_created.isoformat()
+            params["after_event_timestamp"] = after_event_timestamp.isoformat()
 
         return await self._make_request(
             method="GET",
@@ -475,6 +484,42 @@ class Tactic:
         return await self._make_request(
             method="GET",
             endpoint=f"/api/v1/data/monitoring-evidence/{charger_id}",
+            params=params,
+        )
+
+    async def get_monitoring_chart_evidence(
+        self,
+        *,
+        charger_id: str,
+        after_created: datetime | None = None,
+        after_timestamp: datetime | None = None,
+        after_service_id: str | None = None,
+        after_sequence_number: int | None = None,
+        limit: int = 2000,
+    ) -> list[dict[str, Any]]:
+        """Get the compact, incrementally pageable chart evidence projection."""
+        params: dict[str, Any] = {"limit": limit}
+        if after_created is not None:
+            if (
+                after_timestamp is None
+                or after_service_id is None
+                or after_sequence_number is None
+            ):
+                raise TacticError(
+                    "after_timestamp, after_service_id and after_sequence_number "
+                    "are required when after_created is provided"
+                )
+            params.update(
+                {
+                    "after_created": after_created.isoformat(),
+                    "after_timestamp": after_timestamp.isoformat(),
+                    "after_service_id": after_service_id,
+                    "after_sequence_number": after_sequence_number,
+                }
+            )
+        return await self._make_request(
+            method="GET",
+            endpoint=f"/api/v1/data/monitoring-evidence/{charger_id}/chart",
             params=params,
         )
 

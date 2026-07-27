@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from typing import Any, Optional
 
 from fastapi import APIRouter, HTTPException, Query, Request, Response
@@ -169,6 +170,55 @@ async def get_monitoring_evidence(
         return await tactic.get_monitoring_evidence(
             charger_id=charger_id,
             telemetry_type=telemetry_type,
+            limit=limit,
+        )
+    except TacticError as error:
+        raise_tactic_http_error(error)
+
+
+@router.get("/evidence/chart", response_model=list[dict[str, Any]])
+@shared_limit_fetch
+async def get_monitoring_chart_evidence(
+    request: Request,
+    charger_id: str,
+    after_created: datetime | None = None,
+    after_timestamp: datetime | None = None,
+    after_service_id: str | None = None,
+    after_sequence_number: int | None = Query(default=None, ge=1),
+    limit: int = Query(default=2000, ge=1, le=10000),
+):
+    cursor_values = (
+        after_created,
+        after_timestamp,
+        after_service_id,
+        after_sequence_number,
+    )
+    if any(value is not None for value in cursor_values) and not all(
+        value is not None for value in cursor_values
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail="All monitoring evidence cursor fields are required together",
+        )
+    if after_created is not None:
+        after_created = (
+            after_created.replace(tzinfo=UTC)
+            if after_created.tzinfo is None
+            else after_created.astimezone(UTC)
+        )
+    if after_timestamp is not None:
+        after_timestamp = (
+            after_timestamp.replace(tzinfo=UTC)
+            if after_timestamp.tzinfo is None
+            else after_timestamp.astimezone(UTC)
+        )
+    try:
+        return await tactic.get_monitoring_chart_evidence(
+            charger_id=charger_id,
+            after_created=after_created,
+            after_timestamp=after_timestamp,
+            after_service_id=after_service_id,
+            after_sequence_number=after_sequence_number,
             limit=limit,
         )
     except TacticError as error:

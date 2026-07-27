@@ -5,7 +5,6 @@ These schemas define the data transfer objects used for API requests and respons
 """
 
 from datetime import datetime
-from typing import Any
 
 from off_key_core.utils.enum import RoleEnum
 from pydantic import BaseModel, ConfigDict, Field
@@ -53,6 +52,22 @@ class TelemetryDataPoint(BaseModel):
 
     timestamp: str
     value: float | None
+    created: str
+
+
+class TelemetryCursorResponse(BaseModel):
+    """Composite ingestion cursor for telemetry pagination."""
+
+    created: str
+    timestamp: str
+
+
+class TelemetryPaginationResponse(BaseModel):
+    """Telemetry page metadata."""
+
+    limit: int
+    has_more: bool
+    next_cursor: TelemetryCursorResponse | None
 
 
 class TelemetryResponse(BaseModel):
@@ -72,7 +87,7 @@ class TelemetryPaginatedResponse(BaseModel):
     """Paginated response for telemetry data."""
 
     data: list[TelemetryDataPoint]
-    pagination: dict[str, Any]
+    pagination: TelemetryPaginationResponse
 
 
 # =============================================================================
@@ -202,6 +217,19 @@ class MonitoringEvidenceResponse(BaseModel):
     alarm: bool
 
 
+class MonitoringChartEvidenceResponse(BaseModel):
+    """Minimal persisted evidence used by telemetry chart overlays."""
+
+    service_id: str
+    timestamp: datetime
+    sequence_number: int
+    sensor_set: list[str]
+    restarted_martingale: float | None = None
+    threshold: float
+    alarm: bool
+    created: datetime
+
+
 # =============================================================================
 # Generic Response Schemas
 # =============================================================================
@@ -233,6 +261,8 @@ __all__ = [
     "FavoriteResponse",
     "MessageResponse",
     "TelemetryDataPoint",
+    "TelemetryCursorResponse",
+    "TelemetryPaginationResponse",
     "TelemetryPaginatedResponse",
     "TelemetryResponse",
     "TelemetryTypeResponse",

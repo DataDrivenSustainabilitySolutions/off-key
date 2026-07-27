@@ -11,7 +11,8 @@ from off_key_core.db.models import (
     Telemetry,
     User,
 )
-from sqlalchemy import and_, func, select
+from sqlalchemy import and_, func, or_, select
+from sqlalchemy.engine import Row
 from sqlalchemy.ext.asyncio import AsyncSession
 
 
@@ -70,17 +71,38 @@ class TelemetryRepository:
         telemetry_type: str,
         limit: int,
         after_timestamp: datetime | None,
-    ) -> list[Telemetry]:
-        query = select(Telemetry).where(
+        after_created: datetime | None,
+        after_event_timestamp: datetime | None,
+    ) -> list[tuple[datetime, float | None, datetime | None]]:
+        query = select(Telemetry.timestamp, Telemetry.value, Telemetry.created).where(
             Telemetry.charger_id == charger_id,
             Telemetry.type == telemetry_type,
         )
         if after_timestamp is not None:
             query = query.where(Telemetry.timestamp < after_timestamp)
+        if after_created is not None:
+            if after_event_timestamp is None:
+                raise ValueError(
+                    "after_event_timestamp is required when after_created is provided"
+                )
+            query = query.where(
+                or_(
+                    Telemetry.created > after_created,
+                    and_(
+                        Telemetry.created == after_created,
+                        Telemetry.timestamp > after_event_timestamp,
+                    ),
+                )
+            ).order_by(Telemetry.created.asc(), Telemetry.timestamp.asc())
+        else:
+            query = query.order_by(Telemetry.timestamp.desc())
 
-        query = query.order_by(Telemetry.timestamp.desc()).limit(limit)
+        query = query.limit(limit)
         result = await self._session.execute(query)
-        return list(result.scalars().all())
+        return [
+            (timestamp, value, created)
+            for timestamp, value, created in result.all()
+        ]
 
 
 class UserRepository:
@@ -239,3 +261,84 @@ class MonitoringEvidenceRepository:
         query = query.order_by(MonitoringEvidence.timestamp.desc()).limit(limit)
         result = await self._session.execute(query)
         return list(result.scalars().all())
+
+    async def list_chart_by_charger(
+        self,
+        *,
+        charger_id: str,
+        after_created: datetime | None,
+        after_timestamp: datetime | None,
+        after_service_id: str | None,
+        after_sequence_number: int | None,
+        limit: int,
+    ) -> list[
+        Row[
+            tuple[
+                str,
+                datetime,
+                int,
+                list[str],
+                float | None,
+                float,
+                bool,
+                datetime | None,
+            ]
+        ]
+    ]:
+        query = select(
+            MonitoringEvidence.service_id,
+            MonitoringEvidence.timestamp,
+            MonitoringEvidence.sequence_number,
+            MonitoringEvidence.sensor_set,
+            MonitoringEvidence.restarted_martingale,
+            MonitoringEvidence.threshold,
+            MonitoringEvidence.alarm,
+            MonitoringEvidence.created,
+        ).where(MonitoringEvidence.charger_id == charger_id)
+
+        if after_created is not None:
+            if (
+                after_timestamp is None
+                or after_service_id is None
+                or after_sequence_number is None
+            ):
+                raise ValueError(
+                    "after_timestamp, after_service_id and after_sequence_number "
+                    "are required when after_created is provided"
+                )
+            query = query.where(
+                or_(
+                    MonitoringEvidence.created > after_created,
+                    and_(
+                        MonitoringEvidence.created == after_created,
+                        MonitoringEvidence.timestamp == after_timestamp,
+                        MonitoringEvidence.service_id > after_service_id,
+                    ),
+                    and_(
+                        MonitoringEvidence.created == after_created,
+                        MonitoringEvidence.timestamp == after_timestamp,
+                        MonitoringEvidence.service_id == after_service_id,
+                        MonitoringEvidence.sequence_number > after_sequence_number,
+                    ),
+                    and_(
+                        MonitoringEvidence.created == after_created,
+                        MonitoringEvidence.timestamp > after_timestamp,
+                    ),
+                )
+            ).order_by(
+                MonitoringEvidence.created.asc(),
+                MonitoringEvidence.timestamp.asc(),
+                MonitoringEvidence.service_id.asc(),
+                MonitoringEvidence.sequence_number.asc(),
+            )
+        else:
+            query = query.order_by(
+                MonitoringEvidence.created.desc(),
+                MonitoringEvidence.timestamp.desc(),
+                MonitoringEvidence.service_id.desc(),
+                MonitoringEvidence.sequence_number.desc(),
+            )
+
+        result = await self._session.execute(query.limit(limit))
+        rows = list(result.all())
+        return rows if after_created is not None else list(reversed(rows))

@@ -55,6 +55,7 @@ class SyncService:
                 await self._migrate_service_operational_status(conn)
                 await self._migrate_model_registry_family(conn)
                 await conn.run_sync(Base.metadata.create_all)
+                await self._ensure_chart_query_indexes(conn)
 
             self.schema_ready = True
             logger.info("Database tables created successfully", extra=self._log_context)
@@ -68,6 +69,31 @@ class SyncService:
                 exc_info=True,
             )
             return False
+
+    async def _ensure_chart_query_indexes(self, conn) -> None:
+        """Install chart-query indexes on existing databases."""
+        await conn.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS "
+                "ix_telemetry_charger_type_timestamp_desc "
+                "ON telemetry (charger_id, type, timestamp DESC)"
+            )
+        )
+        await conn.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS "
+                "ix_telemetry_charger_type_created_timestamp "
+                "ON telemetry (charger_id, type, created, timestamp)"
+            )
+        )
+        await conn.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS "
+                "idx_monitoring_evidence_charger_created_cursor "
+                "ON monitoring_evidence "
+                "(charger_id, created, timestamp, service_id, sequence_number)"
+            )
+        )
 
     async def _migrate_model_registry_family(self, conn) -> None:
         """

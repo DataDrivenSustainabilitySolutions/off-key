@@ -19,6 +19,7 @@ from off_key_core.config.runtime import get_runtime_settings
 from off_key_core.config.services import get_service_endpoints_settings
 from off_key_core.config.validation import validate_settings
 from slowapi.middleware import SlowAPIMiddleware
+from starlette.middleware.gzip import GZipMiddleware
 
 from .api.middleware import LoggingMiddleware, SecurityLoggingMiddleware
 from .api.rate_limiter import limiter, rate_limit_exceeded_handler
@@ -131,6 +132,7 @@ app.add_middleware(SecurityLoggingMiddleware)
 
 # Enable SlowApi Middleware
 app.add_middleware(SlowAPIMiddleware)
+app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=5)
 
 app.add_middleware(
     CORSMiddleware,

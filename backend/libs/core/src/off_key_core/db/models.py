@@ -98,6 +98,21 @@ class Telemetry(Base):
         Index("ix_telemetry_charger_timestamp", "charger_id", "timestamp"),
         Index("ix_telemetry_charger_type", "charger_id", "type"),
         Index(
+            "ix_telemetry_charger_type_timestamp_desc",
+            "charger_id",
+            "type",
+            "timestamp",
+            postgresql_using="btree",
+            postgresql_ops={"timestamp": "DESC"},
+        ),
+        Index(
+            "ix_telemetry_charger_type_created_timestamp",
+            "charger_id",
+            "type",
+            "created",
+            "timestamp",
+        ),
+        Index(
             "ix_telemetry_timestamp_desc",
             "timestamp",
             postgresql_using="btree",

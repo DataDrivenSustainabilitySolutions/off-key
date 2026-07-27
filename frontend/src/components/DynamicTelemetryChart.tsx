@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Card, CardContent, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import DateTimePicker from '@/components/DateTimePicker';
@@ -11,32 +11,30 @@ import {
   CartesianGrid,
   ResponsiveContainer,
   ReferenceArea,
+  ReferenceDot,
   ReferenceLine,
   Tooltip,
 } from 'recharts';
-import { createAnomalyZones, filterAnomalies, hasAnomaly, getAnomalyStyle, createAnomalyTooltip } from '@/lib/anomaly-utils';
+import { createAnomalyMarkers, createAnomalyZones, filterAnomalies, getAnomalyStyle, createAnomalyTooltip } from '@/lib/anomaly-utils';
 import type { Anomaly, TelemetryTypeData } from '@/types/charger';
 import { formatTimestamp, isWithinTimeRange } from '@/lib/time-utils';
 import { NoChartsAvailable } from '@/components/LoadingStates';
-import type { MonitoringEvidence } from '@/types/monitoring';
+import type { MonitoringChartEvidence } from '@/types/monitoring';
 import {
   buildMonitoringChartData,
   getMonitoringEvidenceSeries,
 } from '@/lib/monitoring-chart';
 
-type ChartDotProps = {
+type ReferenceDotShapeProps = {
   cx?: number;
   cy?: number;
-  payload?: {
-    timestamp?: string;
-  };
 };
 
 interface DynamicTelemetryChartProps {
   telemetryData: TelemetryTypeData;
   chargerId: string;
   anomalies?: Anomaly[];
-  evidence?: MonitoringEvidence[];
+  evidence?: MonitoringChartEvidence[];
 }
 
 const CATEGORY_COLORS: Record<string, string> = {
@@ -56,6 +54,25 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
   const [collapsed, setCollapsed] = useState(false);
   const [fromDate, setFromDate] = useState<Date>();
   const [toDate, setToDate] = useState<Date>();
+  const [cardNode, setCardNode] = useState<HTMLDivElement | null>(null);
+  const [isChartVisible, setIsChartVisible] = useState(
+    () => typeof IntersectionObserver === 'undefined'
+  );
+
+  useEffect(() => {
+    if (typeof IntersectionObserver === 'undefined') {
+      setIsChartVisible(true);
+      return;
+    }
+    if (!cardNode) return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => setIsChartVisible(entry.isIntersecting),
+      { rootMargin: '600px 0px' }
+    );
+    observer.observe(cardNode);
+    return () => observer.disconnect();
+  }, [cardNode]);
 
   // Format the telemetry type name for display
   const displayName = useMemo(() => {
@@ -120,10 +137,16 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
     [anomalies, telemetryData.type, fromDate, toDate]
   );
 
+  const shouldBuildChart = !collapsed && isChartVisible;
+
   // Create anomaly zones
   const anomalyZones = useMemo(() =>
-    createAnomalyZones(telemetryAnomalies),
-    [telemetryAnomalies]
+    shouldBuildChart ? createAnomalyZones(telemetryAnomalies) : [],
+    [shouldBuildChart, telemetryAnomalies]
+  );
+  const anomalyMarkers = useMemo(
+    () => shouldBuildChart ? createAnomalyMarkers(filteredData, telemetryAnomalies) : [],
+    [filteredData, shouldBuildChart, telemetryAnomalies]
   );
   const telemetryEvidence = useMemo(
     () => evidence.filter((item) =>
@@ -133,12 +156,12 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
     [evidence, telemetryData.type, fromDate, toDate]
   );
   const chartData = useMemo(
-    () => buildMonitoringChartData(filteredData, telemetryEvidence),
-    [filteredData, telemetryEvidence]
+    () => shouldBuildChart ? buildMonitoringChartData(filteredData, telemetryEvidence) : [],
+    [filteredData, shouldBuildChart, telemetryEvidence]
   );
   const evidenceSeries = useMemo(
-    () => getMonitoringEvidenceSeries(telemetryEvidence),
-    [telemetryEvidence]
+    () => shouldBuildChart ? getMonitoringEvidenceSeries(telemetryEvidence) : [],
+    [shouldBuildChart, telemetryEvidence]
   );
   const evidenceThresholds = useMemo(
     () => [...new Set(evidenceSeries.map((series) => series.threshold))],
@@ -147,7 +170,7 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
 
   if (telemetryData.data.length === 0) {
     return (
-      <Card className="w-full overflow-hidden border-border/80 py-0 shadow-xs transition-all duration-300">
+      <Card ref={setCardNode} className="w-full overflow-hidden border-border/80 py-0 shadow-xs transition-all duration-300">
         <div className="flex items-center justify-between gap-3 border-b px-5 py-4">
           <CardTitle className="text-base">{displayName}</CardTitle>
           <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-medium capitalize text-muted-foreground">
@@ -167,7 +190,7 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
   }
 
   return (
-    <Card className={`w-full overflow-hidden py-0 transition-all duration-300 ${collapsed ? '' : 'min-h-96'}`}>
+    <Card ref={setCardNode} className={`w-full overflow-hidden py-0 transition-all duration-300 ${collapsed ? '' : 'min-h-96'}`}>
       <div className={`flex gap-3 border-b border-border/60 bg-muted/[0.12] px-5 py-4 ${collapsed ? 'flex-row items-center justify-between' : 'flex-col lg:flex-row lg:items-center lg:justify-between'}`}>
         <div className="flex min-w-0 flex-1 items-center gap-3">
           <CardTitle className={`${collapsed ? 'whitespace-normal break-words' : 'truncate'} text-base`}>
@@ -243,7 +266,9 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
 
       {!collapsed && (
         <CardContent className="pb-5 pt-5">
-          {filteredData.length === 0 ? (
+          {!isChartVisible ? (
+            <div className="h-[300px]" aria-hidden="true" />
+          ) : filteredData.length === 0 ? (
             <div className="flex h-[300px] flex-col items-center justify-center rounded-lg border border-dashed bg-muted/20 p-6 text-center">
               <p className="text-sm font-medium">No data in selected range</p>
               <p className="mt-1 max-w-sm text-sm text-muted-foreground">
@@ -340,34 +365,40 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
                   stroke={getCategoryColor(telemetryData.category)}
                   strokeWidth={2.25}
                   activeDot={false}
-                  dot={(props) => {
-                    const { cx, cy, payload } = props as ChartDotProps;
-                    const timestamp = payload?.timestamp;
-                    if (!timestamp) {
-                      return <></>;
-                    }
-
-                    const anomaly = hasAnomaly(timestamp, telemetryAnomalies);
-                    if (anomaly && cx !== undefined && cy !== undefined) {
-                      const style = getAnomalyStyle(anomaly.anomaly_type);
-                      return (
-                        <g key={`anomaly-${timestamp}`}>
-                          <circle
-                            cx={cx}
-                            cy={cy}
-                            r={style.radius}
-                            fill={style.color}
-                            stroke="darkred"
-                            strokeWidth={1}
-                            opacity={style.opacity}
-                          />
-                          <title>{createAnomalyTooltip(anomaly)}</title>
-                        </g>
-                      );
-                    }
-                    return <></>;
-                  }}
+                  dot={false}
+                  isAnimationActive={false}
                 />
+                {anomalyMarkers.map((marker, index) => {
+                  const style = getAnomalyStyle(marker.anomaly.anomaly_type);
+                  return (
+                    <ReferenceDot
+                      key={`${marker.timestamp}-${index}`}
+                      x={marker.time}
+                      y={marker.value}
+                      yAxisId="telemetry"
+                      isFront
+                      ifOverflow="discard"
+                      shape={(props) => {
+                        const { cx, cy } = props as ReferenceDotShapeProps;
+                        if (cx === undefined || cy === undefined) return <g />;
+                        return (
+                          <g>
+                            <circle
+                              cx={cx}
+                              cy={cy}
+                              r={style.radius}
+                              fill={style.color}
+                              stroke="darkred"
+                              strokeWidth={1}
+                              opacity={style.opacity}
+                            />
+                            <title>{createAnomalyTooltip(marker.anomaly)}</title>
+                          </g>
+                        );
+                      }}
+                    />
+                  );
+                })}
                 {evidenceSeries.map((series, index) => (
                   <Line
                     key={series.serviceId}
@@ -379,6 +410,7 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
                     strokeWidth={2}
                     dot={false}
                     connectNulls
+                    isAnimationActive={false}
                   />
                 ))}
               </LineChart>
@@ -390,4 +422,4 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
   );
 };
 
-export default DynamicTelemetryChart;
+export default React.memo(DynamicTelemetryChart);

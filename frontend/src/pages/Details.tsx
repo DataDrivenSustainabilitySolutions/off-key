@@ -21,9 +21,20 @@ import {
 } from "@/components/ui/tooltip";
 import { apiUtils } from "@/lib/api-client";
 import { API_CONFIG } from "@/lib/api-config";
-import { getAllTelemetryData, getAnomalies } from "@/lib/charger-api";
-import type { MonitoringEvidence } from "@/types/monitoring";
-import type { Anomaly, TelemetryTypeData } from "@/types/charger";
+import {
+  getAllTelemetryData,
+  getAnomalies,
+  mergeTelemetryData,
+} from "@/lib/charger-api";
+import type {
+  MonitoringChartEvidence,
+  MonitoringEvidenceCursor,
+} from "@/types/monitoring";
+import {
+  getMonitoringEvidenceCursor,
+  mergeMonitoringChartEvidence,
+} from "@/lib/monitoring-chart";
+import type { Anomaly, TelemetryCursor, TelemetryTypeData } from "@/types/charger";
 
 type TelemetryCategoryGroups = Record<
   TelemetryTypeData["category"],
@@ -31,6 +42,13 @@ type TelemetryCategoryGroups = Record<
 >;
 
 const RECENT_TELEMETRY_WINDOW_MS = INTERVALS.DETAILS_UPDATE * 6;
+const EVIDENCE_PAGE_SIZE = 2000;
+const MAX_FORWARD_PAGES = 10;
+const EMPTY_EVIDENCE: MonitoringChartEvidence[] = [];
+
+const sameAnomalyWindow = (left: Anomaly[], right: Anomaly[]): boolean =>
+  left.length === right.length &&
+  left.every((item, index) => item.anomaly_id === right[index]?.anomaly_id);
 
 const getLatestTelemetryTimestamp = (
   telemetryData: TelemetryTypeData[]
@@ -84,7 +102,7 @@ const Details: React.FC = () => {
   const [isLoadingTelemetry, setIsLoadingTelemetry] = useState(true);
   const [allTelemetryData, setAllTelemetryData] = useState<TelemetryTypeData[]>([]);
   const [chargerAnomalies, setChargerAnomalies] = useState<Anomaly[]>([]);
-  const [monitoringEvidence, setMonitoringEvidence] = useState<MonitoringEvidence[]>([]);
+  const [monitoringEvidence, setMonitoringEvidence] = useState<MonitoringChartEvidence[]>([]);
   const [now, setNow] = useState(() => Date.now());
   const [refreshRequest, setRefreshRequest] = useState(0);
 
@@ -95,24 +113,67 @@ const Details: React.FC = () => {
 
     let cancelled = false;
     let refreshInFlight = false;
+    let activeController: AbortController | undefined;
+    let evidenceCursor: MonitoringEvidenceCursor | undefined;
+    let evidenceLoaded = false;
+    let telemetryLoaded = false;
+    const telemetryCursors = new Map<string, TelemetryCursor>();
 
     const refresh = async (showLoading = false) => {
       if (refreshInFlight) return;
       refreshInFlight = true;
+      const controller = new AbortController();
+      activeController = controller;
       if (showLoading) setIsLoadingTelemetry(true);
+
+      const loadEvidence = async () => {
+        const initialCursor = evidenceCursor;
+        let cursor = initialCursor;
+        const evidence: MonitoringChartEvidence[] = [];
+        for (let pageNumber = 0; pageNumber < MAX_FORWARD_PAGES; pageNumber += 1) {
+          const page = await apiUtils.get<MonitoringChartEvidence[]>(
+            API_CONFIG.ENDPOINTS.MONITORING.CHART_EVIDENCE(chargerId, cursor),
+            { signal: controller.signal },
+          );
+          evidence.push(...page);
+          if (!initialCursor || page.length < EVIDENCE_PAGE_SIZE) return evidence;
+          const nextCursor = getMonitoringEvidenceCursor(page);
+          if (
+            !nextCursor ||
+            (nextCursor.created === cursor?.created &&
+              nextCursor.timestamp === cursor.timestamp &&
+              nextCursor.service_id === cursor.service_id &&
+              nextCursor.sequence_number === cursor.sequence_number)
+          ) return evidence;
+          cursor = nextCursor;
+        }
+        return evidence;
+      };
 
       const [telemetryResult, anomaliesResult, evidenceResult] =
         await Promise.allSettled([
-          getAllTelemetryData(chargerId),
-          getAnomalies(chargerId),
-          apiUtils.get<MonitoringEvidence[]>(
-            API_CONFIG.ENDPOINTS.MONITORING.EVIDENCE(chargerId),
-          ),
+          telemetryLoaded
+            ? getAllTelemetryData(
+                chargerId,
+                controller.signal,
+                telemetryCursors,
+              )
+            : getAllTelemetryData(chargerId, controller.signal),
+          getAnomalies(chargerId, controller.signal),
+          loadEvidence(),
         ]);
 
       if (!cancelled) {
         if (telemetryResult.status === "fulfilled") {
-          setAllTelemetryData(telemetryResult.value);
+          setAllTelemetryData((current) =>
+            telemetryLoaded
+              ? mergeTelemetryData(current, telemetryResult.value)
+              : telemetryResult.value
+          );
+          telemetryLoaded = true;
+          telemetryResult.value.forEach((series) => {
+            if (series.cursor) telemetryCursors.set(series.type, series.cursor);
+          });
         } else {
           clientLogger.error({
             event: "details.telemetry_load_failed",
@@ -123,7 +184,11 @@ const Details: React.FC = () => {
         }
 
         if (anomaliesResult.status === "fulfilled") {
-          setChargerAnomalies(anomaliesResult.value);
+          setChargerAnomalies((current) =>
+            sameAnomalyWindow(current, anomaliesResult.value)
+              ? current
+              : anomaliesResult.value
+          );
         } else {
           clientLogger.error({
             event: "details.anomalies_load_failed",
@@ -134,7 +199,15 @@ const Details: React.FC = () => {
         }
 
         if (evidenceResult.status === "fulfilled") {
-          setMonitoringEvidence(evidenceResult.value ?? []);
+          const incomingEvidence = evidenceResult.value ?? [];
+          setMonitoringEvidence((current) =>
+            evidenceLoaded
+              ? mergeMonitoringChartEvidence(current, incomingEvidence)
+              : incomingEvidence
+          );
+          evidenceLoaded = true;
+          evidenceCursor =
+            getMonitoringEvidenceCursor(incomingEvidence) ?? evidenceCursor;
         } else {
           clientLogger.error({
             event: "details.monitoring_evidence_load_failed",
@@ -144,30 +217,33 @@ const Details: React.FC = () => {
           });
         }
 
+        setNow(Date.now());
+
         if (showLoading) setIsLoadingTelemetry(false);
       }
+      if (activeController === controller) activeController = undefined;
       refreshInFlight = false;
     };
 
     void refresh(true);
     const interval = window.setInterval(
-      () => void refresh(),
+      () => {
+        if (!document.hidden) void refresh();
+      },
       INTERVALS.DETAILS_UPDATE,
     );
+    const handleVisibilityChange = () => {
+      if (!document.hidden) void refresh();
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
 
     return () => {
       cancelled = true;
+      activeController?.abort();
       window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, [chargerId, refreshRequest]);
-
-  useEffect(() => {
-    const interval = window.setInterval(() => {
-      setNow(Date.now());
-    }, INTERVALS.DETAILS_UPDATE);
-
-    return () => window.clearInterval(interval);
-  }, []);
 
   const latestTelemetryTimestamp = useMemo(
     () => getLatestTelemetryTimestamp(allTelemetryData),
@@ -197,6 +273,18 @@ const Details: React.FC = () => {
 
     return grouped;
   }, [allTelemetryData]);
+
+  const evidenceByTelemetry = useMemo(() => {
+    const grouped = new Map<string, MonitoringChartEvidence[]>();
+    monitoringEvidence.forEach((item) => {
+      item.sensor_set.forEach((sensor) => {
+        const sensorEvidence = grouped.get(sensor) ?? [];
+        sensorEvidence.push(item);
+        grouped.set(sensor, sensorEvidence);
+      });
+    });
+    return grouped;
+  }, [monitoringEvidence]);
 
 
   // No additional functions needed - all functionality is handled by DynamicTelemetryChart
@@ -294,7 +382,7 @@ const Details: React.FC = () => {
                       telemetryData={telemetryData}
                       chargerId={resolvedChargerId}
                       anomalies={chargerAnomalies}
-                      evidence={monitoringEvidence}
+                      evidence={evidenceByTelemetry.get(telemetryData.type) ?? EMPTY_EVIDENCE}
                     />
                   ))}
                 </div>
@@ -309,7 +397,7 @@ const Details: React.FC = () => {
                       telemetryData={telemetryData}
                       chargerId={resolvedChargerId}
                       anomalies={chargerAnomalies}
-                      evidence={monitoringEvidence}
+                      evidence={evidenceByTelemetry.get(telemetryData.type) ?? EMPTY_EVIDENCE}
                     />
                   ))}
                 </div>
@@ -324,7 +412,7 @@ const Details: React.FC = () => {
                       telemetryData={telemetryData}
                       chargerId={resolvedChargerId}
                       anomalies={chargerAnomalies}
-                      evidence={monitoringEvidence}
+                      evidence={evidenceByTelemetry.get(telemetryData.type) ?? EMPTY_EVIDENCE}
                     />
                   ))}
                 </div>
@@ -339,7 +427,7 @@ const Details: React.FC = () => {
                       telemetryData={telemetryData}
                       chargerId={resolvedChargerId}
                       anomalies={chargerAnomalies}
-                      evidence={monitoringEvidence}
+                      evidence={evidenceByTelemetry.get(telemetryData.type) ?? EMPTY_EVIDENCE}
                     />
                   ))}
                 </div>

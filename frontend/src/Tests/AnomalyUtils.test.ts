@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   createAnomalyZones,
+  createAnomalyMarkers,
   filterAnomalies,
   hasAnomaly,
   MULTIVARIATE_TELEMETRY_TYPE,
@@ -231,6 +232,30 @@ describe("anomaly chart utilities", () => {
     const anomaly = { ...baseAnomaly, timestamp: "2026-05-19T08:00:00.000Z" };
     const matched = hasAnomaly("2026-05-19T08:00:10.000Z", [anomaly]);
     expect(matched).toBeNull();
+  });
+
+  it("precomputes only matching markers and keeps first-match semantics", () => {
+    const laterInInput = {
+      ...baseAnomaly,
+      anomaly_id: "later-in-input",
+      timestamp: "2026-05-19T08:00:02.000Z",
+    };
+    const firstInInput = {
+      ...baseAnomaly,
+      anomaly_id: "first-in-input",
+      timestamp: "2026-05-19T08:00:04.000Z",
+    };
+    const markers = createAnomalyMarkers(
+      [
+        { timestamp: "2026-05-19T08:00:00.000Z", value: 1 },
+        { timestamp: "2026-05-19T08:01:00.000Z", value: 2 },
+      ],
+      [firstInInput, laterInInput]
+    );
+
+    expect(markers).toHaveLength(1);
+    expect(markers[0]?.anomaly.anomaly_id).toBe("first-in-input");
+    expect(markers[0]?.time).toBe(Date.parse("2026-05-19T08:00:00.000Z"));
   });
 
   it("filters anomalies by explicit time window", () => {

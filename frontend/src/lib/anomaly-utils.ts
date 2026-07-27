@@ -5,7 +5,7 @@
 
 import { groupTimestampsIntoRanges, timestampsAreClose } from './time-utils';
 import { INTERVALS } from './constants';
-import type { Anomaly } from '@/types/charger';
+import type { Anomaly, TelemetryDataPoint } from '@/types/charger';
 import {
   formatAnomalyValue,
   getAnomalyValueLabel,
@@ -18,6 +18,11 @@ export interface RedZone {
   start: string;
   end: string;
   anomalies: Anomaly[];
+}
+
+export interface AnomalyMarker extends TelemetryDataPoint {
+  time: number;
+  anomaly: Anomaly;
 }
 
 const ISO_TIMESTAMP_REGEX = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})?$/u;
@@ -146,6 +151,53 @@ export const hasAnomaly = (
   return anomalies.find(anomaly =>
     timestampsAreClose(timestamp, anomaly.timestamp, 5 * INTERVALS.POLLING) // 5 second tolerance
   ) || null;
+};
+
+/**
+ * Match telemetry points to anomalies without asking Recharts to scan the
+ * complete anomaly list once for every rendered chart row.
+ */
+export const createAnomalyMarkers = (
+  telemetry: TelemetryDataPoint[],
+  anomalies: Anomaly[],
+  toleranceMs: number = 5 * INTERVALS.POLLING
+): AnomalyMarker[] => {
+  if (telemetry.length === 0 || anomalies.length === 0 || toleranceMs < 0) {
+    return [];
+  }
+
+  const bucketSize = Math.max(toleranceMs, 1);
+  const buckets = new Map<number, Array<{ anomaly: Anomaly; index: number; time: number }>>();
+
+  anomalies.forEach((anomaly, index) => {
+    const time = Date.parse(anomaly.timestamp);
+    if (!Number.isFinite(time)) return;
+    const bucket = Math.floor(time / bucketSize);
+    const entries = buckets.get(bucket) ?? [];
+    entries.push({ anomaly, index, time });
+    buckets.set(bucket, entries);
+  });
+
+  return telemetry.flatMap((point) => {
+    const time = Date.parse(point.timestamp);
+    if (!Number.isFinite(time)) return [];
+
+    let match: { anomaly: Anomaly; index: number } | undefined;
+    const firstBucket = Math.floor((time - toleranceMs) / bucketSize);
+    const lastBucket = Math.floor((time + toleranceMs) / bucketSize);
+    for (let bucket = firstBucket; bucket <= lastBucket; bucket += 1) {
+      for (const candidate of buckets.get(bucket) ?? []) {
+        if (
+          Math.abs(time - candidate.time) <= toleranceMs &&
+          (match === undefined || candidate.index < match.index)
+        ) {
+          match = candidate;
+        }
+      }
+    }
+
+    return match ? [{ ...point, time, anomaly: match.anomaly }] : [];
+  });
 };
 
 /**

@@ -42,9 +42,18 @@ export const API_CONFIG = {
     // Telemetry
     TELEMETRY: {
       TYPES: (chargerId: string) => `/v1/telemetry/${chargerId}/type`,
-      DATA: (chargerId: string, telemetryType: string, limit?: number) => {
+      DATA: (
+        chargerId: string,
+        telemetryType: string,
+        limit?: number,
+        cursor?: { created: string; timestamp: string },
+      ) => {
         const params = new URLSearchParams({ type: telemetryType });
         if (limit) params.append('limit', limit.toString());
+        if (cursor) {
+          params.append('after_created', cursor.created);
+          params.append('after_event_timestamp', cursor.timestamp);
+        }
         return `/v1/telemetry/${chargerId}/data?${params.toString()}`;
       },
     },
@@ -78,6 +87,24 @@ export const API_CONFIG = {
       MODELS: '/v1/monitors/models',
       EVIDENCE: (chargerId: string) =>
         `/v1/monitors/evidence?charger_id=${encodeURIComponent(chargerId)}`,
+      CHART_EVIDENCE: (
+        chargerId: string,
+        cursor?: {
+          created: string;
+          timestamp: string;
+          service_id: string;
+          sequence_number: number;
+        },
+      ) => {
+        const params = new URLSearchParams({ charger_id: chargerId });
+        if (cursor) {
+          params.set('after_created', cursor.created);
+          params.set('after_timestamp', cursor.timestamp);
+          params.set('after_service_id', cursor.service_id);
+          params.set('after_sequence_number', cursor.sequence_number.toString());
+        }
+        return `/v1/monitors/evidence/chart?${params.toString()}`;
+      },
     },
 
     // Monitoring & Anomaly Detection

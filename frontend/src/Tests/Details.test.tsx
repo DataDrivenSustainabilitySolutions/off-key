@@ -7,6 +7,7 @@ import Details from "../pages/Details";
 const mockLoadAllTelemetryTypes = vi.fn();
 const mockLoadAnomalies = vi.fn();
 const mockApiGet = vi.fn(() => Promise.resolve([]));
+const mockChartAnomalyProps: unknown[][] = [];
 
 vi.mock("../lib/api-client", () => ({
   apiUtils: { get: (...args: unknown[]) => mockApiGet(...args) },
@@ -15,6 +16,8 @@ vi.mock("../lib/api-client", () => ({
 vi.mock("../lib/charger-api", () => ({
   getAllTelemetryData: (...args: unknown[]) => mockLoadAllTelemetryTypes(...args),
   getAnomalies: (...args: unknown[]) => mockLoadAnomalies(...args),
+  getTelemetryCursor: () => undefined,
+  mergeTelemetryData: (_current: unknown, incoming: unknown) => incoming,
 }));
 
 vi.mock("../components/NavigationBar", () => ({
@@ -22,9 +25,16 @@ vi.mock("../components/NavigationBar", () => ({
 }));
 
 vi.mock("../components/DynamicTelemetryChart", () => ({
-  default: ({ telemetryData }: { telemetryData: { type: string } }) => (
-    <div data-testid="telemetry-chart">{telemetryData.type}</div>
-  ),
+  default: ({
+    telemetryData,
+    anomalies,
+  }: {
+    telemetryData: { type: string };
+    anomalies: unknown[];
+  }) => {
+    mockChartAnomalyProps.push(anomalies);
+    return <div data-testid="telemetry-chart">{telemetryData.type}</div>;
+  },
 }));
 
 function renderDetails() {
@@ -40,6 +50,7 @@ function renderDetails() {
 describe("<Details />", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockChartAnomalyProps.length = 0;
     mockApiGet.mockResolvedValue([]);
     mockLoadAllTelemetryTypes.mockResolvedValue([
       {
@@ -60,8 +71,14 @@ describe("<Details />", () => {
     renderDetails();
 
     await waitFor(() => {
-      expect(mockLoadAllTelemetryTypes).toHaveBeenCalledWith("123");
-      expect(mockLoadAnomalies).toHaveBeenCalledWith("123");
+      expect(mockLoadAllTelemetryTypes).toHaveBeenCalledWith(
+        "123",
+        expect.any(AbortSignal),
+      );
+      expect(mockLoadAnomalies).toHaveBeenCalledWith(
+        "123",
+        expect.any(AbortSignal),
+      );
     });
     expect(screen.getByText(/cpu metrics/i)).toBeTruthy();
     expect(screen.getByText(/system metrics/i)).toBeTruthy();
@@ -73,6 +90,22 @@ describe("<Details />", () => {
 
     const link = await screen.findByRole("link", { name: /monitoring/i });
     expect(link.getAttribute("href")).toBe("/monitoring/123");
+  });
+
+  it("preserves chart anomaly references across telemetry refreshes", async () => {
+    renderDetails();
+    await screen.findByText(/cpu metrics/i);
+    const firstReference = mockChartAnomalyProps[0];
+
+    document.dispatchEvent(new Event("visibilitychange"));
+    await waitFor(() => expect(mockChartAnomalyProps.length).toBeGreaterThanOrEqual(4));
+
+    expect(mockChartAnomalyProps.slice(2)).toEqual(
+      expect.arrayContaining([firstReference]),
+    );
+    expect(
+      mockChartAnomalyProps.slice(2).every((value) => value === firstReference),
+    ).toBe(true);
   });
 
   it("shows the empty state when no telemetry is available", async () => {

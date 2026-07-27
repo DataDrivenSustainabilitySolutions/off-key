@@ -122,6 +122,22 @@ export interface MonitoringEvidence {
   alarm: boolean;
 }
 
+export type MonitoringChartEvidence = Pick<
+  MonitoringEvidence,
+  | 'service_id'
+  | 'timestamp'
+  | 'sequence_number'
+  | 'sensor_set'
+  | 'restarted_martingale'
+  | 'threshold'
+  | 'alarm'
+> & { created: string };
+
+export type MonitoringEvidenceCursor = Pick<
+  MonitoringChartEvidence,
+  'created' | 'timestamp' | 'service_id' | 'sequence_number'
+>;
+
 // Model parameters (cleaned for API submission)
 export type ModelParams = Record<string, string | number | boolean>;
 

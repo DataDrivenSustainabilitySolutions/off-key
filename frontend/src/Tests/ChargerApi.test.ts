@@ -8,7 +8,9 @@ import {
   getAllTelemetryData,
   getAnomalyCount,
   getFavorites,
+  getTelemetryCursor,
   getTelemetryTypes,
+  mergeTelemetryData,
   toggleFavorite,
 } from "@/lib/charger-api";
 
@@ -59,6 +61,114 @@ describe("charger API", () => {
         data: [{ timestamp: "now", value: 230 }],
       },
     ]);
+  });
+
+  it("advances telemetry cursors by ingestion order", () => {
+    expect(getTelemetryCursor([
+      {
+        timestamp: "2026-01-01T00:00:02Z",
+        created: "2026-01-01T00:00:10Z",
+        value: 2,
+      },
+      {
+        timestamp: "2026-01-01T00:00:01Z",
+        created: "2026-01-01T00:00:20Z",
+        value: 1,
+      },
+    ])).toEqual({
+      created: "2026-01-01T00:00:20Z",
+      timestamp: "2026-01-01T00:00:01Z",
+    });
+  });
+
+  it("skips telemetry with an invalid event-time cursor field", () => {
+    const valid = {
+      timestamp: "2026-01-01T00:00:01Z",
+      created: "2026-01-01T00:00:10Z",
+      value: 2,
+    };
+
+    expect(getTelemetryCursor([
+      { ...valid, timestamp: "not-a-date" },
+      valid,
+    ])).toEqual({
+      created: valid.created,
+      timestamp: valid.timestamp,
+    });
+  });
+
+  it("drains every full forward telemetry page before advancing", async () => {
+    const firstPage = Array.from({ length: 1000 }, (_, index) => ({
+      timestamp: new Date(Date.UTC(2026, 0, 1, 0, 0, index)).toISOString(),
+      created: new Date(Date.UTC(2026, 0, 1, 1, 0, index)).toISOString(),
+      value: index,
+    }));
+    const finalPoint = {
+      timestamp: "2026-01-01T00:20:00.000Z",
+      created: "2026-01-01T01:20:00.000Z",
+      value: 1000,
+    };
+    const initialCursor = {
+      created: "2026-01-01T00:59:59.000Z",
+      timestamp: "2025-12-31T23:59:59.000Z",
+    };
+    mockGet
+      .mockResolvedValueOnce(["systemVoltage"])
+      .mockResolvedValueOnce(firstPage)
+      .mockResolvedValueOnce([finalPoint]);
+
+    const result = await getAllTelemetryData(
+      "charger-1",
+      undefined,
+      new Map([["systemVoltage", initialCursor]]),
+    );
+
+    expect(result[0]?.data).toHaveLength(1001);
+    expect(mockGet).toHaveBeenNthCalledWith(
+      3,
+      API_CONFIG.ENDPOINTS.TELEMETRY.DATA(
+        "charger-1",
+        "systemVoltage",
+        1000,
+        getTelemetryCursor(firstPage),
+      ),
+    );
+  });
+
+  it("merges incremental telemetry while preserving unchanged series references", () => {
+    const unchanged = {
+      type: "systemVoltage",
+      category: "system" as const,
+      data: [{ timestamp: "2026-01-01T00:00:01Z", value: 230 }],
+    };
+    const current = [unchanged];
+
+    expect(mergeTelemetryData(current, [{ ...unchanged, data: [] }])).toBe(current);
+
+    const merged = mergeTelemetryData(current, [
+      {
+        ...unchanged,
+        data: [{ timestamp: "2026-01-01T00:00:02Z", value: 231 }],
+      },
+    ]);
+    expect(merged[0]?.data.map((point) => point.value)).toEqual([231, 230]);
+
+    expect(mergeTelemetryData(current, [])).toBe(current);
+  });
+
+  it("preserves existing telemetry when one incremental request fails", () => {
+    const existing = {
+      type: "systemVoltage",
+      category: "system" as const,
+      data: [{ timestamp: "2026-01-01T00:00:01Z", value: 230 }],
+    };
+    const added = {
+      type: "controllerCpuUsage",
+      category: "cpu" as const,
+      data: [{ timestamp: "2026-01-01T00:00:01Z", value: 70 }],
+    };
+
+    expect(mergeTelemetryData([existing], [added])).toEqual([existing, added]);
   });
 
   it("normalizes charger last-seen timestamps", async () => {

@@ -372,7 +372,6 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
                       x={marker.time}
                       y={marker.value}
                       yAxisId="telemetry"
-                      isFront
                       ifOverflow="discard"
                       shape={(props) => {
                         const { cx, cy } = props as ReferenceDotShapeProps;

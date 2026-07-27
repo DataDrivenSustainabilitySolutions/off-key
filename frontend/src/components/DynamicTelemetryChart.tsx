@@ -60,11 +60,7 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
   );
 
   useEffect(() => {
-    if (typeof IntersectionObserver === 'undefined') {
-      setIsChartVisible(true);
-      return;
-    }
-    if (!cardNode) return;
+    if (typeof IntersectionObserver === 'undefined' || !cardNode) return;
 
     const observer = new IntersectionObserver(
       ([entry]) => setIsChartVisible(entry.isIntersecting),

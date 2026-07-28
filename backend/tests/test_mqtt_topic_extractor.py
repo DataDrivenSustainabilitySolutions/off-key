@@ -4,8 +4,9 @@ import pytest
 from off_key_core.utils.mqtt_topics import (
     TopicMetadataExtractor,
     mqtt_topic_filters_overlap,
-    normalize_mqtt_topic_filters,
+    normalize_telemetry_topic_filters,
     validate_mqtt_topic_filter,
+    validate_telemetry_topic_filter,
 )
 
 
@@ -53,14 +54,12 @@ def test_rejects_regex_without_required_named_groups():
 
 
 def test_normalizes_and_deduplicates_monitoring_topic_filters():
-    topics = normalize_mqtt_topic_filters(
+    topics = normalize_telemetry_topic_filters(
         [
             " charger/charger-1/live-telemetry/sine ",
             "charger/charger-1/live-telemetry/sine",
             "charger/+/telemetry/#",
-        ],
-        require_charger_prefix=True,
-        require_telemetry_topic=True,
+        ]
     )
 
     assert topics == [
@@ -69,14 +68,40 @@ def test_normalizes_and_deduplicates_monitoring_topic_filters():
     ]
 
 
+@pytest.mark.parametrize(
+    ("topic", "message"),
+    [
+        (" ", "must not be empty"),
+        ("charger//live-telemetry/sine", "empty levels"),
+        ("charger/a/live-telemetry/foo/#/bar", "last level"),
+        ("charger/a/live-telemetry/foo#", "must occupy a level"),
+        ("charger/a/live-telemetry/foo+bar", "must occupy a level"),
+    ],
+)
+def test_rejects_malformed_mqtt_topic_filters(topic, message):
+    with pytest.raises(ValueError, match=message):
+        validate_mqtt_topic_filter(topic)
+
+
+def test_rejects_mqtt_topic_filter_protocol_limits():
+    with pytest.raises(ValueError, match="null characters"):
+        validate_mqtt_topic_filter("charger/" + chr(0))
+
+    with pytest.raises(ValueError, match="65535-byte limit"):
+        validate_mqtt_topic_filter("a" * 65_536)
+
+
+def test_root_wildcard_requires_explicit_opt_in():
+    with pytest.raises(ValueError, match="Root wildcard"):
+        validate_mqtt_topic_filter("#")
+
+    assert validate_mqtt_topic_filter("#", allow_root_wildcard=True) == "#"
+
+
 @pytest.mark.parametrize("topic", ["#", "/#", "tenant/charger-1/telemetry/sine"])
 def test_rejects_monitoring_topic_filters_outside_charger_namespace(topic):
     with pytest.raises(ValueError):
-        validate_mqtt_topic_filter(
-            topic,
-            require_charger_prefix=True,
-            require_telemetry_topic=True,
-        )
+        validate_telemetry_topic_filter(topic)
 
 
 @pytest.mark.parametrize(
@@ -90,11 +115,7 @@ def test_rejects_monitoring_topic_filters_outside_charger_namespace(topic):
 )
 def test_rejects_invalid_monitoring_topic_filter_shapes(topic):
     with pytest.raises(ValueError):
-        validate_mqtt_topic_filter(
-            topic,
-            require_charger_prefix=True,
-            require_telemetry_topic=True,
-        )
+        validate_telemetry_topic_filter(topic)
 
 
 @pytest.mark.parametrize(

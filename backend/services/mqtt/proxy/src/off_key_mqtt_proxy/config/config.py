@@ -11,7 +11,7 @@ from off_key_core.config.validation import validate_environment as _validate_env
 from off_key_core.utils.mqtt_topics import (
     DEFAULT_TOPIC_REGEX,
     TopicMetadataExtractor,
-    normalize_mqtt_topic_filters,
+    normalize_telemetry_topic_filters,
 )
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -250,11 +250,7 @@ class MQTTConfig(BaseModel):
     @field_validator("source_topics")
     @classmethod
     def validate_source_topics(cls, value: list[str]) -> list[str]:
-        return normalize_mqtt_topic_filters(
-            value,
-            require_charger_prefix=True,
-            require_telemetry_topic=True,
-        )
+        return normalize_telemetry_topic_filters(value)
 
     @field_validator("topic_payload_charger_key", "topic_payload_type_key")
     @classmethod
@@ -430,11 +426,7 @@ class MQTTSettings(BaseSettings):
     @field_validator("MQTT_SOURCE_TOPICS")
     @classmethod
     def validate_source_topics(cls, value: str) -> str:
-        normalized = normalize_mqtt_topic_filters(
-            value.split(","),
-            require_charger_prefix=True,
-            require_telemetry_topic=True,
-        )
+        normalized = normalize_telemetry_topic_filters(value.split(","))
         return ",".join(normalized)
 
     @field_validator("ENVIRONMENT")

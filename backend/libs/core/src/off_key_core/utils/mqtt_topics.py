@@ -98,11 +98,9 @@ class TopicMetadataExtractor:
 def validate_mqtt_topic_filter(
     topic: str,
     *,
-    require_charger_prefix: bool = False,
-    require_telemetry_topic: bool = False,
     allow_root_wildcard: bool = False,
 ) -> str:
-    """Validate and normalize an MQTT subscription filter for this domain."""
+    """Validate and normalize an MQTT subscription filter."""
     normalized = topic.strip()
     if not normalized:
         raise ValueError("MQTT topic filter must not be empty")
@@ -117,50 +115,48 @@ def validate_mqtt_topic_filter(
     if any(part == "" for part in parts):
         raise ValueError("MQTT topic filter must not contain empty levels")
 
-    for index, part in enumerate(parts):
-        if "#" in part:
-            if part != "#":
-                raise ValueError("MQTT multi-level wildcard '#' must occupy a level")
-            if index != len(parts) - 1:
-                raise ValueError("MQTT multi-level wildcard '#' must be the last level")
-        if "+" in part and part != "+":
-            raise ValueError("MQTT single-level wildcard '+' must occupy a level")
-
-    if require_charger_prefix and parts[0] != "charger":
-        raise ValueError("MQTT topic filter must start with 'charger/'")
-
-    if require_telemetry_topic:
-        if len(parts) < 4:
-            raise ValueError(
-                "MQTT telemetry topic filters must use "
-                "'charger/<id>/telemetry/<type>' or "
-                "'charger/<id>/live-telemetry/<type>'"
-            )
-        if parts[0] != "charger" or parts[2] not in {"telemetry", "live-telemetry"}:
-            raise ValueError(
-                "MQTT telemetry topic filters must use the charger telemetry namespace"
-            )
-
+    _validate_wildcard_levels(parts)
     return normalized
 
 
-def normalize_mqtt_topic_filters(
-    topics: Iterable[str],
-    *,
-    require_charger_prefix: bool = False,
-    require_telemetry_topic: bool = False,
-    allow_root_wildcard: bool = False,
-) -> list[str]:
-    """Validate, trim, and de-duplicate MQTT subscription filters."""
+def _validate_wildcard_levels(levels: list[str]) -> None:
+    """Enforce MQTT wildcard placement rules."""
+    final_index = len(levels) - 1
+    for index, level in enumerate(levels):
+        if "#" in level and level != "#":
+            raise ValueError("MQTT multi-level wildcard '#' must occupy a level")
+        if level == "#" and index != final_index:
+            raise ValueError("MQTT multi-level wildcard '#' must be the last level")
+        if "+" in level and level != "+":
+            raise ValueError("MQTT single-level wildcard '+' must occupy a level")
+
+
+def validate_telemetry_topic_filter(topic: str) -> str:
+    """Validate a filter in the charger telemetry namespace."""
+    normalized = validate_mqtt_topic_filter(topic)
+    levels = normalized.split("/")
+    if len(levels) < 4:
+        raise ValueError(
+            "MQTT telemetry topic filters must use "
+            "'charger/<id>/telemetry/<type>' or "
+            "'charger/<id>/live-telemetry/<type>'"
+        )
+    if levels[0] != "charger" or levels[2] not in {
+        "telemetry",
+        "live-telemetry",
+    }:
+        raise ValueError(
+            "MQTT telemetry topic filters must use the charger telemetry namespace"
+        )
+    return normalized
+
+
+def normalize_telemetry_topic_filters(topics: Iterable[str]) -> list[str]:
+    """Validate, trim, and de-duplicate charger telemetry filters."""
     normalized_topics: list[str] = []
     seen: set[str] = set()
     for topic in topics:
-        normalized = validate_mqtt_topic_filter(
-            topic,
-            require_charger_prefix=require_charger_prefix,
-            require_telemetry_topic=require_telemetry_topic,
-            allow_root_wildcard=allow_root_wildcard,
-        )
+        normalized = validate_telemetry_topic_filter(topic)
         if normalized not in seen:
             normalized_topics.append(normalized)
             seen.add(normalized)
@@ -172,11 +168,7 @@ def normalize_mqtt_topic_filters(
 
 def normalize_static_monitoring_topics(topics: Iterable[str]) -> list[str]:
     """Validate concrete, single-charger topics for a static feature schema."""
-    normalized = normalize_mqtt_topic_filters(
-        topics,
-        require_charger_prefix=True,
-        require_telemetry_topic=True,
-    )
+    normalized = normalize_telemetry_topic_filters(topics)
     if any(level in {"+", "#"} for topic in normalized for level in topic.split("/")):
         raise ValueError(
             "Static monitoring requires concrete MQTT topics; wildcards are not "

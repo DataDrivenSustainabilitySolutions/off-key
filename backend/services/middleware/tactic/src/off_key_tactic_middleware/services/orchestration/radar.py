@@ -13,8 +13,8 @@ from off_key_core.db.models import MonitoringService, MqttTopic
 from off_key_core.schemas.radar import RadarOperationalStatus
 from off_key_core.utils.mqtt_topics import (
     mqtt_topic_filters_overlap,
-    normalize_mqtt_topic_filters,
     normalize_static_monitoring_topics,
+    normalize_telemetry_topic_filters,
 )
 from sqlalchemy import delete, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -313,11 +313,7 @@ class RadarOrchestrationService:
         if not existing_service.status:
             existing_service.status = True
 
-        existing_topics = normalize_mqtt_topic_filters(
-            existing_service.mqtt_topic,
-            require_charger_prefix=True,
-            require_telemetry_topic=True,
-        )
+        existing_topics = normalize_telemetry_topic_filters(existing_service.mqtt_topic)
         if existing_topics != mqtt_topics:
             raise ValueError(
                 f"RADAR service name '{container_name}' already belongs to a "

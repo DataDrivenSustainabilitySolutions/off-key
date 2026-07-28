@@ -72,9 +72,10 @@ The monitoring UI presents two lanes:
 
 A static service consumes consecutive, non-overlapping phases: baseline training,
 calibration, and online inference. Inference produces conformal p-values, converts
-them to power e-values, and feeds the native restarted-mixture martingale from
-`nonconform`. The Ville threshold is fixed at `100`; an anomaly is emitted only on
-a new threshold crossing.
+them with the power betting function, and feeds those increments to the native
+restarted-mixture e-process from `nonconform`. The classical all-history martingale
+is not an alarm statistic. The restarted Ville threshold is fixed at `100`; an
+anomaly is emitted only on a new threshold crossing.
 
 Every ready-phase inference is persisted in `monitoring_evidence`, including the
 p-value, finite or infinite e-value state, restarted martingale, threshold, sensor

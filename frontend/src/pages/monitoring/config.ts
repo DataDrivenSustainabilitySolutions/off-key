@@ -289,7 +289,8 @@ export const buildStaticMonitoringRequest = ({
         calibration_window_size: calibrationWindow,
         conformal_strategy: "split",
         martingale_config: {
-          method: "power",
+          betting_function: "power",
+          alarm_statistic: "restarted_martingale",
           epsilon,
           restarted_ville_threshold: FIXED_VILLE_THRESHOLD,
         },

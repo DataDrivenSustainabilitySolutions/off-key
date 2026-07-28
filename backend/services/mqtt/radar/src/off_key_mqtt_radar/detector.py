@@ -47,6 +47,8 @@ class StaticConformalState(Enum):
 class RestartedMartingaleAlarmController:
     """Power e-process using nonconform's native restarted mixture."""
 
+    BETTING_FUNCTION = "power"
+    ALARM_STATISTIC = "restarted_martingale"
     FIXED_RESTARTED_VILLE_THRESHOLD = 100.0
 
     def __init__(
@@ -59,7 +61,6 @@ class RestartedMartingaleAlarmController:
         martingale: Any = None,
         alarm_active: bool = False,
     ):
-        self.method = "power"
         self.epsilon = float(epsilon)
         self._validate_threshold(restarted_ville_threshold)
         self.restarted_ville_threshold = float(restarted_ville_threshold)
@@ -127,7 +128,8 @@ class RestartedMartingaleAlarmController:
             log_restarted_martingale if np.isfinite(log_restarted_martingale) else None
         )
         return {
-            "martingale_method": self.method,
+            "betting_function": self.BETTING_FUNCTION,
+            "alarm_statistic": self.ALARM_STATISTIC,
             "epsilon": self.epsilon,
             "e_value": finite_e_value,
             "e_value_is_infinite": finite_e_value is None,
@@ -526,7 +528,8 @@ class StaticConformalDetectionService:
                 topic,
                 extra={
                     "conformal_pvalue": p_value,
-                    "martingale_method": alarm_context["martingale_method"],
+                    "betting_function": alarm_context["betting_function"],
+                    "alarm_statistic": alarm_context["alarm_statistic"],
                     "restarted_ville_threshold": (
                         alarm_context["restarted_ville_threshold"]
                     ),
@@ -610,10 +613,8 @@ class StaticConformalDetectionService:
         return conformal_detector, alarm_controller
 
     def _create_alarm_controller(self) -> RestartedMartingaleAlarmController:
-        martingale_config = self.static_config.martingale_config
-        return RestartedMartingaleAlarmController(
-            epsilon=martingale_config.epsilon,
-            restarted_ville_threshold=(martingale_config.restarted_ville_threshold),
+        return RestartedMartingaleAlarmController.from_config(
+            self.static_config.martingale_config
         )
 
     def _create_pyod_detector(self) -> Any:

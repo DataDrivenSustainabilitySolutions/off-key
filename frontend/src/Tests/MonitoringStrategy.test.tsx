@@ -105,7 +105,8 @@ describe("<Monitoring /> static setup", () => {
     expect(payload.static_baseline_config.training_window_size).toBe(1200);
     expect(payload.static_baseline_config.calibration_window_size).toBe(360);
     expect(payload.static_baseline_config.martingale_config).toEqual({
-      method: "power",
+      betting_function: "power",
+      alarm_statistic: "restarted_martingale",
       epsilon: 0.5,
       restarted_ville_threshold: 100,
     });
@@ -147,7 +148,8 @@ describe("<Monitoring /> static setup", () => {
     const payload = getSubmittedPayload();
     expect(payload.static_baseline_config.calibration_window_size).toBe(400);
     expect(payload.static_baseline_config.martingale_config).toEqual({
-      method: "power",
+      betting_function: "power",
+      alarm_statistic: "restarted_martingale",
       epsilon: 0.75,
       restarted_ville_threshold: 100,
     });

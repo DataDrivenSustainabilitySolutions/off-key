@@ -49,7 +49,8 @@ describe("monitoring configuration", () => {
       training_window_size: 1200,
       calibration_window_size: 360,
       martingale_config: {
-        method: "power",
+        betting_function: "power",
+        alarm_statistic: "restarted_martingale",
         epsilon: 0.5,
         restarted_ville_threshold: 100,
       },

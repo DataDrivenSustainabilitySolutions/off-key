@@ -127,7 +127,8 @@ def test_radar_settings_parse_static_baseline_strategy(monkeypatch):
           "training_window_size": 240,
           "calibration_window_size": 80,
           "martingale_config": {
-            "method": "power",
+            "betting_function": "power",
+            "alarm_statistic": "restarted_martingale",
             "epsilon": 0.5,
             "restarted_ville_threshold": 100
           }
@@ -190,12 +191,17 @@ def test_static_baseline_rejects_removed_calibration_fraction():
 
 def test_static_martingale_contract_is_native_and_fixed():
     config = StaticMartingaleConfig()
-    assert config.method == "power"
+    assert config.betting_function == "power"
+    assert config.alarm_statistic == "restarted_martingale"
     assert config.epsilon == 0.5
     assert config.restarted_ville_threshold == 100
 
+    with pytest.raises(ValidationError, match="alarm_statistic"):
+        StaticMartingaleConfig(alarm_statistic="martingale")
     with pytest.raises(ValidationError):
         StaticMartingaleConfig(restarted_ville_threshold=50)
+    with pytest.raises(ValidationError, match="method"):
+        StaticMartingaleConfig(method="power")
     with pytest.raises(ValidationError, match="alpha"):
         StaticMartingaleConfig(alpha=0.01)
 

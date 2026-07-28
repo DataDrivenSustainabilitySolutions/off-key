@@ -115,7 +115,8 @@ def test_static_conformal_collects_calibrates_trains_then_detects(monkeypatch):
     assert anomaly.is_anomaly is True
     assert anomaly.anomaly_score == 0.000001
     assert static_context["p_value"] == 0.000001
-    assert static_context["martingale_method"] == "power"
+    assert static_context["betting_function"] == "power"
+    assert static_context["alarm_statistic"] == "restarted_martingale"
     assert static_context["alarm_fired"] is True
     assert static_context["alarm_count"] == 1
     assert static_context["tested_count"] == 1
@@ -201,6 +202,21 @@ def test_restarted_martingale_controller_uses_native_fixed_mixture():
     assert controller.restarted_ville_threshold == 100.0
 
 
+def test_restarted_martingale_ignores_classical_only_ville_crossing():
+    controller = RestartedMartingaleAlarmController(epsilon=0.5)
+    classical_crossing_p_value = (0.5 / 150.0) ** 2
+
+    result = controller.update(classical_crossing_p_value)
+    native_state = controller._martingale.state
+
+    assert native_state.martingale == pytest.approx(150.0)
+    assert native_state.restarted_martingale == pytest.approx(75.5)
+    assert "ville" not in native_state.triggered_alarms
+    assert "restarted_ville" not in native_state.triggered_alarms
+    assert result["alarm_statistic"] == "restarted_martingale"
+    assert result["alarm_fired"] is False
+
+
 def test_restarted_martingale_controller_serializes_infinite_evidence_as_null():
     controller = RestartedMartingaleAlarmController(epsilon=0.5)
 
@@ -264,7 +280,8 @@ def test_static_conformal_real_pyod_nonconform_training_reaches_ready(
         result = service.process_data_point({"L1": 100.0, "L2": 20.0})
         static_context = result.context["static_conformal"]
         assert static_context["phase"] == "ready"
-        assert static_context["martingale_method"] == "power"
+        assert static_context["betting_function"] == "power"
+        assert static_context["alarm_statistic"] == "restarted_martingale"
         assert 0.0 <= static_context["p_value"] <= 1.0
         assert 0.0 <= result.anomaly_score <= 1.0
     finally:

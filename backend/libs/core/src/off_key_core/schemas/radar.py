@@ -78,7 +78,8 @@ class StaticMartingaleConfig(BaseModel):
 
     model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
-    method: Literal["power"] = "power"
+    betting_function: Literal["power"] = "power"
+    alarm_statistic: Literal["restarted_martingale"] = "restarted_martingale"
     epsilon: float = Field(default=0.5, gt=0.0, le=1.0)
     restarted_ville_threshold: Literal[100.0] = 100.0
 

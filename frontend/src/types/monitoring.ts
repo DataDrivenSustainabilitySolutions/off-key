@@ -77,7 +77,8 @@ export interface MonitoringPerformanceConfig {
 }
 
 export interface StaticMartingaleConfig {
-  method: 'power';
+  betting_function: 'power';
+  alarm_statistic: 'restarted_martingale';
   epsilon: number;
   restarted_ville_threshold: 100;
 }

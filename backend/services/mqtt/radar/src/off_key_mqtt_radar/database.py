@@ -339,13 +339,11 @@ class DatabaseWriter:
 
         try:
             while True:
-                try:
+                with suppress(TimeoutError):
                     await asyncio.wait_for(
                         self._flush_event.wait(),
                         timeout=self.config.db_batch_timeout,
                     )
-                except TimeoutError:
-                    pass
 
                 self._flush_event.clear()
                 await self._flush_batch()

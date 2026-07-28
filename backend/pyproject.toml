@@ -91,14 +91,26 @@ exclude = [
 
 [tool.ruff.lint]
 select = [
-    "E",  # pycodestyle errors (excluding some stylistic ones handled by formatters)
-    "F",  # Pyflakes
-    "I",  # isort-compatible import ordering
-    "UP", # Python upgrade and deprecated typing syntax
+    "ASYNC", # async correctness
+    "B",     # likely bugs and unsafe defaults
+    "E",     # pycodestyle errors (excluding formatter-owned rules)
+    "F",     # Pyflakes
+    "I",     # isort-compatible import ordering
+    "PERF",  # avoid known inefficient constructs
+    "PIE",   # unnecessary or misleading code
+    "RET",   # clearer return control flow
+    "RUF",   # Ruff-specific correctness rules
+    "SIM",   # simplify needless control flow
+    "UP",    # Python upgrade and deprecated typing syntax
 ]
 ignore = []
 fixable = ["ALL"]
 unfixable = []
+
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI evaluates these declarations as immutable route metadata. Calls in other
+# defaults remain covered by B008.
+extend-immutable-calls = ["fastapi.Body", "fastapi.Depends", "fastapi.Query"]
 
 [tool.ruff.format]
 quote-style = "double"

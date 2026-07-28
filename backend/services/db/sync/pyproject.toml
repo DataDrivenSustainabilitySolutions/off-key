@@ -21,7 +21,7 @@ classifiers = [
 dependencies = [
     "off-key-core",
     "uvicorn>=0.25.0",
-    "fastapi[all]>=0.115.8",
+    "fastapi>=0.115.8",
 ]
 
 [build-system]

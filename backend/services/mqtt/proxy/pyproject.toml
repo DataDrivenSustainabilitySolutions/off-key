@@ -21,7 +21,6 @@ classifiers = [
 dependencies = [
     "off-key-core",
     "paho-mqtt>=2.1.0",
-    "structlog>=23.2.0",
     "uvicorn>=0.25.0",
 ]
 

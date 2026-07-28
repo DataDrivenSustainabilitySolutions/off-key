@@ -42,12 +42,6 @@ app_settings = get_app_settings()
 runtime_settings = get_runtime_settings()
 service_endpoints = get_service_endpoints_settings()
 
-# See https://github.com/pyca/bcrypt/issues/684#issuecomment-2465572106
-import bcrypt  # noqa: E402
-
-if not hasattr(bcrypt, "__about__"):
-    bcrypt.__about__ = type("about", (object,), {"__version__": bcrypt.__version__})
-
 # Initialize logging from core + service YAML config
 service_logging_config = Path(__file__).parent / "config" / "logging.yaml"
 load_yaml_config(str(service_logging_config))

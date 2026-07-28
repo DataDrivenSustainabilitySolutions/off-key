@@ -126,7 +126,7 @@ class RestartedMartingaleAlarmController:
         finite_log_restarted_martingale = (
             log_restarted_martingale if np.isfinite(log_restarted_martingale) else None
         )
-        context = {
+        return {
             "martingale_method": self.method,
             "epsilon": self.epsilon,
             "e_value": finite_e_value,
@@ -141,7 +141,6 @@ class RestartedMartingaleAlarmController:
             "alarm_count": self.alarm_count,
             "tested_count": self.tested_count,
         }
-        return context
 
 
 class StaticConformalDetectionService:

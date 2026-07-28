@@ -1,3 +1,5 @@
+import os
+
 import pytest
 
 from tests.support.runtime_cache import reset_runtime_caches_for_tests
@@ -21,6 +23,7 @@ _GATEWAY_ENVIRONMENT = {
     "USE_CREDENTIALS": "true",
     "VALIDATE_CERTS": "false",
     "ANOMALY_ALERT_RECIPIENTS": "admin@example.com",
+    "SERVICE_LOG_FILE": os.devnull,
 }
 
 

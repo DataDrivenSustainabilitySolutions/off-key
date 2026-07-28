@@ -78,7 +78,11 @@ describe("clientLogger", () => {
     });
 
     expect(errorSpy).toHaveBeenCalledTimes(1);
-    const payload = errorSpy.mock.calls[0][0] as Record<string, unknown>;
+    const payload = errorSpy.mock.calls[0]?.[0] as
+      | Record<string, unknown>
+      | undefined;
+    expect(payload).toBeDefined();
+    if (!payload) throw new Error("Expected a structured client log payload");
     expect(payload.event).toBe("ui.fetch_failed");
     expect(payload.message).toBe("Request failed");
     expect(payload.correlationId).toBe("cid-123");

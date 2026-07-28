@@ -44,7 +44,10 @@ const CATEGORY_COLORS: Record<string, string> = {
   other: '#7c3aed',
 };
 
-const EVIDENCE_COLORS = ['#059669', '#7c3aed', '#dc2626', '#0284c7'];
+const EVIDENCE_COLORS = ['#059669', '#7c3aed', '#dc2626', '#0284c7'] as const;
+
+const getEvidenceColor = (index: number): string =>
+  EVIDENCE_COLORS[index % EVIDENCE_COLORS.length] ?? EVIDENCE_COLORS[0];
 
 export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
   telemetryData,
@@ -62,10 +65,12 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
   useEffect(() => {
     if (typeof IntersectionObserver === 'undefined' || !cardNode) return;
 
-    const observer = new IntersectionObserver(
-      ([entry]) => setIsChartVisible(entry.isIntersecting),
-      { rootMargin: '600px 0px' }
-    );
+    const observer = new IntersectionObserver((entries) => {
+      const [entry] = entries;
+      if (entry) {
+        setIsChartVisible(entry.isIntersecting);
+      }
+    }, { rootMargin: '600px 0px' });
     observer.observe(cardNode);
     return () => observer.disconnect();
   }, [cardNode]);
@@ -401,7 +406,7 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
                     type="monotone"
                     dataKey={series.dataKey}
                     name={`Martingale ${series.serviceId.slice(0, 8)}`}
-                    stroke={EVIDENCE_COLORS[index % EVIDENCE_COLORS.length]}
+                    stroke={getEvidenceColor(index)}
                     strokeWidth={2}
                     dot={false}
                     connectNulls

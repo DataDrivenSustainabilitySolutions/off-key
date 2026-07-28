@@ -23,7 +23,7 @@ const baseAnomaly: Anomaly = {
 
 describe("anomaly chart utilities", () => {
   it("includes multivariate anomalies only on involved telemetry charts", () => {
-    const anomalies = [
+    const anomalies: Anomaly[] = [
       baseAnomaly,
       {
         ...baseAnomaly,
@@ -46,7 +46,7 @@ describe("anomaly chart utilities", () => {
   });
 
   it("keeps legacy multivariate anomalies visible when no sensor set exists", () => {
-    const anomalies = [
+    const anomalies: Anomaly[] = [
       {
         ...baseAnomaly,
         anomaly_id: "anomaly-legacy",
@@ -76,7 +76,7 @@ describe("anomaly chart utilities", () => {
   });
 
   it("clusters nearby anomalies into zones with full anomaly payloads", () => {
-    const anomalies = [
+    const anomalies: Anomaly[] = [
       {
         ...baseAnomaly,
         anomaly_id: "zone-a",
@@ -259,7 +259,7 @@ describe("anomaly chart utilities", () => {
   });
 
   it("filters anomalies by explicit time window", () => {
-    const anomalies = [
+    const anomalies: Anomaly[] = [
       { ...baseAnomaly, anomaly_id: "inside", timestamp: "2026-05-19T08:00:00.000Z" },
       { ...baseAnomaly, anomaly_id: "outside", timestamp: "2026-05-19T09:00:00.000Z" },
     ];

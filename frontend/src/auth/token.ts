@@ -11,8 +11,15 @@ export const parseNumericUserId = (value: unknown): number | null => {
 
 export const getTokenPayload = (token: string): Record<string, unknown> | null => {
   try {
-    const base64 = token.split(".")[1];
-    const base64Standard = base64.replace(/-/g, "+").replace(/_/g, "/");
+    const tokenParts = token.split(".");
+    if (tokenParts.length !== 3) {
+      return null;
+    }
+    const encodedPayload = tokenParts[1];
+    if (!encodedPayload) {
+      return null;
+    }
+    const base64Standard = encodedPayload.replace(/-/g, "+").replace(/_/g, "/");
     const padded = base64Standard.padEnd(
       base64Standard.length + ((4 - (base64Standard.length % 4)) % 4),
       "="

@@ -49,10 +49,19 @@ const multivariateAnomalyAppliesToTelemetry = (
   return anomaly.sensor_set.includes(telemetryType);
 };
 
-const ANOMALY_STYLES: Record<
-  string,
-  { color: string; radius: number; opacity: number }
-> = {
+interface AnomalyStyle {
+  color: string;
+  radius: number;
+  opacity: number;
+}
+
+const DEFAULT_ANOMALY_STYLE: AnomalyStyle = {
+  color: "#dc2626",
+  radius: 3,
+  opacity: 0.8,
+};
+
+const ANOMALY_STYLES: Record<string, AnomalyStyle> = {
   threshold_exceeded: { color: "#ef4444", radius: 3, opacity: 0.8 },
   spike: { color: "#f97316", radius: 4, opacity: 0.9 },
   drop: { color: "#3b82f6", radius: 4, opacity: 0.9 },
@@ -61,7 +70,6 @@ const ANOMALY_STYLES: Record<
   ml_conformal_static_multivariate: { color: "#991b1b", radius: 6, opacity: 0.95 },
   ml_tailprob_univariate: { color: "#ea580c", radius: 4, opacity: 0.9 },
   ml_tailprob_multivariate: { color: "#c2410c", radius: 5, opacity: 0.9 },
-  default: { color: "#dc2626", radius: 3, opacity: 0.8 },
 };
 
 /**
@@ -114,18 +122,20 @@ export const createAnomalyZones = (
     const startTime = new Date(range.start).getTime();
     const endTime = new Date(range.end).getTime();
 
-    while (
-      anomalyIndex < validAnomalies.length &&
-      validAnomalies[anomalyIndex].timestampMs < startTime
-    ) {
+    while (true) {
+      const current = validAnomalies[anomalyIndex];
+      if (!current || current.timestampMs >= startTime) {
+        break;
+      }
       anomalyIndex += 1;
     }
 
-    while (
-      anomalyIndex < validAnomalies.length &&
-      validAnomalies[anomalyIndex].timestampMs <= endTime
-    ) {
-      const { anomaly } = validAnomalies[anomalyIndex];
+    while (true) {
+      const current = validAnomalies[anomalyIndex];
+      if (!current || current.timestampMs > endTime) {
+        break;
+      }
+      const { anomaly } = current;
       zoneAnomalies.push(anomaly);
       anomalyIndex += 1;
     }
@@ -253,6 +263,5 @@ Sensors: ${formatAnomalySensorSet(anomaly.sensor_set)}`;
 /**
  * Determine the visual style for an anomaly based on its type
  */
-export const getAnomalyStyle = (anomalyType: string) => {
-  return ANOMALY_STYLES[anomalyType] || ANOMALY_STYLES.default;
-};
+export const getAnomalyStyle = (anomalyType: string): AnomalyStyle =>
+  ANOMALY_STYLES[anomalyType] ?? DEFAULT_ANOMALY_STYLE;

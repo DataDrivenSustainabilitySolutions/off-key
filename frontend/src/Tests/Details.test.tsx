@@ -4,9 +4,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import Details from "../pages/Details";
 
-const mockLoadAllTelemetryTypes = vi.fn();
-const mockLoadAnomalies = vi.fn();
-const mockApiGet = vi.fn(() => Promise.resolve([]));
+const mockLoadAllTelemetryTypes = vi.fn<
+  (...args: unknown[]) => Promise<unknown[]>
+>(() => Promise.resolve([]));
+const mockLoadAnomalies = vi.fn<
+  (...args: unknown[]) => Promise<unknown[]>
+>(() => Promise.resolve([]));
+const mockApiGet = vi.fn<(...args: unknown[]) => Promise<unknown[]>>(() =>
+  Promise.resolve([])
+);
 const mockChartAnomalyProps: unknown[][] = [];
 
 vi.mock("../lib/api-client", () => ({

@@ -1,6 +1,7 @@
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
+import type { Mock } from "vitest";
 
 import { AuthProvider } from "@/auth/AuthContext";
 import { tokenManager } from "@/lib/api-client";
@@ -19,20 +20,20 @@ vi.mock("react-router-dom", async () => {
   };
 });
 
-let fetchMock: ReturnType<typeof vi.fn>;
-let originalFetch: typeof global.fetch;
+let fetchMock: Mock<typeof fetch>;
+let originalFetch: typeof globalThis.fetch;
 
 beforeEach(() => {
-  originalFetch = global.fetch;
-  fetchMock = vi.fn();
-  global.fetch = fetchMock as typeof fetch;
+  originalFetch = globalThis.fetch;
+  fetchMock = vi.fn<typeof fetch>();
+  globalThis.fetch = fetchMock;
   localStorage.clear();
   sessionStorage.clear();
   mockNavigate.mockReset();
 });
 
 afterEach(() => {
-  global.fetch = originalFetch;
+  globalThis.fetch = originalFetch;
   vi.resetAllMocks();
 });
 

@@ -74,9 +74,9 @@ describe('monitoring chart adapter', () => {
       ]
     );
 
-    expect(rows[1][martingaleDataKey('service-a')]).toBe(4);
-    expect(rows[1][martingaleDataKey('service-b')]).toBeUndefined();
-    expect(rows[2][martingaleDataKey('service-b')]).toBe(2);
+    expect(rows[1]?.[martingaleDataKey('service-a')]).toBe(4);
+    expect(rows[1]?.[martingaleDataKey('service-b')]).toBeUndefined();
+    expect(rows[2]?.[martingaleDataKey('service-b')]).toBe(2);
     expect(getMonitoringEvidenceSeries([
       evidence('service-a', '2026-01-01T00:00:01Z', 4),
       evidence('service-b', '2026-01-01T00:00:02Z', 2),

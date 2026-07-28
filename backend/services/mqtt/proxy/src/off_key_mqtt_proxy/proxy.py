@@ -228,8 +228,7 @@ class MQTTProxyService:
 
         Keep the destination registered, but disable it while disconnected.
         """
-        if self.bridge_destination:
-            self.bridge_destination.enabled = False
+        self._set_bridge_available(False)
 
         if self.bridge_client:
             await self._safe_component_shutdown("bridge_client", self.bridge_client)
@@ -241,7 +240,14 @@ class MQTTProxyService:
             )
             self.bridge_auth_handler = None
 
-        self.bridge_connected_event.clear()
+    def _set_bridge_available(self, available: bool) -> None:
+        """Keep the bridge event and router destination in sync."""
+        if available:
+            self.bridge_connected_event.set()
+        else:
+            self.bridge_connected_event.clear()
+        if self.bridge_destination:
+            self.bridge_destination.enabled = available
 
     async def _connect_bridge_once(self) -> bool:
         """
@@ -253,20 +259,6 @@ class MQTTProxyService:
         if not self.message_router:
             logger.error(
                 "event=proxy.bridge_setup_failed reason=router_not_initialized",
-                extra=self._log_context,
-            )
-            return False
-
-        if not self.config.bridge_broker_host:
-            logger.error(
-                "event=proxy.bridge_setup_failed reason=missing_bridge_host",
-                extra=self._log_context,
-            )
-            return False
-
-        if self.config.bridge_use_auth and not self.config.bridge_username:
-            logger.error(
-                "event=proxy.bridge_setup_failed reason=missing_bridge_username",
                 extra=self._log_context,
             )
             return False
@@ -291,7 +283,6 @@ class MQTTProxyService:
 
             self.bridge_auth_handler = bridge_auth_handler
             self.bridge_client = bridge_client
-            self.bridge_connected_event.set()
 
             if self.bridge_destination is None:
                 self.bridge_destination = BridgeDestination(
@@ -302,7 +293,7 @@ class MQTTProxyService:
                 )
             else:
                 self.bridge_destination.target_client = bridge_client
-            self.bridge_destination.enabled = True
+            self._set_bridge_available(True)
 
             logger.info(
                 "event=proxy.bridge_connected bridge_host=%s \
@@ -327,9 +318,7 @@ class MQTTProxyService:
                 exc_info=True,
             )
 
-            self.bridge_connected_event.clear()
-            if self.bridge_destination:
-                self.bridge_destination.enabled = False
+            self._set_bridge_available(False)
 
             if bridge_client:
                 await self._safe_component_shutdown("bridge_client", bridge_client)
@@ -352,6 +341,53 @@ class MQTTProxyService:
         except TimeoutError:
             return False
 
+    async def _run_bridge_supervisor_step(
+        self,
+        reconnect_attempt: int,
+    ) -> int | None:
+        """Advance the bridge state machine once; return None to stop."""
+        if not self.config.enable_bridge:
+            return None
+
+        if self.bridge_client and self.bridge_client.is_connected:
+            self._set_bridge_available(True)
+            should_stop = await self._wait_for_shutdown_or_timeout(
+                self.config.health_monitor_interval
+            )
+            return None if should_stop else 0
+
+        bridge_state = getattr(
+            getattr(self.bridge_client, "state", None),
+            "value",
+            "unknown",
+        )
+        if bridge_state in {"connecting", "reconnecting"}:
+            should_stop = await self._wait_for_shutdown_or_timeout(
+                self.config.health_monitor_interval
+            )
+            return None if should_stop else reconnect_attempt
+
+        self._set_bridge_available(False)
+        reconnect_attempt += 1
+        if await self._connect_bridge_once():
+            return 0
+
+        retry_delay = self.config.get_jittered_backoff_delay(reconnect_attempt - 1)
+        logger.warning(
+            "event=proxy.bridge_retry_scheduled retry_delay_s=%.2f attempt=%s",
+            retry_delay,
+            reconnect_attempt,
+            extra={
+                **self._log_context,
+                "retry_delay_seconds": retry_delay,
+                "reconnect_attempt": reconnect_attempt,
+                "bridge_host": self.config.bridge_broker_host,
+                "bridge_port": self.config.bridge_broker_port,
+            },
+        )
+        should_stop = await self._wait_for_shutdown_or_timeout(retry_delay)
+        return None if should_stop else reconnect_attempt
+
     async def _bridge_supervisor_loop(self) -> None:
         """Keep bridge connection healthy and reconnect on failures."""
         reconnect_attempt = 0
@@ -359,65 +395,10 @@ class MQTTProxyService:
 
         try:
             while not self.shutdown_event.is_set():
-                if not self.config.enable_bridge:
+                next_attempt = await self._run_bridge_supervisor_step(reconnect_attempt)
+                if next_attempt is None:
                     return
-
-                if self.bridge_client and self.bridge_client.is_connected:
-                    self.bridge_connected_event.set()
-                    if self.bridge_destination:
-                        self.bridge_destination.enabled = True
-                    reconnect_attempt = 0
-
-                    should_stop = await self._wait_for_shutdown_or_timeout(
-                        self.config.health_monitor_interval
-                    )
-                    if should_stop:
-                        return
-                    continue
-
-                if self.bridge_client:
-                    bridge_state = getattr(
-                        getattr(self.bridge_client, "state", None),
-                        "value",
-                        "unknown",
-                    )
-                    if bridge_state in {"connecting", "reconnecting"}:
-                        should_stop = await self._wait_for_shutdown_or_timeout(
-                            self.config.health_monitor_interval
-                        )
-                        if should_stop:
-                            return
-                        continue
-
-                self.bridge_connected_event.clear()
-                if self.bridge_destination:
-                    self.bridge_destination.enabled = False
-
-                reconnect_attempt += 1
-                connected = await self._connect_bridge_once()
-                if connected:
-                    reconnect_attempt = 0
-                    continue
-
-                retry_delay = self.config.get_jittered_backoff_delay(
-                    reconnect_attempt - 1
-                )
-                logger.warning(
-                    "event=proxy.bridge_retry_scheduled retry_delay_s=%.2f attempt=%s",
-                    retry_delay,
-                    reconnect_attempt,
-                    extra={
-                        **self._log_context,
-                        "retry_delay_seconds": retry_delay,
-                        "reconnect_attempt": reconnect_attempt,
-                        "bridge_host": self.config.bridge_broker_host,
-                        "bridge_port": self.config.bridge_broker_port,
-                    },
-                )
-
-                should_stop = await self._wait_for_shutdown_or_timeout(retry_delay)
-                if should_stop:
-                    return
+                reconnect_attempt = next_attempt
 
         except asyncio.CancelledError:
             logger.debug(
@@ -432,9 +413,7 @@ class MQTTProxyService:
                 exc_info=True,
             )
         finally:
-            self.bridge_connected_event.clear()
-            if self.bridge_destination:
-                self.bridge_destination.enabled = False
+            self._set_bridge_available(False)
             logger.debug(
                 "event=proxy.bridge_supervisor_stopped", extra=self._log_context
             )

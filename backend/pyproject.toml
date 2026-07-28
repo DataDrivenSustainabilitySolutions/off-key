@@ -93,6 +93,7 @@ exclude = [
 select = [
     "ASYNC", # async correctness
     "B",     # likely bugs and unsafe defaults
+    "C90",   # McCabe complexity guard
     "E",     # pycodestyle errors (excluding formatter-owned rules)
     "F",     # Pyflakes
     "I",     # isort-compatible import ordering

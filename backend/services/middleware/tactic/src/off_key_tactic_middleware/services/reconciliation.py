@@ -7,6 +7,7 @@ MonitoringService.status in sync with actual Docker state.
 
 import asyncio
 from contextlib import suppress
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 import docker
@@ -31,6 +32,14 @@ from .time_utils import coerce_utc
 
 _TERMINAL_OPERATIONAL_STAGES = {"failed", "stopped"}
 _RETRY_LATER_WORKLOAD_STATES = {"error", "unknown"}
+
+
+@dataclass(frozen=True, slots=True)
+class _ReconciliationOutcome:
+    """Database mutations produced by one service reconciliation."""
+
+    updated: bool = False
+    deleted_rows: int = 0
 
 
 class RadarStatusReconciliationService:
@@ -58,18 +67,19 @@ class RadarStatusReconciliationService:
         self.interval_seconds = interval_seconds
         self.terminal_service_retention_hours = terminal_service_retention_hours
         self.async_docker = AsyncDocker()
-        self._task: asyncio.Task | None = None
+        self._task: asyncio.Task[None] | None = None
         self._stop_event = asyncio.Event()
 
-    async def start(self):
+    async def start(self) -> None:
         """Start the reconciliation background task."""
         self._stop_event.clear()
         self._task = asyncio.create_task(self._run_loop())
         logger.info(
-            f"Status reconciliation started (interval={self.interval_seconds}s)"
+            "Status reconciliation started (interval=%ss)",
+            self.interval_seconds,
         )
 
-    async def stop(self):
+    async def stop(self) -> None:
         """Stop the reconciliation background task."""
         self._stop_event.set()
         if self._task:
@@ -83,23 +93,23 @@ class RadarStatusReconciliationService:
 
         logger.info("Status reconciliation stopped")
 
-    async def _run_loop(self):
+    async def _run_loop(self) -> None:
         """Main reconciliation loop."""
         while not self._stop_event.is_set():
             try:
                 await self._reconcile()
-            except (docker.errors.DockerException, docker.errors.APIError) as e:
+            except (docker.errors.DockerException, docker.errors.APIError) as exc:
                 # Docker-related errors are expected and recoverable
-                logger.warning(f"Docker error during reconciliation: {e}")
-            except SQLAlchemyError as e:
+                logger.warning("Docker error during reconciliation: %s", exc)
+            except SQLAlchemyError as exc:
                 # Database errors are expected and recoverable
-                logger.error(f"Database error during reconciliation: {e}")
+                logger.error("Database error during reconciliation: %s", exc)
             except asyncio.CancelledError:
                 # Task cancellation should propagate
                 raise
-            except Exception as e:
+            except Exception as exc:
                 # Unexpected errors - log with full traceback for debugging
-                logger.exception(f"Unexpected reconciliation error: {e}")
+                logger.exception("Unexpected reconciliation error: %s", exc)
 
             # Wait for next interval or stop event
             try:
@@ -111,7 +121,7 @@ class RadarStatusReconciliationService:
             except TimeoutError:
                 continue  # Timeout reached, run again
 
-    async def _reconcile(self):
+    async def _reconcile(self) -> None:
         """Perform a single reconciliation pass."""
         session_factory = get_async_session_local()
         async with session_factory() as session:
@@ -122,7 +132,7 @@ class RadarStatusReconciliationService:
                 await session.rollback()
                 raise
 
-    async def _reconcile_with_session(self, session: AsyncSession):
+    async def _reconcile_with_session(self, session: AsyncSession) -> None:
         """Reconcile DB status with Docker status.
 
         Args:
@@ -135,62 +145,88 @@ class RadarStatusReconciliationService:
         if not services:
             return
 
-        updates = 0
-        deleted = 0
-        for service in services:
-            docker_status = await self._get_docker_status(service.container_id)
-            docker_state = (docker_status or "").strip().lower()
-            terminal_state = docker_state in TERMINAL_WORKLOAD_STATES
+        outcomes = [
+            await self._reconcile_service(session, service) for service in services
+        ]
 
-            if docker_state in _RETRY_LATER_WORKLOAD_STATES:
-                logger.warning(
-                    "Skipping service '%s' reconciliation until Docker status "
-                    "is verifiable (docker_status=%s)",
-                    service.container_name,
-                    docker_state,
-                )
-                continue
-
-            if docker_state == "running":
-                if not service.status:
-                    service.status = True
-                    self._mark_revived(service)
-                    updates += 1
-                    logger.info(
-                        "Service '%s' marked active again (docker_status=running)",
-                        service.container_name,
-                    )
-                continue
-
-            if not terminal_state:
-                continue
-
-            if service.status:
-                service.status = False
-                apply_terminal_operational_status(service, docker_status)
-                updates += 1
-                logger.info(
-                    f"Service '{service.container_name}' marked inactive "
-                    f"(docker_status={docker_status})"
-                )
-
-            if self._is_purge_due(service):
-                removed_workload = await self._remove_workload_if_present(
-                    service.container_id
-                )
-                deleted += await self._delete_service_row(session, service.id)
-                logger.info(
-                    "Purged terminal RADAR service '%s' "
-                    "(docker_status=%s, workload_removed=%s)",
-                    service.container_name,
-                    docker_status,
-                    removed_workload,
-                )
-
+        updates = sum(outcome.updated for outcome in outcomes)
+        deleted = sum(outcome.deleted_rows for outcome in outcomes)
         if updates > 0:
-            logger.info(f"Reconciliation complete: {updates} service(s) updated")
+            logger.info("Reconciliation complete: %s service(s) updated", updates)
         if deleted > 0:
-            logger.info(f"Reconciliation purged {deleted} terminal service row(s)")
+            logger.info("Reconciliation purged %s terminal service row(s)", deleted)
+
+    async def _reconcile_service(
+        self,
+        session: AsyncSession,
+        service: MonitoringService,
+    ) -> _ReconciliationOutcome:
+        """Apply the state transition for one persisted RADAR service."""
+        docker_status = await self._get_docker_status(service.container_id)
+        docker_state = (docker_status or "").strip().lower()
+
+        if docker_state in _RETRY_LATER_WORKLOAD_STATES:
+            logger.warning(
+                "Skipping service '%s' reconciliation until Docker status "
+                "is verifiable (docker_status=%s)",
+                service.container_name,
+                docker_state,
+            )
+            return _ReconciliationOutcome()
+        if docker_state == "running":
+            return self._reconcile_running_service(service)
+        if docker_state not in TERMINAL_WORKLOAD_STATES:
+            return _ReconciliationOutcome()
+        return await self._reconcile_terminal_service(
+            session,
+            service,
+            docker_status,
+        )
+
+    def _reconcile_running_service(
+        self,
+        service: MonitoringService,
+    ) -> _ReconciliationOutcome:
+        if service.status:
+            return _ReconciliationOutcome()
+
+        service.status = True
+        self._mark_revived(service)
+        logger.info(
+            "Service '%s' marked active again (docker_status=running)",
+            service.container_name,
+        )
+        return _ReconciliationOutcome(updated=True)
+
+    async def _reconcile_terminal_service(
+        self,
+        session: AsyncSession,
+        service: MonitoringService,
+        docker_status: str,
+    ) -> _ReconciliationOutcome:
+        updated = service.status
+        if updated:
+            service.status = False
+            apply_terminal_operational_status(service, docker_status)
+            logger.info(
+                "Service '%s' marked inactive (docker_status=%s)",
+                service.container_name,
+                docker_status,
+            )
+
+        if not self._is_purge_due(service):
+            return _ReconciliationOutcome(updated=updated)
+
+        removed_workload = await self._remove_workload_if_present(service.container_id)
+        deleted_rows = await self._delete_service_row(session, service.id)
+        logger.info(
+            "Purged terminal RADAR service '%s' "
+            "(docker_status=%s, workload_removed=%s)",
+            service.container_name,
+            docker_status,
+            removed_workload,
+        )
+        return _ReconciliationOutcome(updated=updated, deleted_rows=deleted_rows)
 
     def _is_purge_due(self, service: MonitoringService) -> bool:
         if service.status:

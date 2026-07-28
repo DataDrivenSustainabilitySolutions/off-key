@@ -12,6 +12,27 @@ The example contains development-only credentials and service-discovery defaults
 Use independent secrets and production broker, database, email, and origin settings
 for any deployed environment. Local `.env` files are intentionally not tracked.
 
+## Development validation
+
+The supported local toolchain matches CI: Python 3.12 with `uv` for the backend
+workspace, and Node.js 24 with `npm` for the frontend.
+
+```bash
+uv sync --project backend --all-packages --all-groups --frozen
+uv run --project backend ruff check .
+uv run --project backend python -m pytest -q
+
+cd frontend
+npm ci
+npm run lint
+npm test
+npm run build
+```
+
+The frontend build type-checks application, Node tooling, unit tests, and Playwright
+tests before producing the Vite bundle. Run `npm run test:e2e` against a running
+Compose stack; CI's deployment smoke workflow performs that full-system check.
+
 ## Docker Compose Modes
 
 ### Local development (default)
@@ -41,13 +62,10 @@ rejected because they cannot define a stable multivariate feature schema.
 
 ### Monitoring architecture
 
-The monitoring UI presents two lanes:
-
-- **Static relationships** is the only executable lane. It is intended for an
-  aligned sensor set such as L1/L2/L3 whose dependency structure is expected to
-  remain stable.
-- **Temporally dependent streams** is a UI facade only. It deliberately has no
-  model catalog, preprocessing pipeline, API contract, or runtime implementation.
+The monitoring UI configures the implemented static relationship workflow for an
+aligned sensor set such as L1/L2/L3 whose dependency structure is expected to
+remain stable. Unimplemented monitoring strategies are not exposed as product
+controls.
 
 A static service consumes consecutive, non-overlapping phases: baseline training,
 calibration, and online inference. Inference produces conformal p-values, converts

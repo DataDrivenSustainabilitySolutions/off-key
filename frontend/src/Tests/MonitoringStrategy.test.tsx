@@ -195,15 +195,12 @@ describe("<Monitoring /> static setup", () => {
     expect(getSubmittedPayload().static_baseline_config.model_params.n_estimators).toBe(101);
   });
 
-  it("renders dynamic as a non-interactive facade with no adaptive controls", async () => {
+  it("renders only the executable static monitoring workflow", async () => {
     renderMonitoring();
 
-    expect(await screen.findByText("Temporally dependent streams")).toBeTruthy();
-    expect(screen.getByText("Coming later")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: /dynamic/i })).toBeNull();
-    expect(screen.queryByText(/dynamic model/i)).toBeNull();
-    expect(screen.queryByText(/FDR Control/i)).toBeNull();
-    expect(screen.getByText(/Fixed Ville threshold/i)).toBeTruthy();
+    expect(await screen.findByText(/Fixed Ville threshold/i)).toBeTruthy();
+    expect(screen.queryByText("Temporally dependent streams")).toBeNull();
+    expect(screen.queryByText("Coming later")).toBeNull();
   });
 
   it("disables sensors claimed by an overlapping active service", async () => {

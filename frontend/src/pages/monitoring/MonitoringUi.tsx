@@ -1,5 +1,3 @@
-import { cn } from "@/lib/utils";
-import { CheckCircle2, Clock3 } from "lucide-react";
 import type { ElementType, ReactNode } from "react";
 
 import type { FieldErrors } from "./config";
@@ -51,72 +49,6 @@ export function LifecycleStep({
           className="h-full rounded-full bg-primary/70"
           style={{ width: `${number * 33.333}%` }}
         />
-      </div>
-    </div>
-  );
-}
-
-export function LaneCard({
-  title,
-  eyebrow,
-  description,
-  selected = false,
-  icon: Icon,
-}: {
-  title: string;
-  eyebrow: string;
-  description: string;
-  selected?: boolean;
-  icon: ElementType;
-}) {
-  return (
-    <div
-      className={cn(
-        "relative overflow-hidden rounded-2xl border p-5 transition-colors sm:p-6",
-        selected
-          ? "border-primary/35 bg-primary/[0.035]"
-          : "border-dashed border-border/70 bg-muted/15",
-      )}
-      aria-disabled={!selected}
-    >
-      <div className="flex items-start justify-between gap-4">
-        <span
-          className={cn(
-            "rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.1em]",
-            selected
-              ? "bg-primary/10 text-primary"
-              : "bg-muted text-muted-foreground",
-          )}
-        >
-          {eyebrow}
-        </span>
-        <span
-          className={cn(
-            "flex size-10 items-center justify-center rounded-xl",
-            selected
-              ? "bg-primary text-primary-foreground"
-              : "border bg-card text-muted-foreground",
-          )}
-        >
-          <Icon className="size-4" />
-        </span>
-      </div>
-      <h3 className="mt-5 text-lg font-semibold tracking-[-0.02em]">{title}</h3>
-      <p className="mt-2 text-sm leading-6 text-muted-foreground">
-        {description}
-      </p>
-      <div className="mt-5 flex items-center gap-2 border-t border-border/60 pt-4 text-xs font-medium">
-        {selected ? (
-          <>
-            <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-            Available now
-          </>
-        ) : (
-          <>
-            <Clock3 className="h-4 w-4" />
-            Coming later
-          </>
-        )}
       </div>
     </div>
   );

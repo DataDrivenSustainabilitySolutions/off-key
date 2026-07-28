@@ -6,7 +6,6 @@
 
 // Parameter schema from the static model registry
 export type MonitoringStrategy = 'static_baseline';
-export type MonitoringLane = 'static' | 'dynamic';
 
 export interface ParameterSchema {
   type: 'string' | 'number' | 'integer' | 'boolean' | 'array' | 'object';

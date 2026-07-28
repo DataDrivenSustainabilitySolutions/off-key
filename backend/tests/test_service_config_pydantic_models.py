@@ -47,6 +47,29 @@ def test_mqtt_config_mutable_defaults_are_isolated():
     assert cfg_two.bridge_topic_mapping == {}
 
 
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("broker_port", 0),
+        ("transport", "udp"),
+        ("client_id_prefix", "invalid prefix"),
+        ("subscription_qos", 3),
+        ("worker_threads", 33),
+        ("retry_jitter_magnitude", 0.6),
+    ],
+)
+def test_mqtt_config_rejects_invalid_primitive_constraints(field, value):
+    with pytest.raises(ValidationError, match=field):
+        MQTTConfig(**{**_base_mqtt_config(), field: value})
+
+
+def test_mqtt_settings_validate_primitive_constraints(monkeypatch):
+    monkeypatch.setenv("MQTT_WORKER_THREADS", "0")
+
+    with pytest.raises(ValidationError, match="MQTT_WORKER_THREADS"):
+        MQTTSettings()
+
+
 def test_mqtt_radar_config_mutable_defaults_are_isolated():
     cfg_one = MQTTRadarConfig()
     cfg_two = MQTTRadarConfig()

@@ -94,3 +94,22 @@ def test_sensor_state_cache_strict_barrier_waits_for_new_values_from_all(monkeyp
     emitted = cache.update_with_status("charger-3", "y", {"y": 2.1})
     assert emitted.status == "aligned_emit"
     assert emitted.features == {"x": 1.1, "y": 2.1}
+
+
+def test_sensor_state_cache_reports_sensor_without_extractable_value():
+    cache = SensorStateCache(required_sensors={"x", "y"})
+
+    first = cache.update_with_status(
+        "charger-4",
+        "x",
+        {"unrelated": 1.0, "other": 2.0},
+    )
+    assert first.status == "waiting_for_all"
+
+    blocked = cache.update_with_status("charger-4", "y", {"y": 3.0})
+    assert blocked.status == "waiting_for_all"
+    assert blocked.missing_sensors == ("x",)
+
+    recovered = cache.update_with_status("charger-4", "x", {"x": 4.0})
+    assert recovered.status == "aligned_emit"
+    assert recovered.features == {"x": 4.0, "y": 3.0}

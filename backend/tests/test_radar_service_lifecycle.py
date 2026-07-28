@@ -120,6 +120,55 @@ def test_static_detector_operational_stage_mapping(
     assert operational["is_stale"] is False
 
 
+def test_health_status_uses_one_metric_snapshot_and_reduces_alerts():
+    monitor = HealthMonitor()
+    monitor.start_time = datetime.now()
+    message_processor = MagicMock()
+    message_processor.get_metrics.return_value = {
+        "message_count": 10,
+        "processed_message_count": 8,
+        "anomaly_count": 2,
+        "anomaly_rate": 0.2,
+        "error_count": 2,
+        "error_rate": 0.2,
+    }
+    monitor.set_components(
+        mqtt_client=SimpleNamespace(
+            get_health_status=lambda: {
+                "status": "unhealthy",
+                "reason": "disconnected",
+            }
+        ),
+        database_writer=SimpleNamespace(
+            get_health_status=lambda: {"status": "disabled"}
+        ),
+        detector=_FakeDetector({}, state="degraded"),
+        memory_manager=SimpleNamespace(
+            max_memory_mb=100,
+            get_memory_usage=lambda: 95.0,
+        ),
+        message_processor=message_processor,
+    )
+
+    status = monitor.get_health_status()
+
+    assert status.status == "degraded"
+    assert status.active_alerts == [
+        "mqtt_disconnected",
+        "detector_degraded",
+        "high_memory_usage",
+        "high_error_rate",
+    ]
+    assert status.metrics["processed_message_count"] == 8
+    assert status.metrics["memory_usage_mb"] == 95.0
+    message_processor.get_metrics.assert_called_once()
+
+    snapshot = monitor.build_metrics_snapshot(status)
+    assert snapshot["total_messages_processed"] == 8
+    assert snapshot["total_anomalies_detected"] == 2
+    message_processor.get_metrics.assert_called_once()
+
+
 @pytest.mark.asyncio
 async def test_database_writer_updates_service_operational_status(monkeypatch):
     class _Session:

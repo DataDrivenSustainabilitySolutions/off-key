@@ -126,62 +126,33 @@ class SensorStateCache:
                 # No alignment requested; emit the incoming values as-is
                 return AlignmentUpdate(status="aligned_emit", features=values)
 
-            missing_sensors = sorted(self.required_sensors - charger_cache.keys())
             sensor_ages = self._collect_sensor_ages(charger_cache, current_time)
-            if missing_sensors:
+            blocker = self._alignment_blocker(
+                charger_id,
+                charger_cache,
+                sensor_ages,
+            )
+            if blocker is not None:
+                return blocker
+
+            aligned, invalid_sensor = self._build_aligned_features(
+                charger_id,
+                charger_cache,
+            )
+            if invalid_sensor is not None:
                 return AlignmentUpdate(
                     status="waiting_for_all",
-                    missing_sensors=tuple(missing_sensors),
+                    missing_sensors=(invalid_sensor,),
                     sensor_ages=sensor_ages,
                 )
 
-            stale_sensors = sorted(
-                sensor
-                for sensor, age in sensor_ages.items()
-                if age > self.max_sensor_age_seconds
-            )
-            if stale_sensors:
-                return AlignmentUpdate(
-                    status="stale_sensor_block",
-                    stale_sensors=tuple(stale_sensors),
-                    sensor_ages=sensor_ages,
-                )
-
-            pending_sensors: list[str] = []
             last_emitted = self._last_emitted_versions.setdefault(charger_id, {})
-            for sensor in self.required_sensor_order:
-                current_sequence = charger_cache[sensor].sequence
-                if current_sequence <= last_emitted.get(sensor, 0):
-                    pending_sensors.append(sensor)
-            if pending_sensors:
-                self.strict_barrier_wait_count += 1
-                return AlignmentUpdate(
-                    status="waiting_for_barrier",
-                    pending_sensors=tuple(pending_sensors),
-                    sensor_ages=sensor_ages,
-                )
-
-            aligned: dict[str, float] = {}
-            for sensor in self.required_sensor_order:
-                latest = charger_cache[sensor].values
-                value = _extract_numeric_value(latest, sensor)
-                if value is None:
-                    logger.debug(
-                        "event=radar.sensor_value_extract_failed \
-                            sensor=%s charger_id=%s values=%s",
-                        sensor,
-                        charger_id,
-                        latest,
-                    )
-                    return AlignmentUpdate(
-                        status="waiting_for_all",
-                        missing_sensors=(sensor,),
-                        sensor_ages=sensor_ages,
-                    )
-                aligned[sensor] = value
-
-            for sensor in self.required_sensor_order:
-                last_emitted[sensor] = charger_cache[sensor].sequence
+            last_emitted.update(
+                {
+                    sensor: charger_cache[sensor].sequence
+                    for sensor in self.required_sensor_order
+                }
+            )
             self.strict_barrier_emit_count += 1
 
             return AlignmentUpdate(
@@ -190,6 +161,73 @@ class SensorStateCache:
                 sensor_ages=sensor_ages,
                 sample_timestamp=current_time,
             )
+
+    def _alignment_blocker(
+        self,
+        charger_id: str,
+        charger_cache: dict[str, _SensorReading],
+        sensor_ages: dict[str, float],
+    ) -> AlignmentUpdate | None:
+        """Return the first condition preventing a strict-barrier emission."""
+        missing_sensors = tuple(sorted(self.required_sensors - charger_cache.keys()))
+        if missing_sensors:
+            return AlignmentUpdate(
+                status="waiting_for_all",
+                missing_sensors=missing_sensors,
+                sensor_ages=sensor_ages,
+            )
+
+        stale_sensors = tuple(
+            sorted(
+                sensor
+                for sensor, age in sensor_ages.items()
+                if age > self.max_sensor_age_seconds
+            )
+        )
+        if stale_sensors:
+            return AlignmentUpdate(
+                status="stale_sensor_block",
+                stale_sensors=stale_sensors,
+                sensor_ages=sensor_ages,
+            )
+
+        last_emitted = self._last_emitted_versions.setdefault(charger_id, {})
+        pending_sensors = tuple(
+            sensor
+            for sensor in self.required_sensor_order
+            if charger_cache[sensor].sequence <= last_emitted.get(sensor, 0)
+        )
+        if not pending_sensors:
+            return None
+
+        self.strict_barrier_wait_count += 1
+        return AlignmentUpdate(
+            status="waiting_for_barrier",
+            pending_sensors=pending_sensors,
+            sensor_ages=sensor_ages,
+        )
+
+    def _build_aligned_features(
+        self,
+        charger_id: str,
+        charger_cache: dict[str, _SensorReading],
+    ) -> tuple[dict[str, float], str | None]:
+        """Extract the canonical numeric value for each required sensor."""
+        aligned: dict[str, float] = {}
+        for sensor in self.required_sensor_order:
+            latest = charger_cache[sensor].values
+            value = _extract_numeric_value(latest, sensor)
+            if value is None:
+                logger.debug(
+                    "event=radar.sensor_value_extract_failed "
+                    "sensor=%s charger_id=%s values=%s",
+                    sensor,
+                    charger_id,
+                    latest,
+                )
+                return aligned, sensor
+            aligned[sensor] = value
+        return aligned, None
 
     def _collect_sensor_ages(
         self, charger_cache: dict[str, _SensorReading], current_time: float

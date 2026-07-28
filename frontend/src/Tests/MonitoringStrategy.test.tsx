@@ -195,12 +195,18 @@ describe("<Monitoring /> static setup", () => {
     expect(getSubmittedPayload().static_baseline_config.model_params.n_estimators).toBe(101);
   });
 
-  it("renders only the executable static monitoring workflow", async () => {
+  it("renders the dynamic lane as a disabled coming-soon preview", async () => {
     renderMonitoring();
 
     expect(await screen.findByText(/Fixed Ville threshold/i)).toBeTruthy();
-    expect(screen.queryByText("Temporally dependent streams")).toBeNull();
-    expect(screen.queryByText("Coming later")).toBeNull();
+    const dynamicLane = screen.getByText("Temporally dependent streams");
+    expect(dynamicLane).toBeTruthy();
+    expect(
+      dynamicLane.closest("[aria-disabled]")?.getAttribute("aria-disabled"),
+    ).toBe("true");
+    expect(screen.getByText("Coming soon")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /dynamic/i })).toBeNull();
+    expect(screen.queryByText(/dynamic model/i)).toBeNull();
   });
 
   it("disables sensors claimed by an overlapping active service", async () => {

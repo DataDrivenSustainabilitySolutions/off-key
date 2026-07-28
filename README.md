@@ -62,10 +62,13 @@ rejected because they cannot define a stable multivariate feature schema.
 
 ### Monitoring architecture
 
-The monitoring UI configures the implemented static relationship workflow for an
-aligned sensor set such as L1/L2/L3 whose dependency structure is expected to
-remain stable. Unimplemented monitoring strategies are not exposed as product
-controls.
+The monitoring UI presents two lanes:
+
+- **Static relationships** is the executable lane. It is intended for an aligned
+  sensor set such as L1/L2/L3 whose dependency structure is expected to remain
+  stable.
+- **Temporally dependent streams** is a greyed-out, coming-soon preview. It has no
+  model catalog, preprocessing pipeline, API contract, or runtime implementation.
 
 A static service consumes consecutive, non-overlapping phases: baseline training,
 calibration, and online inference. Inference produces conformal p-values, converts

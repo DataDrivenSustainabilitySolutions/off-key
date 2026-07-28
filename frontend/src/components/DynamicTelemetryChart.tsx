@@ -1,34 +1,33 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Card, CardContent, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import DateTimePicker from '@/components/DateTimePicker';
-import { ChevronDown } from 'lucide-react';
-import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  ResponsiveContainer,
-  ReferenceArea,
-  ReferenceDot,
-  ReferenceLine,
-  Tooltip,
-} from 'recharts';
-import { createAnomalyMarkers, createAnomalyZones, filterAnomalies, getAnomalyStyle, createAnomalyTooltip } from '@/lib/anomaly-utils';
-import type { Anomaly, TelemetryTypeData } from '@/types/charger';
-import { formatTimestamp, isWithinTimeRange } from '@/lib/time-utils';
-import { NoChartsAvailable } from '@/components/LoadingStates';
-import type { MonitoringChartEvidence } from '@/types/monitoring';
-import {
-  buildMonitoringChartData,
-  getMonitoringEvidenceSeries,
-} from '@/lib/monitoring-chart';
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+import { ChevronDown } from "lucide-react";
 
-type ReferenceDotShapeProps = {
-  cx?: number;
-  cy?: number;
-};
+import DateTimePicker from "@/components/DateTimePicker";
+import { EChart } from "@/components/EChart";
+import { NoChartsAvailable } from "@/components/LoadingStates";
+import { useTheme } from "@/components/theme-provider";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardTitle } from "@/components/ui/card";
+import {
+  createAnomalyMarkers,
+  createAnomalyZones,
+  filterAnomalies,
+} from "@/lib/anomaly-utils";
+import { resolveChartThemeColors } from "@/lib/echarts-theme";
+import {
+  buildTelemetryChartModel,
+  buildTelemetryChartOption,
+  formatChartTime,
+  getLocalTimeZone,
+  type ChartViewport,
+} from "@/lib/telemetry-chart";
+import { isWithinTimeRange } from "@/lib/time-utils";
+import type { Anomaly, TelemetryTypeData } from "@/types/charger";
+import type { MonitoringChartEvidence } from "@/types/monitoring";
 
 interface DynamicTelemetryChartProps {
   telemetryData: TelemetryTypeData;
@@ -38,150 +37,206 @@ interface DynamicTelemetryChartProps {
 }
 
 const CATEGORY_COLORS: Record<string, string> = {
-  cpu: '#0f9f8e',
-  system: '#2563eb',
-  controller: '#d97706',
-  other: '#7c3aed',
+  cpu: "#0f9f8e",
+  system: "#2563eb",
+  controller: "#d97706",
+  other: "#7c3aed",
 };
 
-const EVIDENCE_COLORS = ['#059669', '#7c3aed', '#dc2626', '#0284c7'] as const;
+const formatDisplayName = (value: string): string =>
+  value
+    .replace(/([A-Z])/gu, " $1")
+    .replace(/^./u, (character) => character.toUpperCase())
+    .trim();
 
-const getEvidenceColor = (index: number): string =>
-  EVIDENCE_COLORS[index % EVIDENCE_COLORS.length] ?? EVIDENCE_COLORS[0];
+const getLatestFiniteTime = (telemetryData: TelemetryTypeData): number | undefined => {
+  const times = telemetryData.data
+    .map(({ timestamp }) => Date.parse(timestamp))
+    .filter(Number.isFinite);
+  return times.length > 0 ? Math.max(...times) : undefined;
+};
 
 export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
   telemetryData,
   anomalies = [],
   evidence = [],
 }) => {
+  const { resolvedTheme } = useTheme();
   const [collapsed, setCollapsed] = useState(false);
   const [fromDate, setFromDate] = useState<Date>();
   const [toDate, setToDate] = useState<Date>();
+  const [viewport, setViewport] = useState<ChartViewport>({ mode: "live" });
+  const [inspectionDataEndMs, setInspectionDataEndMs] = useState<number>();
   const [cardNode, setCardNode] = useState<HTMLDivElement | null>(null);
   const [isChartVisible, setIsChartVisible] = useState(
-    () => typeof IntersectionObserver === 'undefined'
+    () => typeof IntersectionObserver === "undefined",
   );
 
   useEffect(() => {
-    if (typeof IntersectionObserver === 'undefined' || !cardNode) return;
+    if (typeof IntersectionObserver === "undefined" || !cardNode) return;
 
-    const observer = new IntersectionObserver((entries) => {
-      const [entry] = entries;
-      if (entry) {
-        setIsChartVisible(entry.isIntersecting);
-      }
-    }, { rootMargin: '600px 0px' });
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const [entry] = entries;
+        if (entry) setIsChartVisible(entry.isIntersecting);
+      },
+      { rootMargin: "600px 0px" },
+    );
     observer.observe(cardNode);
     return () => observer.disconnect();
   }, [cardNode]);
 
-  // Format the telemetry type name for display
-  const displayName = useMemo(() => {
-    return telemetryData.type
-      .replace(/([A-Z])/g, ' $1') // Add spaces before capital letters
-      .replace(/^./, str => str.toUpperCase()) // Capitalize first letter
-      .trim();
-  }, [telemetryData.type]);
+  const displayName = useMemo(
+    () => formatDisplayName(telemetryData.type),
+    [telemetryData.type],
+  );
+  const timeZone = useMemo(() => getLocalTimeZone(), []);
+  const themeColors = useMemo(
+    () => resolveChartThemeColors(resolvedTheme),
+    [resolvedTheme],
+  );
 
-  // Get category color for the chart line
-  const getCategoryColor = (category: string): string => {
-    return CATEGORY_COLORS[category] ?? '#0f9f8e';
-  };
-
-  const applyRelativeRange = useCallback((hours: number) => {
-    if (telemetryData.data.length === 0) return;
-    const times = telemetryData.data.map(d => new Date(d.timestamp).getTime());
-    const maxTime = Math.max(...times);
-    const minTime = maxTime - hours * 60 * 60 * 1000;
-    setFromDate(new Date(minTime));
-    setToDate(new Date(maxTime));
-  }, [telemetryData.data]);
-
-  const handleFromDateChange = useCallback((date: Date | undefined) => {
-    setFromDate(date);
-    setToDate((currentToDate) => {
-      if (date && currentToDate && currentToDate.getTime() < date.getTime()) {
-        return date;
-      }
-      return currentToDate;
-    });
+  const resetViewport = useCallback(() => {
+    setViewport({ mode: "live" });
+    setInspectionDataEndMs(undefined);
   }, []);
 
-  const handleToDateChange = useCallback((date: Date | undefined) => {
-    setToDate(date);
-    setFromDate((currentFromDate) => {
-      if (date && currentFromDate && currentFromDate.getTime() > date.getTime()) {
-        return date;
-      }
-      return currentFromDate;
-    });
-  }, []);
+  const applyRelativeRange = useCallback(
+    (hours: number) => {
+      const maxTime = getLatestFiniteTime(telemetryData);
+      if (maxTime === undefined) return;
+      setFromDate(new Date(maxTime - hours * 60 * 60 * 1_000));
+      setToDate(new Date(maxTime));
+      resetViewport();
+    },
+    [resetViewport, telemetryData],
+  );
 
-  const lastDay = useCallback(() => applyRelativeRange(24), [applyRelativeRange]);
-  const lastHour = useCallback(() => applyRelativeRange(1), [applyRelativeRange]);
+  const handleFromDateChange = useCallback(
+    (date: Date | undefined) => {
+      setFromDate(date);
+      setToDate((currentToDate) =>
+        date && currentToDate && currentToDate.getTime() < date.getTime()
+          ? date
+          : currentToDate,
+      );
+      resetViewport();
+    },
+    [resetViewport],
+  );
+
+  const handleToDateChange = useCallback(
+    (date: Date | undefined) => {
+      setToDate(date);
+      setFromDate((currentFromDate) =>
+        date && currentFromDate && currentFromDate.getTime() > date.getTime()
+          ? date
+          : currentFromDate,
+      );
+      resetViewport();
+    },
+    [resetViewport],
+  );
+
   const clearRange = useCallback(() => {
     setFromDate(undefined);
     setToDate(undefined);
-  }, []);
+    resetViewport();
+  }, [resetViewport]);
 
-  // Filter data based on date range
-  const filteredData = useMemo(() => {
-    return telemetryData.data.filter(item => {
-      if (!fromDate && !toDate) return true;
-      return isWithinTimeRange(item.timestamp, fromDate, toDate);
-    });
-  }, [telemetryData.data, fromDate, toDate]);
-
-  // Filter anomalies for this telemetry type
-  const telemetryAnomalies = useMemo(() =>
-    filterAnomalies(anomalies, telemetryData.type, fromDate, toDate),
-    [anomalies, telemetryData.type, fromDate, toDate]
+  const filteredData = useMemo(
+    () =>
+      telemetryData.data.filter(({ timestamp }) =>
+        isWithinTimeRange(timestamp, fromDate, toDate),
+      ),
+    [telemetryData.data, fromDate, toDate],
   );
-
-  const shouldBuildChart = !collapsed && isChartVisible;
-
-  // Create anomaly zones
-  const anomalyZones = useMemo(() =>
-    shouldBuildChart ? createAnomalyZones(telemetryAnomalies) : [],
-    [shouldBuildChart, telemetryAnomalies]
-  );
-  const anomalyMarkers = useMemo(
-    () => shouldBuildChart ? createAnomalyMarkers(filteredData, telemetryAnomalies) : [],
-    [filteredData, shouldBuildChart, telemetryAnomalies]
+  const telemetryAnomalies = useMemo(
+    () => filterAnomalies(anomalies, telemetryData.type, fromDate, toDate),
+    [anomalies, fromDate, telemetryData.type, toDate],
   );
   const telemetryEvidence = useMemo(
-    () => evidence.filter((item) =>
-      item.sensor_set.includes(telemetryData.type) &&
-      isWithinTimeRange(item.timestamp, fromDate, toDate)
-    ),
-    [evidence, telemetryData.type, fromDate, toDate]
+    () =>
+      evidence.filter(
+        (item) =>
+          item.sensor_set.includes(telemetryData.type) &&
+          isWithinTimeRange(item.timestamp, fromDate, toDate),
+      ),
+    [evidence, fromDate, telemetryData.type, toDate],
   );
-  const chartData = useMemo(
-    () => shouldBuildChart ? buildMonitoringChartData(filteredData, telemetryEvidence) : [],
-    [filteredData, shouldBuildChart, telemetryEvidence]
+  const shouldBuildChart = !collapsed && isChartVisible;
+  const chartModel = useMemo(() => {
+    if (!shouldBuildChart) return undefined;
+    return buildTelemetryChartModel({
+      telemetryName: displayName,
+      telemetryUnit: telemetryData.unit,
+      telemetryColor: CATEGORY_COLORS[telemetryData.category] ?? "#7c3aed",
+      telemetry: filteredData,
+      evidence: telemetryEvidence,
+      anomalyZones: createAnomalyZones(telemetryAnomalies),
+      anomalyMarkers: createAnomalyMarkers(filteredData, telemetryAnomalies),
+    });
+  }, [
+    displayName,
+    filteredData,
+    shouldBuildChart,
+    telemetryAnomalies,
+    telemetryData.category,
+    telemetryData.unit,
+    telemetryEvidence,
+  ]);
+  const accessibleDescription = useMemo(() => {
+    const pointCount = chartModel?.telemetry.data.length ?? 0;
+    const secondaryCount = chartModel?.secondarySeries.length ?? 0;
+    return `${displayName} telemetry chart with ${pointCount} points${secondaryCount > 0 ? ` and ${secondaryCount} restarted e-process series in a linked lower pane` : ""}. Times are shown in ${timeZone}.`;
+  }, [chartModel, displayName, timeZone]);
+  const chartOption = useMemo(
+    () =>
+      chartModel
+        ? buildTelemetryChartOption({
+            model: chartModel,
+            viewport,
+            timeZone,
+            colors: themeColors,
+            accessibleDescription,
+          })
+        : undefined,
+    [
+      accessibleDescription,
+      chartModel,
+      themeColors,
+      timeZone,
+      viewport,
+    ],
   );
-  const evidenceSeries = useMemo(
-    () => shouldBuildChart ? getMonitoringEvidenceSeries(telemetryEvidence) : [],
-    [shouldBuildChart, telemetryEvidence]
+
+  const handleViewportChange = useCallback(
+    (startMs: number, endMs: number) => {
+      setViewport({ mode: "absolute", startMs, endMs });
+      setInspectionDataEndMs((current) => current ?? chartModel?.extent?.[1]);
+    },
+    [chartModel?.extent],
   );
-  const evidenceThresholds = useMemo(
-    () => [...new Set(evidenceSeries.map((series) => series.threshold))],
-    [evidenceSeries]
-  );
+  const hasNewData =
+    viewport.mode === "absolute" &&
+    inspectionDataEndMs !== undefined &&
+    chartModel?.extent !== undefined &&
+    chartModel.extent[1] > inspectionDataEndMs;
+  const latestTelemetry = chartModel?.telemetry.data[
+    chartModel.telemetry.data.length - 1
+  ];
 
   if (telemetryData.data.length === 0) {
     return (
-      <Card ref={setCardNode} className="w-full overflow-hidden border-border/80 py-0 shadow-xs transition-all duration-300">
+      <Card
+        ref={setCardNode}
+        className="w-full overflow-hidden border-border/80 py-0 shadow-xs transition-all duration-300"
+      >
         <div className="flex items-center justify-between gap-3 border-b px-5 py-4">
           <CardTitle className="text-base">{displayName}</CardTitle>
           <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-medium capitalize text-muted-foreground">
             {telemetryData.category}
           </span>
-          {telemetryEvidence.length > 0 && (
-            <span className="rounded-full bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-700 dark:text-emerald-300">
-              E-process
-            </span>
-          )}
         </div>
         <CardContent>
           <NoChartsAvailable />
@@ -191,10 +246,17 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
   }
 
   return (
-    <Card ref={setCardNode} className={`w-full overflow-hidden py-0 transition-all duration-300 ${collapsed ? '' : 'min-h-96'}`}>
-      <div className={`flex gap-3 border-b border-border/60 bg-muted/[0.12] px-5 py-4 ${collapsed ? 'flex-row items-center justify-between' : 'flex-col lg:flex-row lg:items-center lg:justify-between'}`}>
+    <Card
+      ref={setCardNode}
+      className={`w-full overflow-hidden py-0 transition-all duration-300 ${collapsed ? "" : "min-h-96"}`}
+    >
+      <div
+        className={`flex gap-3 border-b border-border/60 bg-muted/[0.12] px-5 py-4 ${collapsed ? "flex-row items-center justify-between" : "flex-col lg:flex-row lg:items-center lg:justify-between"}`}
+      >
         <div className="flex min-w-0 flex-1 items-center gap-3">
-          <CardTitle className={`${collapsed ? 'whitespace-normal break-words' : 'truncate'} text-base`}>
+          <CardTitle
+            className={`${collapsed ? "whitespace-normal break-words" : "truncate"} text-base`}
+          >
             {displayName}
           </CardTitle>
           <span className="rounded-full border border-border/70 bg-card px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
@@ -203,7 +265,7 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
           {telemetryEvidence.length > 0 && (
             <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/[0.07] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-emerald-700 dark:text-emerald-300">
               <span className="size-1.5 rounded-full bg-emerald-500" />
-              Evidence
+              Restarted evidence
             </span>
           )}
         </div>
@@ -237,10 +299,20 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
                 </label>
               </div>
               <div className="flex flex-wrap gap-2">
-                <Button type="button" variant="outline" size="sm" onClick={lastDay}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => applyRelativeRange(24)}
+                >
                   Past 24 hours
                 </Button>
-                <Button type="button" variant="outline" size="sm" onClick={lastHour}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => applyRelativeRange(1)}
+                >
                   Past hour
                 </Button>
                 {(fromDate || toDate) && (
@@ -249,17 +321,20 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
                   </Button>
                 )}
               </div>
+              <span className="basis-full text-[11px] text-muted-foreground">
+                Local time zone: {timeZone}
+              </span>
             </div>
           )}
           <Button
             type="button"
             variant="ghost"
             size="icon"
-            onClick={() => setCollapsed(!collapsed)}
+            onClick={() => setCollapsed((current) => !current)}
             aria-label={collapsed ? "Expand chart" : "Collapse chart"}
           >
             <ChevronDown
-              className={`h-4 w-4 transition-transform ${collapsed ? 'rotate-180' : ''}`}
+              className={`h-4 w-4 transition-transform ${collapsed ? "rotate-180" : ""}`}
             />
           </Button>
         </div>
@@ -268,154 +343,62 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
       {!collapsed && (
         <CardContent className="pb-5 pt-5">
           {!isChartVisible ? (
-            <div className="h-[300px]" aria-hidden="true" />
+            <div className="h-[420px]" aria-hidden="true" />
           ) : filteredData.length === 0 ? (
-            <div className="flex h-[300px] flex-col items-center justify-center rounded-lg border border-dashed bg-muted/20 p-6 text-center">
+            <div className="flex h-[420px] flex-col items-center justify-center rounded-lg border border-dashed bg-muted/20 p-6 text-center">
               <p className="text-sm font-medium">No data in selected range</p>
               <p className="mt-1 max-w-sm text-sm text-muted-foreground">
-                Adjust the From/To values or clear the range to show all available telemetry.
+                Adjust the From/To values or clear the range to show all available
+                telemetry.
               </p>
-              <Button type="button" variant="outline" size="sm" onClick={clearRange} className="mt-4">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={clearRange}
+                className="mt-4"
+              >
                 Clear range
               </Button>
             </div>
-          ) : (
-            <ResponsiveContainer width="100%" height={300}>
-              <LineChart
-                data={chartData}
-                margin={{
-                  top: 5,
-                  right: 30,
-                  left: 20,
-                  bottom: 5,
-                }}
-              >
-                <CartesianGrid vertical={false} strokeDasharray="4 6" stroke="hsl(var(--border))" />
-                <XAxis
-                  dataKey="time"
-                  type="number"
-                  scale="time"
-                  domain={['dataMin', 'dataMax']}
-                  tickFormatter={(value) =>
-                    formatTimestamp(new Date(Number(value)).toISOString())
-                  }
-                  tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }}
-                  tickLine={false}
-                  axisLine={{ stroke: "hsl(var(--border))" }}
-                />
-                <YAxis
-                  yAxisId="telemetry"
-                  dataKey="value"
-                  tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }}
-                  tickLine={false}
-                  axisLine={false}
-                />
-                {telemetryEvidence.length > 0 && (
-                  <YAxis
-                    yAxisId="evidence"
-                    orientation="right"
-                    scale="log"
-                    domain={[0.000001, 'auto']}
-                    tickFormatter={(value) => Number(value).toPrecision(2)}
-                    allowDataOverflow
-                    tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }}
-                    tickLine={false}
-                    axisLine={false}
-                  />
+          ) : chartOption && chartModel ? (
+            <>
+              {viewport.mode === "absolute" && (
+                <div
+                  className="mb-2 flex flex-wrap items-center justify-end gap-2 text-xs text-muted-foreground"
+                  aria-live="polite"
+                >
+                  <span>{hasNewData ? "New data available" : "Inspection paused"}</span>
+                  <Button type="button" variant="outline" size="sm" onClick={resetViewport}>
+                    Return to live
+                  </Button>
+                </div>
+              )}
+              <EChart
+                option={chartOption}
+                resolvedTheme={resolvedTheme}
+                accessibleDescription={accessibleDescription}
+                onViewportChange={handleViewportChange}
+              />
+              <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 border-t border-border/60 pt-3 text-xs text-muted-foreground">
+                {latestTelemetry && (
+                  <span>
+                    Current {displayName}: {latestTelemetry[1]}
+                    {telemetryData.unit ? ` ${telemetryData.unit}` : ""} at{" "}
+                    {formatChartTime(latestTelemetry[0], timeZone, "tooltip")}
+                  </span>
                 )}
-                <Tooltip
-                  labelFormatter={(value) =>
-                    formatTimestamp(new Date(Number(value)).toISOString())
-                  }
-                  contentStyle={{
-                    border: "1px solid hsl(var(--border))",
-                    borderRadius: "12px",
-                    background: "hsl(var(--popover))",
-                    boxShadow: "0 12px 32px hsl(220 20% 10% / 0.08)",
-                    fontSize: "12px",
-                  }}
-                />
-
-                {evidenceThresholds.map((threshold) => (
-                  <ReferenceLine
-                    key={threshold}
-                    yAxisId="evidence"
-                    y={threshold}
-                    stroke="#dc2626"
-                    strokeDasharray="6 4"
-                    label={{ value: `Ville ${threshold}`, position: 'insideTopRight' }}
-                  />
-                ))}
-
-                {anomalyZones.map((zone, index) => (
-                  <ReferenceArea
-                    key={index}
-                    x1={zone.start}
-                    x2={zone.end}
-                    strokeOpacity={0}
-                    fill="red"
-                    fillOpacity={0.1}
-                  />
-                ))}
-
-                <Line
-                  yAxisId="telemetry"
-                  type="monotone"
-                  dataKey="value"
-                  connectNulls
-                  stroke={getCategoryColor(telemetryData.category)}
-                  strokeWidth={2.25}
-                  activeDot={false}
-                  dot={false}
-                  isAnimationActive={false}
-                />
-                {anomalyMarkers.map((marker, index) => {
-                  const style = getAnomalyStyle(marker.anomaly.anomaly_type);
-                  return (
-                    <ReferenceDot
-                      key={`${marker.timestamp}-${index}`}
-                      x={marker.time}
-                      y={marker.value}
-                      yAxisId="telemetry"
-                      ifOverflow="discard"
-                      shape={(props) => {
-                        const { cx, cy } = props as ReferenceDotShapeProps;
-                        if (cx === undefined || cy === undefined) return <g />;
-                        return (
-                          <g>
-                            <circle
-                              cx={cx}
-                              cy={cy}
-                              r={style.radius}
-                              fill={style.color}
-                              stroke="darkred"
-                              strokeWidth={1}
-                              opacity={style.opacity}
-                            />
-                            <title>{createAnomalyTooltip(marker.anomaly)}</title>
-                          </g>
-                        );
-                      }}
-                    />
-                  );
+                {chartModel.secondarySeries.map((series) => {
+                  const latest = series.data[series.data.length - 1];
+                  return latest ? (
+                    <span key={series.id}>
+                      {series.name}: {latest[1]}
+                    </span>
+                  ) : null;
                 })}
-                {evidenceSeries.map((series, index) => (
-                  <Line
-                    key={series.serviceId}
-                    yAxisId="evidence"
-                    type="monotone"
-                    dataKey={series.dataKey}
-                    name={`Martingale ${series.serviceId.slice(0, 8)}`}
-                    stroke={getEvidenceColor(index)}
-                    strokeWidth={2}
-                    dot={false}
-                    connectNulls
-                    isAnimationActive={false}
-                  />
-                ))}
-              </LineChart>
-            </ResponsiveContainer>
-          )}
+              </div>
+            </>
+          ) : null}
         </CardContent>
       )}
     </Card>

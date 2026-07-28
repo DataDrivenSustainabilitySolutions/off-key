@@ -145,7 +145,8 @@ describe("anomaly chart utilities", () => {
       },
     ]);
     expect(zones).toHaveLength(1);
-    expect(zones[0]).toMatchObject({ start: timestamp, end: timestamp });
+    const timestampMs = Date.parse(timestamp);
+    expect(zones[0]).toMatchObject({ startMs: timestampMs, endMs: timestampMs });
     expect(zones[0]?.anomalies[0]?.anomaly_id).toBe("offset");
   });
 

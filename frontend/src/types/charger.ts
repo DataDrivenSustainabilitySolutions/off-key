@@ -31,6 +31,7 @@ export type TelemetryCategory = 'cpu' | 'system' | 'controller' | 'other';
 export interface TelemetryTypeData {
   type: string;
   category: TelemetryCategory;
+  unit?: string;
   data: TelemetryDataPoint[];
   cursor?: TelemetryCursor;
 }

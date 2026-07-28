@@ -3,7 +3,7 @@
  * and creating visual overlays
  */
 
-import { groupTimestampsIntoRanges, timestampsAreClose } from './time-utils';
+import { timestampsAreClose } from './time-utils';
 import { INTERVALS } from './constants';
 import type { Anomaly, TelemetryDataPoint } from '@/types/charger';
 import {
@@ -15,14 +15,15 @@ export type { Anomaly };
 export const MULTIVARIATE_TELEMETRY_TYPE = "__multivariate__";
 
 export interface RedZone {
-  start: string;
-  end: string;
+  startMs: number;
+  endMs: number;
   anomalies: Anomaly[];
 }
 
 export interface AnomalyMarker extends TelemetryDataPoint {
   time: number;
   anomaly: Anomaly;
+  style: AnomalyStyle;
 }
 
 const ISO_TIMESTAMP_REGEX = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})?$/u;
@@ -102,50 +103,29 @@ export const createAnomalyZones = (
 
   if (validAnomalies.length === 0) return [];
 
-  // Keep the original strings because Recharts uses timestamp values as
-  // categorical coordinates. Equivalent normalized strings (for example,
-  // \`...00Z\` and \`...00.000Z\`) are not interchangeable on that axis.
-  const timestamps = validAnomalies.map(({ anomaly }) => anomaly.timestamp);
-
-  // Group into continuous ranges
-  const ranges = groupTimestampsIntoRanges(
-    timestamps,
-    INTERVALS.ANOMALY_ZONE_GAP,
-    true
-  );
-
   const zones: RedZone[] = [];
-  let anomalyIndex = 0;
+  const first = validAnomalies[0];
+  if (!first) return zones;
 
-  for (const range of ranges) {
-    const zoneAnomalies: Anomaly[] = [];
-    const startTime = new Date(range.start).getTime();
-    const endTime = new Date(range.end).getTime();
-
-    while (true) {
-      const current = validAnomalies[anomalyIndex];
-      if (!current || current.timestampMs >= startTime) {
-        break;
-      }
-      anomalyIndex += 1;
+  let currentZone: RedZone = {
+    startMs: first.timestampMs,
+    endMs: first.timestampMs,
+    anomalies: [first.anomaly],
+  };
+  for (const current of validAnomalies.slice(1)) {
+    if (current.timestampMs - currentZone.endMs <= INTERVALS.ANOMALY_ZONE_GAP) {
+      currentZone.endMs = current.timestampMs;
+      currentZone.anomalies.push(current.anomaly);
+      continue;
     }
-
-    while (true) {
-      const current = validAnomalies[anomalyIndex];
-      if (!current || current.timestampMs > endTime) {
-        break;
-      }
-      const { anomaly } = current;
-      zoneAnomalies.push(anomaly);
-      anomalyIndex += 1;
-    }
-
-    zones.push({
-      start: range.start,
-      end: range.end,
-      anomalies: zoneAnomalies,
-    });
+    zones.push(currentZone);
+    currentZone = {
+      startMs: current.timestampMs,
+      endMs: current.timestampMs,
+      anomalies: [current.anomaly],
+    };
   }
+  zones.push(currentZone);
 
   return zones;
 };
@@ -164,8 +144,7 @@ export const hasAnomaly = (
 };
 
 /**
- * Match telemetry points to anomalies without asking Recharts to scan the
- * complete anomaly list once for every rendered chart row.
+ * Match telemetry points to anomalies once, before the chart option is built.
  */
 export const createAnomalyMarkers = (
   telemetry: TelemetryDataPoint[],
@@ -206,7 +185,14 @@ export const createAnomalyMarkers = (
       }
     }
 
-    return match ? [{ ...point, time, anomaly: match.anomaly }] : [];
+    return match
+      ? [{
+          ...point,
+          time,
+          anomaly: match.anomaly,
+          style: getAnomalyStyle(match.anomaly.anomaly_type),
+        }]
+      : [];
   });
 };
 

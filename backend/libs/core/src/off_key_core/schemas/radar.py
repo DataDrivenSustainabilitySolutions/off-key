@@ -16,7 +16,6 @@ __all__ = [
 ]
 
 _SENSOR_KEY_STRATEGIES = {"full_hierarchy", "top_level", "leaf"}
-_ALIGNMENT_MODES = {"strict_barrier"}
 MonitoringStrategy = Literal["static_baseline"]
 RadarOperationalStage = Literal[
     "starting",
@@ -57,11 +56,10 @@ class RadarOperationalStatus(BaseModel):
 
 
 class PerformanceConfig(BaseModel):
-    """Performance and multivariate alignment options for RADAR workloads."""
+    """Performance options for RADAR workloads."""
 
     model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
-    alignment_mode: str = "strict_barrier"
     sensor_key_strategy: str = "full_hierarchy"
     sensor_freshness_seconds: float = Field(default=30.0, gt=0.0)
 
@@ -72,15 +70,6 @@ class PerformanceConfig(BaseModel):
         if normalized not in _SENSOR_KEY_STRATEGIES:
             allowed = ", ".join(sorted(_SENSOR_KEY_STRATEGIES))
             raise ValueError(f"sensor_key_strategy must be one of: {allowed}")
-        return normalized
-
-    @field_validator("alignment_mode")
-    @classmethod
-    def validate_alignment_mode(cls, value: str) -> str:
-        normalized = value.strip().lower()
-        if normalized not in _ALIGNMENT_MODES:
-            allowed = ", ".join(sorted(_ALIGNMENT_MODES))
-            raise ValueError(f"alignment_mode must be one of: {allowed}")
         return normalized
 
 

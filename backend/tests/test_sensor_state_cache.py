@@ -73,10 +73,7 @@ def test_sensor_state_cache_strict_barrier_waits_for_new_values_from_all(monkeyp
 
     monkeypatch.setattr(state_cache_module.time, "time", _fake_time)
 
-    cache = SensorStateCache(
-        required_sensors={"x", "y"},
-        alignment_mode="strict_barrier",
-    )
+    cache = SensorStateCache(required_sensors={"x", "y"})
 
     assert (
         cache.update_with_status("charger-3", "x", {"x": 1.0}).status

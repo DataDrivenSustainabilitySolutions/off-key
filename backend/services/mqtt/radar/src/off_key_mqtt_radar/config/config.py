@@ -15,11 +15,6 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 SENSOR_KEY_STRATEGIES = {"full_hierarchy", "top_level", "leaf"}
 MONITORING_STRATEGIES = {"static_baseline"}
-# strict_barrier is the only implemented alignment mode. It enforces that all
-# sensors in a subscription window must be present before the model is triggered.
-# This constant is not a user-selectable enum; it exists so the validator can
-# produce a clear error message if a caller passes an unsupported value.
-STRICT_ALIGNMENT_MODE = "strict_barrier"
 
 
 def _normalize_sensor_key_strategy(value: str, field_name: str) -> str:
@@ -37,14 +32,6 @@ def _normalize_strategy(value: str, field_name: str) -> str:
     if normalized not in MONITORING_STRATEGIES:
         allowed = ", ".join(sorted(MONITORING_STRATEGIES))
         raise ValueError(f"{field_name} must be one of: {allowed}")
-    return normalized
-
-
-def _normalize_alignment_mode(value: str, field_name: str) -> str:
-    """Normalize and validate alignment mode values."""
-    normalized = value.strip().lower()
-    if normalized != STRICT_ALIGNMENT_MODE:
-        raise ValueError(f"{field_name} must be: {STRICT_ALIGNMENT_MODE}")
     return normalized
 
 
@@ -74,7 +61,6 @@ class AnomalyDetectionConfig(BaseModel):
     subscription_topics: list[str] = Field(default_factory=list)
     sensor_key_strategy: str = "full_hierarchy"
     sensor_freshness_seconds: float = Field(default=30.0, gt=0.0)
-    alignment_mode: str = "strict_barrier"
 
     memory_limit_mb: int = 1000
     checkpoint_interval: int = 10000
@@ -96,12 +82,6 @@ class AnomalyDetectionConfig(BaseModel):
     @classmethod
     def validate_strategy(cls, value: str) -> str:
         return _normalize_strategy(value, "strategy")
-
-    @field_validator("alignment_mode")
-    @classmethod
-    def validate_alignment_mode(cls, value: str) -> str:
-        """Validate alignment mode used by state cache and persistence semantics."""
-        return _normalize_alignment_mode(value, "alignment_mode")
 
 
 class MQTTRadarConfig(BaseModel):
@@ -127,7 +107,6 @@ class MQTTRadarConfig(BaseModel):
     subscription_qos: int = 0
     sensor_key_strategy: str = "full_hierarchy"
     sensor_freshness_seconds: float = Field(default=30.0, gt=0.0)
-    alignment_mode: str = "strict_barrier"
 
     # Database settings
     db_write_enabled: bool = True
@@ -178,12 +157,6 @@ class MQTTRadarConfig(BaseModel):
     def validate_strategy(cls, value: str) -> str:
         return _normalize_strategy(value, "strategy")
 
-    @field_validator("alignment_mode")
-    @classmethod
-    def validate_alignment_mode(cls, value: str) -> str:
-        """Validate multivariate alignment strategy."""
-        return _normalize_alignment_mode(value, "alignment_mode")
-
 
 class RadarSettings(BaseSettings):
     """Environment-based settings for RADAR service"""
@@ -210,7 +183,6 @@ class RadarSettings(BaseSettings):
     RADAR_SUBSCRIPTION_QOS: int = 0
     RADAR_SENSOR_KEY_STRATEGY: str = "full_hierarchy"
     RADAR_SENSOR_FRESHNESS_SECONDS: float = 30.0
-    RADAR_ALIGNMENT_MODE: str = "strict_barrier"
 
     # Database
     RADAR_DB_WRITE_ENABLED: bool = True
@@ -252,12 +224,6 @@ class RadarSettings(BaseSettings):
     def validate_sensor_key_strategy(cls, value: str) -> str:
         """Validate sensor key strategy from environment."""
         return _normalize_sensor_key_strategy(value, "RADAR_SENSOR_KEY_STRATEGY")
-
-    @field_validator("RADAR_ALIGNMENT_MODE")
-    @classmethod
-    def validate_alignment_mode(cls, value: str) -> str:
-        """Validate alignment mode from environment."""
-        return _normalize_alignment_mode(value, "RADAR_ALIGNMENT_MODE")
 
     @field_validator("RADAR_MONITORING_STRATEGY")
     @classmethod
@@ -320,7 +286,6 @@ class RadarSettings(BaseSettings):
             subscription_qos=self.RADAR_SUBSCRIPTION_QOS,
             sensor_key_strategy=self.RADAR_SENSOR_KEY_STRATEGY,
             sensor_freshness_seconds=self.RADAR_SENSOR_FRESHNESS_SECONDS,
-            alignment_mode=self.RADAR_ALIGNMENT_MODE,
             db_write_enabled=self.RADAR_DB_WRITE_ENABLED,
             db_batch_size=self.RADAR_DB_BATCH_SIZE,
             db_batch_timeout=self.RADAR_DB_BATCH_TIMEOUT,

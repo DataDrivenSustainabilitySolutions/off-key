@@ -53,7 +53,6 @@ async def test_gateway_start_monitor_forwards_static_performance_config():
         model_type="pyod_iforest",
         model_params={"n_estimators": 128},
         performance_config=GatewayPerformanceConfig(
-            alignment_mode="strict_barrier",
             sensor_key_strategy="leaf",
             sensor_freshness_seconds=25.0,
         ),
@@ -79,7 +78,6 @@ async def test_gateway_start_monitor_forwards_static_performance_config():
     forwarded = mock_start.await_args.kwargs
     assert forwarded["strategy"] == "static_baseline"
     assert forwarded["performance_config"] == {
-        "alignment_mode": "strict_barrier",
         "sensor_key_strategy": "leaf",
         "sensor_freshness_seconds": 25.0,
     }
@@ -112,6 +110,9 @@ def test_gateway_rejects_dynamic_strategy_and_removed_fields():
             mqtt_topics=["charger/+/live-telemetry/sine"],
             adaptive_stream_config={},
         )
+
+    with pytest.raises(ValidationError, match="alignment_mode"):
+        GatewayPerformanceConfig(alignment_mode="strict_barrier")
 
 
 def test_gateway_resolves_default_static_baseline_config():
@@ -240,7 +241,6 @@ def test_tactic_builds_static_environment():
         model_params={"n_estimators": 100},
         mqtt_config={},
         performance_config={
-            "alignment_mode": "strict_barrier",
             "sensor_key_strategy": "leaf",
             "sensor_freshness_seconds": 20.0,
         },
@@ -261,6 +261,7 @@ def test_tactic_builds_static_environment():
     static_config = json.loads(env["RADAR_STATIC_BASELINE_CONFIG"])
     assert env["RADAR_MONITORING_STRATEGY"] == "static_baseline"
     assert env["RADAR_MODEL_TYPE"] == "pyod_iforest"
+    assert "RADAR_ALIGNMENT_MODE" not in env
     assert "RADAR_PREPROCESSING_STEPS" not in env
     assert "RADAR_ADAPTIVE_STREAM_CONFIG" not in env
     assert static_config["training_window_size"] == 120

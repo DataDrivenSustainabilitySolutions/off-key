@@ -90,12 +90,10 @@ class RadarService:
             self.config.subscription_topics,
             sensor_key_strategy=self.config.sensor_key_strategy,
         )
-        alignment_mode = getattr(self.config, "alignment_mode", "strict_barrier")
         self.state_cache = (
             SensorStateCache(
                 self.required_sensors,
                 max_sensor_age_seconds=self.config.sensor_freshness_seconds,
-                alignment_mode=alignment_mode,
             )
             if self.required_sensors
             else None
@@ -275,7 +273,6 @@ class RadarService:
             sensor_key_strategy=getattr(
                 self.config, "sensor_key_strategy", "full_hierarchy"
             ),
-            alignment_mode=getattr(self.config, "alignment_mode", "strict_barrier"),
             batch_size=getattr(self.config, "batch_size", 100),
             batch_timeout=getattr(self.config, "batch_timeout", 1.0),
             memory_limit_mb=getattr(self.config, "memory_limit_mb", 1000),
@@ -332,9 +329,6 @@ class RadarService:
                     **self._log_context,
                     "required_sensors": self.required_sensors,
                     "sensor_freshness_seconds": self.config.sensor_freshness_seconds,
-                    "alignment_mode": getattr(
-                        self.config, "alignment_mode", "strict_barrier"
-                    ),
                 },
             )
         else:

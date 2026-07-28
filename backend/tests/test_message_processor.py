@@ -129,7 +129,6 @@ def test_align_features_blocks_stale_sensor_data():
 
 def test_align_features_waiting_for_barrier_returns_none():
     state_cache = MagicMock()
-    state_cache.alignment_mode = "strict_barrier"
     state_cache.update_with_status.return_value = AlignmentUpdate(
         status="waiting_for_barrier",
         pending_sensors=("current",),

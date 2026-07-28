@@ -330,13 +330,6 @@ class ConfigReloader:
             if hasattr(self.service, "memory_manager"):
                 self.service.memory_manager.max_memory_mb = new_config.memory_limit_mb
 
-        if old_config.alignment_mode != new_config.alignment_mode:
-            logger.info(
-                "Alignment mode changed: %s -> %s",
-                old_config.alignment_mode,
-                new_config.alignment_mode,
-            )
-
     def _log_config_changes(self, old_config: dict, new_config: dict):
         """Log significant configuration changes"""
         changes = []

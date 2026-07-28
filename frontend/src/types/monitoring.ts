@@ -73,7 +73,6 @@ export interface ActiveService {
 }
 
 export interface MonitoringPerformanceConfig {
-  alignment_mode: 'strict_barrier';
   sensor_key_strategy: 'full_hierarchy' | 'top_level' | 'leaf';
   sensor_freshness_seconds: number;
 }

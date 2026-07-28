@@ -279,7 +279,6 @@ export const buildStaticMonitoringRequest = ({
       model_type: draft.modelType,
       model_params: modelParams,
       performance_config: {
-        alignment_mode: "strict_barrier",
         sensor_key_strategy: draft.sensorKeyStrategy,
         sensor_freshness_seconds: sensorFreshness,
       },

@@ -56,7 +56,6 @@ async def test_service_falls_back_to_older_valid_checkpoint(monkeypatch):
         static_baseline_config=StaticBaselineConfig(),
         subscription_topics=[],
         sensor_key_strategy="full_hierarchy",
-        alignment_mode="strict_barrier",
         batch_size=100,
         batch_timeout=1.0,
         memory_limit_mb=1000,

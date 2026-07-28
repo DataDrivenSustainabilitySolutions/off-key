@@ -22,7 +22,6 @@ from pydantic import (
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 RADAR_SENSOR_KEY_STRATEGIES = {"full_hierarchy", "top_level", "leaf"}
-RADAR_ALIGNMENT_MODES = {"strict_barrier"}
 
 
 class RadarWorkloadLifecycle(str, Enum):
@@ -77,7 +76,6 @@ class RadarDefaultsConfig(BaseModel):
     model_type: str = "pyod_iforest"
     sensor_key_strategy: str = "full_hierarchy"
     sensor_freshness_seconds: float = Field(default=30.0, gt=0.0)
-    alignment_mode: str = "strict_barrier"
 
     # Default Performance Settings
     batch_size: int = Field(default=100, ge=1, le=10000)
@@ -123,16 +121,6 @@ class RadarDefaultsConfig(BaseModel):
         if normalized not in RADAR_SENSOR_KEY_STRATEGIES:
             allowed = ", ".join(sorted(RADAR_SENSOR_KEY_STRATEGIES))
             raise ValueError(f"sensor_key_strategy must be one of: {allowed}")
-        return normalized
-
-    @field_validator("alignment_mode")
-    @classmethod
-    def validate_alignment_mode(cls, v: str) -> str:
-        """Validate multivariate alignment strategy passed to RADAR."""
-        normalized = v.strip().lower()
-        if normalized not in RADAR_ALIGNMENT_MODES:
-            allowed = ", ".join(sorted(RADAR_ALIGNMENT_MODES))
-            raise ValueError(f"alignment_mode must be one of: {allowed}")
         return normalized
 
 
@@ -255,9 +243,6 @@ class TacticSettings(BaseSettings):
     )
     TACTIC_RADAR_DEFAULT_SENSOR_KEY_STRATEGY: str = Field(
         default=DEFAULT_RADAR_DEFAULTS.sensor_key_strategy
-    )
-    TACTIC_RADAR_DEFAULT_ALIGNMENT_MODE: str = Field(
-        default=DEFAULT_RADAR_DEFAULTS.alignment_mode
     )
     TACTIC_RADAR_DEFAULT_SENSOR_FRESHNESS_SECONDS: float = Field(
         default=DEFAULT_RADAR_DEFAULTS.sensor_freshness_seconds
@@ -384,7 +369,6 @@ class TacticSettings(BaseSettings):
             mqtt_qos=self.TACTIC_RADAR_DEFAULT_MQTT_QOS,
             model_type=self.TACTIC_RADAR_DEFAULT_MODEL_TYPE,
             sensor_key_strategy=self.TACTIC_RADAR_DEFAULT_SENSOR_KEY_STRATEGY,
-            alignment_mode=self.TACTIC_RADAR_DEFAULT_ALIGNMENT_MODE,
             sensor_freshness_seconds=self.TACTIC_RADAR_DEFAULT_SENSOR_FRESHNESS_SECONDS,
             batch_size=self.TACTIC_RADAR_DEFAULT_BATCH_SIZE,
             batch_timeout=self.TACTIC_RADAR_DEFAULT_BATCH_TIMEOUT,

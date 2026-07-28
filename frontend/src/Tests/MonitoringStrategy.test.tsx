@@ -128,7 +128,7 @@ describe("<Monitoring /> static setup", () => {
       "charger/charger-1/live-telemetry/L2",
       "charger/charger-1/live-telemetry/L3",
     ]);
-    expect(payload.performance_config.alignment_mode).toBe("strict_barrier");
+    expect(payload.performance_config).not.toHaveProperty("alignment_mode");
   });
 
   it("submits editable epsilon with the fixed native threshold", async () => {

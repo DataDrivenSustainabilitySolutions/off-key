@@ -129,9 +129,6 @@ def build_radar_environment(
         "RADAR_SENSOR_KEY_STRATEGY": str(
             performance_config.get("sensor_key_strategy", defaults.sensor_key_strategy)
         ),
-        "RADAR_ALIGNMENT_MODE": str(
-            performance_config.get("alignment_mode", defaults.alignment_mode)
-        ),
         "RADAR_SENSOR_FRESHNESS_SECONDS": str(
             performance_config.get(
                 "sensor_freshness_seconds", defaults.sensor_freshness_seconds

@@ -230,9 +230,6 @@ class MessageProcessor:
             "aligned_vector": bool(
                 alignment_update.features and len(alignment_update.features) > 1
             ),
-            "alignment_mode": getattr(
-                self.state_cache, "alignment_mode", "strict_barrier"
-            ),
             "required_sensor_count": len(self.required_sensors),
             "required_sensors": sorted(self.required_sensors),
             "sensor_ages": alignment_update.sensor_ages,

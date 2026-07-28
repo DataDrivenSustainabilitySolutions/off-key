@@ -296,7 +296,6 @@ class StaticConformalDetectionService:
             "sensor_key_strategy": str(
                 getattr(config, "sensor_key_strategy", "full_hierarchy")
             ),
-            "alignment_mode": str(getattr(config, "alignment_mode", "strict_barrier")),
         }
         payload_json = json.dumps(payload, sort_keys=True, separators=(",", ":"))
         return hashlib.sha256(payload_json.encode("utf-8")).hexdigest()

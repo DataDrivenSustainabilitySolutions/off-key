@@ -7,9 +7,17 @@ from off_key_tactic_middleware.facades.docker import (
     get_workload_docker_status,
     should_fallback_to_container,
 )
-from off_key_tactic_middleware.services.orchestration import radar as radar_module
+from off_key_tactic_middleware.services.orchestration import (
+    radar as radar_module,
+)
+from off_key_tactic_middleware.services.orchestration import (
+    radar_workloads as workload_module,
+)
 from off_key_tactic_middleware.services.orchestration.radar import (
     RadarOrchestrationService,
+)
+from off_key_tactic_middleware.services.orchestration.radar_workloads import (
+    RadarWorkloadManager,
 )
 
 
@@ -281,17 +289,15 @@ async def test_startup_validation_tolerates_non_mapping_task_status(monkeypatch)
     fake_docker.client.services.get = MagicMock(return_value=docker_service)
     fake_docker.client.containers.get = MagicMock()
     monkeypatch.setattr(
-        radar_module,
+        workload_module,
         "get_tactic_settings",
         lambda: SimpleNamespace(
             config=SimpleNamespace(radar_startup_grace_seconds=0.0)
         ),
     )
 
-    service = RadarOrchestrationService.__new__(RadarOrchestrationService)
-    service.async_docker = fake_docker
-
-    await service._validate_radar_workload_started(SimpleNamespace(id="ctr-1"))
+    workloads = RadarWorkloadManager(fake_docker)
+    await workloads.validate_started(SimpleNamespace(id="ctr-1"))
     fake_docker.client.containers.get.assert_not_called()
 
 
@@ -330,10 +336,8 @@ async def test_get_docker_status_and_labels_prefers_service_path():
     fake_docker.client.services.get = MagicMock(return_value=service)
     fake_docker.client.containers.get = MagicMock()
 
-    orchestrator = RadarOrchestrationService.__new__(RadarOrchestrationService)
-    orchestrator.async_docker = fake_docker
-
-    status, labels = await orchestrator._get_docker_status_and_labels("ctr-1")
+    workloads = RadarWorkloadManager(fake_docker)
+    status, labels = await workloads.get_status_and_labels("ctr-1")
 
     assert status == "exited"
     assert labels == {
@@ -361,10 +365,8 @@ async def test_get_docker_status_and_labels_returns_no_tasks_from_service():
     fake_docker.client.services.get = MagicMock(return_value=service)
     fake_docker.client.containers.get = MagicMock()
 
-    orchestrator = RadarOrchestrationService.__new__(RadarOrchestrationService)
-    orchestrator.async_docker = fake_docker
-
-    status, labels = await orchestrator._get_docker_status_and_labels("ctr-1")
+    workloads = RadarWorkloadManager(fake_docker)
+    status, labels = await workloads.get_status_and_labels("ctr-1")
 
     assert status == "no_tasks"
     assert labels == {
@@ -388,10 +390,8 @@ async def test_get_docker_status_and_labels_returns_error_for_non_swarm_api_erro
     )
     fake_docker.client.containers.get = MagicMock()
 
-    orchestrator = RadarOrchestrationService.__new__(RadarOrchestrationService)
-    orchestrator.async_docker = fake_docker
-
-    status, labels = await orchestrator._get_docker_status_and_labels("ctr-1")
+    workloads = RadarWorkloadManager(fake_docker)
+    status, labels = await workloads.get_status_and_labels("ctr-1")
 
     assert status == "error"
     assert labels == {}
@@ -890,9 +890,7 @@ async def test_delete_radar_service_leaves_db_row_when_workload_remove_fails(
 
 
 @pytest.mark.asyncio
-async def test_resolve_workload_operation_falls_back_to_container_on_swarm_only_error(
-    monkeypatch,
-):
+async def test_resolve_workload_operation_falls_back_to_container_on_swarm_only_error():
     fake_docker = _FakeAsyncDocker()
     container = MagicMock(id="ctr-1")
     fake_docker.client.services.get = MagicMock(
@@ -900,11 +898,10 @@ async def test_resolve_workload_operation_falls_back_to_container_on_swarm_only_
     )
     fake_docker.client.containers.get = MagicMock(return_value=container)
 
-    monkeypatch.setattr(radar_module, "get_async_docker", lambda: fake_docker)
-    service = RadarOrchestrationService(session=AsyncMock(), model_registry=MagicMock())
+    workloads = RadarWorkloadManager(fake_docker)
 
-    result = await service._resolve_workload_operation(
-        container_id="ctr-1",
+    result = await workloads.resolve_operation(
+        workload_id="ctr-1",
         on_service=lambda _docker_service: "service-removed",
         on_container=lambda _docker_container: "container-removed",
     )
@@ -914,9 +911,7 @@ async def test_resolve_workload_operation_falls_back_to_container_on_swarm_only_
 
 
 @pytest.mark.asyncio
-async def test_resolve_workload_operation_raises_for_non_swarm_api_error(
-    monkeypatch,
-):
+async def test_resolve_workload_operation_raises_for_non_swarm_api_error():
     fake_docker = _FakeAsyncDocker()
     fake_docker.client.services.get = MagicMock(
         side_effect=docker.errors.APIError(
@@ -930,12 +925,11 @@ async def test_resolve_workload_operation_raises_for_non_swarm_api_error(
     )
     fake_docker.client.containers.get = MagicMock()
 
-    monkeypatch.setattr(radar_module, "get_async_docker", lambda: fake_docker)
-    service = RadarOrchestrationService(session=AsyncMock(), model_registry=MagicMock())
+    workloads = RadarWorkloadManager(fake_docker)
 
     with pytest.raises(docker.errors.APIError):
-        await service._resolve_workload_operation(
-            container_id="ctr-1",
+        await workloads.resolve_operation(
+            workload_id="ctr-1",
             on_service=lambda _docker_service: "service-removed",
             on_container=lambda _docker_container: "container-removed",
         )
@@ -944,17 +938,16 @@ async def test_resolve_workload_operation_raises_for_non_swarm_api_error(
 
 
 @pytest.mark.asyncio
-async def test_resolve_workload_operation_prefers_service_when_present(monkeypatch):
+async def test_resolve_workload_operation_prefers_service_when_present():
     fake_docker = _FakeAsyncDocker()
     service = MagicMock(id="svc-1")
     fake_docker.client.services.get = MagicMock(return_value=service)
     fake_docker.client.containers.get = MagicMock()
 
-    monkeypatch.setattr(radar_module, "get_async_docker", lambda: fake_docker)
-    service = RadarOrchestrationService(session=AsyncMock(), model_registry=MagicMock())
+    workloads = RadarWorkloadManager(fake_docker)
 
-    result = await service._resolve_workload_operation(
-        container_id="ctr-1",
+    result = await workloads.resolve_operation(
+        workload_id="ctr-1",
         on_service=lambda _docker_service: "service-removed",
         on_container=lambda _docker_container: "container-removed",
     )
@@ -974,10 +967,8 @@ async def test_remove_workload_for_delete_returns_false_when_missing():
         side_effect=docker.errors.NotFound("missing")
     )
 
-    service = RadarOrchestrationService.__new__(RadarOrchestrationService)
-    service.async_docker = fake_docker
-
-    assert await service._remove_workload_for_delete("ctr-missing") is False
+    workloads = RadarWorkloadManager(fake_docker)
+    assert await workloads.remove("ctr-missing") is False
     fake_docker.client.services.get.assert_called_once_with("ctr-missing")
     fake_docker.client.containers.get.assert_called_once_with("ctr-missing")
 
@@ -1000,7 +991,7 @@ async def test_startup_validation_raises_with_logs_when_container_exits(
     fake_docker.client.containers.get = MagicMock(return_value=exited_container)
     monkeypatch.setattr(radar_module, "get_async_docker", lambda: fake_docker)
     monkeypatch.setattr(
-        radar_module,
+        workload_module,
         "get_tactic_settings",
         lambda: SimpleNamespace(
             config=SimpleNamespace(radar_startup_grace_seconds=0.0)
@@ -1011,7 +1002,7 @@ async def test_startup_validation_raises_with_logs_when_container_exits(
     service = RadarOrchestrationService(session=session, model_registry=MagicMock())
 
     with pytest.raises(RuntimeError, match="missing dependency"):
-        await service._validate_radar_workload_started(exited_workload)
+        await service.workloads.validate_started(exited_workload)
 
     exited_container.reload.assert_called_once()
     exited_container.logs.assert_called_once_with(tail=120)
@@ -1047,9 +1038,9 @@ async def test_create_radar_service_removes_workload_when_db_commit_fails(
         ),
     )
     service = RadarOrchestrationService(session=session, model_registry=MagicMock())
-    service._create_radar_workload = AsyncMock(return_value=workload)
-    service._validate_radar_workload_started = AsyncMock()
-    service._remove_created_workload_after_failure = AsyncMock()
+    service.workloads.create = AsyncMock(return_value=workload)
+    service.workloads.validate_started = AsyncMock()
+    service.workloads.remove_after_failure = AsyncMock()
 
     with pytest.raises(RuntimeError, match="commit failed"):
         await service.create_radar_service(
@@ -1059,7 +1050,7 @@ async def test_create_radar_service_removes_workload_when_db_commit_fails(
         )
 
     session.rollback.assert_awaited_once()
-    service._remove_created_workload_after_failure.assert_awaited_once_with(workload)
+    service.workloads.remove_after_failure.assert_awaited_once_with(workload)
 
 
 @pytest.mark.asyncio
@@ -1109,11 +1100,11 @@ async def test_existing_active_service_with_missing_workload_is_recreated(
         ),
     )
     service = RadarOrchestrationService(session=session, model_registry=MagicMock())
-    service._get_docker_status_and_labels = AsyncMock(return_value=("not_found", {}))
-    service._create_radar_workload = AsyncMock(
+    service.workloads.get_status_and_labels = AsyncMock(return_value=("not_found", {}))
+    service.workloads.create = AsyncMock(
         return_value=SimpleNamespace(id="new-workload")
     )
-    service._validate_radar_workload_started = AsyncMock()
+    service.workloads.validate_started = AsyncMock()
 
     created = await service.create_radar_service(
         container_name="radar-stale",
@@ -1160,7 +1151,7 @@ async def test_existing_active_service_rejects_config_fingerprint_mismatch(
         ),
     )
     service = RadarOrchestrationService(session=session, model_registry=MagicMock())
-    service._get_docker_status_and_labels = AsyncMock(
+    service.workloads.get_status_and_labels = AsyncMock(
         return_value=("running", {"radar_config_fingerprint": "different"})
     )
 

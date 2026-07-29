@@ -1,4 +1,4 @@
-import { expect, type Page } from "@playwright/test";
+import { expect, type Locator, type Page } from "@playwright/test";
 
 import { waitForVerificationLink } from "./mailpit";
 
@@ -6,6 +6,20 @@ const PASSWORD = "PlaywrightPass123!";
 
 type LoginOptions = {
   rememberMe?: boolean;
+};
+
+const fillAndVerifyFields = async (
+  fields: ReadonlyArray<readonly [field: Locator, value: string]>,
+): Promise<void> => {
+  await expect(async () => {
+    for (const [field, value] of fields) {
+      await field.fill(value);
+    }
+    const actualValues = await Promise.all(
+      fields.map(([field]) => field.inputValue()),
+    );
+    expect(actualValues).toEqual(fields.map(([, value]) => value));
+  }).toPass({ timeout: 30_000 });
 };
 
 export const createRunScopedEmail = (): string => {
@@ -19,13 +33,10 @@ export const loginWithEmail = async (
   email: string,
   options: LoginOptions = {}
 ): Promise<void> => {
-  await page.locator("#email").fill(email);
-  await page.locator("#password").fill(PASSWORD);
-  // Vite may reload once after optimizing dependencies in a freshly rebuilt
-  // Compose container. Fill and verify the first controlled field last so that
-  // such a reload cannot turn the submit into a native required-field no-op.
-  await page.locator("#email").fill(email);
-  await expect(page.locator("#email")).toHaveValue(email);
+  await fillAndVerifyFields([
+    [page.locator("#email"), email],
+    [page.locator("#password"), PASSWORD],
+  ]);
 
   if (options.rememberMe) {
     await page.getByLabel(/stay logged in/i).check();
@@ -58,11 +69,14 @@ export const registerVerifyAndLogin = async (page: Page): Promise<string> => {
   await page.getByRole("link", { name: /register here/i }).click();
   await expect(page).toHaveURL(/\/register$/);
 
-  await page.locator("#email").fill(email);
-  await page.locator("#password").fill(PASSWORD);
-  await page.locator("#confirmPassword").fill(PASSWORD);
-  await page.locator("#email").fill(email);
-  await expect(page.locator("#email")).toHaveValue(email);
+  // Vite may reload once after optimizing dependencies in a freshly rebuilt
+  // Compose container. Refill and verify the complete controlled form as one
+  // retryable operation so native validation cannot silently suppress submit.
+  await fillAndVerifyFields([
+    [page.locator("#email"), email],
+    [page.locator("#password"), PASSWORD],
+    [page.locator("#confirmPassword"), PASSWORD],
+  ]);
 
   const registrationResponsePromise = page.waitForResponse(
     (response) =>

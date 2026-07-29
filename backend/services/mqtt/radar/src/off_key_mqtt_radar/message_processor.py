@@ -13,6 +13,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from off_key_core.config.logs import logger
+from off_key_core.utils.timestamps import parse_utc_timestamp
 
 from .feature_validation import TelemetryFeatureValidator
 from .memory import MemoryManager
@@ -112,6 +113,7 @@ class MessageProcessor:
             data = self._parse_payload(message)
             if data is None:
                 return None
+            sample_timestamp = self._resolve_sample_timestamp(data, message)
 
             # Step 2: Validate and sanitize
             sanitized_data = self._sanitize_payload(data, message)
@@ -129,7 +131,10 @@ class MessageProcessor:
 
             # Step 4: Align features (for multi-sensor)
             aligned_features, alignment_context = self._align_features(
-                charger_id, sensor_type, sanitized_data
+                charger_id,
+                sensor_type,
+                sanitized_data,
+                sample_timestamp=sample_timestamp,
             )
             self.last_alignment_status = alignment_context.get("alignment_status")
             if aligned_features is None:
@@ -201,11 +206,29 @@ class MessageProcessor:
         except ValueError as e:
             raise ValidationError(str(e)) from e
 
+    @staticmethod
+    def _resolve_sample_timestamp(data: dict[str, Any], message: MQTTMessage) -> float:
+        """Use the same event timestamp that the telemetry service persists."""
+        timestamp_value = data.get("timestamp")
+        if timestamp_value is not None:
+            try:
+                return parse_utc_timestamp(timestamp_value).timestamp()
+            except (ValueError, TypeError, OSError, OverflowError) as error:
+                raise ValidationError(
+                    f"Invalid timestamp format: {timestamp_value}"
+                ) from error
+
+        received_at = message.timestamp or datetime.now(UTC)
+        if received_at.tzinfo is None:
+            received_at = received_at.replace(tzinfo=UTC)
+        return received_at.astimezone(UTC).timestamp()
+
     def _align_features(
         self,
         charger_id: str | None,
         sensor_type: str | None,
         data: dict[str, float],
+        sample_timestamp: float | None = None,
     ) -> tuple[dict[str, float] | None, dict[str, Any]]:
         """Align multi-sensor streams if required."""
         normalized_data = self._normalize_sensor_reading(sensor_type, data)
@@ -213,17 +236,18 @@ class MessageProcessor:
         # Skip alignment if no cache or only single sensor subscribed
         # Single-sensor mode: use normalized sensor-keyed feature.
         if not self.state_cache or not self.required_sensors:
-            return normalized_data, self._direct_alignment_context()
+            return normalized_data, self._direct_alignment_context(sample_timestamp)
         if len(self.required_sensors) <= 1:
-            return normalized_data, self._direct_alignment_context()
+            return normalized_data, self._direct_alignment_context(sample_timestamp)
 
         if not (charger_id and sensor_type):
-            return normalized_data, self._direct_alignment_context()
+            return normalized_data, self._direct_alignment_context(sample_timestamp)
 
         alignment_update: AlignmentUpdate = self.state_cache.update_with_status(
             charger_id,
             sensor_type,
             normalized_data,
+            sample_timestamp=sample_timestamp,
         )
         base_context: dict[str, Any] = {
             "alignment_status": alignment_update.status,
@@ -296,13 +320,16 @@ class MessageProcessor:
 
         return alignment_update.features, base_context
 
-    def _direct_alignment_context(self) -> dict[str, Any]:
+    def _direct_alignment_context(
+        self, sample_timestamp: float | None = None
+    ) -> dict[str, Any]:
         """Build alignment context for messages that bypass multi-sensor alignment."""
         return {
             "alignment_status": "direct_pass_through",
             "aligned_vector": False,
             "required_sensor_count": len(self.required_sensors),
             "sensor_ages": {},
+            "sample_timestamp": sample_timestamp,
         }
 
     @staticmethod

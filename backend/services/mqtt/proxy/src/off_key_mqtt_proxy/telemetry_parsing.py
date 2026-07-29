@@ -4,19 +4,10 @@ from datetime import UTC, datetime
 
 from off_key_core.utils.mqtt_topics import TopicMetadataExtractor
 from off_key_core.utils.string import string_to_float
+from off_key_core.utils.timestamps import parse_utc_timestamp
 
 from .client.models import MQTTMessage
 from .telemetry_models import ParseFailure, ParseResult, ParseSuccess, TelemetryRecord
-
-
-def _parse_timestamp(value: object) -> datetime:
-    if isinstance(value, (int, float)):
-        return datetime.fromtimestamp(value, tz=UTC)
-
-    timestamp = datetime.fromisoformat(str(value).strip().replace("Z", "+00:00"))
-    if timestamp.tzinfo:
-        return timestamp.astimezone(UTC)
-    return timestamp.replace(tzinfo=UTC)
 
 
 def parse_telemetry_message(
@@ -50,7 +41,7 @@ def parse_telemetry_message(
         timestamp_value = payload.get("timestamp")
         try:
             timestamp = (
-                _parse_timestamp(timestamp_value)
+                parse_utc_timestamp(timestamp_value)
                 if timestamp_value is not None
                 else datetime.now(UTC)
             )

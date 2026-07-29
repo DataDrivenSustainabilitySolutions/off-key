@@ -75,7 +75,7 @@ type InspectableOption = {
   aria: { enabled: boolean; description: string };
   grid: unknown[];
   xAxis: Array<{ gridIndex: number; name?: string }>;
-  yAxis: Array<{ type: string }>;
+  yAxis: Array<{ type: string; max?: number }>;
   axisPointer: { link: Array<{ xAxisIndex: string }> };
   dataZoom: Array<{ xAxisIndex: number[]; startValue?: number; endValue?: number }>;
   tooltip: { formatter: (params: unknown) => string; renderMode: string };
@@ -161,6 +161,7 @@ describe("telemetry ECharts option", () => {
     expect(option.grid).toHaveLength(2);
     expect(option.xAxis.map(({ gridIndex }) => gridIndex)).toEqual([0, 1]);
     expect(option.yAxis.map(({ type }) => type)).toEqual(["value", "log"]);
+    expect(option.yAxis[1]?.max).toBe(100);
     expect(option.axisPointer.link).toEqual([{ xAxisIndex: "all" }]);
     expect(option.dataZoom[0]?.xAxisIndex).toEqual([0, 1]);
     expect(option.series[1]).toMatchObject({

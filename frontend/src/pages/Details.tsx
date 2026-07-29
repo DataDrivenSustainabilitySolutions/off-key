@@ -45,6 +45,15 @@ const RECENT_TELEMETRY_WINDOW_MS = INTERVALS.DETAILS_UPDATE * 6;
 const EVIDENCE_PAGE_SIZE = 2000;
 const MAX_FORWARD_PAGES = 10;
 const EMPTY_EVIDENCE: MonitoringChartEvidence[] = [];
+const TELEMETRY_SECTIONS: Array<{
+  category: TelemetryTypeData["category"];
+  label: string;
+}> = [
+  { category: "cpu", label: "CPU Metrics" },
+  { category: "system", label: "System Metrics" },
+  { category: "controller", label: "Controller Metrics" },
+  { category: "other", label: "Other Metrics" },
+];
 
 const sameAnomalyWindow = (left: Anomaly[], right: Anomaly[]): boolean =>
   left.length === right.length &&
@@ -97,7 +106,6 @@ const LiveTelemetryIndicator: React.FC<{
 
 const Details: React.FC = () => {
   const { chargerId } = useParams<{ chargerId: string }>();
-  const resolvedChargerId = chargerId ?? "";
 
   const [isLoadingTelemetry, setIsLoadingTelemetry] = useState(true);
   const [allTelemetryData, setAllTelemetryData] = useState<TelemetryTypeData[]>([]);
@@ -286,9 +294,6 @@ const Details: React.FC = () => {
     return grouped;
   }, [monitoringEvidence]);
 
-
-  // No additional functions needed - all functionality is handled by DynamicTelemetryChart
-
   return (
     <>
       <NavigationBar />
@@ -373,65 +378,26 @@ const Details: React.FC = () => {
             </div>
           ) : (
             <div className="space-y-6">
-              {telemetryByCategory.cpu.length > 0 && (
-                <div className="space-y-4">
-                  <h3 className="text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">CPU Metrics</h3>
-                  {telemetryByCategory.cpu.map((telemetryData) => (
-                    <DynamicTelemetryChart
-                      key={telemetryData.type}
-                      telemetryData={telemetryData}
-                      chargerId={resolvedChargerId}
-                      anomalies={chargerAnomalies}
-                      evidence={evidenceByTelemetry.get(telemetryData.type) ?? EMPTY_EVIDENCE}
-                    />
-                  ))}
-                </div>
-              )}
-
-              {telemetryByCategory.system.length > 0 && (
-                <div className="space-y-4">
-                  <h3 className="text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">System Metrics</h3>
-                  {telemetryByCategory.system.map((telemetryData) => (
-                    <DynamicTelemetryChart
-                      key={telemetryData.type}
-                      telemetryData={telemetryData}
-                      chargerId={resolvedChargerId}
-                      anomalies={chargerAnomalies}
-                      evidence={evidenceByTelemetry.get(telemetryData.type) ?? EMPTY_EVIDENCE}
-                    />
-                  ))}
-                </div>
-              )}
-
-              {telemetryByCategory.controller.length > 0 && (
-                <div className="space-y-4">
-                  <h3 className="text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">Controller Metrics</h3>
-                  {telemetryByCategory.controller.map((telemetryData) => (
-                    <DynamicTelemetryChart
-                      key={telemetryData.type}
-                      telemetryData={telemetryData}
-                      chargerId={resolvedChargerId}
-                      anomalies={chargerAnomalies}
-                      evidence={evidenceByTelemetry.get(telemetryData.type) ?? EMPTY_EVIDENCE}
-                    />
-                  ))}
-                </div>
-              )}
-
-              {telemetryByCategory.other.length > 0 && (
-                <div className="space-y-4">
-                  <h3 className="text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">Other Metrics</h3>
-                  {telemetryByCategory.other.map((telemetryData) => (
-                    <DynamicTelemetryChart
-                      key={telemetryData.type}
-                      telemetryData={telemetryData}
-                      chargerId={resolvedChargerId}
-                      anomalies={chargerAnomalies}
-                      evidence={evidenceByTelemetry.get(telemetryData.type) ?? EMPTY_EVIDENCE}
-                    />
-                  ))}
-                </div>
-              )}
+              {TELEMETRY_SECTIONS.map(({ category, label }) => {
+                const telemetrySeries = telemetryByCategory[category];
+                return telemetrySeries.length > 0 ? (
+                  <div key={category} className="space-y-4">
+                    <h3 className="text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">
+                      {label}
+                    </h3>
+                    {telemetrySeries.map((telemetryData) => (
+                      <DynamicTelemetryChart
+                        key={telemetryData.type}
+                        telemetryData={telemetryData}
+                        anomalies={chargerAnomalies}
+                        evidence={
+                          evidenceByTelemetry.get(telemetryData.type) ?? EMPTY_EVIDENCE
+                        }
+                      />
+                    ))}
+                  </div>
+                ) : null;
+              })}
             </div>
           )}
         </section>

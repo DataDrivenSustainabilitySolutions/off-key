@@ -35,15 +35,18 @@ export const resolveChartThemeColors = (
 ): ChartThemeColors => {
   const styles = getComputedStyle(root);
   const fallback = FALLBACK_COLORS[resolvedTheme];
-  return Object.fromEntries(
-    Object.entries(TOKEN_NAMES).map(([key, token]) => {
-      const value = styles.getPropertyValue(token).trim();
-      return [
-        key,
-        value ? `hsl(${value})` : fallback[key as keyof ChartThemeColors],
-      ];
-    }),
-  ) as unknown as ChartThemeColors;
+  const resolveColor = (key: keyof ChartThemeColors): string => {
+    const value = styles.getPropertyValue(TOKEN_NAMES[key]).trim();
+    return value ? `hsl(${value})` : fallback[key];
+  };
+  return {
+    foreground: resolveColor("foreground"),
+    mutedForeground: resolveColor("mutedForeground"),
+    border: resolveColor("border"),
+    popover: resolveColor("popover"),
+    popoverForeground: resolveColor("popoverForeground"),
+    muted: resolveColor("muted"),
+  };
 };
 
 export const createEChartsTheme = (colors: ChartThemeColors) => ({

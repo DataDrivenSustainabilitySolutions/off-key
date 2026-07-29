@@ -31,7 +31,6 @@ import type { MonitoringChartEvidence } from "@/types/monitoring";
 
 interface DynamicTelemetryChartProps {
   telemetryData: TelemetryTypeData;
-  chargerId: string;
   anomalies?: Anomaly[];
   evidence?: MonitoringChartEvidence[];
 }
@@ -217,6 +216,20 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
     },
     [chartModel?.extent],
   );
+  const zoomIn = useCallback(() => {
+    const extent = chartModel?.extent;
+    if (!extent) return;
+    const startMs = viewport.mode === "absolute" ? viewport.startMs : extent[0];
+    const endMs = viewport.mode === "absolute" ? viewport.endMs : extent[1];
+    const inset = (endMs - startMs) / 4;
+    if (!Number.isFinite(inset) || inset <= 0) return;
+    setViewport({
+      mode: "absolute",
+      startMs: startMs + inset,
+      endMs: endMs - inset,
+    });
+    setInspectionDataEndMs((current) => current ?? extent[1]);
+  }, [chartModel?.extent, viewport]);
   const hasNewData =
     viewport.mode === "absolute" &&
     inspectionDataEndMs !== undefined &&
@@ -363,17 +376,29 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
             </div>
           ) : chartOption && chartModel ? (
             <>
-              {viewport.mode === "absolute" && (
-                <div
-                  className="mb-2 flex flex-wrap items-center justify-end gap-2 text-xs text-muted-foreground"
-                  aria-live="polite"
-                >
-                  <span>{hasNewData ? "New data available" : "Inspection paused"}</span>
-                  <Button type="button" variant="outline" size="sm" onClick={resetViewport}>
-                    Return to live
-                  </Button>
-                </div>
-              )}
+              <div
+                className="mb-2 flex flex-wrap items-center justify-end gap-2 text-xs text-muted-foreground"
+                aria-live="polite"
+              >
+                <Button type="button" variant="ghost" size="sm" onClick={zoomIn}>
+                  Zoom in
+                </Button>
+                {viewport.mode === "absolute" && (
+                  <>
+                    <span>
+                      {hasNewData ? "New data available" : "Inspection paused"}
+                    </span>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={resetViewport}
+                    >
+                      Return to live
+                    </Button>
+                  </>
+                )}
+              </div>
               <EChart
                 option={chartOption}
                 resolvedTheme={resolvedTheme}

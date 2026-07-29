@@ -21,6 +21,11 @@ export const loginWithEmail = async (
 ): Promise<void> => {
   await page.locator("#email").fill(email);
   await page.locator("#password").fill(PASSWORD);
+  // Vite may reload once after optimizing dependencies in a freshly rebuilt
+  // Compose container. Fill and verify the first controlled field last so that
+  // such a reload cannot turn the submit into a native required-field no-op.
+  await page.locator("#email").fill(email);
+  await expect(page.locator("#email")).toHaveValue(email);
 
   if (options.rememberMe) {
     await page.getByLabel(/stay logged in/i).check();
@@ -56,6 +61,8 @@ export const registerVerifyAndLogin = async (page: Page): Promise<string> => {
   await page.locator("#email").fill(email);
   await page.locator("#password").fill(PASSWORD);
   await page.locator("#confirmPassword").fill(PASSWORD);
+  await page.locator("#email").fill(email);
+  await expect(page.locator("#email")).toHaveValue(email);
 
   const registrationResponsePromise = page.waitForResponse(
     (response) =>

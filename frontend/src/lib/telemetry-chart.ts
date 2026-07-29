@@ -124,7 +124,7 @@ const getDateTimeFormatter = (
     day: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
-    second: detail === "tooltip" ? "2-digit" : undefined,
+    second: "2-digit",
     timeZoneName: detail === "tooltip" ? "short" : undefined,
   });
   dateTimeFormatters.set(key, formatter);
@@ -356,6 +356,12 @@ export const buildTelemetryChartOption = ({
   locale,
 }: BuildTelemetryChartOptionInput): TelemetryChartOption => {
   const hasSecondaryPane = model.secondarySeries.length > 0;
+  const secondaryMaximum = Math.max(
+    ...model.secondarySeries.flatMap((series) => [
+      series.threshold,
+      ...series.data.map(([, value]) => value),
+    ]),
+  );
   const xAxisIndices = hasSecondaryPane ? [0, 1] : [0];
   const units = new Map<string, string>();
   if (model.telemetry.unit) units.set(model.telemetry.name, model.telemetry.unit);
@@ -529,6 +535,7 @@ export const buildTelemetryChartOption = ({
               id: "restarted-martingale-values",
               type: "log" as const,
               logBase: 10,
+              max: secondaryMaximum,
               gridIndex: 1,
               name: "Restarted e-process",
               nameTextStyle: { color: colors.mutedForeground, fontSize: 11 },

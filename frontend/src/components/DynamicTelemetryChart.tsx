@@ -187,7 +187,7 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
   const accessibleDescription = useMemo(() => {
     const pointCount = chartModel?.telemetry.data.length ?? 0;
     const secondaryCount = chartModel?.secondarySeries.length ?? 0;
-    return `${displayName} telemetry chart with ${pointCount} points${secondaryCount > 0 ? ` and ${secondaryCount} restarted e-process series in a linked lower pane` : ""}. Times are shown in ${timeZone}.`;
+    return `${displayName} telemetry chart with ${pointCount} points${secondaryCount > 0 ? ` and ${secondaryCount} sequential-evidence series in a linked lower pane` : ""}. Times are shown in ${timeZone}.`;
   }, [chartModel, displayName, timeZone]);
   const chartOption = useMemo(
     () =>

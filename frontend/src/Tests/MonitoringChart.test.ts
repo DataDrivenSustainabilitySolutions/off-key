@@ -14,7 +14,10 @@ import {
   getMonitoringEvidenceCursor,
   mergeMonitoringChartEvidence,
 } from "@/lib/monitoring-chart";
-import type { MonitoringChartEvidence } from "@/types/monitoring";
+import type {
+  MartingaleTrackerResult,
+  MonitoringChartEvidence,
+} from "@/types/monitoring";
 
 const evidence = (
   serviceId: string,
@@ -30,6 +33,31 @@ const evidence = (
   threshold: 100,
   alarm: false,
   created: timestamp,
+});
+
+const trackerResult = (
+  trackerId: string,
+  bettingFunction: MartingaleTrackerResult["betting_function"],
+  alarmStatistic: MartingaleTrackerResult["alarm_statistic"],
+  value: number,
+  threshold: number,
+): MartingaleTrackerResult => ({
+  tracker_id: trackerId,
+  betting_function: bettingFunction,
+  betting_parameters: {},
+  alarm_statistic: alarmStatistic,
+  statistic_value: value,
+  statistic_is_infinite: false,
+  log_statistic_value: Math.log(value),
+  statistics: {},
+  e_value: 1,
+  e_value_is_infinite: false,
+  log_e_value: 0,
+  threshold,
+  alarm_fired: false,
+  alarm_active: false,
+  alarm_count: 0,
+  tested_count: 1,
 });
 
 const colors: ChartThemeColors = {
@@ -73,8 +101,13 @@ const buildOption = (
 
 type InspectableOption = {
   aria: { enabled: boolean; description: string };
-  grid: unknown[];
-  xAxis: Array<{ gridIndex: number; name?: string }>;
+  grid: Array<{ left?: number | string; right?: number | string }>;
+  xAxis: Array<{
+    gridIndex: number;
+    min?: number;
+    max?: number;
+    name?: string;
+  }>;
   yAxis: Array<{ type: string; max?: number }>;
   axisPointer: { link: Array<{ xAxisIndex: string }> };
   dataZoom: Array<{ xAxisIndex: number[]; startValue?: number; endValue?: number }>;
@@ -133,6 +166,32 @@ describe("telemetry chart model", () => {
       [Date.parse(timestamp), 0.5],
     ]);
   });
+
+  it("renders every configured tracker and ignores the legacy projection", () => {
+    const row = evidence("service-a", "2026-01-01T00:00:00Z", 999);
+    row.tracker_results = [
+      trackerResult("mixture-cusum", "simple_mixture", "cusum", 3, 25),
+      trackerResult(
+        "jumper-sr",
+        "simple_jumper",
+        "shiryaev_roberts",
+        4,
+        40,
+      ),
+    ];
+
+    const model = buildModel({ evidence: [row] });
+
+    expect(model.secondarySeries).toHaveLength(2);
+    expect(model.secondarySeries.map((series) => series.name)).toEqual([
+      "CUSUM (Simple mixture · mixture-cusum) service-",
+      "Shiryaev-Roberts (Simple jumper · jumper-sr) service-",
+    ]);
+    expect(model.secondarySeries.map((series) => series.threshold)).toEqual([
+      25,
+      40,
+    ]);
+  });
 });
 
 describe("telemetry ECharts option", () => {
@@ -150,20 +209,39 @@ describe("telemetry ECharts option", () => {
   });
 
   it("links two grids and uses end-stepped restarted martingales", () => {
+    const alignedTimestamp = "2026-01-01T00:01:00Z";
     const option = inspect(
       buildOption(
         buildModel({
-          evidence: [evidence("service-a", "2026-01-01T00:00:30Z", 0.5)],
+          evidence: [evidence("service-a", alignedTimestamp, 0.5)],
         }),
       ),
     );
 
     expect(option.grid).toHaveLength(2);
+    expect(option.grid.map(({ left, right }) => ({ left, right }))).toEqual([
+      { left: 68, right: 34 },
+      { left: 68, right: 34 },
+    ]);
     expect(option.xAxis.map(({ gridIndex }) => gridIndex)).toEqual([0, 1]);
+    expect(option.xAxis.map(({ min, max }) => ({ min, max }))).toEqual([
+      {
+        min: Date.parse("2026-01-01T00:00:00Z"),
+        max: Date.parse(alignedTimestamp),
+      },
+      {
+        min: Date.parse("2026-01-01T00:00:00Z"),
+        max: Date.parse(alignedTimestamp),
+      },
+    ]);
     expect(option.yAxis.map(({ type }) => type)).toEqual(["value", "log"]);
     expect(option.yAxis[1]?.max).toBe(100);
     expect(option.axisPointer.link).toEqual([{ xAxisIndex: "all" }]);
     expect(option.dataZoom[0]?.xAxisIndex).toEqual([0, 1]);
+    expect(option.dataZoom[1]?.xAxisIndex).toEqual([0, 1]);
+    expect(option.series[0]?.data[1]?.[0]).toBe(
+      option.series[1]?.data[0]?.[0],
+    );
     expect(option.series[1]).toMatchObject({
       id: "restarted-martingale:service-a",
       smooth: false,

@@ -76,7 +76,7 @@ const installDetailsApi = async (page: Page) => {
         : [
             {
               service_id: "radar-service-e2e",
-              timestamp: "2026-07-28T08:00:30.000Z",
+              timestamp: "2026-07-28T08:00:00.000Z",
               created: "2026-07-28T08:00:31.000Z",
               sequence_number: 1,
               sensor_set: ["systemVoltage"],
@@ -86,7 +86,7 @@ const installDetailsApi = async (page: Page) => {
             },
             {
               service_id: "radar-service-e2e",
-              timestamp: "2026-07-28T08:01:30.000Z",
+              timestamp: "2026-07-28T08:01:00.000Z",
               created: "2026-07-28T08:01:31.000Z",
               sequence_number: 2,
               sensor_set: ["systemVoltage"],
@@ -96,7 +96,7 @@ const installDetailsApi = async (page: Page) => {
             },
             {
               service_id: "radar-service-e2e",
-              timestamp: "2026-07-28T08:02:30.000Z",
+              timestamp: "2026-07-28T08:02:00.000Z",
               created: "2026-07-28T08:02:31.000Z",
               sequence_number: 3,
               sensor_set: ["systemVoltage"],
@@ -153,7 +153,7 @@ test.describe("Details telemetry ECharts", () => {
     await expect(chart.locator("canvas")).toHaveCount(1);
     await expect(chart).toHaveAttribute(
       "aria-label",
-      /restarted e-process series in a linked lower pane.*UTC/u,
+      /sequential-evidence series in a linked lower pane.*UTC/u,
     );
     await expect(card.getByText(/Current System Voltage:/u)).toBeVisible();
     await expect(card.getByText(/Restarted e-process radar-se/u)).toBeVisible();

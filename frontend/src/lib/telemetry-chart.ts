@@ -15,7 +15,12 @@ import {
 } from "@/lib/anomaly-semantics";
 import type { AnomalyMarker, RedZone } from "@/lib/anomaly-utils";
 import type { TelemetryDataPoint } from "@/types/charger";
-import type { MonitoringChartEvidence } from "@/types/monitoring";
+import type {
+  MartingaleAlarmStatistic,
+  MartingaleBettingFunction,
+  MartingaleTrackerResult,
+  MonitoringChartEvidence,
+} from "@/types/monitoring";
 
 export type TelemetryChartOption = ComposeOption<
   | AriaComponentOption
@@ -196,43 +201,96 @@ const getExtent = (
 const buildSecondarySeries = (
   evidence: MonitoringChartEvidence[],
 ): SecondaryChartSeries[] => {
-  const byService = new Map<
+  const byTracker = new Map<
     string,
-    { points: TimeValue[]; threshold: number }
+    {
+      serviceId: string;
+      trackerId: string;
+      bettingFunction: MartingaleBettingFunction;
+      alarmStatistic: MartingaleAlarmStatistic;
+      points: TimeValue[];
+      threshold: number;
+    }
   >();
 
   evidence.forEach((observation) => {
     const time = toFiniteTime(observation.timestamp);
-    const value = observation.restarted_martingale;
-    if (
-      time === undefined ||
-      value === null ||
-      !Number.isFinite(value) ||
-      value <= 0
-    ) {
-      return;
-    }
-
-    const existing = byService.get(observation.service_id) ?? {
-      points: [],
+    if (time === undefined) return;
+    const legacyTracker: MartingaleTrackerResult = {
+      tracker_id: "primary",
+      betting_function: "power",
+      betting_parameters: {},
+      alarm_statistic: "restarted_martingale",
+      statistic_value: observation.restarted_martingale,
+      statistic_is_infinite: false,
+      log_statistic_value: null,
+      statistics: {},
+      e_value: null,
+      e_value_is_infinite: false,
+      log_e_value: null,
       threshold: observation.threshold,
+      alarm_fired: observation.alarm,
+      alarm_active: observation.alarm,
+      alarm_count: 0,
+      tested_count: observation.sequence_number,
     };
-    existing.points.push([time, value]);
-    if (Number.isFinite(observation.threshold) && observation.threshold > 0) {
-      existing.threshold = observation.threshold;
-    }
-    byService.set(observation.service_id, existing);
+    const trackerResults = observation.tracker_results?.length
+      ? observation.tracker_results
+      : [legacyTracker];
+
+    trackerResults.forEach((tracker) => {
+      const value = tracker.statistic_value;
+      if (value === null || !Number.isFinite(value) || value <= 0) return;
+      const key = `${observation.service_id}\u0000${tracker.tracker_id}`;
+      const existing = byTracker.get(key) ?? {
+        serviceId: observation.service_id,
+        trackerId: tracker.tracker_id,
+        bettingFunction: tracker.betting_function,
+        alarmStatistic: tracker.alarm_statistic,
+        points: [],
+        threshold: tracker.threshold,
+      };
+      existing.points.push([time, value]);
+      if (Number.isFinite(tracker.threshold) && tracker.threshold > 0) {
+        existing.threshold = tracker.threshold;
+      }
+      byTracker.set(key, existing);
+    });
   });
 
-  return [...byService.entries()].map(([serviceId, series], index) => ({
-    id: `restarted-martingale:${serviceId}`,
-    serviceId,
-    name: `Restarted e-process ${serviceId.slice(0, 8)}`,
-    threshold: series.threshold,
-    color:
-      SECONDARY_COLORS[index % SECONDARY_COLORS.length] ?? SECONDARY_COLORS[0],
-    data: series.points.sort((left, right) => left[0] - right[0]),
-  }));
+  const statisticLabels: Record<MartingaleAlarmStatistic, string> = {
+    martingale: "All-history martingale",
+    restarted_martingale: "Restarted e-process",
+    cusum: "CUSUM",
+    shiryaev_roberts: "Shiryaev-Roberts",
+  };
+  const bettingLabels: Record<MartingaleBettingFunction, string> = {
+    power: "Power",
+    simple_mixture: "Simple mixture",
+    simple_jumper: "Simple jumper",
+  };
+
+  return [...byTracker.values()].map((series, index) => {
+    const methodSuffix =
+      series.bettingFunction === "power" && series.trackerId === "primary"
+        ? ""
+        : ` (${bettingLabels[series.bettingFunction]} · ${series.trackerId})`;
+    const isLegacyPrimary =
+      series.bettingFunction === "power" &&
+      series.trackerId === "primary" &&
+      series.alarmStatistic === "restarted_martingale";
+    return {
+      id: isLegacyPrimary
+        ? `restarted-martingale:${series.serviceId}`
+        : `martingale:${series.serviceId}:${series.trackerId}`,
+      serviceId: series.serviceId,
+      name: `${statisticLabels[series.alarmStatistic]}${methodSuffix} ${series.serviceId.slice(0, 8)}`,
+      threshold: series.threshold,
+      color:
+        SECONDARY_COLORS[index % SECONDARY_COLORS.length] ?? SECONDARY_COLORS[0],
+      data: series.points.sort((left, right) => left[0] - right[0]),
+    };
+  });
 };
 
 export const buildTelemetryChartModel = ({
@@ -470,7 +528,7 @@ export const buildTelemetryChartOption = ({
         lineStyle: { color: "#dc2626", type: "dashed", width: 1.5 },
         label: {
           show: true,
-          formatter: `Restart threshold ${series.threshold}`,
+          formatter: `Alarm threshold ${series.threshold}`,
           position: "insideEndTop",
           color: colors.mutedForeground,
           fontSize: 10,
@@ -537,7 +595,7 @@ export const buildTelemetryChartOption = ({
               logBase: 10,
               max: secondaryMaximum,
               gridIndex: 1,
-              name: "Restarted e-process",
+              name: "Sequential evidence",
               nameTextStyle: { color: colors.mutedForeground, fontSize: 11 },
               axisLabel: {
                 color: colors.mutedForeground,

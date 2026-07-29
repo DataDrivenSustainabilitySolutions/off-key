@@ -1,4 +1,14 @@
-from sqlalchemy import JSON, Boolean, Column, DateTime, Float, Index, Integer, Text
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    Column,
+    DateTime,
+    Float,
+    Index,
+    Integer,
+    Text,
+    text,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.schema import MetaData, PrimaryKeyConstraint, Table
 from sqlalchemy.sql import func
@@ -30,6 +40,13 @@ def monitoring_evidence_table(metadata: MetaData) -> Table:
             default=False,
         ),
         Column("log_restarted_martingale", Float, nullable=True),
+        Column(
+            "tracker_results",
+            JSON().with_variant(JSONB(), "postgresql"),
+            nullable=False,
+            default=list,
+            server_default=text("'[]'"),
+        ),
         Column("threshold", Float, nullable=False),
         Column("alarm", Boolean, nullable=False, default=False),
         Column(

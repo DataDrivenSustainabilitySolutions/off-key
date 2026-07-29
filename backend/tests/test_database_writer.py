@@ -133,6 +133,7 @@ def test_build_evidence_record_preserves_static_inference_context(
             "restarted_martingale": 42.0,
             "restarted_martingale_is_infinite": False,
             "log_restarted_martingale": 3.74,
+            "tracker_results": [],
             "threshold": 100.0,
             "alarm": False,
         }
@@ -176,6 +177,71 @@ def test_build_evidence_record_normalizes_infinite_values(
     assert record["log_restarted_martingale"] is None
     assert record["e_value_is_infinite"] is True
     assert record["restarted_martingale_is_infinite"] is True
+
+
+def test_build_evidence_record_preserves_generic_tracker_results(
+    db_config, sample_anomaly_result, monkeypatch
+):
+    from off_key_mqtt_radar.database import DatabaseWriter
+
+    monkeypatch.setattr(
+        "off_key_mqtt_radar.database.get_radar_checkpoint_settings",
+        lambda: SimpleNamespace(SERVICE_ID="svc-ensemble"),
+    )
+    tracker_result = {
+        "tracker_id": "mixture-cusum",
+        "betting_function": "simple_mixture",
+        "betting_parameters": {"n_grid": 64, "min_epsilon": 0.02},
+        "alarm_statistic": "cusum",
+        "statistic_value": float("inf"),
+        "statistic_is_infinite": True,
+        "log_statistic_value": float("inf"),
+        "statistics": {
+            "cusum": {
+                "value": float("inf"),
+                "is_infinite": True,
+                "log_value": float("inf"),
+            }
+        },
+        "e_value": 2.0,
+        "e_value_is_infinite": False,
+        "log_e_value": 0.69,
+        "threshold": 25.0,
+        "alarm_fired": True,
+        "alarm_active": True,
+        "alarm_count": 1,
+        "tested_count": 9,
+    }
+    result = replace(
+        sample_anomaly_result,
+        context={
+            "static_conformal": {
+                "phase": "ready",
+                "p_value": 0.01,
+                "e_value": 2.0,
+                "e_value_is_infinite": False,
+                "log_e_value": 0.69,
+                "restarted_martingale": 4.0,
+                "restarted_martingale_is_infinite": False,
+                "log_restarted_martingale": 1.39,
+                "threshold": 25.0,
+                "alarm_fired": True,
+                "tested_count": 9,
+                "tracker_results": [tracker_result],
+            }
+        },
+    )
+
+    record = DatabaseWriter(
+        db_config, session_factory=AsyncMock()
+    )._build_evidence_records([result])[0]
+    stored_tracker = record["tracker_results"][0]
+
+    assert stored_tracker["tracker_id"] == "mixture-cusum"
+    assert stored_tracker["statistic_value"] is None
+    assert stored_tracker["statistic_is_infinite"] is True
+    assert stored_tracker["statistics"]["cusum"]["value"] is None
+    assert record["threshold"] == 25.0
 
 
 @pytest.mark.asyncio

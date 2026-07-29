@@ -39,6 +39,7 @@ class MonitoringEvidenceService:
                     row.restarted_martingale_is_infinite
                 ),
                 "log_restarted_martingale": row.log_restarted_martingale,
+                "tracker_results": getattr(row, "tracker_results", []),
                 "threshold": row.threshold,
                 "alarm": row.alarm,
             }
@@ -70,6 +71,7 @@ class MonitoringEvidenceService:
                 "sequence_number": row.sequence_number,
                 "sensor_set": row.sensor_set,
                 "restarted_martingale": row.restarted_martingale,
+                "tracker_results": getattr(row, "tracker_results", []),
                 "threshold": row.threshold,
                 "alarm": row.alarm,
                 "created": row.created or row.timestamp,

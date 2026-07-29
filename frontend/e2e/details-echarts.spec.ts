@@ -155,6 +155,27 @@ test.describe("Details telemetry ECharts", () => {
       "aria-label",
       /sequential-evidence series in a linked lower pane.*UTC/u,
     );
+    const navbar = page.locator('[data-slot="navigation-menu-list"]');
+    const primaryLinks = page.getByTestId("navbar-primary-links");
+    const navbarActions = page.getByTestId("navbar-actions");
+    const [navbarBox, primaryLinksBox, navbarActionsBox] = await Promise.all([
+      navbar.boundingBox(),
+      primaryLinks.boundingBox(),
+      navbarActions.boundingBox(),
+    ]);
+    expect(navbarBox).not.toBeNull();
+    expect(primaryLinksBox).not.toBeNull();
+    expect(navbarActionsBox).not.toBeNull();
+    expect(primaryLinksBox!.x).toBeLessThan(
+      navbarBox!.x + navbarBox!.width / 2,
+    );
+    expect(navbarActionsBox!.x).toBeGreaterThan(
+      navbarBox!.x + navbarBox!.width / 2,
+    );
+    expect(
+      navbarBox!.x + navbarBox!.width -
+        (navbarActionsBox!.x + navbarActionsBox!.width),
+    ).toBeLessThanOrEqual(40);
     await expect(card.getByText(/Current System Voltage:/u)).toBeVisible();
     await expect(card.getByText(/Restarted e-process radar-se/u)).toBeVisible();
     await expect(chart).toHaveScreenshot("telemetry-card-light.png", {

@@ -31,6 +31,27 @@ test.describe("monitoring lifecycle smoke", () => {
       await topicPatternInput.fill(topic);
       await expect(topicPatternInput).toHaveValue(topic);
 
+      await page
+        .getByRole("button", { name: /show advanced settings/i })
+        .click();
+      await page
+        .getByRole("button", { name: "About Betting method" })
+        .hover();
+      await expect(page.getByRole("tooltip")).toContainText(
+        "Transforms each conformal p-value into a one-step e-value",
+      );
+      await page.getByRole("button", { name: /add tracker/i }).click();
+
+      const secondTracker = page
+        .getByRole("heading", { name: "Tracker 2" })
+        .locator("..")
+        .locator("..");
+      await secondTracker.getByRole("textbox").fill("mixture-cusum");
+      await secondTracker.getByRole("combobox").nth(0).selectOption("simple_mixture");
+      await secondTracker.getByRole("combobox").nth(1).selectOption("cusum");
+      await secondTracker.getByRole("spinbutton").nth(0).fill("25");
+      await expect(page.getByText("2", { exact: true })).toBeVisible();
+
       const startResponsePromise = page.waitForResponse(
         (response) =>
           response.url().includes("/v1/monitors/start") &&
@@ -40,6 +61,29 @@ test.describe("monitoring lifecycle smoke", () => {
 
       const startResponse = await startResponsePromise;
       expect(startResponse.ok()).toBeTruthy();
+
+      const startPayload = startResponse.request().postDataJSON() as {
+        static_baseline_config?: {
+          martingale_config?: {
+            trackers?: Array<Record<string, unknown>>;
+          };
+        };
+      };
+      expect(
+        startPayload.static_baseline_config?.martingale_config?.trackers,
+      ).toEqual([
+        expect.objectContaining({
+          tracker_id: "primary",
+          betting_function: "power",
+          alarm_statistic: "restarted_martingale",
+        }),
+        expect.objectContaining({
+          tracker_id: "mixture-cusum",
+          betting_function: "simple_mixture",
+          alarm_statistic: "cusum",
+          threshold: 25,
+        }),
+      ]);
 
       const startedService = (await startResponse.json()) as {
         service_id?: string;

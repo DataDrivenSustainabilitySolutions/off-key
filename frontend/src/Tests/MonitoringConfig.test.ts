@@ -49,12 +49,69 @@ describe("monitoring configuration", () => {
       training_window_size: 1200,
       calibration_window_size: 360,
       martingale_config: {
-        betting_function: "power",
-        alarm_statistic: "restarted_martingale",
-        epsilon: 0.5,
-        restarted_ville_threshold: 100,
+        trackers: [{
+          tracker_id: "primary",
+          betting_function: "power",
+          alarm_statistic: "restarted_martingale",
+          epsilon: 0.5,
+          threshold: 100,
+        }],
       },
     });
+  });
+
+  it("builds multiple typed martingale trackers", () => {
+    const draft = createDefaultStaticDraft();
+    draft.martingaleTrackers = [
+      draft.martingaleTrackers[0]!,
+      {
+        ...draft.martingaleTrackers[0]!,
+        trackerId: "mixture-cusum",
+        bettingFunction: "simple_mixture",
+        alarmStatistic: "cusum",
+        threshold: "25",
+        nGrid: "64",
+        minEpsilon: "0.02",
+      },
+      {
+        ...draft.martingaleTrackers[0]!,
+        trackerId: "jumper-sr",
+        bettingFunction: "simple_jumper",
+        alarmStatistic: "shiryaev_roberts",
+        threshold: "40",
+        jump: "0.05",
+      },
+    ];
+
+    const result = buildStaticMonitoringRequest({
+      chargerId: "charger-1",
+      topics: ["charger/charger-1/live-telemetry/L1"],
+      draft,
+      modelDefinition,
+      containerName: "radar-charger-1-ensemble",
+    });
+
+    expect(result.errors).toEqual({});
+    expect(
+      result.request?.static_baseline_config.martingale_config.trackers,
+    ).toMatchObject([
+      { tracker_id: "primary", betting_function: "power" },
+      {
+        tracker_id: "mixture-cusum",
+        betting_function: "simple_mixture",
+        alarm_statistic: "cusum",
+        threshold: 25,
+        n_grid: 64,
+        min_epsilon: 0.02,
+      },
+      {
+        tracker_id: "jumper-sr",
+        betting_function: "simple_jumper",
+        alarm_statistic: "shiryaev_roberts",
+        threshold: 40,
+        jump: 0.05,
+      },
+    ]);
   });
 
   it("rejects wildcard, cross-charger, and invalid numeric drafts", () => {

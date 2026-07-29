@@ -1,6 +1,9 @@
 import type {
   ActiveService,
   AnomalyDetectionRequest,
+  MartingaleAlarmStatistic,
+  MartingaleBettingFunction,
+  MartingaleTrackerConfig,
   ModelDefinition,
   ModelParams,
 } from "@/types/monitoring";
@@ -10,18 +13,42 @@ export type FieldErrors = Record<string, string>;
 export type TopicMode = "selected_sensors" | "direct_patterns";
 export type SensorKeyStrategy = "full_hierarchy" | "top_level" | "leaf";
 
+export interface MartingaleTrackerDraft {
+  trackerId: string;
+  bettingFunction: MartingaleBettingFunction;
+  alarmStatistic: MartingaleAlarmStatistic;
+  threshold: string;
+  epsilon: string;
+  nGrid: string;
+  minEpsilon: string;
+  jump: string;
+}
+
 export interface StaticDraft {
   modelType: string;
   modelParams: Record<string, ConfigValue>;
   trainingWindow: string;
   calibrationWindow: string;
-  epsilon: string;
+  martingaleTrackers: MartingaleTrackerDraft[];
   sensorFreshness: string;
   sensorKeyStrategy: SensorKeyStrategy;
 }
 
 export const DEFAULT_MODEL_TYPE = "pyod_iforest";
-export const FIXED_VILLE_THRESHOLD = 100;
+export const DEFAULT_MARTINGALE_THRESHOLD = 100;
+
+export const createDefaultMartingaleTracker = (
+  trackerId = "primary",
+): MartingaleTrackerDraft => ({
+  trackerId,
+  bettingFunction: "power",
+  alarmStatistic: "restarted_martingale",
+  threshold: String(DEFAULT_MARTINGALE_THRESHOLD),
+  epsilon: "0.5",
+  nGrid: "100",
+  minEpsilon: "0.01",
+  jump: "0.01",
+});
 
 const DEFAULT_MODEL_PARAMS: Record<string, ConfigValue> = {
   n_estimators: 100,
@@ -34,7 +61,7 @@ export const createDefaultStaticDraft = (): StaticDraft => ({
   modelParams: { ...DEFAULT_MODEL_PARAMS },
   trainingWindow: "1200",
   calibrationWindow: "360",
-  epsilon: "0.5",
+  martingaleTrackers: [createDefaultMartingaleTracker()],
   sensorFreshness: "30",
   sensorKeyStrategy: "full_hierarchy",
 });
@@ -238,14 +265,110 @@ export const buildStaticMonitoringRequest = ({
     integer: true,
     min: 1,
   });
-  const epsilon = parseNumber({
-    value: draft.epsilon,
-    label: "Power epsilon",
-    field: "epsilon",
-    errors,
-    min: 0.0001,
-    max: 1,
+  const trackerIds = new Set<string>();
+  const martingaleTrackers: MartingaleTrackerConfig[] = [];
+  draft.martingaleTrackers.forEach((tracker, index) => {
+    const prefix = `martingales.${index}`;
+    if (!/^[a-z][a-z0-9_-]{0,63}$/.test(tracker.trackerId)) {
+      errors[`${prefix}.trackerId`] = "Tracker ID is invalid.";
+    } else if (trackerIds.has(tracker.trackerId)) {
+      errors[`${prefix}.trackerId`] = "Tracker IDs must be unique.";
+    }
+    trackerIds.add(tracker.trackerId);
+
+    const threshold = parseNumber({
+      value: tracker.threshold,
+      label: "Alarm threshold",
+      field: `${prefix}.threshold`,
+      errors,
+      min: Number.MIN_VALUE,
+    });
+    if (
+      threshold !== undefined &&
+      (tracker.alarmStatistic === "martingale" ||
+        tracker.alarmStatistic === "restarted_martingale") &&
+      threshold <= 1
+    ) {
+      errors[`${prefix}.threshold`] = "Ville thresholds must be greater than 1.";
+    }
+
+    if (tracker.bettingFunction === "power") {
+      const epsilon = parseNumber({
+        value: tracker.epsilon,
+        label: "Power epsilon",
+        field: `${prefix}.epsilon`,
+        errors,
+        min: 0.0001,
+        max: 1,
+      });
+      if (epsilon !== undefined && threshold !== undefined) {
+        martingaleTrackers.push({
+          tracker_id: tracker.trackerId,
+          betting_function: "power",
+          alarm_statistic: tracker.alarmStatistic,
+          threshold,
+          epsilon,
+        });
+      }
+      return;
+    }
+
+    if (tracker.bettingFunction === "simple_mixture") {
+      const nGrid = parseNumber({
+        value: tracker.nGrid,
+        label: "Mixture grid size",
+        field: `${prefix}.nGrid`,
+        errors,
+        integer: true,
+        min: 2,
+        max: 10000,
+      });
+      const minEpsilon = parseNumber({
+        value: tracker.minEpsilon,
+        label: "Minimum epsilon",
+        field: `${prefix}.minEpsilon`,
+        errors,
+        min: 0.0001,
+        max: 1,
+      });
+      if (
+        nGrid !== undefined &&
+        minEpsilon !== undefined &&
+        threshold !== undefined
+      ) {
+        martingaleTrackers.push({
+          tracker_id: tracker.trackerId,
+          betting_function: "simple_mixture",
+          alarm_statistic: tracker.alarmStatistic,
+          threshold,
+          n_grid: nGrid,
+          min_epsilon: minEpsilon,
+        });
+      }
+      return;
+    }
+
+    const jump = parseNumber({
+      value: tracker.jump,
+      label: "Jumper redistribution",
+      field: `${prefix}.jump`,
+      errors,
+      min: 0.0001,
+      max: 1,
+    });
+    if (jump !== undefined && threshold !== undefined) {
+      martingaleTrackers.push({
+        tracker_id: tracker.trackerId,
+        betting_function: "simple_jumper",
+        alarm_statistic: tracker.alarmStatistic,
+        threshold,
+        jump,
+      });
+    }
   });
+  if (!draft.martingaleTrackers.length) {
+    errors.martingales = "Configure at least one martingale tracker.";
+  }
   const sensorFreshness = parseNumber({
     value: draft.sensorFreshness,
     label: "Sensor freshness",
@@ -263,7 +386,7 @@ export const buildStaticMonitoringRequest = ({
     Object.keys(errors).length ||
     trainingWindow === undefined ||
     calibrationWindow === undefined ||
-    epsilon === undefined ||
+    martingaleTrackers.length !== draft.martingaleTrackers.length ||
     sensorFreshness === undefined
   ) {
     return { errors };
@@ -289,10 +412,7 @@ export const buildStaticMonitoringRequest = ({
         calibration_window_size: calibrationWindow,
         conformal_strategy: "split",
         martingale_config: {
-          betting_function: "power",
-          alarm_statistic: "restarted_martingale",
-          epsilon,
-          restarted_ville_threshold: FIXED_VILLE_THRESHOLD,
+          trackers: martingaleTrackers,
         },
       },
     },

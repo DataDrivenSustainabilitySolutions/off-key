@@ -306,6 +306,30 @@ describe("telemetry ECharts option", () => {
     expect(option.dataZoom[0]).toMatchObject({ startValue: startMs, endValue: endMs });
     expect(option.dataZoom[1]).toMatchObject({ startValue: startMs, endValue: endMs });
   });
+
+  it("uses a shared timeline extent without changing the value axes", () => {
+    const startMs = Date.parse("2025-12-31T23:55:00Z");
+    const endMs = Date.parse("2026-01-01T00:05:00Z");
+    const option = inspect(
+      buildTelemetryChartOption({
+        model: buildModel(),
+        viewport: { mode: "live" },
+        timelineExtent: [startMs, endMs],
+        timeZone: "UTC",
+        colors,
+        accessibleDescription: "Telemetry",
+      }),
+    );
+
+    expect(option.xAxis.map(({ min, max }) => ({ min, max }))).toEqual([
+      { min: startMs, max: endMs },
+    ]);
+    expect(option.dataZoom[0]).toMatchObject({
+      startValue: startMs,
+      endValue: endMs,
+    });
+    expect(option.yAxis).toHaveLength(1);
+  });
 });
 
 describe("chart time and tooltip formatting", () => {

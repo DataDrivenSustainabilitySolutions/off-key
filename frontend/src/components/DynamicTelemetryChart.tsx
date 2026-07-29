@@ -21,9 +21,11 @@ import { resolveChartThemeColors } from "@/lib/echarts-theme";
 import {
   buildTelemetryChartModel,
   buildTelemetryChartOption,
+  DEFAULT_CHART_NAVIGATION,
   formatChartTime,
   getLocalTimeZone,
-  type ChartViewport,
+  areChartNavigationStatesEqual,
+  type ChartNavigationState,
 } from "@/lib/telemetry-chart";
 import { isWithinTimeRange } from "@/lib/time-utils";
 import type { Anomaly, TelemetryTypeData } from "@/types/charger";
@@ -33,6 +35,12 @@ interface DynamicTelemetryChartProps {
   telemetryData: TelemetryTypeData;
   anomalies?: Anomaly[];
   evidence?: MonitoringChartEvidence[];
+  navigationState?: ChartNavigationState;
+  timelineExtent?: readonly [startMs: number, endMs: number];
+  onNavigationStateChange?: (
+    telemetryType: string,
+    state: ChartNavigationState,
+  ) => void;
 }
 
 const CATEGORY_COLORS: Record<string, string> = {
@@ -59,13 +67,14 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
   telemetryData,
   anomalies = [],
   evidence = [],
+  navigationState,
+  timelineExtent,
+  onNavigationStateChange,
 }) => {
   const { resolvedTheme } = useTheme();
   const [collapsed, setCollapsed] = useState(false);
-  const [fromDate, setFromDate] = useState<Date>();
-  const [toDate, setToDate] = useState<Date>();
-  const [viewport, setViewport] = useState<ChartViewport>({ mode: "live" });
-  const [inspectionDataEndMs, setInspectionDataEndMs] = useState<number>();
+  const [localNavigationState, setLocalNavigationState] =
+    useState<ChartNavigationState>(DEFAULT_CHART_NAVIGATION);
   const [cardNode, setCardNode] = useState<HTMLDivElement | null>(null);
   const [isChartVisible, setIsChartVisible] = useState(
     () => typeof IntersectionObserver === "undefined",
@@ -95,53 +104,98 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
     [resolvedTheme],
   );
 
+  const activeNavigationState = navigationState ?? localNavigationState;
+  const { viewport } = activeNavigationState;
+  const fromDate = useMemo(
+    () =>
+      activeNavigationState.range.fromMs === undefined
+        ? undefined
+        : new Date(activeNavigationState.range.fromMs),
+    [activeNavigationState.range.fromMs],
+  );
+  const toDate = useMemo(
+    () =>
+      activeNavigationState.range.toMs === undefined
+        ? undefined
+        : new Date(activeNavigationState.range.toMs),
+    [activeNavigationState.range.toMs],
+  );
+
+  const commitNavigationState = useCallback(
+    (nextState: ChartNavigationState) => {
+      setLocalNavigationState((current) =>
+        areChartNavigationStatesEqual(current, nextState) ? current : nextState,
+      );
+      onNavigationStateChange?.(telemetryData.type, nextState);
+    },
+    [onNavigationStateChange, telemetryData.type],
+  );
+
   const resetViewport = useCallback(() => {
-    setViewport({ mode: "live" });
-    setInspectionDataEndMs(undefined);
-  }, []);
+    commitNavigationState({
+      range: activeNavigationState.range,
+      viewport: { mode: "live" },
+    });
+  }, [activeNavigationState, commitNavigationState]);
 
   const applyRelativeRange = useCallback(
     (hours: number) => {
       const maxTime = getLatestFiniteTime(telemetryData);
       if (maxTime === undefined) return;
-      setFromDate(new Date(maxTime - hours * 60 * 60 * 1_000));
-      setToDate(new Date(maxTime));
-      resetViewport();
+      commitNavigationState({
+        range: {
+          fromMs: maxTime - hours * 60 * 60 * 1_000,
+          toMs: maxTime,
+        },
+        viewport: { mode: "live" },
+      });
     },
-    [resetViewport, telemetryData],
+    [commitNavigationState, telemetryData],
   );
 
   const handleFromDateChange = useCallback(
     (date: Date | undefined) => {
-      setFromDate(date);
-      setToDate((currentToDate) =>
-        date && currentToDate && currentToDate.getTime() < date.getTime()
-          ? date
-          : currentToDate,
-      );
-      resetViewport();
+      const fromMs = date?.getTime();
+      const currentToMs = activeNavigationState.range.toMs;
+      commitNavigationState({
+        range: {
+          ...(fromMs !== undefined && { fromMs }),
+          ...(currentToMs !== undefined && {
+            toMs:
+              fromMs !== undefined && currentToMs < fromMs
+                ? fromMs
+                : currentToMs,
+          }),
+        },
+        viewport: { mode: "live" },
+      });
     },
-    [resetViewport],
+    [activeNavigationState.range.toMs, commitNavigationState],
   );
 
   const handleToDateChange = useCallback(
     (date: Date | undefined) => {
-      setToDate(date);
-      setFromDate((currentFromDate) =>
-        date && currentFromDate && currentFromDate.getTime() > date.getTime()
-          ? date
-          : currentFromDate,
-      );
-      resetViewport();
+      const toMs = date?.getTime();
+      const currentFromMs = activeNavigationState.range.fromMs;
+      commitNavigationState({
+        range: {
+          ...(currentFromMs !== undefined && {
+            fromMs:
+              toMs !== undefined && currentFromMs > toMs
+                ? toMs
+                : currentFromMs,
+          }),
+          ...(toMs !== undefined && { toMs }),
+        },
+        viewport: { mode: "live" },
+      });
     },
-    [resetViewport],
+    [activeNavigationState.range.fromMs, commitNavigationState],
   );
 
   const clearRange = useCallback(() => {
-    setFromDate(undefined);
-    setToDate(undefined);
-    resetViewport();
-  }, [resetViewport]);
+    commitNavigationState(DEFAULT_CHART_NAVIGATION);
+  }, [commitNavigationState]);
 
   const filteredData = useMemo(
     () =>
@@ -195,6 +249,7 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
         ? buildTelemetryChartOption({
             model: chartModel,
             viewport,
+            timelineExtent,
             timeZone,
             colors: themeColors,
             accessibleDescription,
@@ -205,36 +260,57 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
       chartModel,
       themeColors,
       timeZone,
+      timelineExtent,
       viewport,
     ],
   );
 
   const handleViewportChange = useCallback(
     (startMs: number, endMs: number) => {
-      setViewport({ mode: "absolute", startMs, endMs });
-      setInspectionDataEndMs((current) => current ?? chartModel?.extent?.[1]);
+      commitNavigationState({
+        ...activeNavigationState,
+        viewport: { mode: "absolute", startMs, endMs },
+        inspectionDataEndMs:
+          activeNavigationState.inspectionDataEndMs ??
+          (timelineExtent ?? chartModel?.extent)?.[1],
+      });
     },
-    [chartModel?.extent],
+    [
+      activeNavigationState,
+      chartModel?.extent,
+      commitNavigationState,
+      timelineExtent,
+    ],
   );
   const zoomIn = useCallback(() => {
-    const extent = chartModel?.extent;
+    const extent = timelineExtent ?? chartModel?.extent;
     if (!extent) return;
     const startMs = viewport.mode === "absolute" ? viewport.startMs : extent[0];
     const endMs = viewport.mode === "absolute" ? viewport.endMs : extent[1];
     const inset = (endMs - startMs) / 4;
     if (!Number.isFinite(inset) || inset <= 0) return;
-    setViewport({
-      mode: "absolute",
-      startMs: startMs + inset,
-      endMs: endMs - inset,
+    commitNavigationState({
+      ...activeNavigationState,
+      viewport: {
+        mode: "absolute",
+        startMs: startMs + inset,
+        endMs: endMs - inset,
+      },
+      inspectionDataEndMs:
+        activeNavigationState.inspectionDataEndMs ?? extent[1],
     });
-    setInspectionDataEndMs((current) => current ?? extent[1]);
-  }, [chartModel?.extent, viewport]);
+  }, [
+    activeNavigationState,
+    chartModel?.extent,
+    commitNavigationState,
+    timelineExtent,
+    viewport,
+  ]);
   const hasNewData =
     viewport.mode === "absolute" &&
-    inspectionDataEndMs !== undefined &&
+    activeNavigationState.inspectionDataEndMs !== undefined &&
     chartModel?.extent !== undefined &&
-    chartModel.extent[1] > inspectionDataEndMs;
+    chartModel.extent[1] > activeNavigationState.inspectionDataEndMs;
   const latestTelemetry = chartModel?.telemetry.data[
     chartModel.telemetry.data.length - 1
   ];

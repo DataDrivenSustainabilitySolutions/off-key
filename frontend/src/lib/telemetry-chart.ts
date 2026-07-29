@@ -38,6 +38,35 @@ export type ChartViewport =
   | { mode: "live" }
   | { mode: "absolute"; startMs: number; endMs: number };
 
+export interface ChartTimeRange {
+  fromMs?: number;
+  toMs?: number;
+}
+
+export interface ChartNavigationState {
+  range: ChartTimeRange;
+  viewport: ChartViewport;
+  inspectionDataEndMs?: number;
+}
+
+export const DEFAULT_CHART_NAVIGATION: ChartNavigationState = {
+  range: {},
+  viewport: { mode: "live" },
+};
+
+export const areChartNavigationStatesEqual = (
+  left: ChartNavigationState,
+  right: ChartNavigationState,
+): boolean =>
+  left.range.fromMs === right.range.fromMs &&
+  left.range.toMs === right.range.toMs &&
+  left.inspectionDataEndMs === right.inspectionDataEndMs &&
+  left.viewport.mode === right.viewport.mode &&
+  (left.viewport.mode === "live" ||
+    (right.viewport.mode === "absolute" &&
+      left.viewport.startMs === right.viewport.startMs &&
+      left.viewport.endMs === right.viewport.endMs));
+
 export interface TelemetryChartSeries {
   id: "telemetry";
   name: string;
@@ -98,6 +127,7 @@ interface BuildTelemetryChartModelInput {
 interface BuildTelemetryChartOptionInput {
   model: TelemetryChartModel;
   viewport: ChartViewport;
+  timelineExtent?: readonly [startMs: number, endMs: number];
   timeZone: string;
   colors: ChartThemeColors;
   accessibleDescription: string;
@@ -408,6 +438,7 @@ const axisLabelFormatter = (
 export const buildTelemetryChartOption = ({
   model,
   viewport,
+  timelineExtent,
   timeZone,
   colors,
   accessibleDescription,
@@ -421,6 +452,7 @@ export const buildTelemetryChartOption = ({
     ]),
   );
   const xAxisIndices = hasSecondaryPane ? [0, 1] : [0];
+  const domain = timelineExtent ?? model.extent;
   const units = new Map<string, string>();
   if (model.telemetry.unit) units.set(model.telemetry.name, model.telemetry.unit);
 
@@ -440,8 +472,8 @@ export const buildTelemetryChartOption = ({
     id: index === 0 ? "telemetry-time" : "secondary-time",
     type: "time" as const,
     gridIndex: index,
-    min: model.extent?.[0],
-    max: model.extent?.[1],
+    min: domain?.[0],
+    max: domain?.[1],
     axisLabel: hasSecondaryPane && index === 0 ? { show: false } : axisLabel,
     axisLine: { lineStyle: { color: colors.border } },
     axisTick: { show: false },
@@ -456,8 +488,8 @@ export const buildTelemetryChartOption = ({
   const dataZoomRange =
     viewport.mode === "absolute"
       ? { startValue: viewport.startMs, endValue: viewport.endMs }
-      : model.extent
-        ? { startValue: model.extent[0], endValue: model.extent[1] }
+      : domain
+        ? { startValue: domain[0], endValue: domain[1] }
         : { start: 0, end: 100 };
 
   const telemetrySeries: LineSeriesOption = {

@@ -29,11 +29,14 @@ const NEW_POINT = {
   value: 232.2,
 };
 
-const installDetailsApi = async (page: Page) => {
+const installDetailsApi = async (
+  page: Page,
+  telemetryTypes: string[] = ["systemVoltage"],
+) => {
   let includeNewTelemetry = false;
 
   await page.route(`**/v1/telemetry/${CHARGER_ID}/type*`, async (route) => {
-    await route.fulfill({ json: ["systemVoltage"] });
+    await route.fulfill({ json: telemetryTypes });
   });
   await page.route(`**/v1/telemetry/${CHARGER_ID}/data*`, async (route) => {
     const isIncremental = new URL(route.request().url()).searchParams.has(
@@ -226,5 +229,59 @@ test.describe("Details telemetry ECharts", () => {
     await expect(page.getByRole("button", { name: "Return to live" })).toBeVisible();
     await page.getByRole("button", { name: "Past hour" }).click();
     await expect(page.getByRole("button", { name: "Return to live" })).toBeHidden();
+  });
+
+  test("optionally mirrors horizontal navigation across chart views", async ({
+    page,
+  }) => {
+    await installDetailsApi(page, ["systemVoltage", "systemCurrent"]);
+    await page.goto(`/details/${CHARGER_ID}`);
+
+    const voltageCard = page
+      .locator('[data-slot="card"]')
+      .filter({ hasText: "System Voltage" })
+      .first();
+    const currentCard = page
+      .locator('[data-slot="card"]')
+      .filter({ hasText: "System Current" })
+      .first();
+    await expect(voltageCard.getByTestId("telemetry-echart")).toBeVisible();
+    await currentCard.scrollIntoViewIfNeeded();
+    await expect(currentCard.getByTestId("telemetry-echart")).toBeVisible();
+
+    const linkButton = page.getByRole("button", {
+      name: "Link chart navigation",
+    });
+    await expect(linkButton).toHaveAttribute("aria-pressed", "false");
+
+    await voltageCard.getByRole("button", { name: "Zoom in" }).click();
+    await expect(
+      voltageCard.getByRole("button", { name: "Return to live" }),
+    ).toBeVisible();
+    await expect(
+      currentCard.getByRole("button", { name: "Return to live" }),
+    ).toBeHidden();
+
+    await linkButton.click();
+    await expect(
+      page.getByRole("button", { name: "Unlink chart navigation" }),
+    ).toHaveAttribute("aria-pressed", "true");
+    await expect(
+      currentCard.getByRole("button", { name: "Return to live" }),
+    ).toBeVisible();
+
+    await currentCard.getByRole("button", { name: "Return to live" }).click();
+    await expect(
+      page.getByRole("button", { name: "Return to live" }),
+    ).toHaveCount(0);
+
+    await page.getByRole("button", { name: "Unlink chart navigation" }).click();
+    await voltageCard.getByRole("button", { name: "Zoom in" }).click();
+    await expect(
+      voltageCard.getByRole("button", { name: "Return to live" }),
+    ).toBeVisible();
+    await expect(
+      currentCard.getByRole("button", { name: "Return to live" }),
+    ).toBeHidden();
   });
 });

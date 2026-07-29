@@ -22,6 +22,10 @@ import psutil
 
 from .checkpoint_manager import CheckpointManager
 from .config.config import AnomalyDetectionConfig
+from .martingales import (
+    MartingaleAlarmController,
+    RestartedMartingaleAlarmController,
+)
 from .models import AnomalyResult
 
 # =============================================================================
@@ -42,107 +46,6 @@ class StaticConformalState(Enum):
     TRAINING = "training"
     READY = "ready"
     FAILED = "failed"
-
-
-class RestartedMartingaleAlarmController:
-    """Power e-process using nonconform's native restarted mixture."""
-
-    BETTING_FUNCTION = "power"
-    ALARM_STATISTIC = "restarted_martingale"
-    FIXED_RESTARTED_VILLE_THRESHOLD = 100.0
-
-    def __init__(
-        self,
-        *,
-        epsilon: float,
-        restarted_ville_threshold: float = FIXED_RESTARTED_VILLE_THRESHOLD,
-        alarm_count: int = 0,
-        tested_count: int = 0,
-        martingale: Any = None,
-        alarm_active: bool = False,
-    ):
-        self.epsilon = float(epsilon)
-        self._validate_threshold(restarted_ville_threshold)
-        self.restarted_ville_threshold = float(restarted_ville_threshold)
-        self.alarm_count = int(alarm_count)
-        self.tested_count = int(tested_count)
-        self._alarm_active = bool(alarm_active)
-        self._martingale = martingale or self._new_martingale()
-
-    @classmethod
-    def from_config(cls, config: Any) -> "RestartedMartingaleAlarmController":
-        return cls(
-            epsilon=config.epsilon,
-            restarted_ville_threshold=config.restarted_ville_threshold,
-        )
-
-    @classmethod
-    def _validate_threshold(cls, value: float) -> None:
-        if float(value) != cls.FIXED_RESTARTED_VILLE_THRESHOLD:
-            raise ValueError(
-                "restarted_ville_threshold is fixed at "
-                f"{cls.FIXED_RESTARTED_VILLE_THRESHOLD:g}."
-            )
-
-    def _new_martingale(self) -> Any:
-        from nonconform.martingales import AlarmConfig, PowerMartingale
-
-        return PowerMartingale(
-            epsilon=self.epsilon,
-            alarm_config=AlarmConfig(
-                restarted_ville_threshold=self.restarted_ville_threshold
-            ),
-        )
-
-    def update(self, p_value: float) -> dict[str, Any]:
-        state = self._martingale.update(p_value)
-        self.tested_count += 1
-        threshold_crossed = (
-            "restarted_ville" in state.triggered_alarms
-            or state.restarted_martingale >= self.restarted_ville_threshold
-        )
-        alarm_fired = threshold_crossed and not self._alarm_active
-        self._alarm_active = threshold_crossed
-        if alarm_fired:
-            self.alarm_count += 1
-
-        if p_value == 0.0:
-            log_e_value = float("inf") if self.epsilon < 1.0 else 0.0
-        else:
-            log_e_value = float(
-                np.log(self.epsilon) + (self.epsilon - 1.0) * np.log(p_value)
-            )
-        max_log_float = float(np.log(np.finfo(float).max))
-        e_value = (
-            float(np.exp(log_e_value))
-            if np.isfinite(log_e_value) and log_e_value <= max_log_float
-            else float("inf")
-        )
-        finite_e_value = e_value if np.isfinite(e_value) else None
-        restarted_martingale = float(state.restarted_martingale)
-        finite_restarted_martingale = (
-            restarted_martingale if np.isfinite(restarted_martingale) else None
-        )
-        log_restarted_martingale = float(state.log_restarted_martingale)
-        finite_log_restarted_martingale = (
-            log_restarted_martingale if np.isfinite(log_restarted_martingale) else None
-        )
-        return {
-            "betting_function": self.BETTING_FUNCTION,
-            "alarm_statistic": self.ALARM_STATISTIC,
-            "epsilon": self.epsilon,
-            "e_value": finite_e_value,
-            "e_value_is_infinite": finite_e_value is None,
-            "log_e_value": log_e_value if np.isfinite(log_e_value) else None,
-            "restarted_ville_threshold": self.restarted_ville_threshold,
-            "restarted_martingale": finite_restarted_martingale,
-            "restarted_martingale_is_infinite": (finite_restarted_martingale is None),
-            "log_restarted_martingale": finite_log_restarted_martingale,
-            "alarm_fired": alarm_fired,
-            "alarm_active": self._alarm_active,
-            "alarm_count": self.alarm_count,
-            "tested_count": self.tested_count,
-        }
 
 
 class StaticConformalDetectionService:
@@ -203,7 +106,11 @@ class StaticConformalDetectionService:
         self.feature_keys = list(checkpoint.get("feature_keys", []))
         self.conformal_detector = checkpoint.get("conformal_detector")
         self.alarm_controller = checkpoint.get("alarm_controller")
-        if not isinstance(self.alarm_controller, RestartedMartingaleAlarmController):
+        if isinstance(self.alarm_controller, RestartedMartingaleAlarmController):
+            self.alarm_controller = MartingaleAlarmController.from_legacy(
+                self.alarm_controller
+            )
+        if not isinstance(self.alarm_controller, MartingaleAlarmController):
             raise TypeError(
                 "Static checkpoint is missing a valid alarm_controller. "
                 "Starting fresh is required."
@@ -259,13 +166,42 @@ class StaticConformalDetectionService:
 
         saved_schema_signature = checkpoint.get("schema_signature")
         current_schema_signature = cls._build_schema_signature_from_config(config)
-        if saved_schema_signature != current_schema_signature:
+        accepted_schema_signatures = {current_schema_signature}
+        legacy_schema_signature = cls._build_legacy_schema_signature_from_config(config)
+        if legacy_schema_signature is not None:
+            accepted_schema_signatures.add(legacy_schema_signature)
+        if saved_schema_signature not in accepted_schema_signatures:
             raise ValueError(
                 "Checkpoint schema signature does not match current static "
                 "configuration. Starting fresh is required."
             )
 
         return cls(config, checkpoint=checkpoint)
+
+    @classmethod
+    def _build_legacy_schema_signature_from_config(cls, config: Any) -> str | None:
+        """Reproduce the pre-ensemble signature for compatible checkpoints."""
+        static_config = getattr(config, "static_baseline_config", None)
+        martingale_config = getattr(static_config, "martingale_config", None)
+        trackers = getattr(martingale_config, "trackers", [])
+        if len(trackers) != 1:
+            return None
+        tracker = trackers[0]
+        if (
+            tracker.betting_function != "power"
+            or tracker.alarm_statistic != "restarted_martingale"
+            or float(tracker.threshold) != 100.0
+        ):
+            return None
+
+        static_payload = static_config.model_dump(exclude_none=True)
+        static_payload["martingale_config"] = {
+            "betting_function": "power",
+            "alarm_statistic": "restarted_martingale",
+            "epsilon": tracker.epsilon,
+            "restarted_ville_threshold": 100.0,
+        }
+        return cls._build_static_schema_signature(config, static_payload)
 
     @classmethod
     def _build_schema_signature_from_config(cls, config: Any) -> str:
@@ -497,7 +433,7 @@ class StaticConformalDetectionService:
         severity = self._calculate_conformal_severity(
             p_value,
             is_anomaly,
-            1.0 / float(alarm_context["restarted_ville_threshold"]),
+            1.0 / float(alarm_context["threshold"]),
         )
 
         result = self._build_result(
@@ -521,18 +457,17 @@ class StaticConformalDetectionService:
         if is_anomaly:
             self.logger.warning(
                 "event=radar.static_conformal_martingale_alarm p_value=%.6f "
-                "restarted_martingale=%s severity=%s topic=%s",
+                "trackers=%s severity=%s topic=%s",
                 p_value,
-                alarm_context["restarted_martingale"] or "inf",
+                ",".join(alarm_context["fired_tracker_ids"]),
                 severity,
                 topic,
                 extra={
                     "conformal_pvalue": p_value,
                     "betting_function": alarm_context["betting_function"],
                     "alarm_statistic": alarm_context["alarm_statistic"],
-                    "restarted_ville_threshold": (
-                        alarm_context["restarted_ville_threshold"]
-                    ),
+                    "threshold": alarm_context["threshold"],
+                    "fired_tracker_ids": alarm_context["fired_tracker_ids"],
                     "alarm_count": alarm_context["alarm_count"],
                     "model_type": self.config.model_type,
                     "charger_id": charger_id,
@@ -612,8 +547,8 @@ class StaticConformalDetectionService:
         alarm_controller = self._create_alarm_controller()
         return conformal_detector, alarm_controller
 
-    def _create_alarm_controller(self) -> RestartedMartingaleAlarmController:
-        return RestartedMartingaleAlarmController.from_config(
+    def _create_alarm_controller(self) -> MartingaleAlarmController:
+        return MartingaleAlarmController.from_config(
             self.static_config.martingale_config
         )
 

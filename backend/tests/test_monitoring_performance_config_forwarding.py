@@ -82,10 +82,15 @@ async def test_gateway_start_monitor_forwards_static_performance_config():
         "sensor_freshness_seconds": 25.0,
     }
     assert forwarded["static_baseline_config"]["martingale_config"] == {
-        "betting_function": "power",
-        "alarm_statistic": "restarted_martingale",
-        "epsilon": 0.5,
-        "restarted_ville_threshold": 100.0,
+        "trackers": [
+            {
+                "tracker_id": "primary",
+                "betting_function": "power",
+                "alarm_statistic": "restarted_martingale",
+                "epsilon": 0.5,
+                "threshold": 100.0,
+            }
+        ]
     }
 
 
@@ -131,10 +136,15 @@ def test_gateway_resolves_default_static_baseline_config():
     assert resolved["static_baseline_config"]["training_window_size"] == 1200
     assert resolved["static_baseline_config"]["calibration_window_size"] == 360
     assert resolved["static_baseline_config"]["martingale_config"] == {
-        "betting_function": "power",
-        "alarm_statistic": "restarted_martingale",
-        "epsilon": 0.5,
-        "restarted_ville_threshold": 100.0,
+        "trackers": [
+            {
+                "tracker_id": "primary",
+                "betting_function": "power",
+                "alarm_statistic": "restarted_martingale",
+                "epsilon": 0.5,
+                "threshold": 100.0,
+            }
+        ]
     }
 
 
@@ -269,11 +279,15 @@ def test_tactic_builds_static_environment():
     assert "RADAR_ADAPTIVE_STREAM_CONFIG" not in env
     assert static_config["training_window_size"] == 120
     assert static_config["calibration_window_size"] == 30
-    assert static_config["martingale_config"]["betting_function"] == "power"
-    assert (
-        static_config["martingale_config"]["alarm_statistic"] == "restarted_martingale"
-    )
-    assert static_config["martingale_config"]["restarted_ville_threshold"] == 100.0
+    assert static_config["martingale_config"]["trackers"] == [
+        {
+            "tracker_id": "primary",
+            "betting_function": "power",
+            "alarm_statistic": "restarted_martingale",
+            "epsilon": 0.5,
+            "threshold": 100.0,
+        }
+    ]
     assert static_config["model_params"] == {
         "n_estimators": 100,
         "contamination": 0.1,

@@ -189,17 +189,83 @@ def test_static_baseline_rejects_removed_calibration_fraction():
         StaticBaselineConfig(training_window_size=100, calibration_fraction=0.25)
 
 
-def test_static_martingale_contract_is_native_and_fixed():
+def test_static_martingale_contract_defaults_and_normalizes_legacy_payload():
     config = StaticMartingaleConfig()
     assert config.betting_function == "power"
     assert config.alarm_statistic == "restarted_martingale"
     assert config.epsilon == 0.5
     assert config.restarted_ville_threshold == 100
 
-    with pytest.raises(ValidationError, match="alarm_statistic"):
-        StaticMartingaleConfig(alarm_statistic="martingale")
-    with pytest.raises(ValidationError):
-        StaticMartingaleConfig(restarted_ville_threshold=50)
+    legacy = StaticMartingaleConfig(
+        betting_function="power",
+        alarm_statistic="martingale",
+        epsilon=0.75,
+        restarted_ville_threshold=50,
+    )
+    assert legacy.trackers[0].tracker_id == "primary"
+    assert legacy.trackers[0].alarm_statistic == "martingale"
+    assert legacy.trackers[0].threshold == 50
+    assert legacy.epsilon == 0.75
+
+    ensemble = StaticMartingaleConfig(
+        trackers=[
+            {
+                "tracker_id": "power",
+                "betting_function": "power",
+                "alarm_statistic": "restarted_martingale",
+                "threshold": 100,
+                "epsilon": 0.5,
+            },
+            {
+                "tracker_id": "mixture-cusum",
+                "betting_function": "simple_mixture",
+                "alarm_statistic": "cusum",
+                "threshold": 25,
+                "n_grid": 64,
+                "min_epsilon": 0.02,
+            },
+            {
+                "tracker_id": "jumper-sr",
+                "betting_function": "simple_jumper",
+                "alarm_statistic": "shiryaev_roberts",
+                "threshold": 40,
+                "jump": 0.05,
+            },
+        ]
+    )
+    assert [tracker.tracker_id for tracker in ensemble.trackers] == [
+        "power",
+        "mixture-cusum",
+        "jumper-sr",
+    ]
+
+    with pytest.raises(ValidationError, match="unique"):
+        StaticMartingaleConfig(
+            trackers=[
+                {
+                    "tracker_id": "duplicate",
+                    "betting_function": "power",
+                    "epsilon": 0.5,
+                },
+                {
+                    "tracker_id": "duplicate",
+                    "betting_function": "simple_jumper",
+                    "jump": 0.01,
+                },
+            ]
+        )
+    with pytest.raises(ValidationError, match="Ville thresholds"):
+        StaticMartingaleConfig(
+            trackers=[
+                {
+                    "tracker_id": "invalid-threshold",
+                    "betting_function": "power",
+                    "alarm_statistic": "martingale",
+                    "threshold": 1,
+                    "epsilon": 0.5,
+                }
+            ]
+        )
     with pytest.raises(ValidationError, match="method"):
         StaticMartingaleConfig(method="power")
     with pytest.raises(ValidationError, match="alpha"):

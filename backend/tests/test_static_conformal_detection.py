@@ -8,6 +8,7 @@ from off_key_core.schemas.radar import StaticBaselineConfig, StaticMartingaleCon
 from off_key_mqtt_radar.config.config import AnomalyDetectionConfig
 from off_key_mqtt_radar.config.runtime import clear_radar_runtime_settings_cache
 from off_key_mqtt_radar.detector import (
+    MartingaleAlarmController,
     RestartedMartingaleAlarmController,
     StaticConformalDetectionService,
     StaticConformalState,
@@ -120,6 +121,9 @@ def test_static_conformal_collects_calibrates_trains_then_detects(monkeypatch):
     assert static_context["alarm_fired"] is True
     assert static_context["alarm_count"] == 1
     assert static_context["tested_count"] == 1
+    assert [tracker["tracker_id"] for tracker in static_context["tracker_results"]] == [
+        "primary"
+    ]
 
 
 def test_static_conformal_rejects_schema_mismatch_after_schema_freeze(monkeypatch):
@@ -238,6 +242,108 @@ def test_restarted_martingale_controller_handles_finite_log_overflow():
     assert result["e_value_is_infinite"] is True
 
 
+@pytest.mark.parametrize(
+    "alarm_statistic",
+    ["martingale", "restarted_martingale", "cusum", "shiryaev_roberts"],
+)
+@pytest.mark.parametrize(
+    "tracker_payload",
+    [
+        {
+            "tracker_id": "power",
+            "betting_function": "power",
+            "epsilon": 0.4,
+        },
+        {
+            "tracker_id": "mixture",
+            "betting_function": "simple_mixture",
+            "n_grid": 16,
+            "min_epsilon": 0.05,
+        },
+        {
+            "tracker_id": "jumper",
+            "betting_function": "simple_jumper",
+            "jump": 0.03,
+        },
+    ],
+)
+def test_generic_tracker_matches_nonconform_native_state(
+    tracker_payload, alarm_statistic
+):
+    from nonconform.martingales import (
+        PowerMartingale,
+        SimpleJumperMartingale,
+        SimpleMixtureMartingale,
+    )
+
+    payload = {
+        **tracker_payload,
+        "alarm_statistic": alarm_statistic,
+        "threshold": 1_000_000,
+    }
+    config = StaticMartingaleConfig(trackers=[payload])
+    controller = MartingaleAlarmController.from_config(config)
+    if tracker_payload["betting_function"] == "power":
+        native = PowerMartingale(epsilon=tracker_payload["epsilon"])
+    elif tracker_payload["betting_function"] == "simple_mixture":
+        native = SimpleMixtureMartingale(
+            n_grid=tracker_payload["n_grid"],
+            min_epsilon=tracker_payload["min_epsilon"],
+        )
+    else:
+        native = SimpleJumperMartingale(jump=tracker_payload["jump"])
+
+    for p_value in (0.8, 0.2, 0.01, 0.6):
+        expected = native.update(p_value)
+        result = controller.update(p_value)["tracker_results"][0]
+        assert result["statistic_value"] == pytest.approx(
+            getattr(expected, alarm_statistic)
+        )
+        assert result["log_statistic_value"] == pytest.approx(
+            getattr(expected, f"log_{alarm_statistic}")
+        )
+
+
+def test_martingale_ensemble_aggregates_new_crossings():
+    config = StaticMartingaleConfig(
+        trackers=[
+            {
+                "tracker_id": "power-restarted",
+                "betting_function": "power",
+                "epsilon": 0.5,
+                "alarm_statistic": "restarted_martingale",
+                "threshold": 2,
+            },
+            {
+                "tracker_id": "mixture-cusum",
+                "betting_function": "simple_mixture",
+                "alarm_statistic": "cusum",
+                "threshold": 1_000_000,
+            },
+            {
+                "tracker_id": "jumper-sr",
+                "betting_function": "simple_jumper",
+                "alarm_statistic": "shiryaev_roberts",
+                "threshold": 1_000_000,
+            },
+        ]
+    )
+    controller = MartingaleAlarmController.from_config(config)
+
+    first = controller.update(0.01)
+    repeated = controller.update(0.01)
+
+    assert [item["tracker_id"] for item in first["tracker_results"]] == [
+        "power-restarted",
+        "mixture-cusum",
+        "jumper-sr",
+    ]
+    assert first["fired_tracker_ids"] == ["power-restarted"]
+    assert first["alarm_fired"] is True
+    assert repeated["alarm_fired"] is False
+    assert controller.tested_count == 2
+
+
 def test_static_conformal_real_pyod_nonconform_training_reaches_ready(
     monkeypatch,
     tmp_path,
@@ -308,7 +414,9 @@ def test_static_conformal_restores_ready_checkpoint(monkeypatch, tmp_path):
         "schema_mismatch_count": 1,
         "training_error": None,
         "schema_signature": (
-            StaticConformalDetectionService._build_schema_signature_from_config(config)
+            StaticConformalDetectionService._build_legacy_schema_signature_from_config(
+                config
+            )
         ),
     }
     checkpoint_path = tmp_path / "static.pkl"
@@ -323,6 +431,7 @@ def test_static_conformal_restores_ready_checkpoint(monkeypatch, tmp_path):
     assert restored.feature_keys == ["L1", "L2"]
     assert restored.alarm_controller.alarm_count == 2
     assert restored.alarm_controller.tested_count == 7
+    assert isinstance(restored.alarm_controller, MartingaleAlarmController)
 
 
 @pytest.mark.parametrize(

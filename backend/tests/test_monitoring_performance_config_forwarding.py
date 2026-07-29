@@ -88,9 +88,14 @@ async def test_gateway_start_monitor_forwards_static_performance_config():
                 "betting_function": "power",
                 "alarm_statistic": "restarted_martingale",
                 "epsilon": 0.5,
-                "threshold": 100.0,
+                "threshold_config": {"mode": "manual", "value": 100.0},
             }
-        ]
+        ],
+        "automatic_threshold_calibration": {
+            "false_alarm_probability": 0.01,
+            "horizon": 1000,
+            "simulation_count": 5000,
+        },
     }
 
 
@@ -142,9 +147,14 @@ def test_gateway_resolves_default_static_baseline_config():
                 "betting_function": "power",
                 "alarm_statistic": "restarted_martingale",
                 "epsilon": 0.5,
-                "threshold": 100.0,
+                "threshold_config": {"mode": "manual", "value": 100.0},
             }
-        ]
+        ],
+        "automatic_threshold_calibration": {
+            "false_alarm_probability": 0.01,
+            "horizon": 1000,
+            "simulation_count": 5000,
+        },
     }
 
 
@@ -262,10 +272,18 @@ def test_tactic_builds_static_environment():
             "training_window_size": 120,
             "calibration_window_size": 30,
             "martingale_config": {
-                "betting_function": "power",
-                "alarm_statistic": "restarted_martingale",
-                "epsilon": 0.5,
-                "restarted_ville_threshold": 100,
+                "trackers": [
+                    {
+                        "tracker_id": "primary",
+                        "betting_function": "power",
+                        "alarm_statistic": "restarted_martingale",
+                        "epsilon": 0.5,
+                        "threshold_config": {
+                            "mode": "manual",
+                            "value": 100,
+                        },
+                    }
+                ],
             },
         },
         model_registry=registry,
@@ -285,7 +303,7 @@ def test_tactic_builds_static_environment():
             "betting_function": "power",
             "alarm_statistic": "restarted_martingale",
             "epsilon": 0.5,
-            "threshold": 100.0,
+            "threshold_config": {"mode": "manual", "value": 100.0},
         }
     ]
     assert static_config["model_params"] == {

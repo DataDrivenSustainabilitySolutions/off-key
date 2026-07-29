@@ -49,7 +49,9 @@ test.describe("monitoring lifecycle smoke", () => {
       await secondTracker.getByRole("textbox").fill("mixture-cusum");
       await secondTracker.getByRole("combobox").nth(0).selectOption("simple_mixture");
       await secondTracker.getByRole("combobox").nth(1).selectOption("cusum");
-      await secondTracker.getByRole("spinbutton").nth(0).fill("25");
+      await expect(secondTracker.getByRole("combobox").nth(2)).toHaveValue(
+        "automatic",
+      );
       await expect(page.getByText("2", { exact: true })).toBeVisible();
 
       const startResponsePromise = page.waitForResponse(
@@ -81,7 +83,7 @@ test.describe("monitoring lifecycle smoke", () => {
           tracker_id: "mixture-cusum",
           betting_function: "simple_mixture",
           alarm_statistic: "cusum",
-          threshold: 25,
+          threshold_config: { mode: "automatic" },
         }),
       ]);
 

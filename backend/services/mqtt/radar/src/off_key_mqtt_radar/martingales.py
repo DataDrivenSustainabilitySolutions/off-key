@@ -1,110 +1,9 @@
 """Typed martingale tracker factory and bounded ensemble controller."""
 
+from collections.abc import Mapping
 from typing import Any
 
 import numpy as np
-
-
-class RestartedMartingaleAlarmController:
-    """Legacy power/restarted controller retained for checkpoint compatibility."""
-
-    BETTING_FUNCTION = "power"
-    ALARM_STATISTIC = "restarted_martingale"
-    FIXED_RESTARTED_VILLE_THRESHOLD = 100.0
-
-    def __init__(
-        self,
-        *,
-        epsilon: float,
-        restarted_ville_threshold: float = FIXED_RESTARTED_VILLE_THRESHOLD,
-        alarm_count: int = 0,
-        tested_count: int = 0,
-        martingale: Any = None,
-        alarm_active: bool = False,
-    ) -> None:
-        self.epsilon = float(epsilon)
-        self._validate_threshold(restarted_ville_threshold)
-        self.restarted_ville_threshold = float(restarted_ville_threshold)
-        self.alarm_count = int(alarm_count)
-        self.tested_count = int(tested_count)
-        self._alarm_active = bool(alarm_active)
-        self._martingale = martingale or self._new_martingale()
-
-    @classmethod
-    def from_config(cls, config: Any) -> "RestartedMartingaleAlarmController":
-        return cls(
-            epsilon=config.epsilon,
-            restarted_ville_threshold=config.restarted_ville_threshold,
-        )
-
-    @classmethod
-    def _validate_threshold(cls, value: float) -> None:
-        if float(value) != cls.FIXED_RESTARTED_VILLE_THRESHOLD:
-            raise ValueError(
-                "restarted_ville_threshold is fixed at "
-                f"{cls.FIXED_RESTARTED_VILLE_THRESHOLD:g}."
-            )
-
-    def _new_martingale(self) -> Any:
-        from nonconform.martingales import AlarmConfig, PowerMartingale
-
-        return PowerMartingale(
-            epsilon=self.epsilon,
-            alarm_config=AlarmConfig(
-                restarted_ville_threshold=self.restarted_ville_threshold
-            ),
-        )
-
-    def update(self, p_value: float) -> dict[str, Any]:
-        state = self._martingale.update(p_value)
-        self.tested_count += 1
-        threshold_crossed = (
-            "restarted_ville" in state.triggered_alarms
-            or state.restarted_martingale >= self.restarted_ville_threshold
-        )
-        alarm_fired = threshold_crossed and not self._alarm_active
-        self._alarm_active = threshold_crossed
-        if alarm_fired:
-            self.alarm_count += 1
-
-        if p_value == 0.0:
-            log_e_value = float("inf") if self.epsilon < 1.0 else 0.0
-        else:
-            log_e_value = float(
-                np.log(self.epsilon) + (self.epsilon - 1.0) * np.log(p_value)
-            )
-        max_log_float = float(np.log(np.finfo(float).max))
-        e_value = (
-            float(np.exp(log_e_value))
-            if np.isfinite(log_e_value) and log_e_value <= max_log_float
-            else float("inf")
-        )
-        finite_e_value = e_value if np.isfinite(e_value) else None
-        restarted_martingale = float(state.restarted_martingale)
-        finite_restarted_martingale = (
-            restarted_martingale if np.isfinite(restarted_martingale) else None
-        )
-        log_restarted_martingale = float(state.log_restarted_martingale)
-        finite_log_restarted_martingale = (
-            log_restarted_martingale if np.isfinite(log_restarted_martingale) else None
-        )
-        return {
-            "betting_function": self.BETTING_FUNCTION,
-            "alarm_statistic": self.ALARM_STATISTIC,
-            "epsilon": self.epsilon,
-            "e_value": finite_e_value,
-            "e_value_is_infinite": finite_e_value is None,
-            "log_e_value": log_e_value if np.isfinite(log_e_value) else None,
-            "restarted_ville_threshold": self.restarted_ville_threshold,
-            "restarted_martingale": finite_restarted_martingale,
-            "restarted_martingale_is_infinite": (finite_restarted_martingale is None),
-            "log_restarted_martingale": finite_log_restarted_martingale,
-            "alarm_fired": alarm_fired,
-            "alarm_active": self._alarm_active,
-            "alarm_count": self.alarm_count,
-            "tested_count": self.tested_count,
-        }
-
 
 _ALARM_TRIGGER_NAMES = {
     "martingale": "ville",
@@ -151,12 +50,27 @@ class MartingaleTrackerController:
         self,
         config: Any,
         *,
+        threshold: float,
+        threshold_horizon: int | None = None,
         alarm_count: int = 0,
         tested_count: int = 0,
+        threshold_window_position: int = 0,
         martingale: Any = None,
         alarm_active: bool = False,
     ) -> None:
         self.config = config
+        self.threshold = float(threshold)
+        if not np.isfinite(self.threshold) or self.threshold <= 0.0:
+            raise ValueError("Resolved tracker thresholds must be positive and finite")
+        if threshold_horizon is not None and threshold_horizon < 1:
+            raise ValueError("Automatic threshold horizons must be positive")
+        if threshold_window_position < 0 or (
+            threshold_horizon is not None
+            and threshold_window_position > threshold_horizon
+        ):
+            raise ValueError("Threshold window position is outside its horizon")
+        self.threshold_horizon = threshold_horizon
+        self.threshold_window_position = int(threshold_window_position)
         self.alarm_count = int(alarm_count)
         self.tested_count = int(tested_count)
         self._alarm_active = bool(alarm_active)
@@ -171,11 +85,7 @@ class MartingaleTrackerController:
         )
 
         alarm_config = AlarmConfig(
-            **{
-                _ALARM_CONFIG_FIELDS[self.config.alarm_statistic]: (
-                    self.config.threshold
-                )
-            }
+            **{_ALARM_CONFIG_FIELDS[self.config.alarm_statistic]: self.threshold}
         )
         if self.config.betting_function == "power":
             return PowerMartingale(
@@ -219,9 +129,21 @@ class MartingaleTrackerController:
         return float("nan")
 
     def update(self, p_value: float) -> dict[str, Any]:
+        threshold_window_reset = False
+        if (
+            self.threshold_horizon is not None
+            and self.threshold_window_position >= self.threshold_horizon
+        ):
+            self._martingale = self._new_martingale()
+            self._alarm_active = False
+            self.threshold_window_position = 0
+            threshold_window_reset = True
+
         previous_log_martingale = float(self._martingale.state.log_martingale)
         state = self._martingale.update(p_value)
         self.tested_count += 1
+        if self.threshold_horizon is not None:
+            self.threshold_window_position += 1
 
         statistic = self.config.alarm_statistic
         selected = _statistic_payload(state, statistic)
@@ -229,7 +151,7 @@ class MartingaleTrackerController:
         trigger_name = _ALARM_TRIGGER_NAMES[statistic]
         threshold_crossed = (
             trigger_name in state.triggered_alarms
-            or raw_selected_value >= self.config.threshold
+            or raw_selected_value >= self.threshold
         )
         alarm_fired = threshold_crossed and not self._alarm_active
         self._alarm_active = threshold_crossed
@@ -251,7 +173,7 @@ class MartingaleTrackerController:
                 "tracker_id",
                 "betting_function",
                 "alarm_statistic",
-                "threshold",
+                "threshold_config",
             },
             exclude_none=True,
         )
@@ -265,9 +187,19 @@ class MartingaleTrackerController:
             "log_statistic_value": selected["log_value"],
             "statistics": statistics,
             "e_value": e_value,
-            "e_value_is_infinite": bool(np.isposinf(log_e_value)),
+            "e_value_is_infinite": bool(
+                np.isposinf(log_e_value)
+                or (np.isfinite(log_e_value) and log_e_value > max_log_float)
+            ),
             "log_e_value": _finite_or_none(log_e_value),
-            "threshold": float(self.config.threshold),
+            "threshold": self.threshold,
+            "threshold_horizon": self.threshold_horizon,
+            "threshold_window_position": (
+                self.threshold_window_position
+                if self.threshold_horizon is not None
+                else None
+            ),
+            "threshold_window_reset": threshold_window_reset,
             "alarm_fired": alarm_fired,
             "alarm_active": self._alarm_active,
             "alarm_count": self.alarm_count,
@@ -284,32 +216,44 @@ class MartingaleAlarmController:
         self.trackers = trackers
 
     @classmethod
-    def from_config(cls, config: Any) -> "MartingaleAlarmController":
-        return cls(
-            [MartingaleTrackerController(tracker) for tracker in config.trackers]
+    def from_config(
+        cls,
+        config: Any,
+        resolved_thresholds: Mapping[str, float] | None = None,
+    ) -> "MartingaleAlarmController":
+        from off_key_core.schemas.radar import (
+            AutomaticAlarmThresholdConfig,
+            ManualAlarmThresholdConfig,
         )
 
-    @classmethod
-    def from_legacy(cls, controller: Any) -> "MartingaleAlarmController":
-        from off_key_core.schemas.radar import PowerMartingaleTrackerConfig
-
-        config = PowerMartingaleTrackerConfig(
-            tracker_id="primary",
-            epsilon=controller.epsilon,
-            alarm_statistic="restarted_martingale",
-            threshold=controller.restarted_ville_threshold,
-        )
-        return cls(
-            [
-                MartingaleTrackerController(
-                    config,
-                    alarm_count=controller.alarm_count,
-                    tested_count=controller.tested_count,
-                    martingale=controller._martingale,
-                    alarm_active=controller._alarm_active,
+        thresholds = dict(resolved_thresholds or {})
+        controllers: list[MartingaleTrackerController] = []
+        for tracker in config.trackers:
+            threshold = thresholds.get(tracker.tracker_id)
+            if threshold is None and isinstance(
+                tracker.threshold_config, ManualAlarmThresholdConfig
+            ):
+                threshold = tracker.threshold_config.value
+            if threshold is None:
+                raise ValueError(
+                    f"Tracker {tracker.tracker_id!r} requires automatic threshold "
+                    "calibration before its alarm controller can be created"
                 )
-            ]
-        )
+            controllers.append(
+                MartingaleTrackerController(
+                    tracker,
+                    threshold=float(threshold),
+                    threshold_horizon=(
+                        config.automatic_threshold_calibration.horizon
+                        if isinstance(
+                            tracker.threshold_config,
+                            AutomaticAlarmThresholdConfig,
+                        )
+                        else None
+                    ),
+                )
+            )
+        return cls(controllers)
 
     @property
     def alarm_count(self) -> int:

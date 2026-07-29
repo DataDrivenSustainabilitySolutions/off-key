@@ -20,12 +20,10 @@ from typing import Any
 import numpy as np
 import psutil
 
+from .alarm_calibration import resolve_tracker_thresholds
 from .checkpoint_manager import CheckpointManager
 from .config.config import AnomalyDetectionConfig
-from .martingales import (
-    MartingaleAlarmController,
-    RestartedMartingaleAlarmController,
-)
+from .martingales import MartingaleAlarmController
 from .models import AnomalyResult
 
 # =============================================================================
@@ -84,7 +82,7 @@ class StaticConformalDetectionService:
         self.calibration_buffer: list[dict[str, float]] = []
         self.feature_keys: list[str] = []
         self.conformal_detector = None
-        self.alarm_controller = self._create_alarm_controller()
+        self.alarm_controller: MartingaleAlarmController | None = None
         self.processed_count = 0
         self.anomaly_count = 0
         self.last_checkpoint = 0
@@ -106,11 +104,9 @@ class StaticConformalDetectionService:
         self.feature_keys = list(checkpoint.get("feature_keys", []))
         self.conformal_detector = checkpoint.get("conformal_detector")
         self.alarm_controller = checkpoint.get("alarm_controller")
-        if isinstance(self.alarm_controller, RestartedMartingaleAlarmController):
-            self.alarm_controller = MartingaleAlarmController.from_legacy(
-                self.alarm_controller
-            )
-        if not isinstance(self.alarm_controller, MartingaleAlarmController):
+        if self.state == StaticConformalState.READY and not isinstance(
+            self.alarm_controller, MartingaleAlarmController
+        ):
             raise TypeError(
                 "Static checkpoint is missing a valid alarm_controller. "
                 "Starting fresh is required."
@@ -166,42 +162,13 @@ class StaticConformalDetectionService:
 
         saved_schema_signature = checkpoint.get("schema_signature")
         current_schema_signature = cls._build_schema_signature_from_config(config)
-        accepted_schema_signatures = {current_schema_signature}
-        legacy_schema_signature = cls._build_legacy_schema_signature_from_config(config)
-        if legacy_schema_signature is not None:
-            accepted_schema_signatures.add(legacy_schema_signature)
-        if saved_schema_signature not in accepted_schema_signatures:
+        if saved_schema_signature != current_schema_signature:
             raise ValueError(
                 "Checkpoint schema signature does not match current static "
                 "configuration. Starting fresh is required."
             )
 
         return cls(config, checkpoint=checkpoint)
-
-    @classmethod
-    def _build_legacy_schema_signature_from_config(cls, config: Any) -> str | None:
-        """Reproduce the pre-ensemble signature for compatible checkpoints."""
-        static_config = getattr(config, "static_baseline_config", None)
-        martingale_config = getattr(static_config, "martingale_config", None)
-        trackers = getattr(martingale_config, "trackers", [])
-        if len(trackers) != 1:
-            return None
-        tracker = trackers[0]
-        if (
-            tracker.betting_function != "power"
-            or tracker.alarm_statistic != "restarted_martingale"
-            or float(tracker.threshold) != 100.0
-        ):
-            return None
-
-        static_payload = static_config.model_dump(exclude_none=True)
-        static_payload["martingale_config"] = {
-            "betting_function": "power",
-            "alarm_statistic": "restarted_martingale",
-            "epsilon": tracker.epsilon,
-            "restarted_ville_threshold": 100.0,
-        }
-        return cls._build_static_schema_signature(config, static_payload)
 
     @classmethod
     def _build_schema_signature_from_config(cls, config: Any) -> str:
@@ -544,12 +511,21 @@ class StaticConformalDetectionService:
         )
         conformal_detector.calibrate(calibration_matrix)
 
-        alarm_controller = self._create_alarm_controller()
+        resolved_thresholds = resolve_tracker_thresholds(
+            self.static_config.martingale_config,
+            calibration_size=len(calibration_matrix),
+            seed=self.static_config.seed,
+        )
+        alarm_controller = self._create_alarm_controller(resolved_thresholds)
         return conformal_detector, alarm_controller
 
-    def _create_alarm_controller(self) -> MartingaleAlarmController:
+    def _create_alarm_controller(
+        self,
+        resolved_thresholds: dict[str, float] | None = None,
+    ) -> MartingaleAlarmController:
         return MartingaleAlarmController.from_config(
-            self.static_config.martingale_config
+            self.static_config.martingale_config,
+            resolved_thresholds,
         )
 
     def _create_pyod_detector(self) -> Any:

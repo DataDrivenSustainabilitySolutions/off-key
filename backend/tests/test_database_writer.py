@@ -207,6 +207,9 @@ def test_build_evidence_record_preserves_generic_tracker_results(
         "e_value_is_infinite": False,
         "log_e_value": 0.69,
         "threshold": 25.0,
+        "threshold_horizon": 100,
+        "threshold_window_position": 9,
+        "threshold_window_reset": False,
         "alarm_fired": True,
         "alarm_active": True,
         "alarm_count": 1,
@@ -241,6 +244,9 @@ def test_build_evidence_record_preserves_generic_tracker_results(
     assert stored_tracker["statistic_value"] is None
     assert stored_tracker["statistic_is_infinite"] is True
     assert stored_tracker["statistics"]["cusum"]["value"] is None
+    assert stored_tracker["threshold_horizon"] == 100
+    assert stored_tracker["threshold_window_position"] == 9
+    assert stored_tracker["threshold_window_reset"] is False
     assert record["threshold"] == 25.0
 
 

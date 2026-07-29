@@ -59,6 +59,12 @@ def _nonnegative_int(value: Any) -> int:
     return max(value, 0)
 
 
+def _optional_nonnegative_int(value: Any) -> int | None:
+    if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+        return None
+    return value
+
+
 def _normalize_tracker_results(value: Any) -> list[dict[str, Any]]:
     """Return a bounded, JSON-safe projection of runtime tracker evidence."""
     if not isinstance(value, list):
@@ -124,6 +130,15 @@ def _normalize_tracker_results(value: Any) -> list[dict[str, Any]]:
                 ),
                 "log_e_value": _optional_finite_float(candidate.get("log_e_value")),
                 "threshold": threshold,
+                "threshold_horizon": _optional_nonnegative_int(
+                    candidate.get("threshold_horizon")
+                ),
+                "threshold_window_position": _optional_nonnegative_int(
+                    candidate.get("threshold_window_position")
+                ),
+                "threshold_window_reset": bool(
+                    candidate.get("threshold_window_reset", False)
+                ),
                 "alarm_fired": bool(candidate.get("alarm_fired", False)),
                 "alarm_active": bool(candidate.get("alarm_active", False)),
                 "alarm_count": _nonnegative_int(candidate.get("alarm_count")),

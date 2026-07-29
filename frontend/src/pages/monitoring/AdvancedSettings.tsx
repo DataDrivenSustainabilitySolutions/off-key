@@ -47,7 +47,11 @@ const describeDetectorParameter = (schema: ParameterSchema): string => {
 const thresholdHelp = (statistic: MartingaleAlarmStatistic): string =>
   statistic === "martingale" || statistic === "restarted_martingale"
     ? "Emits an alarm on a new upward crossing. This Ville-style threshold must be greater than 1; larger values require stronger evidence."
-    : "Emits an alarm on a new upward crossing. Calibrate this CUSUM or Shiryaev–Roberts threshold empirically; it is not a Ville error-probability bound.";
+    : "Automatic mode calibrates a finite-horizon threshold during baseline training. Manual mode uses the exact positive value entered here.";
+
+const supportsAutomaticThreshold = (
+  statistic: MartingaleAlarmStatistic,
+): boolean => statistic === "cusum" || statistic === "shiryaev_roberts";
 
 const normalizeSensorKeyStrategy = (value: string): SensorKeyStrategy => {
   if (value === "top_level" || value === "leaf") return value;
@@ -346,13 +350,25 @@ export function AdvancedSettings({
                           id={`${controlPrefix}-alarm-statistic`}
                           className={cn(CONTROL_CLASS, "mt-2")}
                           value={tracker.alarmStatistic}
-                          onChange={(event) =>
+                          onChange={(event) => {
+                            const alarmStatistic = normalizeAlarmStatistic(
+                              event.target.value,
+                            );
                             updateTracker(index, {
-                              alarmStatistic: normalizeAlarmStatistic(
-                                event.target.value,
-                              ),
-                            })
-                          }
+                              alarmStatistic,
+                              thresholdMode: supportsAutomaticThreshold(
+                                alarmStatistic,
+                              )
+                                ? supportsAutomaticThreshold(
+                                    tracker.alarmStatistic,
+                                  )
+                                  ? tracker.thresholdMode
+                                  : "automatic"
+                                : "manual",
+                            });
+                            clearError(`${prefix}.thresholdMode`);
+                            clearError(`${prefix}.threshold`);
+                          }}
                         >
                           <option value="martingale">All-history martingale</option>
                           <option value="restarted_martingale">Restarted mixture</option>
@@ -362,22 +378,78 @@ export function AdvancedSettings({
                       </div>
                       <div>
                         <SettingLabel
-                          label="Alarm threshold"
+                          label={
+                            supportsAutomaticThreshold(tracker.alarmStatistic)
+                              ? "Threshold"
+                              : "Alarm threshold"
+                          }
                           help={thresholdHelp(tracker.alarmStatistic)}
-                          htmlFor={`${controlPrefix}-threshold`}
+                          htmlFor={
+                            supportsAutomaticThreshold(tracker.alarmStatistic)
+                              ? `${controlPrefix}-threshold-mode`
+                              : `${controlPrefix}-threshold`
+                          }
                         />
-                        <input
-                          id={`${controlPrefix}-threshold`}
-                          type="number"
-                          min={tracker.alarmStatistic.includes("martingale") ? 1.0001 : 0.0001}
-                          step="any"
-                          className={cn(CONTROL_CLASS, "mt-2")}
-                          value={tracker.threshold}
-                          aria-invalid={Boolean(fieldErrors[`${prefix}.threshold`])}
-                          onChange={(event) => {
-                            updateTracker(index, { threshold: event.target.value });
-                            clearError(`${prefix}.threshold`);
-                          }}
+                        {supportsAutomaticThreshold(tracker.alarmStatistic) && (
+                          <select
+                            id={`${controlPrefix}-threshold-mode`}
+                            className={cn(CONTROL_CLASS, "mt-2")}
+                            value={tracker.thresholdMode}
+                            aria-invalid={Boolean(
+                              fieldErrors[`${prefix}.thresholdMode`],
+                            )}
+                            onChange={(event) => {
+                              updateTracker(index, {
+                                thresholdMode:
+                                  event.target.value === "manual"
+                                    ? "manual"
+                                    : "automatic",
+                              });
+                              clearError(`${prefix}.thresholdMode`);
+                            }}
+                          >
+                            <option value="automatic">
+                              Automatic (recommended)
+                            </option>
+                            <option value="manual">Manual</option>
+                          </select>
+                        )}
+                        {tracker.thresholdMode === "manual" && (
+                          <input
+                            id={`${controlPrefix}-threshold`}
+                            aria-label={
+                              supportsAutomaticThreshold(tracker.alarmStatistic)
+                                ? "Manual alarm threshold"
+                                : undefined
+                            }
+                            type="number"
+                            min={
+                              tracker.alarmStatistic.includes("martingale")
+                                ? 1.0001
+                                : 0.0001
+                            }
+                            step="any"
+                            className={cn(CONTROL_CLASS, "mt-2")}
+                            value={tracker.threshold}
+                            aria-invalid={Boolean(
+                              fieldErrors[`${prefix}.threshold`],
+                            )}
+                            onChange={(event) => {
+                              updateTracker(index, {
+                                threshold: event.target.value,
+                              });
+                              clearError(`${prefix}.threshold`);
+                            }}
+                          />
+                        )}
+                        {tracker.thresholdMode === "automatic" && (
+                          <p className={HELP_CLASS}>
+                            Resolved when the calibration window completes.
+                          </p>
+                        )}
+                        <FieldError
+                          field={`${prefix}.thresholdMode`}
+                          errors={fieldErrors}
                         />
                         <FieldError field={`${prefix}.threshold`} errors={fieldErrors} />
                       </div>
@@ -475,17 +547,121 @@ export function AdvancedSettings({
                         </div>
                       )}
                     </div>
-                    {(tracker.alarmStatistic === "cusum" ||
-                      tracker.alarmStatistic === "shiryaev_roberts") && (
-                      <p className="mt-3 text-xs leading-5 text-amber-700 dark:text-amber-300">
-                        Calibrate this change-detection threshold empirically; it is
-                        not a Ville error-probability bound.
-                      </p>
-                    )}
                   </div>
                 );
               })}
             </div>
+            {draft.martingaleTrackers.some(
+              (tracker) => tracker.thresholdMode === "automatic",
+            ) && (
+              <div className="mt-4 rounded-xl border border-border/70 bg-background/65 p-4">
+                <div className="flex items-center gap-1">
+                  <h4 className="font-medium">Automatic threshold calibration</h4>
+                  <SettingInfo label="Automatic threshold calibration">
+                    Uses deterministic null-rank simulations during baseline
+                    training. The false-alarm probability is shared conservatively
+                    across automatic trackers. Automatic trackers reset at each
+                    horizon boundary, so the probability budget applies to each
+                    consecutive window. Manual trackers do not consume this budget.
+                  </SettingInfo>
+                </div>
+                <p className={HELP_CLASS}>
+                  Shared by all automatic CUSUM and Shiryaev-Roberts trackers.
+                </p>
+                <div className="mt-3 grid gap-4 sm:grid-cols-3">
+                  <div>
+                    <SettingLabel
+                      label="False-alarm probability"
+                      help="Conservative family-wide probability budget over the configured horizon, divided across automatic trackers."
+                      htmlFor="advanced-automatic-false-alarm"
+                    />
+                    <input
+                      id="advanced-automatic-false-alarm"
+                      type="number"
+                      min={0.000001}
+                      max={0.999999}
+                      step="0.001"
+                      className={cn(CONTROL_CLASS, "mt-2")}
+                      value={draft.automaticFalseAlarmProbability}
+                      aria-invalid={Boolean(
+                        fieldErrors.automaticFalseAlarmProbability,
+                      )}
+                      onChange={(event) => {
+                        setDraft((current) => ({
+                          ...current,
+                          automaticFalseAlarmProbability: event.target.value,
+                        }));
+                        clearError("automaticFalseAlarmProbability");
+                      }}
+                    />
+                    <FieldError
+                      field="automaticFalseAlarmProbability"
+                      errors={fieldErrors}
+                    />
+                  </div>
+                  <div>
+                    <SettingLabel
+                      label="Horizon (samples)"
+                      help="Number of aligned observations in each monitoring window. Automatic tracker state resets before the next window begins."
+                      htmlFor="advanced-automatic-horizon"
+                    />
+                    <input
+                      id="advanced-automatic-horizon"
+                      type="number"
+                      min={10}
+                      max={100000}
+                      step={1}
+                      className={cn(CONTROL_CLASS, "mt-2")}
+                      value={draft.automaticThresholdHorizon}
+                      aria-invalid={Boolean(
+                        fieldErrors.automaticThresholdHorizon,
+                      )}
+                      onChange={(event) => {
+                        setDraft((current) => ({
+                          ...current,
+                          automaticThresholdHorizon: event.target.value,
+                        }));
+                        clearError("automaticThresholdHorizon");
+                      }}
+                    />
+                    <FieldError
+                      field="automaticThresholdHorizon"
+                      errors={fieldErrors}
+                    />
+                  </div>
+                  <div>
+                    <SettingLabel
+                      label="Simulations"
+                      help="Number of exchangeable null-rank paths used to estimate the threshold. More paths support smaller probability budgets at higher calibration cost."
+                      htmlFor="advanced-automatic-simulations"
+                    />
+                    <input
+                      id="advanced-automatic-simulations"
+                      type="number"
+                      min={100}
+                      max={100000}
+                      step={100}
+                      className={cn(CONTROL_CLASS, "mt-2")}
+                      value={draft.automaticThresholdSimulations}
+                      aria-invalid={Boolean(
+                        fieldErrors.automaticThresholdSimulations,
+                      )}
+                      onChange={(event) => {
+                        setDraft((current) => ({
+                          ...current,
+                          automaticThresholdSimulations: event.target.value,
+                        }));
+                        clearError("automaticThresholdSimulations");
+                      }}
+                    />
+                    <FieldError
+                      field="automaticThresholdSimulations"
+                      errors={fieldErrors}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <div>

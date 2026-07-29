@@ -90,7 +90,9 @@ export type MartingaleAlarmStatistic =
 interface MartingaleTrackerBase {
   tracker_id: string;
   alarm_statistic: MartingaleAlarmStatistic;
-  threshold: number;
+  threshold_config:
+    | { mode: 'manual'; value: number }
+    | { mode: 'automatic' };
 }
 
 export interface PowerMartingaleTracker extends MartingaleTrackerBase {
@@ -117,6 +119,11 @@ export type MartingaleTrackerConfig =
 
 export interface StaticMartingaleConfig {
   trackers: MartingaleTrackerConfig[];
+  automatic_threshold_calibration: {
+    false_alarm_probability: number;
+    horizon: number;
+    simulation_count: number;
+  };
 }
 
 export interface StaticBaselineRequestConfig {
@@ -179,6 +186,9 @@ export interface MartingaleTrackerResult {
   e_value_is_infinite: boolean;
   log_e_value: number | null;
   threshold: number;
+  threshold_horizon?: number | null;
+  threshold_window_position?: number | null;
+  threshold_window_reset?: boolean;
   alarm_fired: boolean;
   alarm_active: boolean;
   alarm_count: number;

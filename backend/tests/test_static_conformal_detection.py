@@ -8,11 +8,10 @@ from off_key_core.schemas.radar import StaticBaselineConfig, StaticMartingaleCon
 from off_key_mqtt_radar.config.config import AnomalyDetectionConfig
 from off_key_mqtt_radar.config.runtime import clear_radar_runtime_settings_cache
 from off_key_mqtt_radar.detector import (
-    MartingaleAlarmController,
-    RestartedMartingaleAlarmController,
     StaticConformalDetectionService,
     StaticConformalState,
 )
+from off_key_mqtt_radar.martingales import MartingaleAlarmController
 from off_key_mqtt_radar.resilience import ResilientAnomalyDetector
 
 
@@ -71,10 +70,34 @@ def _static_config(
             model_params=model_params,
             training_window_size=training_window_size,
             calibration_window_size=calibration_window_size,
-            martingale_config=martingale_config or StaticMartingaleConfig(epsilon=0.5),
+            martingale_config=martingale_config or StaticMartingaleConfig(),
         ),
         checkpoint_interval=100000,
     )
+
+
+def _manual_restarted_controller(
+    *,
+    epsilon: float = 0.5,
+    threshold: float = 100.0,
+    alarm_count: int = 0,
+    tested_count: int = 0,
+) -> MartingaleAlarmController:
+    config = StaticMartingaleConfig(
+        trackers=[
+            {
+                "tracker_id": "primary",
+                "betting_function": "power",
+                "alarm_statistic": "restarted_martingale",
+                "threshold_config": {"mode": "manual", "value": threshold},
+                "epsilon": epsilon,
+            }
+        ]
+    )
+    controller = MartingaleAlarmController.from_config(config)
+    controller.trackers[0].alarm_count = alarm_count
+    controller.trackers[0].tested_count = tested_count
+    return controller
 
 
 def test_static_conformal_collects_calibrates_trains_then_detects(monkeypatch):
@@ -190,7 +213,7 @@ def test_static_health_poll_completes_finished_background_training(monkeypatch):
 
 
 def test_restarted_martingale_controller_uses_native_fixed_mixture():
-    controller = RestartedMartingaleAlarmController(epsilon=0.5)
+    controller = _manual_restarted_controller()
 
     result = controller.update(0.000001)
     repeated = controller.update(0.000001)
@@ -203,15 +226,15 @@ def test_restarted_martingale_controller_uses_native_fixed_mixture():
     assert repeated["alarm_active"] is True
     assert controller.alarm_count == 1
     assert controller.tested_count == 2
-    assert controller.restarted_ville_threshold == 100.0
+    assert controller.trackers[0].threshold == 100.0
 
 
 def test_restarted_martingale_ignores_classical_only_ville_crossing():
-    controller = RestartedMartingaleAlarmController(epsilon=0.5)
+    controller = _manual_restarted_controller()
     classical_crossing_p_value = (0.5 / 150.0) ** 2
 
     result = controller.update(classical_crossing_p_value)
-    native_state = controller._martingale.state
+    native_state = controller.trackers[0]._martingale.state
 
     assert native_state.martingale == pytest.approx(150.0)
     assert native_state.restarted_martingale == pytest.approx(75.5)
@@ -222,7 +245,7 @@ def test_restarted_martingale_ignores_classical_only_ville_crossing():
 
 
 def test_restarted_martingale_controller_serializes_infinite_evidence_as_null():
-    controller = RestartedMartingaleAlarmController(epsilon=0.5)
+    controller = _manual_restarted_controller()
 
     result = controller.update(0.0)
 
@@ -233,7 +256,7 @@ def test_restarted_martingale_controller_serializes_infinite_evidence_as_null():
 
 
 def test_restarted_martingale_controller_handles_finite_log_overflow():
-    controller = RestartedMartingaleAlarmController(epsilon=0.01)
+    controller = _manual_restarted_controller(epsilon=0.01)
 
     result = controller.update(float.fromhex("0x0.0000000000001p-1022"))
 
@@ -279,7 +302,7 @@ def test_generic_tracker_matches_nonconform_native_state(
     payload = {
         **tracker_payload,
         "alarm_statistic": alarm_statistic,
-        "threshold": 1_000_000,
+        "threshold_config": {"mode": "manual", "value": 1_000_000},
     }
     config = StaticMartingaleConfig(trackers=[payload])
     controller = MartingaleAlarmController.from_config(config)
@@ -312,19 +335,25 @@ def test_martingale_ensemble_aggregates_new_crossings():
                 "betting_function": "power",
                 "epsilon": 0.5,
                 "alarm_statistic": "restarted_martingale",
-                "threshold": 2,
+                "threshold_config": {"mode": "manual", "value": 2},
             },
             {
                 "tracker_id": "mixture-cusum",
                 "betting_function": "simple_mixture",
                 "alarm_statistic": "cusum",
-                "threshold": 1_000_000,
+                "threshold_config": {
+                    "mode": "manual",
+                    "value": 1_000_000,
+                },
             },
             {
                 "tracker_id": "jumper-sr",
                 "betting_function": "simple_jumper",
                 "alarm_statistic": "shiryaev_roberts",
-                "threshold": 1_000_000,
+                "threshold_config": {
+                    "mode": "manual",
+                    "value": 1_000_000,
+                },
             },
         ]
     )
@@ -352,7 +381,22 @@ def test_static_conformal_real_pyod_nonconform_training_reaches_ready(
     monkeypatch.setenv("SERVICE_ID", "static-conformal-test")
     clear_radar_runtime_settings_cache()
     config = _static_config(
-        martingale_config=StaticMartingaleConfig(epsilon=0.5),
+        martingale_config=StaticMartingaleConfig(
+            trackers=[
+                {
+                    "tracker_id": "auto-cusum",
+                    "betting_function": "power",
+                    "alarm_statistic": "cusum",
+                    "threshold_config": {"mode": "automatic"},
+                    "epsilon": 0.5,
+                }
+            ],
+            automatic_threshold_calibration={
+                "false_alarm_probability": 0.1,
+                "horizon": 10,
+                "simulation_count": 100,
+            },
+        ),
         model_params={
             "contamination": 0.1,
         },
@@ -382,12 +426,13 @@ def test_static_conformal_real_pyod_nonconform_training_reaches_ready(
         service._complete_training_if_ready()
 
         assert service.state == StaticConformalState.READY, service.training_error
+        assert service.alarm_controller.trackers[0].threshold > 0.0
 
         result = service.process_data_point({"L1": 100.0, "L2": 20.0})
         static_context = result.context["static_conformal"]
         assert static_context["phase"] == "ready"
         assert static_context["betting_function"] == "power"
-        assert static_context["alarm_statistic"] == "restarted_martingale"
+        assert static_context["alarm_statistic"] == "cusum"
         assert 0.0 <= static_context["p_value"] <= 1.0
         assert 0.0 <= result.anomaly_score <= 1.0
     finally:
@@ -397,7 +442,7 @@ def test_static_conformal_real_pyod_nonconform_training_reaches_ready(
 
 def test_static_conformal_restores_ready_checkpoint(monkeypatch, tmp_path):
     config = _static_config()
-    alarm_controller = RestartedMartingaleAlarmController(
+    alarm_controller = _manual_restarted_controller(
         epsilon=0.5, alarm_count=2, tested_count=7
     )
     checkpoint = {
@@ -414,9 +459,7 @@ def test_static_conformal_restores_ready_checkpoint(monkeypatch, tmp_path):
         "schema_mismatch_count": 1,
         "training_error": None,
         "schema_signature": (
-            StaticConformalDetectionService._build_legacy_schema_signature_from_config(
-                config
-            )
+            StaticConformalDetectionService._build_schema_signature_from_config(config)
         ),
     }
     checkpoint_path = tmp_path / "static.pkl"
@@ -457,7 +500,7 @@ def test_static_conformal_rejects_incomplete_ready_checkpoint(
         "calibration_buffer": [],
         "feature_keys": ["L1", "L2"],
         "conformal_detector": FakeConformalDetector(),
-        "alarm_controller": RestartedMartingaleAlarmController(epsilon=0.5),
+        "alarm_controller": _manual_restarted_controller(),
         "processed_count": 42,
         "anomaly_count": 3,
         "schema_signature": (

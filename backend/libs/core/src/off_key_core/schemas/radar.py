@@ -1,12 +1,16 @@
 """Shared RADAR request/response schemas used across backend services."""
 
 from datetime import datetime
+from math import ceil
 from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 __all__ = [
     "AlarmStatistic",
+    "AutomaticAlarmThresholdConfig",
+    "AutomaticThresholdCalibrationConfig",
+    "ManualAlarmThresholdConfig",
     "MartingaleTrackerConfig",
     "MonitoringStrategy",
     "PerformanceConfig",
@@ -22,6 +26,7 @@ __all__ = [
 
 _SENSOR_KEY_STRATEGIES = {"full_hierarchy", "top_level", "leaf"}
 MonitoringStrategy = Literal["static_baseline"]
+_MAX_AUTOMATIC_CALIBRATION_WORK = 1_000_000_000
 AlarmStatistic = Literal[
     "martingale",
     "restarted_martingale",
@@ -84,6 +89,47 @@ class PerformanceConfig(BaseModel):
         return normalized
 
 
+class ManualAlarmThresholdConfig(BaseModel):
+    """Explicit numeric alarm threshold."""
+
+    model_config = ConfigDict(extra="forbid", validate_assignment=True)
+
+    mode: Literal["manual"] = "manual"
+    value: float = Field(default=100.0, gt=0.0, allow_inf_nan=False)
+
+
+class AutomaticAlarmThresholdConfig(BaseModel):
+    """Threshold resolved from the configured finite-horizon null target."""
+
+    model_config = ConfigDict(extra="forbid", validate_assignment=True)
+
+    mode: Literal["automatic"] = "automatic"
+
+
+class AutomaticThresholdCalibrationConfig(BaseModel):
+    """Shared family-wise null target for automatically calibrated trackers."""
+
+    model_config = ConfigDict(extra="forbid", validate_assignment=True)
+
+    false_alarm_probability: float = Field(default=0.01, gt=0.0, lt=1.0)
+    horizon: int = Field(
+        default=1_000,
+        ge=10,
+        le=100_000,
+        description=(
+            "Aligned observations per calibrated monitoring window; automatic "
+            "tracker state resets before the next window"
+        ),
+    )
+    simulation_count: int = Field(default=5_000, ge=100, le=100_000)
+
+    @model_validator(mode="after")
+    def validate_simulation_budget(self) -> "AutomaticThresholdCalibrationConfig":
+        if self.horizon * self.simulation_count > 25_000_000:
+            raise ValueError("horizon * simulation_count must not exceed 25,000,000")
+        return self
+
+
 class _MartingaleTrackerBase(BaseModel):
     """Shared settings for one bounded martingale alarm tracker."""
 
@@ -99,13 +145,25 @@ class _MartingaleTrackerBase(BaseModel):
         pattern=r"^[a-z][a-z0-9_-]*$",
     )
     alarm_statistic: AlarmStatistic = "restarted_martingale"
-    threshold: float = Field(default=100.0, gt=0.0)
+    threshold_config: Annotated[
+        ManualAlarmThresholdConfig | AutomaticAlarmThresholdConfig,
+        Field(discriminator="mode"),
+    ] = Field(default_factory=ManualAlarmThresholdConfig)
 
     @model_validator(mode="after")
-    def validate_ville_threshold(self) -> "_MartingaleTrackerBase":
+    def validate_threshold_policy(self) -> "_MartingaleTrackerBase":
+        is_ville = self.alarm_statistic in {"martingale", "restarted_martingale"}
+        if is_ville and isinstance(
+            self.threshold_config, AutomaticAlarmThresholdConfig
+        ):
+            raise ValueError(
+                "Automatic threshold calibration is only available for CUSUM "
+                "and Shiryaev-Roberts statistics"
+            )
         if (
-            self.alarm_statistic in {"martingale", "restarted_martingale"}
-            and self.threshold <= 1.0
+            is_ville
+            and isinstance(self.threshold_config, ManualAlarmThresholdConfig)
+            and self.threshold_config.value <= 1.0
         ):
             raise ValueError("Ville thresholds must be greater than 1")
         return self
@@ -146,16 +204,24 @@ MartingaleTrackerConfig = Annotated[
 ]
 
 
+def _calibration_betting_width(
+    tracker: PowerMartingaleTrackerConfig
+    | SimpleMixtureMartingaleTrackerConfig
+    | SimpleJumperMartingaleTrackerConfig,
+) -> int:
+    if isinstance(tracker, SimpleMixtureMartingaleTrackerConfig):
+        return len(tracker.epsilons) if tracker.epsilons is not None else tracker.n_grid
+    if isinstance(tracker, SimpleJumperMartingaleTrackerConfig):
+        return 3
+    return 1
+
+
 def _default_martingale_trackers() -> list[PowerMartingaleTrackerConfig]:
     return [PowerMartingaleTrackerConfig(tracker_id="primary")]
 
 
 class StaticMartingaleConfig(BaseModel):
-    """Typed martingale trackers fed by the same conformal p-value stream.
-
-    The pre-1.1 flat power/restarted configuration remains accepted and is
-    normalized into the primary tracker before validation.
-    """
+    """Typed martingale trackers fed by the same conformal p-value stream."""
 
     model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
@@ -164,34 +230,9 @@ class StaticMartingaleConfig(BaseModel):
         min_length=1,
         max_length=16,
     )
-
-    @model_validator(mode="before")
-    @classmethod
-    def normalize_legacy_config(cls, value: Any) -> Any:
-        if value is None or isinstance(value, cls):
-            return value
-        if not isinstance(value, dict) or "trackers" in value:
-            return value
-
-        data = dict(value)
-        betting_function = data.pop("betting_function", "power")
-        alarm_statistic = data.pop("alarm_statistic", "restarted_martingale")
-        threshold = data.pop("threshold", data.pop("restarted_ville_threshold", 100.0))
-        tracker: dict[str, Any] = {
-            "tracker_id": data.pop("tracker_id", "primary"),
-            "betting_function": betting_function,
-            "alarm_statistic": alarm_statistic,
-            "threshold": threshold,
-        }
-        method_fields = {
-            "power": ("epsilon",),
-            "simple_mixture": ("epsilons", "n_grid", "min_epsilon"),
-            "simple_jumper": ("jump",),
-        }
-        for field_name in method_fields.get(str(betting_function), ()):
-            if field_name in data:
-                tracker[field_name] = data.pop(field_name)
-        return {"trackers": [tracker], **data}
+    automatic_threshold_calibration: AutomaticThresholdCalibrationConfig = Field(
+        default_factory=AutomaticThresholdCalibrationConfig
+    )
 
     @field_validator("trackers")
     @classmethod
@@ -203,27 +244,46 @@ class StaticMartingaleConfig(BaseModel):
             raise ValueError("tracker_id values must be unique")
         return trackers
 
-    # Compatibility accessors for code that reads the original primary tracker.
-    @property
-    def betting_function(self) -> str:
-        return self.trackers[0].betting_function
-
-    @property
-    def alarm_statistic(self) -> AlarmStatistic:
-        return self.trackers[0].alarm_statistic
-
-    @property
-    def epsilon(self) -> float | None:
-        tracker = self.trackers[0]
-        return (
-            tracker.epsilon
-            if isinstance(tracker, PowerMartingaleTrackerConfig)
-            else None
+    @model_validator(mode="after")
+    def validate_automatic_calibration_capacity(self) -> "StaticMartingaleConfig":
+        automatic_trackers = [
+            tracker
+            for tracker in self.trackers
+            if isinstance(
+                tracker.threshold_config,
+                AutomaticAlarmThresholdConfig,
+            )
+        ]
+        automatic_count = len(automatic_trackers)
+        if automatic_count == 0:
+            return self
+        required_simulations = (
+            ceil(
+                automatic_count
+                / self.automatic_threshold_calibration.false_alarm_probability
+            )
+            - 1
         )
-
-    @property
-    def restarted_ville_threshold(self) -> float:
-        return self.trackers[0].threshold
+        if self.automatic_threshold_calibration.simulation_count < required_simulations:
+            raise ValueError(
+                "simulation_count is too small for the family-wise false-alarm "
+                f"target; use at least {required_simulations} simulations"
+            )
+        betting_width = sum(
+            _calibration_betting_width(tracker) for tracker in automatic_trackers
+        )
+        calibration_work = (
+            self.automatic_threshold_calibration.horizon
+            * self.automatic_threshold_calibration.simulation_count
+            * betting_width
+        )
+        if calibration_work > _MAX_AUTOMATIC_CALIBRATION_WORK:
+            raise ValueError(
+                "automatic threshold calibration is too computationally large; "
+                "reduce the horizon, simulations, automatic trackers, or mixture "
+                "grid size"
+            )
+        return self
 
 
 class StaticBaselineConfig(BaseModel):

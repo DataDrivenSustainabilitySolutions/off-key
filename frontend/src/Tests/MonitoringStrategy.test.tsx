@@ -105,12 +105,17 @@ describe("<Monitoring /> static setup", () => {
     expect(payload.static_baseline_config.training_window_size).toBe(1200);
     expect(payload.static_baseline_config.calibration_window_size).toBe(360);
     expect(payload.static_baseline_config.martingale_config).toEqual({
+      automatic_threshold_calibration: {
+        false_alarm_probability: 0.01,
+        horizon: 1000,
+        simulation_count: 5000,
+      },
       trackers: [{
         tracker_id: "primary",
         betting_function: "power",
         alarm_statistic: "restarted_martingale",
         epsilon: 0.5,
-        threshold: 100,
+        threshold_config: { mode: "manual", value: 100 },
       }],
     });
     expect("adaptive_stream_config" in payload).toBe(false);
@@ -151,13 +156,45 @@ describe("<Monitoring /> static setup", () => {
     const payload = getSubmittedPayload();
     expect(payload.static_baseline_config.calibration_window_size).toBe(400);
     expect(payload.static_baseline_config.martingale_config).toEqual({
+      automatic_threshold_calibration: {
+        false_alarm_probability: 0.01,
+        horizon: 1000,
+        simulation_count: 5000,
+      },
       trackers: [{
         tracker_id: "primary",
         betting_function: "power",
         alarm_statistic: "restarted_martingale",
         epsilon: 0.75,
-        threshold: 100,
+        threshold_config: { mode: "manual", value: 100 },
       }],
+    });
+  });
+
+  it("defaults CUSUM to an automatically calibrated threshold", async () => {
+    renderMonitoring();
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: /show advanced settings/i }),
+    );
+    fireEvent.change(screen.getByLabelText("Alarm statistic"), {
+      target: { value: "cusum" },
+    });
+
+    expect(
+      (screen.getByLabelText("Threshold") as HTMLSelectElement).value,
+    ).toBe("automatic");
+    expect(screen.getByText("Automatic threshold calibration")).toBeTruthy();
+    expect(screen.queryByLabelText("Manual alarm threshold")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: /start monitoring/i }));
+    await waitFor(() => expect(mockPost).toHaveBeenCalled());
+
+    expect(
+      getSubmittedPayload().static_baseline_config.martingale_config.trackers[0],
+    ).toMatchObject({
+      alarm_statistic: "cusum",
+      threshold_config: { mode: "automatic" },
     });
   });
 

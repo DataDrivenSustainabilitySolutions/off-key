@@ -17,6 +17,7 @@ export interface MartingaleTrackerDraft {
   trackerId: string;
   bettingFunction: MartingaleBettingFunction;
   alarmStatistic: MartingaleAlarmStatistic;
+  thresholdMode: "manual" | "automatic";
   threshold: string;
   epsilon: string;
   nGrid: string;
@@ -30,6 +31,9 @@ export interface StaticDraft {
   trainingWindow: string;
   calibrationWindow: string;
   martingaleTrackers: MartingaleTrackerDraft[];
+  automaticFalseAlarmProbability: string;
+  automaticThresholdHorizon: string;
+  automaticThresholdSimulations: string;
   sensorFreshness: string;
   sensorKeyStrategy: SensorKeyStrategy;
 }
@@ -43,6 +47,7 @@ export const createDefaultMartingaleTracker = (
   trackerId,
   bettingFunction: "power",
   alarmStatistic: "restarted_martingale",
+  thresholdMode: "manual",
   threshold: String(DEFAULT_MARTINGALE_THRESHOLD),
   epsilon: "0.5",
   nGrid: "100",
@@ -62,6 +67,9 @@ export const createDefaultStaticDraft = (): StaticDraft => ({
   trainingWindow: "1200",
   calibrationWindow: "360",
   martingaleTrackers: [createDefaultMartingaleTracker()],
+  automaticFalseAlarmProbability: "0.01",
+  automaticThresholdHorizon: "1000",
+  automaticThresholdSimulations: "5000",
   sensorFreshness: "30",
   sensorKeyStrategy: "full_hierarchy",
 });
@@ -267,6 +275,57 @@ export const buildStaticMonitoringRequest = ({
   });
   const trackerIds = new Set<string>();
   const martingaleTrackers: MartingaleTrackerConfig[] = [];
+  const automaticTrackerCount = draft.martingaleTrackers.filter(
+    (tracker) => tracker.thresholdMode === "automatic",
+  ).length;
+  const automaticFalseAlarmProbability = parseNumber({
+    value: draft.automaticFalseAlarmProbability,
+    label: "Automatic false-alarm probability",
+    field: "automaticFalseAlarmProbability",
+    errors,
+    min: Number.MIN_VALUE,
+    max: 0.999999,
+  });
+  const automaticThresholdHorizon = parseNumber({
+    value: draft.automaticThresholdHorizon,
+    label: "Automatic calibration horizon",
+    field: "automaticThresholdHorizon",
+    errors,
+    integer: true,
+    min: 10,
+    max: 100000,
+  });
+  const automaticThresholdSimulations = parseNumber({
+    value: draft.automaticThresholdSimulations,
+    label: "Automatic calibration simulations",
+    field: "automaticThresholdSimulations",
+    errors,
+    integer: true,
+    min: 100,
+    max: 100000,
+  });
+  if (
+    automaticThresholdHorizon !== undefined &&
+    automaticThresholdSimulations !== undefined &&
+    automaticThresholdHorizon * automaticThresholdSimulations > 25_000_000
+  ) {
+    errors.automaticThresholdSimulations =
+      "Horizon times simulations must not exceed 25,000,000.";
+  }
+  if (
+    automaticTrackerCount > 0 &&
+    automaticFalseAlarmProbability !== undefined &&
+    automaticThresholdSimulations !== undefined
+  ) {
+    const requiredSimulations =
+      Math.ceil(automaticTrackerCount / automaticFalseAlarmProbability) - 1;
+    if (automaticThresholdSimulations < requiredSimulations) {
+      errors.automaticThresholdSimulations =
+        `Use at least ${requiredSimulations.toLocaleString()} simulations for ` +
+        `${automaticTrackerCount} automatic tracker${automaticTrackerCount === 1 ? "" : "s"} ` +
+        "at this false-alarm probability.";
+    }
+  }
   draft.martingaleTrackers.forEach((tracker, index) => {
     const prefix = `martingales.${index}`;
     if (!/^[a-z][a-z0-9_-]{0,63}$/.test(tracker.trackerId)) {
@@ -276,14 +335,26 @@ export const buildStaticMonitoringRequest = ({
     }
     trackerIds.add(tracker.trackerId);
 
-    const threshold = parseNumber({
-      value: tracker.threshold,
-      label: "Alarm threshold",
-      field: `${prefix}.threshold`,
-      errors,
-      min: Number.MIN_VALUE,
-    });
+    const automaticThreshold = tracker.thresholdMode === "automatic";
     if (
+      automaticThreshold &&
+      tracker.alarmStatistic !== "cusum" &&
+      tracker.alarmStatistic !== "shiryaev_roberts"
+    ) {
+      errors[`${prefix}.thresholdMode`] =
+        "Automatic thresholds are only available for CUSUM and Shiryaev-Roberts.";
+    }
+    const threshold = automaticThreshold
+      ? undefined
+      : parseNumber({
+          value: tracker.threshold,
+          label: "Alarm threshold",
+          field: `${prefix}.threshold`,
+          errors,
+          min: Number.MIN_VALUE,
+        });
+    if (
+      !automaticThreshold &&
       threshold !== undefined &&
       (tracker.alarmStatistic === "martingale" ||
         tracker.alarmStatistic === "restarted_martingale") &&
@@ -301,12 +372,14 @@ export const buildStaticMonitoringRequest = ({
         min: 0.0001,
         max: 1,
       });
-      if (epsilon !== undefined && threshold !== undefined) {
+      if (epsilon !== undefined && (automaticThreshold || threshold !== undefined)) {
         martingaleTrackers.push({
           tracker_id: tracker.trackerId,
           betting_function: "power",
           alarm_statistic: tracker.alarmStatistic,
-          threshold,
+          threshold_config: automaticThreshold
+            ? { mode: "automatic" }
+            : { mode: "manual", value: threshold! },
           epsilon,
         });
       }
@@ -334,13 +407,15 @@ export const buildStaticMonitoringRequest = ({
       if (
         nGrid !== undefined &&
         minEpsilon !== undefined &&
-        threshold !== undefined
+        (automaticThreshold || threshold !== undefined)
       ) {
         martingaleTrackers.push({
           tracker_id: tracker.trackerId,
           betting_function: "simple_mixture",
           alarm_statistic: tracker.alarmStatistic,
-          threshold,
+          threshold_config: automaticThreshold
+            ? { mode: "automatic" }
+            : { mode: "manual", value: threshold! },
           n_grid: nGrid,
           min_epsilon: minEpsilon,
         });
@@ -356,16 +431,43 @@ export const buildStaticMonitoringRequest = ({
       min: 0.0001,
       max: 1,
     });
-    if (jump !== undefined && threshold !== undefined) {
+    if (jump !== undefined && (automaticThreshold || threshold !== undefined)) {
       martingaleTrackers.push({
         tracker_id: tracker.trackerId,
         betting_function: "simple_jumper",
         alarm_statistic: tracker.alarmStatistic,
-        threshold,
+        threshold_config: automaticThreshold
+          ? { mode: "automatic" }
+          : { mode: "manual", value: threshold! },
         jump,
       });
     }
   });
+  if (
+    automaticThresholdHorizon !== undefined &&
+    automaticThresholdSimulations !== undefined
+  ) {
+    const automaticBettingWidth = martingaleTrackers.reduce(
+      (total, tracker) => {
+        if (tracker.threshold_config.mode !== "automatic") return total;
+        if (tracker.betting_function === "simple_mixture") {
+          return total + tracker.n_grid;
+        }
+        return total + (tracker.betting_function === "simple_jumper" ? 3 : 1);
+      },
+      0,
+    );
+    if (
+      automaticThresholdHorizon *
+        automaticThresholdSimulations *
+        automaticBettingWidth >
+      1_000_000_000
+    ) {
+      errors.automaticThresholdSimulations =
+        "Automatic calibration is too large; reduce the horizon, simulations, " +
+        "automatic trackers, or mixture grid size.";
+    }
+  }
   if (!draft.martingaleTrackers.length) {
     errors.martingales = "Configure at least one martingale tracker.";
   }
@@ -387,7 +489,10 @@ export const buildStaticMonitoringRequest = ({
     trainingWindow === undefined ||
     calibrationWindow === undefined ||
     martingaleTrackers.length !== draft.martingaleTrackers.length ||
-    sensorFreshness === undefined
+    sensorFreshness === undefined ||
+    automaticFalseAlarmProbability === undefined ||
+    automaticThresholdHorizon === undefined ||
+    automaticThresholdSimulations === undefined
   ) {
     return { errors };
   }
@@ -413,6 +518,11 @@ export const buildStaticMonitoringRequest = ({
         conformal_strategy: "split",
         martingale_config: {
           trackers: martingaleTrackers,
+          automatic_threshold_calibration: {
+            false_alarm_probability: automaticFalseAlarmProbability,
+            horizon: automaticThresholdHorizon,
+            simulation_count: automaticThresholdSimulations,
+          },
         },
       },
     },

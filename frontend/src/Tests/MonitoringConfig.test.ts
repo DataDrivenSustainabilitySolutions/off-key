@@ -49,12 +49,17 @@ describe("monitoring configuration", () => {
       training_window_size: 1200,
       calibration_window_size: 360,
       martingale_config: {
+        automatic_threshold_calibration: {
+          false_alarm_probability: 0.01,
+          horizon: 1000,
+          simulation_count: 5000,
+        },
         trackers: [{
           tracker_id: "primary",
           betting_function: "power",
           alarm_statistic: "restarted_martingale",
           epsilon: 0.5,
-          threshold: 100,
+          threshold_config: { mode: "manual", value: 100 },
         }],
       },
     });
@@ -69,7 +74,7 @@ describe("monitoring configuration", () => {
         trackerId: "mixture-cusum",
         bettingFunction: "simple_mixture",
         alarmStatistic: "cusum",
-        threshold: "25",
+        thresholdMode: "automatic",
         nGrid: "64",
         minEpsilon: "0.02",
       },
@@ -100,7 +105,7 @@ describe("monitoring configuration", () => {
         tracker_id: "mixture-cusum",
         betting_function: "simple_mixture",
         alarm_statistic: "cusum",
-        threshold: 25,
+        threshold_config: { mode: "automatic" },
         n_grid: 64,
         min_epsilon: 0.02,
       },
@@ -108,7 +113,7 @@ describe("monitoring configuration", () => {
         tracker_id: "jumper-sr",
         betting_function: "simple_jumper",
         alarm_statistic: "shiryaev_roberts",
-        threshold: 40,
+        threshold_config: { mode: "manual", value: 40 },
         jump: 0.05,
       },
     ]);
@@ -140,6 +145,31 @@ describe("monitoring configuration", () => {
     expect(invalid.errors.topics).toMatch(/belong to charger charger-1/);
     expect(invalid.errors.trainingWindow).toBe(
       "Training samples must be an integer.",
+    );
+  });
+
+  it("rejects impractically large automatic threshold calibration", () => {
+    const draft = createDefaultStaticDraft();
+    draft.martingaleTrackers = [{
+      ...draft.martingaleTrackers[0]!,
+      trackerId: "oversized-mixture",
+      bettingFunction: "simple_mixture",
+      alarmStatistic: "cusum",
+      thresholdMode: "automatic",
+      nGrid: "10000",
+    }];
+
+    const result = buildStaticMonitoringRequest({
+      chargerId: "charger-1",
+      topics: ["charger/charger-1/live-telemetry/L1"],
+      draft,
+      modelDefinition,
+      containerName: "unused",
+    });
+
+    expect(result.request).toBeUndefined();
+    expect(result.errors.automaticThresholdSimulations).toMatch(
+      /too large/i,
     );
   });
 

@@ -27,7 +27,6 @@ jobs:
 
     env:
       COMPOSE_PROJECT_NAME: off-key-smoke
-      PLAYWRIGHT_CHROMIUM_CHANNEL: chrome
 
     steps:
       - name: Checkout
@@ -43,6 +42,10 @@ jobs:
       - name: Install frontend dependencies
         working-directory: frontend
         run: npm ci
+
+      - name: Install pinned Playwright browser
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
 
       - name: Configure local smoke environment
         run: cp .env.example .env

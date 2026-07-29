@@ -23,7 +23,7 @@ export default defineConfig({
   expect: {
     timeout: 30_000,
   },
-  snapshotPathTemplate: "{testDir}/__screenshots__/{arg}{ext}",
+  snapshotPathTemplate: "{testDir}/__screenshots__/{arg}-{platform}{ext}",
   outputDir: "test-results",
   reporter: [
     ["list"],

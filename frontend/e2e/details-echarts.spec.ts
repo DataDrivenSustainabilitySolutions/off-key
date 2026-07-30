@@ -29,11 +29,14 @@ const NEW_POINT = {
   value: 232.2,
 };
 
-const installDetailsApi = async (page: Page) => {
+const installDetailsApi = async (
+  page: Page,
+  telemetryTypes: string[] = ["systemVoltage"],
+) => {
   let includeNewTelemetry = false;
 
   await page.route(`**/v1/telemetry/${CHARGER_ID}/type*`, async (route) => {
-    await route.fulfill({ json: ["systemVoltage"] });
+    await route.fulfill({ json: telemetryTypes });
   });
   await page.route(`**/v1/telemetry/${CHARGER_ID}/data*`, async (route) => {
     const isIncremental = new URL(route.request().url()).searchParams.has(
@@ -76,7 +79,7 @@ const installDetailsApi = async (page: Page) => {
         : [
             {
               service_id: "radar-service-e2e",
-              timestamp: "2026-07-28T08:00:30.000Z",
+              timestamp: "2026-07-28T08:00:00.000Z",
               created: "2026-07-28T08:00:31.000Z",
               sequence_number: 1,
               sensor_set: ["systemVoltage"],
@@ -86,7 +89,7 @@ const installDetailsApi = async (page: Page) => {
             },
             {
               service_id: "radar-service-e2e",
-              timestamp: "2026-07-28T08:01:30.000Z",
+              timestamp: "2026-07-28T08:01:00.000Z",
               created: "2026-07-28T08:01:31.000Z",
               sequence_number: 2,
               sensor_set: ["systemVoltage"],
@@ -96,7 +99,7 @@ const installDetailsApi = async (page: Page) => {
             },
             {
               service_id: "radar-service-e2e",
-              timestamp: "2026-07-28T08:02:30.000Z",
+              timestamp: "2026-07-28T08:02:00.000Z",
               created: "2026-07-28T08:02:31.000Z",
               sequence_number: 3,
               sensor_set: ["systemVoltage"],
@@ -153,8 +156,29 @@ test.describe("Details telemetry ECharts", () => {
     await expect(chart.locator("canvas")).toHaveCount(1);
     await expect(chart).toHaveAttribute(
       "aria-label",
-      /restarted e-process series in a linked lower pane.*UTC/u,
+      /sequential-evidence series in a linked lower pane.*UTC/u,
     );
+    const navbar = page.locator('[data-slot="navigation-menu-list"]');
+    const primaryLinks = page.getByTestId("navbar-primary-links");
+    const navbarActions = page.getByTestId("navbar-actions");
+    const [navbarBox, primaryLinksBox, navbarActionsBox] = await Promise.all([
+      navbar.boundingBox(),
+      primaryLinks.boundingBox(),
+      navbarActions.boundingBox(),
+    ]);
+    expect(navbarBox).not.toBeNull();
+    expect(primaryLinksBox).not.toBeNull();
+    expect(navbarActionsBox).not.toBeNull();
+    expect(primaryLinksBox!.x).toBeLessThan(
+      navbarBox!.x + navbarBox!.width / 2,
+    );
+    expect(navbarActionsBox!.x).toBeGreaterThan(
+      navbarBox!.x + navbarBox!.width / 2,
+    );
+    expect(
+      navbarBox!.x + navbarBox!.width -
+        (navbarActionsBox!.x + navbarActionsBox!.width),
+    ).toBeLessThanOrEqual(40);
     await expect(card.getByText(/Current System Voltage:/u)).toBeVisible();
     await expect(card.getByText(/Restarted e-process radar-se/u)).toBeVisible();
     await expect(chart).toHaveScreenshot("telemetry-card-light.png", {
@@ -205,5 +229,59 @@ test.describe("Details telemetry ECharts", () => {
     await expect(page.getByRole("button", { name: "Return to live" })).toBeVisible();
     await page.getByRole("button", { name: "Past hour" }).click();
     await expect(page.getByRole("button", { name: "Return to live" })).toBeHidden();
+  });
+
+  test("optionally mirrors horizontal navigation across chart views", async ({
+    page,
+  }) => {
+    await installDetailsApi(page, ["systemVoltage", "systemCurrent"]);
+    await page.goto(`/details/${CHARGER_ID}`);
+
+    const voltageCard = page
+      .locator('[data-slot="card"]')
+      .filter({ hasText: "System Voltage" })
+      .first();
+    const currentCard = page
+      .locator('[data-slot="card"]')
+      .filter({ hasText: "System Current" })
+      .first();
+    await expect(voltageCard.getByTestId("telemetry-echart")).toBeVisible();
+    await currentCard.scrollIntoViewIfNeeded();
+    await expect(currentCard.getByTestId("telemetry-echart")).toBeVisible();
+
+    const linkButton = page.getByRole("button", {
+      name: "Link chart navigation",
+    });
+    await expect(linkButton).toHaveAttribute("aria-pressed", "false");
+
+    await voltageCard.getByRole("button", { name: "Zoom in" }).click();
+    await expect(
+      voltageCard.getByRole("button", { name: "Return to live" }),
+    ).toBeVisible();
+    await expect(
+      currentCard.getByRole("button", { name: "Return to live" }),
+    ).toBeHidden();
+
+    await linkButton.click();
+    await expect(
+      page.getByRole("button", { name: "Unlink chart navigation" }),
+    ).toHaveAttribute("aria-pressed", "true");
+    await expect(
+      currentCard.getByRole("button", { name: "Return to live" }),
+    ).toBeVisible();
+
+    await currentCard.getByRole("button", { name: "Return to live" }).click();
+    await expect(
+      page.getByRole("button", { name: "Return to live" }),
+    ).toHaveCount(0);
+
+    await page.getByRole("button", { name: "Unlink chart navigation" }).click();
+    await voltageCard.getByRole("button", { name: "Zoom in" }).click();
+    await expect(
+      voltageCard.getByRole("button", { name: "Return to live" }),
+    ).toBeVisible();
+    await expect(
+      currentCard.getByRole("button", { name: "Return to live" }),
+    ).toBeHidden();
   });
 });

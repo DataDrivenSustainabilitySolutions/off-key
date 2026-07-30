@@ -53,6 +53,101 @@ def _optional_finite_float(value: Any) -> float | None:
     return normalized if math.isfinite(normalized) else None
 
 
+def _nonnegative_int(value: Any) -> int:
+    if not isinstance(value, int) or isinstance(value, bool):
+        return 0
+    return max(value, 0)
+
+
+def _optional_nonnegative_int(value: Any) -> int | None:
+    if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+        return None
+    return value
+
+
+def _normalize_tracker_results(value: Any) -> list[dict[str, Any]]:
+    """Return a bounded, JSON-safe projection of runtime tracker evidence."""
+    if not isinstance(value, list):
+        return []
+
+    normalized_results: list[dict[str, Any]] = []
+    for candidate in value[:16]:
+        if not isinstance(candidate, dict):
+            continue
+        tracker_id = candidate.get("tracker_id")
+        betting_function = candidate.get("betting_function")
+        alarm_statistic = candidate.get("alarm_statistic")
+        threshold = _optional_finite_float(candidate.get("threshold"))
+        if (
+            not all(
+                isinstance(item, str)
+                for item in (tracker_id, betting_function, alarm_statistic)
+            )
+            or threshold is None
+        ):
+            continue
+
+        raw_statistics = candidate.get("statistics")
+        statistics: dict[str, dict[str, Any]] = {}
+        if isinstance(raw_statistics, dict):
+            for name in (
+                "martingale",
+                "restarted_martingale",
+                "cusum",
+                "shiryaev_roberts",
+            ):
+                statistic = raw_statistics.get(name)
+                if not isinstance(statistic, dict):
+                    continue
+                statistics[name] = {
+                    "value": _optional_finite_float(statistic.get("value")),
+                    "is_infinite": bool(statistic.get("is_infinite", False)),
+                    "log_value": _optional_finite_float(statistic.get("log_value")),
+                }
+
+        parameters = candidate.get("betting_parameters")
+        normalized_results.append(
+            {
+                "tracker_id": tracker_id,
+                "betting_function": betting_function,
+                "betting_parameters": parameters
+                if isinstance(parameters, dict)
+                else {},
+                "alarm_statistic": alarm_statistic,
+                "statistic_value": _optional_finite_float(
+                    candidate.get("statistic_value")
+                ),
+                "statistic_is_infinite": bool(
+                    candidate.get("statistic_is_infinite", False)
+                ),
+                "log_statistic_value": _optional_finite_float(
+                    candidate.get("log_statistic_value")
+                ),
+                "statistics": statistics,
+                "e_value": _optional_finite_float(candidate.get("e_value")),
+                "e_value_is_infinite": bool(
+                    candidate.get("e_value_is_infinite", False)
+                ),
+                "log_e_value": _optional_finite_float(candidate.get("log_e_value")),
+                "threshold": threshold,
+                "threshold_horizon": _optional_nonnegative_int(
+                    candidate.get("threshold_horizon")
+                ),
+                "threshold_window_position": _optional_nonnegative_int(
+                    candidate.get("threshold_window_position")
+                ),
+                "threshold_window_reset": bool(
+                    candidate.get("threshold_window_reset", False)
+                ),
+                "alarm_fired": bool(candidate.get("alarm_fired", False)),
+                "alarm_active": bool(candidate.get("alarm_active", False)),
+                "alarm_count": _nonnegative_int(candidate.get("alarm_count")),
+                "tested_count": _nonnegative_int(candidate.get("tested_count")),
+            }
+        )
+    return normalized_results
+
+
 # Lazy-initialized async session factory
 _radar_async_session_factory = None
 
@@ -503,6 +598,8 @@ class DatabaseWriter:
             p_value = context.get("p_value")
             sequence_number = context.get("tested_count")
             threshold = context.get("restarted_ville_threshold")
+            tracker_results = _normalize_tracker_results(context.get("tracker_results"))
+            threshold = context.get("threshold", threshold)
             if not isinstance(p_value, int | float) or not math.isfinite(p_value):
                 continue
             if not isinstance(sequence_number, int) or sequence_number < 1:
@@ -532,6 +629,7 @@ class DatabaseWriter:
                     "log_restarted_martingale": _optional_finite_float(
                         context.get("log_restarted_martingale")
                     ),
+                    "tracker_results": tracker_results,
                     "threshold": float(threshold),
                     "alarm": bool(context.get("alarm_fired", False)),
                 }

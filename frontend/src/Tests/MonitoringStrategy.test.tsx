@@ -105,10 +105,18 @@ describe("<Monitoring /> static setup", () => {
     expect(payload.static_baseline_config.training_window_size).toBe(1200);
     expect(payload.static_baseline_config.calibration_window_size).toBe(360);
     expect(payload.static_baseline_config.martingale_config).toEqual({
-      betting_function: "power",
-      alarm_statistic: "restarted_martingale",
-      epsilon: 0.5,
-      restarted_ville_threshold: 100,
+      automatic_threshold_calibration: {
+        false_alarm_probability: 0.01,
+        horizon: 1000,
+        simulation_count: 5000,
+      },
+      trackers: [{
+        tracker_id: "primary",
+        betting_function: "power",
+        alarm_statistic: "restarted_martingale",
+        epsilon: 0.5,
+        threshold_config: { mode: "manual", value: 100 },
+      }],
     });
     expect("adaptive_stream_config" in payload).toBe(false);
     expect("preprocessing_steps" in payload).toBe(false);
@@ -132,7 +140,7 @@ describe("<Monitoring /> static setup", () => {
     expect(payload.performance_config).not.toHaveProperty("alignment_mode");
   });
 
-  it("submits editable epsilon with the fixed native threshold", async () => {
+  it("submits editable epsilon and alarm threshold", async () => {
     renderMonitoring();
 
     fireEvent.change(await screen.findByDisplayValue("360"), {
@@ -148,11 +156,67 @@ describe("<Monitoring /> static setup", () => {
     const payload = getSubmittedPayload();
     expect(payload.static_baseline_config.calibration_window_size).toBe(400);
     expect(payload.static_baseline_config.martingale_config).toEqual({
-      betting_function: "power",
-      alarm_statistic: "restarted_martingale",
-      epsilon: 0.75,
-      restarted_ville_threshold: 100,
+      automatic_threshold_calibration: {
+        false_alarm_probability: 0.01,
+        horizon: 1000,
+        simulation_count: 5000,
+      },
+      trackers: [{
+        tracker_id: "primary",
+        betting_function: "power",
+        alarm_statistic: "restarted_martingale",
+        epsilon: 0.75,
+        threshold_config: { mode: "manual", value: 100 },
+      }],
     });
+  });
+
+  it("defaults CUSUM to an automatically calibrated threshold", async () => {
+    renderMonitoring();
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: /show advanced settings/i }),
+    );
+    fireEvent.change(screen.getByLabelText("Alarm statistic"), {
+      target: { value: "cusum" },
+    });
+
+    expect(
+      (screen.getByLabelText("Threshold") as HTMLSelectElement).value,
+    ).toBe("automatic");
+    expect(screen.getByText("Automatic threshold calibration")).toBeTruthy();
+    expect(screen.queryByLabelText("Manual alarm threshold")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: /start monitoring/i }));
+    await waitFor(() => expect(mockPost).toHaveBeenCalled());
+
+    expect(
+      getSubmittedPayload().static_baseline_config.martingale_config.trackers[0],
+    ).toMatchObject({
+      alarm_statistic: "cusum",
+      threshold_config: { mode: "automatic" },
+    });
+  });
+
+  it("exposes advanced-setting help on keyboard focus", async () => {
+    renderMonitoring();
+
+    expect(
+      screen.queryByRole("button", { name: "About Betting method" }),
+    ).toBeNull();
+    fireEvent.click(
+      await screen.findByRole("button", { name: /show advanced settings/i }),
+    );
+    const helpTrigger = await screen.findByRole("button", {
+      name: "About Betting method",
+    });
+
+    fireEvent.focus(helpTrigger);
+
+    const tooltip = await screen.findByRole("tooltip");
+    expect(tooltip.textContent).toContain(
+      "Transforms each conformal p-value into a one-step e-value",
+    );
   });
 
   it("lets numeric fields be cleared while editing", async () => {
@@ -183,7 +247,8 @@ describe("<Monitoring /> static setup", () => {
     renderMonitoring();
 
     fireEvent.click(await screen.findByRole("button", { name: /show advanced settings/i }));
-    const estimatorsInput = await screen.findByDisplayValue("100");
+    const estimatorsInput = (await screen.findAllByDisplayValue("100"))[0];
+    if (!estimatorsInput) throw new Error("Expected n_estimators input");
     fireEvent.change(estimatorsInput, { target: { value: "1.5" } });
     fireEvent.click(screen.getByRole("button", { name: /start monitoring/i }));
 
@@ -200,7 +265,7 @@ describe("<Monitoring /> static setup", () => {
   it("renders the dynamic lane as a disabled coming-soon preview", async () => {
     renderMonitoring();
 
-    expect(await screen.findByText(/Fixed Ville threshold/i)).toBeTruthy();
+    expect(await screen.findByText(/Martingale ensemble/i)).toBeTruthy();
     const dynamicLane = screen.getByText("Temporally dependent streams");
     expect(dynamicLane).toBeTruthy();
     expect(

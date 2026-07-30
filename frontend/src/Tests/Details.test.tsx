@@ -1,8 +1,9 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import Details from "../pages/Details";
+import type { ChartNavigationState } from "../lib/telemetry-chart";
 
 const mockLoadAllTelemetryTypes = vi.fn<
   (...args: unknown[]) => Promise<unknown[]>
@@ -34,12 +35,44 @@ vi.mock("../components/DynamicTelemetryChart", () => ({
   default: ({
     telemetryData,
     anomalies,
+    navigationState,
+    onNavigationStateChange,
   }: {
     telemetryData: { type: string };
     anomalies: unknown[];
+    navigationState: ChartNavigationState;
+    onNavigationStateChange: (
+      telemetryType: string,
+      state: ChartNavigationState,
+    ) => void;
   }) => {
     mockChartAnomalyProps.push(anomalies);
-    return <div data-testid="telemetry-chart">{telemetryData.type}</div>;
+    return (
+      <div data-testid="telemetry-chart">
+        {telemetryData.type}
+        <output data-testid={`navigation-${telemetryData.type}`}>
+          {JSON.stringify(navigationState)}
+        </output>
+        <button
+          type="button"
+          onClick={() =>
+            onNavigationStateChange(telemetryData.type, {
+              range: {},
+              viewport: {
+                mode: "absolute",
+                startMs:
+                  telemetryData.type === "controllerCpuUsage" ? 1_000 : 3_000,
+                endMs:
+                  telemetryData.type === "controllerCpuUsage" ? 2_000 : 4_000,
+              },
+              inspectionDataEndMs: 5_000,
+            })
+          }
+        >
+          Navigate {telemetryData.type}
+        </button>
+      </div>
+    );
   },
 }));
 
@@ -56,6 +89,7 @@ function renderDetails() {
 describe("<Details />", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.clear();
     mockChartAnomalyProps.length = 0;
     mockApiGet.mockResolvedValue([]);
     mockLoadAllTelemetryTypes.mockResolvedValue([
@@ -122,5 +156,71 @@ describe("<Details />", () => {
     expect(
       await screen.findByText(/no telemetry data available for this charger/i)
     ).toBeTruthy();
+  });
+
+  it("switches between independent and linked horizontal navigation", async () => {
+    renderDetails();
+    await screen.findByText(/cpu metrics/i);
+
+    const linkButton = screen.getByRole("button", {
+      name: "Link chart navigation",
+    });
+    expect(linkButton.getAttribute("aria-pressed")).toBe("false");
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Navigate controllerCpuUsage" }),
+    );
+    expect(screen.getByTestId("navigation-controllerCpuUsage").textContent).toContain(
+      '"startMs":1000',
+    );
+    expect(screen.getByTestId("navigation-systemVoltage").textContent).toContain(
+      '"mode":"live"',
+    );
+
+    fireEvent.click(linkButton);
+    expect(
+      screen.getByRole("button", { name: "Unlink chart navigation" }).getAttribute(
+        "aria-pressed",
+      ),
+    ).toBe("true");
+    expect(screen.getByTestId("navigation-systemVoltage").textContent).toContain(
+      '"startMs":1000',
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Navigate systemVoltage" }),
+    );
+    expect(screen.getByTestId("navigation-controllerCpuUsage").textContent).toContain(
+      '"startMs":3000',
+    );
+    expect(screen.getByTestId("navigation-systemVoltage").textContent).toContain(
+      '"startMs":3000',
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Unlink chart navigation" }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Navigate controllerCpuUsage" }),
+    );
+    expect(screen.getByTestId("navigation-controllerCpuUsage").textContent).toContain(
+      '"startMs":1000',
+    );
+    expect(screen.getByTestId("navigation-systemVoltage").textContent).toContain(
+      '"startMs":3000',
+    );
+    expect(localStorage.getItem("off-key:details:chart-navigation")).toBe(
+      "independent",
+    );
+  });
+
+  it("restores the linked-navigation preference", async () => {
+    localStorage.setItem("off-key:details:chart-navigation", "linked");
+    renderDetails();
+
+    const unlinkButton = await screen.findByRole("button", {
+      name: "Unlink chart navigation",
+    });
+    expect(unlinkButton.getAttribute("aria-pressed")).toBe("true");
   });
 });

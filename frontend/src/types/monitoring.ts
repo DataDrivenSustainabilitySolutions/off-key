@@ -76,11 +76,54 @@ export interface MonitoringPerformanceConfig {
   sensor_freshness_seconds: number;
 }
 
-export interface StaticMartingaleConfig {
+export type MartingaleBettingFunction =
+  | 'power'
+  | 'simple_mixture'
+  | 'simple_jumper';
+
+export type MartingaleAlarmStatistic =
+  | 'martingale'
+  | 'restarted_martingale'
+  | 'cusum'
+  | 'shiryaev_roberts';
+
+interface MartingaleTrackerBase {
+  tracker_id: string;
+  alarm_statistic: MartingaleAlarmStatistic;
+  threshold_config:
+    | { mode: 'manual'; value: number }
+    | { mode: 'automatic' };
+}
+
+export interface PowerMartingaleTracker extends MartingaleTrackerBase {
   betting_function: 'power';
-  alarm_statistic: 'restarted_martingale';
   epsilon: number;
-  restarted_ville_threshold: 100;
+}
+
+export interface SimpleMixtureMartingaleTracker extends MartingaleTrackerBase {
+  betting_function: 'simple_mixture';
+  epsilons?: number[] | null;
+  n_grid: number;
+  min_epsilon: number;
+}
+
+export interface SimpleJumperMartingaleTracker extends MartingaleTrackerBase {
+  betting_function: 'simple_jumper';
+  jump: number;
+}
+
+export type MartingaleTrackerConfig =
+  | PowerMartingaleTracker
+  | SimpleMixtureMartingaleTracker
+  | SimpleJumperMartingaleTracker;
+
+export interface StaticMartingaleConfig {
+  trackers: MartingaleTrackerConfig[];
+  automatic_threshold_calibration: {
+    false_alarm_probability: number;
+    horizon: number;
+    simulation_count: number;
+  };
 }
 
 export interface StaticBaselineRequestConfig {
@@ -117,8 +160,39 @@ export interface MonitoringEvidence {
   restarted_martingale: number | null;
   restarted_martingale_is_infinite: boolean;
   log_restarted_martingale: number | null;
+  tracker_results?: MartingaleTrackerResult[];
   threshold: number;
   alarm: boolean;
+}
+
+export interface MartingaleStatisticEvidence {
+  value: number | null;
+  is_infinite: boolean;
+  log_value: number | null;
+}
+
+export interface MartingaleTrackerResult {
+  tracker_id: string;
+  betting_function: MartingaleBettingFunction;
+  betting_parameters: Record<string, unknown>;
+  alarm_statistic: MartingaleAlarmStatistic;
+  statistic_value: number | null;
+  statistic_is_infinite: boolean;
+  log_statistic_value: number | null;
+  statistics: Partial<
+    Record<MartingaleAlarmStatistic, MartingaleStatisticEvidence>
+  >;
+  e_value: number | null;
+  e_value_is_infinite: boolean;
+  log_e_value: number | null;
+  threshold: number;
+  threshold_horizon?: number | null;
+  threshold_window_position?: number | null;
+  threshold_window_reset?: boolean;
+  alarm_fired: boolean;
+  alarm_active: boolean;
+  alarm_count: number;
+  tested_count: number;
 }
 
 export type MonitoringChartEvidence = Pick<
@@ -128,6 +202,7 @@ export type MonitoringChartEvidence = Pick<
   | 'sequence_number'
   | 'sensor_set'
   | 'restarted_martingale'
+  | 'tracker_results'
   | 'threshold'
   | 'alarm'
 > & { created: string };

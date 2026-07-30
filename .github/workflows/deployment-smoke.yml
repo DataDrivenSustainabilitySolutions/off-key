@@ -27,7 +27,6 @@ jobs:
 
     env:
       COMPOSE_PROJECT_NAME: off-key-smoke
-      PLAYWRIGHT_CHROMIUM_CHANNEL: chrome
 
     steps:
       - name: Checkout
@@ -295,8 +294,22 @@ jobs:
 
       - name: Run deployment smoke test
         timeout-minutes: 10
-        working-directory: frontend
-        run: npm run test:e2e
+        run: |
+          set -euo pipefail
+
+          playwright_version="$(node -p "require('./frontend/node_modules/@playwright/test/package.json').version")"
+          playwright_image="mcr.microsoft.com/playwright:v${playwright_version}-noble"
+
+          echo "Running visual smoke tests with ${playwright_image}"
+          docker run --rm \
+            --network host \
+            --ipc host \
+            --volume "${PWD}/frontend:/work" \
+            --workdir /work \
+            --env CI=true \
+            --env PLAYWRIGHT_BASE_URL=http://localhost:5173 \
+            "${playwright_image}" \
+            npm run test:e2e
 
       - name: Collect deployment smoke diagnostics
         if: failure()

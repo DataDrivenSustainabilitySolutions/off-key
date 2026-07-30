@@ -96,7 +96,12 @@ class SensorStateCache:
         self._cleanup_interval = 300  # Run cleanup every 5 minutes
 
     def update_with_status(
-        self, charger_id: str, sensor_type: str, values: dict[str, float]
+        self,
+        charger_id: str,
+        sensor_type: str,
+        values: dict[str, float],
+        *,
+        sample_timestamp: float | None = None,
     ) -> AlignmentUpdate:
         """
         Update cache with a new sensor reading.
@@ -159,7 +164,9 @@ class SensorStateCache:
                 status="aligned_emit",
                 features=aligned,
                 sensor_ages=sensor_ages,
-                sample_timestamp=current_time,
+                sample_timestamp=(
+                    current_time if sample_timestamp is None else sample_timestamp
+                ),
             )
 
     def _alignment_blocker(

@@ -1,6 +1,6 @@
-import { useState, useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { Activity } from "lucide-react";
+import { Activity, Link2, Unlink2 } from "lucide-react";
 
 import {
   MetricCard,
@@ -30,6 +30,7 @@ import type {
   MonitoringChartEvidence,
   MonitoringEvidenceCursor,
 } from "@/types/monitoring";
+import { useLinkedChartNavigation } from "@/hooks/use-linked-chart-navigation";
 import {
   getMonitoringEvidenceCursor,
   mergeMonitoringChartEvidence,
@@ -294,6 +295,14 @@ const Details: React.FC = () => {
     return grouped;
   }, [monitoringEvidence]);
 
+  const {
+    chartsLinked,
+    linkedTimelineExtent,
+    getNavigationState,
+    handleNavigationStateChange,
+    toggleChartLink,
+  } = useLinkedChartNavigation(allTelemetryData, monitoringEvidence);
+
   return (
     <>
       <NavigationBar />
@@ -356,9 +365,42 @@ const Details: React.FC = () => {
               Charts update automatically while this page is open.
             </p>
             </div>
-            <span className="hidden rounded-full border border-border/70 bg-card px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground sm:inline-flex">
-              Auto refresh
-            </span>
+            <div className="flex items-center gap-2">
+              {allTelemetryData.length > 1 && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      type="button"
+                      variant={chartsLinked ? "secondary" : "outline"}
+                      size="sm"
+                      className="h-8 gap-1.5 px-2.5 text-xs"
+                      aria-label={
+                        chartsLinked
+                          ? "Unlink chart navigation"
+                          : "Link chart navigation"
+                      }
+                      aria-pressed={chartsLinked}
+                      onClick={toggleChartLink}
+                    >
+                      {chartsLinked ? (
+                        <Link2 className="size-3.5" />
+                      ) : (
+                        <Unlink2 className="size-3.5" />
+                      )}
+                      {chartsLinked ? "Linked" : "Independent"}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" align="end" className="max-w-64">
+                    {chartsLinked
+                      ? "Time ranges, pan, and zoom are shared. Vertical scales stay independent."
+                      : "Link horizontal time navigation across every chart."}
+                  </TooltipContent>
+                </Tooltip>
+              )}
+              <span className="hidden rounded-full border border-border/70 bg-card px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground sm:inline-flex">
+                Auto refresh
+              </span>
+            </div>
           </div>
 
           {isLoadingTelemetry ? (
@@ -393,6 +435,11 @@ const Details: React.FC = () => {
                         evidence={
                           evidenceByTelemetry.get(telemetryData.type) ?? EMPTY_EVIDENCE
                         }
+                        navigationState={getNavigationState(telemetryData.type)}
+                        timelineExtent={
+                          chartsLinked ? linkedTimelineExtent : undefined
+                        }
+                        onNavigationStateChange={handleNavigationStateChange}
                       />
                     ))}
                   </div>

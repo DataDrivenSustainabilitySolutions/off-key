@@ -54,6 +54,7 @@ class SyncService:
                 await self._migrate_anomaly_sensor_set(conn)
                 await self._migrate_service_operational_status(conn)
                 await self._migrate_model_registry_family(conn)
+                await self._migrate_monitoring_evidence_trackers(conn)
                 await conn.run_sync(Base.metadata.create_all)
                 await self._ensure_chart_query_indexes(conn)
 
@@ -92,6 +93,81 @@ class SyncService:
                 "idx_monitoring_evidence_charger_created_cursor "
                 "ON monitoring_evidence "
                 "(charger_id, created, timestamp, service_id, sequence_number)"
+            )
+        )
+
+    async def _migrate_monitoring_evidence_trackers(self, conn) -> None:
+        """Add and backfill bounded multi-tracker evidence on existing tables."""
+        table_exists = await conn.scalar(
+            text("SELECT to_regclass('public.monitoring_evidence') IS NOT NULL")
+        )
+        if not table_exists:
+            return
+
+        column_exists = await conn.scalar(
+            text(
+                """
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM information_schema.columns
+                    WHERE table_schema = 'public'
+                      AND table_name = 'monitoring_evidence'
+                      AND column_name = 'tracker_results'
+                )
+                """
+            )
+        )
+        if column_exists:
+            return
+
+        logger.info(
+            "Adding monitoring_evidence.tracker_results column",
+            extra=self._log_context,
+        )
+        await conn.execute(
+            text(
+                """
+                ALTER TABLE monitoring_evidence
+                ADD COLUMN tracker_results JSONB NOT NULL
+                DEFAULT '[]'::jsonb
+                """
+            )
+        )
+
+        await conn.execute(
+            text(
+                """
+                UPDATE monitoring_evidence
+                SET tracker_results = jsonb_build_array(
+                    jsonb_build_object(
+                        'tracker_id', 'primary',
+                        'betting_function', 'power',
+                        'betting_parameters', '{}'::jsonb,
+                        'alarm_statistic', 'restarted_martingale',
+                        'statistic_value', restarted_martingale,
+                        'statistic_is_infinite',
+                            restarted_martingale_is_infinite,
+                        'log_statistic_value', log_restarted_martingale,
+                        'statistics', jsonb_build_object(
+                            'restarted_martingale', jsonb_build_object(
+                                'value', restarted_martingale,
+                                'is_infinite',
+                                    restarted_martingale_is_infinite,
+                                'log_value', log_restarted_martingale
+                            )
+                        ),
+                        'e_value', e_value,
+                        'e_value_is_infinite', e_value_is_infinite,
+                        'log_e_value', log_e_value,
+                        'threshold', threshold,
+                        'alarm_fired', alarm,
+                        'alarm_active', alarm,
+                        'alarm_count', 0,
+                        'tested_count', sequence_number
+                    )
+                )
+                WHERE tracker_results = '[]'::jsonb
+                """
             )
         )
 

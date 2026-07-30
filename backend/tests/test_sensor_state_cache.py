@@ -23,9 +23,15 @@ def test_sensor_state_cache_blocks_stale_sensor_and_recovers(monkeypatch):
     assert first.missing_sensors == ("cosine",)
 
     now["value"] = 101.0
-    second = cache.update_with_status("charger-1", "cosine", {"cosine": 2.0})
+    second = cache.update_with_status(
+        "charger-1",
+        "cosine",
+        {"cosine": 2.0},
+        sample_timestamp=1_800_000_000.0,
+    )
     assert second.status == "aligned_emit"
     assert second.features == {"sine": 1.0, "cosine": 2.0}
+    assert second.sample_timestamp == 1_800_000_000.0
 
     # cosine arrives again much later while sine is stale
     now["value"] = 110.0

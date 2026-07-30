@@ -47,6 +47,29 @@ def test_mqtt_config_mutable_defaults_are_isolated():
     assert cfg_two.bridge_topic_mapping == {}
 
 
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("broker_port", 0),
+        ("transport", "udp"),
+        ("client_id_prefix", "invalid prefix"),
+        ("subscription_qos", 3),
+        ("worker_threads", 33),
+        ("retry_jitter_magnitude", 0.6),
+    ],
+)
+def test_mqtt_config_rejects_invalid_primitive_constraints(field, value):
+    with pytest.raises(ValidationError, match=field):
+        MQTTConfig(**{**_base_mqtt_config(), field: value})
+
+
+def test_mqtt_settings_validate_primitive_constraints(monkeypatch):
+    monkeypatch.setenv("MQTT_WORKER_THREADS", "0")
+
+    with pytest.raises(ValidationError, match="MQTT_WORKER_THREADS"):
+        MQTTSettings()
+
+
 def test_mqtt_radar_config_mutable_defaults_are_isolated():
     cfg_one = MQTTRadarConfig()
     cfg_two = MQTTRadarConfig()
@@ -104,9 +127,13 @@ def test_radar_settings_parse_static_baseline_strategy(monkeypatch):
           "training_window_size": 240,
           "calibration_window_size": 80,
           "martingale_config": {
-            "method": "power",
-            "epsilon": 0.5,
-            "restarted_ville_threshold": 100
+            "trackers": [{
+              "tracker_id": "primary",
+              "betting_function": "power",
+              "alarm_statistic": "restarted_martingale",
+              "epsilon": 0.5,
+              "threshold_config": {"mode": "manual", "value": 100}
+            }]
           }
         }
         """,
@@ -119,7 +146,11 @@ def test_radar_settings_parse_static_baseline_strategy(monkeypatch):
     assert cfg.model_params["n_estimators"] == 128
     assert cfg.static_baseline_config.training_window_size == 240
     assert cfg.static_baseline_config.calibration_window_size == 80
-    assert cfg.static_baseline_config.martingale_config.restarted_ville_threshold == 100
+    threshold = cfg.static_baseline_config.martingale_config.trackers[
+        0
+    ].threshold_config
+    assert threshold.mode == "manual"
+    assert threshold.value == 100
 
 
 def test_radar_settings_reject_adaptive_strategy(monkeypatch):
@@ -165,16 +196,141 @@ def test_static_baseline_rejects_removed_calibration_fraction():
         StaticBaselineConfig(training_window_size=100, calibration_fraction=0.25)
 
 
-def test_static_martingale_contract_is_native_and_fixed():
+def test_static_martingale_contract_defaults_and_rejects_legacy_payload():
     config = StaticMartingaleConfig()
-    assert config.method == "power"
-    assert config.epsilon == 0.5
-    assert config.restarted_ville_threshold == 100
+    primary = config.trackers[0]
+    assert primary.betting_function == "power"
+    assert primary.alarm_statistic == "restarted_martingale"
+    assert primary.epsilon == 0.5
+    assert primary.threshold_config.mode == "manual"
+    assert primary.threshold_config.value == 100
 
-    with pytest.raises(ValidationError):
-        StaticMartingaleConfig(restarted_ville_threshold=50)
+    with pytest.raises(ValidationError, match="betting_function"):
+        StaticMartingaleConfig(
+            betting_function="power",
+            alarm_statistic="martingale",
+            epsilon=0.75,
+            restarted_ville_threshold=50,
+        )
+
+    ensemble = StaticMartingaleConfig(
+        trackers=[
+            {
+                "tracker_id": "power",
+                "betting_function": "power",
+                "alarm_statistic": "restarted_martingale",
+                "threshold_config": {"mode": "manual", "value": 100},
+                "epsilon": 0.5,
+            },
+            {
+                "tracker_id": "mixture-cusum",
+                "betting_function": "simple_mixture",
+                "alarm_statistic": "cusum",
+                "threshold_config": {"mode": "automatic"},
+                "n_grid": 64,
+                "min_epsilon": 0.02,
+            },
+            {
+                "tracker_id": "jumper-sr",
+                "betting_function": "simple_jumper",
+                "alarm_statistic": "shiryaev_roberts",
+                "threshold_config": {"mode": "manual", "value": 40},
+                "jump": 0.05,
+            },
+        ]
+    )
+    assert [tracker.tracker_id for tracker in ensemble.trackers] == [
+        "power",
+        "mixture-cusum",
+        "jumper-sr",
+    ]
+
+    with pytest.raises(ValidationError, match="unique"):
+        StaticMartingaleConfig(
+            trackers=[
+                {
+                    "tracker_id": "duplicate",
+                    "betting_function": "power",
+                    "epsilon": 0.5,
+                },
+                {
+                    "tracker_id": "duplicate",
+                    "betting_function": "simple_jumper",
+                    "jump": 0.01,
+                },
+            ]
+        )
+    with pytest.raises(ValidationError, match="Ville thresholds"):
+        StaticMartingaleConfig(
+            trackers=[
+                {
+                    "tracker_id": "invalid-threshold",
+                    "betting_function": "power",
+                    "alarm_statistic": "martingale",
+                    "threshold_config": {"mode": "manual", "value": 1},
+                    "epsilon": 0.5,
+                }
+            ]
+        )
+    with pytest.raises(ValidationError, match="method"):
+        StaticMartingaleConfig(method="power")
     with pytest.raises(ValidationError, match="alpha"):
         StaticMartingaleConfig(alpha=0.01)
+
+
+def test_static_martingale_automatic_threshold_constraints():
+    with pytest.raises(ValidationError, match="only available"):
+        StaticMartingaleConfig(
+            trackers=[
+                {
+                    "tracker_id": "invalid-auto",
+                    "betting_function": "power",
+                    "alarm_statistic": "martingale",
+                    "threshold_config": {"mode": "automatic"},
+                }
+            ]
+        )
+
+    with pytest.raises(ValidationError, match="use at least 199"):
+        StaticMartingaleConfig(
+            trackers=[
+                {
+                    "tracker_id": "cusum",
+                    "betting_function": "power",
+                    "alarm_statistic": "cusum",
+                    "threshold_config": {"mode": "automatic"},
+                },
+                {
+                    "tracker_id": "sr",
+                    "betting_function": "power",
+                    "alarm_statistic": "shiryaev_roberts",
+                    "threshold_config": {"mode": "automatic"},
+                },
+            ],
+            automatic_threshold_calibration={
+                "false_alarm_probability": 0.01,
+                "horizon": 10,
+                "simulation_count": 100,
+            },
+        )
+
+    with pytest.raises(ValidationError, match="computationally large"):
+        StaticMartingaleConfig(
+            trackers=[
+                {
+                    "tracker_id": "oversized-mixture",
+                    "betting_function": "simple_mixture",
+                    "alarm_statistic": "cusum",
+                    "threshold_config": {"mode": "automatic"},
+                    "n_grid": 10_000,
+                }
+            ],
+            automatic_threshold_calibration={
+                "false_alarm_probability": 0.1,
+                "horizon": 1_000,
+                "simulation_count": 101,
+            },
+        )
 
 
 def test_static_baseline_rejects_removed_fdr_config():

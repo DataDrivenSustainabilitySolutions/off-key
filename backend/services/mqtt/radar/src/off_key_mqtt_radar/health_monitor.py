@@ -169,27 +169,20 @@ class HealthMonitor:
 
     def _build_metrics_dict(self, status: HealthStatus) -> dict[str, Any]:
         """Build metrics dictionary for persistence."""
-        processor_metrics = (
-            self._message_processor.get_metrics() if self._message_processor else {}
-        )
-        processed_count = processor_metrics.get(
-            "processed_message_count", processor_metrics.get("message_count", 0)
-        )
+        metrics = status.metrics
 
         return {
-            "total_messages_processed": processed_count,
-            "total_anomalies_detected": processor_metrics.get("anomaly_count", 0),
-            "anomaly_rate": processor_metrics.get("anomaly_rate", 0),
-            "avg_processing_time_ms": self._calculate_avg_processing_time(),
-            "throughput_per_second": self._calculate_throughput(processed_count),
-            "memory_usage_mb": (
-                self._memory_manager.get_memory_usage() if self._memory_manager else 0
-            ),
-            "error_count": processor_metrics.get("error_count", 0),
-            "error_rate": processor_metrics.get("error_rate", 0),
+            "total_messages_processed": metrics.get("processed_message_count", 0),
+            "total_anomalies_detected": metrics.get("anomaly_count", 0),
+            "anomaly_rate": metrics.get("anomaly_rate", 0),
+            "avg_processing_time_ms": metrics.get("avg_processing_time_ms", 0),
+            "throughput_per_second": metrics.get("throughput_per_second", 0),
+            "memory_usage_mb": metrics.get("memory_usage_mb", 0),
+            "error_count": metrics.get("error_count", 0),
+            "error_rate": metrics.get("error_rate", 0),
             "service_status": status.status,
             "active_alerts": status.active_alerts,
-            "operational_status": status.metrics.get("operational_status"),
+            "operational_status": metrics.get("operational_status"),
         }
 
     def record_processing_time(self, processing_time: float) -> None:
@@ -211,87 +204,117 @@ class HealthMonitor:
             return 0.0
         return message_count / uptime
 
-    def get_health_status(self) -> HealthStatus:
-        """Get comprehensive health status."""
+    def _collect_component_health(self) -> dict[str, Any]:
+        """Collect health payloads from the configured runtime components."""
         components: dict[str, Any] = {}
-        active_alerts: list[str] = []
-
-        # Check MQTT client
         if self._mqtt_client:
-            mqtt_health = self._mqtt_client.get_health_status()
-            components["mqtt_client"] = mqtt_health
-            if mqtt_health.get("status") != "healthy":
-                active_alerts.append(f"mqtt_{mqtt_health.get('reason', 'unknown')}")
-
-        # Check database writer
+            components["mqtt_client"] = self._mqtt_client.get_health_status()
         if self._database_writer:
-            db_health = self._database_writer.get_health_status()
-            components["database_writer"] = db_health
-            if db_health.get("status") not in ("healthy", "disabled"):
-                active_alerts.append(f"database_{db_health.get('reason', 'unknown')}")
-
-        # Check anomaly detector
+            components["database_writer"] = self._database_writer.get_health_status()
         if self._detector:
-            detector_health = self._detector.get_health_info()
-            components["anomaly_detector"] = detector_health
-            if detector_health.get("state") != "healthy":
-                active_alerts.append(f"detector_{detector_health.get('state')}")
+            components["anomaly_detector"] = self._detector.get_health_info()
+        return components
 
-        # Check memory usage
-        if self._memory_manager:
-            memory_usage = self._memory_manager.get_memory_usage()
-            if memory_usage > self._memory_manager.max_memory_mb * 0.9:
-                active_alerts.append("high_memory_usage")
+    def _collect_active_alerts(
+        self,
+        components: dict[str, Any],
+        processor_metrics: dict[str, Any],
+        memory_usage: float,
+    ) -> list[str]:
+        """Reduce component and resource health into stable alert identifiers."""
+        alerts: list[str] = []
+        mqtt_health = components.get("mqtt_client")
+        if mqtt_health and mqtt_health.get("status") != "healthy":
+            alerts.append(f"mqtt_{mqtt_health.get('reason', 'unknown')}")
 
-        # Check error rate
-        if self._message_processor:
-            metrics = self._message_processor.get_metrics()
-            if metrics.get("error_rate", 0) > 0.1:
-                active_alerts.append("high_error_rate")
+        database_health = components.get("database_writer")
+        if database_health and database_health.get("status") not in {
+            "healthy",
+            "disabled",
+        }:
+            alerts.append(f"database_{database_health.get('reason', 'unknown')}")
 
-        # Determine overall status
-        is_running = self.start_time is not None
-        if not is_running:
-            status = "failed"
-        elif active_alerts:
-            status = "degraded"
-        else:
-            status = "healthy"
+        detector_health = components.get("anomaly_detector")
+        if detector_health and detector_health.get("state") != "healthy":
+            alerts.append(f"detector_{detector_health.get('state')}")
 
-        # Calculate metrics
-        uptime = 0.0
-        if self.start_time:
-            uptime = (datetime.now() - self.start_time).total_seconds()
+        if (
+            self._memory_manager
+            and memory_usage > self._memory_manager.max_memory_mb * 0.9
+        ):
+            alerts.append("high_memory_usage")
+        if processor_metrics.get("error_rate", 0) > 0.1:
+            alerts.append("high_error_rate")
+        return alerts
 
-        processor_metrics = (
-            self._message_processor.get_metrics() if self._message_processor else {}
+    def _uptime_seconds(self) -> float:
+        if self.start_time is None:
+            return 0.0
+        return (datetime.now() - self.start_time).total_seconds()
+
+    def _build_health_metrics(
+        self,
+        *,
+        service_status: str,
+        components: dict[str, Any],
+        processor_metrics: dict[str, Any],
+        memory_usage: float,
+        uptime: float,
+    ) -> dict[str, Any]:
+        """Build the health response metrics from one consistent snapshot."""
+        message_count = int(processor_metrics.get("message_count", 0) or 0)
+        processed_count = int(
+            processor_metrics.get("processed_message_count", message_count) or 0
         )
-
         metrics = {
             "uptime_seconds": uptime,
-            "message_count": processor_metrics.get("message_count", 0),
-            "processed_message_count": processor_metrics.get(
-                "processed_message_count", processor_metrics.get("message_count", 0)
-            ),
+            "message_count": message_count,
+            "processed_message_count": processed_count,
             "anomaly_count": processor_metrics.get("anomaly_count", 0),
             "anomaly_rate": processor_metrics.get("anomaly_rate", 0),
             "error_count": processor_metrics.get("error_count", 0),
             "error_rate": processor_metrics.get("error_rate", 0),
             "last_alignment_status": processor_metrics.get("last_alignment_status"),
             "avg_processing_time_ms": self._calculate_avg_processing_time(),
-            "throughput_per_second": self._calculate_throughput(
-                processor_metrics.get(
-                    "processed_message_count", processor_metrics.get("message_count", 0)
-                )
-            ),
-            "memory_usage_mb": (
-                self._memory_manager.get_memory_usage() if self._memory_manager else 0
-            ),
+            "throughput_per_second": self._calculate_throughput(processed_count),
+            "memory_usage_mb": memory_usage,
         }
         metrics["operational_status"] = self._build_operational_status(
+            service_status=service_status,
+            components=components,
+            processor_metrics=processor_metrics,
+        )
+        return metrics
+
+    def get_health_status(self) -> HealthStatus:
+        """Get comprehensive health status."""
+        components = self._collect_component_health()
+        processor_metrics = (
+            self._message_processor.get_metrics() if self._message_processor else {}
+        )
+        memory_usage = (
+            self._memory_manager.get_memory_usage() if self._memory_manager else 0.0
+        )
+        active_alerts = self._collect_active_alerts(
+            components,
+            processor_metrics,
+            memory_usage,
+        )
+
+        if self.start_time is None:
+            status = "failed"
+        elif active_alerts:
+            status = "degraded"
+        else:
+            status = "healthy"
+
+        uptime = self._uptime_seconds()
+        metrics = self._build_health_metrics(
             service_status=status,
             components=components,
             processor_metrics=processor_metrics,
+            memory_usage=memory_usage,
+            uptime=uptime,
         )
 
         return HealthStatus(

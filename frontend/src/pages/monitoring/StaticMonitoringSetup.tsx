@@ -23,7 +23,6 @@ import { AdvancedSettings } from "./AdvancedSettings";
 import {
   buildStaticMonitoringRequest,
   createDefaultStaticDraft,
-  FIXED_VILLE_THRESHOLD,
   getModelDefaults,
   humanize,
   parseTopicPatterns,
@@ -158,7 +157,7 @@ export function StaticMonitoringSetup({
           <LaneCard
             title="Temporally dependent streams"
             eyebrow="Dynamic lane"
-            description="Reserved for evolving temporal dependence. This is intentionally a facade only: no model, preprocessing, or runtime logic is attached yet."
+            description="Reserved for evolving temporal dependence. This is a coming-soon preview: no model, preprocessing, or runtime logic is attached yet."
             icon={Activity}
           />
         </div>
@@ -184,7 +183,7 @@ export function StaticMonitoringSetup({
           <LifecycleStep
             number={3}
             title="Accumulate evidence"
-            description="Transform p-values into e-values and update the native restarted mixture."
+            description="Feed each p-value to the configured martingale trackers and evaluate new threshold crossings."
             icon={Sparkles}
           />
         </div>
@@ -378,19 +377,20 @@ export function StaticMonitoringSetup({
             <div className="overflow-hidden rounded-2xl border border-emerald-500/25 bg-emerald-500/[0.055] p-5">
               <div className="flex items-center gap-2 text-emerald-700 dark:text-emerald-300">
                 <ShieldCheck className="h-5 w-5" />
-                <h3 className="font-semibold">Fixed Ville threshold</h3>
+                <h3 className="font-semibold">Martingale ensemble</h3>
               </div>
               <div className="mt-5 flex items-end justify-between gap-3">
                 <div className="text-5xl font-semibold tracking-[-0.05em] tabular-nums">
-                  {FIXED_VILLE_THRESHOLD}
+                  {draft.martingaleTrackers.length}
                 </div>
                 <span className="mb-1 rounded-full border border-emerald-500/25 bg-background/70 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-emerald-700 dark:text-emerald-300">
-                  Fixed
+                  {draft.martingaleTrackers.length === 1 ? "Tracker" : "Trackers"}
                 </span>
               </div>
               <p className="mt-3 text-sm leading-6 text-muted-foreground">
-                The native restarted mixture fires on a new crossing of 100. It
-                is not manually reset and the threshold is not configurable.
+                Each tracker selects a betting method, alarm statistic, and
+                threshold. An anomaly is emitted when any tracker records a new
+                crossing.
               </p>
             </div>
             <div className="rounded-2xl border border-border/65 bg-card p-5">
@@ -419,8 +419,8 @@ export function StaticMonitoringSetup({
             </div>
             <div className="rounded-2xl border border-amber-500/25 bg-amber-500/[0.045] p-5 text-sm leading-6 text-muted-foreground">
               Evidence assumes the static calibration remains representative.
-              Temporal dependence is intentionally deferred to the future dynamic
-              lane.
+              Temporal dependence is intentionally deferred to the coming-soon
+              dynamic lane.
             </div>
           </aside>
         </div>

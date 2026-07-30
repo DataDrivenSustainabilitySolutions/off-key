@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   createAnomalyZones,
+  createAnomalyMarkers,
   filterAnomalies,
   hasAnomaly,
   MULTIVARIATE_TELEMETRY_TYPE,
@@ -22,7 +23,7 @@ const baseAnomaly: Anomaly = {
 
 describe("anomaly chart utilities", () => {
   it("includes multivariate anomalies only on involved telemetry charts", () => {
-    const anomalies = [
+    const anomalies: Anomaly[] = [
       baseAnomaly,
       {
         ...baseAnomaly,
@@ -45,7 +46,7 @@ describe("anomaly chart utilities", () => {
   });
 
   it("keeps legacy multivariate anomalies visible when no sensor set exists", () => {
-    const anomalies = [
+    const anomalies: Anomaly[] = [
       {
         ...baseAnomaly,
         anomaly_id: "anomaly-legacy",
@@ -75,7 +76,7 @@ describe("anomaly chart utilities", () => {
   });
 
   it("clusters nearby anomalies into zones with full anomaly payloads", () => {
-    const anomalies = [
+    const anomalies: Anomaly[] = [
       {
         ...baseAnomaly,
         anomaly_id: "zone-a",
@@ -144,7 +145,8 @@ describe("anomaly chart utilities", () => {
       },
     ]);
     expect(zones).toHaveLength(1);
-    expect(zones[0]).toMatchObject({ start: timestamp, end: timestamp });
+    const timestampMs = Date.parse(timestamp);
+    expect(zones[0]).toMatchObject({ startMs: timestampMs, endMs: timestampMs });
     expect(zones[0]?.anomalies[0]?.anomaly_id).toBe("offset");
   });
 
@@ -233,8 +235,32 @@ describe("anomaly chart utilities", () => {
     expect(matched).toBeNull();
   });
 
+  it("precomputes only matching markers and keeps first-match semantics", () => {
+    const laterInInput = {
+      ...baseAnomaly,
+      anomaly_id: "later-in-input",
+      timestamp: "2026-05-19T08:00:02.000Z",
+    };
+    const firstInInput = {
+      ...baseAnomaly,
+      anomaly_id: "first-in-input",
+      timestamp: "2026-05-19T08:00:04.000Z",
+    };
+    const markers = createAnomalyMarkers(
+      [
+        { timestamp: "2026-05-19T08:00:00.000Z", value: 1 },
+        { timestamp: "2026-05-19T08:01:00.000Z", value: 2 },
+      ],
+      [firstInInput, laterInInput]
+    );
+
+    expect(markers).toHaveLength(1);
+    expect(markers[0]?.anomaly.anomaly_id).toBe("first-in-input");
+    expect(markers[0]?.time).toBe(Date.parse("2026-05-19T08:00:00.000Z"));
+  });
+
   it("filters anomalies by explicit time window", () => {
-    const anomalies = [
+    const anomalies: Anomaly[] = [
       { ...baseAnomaly, anomaly_id: "inside", timestamp: "2026-05-19T08:00:00.000Z" },
       { ...baseAnomaly, anomaly_id: "outside", timestamp: "2026-05-19T09:00:00.000Z" },
     ];

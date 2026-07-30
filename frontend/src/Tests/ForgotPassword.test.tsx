@@ -1,9 +1,12 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import ForgotPassword from '../pages/ForgotPassword';
-import { vi } from 'vitest';
+import { afterAll, vi } from 'vitest';
 import { API_CONFIG, getApiUrl } from '@/lib/api-config';
 
-global.fetch = vi.fn();
+const fetchMock = vi.fn<typeof fetch>();
+vi.stubGlobal('fetch', fetchMock);
+
+afterAll(() => vi.unstubAllGlobals());
 
 describe('ForgotPassword', () => {
     beforeEach(() => {
@@ -25,10 +28,10 @@ describe('ForgotPassword', () => {
     });
 
     test('zeigt Erfolgsmeldung nach Submit', async () => {
-        (fetch as unknown as vi.Mock).mockResolvedValueOnce({
-            ok: true,
-            json: async () => ({ message: 'Reset link gesendet!' }),
-        });
+        fetchMock.mockResolvedValueOnce(new Response(
+            JSON.stringify({ message: 'Reset link gesendet!' }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } }
+        ));
 
         render(<ForgotPassword />);
         const input = screen.getByLabelText(/E-Mail/i);
@@ -52,7 +55,7 @@ describe('ForgotPassword', () => {
     });
 
     test('zeigt Fehlermeldung bei fetch-Fehler', async () => {
-        (fetch as unknown as vi.Mock).mockRejectedValueOnce(new Error('Failed'));
+        fetchMock.mockRejectedValueOnce(new Error('Failed'));
 
         render(<ForgotPassword />);
         const input = screen.getByLabelText(/E-Mail/i);
@@ -67,10 +70,10 @@ describe('ForgotPassword', () => {
     });
 
     test('zeigt Fehlermeldung bei nicht erfolgreicher Antwort', async () => {
-        (fetch as unknown as vi.Mock).mockResolvedValueOnce({
-            ok: false,
-            json: async () => ({ detail: 'Request rejected' }),
-        });
+        fetchMock.mockResolvedValueOnce(new Response(
+            JSON.stringify({ detail: 'Request rejected' }),
+            { status: 400, headers: { 'Content-Type': 'application/json' } }
+        ));
 
         render(<ForgotPassword />);
         const input = screen.getByLabelText(/E-Mail/i);

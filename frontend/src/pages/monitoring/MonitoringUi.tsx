@@ -75,7 +75,7 @@ export function LaneCard({
         "relative overflow-hidden rounded-2xl border p-5 transition-colors sm:p-6",
         selected
           ? "border-primary/35 bg-primary/[0.035]"
-          : "border-dashed border-border/70 bg-muted/15",
+          : "border-dashed border-border/70 bg-muted/15 text-muted-foreground opacity-60",
       )}
       aria-disabled={!selected}
     >
@@ -114,7 +114,7 @@ export function LaneCard({
         ) : (
           <>
             <Clock3 className="h-4 w-4" />
-            Coming later
+            Coming soon
           </>
         )}
       </div>

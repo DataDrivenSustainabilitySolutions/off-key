@@ -20,10 +20,11 @@ from off_key_core.config.logs import (
 )
 from off_key_core.config.validation import validate_settings
 from off_key_core.db.base import get_async_session_local
+from starlette.middleware.gzip import GZipMiddleware
 
 from .api.v1 import data_services, models, radar
 from .api.v1.admin_models import router as admin_models_router
-from .config.config import RadarWorkloadLifecycle, get_tactic_settings
+from .config.config import RadarWorkloadLifecycle, TacticConfig, get_tactic_settings
 from .facades.docker import AsyncDocker
 from .models.registry import ModelRegistryNotReadyError, ModelRegistryService
 from .services.orchestration.radar import RadarOrchestrationService
@@ -110,16 +111,8 @@ async def _teardown_ephemeral_radar_workloads(app: FastAPI, phase: str) -> None:
     )
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """FastAPI lifespan manager for startup and shutdown events."""
-    config = get_tactic_settings().config
-
-    app.state.model_registry = ModelRegistryService()
-    app.state.model_registry_ready = False
-    app.state.model_registry_recovery_task = None
-
-    # Initialize model registry with bounded startup retries.
+async def _start_model_registry(app: FastAPI, config: TacticConfig) -> None:
+    """Initialize the registry or start its bounded background recovery."""
     model_registry_ready = await _initialize_model_registry(
         app,
         max_retries=config.model_registry_init_max_retries,
@@ -132,70 +125,112 @@ async def lifespan(app: FastAPI):
             name="tactic-model-registry-recovery",
         )
 
-    # Validate Docker connectivity early
+
+async def _connect_docker(app: FastAPI) -> None:
+    """Connect to Docker and retain only a verified client."""
+    docker_client = AsyncDocker()
     try:
-        docker_client = AsyncDocker()
         await docker_client.run(docker_client.client.ping)
-        logger.info("Docker connectivity verified")
-        app.state.docker_client = docker_client
     except Exception as exc:
+        docker_client.close()
         logger.exception(
             "Docker API connection failed; shutting down",
             extra={"error": str(exc), "error_type": type(exc).__name__},
         )
         raise
 
-    if config.radar_workload_lifecycle == RadarWorkloadLifecycle.EPHEMERAL:
-        await _teardown_ephemeral_radar_workloads(app, phase="startup")
-    else:
-        logger.info("RADAR workload lifecycle is persistent; startup cleanup skipped")
+    app.state.docker_client = docker_client
+    logger.info("Docker connectivity verified")
 
-    # Start reconciliation service if enabled
-    if config.reconciliation_enabled:
-        app.state.reconciliation_service = RadarStatusReconciliationService(
-            interval_seconds=config.reconciliation_interval,
-            terminal_service_retention_hours=(config.terminal_service_retention_hours),
-        )
-        await app.state.reconciliation_service.start()
-        interval = config.reconciliation_interval
-        logger.info(f"Status reconciliation enabled (interval={interval}s)")
-    else:
-        app.state.reconciliation_service = None
+
+async def _start_reconciliation(app: FastAPI, config: TacticConfig) -> None:
+    """Start background status reconciliation when configured."""
+    if not config.reconciliation_enabled:
         logger.info("Status reconciliation disabled")
+        return
 
-    yield
+    reconciliation_service = RadarStatusReconciliationService(
+        interval_seconds=config.reconciliation_interval,
+        terminal_service_retention_hours=config.terminal_service_retention_hours,
+    )
+    app.state.reconciliation_service = reconciliation_service
+    await reconciliation_service.start()
+    logger.info(
+        "Status reconciliation enabled (interval=%ss)",
+        config.reconciliation_interval,
+    )
 
-    # Cleanup: stop reconciliation service
-    if app.state.reconciliation_service:
+
+async def _shutdown_services(app: FastAPI, config: TacticConfig) -> None:
+    """Best-effort shutdown for every service initialized during startup."""
+    reconciliation_service = app.state.reconciliation_service
+    if reconciliation_service is not None:
         try:
-            await app.state.reconciliation_service.stop()
+            await reconciliation_service.stop()
             logger.info("Status reconciliation stopped")
         except Exception:
             logger.exception("Error stopping reconciliation service")
+        app.state.reconciliation_service = None
 
-    if config.radar_workload_lifecycle == RadarWorkloadLifecycle.EPHEMERAL:
+    if (
+        config.radar_workload_lifecycle == RadarWorkloadLifecycle.EPHEMERAL
+        and app.state.docker_client is not None
+    ):
         try:
             await _teardown_ephemeral_radar_workloads(app, phase="shutdown")
         except Exception:
             logger.exception("Failed to teardown ephemeral RADAR workloads")
 
-    # Cleanup: close Docker client
-    if app.state.docker_client:
+    docker_client = app.state.docker_client
+    if docker_client is not None:
         try:
-            app.state.docker_client.close()
+            docker_client.close()
         except Exception:
             logger.exception("Error closing Docker client")
-        app.state.docker_client = None
+        finally:
+            app.state.docker_client = None
 
-    recovery_task = getattr(app.state, "model_registry_recovery_task", None)
-    if recovery_task:
-        recovery_task.cancel()
-        with suppress(asyncio.CancelledError):
-            await recovery_task
-        app.state.model_registry_recovery_task = None
+    recovery_task = app.state.model_registry_recovery_task
+    if recovery_task is not None:
+        try:
+            recovery_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await recovery_task
+        except Exception:
+            logger.exception("Error stopping model registry recovery")
+        finally:
+            app.state.model_registry_recovery_task = None
 
     app.state.model_registry_ready = False
     app.state.model_registry = None
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """FastAPI lifespan manager for startup and shutdown events."""
+    config = get_tactic_settings().config
+
+    app.state.model_registry = ModelRegistryService()
+    app.state.model_registry_ready = False
+    app.state.model_registry_recovery_task = None
+    app.state.docker_client = None
+    app.state.reconciliation_service = None
+
+    try:
+        await _start_model_registry(app, config)
+        await _connect_docker(app)
+
+        if config.radar_workload_lifecycle == RadarWorkloadLifecycle.EPHEMERAL:
+            await _teardown_ephemeral_radar_workloads(app, phase="startup")
+        else:
+            logger.info(
+                "RADAR workload lifecycle is persistent; startup cleanup skipped"
+            )
+
+        await _start_reconciliation(app, config)
+        yield
+    finally:
+        await _shutdown_services(app, config)
 
 
 def create_app() -> FastAPI:
@@ -220,6 +255,7 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=5)
 
     # Include API routers
     app.include_router(

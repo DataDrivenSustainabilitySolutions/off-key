@@ -1,6 +1,6 @@
-import { useState, useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { Activity } from "lucide-react";
+import { Activity, Link2, Unlink2 } from "lucide-react";
 
 import {
   MetricCard,
@@ -21,9 +21,21 @@ import {
 } from "@/components/ui/tooltip";
 import { apiUtils } from "@/lib/api-client";
 import { API_CONFIG } from "@/lib/api-config";
-import { getAllTelemetryData, getAnomalies } from "@/lib/charger-api";
-import type { MonitoringEvidence } from "@/types/monitoring";
-import type { Anomaly, TelemetryTypeData } from "@/types/charger";
+import {
+  getAllTelemetryData,
+  getAnomalies,
+  mergeTelemetryData,
+} from "@/lib/charger-api";
+import type {
+  MonitoringChartEvidence,
+  MonitoringEvidenceCursor,
+} from "@/types/monitoring";
+import { useLinkedChartNavigation } from "@/hooks/use-linked-chart-navigation";
+import {
+  getMonitoringEvidenceCursor,
+  mergeMonitoringChartEvidence,
+} from "@/lib/monitoring-chart";
+import type { Anomaly, TelemetryCursor, TelemetryTypeData } from "@/types/charger";
 
 type TelemetryCategoryGroups = Record<
   TelemetryTypeData["category"],
@@ -31,6 +43,22 @@ type TelemetryCategoryGroups = Record<
 >;
 
 const RECENT_TELEMETRY_WINDOW_MS = INTERVALS.DETAILS_UPDATE * 6;
+const EVIDENCE_PAGE_SIZE = 2000;
+const MAX_FORWARD_PAGES = 10;
+const EMPTY_EVIDENCE: MonitoringChartEvidence[] = [];
+const TELEMETRY_SECTIONS: Array<{
+  category: TelemetryTypeData["category"];
+  label: string;
+}> = [
+  { category: "cpu", label: "CPU Metrics" },
+  { category: "system", label: "System Metrics" },
+  { category: "controller", label: "Controller Metrics" },
+  { category: "other", label: "Other Metrics" },
+];
+
+const sameAnomalyWindow = (left: Anomaly[], right: Anomaly[]): boolean =>
+  left.length === right.length &&
+  left.every((item, index) => item.anomaly_id === right[index]?.anomaly_id);
 
 const getLatestTelemetryTimestamp = (
   telemetryData: TelemetryTypeData[]
@@ -79,12 +107,11 @@ const LiveTelemetryIndicator: React.FC<{
 
 const Details: React.FC = () => {
   const { chargerId } = useParams<{ chargerId: string }>();
-  const resolvedChargerId = chargerId ?? "";
 
   const [isLoadingTelemetry, setIsLoadingTelemetry] = useState(true);
   const [allTelemetryData, setAllTelemetryData] = useState<TelemetryTypeData[]>([]);
   const [chargerAnomalies, setChargerAnomalies] = useState<Anomaly[]>([]);
-  const [monitoringEvidence, setMonitoringEvidence] = useState<MonitoringEvidence[]>([]);
+  const [monitoringEvidence, setMonitoringEvidence] = useState<MonitoringChartEvidence[]>([]);
   const [now, setNow] = useState(() => Date.now());
   const [refreshRequest, setRefreshRequest] = useState(0);
 
@@ -95,24 +122,67 @@ const Details: React.FC = () => {
 
     let cancelled = false;
     let refreshInFlight = false;
+    let activeController: AbortController | undefined;
+    let evidenceCursor: MonitoringEvidenceCursor | undefined;
+    let evidenceLoaded = false;
+    let telemetryLoaded = false;
+    const telemetryCursors = new Map<string, TelemetryCursor>();
 
     const refresh = async (showLoading = false) => {
       if (refreshInFlight) return;
       refreshInFlight = true;
+      const controller = new AbortController();
+      activeController = controller;
       if (showLoading) setIsLoadingTelemetry(true);
+
+      const loadEvidence = async () => {
+        const initialCursor = evidenceCursor;
+        let cursor = initialCursor;
+        const evidence: MonitoringChartEvidence[] = [];
+        for (let pageNumber = 0; pageNumber < MAX_FORWARD_PAGES; pageNumber += 1) {
+          const page = await apiUtils.get<MonitoringChartEvidence[]>(
+            API_CONFIG.ENDPOINTS.MONITORING.CHART_EVIDENCE(chargerId, cursor),
+            { signal: controller.signal },
+          );
+          evidence.push(...page);
+          if (!initialCursor || page.length < EVIDENCE_PAGE_SIZE) return evidence;
+          const nextCursor = getMonitoringEvidenceCursor(page);
+          if (
+            !nextCursor ||
+            (nextCursor.created === cursor?.created &&
+              nextCursor.timestamp === cursor.timestamp &&
+              nextCursor.service_id === cursor.service_id &&
+              nextCursor.sequence_number === cursor.sequence_number)
+          ) return evidence;
+          cursor = nextCursor;
+        }
+        return evidence;
+      };
 
       const [telemetryResult, anomaliesResult, evidenceResult] =
         await Promise.allSettled([
-          getAllTelemetryData(chargerId),
-          getAnomalies(chargerId),
-          apiUtils.get<MonitoringEvidence[]>(
-            API_CONFIG.ENDPOINTS.MONITORING.EVIDENCE(chargerId),
-          ),
+          telemetryLoaded
+            ? getAllTelemetryData(
+                chargerId,
+                controller.signal,
+                telemetryCursors,
+              )
+            : getAllTelemetryData(chargerId, controller.signal),
+          getAnomalies(chargerId, controller.signal),
+          loadEvidence(),
         ]);
 
       if (!cancelled) {
         if (telemetryResult.status === "fulfilled") {
-          setAllTelemetryData(telemetryResult.value);
+          setAllTelemetryData((current) =>
+            telemetryLoaded
+              ? mergeTelemetryData(current, telemetryResult.value)
+              : telemetryResult.value
+          );
+          telemetryLoaded = true;
+          telemetryResult.value.forEach((series) => {
+            if (series.cursor) telemetryCursors.set(series.type, series.cursor);
+          });
         } else {
           clientLogger.error({
             event: "details.telemetry_load_failed",
@@ -123,7 +193,11 @@ const Details: React.FC = () => {
         }
 
         if (anomaliesResult.status === "fulfilled") {
-          setChargerAnomalies(anomaliesResult.value);
+          setChargerAnomalies((current) =>
+            sameAnomalyWindow(current, anomaliesResult.value)
+              ? current
+              : anomaliesResult.value
+          );
         } else {
           clientLogger.error({
             event: "details.anomalies_load_failed",
@@ -134,7 +208,15 @@ const Details: React.FC = () => {
         }
 
         if (evidenceResult.status === "fulfilled") {
-          setMonitoringEvidence(evidenceResult.value ?? []);
+          const incomingEvidence = evidenceResult.value ?? [];
+          setMonitoringEvidence((current) =>
+            evidenceLoaded
+              ? mergeMonitoringChartEvidence(current, incomingEvidence)
+              : incomingEvidence
+          );
+          evidenceLoaded = true;
+          evidenceCursor =
+            getMonitoringEvidenceCursor(incomingEvidence) ?? evidenceCursor;
         } else {
           clientLogger.error({
             event: "details.monitoring_evidence_load_failed",
@@ -144,30 +226,33 @@ const Details: React.FC = () => {
           });
         }
 
+        setNow(Date.now());
+
         if (showLoading) setIsLoadingTelemetry(false);
       }
+      if (activeController === controller) activeController = undefined;
       refreshInFlight = false;
     };
 
     void refresh(true);
     const interval = window.setInterval(
-      () => void refresh(),
+      () => {
+        if (!document.hidden) void refresh();
+      },
       INTERVALS.DETAILS_UPDATE,
     );
+    const handleVisibilityChange = () => {
+      if (!document.hidden) void refresh();
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
 
     return () => {
       cancelled = true;
+      activeController?.abort();
       window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, [chargerId, refreshRequest]);
-
-  useEffect(() => {
-    const interval = window.setInterval(() => {
-      setNow(Date.now());
-    }, INTERVALS.DETAILS_UPDATE);
-
-    return () => window.clearInterval(interval);
-  }, []);
 
   const latestTelemetryTimestamp = useMemo(
     () => getLatestTelemetryTimestamp(allTelemetryData),
@@ -198,8 +283,25 @@ const Details: React.FC = () => {
     return grouped;
   }, [allTelemetryData]);
 
+  const evidenceByTelemetry = useMemo(() => {
+    const grouped = new Map<string, MonitoringChartEvidence[]>();
+    monitoringEvidence.forEach((item) => {
+      item.sensor_set.forEach((sensor) => {
+        const sensorEvidence = grouped.get(sensor) ?? [];
+        sensorEvidence.push(item);
+        grouped.set(sensor, sensorEvidence);
+      });
+    });
+    return grouped;
+  }, [monitoringEvidence]);
 
-  // No additional functions needed - all functionality is handled by DynamicTelemetryChart
+  const {
+    chartsLinked,
+    linkedTimelineExtent,
+    getNavigationState,
+    handleNavigationStateChange,
+    toggleChartLink,
+  } = useLinkedChartNavigation(allTelemetryData, monitoringEvidence);
 
   return (
     <>
@@ -263,9 +365,42 @@ const Details: React.FC = () => {
               Charts update automatically while this page is open.
             </p>
             </div>
-            <span className="hidden rounded-full border border-border/70 bg-card px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground sm:inline-flex">
-              Auto refresh
-            </span>
+            <div className="flex items-center gap-2">
+              {allTelemetryData.length > 1 && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      type="button"
+                      variant={chartsLinked ? "secondary" : "outline"}
+                      size="sm"
+                      className="h-8 gap-1.5 px-2.5 text-xs"
+                      aria-label={
+                        chartsLinked
+                          ? "Unlink chart navigation"
+                          : "Link chart navigation"
+                      }
+                      aria-pressed={chartsLinked}
+                      onClick={toggleChartLink}
+                    >
+                      {chartsLinked ? (
+                        <Link2 className="size-3.5" />
+                      ) : (
+                        <Unlink2 className="size-3.5" />
+                      )}
+                      {chartsLinked ? "Linked" : "Independent"}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" align="end" className="max-w-64">
+                    {chartsLinked
+                      ? "Time ranges, pan, and zoom are shared. Vertical scales stay independent."
+                      : "Link horizontal time navigation across every chart."}
+                  </TooltipContent>
+                </Tooltip>
+              )}
+              <span className="hidden rounded-full border border-border/70 bg-card px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground sm:inline-flex">
+                Auto refresh
+              </span>
+            </div>
           </div>
 
           {isLoadingTelemetry ? (
@@ -285,65 +420,31 @@ const Details: React.FC = () => {
             </div>
           ) : (
             <div className="space-y-6">
-              {telemetryByCategory.cpu.length > 0 && (
-                <div className="space-y-4">
-                  <h3 className="text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">CPU Metrics</h3>
-                  {telemetryByCategory.cpu.map((telemetryData) => (
-                    <DynamicTelemetryChart
-                      key={telemetryData.type}
-                      telemetryData={telemetryData}
-                      chargerId={resolvedChargerId}
-                      anomalies={chargerAnomalies}
-                      evidence={monitoringEvidence}
-                    />
-                  ))}
-                </div>
-              )}
-
-              {telemetryByCategory.system.length > 0 && (
-                <div className="space-y-4">
-                  <h3 className="text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">System Metrics</h3>
-                  {telemetryByCategory.system.map((telemetryData) => (
-                    <DynamicTelemetryChart
-                      key={telemetryData.type}
-                      telemetryData={telemetryData}
-                      chargerId={resolvedChargerId}
-                      anomalies={chargerAnomalies}
-                      evidence={monitoringEvidence}
-                    />
-                  ))}
-                </div>
-              )}
-
-              {telemetryByCategory.controller.length > 0 && (
-                <div className="space-y-4">
-                  <h3 className="text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">Controller Metrics</h3>
-                  {telemetryByCategory.controller.map((telemetryData) => (
-                    <DynamicTelemetryChart
-                      key={telemetryData.type}
-                      telemetryData={telemetryData}
-                      chargerId={resolvedChargerId}
-                      anomalies={chargerAnomalies}
-                      evidence={monitoringEvidence}
-                    />
-                  ))}
-                </div>
-              )}
-
-              {telemetryByCategory.other.length > 0 && (
-                <div className="space-y-4">
-                  <h3 className="text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">Other Metrics</h3>
-                  {telemetryByCategory.other.map((telemetryData) => (
-                    <DynamicTelemetryChart
-                      key={telemetryData.type}
-                      telemetryData={telemetryData}
-                      chargerId={resolvedChargerId}
-                      anomalies={chargerAnomalies}
-                      evidence={monitoringEvidence}
-                    />
-                  ))}
-                </div>
-              )}
+              {TELEMETRY_SECTIONS.map(({ category, label }) => {
+                const telemetrySeries = telemetryByCategory[category];
+                return telemetrySeries.length > 0 ? (
+                  <div key={category} className="space-y-4">
+                    <h3 className="text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">
+                      {label}
+                    </h3>
+                    {telemetrySeries.map((telemetryData) => (
+                      <DynamicTelemetryChart
+                        key={telemetryData.type}
+                        telemetryData={telemetryData}
+                        anomalies={chargerAnomalies}
+                        evidence={
+                          evidenceByTelemetry.get(telemetryData.type) ?? EMPTY_EVIDENCE
+                        }
+                        navigationState={getNavigationState(telemetryData.type)}
+                        timelineExtent={
+                          chartsLinked ? linkedTimelineExtent : undefined
+                        }
+                        onNavigationStateChange={handleNavigationStateChange}
+                      />
+                    ))}
+                  </div>
+                ) : null;
+              })}
             </div>
           )}
         </section>

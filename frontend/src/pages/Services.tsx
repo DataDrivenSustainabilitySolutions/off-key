@@ -41,7 +41,7 @@ import type { ActiveService } from "@/types/monitoring";
 
 const extractChargerIdFromContainer = (containerName: string): string => {
   const match = containerName.match(/^radar-(.+)-\d+$/);
-  return match ? match[1] : "Unknown";
+  return match?.[1] ?? "Unknown";
 };
 
 const getServiceModeLabel = (service: ActiveService): string => {

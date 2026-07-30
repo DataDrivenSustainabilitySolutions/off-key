@@ -34,3 +34,15 @@ const bindTestStorage = (
 
 bindTestStorage("localStorage", createTestStorage());
 bindTestStorage("sessionStorage", createTestStorage());
+
+class TestResizeObserver implements ResizeObserver {
+  disconnect() {}
+  observe() {}
+  unobserve() {}
+}
+
+Object.defineProperty(globalThis, "ResizeObserver", {
+  configurable: true,
+  value: TestResizeObserver,
+  writable: true,
+});

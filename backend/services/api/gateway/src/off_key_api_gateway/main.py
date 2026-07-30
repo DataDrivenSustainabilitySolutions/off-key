@@ -19,6 +19,7 @@ from off_key_core.config.runtime import get_runtime_settings
 from off_key_core.config.services import get_service_endpoints_settings
 from off_key_core.config.validation import validate_settings
 from slowapi.middleware import SlowAPIMiddleware
+from starlette.middleware.gzip import GZipMiddleware
 
 from .api.middleware import LoggingMiddleware, SecurityLoggingMiddleware
 from .api.rate_limiter import limiter, rate_limit_exceeded_handler
@@ -40,12 +41,6 @@ validate_settings(
 app_settings = get_app_settings()
 runtime_settings = get_runtime_settings()
 service_endpoints = get_service_endpoints_settings()
-
-# See https://github.com/pyca/bcrypt/issues/684#issuecomment-2465572106
-import bcrypt  # noqa: E402
-
-if not hasattr(bcrypt, "__about__"):
-    bcrypt.__about__ = type("about", (object,), {"__version__": bcrypt.__version__})
 
 # Initialize logging from core + service YAML config
 service_logging_config = Path(__file__).parent / "config" / "logging.yaml"
@@ -131,6 +126,7 @@ app.add_middleware(SecurityLoggingMiddleware)
 
 # Enable SlowApi Middleware
 app.add_middleware(SlowAPIMiddleware)
+app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=5)
 
 app.add_middleware(
     CORSMiddleware,

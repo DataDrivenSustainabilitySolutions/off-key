@@ -1,19 +1,21 @@
 from datetime import UTC, datetime, timedelta
 
+import bcrypt
 from jose import JWTError, jwt
 from off_key_core.config.auth import get_auth_settings
-from passlib.context import CryptContext
 
-password_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 _REQUIRED_SCOPED_CLAIMS = ("sub", "exp", "iss", "aud", "token_type")
 
 
 def get_password_hash(password: str) -> str:
-    return password_context.hash(password)
+    return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return password_context.verify(plain_password, hashed_password)
+    try:
+        return bcrypt.checkpw(plain_password.encode(), hashed_password.encode())
+    except ValueError:
+        return False
 
 
 def create_jwt(data: dict, expires_delta: timedelta | None = None) -> str:

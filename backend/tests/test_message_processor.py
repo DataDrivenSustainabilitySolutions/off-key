@@ -75,6 +75,7 @@ def test_align_features_normalizes_before_state_cache_update():
         "charger-1",
         "voltage",
         {"voltage": 230.5},
+        sample_timestamp=None,
     )
     assert features == {"voltage": 230.5, "current": 18.2}
     assert alignment["alignment_status"] == "aligned_emit"
@@ -129,7 +130,6 @@ def test_align_features_blocks_stale_sensor_data():
 
 def test_align_features_waiting_for_barrier_returns_none():
     state_cache = MagicMock()
-    state_cache.alignment_mode = "strict_barrier"
     state_cache.update_with_status.return_value = AlignmentUpdate(
         status="waiting_for_barrier",
         pending_sensors=("current",),
@@ -260,3 +260,40 @@ def test_detect_anomaly_uses_canonical_sample_timestamp():
         result.context["canonical_sample_timestamp"]
         == datetime.fromtimestamp(sample_ts, tz=UTC).isoformat()
     )
+
+
+@pytest.mark.asyncio
+async def test_process_message_aligns_evidence_to_payload_event_timestamp():
+    detector = MagicMock()
+    detector.process_with_resilience.return_value = AnomalyResult(
+        anomaly_score=0.1,
+        is_anomaly=False,
+        severity="low",
+        timestamp=datetime.now(UTC),
+        model_info={},
+        raw_data={"voltage": 230.0},
+        topic="charger/1/live-telemetry/voltage",
+        charger_id="1",
+        context={},
+    )
+    feature_validator = MagicMock()
+    feature_validator.validate_and_sanitize.return_value = {"value": 230.0}
+    memory_manager = MagicMock()
+    memory_manager.should_cleanup.return_value = False
+    processor = MessageProcessor(
+        detector=detector,
+        feature_validator=feature_validator,
+        memory_manager=memory_manager,
+    )
+    event_time = datetime(2026, 7, 29, 10, 15, 30, tzinfo=UTC)
+    message = MQTTMessage(
+        topic="charger/1/live-telemetry/voltage",
+        payload=(b'{"value": 230.0, "timestamp": "2026-07-29T10:15:30Z"}'),
+        timestamp=datetime(2026, 7, 29, 10, 15, 35, tzinfo=UTC),
+    )
+
+    result = await processor.process_message(message)
+
+    assert result is not None
+    assert result.timestamp == event_time
+    assert result.context["canonical_sample_timestamp"] == event_time.isoformat()

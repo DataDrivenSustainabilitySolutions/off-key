@@ -17,7 +17,8 @@ def _service_with_session(session):
     service = object.__new__(RadarOrchestrationService)
     service.session = session
     service.model_registry = MagicMock()
-    service._get_docker_status_and_labels = AsyncMock(return_value=("running", {}))
+    service.workloads = MagicMock()
+    service.workloads.get_status_and_labels = AsyncMock(return_value=("running", {}))
     return service
 
 
@@ -104,7 +105,7 @@ async def test_sensor_claim_releases_missing_workload_before_overlap_check():
     )
     session.execute.return_value = _query_result([stale_service])
     service = _service_with_session(session)
-    service._get_docker_status_and_labels.return_value = ("not_found", {})
+    service.workloads.get_status_and_labels.return_value = ("not_found", {})
 
     await service._assert_topics_available(
         mqtt_topics=["charger/charger-1/live-telemetry/L1"],

@@ -26,6 +26,8 @@ class TelemetryQueryService:
         telemetry_type: str,
         limit: int,
         after_timestamp: datetime | None,
+        after_created: datetime | None,
+        after_event_timestamp: datetime | None,
         paginated: bool,
     ) -> list[dict[str, Any]] | dict[str, Any]:
         records = await self._repository.list_data(
@@ -33,6 +35,8 @@ class TelemetryQueryService:
             telemetry_type=telemetry_type,
             limit=limit,
             after_timestamp=after_timestamp,
+            after_created=after_created,
+            after_event_timestamp=after_event_timestamp,
         )
 
         logger.info(
@@ -42,10 +46,11 @@ class TelemetryQueryService:
 
         formatted = [
             {
-                "timestamp": record.timestamp.isoformat(),
-                "value": record.value,
+                "timestamp": timestamp.isoformat(),
+                "value": value,
+                "created": (created or timestamp).isoformat(),
             }
-            for record in records
+            for timestamp, value, created in records
         ]
 
         if not paginated:
@@ -56,6 +61,13 @@ class TelemetryQueryService:
             "pagination": {
                 "limit": limit,
                 "has_more": len(formatted) == limit,
-                "next_cursor": formatted[-1]["timestamp"] if formatted else None,
+                "next_cursor": (
+                    {
+                        "created": formatted[-1]["created"],
+                        "timestamp": formatted[-1]["timestamp"],
+                    }
+                    if formatted
+                    else None
+                ),
             },
         }

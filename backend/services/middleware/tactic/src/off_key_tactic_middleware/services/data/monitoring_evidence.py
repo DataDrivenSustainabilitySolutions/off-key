@@ -1,5 +1,7 @@
 """Read use cases for persisted static monitoring evidence."""
 
+from datetime import datetime
+
 from ...repositories import MonitoringEvidenceRepository
 
 
@@ -37,8 +39,42 @@ class MonitoringEvidenceService:
                     row.restarted_martingale_is_infinite
                 ),
                 "log_restarted_martingale": row.log_restarted_martingale,
+                "tracker_results": getattr(row, "tracker_results", []),
                 "threshold": row.threshold,
                 "alarm": row.alarm,
             }
             for row in reversed(rows)
+        ]
+
+    async def list_chart_evidence(
+        self,
+        *,
+        charger_id: str,
+        after_created: datetime | None,
+        after_timestamp: datetime | None,
+        after_service_id: str | None,
+        after_sequence_number: int | None,
+        limit: int,
+    ) -> list[dict[str, object]]:
+        rows = await self._repository.list_chart_by_charger(
+            charger_id=charger_id,
+            after_created=after_created,
+            after_timestamp=after_timestamp,
+            after_service_id=after_service_id,
+            after_sequence_number=after_sequence_number,
+            limit=limit,
+        )
+        return [
+            {
+                "service_id": row.service_id,
+                "timestamp": row.timestamp,
+                "sequence_number": row.sequence_number,
+                "sensor_set": row.sensor_set,
+                "restarted_martingale": row.restarted_martingale,
+                "tracker_results": getattr(row, "tracker_results", []),
+                "threshold": row.threshold,
+                "alarm": row.alarm,
+                "created": row.created or row.timestamp,
+            }
+            for row in rows
         ]

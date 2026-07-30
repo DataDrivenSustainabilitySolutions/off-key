@@ -53,7 +53,6 @@ async def test_gateway_start_monitor_forwards_static_performance_config():
         model_type="pyod_iforest",
         model_params={"n_estimators": 128},
         performance_config=GatewayPerformanceConfig(
-            alignment_mode="strict_barrier",
             sensor_key_strategy="leaf",
             sensor_freshness_seconds=25.0,
         ),
@@ -79,14 +78,24 @@ async def test_gateway_start_monitor_forwards_static_performance_config():
     forwarded = mock_start.await_args.kwargs
     assert forwarded["strategy"] == "static_baseline"
     assert forwarded["performance_config"] == {
-        "alignment_mode": "strict_barrier",
         "sensor_key_strategy": "leaf",
         "sensor_freshness_seconds": 25.0,
     }
     assert forwarded["static_baseline_config"]["martingale_config"] == {
-        "method": "power",
-        "epsilon": 0.5,
-        "restarted_ville_threshold": 100.0,
+        "trackers": [
+            {
+                "tracker_id": "primary",
+                "betting_function": "power",
+                "alarm_statistic": "restarted_martingale",
+                "epsilon": 0.5,
+                "threshold_config": {"mode": "manual", "value": 100.0},
+            }
+        ],
+        "automatic_threshold_calibration": {
+            "false_alarm_probability": 0.01,
+            "horizon": 1000,
+            "simulation_count": 5000,
+        },
     }
 
 
@@ -113,6 +122,9 @@ def test_gateway_rejects_dynamic_strategy_and_removed_fields():
             adaptive_stream_config={},
         )
 
+    with pytest.raises(ValidationError, match="alignment_mode"):
+        GatewayPerformanceConfig(alignment_mode="strict_barrier")
+
 
 def test_gateway_resolves_default_static_baseline_config():
     config = MonitoringServiceConfig(
@@ -129,9 +141,20 @@ def test_gateway_resolves_default_static_baseline_config():
     assert resolved["static_baseline_config"]["training_window_size"] == 1200
     assert resolved["static_baseline_config"]["calibration_window_size"] == 360
     assert resolved["static_baseline_config"]["martingale_config"] == {
-        "method": "power",
-        "epsilon": 0.5,
-        "restarted_ville_threshold": 100.0,
+        "trackers": [
+            {
+                "tracker_id": "primary",
+                "betting_function": "power",
+                "alarm_statistic": "restarted_martingale",
+                "epsilon": 0.5,
+                "threshold_config": {"mode": "manual", "value": 100.0},
+            }
+        ],
+        "automatic_threshold_calibration": {
+            "false_alarm_probability": 0.01,
+            "horizon": 1000,
+            "simulation_count": 5000,
+        },
     }
 
 
@@ -240,7 +263,6 @@ def test_tactic_builds_static_environment():
         model_params={"n_estimators": 100},
         mqtt_config={},
         performance_config={
-            "alignment_mode": "strict_barrier",
             "sensor_key_strategy": "leaf",
             "sensor_freshness_seconds": 20.0,
         },
@@ -250,9 +272,18 @@ def test_tactic_builds_static_environment():
             "training_window_size": 120,
             "calibration_window_size": 30,
             "martingale_config": {
-                "method": "power",
-                "epsilon": 0.5,
-                "restarted_ville_threshold": 100,
+                "trackers": [
+                    {
+                        "tracker_id": "primary",
+                        "betting_function": "power",
+                        "alarm_statistic": "restarted_martingale",
+                        "epsilon": 0.5,
+                        "threshold_config": {
+                            "mode": "manual",
+                            "value": 100,
+                        },
+                    }
+                ],
             },
         },
         model_registry=registry,
@@ -261,11 +292,20 @@ def test_tactic_builds_static_environment():
     static_config = json.loads(env["RADAR_STATIC_BASELINE_CONFIG"])
     assert env["RADAR_MONITORING_STRATEGY"] == "static_baseline"
     assert env["RADAR_MODEL_TYPE"] == "pyod_iforest"
+    assert "RADAR_ALIGNMENT_MODE" not in env
     assert "RADAR_PREPROCESSING_STEPS" not in env
     assert "RADAR_ADAPTIVE_STREAM_CONFIG" not in env
     assert static_config["training_window_size"] == 120
     assert static_config["calibration_window_size"] == 30
-    assert static_config["martingale_config"]["restarted_ville_threshold"] == 100.0
+    assert static_config["martingale_config"]["trackers"] == [
+        {
+            "tracker_id": "primary",
+            "betting_function": "power",
+            "alarm_statistic": "restarted_martingale",
+            "epsilon": 0.5,
+            "threshold_config": {"mode": "manual", "value": 100.0},
+        }
+    ]
     assert static_config["model_params"] == {
         "n_estimators": 100,
         "contamination": 0.1,

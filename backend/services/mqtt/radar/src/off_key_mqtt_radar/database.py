@@ -53,6 +53,101 @@ def _optional_finite_float(value: Any) -> float | None:
     return normalized if math.isfinite(normalized) else None
 
 
+def _nonnegative_int(value: Any) -> int:
+    if not isinstance(value, int) or isinstance(value, bool):
+        return 0
+    return max(value, 0)
+
+
+def _optional_nonnegative_int(value: Any) -> int | None:
+    if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+        return None
+    return value
+
+
+def _normalize_tracker_results(value: Any) -> list[dict[str, Any]]:
+    """Return a bounded, JSON-safe projection of runtime tracker evidence."""
+    if not isinstance(value, list):
+        return []
+
+    normalized_results: list[dict[str, Any]] = []
+    for candidate in value[:16]:
+        if not isinstance(candidate, dict):
+            continue
+        tracker_id = candidate.get("tracker_id")
+        betting_function = candidate.get("betting_function")
+        alarm_statistic = candidate.get("alarm_statistic")
+        threshold = _optional_finite_float(candidate.get("threshold"))
+        if (
+            not all(
+                isinstance(item, str)
+                for item in (tracker_id, betting_function, alarm_statistic)
+            )
+            or threshold is None
+        ):
+            continue
+
+        raw_statistics = candidate.get("statistics")
+        statistics: dict[str, dict[str, Any]] = {}
+        if isinstance(raw_statistics, dict):
+            for name in (
+                "martingale",
+                "restarted_martingale",
+                "cusum",
+                "shiryaev_roberts",
+            ):
+                statistic = raw_statistics.get(name)
+                if not isinstance(statistic, dict):
+                    continue
+                statistics[name] = {
+                    "value": _optional_finite_float(statistic.get("value")),
+                    "is_infinite": bool(statistic.get("is_infinite", False)),
+                    "log_value": _optional_finite_float(statistic.get("log_value")),
+                }
+
+        parameters = candidate.get("betting_parameters")
+        normalized_results.append(
+            {
+                "tracker_id": tracker_id,
+                "betting_function": betting_function,
+                "betting_parameters": parameters
+                if isinstance(parameters, dict)
+                else {},
+                "alarm_statistic": alarm_statistic,
+                "statistic_value": _optional_finite_float(
+                    candidate.get("statistic_value")
+                ),
+                "statistic_is_infinite": bool(
+                    candidate.get("statistic_is_infinite", False)
+                ),
+                "log_statistic_value": _optional_finite_float(
+                    candidate.get("log_statistic_value")
+                ),
+                "statistics": statistics,
+                "e_value": _optional_finite_float(candidate.get("e_value")),
+                "e_value_is_infinite": bool(
+                    candidate.get("e_value_is_infinite", False)
+                ),
+                "log_e_value": _optional_finite_float(candidate.get("log_e_value")),
+                "threshold": threshold,
+                "threshold_horizon": _optional_nonnegative_int(
+                    candidate.get("threshold_horizon")
+                ),
+                "threshold_window_position": _optional_nonnegative_int(
+                    candidate.get("threshold_window_position")
+                ),
+                "threshold_window_reset": bool(
+                    candidate.get("threshold_window_reset", False)
+                ),
+                "alarm_fired": bool(candidate.get("alarm_fired", False)),
+                "alarm_active": bool(candidate.get("alarm_active", False)),
+                "alarm_count": _nonnegative_int(candidate.get("alarm_count")),
+                "tested_count": _nonnegative_int(candidate.get("tested_count")),
+            }
+        )
+    return normalized_results
+
+
 # Lazy-initialized async session factory
 _radar_async_session_factory = None
 
@@ -105,8 +200,8 @@ def get_radar_async_session_factory():
         engine = create_async_engine(
             database_url,
             pool_pre_ping=True,
-            pool_size=5,
-            max_overflow=10,
+            pool_size=2,
+            max_overflow=0,
         )
 
         _radar_async_session_factory = sessionmaker(
@@ -153,6 +248,7 @@ class DatabaseWriter:
         # Control
         self._writer_task: asyncio.Task | None = None
         self._shutdown_event = asyncio.Event()
+        self._flush_event = asyncio.Event()
         self._queue_lock = asyncio.Lock()
         self._flush_lock = asyncio.Lock()
 
@@ -165,6 +261,7 @@ class DatabaseWriter:
             return
 
         self._shutdown_event.clear()
+        self._flush_event.clear()
 
         # Initialize session factory lazily to avoid failing when disabled
         if self.session_factory is None:
@@ -184,6 +281,7 @@ class DatabaseWriter:
 
         # Signal shutdown
         self._shutdown_event.set()
+        self._flush_event.set()
 
         cancelled_error: asyncio.CancelledError | None = None
 
@@ -217,13 +315,18 @@ class DatabaseWriter:
 
         async with self._queue_lock:
             self.write_queue.append(result)
+            queue_size = len(self.write_queue)
             should_flush = (
-                len(self.write_queue) >= self.config.db_batch_size
+                queue_size >= self.config.db_batch_size
                 or (time.time() - self.last_write_time) > self.config.db_batch_timeout
             )
 
-        # Check if we should flush batch
+        # Keep the MQTT consumer off the database I/O path during normal operation.
         if should_flush:
+            self._flush_event.set()
+
+        # Preserve bounded backpressure if persistence cannot keep up.
+        if queue_size >= self.config.max_queue_size:
             await self._flush_batch()
 
     async def write_anomaly(self, result: AnomalyResult):
@@ -330,23 +433,17 @@ class DatabaseWriter:
         logger.info("event=radar.db_writer_loop_started")
 
         try:
-            while not self._shutdown_event.is_set():
-                try:
-                    # Wait for batch timeout
+            while True:
+                with suppress(TimeoutError):
                     await asyncio.wait_for(
-                        self._shutdown_event.wait(),
+                        self._flush_event.wait(),
                         timeout=self.config.db_batch_timeout,
                     )
-                    # Shutdown event was set
+
+                self._flush_event.clear()
+                await self._flush_batch()
+                if self._shutdown_event.is_set():
                     break
-                except TimeoutError:
-                    # Timeout reached, check if we should flush
-                    if (
-                        self.write_queue
-                        and (time.time() - self.last_write_time)
-                        > self.config.db_batch_timeout
-                    ):
-                        await self._flush_batch()
 
         except asyncio.CancelledError:
             logger.debug("event=radar.db_writer_loop_cancelled")
@@ -501,6 +598,8 @@ class DatabaseWriter:
             p_value = context.get("p_value")
             sequence_number = context.get("tested_count")
             threshold = context.get("restarted_ville_threshold")
+            tracker_results = _normalize_tracker_results(context.get("tracker_results"))
+            threshold = context.get("threshold", threshold)
             if not isinstance(p_value, int | float) or not math.isfinite(p_value):
                 continue
             if not isinstance(sequence_number, int) or sequence_number < 1:
@@ -530,6 +629,7 @@ class DatabaseWriter:
                     "log_restarted_martingale": _optional_finite_float(
                         context.get("log_restarted_martingale")
                     ),
+                    "tracker_results": tracker_results,
                     "threshold": float(threshold),
                     "alarm": bool(context.get("alarm_fired", False)),
                 }

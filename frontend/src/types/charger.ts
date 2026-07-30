@@ -19,6 +19,11 @@ export interface TelemetryDataPoint {
   value: number;
 }
 
+export interface TelemetryCursor {
+  created: string;
+  timestamp: string;
+}
+
 // Telemetry type categorization
 export type TelemetryCategory = 'cpu' | 'system' | 'controller' | 'other';
 
@@ -26,7 +31,9 @@ export type TelemetryCategory = 'cpu' | 'system' | 'controller' | 'other';
 export interface TelemetryTypeData {
   type: string;
   category: TelemetryCategory;
+  unit?: string;
   data: TelemetryDataPoint[];
+  cursor?: TelemetryCursor;
 }
 
 // Anomaly detection result

@@ -23,9 +23,15 @@ def test_sensor_state_cache_blocks_stale_sensor_and_recovers(monkeypatch):
     assert first.missing_sensors == ("cosine",)
 
     now["value"] = 101.0
-    second = cache.update_with_status("charger-1", "cosine", {"cosine": 2.0})
+    second = cache.update_with_status(
+        "charger-1",
+        "cosine",
+        {"cosine": 2.0},
+        sample_timestamp=1_800_000_000.0,
+    )
     assert second.status == "aligned_emit"
     assert second.features == {"sine": 1.0, "cosine": 2.0}
+    assert second.sample_timestamp == 1_800_000_000.0
 
     # cosine arrives again much later while sine is stale
     now["value"] = 110.0
@@ -73,10 +79,7 @@ def test_sensor_state_cache_strict_barrier_waits_for_new_values_from_all(monkeyp
 
     monkeypatch.setattr(state_cache_module.time, "time", _fake_time)
 
-    cache = SensorStateCache(
-        required_sensors={"x", "y"},
-        alignment_mode="strict_barrier",
-    )
+    cache = SensorStateCache(required_sensors={"x", "y"})
 
     assert (
         cache.update_with_status("charger-3", "x", {"x": 1.0}).status
@@ -97,3 +100,22 @@ def test_sensor_state_cache_strict_barrier_waits_for_new_values_from_all(monkeyp
     emitted = cache.update_with_status("charger-3", "y", {"y": 2.1})
     assert emitted.status == "aligned_emit"
     assert emitted.features == {"x": 1.1, "y": 2.1}
+
+
+def test_sensor_state_cache_reports_sensor_without_extractable_value():
+    cache = SensorStateCache(required_sensors={"x", "y"})
+
+    first = cache.update_with_status(
+        "charger-4",
+        "x",
+        {"unrelated": 1.0, "other": 2.0},
+    )
+    assert first.status == "waiting_for_all"
+
+    blocked = cache.update_with_status("charger-4", "y", {"y": 3.0})
+    assert blocked.status == "waiting_for_all"
+    assert blocked.missing_sensors == ("x",)
+
+    recovered = cache.update_with_status("charger-4", "x", {"x": 4.0})
+    assert recovered.status == "aligned_emit"
+    assert recovered.features == {"x": 4.0, "y": 3.0}

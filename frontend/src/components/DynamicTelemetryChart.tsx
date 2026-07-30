@@ -1,163 +1,331 @@
-import React, { useCallback, useMemo, useState } from 'react';
-import { Card, CardContent, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import DateTimePicker from '@/components/DateTimePicker';
-import { ChevronDown } from 'lucide-react';
-import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  ResponsiveContainer,
-  ReferenceArea,
-  ReferenceLine,
-  Tooltip,
-} from 'recharts';
-import { createAnomalyZones, filterAnomalies, hasAnomaly, getAnomalyStyle, createAnomalyTooltip } from '@/lib/anomaly-utils';
-import type { Anomaly, TelemetryTypeData } from '@/types/charger';
-import { formatTimestamp, isWithinTimeRange } from '@/lib/time-utils';
-import { NoChartsAvailable } from '@/components/LoadingStates';
-import type { MonitoringEvidence } from '@/types/monitoring';
-import {
-  buildMonitoringChartData,
-  getMonitoringEvidenceSeries,
-} from '@/lib/monitoring-chart';
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+import { ChevronDown } from "lucide-react";
 
-type ChartDotProps = {
-  cx?: number;
-  cy?: number;
-  payload?: {
-    timestamp?: string;
-  };
-};
+import DateTimePicker from "@/components/DateTimePicker";
+import { EChart } from "@/components/EChart";
+import { NoChartsAvailable } from "@/components/LoadingStates";
+import { useTheme } from "@/components/theme-provider";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardTitle } from "@/components/ui/card";
+import {
+  createAnomalyMarkers,
+  createAnomalyZones,
+  filterAnomalies,
+} from "@/lib/anomaly-utils";
+import { resolveChartThemeColors } from "@/lib/echarts-theme";
+import {
+  buildTelemetryChartModel,
+  buildTelemetryChartOption,
+  DEFAULT_CHART_NAVIGATION,
+  formatChartTime,
+  getLocalTimeZone,
+  areChartNavigationStatesEqual,
+  type ChartNavigationState,
+} from "@/lib/telemetry-chart";
+import { isWithinTimeRange } from "@/lib/time-utils";
+import type { Anomaly, TelemetryTypeData } from "@/types/charger";
+import type { MonitoringChartEvidence } from "@/types/monitoring";
 
 interface DynamicTelemetryChartProps {
   telemetryData: TelemetryTypeData;
-  chargerId: string;
   anomalies?: Anomaly[];
-  evidence?: MonitoringEvidence[];
+  evidence?: MonitoringChartEvidence[];
+  navigationState?: ChartNavigationState;
+  timelineExtent?: readonly [startMs: number, endMs: number];
+  onNavigationStateChange?: (
+    telemetryType: string,
+    state: ChartNavigationState,
+  ) => void;
 }
 
 const CATEGORY_COLORS: Record<string, string> = {
-  cpu: '#0f9f8e',
-  system: '#2563eb',
-  controller: '#d97706',
-  other: '#7c3aed',
+  cpu: "#0f9f8e",
+  system: "#2563eb",
+  controller: "#d97706",
+  other: "#7c3aed",
 };
 
-const EVIDENCE_COLORS = ['#059669', '#7c3aed', '#dc2626', '#0284c7'];
+const formatDisplayName = (value: string): string =>
+  value
+    .replace(/([A-Z])/gu, " $1")
+    .replace(/^./u, (character) => character.toUpperCase())
+    .trim();
+
+const getLatestFiniteTime = (telemetryData: TelemetryTypeData): number | undefined => {
+  const times = telemetryData.data
+    .map(({ timestamp }) => Date.parse(timestamp))
+    .filter(Number.isFinite);
+  return times.length > 0 ? Math.max(...times) : undefined;
+};
 
 export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
   telemetryData,
   anomalies = [],
   evidence = [],
+  navigationState,
+  timelineExtent,
+  onNavigationStateChange,
 }) => {
+  const { resolvedTheme } = useTheme();
   const [collapsed, setCollapsed] = useState(false);
-  const [fromDate, setFromDate] = useState<Date>();
-  const [toDate, setToDate] = useState<Date>();
-
-  // Format the telemetry type name for display
-  const displayName = useMemo(() => {
-    return telemetryData.type
-      .replace(/([A-Z])/g, ' $1') // Add spaces before capital letters
-      .replace(/^./, str => str.toUpperCase()) // Capitalize first letter
-      .trim();
-  }, [telemetryData.type]);
-
-  // Get category color for the chart line
-  const getCategoryColor = (category: string): string => {
-    return CATEGORY_COLORS[category] ?? '#0f9f8e';
-  };
-
-  const applyRelativeRange = useCallback((hours: number) => {
-    if (telemetryData.data.length === 0) return;
-    const times = telemetryData.data.map(d => new Date(d.timestamp).getTime());
-    const maxTime = Math.max(...times);
-    const minTime = maxTime - hours * 60 * 60 * 1000;
-    setFromDate(new Date(minTime));
-    setToDate(new Date(maxTime));
-  }, [telemetryData.data]);
-
-  const handleFromDateChange = useCallback((date: Date | undefined) => {
-    setFromDate(date);
-    setToDate((currentToDate) => {
-      if (date && currentToDate && currentToDate.getTime() < date.getTime()) {
-        return date;
-      }
-      return currentToDate;
-    });
-  }, []);
-
-  const handleToDateChange = useCallback((date: Date | undefined) => {
-    setToDate(date);
-    setFromDate((currentFromDate) => {
-      if (date && currentFromDate && currentFromDate.getTime() > date.getTime()) {
-        return date;
-      }
-      return currentFromDate;
-    });
-  }, []);
-
-  const lastDay = useCallback(() => applyRelativeRange(24), [applyRelativeRange]);
-  const lastHour = useCallback(() => applyRelativeRange(1), [applyRelativeRange]);
-  const clearRange = useCallback(() => {
-    setFromDate(undefined);
-    setToDate(undefined);
-  }, []);
-
-  // Filter data based on date range
-  const filteredData = useMemo(() => {
-    return telemetryData.data.filter(item => {
-      if (!fromDate && !toDate) return true;
-      return isWithinTimeRange(item.timestamp, fromDate, toDate);
-    });
-  }, [telemetryData.data, fromDate, toDate]);
-
-  // Filter anomalies for this telemetry type
-  const telemetryAnomalies = useMemo(() =>
-    filterAnomalies(anomalies, telemetryData.type, fromDate, toDate),
-    [anomalies, telemetryData.type, fromDate, toDate]
+  const [localNavigationState, setLocalNavigationState] =
+    useState<ChartNavigationState>(DEFAULT_CHART_NAVIGATION);
+  const [cardNode, setCardNode] = useState<HTMLDivElement | null>(null);
+  const [isChartVisible, setIsChartVisible] = useState(
+    () => typeof IntersectionObserver === "undefined",
   );
 
-  // Create anomaly zones
-  const anomalyZones = useMemo(() =>
-    createAnomalyZones(telemetryAnomalies),
-    [telemetryAnomalies]
+  useEffect(() => {
+    if (typeof IntersectionObserver === "undefined" || !cardNode) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const [entry] = entries;
+        if (entry) setIsChartVisible(entry.isIntersecting);
+      },
+      { rootMargin: "600px 0px" },
+    );
+    observer.observe(cardNode);
+    return () => observer.disconnect();
+  }, [cardNode]);
+
+  const displayName = useMemo(
+    () => formatDisplayName(telemetryData.type),
+    [telemetryData.type],
+  );
+  const timeZone = useMemo(() => getLocalTimeZone(), []);
+  const themeColors = useMemo(
+    () => resolveChartThemeColors(resolvedTheme),
+    [resolvedTheme],
+  );
+
+  const activeNavigationState = navigationState ?? localNavigationState;
+  const { viewport } = activeNavigationState;
+  const fromDate = useMemo(
+    () =>
+      activeNavigationState.range.fromMs === undefined
+        ? undefined
+        : new Date(activeNavigationState.range.fromMs),
+    [activeNavigationState.range.fromMs],
+  );
+  const toDate = useMemo(
+    () =>
+      activeNavigationState.range.toMs === undefined
+        ? undefined
+        : new Date(activeNavigationState.range.toMs),
+    [activeNavigationState.range.toMs],
+  );
+
+  const commitNavigationState = useCallback(
+    (nextState: ChartNavigationState) => {
+      setLocalNavigationState((current) =>
+        areChartNavigationStatesEqual(current, nextState) ? current : nextState,
+      );
+      onNavigationStateChange?.(telemetryData.type, nextState);
+    },
+    [onNavigationStateChange, telemetryData.type],
+  );
+
+  const resetViewport = useCallback(() => {
+    commitNavigationState({
+      range: activeNavigationState.range,
+      viewport: { mode: "live" },
+    });
+  }, [activeNavigationState, commitNavigationState]);
+
+  const applyRelativeRange = useCallback(
+    (hours: number) => {
+      const maxTime = getLatestFiniteTime(telemetryData);
+      if (maxTime === undefined) return;
+      commitNavigationState({
+        range: {
+          fromMs: maxTime - hours * 60 * 60 * 1_000,
+          toMs: maxTime,
+        },
+        viewport: { mode: "live" },
+      });
+    },
+    [commitNavigationState, telemetryData],
+  );
+
+  const handleFromDateChange = useCallback(
+    (date: Date | undefined) => {
+      const fromMs = date?.getTime();
+      const currentToMs = activeNavigationState.range.toMs;
+      commitNavigationState({
+        range: {
+          ...(fromMs !== undefined && { fromMs }),
+          ...(currentToMs !== undefined && {
+            toMs:
+              fromMs !== undefined && currentToMs < fromMs
+                ? fromMs
+                : currentToMs,
+          }),
+        },
+        viewport: { mode: "live" },
+      });
+    },
+    [activeNavigationState.range.toMs, commitNavigationState],
+  );
+
+  const handleToDateChange = useCallback(
+    (date: Date | undefined) => {
+      const toMs = date?.getTime();
+      const currentFromMs = activeNavigationState.range.fromMs;
+      commitNavigationState({
+        range: {
+          ...(currentFromMs !== undefined && {
+            fromMs:
+              toMs !== undefined && currentFromMs > toMs
+                ? toMs
+                : currentFromMs,
+          }),
+          ...(toMs !== undefined && { toMs }),
+        },
+        viewport: { mode: "live" },
+      });
+    },
+    [activeNavigationState.range.fromMs, commitNavigationState],
+  );
+
+  const clearRange = useCallback(() => {
+    commitNavigationState(DEFAULT_CHART_NAVIGATION);
+  }, [commitNavigationState]);
+
+  const filteredData = useMemo(
+    () =>
+      telemetryData.data.filter(({ timestamp }) =>
+        isWithinTimeRange(timestamp, fromDate, toDate),
+      ),
+    [telemetryData.data, fromDate, toDate],
+  );
+  const telemetryAnomalies = useMemo(
+    () => filterAnomalies(anomalies, telemetryData.type, fromDate, toDate),
+    [anomalies, fromDate, telemetryData.type, toDate],
   );
   const telemetryEvidence = useMemo(
-    () => evidence.filter((item) =>
-      item.sensor_set.includes(telemetryData.type) &&
-      isWithinTimeRange(item.timestamp, fromDate, toDate)
-    ),
-    [evidence, telemetryData.type, fromDate, toDate]
+    () =>
+      evidence.filter(
+        (item) =>
+          item.sensor_set.includes(telemetryData.type) &&
+          isWithinTimeRange(item.timestamp, fromDate, toDate),
+      ),
+    [evidence, fromDate, telemetryData.type, toDate],
   );
-  const chartData = useMemo(
-    () => buildMonitoringChartData(filteredData, telemetryEvidence),
-    [filteredData, telemetryEvidence]
+  const shouldBuildChart = !collapsed && isChartVisible;
+  const chartModel = useMemo(() => {
+    if (!shouldBuildChart) return undefined;
+    return buildTelemetryChartModel({
+      telemetryName: displayName,
+      telemetryUnit: telemetryData.unit,
+      telemetryColor: CATEGORY_COLORS[telemetryData.category] ?? "#7c3aed",
+      telemetry: filteredData,
+      evidence: telemetryEvidence,
+      anomalyZones: createAnomalyZones(telemetryAnomalies),
+      anomalyMarkers: createAnomalyMarkers(filteredData, telemetryAnomalies),
+    });
+  }, [
+    displayName,
+    filteredData,
+    shouldBuildChart,
+    telemetryAnomalies,
+    telemetryData.category,
+    telemetryData.unit,
+    telemetryEvidence,
+  ]);
+  const accessibleDescription = useMemo(() => {
+    const pointCount = chartModel?.telemetry.data.length ?? 0;
+    const secondaryCount = chartModel?.secondarySeries.length ?? 0;
+    return `${displayName} telemetry chart with ${pointCount} points${secondaryCount > 0 ? ` and ${secondaryCount} sequential-evidence series in a linked lower pane` : ""}. Times are shown in ${timeZone}.`;
+  }, [chartModel, displayName, timeZone]);
+  const chartOption = useMemo(
+    () =>
+      chartModel
+        ? buildTelemetryChartOption({
+            model: chartModel,
+            viewport,
+            timelineExtent,
+            timeZone,
+            colors: themeColors,
+            accessibleDescription,
+          })
+        : undefined,
+    [
+      accessibleDescription,
+      chartModel,
+      themeColors,
+      timeZone,
+      timelineExtent,
+      viewport,
+    ],
   );
-  const evidenceSeries = useMemo(
-    () => getMonitoringEvidenceSeries(telemetryEvidence),
-    [telemetryEvidence]
+
+  const handleViewportChange = useCallback(
+    (startMs: number, endMs: number) => {
+      commitNavigationState({
+        ...activeNavigationState,
+        viewport: { mode: "absolute", startMs, endMs },
+        inspectionDataEndMs:
+          activeNavigationState.inspectionDataEndMs ??
+          (timelineExtent ?? chartModel?.extent)?.[1],
+      });
+    },
+    [
+      activeNavigationState,
+      chartModel?.extent,
+      commitNavigationState,
+      timelineExtent,
+    ],
   );
-  const evidenceThresholds = useMemo(
-    () => [...new Set(evidenceSeries.map((series) => series.threshold))],
-    [evidenceSeries]
-  );
+  const zoomIn = useCallback(() => {
+    const extent = timelineExtent ?? chartModel?.extent;
+    if (!extent) return;
+    const startMs = viewport.mode === "absolute" ? viewport.startMs : extent[0];
+    const endMs = viewport.mode === "absolute" ? viewport.endMs : extent[1];
+    const inset = (endMs - startMs) / 4;
+    if (!Number.isFinite(inset) || inset <= 0) return;
+    commitNavigationState({
+      ...activeNavigationState,
+      viewport: {
+        mode: "absolute",
+        startMs: startMs + inset,
+        endMs: endMs - inset,
+      },
+      inspectionDataEndMs:
+        activeNavigationState.inspectionDataEndMs ?? extent[1],
+    });
+  }, [
+    activeNavigationState,
+    chartModel?.extent,
+    commitNavigationState,
+    timelineExtent,
+    viewport,
+  ]);
+  const hasNewData =
+    viewport.mode === "absolute" &&
+    activeNavigationState.inspectionDataEndMs !== undefined &&
+    chartModel?.extent !== undefined &&
+    chartModel.extent[1] > activeNavigationState.inspectionDataEndMs;
+  const latestTelemetry = chartModel?.telemetry.data[
+    chartModel.telemetry.data.length - 1
+  ];
 
   if (telemetryData.data.length === 0) {
     return (
-      <Card className="w-full overflow-hidden border-border/80 py-0 shadow-xs transition-all duration-300">
+      <Card
+        ref={setCardNode}
+        className="w-full overflow-hidden border-border/80 py-0 shadow-xs transition-all duration-300"
+      >
         <div className="flex items-center justify-between gap-3 border-b px-5 py-4">
           <CardTitle className="text-base">{displayName}</CardTitle>
           <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-medium capitalize text-muted-foreground">
             {telemetryData.category}
           </span>
-          {telemetryEvidence.length > 0 && (
-            <span className="rounded-full bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-700 dark:text-emerald-300">
-              E-process
-            </span>
-          )}
         </div>
         <CardContent>
           <NoChartsAvailable />
@@ -167,10 +335,17 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
   }
 
   return (
-    <Card className={`w-full overflow-hidden py-0 transition-all duration-300 ${collapsed ? '' : 'min-h-96'}`}>
-      <div className={`flex gap-3 border-b border-border/60 bg-muted/[0.12] px-5 py-4 ${collapsed ? 'flex-row items-center justify-between' : 'flex-col lg:flex-row lg:items-center lg:justify-between'}`}>
+    <Card
+      ref={setCardNode}
+      className={`w-full overflow-hidden py-0 transition-all duration-300 ${collapsed ? "" : "min-h-96"}`}
+    >
+      <div
+        className={`flex gap-3 border-b border-border/60 bg-muted/[0.12] px-5 py-4 ${collapsed ? "flex-row items-center justify-between" : "flex-col lg:flex-row lg:items-center lg:justify-between"}`}
+      >
         <div className="flex min-w-0 flex-1 items-center gap-3">
-          <CardTitle className={`${collapsed ? 'whitespace-normal break-words' : 'truncate'} text-base`}>
+          <CardTitle
+            className={`${collapsed ? "whitespace-normal break-words" : "truncate"} text-base`}
+          >
             {displayName}
           </CardTitle>
           <span className="rounded-full border border-border/70 bg-card px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
@@ -179,7 +354,7 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
           {telemetryEvidence.length > 0 && (
             <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/[0.07] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-emerald-700 dark:text-emerald-300">
               <span className="size-1.5 rounded-full bg-emerald-500" />
-              Evidence
+              Restarted evidence
             </span>
           )}
         </div>
@@ -213,10 +388,20 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
                 </label>
               </div>
               <div className="flex flex-wrap gap-2">
-                <Button type="button" variant="outline" size="sm" onClick={lastDay}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => applyRelativeRange(24)}
+                >
                   Past 24 hours
                 </Button>
-                <Button type="button" variant="outline" size="sm" onClick={lastHour}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => applyRelativeRange(1)}
+                >
                   Past hour
                 </Button>
                 {(fromDate || toDate) && (
@@ -225,17 +410,20 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
                   </Button>
                 )}
               </div>
+              <span className="basis-full text-[11px] text-muted-foreground">
+                Local time zone: {timeZone}
+              </span>
             </div>
           )}
           <Button
             type="button"
             variant="ghost"
             size="icon"
-            onClick={() => setCollapsed(!collapsed)}
+            onClick={() => setCollapsed((current) => !current)}
             aria-label={collapsed ? "Expand chart" : "Collapse chart"}
           >
             <ChevronDown
-              className={`h-4 w-4 transition-transform ${collapsed ? 'rotate-180' : ''}`}
+              className={`h-4 w-4 transition-transform ${collapsed ? "rotate-180" : ""}`}
             />
           </Button>
         </div>
@@ -243,151 +431,79 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
 
       {!collapsed && (
         <CardContent className="pb-5 pt-5">
-          {filteredData.length === 0 ? (
-            <div className="flex h-[300px] flex-col items-center justify-center rounded-lg border border-dashed bg-muted/20 p-6 text-center">
+          {!isChartVisible ? (
+            <div className="h-[420px]" aria-hidden="true" />
+          ) : filteredData.length === 0 ? (
+            <div className="flex h-[420px] flex-col items-center justify-center rounded-lg border border-dashed bg-muted/20 p-6 text-center">
               <p className="text-sm font-medium">No data in selected range</p>
               <p className="mt-1 max-w-sm text-sm text-muted-foreground">
-                Adjust the From/To values or clear the range to show all available telemetry.
+                Adjust the From/To values or clear the range to show all available
+                telemetry.
               </p>
-              <Button type="button" variant="outline" size="sm" onClick={clearRange} className="mt-4">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={clearRange}
+                className="mt-4"
+              >
                 Clear range
               </Button>
             </div>
-          ) : (
-            <ResponsiveContainer width="100%" height={300}>
-              <LineChart
-                data={chartData}
-                margin={{
-                  top: 5,
-                  right: 30,
-                  left: 20,
-                  bottom: 5,
-                }}
+          ) : chartOption && chartModel ? (
+            <>
+              <div
+                className="mb-2 flex flex-wrap items-center justify-end gap-2 text-xs text-muted-foreground"
+                aria-live="polite"
               >
-                <CartesianGrid vertical={false} strokeDasharray="4 6" stroke="hsl(var(--border))" />
-                <XAxis
-                  dataKey="time"
-                  type="number"
-                  scale="time"
-                  domain={['dataMin', 'dataMax']}
-                  tickFormatter={(value) =>
-                    formatTimestamp(new Date(Number(value)).toISOString())
-                  }
-                  tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }}
-                  tickLine={false}
-                  axisLine={{ stroke: "hsl(var(--border))" }}
-                />
-                <YAxis
-                  yAxisId="telemetry"
-                  dataKey="value"
-                  tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }}
-                  tickLine={false}
-                  axisLine={false}
-                />
-                {telemetryEvidence.length > 0 && (
-                  <YAxis
-                    yAxisId="evidence"
-                    orientation="right"
-                    scale="log"
-                    domain={[0.000001, 'auto']}
-                    tickFormatter={(value) => Number(value).toPrecision(2)}
-                    allowDataOverflow
-                    tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }}
-                    tickLine={false}
-                    axisLine={false}
-                  />
+                <Button type="button" variant="ghost" size="sm" onClick={zoomIn}>
+                  Zoom in
+                </Button>
+                {viewport.mode === "absolute" && (
+                  <>
+                    <span>
+                      {hasNewData ? "New data available" : "Inspection paused"}
+                    </span>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={resetViewport}
+                    >
+                      Return to live
+                    </Button>
+                  </>
                 )}
-                <Tooltip
-                  labelFormatter={(value) =>
-                    formatTimestamp(new Date(Number(value)).toISOString())
-                  }
-                  contentStyle={{
-                    border: "1px solid hsl(var(--border))",
-                    borderRadius: "12px",
-                    background: "hsl(var(--popover))",
-                    boxShadow: "0 12px 32px hsl(220 20% 10% / 0.08)",
-                    fontSize: "12px",
-                  }}
-                />
-
-                {evidenceThresholds.map((threshold) => (
-                  <ReferenceLine
-                    key={threshold}
-                    yAxisId="evidence"
-                    y={threshold}
-                    stroke="#dc2626"
-                    strokeDasharray="6 4"
-                    label={{ value: `Ville ${threshold}`, position: 'insideTopRight' }}
-                  />
-                ))}
-
-                {anomalyZones.map((zone, index) => (
-                  <ReferenceArea
-                    key={index}
-                    x1={zone.start}
-                    x2={zone.end}
-                    strokeOpacity={0}
-                    fill="red"
-                    fillOpacity={0.1}
-                  />
-                ))}
-
-                <Line
-                  yAxisId="telemetry"
-                  type="monotone"
-                  dataKey="value"
-                  connectNulls
-                  stroke={getCategoryColor(telemetryData.category)}
-                  strokeWidth={2.25}
-                  activeDot={false}
-                  dot={(props) => {
-                    const { cx, cy, payload } = props as ChartDotProps;
-                    const timestamp = payload?.timestamp;
-                    if (!timestamp) {
-                      return <></>;
-                    }
-
-                    const anomaly = hasAnomaly(timestamp, telemetryAnomalies);
-                    if (anomaly && cx !== undefined && cy !== undefined) {
-                      const style = getAnomalyStyle(anomaly.anomaly_type);
-                      return (
-                        <g key={`anomaly-${timestamp}`}>
-                          <circle
-                            cx={cx}
-                            cy={cy}
-                            r={style.radius}
-                            fill={style.color}
-                            stroke="darkred"
-                            strokeWidth={1}
-                            opacity={style.opacity}
-                          />
-                          <title>{createAnomalyTooltip(anomaly)}</title>
-                        </g>
-                      );
-                    }
-                    return <></>;
-                  }}
-                />
-                {evidenceSeries.map((series, index) => (
-                  <Line
-                    key={series.serviceId}
-                    yAxisId="evidence"
-                    type="monotone"
-                    dataKey={series.dataKey}
-                    name={`Martingale ${series.serviceId.slice(0, 8)}`}
-                    stroke={EVIDENCE_COLORS[index % EVIDENCE_COLORS.length]}
-                    strokeWidth={2}
-                    dot={false}
-                    connectNulls
-                  />
-                ))}
-              </LineChart>
-            </ResponsiveContainer>
-          )}
+              </div>
+              <EChart
+                option={chartOption}
+                resolvedTheme={resolvedTheme}
+                accessibleDescription={accessibleDescription}
+                onViewportChange={handleViewportChange}
+              />
+              <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 border-t border-border/60 pt-3 text-xs text-muted-foreground">
+                {latestTelemetry && (
+                  <span>
+                    Current {displayName}: {latestTelemetry[1]}
+                    {telemetryData.unit ? ` ${telemetryData.unit}` : ""} at{" "}
+                    {formatChartTime(latestTelemetry[0], timeZone, "tooltip")}
+                  </span>
+                )}
+                {chartModel.secondarySeries.map((series) => {
+                  const latest = series.data[series.data.length - 1];
+                  return latest ? (
+                    <span key={series.id}>
+                      {series.name}: {latest[1]}
+                    </span>
+                  ) : null;
+                })}
+              </div>
+            </>
+          ) : null}
         </CardContent>
       )}
     </Card>
   );
 };
 
-export default DynamicTelemetryChart;
+export default React.memo(DynamicTelemetryChart);

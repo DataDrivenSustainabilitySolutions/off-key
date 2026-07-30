@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from off_key_core.db.models import MonitoringService
+from off_key_core.db.models import MonitoringEvidence, MonitoringService
 from off_key_db_sync.service import SyncService
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.schema import CreateTable
@@ -36,6 +36,12 @@ async def test_initialize_database_migrates_anomalies_before_create_all():
     async def _record_registry_migration(_conn):
         call_order.append("migrate_model_registry")
 
+    async def _record_evidence_migration(_conn):
+        call_order.append("migrate_monitoring_evidence_trackers")
+
+    async def _record_chart_indexes(_conn):
+        call_order.append("ensure_chart_query_indexes")
+
     service._migrate_anomaly_identity = AsyncMock(side_effect=_record_anomaly_migration)
     service._migrate_anomaly_value_type = AsyncMock(
         side_effect=_record_value_type_migration
@@ -49,6 +55,10 @@ async def test_initialize_database_migrates_anomalies_before_create_all():
     service._migrate_model_registry_family = AsyncMock(
         side_effect=_record_registry_migration
     )
+    service._migrate_monitoring_evidence_trackers = AsyncMock(
+        side_effect=_record_evidence_migration
+    )
+    service._ensure_chart_query_indexes = AsyncMock(side_effect=_record_chart_indexes)
 
     @asynccontextmanager
     async def _begin():
@@ -69,8 +79,47 @@ async def test_initialize_database_migrates_anomalies_before_create_all():
         "migrate_anomaly_sensor_set",
         "migrate_service_operational_status",
         "migrate_model_registry",
+        "migrate_monitoring_evidence_trackers",
         "create_all",
+        "ensure_chart_query_indexes",
     ]
+
+
+@pytest.mark.asyncio
+async def test_ensure_chart_query_indexes_are_idempotent():
+    service = SyncService()
+    conn = AsyncMock()
+    conn.execute = AsyncMock()
+
+    await service._ensure_chart_query_indexes(conn)
+
+    executed_sql = " ".join(
+        str(call.args[0]) for call in conn.execute.await_args_list if call.args
+    )
+    assert "CREATE INDEX IF NOT EXISTS" in executed_sql
+    assert "ON telemetry (charger_id, type, timestamp DESC)" in executed_sql
+    assert "ON telemetry (charger_id, type, created, timestamp)" in executed_sql
+    assert (
+        "ON monitoring_evidence "
+        "(charger_id, created, timestamp, service_id, sequence_number)" in executed_sql
+    )
+
+
+@pytest.mark.asyncio
+async def test_migrate_monitoring_evidence_trackers_adds_and_backfills_jsonb():
+    service = SyncService()
+    conn = AsyncMock()
+    conn.scalar = AsyncMock(side_effect=[True, False])
+    conn.execute = AsyncMock()
+
+    await service._migrate_monitoring_evidence_trackers(conn)
+
+    executed_sql = " ".join(
+        str(call.args[0]) for call in conn.execute.await_args_list if call.args
+    )
+    assert "ADD COLUMN tracker_results JSONB NOT NULL" in executed_sql
+    assert "jsonb_build_array" in executed_sql
+    assert "'alarm_statistic', 'restarted_martingale'" in executed_sql
 
 
 @pytest.mark.asyncio
@@ -151,3 +200,16 @@ def test_monitoring_service_operational_status_uses_postgresql_jsonb():
     )
 
     assert "operational_status JSONB" in ddl
+
+
+def test_monitoring_evidence_tracker_results_uses_postgresql_jsonb():
+    ddl = str(
+        CreateTable(MonitoringEvidence.__table__).compile(dialect=postgresql.dialect())
+    )
+
+    tracker_results_ddl = next(
+        line for line in ddl.splitlines() if "tracker_results" in line
+    )
+    assert "JSONB" in tracker_results_ddl
+    assert "DEFAULT '[]'" in tracker_results_ddl
+    assert "NOT NULL" in tracker_results_ddl

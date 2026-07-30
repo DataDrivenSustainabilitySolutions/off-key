@@ -12,7 +12,7 @@ import uuid
 from collections import deque
 from collections.abc import Awaitable, Callable
 from contextlib import suppress
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 import paho.mqtt.client as mqtt
@@ -290,7 +290,7 @@ class RadarMQTTClient:
             payload=msg.payload,
             qos=msg.qos,
             retain=msg.retain,
-            timestamp=datetime.now(),
+            timestamp=datetime.now(UTC),
         )
 
         self._loop.call_soon_threadsafe(lambda: self._handle_incoming_message(message))

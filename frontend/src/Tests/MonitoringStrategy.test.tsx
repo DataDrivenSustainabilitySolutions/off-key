@@ -2,17 +2,39 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { ApiRequestOptions } from "../lib/api-client";
 import Monitoring from "../pages/Monitoring";
+import type { AnomalyDetectionRequest } from "../types/monitoring";
 
-const mockPost = vi.fn(() => Promise.resolve({}));
-const mockGet = vi.fn();
-const mockDelete = vi.fn();
+const mockPost = vi.fn<
+  (
+    endpoint: string,
+    payload: AnomalyDetectionRequest,
+    options?: ApiRequestOptions
+  ) => Promise<unknown>
+>(() => Promise.resolve({}));
+const mockGet = vi.fn<
+  (endpoint: string, options?: ApiRequestOptions) => Promise<unknown>
+>(() => Promise.resolve([]));
+const mockDelete = vi.fn<
+  (
+    endpoint: string,
+    data?: unknown,
+    options?: ApiRequestOptions
+  ) => Promise<unknown>
+>(() => Promise.resolve({}));
 
 vi.mock("../lib/api-client", () => ({
   apiUtils: {
-    get: (...args: unknown[]) => mockGet(...args),
-    post: (...args: unknown[]) => mockPost(...args),
-    delete: (...args: unknown[]) => mockDelete(...args),
+    get: (endpoint: string, options?: ApiRequestOptions) =>
+      mockGet(endpoint, options),
+    post: (
+      endpoint: string,
+      payload: AnomalyDetectionRequest,
+      options?: ApiRequestOptions
+    ) => mockPost(endpoint, payload, options),
+    delete: (endpoint: string, data?: unknown, options?: ApiRequestOptions) =>
+      mockDelete(endpoint, data, options),
   },
 }));
 
@@ -42,6 +64,15 @@ function renderMonitoring() {
   );
 }
 
+const getSubmittedPayload = (): AnomalyDetectionRequest => {
+  const latestCall = mockPost.mock.calls[mockPost.mock.calls.length - 1];
+  const payload = latestCall?.[1];
+  if (!payload) {
+    throw new Error("Expected monitoring request payload");
+  }
+  return payload;
+};
+
 describe("<Monitoring /> static setup", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -56,7 +87,9 @@ describe("<Monitoring /> static setup", () => {
     renderMonitoring();
 
     await screen.findByText(/topic input mode/i);
-    fireEvent.change(screen.getAllByRole("combobox")[0], {
+    const [topicModeSelect] = screen.getAllByRole("combobox");
+    if (!topicModeSelect) throw new Error("Expected topic mode selector");
+    fireEvent.change(topicModeSelect, {
       target: { value: "direct_patterns" },
     });
     fireEvent.change(screen.getByRole("textbox"), {
@@ -65,19 +98,28 @@ describe("<Monitoring /> static setup", () => {
     fireEvent.click(screen.getByRole("button", { name: /start monitoring/i }));
 
     await waitFor(() => expect(mockPost).toHaveBeenCalled());
-    const payload = mockPost.mock.calls[0][1];
+    const payload = getSubmittedPayload();
 
     expect(payload.strategy).toBe("static_baseline");
     expect(payload.model_type).toBe("pyod_iforest");
     expect(payload.static_baseline_config.training_window_size).toBe(1200);
     expect(payload.static_baseline_config.calibration_window_size).toBe(360);
     expect(payload.static_baseline_config.martingale_config).toEqual({
-      method: "power",
-      epsilon: 0.5,
-      restarted_ville_threshold: 100,
+      automatic_threshold_calibration: {
+        false_alarm_probability: 0.01,
+        horizon: 1000,
+        simulation_count: 5000,
+      },
+      trackers: [{
+        tracker_id: "primary",
+        betting_function: "power",
+        alarm_statistic: "restarted_martingale",
+        epsilon: 0.5,
+        threshold_config: { mode: "manual", value: 100 },
+      }],
     });
-    expect(payload.adaptive_stream_config).toBeUndefined();
-    expect(payload.preprocessing_steps).toBeUndefined();
+    expect("adaptive_stream_config" in payload).toBe(false);
+    expect("preprocessing_steps" in payload).toBe(false);
   });
 
   it("submits concrete sensor topics for multivariate alignment", async () => {
@@ -88,17 +130,17 @@ describe("<Monitoring /> static setup", () => {
     fireEvent.click(screen.getByRole("button", { name: /start monitoring/i }));
 
     await waitFor(() => expect(mockPost).toHaveBeenCalled());
-    const payload = mockPost.mock.calls[0][1];
+    const payload = getSubmittedPayload();
 
     expect(payload.mqtt_topics).toEqual([
       "charger/charger-1/live-telemetry/L1",
       "charger/charger-1/live-telemetry/L2",
       "charger/charger-1/live-telemetry/L3",
     ]);
-    expect(payload.performance_config.alignment_mode).toBe("strict_barrier");
+    expect(payload.performance_config).not.toHaveProperty("alignment_mode");
   });
 
-  it("submits editable epsilon with the fixed native threshold", async () => {
+  it("submits editable epsilon and alarm threshold", async () => {
     renderMonitoring();
 
     fireEvent.change(await screen.findByDisplayValue("360"), {
@@ -111,13 +153,70 @@ describe("<Monitoring /> static setup", () => {
     fireEvent.click(screen.getByRole("button", { name: /start monitoring/i }));
 
     await waitFor(() => expect(mockPost).toHaveBeenCalled());
-    const payload = mockPost.mock.calls[0][1];
+    const payload = getSubmittedPayload();
     expect(payload.static_baseline_config.calibration_window_size).toBe(400);
     expect(payload.static_baseline_config.martingale_config).toEqual({
-      method: "power",
-      epsilon: 0.75,
-      restarted_ville_threshold: 100,
+      automatic_threshold_calibration: {
+        false_alarm_probability: 0.01,
+        horizon: 1000,
+        simulation_count: 5000,
+      },
+      trackers: [{
+        tracker_id: "primary",
+        betting_function: "power",
+        alarm_statistic: "restarted_martingale",
+        epsilon: 0.75,
+        threshold_config: { mode: "manual", value: 100 },
+      }],
     });
+  });
+
+  it("defaults CUSUM to an automatically calibrated threshold", async () => {
+    renderMonitoring();
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: /show advanced settings/i }),
+    );
+    fireEvent.change(screen.getByLabelText("Alarm statistic"), {
+      target: { value: "cusum" },
+    });
+
+    expect(
+      (screen.getByLabelText("Threshold") as HTMLSelectElement).value,
+    ).toBe("automatic");
+    expect(screen.getByText("Automatic threshold calibration")).toBeTruthy();
+    expect(screen.queryByLabelText("Manual alarm threshold")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: /start monitoring/i }));
+    await waitFor(() => expect(mockPost).toHaveBeenCalled());
+
+    expect(
+      getSubmittedPayload().static_baseline_config.martingale_config.trackers[0],
+    ).toMatchObject({
+      alarm_statistic: "cusum",
+      threshold_config: { mode: "automatic" },
+    });
+  });
+
+  it("exposes advanced-setting help on keyboard focus", async () => {
+    renderMonitoring();
+
+    expect(
+      screen.queryByRole("button", { name: "About Betting method" }),
+    ).toBeNull();
+    fireEvent.click(
+      await screen.findByRole("button", { name: /show advanced settings/i }),
+    );
+    const helpTrigger = await screen.findByRole("button", {
+      name: "About Betting method",
+    });
+
+    fireEvent.focus(helpTrigger);
+
+    const tooltip = await screen.findByRole("tooltip");
+    expect(tooltip.textContent).toContain(
+      "Transforms each conformal p-value into a one-step e-value",
+    );
   });
 
   it("lets numeric fields be cleared while editing", async () => {
@@ -141,14 +240,15 @@ describe("<Monitoring /> static setup", () => {
     fireEvent.change(trainingInput, { target: { value: "2000" } });
     fireEvent.click(screen.getByRole("button", { name: /start monitoring/i }));
     await waitFor(() => expect(mockPost).toHaveBeenCalled());
-    expect(mockPost.mock.calls[0][1].static_baseline_config.training_window_size).toBe(2000);
+    expect(getSubmittedPayload().static_baseline_config.training_window_size).toBe(2000);
   });
 
   it("keeps invalid detector integer drafts visible and blocks submit", async () => {
     renderMonitoring();
 
     fireEvent.click(await screen.findByRole("button", { name: /show advanced settings/i }));
-    const estimatorsInput = await screen.findByDisplayValue("100");
+    const estimatorsInput = (await screen.findAllByDisplayValue("100"))[0];
+    if (!estimatorsInput) throw new Error("Expected n_estimators input");
     fireEvent.change(estimatorsInput, { target: { value: "1.5" } });
     fireEvent.click(screen.getByRole("button", { name: /start monitoring/i }));
 
@@ -159,18 +259,21 @@ describe("<Monitoring /> static setup", () => {
     fireEvent.change(estimatorsInput, { target: { value: "101" } });
     fireEvent.click(screen.getByRole("button", { name: /start monitoring/i }));
     await waitFor(() => expect(mockPost).toHaveBeenCalled());
-    expect(mockPost.mock.calls[0][1].static_baseline_config.model_params.n_estimators).toBe(101);
+    expect(getSubmittedPayload().static_baseline_config.model_params.n_estimators).toBe(101);
   });
 
-  it("renders dynamic as a non-interactive facade with no adaptive controls", async () => {
+  it("renders the dynamic lane as a disabled coming-soon preview", async () => {
     renderMonitoring();
 
-    expect(await screen.findByText("Temporally dependent streams")).toBeTruthy();
-    expect(screen.getByText("Coming later")).toBeTruthy();
+    expect(await screen.findByText(/Martingale ensemble/i)).toBeTruthy();
+    const dynamicLane = screen.getByText("Temporally dependent streams");
+    expect(dynamicLane).toBeTruthy();
+    expect(
+      dynamicLane.closest("[aria-disabled]")?.getAttribute("aria-disabled"),
+    ).toBe("true");
+    expect(screen.getByText("Coming soon")).toBeTruthy();
     expect(screen.queryByRole("button", { name: /dynamic/i })).toBeNull();
     expect(screen.queryByText(/dynamic model/i)).toBeNull();
-    expect(screen.queryByText(/FDR Control/i)).toBeNull();
-    expect(screen.getByText(/Fixed Ville threshold/i)).toBeTruthy();
   });
 
   it("disables sensors claimed by an overlapping active service", async () => {
@@ -195,7 +298,7 @@ describe("<Monitoring /> static setup", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /start monitoring/i }));
     await waitFor(() => expect(mockPost).toHaveBeenCalled());
-    expect(mockPost.mock.calls[0][1].mqtt_topics).toEqual([
+    expect(getSubmittedPayload().mqtt_topics).toEqual([
       "charger/charger-1/live-telemetry/L2",
       "charger/charger-1/live-telemetry/L3",
     ]);

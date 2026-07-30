@@ -29,21 +29,13 @@ def test_sensor_key_strategy_validation():
     with pytest.raises(ValueError):
         RadarDefaultsConfig(sensor_key_strategy="invalid")
 
-    config = RadarDefaultsConfig(alignment_mode="STRICT_BARRIER")
-    assert config.alignment_mode == "strict_barrier"
 
-    with pytest.raises(ValueError):
-        RadarDefaultsConfig(alignment_mode="invalid")
-
-
-def test_tactic_settings_expose_static_alignment_defaults():
+def test_tactic_settings_expose_sensor_freshness_default():
     settings = TacticSettings(
-        TACTIC_RADAR_DEFAULT_ALIGNMENT_MODE="strict_barrier",
         TACTIC_RADAR_DEFAULT_SENSOR_FRESHNESS_SECONDS=18.0,
     )
     defaults = settings.config.radar_defaults
 
-    assert defaults.alignment_mode == "strict_barrier"
     assert defaults.sensor_freshness_seconds == 18.0
 
 

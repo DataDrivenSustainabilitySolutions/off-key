@@ -6,7 +6,6 @@ invoke application services, and map domain errors to HTTP responses.
 """
 
 from datetime import datetime
-from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
@@ -31,7 +30,10 @@ from ...schemas import (
     AnomalyResponse,
     ChargerResponse,
     FavoriteMutationRequest,
+    MonitoringChartEvidenceResponse,
     MonitoringEvidenceResponse,
+    TelemetryDataPoint,
+    TelemetryPaginatedResponse,
     UserCreateRequest,
     UserLoginRequest,
     UserPasswordUpdateRequest,
@@ -115,21 +117,37 @@ async def get_telemetry_types(
         _raise_http_from_domain(exc)
 
 
-@router.get("/telemetry/{charger_id}")
+@router.get(
+    "/telemetry/{charger_id}",
+    response_model=list[TelemetryDataPoint] | TelemetryPaginatedResponse,
+)
 async def get_telemetry_data(
     charger_id: str,
     telemetry_type: str = Query(..., alias="type"),
     limit: int = Query(1000, ge=1, le=10000),
     after_timestamp: datetime | None = Query(None),
+    after_created: datetime | None = Query(None),
+    after_event_timestamp: datetime | None = Query(None),
     paginated: bool = Query(False),
     service: TelemetryQueryService = Depends(get_telemetry_query_service),
-) -> list[dict[str, Any]] | dict[str, Any]:
+) -> list[TelemetryDataPoint] | TelemetryPaginatedResponse:
     try:
+        cursor_values = (after_created, after_event_timestamp)
+        if any(value is not None for value in cursor_values) and not all(
+            value is not None for value in cursor_values
+        ):
+            raise ValidationError("All telemetry live cursor fields are required")
+        if after_timestamp is not None and after_created is not None:
+            raise ValidationError(
+                "Historical and live telemetry cursors cannot be used together"
+            )
         return await service.get_telemetry_data(
             charger_id=charger_id,
             telemetry_type=telemetry_type,
             limit=limit,
             after_timestamp=after_timestamp,
+            after_created=after_created,
+            after_event_timestamp=after_event_timestamp,
             paginated=paginated,
         )
     except DomainError as exc:
@@ -260,6 +278,42 @@ async def get_monitoring_evidence(
     return await service.list_evidence(
         charger_id=charger_id,
         telemetry_type=telemetry_type,
+        limit=limit,
+    )
+
+
+@router.get(
+    "/monitoring-evidence/{charger_id}/chart",
+    response_model=list[MonitoringChartEvidenceResponse],
+)
+async def get_monitoring_chart_evidence(
+    charger_id: str,
+    after_created: datetime | None = Query(None),
+    after_timestamp: datetime | None = Query(None),
+    after_service_id: str | None = Query(None),
+    after_sequence_number: int | None = Query(None, ge=1),
+    limit: int = Query(2000, ge=1, le=10000),
+    service: MonitoringEvidenceService = Depends(get_monitoring_evidence_service),
+):
+    cursor_values = (
+        after_created,
+        after_timestamp,
+        after_service_id,
+        after_sequence_number,
+    )
+    if any(value is not None for value in cursor_values) and not all(
+        value is not None for value in cursor_values
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="All monitoring evidence cursor fields are required together",
+        )
+    return await service.list_chart_evidence(
+        charger_id=charger_id,
+        after_created=after_created,
+        after_timestamp=after_timestamp,
+        after_service_id=after_service_id,
+        after_sequence_number=after_sequence_number,
         limit=limit,
     )
 

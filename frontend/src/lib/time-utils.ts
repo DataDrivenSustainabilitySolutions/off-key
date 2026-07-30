@@ -67,23 +67,26 @@ export const groupTimestampsIntoRanges = (
     ? [...timestamps]
     : [...timestamps].sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
 
+  const [firstTimestamp, ...remainingTimestamps] = sorted;
+  if (!firstTimestamp) return [];
+
   const ranges: Array<{ start: string; end: string }> = [];
-  let currentStart = sorted[0];
-  let currentEnd = sorted[0];
+  let currentStart = firstTimestamp;
+  let currentEnd = firstTimestamp;
   let currentEndTime = new Date(currentEnd).getTime();
 
-  for (let i = 1; i < sorted.length; i++) {
-    const currentTime = new Date(sorted[i]).getTime();
+  for (const timestamp of remainingTimestamps) {
+    const currentTime = new Date(timestamp).getTime();
 
     if (currentTime - currentEndTime <= maxGapMs) {
       // Extend current range
-      currentEnd = sorted[i];
+      currentEnd = timestamp;
       currentEndTime = currentTime;
     } else {
       // Start new range
       ranges.push({ start: currentStart, end: currentEnd });
-      currentStart = sorted[i];
-      currentEnd = sorted[i];
+      currentStart = timestamp;
+      currentEnd = timestamp;
       currentEndTime = currentTime;
     }
   }

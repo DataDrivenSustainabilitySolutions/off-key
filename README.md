@@ -12,6 +12,27 @@ The example contains development-only credentials and service-discovery defaults
 Use independent secrets and production broker, database, email, and origin settings
 for any deployed environment. Local `.env` files are intentionally not tracked.
 
+## Development validation
+
+The supported local toolchain matches CI: Python 3.12 with `uv` for the backend
+workspace, and Node.js 24 with `npm` for the frontend.
+
+```bash
+uv sync --project backend --all-packages --all-groups --frozen
+uv run --project backend ruff check .
+uv run --project backend python -m pytest -q
+
+cd frontend
+npm ci
+npm run lint
+npm test
+npm run build
+```
+
+The frontend build type-checks application, Node tooling, unit tests, and Playwright
+tests before producing the Vite bundle. Run `npm run test:e2e` against a running
+Compose stack; CI's deployment smoke workflow performs that full-system check.
+
 ## Docker Compose Modes
 
 ### Local development (default)
@@ -43,23 +64,39 @@ rejected because they cannot define a stable multivariate feature schema.
 
 The monitoring UI presents two lanes:
 
-- **Static relationships** is the only executable lane. It is intended for an
-  aligned sensor set such as L1/L2/L3 whose dependency structure is expected to
-  remain stable.
-- **Temporally dependent streams** is a UI facade only. It deliberately has no
+- **Static relationships** is the executable lane. It is intended for an aligned
+  sensor set such as L1/L2/L3 whose dependency structure is expected to remain
+  stable.
+- **Temporally dependent streams** is a greyed-out, coming-soon preview. It has no
   model catalog, preprocessing pipeline, API contract, or runtime implementation.
 
 A static service consumes consecutive, non-overlapping phases: baseline training,
-calibration, and online inference. Inference produces conformal p-values, converts
-them to power e-values, and feeds the native restarted-mixture martingale from
-`nonconform`. The Ville threshold is fixed at `100`; an anomaly is emitted only on
-a new threshold crossing.
+calibration, and online inference. Inference produces one conformal p-value and
+feeds the same ordered stream to every configured martingale tracker. Trackers may
+use `power`, `simple_mixture`, or `simple_jumper` betting and may alarm on the
+all-history martingale, harmonic restarted martingale, CUSUM, or
+Shiryaev-Roberts statistic. An anomaly is emitted when any tracker records a new
+threshold crossing. The backward-compatible default is power betting with
+epsilon `0.5`, the restarted statistic, and threshold `100`.
+The collapsed advanced-settings editor provides contextual info controls for
+detector, tracker, threshold, and alignment fields; the same explanations open
+on pointer hover and keyboard focus.
+
+Ville thresholds on the all-history and harmonic restarted statistics retain
+their anytime-valid interpretation. CUSUM and Shiryaev-Roberts thresholds are
+change-detection parameters and must be calibrated for the intended null stream;
+`1 / threshold` is not presented as their false-alarm probability.
 
 Every ready-phase inference is persisted in `monitoring_evidence`, including the
-p-value, finite or infinite e-value state, restarted martingale, threshold, sensor
-set, and alarm flag. The gateway exposes this evidence for telemetry charts, where
-the restarted martingale is drawn on a logarithmic secondary axis with the threshold
-overlay.
+p-value, sensor set, aggregate alarm flag, and bounded `tracker_results` evidence
+for every configured martingale. Finite and infinite states are represented
+explicitly. The legacy primary-tracker columns remain populated for compatibility.
+The gateway exposes this evidence for telemetry charts, where each selected alarm
+statistic is drawn on a logarithmic secondary axis with its threshold overlay.
+Telemetry and evidence use the same normalized payload event timestamp. Their
+stacked panes share horizontal bounds, zoom state, and crosshair, so observations
+from one inference remain vertically aligned in time; receive time is used only
+when a publisher omits its event timestamp.
 
 An MQTT sensor stream may belong to only one active monitoring service. TACTIC
 serializes claims in PostgreSQL and rejects overlapping MQTT filters, including `+`

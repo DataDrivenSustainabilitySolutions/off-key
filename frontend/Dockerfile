@@ -28,7 +28,7 @@ ENV VITE_API_URL=${VITE_API_URL}
 COPY --chown=node:node . .
 RUN npm run build
 
-FROM nginx:1.30.4-alpine AS production
+FROM nginx:1.31.3-alpine AS production
 
 LABEL org.opencontainers.image.source="https://github.com/DataDrivenSustainabilitySolutions/off-key" \
       org.opencontainers.image.description="Production image for the Off-Key frontend" \

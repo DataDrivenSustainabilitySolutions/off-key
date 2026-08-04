@@ -23,7 +23,7 @@ jobs:
   deployment-smoke:
     name: deployment-smoke
     runs-on: ubuntu-24.04
-    timeout-minutes: 35
+    timeout-minutes: 45
 
     env:
       COMPOSE_PROJECT_NAME: off-key-smoke
@@ -39,9 +39,22 @@ jobs:
           cache: "npm"
           cache-dependency-path: frontend/package-lock.json
 
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.12.0"
+
       - name: Install frontend dependencies
         working-directory: frontend
         run: npm ci
+
+      - name: Sync backend E2E dependencies
+        run: uv sync --project backend --all-packages --all-groups --frozen
 
       - name: Configure local smoke environment
         run: cp .env.example .env
@@ -306,10 +319,24 @@ jobs:
             --ipc host \
             --volume "${PWD}/frontend:/work" \
             --workdir /work \
+            --env-file "${PWD}/.env" \
             --env CI=true \
             --env PLAYWRIGHT_BASE_URL=http://localhost:5173 \
             "${playwright_image}" \
             npm run test:e2e
+
+      - name: Run adaptive backend lifecycle E2E
+        timeout-minutes: 5
+        run: |
+          set -euo pipefail
+          set -a
+          source .env
+          set +a
+
+          export RUN_ADAPTIVE_E2E=1
+          export E2E_API_URL=http://localhost:8000/api
+          export E2E_AUTH_TOKEN="$(node -e "const state=require('./frontend/test-results/.auth/user.json'); const token=state.origins.flatMap(({localStorage=[]})=>localStorage).find(({name})=>name==='auth_token')?.value; if (!token) process.exit(1); process.stdout.write(token)")"
+          uv run --project backend python -m pytest backend/tests/test_adaptive_lane_e2e.py -q
 
       - name: Collect deployment smoke diagnostics
         if: failure()

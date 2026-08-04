@@ -199,20 +199,24 @@ class AnomalyCreateRequest(BaseModel):
 
 
 class MonitoringEvidenceResponse(BaseModel):
-    """Persisted static conformal evidence for a charted sensor."""
+    """Persisted strategy-aware monitoring evidence for a charted sensor."""
 
     service_id: str
     timestamp: datetime
     sequence_number: int
     charger_id: str
     sensor_set: list[str]
-    p_value: float
+    strategy: str
+    model_type: str | None = None
+    p_value: float | None = None
+    anomaly_score: float | None = None
     e_value: float | None = None
     e_value_is_infinite: bool
     log_e_value: float | None = None
     restarted_martingale: float | None = None
     restarted_martingale_is_infinite: bool
     log_restarted_martingale: float | None = None
+    tracker_results: list[dict[str, object]] = Field(default_factory=list)
     threshold: float
     alarm: bool
 
@@ -224,7 +228,11 @@ class MonitoringChartEvidenceResponse(BaseModel):
     timestamp: datetime
     sequence_number: int
     sensor_set: list[str]
+    strategy: str
+    model_type: str | None = None
+    anomaly_score: float | None = None
     restarted_martingale: float | None = None
+    tracker_results: list[dict[str, object]] = Field(default_factory=list)
     threshold: float
     alarm: bool
     created: datetime
@@ -260,6 +268,8 @@ __all__ = [
     "FavoriteMutationRequest",
     "FavoriteResponse",
     "MessageResponse",
+    "MonitoringChartEvidenceResponse",
+    "MonitoringEvidenceResponse",
     "TelemetryCursorResponse",
     "TelemetryDataPoint",
     "TelemetryPaginatedResponse",

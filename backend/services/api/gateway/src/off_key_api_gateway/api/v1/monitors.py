@@ -3,11 +3,16 @@ from typing import Any, Optional
 
 from fastapi import APIRouter, HTTPException, Query, Request, Response
 from off_key_core.schemas.radar import (
+    AdaptiveStreamConfig,
     MonitoringStrategy,
     PerformanceConfig,
     StaticBaselineConfig,
+    resolve_monitoring_strategy_config,
 )
-from off_key_core.utils.mqtt_topics import normalize_static_monitoring_topics
+from off_key_core.utils.mqtt_topics import (
+    derive_monitoring_sensor_keys,
+    normalize_static_monitoring_topics,
+)
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from ...facades.tactic import TacticError, tactic
@@ -64,9 +69,9 @@ class MonitoringServiceConfig(BaseModel):
         default="static_baseline",
         description="Static baseline monitoring strategy",
     )
-    model_type: str = Field(
-        default="pyod_iforest",
-        description="Legacy/effective ML model type for the selected strategy",
+    model_type: str | None = Field(
+        default=None,
+        description="Compatibility mirror of the strategy-specific model type",
     )
     model_params: dict[str, Any] | None = Field(
         default=None, description="Model-specific parameters"
@@ -78,6 +83,10 @@ class MonitoringServiceConfig(BaseModel):
     static_baseline_config: Optional["StaticBaselineConfig"] = Field(
         default=None,
         description="Static baseline conformal detector settings",
+    )
+    adaptive_stream_config: AdaptiveStreamConfig | None = Field(
+        default=None,
+        description="Adaptive score-then-learn detector settings",
     )
     requirements: list[str] | None = Field(
         None, description="List of pip packages to install"
@@ -106,27 +115,45 @@ MonitoringServiceConfig.model_rebuild()
 def _resolve_effective_start_config(
     config: MonitoringServiceConfig,
 ) -> dict[str, Any]:
-    """Resolve the static monitoring configuration."""
+    """Resolve and normalize the selected monitoring strategy."""
     performance_config = config.performance_config
-    model_type = config.model_type
-    model_params = config.model_params or {}
-    static_config = config.static_baseline_config or StaticBaselineConfig(
-        model_type=model_type,
-        model_params=model_params,
+    resolved = resolve_monitoring_strategy_config(
+        strategy=config.strategy,
+        model_type=config.model_type,
+        model_params=config.model_params,
+        static_baseline_config=config.static_baseline_config,
+        adaptive_stream_config=config.adaptive_stream_config,
     )
-    model_type = static_config.model_type
-    model_params = static_config.model_params
+    if resolved.adaptive_stream_config is not None:
+        feature_keys = derive_monitoring_sensor_keys(
+            config.mqtt_topics,
+            sensor_key_strategy=(
+                performance_config.sensor_key_strategy
+                if performance_config
+                else "full_hierarchy"
+            ),
+        )
+        resolved.adaptive_stream_config.validate_feature_schema(feature_keys)
 
     return {
-        "strategy": config.strategy,
-        "model_type": model_type,
-        "model_params": model_params,
+        "strategy": resolved.strategy,
+        "model_type": resolved.model_type,
+        "model_params": resolved.model_params,
         "performance_config": (
             performance_config.model_dump(exclude_none=True)
             if performance_config
             else None
         ),
-        "static_baseline_config": static_config.model_dump(exclude_none=True),
+        "static_baseline_config": (
+            resolved.static_baseline_config.model_dump(exclude_none=True)
+            if resolved.static_baseline_config
+            else None
+        ),
+        "adaptive_stream_config": (
+            resolved.adaptive_stream_config.model_dump(exclude_none=True)
+            if resolved.adaptive_stream_config
+            else None
+        ),
     }
 
 
@@ -246,6 +273,7 @@ async def start_monitoring_service(
                 mqtt_config=None,
                 performance_config=effective_config["performance_config"],
                 static_baseline_config=effective_config["static_baseline_config"],
+                adaptive_stream_config=effective_config["adaptive_stream_config"],
             )
         else:
             raise HTTPException(

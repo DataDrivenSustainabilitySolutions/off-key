@@ -1,3 +1,13 @@
+from .adaptive import (
+    ABERRANT_VERSION,
+    ADAPTIVE_MODEL_DEFINITIONS,
+    ADAPTIVE_MODEL_FAMILY,
+    ADAPTIVE_MODELS_BY_TYPE,
+    ADAPTIVE_MONITORING_STRATEGY,
+    BUILTIN_ADAPTIVE_MODEL_TYPES,
+    minimum_model_warmup,
+    validate_adaptive_model_params,
+)
 from .monitoring import (
     BUILTIN_STATIC_MODEL_TYPES,
     RETIRED_MODEL_FAMILY,
@@ -6,8 +16,16 @@ from .monitoring import (
 )
 
 __all__ = [
+    "ABERRANT_VERSION",
+    "ADAPTIVE_MODELS_BY_TYPE",
+    "ADAPTIVE_MODEL_DEFINITIONS",
+    "ADAPTIVE_MODEL_FAMILY",
+    "ADAPTIVE_MONITORING_STRATEGY",
+    "BUILTIN_ADAPTIVE_MODEL_TYPES",
     "BUILTIN_STATIC_MODEL_TYPES",
     "RETIRED_MODEL_FAMILY",
     "STATIC_MODEL_FAMILY",
     "STATIC_MONITORING_STRATEGY",
+    "minimum_model_warmup",
+    "validate_adaptive_model_params",
 ]

@@ -1,6 +1,7 @@
 from sqlalchemy import (
     JSON,
     Boolean,
+    CheckConstraint,
     Column,
     DateTime,
     Float,
@@ -28,7 +29,16 @@ def monitoring_evidence_table(metadata: MetaData) -> Table:
             JSON().with_variant(JSONB(), "postgresql"),
             nullable=False,
         ),
-        Column("p_value", Float, nullable=False),
+        Column(
+            "strategy",
+            Text,
+            nullable=False,
+            default="static_baseline",
+            server_default=text("'static_baseline'"),
+        ),
+        Column("model_type", Text, nullable=True),
+        Column("p_value", Float, nullable=True),
+        Column("anomaly_score", Float, nullable=True),
         Column("e_value", Float, nullable=True),
         Column("e_value_is_infinite", Boolean, nullable=False, default=False),
         Column("log_e_value", Float, nullable=True),
@@ -60,6 +70,14 @@ def monitoring_evidence_table(metadata: MetaData) -> Table:
             "timestamp",
             "sequence_number",
             name="pk_monitoring_evidence",
+        ),
+        CheckConstraint(
+            "(strategy = 'static_baseline' AND p_value IS NOT NULL) OR "
+            "(strategy = 'adaptive_stream' AND anomaly_score IS NOT NULL "
+            "AND anomaly_score <> 'NaN'::double precision "
+            "AND anomaly_score NOT IN "
+            "('Infinity'::double precision, '-Infinity'::double precision))",
+            name="ck_monitoring_evidence_strategy_payload",
         ),
         Index(
             "idx_monitoring_evidence_charger_timestamp",

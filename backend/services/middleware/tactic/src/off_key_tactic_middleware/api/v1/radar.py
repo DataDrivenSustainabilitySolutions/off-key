@@ -2,6 +2,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from off_key_core.schemas.radar import (
+    AdaptiveStreamConfig,
     MonitoringStrategy,
     PerformanceConfig,
     StaticBaselineConfig,
@@ -34,9 +35,9 @@ class RadarConfig(BaseModel):
         default="static_baseline",
         description="Static baseline monitoring strategy.",
     )
-    model_type: str = Field(
-        default="pyod_iforest",
-        description="ML model type. Use GET /api/v1/models/ to see available models.",
+    model_type: str | None = Field(
+        default=None,
+        description="Compatibility mirror of the strategy-specific model type.",
     )
     model_params: dict[str, Any] | None = Field(
         default=None,
@@ -55,6 +56,10 @@ class RadarConfig(BaseModel):
     static_baseline_config: StaticBaselineConfig | None = Field(
         default=None,
         description="Static baseline conformal detector settings.",
+    )
+    adaptive_stream_config: AdaptiveStreamConfig | None = Field(
+        default=None,
+        description="Adaptive score-then-learn detector settings.",
     )
 
     @field_validator("mqtt_topics")
@@ -127,6 +132,11 @@ async def start_radar_service(
             static_baseline_config=(
                 config.static_baseline_config.model_dump(exclude_none=True)
                 if config.static_baseline_config
+                else None
+            ),
+            adaptive_stream_config=(
+                config.adaptive_stream_config.model_dump(exclude_none=True)
+                if config.adaptive_stream_config
                 else None
             ),
         )

@@ -482,6 +482,14 @@ class DatabaseWriter:
         )
 
     @staticmethod
+    def _is_adaptive_operational_result(result: AnomalyResult) -> bool:
+        adaptive_context = (result.context or {}).get("adaptive_stream")
+        return (
+            isinstance(adaptive_context, dict)
+            and adaptive_context.get("phase") == "operational"
+        )
+
+    @staticmethod
     def _derive_anomaly_type(result: AnomalyResult) -> str:
         """Map detector output to stored anomaly semantics."""
         alignment_context = (result.context or {}).get("alignment", {})
@@ -489,6 +497,10 @@ class DatabaseWriter:
             if bool(alignment_context.get("aligned_vector")):
                 return "ml_conformal_static_multivariate"
             return "ml_conformal_static_univariate"
+        if isinstance((result.context or {}).get("adaptive_stream"), dict):
+            if bool(alignment_context.get("aligned_vector")):
+                return "ml_adaptive_stream_multivariate"
+            return "ml_adaptive_stream_univariate"
         if bool(alignment_context.get("aligned_vector")):
             return "ml_tailprob_multivariate"
         return "ml_tailprob_univariate"
@@ -567,7 +579,13 @@ class DatabaseWriter:
                 "value_type": (
                     "conformal_pvalue"
                     if self._is_static_conformal_result(result)
-                    else "tail_pvalue"
+                    else (
+                        "anomaly_score"
+                        if isinstance(
+                            (result.context or {}).get("adaptive_stream"), dict
+                        )
+                        else "tail_pvalue"
+                    )
                 ),
                 "sensor_set": self._derive_sensor_set(result),
             }
@@ -592,15 +610,28 @@ class DatabaseWriter:
 
         records = []
         for result in results:
-            if not self._is_static_ready_result(result):
+            is_static = self._is_static_ready_result(result)
+            is_adaptive = self._is_adaptive_operational_result(result)
+            if not is_static and not is_adaptive:
                 continue
-            context = (result.context or {}).get("static_conformal", {})
+            context_key = "static_conformal" if is_static else "adaptive_stream"
+            context = (result.context or {}).get(context_key, {})
             p_value = context.get("p_value")
-            sequence_number = context.get("tested_count")
+            sequence_number = context.get(
+                "tested_count", context.get("sequence_number")
+            )
             threshold = context.get("restarted_ville_threshold")
             tracker_results = _normalize_tracker_results(context.get("tracker_results"))
             threshold = context.get("threshold", threshold)
-            if not isinstance(p_value, int | float) or not math.isfinite(p_value):
+            anomaly_score = context.get("anomaly_score", result.anomaly_score)
+            if is_static and (
+                not isinstance(p_value, int | float) or not math.isfinite(p_value)
+            ):
+                continue
+            if is_adaptive and (
+                not isinstance(anomaly_score, int | float)
+                or not math.isfinite(anomaly_score)
+            ):
                 continue
             if not isinstance(sequence_number, int) or sequence_number < 1:
                 continue
@@ -614,7 +645,13 @@ class DatabaseWriter:
                     "sequence_number": sequence_number,
                     "charger_id": result.charger_id or "unknown",
                     "sensor_set": self._derive_sensor_set(result) or [],
-                    "p_value": float(p_value),
+                    "strategy": ("static_baseline" if is_static else "adaptive_stream"),
+                    "model_type": (
+                        (result.context or {}).get("model_type")
+                        or result.model_info.get("model_type")
+                    ),
+                    "p_value": float(p_value) if is_static else None,
+                    "anomaly_score": (float(anomaly_score) if is_adaptive else None),
                     "e_value": _optional_finite_float(context.get("e_value")),
                     "e_value_is_infinite": bool(
                         context.get("e_value_is_infinite", False)
@@ -767,7 +804,9 @@ class DatabaseWriter:
         return [
             result
             for result in batch_snapshot
-            if result.is_anomaly or DatabaseWriter._is_static_ready_result(result)
+            if result.is_anomaly
+            or DatabaseWriter._is_static_ready_result(result)
+            or DatabaseWriter._is_adaptive_operational_result(result)
         ]
 
     async def _requeue_results(self, results: list[AnomalyResult]) -> None:

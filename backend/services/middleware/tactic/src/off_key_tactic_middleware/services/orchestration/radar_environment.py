@@ -6,7 +6,9 @@ from datetime import UTC, datetime
 from typing import Any
 
 from off_key_core.config.logs import logger
-from off_key_core.schemas.radar import StaticBaselineConfig
+from off_key_core.models import ADAPTIVE_MODEL_FAMILY, STATIC_MODEL_FAMILY
+from off_key_core.schemas.radar import resolve_monitoring_strategy_config
+from off_key_core.utils.mqtt_topics import derive_monitoring_sensor_keys
 
 from ...config.config import (
     get_radar_container_runtime_settings,
@@ -60,37 +62,48 @@ def build_radar_environment(
     service_id: str,
     mqtt_topics: list[str],
     strategy: str,
-    model_type: str,
-    model_params: dict[str, Any],
+    model_type: str | None,
+    model_params: dict[str, Any] | None,
     mqtt_config: dict[str, Any],
     performance_config: dict[str, Any],
-    static_baseline_config: dict[str, Any],
+    static_baseline_config: dict[str, Any] | None,
+    adaptive_stream_config: dict[str, Any] | None = None,
     model_registry: ModelRegistryService,
 ) -> dict[str, str]:
     """Compile validated service configuration into RADAR environment variables."""
     strategy = (strategy or "static_baseline").strip().lower()
-    if strategy != "static_baseline":
-        raise ValueError(
-            "Invalid monitoring strategy. Only static_baseline can be started; "
-            "dynamic monitoring is not implemented."
-        )
+    if strategy not in {"static_baseline", "adaptive_stream"}:
+        raise ValueError("Invalid monitoring strategy")
 
     defaults = get_tactic_settings().config.radar_defaults
     runtime = get_radar_container_runtime_settings()
-    static_config = StaticBaselineConfig(
-        **{
-            **static_baseline_config,
-            "model_type": static_baseline_config.get(
-                "model_type", model_type or "pyod_iforest"
-            ),
-            "model_params": static_baseline_config.get(
-                "model_params", model_params or {}
-            ),
-        }
+    resolved = resolve_monitoring_strategy_config(
+        strategy=strategy,
+        model_type=model_type,
+        model_params=model_params,
+        static_baseline_config=static_baseline_config or None,
+        adaptive_stream_config=adaptive_stream_config or None,
     )
-    model_type = static_config.model_type
-    model_params = static_config.model_params
-    normalized_static_config = static_config.model_dump(exclude_none=True)
+    model_type = resolved.model_type
+    model_params = resolved.model_params
+    normalized_static_config = (
+        resolved.static_baseline_config.model_dump(exclude_none=True)
+        if resolved.static_baseline_config
+        else {}
+    )
+    normalized_adaptive_config = (
+        resolved.adaptive_stream_config.model_dump(exclude_none=True)
+        if resolved.adaptive_stream_config
+        else {}
+    )
+    if resolved.adaptive_stream_config is not None:
+        feature_keys = derive_monitoring_sensor_keys(
+            mqtt_topics,
+            sensor_key_strategy=performance_config.get(
+                "sensor_key_strategy", "full_hierarchy"
+            ),
+        )
+        resolved.adaptive_stream_config.validate_feature_schema(feature_keys)
 
     environment = {
         "SERVICE_ID": service_id,
@@ -113,7 +126,6 @@ def build_radar_environment(
         "RADAR_SUBSCRIPTION_TOPICS": ",".join(mqtt_topics),
         "RADAR_SUBSCRIPTION_QOS": str(mqtt_config.get("qos", defaults.mqtt_qos)),
         "RADAR_MODEL_TYPE": model_type or defaults.model_type,
-        "RADAR_STATIC_BASELINE_CONFIG": json.dumps(normalized_static_config),
         "RADAR_BATCH_SIZE": str(
             performance_config.get("batch_size", defaults.batch_size)
         ),
@@ -159,14 +171,29 @@ def build_radar_environment(
 
     try:
         validated_params = model_registry.validate_model_params(
-            model_type, model_params, category="model"
+            model_type,
+            model_params,
+            category="model",
+            family=(
+                ADAPTIVE_MODEL_FAMILY
+                if strategy == "adaptive_stream"
+                else STATIC_MODEL_FAMILY
+            ),
         )
     except ValueError as exc:
         logger.error("Invalid model parameters for %s: %s", model_type, exc)
         raise ValueError(f"Invalid model parameters: {exc}") from exc
 
     environment["RADAR_MODEL_PARAMS"] = json.dumps(validated_params)
-    normalized_static_config["model_params"] = validated_params
-    environment["RADAR_STATIC_BASELINE_CONFIG"] = json.dumps(normalized_static_config)
+    if strategy == "adaptive_stream":
+        normalized_adaptive_config["model_params"] = validated_params
+        environment["RADAR_ADAPTIVE_STREAM_CONFIG"] = json.dumps(
+            normalized_adaptive_config
+        )
+    else:
+        normalized_static_config["model_params"] = validated_params
+        environment["RADAR_STATIC_BASELINE_CONFIG"] = json.dumps(
+            normalized_static_config
+        )
     logger.info("Model params validated for %s: %s", model_type, validated_params)
     return environment

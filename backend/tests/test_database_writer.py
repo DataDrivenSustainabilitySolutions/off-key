@@ -126,7 +126,10 @@ def test_build_evidence_record_preserves_static_inference_context(
             "sequence_number": 7,
             "charger_id": result.charger_id,
             "sensor_set": ["L1", "L2", "L3"],
+            "strategy": "static_baseline",
+            "model_type": "isolation_forest",
             "p_value": 0.02,
+            "anomaly_score": None,
             "e_value": 3.5,
             "e_value_is_infinite": False,
             "log_e_value": 1.25,
@@ -138,6 +141,62 @@ def test_build_evidence_record_preserves_static_inference_context(
             "alarm": False,
         }
     ]
+
+
+def test_build_adaptive_operational_evidence_and_anomaly_semantics(
+    db_config, sample_anomaly_result, monkeypatch
+):
+    from off_key_mqtt_radar.database import DatabaseWriter
+
+    monkeypatch.setattr(
+        "off_key_mqtt_radar.database.get_radar_checkpoint_settings",
+        lambda: SimpleNamespace(SERVICE_ID="svc-adaptive"),
+    )
+    result = replace(
+        sample_anomaly_result,
+        anomaly_score=7.5,
+        is_anomaly=True,
+        model_info={"model_type": "aberrant_online_isolation_forest"},
+        context={
+            "model_type": "aberrant_online_isolation_forest",
+            "alignment": {
+                "aligned_vector": True,
+                "required_sensors": ["L1", "L2"],
+            },
+            "adaptive_stream": {
+                "phase": "operational",
+                "sequence_number": 4,
+                "anomaly_score": 7.5,
+                "threshold": 5.0,
+                "alarm_fired": True,
+            },
+        },
+    )
+    writer = DatabaseWriter(db_config, session_factory=AsyncMock())
+
+    [evidence] = writer._build_evidence_records([result])
+    [anomaly], _ = writer._build_records([result])
+
+    assert evidence["strategy"] == "adaptive_stream"
+    assert evidence["p_value"] is None
+    assert evidence["anomaly_score"] == 7.5
+    assert evidence["threshold"] == 5.0
+    assert evidence["alarm"] is True
+    assert anomaly["value_type"] == "anomaly_score"
+    assert anomaly["anomaly_type"] == "ml_adaptive_stream_multivariate"
+    assert anomaly["anomaly_value"] == 7.5
+    calibration = replace(
+        result,
+        is_anomaly=False,
+        context={
+            **result.context,
+            "adaptive_stream": {
+                **result.context["adaptive_stream"],
+                "phase": "calibration",
+            },
+        },
+    )
+    assert writer._build_evidence_records([calibration]) == []
 
 
 def test_build_evidence_record_normalizes_infinite_values(

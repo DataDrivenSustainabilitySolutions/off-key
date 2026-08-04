@@ -166,6 +166,7 @@ class Tactic:
         mqtt_config: dict[str, Any] | None = None,
         performance_config: dict[str, Any] | None = None,
         static_baseline_config: dict[str, Any] | None = None,
+        adaptive_stream_config: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """
         Start a new RADAR service via TACTIC.
@@ -198,6 +199,8 @@ class Tactic:
             payload["performance_config"] = performance_config
         if static_baseline_config:
             payload["static_baseline_config"] = static_baseline_config
+        if adaptive_stream_config:
+            payload["adaptive_stream_config"] = adaptive_stream_config
 
         return await self._make_request(
             method="POST",

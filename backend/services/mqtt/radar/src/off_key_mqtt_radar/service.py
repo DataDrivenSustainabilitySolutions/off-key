@@ -18,8 +18,9 @@ from contextlib import suppress
 from datetime import datetime
 
 from off_key_core.config.logs import logger
-from off_key_core.schemas.radar import StaticBaselineConfig
+from off_key_core.schemas.radar import AdaptiveStreamConfig, StaticBaselineConfig
 
+from .adaptive_detector import AdaptiveStreamDetectionService
 from .checkpoint_manager import CheckpointManager
 from .config.config import AnomalyDetectionConfig, get_radar_settings
 from .config_watcher import ConfigReloader, ConfigWatcher
@@ -253,22 +254,31 @@ class RadarService:
         logger.info("Setting up anomaly detection")
 
         strategy = getattr(self.config, "strategy", "static_baseline")
-        if strategy != "static_baseline":
-            raise ValueError(
-                "RADAR only executes the static_baseline strategy. Dynamic "
-                "monitoring is a disabled product lane and has no runtime yet."
-            )
         static_baseline_config = (
             getattr(self.config, "static_baseline_config", None)
             or StaticBaselineConfig()
         )
+        adaptive_stream_config = getattr(self.config, "adaptive_stream_config", None)
+        if strategy == "adaptive_stream" and adaptive_stream_config is None:
+            adaptive_stream_config = AdaptiveStreamConfig()
+        if strategy not in {"static_baseline", "adaptive_stream"}:
+            raise ValueError(f"Unsupported monitoring strategy: {strategy}")
 
         # Create anomaly detection config
         anomaly_config = AnomalyDetectionConfig(
             strategy=strategy,
-            model_type=static_baseline_config.model_type,
-            model_params=static_baseline_config.model_params,
+            model_type=(
+                adaptive_stream_config.model_type
+                if strategy == "adaptive_stream" and adaptive_stream_config
+                else static_baseline_config.model_type
+            ),
+            model_params=(
+                adaptive_stream_config.model_params
+                if strategy == "adaptive_stream" and adaptive_stream_config
+                else static_baseline_config.model_params
+            ),
             static_baseline_config=static_baseline_config,
+            adaptive_stream_config=adaptive_stream_config,
             subscription_topics=getattr(self.config, "subscription_topics", []),
             sensor_key_strategy=getattr(
                 self.config, "sensor_key_strategy", "full_hierarchy"
@@ -279,7 +289,11 @@ class RadarService:
             checkpoint_interval=getattr(self.config, "checkpoint_interval", 10000),
         )
 
-        service_cls = StaticConformalDetectionService
+        service_cls = (
+            AdaptiveStreamDetectionService
+            if strategy == "adaptive_stream"
+            else StaticConformalDetectionService
+        )
         primary_service = None
         for checkpoint_path in self.checkpoint_manager.candidate_paths():
             if not self.checkpoint_manager.claim(checkpoint_path):
@@ -422,8 +436,11 @@ class RadarService:
 
                 # Write results to database if needed
                 static_context = (result.context or {}).get("static_conformal", {})
+                adaptive_context = (result.context or {}).get("adaptive_stream", {})
                 should_persist = (
-                    result.is_anomaly or static_context.get("phase") == "ready"
+                    result.is_anomaly
+                    or static_context.get("phase") == "ready"
+                    or adaptive_context.get("phase") == "operational"
                 )
                 if self.database_writer and should_persist:
                     await self.database_writer.write_result(result)

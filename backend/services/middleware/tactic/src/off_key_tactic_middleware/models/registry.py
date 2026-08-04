@@ -14,7 +14,14 @@ from jsonschema import validate as jsonschema_validate
 from jsonschema.exceptions import ValidationError as JsonSchemaValidationError
 from off_key_core.db.base import get_engine
 from off_key_core.db.models import ModelRegistry
-from off_key_core.models import STATIC_MODEL_FAMILY, STATIC_MONITORING_STRATEGY
+from off_key_core.models import (
+    ABERRANT_VERSION,
+    ADAPTIVE_MODEL_DEFINITIONS,
+    ADAPTIVE_MODEL_FAMILY,
+    ADAPTIVE_MONITORING_STRATEGY,
+    STATIC_MODEL_FAMILY,
+    STATIC_MONITORING_STRATEGY,
+)
 from sqlalchemy import and_, func, inspect, or_, text
 from sqlalchemy.orm import Session
 
@@ -141,12 +148,14 @@ class ModelRegistryService:
             )
 
     def _populate_default_models(self, session: Session):
-        """Populate static defaults and retire the removed dynamic catalog."""
+        """Populate the immutable static and adaptive runtime catalogs."""
         session.query(ModelRegistry).filter(
             or_(
                 ModelRegistry.category != "model",
                 ModelRegistry.family.is_(None),
-                ModelRegistry.family != STATIC_MODEL_FAMILY,
+                ModelRegistry.family.notin_(
+                    [STATIC_MODEL_FAMILY, ADAPTIVE_MODEL_FAMILY]
+                ),
             )
         ).update({ModelRegistry.is_active: False}, synchronize_session=False)
 
@@ -227,6 +236,24 @@ class ModelRegistryService:
             },
         ]
 
+        default_models.extend(
+            {
+                "model_type": definition.model_type,
+                "category": "model",
+                "family": ADAPTIVE_MODEL_FAMILY,
+                "name": definition.name,
+                "description": "Online score-then-learn detector from aberrant",
+                "complexity": definition.complexity,
+                "memory_usage": definition.memory_usage,
+                "import_paths": [definition.import_path],
+                "parameter_schema": definition.params_model.model_json_schema(),
+                "default_parameters": definition.params_model().model_dump(mode="json"),
+                "version": ABERRANT_VERSION,
+                "requires_special_handling": definition.model_type == "aberrant_knn",
+            }
+            for definition in ADAPTIVE_MODEL_DEFINITIONS
+        )
+
         for model_data in default_models:
             existing = (
                 session.query(ModelRegistry)
@@ -250,7 +277,9 @@ class ModelRegistryService:
                     and_(
                         ModelRegistry.is_active,
                         ModelRegistry.category == "model",
-                        ModelRegistry.family == STATIC_MODEL_FAMILY,
+                        ModelRegistry.family.in_(
+                            [STATIC_MODEL_FAMILY, ADAPTIVE_MODEL_FAMILY]
+                        ),
                     )
                 )
                 .all()
@@ -278,7 +307,9 @@ class ModelRegistryService:
         """Dynamically import and return the model class."""
         self._ensure_ready()
         with Session(get_engine()) as session:
-            model = self._get_active_entry(session, model_type)
+            model = self._get_active_entry(
+                session, model_type, family=STATIC_MODEL_FAMILY
+            )
 
             if not model:
                 available = [
@@ -298,12 +329,15 @@ class ModelRegistryService:
         model_type: str,
         params: dict[str, Any] | None = None,
         category: str | None = None,
+        family: str | None = None,
     ) -> dict[str, Any]:
         """Validate and normalize model parameters using DB-backed schema."""
         self._ensure_ready()
         params = params or {}
         with Session(get_engine()) as session:
-            model = self._get_active_entry(session, model_type, category)
+            model = self._get_active_entry(
+                session, model_type, category=category, family=family
+            )
             if not model:
                 raise ValueError(
                     self._format_missing_model_message(model_type, category)
@@ -361,18 +395,30 @@ class ModelRegistryService:
 
     @staticmethod
     def _strategy_for_model(model: ModelRegistry) -> str:
+        if model.family == ADAPTIVE_MODEL_FAMILY:
+            return ADAPTIVE_MONITORING_STRATEGY
         return STATIC_MONITORING_STRATEGY
 
     @staticmethod
     def _get_active_entry(
-        session: Session, model_type: str, category: str | None = None
+        session: Session,
+        model_type: str,
+        category: str | None = None,
+        family: str | None = None,
     ) -> ModelRegistry | None:
         query = session.query(ModelRegistry).filter(
             ModelRegistry.model_type == model_type,
             ModelRegistry.is_active,
             ModelRegistry.category == "model",
-            ModelRegistry.family == STATIC_MODEL_FAMILY,
         )
+        if family is not None:
+            if family not in {STATIC_MODEL_FAMILY, ADAPTIVE_MODEL_FAMILY}:
+                raise ValueError(f"Unsupported executable model family: {family}")
+            query = query.filter(ModelRegistry.family == family)
+        else:
+            query = query.filter(
+                ModelRegistry.family.in_([STATIC_MODEL_FAMILY, ADAPTIVE_MODEL_FAMILY])
+            )
         if category:
             query = query.filter(ModelRegistry.category == category)
         return query.first()

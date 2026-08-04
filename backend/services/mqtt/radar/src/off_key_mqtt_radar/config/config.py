@@ -8,13 +8,17 @@ from typing import Any, Self
 
 from dotenv import load_dotenv
 from off_key_core.config.validation import validate_environment as _validate_environment
-from off_key_core.schemas.radar import StaticBaselineConfig
+from off_key_core.schemas.radar import (
+    AdaptiveStreamConfig,
+    StaticBaselineConfig,
+    resolve_monitoring_strategy_config,
+)
 from off_key_core.utils.mqtt_topics import normalize_static_monitoring_topics
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 SENSOR_KEY_STRATEGIES = {"full_hierarchy", "top_level", "leaf"}
-MONITORING_STRATEGIES = {"static_baseline"}
+MONITORING_STRATEGIES = {"static_baseline", "adaptive_stream"}
 
 
 def _normalize_sensor_key_strategy(value: str, field_name: str) -> str:
@@ -58,6 +62,7 @@ class AnomalyDetectionConfig(BaseModel):
     static_baseline_config: StaticBaselineConfig = Field(
         default_factory=StaticBaselineConfig
     )
+    adaptive_stream_config: AdaptiveStreamConfig | None = None
     subscription_topics: list[str] = Field(default_factory=list)
     sensor_key_strategy: str = "full_hierarchy"
     sensor_freshness_seconds: float = Field(default=30.0, gt=0.0)
@@ -136,6 +141,7 @@ class MQTTRadarConfig(BaseModel):
     static_baseline_config: StaticBaselineConfig = Field(
         default_factory=StaticBaselineConfig
     )
+    adaptive_stream_config: AdaptiveStreamConfig | None = None
     batch_size: int = 100
     batch_timeout: float = 1.0
     checkpoint_interval: int = 10000
@@ -191,9 +197,10 @@ class RadarSettings(BaseSettings):
 
     # Anomaly Detection
     RADAR_MONITORING_STRATEGY: str = "static_baseline"
-    RADAR_MODEL_TYPE: str = "pyod_iforest"
-    RADAR_MODEL_PARAMS: dict[str, Any] = Field(default_factory=dict)
+    RADAR_MODEL_TYPE: str | None = None
+    RADAR_MODEL_PARAMS: dict[str, Any] | None = None
     RADAR_STATIC_BASELINE_CONFIG: dict[str, Any] = Field(default_factory=dict)
+    RADAR_ADAPTIVE_STREAM_CONFIG: dict[str, Any] = Field(default_factory=dict)
 
     # Performance
     RADAR_BATCH_SIZE: int = 100
@@ -262,17 +269,17 @@ class RadarSettings(BaseSettings):
         )
 
         strategy = self.RADAR_MONITORING_STRATEGY
-        static_baseline_config = StaticBaselineConfig(
-            **{
-                **self.RADAR_STATIC_BASELINE_CONFIG,
-                "model_type": self.RADAR_STATIC_BASELINE_CONFIG.get(
-                    "model_type", self.RADAR_MODEL_TYPE
-                ),
-                "model_params": self.RADAR_STATIC_BASELINE_CONFIG.get(
-                    "model_params", self.RADAR_MODEL_PARAMS
-                ),
-            }
+        resolved = resolve_monitoring_strategy_config(
+            strategy=strategy,
+            model_type=self.RADAR_MODEL_TYPE,
+            model_params=self.RADAR_MODEL_PARAMS,
+            static_baseline_config=self.RADAR_STATIC_BASELINE_CONFIG or None,
+            adaptive_stream_config=self.RADAR_ADAPTIVE_STREAM_CONFIG or None,
         )
+        static_baseline_config = (
+            resolved.static_baseline_config or StaticBaselineConfig()
+        )
+        adaptive_stream_config = resolved.adaptive_stream_config
 
         return MQTTRadarConfig(
             broker_host=self.RADAR_MQTT_BROKER_HOST,
@@ -294,9 +301,10 @@ class RadarSettings(BaseSettings):
             rate_limit_per_minute=self.RADAR_RATE_LIMIT_PER_MINUTE,
             memory_limit_mb=self.RADAR_MEMORY_LIMIT_MB,
             strategy=strategy,
-            model_type=static_baseline_config.model_type,
-            model_params=static_baseline_config.model_params,
+            model_type=resolved.model_type,
+            model_params=resolved.model_params,
             static_baseline_config=static_baseline_config,
+            adaptive_stream_config=adaptive_stream_config,
             batch_size=self.RADAR_BATCH_SIZE,
             batch_timeout=self.RADAR_BATCH_TIMEOUT,
             checkpoint_interval=self.RADAR_CHECKPOINT_INTERVAL,

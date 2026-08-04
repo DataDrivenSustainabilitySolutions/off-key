@@ -11,6 +11,8 @@ from off_key_core.config.logs import logger
 from off_key_core.db.base import get_async_engine
 from off_key_core.db.models import Base
 from off_key_core.models import (
+    ADAPTIVE_MODEL_FAMILY,
+    BUILTIN_ADAPTIVE_MODEL_TYPES,
     BUILTIN_STATIC_MODEL_TYPES,
     RETIRED_MODEL_FAMILY,
     STATIC_MODEL_FAMILY,
@@ -55,6 +57,7 @@ class SyncService:
                 await self._migrate_service_operational_status(conn)
                 await self._migrate_model_registry_family(conn)
                 await self._migrate_monitoring_evidence_trackers(conn)
+                await self._migrate_monitoring_evidence_strategy(conn)
                 await conn.run_sync(Base.metadata.create_all)
                 await self._ensure_chart_query_indexes(conn)
 
@@ -171,6 +174,156 @@ class SyncService:
             )
         )
 
+    async def _migrate_monitoring_evidence_strategy(self, conn) -> None:
+        """Generalize existing conformal evidence for adaptive score evidence."""
+        table_exists = await conn.scalar(
+            text("SELECT to_regclass('public.monitoring_evidence') IS NOT NULL")
+        )
+        if not table_exists:
+            return
+        for column_name, sql_type in (
+            ("strategy", "TEXT"),
+            ("model_type", "TEXT"),
+            ("anomaly_score", "DOUBLE PRECISION"),
+        ):
+            column_exists = await conn.scalar(
+                text(
+                    """
+                    SELECT EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_schema = 'public'
+                          AND table_name = 'monitoring_evidence'
+                          AND column_name = :column_name
+                    )
+                    """
+                ),
+                {"column_name": column_name},
+            )
+            if not column_exists:
+                await conn.execute(
+                    text(
+                        f"ALTER TABLE monitoring_evidence "
+                        f"ADD COLUMN {column_name} {sql_type}"
+                    )
+                )
+
+        strategy_is_nullable = await conn.scalar(
+            text(
+                """
+                SELECT is_nullable = 'YES'
+                FROM information_schema.columns
+                WHERE table_schema = 'public'
+                  AND table_name = 'monitoring_evidence'
+                  AND column_name = 'strategy'
+                """
+            )
+        )
+        if strategy_is_nullable:
+            await conn.execute(
+                text(
+                    "UPDATE monitoring_evidence SET strategy = 'static_baseline' "
+                    "WHERE strategy IS NULL OR btrim(strategy) = ''"
+                )
+            )
+            await conn.execute(
+                text(
+                    "ALTER TABLE monitoring_evidence ALTER COLUMN strategy SET NOT NULL"
+                )
+            )
+
+        strategy_default = await conn.scalar(
+            text(
+                """
+                SELECT column_default
+                FROM information_schema.columns
+                WHERE table_schema = 'public'
+                  AND table_name = 'monitoring_evidence'
+                  AND column_name = 'strategy'
+                """
+            )
+        )
+        if strategy_default != "'static_baseline'::text":
+            await conn.execute(
+                text(
+                    "ALTER TABLE monitoring_evidence ALTER COLUMN strategy "
+                    "SET DEFAULT 'static_baseline'"
+                )
+            )
+
+        p_value_is_required = await conn.scalar(
+            text(
+                """
+                SELECT is_nullable = 'NO'
+                FROM information_schema.columns
+                WHERE table_schema = 'public'
+                  AND table_name = 'monitoring_evidence'
+                  AND column_name = 'p_value'
+                """
+            )
+        )
+        if p_value_is_required:
+            await conn.execute(
+                text(
+                    "ALTER TABLE monitoring_evidence ALTER COLUMN p_value DROP NOT NULL"
+                )
+            )
+
+        constraint_exists = await conn.scalar(
+            text(
+                """
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM pg_constraint constraint_definition
+                    JOIN pg_class table_definition
+                      ON table_definition.oid = constraint_definition.conrelid
+                    JOIN pg_namespace namespace_definition
+                      ON namespace_definition.oid = table_definition.relnamespace
+                    WHERE namespace_definition.nspname = 'public'
+                      AND table_definition.relname = 'monitoring_evidence'
+                      AND constraint_definition.conname =
+                          'ck_monitoring_evidence_strategy_payload'
+                )
+                """
+            )
+        )
+        if not constraint_exists:
+            await conn.execute(
+                text(
+                    "ALTER TABLE monitoring_evidence ADD CONSTRAINT "
+                    "ck_monitoring_evidence_strategy_payload CHECK "
+                    "((strategy = 'static_baseline' AND p_value IS NOT NULL) OR "
+                    "(strategy = 'adaptive_stream' AND anomaly_score IS NOT NULL "
+                    "AND anomaly_score <> 'NaN'::double precision "
+                    "AND anomaly_score NOT IN "
+                    "('Infinity'::double precision, '-Infinity'::double precision))) "
+                    "NOT VALID"
+                )
+            )
+
+        constraint_is_validated = await conn.scalar(
+            text(
+                """
+                SELECT constraint_definition.convalidated
+                FROM pg_constraint constraint_definition
+                JOIN pg_class table_definition
+                  ON table_definition.oid = constraint_definition.conrelid
+                JOIN pg_namespace namespace_definition
+                  ON namespace_definition.oid = table_definition.relnamespace
+                WHERE namespace_definition.nspname = 'public'
+                  AND table_definition.relname = 'monitoring_evidence'
+                  AND constraint_definition.conname =
+                      'ck_monitoring_evidence_strategy_payload'
+                """
+            )
+        )
+        if not constraint_is_validated:
+            await conn.execute(
+                text(
+                    "ALTER TABLE monitoring_evidence VALIDATE CONSTRAINT "
+                    "ck_monitoring_evidence_strategy_payload"
+                )
+            )
+
     async def _migrate_model_registry_family(self, conn) -> None:
         """
         Ensure model_registry.family exists, is populated, and is non-null.
@@ -209,16 +362,22 @@ class SyncService:
                 UPDATE model_registry
                 SET family = CASE
                     WHEN model_type IN :builtins THEN :static_family
+                    WHEN model_type IN :adaptive_builtins THEN :adaptive_family
                     ELSE :retired_family
                 END
                 WHERE family IS NULL OR btrim(family) = ''
                 """
-        ).bindparams(bindparam("builtins", expanding=True))
+        ).bindparams(
+            bindparam("builtins", expanding=True),
+            bindparam("adaptive_builtins", expanding=True),
+        )
         await conn.execute(
             family_backfill,
             {
                 "builtins": tuple(sorted(BUILTIN_STATIC_MODEL_TYPES)),
+                "adaptive_builtins": tuple(sorted(BUILTIN_ADAPTIVE_MODEL_TYPES)),
                 "static_family": STATIC_MODEL_FAMILY,
+                "adaptive_family": ADAPTIVE_MODEL_FAMILY,
                 "retired_family": RETIRED_MODEL_FAMILY,
             },
         )
@@ -227,10 +386,13 @@ class SyncService:
                 """
                 UPDATE model_registry
                 SET is_active = FALSE
-                WHERE family != :static_family
+                WHERE family NOT IN (:static_family, :adaptive_family)
                 """
             ),
-            {"static_family": STATIC_MODEL_FAMILY},
+            {
+                "static_family": STATIC_MODEL_FAMILY,
+                "adaptive_family": ADAPTIVE_MODEL_FAMILY,
+            },
         )
         await conn.execute(
             text(

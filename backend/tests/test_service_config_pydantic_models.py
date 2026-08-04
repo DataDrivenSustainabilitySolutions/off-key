@@ -106,12 +106,17 @@ def test_mqtt_radar_config_rejects_ambiguous_static_sensor_assignments(topics, m
         MQTTRadarConfig(subscription_topics=topics)
 
 
-def test_anomaly_detection_config_rejects_removed_adaptive_fields():
+def test_anomaly_detection_config_uses_strategy_specific_adaptive_config():
     with pytest.raises(ValidationError, match="preprocessing_steps"):
         AnomalyDetectionConfig(preprocessing_steps=[])
 
-    with pytest.raises(ValidationError, match="static_baseline"):
-        AnomalyDetectionConfig(strategy="adaptive_stream")
+    config = AnomalyDetectionConfig(
+        strategy="adaptive_stream",
+        model_type="aberrant_online_isolation_forest",
+        adaptive_stream_config={"training_window_size": 1200},
+    )
+    assert config.strategy == "adaptive_stream"
+    assert config.adaptive_stream_config.training_window_size == 1200
 
 
 def test_radar_settings_parse_static_baseline_strategy(monkeypatch):
@@ -153,14 +158,21 @@ def test_radar_settings_parse_static_baseline_strategy(monkeypatch):
     assert threshold.value == 100
 
 
-def test_radar_settings_reject_adaptive_strategy(monkeypatch):
+def test_radar_settings_parse_adaptive_strategy(monkeypatch):
     monkeypatch.setenv("RADAR_MONITORING_STRATEGY", "adaptive_stream")
+    monkeypatch.setenv("RADAR_MODEL_TYPE", "aberrant_online_isolation_forest")
+    monkeypatch.setenv(
+        "RADAR_ADAPTIVE_STREAM_CONFIG",
+        '{"training_window_size": 1200, "calibration_window_size": 360}',
+    )
 
-    with pytest.raises(ValidationError, match="static_baseline"):
-        RadarSettings()
+    config = RadarSettings().config
+    assert config.strategy == "adaptive_stream"
+    assert config.model_type == "aberrant_online_isolation_forest"
+    assert config.adaptive_stream_config.threshold_config.quantile == 1.0
 
 
-def test_radar_settings_static_config_is_effective_model_source(monkeypatch):
+def test_radar_settings_reject_conflicting_static_compatibility_mirrors(monkeypatch):
     monkeypatch.setenv("RADAR_MODEL_TYPE", "pyod_iforest")
     monkeypatch.setenv("RADAR_MODEL_PARAMS", '{"n_estimators": 128}')
     monkeypatch.setenv(
@@ -174,9 +186,8 @@ def test_radar_settings_static_config_is_effective_model_source(monkeypatch):
         """,
     )
 
-    cfg = RadarSettings().config
-    assert cfg.model_type == "pyod_knn"
-    assert cfg.model_params == {"n_neighbors": 7, "contamination": 0.08}
+    with pytest.raises(ValueError, match="model_type conflicts"):
+        _ = RadarSettings().config
 
 
 def test_radar_settings_reject_non_object_model_params(monkeypatch):

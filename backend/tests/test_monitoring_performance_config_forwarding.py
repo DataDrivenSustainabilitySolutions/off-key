@@ -107,23 +107,88 @@ def test_gateway_monitoring_config_rejects_root_wildcard_topic():
         )
 
 
-def test_gateway_rejects_dynamic_strategy_and_removed_fields():
-    with pytest.raises(ValidationError, match="static_baseline"):
-        MonitoringServiceConfig(
-            container_name="radar-charger-1",
-            mqtt_topics=["charger/+/live-telemetry/sine"],
-            strategy="adaptive_stream",
+def test_gateway_accepts_adaptive_strategy_and_rejects_cross_lane_config():
+    config = MonitoringServiceConfig(
+        container_name="radar-charger-1",
+        mqtt_topics=["charger/charger-1/live-telemetry/sine"],
+        strategy="adaptive_stream",
+        model_type="aberrant_online_isolation_forest",
+        adaptive_stream_config={"training_window_size": 1200},
+    )
+    resolved = _resolve_effective_start_config(config)
+    assert resolved["strategy"] == "adaptive_stream"
+    assert resolved["adaptive_stream_config"]["training_window_size"] == 1200
+
+    with pytest.raises(ValueError, match="adaptive_stream_config"):
+        _resolve_effective_start_config(
+            MonitoringServiceConfig(
+                container_name="radar-charger-1",
+                mqtt_topics=["charger/charger-1/live-telemetry/sine"],
+                adaptive_stream_config={},
+            )
         )
 
-    with pytest.raises(ValidationError, match="adaptive_stream_config"):
-        MonitoringServiceConfig(
-            container_name="radar-charger-1",
-            mqtt_topics=["charger/+/live-telemetry/sine"],
-            adaptive_stream_config={},
-        )
+    conflicting = MonitoringServiceConfig(
+        container_name="radar-charger-1",
+        mqtt_topics=["charger/charger-1/live-telemetry/sine"],
+        strategy="adaptive_stream",
+        model_type="aberrant_knn",
+        adaptive_stream_config={"model_type": "aberrant_online_isolation_forest"},
+    )
+    with pytest.raises(ValueError, match="model_type conflicts"):
+        _resolve_effective_start_config(conflicting)
+
+
+def test_gateway_rejects_incompatible_adaptive_feature_count():
+    config = MonitoringServiceConfig(
+        container_name="radar-charger-1",
+        mqtt_topics=[
+            "charger/charger-1/live-telemetry/L1",
+            "charger/charger-1/live-telemetry/L2",
+        ],
+        strategy="adaptive_stream",
+        model_type="aberrant_moving_average",
+        adaptive_stream_config={
+            "model_type": "aberrant_moving_average",
+            "training_window_size": 100,
+        },
+    )
+
+    with pytest.raises(ValueError, match="exactly one feature"):
+        _resolve_effective_start_config(config)
 
     with pytest.raises(ValidationError, match="alignment_mode"):
         GatewayPerformanceConfig(alignment_mode="strict_barrier")
+
+
+def test_gateway_rejects_sensor_key_collisions_before_launch():
+    config = MonitoringServiceConfig(
+        container_name="radar-charger-1",
+        mqtt_topics=[
+            "charger/charger-1/live-telemetry/phase/L1",
+            "charger/charger-1/live-telemetry/phase/L2",
+        ],
+        strategy="adaptive_stream",
+        performance_config={"sensor_key_strategy": "top_level"},
+    )
+
+    with pytest.raises(ValueError, match="collapses multiple MQTT topics"):
+        _resolve_effective_start_config(config)
+
+
+def test_gateway_resolves_strategy_specific_default_model():
+    resolved = _resolve_effective_start_config(
+        MonitoringServiceConfig(
+            container_name="radar-charger-1",
+            mqtt_topics=["charger/charger-1/live-telemetry/L1"],
+            strategy="adaptive_stream",
+        )
+    )
+
+    assert resolved["model_type"] == "aberrant_online_isolation_forest"
+    assert resolved["adaptive_stream_config"]["model_type"] == (
+        "aberrant_online_isolation_forest"
+    )
 
 
 def test_gateway_resolves_default_static_baseline_config():
@@ -311,21 +376,69 @@ def test_tactic_builds_static_environment():
         "contamination": 0.1,
     }
     assert registry.validate_model_params.call_args.args[0] == "pyod_iforest"
+    assert registry.validate_model_params.call_args.kwargs["family"] == "static_pyod"
 
 
-def test_tactic_environment_rejects_dynamic_strategy():
-    registry = _model_registry()
+def test_tactic_builds_adaptive_environment():
+    registry = _model_registry({"num_trees": 2})
 
-    with pytest.raises(ValueError, match="dynamic monitoring is not implemented"):
+    env = build_radar_environment(
+        service_id="svc-dynamic",
+        mqtt_topics=["charger/charger-1/live-telemetry/L1"],
+        strategy="adaptive_stream",
+        model_type="aberrant_online_isolation_forest",
+        model_params={"num_trees": 2},
+        mqtt_config={},
+        performance_config={},
+        static_baseline_config={},
+        adaptive_stream_config={
+            "model_type": "aberrant_online_isolation_forest",
+            "model_params": {"num_trees": 2},
+            "training_window_size": 1200,
+            "calibration_window_size": 360,
+        },
+        model_registry=registry,
+    )
+
+    adaptive = json.loads(env["RADAR_ADAPTIVE_STREAM_CONFIG"])
+    assert env["RADAR_MONITORING_STRATEGY"] == "adaptive_stream"
+    assert "RADAR_STATIC_BASELINE_CONFIG" not in env
+    assert adaptive["threshold_config"] == {
+        "mode": "calibrated_quantile",
+        "quantile": 1.0,
+    }
+    assert registry.validate_model_params.call_args.kwargs["family"] == (
+        "adaptive_aberrant"
+    )
+
+
+def test_tactic_resolves_minimal_adaptive_request_and_rejects_mirror_conflict():
+    registry = _model_registry({"num_trees": 100})
+    env = build_radar_environment(
+        service_id="svc-dynamic-default",
+        mqtt_topics=["charger/charger-1/live-telemetry/L1"],
+        strategy="adaptive_stream",
+        model_type=None,
+        model_params={},
+        mqtt_config={},
+        performance_config={},
+        static_baseline_config={},
+        adaptive_stream_config=None,
+        model_registry=registry,
+    )
+    assert env["RADAR_MODEL_TYPE"] == "aberrant_online_isolation_forest"
+
+    with pytest.raises(ValueError, match="model_type conflicts"):
         build_radar_environment(
-            service_id="svc-dynamic",
-            mqtt_topics=["charger/+/live-telemetry/L1"],
+            service_id="svc-dynamic-conflict",
+            mqtt_topics=["charger/charger-1/live-telemetry/L1"],
             strategy="adaptive_stream",
-            model_type="pyod_iforest",
-            model_params={},
+            model_type="aberrant_knn",
+            model_params=None,
             mqtt_config={},
             performance_config={},
             static_baseline_config={},
+            adaptive_stream_config={"model_type": "aberrant_online_isolation_forest"},
             model_registry=registry,
         )
 

@@ -11,7 +11,7 @@ from sqlalchemy.schema import CreateTable
 
 
 @pytest.mark.asyncio
-async def test_initialize_database_migrates_anomalies_before_create_all():
+async def test_initialize_database_migrates_anomalies_before_create_all():  # noqa: C901
     service = SyncService()
     call_order: list[str] = []
 
@@ -39,6 +39,9 @@ async def test_initialize_database_migrates_anomalies_before_create_all():
     async def _record_evidence_migration(_conn):
         call_order.append("migrate_monitoring_evidence_trackers")
 
+    async def _record_evidence_strategy_migration(_conn):
+        call_order.append("migrate_monitoring_evidence_strategy")
+
     async def _record_chart_indexes(_conn):
         call_order.append("ensure_chart_query_indexes")
 
@@ -57,6 +60,9 @@ async def test_initialize_database_migrates_anomalies_before_create_all():
     )
     service._migrate_monitoring_evidence_trackers = AsyncMock(
         side_effect=_record_evidence_migration
+    )
+    service._migrate_monitoring_evidence_strategy = AsyncMock(
+        side_effect=_record_evidence_strategy_migration
     )
     service._ensure_chart_query_indexes = AsyncMock(side_effect=_record_chart_indexes)
 
@@ -80,6 +86,7 @@ async def test_initialize_database_migrates_anomalies_before_create_all():
         "migrate_service_operational_status",
         "migrate_model_registry",
         "migrate_monitoring_evidence_trackers",
+        "migrate_monitoring_evidence_strategy",
         "create_all",
         "ensure_chart_query_indexes",
     ]
@@ -120,6 +127,64 @@ async def test_migrate_monitoring_evidence_trackers_adds_and_backfills_jsonb():
     assert "ADD COLUMN tracker_results JSONB NOT NULL" in executed_sql
     assert "jsonb_build_array" in executed_sql
     assert "'alarm_statistic', 'restarted_martingale'" in executed_sql
+
+
+@pytest.mark.asyncio
+async def test_migrate_monitoring_evidence_strategy_is_idempotent_and_constrained():
+    service = SyncService()
+    conn = AsyncMock()
+    conn.scalar = AsyncMock(
+        side_effect=[
+            True,
+            False,
+            False,
+            False,
+            True,
+            None,
+            True,
+            False,
+            False,
+        ]
+    )
+    conn.execute = AsyncMock()
+
+    await service._migrate_monitoring_evidence_strategy(conn)
+
+    executed_sql = " ".join(
+        str(call.args[0]) for call in conn.execute.await_args_list if call.args
+    )
+    assert "ADD COLUMN strategy TEXT" in executed_sql
+    assert "SET strategy = 'static_baseline'" in executed_sql
+    assert "ALTER COLUMN p_value DROP NOT NULL" in executed_sql
+    assert "ck_monitoring_evidence_strategy_payload" in executed_sql
+    assert "anomaly_score <> 'NaN'::double precision" in executed_sql
+    assert "DROP CONSTRAINT" not in executed_sql
+    assert "NOT VALID" in executed_sql
+    assert "VALIDATE CONSTRAINT" in executed_sql
+
+
+@pytest.mark.asyncio
+async def test_migrate_monitoring_evidence_strategy_performs_no_ddl_when_current():
+    service = SyncService()
+    conn = AsyncMock()
+    conn.scalar = AsyncMock(
+        side_effect=[
+            True,
+            True,
+            True,
+            True,
+            False,
+            "'static_baseline'::text",
+            False,
+            True,
+            True,
+        ]
+    )
+    conn.execute = AsyncMock()
+
+    await service._migrate_monitoring_evidence_strategy(conn)
+
+    conn.execute.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -213,3 +278,16 @@ def test_monitoring_evidence_tracker_results_uses_postgresql_jsonb():
     assert "JSONB" in tracker_results_ddl
     assert "DEFAULT '[]'" in tracker_results_ddl
     assert "NOT NULL" in tracker_results_ddl
+
+
+def test_monitoring_evidence_strategy_payload_ddl_supports_both_lanes():
+    ddl = str(
+        CreateTable(MonitoringEvidence.__table__).compile(dialect=postgresql.dialect())
+    )
+
+    assert "strategy TEXT DEFAULT 'static_baseline' NOT NULL" in ddl
+    assert "p_value FLOAT" in ddl
+    assert "p_value FLOAT NOT NULL" not in ddl
+    assert "anomaly_score FLOAT" in ddl
+    assert "ck_monitoring_evidence_strategy_payload" in ddl
+    assert "'Infinity'::double precision" in ddl

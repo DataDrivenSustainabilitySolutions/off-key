@@ -352,7 +352,11 @@ class HealthMonitor:
             detail = "RADAR runtime failed"
         elif detector_stats.get("state") == "failed":
             stage = "failed"
-            detail = "Static baseline training failed"
+            detail = (
+                "Adaptive stream detector failed"
+                if detector_stats.get("strategy") == "adaptive_stream"
+                else "Static baseline training failed"
+            )
         elif service_status == "degraded" or detector_state == "degraded":
             stage = "degraded"
             detail = "RADAR runtime is degraded"
@@ -366,6 +370,8 @@ class HealthMonitor:
             )
         elif detector_stats.get("strategy") == "static_baseline":
             stage, detail, progress = self._static_operational_stage(detector_stats)
+        elif detector_stats.get("strategy") == "adaptive_stream":
+            stage, detail, progress = self._adaptive_operational_stage(detector_stats)
         else:
             stage = "operational"
 
@@ -408,7 +414,34 @@ class HealthMonitor:
             return "operational", None, None
         if state == "failed":
             return "failed", "Static baseline training failed", None
-        return "waiting_for_data", "Waiting for telemetry", None
+        return "waiting_for_data", "Waiting for detector state", None
+
+    @staticmethod
+    def _adaptive_operational_stage(
+        detector_stats: dict[str, Any],
+    ) -> tuple[str, str | None, dict[str, int] | None]:
+        state = detector_stats.get("state")
+        if state == "warmup":
+            current = int(detector_stats.get("warmup_count", 0) or 0)
+            target = int(detector_stats.get("training_window_size", 1) or 1)
+            return (
+                "collecting_training",
+                f"{current}/{target} warm-up samples",
+                {"current": current, "target": max(target, 1)},
+            )
+        if state == "calibrating":
+            current = int(detector_stats.get("calibration_count", 0) or 0)
+            target = int(detector_stats.get("calibration_window_size", 1) or 1)
+            return (
+                "collecting_calibration",
+                f"{current}/{target} calibration scores",
+                {"current": current, "target": max(target, 1)},
+            )
+        if state == "operational":
+            return "operational", None, None
+        if state == "failed":
+            return "failed", "Adaptive stream detector failed", None
+        return "waiting_for_data", "Waiting for adaptive detector state", None
 
     def _maybe_log_healthy_summary(self, status: HealthStatus) -> None:
         now = time.time()

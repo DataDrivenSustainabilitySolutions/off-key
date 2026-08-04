@@ -48,11 +48,12 @@ class RadarOrchestrationService:
         container_name: str,
         mqtt_topics: list[str],
         strategy: str = "static_baseline",
-        model_type: str = "pyod_iforest",
+        model_type: str | None = None,
         model_params: dict[str, Any] | None = None,
         mqtt_config: dict[str, Any] | None = None,
         performance_config: dict[str, Any] | None = None,
         static_baseline_config: dict[str, Any] | None = None,
+        adaptive_stream_config: dict[str, Any] | None = None,
     ) -> MonitoringService:
         """
         Create and start a RADAR Docker service for anomaly detection.
@@ -86,6 +87,7 @@ class RadarOrchestrationService:
             mqtt_config=mqtt_config or {},
             performance_config=performance_config or {},
             static_baseline_config=static_baseline_config or {},
+            adaptive_stream_config=adaptive_stream_config or {},
             model_registry=self.model_registry,
         )
         config_fingerprint = build_radar_config_fingerprint(env_vars)

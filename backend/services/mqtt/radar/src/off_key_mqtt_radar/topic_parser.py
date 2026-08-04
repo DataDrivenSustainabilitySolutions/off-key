@@ -5,7 +5,12 @@ Topic parser utilities for RADAR.
 from collections.abc import Mapping
 from typing import Any, ClassVar
 
-from off_key_core.utils.mqtt_topics import TopicMetadataExtractor
+from off_key_core.utils.mqtt_topics import (
+    SENSOR_KEY_STRATEGIES,
+    TopicMetadataExtractor,
+    canonical_sensor_key,
+    normalize_sensor_key_strategy,
+)
 
 
 class TopicParser:
@@ -13,20 +18,12 @@ class TopicParser:
     Parse MQTT topics using the shared extraction contract.
     """
 
-    SENSOR_KEY_STRATEGIES: ClassVar[set[str]] = {
-        "full_hierarchy",
-        "top_level",
-        "leaf",
-    }
+    SENSOR_KEY_STRATEGIES: ClassVar[frozenset[str]] = SENSOR_KEY_STRATEGIES
     _default_extractor = TopicMetadataExtractor()
 
     @staticmethod
     def _validate_sensor_key_strategy(sensor_key_strategy: str) -> str:
-        normalized = sensor_key_strategy.strip().lower()
-        if normalized not in TopicParser.SENSOR_KEY_STRATEGIES:
-            allowed = ", ".join(sorted(TopicParser.SENSOR_KEY_STRATEGIES))
-            raise ValueError(f"sensor_key_strategy must be one of: {allowed}")
-        return normalized
+        return normalize_sensor_key_strategy(sensor_key_strategy)
 
     @staticmethod
     def extract_charger_id(
@@ -54,17 +51,10 @@ class TopicParser:
             return None
 
         telemetry_type = metadata.telemetry_type
-        hierarchy_tail = [segment for segment in telemetry_type.split("/") if segment]
-        if not hierarchy_tail:
+        try:
+            return canonical_sensor_key(telemetry_type, strategy)
+        except ValueError:
             return None
-        if any(segment in {"+", "#"} for segment in hierarchy_tail):
-            return None
-
-        if strategy == "top_level":
-            return hierarchy_tail[0]
-        if strategy == "leaf":
-            return hierarchy_tail[-1]
-        return "/".join(hierarchy_tail)
 
     @staticmethod
     def derive_required_sensors(
@@ -80,7 +70,7 @@ class TopicParser:
                 payload=None,
                 extractor=extractor,
             )
-            if sensor:
+            if sensor is not None:
                 sensors.add(sensor)
         return sensors
 

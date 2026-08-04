@@ -120,6 +120,46 @@ def test_static_detector_operational_stage_mapping(
     assert operational["is_stale"] is False
 
 
+@pytest.mark.parametrize(
+    ("adaptive_state", "expected_stage", "expected_progress"),
+    [
+        ("warmup", "collecting_training", {"current": 3, "target": 10}),
+        ("calibrating", "collecting_calibration", {"current": 2, "target": 4}),
+        ("operational", "operational", None),
+        ("failed", "failed", None),
+    ],
+)
+def test_adaptive_detector_operational_stage_mapping(
+    adaptive_state,
+    expected_stage,
+    expected_progress,
+):
+    monitor = HealthMonitor()
+    monitor.start_time = datetime.now()
+    monitor.set_components(
+        detector=_FakeDetector(
+            {
+                "strategy": "adaptive_stream",
+                "state": adaptive_state,
+                "warmup_count": 3,
+                "training_window_size": 10,
+                "calibration_count": 2,
+                "calibration_window_size": 4,
+            }
+        ),
+        message_processor=_FakeMessageProcessor(
+            {"message_count": 5, "processed_message_count": 5}
+        ),
+    )
+
+    operational = monitor.get_health_status().metrics["operational_status"]
+
+    assert operational["stage"] == expected_stage
+    assert operational.get("progress") == expected_progress
+    if adaptive_state == "failed":
+        assert operational["detail"] == "Adaptive stream detector failed"
+
+
 def test_health_status_uses_one_metric_snapshot_and_reduces_alerts():
     monitor = HealthMonitor()
     monitor.start_time = datetime.now()

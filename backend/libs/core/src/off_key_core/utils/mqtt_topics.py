@@ -11,6 +11,7 @@ DEFAULT_TOPIC_REGEX = (
     r"^charger/(?P<charger_id>[^/]+)/(?:telemetry|live-telemetry)/"
     r"(?P<telemetry_type>.+)$"
 )
+SENSOR_KEY_STRATEGIES = frozenset({"full_hierarchy", "top_level", "leaf"})
 
 
 @dataclass(frozen=True)
@@ -93,6 +94,54 @@ class TopicMetadataExtractor:
             return None
 
         return TopicMetadata(charger_id=charger_id, telemetry_type=telemetry_type)
+
+
+def normalize_sensor_key_strategy(value: str) -> str:
+    """Validate the shared feature-key projection used by aligned monitoring."""
+    normalized = value.strip().lower()
+    if normalized not in SENSOR_KEY_STRATEGIES:
+        allowed = ", ".join(sorted(SENSOR_KEY_STRATEGIES))
+        raise ValueError(f"sensor_key_strategy must be one of: {allowed}")
+    return normalized
+
+
+def canonical_sensor_key(telemetry_type: str, strategy: str) -> str:
+    """Project a telemetry hierarchy onto the configured detector feature key."""
+    normalized_strategy = normalize_sensor_key_strategy(strategy)
+    hierarchy = [segment for segment in telemetry_type.split("/") if segment]
+    if not hierarchy or any(segment in {"+", "#"} for segment in hierarchy):
+        raise ValueError("Monitoring sensor paths must be concrete and non-empty")
+    if normalized_strategy == "top_level":
+        return hierarchy[0]
+    if normalized_strategy == "leaf":
+        return hierarchy[-1]
+    return "/".join(hierarchy)
+
+
+def derive_monitoring_sensor_keys(
+    topics: Iterable[str],
+    *,
+    sensor_key_strategy: str,
+) -> list[str]:
+    """Derive the exact aligned schema and reject lossy topic collisions."""
+    normalized_topics = normalize_static_monitoring_topics(topics)
+    extractor = TopicMetadataExtractor()
+    keys: list[str] = []
+    topics_by_key: dict[str, str] = {}
+    for topic in normalized_topics:
+        metadata = extractor.extract(topic)
+        if metadata is None:
+            raise ValueError(f"Cannot derive monitoring sensor metadata from '{topic}'")
+        key = canonical_sensor_key(metadata.telemetry_type, sensor_key_strategy)
+        previous_topic = topics_by_key.get(key)
+        if previous_topic is not None:
+            raise ValueError(
+                "sensor_key_strategy collapses multiple MQTT topics onto feature "
+                f"'{key}': '{previous_topic}' and '{topic}'"
+            )
+        topics_by_key[key] = topic
+        keys.append(key)
+    return keys
 
 
 def validate_mqtt_topic_filter(

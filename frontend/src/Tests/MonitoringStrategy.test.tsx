@@ -52,6 +52,24 @@ const modelCatalog = {
       },
     },
   },
+  aberrant_online_isolation_forest: {
+    strategy: "adaptive_stream",
+    name: "Aberrant Online Isolation Forest",
+    parameters: { properties: {} },
+  },
+  aberrant_x_stream: {
+    strategy: "adaptive_stream",
+    name: "Aberrant XStream",
+    default_parameters: { max_feature_cache_size: 10_000 },
+    parameters: {
+      properties: {
+        max_feature_cache_size: {
+          anyOf: [{ type: "integer" }, { type: "null" }],
+          default: 10_000,
+        },
+      },
+    },
+  },
 };
 
 function renderMonitoring() {
@@ -262,18 +280,39 @@ describe("<Monitoring /> static setup", () => {
     expect(getSubmittedPayload().static_baseline_config.model_params.n_estimators).toBe(101);
   });
 
-  it("renders the dynamic lane as a disabled coming-soon preview", async () => {
+  it("switches to the available adaptive lifecycle", async () => {
     renderMonitoring();
 
     expect(await screen.findByText(/Martingale ensemble/i)).toBeTruthy();
-    const dynamicLane = screen.getByText("Temporally dependent streams");
-    expect(dynamicLane).toBeTruthy();
-    expect(
-      dynamicLane.closest("[aria-disabled]")?.getAttribute("aria-disabled"),
-    ).toBe("true");
-    expect(screen.getByText("Coming soon")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: /dynamic/i })).toBeNull();
-    expect(screen.queryByText(/dynamic model/i)).toBeNull();
+    const dynamicLane = screen.getByRole("button", { name: /Adaptive streams/i });
+    expect(dynamicLane.getAttribute("aria-pressed")).toBe("false");
+    fireEvent.click(dynamicLane);
+    expect(await screen.findByText("Adaptive stream lifecycle")).toBeTruthy();
+    expect(screen.getByText("Monitor and adapt")).toBeTruthy();
+    expect(dynamicLane.getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("submits an explicit None value for nullable adaptive parameters", async () => {
+    renderMonitoring();
+
+    fireEvent.click(await screen.findByRole("button", { name: /Adaptive streams/i }));
+    fireEvent.change(screen.getByLabelText("Aberrant model"), {
+      target: { value: "aberrant_x_stream" },
+    });
+    const noneControl = screen.getByLabelText("Max Feature Cache Size is None");
+    expect((noneControl as HTMLInputElement).checked).toBe(false);
+    fireEvent.click(noneControl);
+    expect((noneControl as HTMLInputElement).checked).toBe(true);
+
+    fireEvent.click(screen.getByRole("button", { name: /start adaptive monitoring/i }));
+    await waitFor(() => expect(mockPost).toHaveBeenCalled());
+    const latestCall = mockPost.mock.calls[mockPost.mock.calls.length - 1];
+    const payload = latestCall?.[1] as unknown as {
+      model_params: Record<string, unknown>;
+      adaptive_stream_config: { model_params: Record<string, unknown> };
+    };
+    expect(payload.model_params.max_feature_cache_size).toBeNull();
+    expect(payload.adaptive_stream_config.model_params.max_feature_cache_size).toBeNull();
   });
 
   it("disables sensors claimed by an overlapping active service", async () => {

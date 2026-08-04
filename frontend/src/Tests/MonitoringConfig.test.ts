@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildStaticMonitoringRequest,
+  buildAdaptiveMonitoringRequest,
+  createDefaultAdaptiveDraft,
   createDefaultStaticDraft,
   getModelDefaults,
   mqttFiltersOverlap,
@@ -20,6 +22,96 @@ const modelDefinition: ModelDefinition = {
 };
 
 describe("monitoring configuration", () => {
+  it("builds a strategy-discriminated adaptive request with preprocessing", () => {
+    const draft = createDefaultAdaptiveDraft();
+    draft.modelType = "aberrant_gadget_svm";
+    draft.modelParams = { graph: '{"0":[1],"1":[0]}', threshold: "0" };
+    draft.scaler = "min_max_scaler";
+    draft.projection = "random_projection";
+    draft.projectionComponents = "2";
+    const definition: ModelDefinition = {
+      strategy: "adaptive_stream",
+      parameters: {
+        properties: {
+          graph: { type: "object" },
+          threshold: { type: "number" },
+        },
+      },
+    };
+
+    const result = buildAdaptiveMonitoringRequest({
+      chargerId: "charger-1",
+      topics: [
+        "charger/charger-1/live-telemetry/L1",
+        "charger/charger-1/live-telemetry/L2",
+      ],
+      draft,
+      modelDefinition: definition,
+      containerName: "radar-adaptive-test",
+    });
+
+    expect(result.errors).toEqual({});
+    expect(result.request).toMatchObject({
+      strategy: "adaptive_stream",
+      model_type: "aberrant_gadget_svm",
+      model_params: { graph: { "0": [1], "1": [0] }, threshold: 0 },
+      adaptive_stream_config: {
+        training_window_size: 1200,
+        calibration_window_size: 360,
+        threshold_config: { mode: "calibrated_quantile", quantile: 1 },
+        preprocessing_steps: [
+          { type: "min_max_scaler", feature_range: [0, 1] },
+          { type: "random_projection", n_components: 2, seed: 42 },
+        ],
+      },
+    });
+  });
+
+  it("rejects a projection that exceeds the aligned feature schema", () => {
+    const draft = createDefaultAdaptiveDraft();
+    draft.projection = "incremental_pca";
+    draft.projectionComponents = "2";
+    const result = buildAdaptiveMonitoringRequest({
+      chargerId: "charger-1",
+      topics: ["charger/charger-1/live-telemetry/L1"],
+      draft,
+      modelDefinition: undefined,
+      containerName: "unused",
+    });
+
+    expect(result.request).toBeUndefined();
+    expect(result.errors.projectionComponents).toMatch(/selected sensors/);
+  });
+
+  it("preserves explicit null adaptive model parameters", () => {
+    const draft = createDefaultAdaptiveDraft();
+    draft.modelType = "aberrant_x_stream";
+    draft.modelParams = { max_feature_cache_size: null };
+    const result = buildAdaptiveMonitoringRequest({
+      chargerId: "charger-1",
+      topics: ["charger/charger-1/live-telemetry/L1"],
+      draft,
+      modelDefinition: {
+        strategy: "adaptive_stream",
+        parameters: {
+          properties: {
+            max_feature_cache_size: {
+              anyOf: [{ type: "integer" }, { type: "null" }],
+              default: 10_000,
+            },
+          },
+        },
+      },
+      containerName: "radar-adaptive-null",
+    });
+
+    expect(result.errors).toEqual({});
+    expect(result.request?.model_params.max_feature_cache_size).toBeNull();
+    expect(
+      result.request?.adaptive_stream_config.model_params.max_feature_cache_size,
+    ).toBeNull();
+  });
+
   it("detects MQTT wildcard ownership overlap", () => {
     expect(
       mqttFiltersOverlap(

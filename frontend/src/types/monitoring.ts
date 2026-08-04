@@ -5,15 +5,23 @@
  */
 
 // Parameter schema from the static model registry
-export type MonitoringStrategy = 'static_baseline';
+export type MonitoringStrategy = 'static_baseline' | 'adaptive_stream';
+
+export type JsonPrimitive = string | number | boolean | null;
+export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
 
 export interface ParameterSchema {
-  type: 'string' | 'number' | 'integer' | 'boolean' | 'array' | 'object';
+  type?: 'string' | 'number' | 'integer' | 'boolean' | 'array' | 'object' | 'null';
   description?: string;
-  default?: unknown;
+  default?: JsonValue;
   minimum?: number;
   maximum?: number;
-  enum?: (string | number)[];
+  enum?: JsonPrimitive[];
+  anyOf?: ParameterSchema[];
+  items?: ParameterSchema;
+  prefixItems?: ParameterSchema[];
+  minItems?: number;
+  maxItems?: number;
 }
 
 // Model definition from registry API
@@ -26,7 +34,7 @@ export interface ModelDefinition {
   name?: string;
   family?: string;
   strategy?: string;
-  default_parameters?: Record<string, string | number | boolean | null>;
+  default_parameters?: Record<string, JsonValue>;
 }
 
 // Active monitoring service
@@ -128,24 +136,60 @@ export interface StaticMartingaleConfig {
 
 export interface StaticBaselineRequestConfig {
   model_type: string;
-  model_params: Record<string, string | number | boolean>;
+  model_params: Record<string, JsonValue>;
   training_window_size: number;
   calibration_window_size: number;
   conformal_strategy: 'split';
   martingale_config: StaticMartingaleConfig;
 }
 
+export type AdaptivePreprocessingStep =
+  | { type: 'standard_scaler'; with_std: boolean }
+  | { type: 'min_max_scaler'; feature_range: [number, number] }
+  | {
+      type: 'incremental_pca';
+      n_components: number;
+      n0: number;
+      tol: number;
+      forgetting_factor: number | null;
+    }
+  | { type: 'random_projection'; n_components: number; seed: number | null };
+
+export interface AdaptiveStreamRequestConfig {
+  model_type: string;
+  model_params: Record<string, JsonValue>;
+  training_window_size: number;
+  calibration_window_size: number;
+  preprocessing_steps: AdaptivePreprocessingStep[];
+  threshold_config: { mode: 'calibrated_quantile'; quantile: number };
+}
+
 // Anomaly detection request payload
-export interface AnomalyDetectionRequest {
+interface AnomalyDetectionRequestBase {
   container_name: string;
   service_type: 'radar';
   mqtt_topics: string[];
-  strategy: MonitoringStrategy;
   model_type: string;
-  model_params: Record<string, string | number | boolean>;
+  model_params: Record<string, JsonValue>;
   performance_config: MonitoringPerformanceConfig;
+}
+
+export interface StaticAnomalyDetectionRequest extends AnomalyDetectionRequestBase {
+  strategy: 'static_baseline';
   static_baseline_config: StaticBaselineRequestConfig;
 }
+
+export interface AdaptiveAnomalyDetectionRequest extends AnomalyDetectionRequestBase {
+  strategy: 'adaptive_stream';
+  adaptive_stream_config: AdaptiveStreamRequestConfig;
+}
+
+export type MonitoringStartRequest =
+  | StaticAnomalyDetectionRequest
+  | AdaptiveAnomalyDetectionRequest;
+
+// Compatibility name retained for existing static-lane consumers.
+export type AnomalyDetectionRequest = StaticAnomalyDetectionRequest;
 
 export interface MonitoringEvidence {
   service_id: string;
@@ -153,7 +197,10 @@ export interface MonitoringEvidence {
   sequence_number: number;
   charger_id: string;
   sensor_set: string[];
-  p_value: number;
+  strategy: MonitoringStrategy;
+  model_type: string | null;
+  p_value: number | null;
+  anomaly_score: number | null;
   e_value: number | null;
   e_value_is_infinite: boolean;
   log_e_value: number | null;
@@ -205,7 +252,12 @@ export type MonitoringChartEvidence = Pick<
   | 'tracker_results'
   | 'threshold'
   | 'alarm'
-> & { created: string };
+> & {
+  created: string;
+  strategy?: MonitoringStrategy;
+  model_type?: string | null;
+  anomaly_score?: number | null;
+};
 
 export type MonitoringEvidenceCursor = Pick<
   MonitoringChartEvidence,
@@ -213,7 +265,7 @@ export type MonitoringEvidenceCursor = Pick<
 >;
 
 // Model parameters (cleaned for API submission)
-export type ModelParams = Record<string, string | number | boolean>;
+export type ModelParams = Record<string, JsonValue>;
 
 // Docker container status mapping
 export interface StatusDisplay {

@@ -1,14 +1,18 @@
 import type {
   ActiveService,
-  AnomalyDetectionRequest,
+  MonitoringStartRequest,
   MartingaleAlarmStatistic,
   MartingaleBettingFunction,
   MartingaleTrackerConfig,
   ModelDefinition,
   ModelParams,
+  JsonValue,
+  AdaptivePreprocessingStep,
+  AdaptiveAnomalyDetectionRequest,
+  StaticAnomalyDetectionRequest,
 } from "@/types/monitoring";
 
-export type ConfigValue = string | number | boolean;
+export type ConfigValue = JsonValue;
 export type FieldErrors = Record<string, string>;
 export type TopicMode = "selected_sensors" | "direct_patterns";
 export type SensorKeyStrategy = "full_hierarchy" | "top_level" | "leaf";
@@ -34,6 +38,26 @@ export interface StaticDraft {
   automaticFalseAlarmProbability: string;
   automaticThresholdHorizon: string;
   automaticThresholdSimulations: string;
+  sensorFreshness: string;
+  sensorKeyStrategy: SensorKeyStrategy;
+}
+
+export interface AdaptiveDraft {
+  modelType: string;
+  modelParams: Record<string, ConfigValue>;
+  trainingWindow: string;
+  calibrationWindow: string;
+  thresholdQuantile: string;
+  scaler: "none" | "standard_scaler" | "min_max_scaler";
+  scalerWithStd: boolean;
+  minMaxLower: string;
+  minMaxUpper: string;
+  projection: "none" | "incremental_pca" | "random_projection";
+  projectionComponents: string;
+  projectionN0: string;
+  projectionTolerance: string;
+  projectionForgettingFactor: string;
+  projectionSeed: string;
   sensorFreshness: string;
   sensorKeyStrategy: SensorKeyStrategy;
 }
@@ -70,6 +94,26 @@ export const createDefaultStaticDraft = (): StaticDraft => ({
   automaticFalseAlarmProbability: "0.01",
   automaticThresholdHorizon: "1000",
   automaticThresholdSimulations: "5000",
+  sensorFreshness: "30",
+  sensorKeyStrategy: "full_hierarchy",
+});
+
+export const createDefaultAdaptiveDraft = (): AdaptiveDraft => ({
+  modelType: "aberrant_online_isolation_forest",
+  modelParams: {},
+  trainingWindow: "1200",
+  calibrationWindow: "360",
+  thresholdQuantile: "1",
+  scaler: "standard_scaler",
+  scalerWithStd: true,
+  minMaxLower: "0",
+  minMaxUpper: "1",
+  projection: "none",
+  projectionComponents: "2",
+  projectionN0: "100",
+  projectionTolerance: "0.0000001",
+  projectionForgettingFactor: "",
+  projectionSeed: "42",
   sensorFreshness: "30",
   sensorKeyStrategy: "full_hierarchy",
 });
@@ -134,22 +178,14 @@ export const getModelDefaults = (
   for (const [key, value] of Object.entries(
     definition?.default_parameters ?? {},
   )) {
-    if (
-      typeof value === "string" ||
-      typeof value === "number" ||
-      typeof value === "boolean"
-    ) {
-      defaults[key] = value;
-    }
+    defaults[key] = value as JsonValue;
   }
   for (const [key, schema] of Object.entries(
     definition?.parameters?.properties ?? {},
   )) {
     if (
       defaults[key] === undefined &&
-      (typeof schema.default === "string" ||
-        typeof schema.default === "number" ||
-        typeof schema.default === "boolean")
+      schema.default !== undefined
     ) {
       defaults[key] = schema.default;
     }
@@ -207,27 +243,177 @@ const coerceModelParams = (
     const schema = properties[key];
     const value = params[key];
     const field = `model.${key}`;
-    if (schema?.type === "boolean") cleaned[key] = Boolean(value);
+    const schemaType = schema?.type ?? schema?.anyOf?.find((item) => item.type !== "null")?.type;
+    if (value === null) cleaned[key] = null;
+    else if (schemaType === "boolean") cleaned[key] = Boolean(value);
     else if (value === "" || value === undefined) {
       if (required.has(key)) errors[field] = `${humanize(key)} is required.`;
-    } else if (schema?.type === "integer" || schema?.type === "number") {
+    } else if (schemaType === "integer" || schemaType === "number") {
       const parsed = parseNumber({
         value,
         label: humanize(key),
         field,
         errors,
-        integer: schema.type === "integer",
-        min: schema.minimum,
-        max: schema.maximum,
+        integer: schemaType === "integer",
+        min: schema?.minimum,
+        max: schema?.maximum,
       });
       if (parsed !== undefined) cleaned[key] = parsed;
+    } else if (schemaType === "array" || schemaType === "object") {
+      if (typeof value !== "string") cleaned[key] = value;
+      else {
+        try {
+          const parsed = JSON.parse(value) as JsonValue;
+          if (
+            (schemaType === "array" && !Array.isArray(parsed)) ||
+            (schemaType === "object" &&
+              (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)))
+          ) {
+            errors[field] = `${humanize(key)} must be a JSON ${schemaType}.`;
+          } else cleaned[key] = parsed;
+        } catch {
+          errors[field] = `${humanize(key)} must contain valid JSON.`;
+        }
+      }
     } else cleaned[key] = value;
   }
   return cleaned;
 };
 
-export type RequestValidation =
-  | { request: AnomalyDetectionRequest; errors: FieldErrors }
+export const buildAdaptiveMonitoringRequest = ({
+  chargerId,
+  topics,
+  draft,
+  modelDefinition,
+  containerName,
+}: {
+  chargerId: string;
+  topics: string[];
+  draft: AdaptiveDraft;
+  modelDefinition: ModelDefinition | undefined;
+  containerName: string;
+}): RequestValidation<AdaptiveAnomalyDetectionRequest> => {
+  const errors: FieldErrors = {};
+  if (!topics.length) errors.topics = "Select at least one unassigned sensor.";
+  else if (topics.some((topic) => topic.split("/").some((part) => part === "+" || part === "#"))) {
+    errors.topics = "Adaptive monitoring requires concrete sensor topics.";
+  } else if (topics.some((topic) => topic.split("/")[1] !== chargerId)) {
+    errors.topics = `All sensor topics must belong to charger ${chargerId}.`;
+  }
+  const trainingWindow = parseNumber({
+    value: draft.trainingWindow, label: "Warm-up samples", field: "trainingWindow",
+    errors, integer: true, min: 1,
+  });
+  const calibrationWindow = parseNumber({
+    value: draft.calibrationWindow, label: "Calibration samples",
+    field: "calibrationWindow", errors, integer: true, min: 1,
+  });
+  const quantile = parseNumber({
+    value: draft.thresholdQuantile, label: "Threshold quantile",
+    field: "thresholdQuantile", errors, min: Number.MIN_VALUE, max: 1,
+  });
+  const sensorFreshness = parseNumber({
+    value: draft.sensorFreshness, label: "Sensor freshness",
+    field: "sensorFreshness", errors, min: 1,
+  });
+  const preprocessingSteps: AdaptivePreprocessingStep[] = [];
+  if (draft.scaler === "standard_scaler") {
+    preprocessingSteps.push({ type: "standard_scaler", with_std: draft.scalerWithStd });
+  } else if (draft.scaler === "min_max_scaler") {
+    const lower = parseNumber({
+      value: draft.minMaxLower, label: "Minimum scaled value",
+      field: "minMaxLower", errors,
+    });
+    const upper = parseNumber({
+      value: draft.minMaxUpper, label: "Maximum scaled value",
+      field: "minMaxUpper", errors,
+    });
+    if (lower !== undefined && upper !== undefined) {
+      if (lower >= upper) errors.minMaxUpper = "Maximum scaled value must exceed the minimum.";
+      preprocessingSteps.push({ type: "min_max_scaler", feature_range: [lower, upper] });
+    }
+  }
+  if (draft.projection !== "none") {
+    const nComponents = parseNumber({
+      value: draft.projectionComponents, label: "Projection components",
+      field: "projectionComponents", errors, integer: true, min: 1,
+    });
+    if (nComponents !== undefined && nComponents > topics.length) {
+      errors.projectionComponents = "Projection components cannot exceed selected sensors.";
+    }
+    if (draft.projection === "incremental_pca") {
+      const n0 = parseNumber({
+        value: draft.projectionN0, label: "PCA initialization samples",
+        field: "projectionN0", errors, integer: true, min: 2,
+      });
+      const tol = parseNumber({
+        value: draft.projectionTolerance, label: "PCA tolerance",
+        field: "projectionTolerance", errors, min: Number.MIN_VALUE,
+      });
+      const forgettingFactor = draft.projectionForgettingFactor.trim() === ""
+        ? null
+        : parseNumber({
+            value: draft.projectionForgettingFactor,
+            label: "PCA forgetting factor",
+            field: "projectionForgettingFactor",
+            errors,
+            min: Number.MIN_VALUE,
+            max: 0.999999,
+          });
+      if (nComponents !== undefined && n0 !== undefined && tol !== undefined && forgettingFactor !== undefined) {
+        if (n0 < nComponents) errors.projectionN0 = "PCA initialization must cover every component.";
+        if (trainingWindow !== undefined && n0 > trainingWindow) {
+          errors.projectionN0 = "PCA initialization must fit inside the warm-up window.";
+        }
+        preprocessingSteps.push({
+          type: "incremental_pca",
+          n_components: nComponents,
+          n0,
+          tol,
+          forgetting_factor: forgettingFactor,
+        });
+      }
+    } else if (nComponents !== undefined) {
+      const seed = draft.projectionSeed.trim() === "" ? null : parseNumber({
+        value: draft.projectionSeed, label: "Projection seed", field: "projectionSeed",
+        errors, integer: true,
+      });
+      if (seed !== undefined || draft.projectionSeed.trim() === "") {
+        preprocessingSteps.push({ type: "random_projection", n_components: nComponents, seed: seed ?? null });
+      }
+    }
+  }
+  const modelParams = coerceModelParams(draft.modelParams, modelDefinition, errors);
+  if (Object.keys(errors).length || trainingWindow === undefined || calibrationWindow === undefined || quantile === undefined || sensorFreshness === undefined) {
+    return { errors };
+  }
+  return {
+    errors,
+    request: {
+      container_name: containerName,
+      service_type: "radar",
+      mqtt_topics: topics,
+      strategy: "adaptive_stream",
+      model_type: draft.modelType,
+      model_params: modelParams,
+      performance_config: {
+        sensor_key_strategy: draft.sensorKeyStrategy,
+        sensor_freshness_seconds: sensorFreshness,
+      },
+      adaptive_stream_config: {
+        model_type: draft.modelType,
+        model_params: modelParams,
+        training_window_size: trainingWindow,
+        calibration_window_size: calibrationWindow,
+        preprocessing_steps: preprocessingSteps,
+        threshold_config: { mode: "calibrated_quantile", quantile },
+      },
+    },
+  };
+};
+
+export type RequestValidation<T extends MonitoringStartRequest = MonitoringStartRequest> =
+  | { request: T; errors: FieldErrors }
   | { request?: never; errors: FieldErrors };
 
 export const buildStaticMonitoringRequest = ({
@@ -242,7 +428,7 @@ export const buildStaticMonitoringRequest = ({
   draft: StaticDraft;
   modelDefinition: ModelDefinition | undefined;
   containerName: string;
-}): RequestValidation => {
+}): RequestValidation<StaticAnomalyDetectionRequest> => {
   const errors: FieldErrors = {};
   if (!topics.length) {
     errors.topics = "Select at least one unassigned sensor or enter a topic.";

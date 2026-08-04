@@ -2,6 +2,7 @@ import {
   MetricCard,
   PageHeader,
   PageShell,
+  SectionPanel,
 } from "@/components/DashboardLayout";
 import { NavigationBar } from "@/components/NavigationBar";
 import { API_CONFIG } from "@/lib/api-config";
@@ -11,12 +12,16 @@ import { getErrorMessage } from "@/lib/errors";
 import type { Anomaly } from "@/types/charger";
 import { getServiceDeleteActionDisplay } from "@/types/monitoring";
 import type { ActiveService, ModelDefinition } from "@/types/monitoring";
+import type { MonitoringStrategy } from "@/types/monitoring";
+import { Activity, Database } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import { useParams } from "react-router-dom";
 
 import { buildSensorClaims } from "./monitoring/config";
+import { AdaptiveMonitoringSetup } from "./monitoring/AdaptiveMonitoringSetup";
 import { MonitoringDataPanels } from "./monitoring/MonitoringDataPanels";
+import { LaneCard } from "./monitoring/MonitoringUi";
 import { StaticMonitoringSetup } from "./monitoring/StaticMonitoringSetup";
 
 function Monitoring() {
@@ -28,6 +33,7 @@ function Monitoring() {
   const [loadingServices, setLoadingServices] = useState(false);
   const [loadingAnomalies, setLoadingAnomalies] = useState(false);
   const [loadingModels, setLoadingModels] = useState(false);
+  const [selectedLane, setSelectedLane] = useState<MonitoringStrategy>("static_baseline");
 
   const staticModels = useMemo(
     () =>
@@ -36,6 +42,10 @@ function Monitoring() {
           ([, model]) => model.strategy === "static_baseline",
         ),
       ),
+    [models],
+  );
+  const adaptiveModels = useMemo(
+    () => Object.fromEntries(Object.entries(models).filter(([, model]) => model.strategy === "adaptive_stream")),
     [models],
   );
   const claimsBySensor = useMemo(
@@ -156,7 +166,7 @@ function Monitoring() {
         <PageHeader
           eyebrow="Monitoring"
           title={`Charger ${chargerId}`}
-          description="Assign stable sensor relationships to a static conformal monitor and follow its evidence over time."
+          description="Assign exclusive telemetry relationships to a static conformal or continuously adapting stream monitor."
         />
         <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
           <MetricCard
@@ -184,14 +194,18 @@ function Monitoring() {
           />
         </div>
 
-        <StaticMonitoringSetup
-          chargerId={chargerId}
-          sensorTypes={sensorTypes}
-          claimsBySensor={claimsBySensor}
-          staticModels={staticModels}
-          loadingModels={loadingModels}
-          onStarted={loadServices}
-        />
+        <SectionPanel title="Choose a monitoring lane" description="Static monitoring freezes its fitted detector; adaptive monitoring learns after every score.">
+          <div className="grid gap-4 lg:grid-cols-2">
+            <LaneCard title="Static relationships" eyebrow="Conformal evidence" description="Train once, calibrate p-values, then accumulate sequential martingale evidence." selected={selectedLane === "static_baseline"} onSelect={() => setSelectedLane("static_baseline")} icon={Database} />
+            <LaneCard title="Adaptive streams" eyebrow="Aberrant · 24 detectors" description="Warm up, calibrate a fixed score threshold, then score before learning each new point." selected={selectedLane === "adaptive_stream"} onSelect={() => setSelectedLane("adaptive_stream")} icon={Activity} />
+          </div>
+        </SectionPanel>
+
+        {selectedLane === "static_baseline" ? (
+          <StaticMonitoringSetup chargerId={chargerId} sensorTypes={sensorTypes} claimsBySensor={claimsBySensor} staticModels={staticModels} loadingModels={loadingModels} onStarted={loadServices} />
+        ) : (
+          <AdaptiveMonitoringSetup chargerId={chargerId} sensorTypes={sensorTypes} claimsBySensor={claimsBySensor} adaptiveModels={adaptiveModels} loadingModels={loadingModels} onStarted={loadServices} />
+        )}
 
         <MonitoringDataPanels
           services={services}

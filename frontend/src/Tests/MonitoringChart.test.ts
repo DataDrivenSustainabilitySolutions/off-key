@@ -35,6 +35,25 @@ const evidence = (
   created: timestamp,
 });
 
+const adaptiveEvidence = (
+  serviceId: string,
+  timestamp: string,
+  score: number,
+  threshold = 2,
+): MonitoringChartEvidence => ({
+  service_id: serviceId,
+  timestamp,
+  sequence_number: 1,
+  sensor_set: ["L1"],
+  strategy: "adaptive_stream",
+  model_type: "aberrant_online_isolation_forest",
+  anomaly_score: score,
+  restarted_martingale: null,
+  threshold,
+  alarm: score > threshold,
+  created: timestamp,
+});
+
 const trackerResult = (
   trackerId: string,
   bettingFunction: MartingaleTrackerResult["betting_function"],
@@ -248,6 +267,39 @@ describe("telemetry ECharts option", () => {
       step: "end",
       markLine: { data: [{ yAxis: 100 }] },
     });
+  });
+
+  it("renders adaptive score and per-point threshold on a linear pane", () => {
+    const timestamp = "2026-01-01T00:01:00Z";
+    const option = inspect(buildOption(buildModel({
+      evidence: [adaptiveEvidence("adaptive-a", timestamp, 2.5, 2)],
+    })));
+
+    expect(option.yAxis.map(({ type }) => type)).toEqual(["value", "value"]);
+    expect(option.series[1]).toMatchObject({
+      id: "adaptive-score:adaptive-a",
+      step: false,
+      data: [[Date.parse(timestamp), 2.5]],
+    });
+    expect(option.series[2]).toMatchObject({
+      id: "adaptive-threshold:adaptive-a",
+      step: "end",
+      data: [[Date.parse(timestamp), 2]],
+    });
+  });
+
+  it("separates mixed static and adaptive evidence into linked log and linear panes", () => {
+    const timestamp = "2026-01-01T00:01:00Z";
+    const option = inspect(buildOption(buildModel({
+      evidence: [
+        evidence("static-a", timestamp, 10),
+        adaptiveEvidence("adaptive-a", timestamp, 1.5),
+      ],
+    })));
+
+    expect(option.grid).toHaveLength(3);
+    expect(option.yAxis.map(({ type }) => type)).toEqual(["value", "log", "value"]);
+    expect(option.dataZoom[0]?.xAxisIndex).toEqual([0, 1, 2]);
   });
 
   it("uses numeric anomaly marks and disables raw HTML tooltips", () => {

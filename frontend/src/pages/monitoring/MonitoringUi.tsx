@@ -62,22 +62,26 @@ export function LaneCard({
   description,
   selected = false,
   icon: Icon,
+  onSelect,
 }: {
   title: string;
   eyebrow: string;
   description: string;
   selected?: boolean;
   icon: ElementType;
+  onSelect?: () => void;
 }) {
   return (
-    <div
+    <button
+      type="button"
+      onClick={onSelect}
       className={cn(
-        "relative overflow-hidden rounded-2xl border p-5 transition-colors sm:p-6",
+        "relative overflow-hidden rounded-2xl border p-5 text-left transition-colors sm:p-6",
         selected
           ? "border-primary/35 bg-primary/[0.035]"
           : "border-dashed border-border/70 bg-muted/15 text-muted-foreground opacity-60",
       )}
-      aria-disabled={!selected}
+      aria-pressed={selected}
     >
       <div className="flex items-start justify-between gap-4">
         <span
@@ -109,16 +113,16 @@ export function LaneCard({
         {selected ? (
           <>
             <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-            Available now
+            Selected
           </>
         ) : (
           <>
             <Clock3 className="h-4 w-4" />
-            Coming soon
+            Available
           </>
         )}
       </div>
-    </div>
+    </button>
   );
 }
 

@@ -82,6 +82,9 @@ export interface SecondaryChartSeries {
   threshold: number;
   color: string;
   data: TimeValue[];
+  scale: "log" | "linear";
+  kind: "static_evidence" | "adaptive_score" | "adaptive_threshold";
+  pane: "static" | "adaptive";
 }
 
 export interface ChartAnomalyMarker {
@@ -243,7 +246,7 @@ const buildSecondarySeries = (
     }
   >();
 
-  evidence.forEach((observation) => {
+  evidence.filter((observation) => observation.strategy !== "adaptive_stream").forEach((observation) => {
     const time = toFiniteTime(observation.timestamp);
     if (time === undefined) return;
     const legacyTracker: MartingaleTrackerResult = {
@@ -319,7 +322,54 @@ const buildSecondarySeries = (
       color:
         SECONDARY_COLORS[index % SECONDARY_COLORS.length] ?? SECONDARY_COLORS[0],
       data: series.points.sort((left, right) => left[0] - right[0]),
+      scale: "log",
+      kind: "static_evidence",
+      pane: "static",
     };
+  });
+};
+
+const buildAdaptiveSeries = (
+  evidence: MonitoringChartEvidence[],
+): SecondaryChartSeries[] => {
+  const services = new Map<string, { scores: TimeValue[]; thresholds: TimeValue[] }>();
+  for (const observation of evidence) {
+    if (observation.strategy !== "adaptive_stream") continue;
+    const time = toFiniteTime(observation.timestamp);
+    if (time === undefined || observation.anomaly_score == null || !Number.isFinite(observation.anomaly_score)) continue;
+    const group = services.get(observation.service_id) ?? { scores: [], thresholds: [] };
+    group.scores.push([time, observation.anomaly_score]);
+    if (Number.isFinite(observation.threshold)) group.thresholds.push([time, observation.threshold]);
+    services.set(observation.service_id, group);
+  }
+  return [...services.entries()].flatMap(([serviceId, values], index) => {
+    const color = SECONDARY_COLORS[index % SECONDARY_COLORS.length] ?? SECONDARY_COLORS[0];
+    const suffix = serviceId.slice(0, 8);
+    const latestThreshold = values.thresholds[values.thresholds.length - 1]?.[1] ?? 0;
+    return [
+      {
+        id: `adaptive-score:${serviceId}`,
+        serviceId,
+        name: `Anomaly score ${suffix}`,
+        threshold: latestThreshold,
+        color,
+        data: values.scores.sort((left, right) => left[0] - right[0]),
+        scale: "linear" as const,
+        kind: "adaptive_score" as const,
+        pane: "adaptive" as const,
+      },
+      {
+        id: `adaptive-threshold:${serviceId}`,
+        serviceId,
+        name: `Score threshold ${suffix}`,
+        threshold: latestThreshold,
+        color: "#dc2626",
+        data: values.thresholds.sort((left, right) => left[0] - right[0]),
+        scale: "linear" as const,
+        kind: "adaptive_threshold" as const,
+        pane: "adaptive" as const,
+      },
+    ];
   });
 };
 
@@ -333,7 +383,7 @@ export const buildTelemetryChartModel = ({
   anomalyMarkers,
 }: BuildTelemetryChartModelInput): TelemetryChartModel => {
   const telemetryData = normalizeTelemetry(telemetry);
-  const secondarySeries = buildSecondarySeries(evidence);
+  const secondarySeries = [...buildSecondarySeries(evidence), ...buildAdaptiveSeries(evidence)];
 
   return {
     telemetry: {
@@ -444,24 +494,37 @@ export const buildTelemetryChartOption = ({
   accessibleDescription,
   locale,
 }: BuildTelemetryChartOptionInput): TelemetryChartOption => {
-  const hasSecondaryPane = model.secondarySeries.length > 0;
-  const secondaryMaximum = Math.max(
-    ...model.secondarySeries.flatMap((series) => [
+  const hasStaticPane = model.secondarySeries.some((series) => series.pane === "static");
+  const hasAdaptivePane = model.secondarySeries.some((series) => series.pane === "adaptive");
+  const panes = [
+    "telemetry",
+    ...(hasStaticPane ? ["static"] : []),
+    ...(hasAdaptivePane ? ["adaptive"] : []),
+  ] as const;
+  const staticMaximum = Math.max(
+    1,
+    ...model.secondarySeries.filter((series) => series.pane === "static").flatMap((series) => [
       series.threshold,
       ...series.data.map(([, value]) => value),
     ]),
   );
-  const xAxisIndices = hasSecondaryPane ? [0, 1] : [0];
+  const xAxisIndices = panes.map((_, index) => index);
   const domain = timelineExtent ?? model.extent;
   const units = new Map<string, string>();
   if (model.telemetry.unit) units.set(model.telemetry.name, model.telemetry.unit);
 
-  const grid: GridComponentOption[] = hasSecondaryPane
-    ? [
-        { left: 68, right: 34, top: 58, height: 142 },
-        { left: 68, right: 34, top: 244, height: 102 },
-      ]
-    : [{ left: 68, right: 34, top: 58, bottom: 66 }];
+  const grid: GridComponentOption[] = panes.length === 1
+    ? [{ left: 68, right: 34, top: 58, bottom: 66 }]
+    : panes.length === 2
+      ? [
+          { left: 68, right: 34, top: 58, height: 142 },
+          { left: 68, right: 34, top: 244, height: 102 },
+        ]
+      : [
+          { left: 68, right: 34, top: 58, height: 112 },
+          { left: 68, right: 34, top: 201, height: 82 },
+          { left: 68, right: 34, top: 314, height: 82 },
+        ];
   const axisLabel = {
     color: colors.mutedForeground,
     fontSize: 11,
@@ -469,18 +532,18 @@ export const buildTelemetryChartOption = ({
     hideOverlap: true,
   };
   const xAxis = xAxisIndices.map((_, index) => ({
-    id: index === 0 ? "telemetry-time" : "secondary-time",
+    id: `${panes[index]}-time`,
     type: "time" as const,
     gridIndex: index,
     min: domain?.[0],
     max: domain?.[1],
-    axisLabel: hasSecondaryPane && index === 0 ? { show: false } : axisLabel,
+    axisLabel: index < panes.length - 1 ? { show: false } : axisLabel,
     axisLine: { lineStyle: { color: colors.border } },
     axisTick: { show: false },
     splitLine: { show: false },
     axisPointer: { show: true, snap: false },
     name:
-      !hasSecondaryPane || index === 1 ? `Local time (${timeZone})` : undefined,
+      index === panes.length - 1 ? `Local time (${timeZone})` : undefined,
     nameLocation: "middle" as const,
     nameGap: 42,
     nameTextStyle: { color: colors.mutedForeground, fontSize: 11 },
@@ -539,22 +602,28 @@ export const buildTelemetryChartOption = ({
   };
 
   const secondarySeries: LineSeriesOption[] = model.secondarySeries.map(
-    (series) => ({
+    (series) => {
+      const paneIndex = panes.indexOf(series.pane);
+      return ({
       id: series.id,
       name: series.name,
       type: "line",
-      xAxisIndex: 1,
-      yAxisIndex: 1,
+      xAxisIndex: paneIndex,
+      yAxisIndex: paneIndex,
       data: series.data,
       smooth: false,
-      step: "end",
+      step: series.kind === "adaptive_score" ? false : "end",
       showSymbol: false,
       connectNulls: false,
-      lineStyle: { color: series.color, width: 2 },
+      lineStyle: {
+        color: series.color,
+        width: series.kind === "adaptive_threshold" ? 1.5 : 2,
+        type: series.kind === "adaptive_threshold" ? "dashed" : "solid",
+      },
       itemStyle: { color: series.color },
       emphasis: { disabled: true },
       animation: false,
-      markLine: {
+      ...(series.kind === "static_evidence" ? { markLine: {
         silent: true,
         symbol: ["none", "none"],
         lineStyle: { color: "#dc2626", type: "dashed", width: 1.5 },
@@ -566,8 +635,9 @@ export const buildTelemetryChartOption = ({
           fontSize: 10,
         },
         data: [{ yAxis: series.threshold }],
-      },
-    }),
+      } } : {}),
+    });
+    },
   );
 
   return {
@@ -619,14 +689,14 @@ export const buildTelemetryChartOption = ({
         axisTick: { show: false },
         splitLine: { lineStyle: { color: colors.border, type: "dashed" } },
       },
-      ...(hasSecondaryPane
+      ...(hasStaticPane
         ? [
             {
               id: "restarted-martingale-values",
               type: "log" as const,
               logBase: 10,
-              max: secondaryMaximum,
-              gridIndex: 1,
+              max: staticMaximum,
+              gridIndex: panes.indexOf("static"),
               name: "Sequential evidence",
               nameTextStyle: { color: colors.mutedForeground, fontSize: 11 },
               axisLabel: {
@@ -639,6 +709,21 @@ export const buildTelemetryChartOption = ({
               splitLine: {
                 lineStyle: { color: colors.border, type: "dashed" as const },
               },
+            },
+          ]
+        : []),
+      ...(hasAdaptivePane
+        ? [
+            {
+              id: "adaptive-score-values",
+              type: "value" as const,
+              gridIndex: panes.indexOf("adaptive"),
+              name: "Adaptive anomaly score",
+              nameTextStyle: { color: colors.mutedForeground, fontSize: 11 },
+              axisLabel: { color: colors.mutedForeground, fontSize: 11 },
+              axisLine: { show: false },
+              axisTick: { show: false },
+              splitLine: { lineStyle: { color: colors.border, type: "dashed" as const } },
             },
           ]
         : []),

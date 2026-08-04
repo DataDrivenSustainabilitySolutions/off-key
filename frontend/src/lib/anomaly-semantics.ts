@@ -37,6 +37,9 @@ export const formatAnomalyValue = (
 export const getAnomalyValueLabel = (
   valueType: string | null | undefined
 ): string => {
+  if (valueType === "anomaly_score") {
+    return "Anomaly score";
+  }
   if (valueType === "conformal_pvalue") {
     return "Conformal p-value";
   }

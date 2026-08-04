@@ -6,7 +6,6 @@ import { getErrorMessage } from "@/lib/errors";
 import { cn } from "@/lib/utils";
 import type { ActiveService, ModelDefinition } from "@/types/monitoring";
 import {
-  Activity,
   Database,
   FlaskConical,
   Layers3,
@@ -40,7 +39,6 @@ import {
 import {
   ConfigSection,
   FieldError,
-  LaneCard,
   LifecycleStep,
 } from "./MonitoringUi";
 
@@ -142,27 +140,6 @@ export function StaticMonitoringSetup({
 
   return (
     <>
-      <SectionPanel
-        title="Choose a monitoring lane"
-        description="Each lane has a distinct dependency assumption."
-      >
-        <div className="grid gap-4 lg:grid-cols-2">
-          <LaneCard
-            title="Static relationships"
-            eyebrow="Selected"
-            description="For signals such as L1, L2, and L3 whose dependency structure should remain stable. Train once, calibrate next, then produce online evidence."
-            selected
-            icon={Database}
-          />
-          <LaneCard
-            title="Temporally dependent streams"
-            eyebrow="Dynamic lane"
-            description="Reserved for evolving temporal dependence. This is a coming-soon preview: no model, preprocessing, or runtime logic is attached yet."
-            icon={Activity}
-          />
-        </div>
-      </SectionPanel>
-
       <SectionPanel
         title="Static evidence lifecycle"
         description="Chronological samples; one purpose per phase."

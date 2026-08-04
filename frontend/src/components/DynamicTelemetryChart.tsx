@@ -240,8 +240,9 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
   ]);
   const accessibleDescription = useMemo(() => {
     const pointCount = chartModel?.telemetry.data.length ?? 0;
-    const secondaryCount = chartModel?.secondarySeries.length ?? 0;
-    return `${displayName} telemetry chart with ${pointCount} points${secondaryCount > 0 ? ` and ${secondaryCount} sequential-evidence series in a linked lower pane` : ""}. Times are shown in ${timeZone}.`;
+    const staticCount = chartModel?.secondarySeries.filter((series) => series.pane === "static").length ?? 0;
+    const adaptiveCount = chartModel?.secondarySeries.filter((series) => series.pane === "adaptive").length ?? 0;
+    return `${displayName} telemetry chart with ${pointCount} points${staticCount ? `, ${staticCount} logarithmic static-evidence series` : ""}${adaptiveCount ? `, and ${adaptiveCount} linear adaptive score and threshold series` : ""}. Evidence panes share the telemetry time axis. Times are shown in ${timeZone}.`;
   }, [chartModel, displayName, timeZone]);
   const chartOption = useMemo(
     () =>
@@ -351,10 +352,16 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
           <span className="rounded-full border border-border/70 bg-card px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
             {telemetryData.category}
           </span>
-          {telemetryEvidence.length > 0 && (
+          {telemetryEvidence.some((item) => item.strategy !== "adaptive_stream") && (
             <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/[0.07] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-emerald-700 dark:text-emerald-300">
               <span className="size-1.5 rounded-full bg-emerald-500" />
               Restarted evidence
+            </span>
+          )}
+          {telemetryEvidence.some((item) => item.strategy === "adaptive_stream") && (
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-violet-500/20 bg-violet-500/[0.07] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-violet-700 dark:text-violet-300">
+              <span className="size-1.5 rounded-full bg-violet-500" />
+              Adaptive scores
             </span>
           )}
         </div>

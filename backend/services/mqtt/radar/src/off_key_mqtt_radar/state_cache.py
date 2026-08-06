@@ -53,7 +53,8 @@ class _SensorReading:
     """Stored snapshot of the latest reading received for one sensor."""
 
     values: dict[str, float]
-    timestamp: float
+    received_at: float
+    event_timestamp: float
     sequence: int
 
 
@@ -123,13 +124,26 @@ class SensorStateCache:
             self._next_update_seq += 1
             charger_cache[sensor_type] = _SensorReading(
                 values=dict(values),
-                timestamp=current_time,
+                received_at=current_time,
+                event_timestamp=(
+                    current_time if sample_timestamp is None else sample_timestamp
+                ),
                 sequence=self._next_update_seq,
             )
 
             if not self.required_sensors:
                 # No alignment requested; emit the incoming values as-is
-                return AlignmentUpdate(status="aligned_emit", features=values)
+                input_timestamps = {
+                    sensor_type: (
+                        current_time if sample_timestamp is None else sample_timestamp
+                    )
+                }
+                return AlignmentUpdate(
+                    status="aligned_emit",
+                    features=values,
+                    input_timestamps=input_timestamps,
+                    sample_timestamp=max(input_timestamps.values()),
+                )
 
             sensor_ages = self._collect_sensor_ages(charger_cache, current_time)
             blocker = self._alignment_blocker(
@@ -160,13 +174,17 @@ class SensorStateCache:
             )
             self.strict_barrier_emit_count += 1
 
+            input_timestamps = {
+                sensor: charger_cache[sensor].event_timestamp
+                for sensor in self.required_sensor_order
+            }
+
             return AlignmentUpdate(
                 status="aligned_emit",
                 features=aligned,
                 sensor_ages=sensor_ages,
-                sample_timestamp=(
-                    current_time if sample_timestamp is None else sample_timestamp
-                ),
+                input_timestamps=input_timestamps,
+                sample_timestamp=max(input_timestamps.values()),
             )
 
     def _alignment_blocker(
@@ -245,7 +263,7 @@ class SensorStateCache:
             sensor_entry = charger_cache.get(sensor)
             if not sensor_entry:
                 continue
-            ages[sensor] = max(current_time - sensor_entry.timestamp, 0.0)
+            ages[sensor] = max(current_time - sensor_entry.received_at, 0.0)
         return ages
 
     def _cleanup_stale_entries(self, current_time: float) -> None:
@@ -260,7 +278,7 @@ class SensorStateCache:
             stale_sensors = [
                 sensor_name
                 for sensor_name, sensor_data in sensors.items()
-                if current_time - sensor_data.timestamp > self.ttl_seconds
+                if current_time - sensor_data.received_at > self.ttl_seconds
             ]
             for sensor_name in stale_sensors:
                 stale_sensor_entries += 1
@@ -292,11 +310,11 @@ class SensorStateCache:
 
         Must be called while holding the lock.
         """
-        # Build list of (charger_id, latest_timestamp)
+        # Build list of (charger_id, latest receipt timestamp)
         charger_times: list[tuple[str, float]] = []
         for charger_id, sensors in self._readings_by_charger.items():
             latest_ts = max(
-                (sensor.timestamp for sensor in sensors.values()),
+                (sensor.received_at for sensor in sensors.values()),
                 default=0,
             )
             charger_times.append((charger_id, latest_ts))
@@ -358,4 +376,5 @@ class AlignmentUpdate:
     pending_sensors: tuple[str, ...] = ()
     stale_sensors: tuple[str, ...] = ()
     sensor_ages: dict[str, float] = field(default_factory=dict)
+    input_timestamps: dict[str, float] = field(default_factory=dict)
     sample_timestamp: float | None = None

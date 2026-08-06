@@ -4,9 +4,11 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from off_key_tactic_middleware.repositories.data import MonitoringEvidenceRepository
+from off_key_tactic_middleware.schemas import MonitoringChartEvidenceResponse
 from off_key_tactic_middleware.services.data.monitoring_evidence import (
     MonitoringEvidenceService,
 )
+from pydantic import ValidationError
 
 
 @pytest.mark.asyncio
@@ -53,6 +55,11 @@ def _evidence(sequence_number: int, timestamp: datetime):
         sequence_number=sequence_number,
         charger_id="charger-1",
         sensor_set=["L1", "L2", "L3"],
+        input_timestamps={
+            "L1": timestamp.isoformat(),
+            "L2": timestamp.isoformat(),
+            "L3": timestamp.isoformat(),
+        },
         p_value=0.2,
         e_value=1.2,
         e_value_is_infinite=False,
@@ -119,6 +126,11 @@ async def test_chart_evidence_service_uses_compact_cursor_projection():
             "timestamp": now,
             "sequence_number": 2,
             "sensor_set": ["L1", "L2", "L3"],
+            "input_timestamps": {
+                "L1": now.isoformat(),
+                "L2": now.isoformat(),
+                "L3": now.isoformat(),
+            },
             "strategy": "static_baseline",
             "model_type": None,
             "anomaly_score": None,
@@ -129,3 +141,20 @@ async def test_chart_evidence_service_uses_compact_cursor_projection():
             "created": now + timedelta(milliseconds=1),
         }
     ]
+
+
+def test_chart_evidence_contract_requires_exact_input_timestamps():
+    now = datetime.now(UTC)
+    payload = {
+        "service_id": "svc-static",
+        "timestamp": now,
+        "sequence_number": 1,
+        "sensor_set": ["L1"],
+        "strategy": "static_baseline",
+        "threshold": 100.0,
+        "alarm": False,
+        "created": now,
+    }
+
+    with pytest.raises(ValidationError, match="input_timestamps"):
+        MonitoringChartEvidenceResponse.model_validate(payload)

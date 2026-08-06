@@ -206,6 +206,7 @@ class MonitoringEvidenceResponse(BaseModel):
     sequence_number: int
     charger_id: str
     sensor_set: list[str]
+    input_timestamps: dict[str, datetime]
     strategy: str
     model_type: str | None = None
     p_value: float | None = None
@@ -228,6 +229,7 @@ class MonitoringChartEvidenceResponse(BaseModel):
     timestamp: datetime
     sequence_number: int
     sensor_set: list[str]
+    input_timestamps: dict[str, datetime]
     strategy: str
     model_type: str | None = None
     anomaly_score: float | None = None

@@ -42,6 +42,9 @@ async def test_initialize_database_migrates_anomalies_before_create_all():  # no
     async def _record_evidence_strategy_migration(_conn):
         call_order.append("migrate_monitoring_evidence_strategy")
 
+    async def _record_evidence_input_timestamp_migration(_conn):
+        call_order.append("migrate_monitoring_evidence_input_timestamps")
+
     async def _record_chart_indexes(_conn):
         call_order.append("ensure_chart_query_indexes")
 
@@ -63,6 +66,9 @@ async def test_initialize_database_migrates_anomalies_before_create_all():  # no
     )
     service._migrate_monitoring_evidence_strategy = AsyncMock(
         side_effect=_record_evidence_strategy_migration
+    )
+    service._migrate_monitoring_evidence_input_timestamps = AsyncMock(
+        side_effect=_record_evidence_input_timestamp_migration
     )
     service._ensure_chart_query_indexes = AsyncMock(side_effect=_record_chart_indexes)
 
@@ -87,6 +93,7 @@ async def test_initialize_database_migrates_anomalies_before_create_all():  # no
         "migrate_model_registry",
         "migrate_monitoring_evidence_trackers",
         "migrate_monitoring_evidence_strategy",
+        "migrate_monitoring_evidence_input_timestamps",
         "create_all",
         "ensure_chart_query_indexes",
     ]
@@ -127,6 +134,37 @@ async def test_migrate_monitoring_evidence_trackers_adds_and_backfills_jsonb():
     assert "ADD COLUMN tracker_results JSONB NOT NULL" in executed_sql
     assert "jsonb_build_array" in executed_sql
     assert "'alarm_statistic', 'restarted_martingale'" in executed_sql
+
+
+@pytest.mark.asyncio
+async def test_migrate_evidence_input_timestamps_is_required_and_idempotent():
+    service = SyncService()
+    conn = AsyncMock()
+    conn.scalar = AsyncMock(side_effect=[True, None])
+    conn.execute = AsyncMock()
+
+    await service._migrate_monitoring_evidence_input_timestamps(conn)
+
+    executed_sql = " ".join(
+        str(call.args[0]) for call in conn.execute.await_args_list if call.args
+    )
+    assert "ADD COLUMN input_timestamps JSONB NOT NULL" in executed_sql
+    assert "UPDATE monitoring_evidence" not in executed_sql
+
+    current_conn = AsyncMock()
+    current_conn.scalar = AsyncMock(side_effect=[True, "NO"])
+    current_conn.execute = AsyncMock()
+    await service._migrate_monitoring_evidence_input_timestamps(current_conn)
+    current_conn.execute.assert_not_awaited()
+
+    nullable_conn = AsyncMock()
+    nullable_conn.scalar = AsyncMock(side_effect=[True, "YES"])
+    nullable_conn.execute = AsyncMock()
+    await service._migrate_monitoring_evidence_input_timestamps(nullable_conn)
+    nullable_sql = " ".join(
+        str(call.args[0]) for call in nullable_conn.execute.await_args_list if call.args
+    )
+    assert "ALTER COLUMN input_timestamps SET NOT NULL" in nullable_sql
 
 
 @pytest.mark.asyncio
@@ -278,6 +316,17 @@ def test_monitoring_evidence_tracker_results_uses_postgresql_jsonb():
     assert "JSONB" in tracker_results_ddl
     assert "DEFAULT '[]'" in tracker_results_ddl
     assert "NOT NULL" in tracker_results_ddl
+
+
+def test_monitoring_evidence_input_timestamps_uses_required_postgresql_jsonb():
+    ddl = str(
+        CreateTable(MonitoringEvidence.__table__).compile(dialect=postgresql.dialect())
+    )
+    input_timestamps_ddl = next(
+        line for line in ddl.splitlines() if "input_timestamps" in line
+    )
+    assert "JSONB" in input_timestamps_ddl
+    assert "NOT NULL" in input_timestamps_ddl
 
 
 def test_monitoring_evidence_strategy_payload_ddl_supports_both_lanes():

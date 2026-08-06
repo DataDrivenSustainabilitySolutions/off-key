@@ -3,10 +3,22 @@
 import asyncio
 from contextlib import suppress
 from dataclasses import replace
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+
+
+def _with_input_reference(result, context: dict) -> dict:
+    """Attach the exact univariate telemetry observation used by the result."""
+    return {
+        **context,
+        "alignment": {
+            "aligned_vector": False,
+            "input_timestamps": {"cpu": result.timestamp.isoformat()},
+        },
+    }
 
 
 @pytest.fixture
@@ -99,6 +111,11 @@ def test_build_evidence_record_preserves_static_inference_context(
             "alignment": {
                 "aligned_vector": True,
                 "required_sensors": ["L1", "L2", "L3"],
+                "input_timestamps": {
+                    "L1": "2026-08-06T10:00:00Z",
+                    "L2": "2026-08-06T10:00:00.100Z",
+                    "L3": "2026-08-06T10:00:00.200Z",
+                },
             },
             "static_conformal": {
                 "phase": "ready",
@@ -122,10 +139,15 @@ def test_build_evidence_record_preserves_static_inference_context(
     assert records == [
         {
             "service_id": "svc-static",
-            "timestamp": result.timestamp,
+            "timestamp": datetime(2026, 8, 6, 10, 0, 0, 200000, tzinfo=UTC),
             "sequence_number": 7,
             "charger_id": result.charger_id,
             "sensor_set": ["L1", "L2", "L3"],
+            "input_timestamps": {
+                "L1": "2026-08-06T10:00:00+00:00",
+                "L2": "2026-08-06T10:00:00.100000+00:00",
+                "L3": "2026-08-06T10:00:00.200000+00:00",
+            },
             "strategy": "static_baseline",
             "model_type": "isolation_forest",
             "p_value": 0.02,
@@ -162,6 +184,10 @@ def test_build_adaptive_operational_evidence_and_anomaly_semantics(
             "alignment": {
                 "aligned_vector": True,
                 "required_sensors": ["L1", "L2"],
+                "input_timestamps": {
+                    "L1": "2026-08-06T10:00:00Z",
+                    "L2": "2026-08-06T10:00:01Z",
+                },
             },
             "adaptive_stream": {
                 "phase": "operational",
@@ -210,21 +236,24 @@ def test_build_evidence_record_normalizes_infinite_values(
     )
     result = replace(
         sample_anomaly_result,
-        context={
-            "static_conformal": {
-                "phase": "ready",
-                "p_value": 0.0,
-                "e_value": float("inf"),
-                "e_value_is_infinite": True,
-                "log_e_value": float("inf"),
-                "restarted_martingale": float("inf"),
-                "restarted_martingale_is_infinite": True,
-                "log_restarted_martingale": float("inf"),
-                "restarted_ville_threshold": 100.0,
-                "alarm_fired": True,
-                "tested_count": 8,
-            }
-        },
+        context=_with_input_reference(
+            sample_anomaly_result,
+            {
+                "static_conformal": {
+                    "phase": "ready",
+                    "p_value": 0.0,
+                    "e_value": float("inf"),
+                    "e_value_is_infinite": True,
+                    "log_e_value": float("inf"),
+                    "restarted_martingale": float("inf"),
+                    "restarted_martingale_is_infinite": True,
+                    "log_restarted_martingale": float("inf"),
+                    "restarted_ville_threshold": 100.0,
+                    "alarm_fired": True,
+                    "tested_count": 8,
+                }
+            },
+        ),
     )
 
     writer = DatabaseWriter(db_config, session_factory=AsyncMock())
@@ -276,22 +305,25 @@ def test_build_evidence_record_preserves_generic_tracker_results(
     }
     result = replace(
         sample_anomaly_result,
-        context={
-            "static_conformal": {
-                "phase": "ready",
-                "p_value": 0.01,
-                "e_value": 2.0,
-                "e_value_is_infinite": False,
-                "log_e_value": 0.69,
-                "restarted_martingale": 4.0,
-                "restarted_martingale_is_infinite": False,
-                "log_restarted_martingale": 1.39,
-                "threshold": 25.0,
-                "alarm_fired": True,
-                "tested_count": 9,
-                "tracker_results": [tracker_result],
-            }
-        },
+        context=_with_input_reference(
+            sample_anomaly_result,
+            {
+                "static_conformal": {
+                    "phase": "ready",
+                    "p_value": 0.01,
+                    "e_value": 2.0,
+                    "e_value_is_infinite": False,
+                    "log_e_value": 0.69,
+                    "restarted_martingale": 4.0,
+                    "restarted_martingale_is_infinite": False,
+                    "log_restarted_martingale": 1.39,
+                    "threshold": 25.0,
+                    "alarm_fired": True,
+                    "tested_count": 9,
+                    "tracker_results": [tracker_result],
+                }
+            },
+        ),
     )
 
     record = DatabaseWriter(
@@ -322,21 +354,24 @@ async def test_flush_persists_ready_evidence_without_anomaly(
     result = replace(
         sample_anomaly_result,
         is_anomaly=False,
-        context={
-            "static_conformal": {
-                "phase": "ready",
-                "p_value": 0.25,
-                "e_value": 1.0,
-                "e_value_is_infinite": False,
-                "log_e_value": 0.0,
-                "restarted_martingale": 2.0,
-                "restarted_martingale_is_infinite": False,
-                "log_restarted_martingale": 0.69,
-                "restarted_ville_threshold": 100.0,
-                "alarm_fired": False,
-                "tested_count": 1,
-            }
-        },
+        context=_with_input_reference(
+            sample_anomaly_result,
+            {
+                "static_conformal": {
+                    "phase": "ready",
+                    "p_value": 0.25,
+                    "e_value": 1.0,
+                    "e_value_is_infinite": False,
+                    "log_e_value": 0.0,
+                    "restarted_martingale": 2.0,
+                    "restarted_martingale_is_infinite": False,
+                    "log_restarted_martingale": 0.69,
+                    "restarted_ville_threshold": 100.0,
+                    "alarm_fired": False,
+                    "tested_count": 1,
+                }
+            },
+        ),
     )
     writer = DatabaseWriter(db_config, session_factory=mock_session_factory)
     writer._execute_upsert = AsyncMock()
@@ -352,6 +387,40 @@ async def test_flush_persists_ready_evidence_without_anomaly(
     assert evidence_rows[0]["p_value"] == 0.25
     assert writer.total_evidence_written == 1
     assert writer.total_written == 0
+
+
+def test_build_evidence_record_rejects_incomplete_input_references(
+    db_config, sample_anomaly_result, monkeypatch
+):
+    from off_key_mqtt_radar.database import DatabaseWriter
+
+    monkeypatch.setattr(
+        "off_key_mqtt_radar.database.get_radar_checkpoint_settings",
+        lambda: SimpleNamespace(SERVICE_ID="svc-static"),
+    )
+    result = replace(
+        sample_anomaly_result,
+        is_anomaly=False,
+        context={
+            "alignment": {
+                "aligned_vector": True,
+                "required_sensors": ["L1", "L2"],
+                "input_timestamps": {"L1": sample_anomaly_result.timestamp.isoformat()},
+            },
+            "static_conformal": {
+                "phase": "ready",
+                "p_value": 0.25,
+                "restarted_ville_threshold": 100.0,
+                "tested_count": 1,
+            },
+        },
+    )
+
+    records = DatabaseWriter(
+        db_config, session_factory=AsyncMock()
+    )._build_evidence_records([result])
+
+    assert records == []
 
 
 def test_get_health_status_disabled_when_writing_off(db_config):

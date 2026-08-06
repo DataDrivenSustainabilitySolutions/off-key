@@ -6,7 +6,7 @@ import json
 import os
 import time
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import httpx
 import pytest
@@ -17,8 +17,8 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-def _publish(topic: str, value: float) -> None:
-    payload = json.dumps({"timestamp": datetime.now(UTC).isoformat(), "value": value})
+def _publish(topic: str, value: float, timestamp: datetime) -> None:
+    payload = json.dumps({"timestamp": timestamp.isoformat(), "value": value})
     password = os.environ["EMQX_DASHBOARD_PASSWORD"]
     response = httpx.post(
         f"{os.getenv('EMQX_API_URL', 'http://localhost:18083')}/api/v5/publish",
@@ -29,11 +29,14 @@ def _publish(topic: str, value: float) -> None:
     response.raise_for_status()
 
 
-def test_gateway_to_postgres_adaptive_online_isolation_forest() -> None:
+def test_gateway_to_postgres_adaptive_multisensor_input_correlation() -> None:
     token = os.environ["E2E_AUTH_TOKEN"]
     base_url = os.getenv("E2E_API_URL", "http://localhost:8000/api")
     charger_id = f"adaptive-e2e-{uuid.uuid4().hex[:8]}"
-    topic = f"charger/{charger_id}/live-telemetry/L1"
+    topics = [
+        f"charger/{charger_id}/live-telemetry/L1",
+        f"charger/{charger_id}/live-telemetry/L2",
+    ]
     service_id: str | None = None
     headers = {"Authorization": f"Bearer {token}"}
 
@@ -43,7 +46,7 @@ def test_gateway_to_postgres_adaptive_online_isolation_forest() -> None:
             json={
                 "container_name": f"radar-{charger_id}",
                 "service_type": "radar",
-                "mqtt_topics": [topic],
+                "mqtt_topics": topics,
                 "strategy": "adaptive_stream",
                 "model_type": "aberrant_online_isolation_forest",
                 "model_params": {"num_trees": 4, "max_leaf_samples": 4},
@@ -63,8 +66,15 @@ def test_gateway_to_postgres_adaptive_online_isolation_forest() -> None:
         service_id = response.json()["service_id"]
         try:
             time.sleep(5)
+            published_cycles: list[dict[str, str]] = []
             for index in range(8):
-                _publish(topic, 100.0 if index == 7 else 1.0 + index / 100)
+                l1_time = datetime.now(UTC)
+                l2_time = l1_time + timedelta(milliseconds=50)
+                _publish(topics[0], 100.0 if index == 7 else 1.0 + index / 100, l1_time)
+                _publish(topics[1], 50.0 if index == 7 else 2.0 + index / 100, l2_time)
+                published_cycles.append(
+                    {"L1": l1_time.isoformat(), "L2": l2_time.isoformat()}
+                )
 
             deadline = time.monotonic() + 120
             evidence: list[dict[str, object]] = []
@@ -81,6 +91,15 @@ def test_gateway_to_postgres_adaptive_online_isolation_forest() -> None:
                     assert all(row["anomaly_score"] is not None for row in adaptive)
                     assert all(row["threshold"] is not None for row in adaptive)
                     assert all(row["p_value"] is None for row in adaptive)
+                    for row in adaptive:
+                        input_timestamps = row["input_timestamps"]
+                        assert isinstance(input_timestamps, dict)
+                        assert set(input_timestamps) == {"L1", "L2"}
+                        assert input_timestamps in published_cycles
+                        assert datetime.fromisoformat(str(row["timestamp"])) == max(
+                            datetime.fromisoformat(value)
+                            for value in input_timestamps.values()
+                        )
                     break
                 time.sleep(2)
             else:

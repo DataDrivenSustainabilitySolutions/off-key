@@ -34,10 +34,12 @@ def test_align_features_normalizes_single_sensor_value_key():
         charger_id="charger-1",
         sensor_type="voltage",
         data={"value": 230.5, "quality": 1.0},
+        sample_timestamp=1_800_000_000.0,
     )
 
     assert features == {"voltage": 230.5}
     assert alignment["alignment_status"] == "direct_pass_through"
+    assert alignment["input_timestamps"] == {"voltage": 1_800_000_000.0}
 
 
 def test_align_features_uses_sensor_key_when_present():
@@ -59,6 +61,8 @@ def test_align_features_normalizes_before_state_cache_update():
         status="aligned_emit",
         features={"voltage": 230.5, "current": 18.2},
         sensor_ages={"voltage": 0.4, "current": 0.2},
+        input_timestamps={"voltage": 10.0, "current": 11.0},
+        sample_timestamp=11.0,
     )
     processor = _build_processor(
         required_sensors={"voltage", "current"},
@@ -80,6 +84,7 @@ def test_align_features_normalizes_before_state_cache_update():
     assert features == {"voltage": 230.5, "current": 18.2}
     assert alignment["alignment_status"] == "aligned_emit"
     assert alignment["aligned_vector"] is True
+    assert alignment["input_timestamps"] == {"voltage": 10.0, "current": 11.0}
 
 
 def test_align_features_waiting_for_all_returns_none():
@@ -250,7 +255,11 @@ def test_detect_anomaly_uses_canonical_sample_timestamp():
         alignment_context={
             "aligned_vector": True,
             "alignment_status": "aligned_emit",
-            "sample_timestamp": sample_ts,
+            "sample_timestamp": sample_ts - 10,
+            "input_timestamps": {
+                "sine": sample_ts - 1,
+                "cosine": sample_ts,
+            },
             "sensor_ages": {"sine": 0.1, "cosine": 0.1},
         },
     )
@@ -297,3 +306,6 @@ async def test_process_message_aligns_evidence_to_payload_event_timestamp():
     assert result is not None
     assert result.timestamp == event_time
     assert result.context["canonical_sample_timestamp"] == event_time.isoformat()
+    assert result.context["alignment"]["input_timestamps"] == {
+        "voltage": event_time.timestamp()
+    }

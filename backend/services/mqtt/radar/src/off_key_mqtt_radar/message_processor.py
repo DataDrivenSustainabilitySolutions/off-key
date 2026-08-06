@@ -236,12 +236,18 @@ class MessageProcessor:
         # Skip alignment if no cache or only single sensor subscribed
         # Single-sensor mode: use normalized sensor-keyed feature.
         if not self.state_cache or not self.required_sensors:
-            return normalized_data, self._direct_alignment_context(sample_timestamp)
+            return normalized_data, self._direct_alignment_context(
+                sensor_type, sample_timestamp
+            )
         if len(self.required_sensors) <= 1:
-            return normalized_data, self._direct_alignment_context(sample_timestamp)
+            return normalized_data, self._direct_alignment_context(
+                sensor_type, sample_timestamp
+            )
 
         if not (charger_id and sensor_type):
-            return normalized_data, self._direct_alignment_context(sample_timestamp)
+            return normalized_data, self._direct_alignment_context(
+                sensor_type, sample_timestamp
+            )
 
         alignment_update: AlignmentUpdate = self.state_cache.update_with_status(
             charger_id,
@@ -257,6 +263,7 @@ class MessageProcessor:
             "required_sensor_count": len(self.required_sensors),
             "required_sensors": sorted(self.required_sensors),
             "sensor_ages": alignment_update.sensor_ages,
+            "input_timestamps": alignment_update.input_timestamps,
             "sample_timestamp": alignment_update.sample_timestamp,
         }
 
@@ -321,14 +328,22 @@ class MessageProcessor:
         return alignment_update.features, base_context
 
     def _direct_alignment_context(
-        self, sample_timestamp: float | None = None
+        self,
+        sensor_type: str | None,
+        sample_timestamp: float | None = None,
     ) -> dict[str, Any]:
         """Build alignment context for messages that bypass multi-sensor alignment."""
+        input_timestamps = (
+            {sensor_type: sample_timestamp}
+            if sensor_type and isinstance(sample_timestamp, int | float)
+            else {}
+        )
         return {
             "alignment_status": "direct_pass_through",
             "aligned_vector": False,
             "required_sensor_count": len(self.required_sensors),
             "sensor_ages": {},
+            "input_timestamps": input_timestamps,
             "sample_timestamp": sample_timestamp,
         }
 
@@ -368,7 +383,16 @@ class MessageProcessor:
         sensor_ages = (alignment_context or {}).get("sensor_ages")
         if isinstance(sensor_ages, dict):
             result.context["sensor_ages"] = sensor_ages
+        input_timestamps = (alignment_context or {}).get("input_timestamps")
         sample_timestamp = (alignment_context or {}).get("sample_timestamp")
+        if isinstance(input_timestamps, dict):
+            finite_input_timestamps = [
+                float(timestamp)
+                for timestamp in input_timestamps.values()
+                if isinstance(timestamp, int | float)
+            ]
+            if finite_input_timestamps:
+                sample_timestamp = max(finite_input_timestamps)
         if isinstance(sample_timestamp, int | float):
             canonical_dt = datetime.fromtimestamp(float(sample_timestamp), tz=UTC)
             result.timestamp = canonical_dt

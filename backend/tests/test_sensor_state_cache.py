@@ -32,6 +32,10 @@ def test_sensor_state_cache_blocks_stale_sensor_and_recovers(monkeypatch):
     assert second.status == "aligned_emit"
     assert second.features == {"sine": 1.0, "cosine": 2.0}
     assert second.sample_timestamp == 1_800_000_000.0
+    assert second.input_timestamps == {
+        "sine": 100.0,
+        "cosine": 1_800_000_000.0,
+    }
 
     # cosine arrives again much later while sine is stale
     now["value"] = 110.0
@@ -100,6 +104,32 @@ def test_sensor_state_cache_strict_barrier_waits_for_new_values_from_all(monkeyp
     emitted = cache.update_with_status("charger-3", "y", {"y": 2.1})
     assert emitted.status == "aligned_emit"
     assert emitted.features == {"x": 1.1, "y": 2.1}
+
+
+def test_sensor_state_cache_preserves_each_input_event_time(monkeypatch):
+    monkeypatch.setattr(state_cache_module.time, "time", lambda: 500.0)
+    cache = SensorStateCache(required_sensors={"voltage", "current"})
+
+    waiting = cache.update_with_status(
+        "charger-5",
+        "voltage",
+        {"voltage": 230.0},
+        sample_timestamp=1_800_000_002.0,
+    )
+    assert waiting.status == "waiting_for_all"
+
+    aligned = cache.update_with_status(
+        "charger-5",
+        "current",
+        {"current": 18.0},
+        sample_timestamp=1_800_000_001.0,
+    )
+
+    assert aligned.input_timestamps == {
+        "current": 1_800_000_001.0,
+        "voltage": 1_800_000_002.0,
+    }
+    assert aligned.sample_timestamp == 1_800_000_002.0
 
 
 def test_sensor_state_cache_reports_sensor_without_extractable_value():

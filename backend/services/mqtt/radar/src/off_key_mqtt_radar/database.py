@@ -23,6 +23,7 @@ from typing import Any
 from off_key_core.db.table_contracts import monitoring_evidence_table
 from off_key_core.schemas.radar import RadarOperationalStatus
 from off_key_core.utils.mqtt_topics import TopicMetadataExtractor
+from off_key_core.utils.timestamps import parse_utc_timestamp
 from sqlalchemy import (
     JSON,
     TIMESTAMP,
@@ -565,6 +566,34 @@ class DatabaseWriter:
 
         return feature_sensors
 
+    @staticmethod
+    def _derive_input_timestamps(
+        result: AnomalyResult,
+        sensor_set: list[str],
+    ) -> dict[str, str] | None:
+        """Normalize exact telemetry references for one inference result."""
+        alignment_context = (result.context or {}).get("alignment", {})
+        raw_timestamps = alignment_context.get("input_timestamps")
+        if not isinstance(raw_timestamps, dict) or not raw_timestamps:
+            return None
+
+        normalized: dict[str, str] = {}
+        for sensor in sensor_set:
+            value = raw_timestamps.get(sensor)
+            try:
+                timestamp = parse_utc_timestamp(value)
+            except (TypeError, ValueError, OSError, OverflowError):
+                logger.error(
+                    "event=radar.evidence_input_timestamp_invalid "
+                    "sensor=%s service_result_timestamp=%s",
+                    sensor,
+                    result.timestamp,
+                )
+                return None
+            normalized[sensor] = timestamp.isoformat()
+
+        return normalized if len(normalized) == len(sensor_set) else None
+
     def _build_records(
         self,
         results: list[AnomalyResult],
@@ -638,13 +667,29 @@ class DatabaseWriter:
             if not isinstance(threshold, int | float) or not math.isfinite(threshold):
                 continue
 
+            sensor_set = self._derive_sensor_set(result) or []
+            input_timestamps = self._derive_input_timestamps(result, sensor_set)
+            if input_timestamps is None:
+                logger.error(
+                    "event=radar.evidence_input_timestamps_missing "
+                    "service_id=%s sensor_set=%s result_timestamp=%s",
+                    service_id,
+                    sensor_set,
+                    result.timestamp,
+                )
+                continue
+            canonical_timestamp = max(
+                parse_utc_timestamp(value) for value in input_timestamps.values()
+            )
+
             records.append(
                 {
                     "service_id": service_id,
-                    "timestamp": result.timestamp,
+                    "timestamp": canonical_timestamp,
                     "sequence_number": sequence_number,
                     "charger_id": result.charger_id or "unknown",
-                    "sensor_set": self._derive_sensor_set(result) or [],
+                    "sensor_set": sensor_set,
+                    "input_timestamps": input_timestamps,
                     "strategy": ("static_baseline" if is_static else "adaptive_stream"),
                     "model_type": (
                         (result.context or {}).get("model_type")

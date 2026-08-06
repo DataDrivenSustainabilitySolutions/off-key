@@ -30,6 +30,11 @@ def monitoring_evidence_table(metadata: MetaData) -> Table:
             nullable=False,
         ),
         Column(
+            "input_timestamps",
+            JSON().with_variant(JSONB(), "postgresql"),
+            nullable=False,
+        ),
+        Column(
             "strategy",
             Text,
             nullable=False,

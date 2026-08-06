@@ -58,6 +58,7 @@ class SyncService:
                 await self._migrate_model_registry_family(conn)
                 await self._migrate_monitoring_evidence_trackers(conn)
                 await self._migrate_monitoring_evidence_strategy(conn)
+                await self._migrate_monitoring_evidence_input_timestamps(conn)
                 await conn.run_sync(Base.metadata.create_all)
                 await self._ensure_chart_query_indexes(conn)
 
@@ -323,6 +324,56 @@ class SyncService:
                     "ck_monitoring_evidence_strategy_payload"
                 )
             )
+
+    async def _migrate_monitoring_evidence_input_timestamps(self, conn) -> None:
+        """Enforce exact per-sensor event-time references on all evidence."""
+        table_exists = await conn.scalar(
+            text("SELECT to_regclass('public.monitoring_evidence') IS NOT NULL")
+        )
+        if not table_exists:
+            return
+
+        is_nullable = await conn.scalar(
+            text(
+                """
+                SELECT is_nullable
+                FROM information_schema.columns
+                WHERE table_schema = 'public'
+                  AND table_name = 'monitoring_evidence'
+                  AND column_name = 'input_timestamps'
+                """
+            )
+        )
+        if is_nullable == "NO":
+            return
+
+        if is_nullable is None:
+            logger.info(
+                "Adding required monitoring_evidence.input_timestamps column",
+                extra=self._log_context,
+            )
+            await conn.execute(
+                text(
+                    """
+                    ALTER TABLE monitoring_evidence
+                    ADD COLUMN input_timestamps JSONB NOT NULL
+                    """
+                )
+            )
+            return
+
+        logger.info(
+            "Making monitoring_evidence.input_timestamps required",
+            extra=self._log_context,
+        )
+        await conn.execute(
+            text(
+                """
+                ALTER TABLE monitoring_evidence
+                ALTER COLUMN input_timestamps SET NOT NULL
+                """
+            )
+        )
 
     async def _migrate_model_registry_family(self, conn) -> None:
         """

@@ -244,26 +244,18 @@ test.describe("Details telemetry ECharts", () => {
     });
   });
 
-  test("renders linked panes, themes, accessibility, and responsive Canvas", async ({
+  test("pins global navbar actions to the right edge on wide screens", async ({
     page,
   }) => {
     await installDetailsApi(page);
+    await page.setViewportSize({ width: 1600, height: 900 });
     await page.goto(`/details/${CHARGER_ID}`);
 
-    const chart = page.getByTestId("telemetry-echart");
-    const card = page
-      .locator('[data-slot="card"]')
-      .filter({ hasText: "System Voltage" })
-      .first();
-    await expect(chart).toBeVisible();
-    await expect(chart.locator("canvas")).toHaveCount(1);
-    await expect(chart).toHaveAttribute(
-      "aria-label",
-      /sequential-evidence series in a linked lower pane.*UTC/u,
-    );
-    const navbar = page.locator('[data-slot="navigation-menu-list"]');
+    const navbar = page.locator('[data-slot="navigation-menu"]');
     const primaryLinks = page.getByTestId("navbar-primary-links");
     const navbarActions = page.getByTestId("navbar-actions");
+    await expect(navbarActions).toBeVisible();
+
     const [navbarBox, primaryLinksBox, navbarActionsBox] = await Promise.all([
       navbar.boundingBox(),
       primaryLinks.boundingBox(),
@@ -282,6 +274,25 @@ test.describe("Details telemetry ECharts", () => {
       navbarBox!.x + navbarBox!.width -
         (navbarActionsBox!.x + navbarActionsBox!.width),
     ).toBeLessThanOrEqual(40);
+  });
+
+  test("renders linked panes, themes, accessibility, and responsive Canvas", async ({
+    page,
+  }) => {
+    await installDetailsApi(page);
+    await page.goto(`/details/${CHARGER_ID}`);
+
+    const chart = page.getByTestId("telemetry-echart");
+    const card = page
+      .locator('[data-slot="card"]')
+      .filter({ hasText: "System Voltage" })
+      .first();
+    await expect(chart).toBeVisible();
+    await expect(chart.locator("canvas")).toHaveCount(1);
+    await expect(chart).toHaveAttribute(
+      "aria-label",
+      /sequential-evidence series in a linked lower pane.*UTC/u,
+    );
     await expect(card.getByText(/Current System Voltage:/u)).toBeVisible();
     await expect(card.getByText(/Restarted e-process radar-se/u)).toBeVisible();
     await expect(chart).toHaveScreenshot("telemetry-card-light.png", {

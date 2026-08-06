@@ -221,106 +221,115 @@ export const NavigationBar = () => {
           {message}
         </div>
       ) : null}
-      <NavigationMenu className="w-full max-w-none justify-stretch">
-        <NavigationMenuList className="mx-auto flex h-16 w-full max-w-7xl items-center justify-start gap-2 px-4 sm:px-6 lg:px-8">
-          <NavigationMenuItem className="mr-2 flex shrink-0">
-            <Link
-              to="/"
-              rel="noreferrer noopener"
-              className="group flex items-center gap-2.5 rounded-lg py-1.5 pr-2 text-base font-semibold tracking-[-0.02em]"
+      <div className="flex w-full items-center">
+        <NavigationMenu className="min-w-0 max-w-none flex-1 justify-stretch">
+          <NavigationMenuList className="flex h-16 items-center justify-start gap-2 px-4 sm:px-6 lg:px-8">
+            <NavigationMenuItem className="mr-2 flex shrink-0">
+              <Link
+                to="/"
+                rel="noreferrer noopener"
+                className="group flex items-center gap-2.5 rounded-lg py-1.5 pr-2 text-base font-semibold tracking-[-0.02em]"
+              >
+                <span className="flex size-8 items-center justify-center rounded-lg bg-primary text-[11px] font-bold tracking-[-0.04em] text-primary-foreground shadow-sm transition-transform group-hover:scale-[1.03]">
+                  ok
+                </span>
+                <span>
+                  off<span className="text-primary">/</span>key
+                </span>
+              </Link>
+            </NavigationMenuItem>
+
+            <nav
+              data-testid="navbar-primary-links"
+              className="mr-auto hidden min-w-0 items-center gap-1 md:flex"
             >
-              <span className="flex size-8 items-center justify-center rounded-lg bg-primary text-[11px] font-bold tracking-[-0.04em] text-primary-foreground shadow-sm transition-transform group-hover:scale-[1.03]">
-                ok
-              </span>
-              <span>off<span className="text-primary">/</span>key</span>
-            </Link>
-          </NavigationMenuItem>
+              {navItems.map((item) => (
+                <NavigationMenuItem key={item.href}>
+                  <NavLinkItem
+                    item={item}
+                    active={item.active}
+                    badge={item.badge}
+                  />
+                </NavigationMenuItem>
+              ))}
+            </nav>
+          </NavigationMenuList>
+        </NavigationMenu>
 
-          <nav
-            data-testid="navbar-primary-links"
-            className="mr-auto hidden min-w-0 items-center gap-1 md:flex"
-          >
-            {navItems.map((item) => (
-              <NavigationMenuItem key={item.href}>
-                <NavLinkItem
-                  item={item}
-                  active={item.active}
-                  badge={item.badge}
-                />
-              </NavigationMenuItem>
-            ))}
-          </nav>
+        <div
+          data-testid="navbar-actions"
+          className="mr-4 flex shrink-0 items-center justify-end gap-2 sm:mr-6 lg:mr-8"
+        >
+          <ModeToggle />
 
-          <NavigationMenuItem
-            data-testid="navbar-actions"
-            className="ml-auto flex shrink-0 items-center justify-end gap-2"
-          >
-            <ModeToggle />
+          {isAuthenticated ? (
+            <DropdownMenu>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="icon" aria-label="User menu">
+                      <UserCircle className="h-5 w-5" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                </TooltipTrigger>
+                <TooltipContent>User Menu</TooltipContent>
+              </Tooltip>
 
-            {isAuthenticated ? (
-              <DropdownMenu>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon" aria-label="User menu">
-                        <UserCircle className="h-5 w-5" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                  </TooltipTrigger>
-                  <TooltipContent>User Menu</TooltipContent>
-                </Tooltip>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem
+                  onClick={() => navigate("/account")}
+                  className="cursor-pointer"
+                >
+                  <UserCircle className="h-4 w-4" />
+                  Account
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleLogout} className="cursor-pointer">
+                  <LogOut className="h-4 w-4" />
+                  Logout
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : (
+            <Button asChild size="sm">
+              <Link to="/login">
+                <LogIn className="h-4 w-4" />
+                Login
+              </Link>
+            </Button>
+          )}
 
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem
-                    onClick={() => navigate("/account")}
-                    className="cursor-pointer"
-                  >
-                    <UserCircle className="h-4 w-4" />
-                    Account
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={handleLogout} className="cursor-pointer">
-                    <LogOut className="h-4 w-4" />
-                    Logout
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            ) : (
-              <Button asChild size="sm">
-                <Link to="/login">
-                  <LogIn className="h-4 w-4" />
-                  Login
-                </Link>
+          <Sheet open={isOpen} onOpenChange={setIsOpen}>
+            <SheetTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="md:hidden"
+                aria-label="Open menu"
+              >
+                <Menu className="h-5 w-5" />
               </Button>
-            )}
-
-            <Sheet open={isOpen} onOpenChange={setIsOpen}>
-              <SheetTrigger asChild>
-                <Button variant="ghost" size="icon" className="md:hidden" aria-label="Open menu">
-                  <Menu className="h-5 w-5" />
-                </Button>
-              </SheetTrigger>
-              <SheetContent side="left" className="w-80">
-                <SheetHeader>
-                  <SheetTitle>off/key</SheetTitle>
-                  <SheetDescription>Navigation</SheetDescription>
-                </SheetHeader>
-                <nav className="flex flex-col gap-1 px-4">
-                  {navItems.map((item) => (
-                    <SheetClose asChild key={item.href}>
-                      <NavLinkItem
-                        item={item}
-                        active={item.active}
-                        badge={item.badge}
-                        compact
-                      />
-                    </SheetClose>
-                  ))}
-                </nav>
-              </SheetContent>
-            </Sheet>
-          </NavigationMenuItem>
-        </NavigationMenuList>
-      </NavigationMenu>
+            </SheetTrigger>
+            <SheetContent side="left" className="w-80">
+              <SheetHeader>
+                <SheetTitle>off/key</SheetTitle>
+                <SheetDescription>Navigation</SheetDescription>
+              </SheetHeader>
+              <nav className="flex flex-col gap-1 px-4">
+                {navItems.map((item) => (
+                  <SheetClose asChild key={item.href}>
+                    <NavLinkItem
+                      item={item}
+                      active={item.active}
+                      badge={item.badge}
+                      compact
+                    />
+                  </SheetClose>
+                ))}
+              </nav>
+            </SheetContent>
+          </Sheet>
+        </div>
+      </div>
     </header>
   );
 };

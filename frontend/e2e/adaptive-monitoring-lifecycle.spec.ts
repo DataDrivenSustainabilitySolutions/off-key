@@ -1,54 +1,100 @@
 import { expect, test } from "@playwright/test";
+import { connectAsync, type MqttClient } from "mqtt";
 
-const publish = async (topic: string, value: number) => {
+const publish = async (
+  client: MqttClient,
+  topic: string,
+  value: number,
+  timestamp: string,
+) => {
   const payload = JSON.stringify({
-    timestamp: new Date().toISOString(),
+    timestamp,
     value,
   });
-  const username = process.env.EMQX_DASHBOARD_USERNAME ?? "admin";
-  const password = process.env.EMQX_DASHBOARD_PASSWORD;
-  if (!password) {
-    throw new Error("EMQX_DASHBOARD_PASSWORD is required for adaptive E2E publishing");
-  }
-  const response = await fetch(
-    `${process.env.EMQX_API_URL ?? "http://localhost:18083"}/api/v5/publish`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ topic, payload, qos: 0, retain: false }),
-    },
-  );
-  if (!response.ok) {
-    throw new Error(`EMQX publish failed (${response.status}): ${await response.text()}`);
-  }
+  await client.publishAsync(topic, payload, { qos: 0, retain: false });
 };
 
-test.describe("adaptive monitoring production lifecycle", () => {
-  test.setTimeout(360_000);
+type InputTimestamps = Record<"L1" | "L2", string>;
 
-  test("starts the lane and observes operational score and threshold evidence", async ({
+const publishCycle = async (
+  client: MqttClient,
+  topics: InputTimestamps,
+  index: number,
+  l1Time: number = Date.now(),
+): Promise<InputTimestamps> => {
+  const inputTimestamps = {
+    L1: new Date(l1Time).toISOString(),
+    L2: new Date(l1Time + 75).toISOString(),
+  };
+  await publish(
+    client,
+    topics.L1,
+    index === 35 ? 100 : 1 + index / 100,
+    inputTimestamps.L1,
+  );
+  await publish(
+    client,
+    topics.L2,
+    index === 35 ? 50 : 2 + index / 100,
+    inputTimestamps.L2,
+  );
+  return inputTimestamps;
+};
+
+interface ChartEvidence {
+  service_id: string;
+  timestamp: string;
+  strategy: string;
+  anomaly_score: number | null;
+  threshold: number;
+  input_timestamps: InputTimestamps;
+}
+
+test.describe("adaptive monitoring production lifecycle", () => {
+  test.setTimeout(600_000);
+
+  test("correlates delayed multivariate evidence without moving the chart viewport", async ({
     page,
     playwright,
   }) => {
     const chargerId = `adaptive-e2e-${Date.now()}`;
-    const topic = `charger/${chargerId}/live-telemetry/L1`;
+    const topics = {
+      L1: `charger/${chargerId}/live-telemetry/L1`,
+      L2: `charger/${chargerId}/live-telemetry/L2`,
+    };
     let serviceId: string | undefined;
     let authToken: string | null = null;
+    let publisher: MqttClient | undefined;
+    let eventTimeCursor = Date.now();
     const api = await playwright.request.newContext({
       baseURL: process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:5173",
       timeout: 210_000,
     });
 
     try {
-      await publish(topic, 1);
+      const activePublisher = await connectAsync(
+        process.env.MQTT_SOURCE_URL ?? "mqtt://localhost:1884",
+        { clientId: `playwright-${chargerId}` },
+      );
+      publisher = activePublisher;
       await page.goto(`/monitoring/${chargerId}`);
       authToken = await page.evaluate(() => localStorage.getItem("auth_token"));
       expect(authToken).toBeTruthy();
+      await publishCycle(activePublisher, topics, 0);
+      await expect.poll(async () => {
+        const response = await api.get(`/api/v1/telemetry/${chargerId}/type`, {
+          headers: { Authorization: `Bearer ${authToken}` },
+        });
+        return (await response.json() as string[]).sort();
+      }, { timeout: 60_000 }).toEqual(["L1", "L2"]);
+      await page.reload();
 
-      await expect(page.getByText("L1", { exact: true })).toBeVisible({ timeout: 30_000 });
+      await expect(page.getByText("L1", { exact: true }).first()).toBeVisible({
+        timeout: 30_000,
+      });
+      await expect(page.getByText("L2", { exact: true }).first()).toBeVisible({
+        timeout: 30_000,
+      });
       await page.getByRole("button", { name: /Adaptive streams/i }).click();
       await expect(page.getByText("Adaptive stream lifecycle")).toBeVisible();
       await page.getByLabel("Warm-up samples").fill("32");
@@ -62,40 +108,146 @@ test.describe("adaptive monitoring production lifecycle", () => {
       expect(startResponse.ok()).toBeTruthy();
       const started = (await startResponse.json()) as { service_id: string };
       serviceId = started.service_id;
+      const serviceSuffix = started.service_id.slice(0, 8);
 
-      await expect.poll(async () => {
-        const response = await api.get("/api/v1/monitors/all?active_only=true&include_docker_status=true", {
-          headers: { Authorization: `Bearer ${authToken}` },
-        });
+      const readServiceStatus = async () => {
+        const response = await api.get(
+          "/api/v1/monitors/all?active_only=true&include_docker_status=true",
+          { headers: { Authorization: `Bearer ${authToken}` } },
+        );
         const services = await response.json() as Array<{
           id: string;
-          operational_status?: { stage?: string };
+          operational_status?: {
+            stage?: string;
+            message_count?: number;
+          };
         }>;
-        return services.find((service) => service.id === serviceId)?.operational_status?.stage;
-      }, { timeout: 120_000 }).toMatch(/collecting_training|collecting_calibration/);
+        return services.find((service) => service.id === serviceId)
+          ?.operational_status;
+      };
+      const publishNextCycle = async (index: number) => {
+        eventTimeCursor = Math.max(Date.now(), eventTimeCursor + 100);
+        return publishCycle(activePublisher, topics, index, eventTimeCursor);
+      };
 
-      for (let index = 0; index < 36; index += 1) {
-        await publish(topic, index === 35 ? 100 : 1 + index / 100);
+      const publishedCycles: InputTimestamps[] = [];
+      await expect.poll(async () => (await readServiceStatus())?.stage, {
+        timeout: 240_000,
+        intervals: [1_000, 1_000, 2_000],
+      }).toBe("waiting_for_data");
+
+      for (let index = 0; index < 40; index += 1) {
+        publishedCycles.push(await publishNextCycle(index));
       }
-
       await expect.poll(async () => {
-        const response = await api.get(`/api/v1/monitors/evidence?charger_id=${chargerId}`, {
+        const status = await readServiceStatus();
+        return {
+          operational: status?.stage === "operational",
+          allMessagesConsumed:
+            (status?.message_count ?? 0) >= publishedCycles.length * 2,
+        };
+      }, { timeout: 120_000 }).toEqual({
+        operational: true,
+        allMessagesConsumed: true,
+      });
+
+      let operationalEvidence: ChartEvidence[] = [];
+      const lastPublishedCycle = publishedCycles[publishedCycles.length - 1];
+      if (!lastPublishedCycle) {
+        throw new Error("No telemetry cycles were published");
+      }
+      await expect.poll(async () => {
+        const response = await api.get(`/api/v1/monitors/evidence/chart?charger_id=${chargerId}&limit=2000`, {
           headers: { Authorization: `Bearer ${authToken}` },
         });
-        const rows = await response.json() as Array<{
-          strategy: string;
-          anomaly_score: number | null;
-          threshold: number;
-        }>;
-        return rows.some((row) =>
+        operationalEvidence = (await response.json() as ChartEvidence[]).filter(
+          (row) => row.service_id === serviceId,
+        );
+        return operationalEvidence.some((row) =>
           row.strategy === "adaptive_stream" &&
           Number.isFinite(row.anomaly_score) &&
-          Number.isFinite(row.threshold));
+          Number.isFinite(row.threshold) &&
+          Date.parse(row.input_timestamps.L1) ===
+            Date.parse(lastPublishedCycle.L1) &&
+          Date.parse(row.input_timestamps.L2) ===
+            Date.parse(lastPublishedCycle.L2));
       }, { timeout: 120_000 }).toBe(true);
 
+      for (const row of operationalEvidence) {
+        expect(Object.keys(row.input_timestamps).sort()).toEqual(["L1", "L2"]);
+        const normalizedInputs = {
+          L1: new Date(row.input_timestamps.L1).toISOString(),
+          L2: new Date(row.input_timestamps.L2).toISOString(),
+        };
+        expect(publishedCycles).toContainEqual(normalizedInputs);
+        expect(Date.parse(row.timestamp)).toBe(
+          Math.max(
+            Date.parse(row.input_timestamps.L1),
+            Date.parse(row.input_timestamps.L2),
+          ),
+        );
+      }
+
       await page.goto(`/details/${chargerId}`);
-      await expect(page.getByText("Adaptive scores")).toBeVisible({ timeout: 60_000 });
+      const l1Card = page.locator('[data-slot="card"]').filter({ hasText: "L1" }).first();
+      const l2Card = page.locator('[data-slot="card"]').filter({ hasText: "L2" }).first();
+      await expect(l1Card.getByText("Adaptive scores")).toBeVisible({ timeout: 60_000 });
+      await expect(l2Card.getByText("Adaptive scores")).toBeVisible({ timeout: 60_000 });
+      await l1Card.getByRole("button", { name: "Zoom in" }).click();
+      await expect(l1Card.getByRole("button", { name: "Return to live" })).toBeVisible();
+
+      eventTimeCursor = Math.max(Date.now() + 1_000, eventTimeCursor + 100);
+      const pendingL1 = new Date(eventTimeCursor).toISOString();
+      await publish(activePublisher, topics.L1, 123, pendingL1);
+      await expect.poll(async () => {
+        const response = await api.get(
+          `/api/v1/telemetry/${chargerId}/data?type=L1&limit=1000`,
+          { headers: { Authorization: `Bearer ${authToken}` } },
+        );
+        const rows = await response.json() as Array<{ timestamp: string }>;
+        return rows.some((row) => Date.parse(row.timestamp) === Date.parse(pendingL1));
+      }, { timeout: 60_000 }).toBe(true);
+
+      const telemetryRefresh = page.waitForResponse((response) => {
+        const url = new URL(response.url());
+        return url.pathname.includes(`/v1/telemetry/${chargerId}/data`) &&
+          url.searchParams.get("type") === "L1" &&
+          url.searchParams.has("after_created");
+      });
+      await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+      await telemetryRefresh;
+      await expect(l1Card.getByText("1 awaiting score")).toBeVisible();
+
+      const pendingL2 = new Date(Date.parse(pendingL1) + 75).toISOString();
+      await publish(activePublisher, topics.L2, 456, pendingL2);
+      let delayedEvidence: ChartEvidence | undefined;
+      await expect.poll(async () => {
+        const response = await api.get(`/api/v1/monitors/evidence/chart?charger_id=${chargerId}&limit=2000`, {
+          headers: { Authorization: `Bearer ${authToken}` },
+        });
+        const rows = await response.json() as ChartEvidence[];
+        delayedEvidence = rows.find((row) =>
+          row.service_id === serviceId &&
+          Date.parse(row.input_timestamps.L1) === Date.parse(pendingL1) &&
+          Date.parse(row.input_timestamps.L2) === Date.parse(pendingL2));
+        return delayedEvidence !== undefined;
+      }, { timeout: 120_000 }).toBe(true);
+      expect(Date.parse(delayedEvidence!.timestamp)).toBe(Date.parse(pendingL2));
+
+      const evidenceRefresh = page.waitForResponse((response) => {
+        const url = new URL(response.url());
+        return url.pathname.includes("/v1/monitors/evidence/chart") &&
+          url.searchParams.has("after_created");
+      });
+      await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+      await evidenceRefresh;
+      await expect(l1Card.getByText("1 awaiting score")).toBeHidden();
+      await expect(l1Card.getByRole("button", { name: "Return to live" })).toBeVisible();
+      const scoreLabel = new RegExp(`Anomaly score ${serviceSuffix}:`, "i");
+      await expect(l1Card.getByText(scoreLabel)).toBeVisible();
+      await expect(l2Card.getByText(scoreLabel)).toBeVisible();
     } finally {
+      if (publisher) await publisher.endAsync();
       if (serviceId && authToken) {
         await api.delete(`/api/v1/monitors/${encodeURIComponent(serviceId)}`, {
           failOnStatusCode: false,

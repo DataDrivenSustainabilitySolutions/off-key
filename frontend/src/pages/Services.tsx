@@ -33,6 +33,7 @@ import { getErrorMessage } from "@/lib/errors";
 import { API_CONFIG } from "@/lib/api-config";
 import { cn } from "@/lib/utils";
 import {
+  getMonitoringStrategyDisplay,
   getOperationalStageDisplay,
   getServiceDeleteActionDisplay,
   getStatusDisplay,
@@ -42,20 +43,6 @@ import type { ActiveService } from "@/types/monitoring";
 const extractChargerIdFromContainer = (containerName: string): string => {
   const match = containerName.match(/^radar-(.+)-\d+$/);
   return match?.[1] ?? "Unknown";
-};
-
-const getServiceModeLabel = (service: ActiveService): string => {
-  if (service.monitoring_strategy === "static_baseline") {
-    return "Static";
-  }
-  return service.monitoring_strategy ? "Retired" : "Unknown";
-};
-
-const getModeBadgeClassName = (service: ActiveService): string => {
-  if (service.monitoring_strategy === "static_baseline") {
-    return "border-sky-200 bg-sky-50 text-sky-800 dark:border-sky-900/60 dark:bg-sky-950/25 dark:text-sky-200";
-  }
-  return "border-border bg-muted text-muted-foreground";
 };
 
 function StatusBadge({
@@ -78,17 +65,22 @@ function StatusBadge({
 }
 
 function ModeBadge({ service }: { service: ActiveService }) {
+  const display = getMonitoringStrategyDisplay(service.monitoring_strategy);
   const Icon =
-    service.monitoring_strategy === "static_baseline" ? Database : Activity;
+    display.icon === "database"
+      ? Database
+      : display.icon === "activity"
+        ? Activity
+        : AlertTriangle;
   return (
     <span
       className={cn(
         "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium",
-        getModeBadgeClassName(service)
+        display.className
       )}
     >
       <Icon className="h-3.5 w-3.5" />
-      {getServiceModeLabel(service)}
+      {display.label}
     </span>
   );
 }

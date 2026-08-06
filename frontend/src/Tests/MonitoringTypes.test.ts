@@ -1,11 +1,16 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  getMonitoringStrategyDisplay,
   getOperationalStageDisplay,
   getServiceDeleteActionDisplay,
   getStatusDisplay,
 } from "../types/monitoring";
-import type { ActiveService, OperationalStage } from "../types/monitoring";
+import type {
+  ActiveService,
+  MonitoringStrategy,
+  OperationalStage,
+} from "../types/monitoring";
 
 describe("monitoring status display", () => {
   it("shows exited workloads as neutral until exit codes are available", () => {
@@ -28,6 +33,31 @@ describe("monitoring status display", () => {
     expect(status.label).toBe("Stopped");
     expect(status.className).toContain("gray");
   });
+});
+
+describe("monitoring strategy display", () => {
+  it.each<
+    [MonitoringStrategy, string, string, string]
+  >([
+    ["static_baseline", "Static", "database", "sky"],
+    ["adaptive_stream", "Adaptive", "activity", "violet"],
+  ])("maps %s to display metadata", (strategy, label, icon, color) => {
+    const display = getMonitoringStrategyDisplay(strategy);
+
+    expect(display.label).toBe(label);
+    expect(display.icon).toBe(icon);
+    expect(display.className).toContain(color);
+  });
+
+  it.each([undefined, null, "future_strategy"])(
+    "shows unknown for unsupported strategy %s",
+    (strategy) => {
+      const display = getMonitoringStrategyDisplay(strategy);
+
+      expect(display.label).toBe("Unknown");
+      expect(display.icon).toBe("unknown");
+    }
+  );
 });
 
 describe("operational stage display", () => {

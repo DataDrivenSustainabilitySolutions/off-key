@@ -74,7 +74,7 @@ export interface ActiveService {
   status: boolean;
   operational_status: OperationalStatus;
   docker_status?: string;
-  monitoring_strategy?: string;
+  monitoring_strategy?: MonitoringStrategy | null;
   model_type?: string;
   created_at?: string;
 }
@@ -271,6 +271,46 @@ export type ModelParams = Record<string, JsonValue>;
 export interface StatusDisplay {
   label: string;
   className: string;
+}
+
+export type MonitoringStrategyIcon = 'database' | 'activity' | 'unknown';
+
+export interface MonitoringStrategyDisplay extends StatusDisplay {
+  icon: MonitoringStrategyIcon;
+}
+
+const MONITORING_STRATEGY_DISPLAYS = {
+  static_baseline: {
+    label: 'Static',
+    icon: 'database',
+    className:
+      'border-sky-200 bg-sky-50 text-sky-800 dark:border-sky-900/60 dark:bg-sky-950/25 dark:text-sky-200',
+  },
+  adaptive_stream: {
+    label: 'Adaptive',
+    icon: 'activity',
+    className:
+      'border-violet-200 bg-violet-50 text-violet-800 dark:border-violet-900/60 dark:bg-violet-950/25 dark:text-violet-200',
+  },
+} satisfies Record<MonitoringStrategy, MonitoringStrategyDisplay>;
+
+const UNKNOWN_MONITORING_STRATEGY_DISPLAY: MonitoringStrategyDisplay = {
+  label: 'Unknown',
+  icon: 'unknown',
+  className: 'border-border bg-muted text-muted-foreground',
+};
+
+export function getMonitoringStrategyDisplay(
+  strategy: unknown
+): MonitoringStrategyDisplay {
+  if (
+    typeof strategy === 'string' &&
+    Object.prototype.hasOwnProperty.call(MONITORING_STRATEGY_DISPLAYS, strategy)
+  ) {
+    return MONITORING_STRATEGY_DISPLAYS[strategy as MonitoringStrategy];
+  }
+
+  return UNKNOWN_MONITORING_STRATEGY_DISPLAY;
 }
 
 export interface ServiceDeleteActionDisplay {

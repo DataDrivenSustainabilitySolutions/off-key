@@ -199,6 +199,7 @@ services:
       interval: 5s
       timeout: 25s
       retries: 5
+      start_period: 60s
     networks:
       emqx-network:
         aliases:

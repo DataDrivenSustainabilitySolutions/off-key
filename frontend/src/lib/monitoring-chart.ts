@@ -3,6 +3,16 @@ import type {
   MonitoringEvidenceCursor,
 } from '@/types/monitoring';
 
+export const getEvidenceTimeForSensor = (
+  evidence: MonitoringChartEvidence,
+  sensor: string,
+): number | undefined => {
+  const timestamp = evidence.input_timestamps[sensor];
+  if (!timestamp) return undefined;
+  const time = Date.parse(timestamp);
+  return Number.isFinite(time) ? time : undefined;
+};
+
 export const getMonitoringEvidenceCursor = (
   evidence: MonitoringChartEvidence[]
 ): MonitoringEvidenceCursor | undefined =>

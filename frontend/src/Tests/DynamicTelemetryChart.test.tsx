@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { EChart } from "@/components/EChart";
 import { ThemeProvider } from "@/components/theme-provider";
+import type { ActiveService, MonitoringChartEvidence } from "@/types/monitoring";
 
 const chartMock = vi.hoisted(() => ({
   mounted: vi.fn(),
@@ -81,9 +82,40 @@ const showChart = () => {
 
 const inspectOption = (): {
   dataZoom: Array<{ startValue?: number; endValue?: number }>;
+  series: Array<{ id: string; data: Array<[number, number | null]> }>;
 } => chartMock.latestProps?.option as unknown as {
   dataZoom: Array<{ startValue?: number; endValue?: number }>;
+  series: Array<{ id: string; data: Array<[number, number | null]> }>;
 };
+
+const operationalService: ActiveService = {
+  id: "service-adaptive",
+  container_id: "container-1",
+  container_name: "radar-adaptive",
+  mqtt_topics: ["charger/charger-1/live-telemetry/voltage"],
+  status: true,
+  monitoring_strategy: "adaptive_stream",
+  operational_status: {
+    stage: "operational",
+    message_count: 2,
+    processed_message_count: 2,
+    is_stale: false,
+  },
+};
+
+const scoreEvidence = (timestamp: string, sequenceNumber: number): MonitoringChartEvidence => ({
+  service_id: operationalService.id,
+  timestamp,
+  sequence_number: sequenceNumber,
+  sensor_set: ["voltage"],
+  input_timestamps: { voltage: timestamp },
+  strategy: "adaptive_stream",
+  anomaly_score: sequenceNumber,
+  restarted_martingale: null,
+  threshold: 5,
+  alarm: false,
+  created: timestamp,
+});
 
 beforeEach(() => {
   localStorage.clear();
@@ -172,5 +204,47 @@ describe("DynamicTelemetryChart", () => {
     expect(screen.queryByRole("button", { name: "Return to live" })).toBeNull();
     expect(screen.getByText(/Local time zone:/u)).toBeTruthy();
     expect(screen.getByText(/Current Voltage: 231 V at/u)).toBeTruthy();
+  });
+
+  it("replaces delayed pending telemetry without moving an inspected viewport", async () => {
+    const firstTime = "2026-07-27T10:00:00Z";
+    const secondTime = "2026-07-27T10:02:00Z";
+    const firstEvidence = scoreEvidence(firstTime, 1);
+    const { rerender } = render(
+      <ThemeProvider defaultTheme="light">
+        <DynamicTelemetryChart
+          telemetryData={telemetry(secondTime)}
+          evidence={[firstEvidence]}
+          monitoringService={operationalService}
+        />
+      </ThemeProvider>,
+    );
+    showChart();
+    fireEvent.click(await screen.findByRole("img"));
+
+    expect(
+      inspectOption().series.find(({ id }) => id === "pending-telemetry")?.data,
+    ).toEqual([[Date.parse(secondTime), 231]]);
+    expect(screen.getByText("1 awaiting score")).toBeTruthy();
+
+    rerender(
+      <ThemeProvider defaultTheme="light">
+        <DynamicTelemetryChart
+          telemetryData={telemetry(secondTime)}
+          evidence={[firstEvidence, scoreEvidence(secondTime, 2)]}
+          monitoringService={operationalService}
+        />
+      </ThemeProvider>,
+    );
+
+    await waitFor(() =>
+      expect(
+        inspectOption().series.find(({ id }) => id === "pending-telemetry"),
+      ).toBeUndefined(),
+    );
+    expect(inspectOption().dataZoom[0]).toMatchObject({
+      startValue: 1_000,
+      endValue: 2_000,
+    });
   });
 });

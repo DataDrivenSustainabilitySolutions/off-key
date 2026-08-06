@@ -197,6 +197,7 @@ export interface MonitoringEvidence {
   sequence_number: number;
   charger_id: string;
   sensor_set: string[];
+  input_timestamps: Record<string, string>;
   strategy: MonitoringStrategy;
   model_type: string | null;
   p_value: number | null;
@@ -248,6 +249,7 @@ export type MonitoringChartEvidence = Pick<
   | 'timestamp'
   | 'sequence_number'
   | 'sensor_set'
+  | 'input_timestamps'
   | 'restarted_martingale'
   | 'tracker_results'
   | 'threshold'

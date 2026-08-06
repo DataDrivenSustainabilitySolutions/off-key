@@ -29,6 +29,7 @@ const evidence = (
   timestamp,
   sequence_number: sequenceNumber,
   sensor_set: ["L1"],
+  input_timestamps: { L1: timestamp },
   restarted_martingale: martingale,
   threshold: 100,
   alarm: false,
@@ -45,6 +46,7 @@ const adaptiveEvidence = (
   timestamp,
   sequence_number: 1,
   sensor_set: ["L1"],
+  input_timestamps: { L1: timestamp },
   strategy: "adaptive_stream",
   model_type: "aberrant_online_isolation_forest",
   anomaly_score: score,
@@ -103,6 +105,7 @@ const buildModel = (
     anomalyZones: [],
     anomalyMarkers: [],
     ...overrides,
+    telemetryType: overrides.telemetryType ?? "L1",
   });
 
 const buildOption = (
@@ -135,7 +138,7 @@ type InspectableOption = {
     id: string;
     smooth: boolean;
     step: boolean | string;
-    data: Array<[number, number]>;
+    data: Array<[number, number | null]>;
     markArea?: { data: unknown[] };
     markPoint?: { data: unknown[] };
     markLine?: { data: Array<{ yAxis: number }> };
@@ -167,6 +170,11 @@ describe("telemetry chart model", () => {
   it("keeps secondary observations independent, ordered, and undeduplicated", () => {
     const timestamp = "2026-01-01T00:01:00Z";
     const model = buildModel({
+      telemetry: [
+        { timestamp: "2026-01-01T00:00:00Z", value: 12 },
+        { timestamp, value: 13 },
+        { timestamp: "2026-01-01T00:02:00Z", value: 14 },
+      ],
       evidence: [
         evidence("service-a", timestamp, 0.25, 2),
         evidence("service-a", "2026-01-01T00:00:00Z", 1, 1),
@@ -183,6 +191,7 @@ describe("telemetry chart model", () => {
       [Date.parse("2026-01-01T00:00:00Z"), 1],
       [Date.parse(timestamp), 0.25],
       [Date.parse(timestamp), 0.5],
+      [Date.parse("2026-01-01T00:02:00Z"), null],
     ]);
   });
 
@@ -259,8 +268,12 @@ describe("telemetry ECharts option", () => {
     expect(option.dataZoom[0]?.xAxisIndex).toEqual([0, 1]);
     expect(option.dataZoom[1]?.xAxisIndex).toEqual([0, 1]);
     expect(option.series[0]?.data[1]?.[0]).toBe(
-      option.series[1]?.data[0]?.[0],
+      option.series[1]?.data[1]?.[0],
     );
+    expect(option.series[1]?.data[0]).toEqual([
+      Date.parse("2026-01-01T00:00:00Z"),
+      null,
+    ]);
     expect(option.series[1]).toMatchObject({
       id: "restarted-martingale:service-a",
       smooth: false,
@@ -279,13 +292,107 @@ describe("telemetry ECharts option", () => {
     expect(option.series[1]).toMatchObject({
       id: "adaptive-score:adaptive-a",
       step: false,
-      data: [[Date.parse(timestamp), 2.5]],
+      data: [
+        [Date.parse("2026-01-01T00:00:00Z"), null],
+        [Date.parse(timestamp), 2.5],
+      ],
     });
     expect(option.series[2]).toMatchObject({
       id: "adaptive-threshold:adaptive-a",
       step: "end",
-      data: [[Date.parse(timestamp), 2]],
+      data: [
+        [Date.parse("2026-01-01T00:00:00Z"), null],
+        [Date.parse(timestamp), 2],
+      ],
     });
+  });
+
+  it("projects multivariate evidence onto the current sensor input", () => {
+    const l1Time = "2026-01-01T00:00:00Z";
+    const l2Time = "2026-01-01T00:00:01Z";
+    const row = adaptiveEvidence("adaptive-a", l2Time, 2.5);
+    row.sensor_set = ["L1", "L2"];
+    row.input_timestamps = { L1: l1Time, L2: l2Time };
+
+    const l1Model = buildModel({
+      telemetryType: "L1",
+      telemetry: [
+        { timestamp: l1Time, value: 12 },
+        { timestamp: l2Time, value: 13 },
+      ],
+      evidence: [row],
+    });
+    const l2Model = buildModel({
+      telemetryType: "L2",
+      telemetry: [
+        { timestamp: l1Time, value: 22 },
+        { timestamp: l2Time, value: 23 },
+      ],
+      evidence: [row],
+    });
+
+    const l1Score = l1Model.secondarySeries[0]?.data.find(
+      ([, value]) => value !== null,
+    );
+    const l2Score = l2Model.secondarySeries[0]?.data.find(
+      ([, value]) => value !== null,
+    );
+    expect(l1Score).toEqual([Date.parse(l1Time), 2.5]);
+    expect(l2Score).toEqual([Date.parse(l2Time), 2.5]);
+  });
+
+  it("keeps exact evidence buffered until its telemetry input is loaded", () => {
+    const row = adaptiveEvidence(
+      "adaptive-a",
+      "2026-01-01T00:00:02Z",
+      2.5,
+    );
+    row.input_timestamps = { L1: "2026-01-01T00:00:02Z" };
+
+    const model = buildModel({ evidence: [row] });
+
+    expect(model.secondarySeries).toEqual([]);
+  });
+
+  it("does not fall back when the current sensor input reference is missing", () => {
+    const timestamp = "2026-01-01T00:00:00Z";
+    const row = adaptiveEvidence("adaptive-a", timestamp, 2.5);
+    row.sensor_set = ["L1", "L2"];
+    row.input_timestamps = { L2: timestamp };
+
+    const model = buildModel({ evidence: [row] });
+
+    expect(model.secondarySeries).toEqual([]);
+  });
+
+  it("breaks score lines at telemetry observations without evidence", () => {
+    const model = buildModel({
+      telemetry: [
+        { timestamp: "2026-01-01T00:00:00Z", value: 1 },
+        { timestamp: "2026-01-01T00:00:01Z", value: 2 },
+        { timestamp: "2026-01-01T00:00:02Z", value: 3 },
+      ],
+      evidence: [
+        adaptiveEvidence("adaptive-a", "2026-01-01T00:00:00Z", 1),
+        adaptiveEvidence("adaptive-a", "2026-01-01T00:00:02Z", 3),
+      ],
+    });
+
+    expect(model.secondarySeries[0]?.data).toEqual([
+      [Date.parse("2026-01-01T00:00:00Z"), 1],
+      [Date.parse("2026-01-01T00:00:01Z"), null],
+      [Date.parse("2026-01-01T00:00:02Z"), 3],
+    ]);
+  });
+
+  it("adds a hollow overlay for telemetry awaiting a score", () => {
+    const pendingTime = Date.parse("2026-01-01T00:01:00Z");
+    const option = inspect(buildOption(buildModel({
+      pendingTelemetryTimestamps: [pendingTime],
+    })));
+
+    expect(option.series.find(({ id }) => id === "pending-telemetry")?.data)
+      .toEqual([[pendingTime, 13]]);
   });
 
   it("separates mixed static and adaptive evidence into linked log and linear panes", () => {

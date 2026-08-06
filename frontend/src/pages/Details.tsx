@@ -27,9 +27,11 @@ import {
   mergeTelemetryData,
 } from "@/lib/charger-api";
 import type {
+  ActiveService,
   MonitoringChartEvidence,
   MonitoringEvidenceCursor,
 } from "@/types/monitoring";
+import { buildSensorClaims } from "@/lib/monitoring-services";
 import { useLinkedChartNavigation } from "@/hooks/use-linked-chart-navigation";
 import {
   getMonitoringEvidenceCursor,
@@ -112,6 +114,7 @@ const Details: React.FC = () => {
   const [allTelemetryData, setAllTelemetryData] = useState<TelemetryTypeData[]>([]);
   const [chargerAnomalies, setChargerAnomalies] = useState<Anomaly[]>([]);
   const [monitoringEvidence, setMonitoringEvidence] = useState<MonitoringChartEvidence[]>([]);
+  const [monitoringServices, setMonitoringServices] = useState<ActiveService[]>([]);
   const [now, setNow] = useState(() => Date.now());
   const [refreshRequest, setRefreshRequest] = useState(0);
 
@@ -159,7 +162,7 @@ const Details: React.FC = () => {
         return evidence;
       };
 
-      const [telemetryResult, anomaliesResult, evidenceResult] =
+      const [telemetryResult, anomaliesResult, evidenceResult, servicesResult] =
         await Promise.allSettled([
           telemetryLoaded
             ? getAllTelemetryData(
@@ -170,6 +173,10 @@ const Details: React.FC = () => {
             : getAllTelemetryData(chargerId, controller.signal),
           getAnomalies(chargerId, controller.signal),
           loadEvidence(),
+          apiUtils.get<ActiveService[]>(
+            `${API_CONFIG.ENDPOINTS.MONITORING.LIST}?active_only=false`,
+            { signal: controller.signal },
+          ),
         ]);
 
       if (!cancelled) {
@@ -222,6 +229,17 @@ const Details: React.FC = () => {
             event: "details.monitoring_evidence_load_failed",
             message: "Error loading monitoring evidence",
             error: evidenceResult.reason,
+            context: { chargerId },
+          });
+        }
+
+        if (servicesResult.status === "fulfilled") {
+          setMonitoringServices(servicesResult.value ?? []);
+        } else {
+          clientLogger.error({
+            event: "details.monitoring_services_load_failed",
+            message: "Error loading monitoring service status",
+            error: servicesResult.reason,
             context: { chargerId },
           });
         }
@@ -294,6 +312,21 @@ const Details: React.FC = () => {
     });
     return grouped;
   }, [monitoringEvidence]);
+
+  const serviceByTelemetry = useMemo(() => {
+    if (!chargerId) return new Map<string, ActiveService>();
+    const newestRelevantFirst = [...monitoringServices].sort((left, right) => {
+      if (left.status !== right.status) return left.status ? -1 : 1;
+      const rightCreated = Date.parse(right.created_at ?? "") || 0;
+      const leftCreated = Date.parse(left.created_at ?? "") || 0;
+      return rightCreated - leftCreated;
+    });
+    return buildSensorClaims(
+      chargerId,
+      allTelemetryData.map(({ type }) => type),
+      newestRelevantFirst,
+    );
+  }, [allTelemetryData, chargerId, monitoringServices]);
 
   const {
     chartsLinked,
@@ -435,6 +468,7 @@ const Details: React.FC = () => {
                         evidence={
                           evidenceByTelemetry.get(telemetryData.type) ?? EMPTY_EVIDENCE
                         }
+                        monitoringService={serviceByTelemetry.get(telemetryData.type)}
                         navigationState={getNavigationState(telemetryData.type)}
                         timelineExtent={
                           chartsLinked ? linkedTimelineExtent : undefined

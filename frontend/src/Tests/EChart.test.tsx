@@ -42,7 +42,7 @@ vi.mock("echarts/core", () => ({
   init: echartsMock.init,
   use: echartsMock.register,
 }));
-vi.mock("echarts/charts", () => ({ LineChart: {} }));
+vi.mock("echarts/charts", () => ({ LineChart: {}, ScatterChart: {} }));
 vi.mock("echarts/components", () => ({
   AriaComponent: {},
   AxisPointerComponent: {},

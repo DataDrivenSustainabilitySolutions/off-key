@@ -4,7 +4,7 @@ import {
   useRef,
   type ReactElement,
 } from "react";
-import { LineChart } from "echarts/charts";
+import { LineChart, ScatterChart } from "echarts/charts";
 import {
   AriaComponent,
   AxisPointerComponent,
@@ -29,6 +29,7 @@ import type { TelemetryChartOption } from "@/lib/telemetry-chart";
 
 registerEChartsModules([
   LineChart,
+  ScatterChart,
   GridComponent,
   TooltipComponent,
   LegendScrollComponent,

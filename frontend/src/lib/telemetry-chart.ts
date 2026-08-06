@@ -1,4 +1,4 @@
-import type { LineSeriesOption } from "echarts/charts";
+import type { LineSeriesOption, ScatterSeriesOption } from "echarts/charts";
 import type {
   AriaComponentOption,
   AxisPointerComponentOption,
@@ -21,6 +21,7 @@ import type {
   MartingaleTrackerResult,
   MonitoringChartEvidence,
 } from "@/types/monitoring";
+import { getEvidenceTimeForSensor } from "@/lib/monitoring-chart";
 
 export type TelemetryChartOption = ComposeOption<
   | AriaComponentOption
@@ -29,10 +30,12 @@ export type TelemetryChartOption = ComposeOption<
   | GridComponentOption
   | LegendComponentOption
   | LineSeriesOption
+  | ScatterSeriesOption
   | TooltipComponentOption
 >;
 
 export type TimeValue = [epochMilliseconds: number, value: number];
+export type NullableTimeValue = [epochMilliseconds: number, value: number | null];
 
 export type ChartViewport =
   | { mode: "live" }
@@ -81,7 +84,7 @@ export interface SecondaryChartSeries {
   name: string;
   threshold: number;
   color: string;
-  data: TimeValue[];
+  data: NullableTimeValue[];
   scale: "log" | "linear";
   kind: "static_evidence" | "adaptive_score" | "adaptive_threshold";
   pane: "static" | "adaptive";
@@ -98,6 +101,7 @@ export interface ChartAnomalyMarker {
 
 export interface TelemetryChartModel {
   telemetry: TelemetryChartSeries;
+  pendingTelemetry: TimeValue[];
   anomalyZones: Array<{
     startMs: number;
     endMs: number;
@@ -118,11 +122,13 @@ export interface ChartThemeColors {
 }
 
 interface BuildTelemetryChartModelInput {
+  telemetryType: string;
   telemetryName: string;
   telemetryUnit?: string;
   telemetryColor: string;
   telemetry: TelemetryDataPoint[];
   evidence: MonitoringChartEvidence[];
+  pendingTelemetryTimestamps?: readonly number[];
   anomalyZones: RedZone[];
   anomalyMarkers: AnomalyMarker[];
 }
@@ -231,8 +237,32 @@ const getExtent = (
     : undefined;
 };
 
+const addTelemetryGaps = (
+  points: TimeValue[],
+  telemetryTimes: ReadonlySet<number>,
+): NullableTimeValue[] => {
+  const scoredTimes = new Set(points.map(([time]) => time));
+  const gaps: NullableTimeValue[] = [...telemetryTimes]
+    .filter((time) => !scoredTimes.has(time))
+    .map((time) => [time, null]);
+  return [...points, ...gaps].sort((left, right) => left[0] - right[0]);
+};
+
+const resolveEvidencePointTime = (
+  observation: MonitoringChartEvidence,
+  telemetryType: string,
+  telemetryTimes: ReadonlySet<number>,
+): number | undefined => {
+  const time = getEvidenceTimeForSensor(observation, telemetryType);
+  if (time === undefined) return undefined;
+  if (!telemetryTimes.has(time)) return undefined;
+  return time;
+};
+
 const buildSecondarySeries = (
   evidence: MonitoringChartEvidence[],
+  telemetryType: string,
+  telemetryTimes: ReadonlySet<number>,
 ): SecondaryChartSeries[] => {
   const byTracker = new Map<
     string,
@@ -247,7 +277,11 @@ const buildSecondarySeries = (
   >();
 
   evidence.filter((observation) => observation.strategy !== "adaptive_stream").forEach((observation) => {
-    const time = toFiniteTime(observation.timestamp);
+    const time = resolveEvidencePointTime(
+      observation,
+      telemetryType,
+      telemetryTimes,
+    );
     if (time === undefined) return;
     const legacyTracker: MartingaleTrackerResult = {
       tracker_id: "primary",
@@ -321,7 +355,7 @@ const buildSecondarySeries = (
       threshold: series.threshold,
       color:
         SECONDARY_COLORS[index % SECONDARY_COLORS.length] ?? SECONDARY_COLORS[0],
-      data: series.points.sort((left, right) => left[0] - right[0]),
+      data: addTelemetryGaps(series.points, telemetryTimes),
       scale: "log",
       kind: "static_evidence",
       pane: "static",
@@ -331,11 +365,17 @@ const buildSecondarySeries = (
 
 const buildAdaptiveSeries = (
   evidence: MonitoringChartEvidence[],
+  telemetryType: string,
+  telemetryTimes: ReadonlySet<number>,
 ): SecondaryChartSeries[] => {
   const services = new Map<string, { scores: TimeValue[]; thresholds: TimeValue[] }>();
   for (const observation of evidence) {
     if (observation.strategy !== "adaptive_stream") continue;
-    const time = toFiniteTime(observation.timestamp);
+    const time = resolveEvidencePointTime(
+      observation,
+      telemetryType,
+      telemetryTimes,
+    );
     if (time === undefined || observation.anomaly_score == null || !Number.isFinite(observation.anomaly_score)) continue;
     const group = services.get(observation.service_id) ?? { scores: [], thresholds: [] };
     group.scores.push([time, observation.anomaly_score]);
@@ -353,7 +393,7 @@ const buildAdaptiveSeries = (
         name: `Anomaly score ${suffix}`,
         threshold: latestThreshold,
         color,
-        data: values.scores.sort((left, right) => left[0] - right[0]),
+        data: addTelemetryGaps(values.scores, telemetryTimes),
         scale: "linear" as const,
         kind: "adaptive_score" as const,
         pane: "adaptive" as const,
@@ -364,7 +404,7 @@ const buildAdaptiveSeries = (
         name: `Score threshold ${suffix}`,
         threshold: latestThreshold,
         color: "#dc2626",
-        data: values.thresholds.sort((left, right) => left[0] - right[0]),
+        data: addTelemetryGaps(values.thresholds, telemetryTimes),
         scale: "linear" as const,
         kind: "adaptive_threshold" as const,
         pane: "adaptive" as const,
@@ -374,16 +414,23 @@ const buildAdaptiveSeries = (
 };
 
 export const buildTelemetryChartModel = ({
+  telemetryType,
   telemetryName,
   telemetryUnit,
   telemetryColor,
   telemetry,
   evidence,
+  pendingTelemetryTimestamps = [],
   anomalyZones,
   anomalyMarkers,
 }: BuildTelemetryChartModelInput): TelemetryChartModel => {
   const telemetryData = normalizeTelemetry(telemetry);
-  const secondarySeries = [...buildSecondarySeries(evidence), ...buildAdaptiveSeries(evidence)];
+  const telemetryTimes = new Set(telemetryData.map(([time]) => time));
+  const pendingTimes = new Set(pendingTelemetryTimestamps);
+  const secondarySeries = [
+    ...buildSecondarySeries(evidence, telemetryType, telemetryTimes),
+    ...buildAdaptiveSeries(evidence, telemetryType, telemetryTimes),
+  ];
 
   return {
     telemetry: {
@@ -393,6 +440,7 @@ export const buildTelemetryChartModel = ({
       color: telemetryColor,
       data: telemetryData,
     },
+    pendingTelemetry: telemetryData.filter(([time]) => pendingTimes.has(time)),
     anomalyZones: anomalyZones
       .filter(
         (zone) =>
@@ -431,6 +479,7 @@ const readTimeValue = (value: unknown): TimeValue | undefined => {
   if (
     !Array.isArray(value) ||
     value.length < 2 ||
+    value[1] === null ||
     !Number.isFinite(Number(value[0])) ||
     !Number.isFinite(Number(value[1]))
   ) {
@@ -505,7 +554,7 @@ export const buildTelemetryChartOption = ({
     1,
     ...model.secondarySeries.filter((series) => series.pane === "static").flatMap((series) => [
       series.threshold,
-      ...series.data.map(([, value]) => value),
+      ...series.data.flatMap(([, value]) => value === null ? [] : [value]),
     ]),
   );
   const xAxisIndices = panes.map((_, index) => index);
@@ -601,6 +650,28 @@ export const buildTelemetryChartOption = ({
     },
   };
 
+  const pendingTelemetrySeries: ScatterSeriesOption | undefined =
+    model.pendingTelemetry.length > 0
+      ? {
+          id: "pending-telemetry",
+          name: "Awaiting anomaly score",
+          type: "scatter",
+          xAxisIndex: 0,
+          yAxisIndex: 0,
+          data: model.pendingTelemetry,
+          symbol: "emptyCircle",
+          symbolSize: 8,
+          itemStyle: {
+            color: colors.popover,
+            borderColor: colors.mutedForeground,
+            borderWidth: 1.5,
+          },
+          emphasis: { disabled: true },
+          animation: false,
+          z: 5,
+        }
+      : undefined;
+
   const secondarySeries: LineSeriesOption[] = model.secondarySeries.map(
     (series) => {
       const paneIndex = panes.indexOf(series.pane);
@@ -613,7 +684,8 @@ export const buildTelemetryChartOption = ({
       data: series.data,
       smooth: false,
       step: series.kind === "adaptive_score" ? false : "end",
-      showSymbol: false,
+      showSymbol: true,
+      symbolSize: 5,
       connectNulls: false,
       lineStyle: {
         color: series.color,
@@ -762,6 +834,10 @@ export const buildTelemetryChartOption = ({
         ...dataZoomRange,
       },
     ],
-    series: [telemetrySeries, ...secondarySeries],
+    series: [
+      telemetrySeries,
+      ...(pendingTelemetrySeries ? [pendingTelemetrySeries] : []),
+      ...secondarySeries,
+    ],
   };
 };

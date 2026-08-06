@@ -60,12 +60,18 @@ class SimulatorService:
         )
         return value * multiplier, True
 
-    def _build_payload(self, charger_id: str, feature: str, value: float) -> dict:
+    def _build_payload(
+        self,
+        charger_id: str,
+        feature: str,
+        value: float,
+        sample_timestamp: datetime,
+    ) -> dict:
         return {
             self.config.payload_charger_key: charger_id,
             self.config.payload_type_key: feature,
             "value": round(value, 4),
-            "timestamp": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+            "timestamp": sample_timestamp.isoformat().replace("+00:00", "Z"),
         }
 
     def _build_topic(self, charger_id: str, feature: str) -> str:
@@ -107,6 +113,7 @@ class SimulatorService:
         await self.start()
         try:
             while not self._shutdown_event.is_set():
+                sample_timestamp = datetime.now(UTC)
                 for charger_index, charger_id in enumerate(self.config.charger_ids):
                     for feature in self.config.features:
                         value = self._build_value(feature, charger_index)
@@ -117,7 +124,10 @@ class SimulatorService:
                         )
                         topic = self._build_topic(charger_id, feature)
                         payload = self._build_payload(
-                            charger_id, feature, bounded_value
+                            charger_id,
+                            feature,
+                            bounded_value,
+                            sample_timestamp,
                         )
                         self._client.publish(
                             topic,

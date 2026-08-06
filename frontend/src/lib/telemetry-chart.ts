@@ -149,6 +149,8 @@ const SECONDARY_COLORS = [
   "#dc2626",
   "#0284c7",
 ] as const;
+const SECONDARY_SYMBOL_SIZE = 3;
+const SECONDARY_VALUE_LINE_WIDTH = 2.25;
 
 const dateTimeFormatters = new Map<string, Intl.DateTimeFormat>();
 const numberFormatters = new Map<string, Intl.NumberFormat>();
@@ -683,13 +685,16 @@ export const buildTelemetryChartOption = ({
       yAxisIndex: paneIndex,
       data: series.data,
       smooth: false,
-      step: series.kind === "adaptive_score" ? false : "end",
+      step: series.kind === "adaptive_threshold" ? "end" : false,
       showSymbol: true,
-      symbolSize: 5,
+      symbolSize: SECONDARY_SYMBOL_SIZE,
       connectNulls: false,
       lineStyle: {
         color: series.color,
-        width: series.kind === "adaptive_threshold" ? 1.5 : 2,
+        width:
+          series.kind === "adaptive_threshold"
+            ? 1.5
+            : SECONDARY_VALUE_LINE_WIDTH,
         type: series.kind === "adaptive_threshold" ? "dashed" : "solid",
       },
       itemStyle: { color: series.color },

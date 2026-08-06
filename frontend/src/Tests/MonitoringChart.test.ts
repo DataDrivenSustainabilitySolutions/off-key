@@ -138,7 +138,11 @@ type InspectableOption = {
     id: string;
     smooth: boolean;
     step: boolean | string;
+    showSymbol?: boolean;
+    symbolSize?: number;
+    connectNulls?: boolean;
     data: Array<[number, number | null]>;
+    lineStyle?: { width?: number; type?: string };
     markArea?: { data: unknown[] };
     markPoint?: { data: unknown[] };
     markLine?: { data: Array<{ yAxis: number }> };
@@ -236,7 +240,7 @@ describe("telemetry ECharts option", () => {
     });
   });
 
-  it("links two grids and uses end-stepped restarted martingales", () => {
+  it("links two grids and uses continuous restarted martingales", () => {
     const alignedTimestamp = "2026-01-01T00:01:00Z";
     const option = inspect(
       buildOption(
@@ -277,7 +281,11 @@ describe("telemetry ECharts option", () => {
     expect(option.series[1]).toMatchObject({
       id: "restarted-martingale:service-a",
       smooth: false,
-      step: "end",
+      step: false,
+      showSymbol: true,
+      symbolSize: 3,
+      connectNulls: false,
+      lineStyle: { width: 2.25, type: "solid" },
       markLine: { data: [{ yAxis: 100 }] },
     });
   });
@@ -292,6 +300,10 @@ describe("telemetry ECharts option", () => {
     expect(option.series[1]).toMatchObject({
       id: "adaptive-score:adaptive-a",
       step: false,
+      showSymbol: true,
+      symbolSize: 3,
+      connectNulls: false,
+      lineStyle: { width: 2.25, type: "solid" },
       data: [
         [Date.parse("2026-01-01T00:00:00Z"), null],
         [Date.parse(timestamp), 2.5],
@@ -300,6 +312,10 @@ describe("telemetry ECharts option", () => {
     expect(option.series[2]).toMatchObject({
       id: "adaptive-threshold:adaptive-a",
       step: "end",
+      showSymbol: true,
+      symbolSize: 3,
+      connectNulls: false,
+      lineStyle: { width: 1.5, type: "dashed" },
       data: [
         [Date.parse("2026-01-01T00:00:00Z"), null],
         [Date.parse(timestamp), 2],
@@ -383,6 +399,40 @@ describe("telemetry ECharts option", () => {
       [Date.parse("2026-01-01T00:00:01Z"), null],
       [Date.parse("2026-01-01T00:00:02Z"), 3],
     ]);
+  });
+
+  it("connects adjacent scored observations with subtle markers", () => {
+    const firstTime = "2026-01-01T00:00:00Z";
+    const secondTime = "2026-01-01T00:00:01Z";
+    const thirdTime = "2026-01-01T00:00:02Z";
+    const model = buildModel({
+      telemetry: [
+        { timestamp: firstTime, value: 1 },
+        { timestamp: secondTime, value: 2 },
+        { timestamp: thirdTime, value: 3 },
+      ],
+      evidence: [
+        adaptiveEvidence("adaptive-a", firstTime, 1),
+        adaptiveEvidence("adaptive-a", secondTime, 2),
+      ],
+    });
+    const option = inspect(buildOption(model));
+    const scoreSeries = option.series.find(
+      ({ id }) => id === "adaptive-score:adaptive-a",
+    );
+
+    expect(scoreSeries).toMatchObject({
+      step: false,
+      showSymbol: true,
+      symbolSize: 3,
+      connectNulls: false,
+      lineStyle: { width: 2.25, type: "solid" },
+      data: [
+        [Date.parse(firstTime), 1],
+        [Date.parse(secondTime), 2],
+        [Date.parse(thirdTime), null],
+      ],
+    });
   });
 
   it("adds a hollow overlay for telemetry awaiting a score", () => {

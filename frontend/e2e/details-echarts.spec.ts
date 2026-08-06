@@ -291,7 +291,7 @@ test.describe("Details telemetry ECharts", () => {
     await expect(chart.locator("canvas")).toHaveCount(1);
     await expect(chart).toHaveAttribute(
       "aria-label",
-      /sequential-evidence series in a linked lower pane.*UTC/u,
+      /logarithmic static-evidence series.*UTC/u,
     );
     await expect(card.getByText(/Current System Voltage:/u)).toBeVisible();
     await expect(card.getByText(/Restarted e-process radar-se/u)).toBeVisible();

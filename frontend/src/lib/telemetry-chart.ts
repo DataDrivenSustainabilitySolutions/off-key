@@ -545,11 +545,18 @@ const formatAnomalyTooltip = (
   ].join("\n");
 };
 
+const axisLabelFormatterCache = new Map<string, (value: number) => string>();
 const axisLabelFormatter = (
   timeZone: string,
   locale?: string,
-): ((value: number) => string) =>
-  (value) => formatChartTime(Number(value), timeZone, "axis", locale);
+): ((value: number) => string) => {
+  const key = `${timeZone}\u0000${locale === undefined ? "\u0000" : locale}`;
+  const cached = axisLabelFormatterCache.get(key);
+  if (cached) return cached;
+  const formatter = (value: number) => formatChartTime(Number(value), timeZone, "axis", locale);
+  axisLabelFormatterCache.set(key, formatter);
+  return formatter;
+};
 
 export const buildTelemetryChartOption = ({
   model,

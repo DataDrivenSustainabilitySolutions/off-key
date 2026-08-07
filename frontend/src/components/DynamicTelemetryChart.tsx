@@ -2,6 +2,7 @@ import React, {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { ChevronDown } from "lucide-react";
@@ -79,6 +80,8 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
   const [isChartVisible, setIsChartVisible] = useState(
     () => typeof IntersectionObserver === "undefined",
   );
+  const rafIdRef = useRef<number | undefined>(undefined);
+  const pendingViewportRef = useRef<{ startMs: number; endMs: number } | null>(null);
 
   useEffect(() => {
     if (typeof IntersectionObserver === "undefined" || !cardNode) return;
@@ -93,6 +96,15 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
     observer.observe(cardNode);
     return () => observer.disconnect();
   }, [cardNode]);
+
+  useEffect(() => {
+    return () => {
+      if (rafIdRef.current !== undefined) {
+        cancelAnimationFrame(rafIdRef.current);
+        rafIdRef.current = undefined;
+      }
+    };
+  }, []);
 
   const displayName = useMemo(
     () => formatDisplayName(telemetryData.type),
@@ -316,12 +328,29 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
 
   const handleViewportChange = useCallback(
     (startMs: number, endMs: number) => {
+      pendingViewportRef.current = { startMs, endMs };
+      if (rafIdRef.current !== undefined) return;
+
       commitNavigationState({
         ...activeNavigationState,
         viewport: { mode: "absolute", startMs, endMs },
         inspectionDataEndMs:
           activeNavigationState.inspectionDataEndMs ??
           (timelineExtent ?? chartModel?.extent)?.[1],
+      });
+
+      rafIdRef.current = requestAnimationFrame(() => {
+        rafIdRef.current = undefined;
+        const pending = pendingViewportRef.current;
+        pendingViewportRef.current = null;
+        if (!pending) return;
+        commitNavigationState({
+          ...activeNavigationState,
+          viewport: { mode: "absolute", startMs: pending.startMs, endMs: pending.endMs },
+          inspectionDataEndMs:
+            activeNavigationState.inspectionDataEndMs ??
+            (timelineExtent ?? chartModel?.extent)?.[1],
+        });
       });
     },
     [

@@ -133,7 +133,7 @@ type InspectableOption = {
   }>;
   yAxis: Array<{ type: string; max?: number }>;
   axisPointer: { link: Array<{ xAxisIndex: string }> };
-  dataZoom: Array<{ xAxisIndex: number[]; startValue?: number; endValue?: number }>;
+  dataZoom: Array<{ xAxisIndex: number[]; startValue?: number; endValue?: number; bottom?: number; height?: number }>;
   tooltip: { formatter: (params: unknown) => string; renderMode: string };
   series: Array<{
     id: string;
@@ -458,6 +458,17 @@ describe("telemetry ECharts option", () => {
     expect(option.grid).toHaveLength(3);
     expect(option.yAxis.map(({ type }) => type)).toEqual(["value", "log", "value"]);
     expect(option.dataZoom[0]?.xAxisIndex).toEqual([0, 1, 2]);
+
+    // Layout regression check: final grid bottom + nameGap leaves clear margin above slider
+    const grid3 = option.grid[2] as { top: number; height: number };
+    const grid3Bottom = grid3.top + grid3.height;
+    const finalXAxis = option.xAxis[2] as { nameGap: number };
+    const labelBottom = grid3Bottom + finalXAxis.nameGap;
+    const slider = option.dataZoom[1] as { bottom: number; height: number };
+    const sliderTop = 680 - slider.bottom - slider.height;
+
+    expect(finalXAxis.nameGap).toBe(30);
+    expect(sliderTop - labelBottom).toBeGreaterThanOrEqual(30);
   });
 
   it("uses numeric anomaly marks and disables raw HTML tooltips", () => {
@@ -486,7 +497,7 @@ describe("telemetry ECharts option", () => {
     });
     const option = inspect(buildOption(model));
 
-    expect(option.series[0]?.markArea?.data).toHaveLength(1);
+    expect(option.series[0]?.markArea).toBeUndefined();
     expect(option.series[0]?.markPoint?.data).toHaveLength(1);
     expect(option.tooltip.renderMode).toBe("richText");
     expect(option.aria).toEqual({

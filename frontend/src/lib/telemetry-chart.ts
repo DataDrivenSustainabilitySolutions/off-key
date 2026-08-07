@@ -569,13 +569,13 @@ export const buildTelemetryChartOption = ({
     ? [{ left: 68, right: 34, top: 58, bottom: 66 }]
     : panes.length === 2
       ? [
-          { left: 68, right: 34, top: 58, height: 142 },
-          { left: 68, right: 34, top: 244, height: 102 },
+          { left: 68, right: 34, top: 58, height: 185 },
+          { left: 68, right: 34, top: 290, height: 135 },
         ]
       : [
-          { left: 68, right: 34, top: 58, height: 112 },
-          { left: 68, right: 34, top: 201, height: 82 },
-          { left: 68, right: 34, top: 314, height: 82 },
+          { left: 68, right: 34, top: 58, height: 190 },
+          { left: 68, right: 34, top: 295, height: 125 },
+          { left: 68, right: 34, top: 465, height: 125 },
         ];
   const axisLabel = {
     color: colors.mutedForeground,
@@ -597,7 +597,7 @@ export const buildTelemetryChartOption = ({
     name:
       index === panes.length - 1 ? `Local time (${timeZone})` : undefined,
     nameLocation: "middle" as const,
-    nameGap: 42,
+    nameGap: 30,
     nameTextStyle: { color: colors.mutedForeground, fontSize: 11 },
   }));
   const dataZoomRange =
@@ -622,17 +622,6 @@ export const buildTelemetryChartOption = ({
     itemStyle: { color: model.telemetry.color },
     emphasis: { disabled: true },
     animation: false,
-    markArea: {
-      silent: true,
-      itemStyle: { color: "rgba(220, 38, 38, 0.1)" },
-      data: model.anomalyZones.map((zone) => [
-        {
-          name: `${zone.anomalyCount} anomal${zone.anomalyCount === 1 ? "y" : "ies"}`,
-          xAxis: zone.startMs,
-        },
-        { xAxis: zone.endMs },
-      ]),
-    },
     markPoint: {
       symbol: "circle",
       label: { show: false },

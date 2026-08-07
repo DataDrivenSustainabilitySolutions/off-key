@@ -48,6 +48,7 @@ export interface EChartProps {
   resolvedTheme: ResolvedTheme;
   accessibleDescription: string;
   onViewportChange?: (startMs: number, endMs: number) => void;
+  className?: string;
 }
 
 type DataZoomPayload = {
@@ -103,6 +104,7 @@ export function EChart({
   resolvedTheme,
   accessibleDescription,
   onViewportChange,
+  className,
 }: EChartProps): ReactElement {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<EChartsType | undefined>(undefined);
@@ -170,7 +172,7 @@ export function EChart({
       ref={containerRef}
       role="img"
       aria-label={accessibleDescription}
-      className="h-[420px] w-full min-w-0 touch-none"
+      className={className ?? "h-[420px] w-full min-w-0 touch-none"}
       data-testid="telemetry-echart"
     />
   );

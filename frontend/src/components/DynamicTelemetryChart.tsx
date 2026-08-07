@@ -364,6 +364,22 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
     chartModel.telemetry.data.length - 1
   ];
 
+  const hasStaticPane = useMemo(
+    () => telemetryEvidence.some((item) => item.strategy !== "adaptive_stream"),
+    [telemetryEvidence],
+  );
+  const hasAdaptivePane = useMemo(
+    () => telemetryEvidence.some((item) => item.strategy === "adaptive_stream"),
+    [telemetryEvidence],
+  );
+  const paneCount = 1 + (hasStaticPane ? 1 : 0) + (hasAdaptivePane ? 1 : 0);
+  const chartHeightClass =
+    paneCount === 3
+      ? "h-[680px]"
+      : paneCount === 2
+        ? "h-[520px]"
+        : "h-[420px]";
+
   if (telemetryData.data.length === 0) {
     return (
       <Card
@@ -501,9 +517,9 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
       {!collapsed && (
         <CardContent className="pb-5 pt-5">
           {!isChartVisible ? (
-            <div className="h-[420px]" aria-hidden="true" />
+            <div className={chartHeightClass} aria-hidden="true" />
           ) : filteredData.length === 0 ? (
-            <div className="flex h-[420px] flex-col items-center justify-center rounded-lg border border-dashed bg-muted/20 p-6 text-center">
+            <div className={`flex ${chartHeightClass} flex-col items-center justify-center rounded-lg border border-dashed bg-muted/20 p-6 text-center`}>
               <p className="text-sm font-medium">No data in selected range</p>
               <p className="mt-1 max-w-sm text-sm text-muted-foreground">
                 Adjust the From/To values or clear the range to show all available
@@ -549,6 +565,7 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
                 resolvedTheme={resolvedTheme}
                 accessibleDescription={accessibleDescription}
                 onViewportChange={handleViewportChange}
+                className={`${chartHeightClass} w-full min-w-0 touch-none`}
               />
               <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 border-t border-border/60 pt-3 text-xs text-muted-foreground">
                 {latestTelemetry && (

@@ -190,6 +190,20 @@ const getNumberFormatter = (locale?: string): Intl.NumberFormat => {
   return formatter;
 };
 
+const formatNumber = (value: number): string => {
+  if (!Number.isFinite(value)) return String(value);
+  if (value === 0) return "0";
+  const abs = Math.abs(value);
+  if (abs < 0.001 || abs >= 1e6) return value.toExponential(2);
+  const fractionDigits = Math.max(0, 3 - Math.floor(Math.log10(abs)));
+  const formatted = value.toFixed(fractionDigits);
+  return formatted.includes(".")
+    ? formatted.replace(/0+$/, "").replace(/\.$/, "")
+    : formatted;
+};
+
+export { formatNumber };
+
 export const getLocalTimeZone = (): string =>
   Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
 
@@ -354,7 +368,7 @@ const buildSecondarySeries = (
         ? `restarted-martingale:${series.serviceId}`
         : `martingale:${series.serviceId}:${series.trackerId}`,
       serviceId: series.serviceId,
-      name: `${statisticLabels[series.alarmStatistic]}${methodSuffix} ${series.serviceId.slice(0, 8)}`,
+      name: `${statisticLabels[series.alarmStatistic]}${methodSuffix}`,
       threshold: series.threshold,
       color:
         SECONDARY_COLORS[index % SECONDARY_COLORS.length] ?? SECONDARY_COLORS[0],
@@ -387,13 +401,12 @@ const buildAdaptiveSeries = (
   }
   return [...services.entries()].flatMap(([serviceId, values], index) => {
     const color = SECONDARY_COLORS[index % SECONDARY_COLORS.length] ?? SECONDARY_COLORS[0];
-    const suffix = serviceId.slice(0, 8);
     const latestThreshold = values.thresholds[values.thresholds.length - 1]?.[1] ?? 0;
     return [
       {
         id: `adaptive-score:${serviceId}`,
         serviceId,
-        name: `Anomaly score ${suffix}`,
+        name: "Anomaly score",
         threshold: latestThreshold,
         color,
         data: addTelemetryGaps(values.scores, telemetryTimes),
@@ -404,7 +417,7 @@ const buildAdaptiveSeries = (
       {
         id: `adaptive-threshold:${serviceId}`,
         serviceId,
-        name: `Score threshold ${suffix}`,
+        name: "Score threshold",
         threshold: latestThreshold,
         color: "#dc2626",
         data: addTelemetryGaps(values.thresholds, telemetryTimes),
@@ -509,8 +522,9 @@ export const formatTelemetryTooltip = (
     const value = readTimeValue(entry.value);
     if (!value || typeof entry.seriesName !== "string") continue;
     const unit = units.get(entry.seriesName);
+    const formattedValue = unit ? numberFormatter.format(value[1]) : formatNumber(value[1]);
     lines.push(
-      `${entry.seriesName}: ${numberFormatter.format(value[1])}${unit ? ` ${unit}` : ""}`,
+      `${entry.seriesName}: ${formattedValue}${unit ? ` ${unit}` : ""}`,
     );
   }
   return lines.join("\n");
@@ -696,7 +710,7 @@ export const buildTelemetryChartOption = ({
         lineStyle: { color: "#dc2626", type: "dashed", width: 1.5 },
         label: {
           show: true,
-          formatter: `Alarm threshold ${series.threshold}`,
+          formatter: `Alarm threshold ${formatNumber(series.threshold)}`,
           position: "insideEndTop",
           color: colors.mutedForeground,
           fontSize: 10,

@@ -24,6 +24,7 @@ import {
   buildTelemetryChartOption,
   DEFAULT_CHART_NAVIGATION,
   formatChartTime,
+  formatNumber,
   getLocalTimeZone,
   areChartNavigationStatesEqual,
   type ChartNavigationState,
@@ -218,13 +219,12 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
     () =>
       sensorEvidence.filter((item) => {
         const time = getEvidenceTimeForSensor(item, telemetryData.type);
-        return time !== undefined && isWithinTimeRange(
-          new Date(time).toISOString(),
-          fromDate,
-          toDate,
-        );
+        if (time === undefined) return false;
+        if (!isWithinTimeRange(new Date(time).toISOString(), fromDate, toDate)) return false;
+        if (monitoringService && item.service_id !== monitoringService.id) return false;
+        return true;
       }),
-    [fromDate, sensorEvidence, telemetryData.type, toDate],
+    [fromDate, monitoringService, sensorEvidence, telemetryData.type, toDate],
   );
   const operationalEvidence = useMemo(
     () =>
@@ -581,7 +581,7 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
                     .find(([, value]) => value !== null);
                   return latest ? (
                     <span key={series.id}>
-                      {series.name}: {latest[1]}
+                      {series.name}: {formatNumber(latest[1])}
                     </span>
                   ) : null;
                 })}

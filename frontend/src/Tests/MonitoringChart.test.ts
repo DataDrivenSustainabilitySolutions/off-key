@@ -217,8 +217,8 @@ describe("telemetry chart model", () => {
 
     expect(model.secondarySeries).toHaveLength(2);
     expect(model.secondarySeries.map((series) => series.name)).toEqual([
-      "CUSUM (Simple mixture · mixture-cusum) service-",
-      "Shiryaev-Roberts (Simple jumper · jumper-sr) service-",
+      "CUSUM (Simple mixture · mixture-cusum)",
+      "Shiryaev-Roberts (Simple jumper · jumper-sr)",
     ]);
     expect(model.secondarySeries.map((series) => series.threshold)).toEqual([
       25,

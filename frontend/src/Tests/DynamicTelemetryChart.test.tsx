@@ -82,10 +82,18 @@ const showChart = () => {
 
 const inspectOption = (): {
   dataZoom: Array<{ startValue?: number; endValue?: number }>;
-  series: Array<{ id: string; data: Array<[number, number | null]> }>;
+  series: Array<{
+    id: string;
+    data: Array<[number, number | null]>;
+    lineStyle?: { color?: string };
+  }>;
 } => chartMock.latestProps?.option as unknown as {
   dataZoom: Array<{ startValue?: number; endValue?: number }>;
-  series: Array<{ id: string; data: Array<[number, number | null]> }>;
+  series: Array<{
+    id: string;
+    data: Array<[number, number | null]>;
+    lineStyle?: { color?: string };
+  }>;
 };
 
 const operationalService: ActiveService = {
@@ -245,6 +253,22 @@ describe("DynamicTelemetryChart", () => {
     expect(inspectOption().dataZoom[0]).toMatchObject({
       startValue: 1_000,
       endValue: 2_000,
+    });
+  });
+
+  it("uses the teal GUI accent primary color for the original telemetry series", async () => {
+    render(renderChart(telemetry()));
+    await waitFor(() =>
+      expect(document.querySelector('[data-slot="card"]')).not.toBeNull(),
+    );
+    showChart();
+    await screen.findByRole("img");
+
+    await waitFor(() => {
+      const option = inspectOption();
+      expect(option?.series).toBeDefined();
+      const telemetrySeries = option.series.find(({ id }) => id === "telemetry");
+      expect(telemetrySeries?.lineStyle?.color).toBe("hsl(173 80% 32%)");
     });
   });
 });

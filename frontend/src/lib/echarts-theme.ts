@@ -9,6 +9,7 @@ const FALLBACK_COLORS: Record<ResolvedTheme, ChartThemeColors> = {
     popover: "hsl(0 0% 100%)",
     popoverForeground: "hsl(222 18% 10%)",
     muted: "hsl(214 22% 95%)",
+    primary: "hsl(173 80% 32%)",
   },
   dark: {
     foreground: "hsl(210 12% 94%)",
@@ -17,6 +18,7 @@ const FALLBACK_COLORS: Record<ResolvedTheme, ChartThemeColors> = {
     popover: "hsl(220 7% 15%)",
     popoverForeground: "hsl(210 12% 94%)",
     muted: "hsl(220 8% 19%)",
+    primary: "hsl(173 70% 42%)",
   },
 };
 
@@ -27,6 +29,7 @@ const TOKEN_NAMES: Record<keyof ChartThemeColors, string> = {
   popover: "--popover",
   popoverForeground: "--popover-foreground",
   muted: "--muted",
+  primary: "--primary",
 };
 
 export const resolveChartThemeColors = (
@@ -46,6 +49,7 @@ export const resolveChartThemeColors = (
     popover: resolveColor("popover"),
     popoverForeground: resolveColor("popoverForeground"),
     muted: resolveColor("muted"),
+    primary: resolveColor("primary"),
   };
 };
 

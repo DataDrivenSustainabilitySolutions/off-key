@@ -45,13 +45,6 @@ interface DynamicTelemetryChartProps {
   ) => void;
 }
 
-const CATEGORY_COLORS: Record<string, string> = {
-  cpu: "#0f9f8e",
-  system: "#2563eb",
-  controller: "#d97706",
-  other: "#7c3aed",
-};
-
 const formatDisplayName = (value: string): string =>
   value
     .replace(/([A-Z])/gu, " $1")
@@ -274,7 +267,7 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
       telemetryType: telemetryData.type,
       telemetryName: displayName,
       telemetryUnit: telemetryData.unit,
-      telemetryColor: CATEGORY_COLORS[telemetryData.category] ?? "#7c3aed",
+      telemetryColor: themeColors.primary,
       telemetry: filteredData,
       evidence: telemetryEvidence,
       pendingTelemetryTimestamps,
@@ -286,11 +279,11 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
     filteredData,
     shouldBuildChart,
     telemetryAnomalies,
-    telemetryData.category,
     telemetryData.type,
     telemetryData.unit,
     telemetryEvidence,
     pendingTelemetryTimestamps,
+    themeColors.primary,
   ]);
   const accessibleDescription = useMemo(() => {
     const pointCount = chartModel?.telemetry.data.length ?? 0;

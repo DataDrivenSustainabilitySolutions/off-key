@@ -88,6 +88,7 @@ const colors: ChartThemeColors = {
   popover: "#ffffff",
   popoverForeground: "#111111",
   muted: "#eeeeee",
+  primary: "hsl(173 80% 32%)",
 };
 
 const buildModel = (

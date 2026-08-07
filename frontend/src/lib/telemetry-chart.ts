@@ -119,6 +119,7 @@ export interface ChartThemeColors {
   popover: string;
   popoverForeground: string;
   muted: string;
+  primary: string;
 }
 
 interface BuildTelemetryChartModelInput {

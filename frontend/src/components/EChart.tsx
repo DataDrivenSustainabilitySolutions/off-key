@@ -124,7 +124,6 @@ export function EChart({
     const colors = resolveChartThemeColors(initialTheme);
     const chart = init(container, createEChartsTheme(colors), {
       renderer: "canvas",
-      useDirtyRect: true,
     });
     chartRef.current = chart;
     appliedThemeRef.current = initialTheme;
@@ -163,7 +162,7 @@ export function EChart({
   useEffect(() => {
     chartRef.current?.setOption(option, {
       lazyUpdate: true,
-      replaceMerge: ["series"],
+      replaceMerge: ["series", "grid", "xAxis", "yAxis", "dataZoom"],
     });
   }, [option]);
 

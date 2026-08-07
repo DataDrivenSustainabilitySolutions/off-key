@@ -593,11 +593,11 @@ export const buildTelemetryChartOption = ({
           { left: 68, right: 34, top: 58, height: 185 },
           { left: 68, right: 34, top: 290, height: 135 },
         ]
-      : [
-          { left: 68, right: 34, top: 58, height: 190 },
-          { left: 68, right: 34, top: 295, height: 125 },
-          { left: 68, right: 34, top: 465, height: 125 },
-        ];
+    : [
+        { left: 68, right: 34, top: 58, height: 180 },
+        { left: 68, right: 34, top: 288, height: 120 },
+        { left: 68, right: 34, top: 450, height: 120 },
+      ];
   const axisLabel = {
     color: colors.mutedForeground,
     fontSize: 11,
@@ -618,7 +618,7 @@ export const buildTelemetryChartOption = ({
     name:
       index === panes.length - 1 ? `Local time (${timeZone})` : undefined,
     nameLocation: "middle" as const,
-    nameGap: 30,
+    nameGap: 20,
     nameTextStyle: { color: colors.mutedForeground, fontSize: 11 },
   }));
   const dataZoomRange =

@@ -467,7 +467,7 @@ describe("telemetry ECharts option", () => {
     const slider = option.dataZoom[1] as { bottom: number; height: number };
     const sliderTop = 680 - slider.bottom - slider.height;
 
-    expect(finalXAxis.nameGap).toBe(30);
+    expect(finalXAxis.nameGap).toBe(20);
     expect(sliderTop - labelBottom).toBeGreaterThanOrEqual(30);
   });
 

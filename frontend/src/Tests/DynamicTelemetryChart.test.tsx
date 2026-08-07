@@ -271,4 +271,57 @@ describe("DynamicTelemetryChart", () => {
       expect(telemetrySeries?.lineStyle?.color).toBe("hsl(173 80% 32%)");
     });
   });
+
+  it("renders the correct placeholder and chart height for multi-pane evidence", async () => {
+    const multiPaneTelemetry = telemetry("2026-07-27T10:02:00Z");
+    const { rerender } = render(
+      <ThemeProvider defaultTheme="light">
+        <DynamicTelemetryChart
+          telemetryData={multiPaneTelemetry}
+          evidence={[
+            {
+              service_id: "service-static",
+              timestamp: "2026-07-27T10:00:00Z",
+              sequence_number: 1,
+              sensor_set: ["voltage"],
+              input_timestamps: { voltage: "2026-07-27T10:00:00Z" },
+              strategy: "logarithmic_static",
+              restarted_martingale: 10,
+              threshold: 5,
+              alarm: false,
+              created: "2026-07-27T10:00:00Z",
+            },
+            {
+              service_id: "service-adaptive",
+              timestamp: "2026-07-27T10:02:00Z",
+              sequence_number: 1,
+              sensor_set: ["voltage"],
+              input_timestamps: { voltage: "2026-07-27T10:02:00Z" },
+              strategy: "adaptive_stream",
+              anomaly_score: 1.5,
+              threshold: 2,
+              alarm: false,
+              created: "2026-07-27T10:02:00Z",
+            },
+          ]}
+        />
+      </ThemeProvider>,
+    );
+
+    await waitFor(() =>
+      expect(document.querySelector('[data-slot="card"]')).not.toBeNull(),
+    );
+    const card = document.querySelector('[data-slot="card"]');
+    const placeholder = card?.querySelector('div[aria-hidden="true"]');
+    expect(placeholder?.className).toContain("h-[680px]");
+
+    showChart();
+    await screen.findByRole("img");
+
+    await waitFor(() => {
+      const option = inspectOption();
+      expect(option?.grid).toHaveLength(3);
+      expect(option?.xAxis).toHaveLength(3);
+    });
+  });
 });

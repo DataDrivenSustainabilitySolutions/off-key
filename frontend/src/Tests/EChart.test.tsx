@@ -99,11 +99,11 @@ describe("EChart lifecycle", () => {
     expect(echartsMock.init).toHaveBeenCalledWith(
       expect.any(HTMLDivElement),
       expect.any(Object),
-      { renderer: "canvas", useDirtyRect: true },
+      { renderer: "canvas" },
     );
     expect(instance?.setOption).toHaveBeenLastCalledWith(expect.any(Object), {
       lazyUpdate: true,
-      replaceMerge: ["series"],
+      replaceMerge: ["series", "grid", "xAxis", "yAxis", "dataZoom"],
     });
 
     rerender(

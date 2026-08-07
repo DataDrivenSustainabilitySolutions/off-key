@@ -462,7 +462,7 @@ describe("telemetry ECharts option", () => {
     // Layout regression check: final grid bottom + nameGap leaves clear margin above slider
     const grid3 = option.grid[2] as { top: number; height: number };
     const grid3Bottom = grid3.top + grid3.height;
-    const finalXAxis = option.xAxis[2] as { nameGap: number };
+    const finalXAxis = option.xAxis[2] as unknown as { nameGap: number };
     const labelBottom = grid3Bottom + finalXAxis.nameGap;
     const slider = option.dataZoom[1] as { bottom: number; height: number };
     const sliderTop = 680 - slider.bottom - slider.height;

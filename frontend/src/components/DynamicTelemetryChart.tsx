@@ -575,13 +575,13 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
                     {formatChartTime(latestTelemetry[0], timeZone, "tooltip")}
                   </span>
                 )}
-                {chartModel.secondarySeries.map((series) => {
+                 {chartModel.secondarySeries.map((series) => {
                   const latest = [...series.data]
                     .reverse()
                     .find(([, value]) => value !== null);
                   return latest ? (
                     <span key={series.id}>
-                      {series.name}: {formatNumber(latest[1])}
+                      {series.name}: {formatNumber(latest[1] as number)}
                     </span>
                   ) : null;
                 })}

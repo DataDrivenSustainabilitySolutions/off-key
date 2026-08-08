@@ -16,7 +16,9 @@
 #      Copy tailscaled.state from a pre-authenticated installation to skip the auth key on restart.
 #   2. After the first deploy, configure an EMQX MQTT bridge (Data Integration → Bridges)
 #      pointing to mqtt-tailscale-bridge:1883.
-#      Set upstream credentials, TLS, and topic subscriptions there.
+#      Set upstream credentials, TLS, topic subscriptions, and topic rewrites there.
+#      The bridge must forward transformed topics as
+#      `charger/<device_id>/live-telemetry/<...>` to match off-key parser rules.
 #
 # See .env.ingress.example for required/optional environment variables.
 
@@ -45,7 +47,8 @@ services:
     # Dumb TCP forwarder: EMQX connects here on :1883, gost tunnels it through
     # the Tailscale SOCKS5 proxy to the upstream .ts.net hostname.
     # MagicDNS resolution happens inside Tailscale, not in the container's DNS.
-    # Auth, TLS, and topic subscriptions are configured in the EMQX bridge — not here.
+    # Auth, TLS, topic subscriptions, and topic rewrites are configured in the EMQX
+    # bridge — not here.
     image: gogost/gost:3
     command:
       - "-L=tcp://:1883/${INGRESS_UPSTREAM_MQTT_HOST:?INGRESS_UPSTREAM_MQTT_HOST must be set}:${INGRESS_UPSTREAM_MQTT_PORT:-1883}"

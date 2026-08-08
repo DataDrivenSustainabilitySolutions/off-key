@@ -174,7 +174,13 @@ docker compose \
 
 After deploy, create an EMQX MQTT bridge (EMQX dashboard → Data Integration → Bridges):
 - Server: `mqtt-tailscale-bridge:1883`
-- Set upstream credentials, TLS, and topic subscriptions there
+- Set upstream credentials and TLS there
+- Set ingress topic subscriptions to `device/#` (or a narrower device namespace)
+- Rewrite external topics into the internal on-ingress contract:
+- Example source topic: `device/charger-1/temp/phase-a`
+- Example rewritten topic: `charger/charger-1/live-telemetry/temp/phase-a`
+- Keep `MQTT_SOURCE_TOPICS=charger/+/live-telemetry/#` (default). No off-key code/config schema change required.
+- Configure Off-Key to consume the rewritten local topic path.
 
 Notes:
 - local mock `source-broker` remains the default for local dev; ingress is Swarm-only
@@ -189,6 +195,16 @@ After deploy, verify the bridge is passing traffic:
 docker run --rm --network off-key_emqx-network eclipse-mosquitto:2.0 \
   mosquitto_sub -h emqx-main -p 1883 -t "charger/+/live-telemetry/#" -C 1 -W 30
 ```
+
+Quick checks after remap is enabled:
+- Internal traffic check: if no messages arrive on `charger/+/live-telemetry/#`, fix bridge mapping first.
+- Proxy ingestion check:
+`docker service logs off-key_mqtt-proxy --since 5m | rg "source_subscriptions|subscribed_topics"`
+- Parse check:
+`docker service logs off-key_mqtt-proxy --since 5m | rg "Unable to extract metadata from topic"`
+- UI/API check:
+`curl -s "http://api-gateway:8000/v1/telemetry/<charger_id>/type"`
+`curl -s "http://api-gateway:8000/v1/telemetry/<charger_id>/data?type=<telemetry_type>&limit=20"`
 
 If the EMQX bridge is connected and the vendor device is publishing, a message should arrive within the timeout. If not, check:
 

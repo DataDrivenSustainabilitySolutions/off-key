@@ -80,14 +80,15 @@ const showChart = () => {
   );
 };
 
-const inspectOption = (): {
-  dataZoom: Array<{ startValue?: number; endValue?: number }>;
-  series: Array<{
-    id: string;
-    data: Array<[number, number | null]>;
-    lineStyle?: { color?: string };
+type InspectableOption = {
+  grid: Array<{ left?: number | string; right?: number | string }>;
+  xAxis: Array<{
+    id?: string;
+    gridIndex?: number;
+    min?: number;
+    max?: number;
+    name?: string;
   }>;
-} => chartMock.latestProps?.option as unknown as {
   dataZoom: Array<{ startValue?: number; endValue?: number }>;
   series: Array<{
     id: string;
@@ -95,6 +96,9 @@ const inspectOption = (): {
     lineStyle?: { color?: string };
   }>;
 };
+
+const inspectOption = (): InspectableOption =>
+  chartMock.latestProps?.option as unknown as InspectableOption;
 
 const operationalService: ActiveService = {
   id: "service-adaptive",
@@ -274,7 +278,7 @@ describe("DynamicTelemetryChart", () => {
 
   it("renders the correct placeholder and chart height for multi-pane evidence", async () => {
     const multiPaneTelemetry = telemetry("2026-07-27T10:02:00Z");
-    const { rerender } = render(
+    render(
       <ThemeProvider defaultTheme="light">
         <DynamicTelemetryChart
           telemetryData={multiPaneTelemetry}
@@ -285,7 +289,7 @@ describe("DynamicTelemetryChart", () => {
               sequence_number: 1,
               sensor_set: ["voltage"],
               input_timestamps: { voltage: "2026-07-27T10:00:00Z" },
-              strategy: "logarithmic_static",
+              strategy: "static_baseline",
               restarted_martingale: 10,
               threshold: 5,
               alarm: false,
@@ -298,6 +302,7 @@ describe("DynamicTelemetryChart", () => {
               sensor_set: ["voltage"],
               input_timestamps: { voltage: "2026-07-27T10:02:00Z" },
               strategy: "adaptive_stream",
+              restarted_martingale: null,
               anomaly_score: 1.5,
               threshold: 2,
               alarm: false,

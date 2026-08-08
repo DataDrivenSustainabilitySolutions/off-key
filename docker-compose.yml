@@ -151,6 +151,10 @@ services:
     image: "${MQTT_PROXY_IMAGE:-off-key-mqtt-proxy:latest}"
     container_name: mqtt_proxy
     env_file: .env
+    environment:
+      - MQTT_BROKER_HOST=${MQTT_BROKER_HOST:-source-broker}
+      - MQTT_BROKER_PORT=${MQTT_BROKER_PORT:-1883}
+      - MQTT_TELEMETRY_ENABLED=true
     command: [ "/app/bin/python", "-m", "off_key_mqtt_proxy" ]
     depends_on:
       timescaledb:
@@ -173,8 +177,6 @@ services:
       timeout: 5s
       retries: 20
       start_period: 10s
-    environment:
-      - MQTT_TELEMETRY_ENABLED=true
     volumes:
       - ./logs:/app/logs  # For log persistence
 

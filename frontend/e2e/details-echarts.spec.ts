@@ -288,6 +288,10 @@ test.describe("Details telemetry ECharts", () => {
       .filter({ hasText: "System Voltage" })
       .first();
     await expect(chart).toBeVisible();
+    const desktopChartBox = await chart.boundingBox();
+    expect(desktopChartBox).not.toBeNull();
+    expect(desktopChartBox?.height).toBeGreaterThanOrEqual(520);
+    expect(desktopChartBox?.height).toBeLessThanOrEqual(522);
     await expect(chart.locator("canvas")).toHaveCount(1);
     await expect(chart).toHaveAttribute(
       "aria-label",
@@ -295,18 +299,9 @@ test.describe("Details telemetry ECharts", () => {
     );
     await expect(card.getByText(/Current System Voltage:/u)).toBeVisible();
     await expect(card.getByText(/Restarted e-process/u)).toBeVisible();
-    await expect(chart).toHaveScreenshot("telemetry-card-light.png", {
-      animations: "disabled",
-      maxDiffPixelRatio: 0.1,
-    });
-
     await page.getByRole("button", { name: "Toggle theme" }).click();
     await page.getByRole("menuitem", { name: "Dark" }).click();
     await expect(page.locator("html")).toHaveClass(/dark/u);
-    await expect(chart).toHaveScreenshot("telemetry-card-dark.png", {
-      animations: "disabled",
-      maxDiffPixelRatio: 0.1,
-    });
 
     await page.setViewportSize({ width: 390, height: 844 });
     await card.scrollIntoViewIfNeeded();

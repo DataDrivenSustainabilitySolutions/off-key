@@ -179,10 +179,41 @@ jobs:
             done
           }
 
+          wait_for_mqtt_proxy_ready() {
+            local timeout_seconds="$1"
+            local interval_seconds="${2:-2}"
+            local deadline=$((SECONDS + timeout_seconds))
+
+            while true; do
+              local ready
+              ready="$(docker exec mqtt_proxy \
+                /app/bin/python -c \
+                "import json, urllib.request; print(json.load(urllib.request.urlopen('http://127.0.0.1:8010/ready', timeout=2)).get('ready'))" \
+                2>/dev/null || true)"
+
+              if [[ "$ready" == "True" ]]; then
+                echo "mqtt_proxy readiness check passed"
+                return 0
+              fi
+
+              if (( SECONDS >= deadline )); then
+                echo "::error::mqtt_proxy did not become ready within ${timeout_seconds}s"
+                docker exec mqtt_proxy /app/bin/python -c \
+                  "import json, urllib.request; print(json.load(urllib.request.urlopen('http://127.0.0.1:8010/ready', timeout=2)))" \
+                  || true
+                docker logs --no-color mqtt_proxy || true
+                return 1
+              fi
+
+              sleep "$interval_seconds"
+            done
+          }
+
           wait_for_container_health timescaledb 240
           wait_for_container_health "$(docker compose ps -q emqx-main)" 240
           wait_for_container_health "$(docker compose ps -q mqtt-proxy)" 240
           wait_for_socket_proxy 120 2
+          wait_for_mqtt_proxy_ready 240 2
           wait_for_http mailpit http://localhost:8025/api/v1/messages 120 2
 
       - name: Start db-sync

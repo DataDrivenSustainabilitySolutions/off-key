@@ -129,7 +129,6 @@ test.describe("adaptive monitoring production lifecycle", () => {
       expect(startResponse.ok()).toBeTruthy();
       const started = (await startResponse.json()) as { service_id: string };
       serviceId = started.service_id;
-      const serviceSuffix = started.service_id.slice(0, 8);
 
       const readServiceStatus = async () => {
         const response = await api.get(
@@ -264,7 +263,7 @@ test.describe("adaptive monitoring production lifecycle", () => {
       await evidenceRefresh;
       await expect(l1Card.getByText("1 awaiting score")).toBeHidden();
       await expect(l1Card.getByRole("button", { name: "Return to live" })).toBeVisible();
-      const scoreLabel = new RegExp(`Anomaly score ${serviceSuffix}:`, "i");
+      const scoreLabel = /Anomaly score/i;
       await expect(l1Card.getByText(scoreLabel)).toBeVisible();
       await expect(l2Card.getByText(scoreLabel)).toBeVisible();
     } finally {

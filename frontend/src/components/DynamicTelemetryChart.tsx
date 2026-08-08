@@ -64,6 +64,22 @@ const getLatestFiniteTime = (telemetryData: TelemetryTypeData): number | undefin
   return times.length > 0 ? Math.max(...times) : undefined;
 };
 
+const compareEvidenceCursor = (
+  left: MonitoringChartEvidence,
+  right: MonitoringChartEvidence,
+): boolean => {
+  const leftCreated = Date.parse(left.timestamp);
+  const rightCreated = Date.parse(right.timestamp);
+  if (!Number.isFinite(leftCreated) || !Number.isFinite(rightCreated)) {
+    return rightCreated > leftCreated;
+  }
+  if (leftCreated !== rightCreated) return leftCreated < rightCreated;
+  if (left.sequence_number !== right.sequence_number) {
+    return left.sequence_number < right.sequence_number;
+  }
+  return left.service_id.localeCompare(right.service_id) < 0;
+};
+
 export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
   telemetryData,
   anomalies = [],
@@ -228,25 +244,100 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
       ),
     [evidence, telemetryData.type],
   );
-  const telemetryEvidence = useMemo(
+  const telemetryEvidenceInRange = useMemo(
     () =>
       sensorEvidence.filter((item) => {
         const time = getEvidenceTimeForSensor(item, telemetryData.type);
-        if (time === undefined) return false;
-        if (!isWithinTimeRange(new Date(time).toISOString(), fromDate, toDate)) return false;
-        if (monitoringService && item.service_id !== monitoringService.id) return false;
-        return true;
+        return (
+          time !== undefined &&
+          isWithinTimeRange(new Date(time).toISOString(), fromDate, toDate)
+        );
       }),
-    [fromDate, monitoringService, sensorEvidence, telemetryData.type, toDate],
+    [fromDate, sensorEvidence, telemetryData.type, toDate],
+  );
+  const telemetryEvidenceByService = useMemo(() => {
+    const buckets = new Map<string, MonitoringChartEvidence[]>();
+    telemetryEvidenceInRange.forEach((item) => {
+      const bucket = buckets.get(item.service_id);
+      if (bucket) {
+        bucket.push(item);
+      } else {
+        buckets.set(item.service_id, [item]);
+      }
+    });
+    return buckets;
+  }, [telemetryEvidenceInRange]);
+  const selectedEvidenceServiceId = useMemo(() => {
+    if (telemetryEvidenceByService.size === 0) return undefined;
+    const monitoringEvidence =
+      monitoringService?.id
+        ? telemetryEvidenceByService.get(monitoringService.id)
+        : undefined;
+    if (
+      monitoringService?.id &&
+      monitoringEvidence !== undefined &&
+      monitoringEvidence.length > 0
+    ) {
+      return monitoringService.id;
+    }
+
+    let adaptiveServiceId: string | undefined;
+    let adaptiveEvidence: MonitoringChartEvidence | undefined;
+    let fallbackServiceId: string | undefined;
+    let fallbackEvidence: MonitoringChartEvidence | undefined;
+
+    for (const [serviceId, evidence] of telemetryEvidenceByService) {
+      let latestEvidence: MonitoringChartEvidence | undefined;
+      let latestAdaptiveEvidence: MonitoringChartEvidence | undefined;
+      for (const item of evidence) {
+        if (!latestEvidence || compareEvidenceCursor(latestEvidence, item)) {
+          latestEvidence = item;
+        }
+        if (
+          item.strategy === "adaptive_stream" &&
+          (!latestAdaptiveEvidence ||
+            compareEvidenceCursor(latestAdaptiveEvidence, item))
+        ) {
+          latestAdaptiveEvidence = item;
+        }
+      }
+      if (!latestEvidence) continue;
+
+      if (
+        latestAdaptiveEvidence &&
+        (!adaptiveEvidence ||
+          compareEvidenceCursor(adaptiveEvidence, latestAdaptiveEvidence))
+      ) {
+        adaptiveEvidence = latestAdaptiveEvidence;
+        adaptiveServiceId = serviceId;
+      } else if (
+        !fallbackEvidence ||
+        compareEvidenceCursor(fallbackEvidence, latestEvidence)
+      ) {
+        fallbackEvidence = latestEvidence;
+        fallbackServiceId = serviceId;
+      }
+    }
+
+    return adaptiveServiceId ?? fallbackServiceId;
+  }, [monitoringService, telemetryEvidenceByService]);
+  const telemetryEvidence = useMemo(
+    () =>
+      selectedEvidenceServiceId
+        ? telemetryEvidenceInRange.filter(
+            (item) => item.service_id === selectedEvidenceServiceId,
+          )
+        : telemetryEvidenceInRange,
+    [telemetryEvidenceInRange, selectedEvidenceServiceId],
   );
   const operationalEvidence = useMemo(
     () =>
-      monitoringService
-        ? sensorEvidence.filter(
-            (item) => item.service_id === monitoringService.id,
+      selectedEvidenceServiceId
+        ? sensorEvidence.filter((item) =>
+            item.service_id === selectedEvidenceServiceId,
           )
         : [],
-    [monitoringService, sensorEvidence],
+    [sensorEvidence, selectedEvidenceServiceId],
   );
   const latestOperationalEvidenceTime = useMemo(() => {
     const times = operationalEvidence

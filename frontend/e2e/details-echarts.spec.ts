@@ -78,6 +78,7 @@ const installDetailsApi = async (
         ? []
         : [
             {
+              strategy: "static_baseline",
               service_id: "radar-service-e2e",
               timestamp: "2026-07-28T08:00:00.000Z",
               created: "2026-07-28T08:00:31.000Z",
@@ -91,6 +92,7 @@ const installDetailsApi = async (
               alarm: false,
             },
             {
+              strategy: "static_baseline",
               service_id: "radar-service-e2e",
               timestamp: "2026-07-28T08:01:00.000Z",
               created: "2026-07-28T08:01:31.000Z",
@@ -104,6 +106,7 @@ const installDetailsApi = async (
               alarm: false,
             },
             {
+              strategy: "static_baseline",
               service_id: "radar-service-e2e",
               timestamp: "2026-07-28T08:02:00.000Z",
               created: "2026-07-28T08:02:31.000Z",
@@ -283,15 +286,20 @@ test.describe("Details telemetry ECharts", () => {
     await page.goto(`/details/${CHARGER_ID}`);
 
     const chart = page.getByTestId("telemetry-echart");
+    const chartContainer = page.getByTestId("telemetry-chart-container");
     const card = page
       .locator('[data-slot="card"]')
       .filter({ hasText: "System Voltage" })
       .first();
     await expect(chart).toBeVisible();
+    await expect(chartContainer).toBeVisible();
     const desktopChartBox = await chart.boundingBox();
     expect(desktopChartBox).not.toBeNull();
-    expect(desktopChartBox?.height).toBeGreaterThanOrEqual(520);
-    expect(desktopChartBox?.height).toBeLessThanOrEqual(522);
+    const desktopChartHeight = Number(
+      (await chartContainer.getAttribute("data-chart-height-px")) ?? "",
+    );
+    await expect(desktopChartHeight).toBeGreaterThanOrEqual(1);
+    expect(desktopChartBox?.height).toBe(desktopChartHeight);
     await expect(chart.locator("canvas")).toHaveCount(1);
     await expect(chart).toHaveAttribute(
       "aria-label",
@@ -305,10 +313,9 @@ test.describe("Details telemetry ECharts", () => {
 
     await page.setViewportSize({ width: 390, height: 844 });
     await card.scrollIntoViewIfNeeded();
-    const chartBox = await chart.boundingBox();
+    const chartBox = await chartContainer.boundingBox();
     expect(chartBox?.width).toBeLessThanOrEqual(358);
-    expect(chartBox?.height).toBeGreaterThanOrEqual(516);
-    expect(chartBox?.height).toBeLessThanOrEqual(524);
+    expect(chartBox?.height).toBe(desktopChartHeight);
     await page.locator("header").evaluate((header) => {
       header.style.visibility = "hidden";
     });

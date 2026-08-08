@@ -263,9 +263,12 @@ test.describe("adaptive monitoring production lifecycle", () => {
       await evidenceRefresh;
       await expect(l1Card.getByText("1 awaiting score")).toBeHidden();
       await expect(l1Card.getByRole("button", { name: "Return to live" })).toBeVisible();
-      const scoreLabel = /Anomaly score/i;
-      await expect(l1Card.getByText(scoreLabel)).toBeVisible();
-      await expect(l2Card.getByText(scoreLabel)).toBeVisible();
+      await expect(
+        l1Card.locator('[data-testid="telemetry-series-value"][data-series-kind="adaptive-score"]'),
+      ).toBeVisible();
+      await expect(
+        l2Card.locator('[data-testid="telemetry-series-value"][data-series-kind="adaptive-score"]'),
+      ).toBeVisible();
     } finally {
       if (publisher) await publisher.endAsync();
       if (serviceId && authToken) {

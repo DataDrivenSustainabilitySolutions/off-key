@@ -402,12 +402,9 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
     [telemetryEvidence],
   );
   const paneCount = 1 + (hasStaticPane ? 1 : 0) + (hasAdaptivePane ? 1 : 0);
+  const chartHeightPx = paneCount === 3 ? 680 : paneCount === 2 ? 520 : 420;
   const chartHeightClass =
-    paneCount === 3
-      ? "h-[680px]"
-      : paneCount === 2
-        ? "h-[520px]"
-        : "h-[420px]";
+    paneCount === 3 ? "h-[680px]" : paneCount === 2 ? "h-[520px]" : "h-[420px]";
 
   if (telemetryData.data.length === 0) {
     return (
@@ -589,13 +586,20 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
                   </>
                 )}
               </div>
-              <EChart
-                option={chartOption}
-                resolvedTheme={resolvedTheme}
-                accessibleDescription={accessibleDescription}
-                onViewportChange={handleViewportChange}
-                className={`${chartHeightClass} w-full min-w-0 touch-none`}
-              />
+              <div
+                data-testid="telemetry-chart-container"
+                data-chart-pane-count={paneCount}
+                data-chart-height-px={chartHeightPx}
+                className="w-full"
+              >
+                <EChart
+                  option={chartOption}
+                  resolvedTheme={resolvedTheme}
+                  accessibleDescription={accessibleDescription}
+                  onViewportChange={handleViewportChange}
+                  className={`${chartHeightClass} w-full min-w-0 touch-none`}
+                />
+              </div>
               <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 border-t border-border/60 pt-3 text-xs text-muted-foreground">
                 {latestTelemetry && (
                   <span>
@@ -604,12 +608,19 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
                     {formatChartTime(latestTelemetry[0], timeZone, "tooltip")}
                   </span>
                 )}
-                 {chartModel.secondarySeries.map((series) => {
+                {chartModel.secondarySeries.map((series) => {
                   const latest = [...series.data]
                     .reverse()
                     .find(([, value]) => value !== null);
                   return latest ? (
-                    <span key={series.id}>
+                    <span
+                      key={series.id}
+                      data-testid="telemetry-series-value"
+                      data-series-id={series.id}
+                      data-series-kind={series.kind}
+                      data-series-service-id={series.serviceId}
+                      data-series-name={series.name}
+                    >
                       {series.name}: {formatNumber(latest[1] as number)}
                     </span>
                   ) : null;

@@ -257,6 +257,18 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
   );
   const telemetryEvidenceByService = useMemo(() => {
     const buckets = new Map<string, MonitoringChartEvidence[]>();
+    sensorEvidence.forEach((item) => {
+      const bucket = buckets.get(item.service_id);
+      if (bucket) {
+        bucket.push(item);
+      } else {
+        buckets.set(item.service_id, [item]);
+      }
+    });
+    return buckets;
+  }, [sensorEvidence]);
+  const telemetryEvidenceByServiceInRange = useMemo(() => {
+    const buckets = new Map<string, MonitoringChartEvidence[]>();
     telemetryEvidenceInRange.forEach((item) => {
       const bucket = buckets.get(item.service_id);
       if (bucket) {
@@ -286,7 +298,7 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
     let fallbackServiceId: string | undefined;
     let fallbackEvidence: MonitoringChartEvidence | undefined;
 
-    for (const [serviceId, evidence] of telemetryEvidenceByService) {
+    for (const [serviceId, evidence] of telemetryEvidenceByServiceInRange) {
       let latestEvidence: MonitoringChartEvidence | undefined;
       let latestAdaptiveEvidence: MonitoringChartEvidence | undefined;
       for (const item of evidence) {
@@ -320,11 +332,7 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
     }
 
     return adaptiveServiceId ?? fallbackServiceId;
-  }, [monitoringService, telemetryEvidenceByService]);
-  const telemetryEvidence = useMemo(
-    () => telemetryEvidenceInRange,
-    [telemetryEvidenceInRange],
-  );
+  }, [monitoringService, telemetryEvidenceByService, telemetryEvidenceByServiceInRange]);
   const operationalEvidence = useMemo(
     () =>
       selectedEvidenceServiceId
@@ -334,6 +342,7 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
         : [],
     [sensorEvidence, selectedEvidenceServiceId],
   );
+  const telemetryEvidence = operationalEvidence;
   const latestOperationalEvidenceTime = useMemo(() => {
     const times = operationalEvidence
       .map((item) => getEvidenceTimeForSensor(item, telemetryData.type))

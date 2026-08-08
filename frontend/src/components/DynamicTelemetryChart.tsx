@@ -161,6 +161,11 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
   );
 
   const resetViewport = useCallback(() => {
+    if (rafIdRef.current !== undefined) {
+      cancelAnimationFrame(rafIdRef.current);
+      rafIdRef.current = undefined;
+    }
+    pendingViewportRef.current = null;
     commitNavigationState({
       range: activeNavigationState.range,
       viewport: { mode: "live" },
@@ -342,7 +347,7 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
         : [],
     [sensorEvidence, selectedEvidenceServiceId],
   );
-  const telemetryEvidence = operationalEvidence;
+  const telemetryEvidence = monitoringService ? operationalEvidence : sensorEvidence;
   const latestOperationalEvidenceTime = useMemo(() => {
     const times = operationalEvidence
       .map((item) => getEvidenceTimeForSensor(item, telemetryData.type))

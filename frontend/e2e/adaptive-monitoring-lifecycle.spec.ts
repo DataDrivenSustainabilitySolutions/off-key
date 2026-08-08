@@ -254,6 +254,14 @@ test.describe("adaptive monitoring production lifecycle", () => {
       }, { timeout: 120_000 }).toBe(true);
       expect(Date.parse(delayedEvidence!.timestamp)).toBe(Date.parse(pendingL2));
 
+      await expect.poll(async () => {
+        const response = await api.get(`/api/v1/telemetry/${chargerId}/data?type=L2&limit=1000`, {
+          headers: { Authorization: `Bearer ${authToken}` },
+        });
+        const rows = await response.json() as Array<{ timestamp: string }>;
+        return rows.some((row) => Date.parse(row.timestamp) === Date.parse(pendingL2));
+      }, { timeout: 120_000 }).toBe(true);
+
       const evidenceRefresh = page.waitForResponse((response) => {
         const url = new URL(response.url());
         return url.pathname.includes("/v1/monitors/evidence/chart") &&
@@ -263,11 +271,16 @@ test.describe("adaptive monitoring production lifecycle", () => {
       await evidenceRefresh;
       await expect(l1Card.getByText("1 awaiting score")).toBeHidden();
       await expect(l1Card.getByRole("button", { name: "Return to live" })).toBeVisible();
+      const adaptiveScoreText = /Anomaly score:/u;
       await expect(
-        l1Card.locator('[data-testid="telemetry-series-value"][data-series-kind="adaptive-score"]'),
+        l1Card.locator('[data-testid="telemetry-series-value"]', {
+          hasText: adaptiveScoreText,
+        }),
       ).toBeVisible();
       await expect(
-        l2Card.locator('[data-testid="telemetry-series-value"][data-series-kind="adaptive-score"]'),
+        l2Card.locator('[data-testid="telemetry-series-value"]', {
+          hasText: adaptiveScoreText,
+        }),
       ).toBeVisible();
     } finally {
       if (publisher) await publisher.endAsync();

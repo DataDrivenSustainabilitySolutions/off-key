@@ -55,6 +55,7 @@ const formatDisplayName = (value: string): string =>
 
 const formatOperationalStage = (stage: string): string =>
   stage.replace(/_/gu, " ");
+const formatSeriesKindForData = (kind: string): string => kind.replace(/_/gu, "-");
 
 const getLatestFiniteTime = (telemetryData: TelemetryTypeData): number | undefined => {
   const times = telemetryData.data
@@ -617,7 +618,7 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
                       key={series.id}
                       data-testid="telemetry-series-value"
                       data-series-id={series.id}
-                      data-series-kind={series.kind}
+                      data-series-kind={formatSeriesKindForData(series.kind)}
                       data-series-service-id={series.serviceId}
                       data-series-name={series.name}
                     >

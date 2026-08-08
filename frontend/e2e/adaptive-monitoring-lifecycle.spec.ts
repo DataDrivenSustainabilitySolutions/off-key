@@ -278,8 +278,12 @@ test.describe("adaptive monitoring production lifecycle", () => {
       await expect(l1Card.getByText("1 awaiting score")).toBeHidden();
       await expect(l1Card.getByRole("button", { name: "Return to live" })).toBeVisible();
       const scoreLabel = /^Anomaly score:/u;
-      await expect(l1Card.getByText(scoreLabel)).toBeVisible({ timeout: 120_000 });
-      await expect(l2Card.getByText(scoreLabel)).toBeVisible({ timeout: 120_000 });
+      await expect(l1Card.getByText(scoreLabel)).toBeVisible({ timeout: 30_000 });
+      await l2Card.scrollIntoViewIfNeeded();
+      await expect(l2Card.getByTestId("telemetry-echart")).toBeVisible({
+        timeout: 30_000,
+      });
+      await expect(l2Card.getByText(scoreLabel)).toBeVisible({ timeout: 30_000 });
     } finally {
       if (publisher) await publisher.endAsync();
       if (serviceId && authToken) {

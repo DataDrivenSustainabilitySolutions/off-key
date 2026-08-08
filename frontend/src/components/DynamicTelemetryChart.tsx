@@ -322,13 +322,8 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
     return adaptiveServiceId ?? fallbackServiceId;
   }, [monitoringService, telemetryEvidenceByService]);
   const telemetryEvidence = useMemo(
-    () =>
-      selectedEvidenceServiceId
-        ? telemetryEvidenceInRange.filter(
-            (item) => item.service_id === selectedEvidenceServiceId,
-          )
-        : telemetryEvidenceInRange,
-    [telemetryEvidenceInRange, selectedEvidenceServiceId],
+    () => telemetryEvidenceInRange,
+    [telemetryEvidenceInRange],
   );
   const operationalEvidence = useMemo(
     () =>

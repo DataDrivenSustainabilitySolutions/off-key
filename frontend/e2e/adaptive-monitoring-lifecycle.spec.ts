@@ -254,18 +254,36 @@ test.describe("adaptive monitoring production lifecycle", () => {
       }, { timeout: 120_000 }).toBe(true);
       expect(Date.parse(delayedEvidence!.timestamp)).toBe(Date.parse(pendingL2));
 
+      await expect.poll(async () => {
+        const response = await api.get(`/api/v1/telemetry/${chargerId}/data?type=L2&limit=1000`, {
+          headers: { Authorization: `Bearer ${authToken}` },
+        });
+        const rows = await response.json() as Array<{ timestamp: string }>;
+        return rows.some((row) => Date.parse(row.timestamp) === Date.parse(pendingL2));
+      }, { timeout: 120_000 }).toBe(true);
+
       const evidenceRefresh = page.waitForResponse((response) => {
         const url = new URL(response.url());
         return url.pathname.includes("/v1/monitors/evidence/chart") &&
           url.searchParams.has("after_created");
       });
+      const l2TelemetryRefresh = page.waitForResponse((response) => {
+        const url = new URL(response.url());
+        return url.pathname.includes(`/v1/telemetry/${chargerId}/data`) &&
+          url.searchParams.get("type") === "L2" &&
+          url.searchParams.has("after_created");
+      });
       await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
-      await evidenceRefresh;
+      await Promise.all([evidenceRefresh, l2TelemetryRefresh]);
       await expect(l1Card.getByText("1 awaiting score")).toBeHidden();
       await expect(l1Card.getByRole("button", { name: "Return to live" })).toBeVisible();
-      const scoreLabel = /Anomaly score/i;
-      await expect(l1Card.getByText(scoreLabel)).toBeVisible();
-      await expect(l2Card.getByText(scoreLabel)).toBeVisible();
+      const scoreLabel = /^Anomaly score:/u;
+      await expect(l1Card.getByText(scoreLabel)).toBeVisible({ timeout: 30_000 });
+      await l2Card.scrollIntoViewIfNeeded();
+      await expect(l2Card.getByTestId("telemetry-echart")).toBeVisible({
+        timeout: 30_000,
+      });
+      await expect(l2Card.getByText(scoreLabel)).toBeVisible({ timeout: 30_000 });
     } finally {
       if (publisher) await publisher.endAsync();
       if (serviceId && authToken) {

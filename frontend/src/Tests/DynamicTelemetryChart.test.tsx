@@ -260,6 +260,98 @@ describe("DynamicTelemetryChart", () => {
     });
   });
 
+  it("never substitutes historical evidence for the active monitoring service", async () => {
+    const historicalEvidence = {
+      ...scoreEvidence("2026-07-27T10:00:00Z", 1),
+      service_id: "service-historical",
+    };
+    const { rerender } = render(
+      <ThemeProvider defaultTheme="light">
+        <DynamicTelemetryChart
+          telemetryData={telemetry()}
+          evidence={[historicalEvidence]}
+          monitoringService={operationalService}
+        />
+      </ThemeProvider>,
+    );
+
+    expect(screen.getByText("Awaiting first score")).toBeTruthy();
+    expect(screen.queryByText("Adaptive scores")).toBeNull();
+    showChart();
+    await screen.findByRole("img");
+    expect(inspectOption().series.map(({ id }) => id)).toEqual(["telemetry"]);
+
+    rerender(
+      <ThemeProvider defaultTheme="light">
+        <DynamicTelemetryChart
+          telemetryData={telemetry()}
+          evidence={[
+            historicalEvidence,
+            scoreEvidence("2026-07-27T10:02:00Z", 2),
+          ]}
+          monitoringService={operationalService}
+        />
+      </ThemeProvider>,
+    );
+
+    await waitFor(() =>
+      expect(inspectOption().series.map(({ id }) => id)).toEqual([
+        "telemetry",
+        "adaptive-score:service-adaptive",
+        "adaptive-threshold:service-adaptive",
+      ]),
+    );
+  });
+
+  it("sizes panes from renderable evidence rather than buffered rows", async () => {
+    const bufferedEvidence = scoreEvidence("2026-07-27T10:01:00Z", 1);
+    render(
+      <ThemeProvider defaultTheme="light">
+        <DynamicTelemetryChart
+          telemetryData={telemetry()}
+          evidence={[bufferedEvidence]}
+          monitoringService={operationalService}
+        />
+      </ThemeProvider>,
+    );
+
+    const placeholder = document.querySelector('div[aria-hidden="true"]');
+    expect(placeholder?.className).toContain("h-[420px]");
+    expect(screen.queryByText("Adaptive scores")).toBeNull();
+
+    showChart();
+    await screen.findByRole("img");
+    expect(inspectOption().grid).toHaveLength(1);
+  });
+
+  it("cancels a queued viewport update when returning to live", async () => {
+    const frames = new Map<number, FrameRequestCallback>();
+    let nextFrameId = 1;
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
+      const frameId = nextFrameId;
+      nextFrameId += 1;
+      frames.set(frameId, callback);
+      return frameId;
+    });
+    vi.stubGlobal("cancelAnimationFrame", (frameId: number) => {
+      frames.delete(frameId);
+    });
+
+    render(renderChart(telemetry()));
+    showChart();
+    fireEvent.click(await screen.findByRole("img"));
+    fireEvent.click(screen.getByRole("button", { name: "Return to live" }));
+
+    act(() => {
+      for (const callback of frames.values()) callback(performance.now());
+      frames.clear();
+    });
+
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "Return to live" })).toBeNull(),
+    );
+  });
+
   it("uses the teal GUI accent primary color for the original telemetry series", async () => {
     render(renderChart(telemetry()));
     await waitFor(() =>

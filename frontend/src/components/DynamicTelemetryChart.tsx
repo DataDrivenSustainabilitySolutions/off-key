@@ -55,29 +55,12 @@ const formatDisplayName = (value: string): string =>
 
 const formatOperationalStage = (stage: string): string =>
   stage.replace(/_/gu, " ");
-const formatSeriesKindForData = (kind: string): string => kind.replace(/_/gu, "-");
 
 const getLatestFiniteTime = (telemetryData: TelemetryTypeData): number | undefined => {
   const times = telemetryData.data
     .map(({ timestamp }) => Date.parse(timestamp))
     .filter(Number.isFinite);
   return times.length > 0 ? Math.max(...times) : undefined;
-};
-
-const compareEvidenceCursor = (
-  left: MonitoringChartEvidence,
-  right: MonitoringChartEvidence,
-): boolean => {
-  const leftCreated = Date.parse(left.timestamp);
-  const rightCreated = Date.parse(right.timestamp);
-  if (!Number.isFinite(leftCreated) || !Number.isFinite(rightCreated)) {
-    return rightCreated > leftCreated;
-  }
-  if (leftCreated !== rightCreated) return leftCreated < rightCreated;
-  if (left.sequence_number !== right.sequence_number) {
-    return left.sequence_number < right.sequence_number;
-  }
-  return left.service_id.localeCompare(right.service_id) < 0;
 };
 
 export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
@@ -249,105 +232,27 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
       ),
     [evidence, telemetryData.type],
   );
-  const telemetryEvidenceInRange = useMemo(
+  const telemetryEvidence = useMemo(
     () =>
       sensorEvidence.filter((item) => {
         const time = getEvidenceTimeForSensor(item, telemetryData.type);
-        return (
-          time !== undefined &&
-          isWithinTimeRange(new Date(time).toISOString(), fromDate, toDate)
-        );
+        if (time === undefined) return false;
+        if (!isWithinTimeRange(new Date(time).toISOString(), fromDate, toDate)) {
+          return false;
+        }
+        return !monitoringService || item.service_id === monitoringService.id;
       }),
-    [fromDate, sensorEvidence, telemetryData.type, toDate],
+    [fromDate, monitoringService, sensorEvidence, telemetryData.type, toDate],
   );
-  const telemetryEvidenceByService = useMemo(() => {
-    const buckets = new Map<string, MonitoringChartEvidence[]>();
-    sensorEvidence.forEach((item) => {
-      const bucket = buckets.get(item.service_id);
-      if (bucket) {
-        bucket.push(item);
-      } else {
-        buckets.set(item.service_id, [item]);
-      }
-    });
-    return buckets;
-  }, [sensorEvidence]);
-  const telemetryEvidenceByServiceInRange = useMemo(() => {
-    const buckets = new Map<string, MonitoringChartEvidence[]>();
-    telemetryEvidenceInRange.forEach((item) => {
-      const bucket = buckets.get(item.service_id);
-      if (bucket) {
-        bucket.push(item);
-      } else {
-        buckets.set(item.service_id, [item]);
-      }
-    });
-    return buckets;
-  }, [telemetryEvidenceInRange]);
-  const selectedEvidenceServiceId = useMemo(() => {
-    if (telemetryEvidenceByService.size === 0) return undefined;
-    const monitoringEvidence =
-      monitoringService?.id
-        ? telemetryEvidenceByService.get(monitoringService.id)
-        : undefined;
-    if (
-      monitoringService?.id &&
-      monitoringEvidence !== undefined &&
-      monitoringEvidence.length > 0
-    ) {
-      return monitoringService.id;
-    }
-
-    let adaptiveServiceId: string | undefined;
-    let adaptiveEvidence: MonitoringChartEvidence | undefined;
-    let fallbackServiceId: string | undefined;
-    let fallbackEvidence: MonitoringChartEvidence | undefined;
-
-    for (const [serviceId, evidence] of telemetryEvidenceByServiceInRange) {
-      let latestEvidence: MonitoringChartEvidence | undefined;
-      let latestAdaptiveEvidence: MonitoringChartEvidence | undefined;
-      for (const item of evidence) {
-        if (!latestEvidence || compareEvidenceCursor(latestEvidence, item)) {
-          latestEvidence = item;
-        }
-        if (
-          item.strategy === "adaptive_stream" &&
-          (!latestAdaptiveEvidence ||
-            compareEvidenceCursor(latestAdaptiveEvidence, item))
-        ) {
-          latestAdaptiveEvidence = item;
-        }
-      }
-      if (!latestEvidence) continue;
-
-      if (
-        latestAdaptiveEvidence &&
-        (!adaptiveEvidence ||
-          compareEvidenceCursor(adaptiveEvidence, latestAdaptiveEvidence))
-      ) {
-        adaptiveEvidence = latestAdaptiveEvidence;
-        adaptiveServiceId = serviceId;
-      } else if (
-        !fallbackEvidence ||
-        compareEvidenceCursor(fallbackEvidence, latestEvidence)
-      ) {
-        fallbackEvidence = latestEvidence;
-        fallbackServiceId = serviceId;
-      }
-    }
-
-    return adaptiveServiceId ?? fallbackServiceId;
-  }, [monitoringService, telemetryEvidenceByService, telemetryEvidenceByServiceInRange]);
   const operationalEvidence = useMemo(
     () =>
-      selectedEvidenceServiceId
-        ? sensorEvidence.filter((item) =>
-            item.service_id === selectedEvidenceServiceId,
+      monitoringService
+        ? sensorEvidence.filter(
+            (item) => item.service_id === monitoringService.id,
           )
         : [],
-    [sensorEvidence, selectedEvidenceServiceId],
+    [monitoringService, sensorEvidence],
   );
-  const telemetryEvidence = monitoringService ? operationalEvidence : sensorEvidence;
   const latestOperationalEvidenceTime = useMemo(() => {
     const times = operationalEvidence
       .map((item) => getEvidenceTimeForSensor(item, telemetryData.type))
@@ -373,9 +278,7 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
         : [],
     [filteredData, latestOperationalEvidenceTime, serviceIsOperational],
   );
-  const shouldBuildChart = !collapsed && isChartVisible;
   const chartModel = useMemo(() => {
-    if (!shouldBuildChart) return undefined;
     return buildTelemetryChartModel({
       telemetryType: telemetryData.type,
       telemetryName: displayName,
@@ -390,7 +293,6 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
   }, [
     displayName,
     filteredData,
-    shouldBuildChart,
     telemetryAnomalies,
     telemetryData.type,
     telemetryData.unit,
@@ -399,15 +301,19 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
     themeColors.primary,
   ]);
   const accessibleDescription = useMemo(() => {
-    const pointCount = chartModel?.telemetry.data.length ?? 0;
-    const staticCount = chartModel?.secondarySeries.filter((series) => series.pane === "static").length ?? 0;
-    const adaptiveCount = chartModel?.secondarySeries.filter((series) => series.pane === "adaptive").length ?? 0;
-    const pendingCount = chartModel?.pendingTelemetry.length ?? 0;
+    const pointCount = chartModel.telemetry.data.length;
+    const staticCount = chartModel.secondarySeries.filter(
+      (series) => series.pane === "static",
+    ).length;
+    const adaptiveCount = chartModel.secondarySeries.filter(
+      (series) => series.pane === "adaptive",
+    ).length;
+    const pendingCount = chartModel.pendingTelemetry.length;
     return `${displayName} telemetry chart with ${pointCount} points${staticCount ? `, ${staticCount} logarithmic static-evidence series` : ""}${adaptiveCount ? `, and ${adaptiveCount} linear adaptive score and threshold series` : ""}${pendingCount ? `, with ${pendingCount} observations awaiting anomaly scores` : ""}. Evidence panes share the telemetry time axis. Times are shown in ${timeZone}.`;
   }, [chartModel, displayName, timeZone]);
   const chartOption = useMemo(
     () =>
-      chartModel
+      !collapsed && isChartVisible
         ? buildTelemetryChartOption({
             model: chartModel,
             viewport,
@@ -420,6 +326,8 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
     [
       accessibleDescription,
       chartModel,
+      collapsed,
+      isChartVisible,
       themeColors,
       timeZone,
       timelineExtent,
@@ -437,7 +345,7 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
         viewport: { mode: "absolute", startMs, endMs },
         inspectionDataEndMs:
           activeNavigationState.inspectionDataEndMs ??
-          (timelineExtent ?? chartModel?.extent)?.[1],
+          (timelineExtent ?? chartModel.extent)?.[1],
       });
 
       rafIdRef.current = requestAnimationFrame(() => {
@@ -450,19 +358,19 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
           viewport: { mode: "absolute", startMs: pending.startMs, endMs: pending.endMs },
           inspectionDataEndMs:
             activeNavigationState.inspectionDataEndMs ??
-            (timelineExtent ?? chartModel?.extent)?.[1],
+            (timelineExtent ?? chartModel.extent)?.[1],
         });
       });
     },
     [
       activeNavigationState,
-      chartModel?.extent,
+      chartModel.extent,
       commitNavigationState,
       timelineExtent,
     ],
   );
   const zoomIn = useCallback(() => {
-    const extent = timelineExtent ?? chartModel?.extent;
+    const extent = timelineExtent ?? chartModel.extent;
     if (!extent) return;
     const startMs = viewport.mode === "absolute" ? viewport.startMs : extent[0];
     const endMs = viewport.mode === "absolute" ? viewport.endMs : extent[1];
@@ -480,7 +388,7 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
     });
   }, [
     activeNavigationState,
-    chartModel?.extent,
+    chartModel.extent,
     commitNavigationState,
     timelineExtent,
     viewport,
@@ -488,24 +396,25 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
   const hasNewData =
     viewport.mode === "absolute" &&
     activeNavigationState.inspectionDataEndMs !== undefined &&
-    chartModel?.extent !== undefined &&
+    chartModel.extent !== undefined &&
     chartModel.extent[1] > activeNavigationState.inspectionDataEndMs;
-  const latestTelemetry = chartModel?.telemetry.data[
+  const latestTelemetry = chartModel.telemetry.data[
     chartModel.telemetry.data.length - 1
   ];
 
-  const hasStaticPane = useMemo(
-    () => telemetryEvidence.some((item) => item.strategy !== "adaptive_stream"),
-    [telemetryEvidence],
+  const hasStaticPane = chartModel.secondarySeries.some(
+    (series) => series.pane === "static",
   );
-  const hasAdaptivePane = useMemo(
-    () => telemetryEvidence.some((item) => item.strategy === "adaptive_stream"),
-    [telemetryEvidence],
+  const hasAdaptivePane = chartModel.secondarySeries.some(
+    (series) => series.pane === "adaptive",
   );
   const paneCount = 1 + (hasStaticPane ? 1 : 0) + (hasAdaptivePane ? 1 : 0);
-  const chartHeightPx = paneCount === 3 ? 680 : paneCount === 2 ? 520 : 420;
   const chartHeightClass =
-    paneCount === 3 ? "h-[680px]" : paneCount === 2 ? "h-[520px]" : "h-[420px]";
+    paneCount === 3
+      ? "h-[680px]"
+      : paneCount === 2
+        ? "h-[520px]"
+        : "h-[420px]";
 
   if (telemetryData.data.length === 0) {
     return (
@@ -543,13 +452,13 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
           <span className="rounded-full border border-border/70 bg-card px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
             {telemetryData.category}
           </span>
-          {telemetryEvidence.some((item) => item.strategy !== "adaptive_stream") && (
+          {hasStaticPane && (
             <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/[0.07] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-emerald-700 dark:text-emerald-300">
               <span className="size-1.5 rounded-full bg-emerald-500" />
               Restarted evidence
             </span>
           )}
-          {telemetryEvidence.some((item) => item.strategy === "adaptive_stream") && (
+          {hasAdaptivePane && (
             <span className="inline-flex items-center gap-1.5 rounded-full border border-violet-500/20 bg-violet-500/[0.07] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-violet-700 dark:text-violet-300">
               <span className="size-1.5 rounded-full bg-violet-500" />
               Adaptive scores
@@ -687,20 +596,13 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
                   </>
                 )}
               </div>
-              <div
-                data-testid="telemetry-chart-container"
-                data-chart-pane-count={paneCount}
-                data-chart-height-px={chartHeightPx}
-                className="w-full"
-              >
-                <EChart
-                  option={chartOption}
-                  resolvedTheme={resolvedTheme}
-                  accessibleDescription={accessibleDescription}
-                  onViewportChange={handleViewportChange}
-                  className={`${chartHeightClass} w-full min-w-0 touch-none`}
-                />
-              </div>
+              <EChart
+                option={chartOption}
+                resolvedTheme={resolvedTheme}
+                accessibleDescription={accessibleDescription}
+                onViewportChange={handleViewportChange}
+                className={`${chartHeightClass} w-full min-w-0 touch-none`}
+              />
               <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 border-t border-border/60 pt-3 text-xs text-muted-foreground">
                 {latestTelemetry && (
                   <span>
@@ -714,14 +616,7 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
                     .reverse()
                     .find(([, value]) => value !== null);
                   return latest ? (
-                    <span
-                      key={series.id}
-                      data-testid="telemetry-series-value"
-                      data-series-id={series.id}
-                      data-series-kind={formatSeriesKindForData(series.kind)}
-                      data-series-service-id={series.serviceId}
-                      data-series-name={series.name}
-                    >
+                    <span key={series.id}>
                       {series.name}: {formatNumber(latest[1] as number)}
                     </span>
                   ) : null;

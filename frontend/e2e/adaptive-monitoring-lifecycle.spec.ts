@@ -267,18 +267,19 @@ test.describe("adaptive monitoring production lifecycle", () => {
         return url.pathname.includes("/v1/monitors/evidence/chart") &&
           url.searchParams.has("after_created");
       });
+      const l2TelemetryRefresh = page.waitForResponse((response) => {
+        const url = new URL(response.url());
+        return url.pathname.includes(`/v1/telemetry/${chargerId}/data`) &&
+          url.searchParams.get("type") === "L2" &&
+          url.searchParams.has("after_created");
+      });
       await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
-      await evidenceRefresh;
+      await Promise.all([evidenceRefresh, l2TelemetryRefresh]);
       await expect(l1Card.getByText("1 awaiting score")).toBeHidden();
       await expect(l1Card.getByRole("button", { name: "Return to live" })).toBeVisible();
-      await expect(
-        l1Card.locator('[data-testid="telemetry-series-value"][data-series-name="Anomaly score"]'),
-        { timeout: 120_000 },
-      ).toBeVisible();
-      await expect(
-        l2Card.locator('[data-testid="telemetry-series-value"][data-series-name="Anomaly score"]'),
-        { timeout: 120_000 },
-      ).toBeVisible();
+      const scoreLabel = /^Anomaly score:/u;
+      await expect(l1Card.getByText(scoreLabel)).toBeVisible({ timeout: 120_000 });
+      await expect(l2Card.getByText(scoreLabel)).toBeVisible({ timeout: 120_000 });
     } finally {
       if (publisher) await publisher.endAsync();
       if (serviceId && authToken) {

@@ -286,20 +286,15 @@ test.describe("Details telemetry ECharts", () => {
     await page.goto(`/details/${CHARGER_ID}`);
 
     const chart = page.getByTestId("telemetry-echart");
-    const chartContainer = page.getByTestId("telemetry-chart-container");
     const card = page
       .locator('[data-slot="card"]')
       .filter({ hasText: "System Voltage" })
       .first();
     await expect(chart).toBeVisible();
-    await expect(chartContainer).toBeVisible();
     const desktopChartBox = await chart.boundingBox();
     expect(desktopChartBox).not.toBeNull();
-    const desktopChartHeight = Number(
-      (await chartContainer.getAttribute("data-chart-height-px")) ?? "",
-    );
-    await expect(desktopChartHeight).toBeGreaterThanOrEqual(1);
-    expect(desktopChartBox?.height).toBe(desktopChartHeight);
+    expect(desktopChartBox?.height).toBeGreaterThanOrEqual(520);
+    expect(desktopChartBox?.height).toBeLessThanOrEqual(522);
     await expect(chart.locator("canvas")).toHaveCount(1);
     await expect(chart).toHaveAttribute(
       "aria-label",
@@ -313,17 +308,10 @@ test.describe("Details telemetry ECharts", () => {
 
     await page.setViewportSize({ width: 390, height: 844 });
     await card.scrollIntoViewIfNeeded();
-    const mobileChartPaneCount = Number(
-      (await chartContainer.getAttribute("data-chart-pane-count")) ?? "",
-    );
-    const mobileChartHeight = Number(
-      (await chartContainer.getAttribute("data-chart-height-px")) ?? "",
-    );
-    expect(mobileChartPaneCount).toBe(2);
-    expect(mobileChartHeight).toBe(desktopChartHeight);
-    const chartBox = await chartContainer.boundingBox();
+    const chartBox = await chart.boundingBox();
     expect(chartBox?.width).toBeLessThanOrEqual(358);
-    expect(chartBox?.height).toBe(mobileChartHeight);
+    expect(chartBox?.height).toBeGreaterThanOrEqual(516);
+    expect(chartBox?.height).toBeLessThanOrEqual(524);
     await page.locator("header").evaluate((header) => {
       header.style.visibility = "hidden";
     });

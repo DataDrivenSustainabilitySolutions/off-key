@@ -31,7 +31,7 @@ def _publish(topic: str, value: float, timestamp: datetime) -> None:
 
 def test_gateway_to_postgres_adaptive_multisensor_input_correlation() -> None:
     token = os.environ["E2E_AUTH_TOKEN"]
-    base_url = os.getenv("E2E_API_URL", "http://localhost:8000/api")
+    gateway_url = os.getenv("E2E_GATEWAY_URL", "http://localhost:8000").rstrip("/")
     charger_id = f"adaptive-e2e-{uuid.uuid4().hex[:8]}"
     topics = [
         f"charger/{charger_id}/live-telemetry/L1",
@@ -40,7 +40,13 @@ def test_gateway_to_postgres_adaptive_multisensor_input_correlation() -> None:
     service_id: str | None = None
     headers = {"Authorization": f"Bearer {token}"}
 
-    with httpx.Client(base_url=base_url, headers=headers, timeout=210) as client:
+    with httpx.Client(base_url=gateway_url, headers=headers, timeout=210) as client:
+        openapi_response = client.get("/openapi.json")
+        openapi_response.raise_for_status()
+        assert "/v1/monitors/start" in openapi_response.json().get("paths", {}), (
+            f"Gateway at {gateway_url} does not expose /v1/monitors/start"
+        )
+
         response = client.post(
             "/v1/monitors/start",
             json={

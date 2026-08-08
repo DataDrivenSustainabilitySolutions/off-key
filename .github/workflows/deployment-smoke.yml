@@ -370,7 +370,7 @@ jobs:
           set +a
 
           export RUN_ADAPTIVE_E2E=1
-          export E2E_API_URL=http://localhost:8000/api
+          export E2E_GATEWAY_URL=http://localhost:8000
           export E2E_AUTH_TOKEN="$(node -e "const state=require('./frontend/test-results/.auth/user.json'); const token=state.origins.flatMap(({localStorage=[]})=>localStorage).find(({name})=>name==='auth_token')?.value; if (!token) process.exit(1); process.stdout.write(token)")"
           uv run --project backend python -m pytest backend/tests/test_adaptive_lane_e2e.py -q
 

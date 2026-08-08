@@ -73,7 +73,7 @@ test.describe("adaptive monitoring production lifecycle", () => {
 
     try {
       const activePublisher = await connectAsync(
-        process.env.MQTT_SOURCE_URL ?? "mqtt://localhost:1884",
+        process.env.MQTT_SOURCE_URL ?? "mqtt://127.0.0.1:1883",
         { clientId: `playwright-${chargerId}` },
       );
       publisher = activePublisher;

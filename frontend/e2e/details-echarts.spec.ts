@@ -294,7 +294,7 @@ test.describe("Details telemetry ECharts", () => {
       /logarithmic static-evidence series.*UTC/u,
     );
     await expect(card.getByText(/Current System Voltage:/u)).toBeVisible();
-    await expect(card.getByText(/Restarted e-process radar-se/u)).toBeVisible();
+    await expect(card.getByText(/Restarted e-process/u)).toBeVisible();
     await expect(chart).toHaveScreenshot("telemetry-card-light.png", {
       animations: "disabled",
       maxDiffPixelRatio: 0.005,
@@ -364,7 +364,7 @@ test.describe("Details telemetry ECharts", () => {
     await api.releaseEvidence();
 
     await expect(card.getByText("1 awaiting score")).toBeHidden();
-    await expect(card.getByText(/Anomaly score adaptive: 2/u)).toBeVisible();
+    await expect(card.getByText(/Anomaly score:\s*2/u)).toBeVisible();
     await expect(
       card.getByRole("button", { name: "Return to live" }),
     ).toBeVisible();

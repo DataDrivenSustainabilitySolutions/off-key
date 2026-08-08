@@ -321,6 +321,7 @@ jobs:
             --workdir /work \
             --env-file "${PWD}/.env" \
             --env CI=true \
+            --env MQTT_SOURCE_URL=mqtt://localhost:1883 \
             --env PLAYWRIGHT_BASE_URL=http://localhost:5173 \
             "${playwright_image}" \
             npm run test:e2e

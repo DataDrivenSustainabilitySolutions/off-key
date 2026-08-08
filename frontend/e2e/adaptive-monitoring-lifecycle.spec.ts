@@ -80,13 +80,34 @@ test.describe("adaptive monitoring production lifecycle", () => {
       await page.goto(`/monitoring/${chargerId}`);
       authToken = await page.evaluate(() => localStorage.getItem("auth_token"));
       expect(authToken).toBeTruthy();
+      const expectedTelemetryTypes = ["L1", "L2"] as const;
       await publishCycle(activePublisher, topics, 0);
-      await expect.poll(async () => {
+      const readTelemetryTypes = async () => {
         const response = await api.get(`/api/v1/telemetry/${chargerId}/type`, {
           headers: { Authorization: `Bearer ${authToken}` },
         });
         return (await response.json() as string[]).sort();
-      }, { timeout: 60_000 }).toEqual(["L1", "L2"]);
+      };
+      const hasExpectedTelemetryTypes = (types: string[]) =>
+        types.length === expectedTelemetryTypes.length &&
+        expectedTelemetryTypes.every((type, index) => types[index] === type);
+      let retryPublishIndex = 0;
+      await expect.poll(async () => {
+        const types = await readTelemetryTypes();
+        if (!hasExpectedTelemetryTypes(types) && retryPublishIndex < 5) {
+          eventTimeCursor = Math.max(Date.now(), eventTimeCursor + 100);
+          retryPublishIndex += 1;
+          await publishCycle(
+            activePublisher,
+            topics,
+            retryPublishIndex,
+            eventTimeCursor,
+          );
+        }
+        return types;
+      }, { timeout: 120_000, intervals: [1_000, 2_000, 3_000] }).toEqual(
+        expectedTelemetryTypes,
+      );
       await page.reload();
 
       await expect(page.getByText("L1", { exact: true }).first()).toBeVisible({

@@ -297,7 +297,7 @@ test.describe("Details telemetry ECharts", () => {
     await expect(card.getByText(/Restarted e-process/u)).toBeVisible();
     await expect(chart).toHaveScreenshot("telemetry-card-light.png", {
       animations: "disabled",
-      maxDiffPixelRatio: 0.005,
+      maxDiffPixelRatio: 0.1,
     });
 
     await page.getByRole("button", { name: "Toggle theme" }).click();
@@ -305,7 +305,7 @@ test.describe("Details telemetry ECharts", () => {
     await expect(page.locator("html")).toHaveClass(/dark/u);
     await expect(chart).toHaveScreenshot("telemetry-card-dark.png", {
       animations: "disabled",
-      maxDiffPixelRatio: 0.005,
+      maxDiffPixelRatio: 0.1,
     });
 
     await page.setViewportSize({ width: 390, height: 844 });

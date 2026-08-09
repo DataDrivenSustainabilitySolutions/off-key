@@ -30,7 +30,7 @@ describe("<Services />", () => {
       id: "service-1",
       container_id: "container-1",
       container_name: "radar-adaptive-charger-1-123",
-      mqtt_topics: ["charger/charger-1/live-telemetry/random"],
+      mqtt_topics: ["device/evCharger/charger-1/random"],
       status: true,
       docker_status: "running",
       monitoring_strategy: "adaptive_stream",

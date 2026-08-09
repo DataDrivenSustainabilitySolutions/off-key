@@ -59,8 +59,8 @@ test.describe("adaptive monitoring production lifecycle", () => {
   }) => {
     const chargerId = `adaptive-e2e-${Date.now()}`;
     const topics = {
-      L1: `charger/${chargerId}/live-telemetry/L1`,
-      L2: `charger/${chargerId}/live-telemetry/L2`,
+      L1: `device/evCharger/${chargerId}/L1`,
+      L2: `device/evCharger/${chargerId}/L2`,
     };
     let serviceId: string | undefined;
     let authToken: string | null = null;

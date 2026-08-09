@@ -77,7 +77,7 @@ def sample_mqtt_message():
     from off_key_mqtt_radar.models import MQTTMessage
 
     return MQTTMessage(
-        topic="charger/charger-001/telemetry/cpu",
+        topic="device/evCharger/charger-001/cpu",
         payload=b'{"cpu_usage": 45.5, "temperature": 65.2}',
         qos=1,
         retain=False,
@@ -97,7 +97,7 @@ def sample_anomaly_result():
         timestamp=datetime.now(UTC),
         model_info={"model_type": "isolation_forest"},
         raw_data={"cpu_usage": 95.5},
-        topic="charger/charger-001/telemetry/cpu",
+        topic="device/evCharger/charger-001/cpu",
         charger_id="charger-001",
         context={"processing_time_ms": 5.2},
     )

@@ -9,6 +9,7 @@ import { API_CONFIG } from "@/lib/api-config";
 import { apiUtils } from "@/lib/api-client";
 import { getTelemetryTypes } from "@/lib/charger-api";
 import { getErrorMessage } from "@/lib/errors";
+import { buildDeviceTelemetryChargerFilter } from "@/lib/mqtt-topics";
 import type { Anomaly } from "@/types/charger";
 import { getServiceDeleteActionDisplay } from "@/types/monitoring";
 import type { ActiveService, ModelDefinition } from "@/types/monitoring";
@@ -18,7 +19,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import { useParams } from "react-router-dom";
 
-import { buildSensorClaims } from "./monitoring/config";
+import { buildSensorClaims, mqttFiltersOverlap } from "./monitoring/config";
 import { AdaptiveMonitoringSetup } from "./monitoring/AdaptiveMonitoringSetup";
 import { MonitoringDataPanels } from "./monitoring/MonitoringDataPanels";
 import { LaneCard } from "./monitoring/MonitoringUi";
@@ -57,8 +58,10 @@ function Monitoring() {
       services.filter((service) =>
         (service.mqtt_topics ?? []).some(
           (topic) =>
-            topic.startsWith(`charger/${chargerId}/`) ||
-            topic.startsWith("charger/+/"),
+            mqttFiltersOverlap(
+              topic,
+              buildDeviceTelemetryChargerFilter(chargerId),
+            ),
         ),
       ),
     [chargerId, services],

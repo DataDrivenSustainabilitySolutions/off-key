@@ -100,8 +100,8 @@ when a publisher omits its event timestamp.
 
 An MQTT sensor stream may belong to only one active monitoring service. TACTIC
 serializes claims in PostgreSQL and rejects overlapping MQTT filters, including `+`
-and `#` wildcard overlap. Topic namespaces are literal: for example, `telemetry`
-and `live-telemetry` do not overlap.
+and `#` wildcard overlap. Topic levels are literal: for example, charger IDs
+`charger-1` and `charger-10` do not overlap.
 
 ### RADAR runtime image (local only)
 
@@ -172,15 +172,25 @@ docker compose \
   | docker stack deploy --with-registry-auth -c - off-key
 ```
 
-After deploy, create an EMQX MQTT bridge (EMQX dashboard → Data Integration → Bridges):
+After deployment, configure the existing EMQX Data Integration resources in the
+Dashboard (Data Integration → Connectors, Sources, and Rules):
+
 - Server: `mqtt-tailscale-bridge:1883`
-- Set upstream credentials and TLS there
-- Set ingress topic subscriptions to `device/#` (or a narrower device namespace)
-- Rewrite external topics into the internal on-ingress contract:
-- Example source topic: `device/charger-1/temp/phase-a`
-- Example rewritten topic: `charger/charger-1/live-telemetry/temp/phase-a`
-- Keep `MQTT_SOURCE_TOPICS=charger/+/live-telemetry/#` (default). No off-key code/config schema change required.
-- Configure Off-Key to consume the rewritten local topic path.
+- Set upstream credentials and TLS on the `ambibox` MQTT connector.
+- Configure the `ambibox-wildcard` Source subscription as exactly `device/#`.
+- Do not rewrite topics: republish the original `${topic}` unchanged.
+- Example upstream and local topic: `device/evCharger/0/voltageAc3`.
+- Keep `MQTT_SOURCE_TOPICS=device/#` so the proxy consumes the republished topics.
+
+The `ambibox-wildcard` Source subscribes to `device/#`. Its rule selects only
+`$bridges/mqtt:ambibox-wildcard` and republishes `${topic}`, `${payload}`, and
+`${qos}` unchanged, with retain disabled and Direct Dispatch enabled. Do not add
+`t/#`; unrelated `t/...` processing belongs in a separate rule.
+
+For diagnostics, recovery, or automated environment initialization, the optional
+`dev/emqx/reconcile_ingress.py` utility can idempotently create or verify this
+configuration using scoped API credentials and upstream secrets. It is not part
+of the production deployment workflow.
 
 Notes:
 - local mock `source-broker` remains the default for local dev; ingress is Swarm-only
@@ -193,11 +203,11 @@ After deploy, verify the bridge is passing traffic:
 ```bash
 # Subscribe to a charger topic via the internal EMQX node
 docker run --rm --network off-key_emqx-network eclipse-mosquitto:2.0 \
-  mosquitto_sub -h emqx-main -p 1883 -t "charger/+/live-telemetry/#" -C 1 -W 30
+  mosquitto_sub -h emqx-main -p 1883 -t "device/#" -C 1 -W 30
 ```
 
-Quick checks after remap is enabled:
-- Internal traffic check: if no messages arrive on `charger/+/live-telemetry/#`, fix bridge mapping first.
+Quick checks after ingress is enabled:
+- Internal traffic check: if no messages arrive on `device/#`, inspect the Source and Republish rule first.
 - Proxy ingestion check:
 `docker service logs off-key_mqtt-proxy --since 5m | rg "source_subscriptions|subscribed_topics"`
 - Parse check:
@@ -241,6 +251,29 @@ docker compose \
 
 The render step is required because `docker stack deploy` does not load Compose
 environment files for variable interpolation.
+
+The existing per-service image variables can use either the convenience
+`latest` tag or the already-published `sha-<commit>` tag. Pinning those same
+variables to the SHA tag avoids an unchanged `latest` service specification and
+does not change the deployment command. Verify what Swarm actually resolved:
+
+```bash
+docker stack services off-key --format '{{.Name}} {{.Image}}'
+docker service inspect off-key_frontend \
+  --format '{{.Spec.TaskTemplate.ContainerSpec.Image}}'
+docker service inspect off-key_mqtt-proxy \
+  --format '{{.Spec.TaskTemplate.ContainerSpec.Image}}'
+```
+
+On a node running a task, the OCI revision label proves which commit is inside
+the container:
+
+```bash
+container_id=$(docker ps -q \
+  --filter label=com.docker.swarm.service.name=off-key_frontend)
+docker inspect "$container_id" \
+  --format '{{index .Config.Labels "org.opencontainers.image.revision"}} {{.Image}}'
+```
 
 ### Switching modes
 

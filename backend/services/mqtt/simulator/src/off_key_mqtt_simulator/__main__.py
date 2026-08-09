@@ -68,8 +68,6 @@ class SimulatorService:
         sample_timestamp: datetime,
     ) -> dict:
         return {
-            self.config.payload_charger_key: charger_id,
-            self.config.payload_type_key: feature,
             "value": round(value, 4),
             "timestamp": sample_timestamp.isoformat().replace("+00:00", "Z"),
         }

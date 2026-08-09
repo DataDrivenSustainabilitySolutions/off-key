@@ -104,7 +104,7 @@ const operationalService: ActiveService = {
   id: "service-adaptive",
   container_id: "container-1",
   container_name: "radar-adaptive",
-  mqtt_topics: ["charger/charger-1/live-telemetry/voltage"],
+  mqtt_topics: ["device/evCharger/charger-1/voltage"],
   status: true,
   monitoring_strategy: "adaptive_stream",
   operational_status: {

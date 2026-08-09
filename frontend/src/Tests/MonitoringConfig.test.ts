@@ -42,8 +42,8 @@ describe("monitoring configuration", () => {
     const result = buildAdaptiveMonitoringRequest({
       chargerId: "charger-1",
       topics: [
-        "charger/charger-1/live-telemetry/L1",
-        "charger/charger-1/live-telemetry/L2",
+        "device/evCharger/charger-1/L1",
+        "device/evCharger/charger-1/L2",
       ],
       draft,
       modelDefinition: definition,
@@ -73,7 +73,7 @@ describe("monitoring configuration", () => {
     draft.projectionComponents = "2";
     const result = buildAdaptiveMonitoringRequest({
       chargerId: "charger-1",
-      topics: ["charger/charger-1/live-telemetry/L1"],
+      topics: ["device/evCharger/charger-1/L1"],
       draft,
       modelDefinition: undefined,
       containerName: "unused",
@@ -89,7 +89,7 @@ describe("monitoring configuration", () => {
     draft.modelParams = { max_feature_cache_size: null };
     const result = buildAdaptiveMonitoringRequest({
       chargerId: "charger-1",
-      topics: ["charger/charger-1/live-telemetry/L1"],
+      topics: ["device/evCharger/charger-1/L1"],
       draft,
       modelDefinition: {
         strategy: "adaptive_stream",
@@ -115,14 +115,14 @@ describe("monitoring configuration", () => {
   it("detects MQTT wildcard ownership overlap", () => {
     expect(
       mqttFiltersOverlap(
-        "charger/+/live-telemetry/#",
-        "charger/charger-1/live-telemetry/L1",
+        "device/evCharger/+/#",
+        "device/evCharger/charger-1/L1",
       ),
     ).toBe(true);
     expect(
       mqttFiltersOverlap(
-        "charger/charger-2/live-telemetry/L1",
-        "charger/charger-1/live-telemetry/L1",
+        "device/evCharger/charger-2/L1",
+        "device/evCharger/charger-1/L1",
       ),
     ).toBe(false);
   });
@@ -130,7 +130,7 @@ describe("monitoring configuration", () => {
   it("builds the complete static monitoring request", () => {
     const result = buildStaticMonitoringRequest({
       chargerId: "charger-1",
-      topics: ["charger/charger-1/live-telemetry/L1"],
+      topics: ["device/evCharger/charger-1/L1"],
       draft: createDefaultStaticDraft(),
       modelDefinition,
       containerName: "radar-charger-1-test",
@@ -182,7 +182,7 @@ describe("monitoring configuration", () => {
 
     const result = buildStaticMonitoringRequest({
       chargerId: "charger-1",
-      topics: ["charger/charger-1/live-telemetry/L1"],
+      topics: ["device/evCharger/charger-1/L1"],
       draft,
       modelDefinition,
       containerName: "radar-charger-1-ensemble",
@@ -214,7 +214,7 @@ describe("monitoring configuration", () => {
   it("rejects wildcard, cross-charger, and invalid numeric drafts", () => {
     const wildcard = buildStaticMonitoringRequest({
       chargerId: "charger-1",
-      topics: ["charger/+/live-telemetry/#"],
+      topics: ["device/evCharger/+/#"],
       draft: createDefaultStaticDraft(),
       modelDefinition,
       containerName: "unused",
@@ -228,7 +228,7 @@ describe("monitoring configuration", () => {
     };
     const invalid = buildStaticMonitoringRequest({
       chargerId: "charger-1",
-      topics: ["charger/charger-2/live-telemetry/L1"],
+      topics: ["device/evCharger/charger-2/L1"],
       draft: invalidDraft,
       modelDefinition,
       containerName: "unused",
@@ -253,7 +253,7 @@ describe("monitoring configuration", () => {
 
     const result = buildStaticMonitoringRequest({
       chargerId: "charger-1",
-      topics: ["charger/charger-1/live-telemetry/L1"],
+      topics: ["device/evCharger/charger-1/L1"],
       draft,
       modelDefinition,
       containerName: "unused",

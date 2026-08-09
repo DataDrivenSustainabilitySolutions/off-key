@@ -230,7 +230,7 @@ def test_detect_anomaly_uses_canonical_sample_timestamp():
         timestamp=datetime.now(UTC),
         model_info={},
         raw_data={"sine": 1.0, "cosine": 0.0},
-        topic="charger/1/live-telemetry/sine",
+        topic="device/evCharger/1/sine",
         charger_id="1",
         context={},
     )
@@ -242,7 +242,7 @@ def test_detect_anomaly_uses_canonical_sample_timestamp():
         memory_manager=memory_manager,
     )
     message = MQTTMessage(
-        topic="charger/1/live-telemetry/sine",
+        topic="device/evCharger/1/sine",
         payload=b'{"value": 1.0}',
         qos=0,
         retain=False,
@@ -281,7 +281,7 @@ async def test_process_message_aligns_evidence_to_payload_event_timestamp():
         timestamp=datetime.now(UTC),
         model_info={},
         raw_data={"voltage": 230.0},
-        topic="charger/1/live-telemetry/voltage",
+        topic="device/evCharger/1/voltage",
         charger_id="1",
         context={},
     )
@@ -296,7 +296,7 @@ async def test_process_message_aligns_evidence_to_payload_event_timestamp():
     )
     event_time = datetime(2026, 7, 29, 10, 15, 30, tzinfo=UTC)
     message = MQTTMessage(
-        topic="charger/1/live-telemetry/voltage",
+        topic="device/evCharger/1/voltage",
         payload=(b'{"value": 230.0, "timestamp": "2026-07-29T10:15:30Z"}'),
         timestamp=datetime(2026, 7, 29, 10, 15, 35, tzinfo=UTC),
     )

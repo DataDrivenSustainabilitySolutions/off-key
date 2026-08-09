@@ -1,6 +1,7 @@
 """Pure conversion of MQTT messages into telemetry records."""
 
 from datetime import UTC, datetime
+from math import isfinite
 
 from off_key_core.utils.mqtt_topics import TopicMetadataExtractor
 from off_key_core.utils.string import string_to_float
@@ -38,14 +39,15 @@ def parse_telemetry_message(
                 context={"charger_id": charger_id, "topic": message.topic},
             )
 
+        has_timestamp = "timestamp" in payload
         timestamp_value = payload.get("timestamp")
         try:
             timestamp = (
                 parse_utc_timestamp(timestamp_value)
-                if timestamp_value is not None
+                if has_timestamp
                 else datetime.now(UTC)
             )
-        except (ValueError, TypeError, OSError) as error:
+        except (ValueError, TypeError, OSError, OverflowError) as error:
             timestamp_context = str(timestamp_value)
             return ParseFailure(
                 reason="Invalid timestamp format",
@@ -58,11 +60,25 @@ def parse_telemetry_message(
                 },
             )
 
+        raw_value = payload.get("value")
+        value = None if isinstance(raw_value, bool) else string_to_float(raw_value)
+        if value is None or not isfinite(value):
+            return ParseFailure(
+                reason="Invalid telemetry value",
+                is_error=False,
+                log_message=f"Invalid telemetry value for topic: {message.topic}",
+                context={
+                    "charger_id": charger_id,
+                    "telemetry_type": telemetry_type,
+                    "topic": message.topic,
+                },
+            )
+
         return ParseSuccess(
             record=TelemetryRecord(
                 charger_id=charger_id,
                 timestamp=timestamp,
-                value=string_to_float(payload.get("value")),
+                value=value,
                 telemetry_type=telemetry_type,
                 created=datetime.now(UTC),
             )

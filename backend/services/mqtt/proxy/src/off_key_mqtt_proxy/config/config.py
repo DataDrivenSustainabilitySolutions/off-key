@@ -59,8 +59,6 @@ class MQTTConfig(BaseModel):
     # Source subscriptions
     source_topics: list[str]
     topic_regex: str = DEFAULT_TOPIC_REGEX
-    topic_payload_charger_key: str = "charger_id"
-    topic_payload_type_key: str = "telemetry_type"
 
     # Service Configuration
     enabled: bool
@@ -120,14 +118,6 @@ class MQTTConfig(BaseModel):
     def validate_source_topics(cls, value: list[str]) -> list[str]:
         return normalize_telemetry_topic_filters(value)
 
-    @field_validator("topic_payload_charger_key", "topic_payload_type_key")
-    @classmethod
-    def validate_payload_key(cls, value: str) -> str:
-        normalized = value.strip()
-        if not normalized:
-            raise ValueError("Payload metadata keys must be non-empty")
-        return normalized
-
     @model_validator(mode="after")
     def validate_timing_relationships(self) -> Self:
         """Validate relationships between otherwise valid timing values."""
@@ -158,11 +148,7 @@ class MQTTConfig(BaseModel):
     @model_validator(mode="after")
     def validate_runtime_dependencies(self) -> Self:
         """Validate extraction, authentication, and optional bridge dependencies."""
-        TopicMetadataExtractor(
-            topic_regex=self.topic_regex,
-            payload_charger_key=self.topic_payload_charger_key,
-            payload_type_key=self.topic_payload_type_key,
-        )
+        TopicMetadataExtractor(topic_regex=self.topic_regex)
 
         _validate_auth_credentials(
             enabled=self.use_auth,
@@ -207,8 +193,6 @@ class MQTTConfig(BaseModel):
     def build_topic_extractor(self) -> TopicMetadataExtractor:
         return TopicMetadataExtractor(
             topic_regex=self.topic_regex,
-            payload_charger_key=self.topic_payload_charger_key,
-            payload_type_key=self.topic_payload_type_key,
         )
 
 
@@ -238,10 +222,8 @@ class MQTTSettings(BaseSettings):
     MQTT_APIKEY: str = ""
 
     # Source Subscriptions
-    MQTT_SOURCE_TOPICS: str = "charger/+/live-telemetry/#"
+    MQTT_SOURCE_TOPICS: str = "device/#"
     MQTT_TOPIC_REGEX: str = DEFAULT_TOPIC_REGEX
-    MQTT_TOPIC_PAYLOAD_CHARGER_KEY: str = "charger_id"
-    MQTT_TOPIC_PAYLOAD_TYPE_KEY: str = "telemetry_type"
 
     # Connection Management
     MQTT_RECONNECT_DELAY: int = Field(default=5, ge=1, le=300)
@@ -341,8 +323,6 @@ class MQTTSettings(BaseSettings):
             mqtt_api_key=self.MQTT_APIKEY,
             source_topics=source_topics,
             topic_regex=self.MQTT_TOPIC_REGEX,
-            topic_payload_charger_key=self.MQTT_TOPIC_PAYLOAD_CHARGER_KEY,
-            topic_payload_type_key=self.MQTT_TOPIC_PAYLOAD_TYPE_KEY,
             enabled=self.MQTT_TELEMETRY_ENABLED,
             reconnect_delay=self.MQTT_RECONNECT_DELAY,
             max_reconnect_attempts=self.MQTT_MAX_RECONNECT_ATTEMPTS,

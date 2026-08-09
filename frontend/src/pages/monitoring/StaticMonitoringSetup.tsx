@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { API_CONFIG } from "@/lib/api-config";
 import { apiUtils } from "@/lib/api-client";
 import { getErrorMessage } from "@/lib/errors";
+import { buildDeviceTelemetryTopic } from "@/lib/mqtt-topics";
 import { cn } from "@/lib/utils";
 import type { ActiveService, ModelDefinition } from "@/types/monitoring";
 import {
@@ -81,7 +82,7 @@ export function StaticMonitoringSetup({
     () =>
       topicMode === "selected_sensors"
         ? availableSelectedSensors.map(
-            (sensor) => `charger/${chargerId}/live-telemetry/${sensor}`,
+            (sensor) => buildDeviceTelemetryTopic(chargerId, sensor),
           )
         : parseTopicPatterns(topicPatternInput),
     [availableSelectedSensors, chargerId, topicMode, topicPatternInput],
@@ -259,7 +260,7 @@ export function StaticMonitoringSetup({
                     onChange={(event) =>
                       setTopicPatternInput(event.target.value)
                     }
-                    placeholder={`One concrete sensor per line, e.g. charger/${chargerId}/live-telemetry/L1`}
+                    placeholder={`One concrete sensor per line, e.g. ${buildDeviceTelemetryTopic(chargerId, "L1")}`}
                   />
                   <p className={HELP_CLASS}>
                     Namespaces stay distinct. The backend verifies wildcard overlap

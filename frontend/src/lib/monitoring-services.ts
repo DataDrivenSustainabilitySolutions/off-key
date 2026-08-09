@@ -1,4 +1,5 @@
 import type { ActiveService } from "@/types/monitoring";
+import { buildDeviceTelemetryTopic } from "@/lib/mqtt-topics";
 
 export const mqttFiltersOverlap = (left: string, right: string): boolean => {
   const leftParts = left.trim().split("/");
@@ -29,7 +30,7 @@ export const buildSensorClaims = (
 ): Map<string, ActiveService> => {
   const claims = new Map<string, ActiveService>();
   for (const sensor of sensorTypes) {
-    const concreteTopic = `charger/${chargerId}/live-telemetry/${sensor}`;
+    const concreteTopic = buildDeviceTelemetryTopic(chargerId, sensor);
     const owner = services.find((service) =>
       (service.mqtt_topics ?? []).some((topic) =>
         mqttFiltersOverlap(topic, concreteTopic),

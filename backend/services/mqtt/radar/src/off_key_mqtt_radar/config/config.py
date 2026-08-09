@@ -107,7 +107,7 @@ class MQTTRadarConfig(BaseModel):
 
     # Subscription settings
     subscription_topics: list[str] = Field(
-        default_factory=lambda: ["charger/charger-sim-1/live-telemetry/sine"]
+        default_factory=lambda: ["device/evCharger/charger-sim-1/sine"]
     )
     subscription_qos: int = 0
     sensor_key_strategy: str = "full_hierarchy"
@@ -184,7 +184,7 @@ class RadarSettings(BaseSettings):
 
     # Topics
     RADAR_SUBSCRIPTION_TOPICS: str = (
-        "charger/charger-sim-1/live-telemetry/sine"  # Comma-separated
+        "device/evCharger/charger-sim-1/sine"  # Comma-separated
     )
     RADAR_SUBSCRIPTION_QOS: int = 0
     RADAR_SENSOR_KEY_STRATEGY: str = "full_hierarchy"

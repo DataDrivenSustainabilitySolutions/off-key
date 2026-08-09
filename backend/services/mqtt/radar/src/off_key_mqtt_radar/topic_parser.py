@@ -10,6 +10,7 @@ from off_key_core.utils.mqtt_topics import (
     TopicMetadataExtractor,
     canonical_sensor_key,
     normalize_sensor_key_strategy,
+    validate_telemetry_topic_filter,
 )
 
 
@@ -60,23 +61,29 @@ class TopicParser:
     def derive_required_sensors(
         topics: list[str],
         sensor_key_strategy: str = "full_hierarchy",
-        extractor: TopicMetadataExtractor | None = None,
     ) -> set[str]:
         sensors: set[str] = set()
         for topic in topics:
-            sensor = TopicParser.extract_sensor_type(
-                topic,
-                sensor_key_strategy=sensor_key_strategy,
-                payload=None,
-                extractor=extractor,
-            )
-            if sensor is not None:
-                sensors.add(sensor)
+            try:
+                normalized = validate_telemetry_topic_filter(topic)
+            except ValueError:
+                continue
+            levels = normalized.split("/")
+            if normalized == "device/#" or any(
+                level in {"+", "#"} for level in levels[3:]
+            ):
+                continue
+            try:
+                sensors.add(
+                    canonical_sensor_key("/".join(levels[3:]), sensor_key_strategy)
+                )
+            except ValueError:
+                continue
         return sensors
 
     @staticmethod
-    def build_topic(charger_id: str, sensor_type: str, prefix: str = "charger") -> str:
-        return f"{prefix}/{charger_id}/telemetry/{sensor_type}"
+    def build_topic(charger_id: str, sensor_type: str) -> str:
+        return f"device/evCharger/{charger_id}/{sensor_type}"
 
     @staticmethod
     def matches_pattern(topic: str, pattern: str) -> bool:

@@ -306,6 +306,22 @@ jobs:
             done
           '
 
+      - name: Configure canonical EMQX MQTT Source
+        env:
+          AMBIBOX_MQTT_SERVER: source-broker:1883
+        run: |
+          set -euo pipefail
+          set -a
+          source .env
+          set +a
+          dashboard_token="$(curl -fsS http://localhost:18083/api/v5/login \
+            -H 'content-type: application/json' \
+            -d "{\"username\":\"${EMQX_DASHBOARD_USERNAME}\",\"password\":\"${EMQX_DASHBOARD_PASSWORD}\"}" \
+            | jq -r '.token')"
+          test -n "$dashboard_token"
+          EMQX_API_TOKEN="$dashboard_token" \
+            uv run --project backend python dev/emqx/reconcile_ingress.py
+
           timeout 600 bash -c '
             until curl -fsS http://localhost:5173/login > /dev/null; do
               echo "frontend not ready yet"
@@ -356,7 +372,7 @@ jobs:
             --workdir /work \
             --env-file "${PWD}/.env" \
             --env CI=true \
-            --env MQTT_SOURCE_URL=mqtt://localhost:1883 \
+            --env MQTT_SOURCE_URL=mqtt://localhost:1884 \
             --env PLAYWRIGHT_BASE_URL=http://localhost:5173 \
             "${playwright_image}" \
             npm run test:e2e

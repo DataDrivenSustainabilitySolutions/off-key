@@ -122,6 +122,7 @@ line-ending = "auto"
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
+pythonpath = [".."]
 testpaths = [
     "tests",
     "services/mqtt/proxy/tests",

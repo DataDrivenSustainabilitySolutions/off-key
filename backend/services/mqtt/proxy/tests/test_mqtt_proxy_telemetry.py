@@ -26,7 +26,7 @@ def _writer() -> DatabaseWriter:
 def test_parse_telemetry_message_converts_offset_timestamp_to_utc():
     writer = _writer()
     message = MQTTMessage(
-        topic="charger/charger-1/live-telemetry/sine",
+        topic="device/evCharger/charger-1/sine",
         payload={"timestamp": "2024-01-01T12:00:00+02:00", "value": "2.5"},
         timestamp=datetime.now(UTC),
         qos=0,
@@ -43,7 +43,7 @@ def test_parse_telemetry_message_converts_offset_timestamp_to_utc():
 def test_parse_telemetry_message_treats_naive_timestamp_as_utc():
     writer = _writer()
     message = MQTTMessage(
-        topic="charger/charger-1/live-telemetry/sine",
+        topic="device/evCharger/charger-1/sine",
         payload={"timestamp": "2024-01-01T12:00:00", "value": "2.5"},
         timestamp=datetime.now(UTC),
         qos=0,
@@ -59,7 +59,7 @@ def test_parse_telemetry_message_treats_naive_timestamp_as_utc():
 def test_parse_telemetry_message_invalid_topic_returns_safe_failure():
     writer = _writer()
     message = MQTTMessage(
-        topic="charger/abc/live-telemetry",
+        topic="device/evCharger/abc",
         payload={"timestamp": "2024-01-01T12:00:00+00:00", "value": "2.5"},
         timestamp=datetime.now(UTC),
         qos=0,
@@ -75,7 +75,7 @@ def test_parse_telemetry_message_invalid_topic_returns_safe_failure():
 def test_parse_telemetry_message_invalid_timestamp_returns_safe_failure():
     writer = _writer()
     message = MQTTMessage(
-        topic="charger/charger-1/live-telemetry/sine",
+        topic="device/evCharger/charger-1/sine",
         payload={"timestamp": "not-a-date", "value": "2.5"},
         timestamp=datetime.now(UTC),
         qos=0,
@@ -92,7 +92,7 @@ def test_parse_telemetry_message_invalid_timestamp_returns_safe_failure():
 def test_parse_telemetry_message_invalid_timezone_offset_returns_safe_failure():
     writer = _writer()
     message = MQTTMessage(
-        topic="charger/charger-1/live-telemetry/sine",
+        topic="device/evCharger/charger-1/sine",
         payload={"timestamp": "2024-01-01T12:00:00+25:00", "value": "2.5"},
         timestamp=datetime.now(UTC),
         qos=0,
@@ -109,7 +109,7 @@ def test_parse_telemetry_message_invalid_timezone_offset_returns_safe_failure():
 def test_parse_telemetry_message_utc_suffix_timestamp():
     writer = _writer()
     message = MQTTMessage(
-        topic="charger/charger-1/live-telemetry/sine",
+        topic="device/evCharger/charger-1/sine",
         payload={"timestamp": "2024-01-01T12:00:00Z", "value": "2.5"},
         timestamp=datetime.now(UTC),
         qos=0,
@@ -125,7 +125,7 @@ def test_parse_telemetry_message_utc_suffix_timestamp():
 def test_parse_telemetry_message_unix_epoch_timestamp():
     writer = _writer()
     message = MQTTMessage(
-        topic="charger/charger-1/live-telemetry/sine",
+        topic="device/evCharger/charger-1/sine",
         payload={"timestamp": 1704110400, "value": "2.5"},
         timestamp=datetime.now(UTC),
         qos=0,
@@ -138,11 +138,14 @@ def test_parse_telemetry_message_unix_epoch_timestamp():
     assert result.record.timestamp == datetime.fromtimestamp(1704110400, tz=UTC)
 
 
-def test_parse_telemetry_message_invalid_value_is_treated_as_none():
+@pytest.mark.parametrize(
+    "value", [None, True, False, "not-a-number", "NaN", "Infinity"]
+)
+def test_parse_telemetry_message_invalid_value_returns_safe_failure(value):
     writer = _writer()
     message = MQTTMessage(
-        topic="charger/charger-1/live-telemetry/sine",
-        payload={"timestamp": "2024-01-01T12:00:00+00:00", "value": "not-a-number"},
+        topic="device/evCharger/charger-1/sine",
+        payload={"timestamp": "2024-01-01T12:00:00+00:00", "value": value},
         timestamp=datetime.now(UTC),
         qos=0,
         retain=False,
@@ -150,8 +153,47 @@ def test_parse_telemetry_message_invalid_value_is_treated_as_none():
 
     result = parse_telemetry_message(message, writer.topic_extractor)
 
+    assert isinstance(result, ParseFailure)
+    assert not result.is_error
+    assert result.reason == "Invalid telemetry value"
+
+
+@pytest.mark.parametrize("timestamp", [None, True, "1e100"])
+def test_parse_telemetry_message_rejects_present_invalid_timestamp(timestamp):
+    writer = _writer()
+    message = MQTTMessage(
+        topic="device/evCharger/charger-1/sine",
+        payload={"timestamp": timestamp, "value": 2.5},
+        timestamp=datetime.now(UTC),
+        qos=0,
+        retain=False,
+    )
+
+    result = parse_telemetry_message(message, writer.topic_extractor)
+
+    assert isinstance(result, ParseFailure)
+    assert not result.is_error
+    assert result.reason == "Invalid timestamp format"
+
+
+def test_parse_telemetry_message_uses_ingestion_time_without_timestamp():
+    writer = _writer()
+    before = datetime.now(UTC)
+    message = MQTTMessage(
+        topic="device/evCharger/0/currentDc",
+        payload={"value": 12.5},
+        timestamp=before,
+        qos=0,
+        retain=False,
+    )
+
+    result = parse_telemetry_message(message, writer.topic_extractor)
+
     assert isinstance(result, ParseSuccess)
-    assert result.record.value is None
+    assert result.record.charger_id == "0"
+    assert result.record.telemetry_type == "currentDc"
+    assert result.record.value == 12.5
+    assert before <= result.record.timestamp <= datetime.now(UTC)
 
 
 @pytest.mark.asyncio
@@ -166,7 +208,7 @@ async def test_process_batch_uses_rowcount_for_written_records():
     writer = _writer()
 
     message = MQTTMessage(
-        topic="charger/charger-1/live-telemetry/sine",
+        topic="device/evCharger/charger-1/sine",
         payload={"timestamp": "2024-01-01T12:00:00+00:00", "value": "2.5"},
         timestamp=datetime.now(UTC),
         qos=0,
@@ -202,7 +244,7 @@ async def test_process_batch_falls_back_to_batch_size_when_rowcount_is_none():
     writer = _writer()
 
     message = MQTTMessage(
-        topic="charger/charger-1/live-telemetry/sine",
+        topic="device/evCharger/charger-1/sine",
         payload={"timestamp": "2024-01-01T12:00:00+00:00", "value": "2.5"},
         timestamp=datetime.now(UTC),
         qos=0,
@@ -238,7 +280,7 @@ async def test_process_batch_falls_back_to_batch_size_when_rowcount_is_negative(
     writer = _writer()
 
     message = MQTTMessage(
-        topic="charger/charger-1/live-telemetry/sine",
+        topic="device/evCharger/charger-1/sine",
         payload={"timestamp": "2024-01-01T12:00:00+00:00", "value": "2.5"},
         timestamp=datetime.now(UTC),
         qos=0,
@@ -273,7 +315,7 @@ async def test_process_batch_falls_back_to_batch_size_when_rowcount_is_negative(
 async def test_process_batch_integrity_error_treated_as_success(monkeypatch):
     writer = _writer()
     message = MQTTMessage(
-        topic="charger/charger-1/live-telemetry/sine",
+        topic="device/evCharger/charger-1/sine",
         payload={"timestamp": "2024-01-01T12:00:00+00:00", "value": "2.5"},
         timestamp=datetime.now(UTC),
         qos=0,
@@ -304,7 +346,7 @@ async def test_process_batch_integrity_error_treated_as_success(monkeypatch):
 async def test_process_batch_sqlalchemy_error_propagates_as_failure():
     writer = _writer()
     message = MQTTMessage(
-        topic="charger/charger-1/live-telemetry/sine",
+        topic="device/evCharger/charger-1/sine",
         payload={"timestamp": "2024-01-01T12:00:00+00:00", "value": "2.5"},
         timestamp=datetime.now(UTC),
         qos=0,
@@ -333,7 +375,7 @@ async def test_batch_retry_failure_increments_failed_record_metrics(monkeypatch)
     writer.config.get_jittered_backoff_delay = lambda attempt: 0.0
 
     message = MQTTMessage(
-        topic="charger/charger-1/live-telemetry/sine",
+        topic="device/evCharger/charger-1/sine",
         payload={"timestamp": "2024-01-01T12:00:00+00:00", "value": "2.5"},
         timestamp=datetime.now(UTC),
         qos=0,
@@ -343,7 +385,7 @@ async def test_batch_retry_failure_increments_failed_record_metrics(monkeypatch)
     assert isinstance(result_one, ParseSuccess)
 
     message_two = MQTTMessage(
-        topic="charger/charger-1/live-telemetry/sine",
+        topic="device/evCharger/charger-1/sine",
         payload={"timestamp": "2024-01-01T12:00:01+00:00", "value": "3.5"},
         timestamp=datetime.now(UTC),
         qos=0,
@@ -373,7 +415,7 @@ async def test_batch_retry_success_keeps_failed_metrics_at_zero(monkeypatch):
     writer.config.get_jittered_backoff_delay = lambda attempt: 0.0
 
     message = MQTTMessage(
-        topic="charger/charger-1/live-telemetry/sine",
+        topic="device/evCharger/charger-1/sine",
         payload={"timestamp": "2024-01-01T12:00:00+00:00", "value": "2.5"},
         timestamp=datetime.now(UTC),
         qos=0,

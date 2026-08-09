@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { API_CONFIG } from "@/lib/api-config";
 import { apiUtils } from "@/lib/api-client";
 import { getErrorMessage } from "@/lib/errors";
+import { buildDeviceTelemetryTopic } from "@/lib/mqtt-topics";
 import { cn } from "@/lib/utils";
 import type { ActiveService, ModelDefinition, ParameterSchema } from "@/types/monitoring";
 import { BrainCircuit, FlaskConical, Gauge, Layers3, RadioTower, Send, SlidersHorizontal } from "lucide-react";
@@ -125,7 +126,9 @@ export function AdaptiveMonitoringSetup({
   }, []);
 
   const submit = async () => {
-    const topics = activeSensors.map((sensor) => `charger/${chargerId}/live-telemetry/${sensor}`);
+    const topics = activeSensors.map((sensor) =>
+      buildDeviceTelemetryTopic(chargerId, sensor),
+    );
     const validation = buildAdaptiveMonitoringRequest({
       chargerId,
       topics,

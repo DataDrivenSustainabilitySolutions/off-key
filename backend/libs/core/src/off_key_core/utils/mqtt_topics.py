@@ -7,10 +7,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
-DEFAULT_TOPIC_REGEX = (
-    r"^charger/(?P<charger_id>[^/]+)/(?:telemetry|live-telemetry)/"
-    r"(?P<telemetry_type>.+)$"
-)
+DEFAULT_TOPIC_REGEX = r"^device/evCharger/(?P<charger_id>[^/]+)/(?P<telemetry_type>.+)$"
 SENSOR_KEY_STRATEGIES = frozenset({"full_hierarchy", "top_level", "leaf"})
 
 
@@ -24,18 +21,14 @@ class TopicMetadata:
 
 class TopicMetadataExtractor:
     """
-    Resolve charger metadata from topic first, then payload fallback keys.
+    Resolve charger metadata from the canonical concrete topic.
     """
 
     def __init__(
         self,
         topic_regex: str = DEFAULT_TOPIC_REGEX,
-        payload_charger_key: str = "charger_id",
-        payload_type_key: str = "telemetry_type",
     ):
         self.topic_regex = topic_regex
-        self.payload_charger_key = payload_charger_key
-        self.payload_type_key = payload_type_key
         self._compiled_regex = self._compile_topic_regex(topic_regex)
 
     @staticmethod
@@ -70,7 +63,7 @@ class TopicMetadataExtractor:
         payload: Mapping[str, Any] | None = None,
     ) -> TopicMetadata | None:
         """
-        Extract metadata using regex first, then payload fallback.
+        Extract metadata from a concrete topic; payload metadata is not accepted.
         """
         charger_id: str | None = None
         telemetry_type: str | None = None
@@ -80,17 +73,12 @@ class TopicMetadataExtractor:
             charger_id = self._normalize_value(topic_match.group("charger_id"))
             telemetry_type = self._normalize_value(topic_match.group("telemetry_type"))
 
-        payload_mapping = payload or {}
-        if charger_id is None:
-            charger_id = self._normalize_value(
-                payload_mapping.get(self.payload_charger_key)
-            )
-        if telemetry_type is None:
-            telemetry_type = self._normalize_value(
-                payload_mapping.get(self.payload_type_key)
-            )
-
         if charger_id is None or telemetry_type is None:
+            return None
+        if any(
+            not segment or "+" in segment or "#" in segment
+            for segment in (charger_id, *telemetry_type.split("/"))
+        ):
             return None
 
         return TopicMetadata(charger_id=charger_id, telemetry_type=telemetry_type)
@@ -181,21 +169,20 @@ def _validate_wildcard_levels(levels: list[str]) -> None:
 
 
 def validate_telemetry_topic_filter(topic: str) -> str:
-    """Validate a filter in the charger telemetry namespace."""
+    """Validate a filter in the canonical device telemetry namespace."""
     normalized = validate_mqtt_topic_filter(topic)
+    if normalized == "device/#":
+        return normalized
+
     levels = normalized.split("/")
     if len(levels) < 4:
         raise ValueError(
-            "MQTT telemetry topic filters must use "
-            "'charger/<id>/telemetry/<type>' or "
-            "'charger/<id>/live-telemetry/<type>'"
+            "MQTT telemetry topic filters must use 'device/#' or "
+            "'device/evCharger/<id>/<type>'"
         )
-    if levels[0] != "charger" or levels[2] not in {
-        "telemetry",
-        "live-telemetry",
-    }:
+    if levels[0] != "device" or levels[1] != "evCharger":
         raise ValueError(
-            "MQTT telemetry topic filters must use the charger telemetry namespace"
+            "MQTT telemetry topic filters must use the device/evCharger namespace"
         )
     return normalized
 
@@ -223,16 +210,10 @@ def normalize_static_monitoring_topics(topics: Iterable[str]) -> list[str]:
             "Static monitoring requires concrete MQTT topics; wildcards are not "
             "valid sensor assignments"
         )
-    charger_ids = {topic.split("/")[1] for topic in normalized}
+    charger_ids = {topic.split("/")[2] for topic in normalized}
     if len(charger_ids) != 1:
         raise ValueError(
             "A static monitoring service must belong to exactly one charger"
-        )
-    sensor_paths = ["/".join(topic.split("/")[3:]) for topic in normalized]
-    if len(sensor_paths) != len(set(sensor_paths)):
-        raise ValueError(
-            "A static monitoring service cannot assign the same sensor path from "
-            "both telemetry namespaces"
         )
     return normalized
 
@@ -240,9 +221,8 @@ def normalize_static_monitoring_topics(topics: Iterable[str]) -> list[str]:
 def mqtt_topic_filters_overlap(left: str, right: str) -> bool:
     """Return whether two valid MQTT filters can match at least one topic.
 
-    Namespace levels are compared literally. In particular, ``telemetry`` and
-    ``live-telemetry`` remain distinct. ``+`` consumes exactly one level and a
-    trailing ``#`` consumes zero or more levels.
+    Namespace levels are compared literally. ``+`` consumes exactly one level
+    and a trailing ``#`` consumes zero or more levels.
     """
     left_levels = validate_mqtt_topic_filter(left, allow_root_wildcard=True).split("/")
     right_levels = validate_mqtt_topic_filter(right, allow_root_wildcard=True).split(

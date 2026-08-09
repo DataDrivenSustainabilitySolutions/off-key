@@ -200,6 +200,8 @@ services:
       timeout: 25s
       retries: 5
       start_period: 60s
+    volumes:
+      - emqx-data:/opt/emqx/data
     networks:
       emqx-network:
         aliases:
@@ -214,6 +216,7 @@ services:
 
 volumes:
   timescaledb-data:
+  emqx-data:
 
 # Overlay encryption is intentionally disabled because it is incompatible with
 # the Tailscale ingress path. MTU 1280 preserves Tailscale compatibility.

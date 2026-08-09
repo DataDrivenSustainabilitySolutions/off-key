@@ -10,6 +10,7 @@ import type {
   AdaptiveAnomalyDetectionRequest,
   StaticAnomalyDetectionRequest,
 } from "@/types/monitoring";
+import { parseDeviceTelemetryTopic } from "@/lib/mqtt-topics";
 
 export {
   buildSensorClaims,
@@ -261,7 +262,14 @@ export const buildAdaptiveMonitoringRequest = ({
   if (!topics.length) errors.topics = "Select at least one unassigned sensor.";
   else if (topics.some((topic) => topic.split("/").some((part) => part === "+" || part === "#"))) {
     errors.topics = "Adaptive monitoring requires concrete sensor topics.";
-  } else if (topics.some((topic) => topic.split("/")[1] !== chargerId)) {
+  } else if (topics.some((topic) => parseDeviceTelemetryTopic(topic) === null)) {
+    errors.topics =
+      "Sensor topics must use device/evCharger/<charger_id>/<telemetry_type>.";
+  } else if (
+    topics.some(
+      (topic) => parseDeviceTelemetryTopic(topic)?.chargerId !== chargerId,
+    )
+  ) {
     errors.topics = `All sensor topics must belong to charger ${chargerId}.`;
   }
   const trainingWindow = parseNumber({
@@ -403,7 +411,14 @@ export const buildStaticMonitoringRequest = ({
   ) {
     errors.topics =
       "Static monitoring requires concrete sensor topics without MQTT wildcards.";
-  } else if (topics.some((topic) => topic.split("/")[1] !== chargerId)) {
+  } else if (topics.some((topic) => parseDeviceTelemetryTopic(topic) === null)) {
+    errors.topics =
+      "Sensor topics must use device/evCharger/<charger_id>/<telemetry_type>.";
+  } else if (
+    topics.some(
+      (topic) => parseDeviceTelemetryTopic(topic)?.chargerId !== chargerId,
+    )
+  ) {
     errors.topics = `All sensor topics must belong to charger ${chargerId}.`;
   }
 

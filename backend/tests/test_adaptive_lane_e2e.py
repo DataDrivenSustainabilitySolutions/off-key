@@ -61,8 +61,8 @@ def test_gateway_to_postgres_adaptive_multisensor_input_correlation() -> None:
     gateway_url = os.getenv("E2E_GATEWAY_URL", "http://localhost:8000").rstrip("/")
     charger_id = f"adaptive-e2e-{uuid.uuid4().hex[:8]}"
     topics = [
-        f"charger/{charger_id}/live-telemetry/L1",
-        f"charger/{charger_id}/live-telemetry/L2",
+        f"device/evCharger/{charger_id}/L1",
+        f"device/evCharger/{charger_id}/L2",
     ]
     service_id: str | None = None
     headers = {"Authorization": f"Bearer {token}"}

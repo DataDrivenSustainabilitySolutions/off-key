@@ -1031,7 +1031,7 @@ async def test_create_radar_service_removes_workload_when_db_commit_fails(
         MagicMock(
             return_value={
                 "SERVICE_ID": "service-1",
-                "RADAR_SUBSCRIPTION_TOPICS": "charger/charger-1/live-telemetry/sine",
+                "RADAR_SUBSCRIPTION_TOPICS": "device/evCharger/charger-1/sine",
                 "RADAR_MONITORING_STRATEGY": "static_baseline",
                 "RADAR_MODEL_TYPE": "pyod_iforest",
             }
@@ -1045,7 +1045,7 @@ async def test_create_radar_service_removes_workload_when_db_commit_fails(
     with pytest.raises(RuntimeError, match="commit failed"):
         await service.create_radar_service(
             container_name="radar-duplicate",
-            mqtt_topics=["charger/charger-1/live-telemetry/sine"],
+            mqtt_topics=["device/evCharger/charger-1/sine"],
             model_type="knn",
         )
 
@@ -1064,7 +1064,7 @@ async def test_existing_active_service_with_missing_workload_is_recreated(
         id="old-svc",
         container_id="missing-workload",
         container_name="radar-stale",
-        mqtt_topic=["charger/charger-1/live-telemetry/sine"],
+        mqtt_topic=["device/evCharger/charger-1/sine"],
         status=True,
         operational_status={},
         operational_stage="starting",
@@ -1093,7 +1093,7 @@ async def test_existing_active_service_with_missing_workload_is_recreated(
         MagicMock(
             return_value={
                 "SERVICE_ID": "service-1",
-                "RADAR_SUBSCRIPTION_TOPICS": "charger/charger-1/live-telemetry/sine",
+                "RADAR_SUBSCRIPTION_TOPICS": "device/evCharger/charger-1/sine",
                 "RADAR_MONITORING_STRATEGY": "static_baseline",
                 "RADAR_MODEL_TYPE": "pyod_iforest",
             }
@@ -1108,7 +1108,7 @@ async def test_existing_active_service_with_missing_workload_is_recreated(
 
     created = await service.create_radar_service(
         container_name="radar-stale",
-        mqtt_topics=["charger/charger-1/live-telemetry/sine"],
+        mqtt_topics=["device/evCharger/charger-1/sine"],
         model_type="pyod_iforest",
     )
 
@@ -1129,7 +1129,7 @@ async def test_existing_active_service_rejects_config_fingerprint_mismatch(
         id="svc-existing",
         container_id="workload-1",
         container_name="radar-existing",
-        mqtt_topic=["charger/charger-1/live-telemetry/sine"],
+        mqtt_topic=["device/evCharger/charger-1/sine"],
         status=True,
     )
     query_result = MagicMock()
@@ -1144,7 +1144,7 @@ async def test_existing_active_service_rejects_config_fingerprint_mismatch(
         MagicMock(
             return_value={
                 "SERVICE_ID": "service-1",
-                "RADAR_SUBSCRIPTION_TOPICS": "charger/charger-1/live-telemetry/sine",
+                "RADAR_SUBSCRIPTION_TOPICS": "device/evCharger/charger-1/sine",
                 "RADAR_MONITORING_STRATEGY": "static_baseline",
                 "RADAR_MODEL_TYPE": "knn",
             }
@@ -1158,7 +1158,7 @@ async def test_existing_active_service_rejects_config_fingerprint_mismatch(
     with pytest.raises(ValueError, match="different RADAR configuration"):
         await service.create_radar_service(
             container_name="radar-existing",
-            mqtt_topics=["charger/charger-1/live-telemetry/sine"],
+            mqtt_topics=["device/evCharger/charger-1/sine"],
             model_type="knn",
         )
 

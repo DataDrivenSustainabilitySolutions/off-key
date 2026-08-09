@@ -111,7 +111,7 @@ describe("<Monitoring /> static setup", () => {
       target: { value: "direct_patterns" },
     });
     fireEvent.change(screen.getByRole("textbox"), {
-      target: { value: "charger/charger-1/live-telemetry/L1" },
+      target: { value: "device/evCharger/charger-1/L1" },
     });
     fireEvent.click(screen.getByRole("button", { name: /start monitoring/i }));
 
@@ -151,9 +151,9 @@ describe("<Monitoring /> static setup", () => {
     const payload = getSubmittedPayload();
 
     expect(payload.mqtt_topics).toEqual([
-      "charger/charger-1/live-telemetry/L1",
-      "charger/charger-1/live-telemetry/L2",
-      "charger/charger-1/live-telemetry/L3",
+      "device/evCharger/charger-1/L1",
+      "device/evCharger/charger-1/L2",
+      "device/evCharger/charger-1/L3",
     ]);
     expect(payload.performance_config).not.toHaveProperty("alignment_mode");
   });
@@ -322,7 +322,7 @@ describe("<Monitoring /> static setup", () => {
         return Promise.resolve([{
           id: 7,
           container_name: "radar-existing",
-          mqtt_topics: ["charger/charger-1/live-telemetry/L1"],
+          mqtt_topics: ["device/evCharger/charger-1/L1"],
           status: "running",
         }]);
       }
@@ -338,8 +338,8 @@ describe("<Monitoring /> static setup", () => {
     fireEvent.click(screen.getByRole("button", { name: /start monitoring/i }));
     await waitFor(() => expect(mockPost).toHaveBeenCalled());
     expect(getSubmittedPayload().mqtt_topics).toEqual([
-      "charger/charger-1/live-telemetry/L2",
-      "charger/charger-1/live-telemetry/L3",
+      "device/evCharger/charger-1/L2",
+      "device/evCharger/charger-1/L3",
     ]);
   });
 });

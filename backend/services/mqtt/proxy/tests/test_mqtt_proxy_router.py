@@ -20,7 +20,7 @@ def _config():
 
 def _message() -> MQTTMessage:
     return MQTTMessage(
-        topic="charger/charger-1/live-telemetry/sine",
+        topic="device/evCharger/charger-1/sine",
         payload={"value": 1.0},
         timestamp=datetime.now(UTC),
         qos=0,

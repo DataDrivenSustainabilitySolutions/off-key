@@ -8,7 +8,7 @@ test.describe("monitoring lifecycle smoke", () => {
     playwright,
   }) => {
     const chargerId = "e2e-smoke";
-    const topic = `charger/${chargerId}/live-telemetry/L1`;
+    const topic = `device/evCharger/${chargerId}/L1`;
     let serviceId: string | undefined;
     let containerName: string | undefined;
     let authToken: string | null = null;

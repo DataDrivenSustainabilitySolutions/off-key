@@ -9,6 +9,12 @@ from off_key_mqtt_radar.config.config import (
 from pydantic import ValidationError
 
 
+@pytest.fixture(autouse=True)
+def _isolated_topic_environment(monkeypatch):
+    monkeypatch.delenv("MQTT_SOURCE_TOPICS", raising=False)
+    monkeypatch.delenv("RADAR_SUBSCRIPTION_TOPICS", raising=False)
+
+
 def _base_mqtt_config() -> dict:
     return {
         "broker_host": "localhost",
@@ -19,12 +25,10 @@ def _base_mqtt_config() -> dict:
         "use_auth": True,
         "mqtt_username": "user",
         "mqtt_api_key": "secret-key-123",
-        "source_topics": ["charger/+/live-telemetry/#"],
+        "source_topics": ["device/evCharger/+/#"],
         "topic_regex": (
-            r"^charger/(?P<charger_id>[^/]+)/live-telemetry/(?P<telemetry_type>.+)$"
+            r"^device/evCharger/(?P<charger_id>[^/]+)/(?P<telemetry_type>.+)$"
         ),
-        "topic_payload_charger_key": "charger_id",
-        "topic_payload_type_key": "telemetry_type",
         "enabled": True,
         "reconnect_delay": 5,
         "max_reconnect_attempts": 10,
@@ -43,7 +47,7 @@ def test_mqtt_config_mutable_defaults_are_isolated():
     cfg_one = MQTTConfig(**_base_mqtt_config())
     cfg_two = MQTTConfig(**{**_base_mqtt_config(), "mqtt_api_key": "secret-key-456"})
 
-    cfg_one.bridge_topic_mapping["charger/+/telemetry"] = "radar/+/telemetry"
+    cfg_one.bridge_topic_mapping["device/evCharger/+/#"] = "radar/+/telemetry"
     assert cfg_two.bridge_topic_mapping == {}
 
 
@@ -74,30 +78,23 @@ def test_mqtt_radar_config_mutable_defaults_are_isolated():
     cfg_one = MQTTRadarConfig()
     cfg_two = MQTTRadarConfig()
 
-    cfg_one.subscription_topics.append("charger/charger-sim-1/live-telemetry/cosine")
+    cfg_one.subscription_topics.append("device/evCharger/charger-sim-1/cosine")
     cfg_one.static_baseline_config.model_params["n_estimators"] = 8
 
-    assert cfg_two.subscription_topics == ["charger/charger-sim-1/live-telemetry/sine"]
+    assert cfg_two.subscription_topics == ["device/evCharger/charger-sim-1/sine"]
     assert cfg_two.static_baseline_config.model_params == {}
 
 
 @pytest.mark.parametrize(
     "topics, message",
     [
-        (["charger/+/live-telemetry/sine"], "concrete MQTT topics"),
+        (["device/evCharger/+/sine"], "concrete MQTT topics"),
         (
             [
-                "charger/charger-a/live-telemetry/sine",
-                "charger/charger-b/live-telemetry/cosine",
+                "device/evCharger/charger-a/sine",
+                "device/evCharger/charger-b/cosine",
             ],
             "exactly one charger",
-        ),
-        (
-            [
-                "charger/charger-a/telemetry/sine",
-                "charger/charger-a/live-telemetry/sine",
-            ],
-            "same sensor path",
         ),
     ],
 )
@@ -415,17 +412,23 @@ def test_mqtt_settings_source_topics_store_normalized_value(monkeypatch):
     monkeypatch.setenv(
         "MQTT_SOURCE_TOPICS",
         (
-            " charger/+/live-telemetry/sine ,"
-            "charger/+/live-telemetry/sine,"
-            " charger/+/live-telemetry/cosine "
+            " device/evCharger/+/sine ,"
+            "device/evCharger/+/sine,"
+            " device/evCharger/+/cosine "
         ),
     )
 
     settings = MQTTSettings()
     assert settings.MQTT_SOURCE_TOPICS == (
-        "charger/+/live-telemetry/sine,charger/+/live-telemetry/cosine"
+        "device/evCharger/+/sine,device/evCharger/+/cosine"
     )
     assert settings.config.source_topics == [
-        "charger/+/live-telemetry/sine",
-        "charger/+/live-telemetry/cosine",
+        "device/evCharger/+/sine",
+        "device/evCharger/+/cosine",
     ]
+
+
+def test_mqtt_settings_default_to_canonical_device_filter():
+    settings = MQTTSettings()
+    assert settings.MQTT_SOURCE_TOPICS == "device/#"
+    assert settings.config.source_topics == ["device/#"]

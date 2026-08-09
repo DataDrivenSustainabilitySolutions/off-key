@@ -101,7 +101,7 @@ def _runtime_config(
         model_type=model_type,
         model_params=adaptive.model_params,
         adaptive_stream_config=adaptive,
-        subscription_topics=["charger/c1/live-telemetry/x"],
+        subscription_topics=["device/evCharger/c1/x"],
         checkpoint_interval=1_000_000,
     )
 

@@ -177,7 +177,7 @@ const installDelayedEvidenceApi = async (page: Page) => {
           container_id: "container-delayed",
           container_name: "radar-delayed",
           mqtt_topics: [
-            `charger/${CHARGER_ID}/live-telemetry/systemVoltage`,
+            `device/evCharger/${CHARGER_ID}/systemVoltage`,
           ],
           status: true,
           monitoring_strategy: "adaptive_stream",

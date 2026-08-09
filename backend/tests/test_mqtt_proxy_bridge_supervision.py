@@ -11,10 +11,8 @@ def _build_proxy_config() -> SimpleNamespace:
         use_auth=False,
         mqtt_username="proxy-user",
         mqtt_api_key="proxy-key-123456",
-        source_topics=["charger/+/live-telemetry/#"],
-        topic_regex=r"^charger/(?P<charger_id>[^/]+)/live-telemetry/(?P<telemetry_type>.+)$",
-        topic_payload_charger_key="charger_id",
-        topic_payload_type_key="telemetry_type",
+        source_topics=["device/evCharger/+/#"],
+        topic_regex=r"^device/evCharger/(?P<charger_id>[^/]+)/(?P<telemetry_type>.+)$",
         enable_bridge=True,
         bridge_broker_host="emqx-main",
         bridge_broker_port=1883,
@@ -149,7 +147,7 @@ async def test_readiness_requires_bridge_when_enabled():
 
     service.is_running = True
     service.mqtt_client = MagicMock(is_connected=True)
-    service.source_subscription_status = {"charger/+/live-telemetry/#": True}
+    service.source_subscription_status = {"device/evCharger/+/#": True}
     service.bridge_destination = MagicMock(enabled=True)
     service.bridge_connected_event.set()
     service.bridge_supervisor_task = asyncio.create_task(asyncio.sleep(0.1))
@@ -173,7 +171,7 @@ async def test_readiness_without_bridge_only_requires_primary_connection():
 
     service.is_running = True
     service.mqtt_client = MagicMock(is_connected=True)
-    service.source_subscription_status = {"charger/+/live-telemetry/#": True}
+    service.source_subscription_status = {"device/evCharger/+/#": True}
 
     readiness = service.get_readiness_status()
     assert service.is_bridge_ready() is True

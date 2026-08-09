@@ -195,8 +195,6 @@ class MQTTProxyService:
             mqtt_api_key=self.config.bridge_api_key,
             source_topics=self.config.source_topics,
             topic_regex=self.config.topic_regex,
-            topic_payload_charger_key=self.config.topic_payload_charger_key,
-            topic_payload_type_key=self.config.topic_payload_type_key,
             enabled=True,
             reconnect_delay=self.config.reconnect_delay,
             max_reconnect_attempts=self.config.max_reconnect_attempts,

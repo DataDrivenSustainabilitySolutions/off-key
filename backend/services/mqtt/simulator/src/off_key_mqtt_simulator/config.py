@@ -22,8 +22,6 @@ class SimulatorConfig(BaseModel):
     charger_ids: list[str]
     features: list[str]
     topic_template: str
-    payload_charger_key: str
-    payload_type_key: str
     value_min: float
     value_max: float
     blip_probability: float
@@ -115,9 +113,7 @@ class SimulatorSettings(BaseSettings):
     SIMULATOR_QOS: int = 0
     SIMULATOR_CHARGER_IDS: str = "charger-sim-1,charger-sim-2"
     SIMULATOR_FEATURES: str = "sine,cosine,random"
-    SIMULATOR_TOPIC_TEMPLATE: str = "charger/{charger_id}/live-telemetry/{feature}"
-    SIMULATOR_PAYLOAD_CHARGER_KEY: str = "charger_id"
-    SIMULATOR_PAYLOAD_TYPE_KEY: str = "telemetry_type"
+    SIMULATOR_TOPIC_TEMPLATE: str = "device/evCharger/{charger_id}/{feature}"
     SIMULATOR_VALUE_MIN: float = 0.0
     SIMULATOR_VALUE_MAX: float = 100.0
     SIMULATOR_BLIP_PROBABILITY: float = 0.0025
@@ -143,8 +139,6 @@ class SimulatorSettings(BaseSettings):
             charger_ids=charger_ids,
             features=features,
             topic_template=self.SIMULATOR_TOPIC_TEMPLATE,
-            payload_charger_key=self.SIMULATOR_PAYLOAD_CHARGER_KEY,
-            payload_type_key=self.SIMULATOR_PAYLOAD_TYPE_KEY,
             value_min=self.SIMULATOR_VALUE_MIN,
             value_max=self.SIMULATOR_VALUE_MAX,
             blip_probability=self.SIMULATOR_BLIP_PROBABILITY,

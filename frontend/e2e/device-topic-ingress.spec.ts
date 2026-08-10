@@ -72,9 +72,14 @@ test.describe("device topic ingress", () => {
         "Voltage Ac2",
         "Voltage Ac1",
       ]) {
-        await expect(page.getByText(title, { exact: true }).first()).toBeVisible();
+        const card = page
+          .locator('[data-slot="card"]')
+          .filter({ has: page.getByText(title, { exact: true }) })
+          .first();
+        await expect(card.getByText(title, { exact: true })).toBeVisible();
+        await card.scrollIntoViewIfNeeded();
+        await expect(card.getByTestId("telemetry-echart")).toBeVisible();
       }
-      await expect(page.getByTestId("telemetry-echart")).toHaveCount(5);
     } finally {
       await publisher?.endAsync();
       await api.dispose();

@@ -1,12 +1,11 @@
-> [!WARNING]
-> This page is **legacy / archived** and may be outdated.
-> It is preserved for historical context only and is **not** the source of truth for current operations.
->
-> Use current documentation instead:
-- [Deployment-Modes](../operations/deployment-modes.md)
-- [Architecture-Overview](../development/architecture.md)
->
-> You can also start from [Archive / Legacy Index](index.md).
+!!! warning "Archived page"
+    This page is retained for historical reference and may not match the present implementation.
+
+    Maintained guidance:
+
+    - [Deployment modes](../operations/deployment-modes.md)
+    - [Architecture](../development/architecture.md)
+    - [Archive index](index.md)
 
 ---
 

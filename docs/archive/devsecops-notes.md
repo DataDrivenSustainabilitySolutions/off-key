@@ -1,12 +1,11 @@
-> [!WARNING]
-> This page is **legacy / archived** and may be outdated.
-> It is preserved for historical context only and is **not** the source of truth for current operations.
->
-> Use current documentation instead:
-- [Architecture-Overview](../development/architecture.md)
-- [Contributing-&-CI](../development/contributing-ci.md)
->
-> You can also start from [Archive / Legacy Index](index.md).
+!!! warning "Archived page"
+    This page is retained for historical reference and may not match the present implementation.
+
+    Maintained guidance:
+
+    - [Architecture](../development/architecture.md)
+    - [Contributing and CI](../development/contributing-ci.md)
+    - [Archive index](index.md)
 
 ---
 

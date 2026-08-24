@@ -27,8 +27,8 @@ Use this page for account, charger, favourites, monitoring-service, and anomaly 
 | `/anomalies` | Review recent anomaly events | Authenticated |
 | `/account` | User profile and account actions | Authenticated |
 
-> [!NOTE]
-> The current route uses British spelling: `/favourites`.
+!!! note
+    The route uses British spelling: `/favourites`.
 
 ## Authentication workflow
 

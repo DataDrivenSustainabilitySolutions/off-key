@@ -22,8 +22,8 @@ Use this page when integrating a client, validating endpoint contracts, or triag
 | Monitors, favourites, and anomalies | Send the login bearer token | Preserve token behaviour; server policy may tighten |
 | Health and readiness | No token | Public operational probes in local deployments |
 
-> [!IMPORTANT]
-> Always send `Authorization: Bearer <token>` for non-authentication user workflows, even if a local route currently accepts an unauthenticated request.
+!!! important
+    Always send `Authorization: Bearer <token>` for non-authentication user workflows, even if a local route accepts an unauthenticated request.
 
 ## Gateway API — `/v1`
 

@@ -1,9 +1,8 @@
 # Off-Key documentation
 
-This documentation describes the **current state** of the Off-Key predictive-maintenance platform in this repository.
+Documentation for the Off-Key predictive-maintenance platform.
 
-> [!NOTE]
-> Start with the active guides below. Pages under **Archive** preserve the former GitHub wiki for historical context and are not operational sources of truth.
+Use the guides below for setup, operation, and development. The **Archive** retains material from the former GitHub wiki for reference.
 
 ## When to use this page
 
@@ -18,7 +17,7 @@ Use this page as the entry point to choose the right runbook for your role.
 ## User guide
 
 - [Web app](user-guide/web-app.md): account, charger, favorites, services, and anomaly workflows.
-- [Monitoring](user-guide/monitoring.md): current monitoring lanes and workload lifecycle.
+- [Monitoring](user-guide/monitoring.md): monitoring strategies and workload lifecycle.
 
 ## Developer guide
 
@@ -31,6 +30,6 @@ Use this page as the entry point to choose the right runbook for your role.
 
 ## Archive
 
-Historical pages are preserved for context but are **not** the source of truth for current operations.
+Historical pages are retained for reference and may not match the present implementation.
 
 - [Archive index](archive/index.md)

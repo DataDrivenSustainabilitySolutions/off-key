@@ -16,8 +16,8 @@ Use this page when starting, validating, or stopping monitoring workloads from t
 - Runs either a static-baseline or adaptive-stream detection strategy.
 - Persists monitoring evidence and detected anomaly records for the web app.
 
-> [!IMPORTANT]
-> A sensor can be owned by only one active monitoring service. Stop or remove the existing service before assigning that sensor elsewhere.
+!!! important
+    A sensor can be owned by only one active monitoring service. Stop or remove the existing service before assigning that sensor elsewhere.
 
 ## Standard workflow
 

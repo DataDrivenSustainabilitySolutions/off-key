@@ -105,8 +105,8 @@ Stop the current mode before starting another:
 docker compose down
 ```
 
-> [!CAUTION]
-> `docker compose down -v` deletes local database and broker volumes. Use it only when a clean, destructive reset is intended.
+!!! warning
+    `docker compose down -v` deletes local database and broker volumes. Use it only when a clean, destructive reset is intended.
 
 ## Mode selection guidance
 
@@ -117,7 +117,7 @@ docker compose down
 | Multi-node broker behaviour | Local plus cluster override |
 | VPN ingress from an external broker | Swarm plus ingress overlay |
 
-## Configuration source of truth
+## Configuration reference
 
 Use [Environment variables](../reference/environment-variables.md) for per-mode setup.
 

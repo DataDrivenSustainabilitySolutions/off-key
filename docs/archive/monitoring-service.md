@@ -1,7 +1,7 @@
 # Monitoring service
 
-> [!WARNING]
-> Intentionally empty template. The monitoring service is expected to change substantially; do not use this page as an implementation contract.
+!!! warning
+    Intentionally empty template. The monitoring service is expected to change substantially; do not use this page as an implementation contract.
 
 ## Purpose
 

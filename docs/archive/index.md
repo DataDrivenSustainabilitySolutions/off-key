@@ -4,12 +4,12 @@ These pages preserve the former GitHub wiki for historical context.
 
 ## Archive notice
 
-> [!WARNING]
-> This section is legacy material. It may describe removed directories, routes, dependencies, or deployment practices. When an archived page conflicts with active documentation, follow the active documentation.
+!!! warning "Archived material"
+    These pages may describe removed directories, routes, dependencies, or deployment practices. Refer to the maintained guides for operational instructions.
 
 ## Archived pages and current replacements
 
-| Archived page | Why it is preserved | Current source of truth |
+| Archived page | Why it is preserved | Maintained documentation |
 | --- | --- | --- |
 | [Project setup](project-setup.md) | Older bootstrap and pre-commit history | [Getting started](../getting-started.md), [Developer setup](../development/setup.md) |
 | [Docker guide](docker-guide.md) | Historical Compose and Swarm command reference | [Deployment modes](../operations/deployment-modes.md), [Testing and debugging](../development/testing-debugging.md) |

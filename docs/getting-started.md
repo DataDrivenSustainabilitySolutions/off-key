@@ -107,8 +107,8 @@ Delete local containers and volumes only when you intentionally want a full data
 docker compose down -v
 ```
 
-> [!CAUTION]
-> `docker compose down -v` deletes the local database and other named-volume data for this Compose project.
+!!! warning
+    `docker compose down -v` deletes the local database and other named-volume data for this Compose project.
 
 ## Common first-run issues
 

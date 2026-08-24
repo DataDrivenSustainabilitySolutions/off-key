@@ -31,8 +31,8 @@ Create the local files from the templates:
     Copy-Item .env.ingress.example .env.ingress.local
     ```
 
-> [!IMPORTANT]
-> Secret-bearing values are intentionally not reproduced in this documentation. Variable names and validation requirements are safe to document; runtime values belong in ignored files or a production secret store.
+!!! important
+    Secret-bearing values are intentionally not reproduced in this documentation. Variable names and validation requirements are safe to document; runtime values belong in ignored files or a production secret store.
 
 ## Secret handling rules
 

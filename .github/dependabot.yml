@@ -24,7 +24,6 @@ updates:
     directories:
       - "/backend"
       - "/frontend"
-      - "/.devcontainer"
     schedule:
       interval: "weekly"
       day: "monday"
@@ -60,26 +59,6 @@ updates:
       include: "scope"
     groups:
       compose-dependencies:
-        patterns:
-          - "*"
-
-  - package-ecosystem: "devcontainers"
-    directory: "/.devcontainer"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "05:25"
-      timezone: "Europe/Berlin"
-    open-pull-requests-limit: 5
-    labels:
-      - "dependencies"
-      - "devcontainer"
-      - "infrastructure"
-    commit-message:
-      prefix: "devcontainer"
-      include: "scope"
-    groups:
-      devcontainer-infrastructure:
         patterns:
           - "*"
 

@@ -20,7 +20,7 @@ classifiers = [
 ]
 dependencies = [
     # See https://github.com/sabuhish/fastapi-mail/issues/236
-    "pydantic~=2.11.0",
+    "pydantic>=2.11,<2.14",
 ]
 
 [dependency-groups]

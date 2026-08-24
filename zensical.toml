@@ -1,0 +1,54 @@
+[project]
+site_name = "Off-Key"
+site_description = "Documentation for the Off-Key predictive-maintenance platform."
+site_url = "https://datadrivensustainabilitysolutions.github.io/off-key/"
+repo_url = "https://github.com/DataDrivenSustainabilitySolutions/off-key"
+repo_name = "DataDrivenSustainabilitySolutions/off-key"
+docs_dir = "docs"
+site_dir = "site"
+nav = [
+  { "Home" = "index.md" },
+  { "Getting started" = "getting-started.md" },
+  { "User guide" = [
+    { "Web app" = "user-guide/web-app.md" },
+    { "Monitoring" = "user-guide/monitoring.md" },
+  ] },
+  { "Development" = [
+    { "Setup" = "development/setup.md" },
+    { "Architecture" = "development/architecture.md" },
+    { "Testing and debugging" = "development/testing-debugging.md" },
+    { "Contributing and CI" = "development/contributing-ci.md" },
+  ] },
+  { "Operations" = [
+    { "Deployment modes" = "operations/deployment-modes.md" },
+  ] },
+  { "Reference" = [
+    { "Backend API" = "reference/backend-api.md" },
+    { "Data model" = "reference/data-model.md" },
+    { "Environment variables" = "reference/environment-variables.md" },
+  ] },
+  { "Archive" = [
+    { "Archive index" = "archive/index.md" },
+    { "Project setup" = "archive/project-setup.md" },
+    { "Docker guide" = "archive/docker-guide.md" },
+    { "WSL networking" = "archive/wsl.md" },
+    { "Frontend setup" = "archive/frontend-setup.md" },
+    { "Frontend implementation notes" = "archive/frontend-documentation.md" },
+    { "Client integration guide" = "archive/client-integration-guide.md" },
+    { "Logging" = "archive/logging.md" },
+    { "Monitoring service template" = "archive/monitoring-service.md" },
+    { "Container management PoC" = "archive/container-management-poc.md" },
+    { "Swarm PoC" = "archive/swarm-poc.md" },
+    { "DevSecOps notes" = "archive/devsecops-notes.md" },
+    { "Former GitHub sidebar" = "archive/wiki-sidebar.md" },
+  ] },
+]
+
+[project.theme]
+features = [
+  "navigation.instant",
+  "navigation.sections",
+  "navigation.top",
+  "navigation.tracking",
+  "toc.follow",
+]

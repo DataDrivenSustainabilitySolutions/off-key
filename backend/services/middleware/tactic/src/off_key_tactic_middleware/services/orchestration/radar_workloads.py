@@ -129,7 +129,10 @@ class RadarWorkloadManager:
                 condition=docker_config.default_restart_policy,
                 max_attempts=docker_config.default_restart_max_attempts,
             ),
-            "networks": [docker_config.default_network],
+            "networks": [
+                docker_config.default_network,
+                *docker_config.additional_networks,
+            ],
             "resources": Resources(
                 cpu_limit=int(float(docker_config.default_cpu_limit) * 1_000_000_000),
                 mem_limit=_parse_memory_string(docker_config.default_memory_limit),
@@ -161,7 +164,7 @@ class RadarWorkloadManager:
                 docker_config.default_restart_max_attempts
             )
 
-        return await self.async_docker.run(
+        container = await self.async_docker.run(
             self.async_docker.client.containers.run,
             name=f"radar-{service_id}",
             labels=build_radar_workload_labels(
@@ -177,6 +180,17 @@ class RadarWorkloadManager:
             mem_limit=_parse_memory_string(docker_config.default_memory_limit),
             nano_cpus=int(float(docker_config.default_cpu_limit) * 1_000_000_000),
         )
+
+        # containers.run only attaches one network; connect the rest (e.g. the app
+        # network for Postgres) so the workload matches the Swarm multi-network path.
+        for network_name in docker_config.additional_networks:
+            network = await self.async_docker.run(
+                self.async_docker.client.networks.get,
+                network_name,
+            )
+            await self.async_docker.run(network.connect, container)
+
+        return container
 
     async def validate_started(self, docker_workload: Any) -> None:
         """Fail when a newly created RADAR workload exits or is rejected."""

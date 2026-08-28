@@ -43,6 +43,7 @@ class DockerConfig(BaseModel):
 
     # Container Defaults
     default_network: str = "emqx-network"
+    additional_networks: list[str] = Field(default_factory=list)
     default_restart_policy: str = "on-failure"
     default_restart_max_attempts: int = Field(default=3, ge=0, le=10)
 
@@ -207,6 +208,9 @@ class TacticSettings(BaseSettings):
     TACTIC_DOCKER_DEFAULT_NETWORK: str = Field(
         default=DEFAULT_DOCKER_CONFIG.default_network
     )
+    # Comma-separated extra networks for RADAR workloads (e.g. the app network so they
+    # can reach Postgres, which is not on the default/EMQX network).
+    TACTIC_DOCKER_ADDITIONAL_NETWORKS: str = Field(default="")
     TACTIC_DOCKER_DEFAULT_RESTART_POLICY: str = Field(
         default=DEFAULT_DOCKER_CONFIG.default_restart_policy
     )
@@ -313,6 +317,9 @@ class TacticSettings(BaseSettings):
     def _parse_default_constraints(self) -> list[str]:
         return self._split_constraints(self.TACTIC_DOCKER_DEFAULT_CONSTRAINTS)
 
+    def _parse_additional_networks(self) -> list[str]:
+        return self._split_constraints(self.TACTIC_DOCKER_ADDITIONAL_NETWORKS)
+
     @field_validator("ENVIRONMENT")
     @classmethod
     def validate_environment(cls, value: str) -> str:
@@ -353,6 +360,7 @@ class TacticSettings(BaseSettings):
             api_port=self.TACTIC_DOCKER_API_PORT,
             max_concurrent_calls=self.TACTIC_DOCKER_MAX_CONCURRENT_CALLS,
             default_network=self.TACTIC_DOCKER_DEFAULT_NETWORK,
+            additional_networks=self._parse_additional_networks(),
             default_restart_policy=self.TACTIC_DOCKER_DEFAULT_RESTART_POLICY,
             default_restart_max_attempts=self.TACTIC_DOCKER_DEFAULT_RESTART_MAX_ATTEMPTS,
             default_memory_limit=self.TACTIC_DOCKER_DEFAULT_MEMORY_LIMIT,

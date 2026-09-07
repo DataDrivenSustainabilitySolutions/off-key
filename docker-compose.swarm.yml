@@ -185,7 +185,7 @@ services:
         condition: any
 
   emqx-main:
-    image: emqx/emqx:6.2.3
+    image: emqx/emqx:6.3.0
     env_file: .env
     environment:
       - "EMQX_NODE_NAME=emqx@emqx-main"

@@ -175,3 +175,15 @@ and resets after cooldown, preventing old failures from reopening the breaker.
 Validation: 46 resilience, message-processing, and lifecycle tests pass. New tests
 cover 11 failures across 11,011 calls, threshold boundaries, cooldown recovery,
 and failure after recovery. Changed-file lint and formatting checks pass.
+
+### Finding 6 — charger-scoped monitoring requests
+
+Plan: isolate each charger's page state, cancel superseded/unmounted requests,
+and poll only after completion of the previous request.
+Implemented: keyed charger page lifetime and a shared monitoring-resource hook.
+Each resource owns its abort controller and timer. Manual refresh supersedes an
+older request; stale successes, errors, and loading updates cannot publish.
+Validation: all 176 frontend tests pass, including actual route navigation with
+out-of-order responses, slow polling, refresh precedence, and unmount cancellation.
+Frontend lint and production build pass; the pre-existing Details chunk-size
+warning remains.

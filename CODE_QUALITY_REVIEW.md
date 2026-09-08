@@ -187,3 +187,12 @@ Validation: all 176 frontend tests pass, including actual route navigation with
 out-of-order responses, slow polling, refresh precedence, and unmount cancellation.
 Frontend lint and production build pass; the pre-existing Details chunk-size
 warning remains.
+
+### Finding 3 follow-up — integrity errors are failures
+
+Final inspection found an existing branch that treated every SQL integrity error
+as successful persistence and performed a separate charger-status update.
+Removed that branch and helper: duplicate rows already use `ON CONFLICT`, while
+actual integrity failures now roll back and enter the retained retry path.
+The regression test checks failure reporting, rollback, no commit, and zero
+written-record count. This preserves the charger/telemetry transaction boundary.

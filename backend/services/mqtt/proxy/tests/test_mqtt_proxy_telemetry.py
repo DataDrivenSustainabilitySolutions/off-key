@@ -314,7 +314,7 @@ async def test_process_batch_falls_back_to_batch_size_when_rowcount_is_negative(
 
 
 @pytest.mark.asyncio
-async def test_process_batch_integrity_error_treated_as_success(monkeypatch):
+async def test_process_batch_integrity_error_rolls_back_and_reports_failure():
     writer = _writer()
     message = MQTTMessage(
         topic="device/evCharger/charger-1/sine",
@@ -337,11 +337,12 @@ async def test_process_batch_integrity_error_treated_as_success(monkeypatch):
     session_ctx.__aenter__.return_value = session
     session_ctx.__aexit__.return_value = False
     writer._session_factory = MagicMock(return_value=session_ctx)
-    writer._update_chargers_after_failure = AsyncMock()
 
     batch = WriteBatch(records=[result.record])
-    assert await writer._process_batch(batch) is True
-    writer._update_chargers_after_failure.assert_awaited_once()
+    assert await writer._process_batch(batch) is False
+    session.rollback.assert_awaited_once()
+    session.commit.assert_not_awaited()
+    assert writer.total_records_written == 0
 
 
 @pytest.mark.asyncio

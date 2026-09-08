@@ -17,7 +17,7 @@ from off_key_core.utils.enum import HealthStatus
 from off_key_core.utils.mqtt_topics import TopicMetadataExtractor
 from sqlalchemy import case, update
 from sqlalchemy.dialects.postgresql import insert
-from sqlalchemy.exc import IntegrityError, SQLAlchemyError
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .client.models import MQTTMessage
@@ -441,20 +441,6 @@ class DatabaseWriter:
 
             return True
 
-        except IntegrityError as e:
-            logger.warning(
-                "event=db_writer.batch_integrity_error batch_size=%s error=%s",
-                batch_size,
-                e,
-                extra={
-                    **self._log_context,
-                    "batch_size": batch_size,
-                    "error": str(e),
-                },
-            )
-            await self._update_chargers_after_failure(charger_ids)
-            return True  # Treat as success since it's likely just duplicates
-
         except SQLAlchemyError as e:
             logger.error(
                 "event=db_writer.batch_db_error batch_size=%s error=%s",
@@ -572,32 +558,6 @@ class DatabaseWriter:
         if value.tzinfo is not None:
             return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
         return value.isoformat()
-
-    async def _update_chargers_after_failure(self, charger_ids: set) -> None:
-        """Best-effort status update when inserts fail (duplicates, etc.)."""
-        if not charger_ids:
-            return
-
-        try:
-            async with self._session_factory() as session:
-                try:
-                    await self._update_charger_statuses(session, charger_ids)
-                    await session.commit()
-                except Exception as exc:
-                    await session.rollback()
-                    logger.warning(
-                        "Failed to update charger statuses after integrity error",
-                        extra={
-                            **self._log_context,
-                            "charger_ids": list(charger_ids),
-                            "error": str(exc),
-                        },
-                    )
-        except Exception as exc:
-            logger.warning(
-                "Unable to create session for post-failure charger updates",
-                extra={**self._log_context, "error": str(exc)},
-            )
 
     async def _health_monitor_loop(self) -> None:
         """Background health monitoring loop"""

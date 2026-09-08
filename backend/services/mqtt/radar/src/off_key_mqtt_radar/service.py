@@ -23,7 +23,6 @@ from off_key_core.schemas.radar import AdaptiveStreamConfig, StaticBaselineConfi
 from .adaptive_detector import AdaptiveStreamDetectionService
 from .checkpoint_manager import CheckpointManager
 from .config.config import AnomalyDetectionConfig, get_radar_settings
-from .config_watcher import ConfigReloader, ConfigWatcher
 from .database import DatabaseWriter, ensure_radar_metrics_tables
 from .detector import StaticConformalDetectionService
 from .feature_validation import TelemetryFeatureValidator
@@ -78,10 +77,6 @@ class RadarService:
         self.is_running = False
         self.start_time: datetime | None = None
         self.shutdown_event = asyncio.Event()
-
-        # Configuration watching and reloading
-        self.config_watcher: ConfigWatcher | None = None
-        self.config_reloader: ConfigReloader | None = None
 
         # Logging context
         self._log_context = {"service": "radar", "component": "main"}
@@ -149,9 +144,6 @@ class RadarService:
             )
             await self.health_monitor.start(self.shutdown_event)
 
-            # Setup configuration watching
-            await self._setup_config_watcher()
-
             self.is_running = True
             if self.database_writer:
                 await self.database_writer.write_service_metrics(
@@ -182,7 +174,6 @@ class RadarService:
         """Stop the RADAR service"""
         has_started_components = any(
             [
-                self.config_watcher,
                 self.mqtt_client,
                 self.detector,
                 self.database_writer,
@@ -205,7 +196,6 @@ class RadarService:
 
         # Stop components in reverse order
         components = [
-            ("config_watcher", self.config_watcher),
             ("health_monitor", self.health_monitor),
             ("mqtt_client", self.mqtt_client),
             ("detector", self.detector),
@@ -233,8 +223,6 @@ class RadarService:
                         exc_info=True,
                     )
 
-        self.config_watcher = None
-        self.config_reloader = None
         self.mqtt_client = None
         self.detector = None
         self.database_writer = None
@@ -380,47 +368,6 @@ class RadarService:
         await self.mqtt_client.start()
 
         logger.info("MQTT client setup complete")
-
-    async def _setup_config_watcher(self):
-        """Setup configuration file watching for hot reload"""
-        try:
-            # Check if we have a config file to watch
-            config_file_path = getattr(
-                get_radar_settings(),
-                "custom_config_file",
-                None,
-            )
-
-            if not config_file_path:
-                logger.debug(
-                    "event=radar.config_watcher_disabled reason=no_config_file"
-                )
-                return
-
-            logger.info(
-                f"Setting up configuration file watcher for: {config_file_path}"
-            )
-
-            # Create config reloader
-            self.config_reloader = ConfigReloader(self)
-
-            # Create config watcher
-            self.config_watcher = ConfigWatcher(
-                config_file_path, self.config_reloader.reload_config
-            )
-
-            # Start watching
-            await self.config_watcher.start()
-
-            logger.info("Configuration file watcher setup complete")
-
-        except Exception as e:
-            logger.error(
-                "event=radar.config_watcher_setup_failed error=%s",
-                str(e),
-                exc_info=True,
-            )
-            # Don't fail the service startup if config watching fails
 
     async def _handle_mqtt_message(self, message: MQTTMessage):
         """Handle incoming MQTT message using extracted MessageProcessor."""

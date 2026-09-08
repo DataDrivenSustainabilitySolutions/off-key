@@ -153,3 +153,14 @@ Validation: 62 proxy/bridge tests pass, including blocked persistence, recovery,
 repeated retry exhaustion, bounded buffers, and shutdown with waiting producers.
 Changed-file lint passes. Buffers are in memory; forced process termination still
 cannot guarantee delivery, and no durable-delivery guarantee is introduced.
+
+### Finding 4 — startup-only RADAR configuration
+
+Plan: remove partial hot reload and construct components from one startup settings
+snapshot; configuration changes require a workload restart.
+Implemented: deleted the watcher/reloader and watchdog dependency. Startup now
+loads the optional dotenv file before creating cached settings, fixing the previous
+ordering defect. Documentation and startup logs explicitly require restart.
+Validation: 24 startup, lifecycle, alignment, and runtime-settings tests pass,
+including file loading, stable running configuration, and changed values on restart.
+Lockfile regeneration removed only watchdog. Changed-file lint/format checks pass.

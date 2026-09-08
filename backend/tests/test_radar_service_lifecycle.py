@@ -55,8 +55,6 @@ async def test_radar_service_stop_cleans_up_partially_started_components():
     radar_service.is_running = False
     radar_service.shutdown_event = asyncio.Event()
     radar_service._log_context = {}
-    radar_service.config_watcher = None
-    radar_service.config_reloader = object()
     radar_service.mqtt_client = mqtt_client
     radar_service.detector = None
     radar_service.database_writer = database_writer

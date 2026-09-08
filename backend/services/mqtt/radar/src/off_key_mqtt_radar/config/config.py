@@ -168,7 +168,6 @@ class RadarSettings(BaseSettings):
     """Environment-based settings for RADAR service"""
 
     # Configuration Management
-    custom_config_file: str | None = None  # Path to custom config file being watched
     ENVIRONMENT: str = "development"
 
     # MQTT Configuration

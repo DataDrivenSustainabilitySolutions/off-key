@@ -207,3 +207,10 @@ See [Deployment modes](../operations/deployment-modes.md) for the render-and-dep
 - [Getting started](../getting-started.md)
 - [Developer setup](../development/setup.md)
 - [Deployment modes](../operations/deployment-modes.md)
+
+## RADAR configuration files
+
+`RADAR_CONFIG_FILE` optionally selects a dotenv file loaded once, before RADAR
+settings and components are constructed. File values override environment values.
+Restart the workload after changing configuration; running services do not watch
+or reload the file.

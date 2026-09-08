@@ -36,10 +36,12 @@ async def main():
     log_startup_logging_configuration("mqtt-radar")
     load_env()
     runtime_file_settings = get_radar_runtime_file_settings()
-    settings = get_radar_settings()
-    settings.custom_config_file = load_configuration(
-        runtime_file_settings.RADAR_CONFIG_FILE
-    )
+    config_file = load_configuration(runtime_file_settings.RADAR_CONFIG_FILE)
+    if config_file:
+        logger.info(
+            "event=radar.config_file_loaded path=%s changes_require_restart=true",
+            config_file,
+        )
     validate_settings(
         [("radar", lambda: get_radar_settings().config)],
         context="RADAR service configuration",

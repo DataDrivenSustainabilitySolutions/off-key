@@ -270,42 +270,15 @@ class MessageRouter:
         # Route message to destinations concurrently
         tasks = [
             asyncio.create_task(
-                self._route_to_destination(message, dest_name, route_info)
+                self._route_with_deadline(message, dest_name, route_info)
             )
             for dest_name in enabled_destinations
         ]
 
-        # Wait for all routes to complete with timeout
+        # Keep ownership of capacity waits in the bounded handler workers. Each
+        # network destination still enforces its own deadline.
         try:
-            await asyncio.wait_for(
-                asyncio.gather(*tasks, return_exceptions=True),
-                timeout=self.route_timeout,
-            )
-        except TimeoutError:
-            logger.error(
-                "event=router.routing_timeout timeout_s=%s "
-                "message_id=%s topic=%s destinations=%s",
-                self.route_timeout,
-                route_info.message_id,
-                message.topic,
-                enabled_destinations,
-                extra={
-                    **self._log_context,
-                    "message_id": route_info.message_id,
-                    "topic": message.topic,
-                    "destinations": enabled_destinations,
-                },
-            )
-
-            # Mark incomplete routes as timeout
-            for dest_name in enabled_destinations:
-                if dest_name not in route_info.results:
-                    route_info.results[dest_name] = RouteResult(
-                        destination=dest_name,
-                        status=RouteStatus.TIMEOUT,
-                        processing_time=self.route_timeout,
-                        error="Routing timeout",
-                    )
+            await asyncio.gather(*tasks, return_exceptions=True)
         finally:
             route_info.completed_at = datetime.now(UTC)
             self.active_routes.pop(route_info.message_id, None)
@@ -324,6 +297,35 @@ class MessageRouter:
         self._log_route_result(route_info)
 
         return route_info
+
+    async def _route_with_deadline(
+        self, message: MQTTMessage, dest_name: str, route_info: MessageRouteInfo
+    ) -> None:
+        destination = self.destinations.get(dest_name)
+        timeout = (
+            None
+            if destination and destination.requires_backpressure
+            else self.route_timeout
+        )
+        try:
+            async with asyncio.timeout(timeout):
+                await self._route_to_destination(message, dest_name, route_info)
+        except TimeoutError:
+            logger.error(
+                "event=router.routing_timeout timeout_s=%s "
+                "message_id=%s topic=%s destination=%s",
+                timeout,
+                route_info.message_id,
+                message.topic,
+                dest_name,
+                extra=self._log_context,
+            )
+            route_info.results[dest_name] = RouteResult(
+                destination=dest_name,
+                status=RouteStatus.TIMEOUT,
+                processing_time=self.route_timeout,
+                error="Routing timeout",
+            )
 
     def _log_route_result(self, route_info: MessageRouteInfo) -> None:
         success_count = route_info.get_success_count()

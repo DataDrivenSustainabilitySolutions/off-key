@@ -28,6 +28,10 @@ class MessagePublisher(Protocol):
 class MessageDestination(ABC):
     """A measured destination for routed MQTT messages."""
 
+    # Network destinations have a deadline; bounded local admission propagates
+    # backpressure to the handler workers instead of timing out queued records.
+    requires_backpressure = False
+
     def __init__(self, name: str) -> None:
         self.name = name
         self.enabled = True
@@ -83,6 +87,8 @@ class MessageDestination(ABC):
 
 
 class DatabaseDestination(MessageDestination):
+    requires_backpressure = True
+
     def __init__(self, database_writer: TelemetryWriter) -> None:
         super().__init__("database")
         self.database_writer = database_writer

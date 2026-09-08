@@ -82,6 +82,7 @@ class WriteBatch:
     status: WriteStatus = WriteStatus.PENDING
     retry_count: int = 0
     last_error: str | None = None
+    failure_counted: bool = False
 
     def add_record(self, record: TelemetryRecord) -> None:
         self.records.append(record)

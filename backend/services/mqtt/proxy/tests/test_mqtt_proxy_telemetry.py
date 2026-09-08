@@ -1,3 +1,4 @@
+import asyncio
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
@@ -16,6 +17,7 @@ def _writer() -> DatabaseWriter:
     config.batch_size = 100
     config.batch_timeout = 5.0
     config.graceful_shutdown_timeout = 5.0
+    config.health_monitor_interval = 60.0
     return DatabaseWriter(
         config=config,
         session_factory=MagicMock(),
@@ -406,7 +408,13 @@ async def test_batch_retry_failure_increments_failed_record_metrics(monkeypatch)
     assert writer._process_batch.await_count == 4
     assert writer.total_records_failed == 2
     assert writer.total_batches_failed == 1
-    assert writer.processing_batches.get(batch_id) is None
+    assert writer.processing_batches[batch_id].size() == 2
+    await writer._process_batch_with_retry(batch_id)
+    assert writer.total_records_failed == 2
+    assert writer.total_batches_failed == 1
+    writer._process_batch.return_value = True
+    await writer._process_batch_with_retry(batch_id)
+    assert not writer.processing_batches
 
 
 @pytest.mark.asyncio
@@ -470,3 +478,80 @@ def test_get_health_status_marks_unhealthy_with_excessive_processing_backlog():
     health = writer.get_health_status()
 
     assert health.status is HealthStatus.UNHEALTHY
+
+
+def _message() -> MQTTMessage:
+    return MQTTMessage(
+        topic="device/evCharger/charger-1/sine",
+        payload={"timestamp": datetime.now(UTC).isoformat(), "value": 1.0},
+        timestamp=datetime.now(UTC),
+        qos=0,
+        retain=False,
+    )
+
+
+@pytest.mark.asyncio
+async def test_stalled_database_bounds_batches_and_backpressures_producers():
+    writer = _writer()
+    writer.batch_size = 1
+    entered = asyncio.Event()
+    release = asyncio.Event()
+    processed = []
+
+    async def persist(batch):
+        entered.set()
+        await release.wait()
+        processed.extend(batch.records)
+        return True
+
+    writer._process_batch = persist
+    await writer.start()
+    producer = None
+    try:
+        await writer.write_telemetry_message(_message())
+        await asyncio.wait_for(entered.wait(), 1)
+        await writer.write_telemetry_message(_message())
+        producer = asyncio.create_task(writer.write_telemetry_message(_message()))
+        await asyncio.sleep(0)
+        assert not producer.done()
+        assert writer.pending_batch.size() == 1
+        assert len(writer.processing_batches) == 1
+        release.set()
+        await asyncio.wait_for(producer, 1)
+        await writer.stop()
+        assert len(processed) == 3
+        assert not writer.processing_batches
+        assert writer.pending_batch.size() == 0
+    finally:
+        release.set()
+        if producer and not producer.done():
+            producer.cancel()
+        await writer.stop()
+
+
+@pytest.mark.asyncio
+async def test_shutdown_releases_waiting_producers_and_retains_unwritten_batches():
+    writer = _writer()
+    writer.batch_size = 1
+    writer.config.graceful_shutdown_timeout = 0.01
+    entered = asyncio.Event()
+
+    async def persist(_batch):
+        entered.set()
+        await asyncio.Event().wait()
+
+    writer._process_batch = persist
+    await writer.start()
+    await writer.write_telemetry_message(_message())
+    await asyncio.wait_for(entered.wait(), 1)
+    await writer.write_telemetry_message(_message())
+    producer = asyncio.create_task(writer.write_telemetry_message(_message()))
+    await asyncio.sleep(0)
+    with pytest.raises(TimeoutError):
+        await writer.stop()
+    with pytest.raises(RuntimeError, match="stopping"):
+        await producer
+    assert writer.pending_batch.size() == 1
+    assert sum(batch.size() for batch in writer.processing_batches.values()) == 1
+    assert writer._writer_task.done()
+    assert writer._health_task.done()

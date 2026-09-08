@@ -68,3 +68,11 @@ curl --fail http://localhost:8000/v1/anomalies/count
 - [Architecture](../development/architecture.md)
 - [Environment variables](../reference/environment-variables.md)
 - [Testing and debugging](../development/testing-debugging.md)
+
+## Telemetry persistence during outages
+
+The MQTT proxy uses one database worker and a bounded pending batch. Database
+failures retain the active batch for retry and apply backpressure to ingestion.
+Shutdown attempts to drain the buffers within the configured deadline and logs
+unwritten records if it cannot. These buffers are in memory, not a durable spool;
+forced termination does not guarantee delivery.

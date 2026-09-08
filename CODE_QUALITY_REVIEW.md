@@ -140,3 +140,16 @@ Validation: 476 backend/RADAR tests passed, 2 skipped, including new preparation
 configuration, malformed-neighbor, cancellation, and recovery regressions.
 Changed-file Ruff and formatting checks pass. Detector mathematics and existing
 persisted value semantics were preserved.
+
+### Finding 3 — bounded proxy persistence
+
+Plan: one worker owns each batch through retries, with a bounded pending buffer
+and backpressure instead of unbounded task creation or failed-batch retention.
+Implemented: at most one active batch and one pending batch of `batch_size` records.
+Exhausted batches remain owned and retry until recovery; failure counters count
+an affected batch once. Shutdown wakes blocked producers, drains to its deadline,
+and logs unwritten records while retaining buffers in the writer instance.
+Validation: 62 proxy/bridge tests pass, including blocked persistence, recovery,
+repeated retry exhaustion, bounded buffers, and shutdown with waiting producers.
+Changed-file lint passes. Buffers are in memory; forced process termination still
+cannot guarantee delivery, and no durable-delivery guarantee is introduced.

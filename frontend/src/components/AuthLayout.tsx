@@ -3,7 +3,6 @@ import {
   Card,
   CardContent,
   CardHeader,
-  CardTitle,
 } from "@/components/ui/card";
 import { AuthBackdrop } from "@/components/AuthBackdrop";
 import { cn } from "@/lib/utils";
@@ -21,7 +20,7 @@ interface AuthLayoutProps {
   title: string;
   children: ReactNode;
   contentClassName?: string;
-  titleProps?: ComponentProps<typeof CardTitle>;
+  titleProps?: ComponentProps<"h1">;
 }
 
 export function AuthLayout({
@@ -36,12 +35,13 @@ export function AuthLayout({
     <AuthBackdrop contentClassName="max-w-md">
       <Card className="w-full max-w-md gap-5 border-white/35 bg-card/95 pb-7 shadow-2xl shadow-black/10 backdrop-blur-xl dark:border-white/10">
         <CardHeader>
-          <CardTitle
-            className={cn("text-center text-2xl", titleClassName)}
+          <h1
+            data-slot="card-title"
+            className={cn("text-center text-2xl leading-none font-semibold", titleClassName)}
             {...restTitleProps}
           >
             {title}
-          </CardTitle>
+          </h1>
         </CardHeader>
         <CardContent className={cn("pb-0", contentClassName)}>{children}</CardContent>
       </Card>

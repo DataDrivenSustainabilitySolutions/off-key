@@ -92,7 +92,7 @@ const Login: React.FC = () => {
   };
 
   return (
-    <AuthLayout title="Login" titleProps={{ role: "heading", "aria-level": 1 }}>
+    <AuthLayout title="Login">
       <form onSubmit={handleLogin} className="space-y-4">
         {/* Email */}
         <div>

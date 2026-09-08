@@ -7,7 +7,7 @@ import type {
 } from "@/types/monitoring";
 import { ChevronDown, Plus, Settings2, Trash2 } from "lucide-react";
 import type { Dispatch, SetStateAction } from "react";
-import { useState } from "react";
+import { useId, useState } from "react";
 
 import { createDefaultMartingaleTracker, humanize } from "./config";
 import type {
@@ -87,6 +87,7 @@ export function AdvancedSettings({
   setDraft,
   clearError,
 }: AdvancedSettingsProps) {
+  const contentId = useId();
   const [expanded, setExpanded] = useState(false);
   const updateTracker = (
     index: number,
@@ -124,6 +125,8 @@ export function AdvancedSettings({
         variant="outline"
         className="w-full justify-between"
         onClick={() => setExpanded((current) => !current)}
+        aria-expanded={expanded}
+        aria-controls={expanded ? contentId : undefined}
       >
         <span className="flex items-center gap-2">
           <Settings2 className="h-4 w-4" />
@@ -138,7 +141,7 @@ export function AdvancedSettings({
       </Button>
 
       {expanded && (
-        <div className="space-y-6 rounded-2xl border border-border/65 bg-muted/[0.16] p-5 sm:p-6">
+        <div id={contentId} className="space-y-6 rounded-2xl border border-border/65 bg-muted/[0.16] p-5 sm:p-6">
           <div>
             <div className="flex items-center gap-1">
               <h3 className="font-semibold">Detector parameters</h3>

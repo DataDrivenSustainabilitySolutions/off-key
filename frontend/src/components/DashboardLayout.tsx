@@ -89,7 +89,7 @@ export function SectionPanel({
         <div className="flex flex-col gap-3 border-b border-border/60 px-5 py-4.5 sm:flex-row sm:items-center sm:justify-between sm:px-6">
           <div className="min-w-0">
             {title ? (
-              <div className="text-base font-semibold leading-6 tracking-[-0.01em]">{title}</div>
+              <h2 className="text-base font-semibold leading-6 tracking-[-0.01em]">{title}</h2>
             ) : null}
             {description ? (
               <div className="mt-1 text-sm text-muted-foreground">{description}</div>

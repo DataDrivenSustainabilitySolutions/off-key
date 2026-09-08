@@ -105,10 +105,12 @@ const Login: React.FC = () => {
               if (emailError) setEmailError(undefined);
             }}
             className={emailError ? 'border-destructive' : ''}
+            aria-invalid={Boolean(emailError)}
+            aria-describedby={emailError ? 'email-error' : undefined}
             required
           />
           {emailError && (
-            <p className="text-sm text-destructive mt-1">{emailError}</p>
+            <p id="email-error" className="text-sm text-destructive mt-1">{emailError}</p>
           )}
         </div>
 
@@ -125,17 +127,19 @@ const Login: React.FC = () => {
               setPassword(e.target.value);
               if (passwordError) setPasswordError(undefined);
             }}
-            className={passwordError ? 'border-destructive' : ''}
+            className={passwordError ? 'pr-10 border-destructive' : 'pr-10'}
+            aria-invalid={Boolean(passwordError)}
+            aria-describedby={passwordError ? 'password-error' : undefined}
             required
           />
           {passwordError && (
-            <p className="text-sm text-destructive mt-1 mr-10">{passwordError}</p>
+            <p id="password-error" className="text-sm text-destructive mt-1 mr-10">{passwordError}</p>
           )}
           <button
             type="button"
             className="absolute right-3 top-9 text-muted-foreground transition-colors hover:text-foreground"
             onClick={() => setShowPassword(!showPassword)}
-            aria-label="Show password"
+            aria-label={showPassword ? "Hide password" : "Show password"}
           >
             {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
           </button>

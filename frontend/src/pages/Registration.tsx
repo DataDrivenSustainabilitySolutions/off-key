@@ -95,6 +95,7 @@ const Registration: React.FC = () => {
               <Label htmlFor="password" className={AUTH_LABEL_CLASS}>Passwort</Label>
               <Input
                 id="password"
+                className="pr-10"
                 type={showPassword ? 'text' : 'password'}
                 placeholder="Passwort"
                 value={password}
@@ -105,7 +106,7 @@ const Registration: React.FC = () => {
                 type="button"
                 className="absolute right-3 top-9 text-muted-foreground transition-colors hover:text-foreground"
                 onClick={() => setShowPassword(!showPassword)}
-                aria-label="Passwort anzeigen"
+                aria-label={showPassword ? 'Passwort verbergen' : 'Passwort anzeigen'}
               >
                 {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
               </button>
@@ -117,6 +118,7 @@ const Registration: React.FC = () => {
               <Label htmlFor="confirmPassword" className={AUTH_LABEL_CLASS}>Confirm password</Label>
               <Input
                 id="confirmPassword"
+                className="pr-10"
                 type={showConfirmPassword ? 'text' : 'password'}
                 placeholder="Passwort bestätigen"
                 value={confirmPassword}
@@ -127,7 +129,7 @@ const Registration: React.FC = () => {
                 type="button"
                 className="absolute right-3 top-9 text-muted-foreground transition-colors hover:text-foreground"
                 onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                aria-label="Passwort anzeigen"
+                aria-label={showConfirmPassword ? 'Bestätigungspasswort verbergen' : 'Bestätigungspasswort anzeigen'}
               >
                 {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
               </button>

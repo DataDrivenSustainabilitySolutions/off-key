@@ -334,7 +334,7 @@ const Details: React.FC = () => {
     getNavigationState,
     handleNavigationStateChange,
     toggleChartLink,
-  } = useLinkedChartNavigation(allTelemetryData, monitoringEvidence);
+  } = useLinkedChartNavigation(allTelemetryData);
 
   return (
     <>

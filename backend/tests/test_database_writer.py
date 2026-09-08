@@ -101,7 +101,7 @@ def test_build_evidence_record_preserves_static_inference_context(
     from off_key_mqtt_radar.database import DatabaseWriter
 
     monkeypatch.setattr(
-        "off_key_mqtt_radar.database.get_radar_checkpoint_settings",
+        "off_key_mqtt_radar.result_records.get_radar_checkpoint_settings",
         lambda: SimpleNamespace(SERVICE_ID="svc-static"),
     )
     result = replace(
@@ -134,7 +134,7 @@ def test_build_evidence_record_preserves_static_inference_context(
     )
     writer = DatabaseWriter(db_config, session_factory=AsyncMock())
 
-    records = writer._build_evidence_records([result])
+    records = writer.projector._build_evidence_records([result])
 
     assert records == [
         {
@@ -171,7 +171,7 @@ def test_build_adaptive_operational_evidence_and_anomaly_semantics(
     from off_key_mqtt_radar.database import DatabaseWriter
 
     monkeypatch.setattr(
-        "off_key_mqtt_radar.database.get_radar_checkpoint_settings",
+        "off_key_mqtt_radar.result_records.get_radar_checkpoint_settings",
         lambda: SimpleNamespace(SERVICE_ID="svc-adaptive"),
     )
     result = replace(
@@ -200,8 +200,8 @@ def test_build_adaptive_operational_evidence_and_anomaly_semantics(
     )
     writer = DatabaseWriter(db_config, session_factory=AsyncMock())
 
-    [evidence] = writer._build_evidence_records([result])
-    [anomaly], _ = writer._build_records([result])
+    [evidence] = writer.projector._build_evidence_records([result])
+    [anomaly], _ = writer.projector._build_records([result])
 
     assert evidence["strategy"] == "adaptive_stream"
     assert evidence["p_value"] is None
@@ -222,7 +222,7 @@ def test_build_adaptive_operational_evidence_and_anomaly_semantics(
             },
         },
     )
-    assert writer._build_evidence_records([calibration]) == []
+    assert writer.projector._build_evidence_records([calibration]) == []
 
 
 def test_build_evidence_record_normalizes_infinite_values(
@@ -231,7 +231,7 @@ def test_build_evidence_record_normalizes_infinite_values(
     from off_key_mqtt_radar.database import DatabaseWriter
 
     monkeypatch.setattr(
-        "off_key_mqtt_radar.database.get_radar_checkpoint_settings",
+        "off_key_mqtt_radar.result_records.get_radar_checkpoint_settings",
         lambda: SimpleNamespace(SERVICE_ID="svc-static"),
     )
     result = replace(
@@ -257,7 +257,7 @@ def test_build_evidence_record_normalizes_infinite_values(
     )
 
     writer = DatabaseWriter(db_config, session_factory=AsyncMock())
-    record = writer._build_evidence_records([result])[0]
+    record = writer.projector._build_evidence_records([result])[0]
 
     assert record["e_value"] is None
     assert record["log_e_value"] is None
@@ -273,7 +273,7 @@ def test_build_evidence_record_preserves_generic_tracker_results(
     from off_key_mqtt_radar.database import DatabaseWriter
 
     monkeypatch.setattr(
-        "off_key_mqtt_radar.database.get_radar_checkpoint_settings",
+        "off_key_mqtt_radar.result_records.get_radar_checkpoint_settings",
         lambda: SimpleNamespace(SERVICE_ID="svc-ensemble"),
     )
     tracker_result = {
@@ -328,7 +328,7 @@ def test_build_evidence_record_preserves_generic_tracker_results(
 
     record = DatabaseWriter(
         db_config, session_factory=AsyncMock()
-    )._build_evidence_records([result])[0]
+    ).projector._build_evidence_records([result])[0]
     stored_tracker = record["tracker_results"][0]
 
     assert stored_tracker["tracker_id"] == "mixture-cusum"
@@ -348,7 +348,7 @@ async def test_flush_persists_ready_evidence_without_anomaly(
     from off_key_mqtt_radar.database import DatabaseWriter
 
     monkeypatch.setattr(
-        "off_key_mqtt_radar.database.get_radar_checkpoint_settings",
+        "off_key_mqtt_radar.result_records.get_radar_checkpoint_settings",
         lambda: SimpleNamespace(SERVICE_ID="svc-static"),
     )
     result = replace(
@@ -395,7 +395,7 @@ def test_build_evidence_record_rejects_incomplete_input_references(
     from off_key_mqtt_radar.database import DatabaseWriter
 
     monkeypatch.setattr(
-        "off_key_mqtt_radar.database.get_radar_checkpoint_settings",
+        "off_key_mqtt_radar.result_records.get_radar_checkpoint_settings",
         lambda: SimpleNamespace(SERVICE_ID="svc-static"),
     )
     result = replace(
@@ -418,7 +418,7 @@ def test_build_evidence_record_rejects_incomplete_input_references(
 
     records = DatabaseWriter(
         db_config, session_factory=AsyncMock()
-    )._build_evidence_records([result])
+    ).projector._build_evidence_records([result])
 
     assert records == []
 
@@ -498,3 +498,75 @@ async def test_stop_flushes_remaining_records_when_cancelled(db_config, monkeypa
     writer._writer_task.cancel()
     with suppress(asyncio.CancelledError):
         await writer._writer_task
+
+
+@pytest.mark.asyncio
+async def test_preparation_failure_retains_batch_and_writer_recovers(
+    db_config, sample_anomaly_result, mock_session_factory, monkeypatch
+):
+    from off_key_mqtt_radar.database import DatabaseWriter
+
+    writer = DatabaseWriter(db_config, session_factory=mock_session_factory)
+    project = writer.projector.prepare
+    writer.write_queue.append(sample_anomaly_result)
+    monkeypatch.setattr(
+        writer.projector, "prepare", MagicMock(side_effect=RuntimeError("temporary"))
+    )
+    await writer._flush_batch()
+    assert writer.write_queue == [sample_anomaly_result]
+    assert writer.total_errors == 1
+
+    monkeypatch.setattr(writer.projector, "prepare", project)
+    await writer._flush_batch()
+    assert writer.write_queue == []
+    assert writer.total_written == 1
+
+
+@pytest.mark.asyncio
+async def test_session_factory_failure_retains_snapshot(
+    db_config, sample_anomaly_result, monkeypatch
+):
+    from off_key_mqtt_radar.database import DatabaseWriter
+
+    writer = DatabaseWriter(db_config)
+    writer.write_queue.append(sample_anomaly_result)
+    monkeypatch.setattr(
+        "off_key_mqtt_radar.database.get_radar_async_session_factory",
+        MagicMock(side_effect=ValueError("database configuration unavailable")),
+    )
+    await writer._flush_batch()
+    assert writer.write_queue == [sample_anomaly_result]
+    assert writer.total_errors == 1
+    assert writer.total_rejected == 0
+
+
+@pytest.mark.asyncio
+async def test_malformed_result_does_not_poison_valid_batch(
+    db_config, sample_anomaly_result, mock_session_factory
+):
+    from off_key_mqtt_radar.database import DatabaseWriter
+
+    writer = DatabaseWriter(db_config, session_factory=mock_session_factory)
+    malformed = replace(sample_anomaly_result, context={"static_conformal": None})
+    writer.write_queue.extend([malformed, sample_anomaly_result])
+    await writer._flush_batch()
+    assert writer.write_queue == []
+    assert writer.total_written == 1
+    assert writer.total_rejected == 1
+    assert writer.get_performance_metrics()["total_rejected"] == 1
+
+
+@pytest.mark.asyncio
+async def test_cancellation_during_preparation_retains_snapshot(
+    db_config, sample_anomaly_result, mock_session_factory, monkeypatch
+):
+    from off_key_mqtt_radar.database import DatabaseWriter
+
+    writer = DatabaseWriter(db_config, session_factory=mock_session_factory)
+    writer.write_queue.append(sample_anomaly_result)
+    monkeypatch.setattr(
+        writer.projector, "prepare", MagicMock(side_effect=asyncio.CancelledError)
+    )
+    with pytest.raises(asyncio.CancelledError):
+        await writer._flush_batch()
+    assert writer.write_queue == [sample_anomaly_result]

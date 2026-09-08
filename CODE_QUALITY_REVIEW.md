@@ -126,3 +126,17 @@ identity creation/cascade deletion, and obsolete-schema rejection.
 Validation: backend main test directory passes (444 passed, 2 skipped); focused
 bootstrap tests and changed-file Ruff checks pass. All 9 focused tests pass against
 a disposable TimescaleDB instance, including repeat bootstrap and integrity checks.
+
+### Finding 2 — RADAR snapshot ownership
+
+Plan: keep drained results recoverable across preparation and persistence; isolate
+record projection and share the persistence eligibility rule.
+Implemented: separate `ResultProjector`/`PreparedResult` boundary; preparation and
+session-factory failures requeue the snapshot. Malformed individual results are
+explicitly logged and counted as rejected, while valid neighbors persist. Invalid
+operational evidence is rejected rather than retried indefinitely. Rejection is
+observable through `total_rejected`; rejected payloads are not retained in memory.
+Validation: 476 backend/RADAR tests passed, 2 skipped, including new preparation,
+configuration, malformed-neighbor, cancellation, and recovery regressions.
+Changed-file Ruff and formatting checks pass. Detector mathematics and existing
+persisted value semantics were preserved.

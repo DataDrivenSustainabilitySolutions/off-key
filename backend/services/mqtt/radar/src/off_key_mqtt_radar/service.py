@@ -435,14 +435,7 @@ class RadarService:
                 self.health_monitor.record_processing_time(time.time() - start_time)
 
                 # Write results to database if needed
-                static_context = (result.context or {}).get("static_conformal", {})
-                adaptive_context = (result.context or {}).get("adaptive_stream", {})
-                should_persist = (
-                    result.is_anomaly
-                    or static_context.get("phase") == "ready"
-                    or adaptive_context.get("phase") == "operational"
-                )
-                if self.database_writer and should_persist:
+                if self.database_writer and result.should_persist:
                     await self.database_writer.write_result(result)
 
         except Exception as e:

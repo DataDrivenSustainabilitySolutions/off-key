@@ -7,10 +7,13 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from off_key_mqtt_radar.database import (
     ANOMALY_TABLE,
-    MULTIVARIATE_TELEMETRY_TYPE,
     DatabaseWriter,
 )
 from off_key_mqtt_radar.models import AnomalyResult
+from off_key_mqtt_radar.result_records import (
+    MULTIVARIATE_TELEMETRY_TYPE,
+    ResultProjector,
+)
 
 
 def _build_result(
@@ -47,22 +50,22 @@ def _build_result(
 
 def test_database_writer_uses_tail_pvalue_for_persisted_anomaly_value():
     result = _build_result(aligned_vector=True, tail_pvalue=0.0042, anomaly_score=0.018)
-    assert DatabaseWriter._derive_anomaly_value(result) == 0.0042
+    assert ResultProjector._derive_anomaly_value(result) == 0.0042
 
 
 def test_database_writer_falls_back_to_anomaly_score_when_tail_pvalue_missing():
     result = _build_result(aligned_vector=False, tail_pvalue=None, anomaly_score=0.011)
-    assert DatabaseWriter._derive_anomaly_value(result) == 0.011
+    assert ResultProjector._derive_anomaly_value(result) == 0.011
 
 
 def test_database_writer_marks_multivariate_anomaly_type():
     result = _build_result(aligned_vector=True, tail_pvalue=0.001, anomaly_score=0.01)
-    assert DatabaseWriter._derive_anomaly_type(result) == "ml_tailprob_multivariate"
+    assert ResultProjector._derive_anomaly_type(result) == "ml_tailprob_multivariate"
 
 
 def test_database_writer_marks_univariate_anomaly_type():
     result = _build_result(aligned_vector=False, tail_pvalue=0.01, anomaly_score=0.01)
-    assert DatabaseWriter._derive_anomaly_type(result) == "ml_tailprob_univariate"
+    assert ResultProjector._derive_anomaly_type(result) == "ml_tailprob_univariate"
 
 
 def test_database_writer_marks_static_conformal_multivariate_anomaly_type():
@@ -74,10 +77,10 @@ def test_database_writer_marks_static_conformal_multivariate_anomaly_type():
     )
 
     assert (
-        DatabaseWriter._derive_anomaly_type(result)
+        ResultProjector._derive_anomaly_type(result)
         == "ml_conformal_static_multivariate"
     )
-    assert DatabaseWriter._derive_anomaly_value(result) == 0.002
+    assert ResultProjector._derive_anomaly_value(result) == 0.002
 
 
 def test_database_writer_marks_static_conformal_univariate_anomaly_type():
@@ -89,7 +92,7 @@ def test_database_writer_marks_static_conformal_univariate_anomaly_type():
     )
 
     assert (
-        DatabaseWriter._derive_anomaly_type(result) == "ml_conformal_static_univariate"
+        ResultProjector._derive_anomaly_type(result) == "ml_conformal_static_univariate"
     )
 
 
@@ -98,7 +101,9 @@ def test_database_writer_uses_canonical_multivariate_telemetry_type():
     writer = DatabaseWriter(config, session_factory=MagicMock())
     result = _build_result(aligned_vector=True, tail_pvalue=0.004, anomaly_score=0.01)
 
-    assert writer._derive_telemetry_type(result) == MULTIVARIATE_TELEMETRY_TYPE
+    assert (
+        writer.projector._derive_telemetry_type(result) == MULTIVARIATE_TELEMETRY_TYPE
+    )
 
 
 def test_database_writer_uses_topic_telemetry_type_for_univariate():
@@ -106,7 +111,7 @@ def test_database_writer_uses_topic_telemetry_type_for_univariate():
     writer = DatabaseWriter(config, session_factory=MagicMock())
     result = _build_result(aligned_vector=False, tail_pvalue=0.004, anomaly_score=0.01)
 
-    assert writer._derive_telemetry_type(result) == "sine"
+    assert writer.projector._derive_telemetry_type(result) == "sine"
 
 
 def test_anomaly_table_metadata_includes_value_type_column():
@@ -127,7 +132,7 @@ def test_build_records_persists_multivariate_sensor_set():
         required_sensors=["L1", "L2"],
     )
 
-    anomaly_records, _ = writer._build_records([result])
+    anomaly_records, _ = writer.projector._build_records([result])
 
     assert anomaly_records[0]["sensor_set"] == ["L1", "L2"]
 
@@ -137,7 +142,7 @@ def test_build_records_persists_univariate_sensor_set_from_topic():
     writer = DatabaseWriter(config, session_factory=MagicMock())
     result = _build_result(aligned_vector=False, tail_pvalue=0.004, anomaly_score=0.01)
 
-    anomaly_records, _ = writer._build_records([result])
+    anomaly_records, _ = writer.projector._build_records([result])
 
     assert anomaly_records[0]["sensor_set"] == ["sine"]
 
@@ -183,7 +188,7 @@ def test_build_records_persists_static_conformal_value_type():
         anomaly_score=0.004,
     )
 
-    anomaly_records, _ = writer._build_records([result])
+    anomaly_records, _ = writer.projector._build_records([result])
 
     assert anomaly_records[0]["value_type"] == "conformal_pvalue"
 

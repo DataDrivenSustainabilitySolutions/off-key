@@ -17,7 +17,7 @@ from off_key_core.utils.enum import HealthStatus
 from off_key_core.utils.mqtt_topics import TopicMetadataExtractor
 from sqlalchemy import case, update
 from sqlalchemy.dialects.postgresql import insert
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import DBAPIError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .client.models import MQTTMessage
@@ -30,6 +30,25 @@ from .telemetry_models import (
     WriteStatus,
 )
 from .telemetry_parsing import parse_telemetry_message
+
+
+class PermanentRecordError(Exception):
+    """A database rejection that retrying the same record cannot resolve."""
+
+
+def _is_permanent_record_error(error: SQLAlchemyError) -> bool:
+    if not isinstance(error, DBAPIError):
+        return False
+    sqlstate = getattr(error.orig, "sqlstate", None) or getattr(
+        error.orig, "pgcode", ""
+    )
+    # Data exceptions and row constraints can be isolated. Connection, schema,
+    # permission, foreign-key and unknown failures remain retryable.
+    return bool(sqlstate) and (
+        sqlstate.startswith("22")
+        or sqlstate in {"23502", "23514"}
+        or (sqlstate == "54000" and "index row" in str(error.orig).lower())
+    )
 
 
 class DatabaseWriter:
@@ -70,6 +89,7 @@ class DatabaseWriter:
         self.total_records_received = 0
         self.total_records_written = 0
         self.total_records_failed = 0
+        self.total_records_rejected = 0
         self.total_batches_processed = 0
         self.total_batches_failed = 0
         self.write_latency_sum = 0.0
@@ -294,7 +314,7 @@ class DatabaseWriter:
                     )
                     await asyncio.sleep(delay)
 
-                success = await self._process_batch(batch)
+                success = await self._persist_owned_batch(batch)
 
                 if success:
                     batch.status = WriteStatus.SUCCESS
@@ -336,7 +356,7 @@ class DatabaseWriter:
         # All attempts failed
         batch.status = WriteStatus.FAILED
         if not batch.failure_counted:
-            self.total_records_failed += batch_size
+            self.total_records_failed += batch.size()
             self.total_batches_failed += 1
             batch.failure_counted = True
 
@@ -353,6 +373,35 @@ class DatabaseWriter:
                 "charger_ids": list(batch.get_charger_ids()),
             },
         )
+
+    async def _persist_owned_batch(self, batch: WriteBatch) -> bool:
+        """Isolate rejected rows while retaining unfinished work across retries."""
+        if not batch.isolate_records:
+            try:
+                return await self._process_batch(batch)
+            except PermanentRecordError:
+                batch.isolate_records = True
+
+        while batch.records:
+            record = batch.records[0]
+            try:
+                if not await self._process_batch(WriteBatch(records=[record])):
+                    return False
+            except PermanentRecordError as error:
+                self.total_records_rejected += 1
+                logger.error(
+                    "event=db_writer.record_rejected charger_id=%s "
+                    "telemetry_type=%s timestamp=%s error=%s",
+                    record.charger_id,
+                    record.telemetry_type,
+                    record.timestamp,
+                    error,
+                    extra=self._log_context,
+                )
+            # No await between resolution and relinquishing ownership. A later
+            # cancellation or transient failure retains only unfinished records.
+            del batch.records[0]
+        return True
 
     async def _process_batch(self, batch: WriteBatch) -> bool:
         """Process a batch of telemetry records"""
@@ -442,6 +491,8 @@ class DatabaseWriter:
             return True
 
         except SQLAlchemyError as e:
+            if _is_permanent_record_error(e):
+                raise PermanentRecordError(str(e.orig)) from e
             logger.error(
                 "event=db_writer.batch_db_error batch_size=%s error=%s",
                 batch_size,
@@ -617,6 +668,7 @@ class DatabaseWriter:
             total_records_received=self.total_records_received,
             total_records_written=self.total_records_written,
             total_records_failed=self.total_records_failed,
+            total_records_rejected=self.total_records_rejected,
             total_batches_processed=self.total_batches_processed,
             total_batches_failed=self.total_batches_failed,
             batch_success_rate=round(success_rate, 2),

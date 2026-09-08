@@ -12,6 +12,7 @@ class WriterPerformanceMetrics:
     total_records_received: int
     total_records_written: int
     total_records_failed: int
+    total_records_rejected: int
     total_batches_processed: int
     total_batches_failed: int
     batch_success_rate: float
@@ -83,6 +84,7 @@ class WriteBatch:
     retry_count: int = 0
     last_error: str | None = None
     failure_counted: bool = False
+    isolate_records: bool = False
 
     def add_record(self, record: TelemetryRecord) -> None:
         self.records.append(record)

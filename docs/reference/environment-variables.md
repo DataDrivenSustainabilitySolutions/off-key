@@ -118,6 +118,15 @@ Do not paste generated output into issues, logs, commits, screenshots, or docume
 
 When `MQTT_USE_AUTH=true`, provide the supported `MQTT_USERNAME` and `MQTT_APIKEY` runtime variables through an ignored file or secret store.
 
+The proxy retains transient database failures in bounded batches and applies
+backpressure until persistence recovers. Recognized permanent record errors
+(PostgreSQL data exceptions, NOT NULL/check violations, and oversized index rows)
+trigger individual writes to isolate invalid records. Rejected records are logged
+as `db_writer.record_rejected`, counted in `total_records_rejected`, and discarded;
+they are not stored for replay. Valid records continue through the same
+charger/telemetry transaction. Connection, schema, permission, foreign-key, and
+unknown errors remain eligible for retry.
+
 ## EMQX
 
 | Variable | Development default | Purpose / validation |

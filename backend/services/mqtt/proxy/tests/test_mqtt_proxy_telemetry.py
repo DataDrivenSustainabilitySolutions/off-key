@@ -556,3 +556,107 @@ async def test_shutdown_releases_waiting_producers_and_retains_unwritten_batches
     assert sum(batch.size() for batch in writer.processing_batches.values()) == 1
     assert writer._writer_task.done()
     assert writer._health_task.done()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("sqlstate", ["22003", "23514", "54000"])
+async def test_permanent_record_failure_does_not_block_valid_telemetry(sqlstate):
+    from sqlalchemy.exc import DBAPIError
+
+    writer = _writer()
+    writer.max_retries = 0
+    session = AsyncMock()
+    session_ctx = AsyncMock()
+    session_ctx.__aenter__.return_value = session
+    session_ctx.__aexit__.return_value = False
+    writer._session_factory = MagicMock(return_value=session_ctx)
+    writer._upsert_chargers = AsyncMock()
+    writer._update_charger_statuses = AsyncMock()
+    committed = []
+    staged = []
+
+    async def execute(statement):
+        params = statement.compile().params
+        sensors = [value for key, value in params.items() if key.startswith("type_m")]
+        if "bad" in sensors:
+            error = Exception("index row size exceeds maximum")
+            error.sqlstate = sqlstate
+            raise DBAPIError("insert", None, error)
+        staged.extend(sensors)
+        return MagicMock(rowcount=len(sensors))
+
+    async def commit():
+        committed.extend(staged)
+        staged.clear()
+
+    session.execute.side_effect = execute
+    session.commit.side_effect = commit
+    session.rollback.side_effect = staged.clear
+    for sensor in ("good-before", "bad", "good-after"):
+        message = _message()
+        message.topic = f"device/evCharger/charger-1/{sensor}"
+        await writer.write_telemetry_message(message)
+    await writer._trigger_batch_processing()
+    await writer.write_telemetry_message(_message())
+    await writer._trigger_batch_processing()
+
+    assert committed == ["good-before", "good-after", "sine"]
+    assert session.rollback.await_count == 2
+    assert writer.total_records_written == 3
+    assert writer.get_performance_metrics().total_records_rejected == 1
+    assert not writer.processing_batches
+    assert writer.pending_batch.size() == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "sqlstate", ["08006", "40001", "42501", "42P01", "23503", "54000", None]
+)
+async def test_non_record_database_errors_retain_batch(sqlstate):
+    from sqlalchemy.exc import DBAPIError
+
+    writer = _writer()
+    writer.max_retries = 0
+    session = AsyncMock()
+    error = Exception("database failure")
+    error.sqlstate = sqlstate
+    session.execute.side_effect = DBAPIError("insert", None, error)
+    session_ctx = AsyncMock()
+    session_ctx.__aenter__.return_value = session
+    session_ctx.__aexit__.return_value = False
+    writer._session_factory = MagicMock(return_value=session_ctx)
+    await writer.write_telemetry_message(_message())
+    await writer._trigger_batch_processing()
+    assert len(writer.processing_batches) == 1
+    assert next(iter(writer.processing_batches.values())).size() == 1
+    assert writer.total_records_rejected == 0
+    session.commit.assert_not_awaited()
+    session.rollback.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("interruption", [False, asyncio.CancelledError()])
+async def test_isolation_retains_only_unfinished_records_after_interruption(
+    interruption,
+):
+    from off_key_mqtt_proxy.telemetry import PermanentRecordError
+
+    writer = _writer()
+    for _ in range(3):
+        await writer.write_telemetry_message(_message())
+    batch = writer.pending_batch
+    original = list(batch.records)
+    writer._process_batch = AsyncMock(
+        side_effect=[PermanentRecordError("bad batch"), True, interruption]
+    )
+    if isinstance(interruption, asyncio.CancelledError):
+        with pytest.raises(asyncio.CancelledError):
+            await writer._persist_owned_batch(batch)
+    else:
+        assert await writer._persist_owned_batch(batch) is False
+    assert batch.records == original[1:]
+    assert batch.isolate_records
+    writer._process_batch = AsyncMock(return_value=True)
+    assert await writer._persist_owned_batch(batch) is True
+    assert writer._process_batch.await_count == 2
+    assert not batch.records

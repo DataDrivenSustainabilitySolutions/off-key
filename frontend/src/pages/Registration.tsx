@@ -6,6 +6,10 @@ import { Link } from 'react-router-dom';
 import { Eye, EyeOff } from 'lucide-react';
 import {
   AuthLayout,
+  AUTH_LINK_CLASS,
+  AUTH_ERROR_CLASS,
+  AUTH_SUCCESS_CLASS,
+
   AUTH_LABEL_CLASS,
   AUTH_SUBMIT_BUTTON_CLASS,
 } from '@/components/AuthLayout';
@@ -79,11 +83,11 @@ const Registration: React.FC = () => {
           <form onSubmit={handleRegister} className="space-y-4">
             {/* Email */}
             <div>
-              <Label htmlFor="email" className={AUTH_LABEL_CLASS}>E-Mail</Label>
+              <Label htmlFor="email" className={AUTH_LABEL_CLASS}>Email</Label>
               <Input
                 id="email"
                 type="email"
-                placeholder="E-Mail"
+                placeholder="Email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
@@ -92,12 +96,12 @@ const Registration: React.FC = () => {
 
             {/* Password */}
             <div className="relative">
-              <Label htmlFor="password" className={AUTH_LABEL_CLASS}>Passwort</Label>
+              <Label htmlFor="password" className={AUTH_LABEL_CLASS}>Password</Label>
               <Input
                 id="password"
                 className="pr-10"
                 type={showPassword ? 'text' : 'password'}
-                placeholder="Passwort"
+                placeholder="Password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
@@ -106,7 +110,7 @@ const Registration: React.FC = () => {
                 type="button"
                 className="absolute right-3 top-9 text-muted-foreground transition-colors hover:text-foreground"
                 onClick={() => setShowPassword(!showPassword)}
-                aria-label={showPassword ? 'Passwort verbergen' : 'Passwort anzeigen'}
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
               >
                 {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
               </button>
@@ -120,7 +124,7 @@ const Registration: React.FC = () => {
                 id="confirmPassword"
                 className="pr-10"
                 type={showConfirmPassword ? 'text' : 'password'}
-                placeholder="Passwort bestätigen"
+                placeholder="Confirm password"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 required
@@ -129,7 +133,7 @@ const Registration: React.FC = () => {
                 type="button"
                 className="absolute right-3 top-9 text-muted-foreground transition-colors hover:text-foreground"
                 onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                aria-label={showConfirmPassword ? 'Bestätigungspasswort verbergen' : 'Bestätigungspasswort anzeigen'}
+                aria-label={showConfirmPassword ? 'Hide confirmation password' : 'Show confirmation password'}
               >
                 {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
               </button>
@@ -140,12 +144,12 @@ const Registration: React.FC = () => {
               type="submit"
               className={AUTH_SUBMIT_BUTTON_CLASS}
             >
-              REGISTER
+              Register
             </Button>
 
             {/* Message */}
             {message && (
-              <p className={`mt-2 text-center text-sm ${isError ? 'text-red-600' : 'text-green-600'}`}>
+              <p className={`mt-2 text-center text-sm ${isError ? AUTH_ERROR_CLASS : AUTH_SUCCESS_CLASS}`}>
                 {message}
               </p>
             )}
@@ -154,7 +158,7 @@ const Registration: React.FC = () => {
             <div className="text-xs mt-4 text-center">
               <p>
                 Already have an account?{' '}
-                <Link to="/login" className="text-blue-600 hover:underline">
+                <Link to="/login" className={AUTH_LINK_CLASS}>
                   Login here
                 </Link>
               </p>

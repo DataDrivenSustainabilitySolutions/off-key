@@ -63,7 +63,7 @@ describe("Login", () => {
   it("shows form fields and submit button", () => {
     renderLogin();
 
-    expect(screen.getByLabelText(/e-mail/i)).toBeTruthy();
+    expect(screen.getByLabelText(/email/i)).toBeTruthy();
     expect(
       screen.getByLabelText(/password/i, { selector: "input" })
     ).toBeTruthy();
@@ -79,7 +79,7 @@ describe("Login", () => {
     );
 
     renderLogin();
-    fireEvent.change(screen.getByLabelText(/e-mail/i), {
+    fireEvent.change(screen.getByLabelText(/email/i), {
       target: { value: "test@example.com" },
     });
     fireEvent.change(screen.getByLabelText(/password/i, { selector: "input" }), {
@@ -114,7 +114,7 @@ describe("Login", () => {
     );
 
     renderLogin();
-    fireEvent.change(screen.getByLabelText(/e-mail/i), {
+    fireEvent.change(screen.getByLabelText(/email/i), {
       target: { value: "test@example.com" },
     });
     fireEvent.change(screen.getByLabelText(/password/i, { selector: "input" }), {
@@ -140,7 +140,7 @@ describe("Login", () => {
     );
 
     renderLogin();
-    fireEvent.change(screen.getByLabelText(/e-mail/i), {
+    fireEvent.change(screen.getByLabelText(/email/i), {
       target: { value: "test@example.com" },
     });
     fireEvent.change(screen.getByLabelText(/password/i, { selector: "input" }), {

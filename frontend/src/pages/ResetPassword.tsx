@@ -5,6 +5,9 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import {
   AuthLayout,
+  AUTH_ERROR_CLASS,
+  AUTH_SUCCESS_CLASS,
+
   AUTH_LABEL_CLASS,
   AUTH_SUBMIT_BUTTON_CLASS,
 } from '@/components/AuthLayout';
@@ -64,22 +67,22 @@ const ResetPassword: React.FC = () => {
   return (
     <AuthLayout title="Reset password">
           {displayError && (
-            <p className="mb-4 text-center text-sm text-red-600">{displayError}</p>
+            <p className={`mb-4 text-center text-sm ${AUTH_ERROR_CLASS}`}>{displayError}</p>
           )}
           {message && (
-            <p className="mb-4 text-center text-sm text-green-600">{message}</p>
+            <p className={`mb-4 text-center text-sm ${AUTH_SUCCESS_CLASS}`}>{message}</p>
           )}
           {!message && (
             <form onSubmit={handleSubmit} className="space-y-4">
-              {/* Neues Passwort */}
+              {/* New password */}
               <div>
                 <Label htmlFor="newPassword" className={AUTH_LABEL_CLASS}>
-                  New passwort
+                  New password
                 </Label>
                 <Input
                   id="newPassword"
                   type="password"
-                  placeholder="Neues Passwort"
+                  placeholder="New password"
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
                   required
@@ -93,7 +96,7 @@ const ResetPassword: React.FC = () => {
                 <Input
                   id="confirmNewPassword"
                   type="password"
-                  placeholder="Password bestätigen"
+                  placeholder="Confirm password"
                   value={confirmNewPassword}
                   onChange={(e) => setConfirmNewPassword(e.target.value)}
                   required

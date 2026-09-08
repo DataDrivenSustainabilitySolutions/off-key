@@ -7,6 +7,10 @@ import { Link } from "react-router-dom";
 import { useAuth } from "@/auth/AuthContext";
 import {
   AuthLayout,
+  AUTH_LINK_CLASS,
+  AUTH_ERROR_CLASS,
+  AUTH_SUCCESS_CLASS,
+
   AUTH_LABEL_CLASS,
   AUTH_SUBMIT_BUTTON_CLASS,
 } from "@/components/AuthLayout";
@@ -90,15 +94,15 @@ const Login: React.FC = () => {
   return (
     <AuthLayout title="Login" titleProps={{ role: "heading", "aria-level": 1 }}>
       <form onSubmit={handleLogin} className="space-y-4">
-        {/* E-Mail */}
+        {/* Email */}
         <div>
           <Label htmlFor="email" className={AUTH_LABEL_CLASS}>
-            E-Mail
+            Email
           </Label>
           <Input
             id="email"
             type="email"
-            placeholder="E-Mail"
+            placeholder="Email"
             value={email}
             onChange={(e) => {
               setEmail(e.target.value);
@@ -149,7 +153,7 @@ const Login: React.FC = () => {
           <input
             type="checkbox"
             id="remember"
-            className="accent-green-600"
+            className="accent-primary"
             checked={rememberMe}
             onChange={(e) => setRememberMe(e.target.checked)}
           />
@@ -169,8 +173,8 @@ const Login: React.FC = () => {
           <p
             className={`mt-2 text-center text-sm ${
               message === "Login successful!"
-                ? "text-green-600"
-                : "text-red-600"
+                ? AUTH_SUCCESS_CLASS
+                : AUTH_ERROR_CLASS
             }`}
           >
             {message}
@@ -181,7 +185,7 @@ const Login: React.FC = () => {
         <div className="text-sm text-center mt-3 space-y-1">
           <Link
             to="/forgot-password"
-            className="text-blue-600 hover:underline"
+            className={AUTH_LINK_CLASS}
           >
             Forgot password?
           </Link>
@@ -189,7 +193,7 @@ const Login: React.FC = () => {
         <div className="text-xs mt-4 text-center">
           <p>
             Not signed up yet?{" "}
-            <Link to="/register" className="text-blue-600 hover:underline">
+            <Link to="/register" className={AUTH_LINK_CLASS}>
               Register here
             </Link>
           </p>

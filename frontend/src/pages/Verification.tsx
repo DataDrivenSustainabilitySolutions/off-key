@@ -3,6 +3,9 @@ import { useLocation, Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import {
   AuthLayout,
+  AUTH_ERROR_CLASS,
+  AUTH_SUCCESS_CLASS,
+
   AUTH_SUBMIT_BUTTON_CLASS,
 } from '@/components/AuthLayout';
 import { apiUtils } from '@/lib/api-client';
@@ -57,15 +60,15 @@ const VerificationContent: React.FC<{ token: string | null }> = ({ token }) => {
     }, [token]);
 
     return (
-        <AuthLayout title="Email Verification" contentClassName="text-center space-y-4">
-            <div className={`text-lg ${isSuccess ? 'text-green-600' : isLoading ? 'text-blue-600' : 'text-red-600'}`}>
+        <AuthLayout title="Email verification" contentClassName="text-center space-y-4">
+            <div className={`text-lg ${isSuccess ? AUTH_SUCCESS_CLASS : isLoading ? 'text-primary' : AUTH_ERROR_CLASS}`}>
                 {status}
             </div>
 
             {isSuccess && (
                 <Link to="/login">
                     <Button className={AUTH_SUBMIT_BUTTON_CLASS}>
-                        Go to Login
+                        Go to login
                     </Button>
                 </Link>
             )}
@@ -74,7 +77,7 @@ const VerificationContent: React.FC<{ token: string | null }> = ({ token }) => {
                 <div className="space-y-2">
                     <Link to="/register">
                         <Button variant="outline" className="w-full">
-                            Register Again
+                            Register again
                         </Button>
                     </Link>
                     <p className="text-sm text-muted-foreground">

@@ -8,6 +8,10 @@ import {
 import { AuthBackdrop } from "@/components/AuthBackdrop";
 import { cn } from "@/lib/utils";
 
+export const AUTH_LINK_CLASS = "text-primary hover:underline";
+export const AUTH_ERROR_CLASS = "text-red-700 dark:text-red-400";
+export const AUTH_SUCCESS_CLASS = "text-emerald-700 dark:text-emerald-400";
+
 export const AUTH_LABEL_CLASS = "mb-1 block text-sm";
 
 export const AUTH_SUBMIT_BUTTON_CLASS =

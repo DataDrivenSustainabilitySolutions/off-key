@@ -66,20 +66,16 @@ const VerificationContent: React.FC<{ token: string | null }> = ({ token }) => {
             </div>
 
             {isSuccess && (
-                <Link to="/login">
-                    <Button className={AUTH_SUBMIT_BUTTON_CLASS}>
-                        Go to login
-                    </Button>
-                </Link>
+                <Button asChild className={AUTH_SUBMIT_BUTTON_CLASS}>
+                    <Link to="/login">Go to login</Link>
+                </Button>
             )}
 
             {!isLoading && !isSuccess && (
                 <div className="space-y-2">
-                    <Link to="/register">
-                        <Button variant="outline" className="w-full">
-                            Register again
-                        </Button>
-                    </Link>
+                    <Button asChild variant="outline" className="w-full">
+                        <Link to="/register">Register again</Link>
+                    </Button>
                     <p className="text-sm text-muted-foreground">
                         Need help? Contact support
                     </p>

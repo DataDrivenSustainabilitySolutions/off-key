@@ -196,3 +196,28 @@ Removed that branch and helper: duplicate rows already use `ON CONFLICT`, while
 actual integrity failures now roll back and enter the retained retry path.
 The regression test checks failure reporting, rollback, no commit, and zero
 written-record count. This preserves the charger/telemetry transaction boundary.
+
+## Final validation and commits
+
+Branch: `refactor/code-quality-findings`. All six findings have been addressed.
+
+| Finding | Commit |
+| --- | --- |
+| 1 — current-schema bootstrap | `12a8180` |
+| 2 — RADAR batch ownership | `bee235e` |
+| 3 — bounded proxy persistence | `81717f3` |
+| 4 — startup-only configuration | `7870778` |
+| 5 — rolling circuit breaker | `58acd39` |
+| 6 — charger-scoped requests | `0429b32` |
+| 3 follow-up — integrity-error retention | `70d5984` |
+
+Final checks: 539 backend tests passed, 1 skipped, including the live disposable
+TimescaleDB test; 176 frontend tests passed; frontend lint/build and all repository
+pre-commit hooks passed. The existing dependency warnings and frontend Details
+bundle-size warning remain. Browser E2E was not run. No existing database was
+modified; the disposable test container and its volume were removed.
+
+Operational changes: obsolete schemas now fail explicitly, RADAR configuration
+changes require restart, and proxy persistence applies bounded backpressure.
+Malformed RADAR results are logged/counted as rejected. Buffered telemetry is not
+a durable spool and cannot survive forced process termination.

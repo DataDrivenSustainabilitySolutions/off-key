@@ -6,7 +6,7 @@ Reviewed commit: `a5a9a90`. Date: 2026-09-08.
 
 The project is in development. Historical API, checkpoint, and database compatibility are not requirements for the proposed design. This does not imply permission to erase existing databases or disable current integrity constraints.
 
-Runtime source files remain unchanged. This review adds only this report.
+The findings below describe the original audit. Remediation progress is recorded at the end of this report.
 
 ## Scope and evidence
 
@@ -112,3 +112,17 @@ Avoid mixing detector mathematics, checkpoint semantics, schema deletion, queue 
 Local Ruff reports three `UP042` enum findings, one `RUF036` union-order finding, and one `ASYNC240` path-I/O finding. Do not blindly apply the enum suggestions as cosmetic fixes: switching to `StrEnum` changes string-conversion behavior. Align the local/toolchain version with the pre-commit pin before turning this into a cleanup task.
 
 The two production files above 1,000 lines already exceed the threshold at the reviewed commit; this review did not identify a new diff crossing it. The chart model (859 lines), proxy writer (778), and proxy service (772) are other sizeable modules, but line count alone is not a reason to split them without improving ownership or deleting complexity.
+
+## Remediation log
+
+### Finding 1 — current-schema bootstrap
+
+Plan: delete historical upgrade paths, validate existing table shapes before DDL,
+and retain current schema integrity behavior in the core database layer.
+Implemented: canonical bootstrap and identity trigger; obsolete shapes fail without
+rewriting data. `SyncService` shrank from 1,169 to 234 lines. Added disposable
+TimescaleDB integration coverage for repeated bootstrap, both evidence strategies,
+identity creation/cascade deletion, and obsolete-schema rejection.
+Validation: backend main test directory passes (444 passed, 2 skipped); focused
+bootstrap tests and changed-file Ruff checks pass. All 9 focused tests pass against
+a disposable TimescaleDB instance, including repeat bootstrap and integrity checks.

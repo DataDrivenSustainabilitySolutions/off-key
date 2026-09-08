@@ -71,7 +71,11 @@ TACTIC and the Gateway monitoring endpoints use these definitions for discovery 
 - Frontend → API Gateway → TACTIC data services → database.
 - MQTT Proxy writes telemetry through the shared backend service layer.
 - RADAR writes monitoring evidence and anomalies.
-- DB Sync initializes the schema and exposes schema readiness.
+- DB Sync initializes the current schema and exposes schema readiness. Startup does
+  not migrate historical development schemas. An obsolete table shape fails
+  readiness without rewriting existing data; use a fresh development database.
+  Current tables, indexes, identity synchronization, and TimescaleDB policies are
+  owned by `off_key_core.db.models` and `off_key_core.db.schema`.
 
 ## Related pages
 

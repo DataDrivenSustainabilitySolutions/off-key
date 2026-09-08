@@ -73,6 +73,7 @@ function NavLinkItem({ item, active, badge, onClick, compact = false }: NavLinkP
   const link = (
     <Link
       to={item.href}
+      aria-label={item.label}
       onClick={onClick}
       className={cn(
         "relative inline-flex h-9 items-center gap-2 rounded-lg px-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent/65 hover:text-foreground",

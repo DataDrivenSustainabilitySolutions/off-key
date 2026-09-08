@@ -1,3 +1,4 @@
+import { useId } from "react";
 import { Link } from "react-router-dom";
 import { Grid2X2, List, Search, Star } from "lucide-react";
 
@@ -70,9 +71,10 @@ export function ChargerListControls({
   onCardsViewChange,
   viewToggleTooltip,
 }: ChargerListControlsProps) {
+  const statusGroupName = useId();
   const counts = { countAll, countOnline, countOffline };
   const switchControl = (
-    <Switch checked={isCardsView} onCheckedChange={onCardsViewChange} />
+    <Switch aria-label="Card view" checked={isCardsView} onCheckedChange={onCardsViewChange} />
   );
 
   return (
@@ -83,6 +85,7 @@ export function ChargerListControls({
           <Input
             type="text"
             placeholder={searchPlaceholder}
+            aria-label={searchPlaceholder}
             value={searchTerm}
             onChange={(event) => onSearchTermChange(event.target.value)}
             className="pl-9"
@@ -94,18 +97,19 @@ export function ChargerListControls({
             <span className="text-sm font-medium text-muted-foreground">
               {statusLabel}
             </span>
-            <div className="grid grid-cols-3 rounded-xl border border-border/70 bg-muted/35 p-1">
+            <div role="group" aria-label={statusLabel} className="grid grid-cols-3 rounded-xl border border-border/70 bg-muted/35 p-1">
               {statusOptions.map((option) => (
                 <label
                   key={option.value}
                   className={cn(
-                    "flex cursor-pointer items-center gap-2 rounded-lg px-3 py-1.5 text-sm text-muted-foreground transition-[color,background-color,box-shadow]",
+                    "flex cursor-pointer items-center gap-2 rounded-lg px-3 py-1.5 text-sm text-muted-foreground transition-[color,background-color,box-shadow] has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring",
                     statusFilter === option.value &&
                       "bg-card text-foreground shadow-xs"
                   )}
                 >
                   <input
                     type="radio"
+                    name={statusGroupName}
                     value={option.value}
                     checked={statusFilter === option.value}
                     onChange={() => onStatusFilterChange(option.value)}
@@ -177,6 +181,7 @@ function FavoriteButton({
       size="icon"
       onClick={onClick}
       aria-label="Toggle favorite"
+      aria-pressed={active}
       className={cn(active && "text-amber-500 hover:text-amber-600")}
     >
       <Star className={cn("h-4 w-4", active && "fill-current")} />

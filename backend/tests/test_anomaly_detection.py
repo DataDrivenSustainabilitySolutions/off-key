@@ -83,6 +83,52 @@ class TestResilientAnomalyDetector:
         assert detector.circuit_breaker_open is True
         assert detector.state == ServiceState.DEGRADED
 
+    def test_successful_traffic_ages_out_isolated_errors(self):
+        primary = _DetectorDouble()
+        detector = ResilientAnomalyDetector(primary)
+        for _ in range(11):
+            primary.error = None
+            for _ in range(1000):
+                detector.process_with_resilience({"value": 1.0})
+            primary.error = RuntimeError("isolated error")
+            detector.process_with_resilience({"value": 1.0})
+        assert detector.circuit_breaker_open is False
+        assert detector.get_health_info()["recent_error_rate"] == 0.01
+        assert len(detector.recent_outcomes) == 100
+
+    def test_timeout_recovery_starts_a_fresh_error_window(self, monkeypatch):
+        now = [100.0]
+        monkeypatch.setattr(
+            "off_key_mqtt_radar.resilience.time.monotonic", lambda: now[0]
+        )
+        primary = _DetectorDouble(error=RuntimeError("burst"))
+        detector = ResilientAnomalyDetector(primary)
+        for _ in range(11):
+            detector.process_with_resilience({"value": 1.0})
+        assert detector.circuit_breaker_open
+        primary.error = None
+        result = detector.process_with_resilience({"value": 1.0})
+        assert result.context["fallback_reason"] == "circuit_breaker"
+        now[0] += detector.circuit_breaker_timeout + 1
+        assert detector.process_with_resilience({"value": 1.0}) is primary.result
+        assert detector.recent_error_rate == 0
+        primary.error = RuntimeError("new isolated error")
+        detector.process_with_resilience({"value": 1.0})
+        assert not detector.circuit_breaker_open
+        assert detector.recent_error_rate == 0.01
+
+    def test_failure_budget_and_rate_use_the_same_window(self):
+        primary = _DetectorDouble(error=RuntimeError("burst"))
+        detector = ResilientAnomalyDetector(primary)
+        for _ in range(10):
+            detector.process_with_resilience({"value": 1.0})
+        assert not detector.circuit_breaker_open
+        assert detector.get_health_info()["recent_error_rate"] == 0.1
+        primary.error = None
+        for _ in range(100):
+            detector.process_with_resilience({"value": 1.0})
+        assert detector.recent_error_rate == 0
+
     def test_health_refreshes_background_training_state(self):
         primary = _DetectorDouble()
         detector = ResilientAnomalyDetector(primary)

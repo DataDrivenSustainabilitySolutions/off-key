@@ -164,3 +164,14 @@ ordering defect. Documentation and startup logs explicitly require restart.
 Validation: 24 startup, lifecycle, alignment, and runtime-settings tests pass,
 including file loading, stable running configuration, and changed values on restart.
 Lockfile regeneration removed only watchdog. Changed-file lint/format checks pass.
+
+### Finding 5 — rolling circuit-breaker outcomes
+
+Plan: preserve the existing threshold/startup budget while making successes age
+failures out of a real 100-attempt window.
+Implemented: one bounded outcome deque drives both breaker decisions and reported
+error rate. The window starts with successful slots (11 failures still trip it)
+and resets after cooldown, preventing old failures from reopening the breaker.
+Validation: 46 resilience, message-processing, and lifecycle tests pass. New tests
+cover 11 failures across 11,011 calls, threshold boundaries, cooldown recovery,
+and failure after recovery. Changed-file lint and formatting checks pass.

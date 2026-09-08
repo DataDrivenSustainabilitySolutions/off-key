@@ -48,7 +48,10 @@ class ResilientAnomalyDetector:
         self.error_count = 0
         self.error_window = 100
         self.error_threshold = 0.1
-        self.last_errors: deque[float] = deque(maxlen=self.error_window)
+        # Seed the window with successes to preserve the startup failure budget.
+        self.recent_outcomes: deque[bool] = deque(
+            [False] * self.error_window, maxlen=self.error_window
+        )
         self.circuit_breaker_timeout = 300.0
         self.circuit_breaker_opened_at: float | None = None
         self.start_time = time.monotonic()
@@ -160,14 +163,19 @@ class ResilientAnomalyDetector:
         except (ValueError, TypeError, ZeroDivisionError):
             return 0.0
 
+    @property
+    def recent_error_rate(self) -> float:
+        return sum(self.recent_outcomes) / self.error_window
+
     def _record_error(self, error: Exception) -> None:
         self.error_count += 1
-        self.last_errors.append(time.monotonic())
-        if len(self.last_errors) / self.error_window > self.error_threshold:
+        self.recent_outcomes.append(True)
+        if self.recent_error_rate > self.error_threshold:
             self._open_circuit_breaker()
         self.logger.error("event=radar.model_error error=%s", error)
 
     def _record_success(self) -> None:
+        self.recent_outcomes.append(False)
         if self.circuit_breaker_open:
             self._close_circuit_breaker()
 
@@ -187,6 +195,8 @@ class ResilientAnomalyDetector:
 
     def _close_circuit_breaker(self) -> None:
         self.circuit_breaker_opened_at = None
+        self.recent_outcomes.clear()
+        self.recent_outcomes.extend([False] * self.error_window)
         self.state = ServiceState.HEALTHY
         self.logger.info("Circuit breaker closed - resuming normal processing")
 
@@ -203,7 +213,7 @@ class ResilientAnomalyDetector:
             "state": self.state.value,
             "circuit_breaker_open": self.circuit_breaker_open,
             "error_count": self.error_count,
-            "recent_error_rate": len(self.last_errors) / self.error_window,
+            "recent_error_rate": self.recent_error_rate,
             "primary_service_stats": self.primary_service.get_model_info(),
             "uptime_seconds": time.monotonic() - self.start_time,
         }

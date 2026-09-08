@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useId, useState } from 'react';
 import { format } from 'date-fns';
 import { CalendarIcon, Clock, ChevronUp, ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -32,6 +32,7 @@ const TimeInput: React.FC<TimeInputProps> = ({
   step = 1,
   label
 }) => {
+  const inputId = useId();
   const handleIncrement = () => {
     const newValue = value + step;
     if (newValue <= max) {
@@ -59,7 +60,7 @@ const TimeInput: React.FC<TimeInputProps> = ({
 
   return (
     <div className="flex flex-col items-center space-y-1">
-      <label className="text-xs text-muted-foreground">{label}</label>
+      <label htmlFor={inputId} className="text-xs text-muted-foreground">{label}</label>
       <div className="flex flex-col items-center">
         <Button
           type="button"
@@ -72,10 +73,11 @@ const TimeInput: React.FC<TimeInputProps> = ({
           <ChevronUp className="h-3 w-3" />
         </Button>
         <Input
+          id={inputId}
           type="number"
           value={value.toString().padStart(2, '0')}
           onChange={handleInputChange}
-          className="w-12 h-8 text-center text-sm border-0 bg-transparent p-0 focus-visible:ring-0"
+          className="w-12 h-8 text-center text-sm border-0 bg-transparent p-0"
           min={min}
           max={max}
         />

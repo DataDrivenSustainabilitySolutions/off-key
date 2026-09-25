@@ -41,6 +41,8 @@ updates:
       container-images:
         patterns:
           - "*"
+        exclude-patterns:
+          - "python"
 
   - package-ecosystem: "docker-compose"
     directory: "/"

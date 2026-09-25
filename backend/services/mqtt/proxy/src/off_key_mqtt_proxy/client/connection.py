@@ -93,7 +93,7 @@ class ConnectionManager:
 
             # Configure TLS
             if self.config.use_tls:
-                context = ssl.create_default_context()
+                context = ssl.create_default_context(cafile=self.config.ca_file)
                 self.client.tls_set_context(context)
 
             # Set authentication if auth handler is provided

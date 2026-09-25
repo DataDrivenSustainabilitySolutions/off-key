@@ -1,4 +1,5 @@
 from functools import lru_cache
+from pathlib import Path
 
 from off_key_core.config.database import build_postgres_database_url
 from off_key_core.config.validation import validate_environment as _validate_environment
@@ -93,7 +94,11 @@ class RadarDatabaseSettings(BaseSettings):
 class RadarCheckpointSettings(BaseSettings):
     """Runtime checkpoint settings for RADAR service internals."""
 
-    model_config = SettingsConfigDict(case_sensitive=True, extra="ignore")
+    model_config = SettingsConfigDict(
+        case_sensitive=True,
+        extra="ignore",
+        secrets_dir="/run/secrets" if Path("/run/secrets").is_dir() else None,
+    )
 
     RADAR_CHECKPOINT_DIR: str = "checkpoints"
     SERVICE_ID: str = "default"

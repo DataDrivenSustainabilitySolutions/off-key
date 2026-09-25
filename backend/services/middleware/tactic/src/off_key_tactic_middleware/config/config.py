@@ -71,6 +71,7 @@ class RadarDefaultsConfig(BaseModel):
     mqtt_use_tls: bool = False
     mqtt_client_id_prefix: str = "radar"
     mqtt_use_auth: bool = False
+    mqtt_username: str = ""
     mqtt_qos: int = Field(default=0, ge=0, le=2)
 
     # Default Model Settings
@@ -223,6 +224,7 @@ class TacticSettings(BaseSettings):
     TACTIC_DOCKER_DEFAULT_CPU_LIMIT: str = Field(
         default=DEFAULT_DOCKER_CONFIG.default_cpu_limit
     )
+    TACTIC_RADAR_SECRET_SERVICE: str = ""
     TACTIC_DOCKER_DEFAULT_CONSTRAINTS: str = Field(default="node.role == worker")
 
     # RADAR Default Configuration
@@ -241,6 +243,7 @@ class TacticSettings(BaseSettings):
     TACTIC_RADAR_DEFAULT_MQTT_USE_AUTH: bool = Field(
         default=DEFAULT_RADAR_DEFAULTS.mqtt_use_auth
     )
+    TACTIC_RADAR_DEFAULT_MQTT_USERNAME: str = ""
     TACTIC_RADAR_DEFAULT_MQTT_QOS: int = Field(default=DEFAULT_RADAR_DEFAULTS.mqtt_qos)
     TACTIC_RADAR_DEFAULT_MODEL_TYPE: str = Field(
         default=DEFAULT_RADAR_DEFAULTS.model_type
@@ -374,6 +377,7 @@ class TacticSettings(BaseSettings):
             mqtt_use_tls=self.TACTIC_RADAR_DEFAULT_MQTT_USE_TLS,
             mqtt_client_id_prefix=self.TACTIC_RADAR_DEFAULT_MQTT_CLIENT_ID_PREFIX,
             mqtt_use_auth=self.TACTIC_RADAR_DEFAULT_MQTT_USE_AUTH,
+            mqtt_username=self.TACTIC_RADAR_DEFAULT_MQTT_USERNAME,
             mqtt_qos=self.TACTIC_RADAR_DEFAULT_MQTT_QOS,
             model_type=self.TACTIC_RADAR_DEFAULT_MODEL_TYPE,
             sensor_key_strategy=self.TACTIC_RADAR_DEFAULT_SENSOR_KEY_STRATEGY,

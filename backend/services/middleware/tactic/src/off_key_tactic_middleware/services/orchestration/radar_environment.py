@@ -79,7 +79,12 @@ def build_radar_environment(
     runtime = get_radar_container_runtime_settings()
     if runtime.ENVIRONMENT == "production":
         forbidden = {
-            "host", "port", "use_tls", "use_auth", "username", "api_key"
+            "host",
+            "port",
+            "use_tls",
+            "use_auth",
+            "username",
+            "api_key",
         } & mqtt_config.keys()
         if forbidden:
             raise ValueError("Production MQTT connection settings cannot be overridden")

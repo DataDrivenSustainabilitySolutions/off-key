@@ -48,16 +48,29 @@ async def test_production_radar_refuses_container_fallback(monkeypatch):
 async def test_production_radar_copies_required_swarm_secret_references(monkeypatch):
     fake_docker = _FakeAsyncDocker()
     required = ("EMQX_CA_CERT", "RADAR_MQTT_API_KEY", "RADAR_CHECKPOINT_SECRET")
-    template = SimpleNamespace(attrs={"Spec": {"TaskTemplate": {"ContainerSpec": {
-        "Secrets": [
-            {
-                "SecretID": f"id-{target}",
-                "SecretName": f"versioned-{target}",
-                "File": {"Name": target, "UID": "0", "GID": "0", "Mode": 0o444},
+    template = SimpleNamespace(
+        attrs={
+            "Spec": {
+                "TaskTemplate": {
+                    "ContainerSpec": {
+                        "Secrets": [
+                            {
+                                "SecretID": f"id-{target}",
+                                "SecretName": f"versioned-{target}",
+                                "File": {
+                                    "Name": target,
+                                    "UID": "0",
+                                    "GID": "0",
+                                    "Mode": 0o444,
+                                },
+                            }
+                            for target in required
+                        ],
+                    }
+                }
             }
-            for target in required
-        ],
-    }}}})
+        }
+    )
     fake_docker.client.services.get = MagicMock(return_value=template)
     fake_docker.client.services.create = MagicMock(
         return_value=SimpleNamespace(id="svc-1")
@@ -71,10 +84,14 @@ async def test_production_radar_copies_required_swarm_secret_references(monkeypa
         default_memory_limit="512m",
         default_constraints=[],
     )
-    monkeypatch.setattr(workload_module, "get_tactic_settings", lambda: SimpleNamespace(
-        TACTIC_RADAR_SECRET_SERVICE="off-key_mqtt-radar",
-        config=SimpleNamespace(docker=docker_defaults, radar_image="radar:test"),
-    ))
+    monkeypatch.setattr(
+        workload_module,
+        "get_tactic_settings",
+        lambda: SimpleNamespace(
+            TACTIC_RADAR_SECRET_SERVICE="off-key_mqtt-radar",
+            config=SimpleNamespace(docker=docker_defaults, radar_image="radar:test"),
+        ),
+    )
     monkeypatch.setattr(workload_module, "build_radar_workload_labels", lambda **_: {})
 
     workloads = RadarWorkloadManager(fake_docker)

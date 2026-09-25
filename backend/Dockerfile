@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 FROM ghcr.io/astral-sh/uv:0.12.19 AS uv
-FROM python:3.12-slim-bookworm AS builder
+FROM python:3.14-slim-bookworm AS builder
 
 # Build context MUST be backend/
 
@@ -63,7 +63,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 RUN if [ "$SERVICE_NAME" = "off-key-mqtt-radar" ]; then /app/bin/python -m off_key_mqtt_radar.catalog --check; fi
 
 ########################################################################################################################
-FROM python:3.12-slim-bookworm
+FROM python:3.14-slim-bookworm
 
 # Optional: add the application virtualenv to search path.
 ENV PATH=/app/bin:$PATH

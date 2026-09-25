@@ -364,6 +364,21 @@ def test_radar_settings_allow_insecure_mqtt_in_development(monkeypatch):
     assert settings.RADAR_MQTT_USE_AUTH is False
 
 
+def test_radar_settings_read_swarm_mqtt_password(tmp_path, monkeypatch):
+    monkeypatch.delenv("RADAR_MQTT_API_KEY", raising=False)
+    (tmp_path / "RADAR_MQTT_API_KEY").write_text("radar-password-123456")
+    settings = RadarSettings(
+        ENVIRONMENT="production",
+        RADAR_MQTT_USE_TLS=True,
+        RADAR_MQTT_USE_AUTH=True,
+        RADAR_MQTT_USERNAME="offkey-radar",
+        RADAR_MQTT_CA_FILE="/run/secrets/EMQX_CA_CERT",
+        _secrets_dir=tmp_path,
+    )
+    assert settings.config.api_key == "radar-password-123456"
+    assert settings.config.ca_file == "/run/secrets/EMQX_CA_CERT"
+
+
 def test_mqtt_config_allows_bridge_auth_fields_when_bridge_disabled():
     MQTTConfig(
         **{
@@ -406,6 +421,21 @@ def test_mqtt_settings_allow_insecure_mqtt_in_development(monkeypatch):
     settings = MQTTSettings()
     assert settings.MQTT_USE_TLS is False
     assert settings.MQTT_USE_AUTH is False
+
+
+def test_mqtt_settings_read_swarm_mqtt_password(tmp_path, monkeypatch):
+    monkeypatch.delenv("MQTT_APIKEY", raising=False)
+    (tmp_path / "MQTT_APIKEY").write_text("proxy-password-123456")
+    settings = MQTTSettings(
+        ENVIRONMENT="production",
+        MQTT_USE_TLS=True,
+        MQTT_USE_AUTH=True,
+        MQTT_USERNAME="offkey-proxy",
+        MQTT_CA_FILE="/run/secrets/EMQX_CA_CERT",
+        _secrets_dir=tmp_path,
+    )
+    assert settings.config.mqtt_api_key == "proxy-password-123456"
+    assert settings.config.ca_file == "/run/secrets/EMQX_CA_CERT"
 
 
 def test_mqtt_settings_source_topics_store_normalized_value(monkeypatch):

@@ -19,6 +19,7 @@ from off_key_api_gateway.api.v1.monitors import (
 from off_key_api_gateway.api.v1.monitors import (
     PerformanceConfig as GatewayPerformanceConfig,
 )
+from off_key_tactic_middleware.config.config import TacticSettings
 from off_key_tactic_middleware.services.orchestration.radar_environment import (
     build_radar_environment,
 )
@@ -377,6 +378,47 @@ def test_tactic_builds_static_environment():
     }
     assert registry.validate_model_params.call_args.args[0] == "pyod_iforest"
     assert registry.validate_model_params.call_args.kwargs["family"] == "static_pyod"
+
+
+def test_tactic_production_radar_inherits_security_and_rejects_broker_overrides():
+    settings = TacticSettings(
+        TACTIC_RADAR_DEFAULT_MQTT_BROKER_HOST="emqx-main",
+        TACTIC_RADAR_DEFAULT_MQTT_BROKER_PORT=8883,
+        TACTIC_RADAR_DEFAULT_MQTT_USE_TLS=True,
+        TACTIC_RADAR_DEFAULT_MQTT_USE_AUTH=True,
+        TACTIC_RADAR_DEFAULT_MQTT_USERNAME="offkey-radar",
+    )
+    runtime = SimpleNamespace(
+        ENVIRONMENT="production",
+        radar_database_url="postgresql+asyncpg://user:pass@postgres/radar",
+    )
+    base = dict(
+        service_id="svc-secure",
+        mqtt_topics=["device/evCharger/charger-1/L1"],
+        strategy="static_baseline",
+        model_type="pyod_iforest",
+        model_params=None,
+        performance_config={},
+        static_baseline_config={},
+        model_registry=_model_registry(),
+    )
+    module = "off_key_tactic_middleware.services.orchestration.radar_environment"
+    with (
+        patch(f"{module}.get_tactic_settings", return_value=settings),
+        patch(f"{module}.get_radar_container_runtime_settings", return_value=runtime),
+    ):
+        env = build_radar_environment(mqtt_config={}, **base)
+        with pytest.raises(ValueError, match="cannot be overridden"):
+            build_radar_environment(mqtt_config={"host": "evil.example"}, **base)
+
+    assert env["ENVIRONMENT"] == "production"
+    assert env["RADAR_MQTT_BROKER_HOST"] == "emqx-main"
+    assert env["RADAR_MQTT_BROKER_PORT"] == "8883"
+    assert env["RADAR_MQTT_USE_TLS"] == "true"
+    assert env["RADAR_MQTT_USE_AUTH"] == "true"
+    assert env["RADAR_MQTT_USERNAME"] == "offkey-radar"
+    assert env["RADAR_MQTT_CA_FILE"] == "/run/secrets/EMQX_CA_CERT"
+    assert "RADAR_MQTT_API_KEY" not in env
 
 
 def test_tactic_builds_adaptive_environment():

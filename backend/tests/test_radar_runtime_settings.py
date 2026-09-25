@@ -1,5 +1,6 @@
 import pytest
 from off_key_mqtt_radar.config.runtime import (
+    RadarCheckpointSettings,
     clear_radar_runtime_settings_cache,
     get_radar_checkpoint_settings,
     get_radar_database_settings,
@@ -98,3 +99,10 @@ def test_radar_checkpoint_settings_allow_empty_secret_outside_production(monkeyp
     settings = get_radar_checkpoint_settings()
 
     assert settings.checkpoint_secret_bytes == b""
+
+
+def test_radar_checkpoint_settings_read_swarm_secret(tmp_path, monkeypatch):
+    monkeypatch.delenv("RADAR_CHECKPOINT_SECRET", raising=False)
+    (tmp_path / "RADAR_CHECKPOINT_SECRET").write_text("checkpoint-secret-123")
+    settings = RadarCheckpointSettings(ENVIRONMENT="production", _secrets_dir=tmp_path)
+    assert settings.checkpoint_secret_bytes == b"checkpoint-secret-123"

@@ -77,6 +77,17 @@ def build_radar_environment(
 
     defaults = get_tactic_settings().config.radar_defaults
     runtime = get_radar_container_runtime_settings()
+    if runtime.ENVIRONMENT == "production":
+        forbidden = {
+            "host",
+            "port",
+            "use_tls",
+            "use_auth",
+            "username",
+            "api_key",
+        } & mqtt_config.keys()
+        if forbidden:
+            raise ValueError("Production MQTT connection settings cannot be overridden")
     resolved = resolve_monitoring_strategy_config(
         strategy=strategy,
         model_type=model_type,
@@ -107,6 +118,7 @@ def build_radar_environment(
 
     environment = {
         "SERVICE_ID": service_id,
+        "ENVIRONMENT": runtime.ENVIRONMENT,
         "RADAR_MONITORING_STRATEGY": strategy,
         "RADAR_MQTT_BROKER_HOST": mqtt_config.get("host", defaults.mqtt_broker_host),
         "RADAR_MQTT_BROKER_PORT": str(
@@ -121,8 +133,7 @@ def build_radar_environment(
         "RADAR_MQTT_USE_AUTH": str(
             mqtt_config.get("use_auth", defaults.mqtt_use_auth)
         ).lower(),
-        "RADAR_MQTT_USERNAME": mqtt_config.get("username", ""),
-        "RADAR_MQTT_API_KEY": mqtt_config.get("api_key", ""),
+        "RADAR_MQTT_USERNAME": mqtt_config.get("username", defaults.mqtt_username),
         "RADAR_SUBSCRIPTION_TOPICS": ",".join(mqtt_topics),
         "RADAR_SUBSCRIPTION_QOS": str(mqtt_config.get("qos", defaults.mqtt_qos)),
         "RADAR_MODEL_TYPE": model_type or defaults.model_type,
@@ -168,6 +179,10 @@ def build_radar_environment(
             )
         ),
     }
+    if runtime.ENVIRONMENT == "production":
+        environment["RADAR_MQTT_CA_FILE"] = "/run/secrets/EMQX_CA_CERT"
+    elif mqtt_config.get("api_key"):
+        environment["RADAR_MQTT_API_KEY"] = mqtt_config["api_key"]
 
     try:
         validated_params = model_registry.validate_model_params(

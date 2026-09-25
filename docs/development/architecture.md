@@ -118,3 +118,50 @@ See [Deployment modes](../operations/deployment-modes.md) for operational comman
 - [Backend API](../reference/backend-api.md)
 - [Environment variables](../reference/environment-variables.md)
 - [Testing and debugging](testing-debugging.md)
+
+## Aberrant catalog integration
+
+RADAR pins `aberrant[faiss]==1.1.0`. Shared configuration, Gateway, and TACTIC
+read `off_key_core/models/adaptive_catalog.json`; they do not import NumPy,
+SciPy, FAISS, or Aberrant. The snapshot is generated from the same installed
+library and optional dependencies as RADAR. `models/adaptive.py` owns only the
+supported-model policy, application defaults, resource limits, and compatibility
+translations. Constructor schemas and default capability descriptions come
+from Aberrant. Algorithm family is separate from Offkey's `adaptive_aberrant`
+routing family.
+
+After changing the dependency pin or model policy, regenerate and verify:
+
+```bash
+uv sync --project backend --all-packages --all-groups --frozen
+uv run --project backend python -m off_key_mqtt_radar.catalog --write
+uv run --project backend python -m off_key_mqtt_radar.catalog --check
+```
+
+CI compares the snapshot with the installed runtime, and RADAR's Docker build
+runs the same check. API responses expose `catalog_id`, `algorithm_family`,
+`available`, and `default_capabilities`. These capabilities describe application
+**defaults**, not arbitrary edited parameters. Shared request validation checks
+schemas, sensor cardinality, resource budgets, and preprocessing policy. RADAR
+resolves actual capabilities, checks model/PCA warm-up, and executes constructor
+validation at startup. Models needing observer-, bucket-, or graph-based
+readiness cannot be added by simply editing the allowlist.
+
+`AdaptiveStreamConfig.detector_mapping()` produces the versioned Aberrant
+configuration, with a feature-schema guard first. RADAR constructs the pipeline
+through `DetectorConfig`, then applies Offkey's explicit unit-interval input
+policy where required. Checkpoints contain the normalized configuration,
+configuration fingerprint, input keys, package version, and lifecycle state.
+Signed atomic checkpoint I/O remains owned by Offkey. Runtime model information
+includes the resolved model identity and capabilities.
+
+For upgrades from 0.5.0, publish coordinated Gateway, TACTIC, and RADAR images from
+this commit and pin their release tags or digests. Rerun off-key-infra's
+`radar_image_seed` role on backend nodes before starting new workloads. Existing
+persistent RADAR services need recreation with the new image/configuration;
+changing the image used for new services does not upgrade existing containers.
+Adaptive configuration carries its expected Aberrant version to reject mixed
+versions. Cross-version model pickles are incompatible: preserve them for a
+rollback, but allow the upgraded monitors to warm up and calibrate afresh.
+Validate the image and the opt-in `test_adaptive_lane_e2e.py` flow against a
+non-production MQTT/PostgreSQL stack before deploying.

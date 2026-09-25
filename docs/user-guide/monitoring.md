@@ -35,6 +35,37 @@ Use this page when starting, validating, or stopping monitoring workloads from t
 | Static baseline | Signals with a representative training/calibration period | Trains and calibrates first, then scores later observations; exposes conformal and martingale evidence |
 | Adaptive stream | Signals whose behaviour should be learned continuously | Warms up, scores each observation before learning it, and adapts its preprocessing/detector state |
 
+## Adaptive model selection
+
+Adaptive monitoring uses Aberrant 1.1.0. Models are grouped by the library's
+algorithm family and filtered by the number of features after preprocessing.
+The original 24 numeric detectors remain available; scalar and multivariate
+rolling matrix profiles add detection of unusual sequences across one or multiple
+channels. Graph-event detectors and score-policy wrappers are excluded.
+
+Warm-up and calibration are separate. The requested warm-up must satisfy the
+selected model's minimum history and PCA initialization, when enabled. RADAR
+validates these requirements before consuming telemetry. Calibration continues
+to score before learning, freezes the higher empirical quantile, and monitoring
+learns every valid observation, including anomalies.
+
+Half-Space Trees requires features in `[0, 1]`. Selecting it chooses min-max
+scaling to this range and removes projections. Values beyond previously seen
+extremes are clipped before scoring. Without scaling, values outside `[0, 1]`
+are rejected. The UI warns when a model has growing memory requirements.
+
+Matrix-profile subsequences count aligned observations, not elapsed seconds.
+Use consistently sampled telemetry: the sensor barrier synchronizes incoming
+updates but does not resample them onto a uniform clock. Normalized profiles
+compare shape independently of per-channel level and amplitude; disable
+normalization when those changes should contribute to the score, taking care
+that channels with larger units can dominate raw distances.
+
+KNN exposes its FAISS window and warm-up as nested similarity-engine settings.
+Existing saved model IDs and the legacy flat KNN parameters are translated on
+input. Legacy histogram `max_bins` becomes `max_depth`; conflicting old and new
+parameter values are rejected.
+
 ## Stop and cleanup workflow
 
 1. Open the charger monitoring view or `/services`.

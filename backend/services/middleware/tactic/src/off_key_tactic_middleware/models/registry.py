@@ -16,11 +16,13 @@ from off_key_core.db.base import get_engine
 from off_key_core.db.models import ModelRegistry
 from off_key_core.models import (
     ABERRANT_VERSION,
-    ADAPTIVE_MODEL_DEFINITIONS,
     ADAPTIVE_MODEL_FAMILY,
+    ADAPTIVE_MODELS_BY_TYPE,
     ADAPTIVE_MONITORING_STRATEGY,
     STATIC_MODEL_FAMILY,
     STATIC_MONITORING_STRATEGY,
+    adaptive_model_metadata,
+    validate_adaptive_model_params,
 )
 from sqlalchemy import and_, func, inspect, or_, text
 from sqlalchemy.orm import Session
@@ -236,22 +238,26 @@ class ModelRegistryService:
             },
         ]
 
+        session.query(ModelRegistry).filter(
+            ModelRegistry.family == ADAPTIVE_MODEL_FAMILY,
+            ModelRegistry.model_type.notin_(ADAPTIVE_MODELS_BY_TYPE),
+        ).update({ModelRegistry.is_active: False}, synchronize_session=False)
         default_models.extend(
             {
-                "model_type": definition.model_type,
+                "model_type": model_type,
                 "category": "model",
                 "family": ADAPTIVE_MODEL_FAMILY,
-                "name": definition.name,
-                "description": "Online score-then-learn detector from aberrant",
-                "complexity": definition.complexity,
-                "memory_usage": definition.memory_usage,
-                "import_paths": [definition.import_path],
-                "parameter_schema": definition.params_model.model_json_schema(),
-                "default_parameters": definition.params_model().model_dump(mode="json"),
+                "name": definition["name"],
+                "description": "Online score-then-learn detector from Aberrant",
+                "complexity": "unknown",
+                "memory_usage": definition["default_capabilities"]["state"],
+                "import_paths": [definition["import_path"]],
+                "parameter_schema": definition["parameter_schema"],
+                "default_parameters": definition["default_parameters"],
                 "version": ABERRANT_VERSION,
-                "requires_special_handling": definition.model_type == "aberrant_knn",
+                "requires_special_handling": False,
             }
-            for definition in ADAPTIVE_MODEL_DEFINITIONS
+            for model_type, definition in ADAPTIVE_MODELS_BY_TYPE.items()
         )
 
         for model_data in default_models:
@@ -299,6 +305,7 @@ class ModelRegistryService:
                     "version": m.version,
                     "requires_special_handling": m.requires_special_handling,
                     "strategy": self._strategy_for_model(m),
+                    **adaptive_model_metadata(m.model_type),
                 }
                 for m in models
             ]
@@ -445,6 +452,8 @@ class ModelRegistryService:
     def _validate_params_with_schema(
         model: ModelRegistry, params: dict[str, Any]
     ) -> dict[str, Any]:
+        if model.family == ADAPTIVE_MODEL_FAMILY:
+            return validate_adaptive_model_params(model.model_type, params)
         defaults = model.default_parameters or {}
         merged = {**defaults, **params}
 

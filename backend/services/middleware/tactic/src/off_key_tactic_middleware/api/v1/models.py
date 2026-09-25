@@ -35,6 +35,10 @@ class ModelInfo(BaseModel):
         default="static_baseline",
         description="Executable static monitoring lane",
     )
+    catalog_id: str | None = None
+    algorithm_family: str | None = None
+    available: bool = True
+    default_capabilities: dict[str, Any] | None = None
     import_paths: list[str] = Field(..., description="Python import paths to try")
     parameter_schema: dict[str, Any] = Field(
         ..., description="JSON schema for parameters"

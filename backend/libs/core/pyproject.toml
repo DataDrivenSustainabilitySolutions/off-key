@@ -19,6 +19,7 @@ classifiers = [
     "Development Status :: 3 - Alpha"
 ]
 dependencies = [
+    "jsonschema>=4.21.1",
     "asyncpg>=0.30.0",
     "pydantic-settings>=2.7.1",
     "sqlalchemy>=2.0.38",

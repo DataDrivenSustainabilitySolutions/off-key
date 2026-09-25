@@ -137,9 +137,13 @@ class ResultProjector:
         )
         evidence = self._build_evidence_records([result])
         if (
-            self._is_static_ready_result(result)
-            or self._is_adaptive_operational_result(result)
-        ) and not evidence:
+            (
+                self._is_static_ready_result(result)
+                or self._is_adaptive_operational_result(result)
+            )
+            and not evidence
+            and not anomalies
+        ):
             raise ValueError("Operational result is missing valid evidence references")
         return PreparedResult(result, anomalies, identities, evidence)
 

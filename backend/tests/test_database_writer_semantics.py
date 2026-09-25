@@ -1,7 +1,8 @@
 """Tests for persisted anomaly semantics in RADAR database writer."""
 
 import asyncio
-from datetime import UTC, datetime
+from dataclasses import replace
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -226,6 +227,75 @@ async def test_retry_batch_logs_exhaustion_and_increments_errors(monkeypatch, ca
     assert any(
         "event=radar.db_retry_exhausted" in rec.message for rec in caplog.records
     )
+
+
+@pytest.mark.asyncio
+async def test_retry_only_requeues_uncommitted_chunks(monkeypatch):
+    monkeypatch.setattr("off_key_mqtt_radar.database.asyncio.sleep", AsyncMock())
+    session = AsyncMock()
+    session_cm = AsyncMock()
+    session_cm.__aenter__.return_value = session
+    writer = DatabaseWriter(
+        MagicMock(db_batch_size=100, db_batch_timeout=1.0),
+        session_factory=MagicMock(return_value=session_cm),
+    )
+    writer._execute_upsert = AsyncMock(
+        side_effect=[
+            RuntimeError("initial write failed"),
+            None,
+            RuntimeError("second chunk failed"),
+            RuntimeError("second chunk failed"),
+            RuntimeError("second chunk failed"),
+        ]
+    )
+    writer._execute_evidence_upsert = AsyncMock()
+    start = datetime.now(UTC)
+    results = [
+        replace(
+            _build_result(aligned_vector=False, tail_pvalue=0.001, anomaly_score=0.02),
+            timestamp=start + timedelta(seconds=index),
+        )
+        for index in range(11)
+    ]
+    writer.write_queue.extend(results)
+
+    await writer._flush_batch()
+
+    assert writer.write_queue == results[10:]
+    assert writer.total_written == 10
+    session.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_retry_cancellation_only_requeues_uncommitted_chunks(monkeypatch):
+    monkeypatch.setattr("off_key_mqtt_radar.database.asyncio.sleep", AsyncMock())
+    session = AsyncMock()
+    session_cm = AsyncMock()
+    session_cm.__aenter__.return_value = session
+    writer = DatabaseWriter(
+        MagicMock(db_batch_size=100, db_batch_timeout=1.0),
+        session_factory=MagicMock(return_value=session_cm),
+    )
+    writer._execute_upsert = AsyncMock(
+        side_effect=[RuntimeError("initial write failed"), None, asyncio.CancelledError]
+    )
+    writer._execute_evidence_upsert = AsyncMock()
+    start = datetime.now(UTC)
+    results = [
+        replace(
+            _build_result(aligned_vector=False, tail_pvalue=0.001, anomaly_score=0.02),
+            timestamp=start + timedelta(seconds=index),
+        )
+        for index in range(11)
+    ]
+    writer.write_queue.extend(results)
+
+    with pytest.raises(asyncio.CancelledError):
+        await writer._flush_batch()
+
+    assert writer.write_queue == results[10:]
+    assert writer.total_written == 10
+    session.commit.assert_awaited_once()
 
 
 @pytest.mark.asyncio

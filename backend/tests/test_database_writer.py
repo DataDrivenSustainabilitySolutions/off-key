@@ -423,6 +423,42 @@ def test_build_evidence_record_rejects_incomplete_input_references(
     assert records == []
 
 
+@pytest.mark.asyncio
+async def test_missing_evidence_references_do_not_drop_alarm(
+    db_config, sample_anomaly_result, mock_session_factory, monkeypatch
+):
+    from off_key_mqtt_radar.database import DatabaseWriter
+
+    monkeypatch.setattr(
+        "off_key_mqtt_radar.result_records.get_radar_checkpoint_settings",
+        lambda: SimpleNamespace(SERVICE_ID="svc-static"),
+    )
+    result = replace(
+        sample_anomaly_result,
+        context={
+            "alignment": {"aligned_vector": False, "input_timestamps": {}},
+            "static_conformal": {
+                "phase": "ready",
+                "p_value": 0.01,
+                "restarted_ville_threshold": 100.0,
+                "tested_count": 1,
+            },
+        },
+    )
+    writer = DatabaseWriter(db_config, session_factory=mock_session_factory)
+    writer._execute_upsert = AsyncMock()
+    writer._execute_evidence_upsert = AsyncMock()
+    writer.write_queue.append(result)
+
+    await writer._flush_batch()
+
+    assert len(writer._execute_upsert.await_args.args[1]) == 1
+    assert writer.total_written == 1
+    assert writer.total_evidence_written == 0
+    assert writer.total_rejected == 0
+    assert writer.write_queue == []
+
+
 def test_get_health_status_disabled_when_writing_off(db_config):
     from off_key_mqtt_radar.database import DatabaseWriter
 

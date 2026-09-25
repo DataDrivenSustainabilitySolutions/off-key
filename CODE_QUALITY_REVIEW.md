@@ -4,7 +4,7 @@ Reviewed commit: `a5a9a90`. Date: 2026-09-08.
 
 **Verdict: substantial simplification is warranted. Fix persistence ownership and runtime-state inconsistencies before undertaking a broad refactor.**
 
-The project is in development. Historical API, checkpoint, and database compatibility are not requirements for the proposed design. This does not imply permission to erase existing databases or disable current integrity constraints.
+The original review assumed a development-only deployment. Production now exists, so the current-schema bootstrap must be checked against a restored production backup before deployment. Unsupported schemas require a reviewed migration; existing databases must not be erased or silently rewritten.
 
 The findings below describe the original audit. Remediation progress is recorded at the end of this report.
 
@@ -31,7 +31,7 @@ No Docker workloads, external services, or databases were modified. Browser E2E 
 
 `SyncService` is 1,169 lines. Initialization runs eight migration methods before `Base.metadata.create_all`. It checks historical columns and constraints, rewrites/backfills rows, normalizes model families, and reinstalls database behavior during ordinary startup. `_migrate_anomaly_identity` alone spans 242 lines. This makes the normal boot path depend on a history of schemas that the project no longer needs to support.
 
-**Simplification:** establish one supported development schema and one idempotent bootstrap path. Remove historical column/PK conversion and legacy value backfills from normal startup. Put current table declarations and required trigger/index/TimescaleDB setup in one canonical schema boundary. Preserve current anomaly identity synchronization, retention policies, and evidence constraints; they are active behavior, not obsolete compatibility.
+**Simplification:** establish one supported schema and one idempotent bootstrap path. Remove historical column/PK conversion and legacy value backfills from normal startup. Put current table declarations and required trigger/index/TimescaleDB setup in one canonical schema boundary. Preserve current anomaly identity synchronization, retention policies, and evidence constraints; they are active behavior, not obsolete compatibility.
 
 **Validation before implementation:** bootstrap an empty disposable TimescaleDB database, bootstrap it again, then exercise anomaly insert/identity lookup/delete and evidence writes for both strategies. Reject an unsupported old schema explicitly; do not silently drop data. Splitting the same migration history into multiple files would improve navigation but miss the larger opportunity to delete it.
 
@@ -69,7 +69,7 @@ Every batch handoff creates another task, retains the batch in `processing_batch
 
 For example, a topic change can make the service's advertised configuration disagree with MQTT subscriptions and the existing required-sensor cache. A model/strategy change does not rebuild the detector. Failure does not roll back the environment/caches. This is partial application presented as successful reconfiguration.
 
-**Simplification:** remove hot reload and require restarting the workload for config changes. In this development-stage project, that is much simpler than implementing atomic replacement of MQTT, detector, alignment, persistence, and health state. If hot reload is actually required, define a small explicit set of reloadable fields and reject unsupported changes before publishing them.
+**Simplification:** remove hot reload and require restarting the workload for config changes. This is simpler than implementing atomic replacement of MQTT, detector, alignment, persistence, and health state. If hot reload is required, define a small explicit set of reloadable fields and reject unsupported changes before publishing them.
 
 **Validation before implementation:** verify changed broker/topics/model settings either remain unapplied with a clear restart requirement or take effect consistently after a full restart. No partially updated success state should be possible.
 
@@ -105,7 +105,7 @@ Monitoring's loaders update component state after every completion. Effect clean
 4. Introduce the explicit detector/persistence contract; eliminate duplicate strategy inference and table declarations where the canonical schema can be reused.
 5. Consolidate Monitoring's request lifecycle and verify navigation races.
 
-Avoid mixing detector mathematics, checkpoint semantics, schema deletion, queue ownership, and UI lifecycle changes in one patch. Backward compatibility is not a blocker; independently verifiable changes are still the safer way to preserve current behavior.
+Avoid mixing detector mathematics, checkpoint semantics, schema deletion, queue ownership, and UI lifecycle changes in one patch. Verify production schema compatibility before deploying schema changes; independently verifiable changes are safer to review.
 
 ## Lower-priority tooling observations
 

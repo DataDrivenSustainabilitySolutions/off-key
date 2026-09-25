@@ -508,7 +508,8 @@ class DatabaseWriter:
     async def _retry_failed_batch(self, *, batch_snapshot: list[AnomalyResult]) -> bool:
         """Retry writing failed batch with exponential backoff.
 
-        The outer flush retains ownership of the snapshot and live queue.
+        Remove committed results from the snapshot so the outer flush only
+        requeues results that still need writing.
         """
         max_retries = 3
         base_delay = 1.0
@@ -516,17 +517,10 @@ class DatabaseWriter:
         if self.session_factory is None:
             self.session_factory = get_radar_async_session_factory()
 
-        results_to_retry = [
-            result for result in batch_snapshot if result.should_persist
-        ]
-
-        if not results_to_retry:
-            return True
-
-        exhausted_results: list[AnomalyResult] = []
+        pending_index = 0
         # Process in chunks of 10
-        while results_to_retry:
-            retry_batch = results_to_retry[:10]
+        while pending_index < len(batch_snapshot):
+            retry_batch = batch_snapshot[pending_index : pending_index + 10]
             retry_delay = base_delay
             success = False
             anomaly_records = self.projector._build_records(
@@ -567,19 +561,18 @@ class DatabaseWriter:
                     )
                     retry_delay *= 2  # Exponential backoff
 
-            if not success:
+            if success:
+                del batch_snapshot[pending_index : pending_index + len(retry_batch)]
+            else:
                 logger.error(
                     "event=radar.db_retry_exhausted requeued_count=%s max_retries=%s",
                     len(retry_batch),
                     max_retries,
                 )
                 self.total_errors += 1
-                exhausted_results.extend(retry_batch)
+                pending_index += len(retry_batch)
 
-            # Remove processed batch (whether success or failure)
-            results_to_retry = results_to_retry[10:]
-
-        return not exhausted_results
+        return not batch_snapshot
 
     def get_performance_metrics(self) -> dict[str, Any]:
         """Get database writer performance metrics"""

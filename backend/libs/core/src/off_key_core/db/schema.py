@@ -1,4 +1,4 @@
-"""Bootstrap the supported development schema without upgrading historical data."""
+"""Bootstrap the supported schema without upgrading historical data."""
 
 from sqlalchemy import (
     CheckConstraint,
@@ -55,8 +55,8 @@ def validate_existing_schema(connection: Connection) -> None:
         if not compatible:
             raise RuntimeError(
                 f"Unsupported schema for table {table.name!r}. "
-                "Automatic schema upgrades are not supported. "
-                "Use a fresh development database; existing data was not modified."
+                "A reviewed migration is required before this version can start; "
+                "existing data was not modified."
             )
 
 

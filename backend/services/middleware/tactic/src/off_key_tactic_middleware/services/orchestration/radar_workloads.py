@@ -7,7 +7,7 @@ from functools import lru_cache
 from typing import Any
 
 import docker
-from docker.types import Resources, RestartPolicy, ServiceMode
+from docker.types import Resources, RestartPolicy, SecretReference, ServiceMode
 from off_key_core.config.logs import logger
 
 from ...config.config import get_tactic_settings
@@ -73,17 +73,22 @@ class RadarWorkloadManager:
 
     async def create(self, service_id: str, environment: dict[str, str]) -> Any:
         """Create a Swarm service when available, otherwise a container."""
+        production = environment.get("ENVIRONMENT") == "production"
         if await self._is_swarm_manager():
             try:
                 return await self._create_swarm_service(service_id, environment)
             except Exception as exc:
-                if not should_fallback_to_container(exc):
+                if production or not should_fallback_to_container(exc):
                     raise
                 logger.warning(
                     "Swarm RADAR creation failed; falling back to container mode: %s",
                     exc,
                 )
 
+        if production:
+            raise RuntimeError(
+                "Production RADAR requires a Swarm manager and mounted secrets"
+            )
         return await self._create_container(service_id, environment)
 
     async def _is_swarm_manager(self) -> bool:
@@ -140,6 +145,35 @@ class RadarWorkloadManager:
         }
         if docker_config.default_constraints:
             service_kwargs["constraints"] = docker_config.default_constraints
+
+        if environment.get("ENVIRONMENT") == "production":
+            template_name = get_tactic_settings().TACTIC_RADAR_SECRET_SERVICE
+            if not template_name:
+                raise RuntimeError(
+                    "TACTIC_RADAR_SECRET_SERVICE is required in production"
+                )
+            template = await self.async_docker.run(
+                self.async_docker.client.services.get, template_name
+            )
+            container_spec = template.attrs["Spec"]["TaskTemplate"]["ContainerSpec"]
+            references = container_spec.get("Secrets", [])
+            required = {"EMQX_CA_CERT", "RADAR_MQTT_API_KEY", "RADAR_CHECKPOINT_SECRET"}
+            by_target = {
+                reference["File"]["Name"]: reference for reference in references
+            }
+            if not required <= by_target.keys():
+                raise RuntimeError("Production RADAR secret template is incomplete")
+            service_kwargs["secrets"] = [
+                SecretReference(
+                    secret_id=by_target[target]["SecretID"],
+                    secret_name=by_target[target]["SecretName"],
+                    filename=target,
+                    uid=by_target[target]["File"].get("UID", "0"),
+                    gid=by_target[target]["File"].get("GID", "0"),
+                    mode=by_target[target]["File"].get("Mode", 0o444),
+                )
+                for target in sorted(required)
+            ]
 
         return await self.async_docker.run(
             self.async_docker.client.services.create,

@@ -98,6 +98,7 @@ class MQTTRadarConfig(BaseModel):
     broker_host: str = "localhost"
     broker_port: int = 1883
     use_tls: bool = False
+    ca_file: str | None = None
     client_id_prefix: str = "radar"
 
     # Optional authentication
@@ -175,6 +176,7 @@ class RadarSettings(BaseSettings):
     RADAR_MQTT_BROKER_HOST: str = "localhost"
     RADAR_MQTT_BROKER_PORT: int = 1883
     RADAR_MQTT_USE_TLS: bool = False
+    RADAR_MQTT_CA_FILE: str | None = None
     RADAR_MQTT_CLIENT_ID_PREFIX: str = "radar"
 
     # Authentication
@@ -216,6 +218,7 @@ class RadarSettings(BaseSettings):
     model_config = SettingsConfigDict(
         case_sensitive=True,
         extra="ignore",
+        secrets_dir="/run/secrets" if Path("/run/secrets").is_dir() else None,
     )
 
     @field_validator("RADAR_SUBSCRIPTION_TOPICS")
@@ -253,6 +256,13 @@ class RadarSettings(BaseSettings):
                 raise ValueError(
                     "RADAR_MQTT_USE_AUTH must be true when ENVIRONMENT=production"
                 )
+        if self.RADAR_MQTT_USE_AUTH:
+            if not self.RADAR_MQTT_USERNAME.strip():
+                raise ValueError("RADAR_MQTT_USERNAME is required when auth is enabled")
+            if len(self.RADAR_MQTT_API_KEY.strip()) < 10:
+                raise ValueError(
+                    "RADAR_MQTT_API_KEY must have at least 10 characters with auth"
+                )
         return self
 
     @property
@@ -285,6 +295,7 @@ class RadarSettings(BaseSettings):
             broker_host=self.RADAR_MQTT_BROKER_HOST,
             broker_port=self.RADAR_MQTT_BROKER_PORT,
             use_tls=self.RADAR_MQTT_USE_TLS,
+            ca_file=self.RADAR_MQTT_CA_FILE,
             client_id_prefix=self.RADAR_MQTT_CLIENT_ID_PREFIX,
             use_auth=self.RADAR_MQTT_USE_AUTH,
             username=self.RADAR_MQTT_USERNAME,

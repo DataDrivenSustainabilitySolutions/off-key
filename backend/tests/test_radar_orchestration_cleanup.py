@@ -33,6 +33,59 @@ class _FakeAsyncDocker:
 
 
 @pytest.mark.asyncio
+async def test_production_radar_refuses_container_fallback(monkeypatch):
+    fake_docker = _FakeAsyncDocker()
+    fake_docker.client.containers.run = MagicMock()
+    workloads = RadarWorkloadManager(fake_docker)
+    monkeypatch.setattr(workloads, "_is_swarm_manager", AsyncMock(return_value=False))
+
+    with pytest.raises(RuntimeError, match="requires a Swarm manager"):
+        await workloads.create("svc-1", {"ENVIRONMENT": "production"})
+    fake_docker.client.containers.run.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_production_radar_copies_required_swarm_secret_references(monkeypatch):
+    fake_docker = _FakeAsyncDocker()
+    required = ("EMQX_CA_CERT", "RADAR_MQTT_API_KEY", "RADAR_CHECKPOINT_SECRET")
+    template = SimpleNamespace(attrs={"Spec": {"TaskTemplate": {"ContainerSpec": {
+        "Secrets": [
+            {
+                "SecretID": f"id-{target}",
+                "SecretName": f"versioned-{target}",
+                "File": {"Name": target, "UID": "0", "GID": "0", "Mode": 0o444},
+            }
+            for target in required
+        ],
+    }}}})
+    fake_docker.client.services.get = MagicMock(return_value=template)
+    fake_docker.client.services.create = MagicMock(
+        return_value=SimpleNamespace(id="svc-1")
+    )
+    docker_defaults = SimpleNamespace(
+        default_network="off-key_emqx-network",
+        additional_networks=[],
+        default_restart_policy="on-failure",
+        default_restart_max_attempts=3,
+        default_cpu_limit="0.5",
+        default_memory_limit="512m",
+        default_constraints=[],
+    )
+    monkeypatch.setattr(workload_module, "get_tactic_settings", lambda: SimpleNamespace(
+        TACTIC_RADAR_SECRET_SERVICE="off-key_mqtt-radar",
+        config=SimpleNamespace(docker=docker_defaults, radar_image="radar:test"),
+    ))
+    monkeypatch.setattr(workload_module, "build_radar_workload_labels", lambda **_: {})
+
+    workloads = RadarWorkloadManager(fake_docker)
+    await workloads._create_swarm_service("svc-1", {"ENVIRONMENT": "production"})
+
+    fake_docker.client.services.get.assert_called_once_with("off-key_mqtt-radar")
+    mounted = fake_docker.client.services.create.call_args.kwargs["secrets"]
+    assert {secret["File"]["Name"] for secret in mounted} == set(required)
+
+
+@pytest.mark.asyncio
 async def test_teardown_managed_radar_workloads_removes_workloads_and_clears_db(
     monkeypatch,
 ):

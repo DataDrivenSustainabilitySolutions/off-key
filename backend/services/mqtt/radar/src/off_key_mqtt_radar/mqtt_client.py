@@ -148,11 +148,11 @@ class RadarMQTTClient:
 
             # Configure TLS if required
             if self.config.use_tls:
-                context = ssl.create_default_context()
+                context = ssl.create_default_context(cafile=self.config.ca_file)
                 self.client.tls_set_context(context)
 
             # Set authentication if required
-            if self.config.use_auth and self.config.username:
+            if self.config.use_auth:
                 self.client.username_pw_set(self.config.username, self.config.api_key)
 
             # Set callbacks

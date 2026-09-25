@@ -5,6 +5,7 @@ MQTT proxy configuration.
 import random
 import uuid
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal, Self
 
 from off_key_core.config.validation import validate_environment as _validate_environment
@@ -46,6 +47,7 @@ class MQTTConfig(BaseModel):
     broker_host: str = Field(min_length=1)
     broker_port: int = Field(ge=1, le=65535)
     use_tls: bool
+    ca_file: str | None = None
     transport: Transport = "tcp"
     client_id_prefix: str = Field(
         min_length=1,
@@ -197,7 +199,11 @@ class MQTTConfig(BaseModel):
 
 
 class MQTTSettings(BaseSettings):
-    model_config = SettingsConfigDict(case_sensitive=True, extra="ignore")
+    model_config = SettingsConfigDict(
+        case_sensitive=True,
+        extra="ignore",
+        secrets_dir="/run/secrets" if Path("/run/secrets").is_dir() else None,
+    )
     ENVIRONMENT: str = "development"
 
     # MQTT Service Configuration
@@ -207,6 +213,7 @@ class MQTTSettings(BaseSettings):
     MQTT_BROKER_HOST: str = Field(default="localhost", min_length=1)
     MQTT_BROKER_PORT: int = Field(default=1883, ge=1, le=65535)
     MQTT_USE_TLS: bool = False
+    MQTT_CA_FILE: str | None = None
     MQTT_TRANSPORT: Transport = "tcp"
     MQTT_CONNECTION_TIMEOUT: float = Field(default=30.0, ge=1.0, le=120.0)
 
@@ -316,6 +323,7 @@ class MQTTSettings(BaseSettings):
             broker_host=self.MQTT_BROKER_HOST,
             broker_port=self.MQTT_BROKER_PORT,
             use_tls=self.MQTT_USE_TLS,
+            ca_file=self.MQTT_CA_FILE,
             transport=self.MQTT_TRANSPORT,
             client_id_prefix=self.MQTT_CLIENT_ID_PREFIX,
             use_auth=self.MQTT_USE_AUTH,

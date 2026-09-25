@@ -200,6 +200,7 @@ const coerceModelParams = (
   params: Record<string, ConfigValue>,
   definition: ModelDefinition | undefined,
   errors: FieldErrors,
+  prefix = "model",
 ): ModelParams => {
   const cleaned: ModelParams = {};
   const properties = definition?.parameters?.properties ?? {};
@@ -207,9 +208,20 @@ const coerceModelParams = (
   for (const key of new Set([...Object.keys(params), ...required])) {
     const schema = properties[key];
     const value = params[key];
-    const field = `model.${key}`;
+    const field = `${prefix}.${key}`;
     const schemaType = schema?.type ?? schema?.anyOf?.find((item) => item.type !== "null")?.type;
-    if (value === null) cleaned[key] = null;
+    if (schema?.["x-aberrant-component-kind"] && schema.properties?.params?.properties && typeof value === "object" && value !== null && !Array.isArray(value)) {
+      const params = value.params;
+      cleaned[key] = {
+        id: value.id ?? "",
+        params: coerceModelParams(
+          typeof params === "object" && params !== null && !Array.isArray(params) ? params : {},
+          { parameters: { properties: schema.properties.params.properties, required: schema.properties.params.required } },
+          errors,
+          `${field}.params`,
+        ),
+      };
+    } else if (value === null) cleaned[key] = null;
     else if (schemaType === "boolean") cleaned[key] = Boolean(value);
     else if (value === "" || value === undefined) {
       if (required.has(key)) errors[field] = `${humanize(key)} is required.`;
@@ -354,6 +366,15 @@ export const buildAdaptiveMonitoringRequest = ({
         preprocessingSteps.push({ type: "random_projection", n_components: nComponents, seed: seed ?? null });
       }
     }
+  }
+  const capabilities = modelDefinition?.default_capabilities;
+  const featureCount = draft.projection === "none" ? topics.length : Number(draft.projectionComponents);
+  if (modelDefinition?.available === false) errors.modelType = "This model is unavailable in the monitoring runtime.";
+  if (capabilities && (featureCount < capabilities.feature_count.minimum || (capabilities.feature_count.maximum !== null && featureCount > capabilities.feature_count.maximum))) {
+    errors.modelType = "This model does not support the selected feature count.";
+  }
+  if (capabilities?.requires_unit_interval && (draft.projection !== "none" || draft.scaler === "standard_scaler" || (draft.scaler === "min_max_scaler" && (Number(draft.minMaxLower) !== 0 || Number(draft.minMaxUpper) !== 1)))) {
+    errors.modelType = "This model requires raw values in [0, 1] or min-max scaling to [0, 1], without a projection.";
   }
   const modelParams = coerceModelParams(draft.modelParams, modelDefinition, errors);
   if (Object.keys(errors).length || trainingWindow === undefined || calibrationWindow === undefined || quantile === undefined || sensorFreshness === undefined) {

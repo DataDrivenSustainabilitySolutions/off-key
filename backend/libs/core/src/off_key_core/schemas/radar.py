@@ -7,8 +7,8 @@ from typing import Annotated, Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from off_key_core.models import (
+    ABERRANT_VERSION,
     ADAPTIVE_MODELS_BY_TYPE,
-    minimum_model_warmup,
     validate_adaptive_model_params,
 )
 
@@ -167,6 +167,7 @@ class AdaptiveStreamConfig(BaseModel):
 
     model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
+    aberrant_version: str = ABERRANT_VERSION
     model_type: str = "aberrant_online_isolation_forest"
     model_params: dict[str, Any] = Field(default_factory=dict)
     training_window_size: int = Field(default=1200, ge=2, le=1_000_000)
@@ -189,6 +190,10 @@ class AdaptiveStreamConfig(BaseModel):
 
     @model_validator(mode="after")
     def validate_pipeline(self) -> "AdaptiveStreamConfig":
+        if self.aberrant_version != ABERRANT_VERSION:
+            raise ValueError(
+                f"Adaptive configuration requires Aberrant {ABERRANT_VERSION}"
+            )
         object.__setattr__(
             self,
             "model_params",
@@ -207,7 +212,7 @@ class AdaptiveStreamConfig(BaseModel):
             and any(step_type in scalers for step_type in types[1:])
         ):
             raise ValueError("A scaler must precede the projection")
-        required_warmup = minimum_model_warmup(self.model_type, self.model_params)
+        required_warmup = 0
         for step in self.preprocessing_steps:
             if isinstance(step, IncrementalPCAConfig):
                 required_warmup = max(required_warmup, step.n0)
@@ -216,6 +221,21 @@ class AdaptiveStreamConfig(BaseModel):
                 "training_window_size must cover the configured model and "
                 f"preprocessing warm-up ({required_warmup})"
             )
+        return self
+
+    @model_validator(mode="after")
+    def validate_input_domain(self) -> "AdaptiveStreamConfig":
+        capabilities = ADAPTIVE_MODELS_BY_TYPE[self.model_type]["default_capabilities"]
+        if capabilities["requires_unit_interval"] and self.preprocessing_steps:
+            if len(self.preprocessing_steps) != 1 or not isinstance(
+                self.preprocessing_steps[0], MinMaxScalerConfig
+            ):
+                raise ValueError(
+                    "This model requires raw [0, 1] features or min-max scaling "
+                    "without a projection"
+                )
+            if self.preprocessing_steps[0].feature_range != (0.0, 1.0):
+                raise ValueError("This model requires min-max feature_range [0, 1]")
         return self
 
     def effective_feature_count(self, input_feature_count: int) -> int:
@@ -236,12 +256,56 @@ class AdaptiveStreamConfig(BaseModel):
         if not feature_keys or len(feature_keys) != len(set(feature_keys)):
             raise ValueError("Adaptive feature keys must be non-empty and unique")
         feature_count = self.effective_feature_count(len(feature_keys))
-        requirement = ADAPTIVE_MODELS_BY_TYPE[self.model_type].feature_count
-        if requirement == "one" and feature_count != 1:
-            raise ValueError("Selected adaptive model requires exactly one feature")
-        if requirement == "two" and feature_count != 2:
-            raise ValueError("Selected adaptive model requires exactly two features")
+        requirement = ADAPTIVE_MODELS_BY_TYPE[self.model_type]["default_capabilities"][
+            "feature_count"
+        ]
+        if feature_count < requirement["minimum"] or (
+            requirement["maximum"] is not None
+            and feature_count > requirement["maximum"]
+        ):
+            if requirement["minimum"] == requirement["maximum"]:
+                count = {1: "one", 2: "two"}.get(
+                    requirement["minimum"], str(requirement["minimum"])
+                )
+                raise ValueError(
+                    f"Selected adaptive model requires exactly {count} feature(s)"
+                )
+            raise ValueError(
+                "Selected adaptive model requires at least "
+                f"{requirement['minimum']} features"
+            )
         return feature_count
+
+    def detector_mapping(self, feature_keys: list[str] | None = None) -> dict[str, Any]:
+        """Bind aligned features to the versioned, allowlisted Aberrant format."""
+        if feature_keys is not None:
+            self.validate_feature_schema(feature_keys)
+        definition = ADAPTIVE_MODELS_BY_TYPE[self.model_type]
+        transformers = [
+            {"id": "feature_schema_guard", "params": {"features": feature_keys}}
+        ]
+        current_keys = feature_keys
+        for step in self.preprocessing_steps:
+            params = step.model_dump(mode="json", exclude={"type"})
+            if isinstance(step, IncrementalPCAConfig | RandomProjectionConfig):
+                params["keys"] = current_keys
+                current_keys = [
+                    f"component_{index}" for index in range(step.n_components)
+                ]
+            transformers.append({"id": step.type, "params": params})
+        params = dict(self.model_params)
+        for name in definition["bound_parameters"]:
+            if name == "abs_diff":
+                params[name] = True
+            elif name == "key":
+                params[name] = current_keys[0] if current_keys else None
+            else:
+                params[name] = current_keys
+        return {
+            "version": 1,
+            "transformers": transformers,
+            "model": {"id": definition["catalog_id"], "params": params},
+        }
 
 
 class ManualAlarmThresholdConfig(BaseModel):

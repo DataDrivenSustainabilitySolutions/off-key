@@ -22,6 +22,19 @@ export interface ParameterSchema {
   prefixItems?: ParameterSchema[];
   minItems?: number;
   maxItems?: number;
+  properties?: Record<string, ParameterSchema>;
+  required?: string[];
+  'x-aberrant-component-kind'?: string;
+}
+
+export interface ModelCapabilities {
+  event_kind: string;
+  feature_count: { minimum: number; maximum: number | null };
+  score_kind: string;
+  higher_is_more_anomalous: boolean | null;
+  warmup: { minimum: number | null; unit: string };
+  state: string;
+  requires_unit_interval: boolean;
 }
 
 // Model definition from registry API
@@ -35,6 +48,10 @@ export interface ModelDefinition {
   family?: string;
   strategy?: string;
   default_parameters?: Record<string, JsonValue>;
+  catalog_id?: string | null;
+  algorithm_family?: string | null;
+  available?: boolean;
+  default_capabilities?: ModelCapabilities | null;
 }
 
 // Active monitoring service

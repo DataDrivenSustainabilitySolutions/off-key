@@ -59,6 +59,9 @@ RUN --mount=type=cache,target=/root/.cache/uv \
         --no-editable \
         --package ${SERVICE_NAME}
 
+# Verify the shipped metadata against the actual RADAR dependency environment.
+RUN if [ "$SERVICE_NAME" = "off-key-mqtt-radar" ]; then /app/bin/python -m off_key_mqtt_radar.catalog --check; fi
+
 ########################################################################################################################
 FROM python:3.12-slim-bookworm
 

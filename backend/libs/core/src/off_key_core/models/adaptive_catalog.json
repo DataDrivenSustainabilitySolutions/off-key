@@ -1,0 +1,1901 @@
+{
+  "aberrant_version": "1.1.0",
+  "models": {
+    "aberrant_asd_isolation_forest": {
+      "algorithm_family": "isolation_forest",
+      "available": true,
+      "bound_parameters": [],
+      "catalog_id": "asd_isolation_forest",
+      "default_capabilities": {
+        "event_kind": "tabular",
+        "feature_count": {
+          "maximum": null,
+          "minimum": 1
+        },
+        "feature_schema": "fixed",
+        "higher_is_more_anomalous": true,
+        "requires_unit_interval": false,
+        "resettable": false,
+        "score_kind": "zero_to_one",
+        "state": "bounded",
+        "warmup": {
+          "minimum": 256,
+          "unit": "events"
+        }
+      },
+      "default_parameters": {
+        "max_samples": 256,
+        "n_estimators": 100,
+        "retrain_interval": null,
+        "seed": null,
+        "window_size": null
+      },
+      "import_path": "aberrant.model.iforest.ASDIsolationForest",
+      "name": "Aberrant ASDIsolationForest",
+      "parameter_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "max_samples": {
+            "default": 256,
+            "maximum": 1000000,
+            "minimum": 2,
+            "type": "integer"
+          },
+          "n_estimators": {
+            "default": 100,
+            "maximum": 2000,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "retrain_interval": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "maximum": 1000000,
+            "minimum": 1
+          },
+          "seed": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "window_size": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "maximum": 1000000,
+            "minimum": 1
+          }
+        },
+        "type": "object"
+      }
+    },
+    "aberrant_gadget_svm": {
+      "algorithm_family": "svm",
+      "available": true,
+      "bound_parameters": [],
+      "catalog_id": "graph_gated_one_class_svm",
+      "default_capabilities": {
+        "event_kind": "tabular",
+        "feature_count": {
+          "maximum": null,
+          "minimum": 1
+        },
+        "feature_schema": "fixed",
+        "higher_is_more_anomalous": true,
+        "requires_unit_interval": false,
+        "resettable": false,
+        "score_kind": "non_negative",
+        "state": "bounded",
+        "warmup": {
+          "minimum": 1,
+          "unit": "events"
+        }
+      },
+      "default_parameters": {
+        "graph": null,
+        "lambda_reg": 0.01,
+        "learning_rate": 0.01,
+        "nu": 0.5,
+        "threshold": 0.0
+      },
+      "import_path": "aberrant.model.svm.GraphGatedOneClassSVM",
+      "name": "Aberrant GraphGatedOneClassSVM",
+      "parameter_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "graph": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "items": {
+                    "type": "integer"
+                  },
+                  "type": "array"
+                },
+                "type": "object",
+                "x-python-key-type": "builtins.int"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "lambda_reg": {
+            "default": 0.01,
+            "minimum": 0,
+            "type": "number"
+          },
+          "learning_rate": {
+            "default": 0.01,
+            "exclusiveMinimum": 0,
+            "type": "number"
+          },
+          "nu": {
+            "default": 0.5,
+            "exclusiveMaximum": 1,
+            "exclusiveMinimum": 0,
+            "type": "number"
+          },
+          "threshold": {
+            "default": 0.0,
+            "type": "number"
+          }
+        },
+        "type": "object"
+      }
+    },
+    "aberrant_half_space_trees": {
+      "algorithm_family": "isolation_forest",
+      "available": true,
+      "bound_parameters": [],
+      "catalog_id": "half_space_trees",
+      "default_capabilities": {
+        "event_kind": "tabular",
+        "feature_count": {
+          "maximum": null,
+          "minimum": 1
+        },
+        "feature_schema": "fixed",
+        "higher_is_more_anomalous": true,
+        "requires_unit_interval": true,
+        "resettable": false,
+        "score_kind": "zero_to_one",
+        "state": "bounded",
+        "warmup": {
+          "minimum": 250,
+          "unit": "events"
+        }
+      },
+      "default_parameters": {
+        "height": 8,
+        "n_trees": 10,
+        "seed": null,
+        "window_size": 250
+      },
+      "import_path": "aberrant.model.iforest.HalfSpaceTrees",
+      "name": "Aberrant HalfSpaceTrees",
+      "parameter_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "height": {
+            "default": 8,
+            "maximum": 20,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "n_trees": {
+            "default": 10,
+            "maximum": 2000,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "seed": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "window_size": {
+            "default": 250,
+            "maximum": 1000000,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      }
+    },
+    "aberrant_incremental_one_class_svm_adaptive_kernel": {
+      "algorithm_family": "svm",
+      "available": true,
+      "bound_parameters": [],
+      "catalog_id": "incremental_one_class_svm_adaptive_kernel",
+      "default_capabilities": {
+        "event_kind": "tabular",
+        "feature_count": {
+          "maximum": null,
+          "minimum": 1
+        },
+        "feature_schema": "fixed",
+        "higher_is_more_anomalous": true,
+        "requires_unit_interval": false,
+        "resettable": false,
+        "score_kind": "signed",
+        "state": "bounded",
+        "warmup": {
+          "minimum": 1,
+          "unit": "events"
+        }
+      },
+      "default_parameters": {
+        "adaptation_rate": 0.1,
+        "buffer_size": 200,
+        "gamma_bounds": [
+          0.001,
+          100.0
+        ],
+        "initial_gamma": 1.0,
+        "nu": 0.1,
+        "seed": null,
+        "sv_budget": 100,
+        "tolerance": 1e-06
+      },
+      "import_path": "aberrant.model.svm.IncrementalOneClassSVMAdaptiveKernel",
+      "name": "Aberrant IncrementalOneClassSVMAdaptiveKernel",
+      "parameter_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "adaptation_rate": {
+            "default": 0.1,
+            "exclusiveMinimum": 0,
+            "maximum": 1,
+            "type": "number"
+          },
+          "buffer_size": {
+            "default": 200,
+            "maximum": 1000000,
+            "minimum": 2,
+            "type": "integer"
+          },
+          "gamma_bounds": {
+            "default": [
+              0.001,
+              100.0
+            ],
+            "maxItems": 2,
+            "minItems": 2,
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "type": "array"
+          },
+          "initial_gamma": {
+            "default": 1.0,
+            "exclusiveMinimum": 0,
+            "type": "number"
+          },
+          "nu": {
+            "default": 0.1,
+            "exclusiveMaximum": 1,
+            "exclusiveMinimum": 0,
+            "type": "number"
+          },
+          "seed": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "sv_budget": {
+            "default": 100,
+            "maximum": 1000000,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "tolerance": {
+            "default": 1e-06,
+            "exclusiveMinimum": 0,
+            "type": "number"
+          }
+        },
+        "type": "object"
+      }
+    },
+    "aberrant_knn": {
+      "algorithm_family": "distance",
+      "available": true,
+      "bound_parameters": [],
+      "catalog_id": "knn",
+      "default_capabilities": {
+        "event_kind": "tabular",
+        "feature_count": {
+          "maximum": null,
+          "minimum": 1
+        },
+        "feature_schema": "fixed",
+        "higher_is_more_anomalous": true,
+        "requires_unit_interval": false,
+        "resettable": false,
+        "score_kind": "non_negative",
+        "state": "bounded",
+        "warmup": {
+          "minimum": 20,
+          "unit": "events"
+        }
+      },
+      "default_parameters": {
+        "k": 5,
+        "similarity_engine": {
+          "id": "faiss",
+          "params": {
+            "warm_up": 20,
+            "window_size": 1000
+          }
+        }
+      },
+      "import_path": "aberrant.model.distance.KNN",
+      "name": "Aberrant KNN",
+      "parameter_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "k": {
+            "default": 5,
+            "maximum": 10000,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "similarity_engine": {
+            "additionalProperties": false,
+            "default": {
+              "id": "faiss",
+              "params": {
+                "warm_up": 20,
+                "window_size": 1000
+              }
+            },
+            "properties": {
+              "id": {
+                "enum": [
+                  "faiss"
+                ],
+                "type": "string"
+              },
+              "params": {
+                "additionalProperties": false,
+                "properties": {
+                  "warm_up": {
+                    "maximum": 1000000,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "window_size": {
+                    "maximum": 1000000,
+                    "minimum": 1,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "window_size",
+                  "warm_up"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "id",
+              "params"
+            ],
+            "type": "object",
+            "x-aberrant-component-kind": "similarity_engine"
+          }
+        },
+        "required": [
+          "k",
+          "similarity_engine"
+        ],
+        "type": "object"
+      }
+    },
+    "aberrant_local_outlier_factor": {
+      "algorithm_family": "distance",
+      "available": true,
+      "bound_parameters": [],
+      "catalog_id": "local_outlier_factor",
+      "default_capabilities": {
+        "event_kind": "tabular",
+        "feature_count": {
+          "maximum": null,
+          "minimum": 1
+        },
+        "feature_schema": "fixed",
+        "higher_is_more_anomalous": true,
+        "requires_unit_interval": false,
+        "resettable": false,
+        "score_kind": "non_negative",
+        "state": "bounded",
+        "warmup": {
+          "minimum": 11,
+          "unit": "events"
+        }
+      },
+      "default_parameters": {
+        "distance": "euclidean",
+        "k": 10,
+        "window_size": 1000
+      },
+      "import_path": "aberrant.model.distance.LocalOutlierFactor",
+      "name": "Aberrant LocalOutlierFactor",
+      "parameter_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "distance": {
+            "default": "euclidean",
+            "enum": [
+              "euclidean",
+              "manhattan"
+            ]
+          },
+          "k": {
+            "default": 10,
+            "maximum": 10000,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "window_size": {
+            "default": 1000,
+            "maximum": 1000000,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      }
+    },
+    "aberrant_mondrian_forest": {
+      "algorithm_family": "isolation_forest",
+      "available": true,
+      "bound_parameters": [],
+      "catalog_id": "mondrian_isolation_forest",
+      "default_capabilities": {
+        "event_kind": "tabular",
+        "feature_count": {
+          "maximum": null,
+          "minimum": 1
+        },
+        "feature_schema": "fixed",
+        "higher_is_more_anomalous": true,
+        "requires_unit_interval": false,
+        "resettable": false,
+        "score_kind": "zero_to_one",
+        "state": "growing",
+        "warmup": {
+          "minimum": 2,
+          "unit": "events"
+        }
+      },
+      "default_parameters": {
+        "lambda_": 1.0,
+        "n_estimators": 100,
+        "seed": null,
+        "subspace_size": 256
+      },
+      "import_path": "aberrant.model.iforest.MondrianIsolationForest",
+      "name": "Aberrant MondrianIsolationForest",
+      "parameter_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "lambda_": {
+            "default": 1.0,
+            "exclusiveMinimum": 0,
+            "type": "number"
+          },
+          "n_estimators": {
+            "default": 100,
+            "maximum": 2000,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "seed": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "subspace_size": {
+            "default": 256,
+            "maximum": 1000000,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      }
+    },
+    "aberrant_moving_average": {
+      "algorithm_family": "statistical",
+      "available": true,
+      "bound_parameters": [
+        "abs_diff",
+        "key"
+      ],
+      "catalog_id": "moving_average",
+      "default_capabilities": {
+        "event_kind": "univariate",
+        "feature_count": {
+          "maximum": 1,
+          "minimum": 1
+        },
+        "feature_schema": "fixed",
+        "higher_is_more_anomalous": true,
+        "requires_unit_interval": false,
+        "resettable": false,
+        "score_kind": "non_negative",
+        "state": "bounded",
+        "warmup": {
+          "minimum": 1,
+          "unit": "events"
+        }
+      },
+      "default_parameters": {
+        "window_size": 100
+      },
+      "import_path": "aberrant.model.stat.MovingAverage",
+      "name": "Aberrant MovingAverage",
+      "parameter_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "window_size": {
+            "default": 100,
+            "maximum": 1000000,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "window_size"
+        ],
+        "type": "object"
+      }
+    },
+    "aberrant_moving_average_absolute_deviation": {
+      "algorithm_family": "statistical",
+      "available": true,
+      "bound_parameters": [
+        "abs_diff",
+        "key"
+      ],
+      "catalog_id": "moving_average_absolute_deviation",
+      "default_capabilities": {
+        "event_kind": "univariate",
+        "feature_count": {
+          "maximum": 1,
+          "minimum": 1
+        },
+        "feature_schema": "fixed",
+        "higher_is_more_anomalous": true,
+        "requires_unit_interval": false,
+        "resettable": false,
+        "score_kind": "non_negative",
+        "state": "bounded",
+        "warmup": {
+          "minimum": 1,
+          "unit": "events"
+        }
+      },
+      "default_parameters": {
+        "window_size": 100
+      },
+      "import_path": "aberrant.model.stat.MovingAverageAbsoluteDeviation",
+      "name": "Aberrant MovingAverageAbsoluteDeviation",
+      "parameter_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "window_size": {
+            "default": 100,
+            "maximum": 1000000,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "window_size"
+        ],
+        "type": "object"
+      }
+    },
+    "aberrant_moving_correlation_coefficient": {
+      "algorithm_family": "statistical",
+      "available": true,
+      "bound_parameters": [
+        "abs_diff",
+        "keys"
+      ],
+      "catalog_id": "moving_correlation_coefficient",
+      "default_capabilities": {
+        "event_kind": "bivariate",
+        "feature_count": {
+          "maximum": 2,
+          "minimum": 2
+        },
+        "feature_schema": "fixed",
+        "higher_is_more_anomalous": true,
+        "requires_unit_interval": false,
+        "resettable": false,
+        "score_kind": "non_negative",
+        "state": "bounded",
+        "warmup": {
+          "minimum": 2,
+          "unit": "events"
+        }
+      },
+      "default_parameters": {
+        "bias": true,
+        "window_size": 100
+      },
+      "import_path": "aberrant.model.stat.MovingCorrelationCoefficient",
+      "name": "Aberrant MovingCorrelationCoefficient",
+      "parameter_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "bias": {
+            "default": true,
+            "type": "boolean"
+          },
+          "window_size": {
+            "default": 100,
+            "maximum": 1000000,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "window_size"
+        ],
+        "type": "object"
+      }
+    },
+    "aberrant_moving_covariance": {
+      "algorithm_family": "statistical",
+      "available": true,
+      "bound_parameters": [
+        "abs_diff",
+        "keys"
+      ],
+      "catalog_id": "moving_covariance",
+      "default_capabilities": {
+        "event_kind": "bivariate",
+        "feature_count": {
+          "maximum": 2,
+          "minimum": 2
+        },
+        "feature_schema": "fixed",
+        "higher_is_more_anomalous": true,
+        "requires_unit_interval": false,
+        "resettable": false,
+        "score_kind": "non_negative",
+        "state": "bounded",
+        "warmup": {
+          "minimum": 2,
+          "unit": "events"
+        }
+      },
+      "default_parameters": {
+        "bias": true,
+        "window_size": 100
+      },
+      "import_path": "aberrant.model.stat.MovingCovariance",
+      "name": "Aberrant MovingCovariance",
+      "parameter_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "bias": {
+            "default": true,
+            "type": "boolean"
+          },
+          "window_size": {
+            "default": 100,
+            "maximum": 1000000,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "window_size"
+        ],
+        "type": "object"
+      }
+    },
+    "aberrant_moving_geometric_average": {
+      "algorithm_family": "statistical",
+      "available": true,
+      "bound_parameters": [
+        "abs_diff",
+        "key"
+      ],
+      "catalog_id": "moving_geometric_average",
+      "default_capabilities": {
+        "event_kind": "univariate",
+        "feature_count": {
+          "maximum": 1,
+          "minimum": 1
+        },
+        "feature_schema": "fixed",
+        "higher_is_more_anomalous": true,
+        "requires_unit_interval": false,
+        "resettable": false,
+        "score_kind": "non_negative",
+        "state": "bounded",
+        "warmup": {
+          "minimum": 1,
+          "unit": "events"
+        }
+      },
+      "default_parameters": {
+        "absoluteValues": false,
+        "window_size": 100
+      },
+      "import_path": "aberrant.model.stat.MovingGeometricAverage",
+      "name": "Aberrant MovingGeometricAverage",
+      "parameter_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "absoluteValues": {
+            "default": false,
+            "type": "boolean"
+          },
+          "window_size": {
+            "default": 100,
+            "maximum": 1000000,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "window_size"
+        ],
+        "type": "object"
+      }
+    },
+    "aberrant_moving_harmonic_average": {
+      "algorithm_family": "statistical",
+      "available": true,
+      "bound_parameters": [
+        "abs_diff",
+        "key"
+      ],
+      "catalog_id": "moving_harmonic_average",
+      "default_capabilities": {
+        "event_kind": "univariate",
+        "feature_count": {
+          "maximum": 1,
+          "minimum": 1
+        },
+        "feature_schema": "fixed",
+        "higher_is_more_anomalous": true,
+        "requires_unit_interval": false,
+        "resettable": false,
+        "score_kind": "non_negative",
+        "state": "bounded",
+        "warmup": {
+          "minimum": 1,
+          "unit": "events"
+        }
+      },
+      "default_parameters": {
+        "window_size": 100
+      },
+      "import_path": "aberrant.model.stat.MovingHarmonicAverage",
+      "name": "Aberrant MovingHarmonicAverage",
+      "parameter_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "window_size": {
+            "default": 100,
+            "maximum": 1000000,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "window_size"
+        ],
+        "type": "object"
+      }
+    },
+    "aberrant_moving_interquartile_range": {
+      "algorithm_family": "statistical",
+      "available": true,
+      "bound_parameters": [
+        "abs_diff",
+        "key"
+      ],
+      "catalog_id": "moving_interquartile_range",
+      "default_capabilities": {
+        "event_kind": "univariate",
+        "feature_count": {
+          "maximum": 1,
+          "minimum": 1
+        },
+        "feature_schema": "fixed",
+        "higher_is_more_anomalous": true,
+        "requires_unit_interval": false,
+        "resettable": false,
+        "score_kind": "non_negative",
+        "state": "bounded",
+        "warmup": {
+          "minimum": 1,
+          "unit": "events"
+        }
+      },
+      "default_parameters": {
+        "window_size": 100
+      },
+      "import_path": "aberrant.model.stat.MovingInterquartileRange",
+      "name": "Aberrant MovingInterquartileRange",
+      "parameter_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "window_size": {
+            "default": 100,
+            "maximum": 1000000,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "window_size"
+        ],
+        "type": "object"
+      }
+    },
+    "aberrant_moving_kurtosis": {
+      "algorithm_family": "statistical",
+      "available": true,
+      "bound_parameters": [
+        "abs_diff",
+        "key"
+      ],
+      "catalog_id": "moving_kurtosis",
+      "default_capabilities": {
+        "event_kind": "univariate",
+        "feature_count": {
+          "maximum": 1,
+          "minimum": 1
+        },
+        "feature_schema": "fixed",
+        "higher_is_more_anomalous": true,
+        "requires_unit_interval": false,
+        "resettable": false,
+        "score_kind": "non_negative",
+        "state": "bounded",
+        "warmup": {
+          "minimum": 1,
+          "unit": "events"
+        }
+      },
+      "default_parameters": {
+        "window_size": 100
+      },
+      "import_path": "aberrant.model.stat.MovingKurtosis",
+      "name": "Aberrant MovingKurtosis",
+      "parameter_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "window_size": {
+            "default": 100,
+            "maximum": 1000000,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "window_size"
+        ],
+        "type": "object"
+      }
+    },
+    "aberrant_moving_mahalanobis_distance": {
+      "algorithm_family": "statistical",
+      "available": true,
+      "bound_parameters": [
+        "keys"
+      ],
+      "catalog_id": "moving_mahalanobis_distance",
+      "default_capabilities": {
+        "event_kind": "tabular",
+        "feature_count": {
+          "maximum": null,
+          "minimum": 1
+        },
+        "feature_schema": "fixed",
+        "higher_is_more_anomalous": true,
+        "requires_unit_interval": false,
+        "resettable": false,
+        "score_kind": "non_negative",
+        "state": "bounded",
+        "warmup": {
+          "minimum": 3,
+          "unit": "events"
+        }
+      },
+      "default_parameters": {
+        "bias": true,
+        "window_size": 100
+      },
+      "import_path": "aberrant.model.stat.MovingMahalanobisDistance",
+      "name": "Aberrant MovingMahalanobisDistance",
+      "parameter_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "bias": {
+            "default": true,
+            "type": "boolean"
+          },
+          "window_size": {
+            "default": 100,
+            "maximum": 1000000,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "window_size"
+        ],
+        "type": "object"
+      }
+    },
+    "aberrant_moving_median": {
+      "algorithm_family": "statistical",
+      "available": true,
+      "bound_parameters": [
+        "abs_diff",
+        "key"
+      ],
+      "catalog_id": "moving_median",
+      "default_capabilities": {
+        "event_kind": "univariate",
+        "feature_count": {
+          "maximum": 1,
+          "minimum": 1
+        },
+        "feature_schema": "fixed",
+        "higher_is_more_anomalous": true,
+        "requires_unit_interval": false,
+        "resettable": false,
+        "score_kind": "non_negative",
+        "state": "bounded",
+        "warmup": {
+          "minimum": 1,
+          "unit": "events"
+        }
+      },
+      "default_parameters": {
+        "window_size": 100
+      },
+      "import_path": "aberrant.model.stat.MovingMedian",
+      "name": "Aberrant MovingMedian",
+      "parameter_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "window_size": {
+            "default": 100,
+            "maximum": 1000000,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "window_size"
+        ],
+        "type": "object"
+      }
+    },
+    "aberrant_moving_quantile": {
+      "algorithm_family": "statistical",
+      "available": true,
+      "bound_parameters": [
+        "abs_diff",
+        "key"
+      ],
+      "catalog_id": "moving_quantile",
+      "default_capabilities": {
+        "event_kind": "univariate",
+        "feature_count": {
+          "maximum": 1,
+          "minimum": 1
+        },
+        "feature_schema": "fixed",
+        "higher_is_more_anomalous": true,
+        "requires_unit_interval": false,
+        "resettable": false,
+        "score_kind": "non_negative",
+        "state": "bounded",
+        "warmup": {
+          "minimum": 1,
+          "unit": "events"
+        }
+      },
+      "default_parameters": {
+        "quantile": 0.5,
+        "window_size": 100
+      },
+      "import_path": "aberrant.model.stat.MovingQuantile",
+      "name": "Aberrant MovingQuantile",
+      "parameter_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "quantile": {
+            "default": 0.5,
+            "maximum": 1,
+            "minimum": 0,
+            "type": "number"
+          },
+          "window_size": {
+            "default": 100,
+            "maximum": 1000000,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "window_size"
+        ],
+        "type": "object"
+      }
+    },
+    "aberrant_moving_skewness": {
+      "algorithm_family": "statistical",
+      "available": true,
+      "bound_parameters": [
+        "abs_diff",
+        "key"
+      ],
+      "catalog_id": "moving_skewness",
+      "default_capabilities": {
+        "event_kind": "univariate",
+        "feature_count": {
+          "maximum": 1,
+          "minimum": 1
+        },
+        "feature_schema": "fixed",
+        "higher_is_more_anomalous": true,
+        "requires_unit_interval": false,
+        "resettable": false,
+        "score_kind": "non_negative",
+        "state": "bounded",
+        "warmup": {
+          "minimum": 1,
+          "unit": "events"
+        }
+      },
+      "default_parameters": {
+        "window_size": 100
+      },
+      "import_path": "aberrant.model.stat.MovingSkewness",
+      "name": "Aberrant MovingSkewness",
+      "parameter_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "window_size": {
+            "default": 100,
+            "maximum": 1000000,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "window_size"
+        ],
+        "type": "object"
+      }
+    },
+    "aberrant_moving_variance": {
+      "algorithm_family": "statistical",
+      "available": true,
+      "bound_parameters": [
+        "abs_diff",
+        "key"
+      ],
+      "catalog_id": "moving_variance",
+      "default_capabilities": {
+        "event_kind": "univariate",
+        "feature_count": {
+          "maximum": 1,
+          "minimum": 1
+        },
+        "feature_schema": "fixed",
+        "higher_is_more_anomalous": true,
+        "requires_unit_interval": false,
+        "resettable": false,
+        "score_kind": "non_negative",
+        "state": "bounded",
+        "warmup": {
+          "minimum": 1,
+          "unit": "events"
+        }
+      },
+      "default_parameters": {
+        "window_size": 100
+      },
+      "import_path": "aberrant.model.stat.MovingVariance",
+      "name": "Aberrant MovingVariance",
+      "parameter_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "window_size": {
+            "default": 100,
+            "maximum": 1000000,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "window_size"
+        ],
+        "type": "object"
+      }
+    },
+    "aberrant_multivariate_rolling_matrix_profile": {
+      "algorithm_family": "time_series",
+      "available": true,
+      "bound_parameters": [],
+      "catalog_id": "multivariate_rolling_matrix_profile",
+      "default_capabilities": {
+        "event_kind": "tabular",
+        "feature_count": {
+          "maximum": null,
+          "minimum": 1
+        },
+        "feature_schema": "fixed",
+        "higher_is_more_anomalous": true,
+        "requires_unit_interval": false,
+        "resettable": true,
+        "score_kind": "non_negative",
+        "state": "bounded",
+        "warmup": {
+          "minimum": 40,
+          "unit": "events"
+        }
+      },
+      "default_parameters": {
+        "exclusion_zone": null,
+        "normalize": true,
+        "subsequence_length": 32,
+        "window_size": 512
+      },
+      "import_path": "aberrant.model.timeseries.MultivariateRollingMatrixProfile",
+      "name": "Aberrant MultivariateRollingMatrixProfile",
+      "parameter_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "exclusion_zone": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "maximum": 1000000,
+            "minimum": 0
+          },
+          "normalize": {
+            "default": true,
+            "type": "boolean"
+          },
+          "subsequence_length": {
+            "default": 32,
+            "maximum": 10000,
+            "minimum": 2,
+            "type": "integer"
+          },
+          "window_size": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": 512,
+            "maximum": 1000000,
+            "minimum": 1
+          }
+        },
+        "required": [
+          "subsequence_length"
+        ],
+        "type": "object"
+      }
+    },
+    "aberrant_online_isolation_forest": {
+      "algorithm_family": "isolation_forest",
+      "available": true,
+      "bound_parameters": [],
+      "catalog_id": "online_isolation_forest",
+      "default_capabilities": {
+        "event_kind": "tabular",
+        "feature_count": {
+          "maximum": null,
+          "minimum": 1
+        },
+        "feature_schema": "fixed",
+        "higher_is_more_anomalous": true,
+        "requires_unit_interval": false,
+        "resettable": false,
+        "score_kind": "zero_to_one",
+        "state": "bounded",
+        "warmup": {
+          "minimum": 1,
+          "unit": "events"
+        }
+      },
+      "default_parameters": {
+        "branching_factor": 2,
+        "max_leaf_samples": 32,
+        "metric": "axisparallel",
+        "n_jobs": 1,
+        "num_trees": 100,
+        "seed": null,
+        "subsample": 1.0,
+        "tree_type": "adaptive",
+        "window_size": 2048
+      },
+      "import_path": "aberrant.model.iforest.OnlineIsolationForest",
+      "name": "Aberrant OnlineIsolationForest",
+      "parameter_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "branching_factor": {
+            "default": 2,
+            "maximum": 64,
+            "minimum": 2,
+            "type": "integer"
+          },
+          "max_leaf_samples": {
+            "default": 32,
+            "maximum": 1000000,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "metric": {
+            "default": "axisparallel",
+            "enum": [
+              "axisparallel"
+            ]
+          },
+          "n_jobs": {
+            "default": 1,
+            "maximum": 64,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "num_trees": {
+            "default": 100,
+            "maximum": 2000,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "seed": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "subsample": {
+            "default": 1.0,
+            "exclusiveMinimum": 0,
+            "maximum": 1,
+            "type": "number"
+          },
+          "tree_type": {
+            "default": "adaptive",
+            "enum": [
+              "fixed",
+              "adaptive"
+            ]
+          },
+          "window_size": {
+            "default": 2048,
+            "maximum": 1000000,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      }
+    },
+    "aberrant_random_cut_forest": {
+      "algorithm_family": "isolation_forest",
+      "available": true,
+      "bound_parameters": [],
+      "catalog_id": "random_cut_forest",
+      "default_capabilities": {
+        "event_kind": "tabular",
+        "feature_count": {
+          "maximum": null,
+          "minimum": 1
+        },
+        "feature_schema": "fixed",
+        "higher_is_more_anomalous": true,
+        "requires_unit_interval": false,
+        "resettable": true,
+        "score_kind": "zero_to_one",
+        "state": "bounded",
+        "warmup": {
+          "minimum": 256,
+          "unit": "events"
+        }
+      },
+      "default_parameters": {
+        "n_trees": 40,
+        "normalize_score": true,
+        "sample_size": 256,
+        "score_scale": 8.0,
+        "seed": null,
+        "shingle_size": 1,
+        "warmup_samples": null
+      },
+      "import_path": "aberrant.model.iforest.RandomCutForest",
+      "name": "Aberrant RandomCutForest",
+      "parameter_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "n_trees": {
+            "default": 40,
+            "maximum": 2000,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "normalize_score": {
+            "default": true,
+            "type": "boolean"
+          },
+          "sample_size": {
+            "default": 256,
+            "maximum": 1000000,
+            "minimum": 2,
+            "type": "integer"
+          },
+          "score_scale": {
+            "default": 8.0,
+            "exclusiveMinimum": 0,
+            "type": "number"
+          },
+          "seed": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "shingle_size": {
+            "default": 1,
+            "maximum": 10000,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "warmup_samples": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "maximum": 1000000,
+            "minimum": 1
+          }
+        },
+        "type": "object"
+      }
+    },
+    "aberrant_rolling_matrix_profile": {
+      "algorithm_family": "time_series",
+      "available": true,
+      "bound_parameters": [],
+      "catalog_id": "rolling_matrix_profile",
+      "default_capabilities": {
+        "event_kind": "univariate",
+        "feature_count": {
+          "maximum": 1,
+          "minimum": 1
+        },
+        "feature_schema": "fixed",
+        "higher_is_more_anomalous": true,
+        "requires_unit_interval": false,
+        "resettable": true,
+        "score_kind": "non_negative",
+        "state": "bounded",
+        "warmup": {
+          "minimum": 40,
+          "unit": "events"
+        }
+      },
+      "default_parameters": {
+        "exclusion_zone": null,
+        "normalize": true,
+        "subsequence_length": 32,
+        "window_size": 512
+      },
+      "import_path": "aberrant.model.timeseries.RollingMatrixProfile",
+      "name": "Aberrant RollingMatrixProfile",
+      "parameter_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "exclusion_zone": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "maximum": 1000000,
+            "minimum": 0
+          },
+          "normalize": {
+            "default": true,
+            "type": "boolean"
+          },
+          "subsequence_length": {
+            "default": 32,
+            "maximum": 10000,
+            "minimum": 2,
+            "type": "integer"
+          },
+          "window_size": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": 512,
+            "maximum": 1000000,
+            "minimum": 1
+          }
+        },
+        "required": [
+          "subsequence_length"
+        ],
+        "type": "object"
+      }
+    },
+    "aberrant_stream_random_histogram_forest": {
+      "algorithm_family": "isolation_forest",
+      "available": true,
+      "bound_parameters": [],
+      "catalog_id": "stream_random_histogram_forest",
+      "default_capabilities": {
+        "event_kind": "tabular",
+        "feature_count": {
+          "maximum": null,
+          "minimum": 1
+        },
+        "feature_schema": "fixed",
+        "higher_is_more_anomalous": true,
+        "requires_unit_interval": false,
+        "resettable": false,
+        "score_kind": "non_negative",
+        "state": "bounded",
+        "warmup": {
+          "minimum": 256,
+          "unit": "events"
+        }
+      },
+      "default_parameters": {
+        "max_depth": 10,
+        "n_estimators": 25,
+        "seed": null,
+        "window_size": 256
+      },
+      "import_path": "aberrant.model.iforest.StreamRandomHistogramForest",
+      "name": "Aberrant StreamRandomHistogramForest",
+      "parameter_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "max_depth": {
+            "default": 10,
+            "maximum": 128,
+            "minimum": 2,
+            "type": "integer"
+          },
+          "n_estimators": {
+            "default": 25,
+            "maximum": 2000,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "seed": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "window_size": {
+            "default": 256,
+            "maximum": 1000000,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      }
+    },
+    "aberrant_x_stream": {
+      "algorithm_family": "isolation_forest",
+      "available": true,
+      "bound_parameters": [],
+      "catalog_id": "x_stream",
+      "default_capabilities": {
+        "event_kind": "tabular",
+        "feature_count": {
+          "maximum": null,
+          "minimum": 1
+        },
+        "feature_schema": "evolving",
+        "higher_is_more_anomalous": true,
+        "requires_unit_interval": false,
+        "resettable": true,
+        "score_kind": "zero_to_one",
+        "state": "bounded",
+        "warmup": {
+          "minimum": 256,
+          "unit": "events"
+        }
+      },
+      "default_parameters": {
+        "cms_num_hashes": 4,
+        "cms_width": 1024,
+        "density": 0.3333333333333333,
+        "depth": 15,
+        "init_sample_size": 256,
+        "k": 100,
+        "max_feature_cache_size": 10000,
+        "n_chains": 100,
+        "seed": null,
+        "window_size": 256
+      },
+      "import_path": "aberrant.model.iforest.XStream",
+      "name": "Aberrant XStream",
+      "parameter_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "cms_num_hashes": {
+            "default": 4,
+            "maximum": 128,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "cms_width": {
+            "default": 1024,
+            "maximum": 1000000,
+            "minimum": 2,
+            "type": "integer"
+          },
+          "density": {
+            "default": 0.3333333333333333,
+            "exclusiveMinimum": 0,
+            "maximum": 1,
+            "type": "number"
+          },
+          "depth": {
+            "default": 15,
+            "maximum": 128,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "init_sample_size": {
+            "default": 256,
+            "maximum": 1000000,
+            "minimum": 2,
+            "type": "integer"
+          },
+          "k": {
+            "default": 100,
+            "maximum": 10000,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "max_feature_cache_size": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": 10000,
+            "maximum": 1000000,
+            "minimum": 1
+          },
+          "n_chains": {
+            "default": 100,
+            "maximum": 2000,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "seed": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "window_size": {
+            "default": 256,
+            "maximum": 1000000,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      }
+    }
+  },
+  "transformers": {
+    "feature_schema_guard": {
+      "available": true,
+      "declarative": true,
+      "dependencies": [],
+      "display_name": "FeatureSchemaGuard",
+      "family": "validation",
+      "id": "feature_schema_guard",
+      "import_path": "aberrant.transform.preprocessing.FeatureSchemaGuard",
+      "kind": "transformer",
+      "optional_extra": null,
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "features": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "sort_features": {
+            "default": true,
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      }
+    },
+    "incremental_pca": {
+      "available": true,
+      "declarative": true,
+      "dependencies": [],
+      "display_name": "IncrementalPCA",
+      "family": "projection",
+      "id": "incremental_pca",
+      "import_path": "aberrant.transform.projection.IncrementalPCA",
+      "kind": "transformer",
+      "optional_extra": null,
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "forgetting_factor": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "keys": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "n0": {
+            "default": 50,
+            "type": "integer"
+          },
+          "n_components": {
+            "type": "integer"
+          },
+          "tol": {
+            "default": 1e-07,
+            "type": "number"
+          }
+        },
+        "required": [
+          "n_components"
+        ],
+        "type": "object"
+      }
+    },
+    "min_max_scaler": {
+      "available": true,
+      "declarative": true,
+      "dependencies": [],
+      "display_name": "MinMaxScaler",
+      "family": "preprocessing",
+      "id": "min_max_scaler",
+      "import_path": "aberrant.transform.preprocessing.MinMaxScaler",
+      "kind": "transformer",
+      "optional_extra": null,
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "feature_range": {
+            "default": [
+              0,
+              1
+            ],
+            "maxItems": 2,
+            "minItems": 2,
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "type": "array"
+          }
+        },
+        "type": "object"
+      }
+    },
+    "random_projection": {
+      "available": true,
+      "declarative": true,
+      "dependencies": [],
+      "display_name": "RandomProjection",
+      "family": "projection",
+      "id": "random_projection",
+      "import_path": "aberrant.transform.projection.RandomProjection",
+      "kind": "transformer",
+      "optional_extra": null,
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "keys": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "n_components": {
+            "type": "integer"
+          },
+          "seed": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          }
+        },
+        "required": [
+          "n_components"
+        ],
+        "type": "object"
+      }
+    },
+    "standard_scaler": {
+      "available": true,
+      "declarative": true,
+      "dependencies": [],
+      "display_name": "StandardScaler",
+      "family": "preprocessing",
+      "id": "standard_scaler",
+      "import_path": "aberrant.transform.preprocessing.StandardScaler",
+      "kind": "transformer",
+      "optional_extra": null,
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "with_std": {
+            "default": true,
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      }
+    }
+  }
+}

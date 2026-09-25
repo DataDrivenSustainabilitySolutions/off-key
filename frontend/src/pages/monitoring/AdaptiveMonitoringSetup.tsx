@@ -5,7 +5,7 @@ import { apiUtils } from "@/lib/api-client";
 import { getErrorMessage } from "@/lib/errors";
 import { buildDeviceTelemetryTopic } from "@/lib/mqtt-topics";
 import { cn } from "@/lib/utils";
-import type { ActiveService, ModelDefinition, ParameterSchema } from "@/types/monitoring";
+import type { ActiveService, ModelDefinition } from "@/types/monitoring";
 import { BrainCircuit, FlaskConical, Gauge, Layers3, RadioTower, Send, SlidersHorizontal } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import toast from "react-hot-toast";
@@ -19,6 +19,7 @@ import {
 import type { FieldErrors } from "./config";
 import { CONTROL_CLASS, HELP_CLASS, LABEL_CLASS } from "./formStyles";
 import { ConfigSection, FieldError, LifecycleStep } from "./MonitoringUi";
+import { ModelParameterFields } from "./ModelParameterFields";
 
 interface Props {
   chargerId: string;
@@ -28,40 +29,6 @@ interface Props {
   loadingModels: boolean;
   onStarted: () => Promise<void>;
 }
-
-const UNIVARIATE_MODELS = new Set([
-  "aberrant_moving_average",
-  "aberrant_moving_average_absolute_deviation",
-  "aberrant_moving_geometric_average",
-  "aberrant_moving_harmonic_average",
-  "aberrant_moving_interquartile_range",
-  "aberrant_moving_kurtosis",
-  "aberrant_moving_median",
-  "aberrant_moving_quantile",
-  "aberrant_moving_skewness",
-  "aberrant_moving_variance",
-]);
-const BIVARIATE_MODELS = new Set([
-  "aberrant_moving_correlation_coefficient",
-  "aberrant_moving_covariance",
-]);
-
-const schemaType = (schema: ParameterSchema) =>
-  schema.type ?? schema.anyOf?.find((item) => item.type !== "null")?.type;
-
-const schemaAllowsNull = (schema: ParameterSchema) =>
-  schema.type === "null" || schema.anyOf?.some((item) => item.type === "null") === true;
-
-const nonNullParameterValue = (
-  schema: ParameterSchema,
-  type: ReturnType<typeof schemaType>,
-) => {
-  if (schema.default !== undefined && schema.default !== null) return schema.default;
-  if (type === "boolean") return false;
-  if (type === "array") return [];
-  if (type === "object") return {};
-  return "";
-};
 
 export function AdaptiveMonitoringSetup({
   chargerId,
@@ -87,31 +54,20 @@ export function AdaptiveMonitoringSetup({
     ? activeSensors.length
     : Number(draft.projectionComponents) || 0;
   const compatibleModels = useMemo(
-    () => Object.fromEntries(Object.entries(adaptiveModels).filter(([id]) => {
-      if (UNIVARIATE_MODELS.has(id)) return effectiveFeatureCount === 1;
-      if (BIVARIATE_MODELS.has(id)) return effectiveFeatureCount === 2;
-      return effectiveFeatureCount >= 1;
+    () => Object.fromEntries(Object.entries(adaptiveModels).filter(([, definition]) => {
+      const limits = definition.default_capabilities?.feature_count;
+      return definition.available !== false
+        && effectiveFeatureCount >= (limits?.minimum ?? 1)
+        && (limits?.maximum == null || effectiveFeatureCount <= limits.maximum);
     })),
     [adaptiveModels, effectiveFeatureCount],
   );
   const modelDefinition = adaptiveModels[draft.modelType];
   const groupedModels = useMemo(() => {
-    const groups: Record<string, Array<[string, ModelDefinition]>> = {
-      "Isolation forests": [],
-      "Distance models": [],
-      "Support-vector models": [],
-      "Statistical models": [],
-    };
+    const groups: Record<string, Array<[string, ModelDefinition]>> = {};
     for (const entry of Object.entries(adaptiveModels)) {
-      const [id] = entry;
-      const group = id.includes("svm")
-        ? "Support-vector models"
-        : id === "aberrant_knn" || id === "aberrant_local_outlier_factor"
-          ? "Distance models"
-          : id.includes("moving_")
-            ? "Statistical models"
-            : "Isolation forests";
-      groups[group]?.push(entry);
+      const group = humanize(entry[1].algorithm_family ?? "Other models");
+      (groups[group] ??= []).push(entry);
     }
     return groups;
   }, [adaptiveModels]);
@@ -196,33 +152,30 @@ export function AdaptiveMonitoringSetup({
               <label className={LABEL_CLASS} htmlFor="adaptive-model">Aberrant model</label>
               <select id="adaptive-model" className={cn(CONTROL_CLASS, "mt-2")} value={draft.modelType} onChange={(event) => {
                 const modelType = event.target.value;
-                setDraft((current) => ({ ...current, modelType, modelParams: getModelDefaults(modelType, adaptiveModels[modelType]) }));
+                const requiresUnitInterval = adaptiveModels[modelType]?.default_capabilities?.requires_unit_interval;
+                setDraft((current) => ({
+                  ...current, modelType,
+                  modelParams: getModelDefaults(modelType, adaptiveModels[modelType]),
+                  ...(requiresUnitInterval ? { scaler: "min_max_scaler" as const, minMaxLower: "0", minMaxUpper: "1", projection: "none" as const } : {}),
+                }));
                 setFieldErrors({});
               }}>
-                {Object.entries(groupedModels).map(([group, entries]) => entries.length ? <optgroup key={group} label={group}>{entries.map(([id, definition]) => <option key={id} value={id} disabled={!compatibleModels[id]}>{definition.name ?? humanize(id)}{compatibleModels[id] ? "" : " (incompatible feature count)"}</option>)}</optgroup> : null)}
+                {Object.entries(groupedModels).map(([group, entries]) => entries.length ? <optgroup key={group} label={group}>{entries.map(([id, definition]) => <option key={id} value={id} disabled={!compatibleModels[id]}>{definition.name ?? humanize(id)}{definition.available === false ? " (unavailable)" : compatibleModels[id] ? "" : " (incompatible feature count)"}</option>)}</optgroup> : null)}
               </select>
+              <FieldError field="modelType" errors={fieldErrors} />
+              {modelDefinition?.default_capabilities?.requires_unit_interval && <p className={HELP_CLASS}>This detector requires values between 0 and 1. Min-max scaling clips new extremes to that range; projections are unsupported.</p>}
+              {modelDefinition?.default_capabilities?.state === "growing" && <p className={HELP_CLASS}>This detector's memory can grow during monitoring. Watch service memory usage on long runs.</p>}
+              {modelDefinition?.algorithm_family === "time_series" && <p className={HELP_CLASS}>Windows count aligned observations, not seconds. Use consistently sampled telemetry to compare time-series shapes.</p>}
               <div className="mt-4 grid gap-4 sm:grid-cols-2">
-                {Object.entries(modelDefinition?.parameters?.properties ?? {}).map(([key, schema]) => {
-                  const type = schemaType(schema);
-                  const hasDraftValue = Object.prototype.hasOwnProperty.call(draft.modelParams, key);
-                  const value = hasDraftValue ? draft.modelParams[key] : schema.default;
-                  const nullable = schemaAllowsNull(schema);
-                  const isNone = value === null;
-                  const field = `model.${key}`;
-                  const update = (next: unknown) => {
-                    setDraft((current) => ({ ...current, modelParams: { ...current.modelParams, [key]: next as never } }));
+                <ModelParameterFields
+                  properties={modelDefinition?.parameters?.properties ?? {}}
+                  values={{ ...getModelDefaults(draft.modelType, modelDefinition), ...draft.modelParams }}
+                  errors={fieldErrors}
+                  onChange={(modelParams, field) => {
+                    setDraft((current) => ({ ...current, modelParams }));
                     clearError(field);
-                  };
-                  return <div key={key}><div className="flex items-center justify-between gap-2"><label className={LABEL_CLASS} htmlFor={`adaptive-param-${key}`}>{humanize(key)}</label>{nullable && <label className="flex items-center gap-1.5 text-xs text-muted-foreground"><input type="checkbox" aria-label={`${humanize(key)} is None`} checked={isNone} onChange={(event) => update(event.target.checked ? null : nonNullParameterValue(schema, type))} />None</label>}</div>{schema.enum ? (
-                    <select id={`adaptive-param-${key}`} disabled={isNone} className={cn(CONTROL_CLASS, "mt-2")} value={JSON.stringify(value)} onChange={(event) => update(JSON.parse(event.target.value))}>{schema.enum.map((option) => <option key={JSON.stringify(option)} value={JSON.stringify(option)}>{option === null ? "None" : String(option)}</option>)}</select>
-                  ) : type === "boolean" ? (
-                    <label className="mt-3 flex items-center gap-2 text-sm"><input id={`adaptive-param-${key}`} type="checkbox" disabled={isNone} checked={Boolean(value)} onChange={(event) => update(event.target.checked)} />Enabled</label>
-                  ) : type === "array" || type === "object" ? (
-                    <textarea id={`adaptive-param-${key}`} disabled={isNone} className={cn(CONTROL_CLASS, "mt-2 min-h-20 font-mono text-xs")} value={isNone ? "" : typeof value === "string" ? value : JSON.stringify(value ?? (type === "array" ? [] : {}))} onChange={(event) => update(event.target.value)} />
-                  ) : (
-                    <input id={`adaptive-param-${key}`} disabled={isNone} type={type === "number" || type === "integer" ? "number" : "text"} step={type === "integer" ? 1 : "any"} min={schema.minimum} max={schema.maximum} className={cn(CONTROL_CLASS, "mt-2")} value={isNone ? "" : String(value ?? "")} onChange={(event) => update(event.target.value)} />
-                  )}<p className={HELP_CLASS}>{schema.description}</p><FieldError field={field} errors={fieldErrors} /></div>;
-                })}
+                  }}
+                />
               </div>
             </ConfigSection>
 

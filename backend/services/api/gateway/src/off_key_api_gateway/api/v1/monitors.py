@@ -50,6 +50,10 @@ def _normalize_models_for_gateway(
             "default_parameters": model.get("default_parameters", {}),
             "version": model.get("version"),
             "requires_special_handling": model.get("requires_special_handling", False),
+            "catalog_id": model.get("catalog_id"),
+            "algorithm_family": model.get("algorithm_family"),
+            "available": model.get("available", True),
+            "default_capabilities": model.get("default_capabilities"),
         }
 
     return normalized

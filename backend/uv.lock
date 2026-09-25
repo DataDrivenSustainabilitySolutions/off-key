@@ -24,17 +24,22 @@ members = [
 
 [[package]]
 name = "aberrant"
-version = "0.5.0"
+version = "1.1.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "faiss-cpu" },
+    { name = "filelock" },
     { name = "numpy" },
     { name = "scipy" },
     { name = "tqdm" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/e3/ac/c0fa68449eca6bf0d2aa3e2c1e13834cdeaa40efe4291f2fb42447f9d3ab/aberrant-0.5.0.tar.gz", hash = "sha256:385bd6cdc841e66cd4a4bd6d4ad7a198c661b47118459dd55217026b2f82bc4d", size = 255272, upload-time = "2026-03-06T16:34:01.638Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/fd/13/5c9f3dfcaa5e2b258fc139e277594f26283ba87fadb3e147aa5e8cd4b615/aberrant-1.1.0.tar.gz", hash = "sha256:98380244f0574368f88a2425e0c70b4c87f6226b8265e36a40263fbe01368fd7", size = 1542071, upload-time = "2026-09-25T18:13:58.678Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/12/19/dda01cbe0439c1d21f4bb275419c4dbd9275233ae1871edc09e197c09567/aberrant-0.5.0-py3-none-any.whl", hash = "sha256:e7d5163fa1819c1d865c20c4dcec3421b68b9d8d19bb80bf9586bf3c320e6506", size = 94863, upload-time = "2026-03-06T16:33:59.835Z" },
+    { url = "https://files.pythonhosted.org/packages/7b/90/f18f7e8d7cfed923869987bd5b5e6d4a49c224de752a5b29a636dbd0fbc7/aberrant-1.1.0-py3-none-any.whl", hash = "sha256:0571fb9a48b56663562ab5e6d0c186a570afa40c04cbb38dcfb0aeaf09a9b9eb", size = 181214, upload-time = "2026-09-25T18:13:55.095Z" },
+]
+
+[package.optional-dependencies]
+faiss = [
+    { name = "faiss-cpu" },
 ]
 
 [[package]]
@@ -1717,6 +1722,7 @@ source = { editable = "libs/core" }
 dependencies = [
     { name = "asyncpg" },
     { name = "email-validator" },
+    { name = "jsonschema" },
     { name = "psycopg2-binary" },
     { name = "pydantic-settings" },
     { name = "python-dotenv" },
@@ -1728,6 +1734,7 @@ dependencies = [
 requires-dist = [
     { name = "asyncpg", specifier = ">=0.30.0" },
     { name = "email-validator", specifier = ">=2.2.0" },
+    { name = "jsonschema", specifier = ">=4.21.1" },
     { name = "psycopg2-binary", specifier = ">=2.9.10" },
     { name = "pydantic-settings", specifier = ">=2.7.1" },
     { name = "python-dotenv", specifier = ">=1.0.0" },
@@ -1774,7 +1781,7 @@ name = "off-key-mqtt-radar"
 version = "0.1.0"
 source = { editable = "services/mqtt/radar" }
 dependencies = [
-    { name = "aberrant" },
+    { name = "aberrant", extra = ["faiss"] },
     { name = "asyncpg" },
     { name = "nonconform", extra = ["pyod"] },
     { name = "numpy" },
@@ -1788,7 +1795,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "aberrant", specifier = "==0.5.0" },
+    { name = "aberrant", extras = ["faiss"], specifier = "==1.1.0" },
     { name = "asyncpg", specifier = ">=0.28.0" },
     { name = "nonconform", extras = ["pyod"], specifier = ">=1.0.0,<2" },
     { name = "numpy", specifier = ">=1.24.0" },

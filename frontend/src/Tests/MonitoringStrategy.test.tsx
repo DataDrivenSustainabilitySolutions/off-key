@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ApiRequestOptions } from "../lib/api-client";
 import Monitoring from "../pages/Monitoring";
-import type { AnomalyDetectionRequest } from "../types/monitoring";
+import type { AnomalyDetectionRequest, ModelCapabilities } from "../types/monitoring";
 
 const mockPost = vi.fn<
   (
@@ -42,6 +42,16 @@ vi.mock("../components/NavigationBar", () => ({
   NavigationBar: () => <div data-testid="navigation-bar" />,
 }));
 
+const vectorCapabilities: ModelCapabilities = {
+  event_kind: "tabular",
+  feature_count: { minimum: 1, maximum: null },
+  score_kind: "non_negative",
+  higher_is_more_anomalous: true,
+  warmup: { minimum: 20, unit: "events" },
+  state: "bounded",
+  requires_unit_interval: false,
+};
+
 const modelCatalog = {
   pyod_iforest: {
     strategy: "static_baseline",
@@ -69,6 +79,52 @@ const modelCatalog = {
         },
       },
     },
+  },
+  aberrant_rolling_matrix_profile: {
+    strategy: "adaptive_stream",
+    name: "Aberrant Rolling Matrix Profile",
+    algorithm_family: "time_series",
+    default_capabilities: {
+      ...vectorCapabilities,
+      feature_count: { minimum: 1, maximum: 1 },
+    },
+    parameters: { properties: {} },
+  },
+  aberrant_half_space_trees: {
+    strategy: "adaptive_stream",
+    name: "Aberrant Half-Space Trees",
+    default_capabilities: { ...vectorCapabilities, requires_unit_interval: true },
+    parameters: { properties: {} },
+  },
+  aberrant_knn: {
+    strategy: "adaptive_stream",
+    name: "Aberrant KNN",
+    default_parameters: {
+      similarity_engine: { id: "faiss", params: { window_size: 1000, warm_up: 20 } },
+    },
+    parameters: {
+      properties: {
+        similarity_engine: {
+          type: "object",
+          "x-aberrant-component-kind": "similarity_engine",
+          properties: {
+            params: {
+              type: "object",
+              properties: {
+                window_size: { type: "integer", minimum: 1 },
+                warm_up: { type: "integer", minimum: 1 },
+              },
+            },
+          },
+        },
+      },
+    },
+  },
+  unavailable_detector: {
+    strategy: "adaptive_stream",
+    name: "Unavailable detector",
+    available: false,
+    parameters: { properties: {} },
   },
 };
 
@@ -313,6 +369,67 @@ describe("<Monitoring /> static setup", () => {
     };
     expect(payload.model_params.max_feature_cache_size).toBeNull();
     expect(payload.adaptive_stream_config.model_params.max_feature_cache_size).toBeNull();
+  });
+
+  it("uses catalog families, availability, and feature limits for model selection", async () => {
+    renderMonitoring();
+
+    fireEvent.click(await screen.findByRole("button", { name: /Adaptive streams/i }));
+    const scalarModel = screen.getByRole("option", { name: /Rolling Matrix Profile/ }) as HTMLOptionElement;
+    expect(scalarModel.parentElement?.getAttribute("label")).toBe("Time Series");
+    expect(scalarModel.disabled).toBe(true);
+    expect((screen.getByRole("option", { name: /Unavailable detector/ }) as HTMLOptionElement).disabled).toBe(true);
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "L2" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "L3" }));
+    expect(scalarModel.disabled).toBe(false);
+    fireEvent.change(screen.getByLabelText("Aberrant model"), {
+      target: { value: "aberrant_rolling_matrix_profile" },
+    });
+    expect(screen.getByText(/Windows count aligned observations/)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "L2" }));
+    fireEvent.click(screen.getByRole("button", { name: /start adaptive monitoring/i }));
+    expect(await screen.findByText(/does not support the selected feature count/)).toBeTruthy();
+    expect(mockPost).not.toHaveBeenCalled();
+  });
+
+  it("configures unit-interval scaling and rejects incompatible preprocessing", async () => {
+    renderMonitoring();
+
+    fireEvent.click(await screen.findByRole("button", { name: /Adaptive streams/i }));
+    fireEvent.change(screen.getByLabelText("Aberrant model"), {
+      target: { value: "aberrant_half_space_trees" },
+    });
+    expect((screen.getByLabelText("Scaler") as HTMLSelectElement).value).toBe("min_max_scaler");
+    expect((screen.getByLabelText("Range minimum") as HTMLInputElement).value).toBe("0");
+    expect((screen.getByLabelText("Range maximum") as HTMLInputElement).value).toBe("1");
+    fireEvent.change(screen.getByLabelText("Scaler"), {
+      target: { value: "standard_scaler" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /start adaptive monitoring/i }));
+    expect(await screen.findByText(/requires raw values in \[0, 1\]/)).toBeTruthy();
+    expect(mockPost).not.toHaveBeenCalled();
+  });
+
+  it("validates and submits numeric parameters inside a catalog component", async () => {
+    renderMonitoring();
+
+    fireEvent.click(await screen.findByRole("button", { name: /Adaptive streams/i }));
+    fireEvent.change(screen.getByLabelText("Aberrant model"), {
+      target: { value: "aberrant_knn" },
+    });
+    fireEvent.change(screen.getByLabelText("Warm Up"), { target: { value: "1.5" } });
+    fireEvent.click(screen.getByRole("button", { name: /start adaptive monitoring/i }));
+    expect(await screen.findByText("Warm Up must be an integer.")).toBeTruthy();
+    expect(mockPost).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByLabelText("Warm Up"), { target: { value: "30" } });
+    fireEvent.click(screen.getByRole("button", { name: /start adaptive monitoring/i }));
+    await waitFor(() => expect(mockPost).toHaveBeenCalled());
+    expect(getSubmittedPayload().model_params.similarity_engine).toEqual({
+      id: "faiss", params: { window_size: 1000, warm_up: 30 },
+    });
   });
 
   it("disables sensors claimed by an overlapping active service", async () => {

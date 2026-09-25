@@ -1,40 +1,48 @@
 """Aberrant-backed score-then-learn adaptive stream detector."""
 
 import hashlib
-import importlib
 import json
 import logging
 import math
 import os
 import time
 from collections import deque
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import Enum
 from typing import Any
 
 import numpy as np
 import psutil
-from aberrant.base.pipeline import Pipeline
-from aberrant.model.distance import KNN
-from aberrant.transform import (
-    IncrementalPCA,
-    MinMaxScaler,
-    RandomProjection,
-    StandardScaler,
-)
-from aberrant.utils.similar.faiss_engine import FaissSimilaritySearchEngine
-from off_key_core.models import ABERRANT_VERSION, ADAPTIVE_MODELS_BY_TYPE
-from off_key_core.schemas.radar import (
-    AdaptiveStreamConfig,
-    IncrementalPCAConfig,
-    MinMaxScalerConfig,
-    RandomProjectionConfig,
-    StandardScalerConfig,
-)
+from aberrant import __version__ as aberrant_version
+from aberrant.base import ModelProtocol
+from aberrant.base.pipeline import ModelPipeline, Pipeline
+from aberrant.catalog import DetectorConfig, WarmupUnit
+from off_key_core.models import ABERRANT_VERSION
+from off_key_core.schemas.radar import AdaptiveStreamConfig, IncrementalPCAConfig
 
 from .checkpoint_manager import CheckpointManager
 from .config.config import AnomalyDetectionConfig
 from .models import AnomalyResult
+
+
+@dataclass(frozen=True)
+class _UnitInterval:
+    """Bound scaled features, or reject out-of-domain raw features."""
+
+    clip: bool
+
+    def learn_one(self, x: dict[str, float]) -> None:
+        self.transform_one(x)
+
+    def transform_one(self, x: dict[str, float]) -> dict[str, float]:
+        if self.clip:
+            return {key: min(1.0, max(0.0, value)) for key, value in x.items()}
+        if any(value < 0.0 or value > 1.0 for value in x.values()):
+            raise ValueError(
+                "This detector requires features in [0, 1]; configure min-max scaling"
+            )
+        return x
 
 
 class AdaptiveStreamState(Enum):
@@ -57,7 +65,14 @@ class AdaptiveStreamDetectionService:
         if adaptive_config is None:
             raise ValueError("adaptive_stream_config is required")
         self.adaptive_config: AdaptiveStreamConfig = adaptive_config
+        if aberrant_version != ABERRANT_VERSION:
+            raise ValueError(
+                "RADAR runtime does not match its generated Aberrant catalog"
+            )
         self.logger = logging.getLogger(__name__)
+        self.detector_config = self._detector_config()
+        self.detector_fingerprint = self.detector_config.fingerprint()
+        self.model_capabilities = self.detector_config.capabilities().as_dict()
         self.schema_signature = self._build_schema_signature(config)
         self.start_time = time.time()
         self.processing_times: deque[float] = deque(maxlen=1000)
@@ -70,9 +85,11 @@ class AdaptiveStreamDetectionService:
     def _initialize_fresh(self) -> None:
         self.state = AdaptiveStreamState.WARMUP
         self.feature_keys: list[str] = []
-        self.pipeline: Any | None = None
+        # Validate constructors at startup, before subscribing or learning data.
+        self.pipeline: ModelProtocol = self._build_pipeline(self.detector_config)
         self.calibration_scores: list[float] = []
         self.threshold: float | None = None
+        self.severity_scale = 0.0
         self.processed_count = 0
         self.warmup_count = 0
         self.calibration_count = 0
@@ -84,9 +101,21 @@ class AdaptiveStreamDetectionService:
     def _restore(self, checkpoint: dict[str, Any]) -> None:
         self.state = AdaptiveStreamState(checkpoint["adaptive_state"])
         self.feature_keys = list(checkpoint["feature_keys"])
+        self.detector_config = self._detector_config(self.feature_keys)
+        self.detector_fingerprint = self.detector_config.fingerprint()
+        self.model_capabilities = self.detector_config.capabilities().as_dict()
+        if checkpoint.get("detector_fingerprint") != self.detector_fingerprint:
+            raise ValueError(
+                "Adaptive checkpoint detector configuration is incompatible"
+            )
+        if checkpoint.get("detector_config") != self.detector_config.as_dict():
+            raise ValueError(
+                "Adaptive checkpoint normalized configuration is incompatible"
+            )
         self.pipeline = checkpoint["pipeline"]
         self.calibration_scores = list(checkpoint.get("calibration_scores", []))
         self.threshold = checkpoint.get("threshold")
+        self.severity_scale = float(checkpoint["severity_scale"])
         self.processed_count = int(checkpoint.get("processed_count", 0))
         self.warmup_count = int(checkpoint.get("warmup_count", 0))
         self.calibration_count = int(checkpoint.get("calibration_count", 0))
@@ -107,7 +136,7 @@ class AdaptiveStreamDetectionService:
         checkpoint = CheckpointManager().load(checkpoint_path)
         if checkpoint.get("strategy") != "adaptive_stream":
             raise ValueError("Checkpoint strategy does not match adaptive_stream")
-        if checkpoint.get("aberrant_version") != ABERRANT_VERSION:
+        if checkpoint.get("aberrant_version") != aberrant_version:
             raise ValueError("Checkpoint aberrant version is incompatible")
         if checkpoint.get("schema_signature") != cls._build_schema_signature(config):
             raise ValueError("Adaptive checkpoint configuration is incompatible")
@@ -125,75 +154,51 @@ class AdaptiveStreamDetectionService:
             ),
             "subscription_topics": sorted(config.subscription_topics),
             "sensor_key_strategy": config.sensor_key_strategy,
-            "aberrant_version": ABERRANT_VERSION,
+            "aberrant_version": aberrant_version,
         }
         serialized = json.dumps(payload, sort_keys=True, separators=(",", ":"))
         return hashlib.sha256(serialized.encode()).hexdigest()
 
-    def _freeze_schema_and_build_pipeline(self, data: dict[str, float]) -> None:
-        self.feature_keys = sorted(data)
-        self.adaptive_config.validate_feature_schema(self.feature_keys)
-
-        component: Any | None = None
-        current_keys = list(self.feature_keys)
+    def _detector_config(self, feature_keys: list[str] | None = None) -> DetectorConfig:
+        detector_config = DetectorConfig.from_mapping(
+            self.adaptive_config.detector_mapping(feature_keys)
+        ).normalized()
+        capabilities = detector_config.capabilities()
+        if capabilities.higher_is_more_anomalous is not True:
+            raise ValueError("RADAR requires higher scores to mean more anomalous")
+        warmup = capabilities.warmup
+        if warmup.unit != WarmupUnit.EVENTS or warmup.minimum is None:
+            raise ValueError("RADAR requires a known warm-up in aligned observations")
+        minimum = warmup.minimum
         for step in self.adaptive_config.preprocessing_steps:
-            transformer = self._build_transformer(step, current_keys)
-            component = (
-                transformer if component is None else Pipeline(component, transformer)
+            if isinstance(step, IncrementalPCAConfig):
+                minimum = max(minimum, step.n0)
+        if self.adaptive_config.training_window_size < minimum:
+            raise ValueError(
+                "training_window_size must cover model and preprocessing "
+                f"warm-up ({minimum})"
             )
-            if isinstance(step, IncrementalPCAConfig | RandomProjectionConfig):
-                current_keys = [
-                    f"component_{index}" for index in range(step.n_components)
-                ]
-        model = self._build_model(self.adaptive_config.model_type, current_keys)
-        self.pipeline = model if component is None else Pipeline(component, model)
+        return detector_config
 
-    def _build_model(self, model_type: str, feature_keys: list[str]) -> Any:
-        definition = ADAPTIVE_MODELS_BY_TYPE[model_type]
-        params = dict(self.adaptive_config.model_params)
-        if model_type == "aberrant_knn":
-            engine = FaissSimilaritySearchEngine(
-                window_size=int(params.pop("window_size")),
-                warm_up=int(params.pop("warm_up")),
-            )
-            return KNN(similarity_engine=engine, **params)
-        if model_type == "aberrant_online_isolation_forest":
-            params["type"] = params.pop("tree_type")
-        if model_type == "aberrant_moving_geometric_average":
-            params["absoluteValues"] = params.pop("absolute_values")
-        if definition.feature_count == "one":
-            params["key"] = feature_keys[0] if len(feature_keys) == 1 else None
-            params["abs_diff"] = True
-        elif definition.feature_count == "two":
-            params["keys"] = feature_keys if len(feature_keys) == 2 else None
-            params["abs_diff"] = True
-        elif model_type == "aberrant_moving_mahalanobis_distance":
-            params["keys"] = feature_keys
-        module_name, class_name = definition.import_path.rsplit(".", 1)
-        model_class = getattr(importlib.import_module(module_name), class_name)
-        return model_class(**params)
+    def _build_pipeline(self, detector_config: DetectorConfig) -> ModelProtocol:
+        pipeline = detector_config.build()
+        if detector_config.capabilities().requires_unit_interval:
+            assert isinstance(pipeline, ModelPipeline)
+            # MinMaxScaler can extrapolate before learning a new extreme. Clipping
+            # is RADAR's explicit input-domain policy for unit-interval detectors.
+            guard = _UnitInterval(clip=bool(self.adaptive_config.preprocessing_steps))
+            pipeline = Pipeline(Pipeline(pipeline.first, guard), pipeline.second)
+        return pipeline
 
-    @staticmethod
-    def _build_transformer(step: Any, feature_keys: list[str]) -> Any:
-        if isinstance(step, StandardScalerConfig):
-            return StandardScaler(with_std=step.with_std)
-        if isinstance(step, MinMaxScalerConfig):
-            return MinMaxScaler(feature_range=step.feature_range)
-        if isinstance(step, IncrementalPCAConfig):
-            return IncrementalPCA(
-                n_components=step.n_components,
-                n0=step.n0,
-                keys=feature_keys,
-                tol=step.tol,
-                forgetting_factor=step.forgetting_factor,
-            )
-        if isinstance(step, RandomProjectionConfig):
-            return RandomProjection(
-                n_components=step.n_components,
-                keys=feature_keys,
-                seed=step.seed,
-            )
-        raise TypeError(f"Unsupported adaptive preprocessing step: {step!r}")
+    def _freeze_schema_and_build_pipeline(self, data: dict[str, float]) -> None:
+        feature_keys = sorted(data)
+        detector_config = self._detector_config(feature_keys)
+        pipeline = self._build_pipeline(detector_config)
+        self.feature_keys = feature_keys
+        self.detector_config = detector_config
+        self.detector_fingerprint = detector_config.fingerprint()
+        self.model_capabilities = detector_config.capabilities().as_dict()
+        self.pipeline = pipeline
 
     def process_data_point(
         self,
@@ -204,7 +209,7 @@ class AdaptiveStreamDetectionService:
         started = time.time()
         try:
             normalized = self._validate_data(data)
-            if self.pipeline is None:
+            if not self.feature_keys:
                 self._freeze_schema_and_build_pipeline(normalized)
             elif sorted(normalized) != self.feature_keys:
                 self.schema_mismatch_count += 1
@@ -274,6 +279,10 @@ class AdaptiveStreamDetectionService:
                     method="higher",
                 )
             )
+            self.severity_scale = max(
+                abs(self.threshold),
+                max(self.calibration_scores) - min(self.calibration_scores),
+            )
             self.state = AdaptiveStreamState.OPERATIONAL
             self._checkpoint_model()
         return self._result(
@@ -332,7 +341,9 @@ class AdaptiveStreamDetectionService:
         if is_anomaly:
             severity = (
                 "high"
-                if threshold is not None and score >= threshold * 1.5
+                if threshold is not None
+                and self.severity_scale > 0
+                and score - threshold >= self.severity_scale * 0.5
                 else "medium"
             )
         return AnomalyResult(
@@ -375,6 +386,9 @@ class AdaptiveStreamDetectionService:
                     "adaptive_state": self.state.value,
                     "feature_keys": self.feature_keys,
                     "pipeline": self.pipeline,
+                    "detector_config": self.detector_config.as_dict(),
+                    "detector_fingerprint": self.detector_fingerprint,
+                    "severity_scale": self.severity_scale,
                     "calibration_scores": self.calibration_scores,
                     "threshold": self.threshold,
                     "processed_count": self.processed_count,
@@ -385,7 +399,7 @@ class AdaptiveStreamDetectionService:
                     "schema_mismatch_count": self.schema_mismatch_count,
                     "training_error": self.training_error,
                     "schema_signature": self.schema_signature,
-                    "aberrant_version": ABERRANT_VERSION,
+                    "aberrant_version": aberrant_version,
                     "service_id": manager.service_id,
                 },
                 processed_count=self.processed_count,
@@ -403,6 +417,10 @@ class AdaptiveStreamDetectionService:
             "strategy": "adaptive_stream",
             "state": self.state.value,
             "model_type": self.adaptive_config.model_type,
+            "catalog_id": self.detector_config.model.id,
+            "aberrant_version": aberrant_version,
+            "detector_fingerprint": self.detector_fingerprint,
+            "capabilities": self.model_capabilities,
             "processed_count": self.processed_count,
             "warmup_count": self.warmup_count,
             "calibration_count": self.calibration_count,

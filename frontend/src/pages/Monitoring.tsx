@@ -7,15 +7,13 @@ import {
 import { NavigationBar } from "@/components/NavigationBar";
 import { API_CONFIG } from "@/lib/api-config";
 import { apiUtils } from "@/lib/api-client";
-import { getTelemetryTypes } from "@/lib/charger-api";
 import { getErrorMessage } from "@/lib/errors";
 import { buildDeviceTelemetryChargerFilter } from "@/lib/mqtt-topics";
-import type { Anomaly } from "@/types/charger";
 import { getServiceDeleteActionDisplay } from "@/types/monitoring";
-import type { ActiveService, ModelDefinition } from "@/types/monitoring";
+import type { ActiveService } from "@/types/monitoring";
 import type { MonitoringStrategy } from "@/types/monitoring";
 import { Activity, Database } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import { useParams } from "react-router-dom";
 
@@ -24,16 +22,24 @@ import { AdaptiveMonitoringSetup } from "./monitoring/AdaptiveMonitoringSetup";
 import { MonitoringDataPanels } from "./monitoring/MonitoringDataPanels";
 import { LaneCard } from "./monitoring/MonitoringUi";
 import { StaticMonitoringSetup } from "./monitoring/StaticMonitoringSetup";
+import { useMonitoringData } from "./monitoring/useMonitoringData";
 
 function Monitoring() {
   const { chargerId = "" } = useParams<{ chargerId: string }>();
-  const [sensorTypes, setSensorTypes] = useState<string[]>([]);
-  const [models, setModels] = useState<Record<string, ModelDefinition>>({});
-  const [services, setServices] = useState<ActiveService[]>([]);
-  const [anomalies, setAnomalies] = useState<Anomaly[]>([]);
-  const [loadingServices, setLoadingServices] = useState(false);
-  const [loadingAnomalies, setLoadingAnomalies] = useState(false);
-  const [loadingModels, setLoadingModels] = useState(false);
+  return <ChargerMonitoring key={chargerId} chargerId={chargerId} />;
+}
+
+function ChargerMonitoring({ chargerId }: { chargerId: string }) {
+  const data = useMonitoringData(chargerId);
+  const sensorTypes = data.sensors.data;
+  const models = data.models.data;
+  const services = data.services.data;
+  const anomalies = data.anomalies.data;
+  const loadingServices = data.services.loading;
+  const loadingAnomalies = data.anomalies.loading;
+  const loadingModels = data.models.loading;
+  const loadServices = data.services.reload;
+  const loadAnomalies = data.anomalies.reload;
   const [selectedLane, setSelectedLane] = useState<MonitoringStrategy>("static_baseline");
 
   const staticModels = useMemo(
@@ -66,85 +72,6 @@ function Monitoring() {
       ),
     [chargerId, services],
   );
-
-  const loadModels = useCallback(async () => {
-    setLoadingModels(true);
-    try {
-      const catalog = await apiUtils.get<Record<string, ModelDefinition>>(
-        API_CONFIG.ENDPOINTS.MONITORING.MODELS,
-      );
-      setModels(catalog ?? {});
-    } catch (error) {
-      toast.error(
-        `Failed to load static detectors: ${getErrorMessage(error)}`,
-      );
-    } finally {
-      setLoadingModels(false);
-    }
-  }, []);
-
-  const loadSensorTypes = useCallback(async () => {
-    if (!chargerId) {
-      setSensorTypes([]);
-      return;
-    }
-    try {
-      setSensorTypes(await getTelemetryTypes(chargerId));
-    } catch (error) {
-      setSensorTypes([]);
-      toast.error(`Failed to load telemetry types: ${getErrorMessage(error)}`);
-    }
-  }, [chargerId]);
-
-  const loadServices = useCallback(async () => {
-    setLoadingServices(true);
-    try {
-      const activeServices = await apiUtils.get<ActiveService[]>(
-        `${API_CONFIG.ENDPOINTS.MONITORING.LIST}?active_only=true&include_docker_status=true`,
-      );
-      setServices(activeServices ?? []);
-    } catch (error) {
-      toast.error(`Failed to load services: ${getErrorMessage(error)}`);
-    } finally {
-      setLoadingServices(false);
-    }
-  }, []);
-
-  const loadAnomalies = useCallback(async () => {
-    if (!chargerId) return;
-    setLoadingAnomalies(true);
-    try {
-      const recentAnomalies = await apiUtils.get<Anomaly[]>(
-        API_CONFIG.ENDPOINTS.ANOMALIES.BY_CHARGER(chargerId),
-      );
-      setAnomalies(recentAnomalies ?? []);
-    } catch (error) {
-      toast.error(`Failed to load anomalies: ${getErrorMessage(error)}`);
-    } finally {
-      setLoadingAnomalies(false);
-    }
-  }, [chargerId]);
-
-  useEffect(() => {
-    const timeout = window.setTimeout(() => void loadSensorTypes(), 0);
-    return () => window.clearTimeout(timeout);
-  }, [loadSensorTypes]);
-
-  useEffect(() => {
-    const initialLoad = window.setTimeout(() => {
-      void loadModels();
-      void loadServices();
-      void loadAnomalies();
-    }, 0);
-    const interval = window.setInterval(() => {
-      void loadServices();
-      void loadAnomalies();
-    }, 30_000);
-    return () => {
-      window.clearTimeout(initialLoad);
-      window.clearInterval(interval);
-    };
-  }, [loadAnomalies, loadModels, loadServices]);
 
   const deleteService = async (service: ActiveService) => {
     const action = getServiceDeleteActionDisplay(service);

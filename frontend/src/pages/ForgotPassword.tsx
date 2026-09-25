@@ -60,11 +60,11 @@ const ForgotPassword: React.FC = () => {
           <form onSubmit={handleSubmit} className="space-y-4">
             {/* Email Input */}
             <div>
-              <Label htmlFor="email" className={AUTH_LABEL_CLASS}>E-Mail</Label>
+              <Label htmlFor="email" className={AUTH_LABEL_CLASS}>Email</Label>
               <Input
                 id="email"
                 type="email"
-                placeholder="Your E-Mail"
+                placeholder="Your email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
@@ -76,7 +76,7 @@ const ForgotPassword: React.FC = () => {
               type="submit"
               className={AUTH_SUBMIT_BUTTON_CLASS}
             >
-              Reset Password
+              Reset password
             </Button>
 
             {/* Message */}

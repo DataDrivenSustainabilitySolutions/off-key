@@ -16,13 +16,13 @@ describe('ForgotPassword', () => {
 
     test('zeigt Eingabefeld und Button', () => {
         render(<ForgotPassword />);
-        expect(screen.getByLabelText(/E-Mail/i)).toBeDefined();
+        expect(screen.getByLabelText(/Email/i)).toBeDefined();
         expect(screen.getByRole('button', { name: /Reset Password/i })).toBeDefined();
     });
 
     test('erlaubt Eingabe in das E-Mail-Feld', () => {
         render(<ForgotPassword />);
-        const input = screen.getByLabelText(/E-Mail/i);
+        const input = screen.getByLabelText(/Email/i);
         fireEvent.change(input, { target: { value: 'test@example.com' } });
         expect((input as HTMLInputElement).value).toBe('test@example.com');
     });
@@ -34,7 +34,7 @@ describe('ForgotPassword', () => {
         ));
 
         render(<ForgotPassword />);
-        const input = screen.getByLabelText(/E-Mail/i);
+        const input = screen.getByLabelText(/Email/i);
         const button = screen.getByRole('button', { name: /Reset Password/i });
 
         fireEvent.change(input, { target: { value: 'test@example.com' } });
@@ -58,7 +58,7 @@ describe('ForgotPassword', () => {
         fetchMock.mockRejectedValueOnce(new Error('Failed'));
 
         render(<ForgotPassword />);
-        const input = screen.getByLabelText(/E-Mail/i);
+        const input = screen.getByLabelText(/Email/i);
         const button = screen.getByRole('button', { name: /Reset Password/i });
 
         fireEvent.change(input, { target: { value: 'fail@example.com' } });
@@ -76,7 +76,7 @@ describe('ForgotPassword', () => {
         ));
 
         render(<ForgotPassword />);
-        const input = screen.getByLabelText(/E-Mail/i);
+        const input = screen.getByLabelText(/Email/i);
         const button = screen.getByRole('button', { name: /Reset Password/i });
 
         fireEvent.change(input, { target: { value: 'reject@example.com' } });

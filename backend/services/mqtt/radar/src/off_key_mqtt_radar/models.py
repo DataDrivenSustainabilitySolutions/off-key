@@ -104,6 +104,18 @@ class AnomalyResult:
     charger_id: str | None = None
     context: dict[str, Any] | None = None
 
+    @property
+    def should_persist(self) -> bool:
+        """One eligibility rule shared by ingestion and persistence."""
+        context = self.context or {}
+        return self.is_anomaly or any(
+            isinstance(context.get(key), dict) and context[key].get("phase") == phase
+            for key, phase in (
+                ("static_conformal", "ready"),
+                ("adaptive_stream", "operational"),
+            )
+        )
+
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for serialization"""
         return {

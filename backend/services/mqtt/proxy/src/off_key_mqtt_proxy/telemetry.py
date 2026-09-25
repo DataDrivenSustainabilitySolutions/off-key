@@ -17,7 +17,7 @@ from off_key_core.utils.enum import HealthStatus
 from off_key_core.utils.mqtt_topics import TopicMetadataExtractor
 from sqlalchemy import case, update
 from sqlalchemy.dialects.postgresql import insert
-from sqlalchemy.exc import IntegrityError, SQLAlchemyError
+from sqlalchemy.exc import DBAPIError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .client.models import MQTTMessage
@@ -32,6 +32,25 @@ from .telemetry_models import (
 from .telemetry_parsing import parse_telemetry_message
 
 
+class PermanentRecordError(Exception):
+    """A database rejection that retrying the same record cannot resolve."""
+
+
+def _is_permanent_record_error(error: SQLAlchemyError) -> bool:
+    if not isinstance(error, DBAPIError):
+        return False
+    sqlstate = getattr(error.orig, "sqlstate", None) or getattr(
+        error.orig, "pgcode", ""
+    )
+    # Data exceptions and row constraints can be isolated. Connection, schema,
+    # permission, foreign-key and unknown failures remain retryable.
+    return bool(sqlstate) and (
+        sqlstate.startswith("22")
+        or sqlstate in {"23502", "23514"}
+        or (sqlstate == "54000" and "index row" in str(error.orig).lower())
+    )
+
+
 class DatabaseWriter:
     """
     High-performance database writer for MQTT telemetry data
@@ -39,7 +58,7 @@ class DatabaseWriter:
     Features:
     - Batched writes with configurable size and timeout
     - Automatic retry with exponential backoff
-    - Dead letter queue for failed records
+    - Bounded pending batch and retained retries under backpressure
     - Performance monitoring and metrics
     - Intelligent logging with context
     - Duplicate detection and handling
@@ -65,12 +84,12 @@ class DatabaseWriter:
         # Write queues
         self.pending_batch = WriteBatch()
         self.processing_batches: dict[str, WriteBatch] = {}
-        self.failed_batches: list[WriteBatch] = []
 
         # Performance metrics
         self.total_records_received = 0
         self.total_records_written = 0
         self.total_records_failed = 0
+        self.total_records_rejected = 0
         self.total_batches_processed = 0
         self.total_batches_failed = 0
         self.write_latency_sum = 0.0
@@ -83,7 +102,7 @@ class DatabaseWriter:
         # Background tasks
         self._writer_task: asyncio.Task[None] | None = None
         self._health_task: asyncio.Task[None] | None = None
-        self._batch_tasks: set[asyncio.Task[None]] = set()
+        self._batch_capacity = asyncio.Condition()
         self._next_batch_id = 0
         self._shutdown_event = asyncio.Event()
         self._batch_ready_event = asyncio.Event()
@@ -107,6 +126,10 @@ class DatabaseWriter:
         """Start the database writer"""
         logger.info("event=db_writer.started", extra=self._log_context)
 
+        if self._writer_task and not self._writer_task.done():
+            return
+        self._shutdown_event.clear()
+
         # Start background tasks
         self._writer_task = asyncio.create_task(self._writer_loop())
         self._health_task = asyncio.create_task(self._health_monitor_loop())
@@ -122,46 +145,30 @@ class DatabaseWriter:
         )
 
     async def stop(self) -> None:
-        """Stop the database writer"""
-        logger.debug("event=db_writer.stopping", extra=self._log_context)
-
-        # Signal shutdown
+        """Drain owned batches up to the shutdown deadline; retain unfinished work."""
         self._shutdown_event.set()
         self._batch_ready_event.set()
-
-        # Let the writer loop hand off any pending batch before shutdown drains
-        # in-flight write tasks.
-        if self._writer_task and not self._writer_task.done():
-            try:
+        async with self._batch_capacity:
+            self._batch_capacity.notify_all()
+        try:
+            if self._writer_task and not self._writer_task.done():
                 await asyncio.wait_for(
                     asyncio.shield(self._writer_task),
-                    timeout=max(self.batch_timeout * 2, 5.0),
+                    timeout=self.config.graceful_shutdown_timeout,
                 )
-            except TimeoutError:
-                self._writer_task.cancel()
-                with suppress(asyncio.CancelledError):
-                    await self._writer_task
-            except asyncio.CancelledError:
-                pass
-
-        # Process remaining batches and wait for all started batches to finish.
-        pending_batch_size = self.pending_batch.size()
-        if pending_batch_size > 0:
-            logger.info(
-                "event=db_writer.shutdown_flush records_count=%s",
-                pending_batch_size,
-                extra={**self._log_context, "records_count": pending_batch_size},
+        finally:
+            tasks = [task for task in (self._writer_task, self._health_task) if task]
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+            unwritten = self.pending_batch.size() + sum(
+                batch.size() for batch in self.processing_batches.values()
             )
-            await self._trigger_batch_processing()
-
-        await self._await_batch_tasks()
-
-        if self._health_task and not self._health_task.done():
-            self._health_task.cancel()
-            with suppress(asyncio.CancelledError):
-                await self._health_task
-
-        logger.debug("event=db_writer.stopped", extra=self._log_context)
+            if unwritten:
+                logger.error(
+                    "event=db_writer.shutdown_unwritten records_count=%s", unwritten
+                )
 
     async def write_telemetry_message(self, message: MQTTMessage) -> None:
         """
@@ -191,10 +198,19 @@ class DatabaseWriter:
         # Extract record from success
         record = parse_result.record
 
-        # Add to batch
-        self.pending_batch.add_record(record)
-        self.total_records_received += 1
-        pending_batch_size = self.pending_batch.size()
+        # Bound pending records while the single worker owns an in-flight batch.
+        async with self._batch_capacity:
+            await self._batch_capacity.wait_for(
+                lambda: (
+                    self.pending_batch.size() < self.batch_size
+                    or self._shutdown_event.is_set()
+                )
+            )
+            if self._shutdown_event.is_set():
+                raise RuntimeError("Database writer is stopping")
+            self.pending_batch.add_record(record)
+            self.total_records_received += 1
+            pending_batch_size = self.pending_batch.size()
 
         # Update charger tracking
         self.charger_last_seen[record.charger_id] = record.timestamp
@@ -222,99 +238,45 @@ class DatabaseWriter:
         if pending_batch_size >= self.batch_size:
             self._batch_ready_event.set()
 
-    async def _trigger_batch_processing(self) -> asyncio.Task[None] | None:
-        """Trigger processing of current batch"""
-        if self.pending_batch.size() == 0:
-            return None
-
-        # Move current batch to processing
-        self._next_batch_id += 1
-        batch_id = f"batch_{int(time.time() * 1000)}_{self._next_batch_id}"
-        self.processing_batches[batch_id] = self.pending_batch
-        self.pending_batch = WriteBatch()
-
-        # Process batch in background
-        task = asyncio.create_task(self._process_batch_with_retry(batch_id))
-        self._batch_tasks.add(task)
-        task.add_done_callback(self._batch_tasks.discard)
-        return task
-
-    async def _await_batch_tasks(self) -> None:
-        """Wait for all in-flight batch write tasks to settle before shutdown."""
-        if not self._batch_tasks:
-            return
-        done, pending = await asyncio.wait(
-            set(self._batch_tasks),
-            timeout=self.config.graceful_shutdown_timeout,
-        )
-        for task in done:
-            try:
-                task.result()
-            except Exception as exc:
-                logger.error(
-                    "event=db_writer.batch_task_failed_during_shutdown error=%s",
-                    exc,
-                    extra={**self._log_context, "error": str(exc)},
-                    exc_info=True,
-                )
-        if pending:
-            logger.error(
-                "event=db_writer.shutdown_pending_batches count=%s",
-                len(pending),
-                extra={**self._log_context, "pending_batches": len(pending)},
-            )
-            for task in pending:
-                task.cancel()
-            for task in pending:
-                with suppress(asyncio.CancelledError):
-                    await task
+    async def _trigger_batch_processing(self) -> None:
+        """The writer loop owns at most one active and one bounded pending batch."""
+        if self.processing_batches:
+            batch_id = next(iter(self.processing_batches))
+        else:
+            async with self._batch_capacity:
+                if self.pending_batch.size() == 0:
+                    return
+                self._next_batch_id += 1
+                batch_id = f"batch_{self._next_batch_id}"
+                self.processing_batches[batch_id] = self.pending_batch
+                self.pending_batch = WriteBatch()
+                self._batch_capacity.notify_all()
+        await self._process_batch_with_retry(batch_id)
 
     async def _writer_loop(self) -> None:
-        """Background loop for batch processing"""
+        """Retry the owned batch before accepting another batch for persistence."""
         try:
-            while not self._shutdown_event.is_set():
-                try:
-                    # Wait for batch ready event OR timeout
-                    await asyncio.wait_for(
-                        self._batch_ready_event.wait(), timeout=self.batch_timeout
-                    )
-                    # Batch ready due to size - process immediately
-                    await self._trigger_batch_processing()
-
-                except TimeoutError:
-                    # Timeout reached - check for aged batch
-                    pending_batch_size = self.pending_batch.size()
-                    pending_batch_age = self.pending_batch.get_age_seconds()
-                    if (
-                        pending_batch_size > 0
-                        and pending_batch_age >= self.batch_timeout
-                    ):
-                        logger.debug(
-                            f"Batch timeout reached, "
-                            f"processing {pending_batch_size} records",
-                            extra={
-                                **self._log_context,
-                                "batch_size": pending_batch_size,
-                                "batch_age": pending_batch_age,
-                            },
+            while (
+                not self._shutdown_event.is_set()
+                or self.pending_batch.size()
+                or self.processing_batches
+            ):
+                if not self.processing_batches and not self._shutdown_event.is_set():
+                    with suppress(TimeoutError):
+                        await asyncio.wait_for(
+                            self._batch_ready_event.wait(), timeout=self.batch_timeout
                         )
-                        await self._trigger_batch_processing()
-
-                finally:
-                    # Always clear the event for next iteration
-                    self._batch_ready_event.clear()
-
-        except asyncio.CancelledError:
-            logger.debug(
-                "event=db_writer.writer_loop_cancelled", extra=self._log_context
-            )
-        except Exception as e:
-            logger.error(
-                "event=db_writer.writer_loop_failed error=%s",
-                e,
-                extra=self._log_context,
-                exc_info=True,
-            )
+                self._batch_ready_event.clear()
+                await self._trigger_batch_processing()
+                if self.processing_batches:
+                    # Retain exhausted batches and apply backpressure.
+                    await asyncio.sleep(self.config.get_jittered_backoff_delay(3))
+                elif self.pending_batch.size():
+                    self._batch_ready_event.set()
+        finally:
+            self._shutdown_event.set()
+            async with self._batch_capacity:
+                self._batch_capacity.notify_all()
 
     async def _process_batch_with_retry(self, batch_id: str) -> None:
         """Process batch with retry logic"""
@@ -352,7 +314,7 @@ class DatabaseWriter:
                     )
                     await asyncio.sleep(delay)
 
-                success = await self._process_batch(batch)
+                success = await self._persist_owned_batch(batch)
 
                 if success:
                     batch.status = WriteStatus.SUCCESS
@@ -393,10 +355,10 @@ class DatabaseWriter:
 
         # All attempts failed
         batch.status = WriteStatus.FAILED
-        self.total_records_failed += batch_size
-        self.failed_batches.append(batch)
-        self.processing_batches.pop(batch_id, None)
-        self.total_batches_failed += 1
+        if not batch.failure_counted:
+            self.total_records_failed += batch.size()
+            self.total_batches_failed += 1
+            batch.failure_counted = True
 
         logger.error(
             "event=db_writer.batch_failed batch_id=%s batch_size=%s attempts=%s",
@@ -411,6 +373,35 @@ class DatabaseWriter:
                 "charger_ids": list(batch.get_charger_ids()),
             },
         )
+
+    async def _persist_owned_batch(self, batch: WriteBatch) -> bool:
+        """Isolate rejected rows while retaining unfinished work across retries."""
+        if not batch.isolate_records:
+            try:
+                return await self._process_batch(batch)
+            except PermanentRecordError:
+                batch.isolate_records = True
+
+        while batch.records:
+            record = batch.records[0]
+            try:
+                if not await self._process_batch(WriteBatch(records=[record])):
+                    return False
+            except PermanentRecordError as error:
+                self.total_records_rejected += 1
+                logger.error(
+                    "event=db_writer.record_rejected charger_id=%s "
+                    "telemetry_type=%s timestamp=%s error=%s",
+                    record.charger_id,
+                    record.telemetry_type,
+                    record.timestamp,
+                    error,
+                    extra=self._log_context,
+                )
+            # No await between resolution and relinquishing ownership. A later
+            # cancellation or transient failure retains only unfinished records.
+            del batch.records[0]
+        return True
 
     async def _process_batch(self, batch: WriteBatch) -> bool:
         """Process a batch of telemetry records"""
@@ -499,21 +490,9 @@ class DatabaseWriter:
 
             return True
 
-        except IntegrityError as e:
-            logger.warning(
-                "event=db_writer.batch_integrity_error batch_size=%s error=%s",
-                batch_size,
-                e,
-                extra={
-                    **self._log_context,
-                    "batch_size": batch_size,
-                    "error": str(e),
-                },
-            )
-            await self._update_chargers_after_failure(charger_ids)
-            return True  # Treat as success since it's likely just duplicates
-
         except SQLAlchemyError as e:
+            if _is_permanent_record_error(e):
+                raise PermanentRecordError(str(e.orig)) from e
             logger.error(
                 "event=db_writer.batch_db_error batch_size=%s error=%s",
                 batch_size,
@@ -631,32 +610,6 @@ class DatabaseWriter:
             return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
         return value.isoformat()
 
-    async def _update_chargers_after_failure(self, charger_ids: set) -> None:
-        """Best-effort status update when inserts fail (duplicates, etc.)."""
-        if not charger_ids:
-            return
-
-        try:
-            async with self._session_factory() as session:
-                try:
-                    await self._update_charger_statuses(session, charger_ids)
-                    await session.commit()
-                except Exception as exc:
-                    await session.rollback()
-                    logger.warning(
-                        "Failed to update charger statuses after integrity error",
-                        extra={
-                            **self._log_context,
-                            "charger_ids": list(charger_ids),
-                            "error": str(exc),
-                        },
-                    )
-        except Exception as exc:
-            logger.warning(
-                "Unable to create session for post-failure charger updates",
-                extra={**self._log_context, "error": str(exc)},
-            )
-
     async def _health_monitor_loop(self) -> None:
         """Background health monitoring loop"""
         try:
@@ -715,13 +668,17 @@ class DatabaseWriter:
             total_records_received=self.total_records_received,
             total_records_written=self.total_records_written,
             total_records_failed=self.total_records_failed,
+            total_records_rejected=self.total_records_rejected,
             total_batches_processed=self.total_batches_processed,
             total_batches_failed=self.total_batches_failed,
             batch_success_rate=round(success_rate, 2),
             average_write_latency=round(avg_latency, 3),
             pending_batch_size=self.pending_batch.size(),
             processing_batches_count=len(self.processing_batches),
-            failed_batches_count=len(self.failed_batches),
+            failed_batches_count=sum(
+                batch.status is WriteStatus.FAILED
+                for batch in self.processing_batches.values()
+            ),
             unique_chargers_seen=len(self.charger_last_seen),
             total_messages_by_charger=dict(self.charger_message_counts),
         )

@@ -1,3 +1,4 @@
+import asyncio
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
@@ -16,6 +17,7 @@ def _writer() -> DatabaseWriter:
     config.batch_size = 100
     config.batch_timeout = 5.0
     config.graceful_shutdown_timeout = 5.0
+    config.health_monitor_interval = 60.0
     return DatabaseWriter(
         config=config,
         session_factory=MagicMock(),
@@ -312,7 +314,7 @@ async def test_process_batch_falls_back_to_batch_size_when_rowcount_is_negative(
 
 
 @pytest.mark.asyncio
-async def test_process_batch_integrity_error_treated_as_success(monkeypatch):
+async def test_process_batch_integrity_error_rolls_back_and_reports_failure():
     writer = _writer()
     message = MQTTMessage(
         topic="device/evCharger/charger-1/sine",
@@ -335,11 +337,12 @@ async def test_process_batch_integrity_error_treated_as_success(monkeypatch):
     session_ctx.__aenter__.return_value = session
     session_ctx.__aexit__.return_value = False
     writer._session_factory = MagicMock(return_value=session_ctx)
-    writer._update_chargers_after_failure = AsyncMock()
 
     batch = WriteBatch(records=[result.record])
-    assert await writer._process_batch(batch) is True
-    writer._update_chargers_after_failure.assert_awaited_once()
+    assert await writer._process_batch(batch) is False
+    session.rollback.assert_awaited_once()
+    session.commit.assert_not_awaited()
+    assert writer.total_records_written == 0
 
 
 @pytest.mark.asyncio
@@ -406,7 +409,13 @@ async def test_batch_retry_failure_increments_failed_record_metrics(monkeypatch)
     assert writer._process_batch.await_count == 4
     assert writer.total_records_failed == 2
     assert writer.total_batches_failed == 1
-    assert writer.processing_batches.get(batch_id) is None
+    assert writer.processing_batches[batch_id].size() == 2
+    await writer._process_batch_with_retry(batch_id)
+    assert writer.total_records_failed == 2
+    assert writer.total_batches_failed == 1
+    writer._process_batch.return_value = True
+    await writer._process_batch_with_retry(batch_id)
+    assert not writer.processing_batches
 
 
 @pytest.mark.asyncio
@@ -470,3 +479,184 @@ def test_get_health_status_marks_unhealthy_with_excessive_processing_backlog():
     health = writer.get_health_status()
 
     assert health.status is HealthStatus.UNHEALTHY
+
+
+def _message() -> MQTTMessage:
+    return MQTTMessage(
+        topic="device/evCharger/charger-1/sine",
+        payload={"timestamp": datetime.now(UTC).isoformat(), "value": 1.0},
+        timestamp=datetime.now(UTC),
+        qos=0,
+        retain=False,
+    )
+
+
+@pytest.mark.asyncio
+async def test_stalled_database_bounds_batches_and_backpressures_producers():
+    writer = _writer()
+    writer.batch_size = 1
+    entered = asyncio.Event()
+    release = asyncio.Event()
+    processed = []
+
+    async def persist(batch):
+        entered.set()
+        await release.wait()
+        processed.extend(batch.records)
+        return True
+
+    writer._process_batch = persist
+    await writer.start()
+    producer = None
+    try:
+        await writer.write_telemetry_message(_message())
+        await asyncio.wait_for(entered.wait(), 1)
+        await writer.write_telemetry_message(_message())
+        producer = asyncio.create_task(writer.write_telemetry_message(_message()))
+        await asyncio.sleep(0)
+        assert not producer.done()
+        assert writer.pending_batch.size() == 1
+        assert len(writer.processing_batches) == 1
+        release.set()
+        await asyncio.wait_for(producer, 1)
+        await writer.stop()
+        assert len(processed) == 3
+        assert not writer.processing_batches
+        assert writer.pending_batch.size() == 0
+    finally:
+        release.set()
+        if producer and not producer.done():
+            producer.cancel()
+        await writer.stop()
+
+
+@pytest.mark.asyncio
+async def test_shutdown_releases_waiting_producers_and_retains_unwritten_batches():
+    writer = _writer()
+    writer.batch_size = 1
+    writer.config.graceful_shutdown_timeout = 0.01
+    entered = asyncio.Event()
+
+    async def persist(_batch):
+        entered.set()
+        await asyncio.Event().wait()
+
+    writer._process_batch = persist
+    await writer.start()
+    await writer.write_telemetry_message(_message())
+    await asyncio.wait_for(entered.wait(), 1)
+    await writer.write_telemetry_message(_message())
+    producer = asyncio.create_task(writer.write_telemetry_message(_message()))
+    await asyncio.sleep(0)
+    with pytest.raises(TimeoutError):
+        await writer.stop()
+    with pytest.raises(RuntimeError, match="stopping"):
+        await producer
+    assert writer.pending_batch.size() == 1
+    assert sum(batch.size() for batch in writer.processing_batches.values()) == 1
+    assert writer._writer_task.done()
+    assert writer._health_task.done()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("sqlstate", ["22003", "23514", "54000"])
+async def test_permanent_record_failure_does_not_block_valid_telemetry(sqlstate):
+    from sqlalchemy.exc import DBAPIError
+
+    writer = _writer()
+    writer.max_retries = 0
+    session = AsyncMock()
+    session_ctx = AsyncMock()
+    session_ctx.__aenter__.return_value = session
+    session_ctx.__aexit__.return_value = False
+    writer._session_factory = MagicMock(return_value=session_ctx)
+    writer._upsert_chargers = AsyncMock()
+    writer._update_charger_statuses = AsyncMock()
+    committed = []
+    staged = []
+
+    async def execute(statement):
+        params = statement.compile().params
+        sensors = [value for key, value in params.items() if key.startswith("type_m")]
+        if "bad" in sensors:
+            error = Exception("index row size exceeds maximum")
+            error.sqlstate = sqlstate
+            raise DBAPIError("insert", None, error)
+        staged.extend(sensors)
+        return MagicMock(rowcount=len(sensors))
+
+    async def commit():
+        committed.extend(staged)
+        staged.clear()
+
+    session.execute.side_effect = execute
+    session.commit.side_effect = commit
+    session.rollback.side_effect = staged.clear
+    for sensor in ("good-before", "bad", "good-after"):
+        message = _message()
+        message.topic = f"device/evCharger/charger-1/{sensor}"
+        await writer.write_telemetry_message(message)
+    await writer._trigger_batch_processing()
+    await writer.write_telemetry_message(_message())
+    await writer._trigger_batch_processing()
+
+    assert committed == ["good-before", "good-after", "sine"]
+    assert session.rollback.await_count == 2
+    assert writer.total_records_written == 3
+    assert writer.get_performance_metrics().total_records_rejected == 1
+    assert not writer.processing_batches
+    assert writer.pending_batch.size() == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "sqlstate", ["08006", "40001", "42501", "42P01", "23503", "54000", None]
+)
+async def test_non_record_database_errors_retain_batch(sqlstate):
+    from sqlalchemy.exc import DBAPIError
+
+    writer = _writer()
+    writer.max_retries = 0
+    session = AsyncMock()
+    error = Exception("database failure")
+    error.sqlstate = sqlstate
+    session.execute.side_effect = DBAPIError("insert", None, error)
+    session_ctx = AsyncMock()
+    session_ctx.__aenter__.return_value = session
+    session_ctx.__aexit__.return_value = False
+    writer._session_factory = MagicMock(return_value=session_ctx)
+    await writer.write_telemetry_message(_message())
+    await writer._trigger_batch_processing()
+    assert len(writer.processing_batches) == 1
+    assert next(iter(writer.processing_batches.values())).size() == 1
+    assert writer.total_records_rejected == 0
+    session.commit.assert_not_awaited()
+    session.rollback.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("interruption", [False, asyncio.CancelledError()])
+async def test_isolation_retains_only_unfinished_records_after_interruption(
+    interruption,
+):
+    from off_key_mqtt_proxy.telemetry import PermanentRecordError
+
+    writer = _writer()
+    for _ in range(3):
+        await writer.write_telemetry_message(_message())
+    batch = writer.pending_batch
+    original = list(batch.records)
+    writer._process_batch = AsyncMock(
+        side_effect=[PermanentRecordError("bad batch"), True, interruption]
+    )
+    if isinstance(interruption, asyncio.CancelledError):
+        with pytest.raises(asyncio.CancelledError):
+            await writer._persist_owned_batch(batch)
+    else:
+        assert await writer._persist_owned_batch(batch) is False
+    assert batch.records == original[1:]
+    assert batch.isolate_records
+    writer._process_batch = AsyncMock(return_value=True)
+    assert await writer._persist_owned_batch(batch) is True
+    assert writer._process_batch.await_count == 2
+    assert not batch.records

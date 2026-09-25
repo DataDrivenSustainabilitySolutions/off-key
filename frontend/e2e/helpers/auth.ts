@@ -98,7 +98,7 @@ export const registerVerifyAndLogin = async (page: Page): Promise<string> => {
   await page.goto(verificationLink);
   await expect(page.getByText(/email verified successfully/i)).toBeVisible();
 
-  await page.getByRole("button", { name: /go to login/i }).click();
+  await page.getByRole("link", { name: /go to login/i }).click();
   await expect(page).toHaveURL(/\/login$/);
 
   await loginWithEmail(page, email);

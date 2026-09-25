@@ -76,10 +76,10 @@ export function LaneCard({
       type="button"
       onClick={onSelect}
       className={cn(
-        "relative overflow-hidden rounded-2xl border p-5 text-left transition-colors sm:p-6",
+        "relative overflow-hidden rounded-2xl border p-5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background sm:p-6",
         selected
           ? "border-primary/35 bg-primary/[0.035]"
-          : "border-dashed border-border/70 bg-muted/15 text-muted-foreground opacity-60",
+          : "border-border/70 bg-card text-foreground hover:border-primary/35 hover:bg-primary/[0.035]",
       )}
       aria-pressed={selected}
     >

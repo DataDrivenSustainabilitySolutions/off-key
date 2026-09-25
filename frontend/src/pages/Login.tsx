@@ -7,6 +7,10 @@ import { Link } from "react-router-dom";
 import { useAuth } from "@/auth/AuthContext";
 import {
   AuthLayout,
+  AUTH_LINK_CLASS,
+  AUTH_ERROR_CLASS,
+  AUTH_SUCCESS_CLASS,
+
   AUTH_LABEL_CLASS,
   AUTH_SUBMIT_BUTTON_CLASS,
 } from "@/components/AuthLayout";
@@ -88,27 +92,29 @@ const Login: React.FC = () => {
   };
 
   return (
-    <AuthLayout title="Login" titleProps={{ role: "heading", "aria-level": 1 }}>
+    <AuthLayout title="Login">
       <form onSubmit={handleLogin} className="space-y-4">
-        {/* E-Mail */}
+        {/* Email */}
         <div>
           <Label htmlFor="email" className={AUTH_LABEL_CLASS}>
-            E-Mail
+            Email
           </Label>
           <Input
             id="email"
             type="email"
-            placeholder="E-Mail"
+            placeholder="Email"
             value={email}
             onChange={(e) => {
               setEmail(e.target.value);
               if (emailError) setEmailError(undefined);
             }}
             className={emailError ? 'border-destructive' : ''}
+            aria-invalid={Boolean(emailError)}
+            aria-describedby={emailError ? 'email-error' : undefined}
             required
           />
           {emailError && (
-            <p className="text-sm text-destructive mt-1">{emailError}</p>
+            <p id="email-error" className="text-sm text-destructive mt-1">{emailError}</p>
           )}
         </div>
 
@@ -125,17 +131,19 @@ const Login: React.FC = () => {
               setPassword(e.target.value);
               if (passwordError) setPasswordError(undefined);
             }}
-            className={passwordError ? 'border-destructive' : ''}
+            className={passwordError ? 'pr-10 border-destructive' : 'pr-10'}
+            aria-invalid={Boolean(passwordError)}
+            aria-describedby={passwordError ? 'password-error' : undefined}
             required
           />
           {passwordError && (
-            <p className="text-sm text-destructive mt-1 mr-10">{passwordError}</p>
+            <p id="password-error" className="text-sm text-destructive mt-1 mr-10">{passwordError}</p>
           )}
           <button
             type="button"
             className="absolute right-3 top-9 text-muted-foreground transition-colors hover:text-foreground"
             onClick={() => setShowPassword(!showPassword)}
-            aria-label="Show password"
+            aria-label={showPassword ? "Hide password" : "Show password"}
           >
             {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
           </button>
@@ -145,7 +153,7 @@ const Login: React.FC = () => {
           <input
             type="checkbox"
             id="remember"
-            className="accent-green-600"
+            className="accent-primary"
             checked={rememberMe}
             onChange={(e) => setRememberMe(e.target.checked)}
           />
@@ -165,8 +173,8 @@ const Login: React.FC = () => {
           <p
             className={`mt-2 text-center text-sm ${
               message === "Login successful!"
-                ? "text-green-600"
-                : "text-red-600"
+                ? AUTH_SUCCESS_CLASS
+                : AUTH_ERROR_CLASS
             }`}
           >
             {message}
@@ -177,7 +185,7 @@ const Login: React.FC = () => {
         <div className="text-sm text-center mt-3 space-y-1">
           <Link
             to="/forgot-password"
-            className="text-blue-600 hover:underline"
+            className={AUTH_LINK_CLASS}
           >
             Forgot password?
           </Link>
@@ -185,7 +193,7 @@ const Login: React.FC = () => {
         <div className="text-xs mt-4 text-center">
           <p>
             Not signed up yet?{" "}
-            <Link to="/register" className="text-blue-600 hover:underline">
+            <Link to="/register" className={AUTH_LINK_CLASS}>
               Register here
             </Link>
           </p>

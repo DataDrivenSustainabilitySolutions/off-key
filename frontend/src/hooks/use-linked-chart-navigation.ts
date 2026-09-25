@@ -6,7 +6,6 @@ import {
   type ChartNavigationState,
 } from "@/lib/telemetry-chart";
 import type { TelemetryTypeData } from "@/types/charger";
-import type { MonitoringChartEvidence } from "@/types/monitoring";
 
 const CHART_LINK_PREFERENCE_KEY = "off-key:details:chart-navigation";
 
@@ -33,30 +32,15 @@ const writeChartLinkPreference = (linked: boolean): void => {
 
 const getTimelineExtent = (
   telemetryData: TelemetryTypeData[],
-  evidence: MonitoringChartEvidence[],
 ): readonly [number, number] | undefined => {
   let startMs = Number.POSITIVE_INFINITY;
   let endMs = Number.NEGATIVE_INFINITY;
-  const telemetryTimesByType = new Map<string, Set<number>>();
-  const includeTime = (time: number) => {
-    if (!Number.isFinite(time)) return;
-    startMs = Math.min(startMs, time);
-    endMs = Math.max(endMs, time);
-  };
   telemetryData.forEach((series) => {
-    const times = telemetryTimesByType.get(series.type) ?? new Set<number>();
     series.data.forEach((point) => {
       const time = Date.parse(point.timestamp);
       if (!Number.isFinite(time)) return;
-      times.add(time);
-      includeTime(time);
-    });
-    telemetryTimesByType.set(series.type, times);
-  });
-  evidence.forEach((item) => {
-    Object.entries(item.input_timestamps).forEach(([sensor, timestamp]) => {
-      const time = Date.parse(timestamp);
-      if (telemetryTimesByType.get(sensor)?.has(time)) includeTime(time);
+      startMs = Math.min(startMs, time);
+      endMs = Math.max(endMs, time);
     });
   });
 
@@ -92,7 +76,6 @@ interface LinkedChartNavigation {
 
 export const useLinkedChartNavigation = (
   telemetryData: TelemetryTypeData[],
-  evidence: MonitoringChartEvidence[],
 ): LinkedChartNavigation => {
   const [chartsLinked, setChartsLinked] = useState(readChartLinkPreference);
   const [linkedNavigationState, setLinkedNavigationState] =
@@ -105,8 +88,8 @@ export const useLinkedChartNavigation = (
   );
 
   const fullTimelineExtent = useMemo(
-    () => getTimelineExtent(telemetryData, evidence),
-    [evidence, telemetryData],
+    () => getTimelineExtent(telemetryData),
+    [telemetryData],
   );
   const linkedTimelineExtent = useMemo(
     () => applyTimeRangeToExtent(fullTimelineExtent, linkedNavigationState),

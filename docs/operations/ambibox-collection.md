@@ -249,3 +249,22 @@ slots normally remain occupied until the next interval; this is expected coalesc
 not overload. During a database outage the status table may itself become unwritable:
 the UI then reports stale status. The internal collector `/health/full` endpoint can
 still expose live queue diagnostics without waiting for that table.
+
+
+## Reviewing and searching the catalog
+
+The Collection and Catalog panels can search broker/charger names, hostnames, IDs,
+sensor keys, categories, and topics. A matching charger keeps all its sensors
+visible. The evidence filter separates observed brokers from candidate hosts;
+observed is catalog evidence, while live connection status is reported separately.
+Inventory counts come from the current draft rather than fixed development totals.
+
+Bulk selection preserves selections hidden by a filter, but **Set for visible
+selected** changes only visible selected chargers and the chosen sensor category.
+The UI reports hidden selections explicitly. Filtering or reviewing does not
+change collection by itself.
+
+Review changes compares the validated draft with the saved catalog: additions,
+removals, routing and definition edits, explicit policies, and the resulting
+per-sensor collection changes (including inherited defaults). Apply still checks
+the saved revision and requires acknowledgement before pausing affected monitors.

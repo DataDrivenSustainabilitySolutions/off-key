@@ -7,7 +7,7 @@ import time
 from collections import defaultdict
 from collections.abc import Callable
 from contextlib import suppress
-from datetime import datetime
+from datetime import UTC, datetime
 from types import TracebackType
 from typing import Self
 
@@ -87,6 +87,7 @@ class DatabaseWriter:
         # Performance metrics
         self.total_records_received = 0
         self.total_records_written = 0
+        self.last_successful_write_at: datetime | None = None
         self.total_records_failed = 0
         self.total_records_rejected = 0
         self.total_batches_processed = 0
@@ -449,6 +450,7 @@ class DatabaseWriter:
             # Use insert result count instead of input size for accurate throughput.
             # Some drivers return None or -1; fallback to batch size to preserve
             # prior semantics where execution counts were unavailable.
+            self.last_successful_write_at = datetime.now(UTC)
             self.total_records_written += records_written
             self.total_batches_processed += 1
 

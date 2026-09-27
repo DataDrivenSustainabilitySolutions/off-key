@@ -33,7 +33,22 @@ export type Catalog = {
   default_policy: CollectionPolicy;
   sources: CatalogSource[];
 };
+export type CollectionDiagnostics = {
+  mqtt_connected: boolean;
+  window_seconds: number;
+  rates: Record<"received" | "accepted" | "invalid" | "overload_dropped" | "written", number | null>;
+  last_received_at: string | null;
+  last_database_write_at: string | null;
+  original_queue: number;
+  original_capacity: number;
+  sample_slots: number;
+  database_queue: number;
+  database_capacity: number;
+  database_retrying: boolean;
+};
 export type RuntimeState = {
+  selected_sensors?: number;
+  diagnostics?: CollectionDiagnostics;
   revision?: number;
   status?: string;
   checked_at?: string;

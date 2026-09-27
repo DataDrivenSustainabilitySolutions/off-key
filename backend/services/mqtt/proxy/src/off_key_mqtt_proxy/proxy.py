@@ -19,6 +19,7 @@ from sqlalchemy.dialects.postgresql import insert
 from .auth import ApiKeyAuthHandler
 from .client.facade import MQTTClient
 from .collection_buffer import CollectionBuffer
+from .collection_diagnostics import CollectionDiagnostics
 from .config.config import get_mqtt_settings
 from .telemetry import DatabaseWriter
 
@@ -45,6 +46,7 @@ class MQTTProxyService:
         self._generation = -1
         self.state = {"status": "starting"}
         self._task: asyncio.Task | None = None
+        self.diagnostics = CollectionDiagnostics(self.buffer, self.database_writer)
 
     async def start(self):
         if self._task is None:
@@ -127,6 +129,9 @@ class MQTTProxyService:
         self.state["checked_at"] = datetime.now(UTC).isoformat()
         self.state["counters"] = self.buffer.metrics()
         self.state["records_written"] = self.database_writer.total_records_written
+        self.state["diagnostics"] = self.diagnostics.snapshot(
+            connected=self.mqtt_client.is_connected
+        )
         async with self.session_factory() as session:
             await session.execute(
                 update(CollectionConfiguration)
@@ -205,6 +210,7 @@ class MQTTProxyService:
                         )
                     )
                 await session.commit()
+            self.diagnostics.last_state_write_at = datetime.now(UTC)
 
     async def _collect(self) -> None:
         if not self.config.enabled:
@@ -310,4 +316,7 @@ class MQTTProxyService:
             **self.get_readiness_status(),
             "counters": self.buffer.metrics(),
             "database_writer": self.database_writer.get_health_status(),
+            "diagnostics": self.diagnostics.snapshot(
+                connected=self.mqtt_client.is_connected
+            ),
         }

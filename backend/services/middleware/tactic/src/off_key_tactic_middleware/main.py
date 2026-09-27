@@ -10,19 +10,22 @@ from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 
 import uvicorn
-from fastapi import FastAPI, Request, Response, status
+from fastapi import APIRouter, Depends, FastAPI, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
+from off_key_core.config.auth import get_auth_settings
 from off_key_core.config.env import load_env
 from off_key_core.config.logs import (
     load_yaml_config,
     log_startup_logging_configuration,
     logger,
 )
+from off_key_core.config.service_auth import get_service_auth_settings
 from off_key_core.config.validation import validate_settings
 from off_key_core.db.base import get_async_session_local
 from starlette.middleware.gzip import GZipMiddleware
 
-from .api.v1 import collection, data_services, models, radar
+from .api.service_auth import require_gateway
+from .api.v1 import collection, data_services, members, models, radar
 from .api.v1.admin_models import router as admin_models_router
 from .config.config import RadarWorkloadLifecycle, TacticConfig, get_tactic_settings
 from .facades.docker import AsyncDocker
@@ -261,16 +264,19 @@ def create_app() -> FastAPI:
     )
     app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=5)
 
-    # Include API routers
-    app.include_router(
+    business = APIRouter(dependencies=[Depends(require_gateway)])
+    business.include_router(
         radar.router, prefix="/api/v1/orchestration", tags=["orchestration"]
     )
-    app.include_router(
+    business.include_router(
         data_services.router, prefix="/api/v1/data", tags=["data-services"]
     )
-    app.include_router(models.router, prefix="/api/v1", tags=["models"])
-    app.include_router(collection.router, prefix="/api/v1")
-    app.include_router(admin_models_router, prefix="/api/v1", tags=["admin"])
+    business.include_router(models.router, prefix="/api/v1", tags=["models"])
+    business.include_router(collection.router, prefix="/api/v1")
+    business.include_router(admin_models_router, prefix="/api/v1", tags=["admin"])
+
+    business.include_router(members.router, prefix="/api/v1")
+    app.include_router(business)
 
     @app.get("/health")
     async def health_check(request: Request):
@@ -312,7 +318,11 @@ def main() -> None:
     log_startup_logging_configuration("tactic")
 
     validate_settings(
-        [("tactic", lambda: get_tactic_settings().config)],
+        [
+            ("tactic", lambda: get_tactic_settings().config),
+            ("auth", get_auth_settings),
+            ("service_auth", get_service_auth_settings),
+        ],
         context="TACTIC middleware configuration",
     )
     config = get_tactic_settings().config

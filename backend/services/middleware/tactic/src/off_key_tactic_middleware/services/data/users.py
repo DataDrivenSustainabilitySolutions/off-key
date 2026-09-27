@@ -41,11 +41,19 @@ class UserService:
         if not credentials_valid:
             raise AuthenticationError("Invalid credentials")
 
+        if not user.is_active:
+            raise AuthenticationError("Invalid credentials")
+
         if not user.is_verified:
             raise AuthenticationError("Email not verified")
 
         role = user.role.value if hasattr(user.role, "value") else str(user.role)
-        return {"id": user.id, "email": user.email, "role": role}
+        return {
+            "id": user.id,
+            "email": user.email,
+            "role": role,
+            "session_version": user.session_version,
+        }
 
     async def get_by_email(self, *, email: str) -> dict[str, object]:
         user = await self._repository.get_by_email(email=email)
@@ -57,6 +65,8 @@ class UserService:
             "id": user.id,
             "email": user.email,
             "is_verified": user.is_verified,
+            "is_active": user.is_active,
+            "session_version": user.session_version,
             "role": role,
             "updated_at": user.updated_at,
             "created_at": user.created_at,
@@ -118,6 +128,9 @@ class UserService:
             raise NotFoundError("User not found")
 
         user.hashed_password = new_password_hash
+        user.session_version += 1
+        user.reset_token_hash = None
+        user.reset_token_expires_at = None
         try:
             await self._session.commit()
         except Exception as exc:

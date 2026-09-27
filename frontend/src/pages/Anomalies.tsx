@@ -1,3 +1,4 @@
+import { useAuth } from "@/auth/AuthContext";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { RefreshCw, Trash2 } from "lucide-react";
@@ -35,6 +36,7 @@ import { getErrorMessage } from "@/lib/errors";
 import type { Anomaly } from "@/types/charger";
 
 export default function AnomalyTable() {
+  const { isAdmin } = useAuth();
   const [data, setData] = useState<Anomaly[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -232,7 +234,7 @@ export default function AnomalyTable() {
                       </span>
                     </TableCell>
                     <TableCell className="text-right">
-                      <Button
+                      {isAdmin && <Button
                         type="button"
                         variant="ghost"
                         size="icon"
@@ -241,7 +243,7 @@ export default function AnomalyTable() {
                         className="text-destructive hover:text-destructive"
                       >
                         <Trash2 className="h-4 w-4" />
-                      </Button>
+                      </Button>}
                     </TableCell>
                   </TableRow>
                 ))

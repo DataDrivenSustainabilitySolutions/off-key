@@ -50,7 +50,7 @@ export default function ChargerTable() {
 
         setData(chargers);
         if (userId !== null) {
-          const favs = await getFavorites(userId);
+          const favs = await getFavorites();
           if (cancelled) {
             return;
           }
@@ -102,7 +102,7 @@ export default function ChargerTable() {
     );
 
     try {
-      await toggleFavorite(chargerId, userId, isFavorite);
+      await toggleFavorite(chargerId, isFavorite);
       toast.success(isFavorite ? "Removed from favorites" : "Added to favorites");
     } catch (err) {
       clientLogger.error({

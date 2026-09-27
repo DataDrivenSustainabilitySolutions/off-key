@@ -33,7 +33,7 @@ export const CHART_CONFIG = {
 
 // Authentication configuration
 export const AUTH_CONFIG = {
-  PASSWORD_MIN_LENGTH: 8,
+  PASSWORD_MIN_LENGTH: 12,
   TOKEN_REFRESH_BUFFER: 5 * 60, // 5 minutes before expiration
   LOGIN_REDIRECT_DELAY: 2000, // 2 seconds delay after successful login
   REGISTRATION_REDIRECT_DELAY: 3000, // 3 seconds delay after successful registration

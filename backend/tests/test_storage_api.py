@@ -21,7 +21,13 @@ async def test_storage_requires_a_verified_user_and_returns_database_measurement
 ):
     _set_auth_env(monkeypatch)
     settings = get_auth_settings()
-    user = User(id=1, email="user@example.com", is_verified=False)
+    user = User(
+        id=1,
+        email="user@example.com",
+        is_verified=False,
+        is_active=True,
+        session_version=0,
+    )
     session = AsyncMock()
     session.scalar.return_value = user
     status = StorageStatus(
@@ -40,6 +46,7 @@ async def test_storage_requires_a_verified_user_and_returns_database_measurement
         {
             "sub": user.email,
             "user_id": user.id,
+            "session_version": 0,
             "exp": datetime.now(UTC) + timedelta(minutes=5),
             "iss": settings.JWT_ISSUER,
             "aud": settings.JWT_AUDIENCE,
@@ -54,7 +61,7 @@ async def test_storage_requires_a_verified_user_and_returns_database_measurement
         headers = {"Authorization": f"Bearer {token}"}
         assert (
             await client.get("/collection/storage", headers=headers)
-        ).status_code == 403
+        ).status_code == 401
         read.assert_not_awaited()
         user.is_verified = True
         response = await client.get("/collection/storage", headers=headers)

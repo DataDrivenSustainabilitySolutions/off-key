@@ -353,6 +353,10 @@ jobs:
           playwright_version="$(node -p "require('./frontend/node_modules/@playwright/test/package.json').version")"
           playwright_image="mcr.microsoft.com/playwright:v${playwright_version}-noble"
 
+          E2E_BOOTSTRAP_URL="$(docker compose exec -T tactic-middleware /app/bin/python -m off_key_tactic_middleware.bootstrap_admin | tail -1)"
+          echo "::add-mask::${E2E_BOOTSTRAP_URL}"
+          export E2E_BOOTSTRAP_URL
+
           echo "Running visual smoke tests with ${playwright_image}"
           docker run --rm \
             --network host \
@@ -361,6 +365,7 @@ jobs:
             --workdir /work \
             --env-file "${PWD}/.env" \
             --env CI=true \
+            --env E2E_BOOTSTRAP_URL \
             --env MQTT_SOURCE_URL=mqtt://localhost:1884 \
             --env MQTT_INGRESS_URL=mqtt://localhost:1883 \
             --env PLAYWRIGHT_BASE_URL=http://localhost:5173 \

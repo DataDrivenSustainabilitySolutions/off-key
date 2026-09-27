@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -12,12 +12,13 @@ import {
   AUTH_SUBMIT_BUTTON_CLASS,
 } from '@/components/AuthLayout';
 import { clientLogger } from "@/lib/logger";
+import { validatePassword, validatePasswordConfirmation } from "@/lib/validation";
 
 const ResetPassword: React.FC = () => {
-  const [searchParams] = useSearchParams();
+  const location = useLocation();
   const navigate = useNavigate();
 
-  const token = searchParams.get('token');
+  const token = new URLSearchParams(location.hash.slice(1)).get('token');
   const [newPassword, setNewPassword] = useState('');
   const [confirmNewPassword, setConfirmNewPassword] = useState('');
   const [message, setMessage] = useState<string>('');
@@ -34,8 +35,9 @@ const ResetPassword: React.FC = () => {
       return;
     }
 
-    if (newPassword.length < 8) {
-      setError('The password must be at least 8 characters long.');
+    const validation = [validatePassword(newPassword), validatePasswordConfirmation(newPassword, confirmNewPassword)].find((result) => !result.isValid);
+    if (validation) {
+      setError(validation.message ?? 'Check your password.');
       return;
     }
 
@@ -86,7 +88,7 @@ const ResetPassword: React.FC = () => {
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
                   required
-                  minLength={8}
+                  minLength={12}
                 />
               </div>
               <div>
@@ -100,7 +102,7 @@ const ResetPassword: React.FC = () => {
                   value={confirmNewPassword}
                   onChange={(e) => setConfirmNewPassword(e.target.value)}
                   required
-                  minLength={8}
+                  minLength={12}
                 />
               </div>
 

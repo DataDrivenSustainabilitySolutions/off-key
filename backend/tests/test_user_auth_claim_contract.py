@@ -27,6 +27,8 @@ async def test_authenticate_returns_numeric_user_id_for_token_claim():
         email="user@example.com",
         hashed_password=hashed_password,
         is_verified=True,
+        is_active=True,
+        session_version=3,
         role="user",
     )
 
@@ -37,5 +39,23 @@ async def test_authenticate_returns_numeric_user_id_for_token_claim():
         password=password,
     )
 
+    assert authenticated_user["session_version"] == 3
     assert authenticated_user["id"] == 42
     assert authenticated_user["email"] == "user@example.com"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "hashed_password",
+    [
+        "not-a-bcrypt-hash",
+        bcrypt.hashpw(b"different-password", bcrypt.gensalt()).decode(),
+    ],
+)
+async def test_authentication_rejects_malformed_or_incorrect_password(hashed_password):
+    from off_key_tactic_middleware.domain import AuthenticationError
+
+    user = SimpleNamespace(email="user@example.com", hashed_password=hashed_password)
+    service = UserService(session=None, repository=_UserRepositoryStub(user))
+    with pytest.raises(AuthenticationError):
+        await service.authenticate(email=user.email, password="wrong-password")

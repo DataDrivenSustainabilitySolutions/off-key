@@ -31,12 +31,9 @@ def test_auth_settings_rejects_short_jwt_secret(monkeypatch, auth_env):
         get_auth_settings()
 
 
-def test_auth_settings_rejects_identical_jwt_secrets(monkeypatch, auth_env):
-    same_secret = "z" * 32
-    monkeypatch.setenv("JWT_SECRET", same_secret)
-    monkeypatch.setenv("JWT_VERIFICATION_SECRET", same_secret)
+def test_auth_settings_rejects_whitespace_around_secret(monkeypatch, auth_env):
+    monkeypatch.setenv("JWT_SECRET", " " + "z" * 32)
     get_auth_settings.cache_clear()
-
     with pytest.raises(ValidationError):
         get_auth_settings()
 

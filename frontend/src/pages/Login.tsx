@@ -15,7 +15,7 @@ import {
   AUTH_SUBMIT_BUTTON_CLASS,
 } from "@/components/AuthLayout";
 import { API_CONFIG, getApiUrl } from "@/lib/api-config";
-import { validateEmail, validatePassword, sanitizeInput } from "@/lib/validation";
+import { validateEmail, sanitizeInput } from "@/lib/validation";
 import { Eye, EyeOff } from "lucide-react";
 import { clientLogger } from "@/lib/logger";
 
@@ -47,15 +47,14 @@ const Login: React.FC = () => {
 
     // Validate inputs
     const emailValidation = validateEmail(email);
-    const passwordValidation = validatePassword(password);
 
     if (!emailValidation.isValid) {
       setEmailError(emailValidation.message);
       return;
     }
 
-    if (!passwordValidation.isValid) {
-      setPasswordError(passwordValidation.message);
+    if (!password) {
+      setPasswordError("Password is required.");
       return;
     }
 
@@ -192,10 +191,7 @@ const Login: React.FC = () => {
         </div>
         <div className="text-xs mt-4 text-center">
           <p>
-            Not signed up yet?{" "}
-            <Link to="/register" className={AUTH_LINK_CLASS}>
-              Register here
-            </Link>
+            Access is by invitation from your organization's administrator.
           </p>
         </div>
       </form>

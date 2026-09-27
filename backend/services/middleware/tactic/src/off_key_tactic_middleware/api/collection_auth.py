@@ -1,4 +1,4 @@
-"""Verify the existing access token at the collection control boundary."""
+"""Verify membership against current account state for every protected request."""
 
 from fastapi import Depends, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -13,12 +13,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 bearer = HTTPBearer(auto_error=False)
 
 
-async def collection_user(
+async def current_member(
     credentials: HTTPAuthorizationCredentials | None = Depends(bearer),
     session: AsyncSession = Depends(get_db_async),
 ) -> User:
     if credentials is None:
-        raise HTTPException(401, "Sign in to view data sources")
+        raise HTTPException(401, "Sign in to continue")
     settings = get_auth_settings()
     try:
         claims = jwt.decode(
@@ -38,17 +38,29 @@ async def collection_user(
     except JWTError as exc:
         raise HTTPException(401, "Invalid or expired access token") from exc
     user_id = claims.get("user_id")
-    if type(user_id) is not int or claims.get("token_type") is not None:
+    version = claims.get("session_version")
+    if (
+        type(user_id) is not int
+        or user_id <= 0
+        or type(version) is not int
+        or version < 0
+        or claims.get("token_type") is not None
+    ):
         raise HTTPException(401, "Invalid access token")
     user = await session.scalar(
         select(User).where(User.id == user_id, User.email == claims["sub"])
     )
-    if user is None or not user.is_verified:
-        raise HTTPException(403, "A verified account is required")
+    if (
+        user is None
+        or not user.is_verified
+        or not user.is_active
+        or user.session_version != version
+    ):
+        raise HTTPException(401, "This session is no longer valid")
     return user
 
 
-async def collection_admin(user: User = Depends(collection_user)) -> User:
+async def require_admin(user: User = Depends(current_member)) -> User:
     if user.role != RoleEnum.admin:
-        raise HTTPException(403, "Only administrators can configure collection")
+        raise HTTPException(403, "Administrator access required")
     return user

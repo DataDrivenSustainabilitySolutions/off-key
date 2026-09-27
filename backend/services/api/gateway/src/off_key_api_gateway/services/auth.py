@@ -1,21 +1,7 @@
 from datetime import UTC, datetime, timedelta
 
-import bcrypt
-from jose import JWTError, jwt
+from jose import jwt
 from off_key_core.config.auth import get_auth_settings
-
-_REQUIRED_SCOPED_CLAIMS = ("sub", "exp", "iss", "aud", "token_type")
-
-
-def get_password_hash(password: str) -> str:
-    return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
-
-
-def verify_password(plain_password: str, hashed_password: str) -> bool:
-    try:
-        return bcrypt.checkpw(plain_password.encode(), hashed_password.encode())
-    except ValueError:
-        return False
 
 
 def create_jwt(data: dict, expires_delta: timedelta | None = None) -> str:
@@ -38,66 +24,3 @@ def create_jwt(data: dict, expires_delta: timedelta | None = None) -> str:
         settings.JWT_SECRET.get_secret_value(),
         algorithm=settings.ALGORITHM,
     )
-
-
-def create_verification_token(email: str, expires_minutes: int = 120) -> str:
-    settings = get_auth_settings()
-    to_encode = {
-        "sub": email,
-        "exp": datetime.now(UTC) + timedelta(minutes=expires_minutes),
-        "iss": settings.JWT_ISSUER,
-        "aud": settings.JWT_AUDIENCE,
-        "token_type": "email_verification",
-    }
-    return jwt.encode(
-        to_encode,
-        settings.JWT_VERIFICATION_SECRET.get_secret_value(),
-        algorithm=settings.ALGORITHM,
-    )
-
-
-def _decode_scoped_token(token: str, expected_token_type: str) -> str | None:
-    settings = get_auth_settings()
-    try:
-        payload = jwt.decode(
-            token,
-            settings.JWT_VERIFICATION_SECRET.get_secret_value(),
-            algorithms=[settings.ALGORITHM],
-            issuer=settings.JWT_ISSUER,
-            audience=settings.JWT_AUDIENCE,
-            options={"leeway": settings.JWT_CLOCK_SKEW_SECONDS},
-        )
-        if any(claim not in payload for claim in _REQUIRED_SCOPED_CLAIMS):
-            return None
-        if payload.get("token_type") != expected_token_type:
-            return None
-        subject = payload.get("sub")
-        if not isinstance(subject, str) or not subject:
-            return None
-        return subject
-    except JWTError:
-        return None
-
-
-def verify_verification_token(token: str) -> str | None:
-    return _decode_scoped_token(token, expected_token_type="email_verification")
-
-
-def create_reset_token(email: str, expires_minutes: int = 120) -> str:
-    settings = get_auth_settings()
-    to_encode = {
-        "sub": email,
-        "exp": datetime.now(UTC) + timedelta(minutes=expires_minutes),
-        "iss": settings.JWT_ISSUER,
-        "aud": settings.JWT_AUDIENCE,
-        "token_type": "password_reset",
-    }
-    return jwt.encode(
-        to_encode,
-        settings.JWT_VERIFICATION_SECRET.get_secret_value(),
-        algorithm=settings.ALGORITHM,
-    )
-
-
-def verify_reset_token(token: str) -> str | None:
-    return _decode_scoped_token(token, expected_token_type="password_reset")

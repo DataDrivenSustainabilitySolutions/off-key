@@ -1,3 +1,5 @@
+vi.mock("@/auth/AuthContext", () => ({ useAuth: () => ({ isAdmin: true }) }));
+
 import { act, cleanup, render, renderHook, screen } from "@testing-library/react";
 import { createMemoryRouter, RouterProvider } from "react-router-dom";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";

@@ -5,6 +5,7 @@ import pytest
 from tests.support.runtime_cache import reset_runtime_caches_for_tests
 
 _GATEWAY_ENVIRONMENT = {
+    "INTERNAL_API_SECRET": "test-internal-service-secret-123456789",
     "APP_NAME": "off-key-test",
     "DEBUG": "false",
     "JWT_SECRET": "test-signing-secret-material-123456789",

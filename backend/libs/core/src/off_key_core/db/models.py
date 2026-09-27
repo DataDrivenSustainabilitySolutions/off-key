@@ -33,7 +33,16 @@ class User(Base):
     email = Column(Text, unique=True, index=True, nullable=False)
     hashed_password = Column(Text, nullable=False)
     is_verified = Column(Boolean, default=False)
+    is_active = Column(
+        Boolean, nullable=False, default=True, server_default=text("true")
+    )
+    session_version = Column(
+        Integer, nullable=False, default=0, server_default=text("0")
+    )
     verification_token = Column(Text, nullable=True)
+    invitation_expires_at = Column(DateTime(timezone=True), nullable=True)
+    reset_token_hash = Column(Text, nullable=True)
+    reset_token_expires_at = Column(DateTime(timezone=True), nullable=True)
     role = Column(Enum(RoleEnum), default=RoleEnum.user, nullable=False)
     updated_at = Column(
         DateTime, default=func.now(), onupdate=func.now(), nullable=False

@@ -145,15 +145,14 @@ export const getAllChargers = async (): Promise<Charger[]> => {
   return chargers.map(normalizeChargerLastSeen);
 };
 
-export const getFavorites = (userId: number): Promise<string[]> =>
-  apiUtils.get<string[]>(API_CONFIG.ENDPOINTS.FAVORITES.GET(userId));
+export const getFavorites = (): Promise<string[]> =>
+  apiUtils.get<string[]>(API_CONFIG.ENDPOINTS.FAVORITES.GET);
 
 export const toggleFavorite = async (
   chargerId: string,
-  userId: number,
   isCurrentlyFavorite: boolean,
 ): Promise<void> => {
-  const body = { charger_id: chargerId, user_id: userId };
+  const body = { charger_id: chargerId };
   if (isCurrentlyFavorite) {
     await apiUtils.delete(API_CONFIG.ENDPOINTS.FAVORITES.REMOVE, body);
     return;

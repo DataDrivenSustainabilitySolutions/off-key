@@ -103,6 +103,8 @@ class UserResponse(BaseModel):
     id: int
     email: str
     is_verified: bool
+    is_active: bool
+    session_version: int
     role: RoleEnum
     updated_at: datetime
     created_at: datetime

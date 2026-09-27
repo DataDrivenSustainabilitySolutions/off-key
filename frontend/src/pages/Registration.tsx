@@ -1,171 +1,52 @@
-import React, { useState } from 'react';
-import { Label } from '@/components/ui/label';
-import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
-import { Link } from 'react-router-dom';
-import { Eye, EyeOff } from 'lucide-react';
-import {
-  AuthLayout,
-  AUTH_LINK_CLASS,
-  AUTH_ERROR_CLASS,
-  AUTH_SUCCESS_CLASS,
+import { useState } from "react";
+import { Link, useLocation } from "react-router-dom";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { AuthLayout, AUTH_LINK_CLASS, AUTH_ERROR_CLASS, AUTH_SUBMIT_BUTTON_CLASS } from "@/components/AuthLayout";
+import { validatePassword, validatePasswordConfirmation } from "@/lib/validation";
+import { apiUtils } from "@/lib/api-client";
+import { getErrorMessage } from "@/lib/errors";
 
-  AUTH_LABEL_CLASS,
-  AUTH_SUBMIT_BUTTON_CLASS,
-} from '@/components/AuthLayout';
-import { clientLogger } from "@/lib/logger";
+export default function Registration() {
+  const location = useLocation();
+  const token = new URLSearchParams(location.hash.slice(1)).get("token");
+  const [password, setPassword] = useState("");
+  const [confirmation, setConfirmation] = useState("");
+  const [error, setError] = useState("");
+  const [accepted, setAccepted] = useState(false);
+  const [busy, setBusy] = useState(false);
 
-interface RegistrationResponse {
-  message: string;
-}
-
-const Registration: React.FC = () => {
-  const [email, setEmail] = useState<string>('');
-  const [password, setPassword] = useState<string>('');
-  const [confirmPassword, setConfirmPassword] = useState<string>('');
-  const [message, setMessage] = useState<string>('');
-  const [isError, setIsError] = useState<boolean>(false);
-  const [showPassword, setShowPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-
-  const handleRegister = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsError(false);
-
-    if (password !== confirmPassword) {
-      setMessage('Passwords do not match.');
-      setIsError(true);
-      return;
-    }
-
-    if (password.length < 8) {
-      setMessage('Password should be at least 8 characters long.');
-      setIsError(true);
-      return;
-    }
-
+  const accept = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const validation = [validatePassword(password), validatePasswordConfirmation(password, confirmation)].find((result) => !result.isValid);
+    if (validation) { setError(validation.message ?? "Check your password."); return; }
+    setBusy(true);
+    setError("");
     try {
-      const response = await fetch('/api/v1/auth/register', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ email, password, role: "user" }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        setMessage(errorData.detail || 'Registration failed');
-        setIsError(true);
-        return;
-      }
-
-      const data: RegistrationResponse = await response.json();
-      setMessage(data.message || 'Registration successful! Please check your email.');
-      setIsError(false);
-
-      setTimeout(() => {
-        window.location.href = '/login';
-      }, 3000);
+      await apiUtils.post("/v1/auth/accept-invitation", { token, password });
+      setAccepted(true);
+      window.history.replaceState(null, "", location.pathname);
     } catch (error) {
-      clientLogger.error({
-        event: "auth.registration_request_failed",
-        message: "Registration request failed",
-        error,
-      });
-      setMessage('An error occurred.');
-      setIsError(true);
+      setError(getErrorMessage(error));
+    } finally {
+      setBusy(false);
     }
   };
 
   return (
-    <AuthLayout title="Register">
-          <form onSubmit={handleRegister} className="space-y-4">
-            {/* Email */}
-            <div>
-              <Label htmlFor="email" className={AUTH_LABEL_CLASS}>Email</Label>
-              <Input
-                id="email"
-                type="email"
-                placeholder="Email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-              />
-            </div>
-
-            {/* Password */}
-            <div className="relative">
-              <Label htmlFor="password" className={AUTH_LABEL_CLASS}>Password</Label>
-              <Input
-                id="password"
-                className="pr-10"
-                type={showPassword ? 'text' : 'password'}
-                placeholder="Password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-              />
-              <button
-                type="button"
-                className="absolute right-3 top-9 text-muted-foreground transition-colors hover:text-foreground"
-                onClick={() => setShowPassword(!showPassword)}
-                aria-label={showPassword ? 'Hide password' : 'Show password'}
-              >
-                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-              </button>
-            </div>
-
-
-            {/* Confirm Password */}
-              <div className="relative">
-              <Label htmlFor="confirmPassword" className={AUTH_LABEL_CLASS}>Confirm password</Label>
-              <Input
-                id="confirmPassword"
-                className="pr-10"
-                type={showConfirmPassword ? 'text' : 'password'}
-                placeholder="Confirm password"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                required
-              />
-              <button
-                type="button"
-                className="absolute right-3 top-9 text-muted-foreground transition-colors hover:text-foreground"
-                onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                aria-label={showConfirmPassword ? 'Hide confirmation password' : 'Show confirmation password'}
-              >
-                {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-              </button>
-            </div>
-
-            {/* Submit */}
-            <Button
-              type="submit"
-              className={AUTH_SUBMIT_BUTTON_CLASS}
-            >
-              Register
-            </Button>
-
-            {/* Message */}
-            {message && (
-              <p className={`mt-2 text-center text-sm ${isError ? AUTH_ERROR_CLASS : AUTH_SUCCESS_CLASS}`}>
-                {message}
-              </p>
-            )}
-
-            {/* Already have account */}
-            <div className="text-xs mt-4 text-center">
-              <p>
-                Already have an account?{' '}
-                <Link to="/login" className={AUTH_LINK_CLASS}>
-                  Login here
-                </Link>
-              </p>
-            </div>
-          </form>
+    <AuthLayout title="Accept invitation">
+      {accepted ? <p role="status">Your account is ready. <Link to="/login" className={AUTH_LINK_CLASS}>Log in</Link></p> : !token ? (
+        <p className="text-sm">Ask your organization's administrator for an invitation, then open the link in your email.</p>
+      ) : (
+        <form onSubmit={accept} className="space-y-4">
+          <p className="text-sm text-muted-foreground">Choose a password with at least 12 characters to join this organization's workspace.</p>
+          <div className="grid gap-2"><Label htmlFor="password">Password</Label><Input id="password" type="password" autoComplete="new-password" required value={password} onChange={(event) => setPassword(event.target.value)} /></div>
+          <div className="grid gap-2"><Label htmlFor="confirmPassword">Confirm password</Label><Input id="confirmPassword" type="password" autoComplete="new-password" required value={confirmation} onChange={(event) => setConfirmation(event.target.value)} /></div>
+          {error && <p role="alert" className={AUTH_ERROR_CLASS}>{error}</p>}
+          <Button className={AUTH_SUBMIT_BUTTON_CLASS} disabled={busy} type="submit">Accept invitation</Button>
+        </form>
+      )}
     </AuthLayout>
   );
-};
-
-export default Registration;
+}

@@ -1,6 +1,7 @@
 from functools import lru_cache
+from pathlib import Path
 
-from pydantic import EmailStr, SecretStr, field_validator, model_validator
+from pydantic import EmailStr, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _ALLOWED_JWT_ALGORITHMS = frozenset({"HS256", "HS384", "HS512"})
@@ -11,10 +12,14 @@ _MAX_ACCESS_TOKEN_EXPIRE_MINUTES = 1440
 class AuthSettings(BaseSettings):
     """Authentication and authorization settings."""
 
-    model_config = SettingsConfigDict(case_sensitive=True, extra="ignore", frozen=True)
+    model_config = SettingsConfigDict(
+        secrets_dir="/run/secrets" if Path("/run/secrets").is_dir() else None,
+        case_sensitive=True,
+        extra="ignore",
+        frozen=True,
+    )
 
     JWT_SECRET: SecretStr
-    JWT_VERIFICATION_SECRET: SecretStr
     ALGORITHM: str
     ACCESS_TOKEN_EXPIRE_MINUTES: int
     SUPERUSER_MAIL: EmailStr
@@ -22,7 +27,7 @@ class AuthSettings(BaseSettings):
     JWT_AUDIENCE: str = "off-key-api-gateway-users"
     JWT_CLOCK_SKEW_SECONDS: int = 30
 
-    @field_validator("JWT_SECRET", "JWT_VERIFICATION_SECRET")
+    @field_validator("JWT_SECRET")
     @classmethod
     def validate_jwt_secret_strength(cls, value: SecretStr) -> SecretStr:
         secret = value.get_secret_value()
@@ -69,15 +74,6 @@ class AuthSettings(BaseSettings):
         if not 0 <= value <= 300:
             raise ValueError("JWT_CLOCK_SKEW_SECONDS must be between 0 and 300")
         return value
-
-    @model_validator(mode="after")
-    def validate_distinct_jwt_secrets(self) -> "AuthSettings":
-        if (
-            self.JWT_SECRET.get_secret_value()
-            == self.JWT_VERIFICATION_SECRET.get_secret_value()
-        ):
-            raise ValueError("JWT_SECRET and JWT_VERIFICATION_SECRET must differ")
-        return self
 
 
 # Cache parsed secrets once per process; tests clear explicitly between env changes.

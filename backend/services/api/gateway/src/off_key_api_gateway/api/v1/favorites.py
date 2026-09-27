@@ -1,27 +1,31 @@
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from off_key_core.schemas.favorites import FavoriteCreate
+from off_key_core.schemas.members import MemberProfile
 
 from ...facades.tactic import TacticError, tactic
+from ..access import current_member
 from ..errors import raise_tactic_http_error
 
 router = APIRouter()
 
 
 @router.get("")
-async def get_favorites(user_id: int):
+async def get_favorites(user: MemberProfile = Depends(current_member)):
     """Get user favorites via TACTIC data service."""
     try:
-        return await tactic.get_user_favorites(user_id=user_id)
+        return await tactic.get_user_favorites(user_id=user.id)
     except TacticError as e:
         raise_tactic_http_error(e)
 
 
 @router.post("")
-async def add_favorite(fav: FavoriteCreate):
+async def add_favorite(
+    fav: FavoriteCreate, user: MemberProfile = Depends(current_member)
+):
     """Add user favorite via TACTIC data service."""
     try:
         return await tactic.add_user_favorite(
-            user_id=fav.user_id, charger_id=fav.charger_id
+            user_id=user.id, charger_id=fav.charger_id
         )
     except TacticError as e:
         if e.status in (status.HTTP_400_BAD_REQUEST, status.HTTP_409_CONFLICT):
@@ -33,11 +37,13 @@ async def add_favorite(fav: FavoriteCreate):
 
 
 @router.delete("")
-async def remove_favorite(fav: FavoriteCreate):
+async def remove_favorite(
+    fav: FavoriteCreate, user: MemberProfile = Depends(current_member)
+):
     """Remove user favorite via TACTIC data service."""
     try:
         return await tactic.remove_user_favorite(
-            user_id=fav.user_id, charger_id=fav.charger_id
+            user_id=user.id, charger_id=fav.charger_id
         )
     except TacticError as e:
         if e.status == status.HTTP_404_NOT_FOUND:

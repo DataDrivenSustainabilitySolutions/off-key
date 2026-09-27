@@ -234,6 +234,7 @@ async def test_process_batch_uses_rowcount_for_written_records():
 
     batch = WriteBatch(records=[result.record, result.record])
     assert await writer._process_batch(batch) is True
+    assert writer.last_successful_write_at is not None
     assert writer.total_records_written == 1
 
 
@@ -326,6 +327,7 @@ async def test_process_batch_integrity_error_rolls_back_and_reports_failure():
 
     batch = WriteBatch(records=[result.record])
     assert await writer._process_batch(batch) is False
+    assert writer.last_successful_write_at is None
     session.rollback.assert_awaited_once()
     session.commit.assert_not_awaited()
     assert writer.total_records_written == 0

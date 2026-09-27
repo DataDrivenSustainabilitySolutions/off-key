@@ -27,6 +27,7 @@ import {
 import { CatalogEditor, fieldClass } from "./sources/CatalogEditor";
 import { PolicyPicker } from "./sources/PolicyPicker";
 import { StorageSummary } from "./sources/StorageSummary";
+import { CollectionHealth } from "./sources/CollectionHealth";
 
 const endpoint = "/v1/sources";
 type SensorState = {
@@ -331,6 +332,7 @@ export default function DataSources() {
             }
           />
         </div>
+        <CollectionHealth snapshot={snapshot} />
         <StorageSummary />
         {(snapshot.collection.error || snapshot.ingress.error) && (
           <p role="alert" className="text-sm text-destructive">
@@ -722,14 +724,7 @@ export default function DataSources() {
             )}
           </>
         )}
-        <p className="text-xs text-muted-foreground">
-          Collection counters: {snapshot.collection.records_written ?? 0}{" "}
-          numeric rows written since worker start ·{" "}
-          {snapshot.collection.counters?.overload_dropped ?? 0} observations
-          dropped due to queue limits ·{" "}
-          {snapshot.collection.counters?.invalid ?? 0} invalid observations
-          rejected.
-        </p>
+
       </PageShell>
     </>
   );

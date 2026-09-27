@@ -328,3 +328,23 @@ async def test_retained_cleanup_accepts_absence_but_not_management_failures(
     else:
         with pytest.raises(IngressError, match=f"HTTP {status}"):
             await worker.emqx.request("DELETE", "mqtt/retainer/message/topic")
+
+
+@pytest.mark.asyncio
+async def test_state_commit_timestamp_advances_only_after_commit(proxy):
+    configuration = catalog("original", "text")
+    proxy.buffer.configure(configuration, now=0)
+    proxy.buffer.receive(message(configuration, "ready"))
+    await proxy._emit()
+    committed_at = proxy.diagnostics.last_state_write_at
+    assert committed_at is not None
+    session = AsyncMock()
+    session.commit.side_effect = RuntimeError("database unavailable")
+    context = AsyncMock()
+    context.__aenter__.return_value = session
+    proxy.session_factory = MagicMock(return_value=context)
+    proxy.buffer.configure(configuration, now=0)
+    proxy.buffer.receive(message(configuration, "next"))
+    with pytest.raises(RuntimeError, match="database unavailable"):
+        await proxy._emit()
+    assert proxy.diagnostics.last_state_write_at == committed_at

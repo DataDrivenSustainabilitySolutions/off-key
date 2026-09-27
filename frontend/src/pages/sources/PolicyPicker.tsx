@@ -4,13 +4,11 @@ import { fieldClass } from "./CatalogEditor";
 export function PolicyPicker({
   value,
   onChange,
-  inherited = false,
   label,
   disabled = false,
 }: {
-  value: CollectionPolicy | null;
-  onChange: (value: CollectionPolicy | null) => void;
-  inherited?: boolean;
+  value: CollectionPolicy;
+  onChange: (value: CollectionPolicy) => void;
   label: string;
   disabled?: boolean;
 }) {
@@ -20,33 +18,30 @@ export function PolicyPicker({
         aria-label={label}
         className={`${fieldClass} max-w-48`}
         disabled={disabled}
-        value={value?.mode ?? "inherit"}
+        value={value.mode}
         onChange={(e) =>
-          onChange(
-            e.target.value === "inherit"
-              ? null
-              : {
-                  mode: e.target.value as CollectionPolicy["mode"],
-                  interval_seconds: value?.interval_seconds ?? 10,
-                },
-          )
+          onChange({
+            mode: e.target.value as CollectionPolicy["mode"],
+            interval_seconds:
+              e.target.value === "original" ? 10 : value.interval_seconds,
+          })
         }
       >
-        {inherited && <option value="inherit">Use default</option>}
         <option value="off">Off</option>
         <option value="sample">Latest every…</option>
         <option value="original">Original rate</option>
       </select>
-      {value?.mode === "sample" && (
+      {value.mode === "sample" && (
         <label className="flex items-center gap-2 text-xs text-muted-foreground">
           <input
             aria-label={`${label} interval in seconds`}
             className={`${fieldClass} max-w-24`}
             type="number"
+            required
             min={1}
             max={3600}
             disabled={disabled}
-            value={value.interval_seconds}
+            value={value.interval_seconds || ""}
             onChange={(e) =>
               onChange({ ...value, interval_seconds: Number(e.target.value) })
             }

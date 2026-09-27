@@ -2,10 +2,12 @@
 
 from datetime import datetime
 
+from off_key_core.db.collection import read_collection_configuration
 from off_key_core.db.models import (
     Anomaly,
     AnomalyIdentity,
     Charger,
+    CollectionBinding,
     Favorite,
     MonitoringEvidence,
     Telemetry,
@@ -29,7 +31,7 @@ class ChargerRepository:
         limit: int,
         active_only: bool,
     ) -> list[Charger]:
-        query = select(Charger)
+        query = select(Charger).join(CollectionBinding)
         if active_only:
             query = query.where(Charger.online.is_(True))
         query = query.offset(skip).limit(limit)
@@ -39,6 +41,7 @@ class ChargerRepository:
     async def list_active_charger_ids(self, *, skip: int, limit: int) -> list[str]:
         query = (
             select(Charger.charger_id)
+            .join(CollectionBinding)
             .where(Charger.online.is_(True))
             .offset(skip)
             .limit(limit)
@@ -54,15 +57,12 @@ class TelemetryRepository:
         self._session = session
 
     async def list_types(self, *, charger_id: str, limit: int) -> list[str]:
-        query = (
-            select(Telemetry.type)
-            .where(Telemetry.charger_id == charger_id)
-            .distinct()
-            .order_by(Telemetry.type.asc())
-            .limit(limit)
-        )
-        result = await self._session.execute(query)
-        return list(result.scalars().all())
+        snapshot = await read_collection_configuration(self._session)
+        return sorted(
+            stream.sensor.key
+            for stream in snapshot.catalog.streams(selected_only=True)
+            if stream.charger_id == charger_id and stream.sensor.value_type == "number"
+        )[:limit]
 
     async def list_data(
         self,

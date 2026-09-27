@@ -91,7 +91,9 @@ async def register(user: UserCreate):
     verification_token = create_verification_token(user.email)
 
     user_role = (
-        user.role if user.email != settings.SUPERUSER_MAIL else RoleEnum.admin.value
+        RoleEnum.admin.value
+        if user.email == settings.SUPERUSER_MAIL
+        else RoleEnum.user.value
     )
 
     user_data = {

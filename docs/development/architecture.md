@@ -14,7 +14,7 @@ The platform runs as a Docker-based service mesh:
 - `api-gateway` (FastAPI): external API facade under `/v1`.
 - `tactic-middleware` (FastAPI): data adapter and RADAR orchestration.
 - `db-sync`: schema initialization and readiness API.
-- `mqtt-proxy`: source MQTT ingestion and optional bridge publishing.
+- `mqtt-proxy`: selected collection, sampling and accepted MQTT publishing.
 - `mqtt-radar`: anomaly workload, either profile-based or TACTIC-managed.
 - `timescaledb` (PostgreSQL + TimescaleDB): operational persistence.
 - `emqx-main`, plus optional `emqx-worker`: internal broker.
@@ -30,7 +30,7 @@ The platform runs as a Docker-based service mesh:
 | API Gateway | External route contract and request composition | TACTIC data/orchestration endpoints | HTTP responses | TACTIC readiness |
 | TACTIC | Domain data adapter and RADAR lifecycle | Database services, Docker API proxy, model registry | Database and container lifecycle | Docker API, model registry, database |
 | DB Sync | Schema bootstrap and readiness | Database | Database schema | Database availability |
-| MQTT Proxy | Source ingest, parsing, batching, optional forwarding | Source broker or ingress | `telemetry`, optional bridge broker | MQTT source and database |
+| MQTT Proxy | Selected admission, sampling and batching | Source-scoped raw EMQX topics | Numeric history, latest state, accepted EMQX topics | Catalog, internal EMQX and database |
 | EMQX | Internal monitoring message bus | Bridge publishers | MQTT streams | Broker health and authentication settings |
 | MQTT RADAR | Online anomaly detection | EMQX topics and model configuration | Monitoring evidence and anomalies | Topic stream, model initialization, database |
 | TimescaleDB | Relational and time-series persistence | Write-capable services | Query results | Storage and schema readiness |
@@ -47,11 +47,13 @@ The platform runs as a Docker-based service mesh:
 
 ### 2. Telemetry ingestion flow
 
-1. A producer publishes `device/evCharger/<charger_id>/<telemetry_type>` to the source broker.
-2. `mqtt-proxy` subscribes through `MQTT_SOURCE_TOPICS`, parses charger/type fields, and batches messages.
-3. Valid observations are persisted in the `telemetry` hypertable.
-4. When bridge publishing is configured, the same stream is made available to the RADAR broker.
-5. Gateway telemetry endpoints expose stored data through TACTIC to frontend charts.
+1. An administrator saves broker, charger and sensor definitions through Data sources.
+2. TACTIC reconciles per-broker EMQX sources and routes through the existing tailnet.
+3. EMQX wraps known scalar topics in source-scoped raw envelopes.
+4. MQTT Proxy subscribes only to selected streams and applies collection policy before storage and accepted MQTT output.
+5. RADAR consumes accepted numeric topics by charger UUID. Gateway serves history and latest state to the UI.
+
+See [AmbiBox collection](../operations/ambibox-collection.md) for revision transitions and limits.
 
 ### 3. Monitoring lifecycle flow
 
@@ -77,7 +79,7 @@ The normal local startup remains one command, but dependencies become ready in t
 2. `db-sync` at `/ready/schema`
 3. `tactic-middleware` at `/ready`
 4. `api-gateway` at `/health`
-5. `mqtt-proxy` at `/ready/bridge` when bridge readiness is applicable
+5. `mqtt-proxy` at `/ready` once the collection revision is applied
 6. `frontend`
 
 Gateway liveness can succeed while TACTIC-backed data or monitoring operations remain unavailable.
@@ -91,7 +93,7 @@ Gateway liveness can succeed while TACTIC-backed data or monitoring operations r
 | Health tooling | API Gateway | `/health` | Gateway liveness |
 | Health tooling | TACTIC | `/health`, `/ready` | Orchestration and registry readiness |
 | Internal checks | DB Sync | `/health`, `/ready/schema` | Schema readiness |
-| Internal checks | MQTT Proxy | `/health`, `/ready/bridge` | Ingest and bridge readiness |
+| Internal checks | MQTT Proxy | `/health`, `/ready` | Collection readiness |
 
 ## Failure modes and recovery checkpoints
 

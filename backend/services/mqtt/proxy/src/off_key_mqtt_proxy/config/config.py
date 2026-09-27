@@ -12,7 +12,6 @@ from off_key_core.config.validation import validate_environment as _validate_env
 from off_key_core.utils.mqtt_topics import (
     DEFAULT_TOPIC_REGEX,
     TopicMetadataExtractor,
-    normalize_telemetry_topic_filters,
 )
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -58,8 +57,6 @@ class MQTTConfig(BaseModel):
     mqtt_username: str
     mqtt_api_key: str
 
-    # Source subscriptions
-    source_topics: list[str]
     topic_regex: str = DEFAULT_TOPIC_REGEX
 
     # Service Configuration
@@ -96,29 +93,7 @@ class MQTTConfig(BaseModel):
     shutdown_timeout: float = Field(default=10.0, ge=1.0, le=60.0)
     graceful_shutdown_timeout: float = Field(default=30.0, ge=5.0, le=300.0)
 
-    # Bridge Configuration
-    enable_bridge: bool = False
-    bridge_broker_host: str = ""
-    bridge_broker_port: int = Field(default=1883, ge=1, le=65535)
-    bridge_use_tls: bool = False
-    bridge_transport: Transport = "tcp"
-    bridge_client_id_prefix: str = Field(
-        default="offkey-bridge",
-        min_length=1,
-        max_length=50,
-        pattern=r"^[A-Za-z0-9_-]+$",
-    )
-    bridge_use_auth: bool = False
-    bridge_username: str = ""
-    bridge_api_key: str = ""
-    bridge_topic_mapping: dict[str, str] = Field(default_factory=dict)
-
     model_config = ConfigDict(extra="forbid", validate_assignment=True)
-
-    @field_validator("source_topics")
-    @classmethod
-    def validate_source_topics(cls, value: list[str]) -> list[str]:
-        return normalize_telemetry_topic_filters(value)
 
     @model_validator(mode="after")
     def validate_timing_relationships(self) -> Self:
@@ -149,7 +124,7 @@ class MQTTConfig(BaseModel):
 
     @model_validator(mode="after")
     def validate_runtime_dependencies(self) -> Self:
-        """Validate extraction, authentication, and optional bridge dependencies."""
+        """Validate topic extraction and broker authentication."""
         TopicMetadataExtractor(topic_regex=self.topic_regex)
 
         _validate_auth_credentials(
@@ -158,19 +133,6 @@ class MQTTConfig(BaseModel):
             api_key=self.mqtt_api_key,
             label="MQTT",
         )
-
-        if self.enable_bridge:
-            if not self.bridge_broker_host.strip():
-                raise ValueError(
-                    "Bridge broker host is required when bridge is enabled"
-                )
-
-            _validate_auth_credentials(
-                enabled=self.bridge_use_auth,
-                username=self.bridge_username,
-                api_key=self.bridge_api_key,
-                label="Bridge",
-            )
 
         return self
 
@@ -228,8 +190,6 @@ class MQTTSettings(BaseSettings):
     MQTT_USERNAME: str = ""
     MQTT_APIKEY: str = ""
 
-    # Source Subscriptions
-    MQTT_SOURCE_TOPICS: str = "device/#"
     MQTT_TOPIC_REGEX: str = DEFAULT_TOPIC_REGEX
 
     # Connection Management
@@ -266,32 +226,10 @@ class MQTTSettings(BaseSettings):
         le=300.0,
     )
 
-    # Bridge Configuration
-    MQTT_ENABLE_BRIDGE: bool = False
-    MQTT_BRIDGE_BROKER_HOST: str = ""
-    MQTT_BRIDGE_BROKER_PORT: int = Field(default=1883, ge=1, le=65535)
-    MQTT_BRIDGE_USE_TLS: bool = False
-    MQTT_BRIDGE_TRANSPORT: Transport = "tcp"
-    MQTT_BRIDGE_CLIENT_ID_PREFIX: str = Field(
-        default="offkey-bridge",
-        min_length=1,
-        max_length=50,
-        pattern=r"^[A-Za-z0-9_-]+$",
-    )
-    MQTT_BRIDGE_USE_AUTH: bool = False
-    MQTT_BRIDGE_USERNAME: str = ""
-    MQTT_BRIDGE_APIKEY: str = ""
-
     # Health API Configuration
     MQTT_HEALTH_API_ENABLED: bool = True
     MQTT_HEALTH_API_HOST: str = Field(default="0.0.0.0", min_length=1)
     MQTT_HEALTH_API_PORT: int = Field(default=8010, ge=1, le=65535)
-
-    @field_validator("MQTT_SOURCE_TOPICS")
-    @classmethod
-    def validate_source_topics(cls, value: str) -> str:
-        normalized = normalize_telemetry_topic_filters(value.split(","))
-        return ",".join(normalized)
 
     @field_validator("ENVIRONMENT")
     @classmethod
@@ -313,12 +251,6 @@ class MQTTSettings(BaseSettings):
 
     @property
     def config(self) -> MQTTConfig:
-        source_topics = [
-            topic.strip()
-            for topic in self.MQTT_SOURCE_TOPICS.split(",")
-            if topic.strip()
-        ]
-
         return MQTTConfig(
             broker_host=self.MQTT_BROKER_HOST,
             broker_port=self.MQTT_BROKER_PORT,
@@ -329,7 +261,6 @@ class MQTTSettings(BaseSettings):
             use_auth=self.MQTT_USE_AUTH,
             mqtt_username=self.MQTT_USERNAME,
             mqtt_api_key=self.MQTT_APIKEY,
-            source_topics=source_topics,
             topic_regex=self.MQTT_TOPIC_REGEX,
             enabled=self.MQTT_TELEMETRY_ENABLED,
             reconnect_delay=self.MQTT_RECONNECT_DELAY,
@@ -351,15 +282,6 @@ class MQTTSettings(BaseSettings):
             health_monitor_interval=self.MQTT_HEALTH_MONITOR_INTERVAL,
             shutdown_timeout=self.MQTT_SHUTDOWN_TIMEOUT,
             graceful_shutdown_timeout=self.MQTT_GRACEFUL_SHUTDOWN_TIMEOUT,
-            enable_bridge=self.MQTT_ENABLE_BRIDGE,
-            bridge_broker_host=self.MQTT_BRIDGE_BROKER_HOST,
-            bridge_broker_port=self.MQTT_BRIDGE_BROKER_PORT,
-            bridge_use_tls=self.MQTT_BRIDGE_USE_TLS,
-            bridge_transport=self.MQTT_BRIDGE_TRANSPORT,
-            bridge_client_id_prefix=self.MQTT_BRIDGE_CLIENT_ID_PREFIX,
-            bridge_use_auth=self.MQTT_BRIDGE_USE_AUTH,
-            bridge_username=self.MQTT_BRIDGE_USERNAME,
-            bridge_api_key=self.MQTT_BRIDGE_APIKEY,
         )
 
 

@@ -109,11 +109,10 @@ Do not paste generated output into issues, logs, commits, screenshots, or docume
 
 | Variable | Development default | Purpose / validation |
 | --- | --- | --- |
-| `MQTT_BROKER_HOST` | `source-broker` | Source MQTT host |
+| `MQTT_BROKER_HOST` | `emqx-main` | Internal EMQX host |
 | `MQTT_BROKER_PORT` | `1883` | Source MQTT port |
 | `MQTT_USE_TLS` | `false` | TLS for the source client |
 | `MQTT_USE_AUTH` | `false` | Source-broker authentication toggle |
-| `MQTT_SOURCE_TOPICS` | `device/#` | MQTT subscription filter; current payload topics use `device/evCharger/<charger_id>/<telemetry_type>` |
 | `MQTT_TELEMETRY_ENABLED` | `true` | Persist parsed source telemetry |
 
 When `MQTT_USE_AUTH=true`, provide the supported `MQTT_USERNAME` and `MQTT_APIKEY` runtime variables through an ignored file or secret store.
@@ -195,10 +194,17 @@ Use an immutable release or commit tag. Do not deploy floating development tags 
 | `INGRESS_TS_AUTHKEY` | Secret; required for first login unless state is pre-seeded | Tailscale bootstrap credential |
 | `INGRESS_TS_EXTRA_ARGS` | `--accept-dns=false` | Extra `tailscale up` flags |
 | `INGRESS_TS_STATE_DIR` | Required host path | Persistent Tailscale state directory on the backend node |
-| `INGRESS_UPSTREAM_MQTT_HOST` | Required | Upstream broker MagicDNS hostname |
-| `INGRESS_UPSTREAM_MQTT_PORT` | `1883` | Upstream broker port |
+| `AMBIBOX_INGRESS_ENABLED` | `false` in service defaults; enabled in local/prod deployment | Run the catalog controller |
+| `AMBIBOX_ALLOWED_HOST_SUFFIXES` | `[".ts.net"]` | Broker host allowlist suffixes |
+| `AMBIBOX_ALLOWED_HOSTS` | `["source-broker"]` in local Compose | Explicit additional allowed hosts |
+| `AMBIBOX_EMQX_API_URL` | `http://emqx-main:18083/api/v5` | Private EMQX management endpoint |
+| `AMBIBOX_EMQX_API_KEY`, `AMBIBOX_EMQX_API_SECRET` | Operator secrets | EMQX controller access |
+| `AMBIBOX_GOST_API_URL` | `http://mqtt-tailscale-bridge:18080` | Private GOST management endpoint |
+| `AMBIBOX_GOST_USERNAME`, `AMBIBOX_GOST_PASSWORD` | Operator credentials | Forwarder management access |
+| `AMBIBOX_MQTT_USERNAME`, `AMBIBOX_MQTT_PASSWORD` | Existing vendor credentials | Shared upstream broker access |
+| `AMBIBOX_SOCKS_SERVER` | `tailscale-ambibox:1055` in production | Existing vendor tailnet SOCKS endpoint |
 
-See [Deployment modes](../operations/deployment-modes.md) for the render-and-deploy command and EMQX bridge requirements.
+See [Deployment modes](../operations/deployment-modes.md) and [AmbiBox collection](../operations/ambibox-collection.md) for deployment and catalog setup.
 
 ## Troubleshooting by variable group
 
@@ -207,7 +213,7 @@ See [Deployment modes](../operations/deployment-modes.md) for the render-and-dep
 | Frontend loads but API calls fail | `VITE_API_URL`, `BACKEND_PORT`, `CORS_ALLOWED_ORIGINS` | Align the URL with host/container reachability and CORS |
 | Verification/reset links are wrong | `FRONTEND_BASE_URL` | Set the externally reachable frontend URL |
 | SMTP delivery fails | `SMTP_*`, `EMAIL_*`, TLS and credential toggles | Match the provider transport and authentication requirements |
-| No source telemetry | `MQTT_BROKER_*`, `MQTT_SOURCE_TOPICS`, MQTT auth/TLS | Verify reachability, topic shape, and credentials |
+| No source telemetry | Catalog selection, `MQTT_BROKER_*`, MQTT auth/TLS | Verify reachability, topic shape, and credentials |
 | Managed workload cannot start | `TACTIC_DOCKER_API_*`, `TACTIC_RADAR_DEFAULT_*` | Check TACTIC readiness, proxy access, broker, and image |
 | Swarm ingress has no traffic | `INGRESS_*` | Verify persisted state, tailnet reachability, and upstream host |
 

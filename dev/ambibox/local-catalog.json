@@ -1,0 +1,83 @@
+{
+  "schema_version": 1,
+  "provider": "ambibox",
+  "default_policy": {
+    "mode": "sample",
+    "interval_seconds": 10
+  },
+  "sources": [
+    {
+      "id": "d4cdb627-634f-46d6-b2cf-ec810bbc6eb5",
+      "label": "Local simulator",
+      "host": "source-broker",
+      "port": 1883,
+      "verified": true,
+      "chargers": [
+        {
+          "id": "5e79057f-6b9b-4a79-af77-ce62b75c1ba9",
+          "local_id": "charger-sim-1",
+          "label": "Simulated charger 1",
+          "policy": {
+            "mode": "off",
+            "interval_seconds": 10
+          },
+          "sensors": [
+            {
+              "key": "sine",
+              "label": "Sine",
+              "category": "Synthetic",
+              "value_type": "number",
+              "upstream_topic": "device/evCharger/charger-sim-1/sine"
+            },
+            {
+              "key": "cosine",
+              "label": "Cosine",
+              "category": "Synthetic",
+              "value_type": "number",
+              "upstream_topic": "device/evCharger/charger-sim-1/cosine"
+            },
+            {
+              "key": "random",
+              "label": "Random",
+              "category": "Synthetic",
+              "value_type": "number",
+              "upstream_topic": "device/evCharger/charger-sim-1/random"
+            }
+          ]
+        },
+        {
+          "id": "479cc2d6-b2fc-459d-b36d-e18b585e765c",
+          "local_id": "charger-sim-2",
+          "label": "Simulated charger 2",
+          "policy": {
+            "mode": "off",
+            "interval_seconds": 10
+          },
+          "sensors": [
+            {
+              "key": "sine",
+              "label": "Sine",
+              "category": "Synthetic",
+              "value_type": "number",
+              "upstream_topic": "device/evCharger/charger-sim-2/sine"
+            },
+            {
+              "key": "cosine",
+              "label": "Cosine",
+              "category": "Synthetic",
+              "value_type": "number",
+              "upstream_topic": "device/evCharger/charger-sim-2/cosine"
+            },
+            {
+              "key": "random",
+              "label": "Random",
+              "category": "Synthetic",
+              "value_type": "number",
+              "upstream_topic": "device/evCharger/charger-sim-2/random"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

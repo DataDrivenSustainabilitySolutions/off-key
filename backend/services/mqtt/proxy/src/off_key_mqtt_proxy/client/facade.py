@@ -6,6 +6,7 @@ and message handling through dedicated components. Provides a clean, simple
 API while delegating responsibilities to specialized managers.
 """
 
+import asyncio
 import json
 from collections.abc import Awaitable, Callable
 from datetime import datetime
@@ -63,6 +64,7 @@ class MQTTClient:
 
         # Track messages sent for metrics
         self.messages_sent = 0
+        self._pending_publishes: list[mqtt.MQTTMessageInfo] = []
 
     async def __aenter__(self):
         """Async context manager entry"""
@@ -102,15 +104,7 @@ class MQTTClient:
         Returns:
             True if connection successful, False otherwise
         """
-        success = await self.connection_manager.connect()
-
-        if success:
-            # Wire up the components after successful connection
-            client = self.connection_manager.client
-            self.subscription_manager.set_client(client)
-            self.message_handler.set_client(client)
-
-        return success
+        return await self.connection_manager.connect()
 
     async def disconnect(self) -> None:
         """Disconnect from MQTT broker"""
@@ -186,6 +180,13 @@ class MQTTClient:
             result = client.publish(topic, payload_json, qos, retain)
 
             if result.rc == mqtt.MQTT_ERR_SUCCESS:
+                if qos:
+                    self._pending_publishes = [
+                        item
+                        for item in self._pending_publishes
+                        if not item.is_published()
+                    ]
+                    self._pending_publishes.append(result)
                 self.messages_sent += 1
                 logger.debug(f"Published message to {topic}")
                 return True
@@ -195,6 +196,14 @@ class MQTTClient:
         except Exception as e:
             logger.error(f"Error publishing to {topic}: {e}")
             return False
+
+    async def drain_publishes(self) -> None:
+        while self._pending_publishes:
+            self._pending_publishes = [
+                info for info in self._pending_publishes if not info.is_published()
+            ]
+            if self._pending_publishes:
+                await asyncio.sleep(0.05)
 
     def get_connection_info(self) -> ClientConnectionInfo:
         """Get current connection information"""
@@ -260,5 +269,8 @@ class MQTTClient:
 
     async def _on_connected(self) -> None:
         """Called when connection is established"""
-        # Resubscribe to all topics
-        await self.subscription_manager.resubscribe_all()
+        client = self.connection_manager.client
+        self._pending_publishes.clear()
+        self.subscription_manager.set_client(client)
+        self.message_handler.set_client(client)
+        # The collection loop restores the current catalog after a reconnect.

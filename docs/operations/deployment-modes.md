@@ -78,7 +78,7 @@ Pin the `*_IMAGE` variables in `.env` to immutable release tags before a deploym
     cp .env.ingress.example .env.ingress.local
     ```
 
-2. Provide the required upstream host, authentication, and state-directory values.
+2. Provide the operator management credentials and persisted tailnet state-directory values. Broker hosts belong in the UI catalog.
 3. Ensure the host state directory exists on the target backend node.
 4. Render both Compose files and deploy:
 
@@ -92,10 +92,12 @@ Pin the `*_IMAGE` variables in `.env` to immutable release tags before a deploym
       | docker stack deploy --with-registry-auth -c - off-key
     ```
 
-5. In EMQX, configure an MQTT bridge to `mqtt-tailscale-bridge:1883` with the upstream authentication and TLS settings.
-6. Subscribe to `device/#` and republish `${topic}`, `${payload}`, and `${qos}` unchanged.
+5. Provision private EMQX API credentials and enable its bootstrap file. The production
+   `off-key-infra` deployment performs this and reuses vendor MQTT credentials.
+6. Open Data sources to import/build a catalog and select collection. Do not create
+   a second manual EMQX bridge.
 
-The bridge must preserve topics in the form `device/evCharger/<charger_id>/<telemetry_type>`.
+See [AmbiBox collection](ambibox-collection.md) for the clean cutover and load controls.
 
 ## Safe mode switching
 

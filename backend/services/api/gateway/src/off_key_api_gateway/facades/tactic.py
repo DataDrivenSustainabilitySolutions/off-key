@@ -55,6 +55,7 @@ class Tactic:
         endpoint: str,
         json_data: dict | None = None,
         params: dict | None = None,
+        headers: dict[str, str] | None = None,
     ) -> Any:
         """
         Make an HTTP request to the TACTIC service.
@@ -84,6 +85,7 @@ class Tactic:
                     url=url,
                     json=json_data,
                     params=normalized_params,
+                    headers=headers,
                 ) as response:
                     parsed_body = await self._parse_response_body(response)
 

@@ -45,7 +45,7 @@ class ProxyHealthApp:
             )
             return
 
-        if path in {"/ready", "/ready/bridge"}:
+        if path == "/ready":
             readiness = self.service.get_readiness_status()
             await self._send_json(
                 send,

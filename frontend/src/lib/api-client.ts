@@ -13,7 +13,7 @@ import { API_CONFIG, DEFAULT_REQUEST_CONFIG } from './api-config';
 
 // Types for API responses
 export interface ApiError {
-  detail: string;
+  detail: string | { loc: (string | number)[]; msg: string }[];
   status: number;
 }
 
@@ -102,7 +102,11 @@ const createApiClient = (): AxiosInstance => {
 
       // Handle other common errors
       if (error.response?.data?.detail) {
-        return Promise.reject(new Error(error.response.data.detail));
+        const detail = error.response.data.detail;
+        const message = Array.isArray(detail)
+          ? detail.map(issue => `${issue.loc.filter(part => part !== 'body').join('.')}: ${issue.msg}`).join('; ')
+          : detail;
+        return Promise.reject(new Error(message));
       }
 
       // Network errors

@@ -10,6 +10,7 @@ from sqlalchemy import (
 from sqlalchemy.engine import Connection
 
 from .models import Base
+from .retention import reconcile_retention_policies
 
 
 def validate_existing_schema(connection: Connection) -> None:
@@ -92,3 +93,4 @@ def bootstrap_schema(connection: Connection) -> None:
             """
         )
     )
+    reconcile_retention_policies(connection)

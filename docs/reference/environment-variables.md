@@ -165,7 +165,7 @@ unknown errors remain eligible for retry.
 | `SYNC_HOSTNAME` | `db-sync` | DB Sync service hostname |
 | `SYNC_API_HOST` | `0.0.0.0` | DB Sync bind address |
 | `SYNC_API_PORT` | `8009` | DB Sync internal API port |
-| `TELEMETRY_RETENTION_DAYS` | `14` | Retention for telemetry and monitoring evidence; integer `1–365` |
+| `TELEMETRY_RETENTION_DAYS` | `14` | Retention for telemetry and monitoring evidence; integer `1–365`. DB Sync reconciles existing policies at startup; restart/redeploy it after changing this value. |
 | `LOG_LEVEL` | `INFO` | Standard log-level token |
 | `LOG_FORMAT` | `simple` | Supported log output format |
 | `LOG_REDACT_PII` | `true` | Keep enabled where logs may contain user data |

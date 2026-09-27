@@ -259,12 +259,40 @@ visible. The evidence filter separates observed brokers from candidate hosts;
 observed is catalog evidence, while live connection status is reported separately.
 Inventory counts come from the current draft rather than fixed development totals.
 
-Bulk selection preserves selections hidden by a filter, but **Set for visible
-selected** changes only visible selected chargers and the chosen sensor category.
-The UI reports hidden selections explicitly. Filtering or reviewing does not
-change collection by itself.
+From an empty installation, **Load AmbiBox inventory** creates a paused draft.
+Use **Configure** on a charger, or select several chargers and choose
+**Configure selected**. Changing the search or evidence filter clears this edit
+selection, so hidden chargers cannot accidentally be included.
 
-Review changes compares the validated draft with the saved catalog: additions,
+The configuration panel shows an explicit checkbox for each measurement and
+category. Category checkboxes affect only their own measurements; a partial
+selection is shown with an indeterminate checkbox. Unchecked measurements will
+be paused, including any that previously inherited an enabled default. Only the
+chargers named in the panel are changed. **Clear measurements** followed by a
+category checkbox is the way to collect just that category.
+
+When editing multiple chargers, **By category** makes the same measurement
+selection across them. **By charger** lets you expand each charger and choose a
+different set of sensors for it. Both views edit the same selection and preserve
+individual rates: for example, one charger can collect only temperature while
+another collects temperature, current and status, all in one draft.
+
+Choose a shared sampling interval or retain/customize individual rates. Numeric
+readings create chart history; text and booleans keep their latest value only.
+**Update draft** stages the choices; **Cancel** discards changes made in the
+configuration panel. Neither starts collection. **Pause selected** also stages a
+draft change. Review and apply it to pause live collection.
+
+**Review changes** first shows the resulting active chargers, measurement
+categories and sampling rates. Expand **See all catalog changes** for additions,
 removals, routing and definition edits, explicit policies, and the resulting
 per-sensor collection changes (including inherited defaults). Apply still checks
 the saved revision and requires acknowledgement before pausing affected monitors.
+Save failures appear inside the review and leave the draft available for retry.
+An intervening revision disables editing/applying until the saved catalog is
+reloaded. Export a draft first if you need to preserve it. **Discard draft** asks
+before replacing unsaved edits. Browser refresh/close also warns about a staged
+draft. Navigating to another page or using browser Back also asks before
+discarding a staged draft; cancelling keeps the draft on screen. Detailed
+connection, queue and storage information is under **Live
+diagnostics and storage**.

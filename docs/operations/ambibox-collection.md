@@ -213,3 +213,25 @@ coverage, CI configuration, retained cleanup retries, charger contact status,
 credential refresh, and repeatable E2E setup/cleanup. All were corrected and the
 reviewer's focused follow-up found no remaining actionable findings. The full
 reruns additionally caught and corrected empty-cache cleanup and async test setup.
+
+## Collection diagnostics
+
+The Data Sources page reports the **saved** catalog's state separately from any
+unsaved draft. It distinguishes a paused selection, a lost local MQTT connection,
+unavailable upstream brokers, ready-but-quiet topics, invalid payloads, queue
+pressure and database retries. Stale worker heartbeats are explicitly reported;
+old measurements are never presented as current health.
+
+Recent rates use elapsed wall time over approximately 30 seconds, measured by the
+worker with a fixed-size sample buffer. Incoming means messages reaching selected
+application subscriptions, not every message handled by EMQX. Accepted means
+observations emitted after sampling (including latest state and retained snapshots).
+Numeric rows written counts successful inserts, and the last telemetry/state commit
+advances only after a successful database commit, including state-only sensors.
+Lifetime counters remain visible but do not keep a recovered system in an error state.
+
+Original-rate and database queues show occupancy and fixed capacities. Latest-sample
+slots normally remain occupied until the next interval; this is expected coalescing,
+not overload. During a database outage the status table may itself become unwritable:
+the UI then reports stale status. The internal collector `/health/full` endpoint can
+still expose live queue diagnostics without waiting for that table.

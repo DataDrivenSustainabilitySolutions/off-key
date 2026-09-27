@@ -79,6 +79,7 @@ class CollectionBuffer:
         self._capacity = original_capacity
         self._enabled = False
         self.counters: Counter = Counter()
+        self.last_received_at: datetime | None = None
 
     def pause(self) -> None:
         with self._lock:
@@ -104,6 +105,7 @@ class CollectionBuffer:
         # Paho network thread: no async task, log, or DB operation per input.
         with self._lock:
             self.counters["received"] += 1
+            self.last_received_at = datetime.now(UTC)
             stream = self._streams.get(message.topic) if self._enabled else None
             if stream is None:
                 self.counters["unselected"] += 1
@@ -152,6 +154,7 @@ class CollectionBuffer:
                     )
             while self._original and len(result) < limit:
                 result.append(self._original.popleft())
+            self.counters["accepted"] += len(result)
         return result
 
     def count(self, event: str) -> None:

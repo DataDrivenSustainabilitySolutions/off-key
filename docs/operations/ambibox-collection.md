@@ -213,3 +213,17 @@ coverage, CI configuration, retained cleanup retries, charger contact status,
 credential refresh, and repeatable E2E setup/cleanup. All were corrected and the
 reviewer's focused follow-up found no remaining actionable findings. The full
 reruns additionally caught and corrected empty-cache cleanup and async test setup.
+
+## Continuous integration
+
+The MQTT Collection Integration workflow runs the isolated two-broker fixture for
+EMQX 5.8.7 (production) and 6.3.1 (development) on every PR, main push and merge group.
+It exercises broker identity isolation, sampling, retained snapshots, reconnects,
+pausing, authorization and revision conflicts. Each matrix job owns its disposable
+brokers/database and removes the containers and volumes even after failure.
+
+A focused write-outage test holds a real PostgreSQL lock on telemetry while MQTT
+continues delivering traffic. It checks fixed queue and task bounds during sustained
+load, observes deliberate overflow drops, releases the lock and requires a new
+measurement to reach the database. It uses only the fixture's localhost endpoints
+and synthetic credentials; no vendor tailnet or production data is involved.

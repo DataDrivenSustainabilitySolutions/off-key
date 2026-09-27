@@ -4,6 +4,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Header, HTTPException
 from off_key_core.schemas.collection import CatalogChange
+from off_key_core.schemas.storage import StorageStatus
 
 from ...facades.tactic import TacticError, tactic
 from ..errors import raise_tactic_http_error
@@ -47,6 +48,11 @@ async def preview_catalog(
 @router.get("/status")
 async def get_status(authorization: str | None = Header(default=None)):
     return await collection_request("GET", authorization, "/status")
+
+
+@router.get("/storage", response_model=StorageStatus)
+async def get_storage(authorization: str | None = Header(default=None)):
+    return await collection_request("GET", authorization, "/storage")
 
 
 @router.put("")

@@ -21,14 +21,9 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import JSONB
 
-from ..config import get_retention_days
-from ..config.logs import logger
 from ..utils.enum import RoleEnum
 from .base import Base
 from .table_contracts import monitoring_evidence_table
-
-# Cache retention days at module load to prevent mid-run environment changes
-_RETENTION_DAYS = get_retention_days()
 
 
 class User(Base):
@@ -176,38 +171,6 @@ event.listen(
 )
 
 
-def _add_telemetry_retention_policy(target, connection, **kw):
-    """
-    Add TimescaleDB retention policy to the telemetry hypertable.
-
-    This function is called after the hypertable is created to set up
-    automatic data retention based on the configured retention period.
-    Uses the cached retention_days value to prevent mid-run changes.
-    """
-    # Use cached value (already validated as integer 1-365)
-    retention_policy_sql = text(
-        f"""
-        SELECT add_retention_policy(
-            '{Telemetry.__tablename__}',
-            INTERVAL '{_RETENTION_DAYS} days',
-            if_not_exists => true
-        );
-        """
-    )
-    connection.execute(retention_policy_sql)
-    logger.info(
-        f"TimescaleDB retention policy set for '{Telemetry.__tablename__}': "
-        f"{_RETENTION_DAYS} days"
-    )
-
-
-event.listen(
-    Telemetry.__table__,
-    "after_create",
-    _add_telemetry_retention_policy,
-)
-
-
 class MonitoringService(Base):
     __tablename__ = "services"
 
@@ -312,31 +275,6 @@ event.listen(
         "SELECT create_hypertable('monitoring_evidence', 'timestamp', "
         "if_not_exists => true);"
     ),
-)
-
-
-def _add_monitoring_evidence_retention_policy(target, connection, **kw):
-    connection.execute(
-        text(
-            f"""
-            SELECT add_retention_policy(
-                'monitoring_evidence',
-                INTERVAL '{_RETENTION_DAYS} days',
-                if_not_exists => true
-            );
-            """
-        )
-    )
-    logger.info(
-        "TimescaleDB retention policy set for 'monitoring_evidence': %s days",
-        _RETENTION_DAYS,
-    )
-
-
-event.listen(
-    MonitoringEvidence.__table__,
-    "after_create",
-    _add_monitoring_evidence_retention_policy,
 )
 
 

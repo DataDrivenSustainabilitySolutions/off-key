@@ -13,12 +13,14 @@ from off_key_core.db.models import (
     CollectionState,
     User,
 )
+from off_key_core.db.retention import read_storage_status
 from off_key_core.schemas.collection import (
     AmbiboxCatalog,
     CatalogChange,
     CatalogPreview,
     CatalogSnapshot,
 )
+from off_key_core.schemas.storage import StorageStatus
 from off_key_core.utils.enum import RoleEnum
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -84,6 +86,14 @@ async def get_status(
     if not get_ambibox_settings().AMBIBOX_INGRESS_ENABLED:
         result["ingress"] = {"status": "disabled"}
     return result
+
+
+@router.get("/storage", response_model=StorageStatus)
+async def get_storage(
+    user: User = Depends(collection_user),
+    session: AsyncSession = Depends(get_db_async),
+):
+    return await read_storage_status(session)
 
 
 @router.put("", response_model=CatalogSnapshot)

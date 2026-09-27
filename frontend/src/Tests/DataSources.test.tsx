@@ -27,6 +27,16 @@ const snapshot = (catalog = empty, can_edit = true): CatalogSnapshot => ({
   updated_at: null,
   updated_by: null,
 });
+const mockSnapshot = (value = snapshot()) =>
+  api.get.mockImplementation(async (url: string) =>
+    url === "/v1/sources/storage"
+      ? {
+          database_size_bytes: 10000000,
+          retention_policies: [],
+          checked_at: "2026-09-27T12:00:00Z",
+        }
+      : value,
+  );
 const show = () =>
   render(
     <MemoryRouter>
@@ -36,7 +46,7 @@ const show = () =>
 
 beforeEach(() => {
   vi.clearAllMocks();
-  api.get.mockResolvedValue(snapshot());
+  mockSnapshot();
   api.post.mockImplementation(async (_url, { catalog }) => ({
     revision: 1,
     catalog,
@@ -131,7 +141,7 @@ describe("catalog collection UI", () => {
   });
 
   it("makes catalog editing unavailable for ordinary users", async () => {
-    api.get.mockResolvedValue(snapshot(empty, false));
+    mockSnapshot(snapshot(empty, false));
     show();
     fireEvent.click(await screen.findByRole("button", { name: "Catalog" }));
     expect(screen.queryByRole("button", { name: "Review changes" })).toBeNull();

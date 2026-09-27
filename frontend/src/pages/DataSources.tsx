@@ -26,6 +26,7 @@ import {
 } from "@/types/collection";
 import { CatalogEditor, fieldClass } from "./sources/CatalogEditor";
 import { PolicyPicker } from "./sources/PolicyPicker";
+import { StorageSummary } from "./sources/StorageSummary";
 
 const endpoint = "/v1/sources";
 type SensorState = {
@@ -330,6 +331,7 @@ export default function DataSources() {
             }
           />
         </div>
+        <StorageSummary />
         {(snapshot.collection.error || snapshot.ingress.error) && (
           <p role="alert" className="text-sm text-destructive">
             {snapshot.collection.error ?? snapshot.ingress.error}

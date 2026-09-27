@@ -78,3 +78,13 @@ export function runtimeLabel(state: RuntimeState, revision: number): string {
   if (state.revision !== revision) return "Applying saved changes";
   return state.status?.replace(/_/g, " ") ?? "Waiting";
 }
+
+export type StorageStatus = {
+  database_size_bytes: number;
+  retention_policies: {
+    table: "telemetry" | "monitoring_evidence";
+    retention_days: number | null;
+    scheduled: boolean;
+  }[];
+  checked_at: string;
+};

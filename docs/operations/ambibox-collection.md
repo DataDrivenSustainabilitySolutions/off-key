@@ -75,6 +75,27 @@ DB write retains bounded batches and applies backpressure. Queues are in memory:
 process loss can lose pending observations. Accepted MQTT publishing uses QoS 1
 but is not transactionally coupled to a DB commit; no outbox guarantee is claimed.
 
+## Storage and retention
+
+The Data sources page shows the database's measured size and the persisted
+retention policies for telemetry and monitoring evidence. It reports missing or
+paused policies explicitly. Use **Refresh storage** to obtain a new measurement;
+size is not queried on every collection-status poll. Database size includes all
+application tables and indexes, but not backups, WAL, or server logs. These two
+retention policies do not limit the lifetime of accounts, catalogs, or anomalies.
+
+`TELEMETRY_RETENTION_DAYS` (1–365, default 14) remains an operator deployment setting.
+Change it and restart/redeploy DB Sync to apply the new value to **existing** tables
+as well as fresh databases. Startup creates missing policies and updates the two
+managed jobs in place, preserving job IDs and schedules. It also re-enables a
+paused managed job. Other retention jobs are left alone. Policy reconciliation is
+part of the schema transaction; a failure keeps DB Sync unready.
+
+Both increasing and decreasing the period are supported. Increasing it cannot
+recover deleted data. Decreasing it makes old data eligible for TimescaleDB's next
+scheduled cleanup, which removes whole time chunks; the duration is not an exact
+per-row deletion deadline. Startup does not explicitly execute cleanup; the scheduler controls when it runs.
+
 ## Applying a revision
 
 A save uses an expected revision and a PostgreSQL advisory transaction lock.

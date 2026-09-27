@@ -1,5 +1,6 @@
 import { Activity, useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
+import { useBlocker } from "react-router-dom";
 
 import { PageHeader, PageShell } from "@/components/DashboardLayout";
 import { NavigationBar } from "@/components/NavigationBar";
@@ -44,6 +45,21 @@ export default function DataSources() {
     !!draft &&
     !!snapshot &&
     JSON.stringify(draft) !== JSON.stringify(snapshot.catalog);
+  const navigation = useBlocker(
+    ({ currentLocation, nextLocation }) =>
+      changed && currentLocation.pathname !== nextLocation.pathname,
+  );
+
+  useEffect(() => {
+    if (navigation.state !== "blocked") return;
+    if (
+      window.confirm(
+        "Leave this page and discard your unsaved collection draft?",
+      )
+    )
+      navigation.proceed();
+    else navigation.reset();
+  }, [navigation]);
 
   useEffect(() => {
     if (!changed) return;
@@ -246,7 +262,7 @@ export default function DataSources() {
               }}
             >
               <SheetHeader className="pr-12">
-                <SheetTitle>Review and start collection</SheetTitle>
+                <SheetTitle>Review collection changes</SheetTitle>
                 <SheetDescription>
                   Check the exact changes below. Applying updates the running
                   collection configuration.

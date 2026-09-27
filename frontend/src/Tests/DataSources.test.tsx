@@ -6,7 +6,7 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { createMemoryRouter, RouterProvider } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import DataSources from "../pages/DataSources";
@@ -102,12 +102,16 @@ const mockSnapshot = (value = snapshot()) =>
         }
       : value,
   );
-const show = () =>
-  render(
-    <MemoryRouter>
-      <DataSources />
-    </MemoryRouter>,
+const show = () => {
+  const router = createMemoryRouter(
+    [
+      { path: "/sources", element: <DataSources /> },
+      { path: "/away", element: <p>Another page</p> },
+    ],
+    { initialEntries: ["/away", "/sources"] },
   );
+  return { ...render(<RouterProvider router={router} />), router };
+};
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -264,6 +268,9 @@ describe("catalog collection UI", () => {
     );
     const draft = api.post.mock.calls[0]![1].catalog as Catalog;
     const [yard, garage] = draft.sources[0]!.chargers;
+    expect(
+      within(screen.getByLabelText("Collection plan")).getByText("Temperature"),
+    ).toBeTruthy();
     expect(
       yard!.sensors.map((sensor) => effectivePolicy(draft, yard!, sensor).mode),
     ).toEqual(["sample", "off", "off"]);
@@ -576,7 +583,7 @@ describe("catalog collection UI", () => {
       await screen.findByRole("button", { name: "Apply collection" }),
     );
     const review = screen.getByRole("dialog", {
-      name: "Review and start collection",
+      name: "Review collection changes",
     });
     await within(review).findByRole("alert");
     expect(within(review).getByRole("alert").textContent).toContain(
@@ -687,6 +694,55 @@ describe("catalog collection UI", () => {
         screen.getByRole("button", { name: "Collection" }),
       ),
     );
+  });
+
+  it.each(["link", "back"])(
+    "protects an unsaved draft during %s navigation",
+    async (action) => {
+      mockSnapshot(snapshot(inventory()));
+      const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+      const { router } = show();
+      fireEvent.click(
+        await screen.findByRole("button", { name: "Configure Yard" }),
+      );
+      expect(
+        within(screen.getByRole("dialog")).getByText("Yard", {
+          selector: "strong",
+        }),
+      ).toBeTruthy();
+      fireEvent.click(
+        screen.getByRole("checkbox", { name: "Thermal measurements" }),
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Update draft" }));
+      const leave = () =>
+        action === "back" ? router.navigate(-1) : router.navigate("/away");
+      await act(leave);
+      expect(confirm).toHaveBeenCalledWith(
+        "Leave this page and discard your unsaved collection draft?",
+      );
+      expect(router.state.location.pathname).toBe("/sources");
+      expect(screen.getByText(/Unsaved draft/)).toBeTruthy();
+      confirm.mockReturnValue(true);
+      await act(leave);
+      expect(await screen.findByText("Another page")).toBeTruthy();
+      expect(api.put).not.toHaveBeenCalled();
+    },
+  );
+
+  it("keeps drafts without prompting for same-page navigation", async () => {
+    mockSnapshot(snapshot(inventory()));
+    const confirm = vi.spyOn(window, "confirm");
+    const { router } = show();
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Configure Yard" }),
+    );
+    fireEvent.click(
+      screen.getByRole("checkbox", { name: "Thermal measurements" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Update draft" }));
+    await act(() => router.navigate("/sources?view=collection"));
+    expect(confirm).not.toHaveBeenCalled();
+    expect(screen.getByText(/Unsaved draft/)).toBeTruthy();
   });
 
   it("loads the paused inventory directly from the empty collection page", async () => {
@@ -816,5 +872,81 @@ describe("catalog collection UI", () => {
     await screen.findByRole("alert");
     await act(refresh);
     expect(screen.getByRole("alert").textContent).toContain("Invalid catalog");
+  });
+
+  it("combines fleet-wide temperature with three specific measurements on another charger", async () => {
+    mockSnapshot(snapshot(inventory()));
+    show();
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Select shown chargers" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Configure selected" }));
+    fireEvent.click(
+      screen.getByRole("checkbox", { name: "Thermal measurements" }),
+    );
+    fireEvent.change(screen.getByLabelText("Collection interval in seconds"), {
+      target: { value: "60" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "By charger" }));
+    expect(
+      (
+        screen.getByRole("checkbox", {
+          name: "All measurements for Yard",
+        }) as HTMLInputElement
+      ).indeterminate,
+    ).toBe(true);
+    fireEvent.click(screen.getByText("Garage", { selector: "summary" }));
+    fireEvent.click(
+      screen.getByRole("checkbox", { name: "Garage · AC current" }),
+    );
+    fireEvent.click(
+      screen.getByRole("checkbox", { name: "Garage · Connected" }),
+    );
+    expect(screen.getByText("4 of 6 measurements selected")).toBeTruthy();
+    expect(
+      (
+        screen.getByRole("checkbox", {
+          name: "All measurements for Garage",
+        }) as HTMLInputElement
+      ).checked,
+    ).toBe(true);
+    fireEvent.click(
+      screen.getByText("Customize individual rates", { selector: "summary" }),
+    );
+    fireEvent.change(
+      screen.getByLabelText("Rate for Garage AC current interval in seconds"),
+      { target: { value: "120" } },
+    );
+    fireEvent.click(screen.getByRole("button", { name: "By category" }));
+    expect(
+      (
+        screen.getByRole("checkbox", {
+          name: "Thermal measurements",
+        }) as HTMLInputElement
+      ).checked,
+    ).toBe(true);
+    expect(
+      (
+        screen.getByRole("checkbox", {
+          name: "Current measurements",
+        }) as HTMLInputElement
+      ).indeterminate,
+    ).toBe(true);
+    expect(api.put).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Update draft" }));
+    fireEvent.click(screen.getByRole("button", { name: "Review changes" }));
+    await screen.findByRole("button", { name: "Apply collection" });
+    const draft = api.post.mock.calls[0]![1].catalog as Catalog;
+    const [yard, garage] = draft.sources[0]!.chargers;
+    expect(
+      yard!.sensors.map((sensor) => effectivePolicy(draft, yard!, sensor).mode),
+    ).toEqual(["sample", "off", "off"]);
+    expect(
+      garage!.sensors.map((sensor) => effectivePolicy(draft, garage!, sensor)),
+    ).toEqual([
+      { mode: "sample", interval_seconds: 60 },
+      { mode: "sample", interval_seconds: 120 },
+      { mode: "sample", interval_seconds: 60 },
+    ]);
   });
 });

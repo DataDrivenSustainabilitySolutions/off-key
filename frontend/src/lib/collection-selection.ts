@@ -11,6 +11,7 @@ export function collectionMeasurements(
       .flatMap((charger) =>
         charger.sensors.map((sensor) => ({
           id: `${charger.id}:${sensor.key}`,
+          chargerId: charger.id,
           charger: charger.label,
           sensor,
           policy: effectivePolicy(catalog, charger, sensor),

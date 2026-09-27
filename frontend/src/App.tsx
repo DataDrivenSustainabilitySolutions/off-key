@@ -1,5 +1,11 @@
 import { lazy, Suspense } from "react";
-import { BrowserRouter, Outlet, Route, Routes } from "react-router-dom";
+import {
+  createBrowserRouter,
+  createRoutesFromElements,
+  Outlet,
+  Route,
+  RouterProvider,
+} from "react-router-dom";
 import { Toaster } from "react-hot-toast";
 
 import "@/App.css";
@@ -22,9 +28,9 @@ const ResetPassword = lazy(() => import("@/pages/ResetPassword"));
 const Services = lazy(() => import("@/pages/Services"));
 const Verification = lazy(() => import("@/pages/Verification"));
 
-const AppRoutes = () => (
-  <Suspense fallback={<FullPageLoading message="Loading page..." />}>
-    <Routes>
+const router = createBrowserRouter(
+  createRoutesFromElements(
+    <>
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Registration />} />
       <Route path="/verify" element={<Verification />} />
@@ -47,16 +53,16 @@ const AppRoutes = () => (
         <Route path="/account" element={<Account />} />
         <Route path="/anomalies" element={<Anomalies />} />
       </Route>
-    </Routes>
-  </Suspense>
+    </>,
+  ),
 );
 
 const App = () => (
   <ThemeProvider defaultTheme="system" storageKey="vite-ui-theme">
     <AuthProvider>
-      <BrowserRouter>
-        <AppRoutes />
-      </BrowserRouter>
+      <Suspense fallback={<FullPageLoading message="Loading page..." />}>
+        <RouterProvider router={router} />
+      </Suspense>
     </AuthProvider>
     <Toaster
       position="top-right"

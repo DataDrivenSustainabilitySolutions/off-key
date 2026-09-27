@@ -24,12 +24,14 @@ export function CollectionReview({
   const changes = catalogChanges(saved, preview.catalog);
   const active = preview.catalog.sources.flatMap((source) =>
     source.chargers.flatMap((charger) => {
-      const groups = new Map<string, number>();
+      const groups = new Map<string, string[]>();
       for (const sensor of charger.sensors) {
         const policy = effectivePolicy(preview.catalog, charger, sensor);
         if (policy.mode === "off") continue;
         const label = `${sensor.category} · ${policyLabel(policy)}`;
-        groups.set(label, (groups.get(label) ?? 0) + 1);
+        const names = groups.get(label) ?? [];
+        names.push(sensor.label);
+        groups.set(label, names);
       }
       return groups.size ? [{ source, charger, groups }] : [];
     }),
@@ -40,8 +42,8 @@ export function CollectionReview({
       description="Nothing changes until you apply this revision."
     >
       <p className="mb-4 font-medium">
-        {active.length} active chargers · {preview.selected_sensors}{" "}
-        measurements
+        Active chargers: {active.length} · Measurements:{" "}
+        {preview.selected_sensors}
       </p>
       {active.length === 0 && (
         <p className="mb-4 text-sm">
@@ -61,10 +63,19 @@ export function CollectionReview({
               </p>
             )}
             <ul className="mt-3 space-y-1 text-sm">
-              {[...groups].map(([label, count]) => (
+              {[...groups].map(([label, names]) => (
                 <li key={label}>
-                  {label} · {count}{" "}
-                  {count === 1 ? "measurement" : "measurements"}
+                  <details>
+                    <summary className="cursor-pointer py-1">
+                      {label} · {names.length}{" "}
+                      {names.length === 1 ? "measurement" : "measurements"}
+                    </summary>
+                    <ul className="ml-4 list-inside list-disc text-muted-foreground">
+                      {names.map((name, index) => (
+                        <li key={index}>{name}</li>
+                      ))}
+                    </ul>
+                  </details>
                 </li>
               ))}
             </ul>

@@ -271,6 +271,12 @@ be paused, including any that previously inherited an enabled default. Only the
 chargers named in the panel are changed. **Clear measurements** followed by a
 category checkbox is the way to collect just that category.
 
+When editing multiple chargers, **By category** makes the same measurement
+selection across them. **By charger** lets you expand each charger and choose a
+different set of sensors for it. Both views edit the same selection and preserve
+individual rates: for example, one charger can collect only temperature while
+another collects temperature, current and status, all in one draft.
+
 Choose a shared sampling interval or retain/customize individual rates. Numeric
 readings create chart history; text and booleans keep their latest value only.
 **Update draft** stages the choices; **Cancel** discards changes made in the
@@ -286,5 +292,7 @@ Save failures appear inside the review and leave the draft available for retry.
 An intervening revision disables editing/applying until the saved catalog is
 reloaded. Export a draft first if you need to preserve it. **Discard draft** asks
 before replacing unsaved edits. Browser refresh/close also warns about a staged
-draft. Detailed connection, queue and storage information is under **Live
+draft. Navigating to another page or using browser Back also asks before
+discarding a staged draft; cancelling keeps the draft on screen. Detailed
+connection, queue and storage information is under **Live
 diagnostics and storage**.

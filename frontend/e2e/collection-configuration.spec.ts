@@ -69,7 +69,7 @@ test("selects only temperature on mobile and collects only that measurement", as
       }),
     ).not.toBeChecked();
     await editor
-      .getByLabel("Collection frequency", { exact: true })
+      .getByRole("combobox", { name: "Collection frequency", exact: true })
       .selectOption("sample");
     await editor
       .getByLabel("Collection interval in seconds", { exact: true })
@@ -88,11 +88,19 @@ test("selects only temperature on mobile and collects only that measurement", as
       await api.get("/api/v1/sources", { headers })
     ).json()) as CatalogSnapshot;
     expect(stillSaved.revision).toBe(snapshot.revision + 1);
+    page.once("dialog", async (dialog) => {
+      expect(dialog.message()).toContain("unsaved collection draft");
+      await dialog.dismiss();
+    });
+    await page
+      .getByRole("link", { name: "View telemetry", exact: true })
+      .click();
+    await expect(page).toHaveURL(/\/sources$/);
     await page
       .getByRole("button", { name: "Review changes", exact: true })
       .click();
     const review = page.getByRole("dialog", {
-      name: "Review and start collection",
+      name: "Review collection changes",
     });
     await expect(
       review.getByText("Temperature · Latest every 1s · 1 measurement", {

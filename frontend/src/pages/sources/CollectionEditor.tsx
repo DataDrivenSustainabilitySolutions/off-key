@@ -41,6 +41,12 @@ export function CollectionEditor({
       : null,
   );
   const measurements = collectionMeasurements(catalog, chargerIds);
+  const [byCharger, setByCharger] = useState(false);
+  const chargers = catalog.sources.flatMap((source) =>
+    source.chargers
+      .filter((charger) => chargerIds.has(charger.id))
+      .map((charger) => ({ source, charger })),
+  );
   const [policies, setPolicies] = useState(
     () =>
       new Map(
@@ -72,6 +78,19 @@ export function CollectionEditor({
   const categories = [
     ...new Set(measurements.map((item) => item.sensor.category)),
   ].sort();
+  const groups = byCharger
+    ? chargers.map(({ source, charger }) => ({
+        id: charger.id,
+        label: charger.label,
+        detail: `${source.host} · Local ID ${charger.local_id}`,
+        items: measurements.filter((item) => item.chargerId === charger.id),
+      }))
+    : categories.map((category) => ({
+        id: category,
+        label: category,
+        detail: "",
+        items: measurements.filter((item) => item.sensor.category === category),
+      }));
   const selected = measurements.filter((item) => chosen.has(item.id));
   const valid = selected.every((item) => {
     const policy = policies.get(item.id)!;
@@ -111,10 +130,7 @@ export function CollectionEditor({
           ),
       );
   };
-  const names = catalog.sources
-    .flatMap((source) => source.chargers)
-    .filter((charger) => chargerIds.has(charger.id))
-    .map((charger) => charger.label);
+  const names = chargers.map(({ charger }) => charger.label);
 
   return (
     <Sheet
@@ -136,21 +152,28 @@ export function CollectionEditor({
           </SheetTitle>
           <SheetDescription>
             {readOnly ? "Viewing measurements for" : "Choose measurements for"}{" "}
-            {chargerIds.size} {chargerIds.size === 1 ? "charger" : "chargers"}.{" "}
+            <strong className="break-words text-foreground">
+              {names.length === 1 ? names[0] : `${chargerIds.size} chargers`}
+            </strong>
+            .{" "}
             {readOnly
               ? "An administrator can change collection."
               : "Unchecked measurements will be paused. Other chargers stay unchanged."}
           </SheetDescription>
-          <details className="text-xs text-muted-foreground">
-            <summary className="cursor-pointer">Show selected chargers</summary>
-            <ul className="mt-2 max-h-24 space-y-1 overflow-y-auto">
-              {names.map((name, index) => (
-                <li key={index} className="break-words">
-                  {name}
-                </li>
-              ))}
-            </ul>
-          </details>
+          {names.length > 1 && (
+            <details className="text-xs text-muted-foreground">
+              <summary className="cursor-pointer">
+                Show selected chargers
+              </summary>
+              <ul className="mt-2 max-h-24 space-y-1 overflow-y-auto">
+                {names.map((name, index) => (
+                  <li key={index} className="break-words">
+                    {name}
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
         </SheetHeader>
         <form
           className="flex min-h-0 flex-1 flex-col"
@@ -169,6 +192,32 @@ export function CollectionEditor({
           }}
         >
           <div className="min-h-0 flex-1 space-y-6 overflow-y-auto p-6">
+            {chargerIds.size > 1 && (
+              <div
+                role="group"
+                aria-label="Group measurements"
+                className="flex flex-wrap gap-2"
+              >
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={byCharger ? "outline" : "default"}
+                  aria-pressed={!byCharger}
+                  onClick={() => setByCharger(false)}
+                >
+                  By category
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={byCharger ? "default" : "outline"}
+                  aria-pressed={byCharger}
+                  onClick={() => setByCharger(true)}
+                >
+                  By charger
+                </Button>
+              </div>
+            )}
             <fieldset disabled={disabled} className="space-y-2">
               <legend className="mb-3 text-base font-semibold">
                 1. Choose measurements
@@ -183,6 +232,7 @@ export function CollectionEditor({
                     type="button"
                     size="sm"
                     variant="ghost"
+                    aria-label="Select all measurements"
                     onClick={() =>
                       setSelection(
                         measurements.map((item) => item.id),
@@ -190,12 +240,13 @@ export function CollectionEditor({
                       )
                     }
                   >
-                    Select all measurements
+                    Select all
                   </Button>
                   <Button
                     type="button"
                     size="sm"
                     variant="ghost"
+                    aria-label="Clear measurements"
                     onClick={() =>
                       setSelection(
                         measurements.map((item) => item.id),
@@ -203,30 +254,40 @@ export function CollectionEditor({
                       )
                     }
                   >
-                    Clear measurements
+                    Clear
                   </Button>
                 </div>
               </div>
-              {categories.map((category) => {
-                const items = measurements.filter(
-                  (item) => item.sensor.category === category,
-                );
+              <p className="pb-2 text-xs text-muted-foreground">
+                {byCharger
+                  ? "Expand each charger to choose its measurements. Switching views keeps your selections."
+                  : "Check a category, or expand it to choose individual measurements."}
+              </p>
+              {groups.map(({ id, label, detail, items }) => {
                 const count = items.filter((item) =>
                   chosen.has(item.id),
                 ).length;
                 return (
-                  <div key={category} className="rounded-xl border">
-                    <label className="flex cursor-pointer items-center gap-3 p-3">
+                  <div
+                    key={`${byCharger}:${id}`}
+                    className="flex items-start rounded-xl border"
+                  >
+                    <label className="flex size-11 shrink-0 cursor-pointer items-center justify-center">
                       <input
                         type="checkbox"
                         className="size-4"
-                        checked={count === items.length}
+                        checked={items.length > 0 && count === items.length}
+                        disabled={items.length === 0}
                         ref={(input) => {
                           if (input)
                             input.indeterminate =
                               count > 0 && count < items.length;
                         }}
-                        aria-label={`${category} measurements`}
+                        aria-label={
+                          byCharger
+                            ? `All measurements for ${label}`
+                            : `${label} measurements`
+                        }
                         onChange={(event) =>
                           setSelection(
                             items.map((item) => item.id),
@@ -234,16 +295,20 @@ export function CollectionEditor({
                           )
                         }
                       />
-                      <span className="flex-1 font-medium">{category}</span>
-                      <span className="text-xs text-muted-foreground">
-                        {count} / {items.length}
-                      </span>
                     </label>
-                    <details className="border-t px-3 py-2">
-                      <summary className="cursor-pointer text-sm text-muted-foreground">
-                        Choose individual {category.toLowerCase()} measurements
+                    <details className="min-w-0 flex-1">
+                      <summary className="min-h-11 cursor-pointer py-3 pr-3 text-sm font-medium">
+                        {label}
+                        <span className="float-right ml-2 text-xs font-normal text-muted-foreground">
+                          {count} / {items.length}
+                        </span>
+                        {detail && (
+                          <span className="mt-1 block break-all text-xs font-normal text-muted-foreground">
+                            {detail}
+                          </span>
+                        )}
                       </summary>
-                      <div className="mt-3 divide-y">
+                      <div className="divide-y border-t pr-3">
                         {items.map((item) => (
                           <label
                             key={item.id}
@@ -266,7 +331,10 @@ export function CollectionEditor({
                                   : ""}
                               </span>
                               <span className="block break-words text-xs text-muted-foreground">
-                                {item.charger} ·{" "}
+                                {byCharger
+                                  ? item.sensor.category
+                                  : item.charger}{" "}
+                                ·{" "}
                                 {item.sensor.value_type === "number"
                                   ? "Chart history"
                                   : "Latest value only"}

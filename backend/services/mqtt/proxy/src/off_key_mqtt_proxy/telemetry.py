@@ -7,15 +7,14 @@ import time
 from collections import defaultdict
 from collections.abc import Callable
 from contextlib import suppress
-from datetime import UTC, datetime
+from datetime import datetime
 from types import TracebackType
 from typing import Self
 
 from off_key_core.config.logs import log_performance, logger
-from off_key_core.db.models import Charger, Telemetry
+from off_key_core.db.models import Telemetry
 from off_key_core.utils.enum import HealthStatus
 from off_key_core.utils.mqtt_topics import TopicMetadataExtractor
-from sqlalchemy import case, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import DBAPIError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -144,14 +143,14 @@ class DatabaseWriter:
             },
         )
 
-    async def stop(self) -> None:
-        """Drain owned batches up to the shutdown deadline; retain unfinished work."""
+    async def stop(self, *, drain: bool = True) -> None:
+        """Drain on normal shutdown; cancel immediately when ownership is lost."""
         self._shutdown_event.set()
         self._batch_ready_event.set()
         async with self._batch_capacity:
             self._batch_capacity.notify_all()
         try:
-            if self._writer_task and not self._writer_task.done():
+            if drain and self._writer_task and not self._writer_task.done():
                 await asyncio.wait_for(
                     asyncio.shield(self._writer_task),
                     timeout=self.config.graceful_shutdown_timeout,
@@ -169,6 +168,14 @@ class DatabaseWriter:
                 logger.error(
                     "event=db_writer.shutdown_unwritten records_count=%s", unwritten
                 )
+
+    async def drain(self) -> None:
+        """Finish already admitted writes before a new policy becomes applied."""
+        self._batch_ready_event.set()
+        while self.pending_batch.size() or self.processing_batches:
+            if self._writer_task is None or self._writer_task.done():
+                raise RuntimeError("Database writer stopped before draining")
+            await asyncio.sleep(0.05)
 
     async def write_telemetry_message(self, message: MQTTMessage) -> None:
         """
@@ -425,7 +432,6 @@ class DatabaseWriter:
 
             async with self._session_factory() as session:
                 try:
-                    await self._upsert_chargers(session, charger_ids)
                     insert_result = await session.execute(stmt)
                     rowcount = insert_result.rowcount
                     records_written = (
@@ -433,8 +439,6 @@ class DatabaseWriter:
                         if rowcount is None or rowcount < 0
                         else int(rowcount)
                     )
-                    if charger_ids:
-                        await self._update_charger_statuses(session, charger_ids)
                     await session.commit()
                 except Exception:
                     await session.rollback()
@@ -519,96 +523,6 @@ class DatabaseWriter:
                 exc_info=True,
             )
             return False
-
-    async def _upsert_chargers(
-        self, session: AsyncSession, charger_ids: set[str]
-    ) -> None:
-        """
-        Ensure chargers exist before telemetry inserts and status updates.
-        """
-        if not charger_ids:
-            return
-
-        now = datetime.now(UTC)
-        rows = [
-            {
-                "charger_id": charger_id,
-                "online": True,
-                "mqtt_connected": True,
-                "mqtt_last_message": self.charger_last_seen.get(charger_id, now),
-                "last_seen": self._format_last_seen(
-                    self.charger_last_seen.get(charger_id, now)
-                ),
-            }
-            for charger_id in charger_ids
-        ]
-
-        stmt = (
-            insert(Charger)
-            .values(rows)
-            .on_conflict_do_nothing(index_elements=["charger_id"])
-        )
-        await session.execute(stmt)
-
-    async def _update_charger_statuses(
-        self, session: AsyncSession, charger_ids: set
-    ) -> None:
-        """Update charger MQTT connection statuses within an active session
-        using bulk update"""
-        if not charger_ids:
-            return
-
-        now = datetime.now(UTC)
-
-        # Build CASE expression to preserve per-charger timestamps
-        # Use actual timestamp from charger_last_seen, fallback to current time
-        timestamp_case = case(
-            *[
-                (Charger.charger_id == cid, self.charger_last_seen.get(cid, now))
-                for cid in charger_ids
-            ],
-            else_=now,
-        )
-        last_seen_case = case(
-            *[
-                (
-                    Charger.charger_id == cid,
-                    self._format_last_seen(self.charger_last_seen.get(cid, now)),
-                )
-                for cid in charger_ids
-            ],
-            else_=self._format_last_seen(now),
-        )
-
-        stmt = (
-            update(Charger)
-            .where(Charger.charger_id.in_(charger_ids))
-            .values(
-                mqtt_connected=True,
-                mqtt_last_message=timestamp_case,
-                last_seen=last_seen_case,
-            )
-        )
-
-        await session.execute(stmt)
-
-        logger.debug(
-            "event=db_writer.charger_status_bulk_updated charger_count=%s",
-            len(charger_ids),
-            extra={
-                **self._log_context,
-                "charger_count": len(charger_ids),
-            },
-        )
-
-    @staticmethod
-    def _format_last_seen(value: datetime) -> str:
-        """
-        Format datetime into a stable ISO string for the legacy text `last_seen` field.
-        """
-        if value.tzinfo is not None:
-            return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
-        return value.isoformat()
 
     async def _health_monitor_loop(self) -> None:
         """Background health monitoring loop"""

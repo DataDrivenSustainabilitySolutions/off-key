@@ -53,12 +53,11 @@ uv run --project backend pre-commit run --all-files
     ```bash
     docker compose exec mqtt-proxy wget -qO- http://localhost:8010/health
     docker compose exec mqtt-proxy wget -qO- http://localhost:8010/ready
-    docker compose exec mqtt-proxy wget -qO- http://localhost:8010/ready/bridge
     docker compose exec db-sync wget -qO- http://localhost:8009/health
     docker compose exec db-sync wget -qO- http://localhost:8009/ready/schema
     ```
 
-`/ready/bridge` reflects the configured bridge mode; a disabled bridge is not the same as a broken ingestion service.
+`/ready` reports an applied collection revision. An empty selection is healthy idle.
 
 ## Log inspection
 
@@ -103,7 +102,7 @@ docker compose logs --tail 200 tactic-middleware
 ### Telemetry is not arriving
 
 1. Verify that the source publisher or simulator is active.
-2. Confirm that its topic matches `device/evCharger/<charger_id>/<telemetry_type>` and the `MQTT_SOURCE_TOPICS` filter.
+2. Check the Data sources catalog, selected sensors, matching applied revisions and per-broker connection status.
 3. Check proxy health and readiness.
 4. Inspect proxy logs for parsing, authentication, or database-write errors.
 5. Query the Gateway telemetry endpoint.

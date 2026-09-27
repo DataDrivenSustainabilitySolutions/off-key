@@ -89,7 +89,12 @@ class ConnectionManager:
             client_id = self.config.get_client_id()
 
             transport = self.config.transport
-            self.client = mqtt.Client(client_id=client_id, transport=transport)
+            self._cleanup_failed_client()
+            self.client = mqtt.Client(
+                client_id=client_id, transport=transport, reconnect_on_failure=False
+            )
+            self.client.max_queued_messages_set(self.config.max_message_queue_size)
+            self.client.max_inflight_messages_set(20)
 
             # Configure TLS
             if self.config.use_tls:
@@ -182,9 +187,10 @@ class ConnectionManager:
         """Stop and discard a paho client that did not reach connected state."""
         if not self.client:
             return
+        client, self.client = self.client, None
         try:
-            self.client.loop_stop()
-            self.client.disconnect()
+            client.disconnect()
+            client.loop_stop()
         except Exception:
             logger.debug("Failed MQTT client cleanup raised", exc_info=True)
         finally:
@@ -213,20 +219,26 @@ class ConnectionManager:
 
     def _on_connect(self, client, userdata, flags, rc):
         """MQTT connection callback"""
+        if client is not self.client:
+            return
         if rc == 0:
             self.state = ConnectionState.CONNECTED
             logger.info("MQTT broker connection successful")
-            self._connection_event.set()
+            if self._event_loop and not self._event_loop.is_closed():
+                self._event_loop.call_soon_threadsafe(self._connection_event.set)
         else:
             self.state = ConnectionState.FAILED
             logger.error(
                 f"MQTT connection failed with code {rc}: "
                 f"{self._get_connection_error_message(rc)}"
             )
-            self._connection_event.set()
+            if self._event_loop and not self._event_loop.is_closed():
+                self._event_loop.call_soon_threadsafe(self._connection_event.set)
 
     def _on_disconnect(self, client, userdata, rc):
         """MQTT disconnection callback"""
+        if client is not self.client:
+            return
         self.state = ConnectionState.DISCONNECTED
         self._connection_event.clear()
 

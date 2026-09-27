@@ -22,11 +22,12 @@ from off_key_core.config.validation import validate_settings
 from off_key_core.db.base import get_async_session_local
 from starlette.middleware.gzip import GZipMiddleware
 
-from .api.v1 import data_services, models, radar
+from .api.v1 import collection, data_services, models, radar
 from .api.v1.admin_models import router as admin_models_router
 from .config.config import RadarWorkloadLifecycle, TacticConfig, get_tactic_settings
 from .facades.docker import AsyncDocker
 from .models.registry import ModelRegistryNotReadyError, ModelRegistryService
+from .services.ambibox_ingress import AmbiboxIngress
 from .services.orchestration.radar import RadarOrchestrationService
 from .services.reconciliation import RadarStatusReconciliationService
 
@@ -163,14 +164,14 @@ async def _start_reconciliation(app: FastAPI, config: TacticConfig) -> None:
 
 async def _shutdown_services(app: FastAPI, config: TacticConfig) -> None:
     """Best-effort shutdown for every service initialized during startup."""
-    reconciliation_service = app.state.reconciliation_service
-    if reconciliation_service is not None:
-        try:
-            await reconciliation_service.stop()
-            logger.info("Status reconciliation stopped")
-        except Exception:
-            logger.exception("Error stopping reconciliation service")
-        app.state.reconciliation_service = None
+    for attribute in ("ambibox_ingress", "reconciliation_service"):
+        service = getattr(app.state, attribute, None)
+        if service is not None:
+            try:
+                await service.stop()
+            except Exception:
+                logger.exception("Error stopping %s", attribute)
+            setattr(app.state, attribute, None)
 
     if (
         config.radar_workload_lifecycle == RadarWorkloadLifecycle.EPHEMERAL
@@ -228,6 +229,9 @@ async def lifespan(app: FastAPI):
             )
 
         await _start_reconciliation(app, config)
+        app.state.ambibox_ingress = AmbiboxIngress()
+        if app.state.ambibox_ingress.settings.AMBIBOX_INGRESS_ENABLED:
+            await app.state.ambibox_ingress.start()
         yield
     finally:
         await _shutdown_services(app, config)
@@ -265,6 +269,7 @@ def create_app() -> FastAPI:
         data_services.router, prefix="/api/v1/data", tags=["data-services"]
     )
     app.include_router(models.router, prefix="/api/v1", tags=["models"])
+    app.include_router(collection.router, prefix="/api/v1")
     app.include_router(admin_models_router, prefix="/api/v1", tags=["admin"])
 
     @app.get("/health")

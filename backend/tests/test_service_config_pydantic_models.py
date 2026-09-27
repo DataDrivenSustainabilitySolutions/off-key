@@ -25,7 +25,6 @@ def _base_mqtt_config() -> dict:
         "use_auth": True,
         "mqtt_username": "user",
         "mqtt_api_key": "secret-key-123",
-        "source_topics": ["device/evCharger/+/#"],
         "topic_regex": (
             r"^device/evCharger/(?P<charger_id>[^/]+)/(?P<telemetry_type>.+)$"
         ),
@@ -41,14 +40,6 @@ def _base_mqtt_config() -> dict:
         "max_message_queue_size": 10000,
         "worker_threads": 4,
     }
-
-
-def test_mqtt_config_mutable_defaults_are_isolated():
-    cfg_one = MQTTConfig(**_base_mqtt_config())
-    cfg_two = MQTTConfig(**{**_base_mqtt_config(), "mqtt_api_key": "secret-key-456"})
-
-    cfg_one.bridge_topic_mapping["device/evCharger/+/#"] = "radar/+/telemetry"
-    assert cfg_two.bridge_topic_mapping == {}
 
 
 @pytest.mark.parametrize(
@@ -379,32 +370,6 @@ def test_radar_settings_read_swarm_mqtt_password(tmp_path, monkeypatch):
     assert settings.config.ca_file == "/run/secrets/EMQX_CA_CERT"
 
 
-def test_mqtt_config_allows_bridge_auth_fields_when_bridge_disabled():
-    MQTTConfig(
-        **{
-            **_base_mqtt_config(),
-            "enable_bridge": False,
-            "bridge_use_auth": True,
-            "bridge_username": "",
-            "bridge_api_key": "",
-        }
-    )
-
-
-def test_mqtt_config_requires_bridge_credentials_when_bridge_enabled():
-    with pytest.raises(ValidationError, match="Bridge username"):
-        MQTTConfig(
-            **{
-                **_base_mqtt_config(),
-                "enable_bridge": True,
-                "bridge_broker_host": "emqx-main",
-                "bridge_use_auth": True,
-                "bridge_username": "",
-                "bridge_api_key": "",
-            }
-        )
-
-
 def test_mqtt_settings_require_secure_mqtt_in_production(monkeypatch):
     monkeypatch.setenv("ENVIRONMENT", "production")
     monkeypatch.setenv("MQTT_USE_TLS", "false")
@@ -436,29 +401,3 @@ def test_mqtt_settings_read_swarm_mqtt_password(tmp_path, monkeypatch):
     )
     assert settings.config.mqtt_api_key == "proxy-password-123456"
     assert settings.config.ca_file == "/run/secrets/EMQX_CA_CERT"
-
-
-def test_mqtt_settings_source_topics_store_normalized_value(monkeypatch):
-    monkeypatch.setenv(
-        "MQTT_SOURCE_TOPICS",
-        (
-            " device/evCharger/+/sine ,"
-            "device/evCharger/+/sine,"
-            " device/evCharger/+/cosine "
-        ),
-    )
-
-    settings = MQTTSettings()
-    assert settings.MQTT_SOURCE_TOPICS == (
-        "device/evCharger/+/sine,device/evCharger/+/cosine"
-    )
-    assert settings.config.source_topics == [
-        "device/evCharger/+/sine",
-        "device/evCharger/+/cosine",
-    ]
-
-
-def test_mqtt_settings_default_to_canonical_device_filter():
-    settings = MQTTSettings()
-    assert settings.MQTT_SOURCE_TOPICS == "device/#"
-    assert settings.config.source_topics == ["device/#"]

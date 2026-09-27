@@ -7,7 +7,6 @@ import random
 import signal
 import ssl
 import uuid
-from datetime import UTC, datetime
 
 import paho.mqtt.client as mqtt
 from off_key_core.config.env import load_env
@@ -60,18 +59,6 @@ class SimulatorService:
         )
         return value * multiplier, True
 
-    def _build_payload(
-        self,
-        charger_id: str,
-        feature: str,
-        value: float,
-        sample_timestamp: datetime,
-    ) -> dict:
-        return {
-            "value": round(value, 4),
-            "timestamp": sample_timestamp.isoformat().replace("+00:00", "Z"),
-        }
-
     def _build_topic(self, charger_id: str, feature: str) -> str:
         return self.config.topic_template.format(
             charger_id=charger_id,
@@ -111,7 +98,6 @@ class SimulatorService:
         await self.start()
         try:
             while not self._shutdown_event.is_set():
-                sample_timestamp = datetime.now(UTC)
                 for charger_index, charger_id in enumerate(self.config.charger_ids):
                     for feature in self.config.features:
                         value = self._build_value(feature, charger_index)
@@ -121,15 +107,9 @@ class SimulatorService:
                             min(self.config.value_max, value),
                         )
                         topic = self._build_topic(charger_id, feature)
-                        payload = self._build_payload(
-                            charger_id,
-                            feature,
-                            bounded_value,
-                            sample_timestamp,
-                        )
                         self._client.publish(
                             topic,
-                            json.dumps(payload),
+                            json.dumps(round(bounded_value, 4)),
                             qos=self.config.qos,
                             retain=False,
                         )

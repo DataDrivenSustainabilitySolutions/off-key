@@ -1,0 +1,51 @@
+name: offkey-collection-test
+services:
+  emqx:
+    image: ${EMQX_TEST_IMAGE:-emqx/emqx:5.8.7}
+    environment:
+      EMQX_API_KEY__BOOTSTRAP_FILE: /opt/emqx/etc/test-api-keys
+    healthcheck:
+      test: ['CMD', 'curl', '-fsS', 'http://127.0.0.1:18083/status']
+      interval: 2s
+      timeout: 2s
+      retries: 30
+    volumes:
+      - ./api-keys:/opt/emqx/etc/test-api-keys:ro
+    ports:
+      - '127.0.0.1:28883:1883'
+      - '127.0.0.1:28083:18083'
+  forwarder:
+    image: gogost/gost:3.3.0
+    command: ['-api', 'offkey:test-gost-password@:18080']
+    ports:
+      - '127.0.0.1:28080:18080'
+  socks:
+    image: gogost/gost:3.3.0
+    command: ['-L', 'socks5://:1055']
+  charger-a:
+    image: eclipse-mosquitto:2
+    volumes:
+      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+    ports:
+      - '127.0.0.1:28884:1883'
+  charger-b:
+    image: eclipse-mosquitto:2
+    volumes:
+      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+    ports:
+      - '127.0.0.1:28885:1883'
+  database:
+    image: timescale/timescaledb:latest-pg15
+    environment:
+      POSTGRES_USER: collection_test
+      POSTGRES_PASSWORD: collection-test-password
+      POSTGRES_DB: collection_test
+    ports:
+      - '127.0.0.1:25432:5432'
+    healthcheck:
+      test: ['CMD', 'pg_isready', '-U', 'collection_test', '-d', 'collection_test']
+      interval: 2s
+      timeout: 2s
+      retries: 30
+    tmpfs:
+      - /var/lib/postgresql/data

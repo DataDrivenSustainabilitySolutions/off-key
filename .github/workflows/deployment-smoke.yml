@@ -61,7 +61,9 @@ jobs:
 
       - name: Validate deployment models
         env:
-          INGRESS_UPSTREAM_MQTT_HOST: broker.example.ts.net
+          AMBIBOX_GOST_PASSWORD: validation-only-forwarder-password
+          AMBIBOX_EMQX_API_KEY: validation-only-controller
+          AMBIBOX_EMQX_API_SECRET: validation-only-controller-secret
         run: |
           docker compose config --quiet
           docker compose \
@@ -87,7 +89,7 @@ jobs:
         timeout-minutes: 10
         run: |
           set -euo pipefail
-          MQTT_BROKER_HOST=emqx-main docker compose up -d --build timescaledb socket-proxy mailpit emqx-main mqtt-proxy
+          MQTT_BROKER_HOST=emqx-main docker compose up -d --build timescaledb socket-proxy mailpit emqx-main mqtt-tailscale-bridge mqtt-proxy
 
       - name: Wait for base services
         run: |
@@ -306,22 +308,9 @@ jobs:
             done
           '
 
-      - name: Configure canonical EMQX MQTT Source
-        env:
-          AMBIBOX_MQTT_SERVER: source-broker:1883
+      - name: Wait for the frontend
         run: |
           set -euo pipefail
-          set -a
-          source .env
-          set +a
-          dashboard_token="$(curl -fsS http://localhost:18083/api/v5/login \
-            -H 'content-type: application/json' \
-            -d "{\"username\":\"${EMQX_DASHBOARD_USERNAME}\",\"password\":\"${EMQX_DASHBOARD_PASSWORD}\"}" \
-            | jq -r '.token')"
-          test -n "$dashboard_token"
-          EMQX_API_TOKEN="$dashboard_token" \
-            uv run --project backend python dev/emqx/reconcile_ingress.py
-
           timeout 600 bash -c '
             until curl -fsS http://localhost:5173/login > /dev/null; do
               echo "frontend not ready yet"
@@ -373,6 +362,7 @@ jobs:
             --env-file "${PWD}/.env" \
             --env CI=true \
             --env MQTT_SOURCE_URL=mqtt://localhost:1884 \
+            --env MQTT_INGRESS_URL=mqtt://localhost:1883 \
             --env PLAYWRIGHT_BASE_URL=http://localhost:5173 \
             "${playwright_image}" \
             npm run test:e2e

@@ -3,6 +3,7 @@ from sqlalchemy import (
     JSON,
     TIMESTAMP,
     Boolean,
+    CheckConstraint,
     Column,
     DateTime,
     Enum,
@@ -43,6 +44,53 @@ class User(Base):
         DateTime, default=func.now(), onupdate=func.now(), nullable=False
     )
     created_at = Column(DateTime, default=func.now(), nullable=False)
+
+
+class CollectionConfiguration(Base):
+    __tablename__ = "collection_configuration"
+
+    id = Column(Integer, primary_key=True)
+    revision = Column(Integer, nullable=False, default=0)
+    document = Column(JSONB, nullable=False)
+    ingress_status = Column(JSONB, nullable=False, default=dict)
+    collection_status = Column(JSONB, nullable=False, default=dict)
+    updated_at = Column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_by = Column(Text, nullable=False)
+    __table_args__ = (CheckConstraint("id = 1", name="collection_singleton"),)
+
+
+class CollectionRevision(Base):
+    __tablename__ = "collection_revisions"
+
+    revision = Column(Integer, primary_key=True)
+    document = Column(JSONB, nullable=False)
+    updated_at = Column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_by = Column(Text, nullable=False)
+
+
+class CollectionBinding(Base):
+    __tablename__ = "collection_bindings"
+
+    charger_id = Column(Text, ForeignKey("chargers.charger_id"), primary_key=True)
+    source_id = Column(Text, nullable=False)
+    local_id = Column(Text, nullable=False)
+    __table_args__ = (
+        UniqueConstraint("source_id", "local_id", name="uq_collection_source_charger"),
+    )
+
+
+class CollectionState(Base):
+    __tablename__ = "collection_state"
+
+    charger_id = Column(Text, ForeignKey("chargers.charger_id"), primary_key=True)
+    sensor_key = Column(Text, primary_key=True)
+    value = Column(JSONB, nullable=False)
+    received_at = Column(DateTime(timezone=True), nullable=False)
+    is_snapshot = Column(Boolean, nullable=False)
 
 
 class Charger(Base):

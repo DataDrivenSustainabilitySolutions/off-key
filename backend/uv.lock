@@ -1833,6 +1833,7 @@ dependencies = [
     { name = "jsonschema" },
     { name = "off-key-core" },
     { name = "pydantic-settings" },
+    { name = "python-jose" },
     { name = "sqlalchemy" },
     { name = "uvicorn", extra = ["standard"] },
 ]
@@ -1845,6 +1846,7 @@ requires-dist = [
     { name = "jsonschema", specifier = ">=4.21.1" },
     { name = "off-key-core", editable = "libs/core" },
     { name = "pydantic-settings", specifier = ">=2.0.0" },
+    { name = "python-jose", specifier = ">=3.4.0" },
     { name = "sqlalchemy", specifier = ">=2.0.0" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.24.0" },
 ]

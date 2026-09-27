@@ -11,6 +11,7 @@ import { ThemeProvider } from "@/components/theme-provider";
 const Account = lazy(() => import("@/pages/Account"));
 const Anomalies = lazy(() => import("@/pages/Anomalies"));
 const Details = lazy(() => import("@/pages/Details"));
+const DataSources = lazy(() => import("@/pages/DataSources"));
 const Favourites = lazy(() => import("@/pages/Favourites"));
 const ForgotPassword = lazy(() => import("@/pages/ForgotPassword"));
 const LandingPage = lazy(() => import("@/pages/Landingpage"));
@@ -41,6 +42,7 @@ const AppRoutes = () => (
         <Route path="/details/:chargerId" element={<Details />} />
         <Route path="/monitoring/:chargerId" element={<Monitoring />} />
         <Route path="/services" element={<Services />} />
+        <Route path="/sources" element={<DataSources />} />
         <Route path="/favourites" element={<Favourites />} />
         <Route path="/account" element={<Account />} />
         <Route path="/anomalies" element={<Anomalies />} />

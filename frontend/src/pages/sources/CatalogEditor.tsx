@@ -5,6 +5,7 @@ import type {
   CatalogCharger,
   CatalogSource,
 } from "@/types/collection";
+import { catalogView, type CatalogFilter } from "@/lib/catalog-view";
 import { pausedPolicy } from "@/types/collection";
 
 export const fieldClass =
@@ -13,16 +14,23 @@ export const fieldClass =
 export function CatalogEditor({
   catalog,
   onChange,
+  filter,
+  showAll,
 }: {
   catalog: Catalog;
   onChange: (catalog: Catalog) => void;
+  filter: CatalogFilter;
+  showAll: () => void;
 }) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const editSource = (index: number, source: CatalogSource) =>
+  const visible = catalogView(catalog, filter);
+  const editSource = (id: string, source: CatalogSource) => {
+    showAll();
     onChange({
       ...catalog,
-      sources: catalog.sources.map((item, i) => (i === index ? source : item)),
+      sources: catalog.sources.map((item) => (item.id === id ? source : item)),
     });
+  };
   const newCharger = (chargers: CatalogCharger[] = []): CatalogCharger => {
     let localId = 0;
     while (chargers.some((charger) => charger.local_id === String(localId)))
@@ -45,6 +53,7 @@ export function CatalogEditor({
       forward_port: null,
       chargers: [newCharger()],
     };
+    showAll();
     setExpanded((current) => new Set([...current, source.id]));
     onChange({ ...catalog, sources: [...catalog.sources, source] });
   };
@@ -57,7 +66,13 @@ export function CatalogEditor({
       <Button variant="outline" onClick={addBroker}>
         Add broker
       </Button>
-      {catalog.sources.map((source, index) => (
+      {visible.length === 0 && catalog.sources.length > 0 && (
+        <p className="text-sm text-muted-foreground">
+          No matching hosts or chargers. Clear the search or change the evidence
+          filter.
+        </p>
+      )}
+      {visible.map(({ source, chargers }) => (
         <details
           key={source.id}
           className="rounded-xl border p-4"
@@ -76,7 +91,10 @@ export function CatalogEditor({
           <summary className="cursor-pointer font-medium">
             {source.label}{" "}
             <span className="text-xs text-muted-foreground">
-              {source.host} · {source.verified ? "Observed" : "Unverified"}
+              {source.host} ·{" "}
+              {source.verified
+                ? "Observed broker"
+                : "Candidate host · broker not yet observed"}
             </span>
           </summary>
           <div className="mt-4 grid gap-3 sm:grid-cols-3">
@@ -86,7 +104,7 @@ export function CatalogEditor({
                 className={fieldClass}
                 value={source.label}
                 onChange={(e) =>
-                  editSource(index, { ...source, label: e.target.value })
+                  editSource(source.id, { ...source, label: e.target.value })
                 }
               />
             </label>
@@ -97,7 +115,7 @@ export function CatalogEditor({
                 placeholder="charger.ts.net"
                 value={source.host}
                 onChange={(e) =>
-                  editSource(index, {
+                  editSource(source.id, {
                     ...source,
                     host: e.target.value,
                     verified: false,
@@ -114,7 +132,7 @@ export function CatalogEditor({
                 max={65535}
                 value={source.port}
                 onChange={(e) =>
-                  editSource(index, {
+                  editSource(source.id, {
                     ...source,
                     port: Number(e.target.value),
                     verified: false,
@@ -123,12 +141,12 @@ export function CatalogEditor({
               />
             </label>
           </div>
-          {source.chargers.map((charger, ci) => {
+          {chargers.map((charger) => {
             const editCharger = (next: CatalogCharger) =>
-              editSource(index, {
+              editSource(source.id, {
                 ...source,
-                chargers: source.chargers.map((item, i) =>
-                  i === ci ? next : item,
+                chargers: source.chargers.map((item) =>
+                  item.id === charger.id ? next : item,
                 ),
               });
             return (
@@ -240,7 +258,7 @@ export function CatalogEditor({
                     size="sm"
                     variant="ghost"
                     onClick={() =>
-                      editSource(index, {
+                      editSource(source.id, {
                         ...source,
                         chargers: source.chargers.filter(
                           (item) => item.id !== charger.id,
@@ -360,12 +378,13 @@ export function CatalogEditor({
             <Button
               size="sm"
               variant="outline"
-              onClick={() =>
-                editSource(index, {
+              onClick={() => {
+                showAll();
+                editSource(source.id, {
                   ...source,
                   chargers: [...source.chargers, newCharger(source.chargers)],
-                })
-              }
+                });
+              }}
             >
               Add charger
             </Button>
@@ -375,7 +394,9 @@ export function CatalogEditor({
               onClick={() =>
                 onChange({
                   ...catalog,
-                  sources: catalog.sources.filter((_, i) => i !== index),
+                  sources: catalog.sources.filter(
+                    (item) => item.id !== source.id,
+                  ),
                 })
               }
             >

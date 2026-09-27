@@ -437,3 +437,167 @@ async def test_catalog_api_authorization_revisions_and_monitor_pause(
             assert not monitor.status and monitor.operational_stage == "stopped"
         history = await client.get("/collection/revisions", headers=reader)
         assert [row["revision"] for row in history.json()] == [2, 1]
+
+
+@pytest.mark.asyncio
+async def test_sustained_traffic_stays_bounded_during_write_outage_and_recovers(
+    monkeypatch, database
+):
+    """Block real telemetry INSERTs while MQTT continues delivering observations."""
+    import json
+    import time
+    from datetime import UTC, datetime
+
+    from backend.tests.test_collection import catalog
+    from off_key_core.db.models import CollectionConfiguration
+    from sqlalchemy import update
+
+    engine, sessions = database
+    configuration = catalog("original")
+    sensors = configuration.sources[0].chargers[0].sensors
+    sensors.append(
+        sensors[0].model_copy(
+            update={
+                "key": "sampled_temperature",
+                "upstream_topic": "device/evCharger/0/sampled_temperature",
+                "policy": CollectionPolicy(mode="sample", interval_seconds=1),
+            }
+        )
+    )
+    monkeypatch.setattr(proxy_module, "get_async_engine", lambda: engine)
+    monkeypatch.setattr(proxy_module, "get_async_session_local", lambda: sessions)
+    monkeypatch.setattr(
+        proxy_module,
+        "get_mqtt_settings",
+        lambda: MQTTSettings(
+            MQTT_BROKER_HOST="127.0.0.1",
+            MQTT_BROKER_PORT=28883,
+            MQTT_USE_AUTH=False,
+            MQTT_USE_TLS=False,
+            ENVIRONMENT="development",
+            MQTT_BATCH_SIZE=8,
+            MQTT_BATCH_TIMEOUT=0.1,
+            MQTT_MAX_MESSAGE_QUEUE_SIZE=100,
+            MQTT_CONNECTION_TIMEOUT=5,
+        ),
+    )
+    async with sessions() as session:
+        snapshot = await collection_module.CollectionService(session).apply(
+            CatalogChange(expected_revision=0, catalog=configuration),
+            actor="outage@test.invalid",
+        )
+        # This test targets application admission/writes. The separate two-broker
+        # test above exercises the actual controller and source routing.
+        await session.execute(
+            update(CollectionConfiguration).values(
+                ingress_status={"revision": snapshot.revision, "status": "applied"}
+            )
+        )
+        await session.commit()
+    streams = snapshot.catalog.streams()
+    proxy = proxy_module.MQTTProxyService()
+    stop_publishing = asyncio.Event()
+    publisher = None
+
+    async def ready():
+        assert proxy._task is not None and not proxy._task.done(), proxy.state
+        return proxy.get_readiness_status()["ready"]
+
+    async def publish(values):
+        millis = int(datetime.now(UTC).timestamp() * 1000)
+        await asyncio.to_thread(
+            multiple,
+            [
+                {
+                    "topic": stream.ingress_topic,
+                    "qos": 1,
+                    "payload": json.dumps(
+                        {
+                            "payload": value,
+                            "received_at": millis + index,
+                            "upstream_retained": False,
+                        }
+                    ),
+                }
+                for index, value in enumerate(values)
+                for stream in streams
+            ],
+            hostname="127.0.0.1",
+            port=28883,
+        )
+
+    async def flood():
+        while not stop_publishing.is_set():
+            await publish(range(64))
+
+    async def written(value):
+        async with sessions() as session:
+            types = set(
+                await session.scalars(
+                    select(Telemetry.type).where(Telemetry.value == value)
+                )
+            )
+            return types == {stream.sensor.key for stream in streams}
+
+    async def saturated():
+        return proxy.buffer.metrics().get("overload_dropped", 0) > 0
+
+    try:
+        await proxy.start()
+        await until(ready)
+        await publish([12345])
+        await until(lambda: written(12345))
+        baseline = proxy.database_writer.total_records_written
+        async with engine.connect() as outage:
+            transaction = await outage.begin()
+            try:
+                await outage.execute(
+                    text("LOCK TABLE telemetry IN ACCESS EXCLUSIVE MODE")
+                )
+                publisher = asyncio.create_task(flood())
+                await until(saturated)
+                received_before = proxy.buffer.metrics()["received"]
+                coalesced_before = proxy.buffer.metrics().get("coalesced", 0)
+                populated_slots = 0
+                task_count = len(asyncio.all_tasks())
+                deadline = time.monotonic() + 3
+                while time.monotonic() < deadline:
+                    buffer = proxy.buffer.metrics()
+                    writer = proxy.database_writer
+                    assert buffer["original_queue"] <= 100
+                    assert buffer["sample_slots"] <= 1
+                    populated_slots = max(populated_slots, buffer["sample_slots"])
+                    assert writer.pending_batch.size() <= 8
+                    assert (
+                        sum(
+                            batch.size() for batch in writer.processing_batches.values()
+                        )
+                        <= 8
+                    )
+                    assert len(asyncio.all_tasks()) <= task_count + 5
+                    assert not publisher.done()
+                    await asyncio.sleep(0.05)
+                assert proxy.buffer.metrics()["received"] > received_before + 100
+                assert proxy.buffer.metrics()["coalesced"] > coalesced_before + 100
+                assert populated_slots == 1
+                assert proxy.database_writer.total_records_written == baseline
+            finally:
+                await transaction.rollback()
+        stop_publishing.set()
+        await asyncio.wait_for(publisher, timeout=10)
+        await proxy.database_writer.drain()
+
+        async def drained():
+            return proxy.buffer.metrics()["original_queue"] == 0
+
+        await until(drained)
+        await publish([999999])
+        await until(lambda: written(999999))
+        assert proxy.buffer.metrics()["overload_dropped"] > 0
+        assert proxy.get_readiness_status()["ready"]
+    finally:
+        stop_publishing.set()
+        if publisher is not None:
+            with suppress(Exception, asyncio.CancelledError):
+                await asyncio.wait_for(publisher, timeout=10)
+        await proxy.stop()

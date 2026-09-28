@@ -21,7 +21,13 @@ pytestmark = pytest.mark.skipif(
 def _mqtt_message(
     topic: str, value: float, timestamp: datetime
 ) -> tuple[str, str, int, bool]:
-    payload = json.dumps({"timestamp": timestamp.isoformat(), "value": value})
+    payload = json.dumps(
+        {
+            "payload": json.dumps(value),
+            "received_at": round(timestamp.timestamp() * 1000),
+            "upstream_retained": False,
+        }
+    )
     return topic, payload, 0, False
 
 
@@ -56,10 +62,36 @@ def _wait_until_service_accepts_data(
     )
 
 
+def _remove_catalog_charger(
+    client: httpx.Client, source_id: str, charger_id: str
+) -> None:
+    current = client.get("/v1/sources")
+    current.raise_for_status()
+    snapshot = current.json()
+    for binding in snapshot["catalog"]["sources"]:
+        binding["chargers"] = [
+            charger for charger in binding["chargers"] if charger["id"] != charger_id
+        ]
+    snapshot["catalog"]["sources"] = [
+        binding
+        for binding in snapshot["catalog"]["sources"]
+        if binding["id"] != source_id or binding["chargers"]
+    ]
+    removed = client.put(
+        "/v1/sources",
+        json={
+            "expected_revision": snapshot["revision"],
+            "catalog": snapshot["catalog"],
+            "pause_affected_monitors": True,
+        },
+    )
+    removed.raise_for_status()
+
+
 def test_gateway_to_postgres_adaptive_multisensor_input_correlation() -> None:
     token = os.environ["E2E_AUTH_TOKEN"]
     gateway_url = os.getenv("E2E_GATEWAY_URL", "http://localhost:8000").rstrip("/")
-    charger_id = f"adaptive-e2e-{uuid.uuid4().hex[:8]}"
+    charger_id = str(uuid.uuid4())
     topics = [
         f"device/evCharger/{charger_id}/L1",
         f"device/evCharger/{charger_id}/L2",
@@ -74,32 +106,86 @@ def test_gateway_to_postgres_adaptive_multisensor_input_correlation() -> None:
             f"Gateway at {gateway_url} does not expose /v1/monitors/start"
         )
 
-        response = client.post(
-            "/v1/monitors/start",
-            json={
-                "container_name": f"radar-{charger_id}",
-                "service_type": "radar",
-                "mqtt_topics": topics,
-                "strategy": "adaptive_stream",
-                "model_type": "aberrant_online_isolation_forest",
-                "model_params": {"num_trees": 4, "max_leaf_samples": 4},
-                "adaptive_stream_config": {
+        snapshot_response = client.get("/v1/sources")
+        snapshot_response.raise_for_status()
+        snapshot = snapshot_response.json()
+        catalog = snapshot["catalog"]
+        source = next(
+            (item for item in catalog["sources"] if item["host"] == "source-broker"),
+            None,
+        )
+        if source is None:
+            source = {
+                "id": str(uuid.uuid4()),
+                "label": "Test broker",
+                "host": "source-broker",
+                "chargers": [],
+            }
+            catalog["sources"].append(source)
+        source["chargers"].append(
+            {
+                "id": charger_id,
+                "local_id": charger_id,
+                "label": "Adaptive test",
+                "policy": {"mode": "original"},
+                "sensors": [
+                    {"key": key, "label": key, "upstream_topic": topic}
+                    for key, topic in zip(("L1", "L2"), topics, strict=True)
+                ],
+            }
+        )
+        try:
+            saved = client.put(
+                "/v1/sources",
+                json={
+                    "expected_revision": snapshot["revision"],
+                    "catalog": catalog,
+                },
+            )
+            saved.raise_for_status()
+            revision = saved.json()["revision"]
+            deadline = time.monotonic() + 120
+            while time.monotonic() < deadline:
+                status_response = client.get("/v1/sources/status")
+                status_response.raise_for_status()
+                state = status_response.json()["collection"]
+                if (
+                    state.get("revision") == revision
+                    and state.get("status") == "applied"
+                ):
+                    break
+                time.sleep(1)
+            else:
+                pytest.fail("Collection was not applied before the monitoring test")
+            ingress_topics = [
+                f"ingress/ambibox/{source['id']}/{topic}" for topic in topics
+            ]
+
+            response = client.post(
+                "/v1/monitors/start",
+                json={
+                    "container_name": f"radar-{charger_id}",
+                    "service_type": "radar",
+                    "mqtt_topics": topics,
+                    "strategy": "adaptive_stream",
                     "model_type": "aberrant_online_isolation_forest",
                     "model_params": {"num_trees": 4, "max_leaf_samples": 4},
-                    "training_window_size": 4,
-                    "calibration_window_size": 2,
-                    "threshold_config": {
-                        "mode": "calibrated_quantile",
-                        "quantile": 1.0,
+                    "adaptive_stream_config": {
+                        "model_type": "aberrant_online_isolation_forest",
+                        "model_params": {"num_trees": 4, "max_leaf_samples": 4},
+                        "training_window_size": 4,
+                        "calibration_window_size": 2,
+                        "threshold_config": {
+                            "mode": "calibrated_quantile",
+                            "quantile": 1.0,
+                        },
                     },
                 },
-            },
-        )
-        response.raise_for_status()
-        service_id = response.json()["service_id"]
-        try:
+            )
+            response.raise_for_status()
+            service_id = response.json()["service_id"]
             _wait_until_service_accepts_data(client, service_id)
-            cycle_start = datetime.now(UTC)
+            cycle_start = datetime.fromtimestamp(round(time.time() * 1000) / 1000, UTC)
             published_cycles: list[dict[str, datetime]] = []
             messages: list[tuple[str, str, int, bool]] = []
             for index in range(8):
@@ -108,12 +194,12 @@ def test_gateway_to_postgres_adaptive_multisensor_input_correlation() -> None:
                 messages.extend(
                     [
                         _mqtt_message(
-                            topics[0],
+                            ingress_topics[0],
                             100.0 if index == 7 else 1.0 + index / 100,
                             l1_time,
                         ),
                         _mqtt_message(
-                            topics[1],
+                            ingress_topics[1],
                             50.0 if index == 7 else 2.0 + index / 100,
                             l2_time,
                         ),
@@ -168,3 +254,4 @@ def test_gateway_to_postgres_adaptive_multisensor_input_correlation() -> None:
         finally:
             if service_id:
                 client.delete(f"/v1/monitors/{service_id}")
+            _remove_catalog_charger(client, source["id"], charger_id)

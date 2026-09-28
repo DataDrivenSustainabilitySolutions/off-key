@@ -1,0 +1,63 @@
+name: MQTT Collection Integration
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  merge_group:
+    types: [checks_requested]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: collection-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  collection:
+    name: collection (${{ matrix.emqx }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        emqx: ["5.8.7", "6.3.1"]
+    env:
+      EMQX_TEST_IMAGE: emqx/emqx:${{ matrix.emqx }}
+      OFFKEY_COLLECTION_INTEGRATION: "1"
+      COMPOSE_FILE: backend/tests/collection_integration/compose.yml
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: "0.12.0"
+
+      - name: Install backend dependencies
+        run: uv sync --project backend --all-packages --all-groups --frozen
+
+      - name: Start isolated brokers and database
+        run: docker compose up -d --wait --wait-timeout 120
+
+      - name: Test routing, collection and recovery under load
+        run: timeout 300 uv run --project backend python -m pytest backend/tests/collection_integration -q --tb=short
+
+      - name: Show fixture diagnostics on failure
+        if: failure()
+        run: |
+          docker compose ps -a
+          docker compose logs --no-color --tail 150
+
+      - name: Remove fixture containers and volumes
+        if: always()
+        run: docker compose down --volumes --remove-orphans

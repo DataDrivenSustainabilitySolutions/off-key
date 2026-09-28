@@ -1,8 +1,14 @@
+import hashlib
+import json
 import uuid
 from datetime import datetime
 from typing import Any
 
 from off_key_core.config.logs import logger
+from off_key_core.db.collection import (
+    lock_collection_configuration,
+    read_collection_configuration,
+)
 from off_key_core.db.models import MonitoringService, MqttTopic
 from off_key_core.schemas.radar import RadarOperationalStatus
 from off_key_core.utils.mqtt_topics import (
@@ -72,6 +78,22 @@ class RadarOrchestrationService:
             MonitoringService: The created monitoring service database entry
         """
         mqtt_topics = normalize_static_monitoring_topics(mqtt_topics)
+        await lock_collection_configuration(self.session)
+        collection = await read_collection_configuration(self.session)
+        streams = {
+            stream.accepted_topic: stream
+            for stream in collection.catalog.streams(selected_only=True)
+            if stream.sensor.value_type == "number"
+        }
+        if any(topic not in streams for topic in mqtt_topics):
+            raise ValueError(
+                "Monitoring requires selected numeric sensors from the catalog"
+            )
+        if (
+            collection.collection.get("revision") != collection.revision
+            or collection.collection.get("status") != "applied"
+        ):
+            raise ValueError("Wait until the collection configuration is applied")
         strategy = (strategy or "static_baseline").strip().lower()
         await self._assert_topics_available(
             mqtt_topics=mqtt_topics,
@@ -90,6 +112,11 @@ class RadarOrchestrationService:
             adaptive_stream_config=adaptive_stream_config or {},
             model_registry=self.model_registry,
         )
+        env_vars["RADAR_COLLECTION_FINGERPRINT"] = hashlib.sha256(
+            json.dumps(
+                [streams[topic].signature for topic in sorted(mqtt_topics)]
+            ).encode()
+        ).hexdigest()
         config_fingerprint = build_radar_config_fingerprint(env_vars)
 
         # Check if service with this name already exists
@@ -223,7 +250,7 @@ class RadarOrchestrationService:
             existing_service.status = False
             apply_terminal_operational_status(existing_service, docker_status)
             await self._delete_service_rows_by_ids([existing_service.id])
-            await self.session.commit()
+            await self.session.flush()
             logger.info(
                 "Deleted stale RADAR service row %s before recreating %s "
                 "(docker_status=%s)",

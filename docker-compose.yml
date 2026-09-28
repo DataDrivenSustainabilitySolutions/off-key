@@ -152,11 +152,13 @@ services:
     container_name: mqtt_proxy
     env_file: .env
     environment:
-      - MQTT_BROKER_HOST=${MQTT_BROKER_HOST:-source-broker}
+      - MQTT_BROKER_HOST=${MQTT_BROKER_HOST:-emqx-main}
       - MQTT_BROKER_PORT=${MQTT_BROKER_PORT:-1883}
       - MQTT_TELEMETRY_ENABLED=true
     command: [ "/app/bin/python", "-m", "off_key_mqtt_proxy" ]
     depends_on:
+      db-sync:
+        condition: service_healthy
       timescaledb:
         condition: service_healthy
       emqx-main:
@@ -172,7 +174,7 @@ services:
         - "CMD"
         - "/app/bin/python"
         - "-c"
-        - "import urllib.request; urllib.request.urlopen('http://localhost:8010/ready/bridge', timeout=2)"
+        - "import urllib.request; urllib.request.urlopen('http://localhost:8010/ready', timeout=2)"
       interval: 5s
       timeout: 5s
       retries: 20
@@ -322,6 +324,9 @@ services:
       # Only works on fresh boot (no data volume!)
       - "EMQX_DASHBOARD__DEFAULT_USERNAME=${EMQX_DASHBOARD_USERNAME:-admin}"
       - "EMQX_DASHBOARD__DEFAULT_PASSWORD=${EMQX_DASHBOARD_PASSWORD:?EMQX_DASHBOARD_PASSWORD must be set}"
+      - "EMQX_API_KEY__BOOTSTRAP_FILE=/opt/emqx/etc/dev-api-keys"
+    volumes:
+      - ./dev/emqx/api-keys:/opt/emqx/etc/dev-api-keys:ro
     healthcheck:
       test: [ "CMD", "curl", "-fsS", "http://127.0.0.1:18083/status" ]
       interval: 5s
@@ -339,6 +344,17 @@ services:
       - 18083:18083
     # volumes:
     #   - $PWD/emqx1_data:/opt/emqx/data
+
+  mqtt-tailscale-bridge:
+    # Development SOCKS endpoint stands in for the existing vendor tailnet proxy.
+    image: gogost/gost:3.3.0
+    command:
+      - "-api=${AMBIBOX_GOST_USERNAME:-off-key}:${AMBIBOX_GOST_PASSWORD:?Set AMBIBOX_GOST_PASSWORD}@:18080"
+      - "-L=socks5://:1055"
+    networks:
+      - emqx-network
+      - app-network
+    restart: unless-stopped
 
   source-broker:
     image: eclipse-mosquitto:2.0

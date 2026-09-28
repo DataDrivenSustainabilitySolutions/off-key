@@ -1,4 +1,7 @@
+import { randomUUID } from "node:crypto";
 import { expect, test } from "@playwright/test";
+
+import { addTestCharger, removeTestCharger } from "./helpers/collection";
 
 test.describe("monitoring lifecycle smoke", () => {
   test.setTimeout(300_000);
@@ -7,7 +10,7 @@ test.describe("monitoring lifecycle smoke", () => {
     page,
     playwright,
   }) => {
-    const chargerId = "e2e-smoke";
+    const chargerId = randomUUID();
     const topic = `device/evCharger/${chargerId}/L1`;
     let serviceId: string | undefined;
     let containerName: string | undefined;
@@ -21,9 +24,13 @@ test.describe("monitoring lifecycle smoke", () => {
       await page.goto(`/monitoring/${chargerId}`);
       authToken = await page.evaluate(() => localStorage.getItem("auth_token"));
       expect(authToken).toBeTruthy();
+      await addTestCharger(cleanupRequest, authToken!, chargerId, chargerId, [
+        "L1",
+      ]);
+      await page.reload();
 
       await expect(
-        page.getByRole("heading", { name: `Charger ${chargerId}` })
+        page.getByRole("heading", { name: `Charger ${chargerId}` }),
       ).toBeVisible();
 
       await page.getByRole("combobox").first().selectOption("direct_patterns");
@@ -34,9 +41,7 @@ test.describe("monitoring lifecycle smoke", () => {
       await page
         .getByRole("button", { name: /show advanced settings/i })
         .click();
-      await page
-        .getByRole("button", { name: "About Betting method" })
-        .hover();
+      await page.getByRole("button", { name: "About Betting method" }).hover();
       await expect(page.getByRole("tooltip")).toContainText(
         "Transforms each conformal p-value into a one-step e-value",
       );
@@ -47,7 +52,10 @@ test.describe("monitoring lifecycle smoke", () => {
         .locator("..")
         .locator("..");
       await secondTracker.getByRole("textbox").fill("mixture-cusum");
-      await secondTracker.getByRole("combobox").nth(0).selectOption("simple_mixture");
+      await secondTracker
+        .getByRole("combobox")
+        .nth(0)
+        .selectOption("simple_mixture");
       await secondTracker.getByRole("combobox").nth(1).selectOption("cusum");
       await expect(secondTracker.getByRole("combobox").nth(2)).toHaveValue(
         "automatic",
@@ -57,7 +65,7 @@ test.describe("monitoring lifecycle smoke", () => {
       const startResponsePromise = page.waitForResponse(
         (response) =>
           response.url().includes("/v1/monitors/start") &&
-          response.request().method() === "POST"
+          response.request().method() === "POST",
       );
       await page.getByRole("button", { name: /start monitoring/i }).click();
 
@@ -95,14 +103,16 @@ test.describe("monitoring lifecycle smoke", () => {
       containerName = startedService.container_name;
       expect(serviceId).toBeTruthy();
       expect(containerName).toBeTruthy();
-      const serviceRow = page.getByRole("row").filter({ hasText: containerName! });
+      const serviceRow = page
+        .getByRole("row")
+        .filter({ hasText: containerName! });
       await expect(serviceRow).toBeVisible({ timeout: 60_000 });
 
       const stopResponsePromise = page.waitForResponse(
         (response) =>
           response.request().method() === "DELETE" &&
           new URL(response.url()).pathname.includes("/v1/monitors/"),
-        { timeout: 240_000 }
+        { timeout: 240_000 },
       );
       page.once("dialog", (dialog) => dialog.accept());
       await serviceRow
@@ -116,19 +126,24 @@ test.describe("monitoring lifecycle smoke", () => {
       containerName = undefined;
     } finally {
       if (serviceId && authToken) {
-        await cleanupRequest.delete(`/api/v1/monitors/${encodeURIComponent(serviceId)}`, {
-          failOnStatusCode: false,
-          headers: { Authorization: `Bearer ${authToken}` },
-        });
+        await cleanupRequest.delete(
+          `/api/v1/monitors/${encodeURIComponent(serviceId)}`,
+          {
+            failOnStatusCode: false,
+            headers: { Authorization: `Bearer ${authToken}` },
+          },
+        );
       } else if (containerName && authToken) {
         await cleanupRequest.delete(
           `/api/v1/monitors/stop?container_name=${encodeURIComponent(containerName)}`,
           {
             failOnStatusCode: false,
             headers: { Authorization: `Bearer ${authToken}` },
-          }
+          },
         );
       }
+      if (authToken)
+        await removeTestCharger(cleanupRequest, authToken, chargerId);
       await cleanupRequest.dispose();
     }
   });

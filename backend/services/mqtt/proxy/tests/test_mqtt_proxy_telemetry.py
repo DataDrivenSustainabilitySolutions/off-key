@@ -222,11 +222,7 @@ async def test_process_batch_uses_rowcount_for_written_records():
     session = AsyncMock()
     execute_insert_result = MagicMock()
     execute_insert_result.rowcount = 1
-    session.execute.side_effect = [
-        AsyncMock(),
-        execute_insert_result,
-        AsyncMock(),
-    ]
+    session.execute.return_value = execute_insert_result
     session.commit = AsyncMock()
     session.rollback = AsyncMock()
 
@@ -238,6 +234,7 @@ async def test_process_batch_uses_rowcount_for_written_records():
 
     batch = WriteBatch(records=[result.record, result.record])
     assert await writer._process_batch(batch) is True
+    assert writer.last_successful_write_at is not None
     assert writer.total_records_written == 1
 
 
@@ -258,11 +255,7 @@ async def test_process_batch_falls_back_to_batch_size_when_rowcount_is_none():
     session = AsyncMock()
     execute_insert_result = MagicMock()
     execute_insert_result.rowcount = None
-    session.execute.side_effect = [
-        AsyncMock(),
-        execute_insert_result,
-        AsyncMock(),
-    ]
+    session.execute.return_value = execute_insert_result
     session.commit = AsyncMock()
     session.rollback = AsyncMock()
 
@@ -294,11 +287,7 @@ async def test_process_batch_falls_back_to_batch_size_when_rowcount_is_negative(
     session = AsyncMock()
     execute_insert_result = MagicMock()
     execute_insert_result.rowcount = -1
-    session.execute.side_effect = [
-        AsyncMock(),
-        execute_insert_result,
-        AsyncMock(),
-    ]
+    session.execute.return_value = execute_insert_result
     session.commit = AsyncMock()
     session.rollback = AsyncMock()
 
@@ -327,9 +316,7 @@ async def test_process_batch_integrity_error_rolls_back_and_reports_failure():
     assert isinstance(result, ParseSuccess)
 
     session = AsyncMock()
-    session.execute = AsyncMock(
-        side_effect=[AsyncMock(), IntegrityError("dup", None, None)]
-    )
+    session.execute = AsyncMock(side_effect=IntegrityError("dup", None, None))
     session.commit = AsyncMock()
     session.rollback = AsyncMock()
 
@@ -340,6 +327,7 @@ async def test_process_batch_integrity_error_rolls_back_and_reports_failure():
 
     batch = WriteBatch(records=[result.record])
     assert await writer._process_batch(batch) is False
+    assert writer.last_successful_write_at is None
     session.rollback.assert_awaited_once()
     session.commit.assert_not_awaited()
     assert writer.total_records_written == 0
@@ -359,7 +347,7 @@ async def test_process_batch_sqlalchemy_error_propagates_as_failure():
     assert isinstance(result, ParseSuccess)
 
     session = AsyncMock()
-    session.execute = AsyncMock(side_effect=[AsyncMock(), SQLAlchemyError("db down")])
+    session.execute = AsyncMock(side_effect=SQLAlchemyError("db down"))
     session.commit = AsyncMock()
     session.rollback = AsyncMock()
 
@@ -570,8 +558,6 @@ async def test_permanent_record_failure_does_not_block_valid_telemetry(sqlstate)
     session_ctx.__aenter__.return_value = session
     session_ctx.__aexit__.return_value = False
     writer._session_factory = MagicMock(return_value=session_ctx)
-    writer._upsert_chargers = AsyncMock()
-    writer._update_charger_statuses = AsyncMock()
     committed = []
     staged = []
 

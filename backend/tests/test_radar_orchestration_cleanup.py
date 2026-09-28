@@ -32,6 +32,24 @@ class _FakeAsyncDocker:
         return func(*args, **kwargs)
 
 
+@pytest.fixture
+def selected_collection(monkeypatch):
+    stream = SimpleNamespace(
+        accepted_topic="device/evCharger/charger-1/sine",
+        sensor=SimpleNamespace(value_type="number"),
+        signature=("source", "charger-1", "sine", "sample", 10),
+    )
+    snapshot = SimpleNamespace(
+        revision=1,
+        catalog=SimpleNamespace(streams=lambda **_: [stream]),
+        collection={"revision": 1, "status": "applied"},
+    )
+    monkeypatch.setattr(radar_module, "lock_collection_configuration", AsyncMock())
+    monkeypatch.setattr(
+        radar_module, "read_collection_configuration", AsyncMock(return_value=snapshot)
+    )
+
+
 @pytest.mark.asyncio
 async def test_production_radar_refuses_container_fallback(monkeypatch):
     fake_docker = _FakeAsyncDocker()
@@ -1081,6 +1099,7 @@ async def test_startup_validation_raises_with_logs_when_container_exits(
 @pytest.mark.asyncio
 async def test_create_radar_service_removes_workload_when_db_commit_fails(
     monkeypatch,
+    selected_collection,
 ):
     fake_docker = _FakeAsyncDocker()
     monkeypatch.setattr(radar_module, "get_async_docker", lambda: fake_docker)
@@ -1126,6 +1145,7 @@ async def test_create_radar_service_removes_workload_when_db_commit_fails(
 @pytest.mark.asyncio
 async def test_existing_active_service_with_missing_workload_is_recreated(
     monkeypatch,
+    selected_collection,
 ):
     fake_docker = _FakeAsyncDocker()
     monkeypatch.setattr(radar_module, "get_async_docker", lambda: fake_docker)
@@ -1184,13 +1204,15 @@ async def test_existing_active_service_with_missing_workload_is_recreated(
 
     assert created.container_name == "radar-stale"
     assert created.container_id == "new-workload"
-    assert session.commit.await_count == 2
+    assert session.commit.await_count == 1
+    session.flush.assert_awaited()
     session.add.assert_called_once()
 
 
 @pytest.mark.asyncio
 async def test_existing_active_service_rejects_config_fingerprint_mismatch(
     monkeypatch,
+    selected_collection,
 ):
     fake_docker = _FakeAsyncDocker()
     monkeypatch.setattr(radar_module, "get_async_docker", lambda: fake_docker)

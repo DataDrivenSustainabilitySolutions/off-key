@@ -14,16 +14,26 @@
 #   1. Create (and optionally seed) the Tailscale state directory on every backend node:
 #        mkdir -p /opt/stacks/off-key/tailscale-ingress-state
 #      Copy tailscaled.state from a pre-authenticated installation to skip the auth key on restart.
-#   2. After the first deploy, configure an EMQX MQTT bridge (Data Integration → Bridges)
-#      pointing to mqtt-tailscale-bridge:1883.
-#      Set upstream credentials, TLS, and the `device/#` Source subscription there.
-#      Its rule republishes the original topic and payload unchanged.
+#   2. Supply private management API credentials to TACTIC and open Data sources
+#      to import/build a catalog. Production uses off-key-infra's secret mounts.
 #
 # See .env.ingress.example for required/optional environment variables.
 
 services:
+  tactic-middleware:
+    environment:
+      AMBIBOX_INGRESS_ENABLED: "true"
+      AMBIBOX_SOCKS_SERVER: tailscale-vpn:1055
+      AMBIBOX_FORWARD_HOST: mqtt-tailscale-bridge
+      AMBIBOX_MQTT_USERNAME: ${AMBIBOX_MQTT_USERNAME:-}
+      AMBIBOX_MQTT_PASSWORD: ${AMBIBOX_MQTT_PASSWORD:-}
+      AMBIBOX_EMQX_API_KEY: ${AMBIBOX_EMQX_API_KEY:-}
+      AMBIBOX_EMQX_API_SECRET: ${AMBIBOX_EMQX_API_SECRET:-}
+      AMBIBOX_GOST_USERNAME: ${AMBIBOX_GOST_USERNAME:-off-key}
+      AMBIBOX_GOST_PASSWORD: ${AMBIBOX_GOST_PASSWORD:?Set AMBIBOX_GOST_PASSWORD}
+
   tailscale-vpn:
-    image: tailscale/tailscale:v1.102.4
+    image: tailscale/tailscale:v1.102.5
     environment:
       - TS_AUTHKEY=${INGRESS_TS_AUTHKEY:-}
       - TS_AUTH_ONCE=${INGRESS_TS_AUTH_ONCE:-true}
@@ -43,15 +53,10 @@ services:
         condition: any
 
   mqtt-tailscale-bridge:
-    # Dumb TCP forwarder: EMQX connects here on :1883, gost tunnels it through
-    # the Tailscale SOCKS5 proxy to the upstream .ts.net hostname.
-    # MagicDNS resolution happens inside Tailscale, not in the container's DNS.
-    # Auth, TLS, and the `device/#` Source are configured in the EMQX
-    # bridge — not here.
-    image: gogost/gost:3
+    # Catalog routes are created through the private management API.
+    image: gogost/gost:3.3.0
     command:
-      - "-L=tcp://:1883/${INGRESS_UPSTREAM_MQTT_HOST:?INGRESS_UPSTREAM_MQTT_HOST must be set}:${INGRESS_UPSTREAM_MQTT_PORT:-1883}"
-      - "-F=socks5://tailscale-vpn:1055"
+      - "-api=${AMBIBOX_GOST_USERNAME:-off-key}:${AMBIBOX_GOST_PASSWORD:?Set AMBIBOX_GOST_PASSWORD}@:18080"
     networks:
       - emqx-network
     deploy:

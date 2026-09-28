@@ -133,98 +133,18 @@ If you want to start everything including simulator in one command:
 docker compose --profile mqtt-sim up -d --build
 ```
 
-### External ingress mode (Swarm — Tailscale VPN + EMQX bridge)
+### AmbiBox catalog and collection
 
-Ingress is a Swarm-only overlay. It adds two services to the stack:
-- `tailscale-vpn` — Tailscale in userspace mode, exposes a SOCKS5 proxy on `:1055`
-- `mqtt-tailscale-bridge` — gost TCP forwarder: EMQX connects here on `:1883`, traffic is tunnelled through the Tailscale SOCKS5 proxy to the vendor broker using MagicDNS
+Open **Data sources** as a verified administrator to build or import the catalog,
+select chargers and sensors, and apply original-rate or sampled collection. New
+chargers start paused. The application manages per-broker EMQX sources and GOST
+routes through private management APIs; topics are no longer configured in proxy
+environment variables or a separate EMQX setup script.
 
-No Linux capabilities are required. There is no intermediate Mosquitto broker.
-Auth, TLS, and topic subscriptions are configured in the EMQX bridge (Data Integration → Bridges), not in this compose file.
-
-Setup:
-
-```bash
-cp .env.ingress.example .env.ingress.local
-```
-
-Fill required values in `.env.ingress.local`:
-- `INGRESS_UPSTREAM_MQTT_HOST` — `.ts.net` MagicDNS hostname of the vendor broker
-- `INGRESS_TS_AUTHKEY` — required for first login; optional after state is pre-seeded
-
-Pre-flight on every backend node:
-
-```bash
-mkdir -p /opt/stacks/off-key/tailscale-ingress-state
-# Optionally copy tailscaled.state from a pre-authenticated installation:
-# scp tailscaled.state <node>:/opt/stacks/off-key/tailscale-ingress-state/
-```
-
-Deploy:
-
-```bash
-docker compose \
-  --env-file .env \
-  --env-file .env.ingress.local \
-  -f docker-compose.swarm.yml \
-  -f docker-compose.ingress.yml \
-  config \
-  | docker stack deploy --with-registry-auth -c - off-key
-```
-
-After deployment, configure the existing EMQX Data Integration resources in the
-Dashboard (Data Integration → Connectors, Sources, and Rules):
-
-- Server: `mqtt-tailscale-bridge:1883`
-- Set upstream credentials and TLS on the `ambibox` MQTT connector.
-- Configure the `ambibox-wildcard` Source subscription as exactly `device/#`.
-- Do not rewrite topics: republish the original `${topic}` unchanged.
-- Example upstream and local topic: `device/evCharger/0/voltageAc3`.
-- Keep `MQTT_SOURCE_TOPICS=device/#` so the proxy consumes the republished topics.
-
-The `ambibox-wildcard` Source subscribes to `device/#`. Its rule selects only
-`$bridges/mqtt:ambibox-wildcard` and republishes `${topic}`, `${payload}`, and
-`${qos}` unchanged, with retain disabled and Direct Dispatch enabled. Do not add
-`t/#`; unrelated `t/...` processing belongs in a separate rule.
-
-For diagnostics, recovery, or automated environment initialization, the optional
-`dev/emqx/reconcile_ingress.py` utility can idempotently create or verify this
-configuration using scoped API credentials and upstream secrets. It is not part
-of the production deployment workflow.
-
-Notes:
-- local mock `source-broker` remains the default for local dev; ingress is Swarm-only
-- keep ingress secrets in local env files only; do not commit credentials
-
-### External ingress smoke verification
-
-After deploy, verify the bridge is passing traffic:
-
-```bash
-# Subscribe to a charger topic via the internal EMQX node
-docker run --rm --network off-key_emqx-network eclipse-mosquitto:2.0 \
-  mosquitto_sub -h emqx-main -p 1883 -t "device/#" -C 1 -W 30
-```
-
-Quick checks after ingress is enabled:
-- Internal traffic check: if no messages arrive on `device/#`, inspect the Source and Republish rule first.
-- Proxy ingestion check:
-`docker service logs off-key_mqtt-proxy --since 5m | rg "source_subscriptions|subscribed_topics"`
-- Parse check:
-`docker service logs off-key_mqtt-proxy --since 5m | rg "Unable to extract metadata from topic"`
-- UI/API check:
-`curl -s "http://api-gateway:8000/v1/telemetry/<charger_id>/type"`
-`curl -s "http://api-gateway:8000/v1/telemetry/<charger_id>/data?type=<telemetry_type>&limit=20"`
-
-If the EMQX bridge is connected and the vendor device is publishing, a message should arrive within the timeout. If not, check:
-
-```bash
-# Tailscale status inside the VPN container
-docker exec $(docker ps -q -f name=off-key_tailscale-vpn) tailscale status
-
-# gost bridge logs
-docker service logs off-key_mqtt-tailscale-bridge
-```
+The production deployment reuses the existing vendor tailnet identity and MQTT
+credentials. For local Compose, import `dev/ambibox/local-catalog.json` and start
+the `mqtt-sim` profile. See [AmbiBox collection](docs/operations/ambibox-collection.md)
+for configuration semantics, limits, tests and the one-time clean cutover.
 
 ### EMQX two-node cluster mode
 

@@ -3,6 +3,7 @@ from sqlalchemy import (
     JSON,
     TIMESTAMP,
     Boolean,
+    CheckConstraint,
     Column,
     DateTime,
     Enum,
@@ -20,14 +21,9 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import JSONB
 
-from ..config import get_retention_days
-from ..config.logs import logger
 from ..utils.enum import RoleEnum
 from .base import Base
 from .table_contracts import monitoring_evidence_table
-
-# Cache retention days at module load to prevent mid-run environment changes
-_RETENTION_DAYS = get_retention_days()
 
 
 class User(Base):
@@ -43,6 +39,53 @@ class User(Base):
         DateTime, default=func.now(), onupdate=func.now(), nullable=False
     )
     created_at = Column(DateTime, default=func.now(), nullable=False)
+
+
+class CollectionConfiguration(Base):
+    __tablename__ = "collection_configuration"
+
+    id = Column(Integer, primary_key=True)
+    revision = Column(Integer, nullable=False, default=0)
+    document = Column(JSONB, nullable=False)
+    ingress_status = Column(JSONB, nullable=False, default=dict)
+    collection_status = Column(JSONB, nullable=False, default=dict)
+    updated_at = Column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_by = Column(Text, nullable=False)
+    __table_args__ = (CheckConstraint("id = 1", name="collection_singleton"),)
+
+
+class CollectionRevision(Base):
+    __tablename__ = "collection_revisions"
+
+    revision = Column(Integer, primary_key=True)
+    document = Column(JSONB, nullable=False)
+    updated_at = Column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_by = Column(Text, nullable=False)
+
+
+class CollectionBinding(Base):
+    __tablename__ = "collection_bindings"
+
+    charger_id = Column(Text, ForeignKey("chargers.charger_id"), primary_key=True)
+    source_id = Column(Text, nullable=False)
+    local_id = Column(Text, nullable=False)
+    __table_args__ = (
+        UniqueConstraint("source_id", "local_id", name="uq_collection_source_charger"),
+    )
+
+
+class CollectionState(Base):
+    __tablename__ = "collection_state"
+
+    charger_id = Column(Text, ForeignKey("chargers.charger_id"), primary_key=True)
+    sensor_key = Column(Text, primary_key=True)
+    value = Column(JSONB, nullable=False)
+    received_at = Column(DateTime(timezone=True), nullable=False)
+    is_snapshot = Column(Boolean, nullable=False)
 
 
 class Charger(Base):
@@ -125,38 +168,6 @@ event.listen(
     Telemetry.__table__,
     "after_create",
     DDL(f"SELECT create_hypertable('{Telemetry.__tablename__}', 'timestamp');"),
-)
-
-
-def _add_telemetry_retention_policy(target, connection, **kw):
-    """
-    Add TimescaleDB retention policy to the telemetry hypertable.
-
-    This function is called after the hypertable is created to set up
-    automatic data retention based on the configured retention period.
-    Uses the cached retention_days value to prevent mid-run changes.
-    """
-    # Use cached value (already validated as integer 1-365)
-    retention_policy_sql = text(
-        f"""
-        SELECT add_retention_policy(
-            '{Telemetry.__tablename__}',
-            INTERVAL '{_RETENTION_DAYS} days',
-            if_not_exists => true
-        );
-        """
-    )
-    connection.execute(retention_policy_sql)
-    logger.info(
-        f"TimescaleDB retention policy set for '{Telemetry.__tablename__}': "
-        f"{_RETENTION_DAYS} days"
-    )
-
-
-event.listen(
-    Telemetry.__table__,
-    "after_create",
-    _add_telemetry_retention_policy,
 )
 
 
@@ -264,31 +275,6 @@ event.listen(
         "SELECT create_hypertable('monitoring_evidence', 'timestamp', "
         "if_not_exists => true);"
     ),
-)
-
-
-def _add_monitoring_evidence_retention_policy(target, connection, **kw):
-    connection.execute(
-        text(
-            f"""
-            SELECT add_retention_policy(
-                'monitoring_evidence',
-                INTERVAL '{_RETENTION_DAYS} days',
-                if_not_exists => true
-            );
-            """
-        )
-    )
-    logger.info(
-        "TimescaleDB retention policy set for 'monitoring_evidence': %s days",
-        _RETENTION_DAYS,
-    )
-
-
-event.listen(
-    MonitoringEvidence.__table__,
-    "after_create",
-    _add_monitoring_evidence_retention_policy,
 )
 
 

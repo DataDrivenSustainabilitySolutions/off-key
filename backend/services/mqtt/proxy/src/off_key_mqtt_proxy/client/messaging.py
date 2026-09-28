@@ -191,6 +191,10 @@ class MessageHandler:
     def _on_message(self, client, userdata, msg):
         """MQTT message callback - processes incoming messages"""
         try:
+            # Allow JSON escaping and envelope metadata around a 4096-byte value.
+            if len(msg.payload) > 32 * 1024:
+                self.handler_messages_dropped += 1
+                return
             message = MQTTMessage.from_mqtt_message(msg)
             self.messages_received += 1
             self.last_message_time = message.timestamp

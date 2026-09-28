@@ -1,5 +1,11 @@
 import { lazy, Suspense } from "react";
-import { BrowserRouter, Outlet, Route, Routes } from "react-router-dom";
+import {
+  createBrowserRouter,
+  createRoutesFromElements,
+  Outlet,
+  Route,
+  RouterProvider,
+} from "react-router-dom";
 import { Toaster } from "react-hot-toast";
 
 import "@/App.css";
@@ -11,6 +17,7 @@ import { ThemeProvider } from "@/components/theme-provider";
 const Account = lazy(() => import("@/pages/Account"));
 const Anomalies = lazy(() => import("@/pages/Anomalies"));
 const Details = lazy(() => import("@/pages/Details"));
+const DataSources = lazy(() => import("@/pages/DataSources"));
 const Favourites = lazy(() => import("@/pages/Favourites"));
 const ForgotPassword = lazy(() => import("@/pages/ForgotPassword"));
 const LandingPage = lazy(() => import("@/pages/Landingpage"));
@@ -21,9 +28,9 @@ const ResetPassword = lazy(() => import("@/pages/ResetPassword"));
 const Services = lazy(() => import("@/pages/Services"));
 const Verification = lazy(() => import("@/pages/Verification"));
 
-const AppRoutes = () => (
-  <Suspense fallback={<FullPageLoading message="Loading page..." />}>
-    <Routes>
+const router = createBrowserRouter(
+  createRoutesFromElements(
+    <>
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Registration />} />
       <Route path="/verify" element={<Verification />} />
@@ -41,20 +48,21 @@ const AppRoutes = () => (
         <Route path="/details/:chargerId" element={<Details />} />
         <Route path="/monitoring/:chargerId" element={<Monitoring />} />
         <Route path="/services" element={<Services />} />
+        <Route path="/sources" element={<DataSources />} />
         <Route path="/favourites" element={<Favourites />} />
         <Route path="/account" element={<Account />} />
         <Route path="/anomalies" element={<Anomalies />} />
       </Route>
-    </Routes>
-  </Suspense>
+    </>,
+  ),
 );
 
 const App = () => (
   <ThemeProvider defaultTheme="system" storageKey="vite-ui-theme">
     <AuthProvider>
-      <BrowserRouter>
-        <AppRoutes />
-      </BrowserRouter>
+      <Suspense fallback={<FullPageLoading message="Loading page..." />}>
+        <RouterProvider router={router} />
+      </Suspense>
     </AuthProvider>
     <Toaster
       position="top-right"

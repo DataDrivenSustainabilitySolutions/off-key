@@ -31,7 +31,7 @@ export const createRunScopedEmail = (): string => {
 export const loginWithEmail = async (
   page: Page,
   email: string,
-  options: LoginOptions = {}
+  options: LoginOptions = {},
 ): Promise<void> => {
   await fillAndVerifyFields([
     [page.locator("#email"), email],
@@ -45,7 +45,7 @@ export const loginWithEmail = async (
   const loginResponsePromise = page.waitForResponse(
     (response) =>
       response.request().method() === "POST" &&
-      new URL(response.url()).pathname === "/api/v1/auth/login"
+      new URL(response.url()).pathname === "/api/v1/auth/login",
   );
   await page.getByRole("button", { name: /log in/i }).click();
 
@@ -53,15 +53,16 @@ export const loginWithEmail = async (
   const loginBody = await loginResponse.text();
   expect(
     loginResponse.ok(),
-    `Login failed (${loginResponse.status()}): ${loginBody}`
+    `Login failed (${loginResponse.status()}): ${loginBody}`,
   ).toBeTruthy();
 
   await expect(page.getByPlaceholder(/search by charger id/i)).toBeVisible();
 };
 
-export const registerVerifyAndLogin = async (page: Page): Promise<string> => {
-  const email = createRunScopedEmail();
-
+export const registerVerifyAndLogin = async (
+  page: Page,
+  email = createRunScopedEmail(),
+): Promise<string> => {
   await page.goto("/");
   await expect(page).toHaveURL(/\/login$/);
   await expect(page.getByRole("heading", { name: /login/i })).toBeVisible();
@@ -81,18 +82,35 @@ export const registerVerifyAndLogin = async (page: Page): Promise<string> => {
   const registrationResponsePromise = page.waitForResponse(
     (response) =>
       response.request().method() === "POST" &&
-      new URL(response.url()).pathname === "/api/v1/auth/register"
+      new URL(response.url()).pathname === "/api/v1/auth/register",
   );
   await page.getByRole("button", { name: /register/i }).click();
 
   const registrationResponse = await registrationResponsePromise;
   const registrationBody = await registrationResponse.text();
+  const alreadyRegistered =
+    registrationResponse.status() === 400 &&
+    JSON.parse(registrationBody).detail === "Email already registered";
   expect(
-    registrationResponse.ok(),
-    `Registration failed (${registrationResponse.status()}): ${registrationBody}`
+    registrationResponse.ok() || alreadyRegistered,
+    `Registration failed (${registrationResponse.status()}): ${registrationBody}`,
   ).toBeTruthy();
 
-  await expect(page.getByText(/registration successful/i)).toBeVisible();
+  if (alreadyRegistered) {
+    const login = await page.request.post("/api/v1/auth/login", {
+      data: { email, password: PASSWORD },
+    });
+    if (login.ok()) {
+      await page.goto("/login");
+      await loginWithEmail(page, email);
+      return email;
+    }
+    expect(login.status(), await login.text()).toBe(401);
+    expect((await login.json()).detail).toBe("Email not verified");
+    // A retry may follow registration but precede email verification.
+  } else {
+    await expect(page.getByText(/registration successful/i)).toBeVisible();
+  }
 
   const verificationLink = await waitForVerificationLink(email);
   await page.goto(verificationLink);

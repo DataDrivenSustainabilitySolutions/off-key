@@ -12,7 +12,6 @@ __all__ = [
 class UserCreate(BaseModel):
     email: EmailStr
     password: str
-    role: str | None = "user"
 
 
 class UserLogin(BaseModel):

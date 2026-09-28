@@ -46,7 +46,9 @@ services:
     networks:
       - app-network
       - socket-network
+      - emqx-network
     environment:
+      - AMBIBOX_INGRESS_ENABLED=false
       - TACTIC_DOCKER_DEFAULT_NETWORK=off-key_app-network
       - TACTIC_RADAR_IMAGE=${MQTT_RADAR_IMAGE:-ghcr.io/datadrivensustainabilitysolutions/off-key-mqtt-radar:latest}
     command: [ "/app/bin/python", "-m", "off_key_tactic_middleware" ]
@@ -171,7 +173,7 @@ services:
       - MQTT_TELEMETRY_ENABLED=true
     healthcheck:
       test: [ "CMD", "/app/bin/python", "-c",
-              "import urllib.request; urllib.request.urlopen('http://localhost:8010/ready/bridge', timeout=2)" ]
+              "import urllib.request; urllib.request.urlopen('http://localhost:8010/ready', timeout=2)" ]
       interval: 5s
       timeout: 5s
       retries: 20

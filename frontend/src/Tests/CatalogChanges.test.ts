@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { catalogChanges } from "../lib/catalog-changes";
+import { catalogRemovals } from "../lib/catalog-changes";
 import type { Catalog } from "../types/collection";
 
 const catalog = (): Catalog => ({
@@ -38,65 +38,44 @@ const catalog = (): Catalog => ({
   ],
 });
 
-describe("readable catalog changes", () => {
-  it("explains inherited interval changes while respecting sensor overrides", () => {
+describe("catalog removal confirmation", () => {
+  it("does not treat metadata, rates or additions as removals", () => {
     const before = catalog();
     const after = catalog();
     after.default_policy.interval_seconds = 60;
-    const changes = catalogChanges(before, after);
-    expect(changes).toEqual([
-      {
-        title: "Fleet default",
-        details: ["Collection: Latest every 10s → Latest every 60s"],
-      },
-      {
-        title: "Yard / Charger",
-        details: [
-          "temperature (temperature) · Collection: Latest every 10s → Latest every 60s",
-        ],
-      },
-    ]);
-    expect(catalogChanges(before, catalog())).toEqual([]);
+    after.sources[0]!.host = "other.ts.net";
+    after.sources[0]!.chargers[0]!.label = "Renamed";
+    after.sources[0]!.chargers[0]!.sensors.push({
+      ...after.sources[0]!.chargers[0]!.sensors[0]!,
+      key: "voltage",
+    });
+    expect(catalogRemovals(before, after)).toEqual([]);
   });
 
-  it("includes routing, additions, removals, and an override with unchanged effective collection", () => {
+  it("names removed parents once, and individual removed measurements", () => {
     const before = catalog();
     const after = catalog();
-    const source = after.sources[0]!;
-    const charger = source.chargers[0]!;
-    source.host = "new-yard.ts.net";
-    source.verified = false;
-    charger.local_id = "1";
-    charger.sensors = [
-      {
-        ...charger.sensors[0]!,
-        upstream_topic: "device/evCharger/1/temperature",
-        policy: { mode: "sample", interval_seconds: 10 },
-      },
-      {
-        ...charger.sensors[0]!,
-        key: "voltage",
-        label: "Voltage",
-        upstream_topic: "device/evCharger/1/voltage",
-        policy: { mode: "off", interval_seconds: 10 },
-      },
-    ];
-    const details = catalogChanges(before, after)
-      .flatMap((group) => group.details)
-      .join("\n");
-    expect(details).toContain(
-      "Endpoint: yard.ts.net:1883 → new-yard.ts.net:1883",
-    );
-    expect(details).toContain("Evidence: Observed broker → Candidate host");
-    expect(details).toContain("Local charger ID: 0 → 1");
-    expect(details).toContain("Override: Use default → Latest every 10s");
-    expect(details).toContain(
-      "Topic: device/evCharger/0/temperature → device/evCharger/1/temperature",
-    );
-    expect(details).toContain("power (power): Remove sensor");
-    expect(details).toContain("Voltage (voltage): Add sensor · Paused");
-    expect(catalogChanges(before, { ...after, sources: [] })).toEqual([
-      { title: "Yard", details: ["Remove broker and its 1 chargers"] },
-    ]);
+    after.sources[0]!.chargers[0]!.sensors.pop();
+    expect(catalogRemovals(before, after)).toEqual(["Charger · power"]);
+    after.sources[0]!.chargers = [];
+    expect(catalogRemovals(before, after)).toEqual(["Charger Charger"]);
+    after.sources = [];
+    expect(catalogRemovals(before, after)).toEqual(["Broker Yard"]);
+  });
+
+  it("recognizes measurement key changes as removal of the old identity", () => {
+    const before = catalog();
+    const after = catalog();
+    after.sources[0]!.chargers[0]!.sensors[0]!.key = "new-temperature";
+    expect(catalogRemovals(before, after)).toEqual(["Charger · temperature"]);
+  });
+
+  it("does not mistake a charger moved between existing brokers for deletion", () => {
+    const before = catalog();
+    before.sources.push({ ...before.sources[0]!, id: "second", chargers: [] });
+    const after = structuredClone(before);
+    after.sources[1]!.chargers = after.sources[0]!.chargers;
+    after.sources[0]!.chargers = [];
+    expect(catalogRemovals(before, after)).toEqual([]);
   });
 });

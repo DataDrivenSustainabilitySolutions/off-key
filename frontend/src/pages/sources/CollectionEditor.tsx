@@ -158,7 +158,7 @@ export function CollectionEditor({
             .{" "}
             {readOnly
               ? "An administrator can change collection."
-              : "Unchecked measurements will be paused. Other chargers stay unchanged."}
+              : "Unchecked measurements will be off. Other chargers stay unchanged."}
           </SheetDescription>
           {names.length > 1 && (
             <details className="text-xs text-muted-foreground">
@@ -454,7 +454,7 @@ export function CollectionEditor({
             )}
             <p className="text-sm" role="status">
               {selected.length === 0
-                ? "All measurements on these chargers will be paused."
+                ? "Collection will be off for these chargers."
                 : `${selected.length} ${selected.length === 1 ? "measurement" : "measurements"} chosen · ${rate ? policyLabel(rate) : "Individual rates"}`}
             </p>
             {!valid && (
@@ -465,7 +465,7 @@ export function CollectionEditor({
             <p className="text-xs text-muted-foreground">
               {readOnly
                 ? "View only · these are the saved collection settings."
-                : "This updates your draft. Collection changes only after Review changes → Apply collection."}
+                : "Choose Done to keep these edits, then Save changes to apply them."}
             </p>
             <div className="flex justify-end gap-2">
               <Button type="button" variant="outline" onClick={onClose}>
@@ -473,7 +473,7 @@ export function CollectionEditor({
               </Button>
               {!readOnly && (
                 <Button type="submit" disabled={disabled || !valid}>
-                  Update draft
+                  Done
                 </Button>
               )}
             </div>

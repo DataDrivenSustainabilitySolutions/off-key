@@ -74,41 +74,34 @@ test("selects only temperature on mobile and collects only that measurement", as
     await editor
       .getByLabel("Collection interval in seconds", { exact: true })
       .fill("1");
-    await expect(
-      editor.getByRole("button", { name: "Update draft" }),
-    ).toBeInViewport();
+    await expect(editor.getByRole("button", { name: "Done" })).toBeInViewport();
     expect(
       await page.evaluate(
         () => document.documentElement.scrollWidth <= window.innerWidth,
       ),
     ).toBe(true);
-    await editor.getByRole("button", { name: "Update draft" }).click();
+    await editor.getByRole("button", { name: "Done" }).click();
     // Updating the draft must not write the catalog yet.
     const stillSaved = (await (
       await api.get("/api/v1/sources", { headers })
     ).json()) as CatalogSnapshot;
     expect(stillSaved.revision).toBe(snapshot.revision + 1);
     page.once("dialog", async (dialog) => {
-      expect(dialog.message()).toContain("unsaved collection draft");
+      expect(dialog.message()).toContain("unsaved changes");
       await dialog.dismiss();
     });
-    await page
-      .getByRole("link", { name: "View telemetry", exact: true })
-      .click();
+    await page.getByRole("button", { name: "User menu", exact: true }).click();
+    await page.getByRole("menuitem", { name: "Account", exact: true }).click();
     await expect(page).toHaveURL(/\/sources$/);
-    await page
-      .getByRole("button", { name: "Review changes", exact: true })
-      .click();
-    const review = page.getByRole("dialog", {
-      name: "Review collection changes",
-    });
     await expect(
-      review.getByText("Temperature · Latest every 1s · 1 measurement", {
-        exact: true,
-      }),
+      page.getByText("Latest every 1s", { exact: true }),
     ).toBeVisible();
-    await review.getByRole("button", { name: "Apply collection" }).click();
-    await expect(review).not.toBeVisible();
+    await page
+      .getByRole("button", { name: "Save changes", exact: true })
+      .click();
+    await expect(
+      page.getByText("Changes saved", { exact: true }),
+    ).toBeVisible();
 
     const applied = (await (
       await api.get("/api/v1/sources", { headers })

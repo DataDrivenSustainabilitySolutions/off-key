@@ -14,8 +14,8 @@ for any deployed environment. Local `.env` files are intentionally not tracked.
 
 ## Development validation
 
-The supported local toolchain matches CI: Python 3.12 with `uv` for the backend
-workspace, and Node.js 24 with `npm` for the frontend.
+The container runtime uses Python 3.14; CI tests the backend on Python 3.12 and
+3.14. Use `uv` for the backend workspace and Node.js 24 with `npm` for the frontend.
 
 ```bash
 uv sync --project backend --all-packages --all-groups --frozen

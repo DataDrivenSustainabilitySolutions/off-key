@@ -92,16 +92,7 @@ const snapshot = (catalog = empty, can_edit = true): CatalogSnapshot => ({
   updated_at: null,
   updated_by: null,
 });
-const mockSnapshot = (value = snapshot()) =>
-  api.get.mockImplementation(async (url: string) =>
-    url === "/v1/sources/storage"
-      ? {
-          database_size_bytes: 10000000,
-          retention_policies: [],
-          checked_at: "2026-09-27T12:00:00Z",
-        }
-      : value,
-  );
+const mockSnapshot = (value = snapshot()) => api.get.mockResolvedValue(value);
 const show = () => {
   const router = createMemoryRouter(
     [

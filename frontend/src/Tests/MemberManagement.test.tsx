@@ -32,14 +32,14 @@ afterEach(cleanup);
 
 it("shows member access without offering administrator controls", () => {
   auth.isAdmin = false;
-  render(<Account />);
+  render(<MemoryRouter><Account /></MemoryRouter>);
   expect(screen.queryByRole("button", { name: "Send invitation" })).toBeNull();
   expect(getMembers).not.toHaveBeenCalled();
   expect(screen.getByText(/All active members can view/)).toBeTruthy();
 });
 
 it("invites colleagues and updates their role", async () => {
-  render(<Account />);
+  render(<MemoryRouter><Account /></MemoryRouter>);
   await screen.findByText(member.email);
   fireEvent.change(screen.getByLabelText("Email"), { target: { value: "colleague@example.com" } });
   fireEvent.click(screen.getByRole("button", { name: "Send invitation" }));
@@ -53,7 +53,7 @@ it("invites colleagues and updates their role", async () => {
 it("disables a member after confirmation and reports API failures", async () => {
   vi.spyOn(window, "confirm").mockReturnValue(true);
   updateMember.mockRejectedValue(new Error("Keep at least one active administrator"));
-  render(<Account />);
+  render(<MemoryRouter><Account /></MemoryRouter>);
   await screen.findByText(member.email);
   const enabled = screen.getAllByRole("button", { name: "Disable" }).find((button) => !(button as HTMLButtonElement).disabled);
   fireEvent.click(enabled!);

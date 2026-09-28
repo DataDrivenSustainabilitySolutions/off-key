@@ -26,6 +26,7 @@ const Monitoring = lazy(() => import("@/pages/Monitoring"));
 const Registration = lazy(() => import("@/pages/Registration"));
 const ResetPassword = lazy(() => import("@/pages/ResetPassword"));
 const Services = lazy(() => import("@/pages/Services"));
+const Settings = lazy(() => import("@/pages/Settings"));
 const Verification = lazy(() => import("@/pages/Verification"));
 
 const router = createBrowserRouter(
@@ -51,6 +52,7 @@ const router = createBrowserRouter(
         <Route path="/sources" element={<DataSources />} />
         <Route path="/favourites" element={<Favourites />} />
         <Route path="/account" element={<Account />} />
+        <Route path="/account/settings" element={<Settings />} />
         <Route path="/anomalies" element={<Anomalies />} />
       </Route>
     </>,

@@ -293,6 +293,5 @@ An intervening revision disables editing/applying until the saved catalog is
 reloaded. Export a draft first if you need to preserve it. **Discard draft** asks
 before replacing unsaved edits. Browser refresh/close also warns about a staged
 draft. Navigating to another page or using browser Back also asks before
-discarding a staged draft; cancelling keeps the draft on screen. Detailed
-connection, queue and storage information is under **Live
-diagnostics and storage**.
+discarding a staged draft; cancelling keeps the draft on screen. Connection and queue information is under **Live diagnostics**.
+Storage usage and retention policies are under **Account → Settings**.

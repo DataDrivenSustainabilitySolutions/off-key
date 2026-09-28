@@ -23,7 +23,6 @@ import { effectivePolicy, runtimeLabel } from "@/types/collection";
 import { CatalogPanel } from "./sources/CatalogPanel";
 import { CollectionPanel } from "./sources/CollectionPanel";
 import { CollectionReview } from "./sources/CollectionReview";
-import { StorageSummary } from "./sources/StorageSummary";
 import { CollectionHealth } from "./sources/CollectionHealth";
 
 const endpoint = "/v1/sources";
@@ -376,11 +375,10 @@ export default function DataSources() {
         </Activity>
         <details className="rounded-xl border bg-card p-5">
           <summary className="cursor-pointer font-medium">
-            Live diagnostics and storage
+            Live diagnostics
           </summary>
           <div className="mt-5 space-y-5">
             <CollectionHealth snapshot={snapshot} />
-            <StorageSummary />
           </div>
         </details>
         {changed && snapshot.can_edit && (

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { useAuth } from "@/auth/AuthContext";
 import { NavigationBar } from "@/components/NavigationBar";
 import { PageHeader, PageShell, SectionPanel } from "@/components/DashboardLayout";
@@ -66,7 +67,16 @@ export default function AccountPage() {
     <>
       <NavigationBar />
       <PageShell>
-        <PageHeader eyebrow="Organization" title="Account" description="This installation is a shared workspace for one organization." />
+        <PageHeader
+          eyebrow="Organization"
+          title="Account"
+          description="This installation is a shared workspace for one organization."
+          actions={
+            <Button variant="outline" asChild>
+              <Link to="/account/settings">Settings</Link>
+            </Button>
+          }
+        />
         <SectionPanel title="Your account" description="All active members can view the organization's data. Administrators manage members, collection, and monitoring.">
           <p className="text-sm">{member?.email} · {isAdmin ? "Administrator" : "Member"}</p>
         </SectionPanel>

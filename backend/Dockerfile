@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 FROM ghcr.io/astral-sh/uv:0.12.19 AS uv
-FROM python:3.12-slim-bookworm AS builder
+FROM python:3.14-slim-bookworm AS builder
 
 # Build context MUST be backend/
 
@@ -17,12 +17,12 @@ COPY --from=uv /uv /uvx /bin/
 # - Silence uv complaining about not being able to use hard links,
 # - Tell uv to byte-compile packages for faster application startups,
 # - Prevent uv from accidentally downloading isolated Python builds,
-# - Pick a Python (use `/usr/bin/python3.12` on uv 0.5.0 and later),
+# - Use the Python interpreter supplied by the base image,
 # - Declare `/app` as the target for `uv sync`.
 ENV UV_LINK_MODE=copy \
     UV_COMPILE_BYTECODE=1 \
     UV_PYTHON_DOWNLOADS=never \
-    UV_PYTHON=python3.12 \
+    UV_PYTHON=/usr/local/bin/python \
     UV_PROJECT_ENVIRONMENT=/app
 
 # Set project path
@@ -63,7 +63,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 RUN if [ "$SERVICE_NAME" = "off-key-mqtt-radar" ]; then /app/bin/python -m off_key_mqtt_radar.catalog --check; fi
 
 ########################################################################################################################
-FROM python:3.12-slim-bookworm
+FROM python:3.14-slim-bookworm
 
 # Optional: add the application virtualenv to search path.
 ENV PATH=/app/bin:$PATH

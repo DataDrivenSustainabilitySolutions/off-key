@@ -68,13 +68,13 @@ services:
       retries: 20
       start_period: 10s
     command: ["uvicorn", "off_key_api_gateway.main:app",
-              "--reload", "--reload-dir", "/app/lib/python3.12/site-packages/off_key_api_gateway",
+              "--reload", "--reload-dir", "/app/lib/python3.14/site-packages/off_key_api_gateway",
               "--host", "0.0.0.0", "--port", "8000"]
     develop:
       watch:
         - action: sync
           path: backend/services/api/gateway/src/off_key_api_gateway
-          target: /app/lib/python3.12/site-packages/off_key_api_gateway
+          target: /app/lib/python3.14/site-packages/off_key_api_gateway
         - action: rebuild
           path: ./backend/uv.lock
 
@@ -233,7 +233,7 @@ services:
       watch:
         - action: sync
           path: backend/services/db/sync/src/off_key_db_sync
-          target: /app/lib/python3.12/site-packages/off_key_db_sync
+          target: /app/lib/python3.14/site-packages/off_key_db_sync
         - action: rebuild
           path: ./backend/uv.lock
 

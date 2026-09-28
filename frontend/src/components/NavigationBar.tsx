@@ -8,7 +8,6 @@ import {
   Menu,
   ServerCog,
   Database,
-  Star,
   UserCircle,
 } from "lucide-react";
 
@@ -52,7 +51,6 @@ type NavItem = {
 
 const primaryNavItems: NavItem[] = [
   { href: "/", label: "Dashboard", icon: Home },
-  { href: "/favourites", label: "Favorites", icon: Star },
   { href: "/services", label: "Services", icon: ServerCog },
   { href: "/sources", label: "Data sources", icon: Database },
   { href: "/anomalies", label: "Anomalies", icon: AlertTriangle },

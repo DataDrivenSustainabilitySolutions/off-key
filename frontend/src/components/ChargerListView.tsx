@@ -42,6 +42,7 @@ interface ChargerListControlsProps {
   countAll: number;
   countOnline: number;
   countOffline: number;
+  countFavorites: number;
   isCardsView: boolean;
   onCardsViewChange: (checked: boolean) => void;
   viewToggleTooltip?: string;
@@ -50,11 +51,12 @@ interface ChargerListControlsProps {
 const statusOptions: Array<{
   value: ChargerStatusFilter;
   label: string;
-  countKey: "countAll" | "countOnline" | "countOffline";
+  countKey: "countAll" | "countOnline" | "countOffline" | "countFavorites";
 }> = [
   { value: "all", label: "All", countKey: "countAll" },
   { value: "online", label: "Online", countKey: "countOnline" },
   { value: "offline", label: "Offline", countKey: "countOffline" },
+  { value: "favorites", label: "Favorites", countKey: "countFavorites" },
 ];
 
 export function ChargerListControls({
@@ -67,12 +69,13 @@ export function ChargerListControls({
   countAll,
   countOnline,
   countOffline,
+  countFavorites,
   isCardsView,
   onCardsViewChange,
   viewToggleTooltip,
 }: ChargerListControlsProps) {
   const statusGroupName = useId();
-  const counts = { countAll, countOnline, countOffline };
+  const counts = { countAll, countOnline, countOffline, countFavorites };
   const switchControl = (
     <Switch aria-label="Card view" checked={isCardsView} onCheckedChange={onCardsViewChange} />
   );
@@ -92,12 +95,12 @@ export function ChargerListControls({
           />
         </div>
 
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end lg:items-center">
+          <div className="flex flex-col gap-2 xl:flex-row xl:items-center">
             <span className="text-sm font-medium text-muted-foreground">
               {statusLabel}
             </span>
-            <div role="group" aria-label={statusLabel} className="grid grid-cols-3 rounded-xl border border-border/70 bg-muted/35 p-1">
+            <div role="group" aria-label={statusLabel} className="grid grid-cols-2 rounded-xl border border-border/70 bg-muted/35 p-1 sm:grid-cols-4">
               {statusOptions.map((option) => (
                 <label
                   key={option.value}

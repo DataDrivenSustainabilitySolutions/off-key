@@ -23,12 +23,12 @@ Use this page for account, charger, favourites, monitoring-service, and anomaly 
 | `/details/:chargerId` | Telemetry details for one charger | Authenticated |
 | `/monitoring/:chargerId` | Configure monitoring for one charger | Authenticated |
 | `/services` | Inspect and remove monitoring services | Authenticated |
-| `/favourites` | View favourite chargers | Authenticated |
+| `/?state=favorites` | Dashboard filtered to favourite chargers | Authenticated |
 | `/anomalies` | Review recent anomaly events | Authenticated |
 | `/account` | User profile and account actions | Authenticated |
 
 !!! note
-    The route uses British spelling: `/favourites`.
+    Existing `/favourites` bookmarks redirect to the dashboard's Favorites filter.
 
 ## Authentication workflow
 
@@ -53,10 +53,11 @@ also manage data sources, monitors, and anomalies.
 ## Favourites workflow
 
 1. Add or remove a favourite from a charger view.
-2. Open `/favourites` to see the current list.
+2. Select **Favorites** under **Charger State** on the dashboard to see the current list. Search and card/table views work with this filter.
 3. Select a favourite to return to its charger details.
 
-Favourites are scoped to the signed-in user.
+Favourites are scoped to the signed-in user. Removing a favourite immediately
+removes it from the filtered list; if saving fails, it is restored.
 
 ## Services workflow
 

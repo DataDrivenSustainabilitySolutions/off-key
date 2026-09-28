@@ -206,7 +206,7 @@ FastAPI validation errors and Gateway-propagated TACTIC errors use a `detail` fi
 ## Compatibility notes
 
 - The current active-ID Gateway route is singular: `/chargers/active/id`.
-- The Gateway API family remains `/favorites`; `/favourites` is only the frontend route spelling.
+- The Gateway API family remains `/favorites`. The dashboard's Favorites filter uses `/?state=favorites`; the old `/favourites` frontend route redirects there.
 - Removed sync and preprocessor-discovery routes must not be used by new clients.
 
 ## Related pages

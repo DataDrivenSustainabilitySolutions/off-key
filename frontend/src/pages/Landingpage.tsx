@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
+import { useSearchParams } from "react-router-dom";
 import { useAuth } from "@/auth/AuthContext";
 import {
   ChargerListControls,
@@ -27,7 +28,12 @@ import type { Charger } from "@/types/charger";
 export default function ChargerTable() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState<ChargerStatusFilter>("all");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const state = searchParams.get("state");
+  const statusFilter: ChargerStatusFilter =
+    state === "online" || state === "offline" || state === "favorites"
+      ? state
+      : "all";
   const [isCardsView, setIsCardsView] = useState(false);
   const [favoriteChargerIds, setFavoriteChargerIds] = useState<string[]>([]);
   const [data, setData] = useState<Charger[]>([]);
@@ -83,8 +89,13 @@ export default function ChargerTable() {
     };
   }, [userId]);
 
-  const filteredData = filterChargerData(data, searchTerm, statusFilter);
+  const filteredData = filterChargerData(
+    data, searchTerm, statusFilter, favoriteChargerIds
+  );
   const statusCounts = getChargerStatusCounts(data);
+  const favoriteCount = data.filter((charger) =>
+    favoriteChargerIds.includes(charger.charger_id)
+  ).length;
 
   const handleViewToggle = (checked: boolean) => {
     setIsCardsView(checked);
@@ -150,10 +161,18 @@ export default function ChargerTable() {
           searchPlaceholder="Search by Charger ID..."
           statusLabel="Charger State:"
           statusFilter={statusFilter}
-          onStatusFilterChange={setStatusFilter}
+          onStatusFilterChange={(filter) =>
+            setSearchParams((current) => {
+              const next = new URLSearchParams(current);
+              if (filter === "all") next.delete("state");
+              else next.set("state", filter);
+              return next;
+            }, { replace: true })
+          }
           countAll={statusCounts.all}
           countOnline={statusCounts.online}
           countOffline={statusCounts.offline}
+          countFavorites={favoriteCount}
           isCardsView={isCardsView}
           onCardsViewChange={handleViewToggle}
           viewToggleTooltip={

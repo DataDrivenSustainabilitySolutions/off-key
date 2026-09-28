@@ -1,11 +1,12 @@
 import type { Charger } from "@/types/charger";
 
-export type ChargerStatusFilter = "all" | "online" | "offline";
+export type ChargerStatusFilter = "all" | "online" | "offline" | "favorites";
 
 export const filterChargerData = (
   data: Charger[],
   searchTerm: string,
-  statusFilter: ChargerStatusFilter
+  statusFilter: ChargerStatusFilter,
+  favoriteChargerIds: readonly string[]
 ) =>
   data
     .filter(
@@ -17,6 +18,7 @@ export const filterChargerData = (
       if (statusFilter === "all") return true;
       if (statusFilter === "online") return charger.online === true;
       if (statusFilter === "offline") return charger.online === false;
+      if (statusFilter === "favorites") return favoriteChargerIds.includes(charger.charger_id);
       return true;
     });
 

@@ -6,6 +6,7 @@ from pathlib import Path
 import httpx
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from off_key_core.api_docs import router as api_docs_router
 from off_key_core.config.app import get_app_settings
 from off_key_core.config.auth import get_auth_settings
 from off_key_core.config.email import get_email_settings
@@ -116,7 +117,10 @@ app = FastAPI(
     title=app_settings.APP_NAME,
     description="aberration API Gateway - Real-time Anomaly Detection Platform",
     lifespan=lifespan,
+    docs_url=None,
+    redoc_url=None,
 )
+app.include_router(api_docs_router)
 
 # Middleware
 app.state.limiter = limiter

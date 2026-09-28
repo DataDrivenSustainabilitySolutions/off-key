@@ -23,7 +23,7 @@ setup(
     await expect(page.getByLabel(/online/i)).toBeVisible();
     await expect(page.getByLabel(/offline/i)).toBeVisible();
     await expect(page.getByRole("switch")).toBeVisible();
-    await expect(page.getByRole("link", { name: /off\/key/i })).toBeVisible();
+    await expect(page.getByRole("link", { name: "aberration", exact: true })).toBeVisible();
     await expect
       .poll(async () => page.getByText(/loading data/i).count())
       .toBe(0);

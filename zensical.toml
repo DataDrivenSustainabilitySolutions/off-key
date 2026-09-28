@@ -1,6 +1,6 @@
 [project]
-site_name = "Off-Key"
-site_description = "Documentation for the Off-Key predictive-maintenance platform."
+site_name = "aberration"
+site_description = "Documentation for the aberration predictive-maintenance platform."
 site_url = "https://datadrivensustainabilitysolutions.github.io/off-key/"
 repo_url = "https://github.com/DataDrivenSustainabilitySolutions/off-key"
 repo_name = "DataDrivenSustainabilitySolutions/off-key"
@@ -45,6 +45,8 @@ nav = [
 ]
 
 [project.theme]
+logo = "assets/favicon.svg"
+favicon = "assets/favicon.svg"
 features = [
   "navigation.instant",
   "navigation.sections",

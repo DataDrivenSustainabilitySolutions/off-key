@@ -173,6 +173,8 @@ def test_db_engine_uses_runtime_debug_without_app_name(monkeypatch):
     engine = db_base.get_engine()
     async_engine = db_base.get_async_engine()
 
+    assert engine.dialect.driver == "psycopg2"
+    assert async_engine.dialect.driver == "asyncpg"
     assert engine.echo is True
     assert async_engine.echo is True
 
@@ -203,7 +205,8 @@ def test_database_url_encodes_reserved_url_component_characters():
 
     assert (
         settings.database_url
-        == "postgresql://user%40name:p%40ss%3Aword%2F%3F%23%5B%5D@localhost:5432/db%2Fname%3Fx%23y%40z"
+        == "postgresql+psycopg2://user%40name:p%40ss%3Aword%2F%3F%23%5B%5D"
+        "@localhost:5432/db%2Fname%3Fx%23y%40z"
     )
     assert (
         settings.async_database_url

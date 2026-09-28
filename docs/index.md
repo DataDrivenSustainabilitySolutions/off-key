@@ -1,6 +1,6 @@
-# Off-Key documentation
+# aberration documentation
 
-Documentation for the Off-Key predictive-maintenance platform.
+Documentation for the aberration predictive-maintenance platform.
 
 Use the guides below for setup, operation, and development. The **Archive** retains material from the former GitHub wiki for reference.
 

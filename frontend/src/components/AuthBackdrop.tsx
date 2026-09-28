@@ -30,8 +30,8 @@ export function AuthBackdrop({
               focusable="false"
             >
               <path
-                className="auth-monogram-bolt"
-                d="M35 8 20 34h12l-3 22 16-30H33l2-18Z"
+                className="auth-monogram-slash"
+                d="M37 12h9L27 52h-9Z"
               />
             </svg>
           </span>

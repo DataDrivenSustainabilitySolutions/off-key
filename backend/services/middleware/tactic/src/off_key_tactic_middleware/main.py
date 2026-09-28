@@ -12,6 +12,7 @@ from pathlib import Path
 import uvicorn
 from fastapi import APIRouter, Depends, FastAPI, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
+from off_key_core.api_docs import router as api_docs_router
 from off_key_core.config.auth import get_auth_settings
 from off_key_core.config.env import load_env
 from off_key_core.config.logs import (
@@ -247,12 +248,13 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title=config.service_name,
         description="Timely Anomaly Communication / "
-        "Task Instance Control for off-key platform",
+        "Task Instance Control for aberration",
         version=config.service_version,
-        docs_url="/docs",
-        redoc_url="/redoc",
+        docs_url=None,
+        redoc_url=None,
         lifespan=lifespan,
     )
+    app.include_router(api_docs_router)
 
     # Add CORS middleware
     app.add_middleware(

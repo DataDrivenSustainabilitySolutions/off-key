@@ -134,12 +134,12 @@
     transform-origin: center;
   }
 
-  .auth-monogram-bolt {
+  .auth-monogram-slash {
     fill: hsl(var(--primary) / 0.035);
     stroke-width: 3.2;
   }
 
-  .dark .auth-monogram-bolt {
+  .dark .auth-monogram-slash {
     fill: hsl(var(--primary) / 0.055);
   }
 

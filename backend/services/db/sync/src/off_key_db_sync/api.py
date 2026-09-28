@@ -6,6 +6,7 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException
+from off_key_core.api_docs import router as api_docs_router
 from off_key_core.config.logs import logger
 
 # Global reference to sync service (set by main)
@@ -28,10 +29,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
 # FastAPI app
 app = FastAPI(
-    title="Off-Key Database Sync Service",
+    title="aberration Database Sync Service",
     description="Database schema initialization and readiness service",
     lifespan=lifespan,
+    docs_url=None,
+    redoc_url=None,
 )
+app.include_router(api_docs_router)
 
 
 @app.get("/health", tags=["Health"])

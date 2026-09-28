@@ -359,6 +359,7 @@ async def test_catalog_api_authorization_revisions_and_monitor_pause(
                 "user_id": user_id,
                 "sub": email,
                 "role": "admin",
+                "session_version": 0,
                 "iss": settings.JWT_ISSUER,
                 "aud": settings.JWT_AUDIENCE,
                 "exp": datetime.now(UTC) + timedelta(minutes=5),

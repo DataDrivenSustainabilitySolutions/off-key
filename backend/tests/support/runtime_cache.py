@@ -12,6 +12,7 @@ from off_key_core.config.database import get_database_settings
 from off_key_core.config.email import get_email_settings
 from off_key_core.config.logging import get_logging_settings
 from off_key_core.config.runtime import get_runtime_settings
+from off_key_core.config.service_auth import get_service_auth_settings
 from off_key_core.config.services import _clear_service_endpoints_settings_cache
 from off_key_core.config.telemetry import get_telemetry_settings
 from off_key_core.db.base import reset_db_runtime_caches
@@ -21,6 +22,7 @@ def reset_runtime_caches_for_tests() -> None:
     """Clear runtime caches for deterministic tests and local test tooling."""
     get_app_settings.cache_clear()
     get_auth_settings.cache_clear()
+    get_service_auth_settings.cache_clear()
     get_database_settings.cache_clear()
     get_email_settings.cache_clear()
     get_logging_settings.cache_clear()

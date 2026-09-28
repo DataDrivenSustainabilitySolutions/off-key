@@ -34,43 +34,10 @@ def reset_mail_runtime_caches() -> None:
     get_mail_config.cache_clear()
 
 
-async def send_verification_email(email: str, token: str):
-    start_time = time.time()
-    settings = get_email_settings()
-    verification_link = f"{settings.FRONTEND_BASE_URL}/verify?token={token}"
-
-    try:
-        message = MessageSchema(
-            subject="Email Verification",
-            recipients=[email],
-            body=f"Please verify your email by clicking this link: {verification_link}",
-            subtype=MessageType.plain,
-        )
-        fm = FastMail(get_mail_config())
-        await fm.send_message(message)
-
-        logger.info(
-            "event=mail.verification_sent recipient=%s",
-            redact_email(email),
-        )
-        log_security_event("verification_email_sent", email, {"type": "registration"})
-        log_performance("send_verification_email", start_time)
-
-    except Exception as e:
-        logger.error(
-            "event=mail.verification_send_failed recipient=%s error=%s",
-            redact_email(email),
-            str(e),
-            exc_info=True,
-        )
-        log_security_event("verification_email_failed", email, {"error": str(e)})
-        raise
-
-
 async def send_password_reset_email(email: str, token: str):
     start_time = time.time()
     settings = get_email_settings()
-    reset_link = f"{settings.FRONTEND_BASE_URL}/reset-password?token={token}"
+    reset_link = f"{settings.FRONTEND_BASE_URL}/reset-password#token={token}"
 
     try:
         message = MessageSchema(
@@ -148,3 +115,16 @@ async def send_anomaly_alert_email(anomaly: dict):
             exc_info=True,
         )
         raise
+
+
+async def send_invitation_email(email: str, token: str):
+    settings = get_email_settings()
+    link = f"{settings.FRONTEND_BASE_URL.rstrip('/')}/register#token={token}"
+    message = MessageSchema(
+        subject="Your off/key invitation",
+        recipients=[email],
+        body=f"You have been invited to this organization's off/key installation.\n\n"
+        f"Choose your password: {link}\n\nThis link expires in 48 hours.",
+        subtype=MessageType.plain,
+    )
+    await FastMail(get_mail_config()).send_message(message)

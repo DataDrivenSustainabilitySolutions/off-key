@@ -16,6 +16,7 @@ from off_key_core.config.logs import (
     logger,
 )
 from off_key_core.config.runtime import get_runtime_settings
+from off_key_core.config.service_auth import get_service_auth_settings
 from off_key_core.config.services import get_service_endpoints_settings
 from off_key_core.config.validation import validate_settings
 from slowapi.middleware import SlowAPIMiddleware
@@ -32,6 +33,7 @@ validate_settings(
         ("app", get_app_settings),
         ("runtime", get_runtime_settings),
         ("auth", get_auth_settings),
+        ("service_auth", get_service_auth_settings),
         ("email", get_email_settings),
         ("services", get_service_endpoints_settings),
     ],

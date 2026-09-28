@@ -55,8 +55,12 @@ export const validatePassword = (password: string): ValidationResult => {
     return { isValid: false, message: VALIDATION_MESSAGES.REQUIRED_FIELD };
   }
 
-  if (password.length < AUTH_CONFIG.PASSWORD_MIN_LENGTH) {
+  if ([...password].length < AUTH_CONFIG.PASSWORD_MIN_LENGTH) {
     return { isValid: false, message: VALIDATION_MESSAGES.PASSWORD_TOO_SHORT };
+  }
+
+  if (new TextEncoder().encode(password).length > 72) {
+    return { isValid: false, message: "Password must be no more than 72 UTF-8 bytes." };
   }
 
   return { isValid: true };

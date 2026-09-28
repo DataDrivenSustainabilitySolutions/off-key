@@ -1,12 +1,15 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { tokenManager } from "@/lib/api-client";
 import { getUserIdFromToken, parseNumericUserId } from "./token";
+import { getCurrentMember, type Member } from "@/lib/member-api";
 
 interface AuthContextType {
   isAuthenticated: boolean;
   token: string | null;
   userId: number | null;
   isLoading: boolean;
+  member: Member | null;
+  isAdmin: boolean;
   login: (token: string, rememberMe?: boolean, userId?: unknown) => void;
   logout: () => void;
 }
@@ -34,6 +37,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
   const [{ token, userId }, setAuthState] = useState(getInitialAuthState);
+  const [profile, setProfile] = useState<{ token: string; member: Member } | null>(null);
+
+  useEffect(() => {
+    if (!token) return;
+    let cancelled = false;
+    getCurrentMember().then((member) => {
+      if (!cancelled) setProfile({ token, member });
+    }).catch(() => {
+      if (!cancelled) {
+        tokenManager.removeToken();
+        setAuthState({ token: null, userId: null });
+      }
+    });
+    return () => { cancelled = true; };
+  }, [token]);
 
   useEffect(() => {
     const savedToken = tokenManager.getToken();
@@ -64,11 +82,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   };
 
   const isAuthenticated = !!token && !tokenManager.isTokenExpired(token);
-  const isLoading = false;
+  const member = profile?.token === token ? profile.member : null;
+  const isLoading = isAuthenticated && member === null;
+  const isAdmin = member?.role === "admin";
 
   return (
     <AuthContext.Provider
-      value={{ isAuthenticated, token, userId, isLoading, login, logout }}
+      value={{ isAuthenticated, token, userId, member, isAdmin, isLoading, login, logout }}
     >
       {children}
     </AuthContext.Provider>

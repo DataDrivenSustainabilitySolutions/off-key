@@ -12,6 +12,7 @@ import { buildDeviceTelemetryChargerFilter } from "@/lib/mqtt-topics";
 import { getServiceDeleteActionDisplay } from "@/types/monitoring";
 import type { ActiveService } from "@/types/monitoring";
 import type { MonitoringStrategy } from "@/types/monitoring";
+import { useAuth } from "@/auth/AuthContext";
 import { Activity, Database } from "lucide-react";
 import { useMemo, useState } from "react";
 import toast from "react-hot-toast";
@@ -30,6 +31,7 @@ function Monitoring() {
 }
 
 function ChargerMonitoring({ chargerId }: { chargerId: string }) {
+  const { isAdmin } = useAuth();
   const data = useMonitoringData(chargerId);
   const sensorTypes = data.sensors.data;
   const models = data.models.data;
@@ -124,6 +126,7 @@ function ChargerMonitoring({ chargerId }: { chargerId: string }) {
           />
         </div>
 
+        {isAdmin && <>
         <SectionPanel title="Choose a monitoring lane" description="Static monitoring freezes its fitted detector; adaptive monitoring learns after every score.">
           <div className="grid gap-4 lg:grid-cols-2">
             <LaneCard title="Static relationships" eyebrow="Conformal evidence" description="Train once, calibrate p-values, then accumulate sequential martingale evidence." selected={selectedLane === "static_baseline"} onSelect={() => setSelectedLane("static_baseline")} icon={Database} />
@@ -137,6 +140,8 @@ function ChargerMonitoring({ chargerId }: { chargerId: string }) {
           <AdaptiveMonitoringSetup chargerId={chargerId} sensorTypes={sensorTypes} claimsBySensor={claimsBySensor} adaptiveModels={adaptiveModels} loadingModels={loadingModels} onStarted={loadServices} />
         )}
 
+        </>}
+
         <MonitoringDataPanels
           services={services}
           anomalies={anomalies}
@@ -144,7 +149,7 @@ function ChargerMonitoring({ chargerId }: { chargerId: string }) {
           loadingAnomalies={loadingAnomalies}
           onRefreshServices={() => void loadServices()}
           onRefreshAnomalies={() => void loadAnomalies()}
-          onDeleteService={(service) => void deleteService(service)}
+          onDeleteService={isAdmin ? (service) => void deleteService(service) : undefined}
         />
       </PageShell>
     </>

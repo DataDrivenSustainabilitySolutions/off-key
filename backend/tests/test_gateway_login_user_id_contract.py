@@ -1,15 +1,9 @@
 import pytest
+from fastapi import FastAPI
+from httpx import ASGITransport, AsyncClient
 from jose import jwt
 from off_key_api_gateway.api.v1 import auth as auth_api
 from off_key_core.config.auth import get_auth_settings
-from off_key_core.schemas.user import UserLogin
-
-
-def test_parse_user_id_rejects_unusable_ids():
-    assert auth_api._parse_user_id(0) is None
-    assert auth_api._parse_user_id(-1) is None
-    assert auth_api._parse_user_id("0") is None
-    assert auth_api._parse_user_id(True) is None
 
 
 def _set_auth_env(monkeypatch) -> None:
@@ -21,22 +15,26 @@ def _set_auth_env(monkeypatch) -> None:
     get_auth_settings.cache_clear()
 
 
-class _LegacyTacticLoginStub:
+class _TacticLoginStub:
     async def authenticate_user(self, *, email: str, password: str):
-        return {"email": email, "role": "user"}
-
-    async def get_user_by_email(self, email: str):
-        return {"id": 42, "email": email, "role": "user", "is_verified": True}
+        return {"id": 42, "email": email, "role": "user", "session_version": 3}
 
 
 @pytest.mark.asyncio
-async def test_login_resolves_user_id_when_tactic_login_omits_it(monkeypatch):
+async def test_login_includes_server_assigned_id_and_session_version(monkeypatch):
     _set_auth_env(monkeypatch)
-    monkeypatch.setattr(auth_api, "tactic", _LegacyTacticLoginStub())
+    monkeypatch.setattr(auth_api, "tactic", _TacticLoginStub())
 
-    response = await auth_api.login(
-        UserLogin(email="user@example.com", password="correct-password")
-    )
+    app = FastAPI()
+    app.include_router(auth_api.router)
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        result = await client.post(
+            "/login", json={"email": "user@example.com", "password": "correct-password"}
+        )
+    assert result.status_code == 200
+    response = result.json()
 
     settings = get_auth_settings()
     payload = jwt.decode(
@@ -50,3 +48,4 @@ async def test_login_resolves_user_id_when_tactic_login_omits_it(monkeypatch):
     assert response["user_id"] == 42
     assert payload["sub"] == "user@example.com"
     assert payload["user_id"] == 42
+    assert payload["session_version"] == 3

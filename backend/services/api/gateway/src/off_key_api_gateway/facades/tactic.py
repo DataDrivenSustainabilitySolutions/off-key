@@ -7,9 +7,11 @@ import json
 from datetime import datetime
 from functools import lru_cache
 from typing import Any, cast
+from urllib.parse import quote
 
 import aiohttp
 from off_key_core.config.logs import logger
+from off_key_core.config.service_auth import get_service_auth_settings
 from off_key_core.config.services import get_service_endpoints_settings
 from off_key_core.schemas.radar import MonitoringStrategy
 
@@ -21,6 +23,12 @@ class TacticError(Exception):
         super().__init__(message)
         self.status = status
         self.body = body
+
+
+def _path_segment(value: str) -> str:
+    if value in {"", ".", ".."} or "/" in value or "\\" in value:
+        raise TacticError("Invalid resource identifier", status=422)
+    return quote(value, safe="")
 
 
 class Tactic:
@@ -85,7 +93,12 @@ class Tactic:
                     url=url,
                     json=json_data,
                     params=normalized_params,
-                    headers=headers,
+                    headers={
+                        **(headers or {}),
+                        "X-Off-Key-Service-Key": (
+                            get_service_auth_settings().INTERNAL_API_SECRET.get_secret_value()
+                        ),
+                    },
                 ) as response:
                     parsed_body = await self._parse_response_body(response)
 
@@ -249,7 +262,7 @@ class Tactic:
 
         return await self._make_request(
             method="DELETE",
-            endpoint=f"/api/v1/orchestration/radar/services/{service_id}",
+            endpoint=f"/api/v1/orchestration/radar/services/{_path_segment(service_id)}",
         )
 
     async def list_radar_services(
@@ -343,7 +356,7 @@ class Tactic:
         params = {"limit": limit}
         return await self._make_request(
             method="GET",
-            endpoint=f"/api/v1/data/telemetry/{charger_id}/types",
+            endpoint=f"/api/v1/data/telemetry/{_path_segment(charger_id)}/types",
             params=params,
         )
 
@@ -375,7 +388,7 @@ class Tactic:
 
         return await self._make_request(
             method="GET",
-            endpoint=f"/api/v1/data/telemetry/{charger_id}",
+            endpoint=f"/api/v1/data/telemetry/{_path_segment(charger_id)}",
             params=params,
         )
 
@@ -384,7 +397,7 @@ class Tactic:
         try:
             return await self._make_request(
                 method="GET",
-                endpoint=f"/api/v1/data/users/{email}",
+                endpoint=f"/api/v1/data/users/{_path_segment(email)}",
             )
         except TacticError as e:
             if e.status == 404:
@@ -411,7 +424,7 @@ class Tactic:
         """Verify user email via TACTIC data service."""
         return await self._make_request(
             method="PATCH",
-            endpoint=f"/api/v1/data/users/{email}/verify",
+            endpoint=f"/api/v1/data/users/{_path_segment(email)}/verify",
         )
 
     async def update_user_password(
@@ -420,7 +433,7 @@ class Tactic:
         """Update user password via TACTIC data service."""
         return await self._make_request(
             method="PATCH",
-            endpoint=f"/api/v1/data/users/{email}/password",
+            endpoint=f"/api/v1/data/users/{_path_segment(email)}/password",
             json_data={"new_password_hash": new_password_hash},
         )
 
@@ -445,7 +458,7 @@ class Tactic:
         """Remove user favorite via TACTIC data service."""
         return await self._make_request(
             method="DELETE",
-            endpoint=f"/api/v1/data/users/{user_id}/favorites/{charger_id}",
+            endpoint=f"/api/v1/data/users/{user_id}/favorites/{_path_segment(charger_id)}",
         )
 
     async def get_charger_anomalies(
@@ -460,7 +473,7 @@ class Tactic:
             params["telemetry_type"] = telemetry_type
         return await self._make_request(
             method="GET",
-            endpoint=f"/api/v1/data/anomalies/{charger_id}",
+            endpoint=f"/api/v1/data/anomalies/{_path_segment(charger_id)}",
             params=params,
         )
 
@@ -488,7 +501,7 @@ class Tactic:
             params["telemetry_type"] = telemetry_type
         return await self._make_request(
             method="GET",
-            endpoint=f"/api/v1/data/monitoring-evidence/{charger_id}",
+            endpoint=f"/api/v1/data/monitoring-evidence/{_path_segment(charger_id)}",
             params=params,
         )
 
@@ -524,7 +537,7 @@ class Tactic:
             )
         return await self._make_request(
             method="GET",
-            endpoint=f"/api/v1/data/monitoring-evidence/{charger_id}/chart",
+            endpoint=f"/api/v1/data/monitoring-evidence/{_path_segment(charger_id)}/chart",
             params=params,
         )
 
@@ -543,7 +556,7 @@ class Tactic:
         """Delete anomaly via TACTIC data service."""
         return await self._make_request(
             method="DELETE",
-            endpoint=f"/api/v1/data/anomalies/{anomaly_id}",
+            endpoint=f"/api/v1/data/anomalies/{_path_segment(anomaly_id)}",
         )
 
     async def list_available_models(self) -> list[dict[str, Any]]:

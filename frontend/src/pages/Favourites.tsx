@@ -49,7 +49,7 @@ export default function ChargerTable() {
           return;
         }
 
-        const favoriteIds = await getFavorites(userId);
+        const favoriteIds = await getFavorites();
         if (cancelled) {
           return;
         }
@@ -109,7 +109,7 @@ export default function ChargerTable() {
     );
 
     try {
-      await toggleFavorite(chargerId, userId, isFavorite);
+      await toggleFavorite(chargerId, isFavorite);
     } catch (err) {
       clientLogger.error({
         event: "favorites.toggle_failed",

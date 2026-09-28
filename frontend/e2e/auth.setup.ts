@@ -4,16 +4,16 @@ import { fileURLToPath } from "node:url";
 
 import { expect, test as setup } from "@playwright/test";
 
-import { loginWithEmail, registerVerifyAndLogin } from "./helpers/auth";
+import { loginWithEmail, acceptInvitationAndLogin } from "./helpers/auth";
 
 const AUTH_STATE_FILE = fileURLToPath(
   new URL("../test-results/.auth/user.json", import.meta.url),
 );
 
 setup(
-  "registers, verifies, logs in, and prepares authenticated state",
+  "accepts the operator invitation and prepares authenticated state",
   async ({ page }) => {
-    const email = await registerVerifyAndLogin(
+    const email = await acceptInvitationAndLogin(
       page,
       process.env.SUPERUSER_MAIL ?? "admin@example.com",
     );

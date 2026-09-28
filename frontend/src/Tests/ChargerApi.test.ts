@@ -192,11 +192,11 @@ describe("charger API", () => {
   it("fetches favorites and adds or removes them", async () => {
     mockGet.mockResolvedValueOnce(["charger-1"]);
 
-    await expect(getFavorites(7)).resolves.toEqual(["charger-1"]);
-    await toggleFavorite("charger-1", 7, false);
-    await toggleFavorite("charger-1", 7, true);
+    await expect(getFavorites()).resolves.toEqual(["charger-1"]);
+    await toggleFavorite("charger-1", false);
+    await toggleFavorite("charger-1", true);
 
-    const body = { charger_id: "charger-1", user_id: 7 };
+    const body = { charger_id: "charger-1" };
     expect(mockPost).toHaveBeenCalledWith(
       API_CONFIG.ENDPOINTS.FAVORITES.ADD,
       body,

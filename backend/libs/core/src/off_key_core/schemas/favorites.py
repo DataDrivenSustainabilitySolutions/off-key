@@ -1,8 +1,9 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 __all__ = ["FavoriteCreate"]
 
 
 class FavoriteCreate(BaseModel):
-    user_id: int
+    model_config = ConfigDict(extra="forbid")
+
     charger_id: str

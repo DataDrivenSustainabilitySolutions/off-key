@@ -8,7 +8,8 @@ services:
       target: development
     image: "${FRONTEND_IMAGE:-off-key-frontend:latest}"
     container_name: react_client
-    env_file: .env
+    environment:
+      - "VITE_API_URL=${VITE_API_URL}"
     ports:
       - "${FRONTEND_PORT}:5173"
     depends_on:
@@ -42,7 +43,40 @@ services:
         SERVICE_ROOT: services/api/gateway
     image: "${API_GATEWAY_IMAGE:-off-key-api-gateway:latest}"
     container_name: api_gateway
-    env_file: .env
+    environment:
+      - "SYNC_HOSTNAME=${SYNC_HOSTNAME:-db-sync}"
+      - "SYNC_API_PORT=${SYNC_API_PORT:-8009}"
+      - "SYNC_SERVICE_SCHEME=${SYNC_SERVICE_SCHEME:-http}"
+      - "TACTIC_SERVICE_SCHEME=${TACTIC_SERVICE_SCHEME:-http}"
+      - "TACTIC_SERVICE_REQUEST_TIMEOUT_SECONDS=${TACTIC_SERVICE_REQUEST_TIMEOUT_SECONDS:-180}"
+      - "APP_NAME=${APP_NAME}"
+      - "ENVIRONMENT=${ENVIRONMENT}"
+      - "DEBUG=${DEBUG}"
+      - "FRONTEND_BASE_URL=${FRONTEND_BASE_URL}"
+      - "CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS}"
+      - "JWT_SECRET=${JWT_SECRET}"
+      - "INTERNAL_API_SECRET=${INTERNAL_API_SECRET:?Set INTERNAL_API_SECRET}"
+      - "ALGORITHM=${ALGORITHM}"
+      - "ACCESS_TOKEN_EXPIRE_MINUTES=${ACCESS_TOKEN_EXPIRE_MINUTES}"
+      - "SUPERUSER_MAIL=${SUPERUSER_MAIL}"
+      - "EMAIL_USERNAME=${EMAIL_USERNAME}"
+      - "EMAIL_PASSWORD=${EMAIL_PASSWORD}"
+      - "EMAIL_FROM=${EMAIL_FROM}"
+      - "SMTP_SERVER=${SMTP_SERVER}"
+      - "SMTP_PORT=${SMTP_PORT}"
+      - "MAIL_STARTTLS=${MAIL_STARTTLS}"
+      - "MAIL_SSL_TLS=${MAIL_SSL_TLS}"
+      - "USE_CREDENTIALS=${USE_CREDENTIALS}"
+      - "VALIDATE_CERTS=${VALIDATE_CERTS}"
+      - "ANOMALY_ALERT_RECIPIENTS=${ANOMALY_ALERT_RECIPIENTS}"
+      - "TACTIC_SERVICE_HOST=${TACTIC_SERVICE_HOST}"
+      - "TACTIC_SERVICE_PORT=${TACTIC_SERVICE_PORT}"
+      - "LOG_LEVEL=${LOG_LEVEL}"
+      - "LOG_FORMAT=${LOG_FORMAT}"
+      - "LOG_REDACT_PII=${LOG_REDACT_PII}"
+      - "LOG_PII_DEBUG_UNMASK=${LOG_PII_DEBUG_UNMASK}"
+      - "ENABLE_REQUEST_LOGGING=${ENABLE_REQUEST_LOGGING}"
+      - "ENABLE_PERFORMANCE_LOGGING=${ENABLE_PERFORMANCE_LOGGING}"
     ports:
       - "${BACKEND_PORT}:8000"
     depends_on:
@@ -86,9 +120,8 @@ services:
         SERVICE_ROOT: services/middleware/tactic
     image: "${TACTIC_MIDDLEWARE_IMAGE:-off-key-tactic-middleware:latest}"
     container_name: tactic_middleware
-    env_file: .env
     ports:
-      - "8001:8000"
+      - "127.0.0.1:8001:8000"
     depends_on:
       timescaledb:
         condition: service_healthy
@@ -101,6 +134,45 @@ services:
       - socket-network
       - emqx-network
     environment:
+      - "TACTIC_RADAR_DEFAULT_MQTT_USERNAME=${TACTIC_RADAR_DEFAULT_MQTT_USERNAME:-}"
+      - "AMBIBOX_MQTT_USERNAME=${AMBIBOX_MQTT_USERNAME:-}"
+      - "AMBIBOX_MQTT_PASSWORD=${AMBIBOX_MQTT_PASSWORD:-}"
+      - "ENVIRONMENT=${ENVIRONMENT}"
+      - "DEBUG=${DEBUG}"
+      - "FRONTEND_BASE_URL=${FRONTEND_BASE_URL}"
+      - "JWT_SECRET=${JWT_SECRET}"
+      - "INTERNAL_API_SECRET=${INTERNAL_API_SECRET:?Set INTERNAL_API_SECRET}"
+      - "ALGORITHM=${ALGORITHM}"
+      - "ACCESS_TOKEN_EXPIRE_MINUTES=${ACCESS_TOKEN_EXPIRE_MINUTES}"
+      - "SUPERUSER_MAIL=${SUPERUSER_MAIL}"
+      - "POSTGRES_USER=${POSTGRES_USER}"
+      - "POSTGRES_PASSWORD=${POSTGRES_PASSWORD}"
+      - "POSTGRES_DB=${POSTGRES_DB}"
+      - "POSTGRES_HOST=${POSTGRES_HOST}"
+      - "POSTGRES_PORT=${POSTGRES_PORT}"
+      - "AMBIBOX_INGRESS_ENABLED=${AMBIBOX_INGRESS_ENABLED}"
+      - "AMBIBOX_ALLOWED_HOSTS=${AMBIBOX_ALLOWED_HOSTS}"
+      - "AMBIBOX_ALLOWED_HOST_SUFFIXES=${AMBIBOX_ALLOWED_HOST_SUFFIXES}"
+      - "AMBIBOX_EMQX_API_URL=${AMBIBOX_EMQX_API_URL}"
+      - "AMBIBOX_EMQX_API_KEY=${AMBIBOX_EMQX_API_KEY}"
+      - "AMBIBOX_EMQX_API_SECRET=${AMBIBOX_EMQX_API_SECRET}"
+      - "AMBIBOX_GOST_API_URL=${AMBIBOX_GOST_API_URL}"
+      - "AMBIBOX_GOST_USERNAME=${AMBIBOX_GOST_USERNAME}"
+      - "AMBIBOX_GOST_PASSWORD=${AMBIBOX_GOST_PASSWORD}"
+      - "AMBIBOX_SOCKS_SERVER=${AMBIBOX_SOCKS_SERVER}"
+      - "TACTIC_DOCKER_API_URL=${TACTIC_DOCKER_API_URL}"
+      - "TACTIC_DOCKER_API_PORT=${TACTIC_DOCKER_API_PORT}"
+      - "TACTIC_RADAR_DEFAULT_MQTT_BROKER_HOST=${TACTIC_RADAR_DEFAULT_MQTT_BROKER_HOST}"
+      - "TACTIC_RADAR_DEFAULT_MQTT_BROKER_PORT=${TACTIC_RADAR_DEFAULT_MQTT_BROKER_PORT}"
+      - "TACTIC_RADAR_DEFAULT_MQTT_USE_TLS=${TACTIC_RADAR_DEFAULT_MQTT_USE_TLS}"
+      - "TACTIC_RADAR_DEFAULT_MQTT_USE_AUTH=${TACTIC_RADAR_DEFAULT_MQTT_USE_AUTH}"
+      - "TACTIC_RADAR_WORKLOAD_LIFECYCLE=${TACTIC_RADAR_WORKLOAD_LIFECYCLE}"
+      - "TACTIC_SERVICE_HOST=${TACTIC_SERVICE_HOST}"
+      - "TACTIC_SERVICE_PORT=${TACTIC_SERVICE_PORT}"
+      - "LOG_LEVEL=${LOG_LEVEL}"
+      - "LOG_FORMAT=${LOG_FORMAT}"
+      - "LOG_REDACT_PII=${LOG_REDACT_PII}"
+      - "LOG_PII_DEBUG_UNMASK=${LOG_PII_DEBUG_UNMASK}"
       - TACTIC_DOCKER_DEFAULT_NETWORK=${COMPOSE_PROJECT_NAME:-off-key}_app-network
       - TACTIC_RADAR_IMAGE=${MQTT_RADAR_IMAGE:-off-key-mqtt-radar:latest}
     restart: always
@@ -124,7 +196,6 @@ services:
         SERVICE_ROOT: services/mqtt/radar
     image: "${MQTT_RADAR_IMAGE:-off-key-mqtt-radar:latest}"
     container_name: mqtt_radar
-    env_file: .env
     command: [ "/app/bin/python", "-m", "off_key_mqtt_radar" ]
     depends_on:
       timescaledb:
@@ -138,6 +209,20 @@ services:
       - emqx-network
     restart: always
     environment:
+      - "RADAR_MQTT_USERNAME=${RADAR_MQTT_USERNAME:-}"
+      - "RADAR_MQTT_API_KEY=${RADAR_MQTT_API_KEY:-}"
+      - "RADAR_MQTT_CA_FILE=${RADAR_MQTT_CA_FILE:-}"
+      - "ENVIRONMENT=${ENVIRONMENT}"
+      - "DEBUG=${DEBUG}"
+      - "RADAR_MQTT_BROKER_HOST=${RADAR_MQTT_BROKER_HOST}"
+      - "RADAR_MQTT_BROKER_PORT=${RADAR_MQTT_BROKER_PORT}"
+      - "RADAR_MQTT_USE_TLS=${RADAR_MQTT_USE_TLS}"
+      - "RADAR_MQTT_USE_AUTH=${RADAR_MQTT_USE_AUTH}"
+      - "RADAR_SUBSCRIPTION_TOPICS=${RADAR_SUBSCRIPTION_TOPICS}"
+      - "LOG_LEVEL=${LOG_LEVEL}"
+      - "LOG_FORMAT=${LOG_FORMAT}"
+      - "LOG_REDACT_PII=${LOG_REDACT_PII}"
+      - "LOG_PII_DEBUG_UNMASK=${LOG_PII_DEBUG_UNMASK}"
       - RADAR_DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@timescaledb:5432/${POSTGRES_DB}
     profiles:
       - standalone-radar
@@ -150,8 +235,24 @@ services:
         SERVICE_ROOT: services/mqtt/proxy
     image: "${MQTT_PROXY_IMAGE:-off-key-mqtt-proxy:latest}"
     container_name: mqtt_proxy
-    env_file: .env
     environment:
+      - "MQTT_USERNAME=${MQTT_USERNAME:-}"
+      - "MQTT_APIKEY=${MQTT_APIKEY:-}"
+      - "MQTT_CA_FILE=${MQTT_CA_FILE:-}"
+      - "ENVIRONMENT=${ENVIRONMENT}"
+      - "DEBUG=${DEBUG}"
+      - "POSTGRES_USER=${POSTGRES_USER}"
+      - "POSTGRES_PASSWORD=${POSTGRES_PASSWORD}"
+      - "POSTGRES_DB=${POSTGRES_DB}"
+      - "POSTGRES_HOST=${POSTGRES_HOST}"
+      - "POSTGRES_PORT=${POSTGRES_PORT}"
+      - "MQTT_USE_TLS=${MQTT_USE_TLS}"
+      - "MQTT_USE_AUTH=${MQTT_USE_AUTH}"
+      - "AMBIBOX_INGRESS_ENABLED=${AMBIBOX_INGRESS_ENABLED}"
+      - "LOG_LEVEL=${LOG_LEVEL}"
+      - "LOG_FORMAT=${LOG_FORMAT}"
+      - "LOG_REDACT_PII=${LOG_REDACT_PII}"
+      - "LOG_PII_DEBUG_UNMASK=${LOG_PII_DEBUG_UNMASK}"
       - MQTT_BROKER_HOST=${MQTT_BROKER_HOST:-emqx-main}
       - MQTT_BROKER_PORT=${MQTT_BROKER_PORT:-1883}
       - MQTT_TELEMETRY_ENABLED=true
@@ -190,7 +291,25 @@ services:
         SERVICE_ROOT: services/mqtt/simulator
     image: "${MQTT_SIMULATOR_IMAGE:-off-key-mqtt-simulator:latest}"
     container_name: mqtt_simulator
-    env_file: .env
+    environment:
+      - "SIMULATOR_ENABLED=${SIMULATOR_ENABLED:-true}"
+      - "SIMULATOR_BROKER_HOST=${SIMULATOR_BROKER_HOST:-source-broker}"
+      - "SIMULATOR_BROKER_PORT=${SIMULATOR_BROKER_PORT:-1883}"
+      - "SIMULATOR_USE_TLS=${SIMULATOR_USE_TLS:-false}"
+      - "SIMULATOR_USE_AUTH=${SIMULATOR_USE_AUTH:-false}"
+      - "SIMULATOR_USERNAME=${SIMULATOR_USERNAME:-}"
+      - "SIMULATOR_API_KEY=${SIMULATOR_API_KEY:-}"
+      - "SIMULATOR_CLIENT_ID_PREFIX=${SIMULATOR_CLIENT_ID_PREFIX:-offkey-simulator}"
+      - "SIMULATOR_INTERVAL_SECONDS=${SIMULATOR_INTERVAL_SECONDS:-1.0}"
+      - "SIMULATOR_QOS=${SIMULATOR_QOS:-0}"
+      - "SIMULATOR_CHARGER_IDS=${SIMULATOR_CHARGER_IDS:-charger-sim-1,charger-sim-2}"
+      - "SIMULATOR_FEATURES=${SIMULATOR_FEATURES:-sine,cosine,random}"
+      - "SIMULATOR_TOPIC_TEMPLATE=${SIMULATOR_TOPIC_TEMPLATE:-device/evCharger/{charger_id}/{feature}}"
+      - "SIMULATOR_VALUE_MIN=${SIMULATOR_VALUE_MIN:-0.0}"
+      - "SIMULATOR_VALUE_MAX=${SIMULATOR_VALUE_MAX:-100.0}"
+      - "SIMULATOR_BLIP_PROBABILITY=${SIMULATOR_BLIP_PROBABILITY:-0.0025}"
+      - "SIMULATOR_BLIP_MULTIPLIER_MIN=${SIMULATOR_BLIP_MULTIPLIER_MIN:-1.8}"
+      - "SIMULATOR_BLIP_MULTIPLIER_MAX=${SIMULATOR_BLIP_MULTIPLIER_MAX:-2.6}"
     command: [ "/app/bin/python", "-m", "off_key_mqtt_simulator" ]
     depends_on:
       source-broker:
@@ -211,7 +330,22 @@ services:
         SERVICE_NAME: off-key-db-sync
     image: "${DB_SYNC_IMAGE:-off-key-db-sync:latest}"
     container_name: db_sync
-    env_file: .env
+    environment:
+      - "ENVIRONMENT=${ENVIRONMENT}"
+      - "DEBUG=${DEBUG}"
+      - "POSTGRES_USER=${POSTGRES_USER}"
+      - "POSTGRES_PASSWORD=${POSTGRES_PASSWORD}"
+      - "POSTGRES_DB=${POSTGRES_DB}"
+      - "POSTGRES_HOST=${POSTGRES_HOST}"
+      - "POSTGRES_PORT=${POSTGRES_PORT}"
+      - "SYNC_HOSTNAME=${SYNC_HOSTNAME}"
+      - "SYNC_API_HOST=${SYNC_API_HOST}"
+      - "SYNC_API_PORT=${SYNC_API_PORT}"
+      - "TELEMETRY_RETENTION_DAYS=${TELEMETRY_RETENTION_DAYS}"
+      - "LOG_LEVEL=${LOG_LEVEL}"
+      - "LOG_FORMAT=${LOG_FORMAT}"
+      - "LOG_REDACT_PII=${LOG_REDACT_PII}"
+      - "LOG_PII_DEBUG_UNMASK=${LOG_PII_DEBUG_UNMASK}"
     depends_on:
       timescaledb:
         condition: service_healthy
@@ -243,7 +377,10 @@ services:
   timescaledb:
     image: timescale/timescaledb:latest-pg15
     container_name: timescaledb
-    env_file: .env
+    environment:
+      - "POSTGRES_USER=${POSTGRES_USER}"
+      - "POSTGRES_PASSWORD=${POSTGRES_PASSWORD}"
+      - "POSTGRES_DB=${POSTGRES_DB}"
     ports:
       - "${POSTGRES_PORT}:5432"
     volumes:

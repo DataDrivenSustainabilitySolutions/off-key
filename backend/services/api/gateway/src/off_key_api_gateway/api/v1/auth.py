@@ -1,145 +1,76 @@
-from fastapi import APIRouter, HTTPException, status
-from off_key_core.config.auth import get_auth_settings
+import hashlib
+
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from off_key_core.config.logs import log_security_event, logger, redact_email
+from off_key_core.schemas.members import AcceptInvitation, PasswordReset
 from off_key_core.schemas.user import (
     ForgotPasswordRequest,
-    ResetPasswordRequest,
-    UserCreate,
     UserLogin,
 )
-from off_key_core.utils.enum import RoleEnum
-from off_key_core.utils.mail import send_password_reset_email, send_verification_email
+from off_key_core.utils.mail import send_password_reset_email
 
 from ...facades.tactic import TacticError, tactic
-from ...services.auth import (
-    create_jwt,
-    create_reset_token,
-    create_verification_token,
-    get_password_hash,
-    verify_reset_token,
-    verify_verification_token,
-)
+from ...services.auth import create_jwt
 from ..errors import raise_tactic_http_error
+from ..rate_limiter import limiter
 
 router = APIRouter()
 
 
-def _parse_user_id(value: object) -> int | None:
-    if isinstance(value, bool):
-        return None
-    if isinstance(value, int):
-        return value if value > 0 else None
-    if isinstance(value, str) and value.isdigit():
-        parsed = int(value)
-        return parsed if parsed > 0 else None
-    return None
+def login_attempt(request: Request, user: UserLogin) -> UserLogin:
+    request.state.auth_identity = str(user.email).casefold()
+    return user
 
 
-async def _resolve_authenticated_user_id(
-    authenticated_user: dict[str, object],
-) -> int:
-    user_id = _parse_user_id(authenticated_user.get("id"))
-    if user_id is not None:
-        return user_id
+def reset_email_attempt(
+    request: Request, user: ForgotPasswordRequest
+) -> ForgotPasswordRequest:
+    request.state.auth_identity = str(user.email).casefold()
+    return user
 
-    user_id = _parse_user_id(authenticated_user.get("user_id"))
-    if user_id is not None:
-        return user_id
 
-    email = authenticated_user.get("email")
-    if not isinstance(email, str) or not email:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Authentication service response did not include a user email",
-        )
+def invitation_attempt(
+    request: Request, invitation: AcceptInvitation
+) -> AcceptInvitation:
+    request.state.auth_identity = invitation.token
+    return invitation
 
-    try:
-        user_record = await tactic.get_user_by_email(email)
-    except TacticError as e:
-        raise_tactic_http_error(e)
 
-    if not user_record:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Authentication service could not resolve the user profile",
-        )
+def reset_attempt(request: Request, reset: PasswordReset) -> PasswordReset:
+    request.state.auth_identity = reset.token
+    return reset
 
-    user_id = _parse_user_id(user_record.get("id"))
-    if user_id is None:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Authentication service response did not include a user id",
-        )
 
-    return user_id
+def auth_limit_key(request: Request) -> str:
+    # Keep emails and single-use tokens out of limiter storage and error logs.
+    return hashlib.sha256(request.state.auth_identity.encode()).hexdigest()
 
 
 @router.post("/register")
-async def register(user: UserCreate):
-    settings = get_auth_settings()
-    try:
-        existing_user = await tactic.get_user_by_email(user.email)
-    except TacticError as e:
-        raise_tactic_http_error(e)
-
-    if existing_user:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="Email already registered"
-        )
-
-    # Create user
-    verification_token = create_verification_token(user.email)
-
-    user_role = (
-        RoleEnum.admin.value
-        if user.email == settings.SUPERUSER_MAIL
-        else RoleEnum.user.value
+async def register():
+    raise HTTPException(
+        403, "Accounts are invitation-only. Ask an administrator for access."
     )
 
-    user_data = {
-        "email": user.email,
-        "hashed_password": get_password_hash(user.password),
-        "verification_token": verification_token,
-        "role": user_role,
-    }
+
+@router.post("/accept-invitation")
+@limiter.limit("10/minute", key_func=auth_limit_key)
+async def accept_invitation(
+    request: Request, invitation: AcceptInvitation = Depends(invitation_attempt)
+):
     try:
-        await tactic.create_user(user_data)
-    except TacticError as e:
-        if e.status in (status.HTTP_400_BAD_REQUEST, status.HTTP_409_CONFLICT):
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Email already registered",
-            ) from e
-        raise_tactic_http_error(e)
-
-    safe_email = redact_email(user.email)
-    logger.info("event=auth.user_registered email=%s role=%s", safe_email, user_role)
-    log_security_event("user_registration", user.email, {"role": user_role})
-
-    logger.info("event=auth.verification_email_requested email=%s", safe_email)
-
-    try:
-        await send_verification_email(user.email, verification_token)
-        logger.info("event=auth.verification_email_sent email=%s", safe_email)
-    except Exception as e:
-        logger.error(
-            "event=auth.verification_email_send_failed email=%s error=%s",
-            safe_email,
-            str(e),
-            exc_info=True,
+        return await tactic._make_request(
+            "POST",
+            "/api/v1/members/accept-invitation",
+            json_data=invitation.model_dump(),
         )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to send verification email: {e}",
-        ) from e
-
-    return {
-        "message": "Registration successful! Check your email to verify your account."
-    }
+    except TacticError as exc:
+        raise_tactic_http_error(exc)
 
 
 @router.post("/login")
-async def login(user: UserLogin):
+@limiter.limit("10/minute", key_func=auth_limit_key)
+async def login(request: Request, user: UserLogin = Depends(login_attempt)):
     try:
         authenticated_user = await tactic.authenticate_user(
             email=user.email,
@@ -154,11 +85,17 @@ async def login(user: UserLogin):
             )
         raise_tactic_http_error(e)
 
-    user_id = await _resolve_authenticated_user_id(authenticated_user)
+    user_id = authenticated_user.get("id")
+    if type(user_id) is not int or user_id <= 0:
+        raise HTTPException(502, "Authentication service returned an invalid user id")
+    version = authenticated_user.get("session_version")
+    if type(version) is not int or version < 0:
+        raise HTTPException(502, "Authentication service returned an invalid session")
     access_token = create_jwt(
         {
             "sub": authenticated_user["email"],
             "user_id": user_id,
+            "session_version": version,
         }
     )
 
@@ -178,105 +115,46 @@ async def login(user: UserLogin):
 
 
 @router.get("/verify-email")
-async def verify_email(token: str):
-    email = verify_verification_token(token)
-    if email is None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired token"
-        )
-
-    safe_email = redact_email(email)
-    logger.info("event=auth.verification_requested email=%s", safe_email)
-    try:
-        user = await tactic.get_user_by_email(email)
-    except TacticError as e:
-        raise_tactic_http_error(e)
-
-    if not user:
-        logger.warning("event=auth.verification_user_missing email=%s", safe_email)
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="User not found",
-        )
-
-    if user.get("is_verified"):
-        logger.info("event=auth.user_already_verified email=%s", safe_email)
-        # Return success for already verified users (idempotent)
-        return {"message": "Email verified successfully"}
-
-    try:
-        result = await tactic.verify_user_email(email)
-    except TacticError as e:
-        raise_tactic_http_error(e)
-
-    logger.info("event=auth.verification_success email=%s", safe_email)
-    log_security_event(
-        "email_verification_success", email, {"verification_method": "email_token"}
+async def verify_email():
+    raise HTTPException(
+        410, "This verification link is no longer supported. Request an invitation."
     )
-
-    return result
 
 
 @router.post("/forgot-password")
-async def forgot_password(user: ForgotPasswordRequest):
-    email = user.email
-    response_message = (
-        "If the email is registered, a password reset link has been sent."
-    )
-
+@limiter.limit("5/minute", key_func=auth_limit_key)
+async def forgot_password(
+    request: Request, user: ForgotPasswordRequest = Depends(reset_email_attempt)
+):
     try:
-        existing_user = await tactic.get_user_by_email(email)
-    except TacticError as e:
-        raise_tactic_http_error(e)
-
-    if existing_user:
-        reset_token = create_reset_token(existing_user["email"])
-        logger.info(
-            "event=auth.password_reset_email_requested email=%s",
-            redact_email(email),
+        result = await tactic._make_request(
+            "POST",
+            "/api/v1/members/request-password-reset",
+            json_data=user.model_dump(),
         )
-
+    except TacticError as exc:
+        raise_tactic_http_error(exc)
+    if result:
         try:
-            await send_password_reset_email(email, reset_token)
-        except Exception as e:
-            logger.error(
-                "event=auth.password_reset_email_send_failed email=%s error=%s",
-                redact_email(email),
-                str(e),
-                exc_info=True,
-            )
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Error sending the password reset email.",
-            ) from e
-
-    # Always return the same response
-    # Regardless of whether user exists (no user enumeration leak)
-    return {"message": response_message}
+            await send_password_reset_email(result["email"], result["token"])
+        except Exception:
+            # Preserve the same response for unknown accounts and mail failures.
+            logger.error("event=password_reset_delivery_failed")
+    return {
+        "message": "If the email is registered, a password reset link has been sent."
+    }
 
 
 @router.post("/reset-password")
-async def reset_password(req: ResetPasswordRequest):
-    email = verify_reset_token(req.token)
-    if email is None:
-        raise HTTPException(status_code=400, detail="Invalid or expired token")
-
+@limiter.limit("10/minute", key_func=auth_limit_key)
+async def reset_password(
+    request: Request, reset: PasswordReset = Depends(reset_attempt)
+):
     try:
-        user = await tactic.get_user_by_email(email)
-    except TacticError as e:
-        raise_tactic_http_error(e)
-
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-
-    # Update password
-    new_password_hash = get_password_hash(req.new_password)
-    try:
-        await tactic.update_user_password(email, new_password_hash)
-    except TacticError as e:
-        raise_tactic_http_error(e)
-
-    logger.info("event=auth.password_reset_success email=%s", redact_email(email))
-    log_security_event("password_reset_success", email, {"reset_method": "email_token"})
-
-    return {"message": "Password has been successfully reset"}
+        return await tactic._make_request(
+            "POST",
+            "/api/v1/members/reset-password",
+            json_data=reset.model_dump(),
+        )
+    except TacticError as exc:
+        raise_tactic_http_error(exc)

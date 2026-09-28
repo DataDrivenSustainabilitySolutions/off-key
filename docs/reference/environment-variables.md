@@ -41,7 +41,7 @@ Treat the values of these variables as secrets:
 | Variable | Requirement |
 | --- | --- |
 | `JWT_SECRET` | Unique signing secret, at least 32 characters; do not reuse between environments |
-| `JWT_VERIFICATION_SECRET` | Unique verification/reset signing secret, distinct from `JWT_SECRET` |
+| `INTERNAL_API_SECRET` | Unique gateway-to-TACTIC credential, at least 32 characters |
 | `EMAIL_PASSWORD` | SMTP credential when authenticated delivery is enabled |
 | `POSTGRES_PASSWORD` | Unique database credential outside disposable local development |
 | `EMQX_DASHBOARD_PASSWORD` | Unique EMQX administrative credential |
@@ -75,10 +75,10 @@ Do not paste generated output into issues, logs, commits, screenshots, or docume
 | Variable | Development default | Purpose / validation |
 | --- | --- | --- |
 | `JWT_SECRET` | Not documented | Access-token signing secret |
-| `JWT_VERIFICATION_SECRET` | Not documented | Verification and reset-token signing secret |
+| `INTERNAL_API_SECRET` | Not documented | Required gateway-to-TACTIC credential |
 | `ALGORITHM` | `HS256` | Must match the backend JWT implementation |
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | `30` | Positive access-token lifetime |
-| `SUPERUSER_MAIL` | Local placeholder address | Email promoted to the administrator role during registration |
+| `SUPERUSER_MAIL` | Local placeholder address | Mailbox for the operator-generated first administrator invitation |
 
 ## Email
 

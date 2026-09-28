@@ -1,4 +1,5 @@
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic import (
     EmailStr,
@@ -16,6 +17,7 @@ class EmailSettings(BaseSettings):
     """Email and notification settings."""
 
     model_config = SettingsConfigDict(
+        secrets_dir="/run/secrets" if Path("/run/secrets").is_dir() else None,
         case_sensitive=True,
         extra="ignore",
         frozen=True,

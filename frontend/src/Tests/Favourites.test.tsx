@@ -61,6 +61,6 @@ describe("Favourites", () => {
     expect(await screen.findByText(/charger id/i)).toBeTruthy();
     expect(screen.getByText("CH-001")).toBeTruthy();
     expect(screen.queryByText("CH-002")).toBeNull();
-    expect(mockGetFavorites).toHaveBeenCalledWith(7);
+    expect(mockGetFavorites).toHaveBeenCalledWith();
   });
 });

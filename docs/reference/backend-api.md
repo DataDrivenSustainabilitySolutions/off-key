@@ -18,12 +18,14 @@ Use this page when integrating a client, validating endpoint contracts, or triag
 | Endpoint group | Client behaviour | Current enforcement note |
 | --- | --- | --- |
 | Authentication | Public calls without a bearer token | Public by design |
-| Chargers and telemetry | Send the login bearer token | Some routes are currently permissive at route level |
-| Monitors, favourites, and anomalies | Send the login bearer token | Preserve token behaviour; server policy may tighten |
+| Chargers and telemetry | Send the login bearer token | Active, verified membership required |
+| Monitors and anomalies | Send the login bearer token | Members read; administrators write |
+| Favourites | Send the login bearer token | Server selects the current member as owner |
+| Members | Send the login bearer token | Profile for self; administrators manage membership |
 | Health and readiness | No token | Public operational probes in local deployments |
 
 !!! important
-    Always send `Authorization: Bearer <token>` for non-authentication user workflows, even if a local route accepts an unauthenticated request.
+    Always send `Authorization: Bearer <token>` for non-authentication user workflows, and supply the private service credential only for trusted gateway-to-TACTIC calls.
 
 ## Gateway API — `/v1`
 
@@ -31,9 +33,10 @@ Use this page when integrating a client, validating endpoint contracts, or triag
 
 | Method | Path | Purpose | Key inputs |
 | --- | --- | --- | --- |
-| `POST` | `/auth/register` | Register a user and send verification mail | Body: `email`, `password`, optional `role` |
+| `POST` | `/auth/register` | Retired: always returns 403 | Accounts require an invitation |
+| `POST` | `/auth/accept-invitation` | Activate an invited account | Body: `token`, `password` |
 | `POST` | `/auth/login` | Authenticate and mint a JWT | Body: `email`, `password` |
-| `GET` | `/auth/verify-email` | Verify an account token | Query: `token` |
+| `GET` | `/auth/verify-email` | Retired: always returns 410 | Request a new invitation |
 | `POST` | `/auth/forgot-password` | Send reset mail when the account exists | Body: `email` |
 | `POST` | `/auth/reset-password` | Reset a password | Body: `token`, `new_password` |
 
@@ -50,6 +53,18 @@ Content-Type: application/json
   "token_type": "bearer"
 }
 ```
+
+### Membership
+
+| Method | Path | Purpose | Access |
+| --- | --- | --- | --- |
+| `GET` | `/members/me` | Current profile | Active member |
+| `GET` | `/members` | List organization members | Administrator |
+| `POST` | `/members/invitations` | Invite or resend; body `email`, `role` | Administrator |
+| `PUT` | `/members/{user_id}` | Set `role` and `is_active` | Administrator |
+
+Roles are `admin` and `user` (member). Account and token lifecycle details are in
+[Single-organization operation](../single-organization.md).
 
 ### Chargers and telemetry
 
@@ -100,7 +115,7 @@ Use `/monitors/models` as the source for valid model names and parameter schemas
 
 | Method | Path | Purpose | Key inputs |
 | --- | --- | --- | --- |
-| `GET` | `/favorites` | List a user's favourites | Query: `user_id` |
+| `GET` | `/favorites` | List a user's favourites | Current authenticated member |
 | `POST` | `/favorites` | Add a favourite charger | Body: `user_id`, `charger_id` |
 | `DELETE` | `/favorites` | Remove a favourite charger | Body: `user_id`, `charger_id` |
 | `GET` | `/anomalies/count` | Count anomalies | Optional query: `since` |
@@ -115,6 +130,10 @@ Use `/monitors/models` as the source for valid model names and parameter schemas
 | `GET` | `/health` | Gateway liveness; this route is outside the `/v1` prefix |
 
 ## TACTIC API — `/api/v1`
+
+All business routes require `X-Off-Key-Service-Key`; collection and membership
+administration additionally validate the end-user bearer token. TACTIC is private.
+Health and readiness remain available without this service credential.
 
 ### Data adapter
 

@@ -28,7 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ...config.collection import get_ambibox_settings
 from ...domain import DomainError
 from ...services.collection import CollectionService
-from ..collection_auth import collection_admin, collection_user
+from ..collection_auth import current_member, require_admin
 from .data_services import _raise_http_from_domain
 
 router = APIRouter(prefix="/collection", tags=["collection"])
@@ -36,7 +36,7 @@ router = APIRouter(prefix="/collection", tags=["collection"])
 
 @router.get("")
 async def get_catalog(
-    user: User = Depends(collection_user),
+    user: User = Depends(current_member),
     session: AsyncSession = Depends(get_db_async),
 ):
     snapshot = await read_collection_configuration(session)
@@ -51,7 +51,7 @@ async def get_catalog(
 @router.post("/preview", response_model=CatalogPreview)
 async def preview_catalog(
     change: CatalogChange,
-    user: User = Depends(collection_admin),
+    user: User = Depends(require_admin),
     session: AsyncSession = Depends(get_db_async),
 ):
     try:
@@ -62,7 +62,7 @@ async def preview_catalog(
 
 @router.get("/status")
 async def get_status(
-    user: User = Depends(collection_user),
+    user: User = Depends(current_member),
     session: AsyncSession = Depends(get_db_async),
 ):
     row = (
@@ -90,7 +90,7 @@ async def get_status(
 
 @router.get("/storage", response_model=StorageStatus)
 async def get_storage(
-    user: User = Depends(collection_user),
+    user: User = Depends(current_member),
     session: AsyncSession = Depends(get_db_async),
 ):
     return await read_storage_status(session)
@@ -99,7 +99,7 @@ async def get_storage(
 @router.put("", response_model=CatalogSnapshot)
 async def apply_catalog(
     change: CatalogChange,
-    user: User = Depends(collection_admin),
+    user: User = Depends(require_admin),
     session: AsyncSession = Depends(get_db_async),
 ):
     try:
@@ -110,7 +110,7 @@ async def apply_catalog(
 
 @router.get("/revisions")
 async def list_revisions(
-    user: User = Depends(collection_user),
+    user: User = Depends(current_member),
     session: AsyncSession = Depends(get_db_async),
 ):
     rows = await session.scalars(
@@ -129,7 +129,7 @@ async def list_revisions(
 
 
 @router.get("/ambibox-template", response_model=AmbiboxCatalog)
-async def get_ambibox_template(user: User = Depends(collection_user)):
+async def get_ambibox_template(user: User = Depends(current_member)):
     document = (
         files("off_key_tactic_middleware")
         .joinpath("data/ambibox-catalog.json")
@@ -141,7 +141,7 @@ async def get_ambibox_template(user: User = Depends(collection_user)):
 @router.get("/revisions/{revision}", response_model=AmbiboxCatalog)
 async def get_revision(
     revision: int,
-    user: User = Depends(collection_user),
+    user: User = Depends(current_member),
     session: AsyncSession = Depends(get_db_async),
 ):
     row = await session.get(CollectionRevision, revision)
@@ -153,7 +153,7 @@ async def get_revision(
 @router.get("/state/{charger_id}")
 async def get_charger_state(
     charger_id: UUID,
-    user: User = Depends(collection_user),
+    user: User = Depends(current_member),
     session: AsyncSession = Depends(get_db_async),
 ):
     snapshot = await read_collection_configuration(session)

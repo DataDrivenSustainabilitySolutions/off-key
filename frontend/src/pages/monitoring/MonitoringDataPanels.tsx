@@ -32,7 +32,7 @@ interface MonitoringDataPanelsProps {
   loadingAnomalies: boolean;
   onRefreshServices: () => void;
   onRefreshAnomalies: () => void;
-  onDeleteService: (service: ActiveService) => void;
+  onDeleteService?: (service: ActiveService) => void;
 }
 
 export function MonitoringDataPanels({
@@ -125,7 +125,7 @@ export function MonitoringDataPanels({
                         </div>
                       </TableCell>
                       <TableCell className="text-right">
-                        <Button
+                        {onDeleteService && <Button
                           variant="ghost"
                           size="icon"
                           aria-label={
@@ -134,7 +134,7 @@ export function MonitoringDataPanels({
                           onClick={() => onDeleteService(service)}
                         >
                           <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
+                        </Button>}
                       </TableCell>
                     </TableRow>
                   );

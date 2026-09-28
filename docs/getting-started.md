@@ -28,7 +28,7 @@ cp .env.example .env
 Before using Off-Key outside local development, replace every example credential. At minimum, configure:
 
 - `EMQX_DASHBOARD_PASSWORD` with a strong value.
-- `JWT_SECRET` and `JWT_VERIFICATION_SECRET` with distinct values of at least 32 characters.
+- `JWT_SECRET` and `INTERNAL_API_SECRET` with distinct values of at least 32 characters.
 - `SUPERUSER_MAIL` with the intended administrator mailbox.
 
 Generate independent random values without writing them to documentation or source control:
@@ -80,10 +80,10 @@ curl http://localhost:8001/ready
 
 ## 4. Create the first user
 
-1. Register in the frontend.
-2. Open Mailpit and follow the verification link.
-3. Verify the account.
-4. Log in and open the charger overview.
+Run `docker compose exec -T tactic-middleware /app/bin/python -m off_key_tactic_middleware.bootstrap_admin`.
+Open the printed invitation URL, choose a password, and log in. The account uses
+`SUPERUSER_MAIL`. Invite colleagues from **Account → Organization members**.
+See [Single-organization operation](single-organization.md) for upgrades and SMTP.
 
 ## 5. Prepare monitoring when needed
 

@@ -60,7 +60,7 @@ export const API_CONFIG = {
 
     // Favorites
     FAVORITES: {
-      GET: (userId: number) => `/v1/favorites?user_id=${userId}`,
+      GET: "/v1/favorites",
       ADD: '/v1/favorites',
       REMOVE: '/v1/favorites',
     },

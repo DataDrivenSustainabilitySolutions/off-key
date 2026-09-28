@@ -36,18 +36,33 @@ The server prevents removing the last active, verified administrator.
    Do not mix old and new API/TACTIC versions. The old schema checker rejects the
    added columns, so rolling back requires a coordinated database restore or a
    separately reviewed reverse migration.
-5. If there is no active, verified administrator, generate the first invitation:
+5. Initialize the first administrator by email:
 
    ```sh
-   docker compose exec -T tactic-middleware /app/bin/python -m off_key_tactic_middleware.bootstrap_admin
+   docker compose exec -T tactic-middleware /app/bin/python -m off_key_tactic_middleware.bootstrap_admin --send-email
    ```
 
-   The command uses `SUPERUSER_MAIL` and prints a single-use URL. Open it to choose
-   the administrator password, then log in. Treat this URL as a secret; do not
-   save it in logs or tickets. On Swarm, execute the module inside a TACTIC task.
-   Once an active administrator exists, this command refuses to create another.
-   Existing administrators can sign in directly and invite colleagues. Review the
-   preserved member list and disable any accounts that should no longer have access.
+   The command emails `SUPERUSER_MAIL` and prints status JSON without the token.
+   Open the invitation to choose a password; there is no default admin password.
+   It preserves valid pending invitations and existing active administrators.
+   Add `--resend` to replace a pending link, including after SMTP delivery failed.
+   Other existing-account states require operator recovery and are not modified.
+   On Swarm, execute the module inside a TACTIC task. Production infrastructure
+   runs this step automatically after readiness checks; `make invite-admin-prod`
+   in `off-key-infra` explicitly resends the initial invitation.
+
+   Without `--send-email`, the command retains its trusted-console behavior: print
+   a one-time URL instead of emailing it. Treat that URL as a secret and deliver
+   it directly to the configured mailbox owner; do not put it in logs or tickets.
+   This mode refuses to issue an invitation once an active administrator exists.
+
+For Resend, configure `SMTP_SERVER=smtp.resend.com`, `SMTP_PORT=587`,
+`EMAIL_USERNAME=resend`, and `EMAIL_PASSWORD` as the real Resend API key.
+Use `MAIL_STARTTLS=True`, `MAIL_SSL_TLS=False`, `USE_CREDENTIALS=True`, and
+`VALIDATE_CERTS=True`. Set `EMAIL_FROM` to an address on your verified domain.
+Both API and TACTIC need the mail settings; the frontend never needs the key.
+See the infrastructure repository's `docs/email-delivery.md` for domain, vault,
+and deployment instructions. Local Mailpit settings remain unchanged.
 
 Pending legacy registrations need a new invitation. Public registration and old
 email-verification links no longer activate accounts. Invitation links expire in

@@ -46,6 +46,39 @@ class MemberService:
             (await self.session.scalars(select(User).order_by(User.email))).all()
         )
 
+    async def bootstrap_invitation(
+        self, email: str, *, resend: bool = False
+    ) -> dict[str, str]:
+        """Initialize an empty installation without changing existing access."""
+        await self._lock_membership()
+        if await self._admin_count():
+            return {"status": "configured"}
+        users = list((await self.session.scalars(select(User))).all())
+        if users:
+            if (
+                len(users) != 1
+                or users[0].email != email
+                or users[0].role != RoleEnum.admin
+                or users[0].is_verified
+                or not users[0].is_active
+            ):
+                raise ConflictError(
+                    "Existing accounts require operator recovery; "
+                    "automatic setup will not create or promote an administrator."
+                )
+            user = users[0]
+            if (
+                not resend
+                and user.verification_token
+                and user.invitation_expires_at
+                and user.invitation_expires_at > datetime.now(UTC)
+            ):
+                return {"status": "pending", "email": email}
+        invitation = await self.invite(
+            MemberInvitation(email=email, role=RoleEnum.admin)
+        )
+        return {"status": "created", **invitation}
+
     async def invite(
         self, invitation: MemberInvitation, actor: User | None = None
     ) -> dict[str, str]:

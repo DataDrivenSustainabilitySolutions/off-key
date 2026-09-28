@@ -21,6 +21,7 @@ classifiers = [
 dependencies = [
     "off-key-core",
     "fastapi>=0.104.0",
+    "fastapi-mail>=1.4.2",
     "uvicorn[standard]>=0.24.0",
     "docker>=7.0.0",
     "sqlalchemy>=2.0.0",

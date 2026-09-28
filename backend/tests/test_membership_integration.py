@@ -5,6 +5,8 @@ import hashlib
 import os
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
@@ -14,7 +16,9 @@ from fastapi.security import HTTPAuthorizationCredentials
 from off_key_api_gateway.services.auth import create_jwt
 from off_key_core.db.models import User
 from off_key_core.schemas.members import MemberInvitation, MemberUpdate
+from off_key_core.utils import mail
 from off_key_core.utils.enum import RoleEnum
+from off_key_tactic_middleware import bootstrap_admin
 from off_key_tactic_middleware.api.collection_auth import current_member
 from off_key_tactic_middleware.domain import (
     AuthenticationError,
@@ -65,6 +69,129 @@ async def bootstrap(sessions):
         return (
             await session.scalar(select(User).where(User.email == "admin@example.com"))
         ).id
+
+
+@pytest.mark.asyncio
+async def test_automatic_bootstrap_preserves_pending_and_completed_setup(
+    member_database,
+):
+    _, sessions = member_database
+
+    async def initialize():
+        async with sessions() as session:
+            return await MemberService(session).bootstrap_invitation(
+                "admin@example.com"
+            )
+
+    results = await asyncio.gather(initialize(), initialize())
+    assert sorted(result["status"] for result in results) == ["created", "pending"]
+    invitation = next(result for result in results if result["status"] == "created")
+    async with sessions() as session:
+        service = MemberService(session)
+        assert await service.bootstrap_invitation("admin@example.com") == {
+            "status": "pending",
+            "email": "admin@example.com",
+        }
+        await service.accept_invitation(invitation["token"], PASSWORD)
+        assert await service.bootstrap_invitation("other@example.com", resend=True) == {
+            "status": "configured"
+        }
+        users = list(await session.scalars(select(User)))
+        assert len(users) == 1
+        assert users[0].email == "admin@example.com"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("expired", [False, True])
+async def test_bootstrap_replaces_expired_or_explicitly_resent_links(
+    member_database, expired
+):
+    _, sessions = member_database
+    async with sessions() as session:
+        service = MemberService(session)
+        original = await service.bootstrap_invitation("admin@example.com")
+        if expired:
+            user = await session.scalar(select(User))
+            user.invitation_expires_at = datetime.now(UTC) - timedelta(seconds=1)
+            await session.commit()
+        replacement = await service.bootstrap_invitation(
+            "admin@example.com", resend=not expired
+        )
+        assert replacement["status"] == "created"
+        with pytest.raises(ValidationError):
+            await service.accept_invitation(original["token"], PASSWORD)
+        await session.rollback()
+        await service.accept_invitation(replacement["token"], PASSWORD)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"email": "someone-else@example.com"},
+        {"role": RoleEnum.user},
+        {"is_active": False},
+    ],
+)
+async def test_bootstrap_refuses_to_change_existing_access(member_database, change):
+    _, sessions = member_database
+    async with sessions() as session:
+        service = MemberService(session)
+        await service.bootstrap_invitation("admin@example.com")
+        user = await session.scalar(select(User))
+        for key, value in change.items():
+            setattr(user, key, value)
+        await session.commit()
+        with pytest.raises(ConflictError, match="operator recovery"):
+            await service.bootstrap_invitation("admin@example.com", resend=True)
+
+
+@pytest.mark.asyncio
+async def test_bootstrap_cli_email_delivery_and_recovery(
+    member_database, monkeypatch, capsys
+):
+    engine, sessions = member_database
+    monkeypatch.setattr(bootstrap_admin, "load_env", lambda: None)
+    monkeypatch.setattr(bootstrap_admin, "get_async_session_local", lambda: sessions)
+    monkeypatch.setattr(bootstrap_admin, "get_async_engine", lambda: engine)
+    monkeypatch.setattr(
+        bootstrap_admin,
+        "get_auth_settings",
+        lambda: SimpleNamespace(SUPERUSER_MAIL="admin@example.com"),
+    )
+    monkeypatch.setenv("FRONTEND_BASE_URL", "https://dashboard.example.com")
+    monkeypatch.setattr(mail, "get_mail_config", lambda: None)
+    send = AsyncMock(side_effect=RuntimeError("sensitive transport details"))
+    monkeypatch.setattr(mail, "send_invitation_email", send)
+
+    with pytest.raises(RuntimeError, match="--send-email --resend") as error:
+        await bootstrap_admin.main(send_email=True)
+    assert "sensitive transport details" not in str(error.value)
+    assert capsys.readouterr().out == ""
+    failed_token = send.call_args.args[1]
+
+    send.reset_mock(side_effect=True)
+    await bootstrap_admin.main(send_email=True)
+    assert '"status": "pending"' in capsys.readouterr().out
+    send.assert_not_awaited()
+
+    await bootstrap_admin.main(send_email=True, resend=True)
+    sent_email, token = send.call_args.args
+    assert sent_email == "admin@example.com"
+    output = capsys.readouterr().out
+    assert '"status": "sent"' in output
+    assert token not in output
+    assert "token" not in output
+    async with sessions() as session:
+        service = MemberService(session)
+        with pytest.raises(ValidationError):
+            await service.accept_invitation(failed_token, PASSWORD)
+        await session.rollback()
+        await service.accept_invitation(token, PASSWORD)
+    send.reset_mock()
+    await bootstrap_admin.main(send_email=True, resend=True)
+    assert '"status": "configured"' in capsys.readouterr().out
+    send.assert_not_awaited()
 
 
 @pytest.mark.asyncio

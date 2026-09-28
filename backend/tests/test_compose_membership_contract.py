@@ -65,7 +65,7 @@ def test_compose_scopes_secrets_and_preserves_service_settings(tmp_path, filenam
         check=True,
     )
     services = json.loads(result.stdout)["services"]
-    for key in ("JWT_SECRET", "INTERNAL_API_SECRET"):
+    for key in ("JWT_SECRET", "INTERNAL_API_SECRET", "EMAIL_PASSWORD"):
         assert {
             name
             for name, service in services.items()

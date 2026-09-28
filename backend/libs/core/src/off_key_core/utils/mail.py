@@ -121,9 +121,9 @@ async def send_invitation_email(email: str, token: str):
     settings = get_email_settings()
     link = f"{settings.FRONTEND_BASE_URL.rstrip('/')}/register#token={token}"
     message = MessageSchema(
-        subject="Your off/key invitation",
+        subject="Your aberration invitation",
         recipients=[email],
-        body=f"You have been invited to this organization's off/key installation.\n\n"
+        body="You have been invited to this organization's aberration installation.\n\n"
         f"Choose your password: {link}\n\nThis link expires in 48 hours.",
         subtype=MessageType.plain,
     )

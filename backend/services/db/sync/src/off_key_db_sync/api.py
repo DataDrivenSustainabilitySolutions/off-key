@@ -28,7 +28,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
 # FastAPI app
 app = FastAPI(
-    title="Off-Key Database Sync Service",
+    title="aberration Database Sync Service",
     description="Database schema initialization and readiness service",
     lifespan=lifespan,
 )

@@ -114,7 +114,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 # FastAPI app
 app = FastAPI(
     title=app_settings.APP_NAME,
-    description="Off-Key API Gateway - Real-time Anomaly Detection Platform",
+    description="aberration API Gateway - Real-time Anomaly Detection Platform",
     lifespan=lifespan,
 )
 

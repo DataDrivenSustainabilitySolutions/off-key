@@ -247,7 +247,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title=config.service_name,
         description="Timely Anomaly Communication / "
-        "Task Instance Control for off-key platform",
+        "Task Instance Control for aberration",
         version=config.service_version,
         docs_url="/docs",
         redoc_url="/redoc",

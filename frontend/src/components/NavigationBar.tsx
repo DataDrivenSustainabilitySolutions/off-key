@@ -220,12 +220,14 @@ export const NavigationBar = () => {
                 rel="noreferrer noopener"
                 className="group flex items-center gap-2.5 rounded-lg py-1.5 pr-2 text-base font-semibold tracking-[-0.02em]"
               >
-                <span className="flex size-8 items-center justify-center rounded-lg bg-primary text-[11px] font-bold tracking-[-0.04em] text-primary-foreground shadow-sm transition-transform group-hover:scale-[1.03]">
-                  ok
-                </span>
-                <span>
-                  off<span className="text-primary">/</span>key
-                </span>
+                <img
+                  src="/favicon.svg"
+                  alt=""
+                  width={32}
+                  height={32}
+                  className="size-8 rounded-lg ring-1 ring-foreground/10 transition-transform group-hover:scale-[1.03]"
+                />
+                <span className="font-mono">aberration</span>
               </Link>
             </NavigationMenuItem>
 
@@ -301,7 +303,7 @@ export const NavigationBar = () => {
             </SheetTrigger>
             <SheetContent side="left" className="w-80">
               <SheetHeader>
-                <SheetTitle>off/key</SheetTitle>
+                <SheetTitle className="font-mono">aberration</SheetTitle>
                 <SheetDescription>Navigation</SheetDescription>
               </SheetHeader>
               <nav className="flex flex-col gap-1 px-4">

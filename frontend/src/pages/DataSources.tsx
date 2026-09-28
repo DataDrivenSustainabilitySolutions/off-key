@@ -1,18 +1,12 @@
-import { Activity, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import { useBlocker } from "react-router-dom";
 
 import { PageHeader, PageShell } from "@/components/DashboardLayout";
 import { NavigationBar } from "@/components/NavigationBar";
 import { Button } from "@/components/ui/button";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
 import { apiUtils } from "@/lib/api-client";
+import { catalogRemovals } from "@/lib/catalog-changes";
 import { getErrorMessage } from "@/lib/errors";
 import type {
   Catalog,
@@ -21,9 +15,6 @@ import type {
 } from "@/types/collection";
 import { effectivePolicy, runtimeLabel } from "@/types/collection";
 import { CatalogPanel } from "./sources/CatalogPanel";
-import { CollectionPanel } from "./sources/CollectionPanel";
-import { CollectionReview } from "./sources/CollectionReview";
-import { StorageSummary } from "./sources/StorageSummary";
 import { CollectionHealth } from "./sources/CollectionHealth";
 
 const endpoint = "/v1/sources";
@@ -32,15 +23,11 @@ export default function DataSources() {
   const [snapshot, setSnapshot] = useState<CatalogSnapshot | null>(null);
   const [draft, setDraft] = useState<Catalog | null>(null);
   const [baseRevision, setBaseRevision] = useState(0);
-  const [tab, setTab] = useState<"collection" | "catalog">("collection");
-  const [preview, setPreview] = useState<CatalogPreview | null>(null);
-  const [pauseMonitors, setPauseMonitors] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [statusError, setStatusError] = useState("");
   const initialized = useRef(false);
-  const reviewTrigger = useRef<HTMLElement | null>(null);
-  const collectionTab = useRef<HTMLButtonElement>(null);
   const changed =
     !!draft &&
     !!snapshot &&
@@ -52,11 +39,7 @@ export default function DataSources() {
 
   useEffect(() => {
     if (navigation.state !== "blocked") return;
-    if (
-      window.confirm(
-        "Leave this page and discard your unsaved collection draft?",
-      )
-    )
+    if (window.confirm("Leave this page and discard your unsaved changes?"))
       navigation.proceed();
     else navigation.reset();
   }, [navigation]);
@@ -109,8 +92,6 @@ export default function DataSources() {
 
   const change = (catalog: Catalog) => {
     setDraft(catalog);
-    setPreview(null);
-    setPauseMonitors(false);
     setError("");
   };
   const task = async (work: () => Promise<void>) => {
@@ -124,18 +105,12 @@ export default function DataSources() {
       setBusy(false);
     }
   };
-  const validate = async (catalog: Catalog) => {
-    reviewTrigger.current =
-      document.activeElement instanceof HTMLElement
-        ? document.activeElement
-        : null;
+  const importCatalog = async (catalog: Catalog) => {
     const result = await apiUtils.post<CatalogPreview>(`${endpoint}/preview`, {
       expected_revision: baseRevision,
       catalog,
     });
-    setPreview(result);
-    setDraft(result.catalog);
-    setPauseMonitors(false);
+    change(result.catalog);
   };
   const exportCatalog = () => {
     const url = URL.createObjectURL(
@@ -160,17 +135,80 @@ export default function DataSources() {
         </PageShell>
       </>
     );
+
   const chargers = draft.sources.flatMap((source) => source.chargers);
   const sensors = chargers.flatMap((charger) =>
-    charger.sensors.map((sensor) => ({
-      sensor,
-      policy: effectivePolicy(draft, charger, sensor),
-    })),
+    charger.sensors.map((sensor) => effectivePolicy(draft, charger, sensor)),
   );
-  const activeCount = sensors.filter(
-    (item) => item.policy.mode !== "off",
-  ).length;
+  const activeCount = sensors.filter((policy) => policy.mode !== "off").length;
   const conflict = snapshot.revision !== baseRevision;
+  const runtime = [snapshot.collection, snapshot.ingress].map((state) =>
+    runtimeLabel(state, snapshot.revision),
+  );
+  const applicationError = snapshot.collection.error || snapshot.ingress.error;
+  const status = conflict
+    ? "Newer changes are available"
+    : snapshot.revision === 0
+      ? "No saved configuration"
+      : applicationError || runtime.includes("error")
+        ? "Saved · Changes could not be applied"
+        : runtime.includes("Disabled by operator")
+          ? "Saved · Collection disabled by operator"
+          : statusError || runtime.includes("Waiting for worker")
+            ? "Saved · Waiting for live status"
+            : runtime.every((label) => label === "applied")
+              ? "Changes applied"
+              : "Saved · Applying changes…";
+
+  const save = async () => {
+    setSaving(true);
+    await task(async () => {
+      const preview = await apiUtils.post<CatalogPreview>(
+        `${endpoint}/preview`,
+        {
+          expected_revision: baseRevision,
+          catalog: draft,
+        },
+      );
+      const removals = catalogRemovals(snapshot.catalog, preview.catalog);
+      const monitors = preview.affected_monitors;
+      const consequences = [
+        ...(removals.length
+          ? [`Remove from the catalog:\n${removals.join("\n")}`]
+          : []),
+        ...(monitors.length
+          ? [
+              `Stop these running monitors:\n${monitors.map((monitor) => monitor.name).join("\n")}\nThey must be restarted with fresh calibration.`,
+            ]
+          : []),
+      ];
+      if (
+        consequences.length &&
+        !window.confirm(`${consequences.join("\n\n")}\n\nSave these changes?`)
+      )
+        return;
+      const result = await apiUtils.put<CatalogSnapshot>(endpoint, {
+        expected_revision: preview.revision,
+        catalog: preview.catalog,
+        pause_affected_monitors: monitors.length > 0,
+      });
+      setSnapshot((current) => ({
+        ...result,
+        can_edit: snapshot.can_edit,
+        ...(current && current.revision > result.revision
+          ? {
+              revision: current.revision,
+              ingress: current.ingress,
+              collection: current.collection,
+            }
+          : {}),
+      }));
+      setDraft(result.catalog);
+      setBaseRevision(result.revision);
+      toast.success("Changes saved");
+    });
+    setSaving(false);
+  };
 
   return (
     <>
@@ -178,21 +216,11 @@ export default function DataSources() {
       <PageShell className="[&>div]:gap-5 [&>div]:py-6">
         <PageHeader
           title="Data sources"
-          description="Choose what to collect from AmbiBox. Review and apply when ready."
+          description="Manage your brokers, chargers and the measurements you collect."
           actions={
-            <>
-              <Button variant="outline" onClick={exportCatalog}>
-                Export catalog
-              </Button>
-              {snapshot.can_edit && (
-                <Button
-                  disabled={busy || conflict || !changed}
-                  onClick={() => void task(() => validate(draft))}
-                >
-                  Review changes
-                </Button>
-              )}
-            </>
+            <Button variant="outline" onClick={exportCatalog}>
+              Export catalog
+            </Button>
           }
         />
         {error && (
@@ -211,192 +239,80 @@ export default function DataSources() {
         )}
         {conflict && (
           <p role="alert" className="rounded-lg border p-4 text-sm">
-            Someone saved a newer catalog. Export your draft if needed, then
+            Someone saved a newer catalog. Export your changes if needed, then
             reload to continue.
           </p>
         )}
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-card px-4 py-3 text-sm">
-          <div>
-            <p>
-              <strong>{chargers.length} chargers</strong> · {activeCount} of{" "}
-              {sensors.length} measurements in draft
-            </p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              {draft.sources.filter((source) => source.verified).length}{" "}
-              observed brokers ·{" "}
-              {draft.sources.filter((source) => !source.verified).length}{" "}
-              candidate hosts
-            </p>
-          </div>
-          <div className="text-xs text-muted-foreground">
-            <p>
-              Live collection:{" "}
-              {runtimeLabel(snapshot.collection, snapshot.revision)}
-            </p>
-            <p className="mt-1">
-              Broker routes: {runtimeLabel(snapshot.ingress, snapshot.revision)}{" "}
-              · Saved revision {snapshot.revision}
-            </p>
-          </div>
-        </div>
-        {(snapshot.collection.error || snapshot.ingress.error) && (
-          <p role="alert" className="text-sm text-destructive">
-            {snapshot.collection.error ?? snapshot.ingress.error}
+          <p>
+            <strong>{draft.sources.length} brokers</strong> · {chargers.length}{" "}
+            chargers · {activeCount} of {sensors.length} measurements enabled
           </p>
-        )}
-        {preview && (
-          <Sheet
-            open
-            onOpenChange={(open) => {
-              if (!open && !busy) setPreview(null);
-            }}
-          >
-            <SheetContent
-              className="w-full overflow-y-auto sm:max-w-2xl"
-              onCloseAutoFocus={(event) => {
-                event.preventDefault();
-                const trigger = reviewTrigger.current;
-                if (trigger?.isConnected && !trigger.matches(":disabled"))
-                  trigger.focus();
-                else collectionTab.current?.focus();
-              }}
-            >
-              <SheetHeader className="pr-12">
-                <SheetTitle>Review collection changes</SheetTitle>
-                <SheetDescription>
-                  Check the exact changes below. Applying updates the running
-                  collection configuration.
-                </SheetDescription>
-              </SheetHeader>
-              {error && (
-                <p role="alert" className="px-5 text-sm text-destructive">
-                  {error}
-                </p>
-              )}
-              {conflict && (
-                <p role="alert" className="px-5 text-sm text-destructive">
-                  Someone saved a newer catalog. Close this review, export your
-                  draft if needed, then reload the saved catalog.
-                </p>
-              )}
-              <CollectionReview
-                saved={snapshot.catalog}
-                preview={preview}
-                pauseMonitors={pauseMonitors}
-                busy={busy}
-                conflict={conflict}
-                onPauseMonitors={setPauseMonitors}
-                onApply={() =>
-                  void task(async () => {
-                    const result = await apiUtils.put<CatalogSnapshot>(
-                      endpoint,
-                      {
-                        expected_revision: preview.revision,
-                        catalog: preview.catalog,
-                        pause_affected_monitors: pauseMonitors,
-                      },
-                    );
-                    setSnapshot({ ...result, can_edit: snapshot.can_edit });
-                    setDraft(result.catalog);
-                    setBaseRevision(result.revision);
-                    setPreview(null);
-                    toast.success(
-                      "Configuration saved. Workers are applying it.",
-                    );
-                  })
-                }
-              />
-            </SheetContent>
-          </Sheet>
-        )}
-        <div className="flex flex-wrap items-center gap-2">
-          <Button
-            ref={collectionTab}
-            variant={tab === "collection" ? "default" : "outline"}
-            onClick={() => setTab("collection")}
-          >
-            Collection
-          </Button>
-          <Button
-            variant={tab === "catalog" ? "default" : "outline"}
-            onClick={() => setTab("catalog")}
-          >
-            Catalog
-          </Button>
-          <Button
-            variant="ghost"
-            disabled={busy}
-            onClick={() =>
-              (!changed ||
-                window.confirm(
-                  "Discard your unsaved catalog and collection changes?",
-                )) &&
-              void task(async () => {
-                const saved = await apiUtils.get<CatalogSnapshot>(endpoint);
-                setSnapshot(saved);
-                change(saved.catalog);
-                setBaseRevision(saved.revision);
-              })
-            }
-          >
-            {changed ? "Discard draft" : "Reload saved catalog"}
-          </Button>
           {!snapshot.can_edit && (
-            <span className="text-sm text-muted-foreground">
-              View only · an administrator can change collection
-            </span>
+            <p className="text-muted-foreground">
+              View only · an administrator can make changes
+            </p>
           )}
         </div>
-        <Activity mode={tab === "catalog" ? "visible" : "hidden"}>
-          <CatalogPanel
-            draft={draft}
-            canEdit={snapshot.can_edit}
-            busy={busy || conflict}
-            change={change}
-            task={task}
-            validate={validate}
-          />
-        </Activity>
-        <Activity mode={tab === "collection" ? "visible" : "hidden"}>
-          <CollectionPanel
-            draft={draft}
-            snapshot={snapshot}
-            busy={busy || conflict}
-            conflict={conflict}
-            change={change}
-            onCatalog={() => setTab("catalog")}
-            onLoadInventory={() =>
-              void task(async () =>
-                change(
-                  await apiUtils.get<Catalog>(`${endpoint}/ambibox-template`),
-                ),
-              )
-            }
-          />
-        </Activity>
+        {applicationError && (
+          <p role="alert" className="text-sm text-destructive">
+            {applicationError}
+          </p>
+        )}
+        <CatalogPanel
+          draft={draft}
+          snapshot={snapshot}
+          busy={busy || conflict}
+          conflict={conflict}
+          change={change}
+          task={task}
+          importCatalog={importCatalog}
+        />
         <details className="rounded-xl border bg-card p-5">
           <summary className="cursor-pointer font-medium">
-            Live diagnostics and storage
+            Live diagnostics
           </summary>
-          <div className="mt-5 space-y-5">
+          <div className="mt-5">
             <CollectionHealth snapshot={snapshot} />
-            <StorageSummary />
           </div>
         </details>
-        {changed && snapshot.can_edit && (
-          <div className="sticky bottom-3 z-20 flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-background p-4 shadow-lg">
-            <p className="text-sm">
-              Unsaved draft · {activeCount} measurements selected. Live
-              collection is unchanged.
+        <div className="sticky bottom-3 z-20 flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-background p-4 shadow-lg">
+          <div className="text-sm" role="status">
+            <p className="font-medium">
+              {changed ? "Unsaved changes" : status}
             </p>
-            <Button
-              disabled={busy || conflict}
-              onClick={() => void task(() => validate(draft))}
-            >
-              Review and apply
-            </Button>
+            {changed && (
+              <p className="mt-1 text-xs text-muted-foreground">
+                Save to update the catalog and collection settings.
+              </p>
+            )}
           </div>
-        )}
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="ghost"
+              disabled={busy}
+              onClick={() =>
+                (!changed || window.confirm("Discard your unsaved changes?")) &&
+                void task(async () => {
+                  const saved = await apiUtils.get<CatalogSnapshot>(endpoint);
+                  setSnapshot(saved);
+                  change(saved.catalog);
+                  setBaseRevision(saved.revision);
+                })
+              }
+            >
+              {changed ? "Discard changes" : "Reload saved catalog"}
+            </Button>
+            {snapshot.can_edit && (
+              <Button
+                disabled={busy || conflict || !changed}
+                onClick={() => void save()}
+              >
+                {saving ? "Saving…" : "Save changes"}
+              </Button>
+            )}
+          </div>
+        </div>
       </PageShell>
     </>
   );

@@ -9,6 +9,8 @@ import {
 import { createMemoryRouter, RouterProvider } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import toast from "react-hot-toast";
+
 import DataSources from "../pages/DataSources";
 import type { Catalog, CatalogSnapshot } from "../types/collection";
 import { effectivePolicy } from "../types/collection";
@@ -92,16 +94,7 @@ const snapshot = (catalog = empty, can_edit = true): CatalogSnapshot => ({
   updated_at: null,
   updated_by: null,
 });
-const mockSnapshot = (value = snapshot()) =>
-  api.get.mockImplementation(async (url: string) =>
-    url === "/v1/sources/storage"
-      ? {
-          database_size_bytes: 10000000,
-          retention_policies: [],
-          checked_at: "2026-09-27T12:00:00Z",
-        }
-      : value,
-  );
+const mockSnapshot = (value = snapshot()) => api.get.mockResolvedValue(value);
 const show = () => {
   const router = createMemoryRouter(
     [
@@ -133,9 +126,30 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks());
 
 describe("catalog collection UI", () => {
+  it("keeps data sources focused on collection configuration", async () => {
+    const catalog = inventory();
+    catalog.sources[0]!.chargers[1]!.policy = {
+      mode: "original",
+      interval_seconds: 10,
+    };
+    mockSnapshot(snapshot(catalog));
+    show();
+    await screen.findByRole("button", { name: "Configure Yard" });
+    expect(screen.getAllByText("Off")).toHaveLength(3);
+    expect(screen.getByText("3 of 3 measurements enabled")).toBeTruthy();
+    fireEvent.click(
+      screen.getByText("Live diagnostics", { selector: "summary" }),
+    );
+    expect(screen.queryByText("Storage and retention")).toBeNull();
+    expect(api.get).not.toHaveBeenCalledWith("/v1/sources/storage");
+    expect(screen.queryByRole("link", { name: "View telemetry" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Latest values" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Pause selected" })).toBeNull();
+  });
+
   it("builds a broker, charger and sensor without a configuration file", async () => {
     show();
-    fireEvent.click(await screen.findByRole("button", { name: "Catalog" }));
+    await screen.findByRole("button", { name: "Add broker" });
     fireEvent.click(screen.getByRole("button", { name: "Add broker" }));
     const host = screen.getByLabelText("Hostname");
     fireEvent.change(host, { target: { value: "charger.ts.net" } });
@@ -144,16 +158,16 @@ describe("catalog collection UI", () => {
       target: { value: "Yard charger" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Add sensor" }));
-    fireEvent.click(screen.getByText("New sensor", { selector: "summary" }));
+    fireEvent.click(screen.getByText("New sensor").closest("summary")!);
     fireEvent.change(screen.getByLabelText("Sensor key"), {
       target: { value: "temperature" },
     });
     fireEvent.change(screen.getByLabelText("Upstream topic"), {
       target: { value: "device/evCharger/0/temperature" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Review changes" }));
-    await screen.findByRole("button", { name: "Apply collection" });
-    const catalog = api.post.mock.calls[0]?.[1].catalog as Catalog;
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    await waitFor(() => expect(api.put).toHaveBeenCalledTimes(1));
+    const catalog = api.put.mock.calls[0]?.[1].catalog as Catalog;
     expect(catalog.sources[0]?.host).toBe("charger.ts.net");
     const charger = catalog.sources[0]?.chargers[0];
     expect(charger?.label).toBe("Yard charger");
@@ -161,46 +175,34 @@ describe("catalog collection UI", () => {
     expect(charger?.sensors[0]?.upstream_topic).toBe(
       "device/evCharger/0/temperature",
     );
-    expect(api.put).not.toHaveBeenCalled();
+    expect(api.put).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 
-  it("imports a catalog and requires acknowledgement before pausing affected monitors", async () => {
-    const catalog: Catalog = {
-      ...empty,
-      sources: [
-        {
-          id: "cf3f5f77-e08d-4a33-8815-94cebbf2f63c",
-          label: "Yard",
-          host: "yard.ts.net",
-          port: 1883,
-          forward_port: null,
-          verified: false,
-          chargers: [],
-        },
-      ],
-    };
-    api.post.mockImplementation(async (_url, { catalog }) => ({
-      revision: 1,
-      catalog,
-      chargers: 0,
-      selected_sensors: 0,
-      sampled_rows_per_day_ceiling: 0,
-      original_rate_sensors: 0,
+  it("validates imports without saving, and confirms affected monitors only on Save", async () => {
+    const catalog = inventory();
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    const preview = api.post.getMockImplementation()!;
+    api.post.mockImplementation(async (...args) => ({
+      ...(await preview(...args)),
       affected_monitors: [{ id: "monitor-1", name: "Yard temperature" }],
     }));
     show();
-    fireEvent.click(await screen.findByRole("button", { name: "Catalog" }));
+    await screen.findByRole("button", { name: "Add broker" });
     const file = { size: 1024, text: async () => JSON.stringify(catalog) };
-    const upload = document.querySelector('input[type="file"]')!;
-    fireEvent.change(upload, { target: { files: [file] } });
-    const apply = await screen.findByRole("button", {
-      name: "Apply collection",
+    fireEvent.change(document.querySelector('input[type="file"]')!, {
+      target: { files: [file] },
     });
-    expect((apply as HTMLButtonElement).disabled).toBe(true);
-    fireEvent.click(
-      screen.getByRole("checkbox", { name: /Pause affected monitors/ }),
-    );
-    fireEvent.click(apply);
+    await screen.findByRole("button", { name: "Configure Yard" });
+    expect(api.put).not.toHaveBeenCalled();
+    expect(confirm).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    await waitFor(() => expect(confirm).toHaveBeenCalledTimes(1));
+    expect(confirm.mock.calls[0]![0]).toContain("Yard temperature");
+    expect(confirm.mock.calls[0]![0]).toContain("fresh calibration");
+    expect(api.put).not.toHaveBeenCalled();
+    confirm.mockReturnValue(true);
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
     await waitFor(() =>
       expect(api.put).toHaveBeenCalledWith("/v1/sources", {
         expected_revision: 1,
@@ -213,8 +215,11 @@ describe("catalog collection UI", () => {
   it("makes catalog editing unavailable for ordinary users", async () => {
     mockSnapshot(snapshot(inventory(), false));
     show();
-    fireEvent.click(await screen.findByRole("button", { name: "Catalog" }));
-    expect(screen.queryByRole("button", { name: "Review changes" })).toBeNull();
+    await screen.findByRole("button", { name: "Add broker" });
+    expect(screen.queryByRole("button", { name: "Save changes" })).toBeNull();
+    fireEvent.click(
+      screen.getByText("Import and history", { selector: "summary" }),
+    );
     expect(
       (
         screen.getByRole("button", {
@@ -223,8 +228,8 @@ describe("catalog collection UI", () => {
       ).disabled,
     ).toBe(true);
     expect(
-      screen.getByRole("button", { name: "Add broker" }).closest("fieldset")
-        ?.disabled,
+      (screen.getByRole("button", { name: "Add broker" }) as HTMLButtonElement)
+        .disabled,
     ).toBe(true);
     fireEvent.change(
       screen.getByRole("combobox", { name: "Broker evidence" }),
@@ -261,33 +266,23 @@ describe("catalog collection UI", () => {
     fireEvent.click(
       screen.getByRole("checkbox", { name: "Thermal measurements" }),
     );
-    fireEvent.click(screen.getByRole("button", { name: "Update draft" }));
-    fireEvent.click(screen.getByRole("button", { name: "Review changes" }));
-    await screen.findByText(
-      "Temperature (temperature) · Collection: Paused → Latest every 10s",
-    );
-    const draft = api.post.mock.calls[0]![1].catalog as Catalog;
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    await waitFor(() => expect(api.put).toHaveBeenCalledTimes(1));
+    const draft = api.put.mock.calls[0]![1].catalog as Catalog;
     const [yard, garage] = draft.sources[0]!.chargers;
-    expect(
-      within(screen.getByLabelText("Collection plan")).getByText("Temperature"),
-    ).toBeTruthy();
     expect(
       yard!.sensors.map((sensor) => effectivePolicy(draft, yard!, sensor).mode),
     ).toEqual(["sample", "off", "off"]);
     expect(garage).toEqual(original.sources[0]!.chargers[1]);
     expect(draft.sources[1]).toEqual(original.sources[1]);
-    expect(api.put).not.toHaveBeenCalled();
+    expect(api.put).toHaveBeenCalledTimes(1);
   });
 
   it("edits a filtered charger by identity without deleting hidden definitions", async () => {
     mockSnapshot(snapshot(inventory()));
     show();
-    fireEvent.click(await screen.findByRole("button", { name: "Catalog" }));
-    expect(
-      screen.getByText(
-        /This draft contains 1 observed brokers and 1 candidate hosts/,
-      ),
-    ).toBeTruthy();
+    await screen.findByRole("button", { name: "Add broker" });
     fireEvent.change(
       screen.getByRole("searchbox", { name: "Search catalog" }),
       {
@@ -297,9 +292,9 @@ describe("catalog collection UI", () => {
     fireEvent.change(screen.getByLabelText("Charger name"), {
       target: { value: "Garage renamed" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Review changes" }));
-    await screen.findByRole("button", { name: "Apply collection" });
-    const draft = api.post.mock.calls[0]![1].catalog as Catalog;
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    await waitFor(() => expect(api.put).toHaveBeenCalledTimes(1));
+    const draft = api.put.mock.calls[0]![1].catalog as Catalog;
     expect(draft.sources[0]!.chargers.map((charger) => charger.label)).toEqual([
       "Yard",
       "Garage renamed",
@@ -310,7 +305,7 @@ describe("catalog collection UI", () => {
   it("filters candidate hosts and clears filters when adding a broker", async () => {
     mockSnapshot(snapshot(inventory()));
     show();
-    fireEvent.click(await screen.findByRole("button", { name: "Catalog" }));
+    await screen.findByRole("button", { name: "Add broker" });
     fireEvent.change(
       screen.getByRole("combobox", { name: "Broker evidence" }),
       {
@@ -340,7 +335,7 @@ describe("catalog collection UI", () => {
   it("keeps a filtered broker mounted and focused when editing changes its evidence", async () => {
     mockSnapshot(snapshot(inventory()));
     show();
-    fireEvent.click(await screen.findByRole("button", { name: "Catalog" }));
+    await screen.findByRole("button", { name: "Add broker" });
     fireEvent.change(
       screen.getByRole("combobox", { name: "Broker evidence" }),
       {
@@ -360,13 +355,13 @@ describe("catalog collection UI", () => {
     expect(screen.getAllByLabelText("Hostname")).toContain(host);
     expect(document.activeElement).toBe(host);
     fireEvent.change(host, { target: { value: "new.ts.net" } });
-    fireEvent.click(screen.getByRole("button", { name: "Review changes" }));
-    await screen.findByRole("button", { name: "Apply collection" });
-    const source = (api.post.mock.calls[0]![1].catalog as Catalog).sources[0]!;
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    await waitFor(() => expect(api.put).toHaveBeenCalledTimes(1));
+    const source = (api.put.mock.calls[0]![1].catalog as Catalog).sources[0]!;
     expect(source.host).toBe("new.ts.net");
     expect(source.verified).toBe(false);
   });
-  it("preserves charger selection and staged measurement rates across tab switches", async () => {
+  it("preserves charger selection and unsaved measurement rates when reopening configuration", async () => {
     mockSnapshot(snapshot(inventory()));
     show();
     fireEvent.click(
@@ -379,9 +374,7 @@ describe("catalog collection UI", () => {
     fireEvent.change(screen.getByLabelText("Collection interval in seconds"), {
       target: { value: "60" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Update draft" }));
-    fireEvent.click(screen.getByRole("button", { name: "Catalog" }));
-    fireEvent.click(screen.getByRole("button", { name: "Collection" }));
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
     expect(
       (
         screen.getByRole("checkbox", {
@@ -405,14 +398,13 @@ describe("catalog collection UI", () => {
       ).value,
     ).toBe("60");
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
-    fireEvent.click(screen.getByRole("button", { name: "Review changes" }));
-    await screen.findByText(
-      "Temperature (temperature) · Collection: Paused → Latest every 60s",
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    await waitFor(() => expect(api.put).toHaveBeenCalledTimes(1));
+    expect(screen.getByText("Latest every 60s")).toBeTruthy();
   });
 
   it.each(["Thermal", "Current", "Status"])(
-    "selects only %s and persists it only after review and apply",
+    "selects only %s and persists it with Save changes",
     async (category) => {
       mockSnapshot(snapshot(inventory()));
       show();
@@ -439,12 +431,9 @@ describe("catalog collection UI", () => {
       }
       expect(api.post).not.toHaveBeenCalled();
       expect(api.put).not.toHaveBeenCalled();
-      fireEvent.click(screen.getByRole("button", { name: "Update draft" }));
+      fireEvent.click(screen.getByRole("button", { name: "Done" }));
       expect(api.put).not.toHaveBeenCalled();
-      fireEvent.click(screen.getByRole("button", { name: "Review changes" }));
-      fireEvent.click(
-        await screen.findByRole("button", { name: "Apply collection" }),
-      );
+      fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
       await waitFor(() => expect(api.put).toHaveBeenCalledTimes(1));
       const draft = api.put.mock.calls[0]![1].catalog as Catalog;
       for (const charger of draft.sources[0]!.chargers) {
@@ -471,10 +460,10 @@ describe("catalog collection UI", () => {
     fireEvent.click(
       screen.getByRole("checkbox", { name: "Thermal measurements" }),
     );
-    fireEvent.click(screen.getByRole("button", { name: "Update draft" }));
-    fireEvent.click(screen.getByRole("button", { name: "Review changes" }));
-    await screen.findByRole("button", { name: "Apply collection" });
-    const draft = api.post.mock.calls[0]![1].catalog as Catalog;
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    await waitFor(() => expect(api.put).toHaveBeenCalledTimes(1));
+    const draft = api.put.mock.calls[0]![1].catalog as Catalog;
     const changed = draft.sources[0]!.chargers[0]!;
     expect(
       changed.sensors.map(
@@ -499,7 +488,7 @@ describe("catalog collection UI", () => {
     expect(
       (
         screen.getByRole("button", {
-          name: "Review changes",
+          name: "Save changes",
         }) as HTMLButtonElement
       ).disabled,
     ).toBe(true);
@@ -526,10 +515,10 @@ describe("catalog collection UI", () => {
     expect(thermal.indeterminate).toBe(true);
     fireEvent.click(thermal);
     expect(thermal.checked).toBe(true);
-    fireEvent.click(screen.getByRole("button", { name: "Update draft" }));
-    fireEvent.click(screen.getByRole("button", { name: "Review changes" }));
-    await screen.findByRole("button", { name: "Apply collection" });
-    const draft = api.post.mock.calls[0]![1].catalog as Catalog;
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    await waitFor(() => expect(api.put).toHaveBeenCalledTimes(1));
+    const draft = api.put.mock.calls[0]![1].catalog as Catalog;
     const [nextYard, garage] = draft.sources[0]!.chargers;
     expect(nextYard!.sensors[0]!.policy).toEqual(yard.sensors[0]!.policy);
     expect(nextYard!.sensors[1]!.policy).toEqual(yard.sensors[1]!.policy);
@@ -558,7 +547,7 @@ describe("catalog collection UI", () => {
       expect(
         (
           screen.getByRole("button", {
-            name: "Update draft",
+            name: "Done",
           }) as HTMLButtonElement
         ).disabled,
       ).toBe(true);
@@ -567,7 +556,7 @@ describe("catalog collection UI", () => {
     },
   );
 
-  it("shows apply errors inside review and allows a safe retry", async () => {
+  it("keeps unsaved changes after a failed save and revalidates on retry", async () => {
     api.put.mockRejectedValueOnce(new Error("Database unavailable"));
     mockSnapshot(snapshot(inventory()));
     show();
@@ -577,23 +566,20 @@ describe("catalog collection UI", () => {
     fireEvent.click(
       screen.getByRole("checkbox", { name: "Thermal measurements" }),
     );
-    fireEvent.click(screen.getByRole("button", { name: "Update draft" }));
-    fireEvent.click(screen.getByRole("button", { name: "Review changes" }));
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Apply collection" }),
-    );
-    const review = screen.getByRole("dialog", {
-      name: "Review collection changes",
-    });
-    await within(review).findByRole("alert");
-    expect(within(review).getByRole("alert").textContent).toContain(
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    expect((await screen.findByRole("alert")).textContent).toContain(
       "Database unavailable",
     );
-    fireEvent.click(
-      within(review).getByRole("button", { name: "Apply collection" }),
-    );
+    expect(screen.getAllByText("Unsaved changes").length).toBeGreaterThan(0);
+    expect(toast.success).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
     await waitFor(() => expect(api.put).toHaveBeenCalledTimes(2));
+    expect(api.post).toHaveBeenCalledTimes(2);
     expect(api.put.mock.calls[0]![1]).toEqual(api.put.mock.calls[1]![1]);
+    await waitFor(() =>
+      expect(toast.success).toHaveBeenCalledWith("Changes saved"),
+    );
   });
 
   it.each(["shared", "individual"])(
@@ -622,14 +608,14 @@ describe("catalog collection UI", () => {
       expect(
         (
           screen.getByRole("button", {
-            name: "Update draft",
+            name: "Done",
           }) as HTMLButtonElement
         ).disabled,
       ).toBe(false);
-      fireEvent.click(screen.getByRole("button", { name: "Update draft" }));
-      fireEvent.click(screen.getByRole("button", { name: "Review changes" }));
-      await screen.findByRole("button", { name: "Apply collection" });
-      const draft = api.post.mock.calls[0]![1].catalog as Catalog;
+      fireEvent.click(screen.getByRole("button", { name: "Done" }));
+      fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+      await waitFor(() => expect(api.put).toHaveBeenCalledTimes(1));
+      const draft = api.put.mock.calls[0]![1].catalog as Catalog;
       expect(draft.sources[0]!.chargers[0]!.sensors[0]!.policy).toEqual({
         mode: "original",
         interval_seconds: 10,
@@ -651,7 +637,7 @@ describe("catalog collection UI", () => {
         }) as HTMLInputElement
       ).disabled,
     ).toBe(true);
-    expect(screen.queryByRole("button", { name: "Review changes" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Save changes" })).toBeNull();
     fireEvent.click(details);
     expect(
       (
@@ -660,13 +646,12 @@ describe("catalog collection UI", () => {
         }) as HTMLInputElement
       ).closest("fieldset")?.disabled,
     ).toBe(true);
-    expect(screen.queryByRole("button", { name: "Update draft" })).toBeNull();
     expect(
       screen.getByText(/View only · these are the saved collection settings/),
     ).toBeTruthy();
   });
 
-  it("returns keyboard focus after closing the editor and review", async () => {
+  it("returns keyboard focus after accepting or cancelling collection edits", async () => {
     mockSnapshot(snapshot(inventory()));
     show();
     const configure = await screen.findByRole("button", {
@@ -677,23 +662,11 @@ describe("catalog collection UI", () => {
     fireEvent.click(
       screen.getByRole("checkbox", { name: "Thermal measurements" }),
     );
-    fireEvent.click(screen.getByRole("button", { name: "Update draft" }));
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
     await waitFor(() => expect(document.activeElement).toBe(configure));
-    const review = screen.getByRole("button", { name: "Review changes" });
-    review.focus();
-    fireEvent.click(review);
-    await screen.findByRole("dialog");
-    fireEvent.click(screen.getByRole("button", { name: "Close" }));
-    await waitFor(() => expect(document.activeElement).toBe(review));
-    fireEvent.click(review);
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Apply collection" }),
-    );
-    await waitFor(() =>
-      expect(document.activeElement).toBe(
-        screen.getByRole("button", { name: "Collection" }),
-      ),
-    );
+    fireEvent.click(configure);
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(document.activeElement).toBe(configure));
   });
 
   it.each(["link", "back"])(
@@ -713,15 +686,15 @@ describe("catalog collection UI", () => {
       fireEvent.click(
         screen.getByRole("checkbox", { name: "Thermal measurements" }),
       );
-      fireEvent.click(screen.getByRole("button", { name: "Update draft" }));
+      fireEvent.click(screen.getByRole("button", { name: "Done" }));
       const leave = () =>
         action === "back" ? router.navigate(-1) : router.navigate("/away");
       await act(leave);
       expect(confirm).toHaveBeenCalledWith(
-        "Leave this page and discard your unsaved collection draft?",
+        "Leave this page and discard your unsaved changes?",
       );
       expect(router.state.location.pathname).toBe("/sources");
-      expect(screen.getByText(/Unsaved draft/)).toBeTruthy();
+      expect(screen.getAllByText(/Unsaved changes/)[0]).toBeTruthy();
       confirm.mockReturnValue(true);
       await act(leave);
       expect(await screen.findByText("Another page")).toBeTruthy();
@@ -739,10 +712,10 @@ describe("catalog collection UI", () => {
     fireEvent.click(
       screen.getByRole("checkbox", { name: "Thermal measurements" }),
     );
-    fireEvent.click(screen.getByRole("button", { name: "Update draft" }));
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
     await act(() => router.navigate("/sources?view=collection"));
     expect(confirm).not.toHaveBeenCalled();
-    expect(screen.getByText(/Unsaved draft/)).toBeTruthy();
+    expect(screen.getAllByText(/Unsaved changes/)[0]).toBeTruthy();
   });
 
   it("loads the paused inventory directly from the empty collection page", async () => {
@@ -761,8 +734,9 @@ describe("catalog collection UI", () => {
     expect(api.put).not.toHaveBeenCalled();
   });
 
-  it("pauses selected chargers even when their sensors override the charger policy", async () => {
+  it("turns off collection through the editor, including sensor overrides, without changing other chargers", async () => {
     const catalog = inventory();
+    catalog.sources[0]!.chargers[0]!.policy = null;
     catalog.sources[0]!.chargers[0]!.sensors[0]!.policy = {
       mode: "original",
       interval_seconds: 10,
@@ -772,10 +746,14 @@ describe("catalog collection UI", () => {
     fireEvent.click(
       await screen.findByRole("checkbox", { name: "Select Yard for editing" }),
     );
-    fireEvent.click(screen.getByRole("button", { name: "Pause selected" }));
-    fireEvent.click(screen.getByRole("button", { name: "Review changes" }));
-    await screen.findByRole("button", { name: "Apply collection" });
-    const next = api.post.mock.calls[0]![1].catalog as Catalog;
+    fireEvent.click(screen.getByRole("button", { name: "Configure selected" }));
+    fireEvent.click(screen.getByRole("button", { name: "Clear measurements" }));
+    expect(screen.getByText("0 of 3 measurements selected")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
+    expect(api.put).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    await waitFor(() => expect(api.put).toHaveBeenCalledTimes(1));
+    const next = api.put.mock.calls[0]![1].catalog as Catalog;
     expect(
       next.sources[0]!.chargers[0]!.sensors.every(
         (sensor) =>
@@ -786,6 +764,7 @@ describe("catalog collection UI", () => {
     expect(next.sources[0]!.chargers[1]).toEqual(
       catalog.sources[0]!.chargers[1],
     );
+    expect(api.put.mock.calls[0]![1].catalog).toEqual(next);
   });
 
   it("requires confirmation before discarding a draft and guards browser reloads", async () => {
@@ -798,22 +777,22 @@ describe("catalog collection UI", () => {
     fireEvent.click(
       screen.getByRole("checkbox", { name: "Thermal measurements" }),
     );
-    fireEvent.click(screen.getByRole("button", { name: "Update draft" }));
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
     const unload = new Event("beforeunload", { cancelable: true });
     window.dispatchEvent(unload);
     expect(unload.defaultPrevented).toBe(true);
-    fireEvent.click(screen.getByRole("button", { name: "Discard draft" }));
-    expect(screen.getByText(/Unsaved draft/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Discard changes" }));
+    expect(screen.getAllByText(/Unsaved changes/)[0]).toBeTruthy();
     confirm.mockReturnValue(true);
-    fireEvent.click(screen.getByRole("button", { name: "Discard draft" }));
+    fireEvent.click(screen.getByRole("button", { name: "Discard changes" }));
     await screen.findByRole("button", { name: "Reload saved catalog" });
     const cleanUnload = new Event("beforeunload", { cancelable: true });
     window.dispatchEvent(cleanUnload);
     expect(cleanUnload.defaultPrevented).toBe(false);
   });
 
-  it.each(["editor", "review"])(
-    "blocks a stale %s when another administrator saves",
+  it.each(["editor", "catalog"])(
+    "blocks stale edits in the %s when another administrator saves",
     async (panel) => {
       const intervals = vi.spyOn(globalThis, "setInterval");
       mockSnapshot(snapshot(inventory()));
@@ -824,24 +803,22 @@ describe("catalog collection UI", () => {
       fireEvent.click(
         screen.getByRole("checkbox", { name: "Thermal measurements" }),
       );
-      if (panel === "review") {
-        fireEvent.click(screen.getByRole("button", { name: "Update draft" }));
-        fireEvent.click(screen.getByRole("button", { name: "Review changes" }));
-        await screen.findByRole("button", { name: "Apply collection" });
-      }
+      if (panel === "catalog")
+        fireEvent.click(screen.getByRole("button", { name: "Done" }));
       const refresh = intervals.mock.calls.find(
         ([, delay]) => delay === 3000,
       )![0] as () => Promise<void>;
       api.get.mockResolvedValue({ ...snapshot(inventory()), revision: 2 });
       await act(refresh);
-      const dialog = screen.getByRole("dialog");
-      expect(within(dialog).getByRole("alert").textContent).toContain(
+      const scope =
+        panel === "editor" ? within(screen.getByRole("dialog")) : screen;
+      expect(scope.getByRole("alert").textContent).toContain(
         "Someone saved a newer catalog",
       );
       expect(
         (
-          within(dialog).getByRole("button", {
-            name: panel === "editor" ? "Update draft" : "Apply collection",
+          scope.getByRole("button", {
+            name: panel === "editor" ? "Done" : "Save changes",
           }) as HTMLButtonElement
         ).disabled,
       ).toBe(true);
@@ -866,9 +843,9 @@ describe("catalog collection UI", () => {
     fireEvent.click(
       screen.getByRole("checkbox", { name: "Thermal measurements" }),
     );
-    fireEvent.click(screen.getByRole("button", { name: "Update draft" }));
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
     api.post.mockRejectedValueOnce(new Error("Invalid catalog"));
-    fireEvent.click(screen.getByRole("button", { name: "Review changes" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
     await screen.findByRole("alert");
     await act(refresh);
     expect(screen.getByRole("alert").textContent).toContain("Invalid catalog");
@@ -933,10 +910,10 @@ describe("catalog collection UI", () => {
       ).indeterminate,
     ).toBe(true);
     expect(api.put).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: "Update draft" }));
-    fireEvent.click(screen.getByRole("button", { name: "Review changes" }));
-    await screen.findByRole("button", { name: "Apply collection" });
-    const draft = api.post.mock.calls[0]![1].catalog as Catalog;
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    await waitFor(() => expect(api.put).toHaveBeenCalledTimes(1));
+    const draft = api.put.mock.calls[0]![1].catalog as Catalog;
     const [yard, garage] = draft.sources[0]!.chargers;
     expect(
       yard!.sensors.map((sensor) => effectivePolicy(draft, yard!, sensor).mode),
@@ -948,5 +925,171 @@ describe("catalog collection UI", () => {
       { mode: "sample", interval_seconds: 120 },
       { mode: "sample", interval_seconds: 60 },
     ]);
+  });
+
+  it("saves definition and collection edits together without a review or confirmation", async () => {
+    const confirm = vi.spyOn(window, "confirm");
+    mockSnapshot(snapshot(inventory()));
+    show();
+    await screen.findByRole("button", { name: "Configure Yard" });
+    fireEvent.change(screen.getAllByLabelText("Charger name")[0]!, {
+      target: { value: "Yard renamed" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Configure Yard renamed" }),
+    );
+    fireEvent.click(
+      screen.getByRole("checkbox", { name: "Thermal measurements" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
+    expect(screen.getByText("Latest every 10s")).toBeTruthy();
+    expect(api.put).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    await waitFor(() =>
+      expect(toast.success).toHaveBeenCalledWith("Changes saved"),
+    );
+    const catalog = api.put.mock.calls[0]![1].catalog as Catalog;
+    expect(catalog.sources[0]!.chargers[0]!.label).toBe("Yard renamed");
+    expect(catalog.sources[0]!.chargers[0]!.sensors[0]!.policy?.mode).toBe(
+      "sample",
+    );
+    expect(api.put.mock.calls[0]![1].pause_affected_monitors).toBe(false);
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Review changes" })).toBeNull();
+    expect(confirm).not.toHaveBeenCalled();
+    expect(screen.queryAllByText("Unsaved changes")).toHaveLength(0);
+  });
+
+  it("confirms removals at save time and preserves edits when cancelled", async () => {
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    mockSnapshot(snapshot(inventory()));
+    show();
+    await screen.findByRole("button", { name: "Configure Yard" });
+    const yard = within(screen.getByRole("region", { name: "Charger Yard" }));
+    fireEvent.click(
+      yard.getByText("Charger settings", { selector: "summary" }),
+    );
+    fireEvent.click(yard.getByRole("button", { name: "Remove charger" }));
+    expect(confirm).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    await waitFor(() => expect(confirm).toHaveBeenCalledTimes(1));
+    expect(confirm.mock.calls[0]![0]).toContain("Charger Yard");
+    expect(api.put).not.toHaveBeenCalled();
+    expect(screen.queryByRole("region", { name: "Charger Yard" })).toBeNull();
+    confirm.mockReturnValue(true);
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    await waitFor(() => expect(api.put).toHaveBeenCalledTimes(1));
+    expect(api.put.mock.calls[0]![1].pause_affected_monitors).toBe(false);
+  });
+
+  it("keeps the existing catalog when an import fails server validation", async () => {
+    mockSnapshot(snapshot(inventory()));
+    show();
+    await screen.findByRole("button", { name: "Configure Yard" });
+    api.post.mockRejectedValueOnce(
+      new Error("Sensor keys and topics must be unique within a charger"),
+    );
+    const file = {
+      size: 100,
+      text: async () => JSON.stringify({ sources: [] }),
+    };
+    fireEvent.change(document.querySelector('input[type="file"]')!, {
+      target: { files: [file] },
+    });
+    expect((await screen.findByRole("alert")).textContent).toContain(
+      "must be unique",
+    );
+    expect(screen.getByRole("button", { name: "Configure Yard" })).toBeTruthy();
+    expect(api.put).not.toHaveBeenCalled();
+    expect(
+      (
+        screen.getByRole("button", {
+          name: "Save changes",
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+  });
+
+  it("explains that copying definitions turns off the target charger", async () => {
+    const catalog = inventory();
+    catalog.sources[0]!.chargers[0]!.policy = {
+      mode: "original",
+      interval_seconds: 10,
+    };
+    mockSnapshot(snapshot(catalog));
+    show();
+    await screen.findByRole("button", { name: "Configure Yard" });
+    const yard = within(screen.getByRole("region", { name: "Charger Yard" }));
+    fireEvent.click(
+      yard.getByText("Charger settings", { selector: "summary" }),
+    );
+    expect(yard.getByText(/Copying definitions replaces/)).toBeTruthy();
+    fireEvent.change(
+      yard.getByRole("combobox", {
+        name: "Copy sensor definitions from another charger",
+      }),
+      { target: { value: "charger-1" } },
+    );
+    expect(yard.getAllByText("Off")).toHaveLength(3);
+    expect(yard.getByText("0 of 3 measurements enabled")).toBeTruthy();
+    expect(api.put).not.toHaveBeenCalled();
+  });
+
+  it("distinguishes saved changes from worker acknowledgement and application failure", async () => {
+    const intervals = vi.spyOn(globalThis, "setInterval");
+    const original = snapshot(inventory());
+    const state = (revision: number) => ({
+      revision,
+      status: "applied",
+      checked_at: new Date().toISOString(),
+    });
+    original.collection = state(1);
+    original.ingress = state(1);
+    mockSnapshot(original);
+    api.put.mockImplementation(async (_url, { catalog }) => ({
+      ...original,
+      catalog,
+      revision: 2,
+    }));
+    show();
+    await screen.findByRole("button", { name: "Configure Yard" });
+    const refresh = intervals.mock.calls.find(
+      ([, delay]) => delay === 3000,
+    )![0] as () => Promise<void>;
+    fireEvent.change(screen.getAllByLabelText("Charger name")[0]!, {
+      target: { value: "Yard renamed" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    expect(await screen.findByText("Saved · Applying changes…")).toBeTruthy();
+    api.get.mockResolvedValue({
+      revision: 2,
+      collection: state(2),
+      ingress: state(1),
+    });
+    await act(refresh);
+    expect(screen.queryByText("Changes applied")).toBeNull();
+    api.get.mockResolvedValue({
+      revision: 2,
+      collection: state(2),
+      ingress: state(2),
+    });
+    await act(refresh);
+    expect(screen.getByText("Changes applied")).toBeTruthy();
+    api.get.mockResolvedValue({
+      revision: 2,
+      collection: {
+        ...state(2),
+        status: "error",
+        error: "Collector unavailable",
+      },
+      ingress: state(2),
+    });
+    await act(refresh);
+    expect(
+      screen.getByText("Saved · Changes could not be applied"),
+    ).toBeTruthy();
+    expect(screen.getByRole("alert").textContent).toContain(
+      "Collector unavailable",
+    );
   });
 });

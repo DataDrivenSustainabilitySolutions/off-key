@@ -1,8 +1,8 @@
 # AmbiBox catalog and collection
 
 The Data sources page is the collection control plane. Administrators can build a
-catalog in the UI, import/export JSON, choose chargers and sensors, preview the
-write budget, and apply a revision. Other verified users can inspect it. The
+catalog in the UI, import/export JSON, choose chargers and sensors, and save
+definitions and collection settings together. Other verified users can inspect it. The
 catalog is installation-wide; this iteration does not introduce organization
 isolation or other providers.
 
@@ -131,8 +131,8 @@ other known endpoints and apply a collection policy.
 
 For a local Compose stack, import `dev/ambibox/local-catalog.json` instead. It
 matches the existing simulator's two chargers on `source-broker:1883`. Start the
-simulator profile, select those chargers in Data sources, set a policy, review and
-apply. The simulator publishes scalar AmbiBox-style payloads. The default standalone
+simulator profile, select those chargers in Data sources, set a policy, and save
+changes. The simulator publishes scalar AmbiBox-style payloads. The default standalone
 RADAR example points to the first charger UUID in this catalog; normal monitoring
 should be created through the UI.
 
@@ -164,10 +164,11 @@ Build and deploy the application and infrastructure changes together.
    its referring rule first. Remove the old retained `device/evCharger/0/#` cache.
    Do not delete the new controller-owned resources or vendor identity.
 5. Restart TACTIC and MQTT Proxy. Sign in as the configured verified administrator,
-   open Data sources, load/build/import the catalog, select sensors and review the
-   estimated history volume. Apply and wait for both workers' matching revision.
-6. Check each selected broker's connection state, latest observations and numeric
-   charts. Start new monitors using the new charger UUIDs.
+   open Data sources, load/build/import the catalog, select sensors and save
+   changes. Wait for both workers' matching revision.
+6. Check each selected broker's connection state in Data sources and numeric
+   charts in the dashboard or charger details. Start new monitors using the new
+   charger UUIDs.
 
 An unexpired existing tailnet identity and broker credentials are reused; revoked
 access or previously unseen broker ACLs still require the provider to resolve them.
@@ -251,48 +252,58 @@ the UI then reports stale status. The internal collector `/health/full` endpoint
 still expose live queue diagnostics without waiting for that table.
 
 
-## Reviewing and searching the catalog
+## Editing and saving the catalog
 
-The Collection and Catalog panels can search broker/charger names, hostnames, IDs,
-sensor keys, categories, and topics. A matching charger keeps all its sensors
-visible. The evidence filter separates observed brokers from candidate hosts;
-observed is catalog evidence, while live connection status is reported separately.
-Inventory counts come from the current draft rather than fixed development totals.
+Data sources shows brokers, their chargers, and each charger's measurements in
+one hierarchy. Expand **Broker settings** or **Charger settings** to edit
+technical definitions. Each measurement shows its effective collection mode and
+sampling interval; expand it to edit its definition. New chargers and manually
+added measurements start with collection off. Copying sensor definitions replaces
+the target charger's measurements and switches its collection off, as explained
+next to the copy control.
 
-From an empty installation, **Load AmbiBox inventory** creates a paused draft.
-Use **Configure** on a charger, or select several chargers and choose
-**Configure selected**. Changing the search or evidence filter clears this edit
-selection, so hidden chargers cannot accidentally be included.
+Search matches broker/charger names, hostnames, IDs, sensor keys, categories, and
+topics. A matching charger keeps all its sensors visible. The evidence filter
+separates observed brokers from candidate hosts; observed is catalog evidence,
+while live connection status is reported separately. Inventory counts come from
+the current edits rather than fixed development totals.
 
-The configuration panel shows an explicit checkbox for each measurement and
-category. Category checkboxes affect only their own measurements; a partial
-selection is shown with an indeterminate checkbox. Unchecked measurements will
-be paused, including any that previously inherited an enabled default. Only the
-chargers named in the panel are changed. **Clear measurements** followed by a
-category checkbox is the way to collect just that category.
+From an empty installation, **Load AmbiBox inventory** creates an unsaved catalog
+with collection off. Use **Configure** on a charger, or select several chargers
+and choose **Configure selected**. Changing the search or evidence filter clears
+this edit selection, so hidden chargers cannot accidentally be included.
+
+The configuration panel shows a checkbox for each measurement and category.
+Category checkboxes affect only their own measurements; a partial selection is
+shown with an indeterminate checkbox. Unchecked measurements will be off,
+including any that previously inherited an enabled default. Only the chargers
+named in the panel are changed. **Clear** followed by a category checkbox is the
+way to collect just that category.
 
 When editing multiple chargers, **By category** makes the same measurement
 selection across them. **By charger** lets you expand each charger and choose a
 different set of sensors for it. Both views edit the same selection and preserve
-individual rates: for example, one charger can collect only temperature while
-another collects temperature, current and status, all in one draft.
+individual rates. Choose a shared sampling interval or customize individual
+rates. Numeric readings create chart history; text and booleans keep their latest
+value only. **Done** keeps the edits on the page; **Cancel** discards edits made
+inside the configuration panel. Neither saves to the server. To stop collection
+for the selected chargers, choose **Clear**, **Done**, and **Save changes**.
+Switching collection off does not preserve previous rates for resuming later.
 
-Choose a shared sampling interval or retain/customize individual rates. Numeric
-readings create chart history; text and booleans keep their latest value only.
-**Update draft** stages the choices; **Cancel** discards changes made in the
-configuration panel. Neither starts collection. **Pause selected** also stages a
-draft change. Review and apply it to pause live collection.
+**Save changes** validates and saves definitions and collection settings together.
+Ordinary changes save directly. Removing a broker, charger, or measurement, or
+changing streams used by running monitors, asks for confirmation describing those
+consequences. Affected monitors must stop and restart with fresh calibration.
+Cancelling the confirmation leaves the edits unsaved. Importing a catalog or
+loading a historical revision replaces both definitions and collection settings
+on the page; it does not save automatically.
 
-**Review changes** first shows the resulting active chargers, measurement
-categories and sampling rates. Expand **See all catalog changes** for additions,
-removals, routing and definition edits, explicit policies, and the resulting
-per-sensor collection changes (including inherited defaults). Apply still checks
-the saved revision and requires acknowledgement before pausing affected monitors.
-Save failures appear inside the review and leave the draft available for retry.
-An intervening revision disables editing/applying until the saved catalog is
-reloaded. Export a draft first if you need to preserve it. **Discard draft** asks
-before replacing unsaved edits. Browser refresh/close also warns about a staged
-draft. Navigating to another page or using browser Back also asks before
-discarding a staged draft; cancelling keeps the draft on screen. Detailed
-connection, queue and storage information is under **Live
-diagnostics and storage**.
+A short notification confirms persistence. The save bar separately reports when
+the workers are applying the saved configuration or have applied it. Save errors
+leave edits available for retry. An intervening revision disables editing/saving
+until the saved catalog is reloaded. Export first if you need to preserve your
+edits. **Discard changes** asks before replacing unsaved edits. Browser
+refresh/close and navigating away also warn about unsaved changes.
+
+Connection and queue information is under **Live diagnostics**. Storage usage
+and retention policies are under **Account → Settings**.

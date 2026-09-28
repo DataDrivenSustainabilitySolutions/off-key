@@ -40,8 +40,7 @@ export function CatalogFilter({
         </label>
       </div>
       <p className="text-xs text-muted-foreground">
-        Search by name, host or measurement. Observed brokers were seen during
-        inventory discovery; their live connection is shown separately.
+        Observed brokers were seen during inventory discovery.
       </p>
     </div>
   );

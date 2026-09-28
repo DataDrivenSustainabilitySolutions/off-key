@@ -8,7 +8,6 @@ import {
   Menu,
   ServerCog,
   Database,
-  Star,
   UserCircle,
 } from "lucide-react";
 
@@ -52,7 +51,6 @@ type NavItem = {
 
 const primaryNavItems: NavItem[] = [
   { href: "/", label: "Dashboard", icon: Home },
-  { href: "/favourites", label: "Favorites", icon: Star },
   { href: "/services", label: "Services", icon: ServerCog },
   { href: "/sources", label: "Data sources", icon: Database },
   { href: "/anomalies", label: "Anomalies", icon: AlertTriangle },
@@ -72,7 +70,7 @@ type NavLinkProps = {
 function NavLinkItem({ item, active, badge, onClick, compact = false }: NavLinkProps) {
   const Icon = item.icon;
 
-  const link = (
+  return (
     <Link
       to={item.href}
       aria-label={item.label}
@@ -92,17 +90,6 @@ function NavLinkItem({ item, active, badge, onClick, compact = false }: NavLinkP
         </span>
       ) : null}
     </Link>
-  );
-
-  if (compact) {
-    return link;
-  }
-
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>{link}</TooltipTrigger>
-      <TooltipContent>{item.label}</TooltipContent>
-    </Tooltip>
   );
 }
 

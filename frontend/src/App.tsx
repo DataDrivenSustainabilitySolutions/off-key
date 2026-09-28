@@ -2,6 +2,7 @@ import { lazy, Suspense } from "react";
 import {
   createBrowserRouter,
   createRoutesFromElements,
+  Navigate,
   Outlet,
   Route,
   RouterProvider,
@@ -18,7 +19,6 @@ const Account = lazy(() => import("@/pages/Account"));
 const Anomalies = lazy(() => import("@/pages/Anomalies"));
 const Details = lazy(() => import("@/pages/Details"));
 const DataSources = lazy(() => import("@/pages/DataSources"));
-const Favourites = lazy(() => import("@/pages/Favourites"));
 const ForgotPassword = lazy(() => import("@/pages/ForgotPassword"));
 const LandingPage = lazy(() => import("@/pages/Landingpage"));
 const Login = lazy(() => import("@/pages/Login"));
@@ -26,6 +26,7 @@ const Monitoring = lazy(() => import("@/pages/Monitoring"));
 const Registration = lazy(() => import("@/pages/Registration"));
 const ResetPassword = lazy(() => import("@/pages/ResetPassword"));
 const Services = lazy(() => import("@/pages/Services"));
+const Settings = lazy(() => import("@/pages/Settings"));
 const Verification = lazy(() => import("@/pages/Verification"));
 
 const router = createBrowserRouter(
@@ -49,8 +50,9 @@ const router = createBrowserRouter(
         <Route path="/monitoring/:chargerId" element={<Monitoring />} />
         <Route path="/services" element={<Services />} />
         <Route path="/sources" element={<DataSources />} />
-        <Route path="/favourites" element={<Favourites />} />
+        <Route path="/favourites" element={<Navigate to="/?state=favorites" replace />} />
         <Route path="/account" element={<Account />} />
+        <Route path="/account/settings" element={<Settings />} />
         <Route path="/anomalies" element={<Anomalies />} />
       </Route>
     </>,

@@ -119,13 +119,18 @@ jobs:
           file: ${{ matrix.file }}
           build-args: ${{ matrix.build_args }}
           push: false
-          load: false
+          load: ${{ matrix.service == 'frontend' }}
+          tags: off-key-${{ matrix.service }}:validation
           provenance: false
           sbom: false
           cache-from: |
             type=gha,scope=${{ inputs.cache-scope-prefix }}-${{ matrix.service }}
             ${{ inputs.cache-fallback-scope-prefix && format('type=gha,scope={0}-{1}', inputs.cache-fallback-scope-prefix, matrix.service) || '' }}
           cache-to: type=gha,mode=max,scope=${{ inputs.cache-scope-prefix }}-${{ matrix.service }}
+
+      - name: Verify production frontend survives delayed API discovery
+        if: ${{ !inputs.publish && matrix.service == 'frontend' }}
+        run: python3 frontend/check_nginx_startup.py off-key-frontend:validation
 
       - name: Build and push image
         id: build

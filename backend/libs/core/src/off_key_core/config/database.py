@@ -15,7 +15,7 @@ def build_postgres_database_url(
     async_driver: bool = False,
 ) -> str:
     """Build a URL-encoded PostgreSQL DSN using the canonical off-key format."""
-    scheme = "postgresql+asyncpg" if async_driver else "postgresql"
+    scheme = "postgresql+asyncpg" if async_driver else "postgresql+psycopg2"
     encoded_user = quote(user, safe="")
     encoded_password = quote(password, safe="")
     encoded_database = quote(database, safe="")

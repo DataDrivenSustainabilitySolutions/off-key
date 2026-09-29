@@ -24,13 +24,10 @@ export interface TelemetryCursor {
   timestamp: string;
 }
 
-// Telemetry type categorization
-export type TelemetryCategory = 'cpu' | 'system' | 'controller' | 'other';
-
 // Categorized telemetry data
 export interface TelemetryTypeData {
   type: string;
-  category: TelemetryCategory;
+  category: string;
   unit?: string;
   data: TelemetryDataPoint[];
   cursor?: TelemetryCursor;
@@ -65,21 +62,4 @@ export function normalizeChargerLastSeen(charger: Charger): Charger {
     ...charger,
     last_seen: charger.mqtt_last_message ?? charger.last_seen ?? "",
   };
-}
-
-/**
- * Helper function to categorize telemetry type
- */
-export function getTelemetryCategory(telemetryType: string): TelemetryCategory {
-  const type = telemetryType.toLowerCase();
-  if (type.includes('cpu') || type.includes('thermal')) {
-    return 'cpu';
-  }
-  if (type.startsWith('system')) {
-    return 'system';
-  }
-  if (type.startsWith('controller')) {
-    return 'controller';
-  }
-  return 'other';
 }

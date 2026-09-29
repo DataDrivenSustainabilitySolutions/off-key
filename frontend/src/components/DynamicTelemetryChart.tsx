@@ -424,9 +424,6 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
       >
         <div className="flex items-center justify-between gap-3 border-b px-5 py-4">
           <CardTitle className="text-base">{displayName}</CardTitle>
-          <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-medium capitalize text-muted-foreground">
-            {telemetryData.category}
-          </span>
         </div>
         <CardContent>
           <NoChartsAvailable />
@@ -449,9 +446,6 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
           >
             {displayName}
           </CardTitle>
-          <span className="rounded-full border border-border/70 bg-card px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-            {telemetryData.category}
-          </span>
           {hasStaticPane && (
             <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/[0.07] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-emerald-700 dark:text-emerald-300">
               <span className="size-1.5 rounded-full bg-emerald-500" />

@@ -242,6 +242,23 @@ test.describe("Details telemetry ECharts", () => {
   });
 
   test.beforeEach(async ({ page }) => {
+    await page.route("**/v1/sources", async (route) => {
+      await route.fulfill({
+        json: {
+          catalog: {
+            sources: [{
+              chargers: [{
+                id: CHARGER_ID,
+                sensors: [
+                  { key: "systemVoltage", category: "Voltage" },
+                  { key: "systemCurrent", category: "Current" },
+                ],
+              }],
+            }],
+          },
+        },
+      });
+    });
     await page.addInitScript(() => {
       localStorage.setItem("vite-ui-theme", "light");
     });
@@ -291,6 +308,8 @@ test.describe("Details telemetry ECharts", () => {
       .filter({ hasText: "System Voltage" })
       .first();
     await expect(chart).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Voltage Metrics" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Voltage (1)" })).toBeVisible();
     const desktopChartBox = await chart.boundingBox();
     expect(desktopChartBox).not.toBeNull();
     expect(desktopChartBox?.height).toBeGreaterThanOrEqual(520);
@@ -383,6 +402,14 @@ test.describe("Details telemetry ECharts", () => {
     await expect(voltageCard.getByTestId("telemetry-echart")).toBeVisible();
     await currentCard.scrollIntoViewIfNeeded();
     await expect(currentCard.getByTestId("telemetry-echart")).toBeVisible();
+
+    await voltageCard.getByRole("button", { name: "Zoom in" }).click();
+    await page.getByRole("button", { name: "Current (1)" }).click();
+    await expect(voltageCard).toHaveCount(0);
+    await expect(page).toHaveURL(/category=Current/u);
+    await page.getByRole("button", { name: "All categories (2)" }).click();
+    await expect(voltageCard.getByRole("button", { name: "Return to live" })).toBeVisible();
+    await voltageCard.getByRole("button", { name: "Return to live" }).click();
 
     const linkButton = page.getByRole("button", {
       name: "Link chart navigation",

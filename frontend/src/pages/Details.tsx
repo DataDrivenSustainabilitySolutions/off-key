@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
-import { Activity, Link2, Unlink2 } from "lucide-react";
+import { Link, useParams, useSearchParams } from "react-router-dom";
+import { Activity, Check, Link2, Unlink2 } from "lucide-react";
 
 import {
   MetricCard,
@@ -39,24 +39,10 @@ import {
 } from "@/lib/monitoring-chart";
 import type { Anomaly, TelemetryCursor, TelemetryTypeData } from "@/types/charger";
 
-type TelemetryCategoryGroups = Record<
-  TelemetryTypeData["category"],
-  TelemetryTypeData[]
->;
-
 const RECENT_TELEMETRY_WINDOW_MS = INTERVALS.DETAILS_UPDATE * 6;
 const EVIDENCE_PAGE_SIZE = 2000;
 const MAX_FORWARD_PAGES = 10;
 const EMPTY_EVIDENCE: MonitoringChartEvidence[] = [];
-const TELEMETRY_SECTIONS: Array<{
-  category: TelemetryTypeData["category"];
-  label: string;
-}> = [
-  { category: "cpu", label: "CPU Metrics" },
-  { category: "system", label: "System Metrics" },
-  { category: "controller", label: "Controller Metrics" },
-  { category: "other", label: "Other Metrics" },
-];
 
 const sameAnomalyWindow = (left: Anomaly[], right: Anomaly[]): boolean =>
   left.length === right.length &&
@@ -109,6 +95,7 @@ const LiveTelemetryIndicator: React.FC<{
 
 const Details: React.FC = () => {
   const { chargerId } = useParams<{ chargerId: string }>();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const [isLoadingTelemetry, setIsLoadingTelemetry] = useState(true);
   const [allTelemetryData, setAllTelemetryData] = useState<TelemetryTypeData[]>([]);
@@ -285,21 +272,34 @@ const Details: React.FC = () => {
     latestTelemetryAgeMs >= 0 &&
     latestTelemetryAgeMs <= RECENT_TELEMETRY_WINDOW_MS;
 
-  // Group telemetry data by category for better organization
   const telemetryByCategory = useMemo(() => {
-    const grouped: TelemetryCategoryGroups = {
-      cpu: [],
-      system: [],
-      controller: [],
-      other: [],
-    };
+    const grouped = new Map<string, TelemetryTypeData[]>();
 
     allTelemetryData.forEach(telemetry => {
-      grouped[telemetry.category].push(telemetry);
+      const series = grouped.get(telemetry.category) ?? [];
+      series.push(telemetry);
+      grouped.set(telemetry.category, series);
     });
 
     return grouped;
   }, [allTelemetryData]);
+
+  const selectedCategories = searchParams.getAll("category");
+  const visibleCategories = [...telemetryByCategory].filter(([category]) =>
+    selectedCategories.length === 0 || selectedCategories.includes(category),
+  );
+  const visibleChartCount = visibleCategories.reduce(
+    (count, [, series]) => count + series.length,
+    0,
+  );
+  const selectCategories = (categories: string[]) => {
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current);
+      next.delete("category");
+      categories.forEach((category) => next.append("category", category));
+      return next;
+    }, { replace: true });
+  };
 
   const evidenceByTelemetry = useMemo(() => {
     const grouped = new Map<string, MonitoringChartEvidence[]>();
@@ -381,10 +381,7 @@ const Details: React.FC = () => {
           />
           <MetricCard
             label="Categories"
-            value={
-              Object.values(telemetryByCategory).filter((group) => group.length > 0)
-                .length
-            }
+            value={telemetryByCategory.size}
             helper="With current data"
             tone="info"
           />
@@ -436,6 +433,46 @@ const Details: React.FC = () => {
             </div>
           </div>
 
+          {!isLoadingTelemetry && allTelemetryData.length > 0 && (
+            <div className="space-y-2">
+              <div
+                role="group"
+                aria-label="Filter charts by category"
+                className="flex flex-wrap items-center gap-2"
+              >
+                <Button
+                  variant={selectedCategories.length === 0 ? "secondary" : "outline"}
+                  size="sm"
+                  aria-pressed={selectedCategories.length === 0}
+                  onClick={() => selectCategories([])}
+                >
+                  {selectedCategories.length === 0 && <Check aria-hidden="true" className="size-3.5" />}
+                  All categories ({allTelemetryData.length})
+                </Button>
+                {[...telemetryByCategory].map(([category, series]) => (
+                  <Button
+                    key={category}
+                    variant={selectedCategories.includes(category) ? "secondary" : "outline"}
+                    size="sm"
+                    className="h-auto max-w-full whitespace-normal break-words py-1.5 text-left"
+                    aria-pressed={selectedCategories.includes(category)}
+                    onClick={() => selectCategories(
+                      selectedCategories.includes(category)
+                        ? selectedCategories.filter((selected) => selected !== category)
+                        : [...selectedCategories, category],
+                    )}
+                  >
+                    {selectedCategories.includes(category) && <Check aria-hidden="true" className="size-3.5" />}
+                    {category} ({series.length})
+                  </Button>
+                ))}
+              </div>
+              <p role="status" className="text-xs text-muted-foreground">
+                Showing {visibleChartCount} of {allTelemetryData.length} charts
+              </p>
+            </div>
+          )}
+
           {isLoadingTelemetry ? (
             <div className="space-y-4">
               <ChartSkeleton />
@@ -451,34 +488,35 @@ const Details: React.FC = () => {
                 }}
               />
             </div>
+          ) : visibleCategories.length === 0 ? (
+            <p className="py-8 text-sm text-muted-foreground">
+              No charts match the selected categories. Select All categories to show every chart.
+            </p>
           ) : (
             <div className="space-y-6">
-              {TELEMETRY_SECTIONS.map(({ category, label }) => {
-                const telemetrySeries = telemetryByCategory[category];
-                return telemetrySeries.length > 0 ? (
-                  <div key={category} className="space-y-4">
-                    <h3 className="text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">
-                      {label}
-                    </h3>
-                    {telemetrySeries.map((telemetryData) => (
-                      <DynamicTelemetryChart
-                        key={telemetryData.type}
-                        telemetryData={telemetryData}
-                        anomalies={chargerAnomalies}
-                        evidence={
-                          evidenceByTelemetry.get(telemetryData.type) ?? EMPTY_EVIDENCE
-                        }
-                        monitoringService={serviceByTelemetry.get(telemetryData.type)}
-                        navigationState={getNavigationState(telemetryData.type)}
-                        timelineExtent={
-                          chartsLinked ? linkedTimelineExtent : undefined
-                        }
-                        onNavigationStateChange={handleNavigationStateChange}
-                      />
-                    ))}
-                  </div>
-                ) : null;
-              })}
+              {visibleCategories.map(([category, telemetrySeries]) => (
+                <div key={category} className="space-y-4">
+                  <h3 className="text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">
+                    {category} Metrics
+                  </h3>
+                  {telemetrySeries.map((telemetryData) => (
+                    <DynamicTelemetryChart
+                      key={telemetryData.type}
+                      telemetryData={telemetryData}
+                      anomalies={chargerAnomalies}
+                      evidence={
+                        evidenceByTelemetry.get(telemetryData.type) ?? EMPTY_EVIDENCE
+                      }
+                      monitoringService={serviceByTelemetry.get(telemetryData.type)}
+                      navigationState={getNavigationState(telemetryData.type)}
+                      timelineExtent={
+                        chartsLinked ? linkedTimelineExtent : undefined
+                      }
+                      onNavigationStateChange={handleNavigationStateChange}
+                    />
+                  ))}
+                </div>
+              ))}
             </div>
           )}
         </section>

@@ -8,10 +8,8 @@ import type {
   TelemetryCursor,
   TelemetryTypeData,
 } from "@/types/charger";
-import {
-  getTelemetryCategory,
-  normalizeChargerLastSeen,
-} from "@/types/charger";
+import { normalizeChargerLastSeen } from "@/types/charger";
+import type { CatalogSnapshot } from "@/types/collection";
 
 const TELEMETRY_PAGE_SIZE = 1000;
 const MAX_FORWARD_PAGES = 10;
@@ -67,7 +65,16 @@ export const getAllTelemetryData = async (
   signal?: AbortSignal,
   cursorByType?: ReadonlyMap<string, TelemetryCursor>,
 ): Promise<TelemetryTypeData[]> => {
-  const telemetryTypes = await getTelemetryTypes(chargerId, signal);
+  const [telemetryTypes, snapshot] = await Promise.all([
+    getTelemetryTypes(chargerId, signal),
+    get<CatalogSnapshot>("/v1/sources", signal),
+  ]);
+  const charger = snapshot.catalog.sources
+    .flatMap((source) => source.chargers)
+    .find((item) => item.id === chargerId);
+  const categories = new Map(
+    charger?.sensors.map((sensor) => [sensor.key, sensor.category]),
+  );
   const telemetryData = await Promise.all(
     telemetryTypes.map(async (type): Promise<TelemetryTypeData | null> => {
       try {
@@ -89,7 +96,7 @@ export const getAllTelemetryData = async (
         const nextCursor = getTelemetryCursor(data);
         return {
           type,
-          category: getTelemetryCategory(type),
+          category: categories.get(type) ?? "Other",
           data: data.map(({ timestamp, value }) => ({ timestamp, value })),
           ...(nextCursor && { cursor: nextCursor }),
         };
@@ -119,7 +126,12 @@ export const mergeTelemetryData = (
   const merged = current.map((existing) => {
     const series = incomingByType.get(existing.type);
     incomingByType.delete(existing.type);
-    if (!series || series.data.length === 0) return existing;
+    if (!series) return existing;
+    if (series.data.length === 0) {
+      return series.category === existing.category
+        ? existing
+        : { ...existing, category: series.category };
+    }
 
     const points = new Map(existing.data.map((point) => [point.timestamp, point]));
     series.data.forEach((point) => points.set(point.timestamp, point));

@@ -767,6 +767,8 @@ export const buildTelemetryChartOption = ({
       {
         id: "telemetry-values",
         type: "value",
+        scale: true,
+        boundaryGap: ["10%", "10%"],
         gridIndex: 0,
         name: model.telemetry.unit
           ? `${model.telemetry.name} (${model.telemetry.unit})`

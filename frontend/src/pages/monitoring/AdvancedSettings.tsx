@@ -20,7 +20,8 @@ import {
   HELP_CLASS,
 } from "./formStyles";
 import { FieldError } from "./MonitoringUi";
-import { SettingInfo, SettingLabel } from "./SettingInfo";
+import { HelpTooltip } from "@/components/HelpTooltip";
+import { SettingLabel } from "./SettingLabel";
 
 const BETTING_METHOD_HELP =
   "Transforms each conformal p-value into a one-step e-value. Power uses one epsilon, Simple mixture averages a grid of power bets, and Simple jumper redistributes capital between component bettors.";
@@ -145,11 +146,11 @@ export function AdvancedSettings({
           <div>
             <div className="flex items-center gap-1">
               <h3 className="font-semibold">Detector parameters</h3>
-              <SettingInfo label="Detector parameters">
+              <HelpTooltip label="Detector parameters">
                 These model-specific values control how the baseline detector is
                 fitted and scored. Their allowed types and ranges come from the
                 selected model registry entry.
-              </SettingInfo>
+              </HelpTooltip>
             </div>
             <div className="mt-4 grid gap-4 sm:grid-cols-2">
               {Object.entries(modelProperties).map(([key, schema]) => {
@@ -231,9 +232,6 @@ export function AdvancedSettings({
                         }}
                       />
                     )}
-                    {schema.description && (
-                      <p className={HELP_CLASS}>{schema.description}</p>
-                    )}
                     <FieldError field={field} errors={fieldErrors} />
                   </div>
                 );
@@ -250,15 +248,12 @@ export function AdvancedSettings({
               <div>
                 <div className="flex items-center gap-1">
                   <h3 className="font-semibold">Martingale trackers</h3>
-                  <SettingInfo label="Martingale trackers">
+                  <HelpTooltip label="Martingale trackers">
                     Every tracker receives the same ordered p-value stream. Each
                     tracker may use a different betting method, statistic, and
                     threshold; any new crossing emits an anomaly.
-                  </SettingInfo>
+                  </HelpTooltip>
                 </div>
-                <p className={HELP_CLASS}>
-                  Every tracker receives the same ordered conformal p-values.
-                </p>
               </div>
               <Button
                 type="button"
@@ -560,13 +555,13 @@ export function AdvancedSettings({
               <div className="mt-4 rounded-xl border border-border/70 bg-background/65 p-4">
                 <div className="flex items-center gap-1">
                   <h4 className="font-medium">Automatic threshold calibration</h4>
-                  <SettingInfo label="Automatic threshold calibration">
+                  <HelpTooltip label="Automatic threshold calibration">
                     Uses deterministic null-rank simulations during baseline
                     training. The false-alarm probability is shared conservatively
                     across automatic trackers. Automatic trackers reset at each
                     horizon boundary, so the probability budget applies to each
                     consecutive window. Manual trackers do not consume this budget.
-                  </SettingInfo>
+                  </HelpTooltip>
                 </div>
                 <p className={HELP_CLASS}>
                   Shared by all automatic CUSUM and Shiryaev-Roberts trackers.
@@ -688,7 +683,6 @@ export function AdvancedSettings({
                   clearError("sensorFreshness");
                 }}
               />
-              <p className={HELP_CLASS}>Maximum alignment age.</p>
               <FieldError field="sensorFreshness" errors={fieldErrors} />
             </div>
             <div>
@@ -714,7 +708,6 @@ export function AdvancedSettings({
                 <option value="top_level">Top level</option>
                 <option value="leaf">Leaf</option>
               </select>
-              <p className={HELP_CLASS}>How aligned feature names are built.</p>
             </div>
           </div>
         </div>

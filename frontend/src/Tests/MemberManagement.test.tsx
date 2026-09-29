@@ -30,12 +30,13 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
-it("shows member access without offering administrator controls", () => {
+it("shows member access without offering administrator controls", async () => {
   auth.isAdmin = false;
   render(<MemoryRouter><Account /></MemoryRouter>);
   expect(screen.queryByRole("button", { name: "Send invitation" })).toBeNull();
   expect(getMembers).not.toHaveBeenCalled();
-  expect(screen.getByText(/All active members can view/)).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "About Your account" }));
+  expect((await screen.findByRole("tooltip")).textContent).toContain("Members can view all organization data");
 });
 
 it("invites colleagues and updates their role", async () => {
@@ -65,7 +66,7 @@ it("disables a member after confirmation and reports API failures", async () => 
 it("requires an invitation link before offering account creation", () => {
   render(<MemoryRouter initialEntries={["/register"]}><Registration /></MemoryRouter>);
   expect(screen.queryByLabelText("Password")).toBeNull();
-  expect(screen.getByText(/Ask your organization's administrator/)).toBeTruthy();
+  expect(screen.getByText(/Ask your administrator/)).toBeTruthy();
 });
 
 it("accepts the invitation with matching passwords and no client-selected identity", async () => {

@@ -56,7 +56,7 @@ describe("storage and retention", () => {
       ],
     });
     render(<MemoryRouter><Settings /></MemoryRouter>);
-    expect(await screen.findByText("Automatic cleanup paused.")).toBeTruthy();
+    expect(await screen.findByText("Cleanup paused")).toBeTruthy();
     expect(screen.getByText("Not configured")).toBeTruthy();
     expect(screen.queryByText("14 days")).toBeNull();
   });

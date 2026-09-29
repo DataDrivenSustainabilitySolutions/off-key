@@ -213,10 +213,9 @@ export default function DataSources() {
   return (
     <>
       <NavigationBar />
-      <PageShell className="[&>div]:gap-5 [&>div]:py-6">
+      <PageShell>
         <PageHeader
           title="Data sources"
-          description="Manage your brokers, chargers and the measurements you collect."
           actions={
             <Button variant="outline" onClick={exportCatalog}>
               Export catalog
@@ -250,7 +249,7 @@ export default function DataSources() {
           </p>
           {!snapshot.can_edit && (
             <p className="text-muted-foreground">
-              View only · an administrator can make changes
+              View only · administrator access required to edit
             </p>
           )}
         </div>
@@ -281,11 +280,6 @@ export default function DataSources() {
             <p className="font-medium">
               {changed ? "Unsaved changes" : status}
             </p>
-            {changed && (
-              <p className="mt-1 text-xs text-muted-foreground">
-                Save to update the catalog and collection settings.
-              </p>
-            )}
           </div>
           <div className="flex flex-wrap gap-2">
             <Button

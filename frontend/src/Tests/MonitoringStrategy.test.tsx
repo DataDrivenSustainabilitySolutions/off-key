@@ -345,8 +345,9 @@ describe("<Monitoring /> static setup", () => {
     const dynamicLane = screen.getByRole("button", { name: /Adaptive streams/i });
     expect(dynamicLane.getAttribute("aria-pressed")).toBe("false");
     fireEvent.click(dynamicLane);
-    expect(await screen.findByText("Adaptive stream lifecycle")).toBeTruthy();
-    expect(screen.getByText("Monitor and adapt")).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "Configure adaptive monitoring" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "About Configure adaptive monitoring" }));
+    expect((await screen.findByRole("tooltip")).textContent).toContain("score each point before learning it");
     expect(dynamicLane.getAttribute("aria-pressed")).toBe("true");
   });
 

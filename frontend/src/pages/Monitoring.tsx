@@ -98,39 +98,34 @@ function ChargerMonitoring({ chargerId }: { chargerId: string }) {
         <PageHeader
           eyebrow="Monitoring"
           title={`Charger ${chargerId}`}
-          description="Assign exclusive telemetry relationships to a static conformal or continuously adapting stream monitor."
         />
         <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
           <MetricCard
             label="Sensors"
             value={sensorTypes.length}
-            helper="Discovered telemetry streams"
           />
           <MetricCard
-            label="Available"
+            label="Unassigned sensors"
             value={sensorTypes.length - claimsBySensor.size}
-            helper="Not assigned elsewhere"
             tone="info"
           />
           <MetricCard
             label="Services"
             value={chargerServices.length}
-            helper="Active for this charger"
             tone={chargerServices.length ? "success" : "default"}
           />
           <MetricCard
             label="Alarms"
             value={anomalies.length}
-            helper="Recent threshold crossings"
             tone={anomalies.length ? "warning" : "default"}
           />
         </div>
 
         {isAdmin && <>
-        <SectionPanel title="Choose a monitoring lane" description="Static monitoring freezes its fitted detector; adaptive monitoring learns after every score.">
+        <SectionPanel title="Monitoring mode">
           <div className="grid gap-4 lg:grid-cols-2">
-            <LaneCard title="Static relationships" eyebrow="Conformal evidence" description="Train once, calibrate p-values, then accumulate sequential martingale evidence." selected={selectedLane === "static_baseline"} onSelect={() => setSelectedLane("static_baseline")} icon={Database} />
-            <LaneCard title="Adaptive streams" eyebrow="Aberrant · 24 detectors" description="Warm up, calibrate a fixed score threshold, then score before learning each new point." selected={selectedLane === "adaptive_stream"} onSelect={() => setSelectedLane("adaptive_stream")} icon={Activity} />
+            <LaneCard title="Static relationships" description="A fixed baseline with calibrated, sequential evidence." selected={selectedLane === "static_baseline"} onSelect={() => setSelectedLane("static_baseline")} icon={Database} />
+            <LaneCard title="Adaptive streams" description="A model that adapts to new data, with a fixed alarm threshold." selected={selectedLane === "adaptive_stream"} onSelect={() => setSelectedLane("adaptive_stream")} icon={Activity} />
           </div>
         </SectionPanel>
 

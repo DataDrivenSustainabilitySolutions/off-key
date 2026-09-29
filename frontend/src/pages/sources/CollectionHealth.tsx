@@ -35,7 +35,7 @@ export function CollectionHealth({ snapshot }: { snapshot: CatalogSnapshot }) {
   return (
     <SectionPanel
       title="Collection diagnostics"
-      description="Status of the saved configuration; unsaved edits do not affect collection."
+      help="Live status reflects the saved configuration. Unsaved edits do not affect collection."
     >
       <p className="font-medium" role="status">{title}</p>
       <p className="mt-1 text-sm text-muted-foreground">{explanation}</p>

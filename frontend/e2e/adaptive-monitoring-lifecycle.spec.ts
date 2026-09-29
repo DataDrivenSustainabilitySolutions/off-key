@@ -133,7 +133,9 @@ test.describe("adaptive monitoring production lifecycle", () => {
         timeout: 30_000,
       });
       await page.getByRole("button", { name: /Adaptive streams/i }).click();
-      await expect(page.getByText("Adaptive stream lifecycle")).toBeVisible();
+      await expect(
+        page.getByRole("heading", { name: "Configure adaptive monitoring", exact: true }),
+      ).toBeVisible();
       await page.getByLabel("Warm-up samples").fill("32");
       await page.getByLabel("Calibration samples").fill("1");
 

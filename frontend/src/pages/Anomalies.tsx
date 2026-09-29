@@ -114,9 +114,7 @@ export default function AnomalyTable() {
       <NavigationBar />
       <PageShell>
         <PageHeader
-          eyebrow="Detection"
           title="Anomalies"
-          description="Review detected anomalies across the charger fleet and jump directly into affected telemetry."
           actions={
             <Button
               variant="outline"
@@ -133,19 +131,17 @@ export default function AnomalyTable() {
           <MetricCard
             label="Anomalies"
             value={data.length}
-            helper="Current result set"
             tone={data.length > 0 ? "warning" : "default"}
           />
           <MetricCard
-            label="Chargers"
+            label="Affected chargers"
             value={affectedChargers}
-            helper="With detections"
             tone="info"
           />
           <MetricCard
             label="p-values"
             value={probabilityValueCount}
-            helper="Tail and conformal"
+            help="Events reported with tail or conformal p-values."
           />
         </div>
 
@@ -160,7 +156,7 @@ export default function AnomalyTable() {
           description={
             isLoading
               ? "Loading anomalies..."
-              : `${sortedData.length} anomalies loaded`
+              : undefined
           }
           contentClassName="p-0"
         >

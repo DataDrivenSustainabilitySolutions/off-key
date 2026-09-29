@@ -2,7 +2,8 @@ import { cn } from "@/lib/utils";
 import type { JsonValue, ParameterSchema } from "@/types/monitoring";
 import { humanize } from "./config";
 import type { FieldErrors } from "./config";
-import { CONTROL_CLASS, HELP_CLASS, LABEL_CLASS } from "./formStyles";
+import { CONTROL_CLASS, LABEL_CLASS } from "./formStyles";
+import { SettingLabel } from "./SettingLabel";
 import { FieldError } from "./MonitoringUi";
 
 interface Props {
@@ -44,7 +45,7 @@ export function ModelParameterFields({ properties, values, onChange, errors, pre
 
     return <div key={key}>
       <div className="flex items-center justify-between gap-2">
-        <label className={LABEL_CLASS} htmlFor={id}>{humanize(key)}</label>
+        <SettingLabel label={humanize(key)} htmlFor={id} help={schema.description} />
         {nullable && <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
           <input type="checkbox" aria-label={`${humanize(key)} is None`} checked={isNone} onChange={(event) => update(event.target.checked ? null : nonNullValue)} />None
         </label>}
@@ -60,7 +61,6 @@ export function ModelParameterFields({ properties, values, onChange, errors, pre
       ) : (
         <input id={id} disabled={isNone} type={type === "number" || type === "integer" ? "number" : "text"} step={type === "integer" ? 1 : "any"} min={schema.minimum} max={schema.maximum} className={cn(CONTROL_CLASS, "mt-2")} value={isNone ? "" : String(value ?? "")} onChange={(event) => update(event.target.value)} />
       )}
-      <p className={HELP_CLASS}>{schema.description}</p>
       <FieldError field={field} errors={errors} />
     </div>;
   });

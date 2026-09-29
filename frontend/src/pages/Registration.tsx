@@ -37,10 +37,10 @@ export default function Registration() {
   return (
     <AuthLayout title="Accept invitation">
       {accepted ? <p role="status">Your account is ready. <Link to="/login" className={AUTH_LINK_CLASS}>Log in</Link></p> : !token ? (
-        <p className="text-sm">Ask your organization's administrator for an invitation, then open the link in your email.</p>
+        <p className="text-sm">Ask your administrator for an invitation link.</p>
       ) : (
         <form onSubmit={accept} className="space-y-4">
-          <p className="text-sm text-muted-foreground">Choose a password with at least 12 characters to join this organization's workspace.</p>
+          <p className="text-sm text-muted-foreground">Use at least 12 characters.</p>
           <div className="grid gap-2"><Label htmlFor="password">Password</Label><Input id="password" type="password" autoComplete="new-password" required value={password} onChange={(event) => setPassword(event.target.value)} /></div>
           <div className="grid gap-2"><Label htmlFor="confirmPassword">Confirm password</Label><Input id="confirmPassword" type="password" autoComplete="new-password" required value={confirmation} onChange={(event) => setConfirmation(event.target.value)} /></div>
           {error && <p role="alert" className={AUTH_ERROR_CLASS}>{error}</p>}

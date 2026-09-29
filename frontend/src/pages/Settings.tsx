@@ -43,9 +43,7 @@ export default function Settings() {
       <NavigationBar />
       <PageShell>
         <PageHeader
-          eyebrow="Account"
           title="Settings"
-          description="Storage usage and retention for your organization."
           actions={
             <Button variant="outline" asChild>
               <Link to="/account">Back to account</Link>
@@ -54,7 +52,7 @@ export default function Settings() {
         />
         <SectionPanel
           title="Storage and retention"
-          description="Retention is managed by your operator. These values come from the database."
+          help="Your operator manages retention. Cleanup runs periodically, so expiry is not an exact deletion deadline. Retention covers telemetry and monitoring evidence; size includes all tables and indexes, but excludes backups and server logs."
           actions={
             <Button
               variant="outline"
@@ -77,7 +75,6 @@ export default function Settings() {
                 <MetricCard
                   label="Database size"
                   value={`${size} ${gigabytes ? "GB" : "MB"}`}
-                  helper="Includes all application tables and indexes."
                 />
                 {status.retention_policies.map((policy) => (
                   <MetricCard
@@ -94,10 +91,10 @@ export default function Settings() {
                     }
                     helper={
                       policy.retention_days === null
-                        ? "Automatic cleanup is not configured."
+                        ? undefined
                         : policy.scheduled
-                          ? "Automatic cleanup enabled."
-                          : "Automatic cleanup paused."
+                          ? "Cleanup enabled"
+                          : "Cleanup paused"
                     }
                     tone={
                       policy.retention_days !== null && policy.scheduled
@@ -107,11 +104,6 @@ export default function Settings() {
                   />
                 ))}
               </div>
-              <p className="mt-3 text-xs text-muted-foreground">
-                Old data is removed periodically, so the retention period is not an exact
-                deletion deadline. These policies cover telemetry and monitoring evidence
-                only. Size excludes backups and server logs.
-              </p>
               <p className="mt-2 text-xs text-muted-foreground">
                 Checked {new Date(status.checked_at).toLocaleString()}.
               </p>

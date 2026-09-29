@@ -343,26 +343,18 @@ const Details: React.FC = () => {
         <PageHeader
           eyebrow="Charger Detail"
           title={`Charger ${chargerId}`}
-          description="Review telemetry streams, recent anomaly overlays, and operational monitoring setup."
           actions={
             <>
               <LiveTelemetryIndicator
                 hasRecentTelemetry={hasRecentTelemetry}
                 hasTelemetry={latestTelemetryTimestamp !== undefined}
               />
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button asChild>
-                    <Link to={`/monitoring/${chargerId}`}>
-                      <Activity className="h-4 w-4" />
-                      Monitoring
-                    </Link>
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="top" align="center">
-                  Open Live Monitoring
-                </TooltipContent>
-              </Tooltip>
+              <Button asChild>
+                <Link to={`/monitoring/${chargerId}`}>
+                  <Activity className="h-4 w-4" />
+                  Monitoring
+                </Link>
+              </Button>
             </>
           }
         />
@@ -371,30 +363,22 @@ const Details: React.FC = () => {
           <MetricCard
             label="Telemetry Series"
             value={allTelemetryData.length}
-            helper="Available chart streams"
           />
           <MetricCard
             label="Anomalies"
             value={chargerAnomalies.length}
-            helper="Loaded for this charger"
             tone={chargerAnomalies.length > 0 ? "warning" : "default"}
           />
           <MetricCard
             label="Categories"
             value={telemetryByCategory.size}
-            helper="With current data"
             tone="info"
           />
         </div>
 
         <section className="space-y-5">
           <div className="flex items-end justify-between gap-4 border-b border-border/60 pb-4">
-            <div>
             <h2 className="text-lg font-semibold tracking-[-0.02em]">Telemetry</h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Charts update automatically while this page is open.
-            </p>
-            </div>
             <div className="flex items-center gap-2">
               {allTelemetryData.length > 1 && (
                 <Tooltip>

@@ -191,7 +191,7 @@ const Login: React.FC = () => {
         </div>
         <div className="text-xs mt-4 text-center">
           <p>
-            Access is by invitation from your organization's administrator.
+            Ask your administrator for an invitation.
           </p>
         </div>
       </form>

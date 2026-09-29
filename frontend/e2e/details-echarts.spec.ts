@@ -1,5 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
+import { zoomChart } from "./helpers/chart";
+
 const CHARGER_ID = "e2e-echarts";
 const INITIAL_POINTS = [
   {
@@ -344,8 +346,9 @@ test.describe("Details telemetry ECharts", () => {
     await page.goto(`/details/${CHARGER_ID}`);
 
     const chart = page.getByTestId("telemetry-echart");
+    const card = page.locator('[data-slot="card"]').filter({ has: chart });
     await expect(chart).toBeVisible();
-    await page.getByRole("button", { name: "Zoom in" }).click();
+    await zoomChart(page, card);
 
     await expect(page.getByRole("button", { name: "Return to live" })).toBeVisible();
     await api.publishNewTelemetry();
@@ -354,7 +357,7 @@ test.describe("Details telemetry ECharts", () => {
     await page.getByRole("button", { name: "Return to live" }).click();
     await expect(page.getByRole("button", { name: "Return to live" })).toBeHidden();
 
-    await page.getByRole("button", { name: "Zoom in" }).click();
+    await zoomChart(page, card);
     await expect(page.getByRole("button", { name: "Return to live" })).toBeVisible();
     await page.getByRole("button", { name: "Past hour" }).click();
     await expect(page.getByRole("button", { name: "Return to live" })).toBeHidden();
@@ -371,7 +374,7 @@ test.describe("Details telemetry ECharts", () => {
       .filter({ hasText: "System Voltage" })
       .first();
     await expect(card.getByText("1 awaiting score")).toBeVisible();
-    await card.getByRole("button", { name: "Zoom in" }).click();
+    await zoomChart(page, card);
     await expect(
       card.getByRole("button", { name: "Return to live" }),
     ).toBeVisible();
@@ -403,7 +406,7 @@ test.describe("Details telemetry ECharts", () => {
     await currentCard.scrollIntoViewIfNeeded();
     await expect(currentCard.getByTestId("telemetry-echart")).toBeVisible();
 
-    await voltageCard.getByRole("button", { name: "Zoom in" }).click();
+    await zoomChart(page, voltageCard);
     await page.getByRole("button", { name: "Current (1)" }).click();
     await expect(voltageCard).toHaveCount(0);
     await expect(page).toHaveURL(/category=Current/u);
@@ -416,7 +419,7 @@ test.describe("Details telemetry ECharts", () => {
     });
     await expect(linkButton).toHaveAttribute("aria-pressed", "false");
 
-    await voltageCard.getByRole("button", { name: "Zoom in" }).click();
+    await zoomChart(page, voltageCard);
     await expect(
       voltageCard.getByRole("button", { name: "Return to live" }),
     ).toBeVisible();
@@ -438,7 +441,7 @@ test.describe("Details telemetry ECharts", () => {
     ).toHaveCount(0);
 
     await page.getByRole("button", { name: "Unlink chart navigation" }).click();
-    await voltageCard.getByRole("button", { name: "Zoom in" }).click();
+    await zoomChart(page, voltageCard);
     await expect(
       voltageCard.getByRole("button", { name: "Return to live" }),
     ).toBeVisible();

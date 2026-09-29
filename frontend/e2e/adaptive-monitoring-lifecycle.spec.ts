@@ -3,6 +3,7 @@ import { expect, test } from "@playwright/test";
 import { connectAsync, type MqttClient } from "mqtt";
 
 import { addTestCharger, removeTestCharger } from "./helpers/collection";
+import { zoomChart } from "./helpers/chart";
 
 const publish = async (
   client: MqttClient,
@@ -259,7 +260,7 @@ test.describe("adaptive monitoring production lifecycle", () => {
       await expect(l2Card.getByText("Adaptive scores")).toBeVisible({
         timeout: 60_000,
       });
-      await l1Card.getByRole("button", { name: "Zoom in" }).click();
+      await zoomChart(page, l1Card);
       await expect(
         l1Card.getByRole("button", { name: "Return to live" }),
       ).toBeVisible();

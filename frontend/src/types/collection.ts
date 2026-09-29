@@ -66,6 +66,7 @@ export type CatalogSnapshot = {
   updated_at: string | null;
   updated_by: string | null;
 };
+export type CollectionStatus = Pick<CatalogSnapshot, "revision" | "collection" | "ingress">;
 export type CatalogPreview = {
   revision: number;
   catalog: Catalog;

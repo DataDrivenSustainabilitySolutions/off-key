@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -7,6 +7,7 @@ import Settings from "../pages/Settings";
 import type { StorageStatus } from "../types/collection";
 
 const api = vi.hoisted(() => ({ get: vi.fn() }));
+const getStorage = vi.fn();
 const auth = vi.hoisted(() => ({ isAdmin: true, member: { email: "admin@example.com" } }));
 vi.mock("../lib/api-client", () => ({ apiUtils: api }));
 vi.mock("../auth/AuthContext", () => ({ useAuth: () => auth }));
@@ -22,7 +23,10 @@ const status: StorageStatus = {
 };
 beforeEach(() => {
   vi.clearAllMocks();
-  api.get.mockResolvedValue(status);
+  getStorage.mockResolvedValue(status);
+  api.get.mockImplementation((url) => url === "/v1/sources/storage"
+    ? getStorage()
+    : Promise.resolve({ revision: 0, collection: {}, ingress: {} }));
 });
 
 describe("storage and retention", () => {
@@ -43,12 +47,16 @@ describe("storage and retention", () => {
     expect(screen.getByText("30 days")).toBeTruthy();
     expect(screen.getByText("7 days")).toBeTruthy();
     expect(api.get).toHaveBeenCalledWith("/v1/sources/storage");
+    expect(screen.getByRole("heading", { name: "Collection diagnostics" })).toBeTruthy();
+    expect(screen.getByText("Not configured")).toBeTruthy();
+    expect(api.get).toHaveBeenCalledWith("/v1/sources/status");
+    expect(api.get).not.toHaveBeenCalledWith("/v1/sources");
     fireEvent.click(screen.getByRole("link", { name: "Back to account" }));
     expect(screen.getByRole("heading", { name: "Account", level: 1 })).toBeTruthy();
   });
 
   it("distinguishes paused and missing policies without substituting defaults", async () => {
-    api.get.mockResolvedValue({
+    getStorage.mockResolvedValue({
       ...status,
       retention_policies: [
         { table: "telemetry", retention_days: 30, scheduled: false },
@@ -57,18 +65,19 @@ describe("storage and retention", () => {
     });
     render(<MemoryRouter><Settings /></MemoryRouter>);
     expect(await screen.findByText("Cleanup paused")).toBeTruthy();
-    expect(screen.getByText("Not configured")).toBeTruthy();
+    const evidence = screen.getByText("Monitoring evidence retention").parentElement!;
+    expect(within(evidence).getByText("Not configured")).toBeTruthy();
     expect(screen.queryByText("14 days")).toBeNull();
   });
 
   it("reports failures and refreshes measurements on request", async () => {
-    api.get.mockRejectedValueOnce(new Error("Database unavailable"));
+    getStorage.mockRejectedValueOnce(new Error("Database unavailable"));
     render(<MemoryRouter><Settings /></MemoryRouter>);
     expect((await screen.findByRole("alert")).textContent).toContain("Storage information unavailable");
     expect(screen.queryByText("0 MB")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Refresh storage" }));
     expect(await screen.findByText("1.5 GB")).toBeTruthy();
-    api.get.mockResolvedValue({ ...status, database_size_bytes: 500000000 });
+    getStorage.mockResolvedValue({ ...status, database_size_bytes: 500000000 });
     fireEvent.click(screen.getByRole("button", { name: "Refresh storage" }));
     expect(await screen.findByText("500 MB")).toBeTruthy();
     expect(screen.queryByRole("alert")).toBeNull();

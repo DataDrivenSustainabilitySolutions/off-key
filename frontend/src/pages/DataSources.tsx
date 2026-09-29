@@ -15,7 +15,6 @@ import type {
 } from "@/types/collection";
 import { effectivePolicy, runtimeLabel } from "@/types/collection";
 import { CatalogPanel } from "./sources/CatalogPanel";
-import { CollectionHealth } from "./sources/CollectionHealth";
 
 const endpoint = "/v1/sources";
 
@@ -267,14 +266,6 @@ export default function DataSources() {
           task={task}
           importCatalog={importCatalog}
         />
-        <details className="rounded-xl border bg-card p-5">
-          <summary className="cursor-pointer font-medium">
-            Live diagnostics
-          </summary>
-          <div className="mt-5">
-            <CollectionHealth snapshot={snapshot} />
-          </div>
-        </details>
         <div className="sticky bottom-3 z-20 flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-background p-4 shadow-lg">
           <div className="text-sm" role="status">
             <p className="font-medium">

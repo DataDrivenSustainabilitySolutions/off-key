@@ -1,11 +1,11 @@
-import type { CatalogSnapshot, RuntimeState } from "@/types/collection";
+import type { CollectionStatus, RuntimeState } from "@/types/collection";
 
 export function diagnosticsFresh(state: RuntimeState, now = Date.now()) {
   const age = now - Date.parse(state.checked_at ?? "");
   return Number.isFinite(age) && age >= -5000 && age <= 15000;
 }
 
-export function collectionDiagnosis(snapshot: CatalogSnapshot, now = Date.now()): [string, string] {
+export function collectionDiagnosis(snapshot: CollectionStatus, now = Date.now()): [string, string] {
   const { collection, ingress, revision } = snapshot;
   const data = collection.diagnostics;
   if (revision === 0)

@@ -1,8 +1,13 @@
 import { act, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { collectionDiagnosis } from "../lib/collection-diagnostics";
-import { CollectionHealth } from "../pages/sources/CollectionHealth";
+import { CollectionHealth } from "../pages/settings/CollectionHealth";
 import type { CatalogSnapshot, CollectionDiagnostics } from "../types/collection";
+
+const api = vi.hoisted(() => ({ get: vi.fn() }));
+vi.mock("../lib/api-client", () => ({ apiUtils: api }));
+
+beforeEach(() => vi.resetAllMocks());
 
 const metrics = (): CollectionDiagnostics => ({
   mqtt_connected: true, window_seconds: 30,
@@ -19,14 +24,43 @@ const snapshot = (): CatalogSnapshot => ({
 });
 
 describe("collection diagnostics", () => {
-  it("expires status even when API responses stop arriving", () => {
+  it("expires status even when API responses stop arriving", async () => {
     vi.useFakeTimers();
     try {
-      render(<CollectionHealth snapshot={snapshot()} />);
+      api.get.mockResolvedValueOnce(snapshot()).mockImplementation(() => new Promise(() => {}));
+      await act(async () => { render(<CollectionHealth />); });
       expect(screen.getByRole("status").textContent).toBe("Collecting");
-      act(() => vi.advanceTimersByTime(18000));
+      await act(() => vi.advanceTimersByTimeAsync(18000));
       expect(screen.getByRole("status").textContent).toBe("Worker not reporting");
       expect(screen.getByText(/last worker report/)).toBeTruthy();
+      expect(api.get).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("retries failed requests, refreshes diagnostics, and stops polling on unmount", async () => {
+    vi.useFakeTimers();
+    try {
+      api.get.mockRejectedValueOnce(new Error("Network unavailable"));
+      const view = render(<CollectionHealth />);
+      expect(screen.getByRole("status").textContent).toBe("Loading collection status…");
+      await act(async () => {});
+      expect(screen.getByRole("alert").textContent).toContain("Network unavailable");
+      api.get.mockResolvedValueOnce(snapshot());
+      await act(() => vi.advanceTimersByTimeAsync(3000));
+      expect(screen.queryByRole("alert")).toBeNull();
+      expect(screen.getByRole("status").textContent).toBe("Collecting");
+      const paused = snapshot();
+      paused.collection.selected_sensors = 0;
+      api.get.mockResolvedValueOnce(paused);
+      await act(() => vi.advanceTimersByTimeAsync(3000));
+      expect(screen.getByRole("status").textContent).toBe("Paused");
+      expect(api.get).toHaveBeenCalledWith("/v1/sources/status");
+      expect(api.get).toHaveBeenCalledTimes(3);
+      view.unmount();
+      await act(() => vi.advanceTimersByTimeAsync(6000));
+      expect(api.get).toHaveBeenCalledTimes(3);
     } finally {
       vi.useRealTimers();
     }
@@ -60,11 +94,12 @@ describe("collection diagnostics", () => {
     expect(collectionDiagnosis(value)[0]).toBe(expected);
   });
 
-  it("does not treat old errors as a current overload and shows measured queue use", () => {
+  it("does not treat old errors as a current overload and shows measured queue use", async () => {
     const value = snapshot();
     value.collection.counters = { overload_dropped: 500, invalid: 20 };
-    render(<CollectionHealth snapshot={value} />);
-    expect(screen.getByRole("status").textContent).toBe("Collecting");
+    api.get.mockResolvedValue(value);
+    render(<CollectionHealth />);
+    expect(await screen.findByText("Collecting")).toBeTruthy();
     expect(screen.getByText("5 / 10 (50%)")).toBeTruthy();
     expect(screen.getByText("None since worker start")).toBeTruthy();
     expect(screen.getByText(/500 observations dropped/)).toBeTruthy();

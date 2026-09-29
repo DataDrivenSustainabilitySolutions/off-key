@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { apiUtils } from "@/lib/api-client";
 import { getErrorMessage } from "@/lib/errors";
 import type { StorageStatus } from "@/types/collection";
+import { CollectionHealth } from "./settings/CollectionHealth";
 
 export default function Settings() {
   const [status, setStatus] = useState<StorageStatus | null>(null);
@@ -50,6 +51,7 @@ export default function Settings() {
             </Button>
           }
         />
+        <CollectionHealth />
         <SectionPanel
           title="Storage and retention"
           help="Your operator manages retention. Cleanup runs periodically, so expiry is not an exact deletion deadline. Retention covers telemetry and monitoring evidence; size includes all tables and indexes, but excludes backups and server logs."

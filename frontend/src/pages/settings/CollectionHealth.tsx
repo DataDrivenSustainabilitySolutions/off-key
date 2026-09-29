@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { SectionPanel } from "@/components/DashboardLayout";
+import { apiUtils } from "@/lib/api-client";
 import { collectionDiagnosis, diagnosticsFresh } from "@/lib/collection-diagnostics";
-import type { CatalogSnapshot } from "@/types/collection";
+import { getErrorMessage } from "@/lib/errors";
+import type { CollectionStatus } from "@/types/collection";
 
 const date = (value: string | null) =>
   value ? new Date(value).toLocaleString() : "None since worker start";
@@ -10,13 +12,58 @@ const rate = (value: number | null) =>
 const queueUsage = (size: number, capacity: number) =>
   `${size.toLocaleString()} / ${capacity.toLocaleString()} (${Math.round(100 * size / capacity)}%)`;
 
-export function CollectionHealth({ snapshot }: { snapshot: CatalogSnapshot }) {
+export function CollectionHealth() {
+  const [snapshot, setSnapshot] = useState<CollectionStatus | null>(null);
+  const [error, setError] = useState("");
   const [now, setNow] = useState(Date.now);
   useEffect(() => {
-    // Expire old reports even if the API stops responding and props never change.
-    const timer = setInterval(() => setNow(Date.now()), 3000);
-    return () => clearInterval(timer);
+    let active = true;
+    let pending = false;
+    const refresh = async () => {
+      // Expire old reports even while a status request is still pending.
+      setNow(Date.now());
+      if (pending) return;
+      pending = true;
+      try {
+        const result = await apiUtils.get<CollectionStatus>("/v1/sources/status");
+        if (active) {
+          setSnapshot(result);
+          setError("");
+        }
+      } catch (reason) {
+        if (active) setError(getErrorMessage(reason));
+      } finally {
+        pending = false;
+      }
+    };
+    void refresh();
+    const timer = setInterval(() => void refresh(), 3000);
+    return () => {
+      active = false;
+      clearInterval(timer);
+    };
   }, []);
+
+  return (
+    <SectionPanel
+      title="Collection diagnostics"
+      help="Live status for the saved data source configuration."
+    >
+      {error && (
+        <p role="alert" className="mb-3 text-sm text-destructive">
+          Collection status unavailable: {error}. Retrying automatically.
+        </p>
+      )}
+      {snapshot ? (
+        <CollectionMeasurements snapshot={snapshot} now={now} />
+      ) : !error && (
+        <p role="status">Loading collection status…</p>
+      )}
+    </SectionPanel>
+  );
+}
+
+function CollectionMeasurements({ snapshot, now }: { snapshot: CollectionStatus; now: number }) {
   const [title, explanation] = collectionDiagnosis(snapshot, now);
   const data = snapshot.collection.diagnostics;
   const current = diagnosticsFresh(snapshot.collection, now) &&
@@ -33,10 +80,7 @@ export function CollectionHealth({ snapshot }: { snapshot: CatalogSnapshot }) {
   ] : [];
 
   return (
-    <SectionPanel
-      title="Collection diagnostics"
-      help="Live status reflects the saved configuration. Unsaved edits do not affect collection."
-    >
+    <>
       <p className="font-medium" role="status">{title}</p>
       <p className="mt-1 text-sm text-muted-foreground">{explanation}</p>
       {data && (
@@ -69,6 +113,6 @@ export function CollectionHealth({ snapshot }: { snapshot: CatalogSnapshot }) {
         observations dropped at queue capacity ·{" "}
         {snapshot.collection.counters?.invalid ?? 0} invalid observations rejected.
       </p>
-    </SectionPanel>
+    </>
   );
 }

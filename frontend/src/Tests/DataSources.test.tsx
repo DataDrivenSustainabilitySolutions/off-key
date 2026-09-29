@@ -137,9 +137,8 @@ describe("catalog collection UI", () => {
     await screen.findByRole("button", { name: "Configure Yard" });
     expect(screen.getAllByText("Off")).toHaveLength(3);
     expect(screen.getByText("3 of 3 measurements enabled")).toBeTruthy();
-    fireEvent.click(
-      screen.getByText("Live diagnostics", { selector: "summary" }),
-    );
+    expect(screen.queryByText("Live diagnostics")).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Collection diagnostics" })).toBeNull();
     expect(screen.queryByText("Storage and retention")).toBeNull();
     expect(api.get).not.toHaveBeenCalledWith("/v1/sources/storage");
     expect(screen.queryByRole("link", { name: "View telemetry" })).toBeNull();

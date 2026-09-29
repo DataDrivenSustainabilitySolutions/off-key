@@ -242,6 +242,23 @@ test.describe("Details telemetry ECharts", () => {
   });
 
   test.beforeEach(async ({ page }) => {
+    await page.route("**/v1/sources", async (route) => {
+      await route.fulfill({
+        json: {
+          catalog: {
+            sources: [{
+              chargers: [{
+                id: CHARGER_ID,
+                sensors: [
+                  { key: "systemVoltage", category: "Voltage" },
+                  { key: "systemCurrent", category: "Current" },
+                ],
+              }],
+            }],
+          },
+        },
+      });
+    });
     await page.addInitScript(() => {
       localStorage.setItem("vite-ui-theme", "light");
     });
@@ -291,6 +308,8 @@ test.describe("Details telemetry ECharts", () => {
       .filter({ hasText: "System Voltage" })
       .first();
     await expect(chart).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Voltage Metrics" })).toBeVisible();
+    await expect(card.getByText("Voltage", { exact: true })).toBeVisible();
     const desktopChartBox = await chart.boundingBox();
     expect(desktopChartBox).not.toBeNull();
     expect(desktopChartBox?.height).toBeGreaterThanOrEqual(520);

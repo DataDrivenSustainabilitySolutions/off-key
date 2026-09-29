@@ -26,6 +26,28 @@ const mockGet = vi.mocked(apiUtils.get);
 const mockPost = vi.mocked(apiUtils.post);
 const mockDelete = vi.mocked(apiUtils.delete);
 
+const catalogResponse = {
+  catalog: {
+    sources: [
+      {
+        chargers: [{
+          id: "charger-2",
+          sensors: [{ key: "systemVoltage", category: "Electrical" }],
+        }],
+      },
+      {
+        chargers: [{
+          id: "charger-1",
+          sensors: [
+            { key: "controllerCpuUsage", category: "Processor" },
+            { key: "systemVoltage", category: "Voltage" },
+          ],
+        }],
+      },
+    ],
+  },
+};
+
 describe("charger API", () => {
   beforeEach(() => {
     vi.resetAllMocks();
@@ -43,24 +65,49 @@ describe("charger API", () => {
     );
   });
 
-  it("loads and categorizes every available telemetry series", async () => {
+  it("loads categories from the matching charger's catalog sensors", async () => {
+    const signal = new AbortController().signal;
     mockGet
       .mockResolvedValueOnce(["controllerCpuUsage", "systemVoltage"])
+      .mockResolvedValueOnce(catalogResponse)
       .mockResolvedValueOnce([{ timestamp: "now", value: 70 }])
       .mockResolvedValueOnce([{ timestamp: "now", value: 230 }]);
 
-    await expect(getAllTelemetryData("charger-1")).resolves.toEqual([
+    await expect(getAllTelemetryData("charger-1", signal)).resolves.toEqual([
       {
         type: "controllerCpuUsage",
-        category: "cpu",
+        category: "Processor",
         data: [{ timestamp: "now", value: 70 }],
       },
       {
         type: "systemVoltage",
-        category: "system",
+        category: "Voltage",
         data: [{ timestamp: "now", value: 230 }],
       },
     ]);
+    expect(mockGet).toHaveBeenCalledWith("/v1/sources", { signal });
+  });
+
+  it.each([
+    ["charger-1", "systemCurrent"],
+    ["missing-charger", "systemVoltage"],
+  ])("uses Other when %s / %s is absent from the catalog", async (chargerId, type) => {
+    mockGet
+      .mockResolvedValueOnce([type])
+      .mockResolvedValueOnce(catalogResponse)
+      .mockResolvedValueOnce([{ timestamp: "now", value: 230 }]);
+
+    await expect(getAllTelemetryData(chargerId)).resolves.toEqual([
+      { type, category: "Other", data: [{ timestamp: "now", value: 230 }] },
+    ]);
+  });
+
+  it("propagates catalog failures so a refresh preserves previously loaded telemetry", async () => {
+    mockGet
+      .mockResolvedValueOnce(["systemVoltage"])
+      .mockRejectedValueOnce(new Error("Catalog unavailable"));
+
+    await expect(getAllTelemetryData("charger-1")).rejects.toThrow("Catalog unavailable");
   });
 
   it("advances telemetry cursors by ingestion order", () => {
@@ -114,6 +161,7 @@ describe("charger API", () => {
     };
     mockGet
       .mockResolvedValueOnce(["systemVoltage"])
+      .mockResolvedValueOnce(catalogResponse)
       .mockResolvedValueOnce(firstPage)
       .mockResolvedValueOnce([finalPoint]);
 
@@ -125,7 +173,7 @@ describe("charger API", () => {
 
     expect(result[0]?.data).toHaveLength(1001);
     expect(mockGet).toHaveBeenNthCalledWith(
-      3,
+      4,
       API_CONFIG.ENDPOINTS.TELEMETRY.DATA(
         "charger-1",
         "systemVoltage",
@@ -169,6 +217,23 @@ describe("charger API", () => {
     };
 
     expect(mergeTelemetryData([existing], [added])).toEqual([existing, added]);
+  });
+
+  it("applies catalog category edits even when no new telemetry arrives", () => {
+    const existing = {
+      type: "systemVoltage",
+      category: "Voltage",
+      data: [{ timestamp: "2026-01-01T00:00:01Z", value: 230 }],
+      cursor: { created: "2026-01-01T00:00:02Z", timestamp: "2026-01-01T00:00:01Z" },
+    };
+    const merged = mergeTelemetryData([existing], [{
+      type: existing.type,
+      category: "Electrical",
+      data: [],
+    }]);
+
+    expect(merged).toEqual([{ ...existing, category: "Electrical" }]);
+    expect(merged[0]?.data).toBe(existing.data);
   });
 
   it("normalizes charger last-seen timestamps", async () => {

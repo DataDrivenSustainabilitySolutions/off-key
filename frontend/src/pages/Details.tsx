@@ -39,24 +39,10 @@ import {
 } from "@/lib/monitoring-chart";
 import type { Anomaly, TelemetryCursor, TelemetryTypeData } from "@/types/charger";
 
-type TelemetryCategoryGroups = Record<
-  TelemetryTypeData["category"],
-  TelemetryTypeData[]
->;
-
 const RECENT_TELEMETRY_WINDOW_MS = INTERVALS.DETAILS_UPDATE * 6;
 const EVIDENCE_PAGE_SIZE = 2000;
 const MAX_FORWARD_PAGES = 10;
 const EMPTY_EVIDENCE: MonitoringChartEvidence[] = [];
-const TELEMETRY_SECTIONS: Array<{
-  category: TelemetryTypeData["category"];
-  label: string;
-}> = [
-  { category: "cpu", label: "CPU Metrics" },
-  { category: "system", label: "System Metrics" },
-  { category: "controller", label: "Controller Metrics" },
-  { category: "other", label: "Other Metrics" },
-];
 
 const sameAnomalyWindow = (left: Anomaly[], right: Anomaly[]): boolean =>
   left.length === right.length &&
@@ -285,17 +271,13 @@ const Details: React.FC = () => {
     latestTelemetryAgeMs >= 0 &&
     latestTelemetryAgeMs <= RECENT_TELEMETRY_WINDOW_MS;
 
-  // Group telemetry data by category for better organization
   const telemetryByCategory = useMemo(() => {
-    const grouped: TelemetryCategoryGroups = {
-      cpu: [],
-      system: [],
-      controller: [],
-      other: [],
-    };
+    const grouped = new Map<string, TelemetryTypeData[]>();
 
     allTelemetryData.forEach(telemetry => {
-      grouped[telemetry.category].push(telemetry);
+      const series = grouped.get(telemetry.category) ?? [];
+      series.push(telemetry);
+      grouped.set(telemetry.category, series);
     });
 
     return grouped;
@@ -381,10 +363,7 @@ const Details: React.FC = () => {
           />
           <MetricCard
             label="Categories"
-            value={
-              Object.values(telemetryByCategory).filter((group) => group.length > 0)
-                .length
-            }
+            value={telemetryByCategory.size}
             helper="With current data"
             tone="info"
           />
@@ -453,32 +432,29 @@ const Details: React.FC = () => {
             </div>
           ) : (
             <div className="space-y-6">
-              {TELEMETRY_SECTIONS.map(({ category, label }) => {
-                const telemetrySeries = telemetryByCategory[category];
-                return telemetrySeries.length > 0 ? (
-                  <div key={category} className="space-y-4">
-                    <h3 className="text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">
-                      {label}
-                    </h3>
-                    {telemetrySeries.map((telemetryData) => (
-                      <DynamicTelemetryChart
-                        key={telemetryData.type}
-                        telemetryData={telemetryData}
-                        anomalies={chargerAnomalies}
-                        evidence={
-                          evidenceByTelemetry.get(telemetryData.type) ?? EMPTY_EVIDENCE
-                        }
-                        monitoringService={serviceByTelemetry.get(telemetryData.type)}
-                        navigationState={getNavigationState(telemetryData.type)}
-                        timelineExtent={
-                          chartsLinked ? linkedTimelineExtent : undefined
-                        }
-                        onNavigationStateChange={handleNavigationStateChange}
-                      />
-                    ))}
-                  </div>
-                ) : null;
-              })}
+              {[...telemetryByCategory].map(([category, telemetrySeries]) => (
+                <div key={category} className="space-y-4">
+                  <h3 className="text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">
+                    {category} Metrics
+                  </h3>
+                  {telemetrySeries.map((telemetryData) => (
+                    <DynamicTelemetryChart
+                      key={telemetryData.type}
+                      telemetryData={telemetryData}
+                      anomalies={chargerAnomalies}
+                      evidence={
+                        evidenceByTelemetry.get(telemetryData.type) ?? EMPTY_EVIDENCE
+                      }
+                      monitoringService={serviceByTelemetry.get(telemetryData.type)}
+                      navigationState={getNavigationState(telemetryData.type)}
+                      timelineExtent={
+                        chartsLinked ? linkedTimelineExtent : undefined
+                      }
+                      onNavigationStateChange={handleNavigationStateChange}
+                    />
+                  ))}
+                </div>
+              ))}
             </div>
           )}
         </section>

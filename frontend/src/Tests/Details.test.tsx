@@ -95,19 +95,19 @@ describe("<Details />", () => {
     mockLoadAllTelemetryTypes.mockResolvedValue([
       {
         type: "controllerCpuUsage",
-        category: "cpu",
+        category: "Processor",
         data: [{ timestamp: "2026-04-14T10:00:00Z", value: 42 }],
       },
       {
         type: "systemVoltage",
-        category: "system",
+        category: "Voltage",
         data: [{ timestamp: "2026-04-14T10:00:00Z", value: 12 }],
       },
     ]);
     mockLoadAnomalies.mockResolvedValue([]);
   });
 
-  it("loads telemetry data and renders category sections", async () => {
+  it("loads telemetry data and renders catalog category sections", async () => {
     renderDetails();
 
     await waitFor(() => {
@@ -120,8 +120,9 @@ describe("<Details />", () => {
         expect.any(AbortSignal),
       );
     });
-    expect(screen.getByText(/cpu metrics/i)).toBeTruthy();
-    expect(screen.getByText(/system metrics/i)).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Processor Metrics" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Voltage Metrics" })).toBeTruthy();
+    expect(screen.queryByText(/other metrics/i)).toBeNull();
     expect(screen.getAllByTestId("telemetry-chart")).toHaveLength(2);
   });
 
@@ -134,7 +135,7 @@ describe("<Details />", () => {
 
   it("preserves chart anomaly references across telemetry refreshes", async () => {
     renderDetails();
-    await screen.findByText(/cpu metrics/i);
+    await screen.findByText(/processor metrics/i);
     const firstReference = mockChartAnomalyProps[0];
 
     document.dispatchEvent(new Event("visibilitychange"));
@@ -160,7 +161,7 @@ describe("<Details />", () => {
 
   it("switches between independent and linked horizontal navigation", async () => {
     renderDetails();
-    await screen.findByText(/cpu metrics/i);
+    await screen.findByText(/processor metrics/i);
 
     const linkButton = screen.getByRole("button", {
       name: "Link chart navigation",

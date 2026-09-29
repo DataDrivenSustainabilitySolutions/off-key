@@ -7,6 +7,7 @@ import { NavigationBar } from "@/components/NavigationBar";
 import { Button } from "@/components/ui/button";
 import { apiUtils } from "@/lib/api-client";
 import { catalogRemovals } from "@/lib/catalog-changes";
+import { validPolicy } from "@/lib/collection-selection";
 import { getErrorMessage } from "@/lib/errors";
 import type {
   Catalog,
@@ -139,6 +140,11 @@ export default function DataSources() {
   const sensors = chargers.flatMap((charger) =>
     charger.sensors.map((sensor) => effectivePolicy(draft, charger, sensor)),
   );
+  const invalid = chargers.flatMap((charger) =>
+    charger.sensors
+      .filter((sensor) => !validPolicy(effectivePolicy(draft, charger, sensor)))
+      .map((sensor) => `${charger.label} · ${sensor.label}`),
+  );
   const activeCount = sensors.filter((policy) => policy.mode !== "off").length;
   const conflict = snapshot.revision !== baseRevision;
   const runtime = [snapshot.collection, snapshot.ingress].map((state) =>
@@ -160,6 +166,7 @@ export default function DataSources() {
               : "Saved · Applying changes…";
 
   const save = async () => {
+    if (invalid.length) return;
     setSaving(true);
     await task(async () => {
       const preview = await apiUtils.post<CatalogPreview>(
@@ -261,11 +268,16 @@ export default function DataSources() {
           draft={draft}
           snapshot={snapshot}
           busy={busy || conflict}
-          conflict={conflict}
           change={change}
           task={task}
           importCatalog={importCatalog}
         />
+        {invalid.length > 0 && (
+          <p role="alert" className="text-sm text-destructive">
+            {invalid.join(", ")}: sampling intervals must be whole seconds from
+            1 to 3600.
+          </p>
+        )}
         <div className="sticky bottom-3 z-20 flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-background p-4 shadow-lg">
           <div className="text-sm" role="status">
             <p className="font-medium">
@@ -290,7 +302,7 @@ export default function DataSources() {
             </Button>
             {snapshot.can_edit && (
               <Button
-                disabled={busy || conflict || !changed}
+                disabled={busy || conflict || !changed || invalid.length > 0}
                 onClick={() => void save()}
               >
                 {saving ? "Saving…" : "Save changes"}

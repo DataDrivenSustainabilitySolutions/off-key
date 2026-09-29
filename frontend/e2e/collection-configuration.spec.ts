@@ -45,42 +45,43 @@ test("selects only temperature on mobile and collects only that measurement", as
     await page
       .getByRole("searchbox", { name: "Search catalog" })
       .fill(charger.label);
+    const broker = snapshot.catalog.sources.find((source) =>
+      source.chargers.some((item) => item.id === chargerId),
+    )!;
     await page
-      .getByRole("button", { name: `Configure ${charger.label}`, exact: true })
+      .getByRole("button", {
+        name: `Show chargers for ${broker.label}`,
+        exact: true,
+      })
       .click();
-    const editor = page.getByRole("dialog", { name: "Configure collection" });
-    await expect(
-      editor.getByText("3 of 3 measurements selected"),
-    ).toBeVisible();
-    await editor.getByRole("button", { name: "Clear measurements" }).click();
-    await editor
-      .getByRole("checkbox", { name: "Temperature measurements", exact: true })
-      .check();
-    await expect(
-      editor.getByRole("checkbox", {
-        name: "Current measurements",
+    await page
+      .getByRole("button", {
+        name: `Show measurements for ${charger.label}`,
         exact: true,
-      }),
-    ).not.toBeChecked();
-    await expect(
-      editor.getByRole("checkbox", {
-        name: "Voltage measurements",
+      })
+      .click();
+    for (const key of ["current", "voltage"]) {
+      await page
+        .getByLabel(`Collection for ${charger.label} · ${key}`, { exact: true })
+        .selectOption("off");
+    }
+    await page
+      .getByLabel(`Collection for ${charger.label} · temperature`, {
         exact: true,
-      }),
-    ).not.toBeChecked();
-    await editor
-      .getByRole("combobox", { name: "Collection frequency", exact: true })
+      })
       .selectOption("sample");
-    await editor
-      .getByLabel("Collection interval in seconds", { exact: true })
+    await page
+      .getByLabel(
+        `Collection for ${charger.label} · temperature interval in seconds`,
+        { exact: true },
+      )
       .fill("1");
-    await expect(editor.getByRole("button", { name: "Done" })).toBeInViewport();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
     expect(
       await page.evaluate(
         () => document.documentElement.scrollWidth <= window.innerWidth,
       ),
     ).toBe(true);
-    await editor.getByRole("button", { name: "Done" }).click();
     // Updating the draft must not write the catalog yet.
     const stillSaved = (await (
       await api.get("/api/v1/sources", { headers })
@@ -94,8 +95,11 @@ test("selects only temperature on mobile and collects only that measurement", as
     await page.getByRole("menuitem", { name: "Account", exact: true }).click();
     await expect(page).toHaveURL(/\/sources$/);
     await expect(
-      page.getByText("Latest every 1s", { exact: true }),
-    ).toBeVisible();
+      page.getByLabel(
+        `Collection for ${charger.label} · temperature interval in seconds`,
+        { exact: true },
+      ),
+    ).toHaveValue("1");
     await page
       .getByRole("button", { name: "Save changes", exact: true })
       .click();

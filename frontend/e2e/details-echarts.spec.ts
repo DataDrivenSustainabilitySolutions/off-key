@@ -309,7 +309,7 @@ test.describe("Details telemetry ECharts", () => {
       .first();
     await expect(chart).toBeVisible();
     await expect(page.getByRole("heading", { name: "Voltage Metrics" })).toBeVisible();
-    await expect(card.getByText("Voltage", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Voltage (1)" })).toBeVisible();
     const desktopChartBox = await chart.boundingBox();
     expect(desktopChartBox).not.toBeNull();
     expect(desktopChartBox?.height).toBeGreaterThanOrEqual(520);
@@ -402,6 +402,14 @@ test.describe("Details telemetry ECharts", () => {
     await expect(voltageCard.getByTestId("telemetry-echart")).toBeVisible();
     await currentCard.scrollIntoViewIfNeeded();
     await expect(currentCard.getByTestId("telemetry-echart")).toBeVisible();
+
+    await voltageCard.getByRole("button", { name: "Zoom in" }).click();
+    await page.getByRole("button", { name: "Current (1)" }).click();
+    await expect(voltageCard).toHaveCount(0);
+    await expect(page).toHaveURL(/category=Current/u);
+    await page.getByRole("button", { name: "All categories (2)" }).click();
+    await expect(voltageCard.getByRole("button", { name: "Return to live" })).toBeVisible();
+    await voltageCard.getByRole("button", { name: "Return to live" }).click();
 
     const linkButton = page.getByRole("button", {
       name: "Link chart navigation",

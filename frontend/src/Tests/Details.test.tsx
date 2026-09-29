@@ -76,9 +76,9 @@ vi.mock("../components/DynamicTelemetryChart", () => ({
   },
 }));
 
-function renderDetails() {
+function renderDetails(initialEntry = "/details/123") {
   return render(
-    <MemoryRouter initialEntries={["/details/123"]}>
+    <MemoryRouter initialEntries={[initialEntry]}>
       <Routes>
         <Route path="/details/:chargerId" element={<Details />} />
       </Routes>
@@ -123,6 +123,78 @@ describe("<Details />", () => {
     expect(screen.getByRole("heading", { name: "Processor Metrics" })).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Voltage Metrics" })).toBeTruthy();
     expect(screen.queryByText(/other metrics/i)).toBeNull();
+    expect(screen.getAllByTestId("telemetry-chart")).toHaveLength(2);
+    expect(screen.getByRole("button", { name: "All categories (2)" }).getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByText("Showing 2 of 2 charts")).toBeTruthy();
+  });
+
+  it("filters by any selected catalog category and shows counts per category", async () => {
+    mockLoadAllTelemetryTypes.mockResolvedValue([
+      ["currentAc", "Charging diagnostics"],
+      ["currentDc", "Charging diagnostics"],
+      ["inverterTemperature", "Temperature"],
+      ["systemVoltage", "Voltage"],
+    ].map(([type, category]) => ({
+      type,
+      category,
+      data: [{ timestamp: "2026-04-14T10:00:00Z", value: 12 }],
+    })));
+    renderDetails();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Charging diagnostics (2)" }));
+    expect(screen.getAllByTestId("telemetry-chart")).toHaveLength(2);
+    expect(screen.getByRole("heading", { name: "Charging diagnostics Metrics" })).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "Voltage Metrics" })).toBeNull();
+    expect(screen.getByText("Showing 2 of 4 charts")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Temperature (1)" }));
+    expect(screen.getAllByTestId("telemetry-chart")).toHaveLength(3);
+    expect(screen.getByRole("heading", { name: "Temperature Metrics" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "All categories (4)" }).getAttribute("aria-pressed")).toBe("false");
+
+    fireEvent.click(screen.getByRole("button", { name: "Charging diagnostics (2)" }));
+    expect(screen.getAllByTestId("telemetry-chart")).toHaveLength(1);
+    expect(screen.getByText("Showing 1 of 4 charts")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Temperature (1)" }));
+    expect(screen.getAllByTestId("telemetry-chart")).toHaveLength(4);
+    expect(screen.getByRole("button", { name: "All categories (4)" }).getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("restores category selection from the URL and clears it with All categories", async () => {
+    renderDetails("/details/123?category=Voltage");
+
+    const voltage = await screen.findByRole("button", { name: "Voltage (1)" });
+    expect(voltage.getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getAllByTestId("telemetry-chart")).toHaveLength(1);
+    expect(screen.queryByRole("heading", { name: "Processor Metrics" })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "All categories (2)" }));
+    expect(screen.getAllByTestId("telemetry-chart")).toHaveLength(2);
+    expect(voltage.getAttribute("aria-pressed")).toBe("false");
+  });
+
+  it("keeps filters through polling and restores a hidden chart's inspected range", async () => {
+    renderDetails();
+    fireEvent.click(await screen.findByRole("button", { name: "Navigate systemVoltage" }));
+    fireEvent.click(screen.getByRole("button", { name: "Processor (1)" }));
+    expect(screen.queryByTestId("navigation-systemVoltage")).toBeNull();
+
+    document.dispatchEvent(new Event("visibilitychange"));
+    await waitFor(() => expect(mockLoadAllTelemetryTypes).toHaveBeenCalledTimes(2));
+    expect(screen.getByRole("button", { name: "Processor (1)" }).getAttribute("aria-pressed")).toBe("true");
+    expect(screen.queryByTestId("navigation-systemVoltage")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "All categories (2)" }));
+    expect(screen.getByTestId("navigation-systemVoltage").textContent).toContain('"startMs":3000');
+  });
+
+  it("allows clearing a category that no longer exists in the catalog", async () => {
+    renderDetails("/details/123?category=Removed");
+
+    expect(await screen.findByText(/No charts match the selected categories/)).toBeTruthy();
+    expect(screen.queryAllByTestId("telemetry-chart")).toHaveLength(0);
+    fireEvent.click(screen.getByRole("button", { name: "All categories (2)" }));
     expect(screen.getAllByTestId("telemetry-chart")).toHaveLength(2);
   });
 

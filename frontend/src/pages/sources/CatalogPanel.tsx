@@ -2,11 +2,24 @@ import { useRef, useState } from "react";
 import { SectionPanel } from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { apiUtils } from "@/lib/api-client";
-import type { Catalog, CatalogSnapshot } from "@/types/collection";
-import { catalogView, type CatalogFilter as Filter } from "@/lib/catalog-view";
+import type {
+  Catalog,
+  CatalogSnapshot,
+  CollectionPolicy,
+} from "@/types/collection";
+import {
+  catalogView,
+  visibleMeasurements,
+  type CatalogFilter as Filter,
+} from "@/lib/catalog-view";
 import { CatalogFilter } from "./CatalogFilter";
-import { CatalogEditor, fieldClass } from "./CatalogEditor";
-import { CollectionEditor } from "./CollectionEditor";
+import { CatalogEditor } from "./CatalogEditor";
+import { fieldClass } from "./InlineField";
+import { PolicyPicker } from "./PolicyPicker";
+import {
+  setMeasurementPolicies,
+  validPolicy,
+} from "@/lib/collection-selection";
 
 const endpoint = "/v1/sources";
 
@@ -14,7 +27,6 @@ export function CatalogPanel({
   draft,
   snapshot,
   busy,
-  conflict,
   change,
   task,
   importCatalog,
@@ -22,27 +34,45 @@ export function CatalogPanel({
   draft: Catalog;
   snapshot: CatalogSnapshot;
   busy: boolean;
-  conflict: boolean;
   change: (catalog: Catalog) => void;
   task: (work: () => Promise<void>) => Promise<void>;
   importCatalog: (catalog: Catalog) => Promise<void>;
 }) {
-  const [filter, setFilter] = useState<Filter>({ query: "", evidence: "all" });
+  const [filter, setFilter] = useState<Filter>({
+    query: "",
+    evidence: "all",
+    category: "",
+  });
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [editing, setEditing] = useState<Set<string> | null>(null);
+  const [policy, setPolicy] = useState<CollectionPolicy>({
+    mode: "sample",
+    interval_seconds: 10,
+  });
   const [history, setHistory] = useState<
     { revision: number; updated_by: string }[]
   >([]);
   const importInput = useRef<HTMLInputElement>(null);
   const disabled = !snapshot.can_edit || busy;
-  const chargers = catalogView(draft, filter).flatMap(
-    ({ chargers }) => chargers,
+  const measurements = catalogView(draft, filter).flatMap(
+    ({ source, chargers }) =>
+      chargers.flatMap((charger) =>
+        visibleMeasurements(source, charger, filter).map(
+          (sensor) => `${charger.id}:${sensor.key}`,
+        ),
+      ),
   );
   const selectedVisible = new Set(
-    chargers
-      .filter((charger) => selected.has(charger.id))
-      .map((charger) => charger.id),
+    measurements.filter((id) => selected.has(id)),
   );
+  const categories = [
+    ...new Set(
+      draft.sources.flatMap((source) =>
+        source.chargers.flatMap((charger) =>
+          charger.sensors.map((sensor) => sensor.category),
+        ),
+      ),
+    ),
+  ].sort();
   const updateFilter = (next: Filter) => {
     setFilter(next);
     setSelected(new Set());
@@ -50,9 +80,7 @@ export function CatalogPanel({
 
   return (
     <>
-      <SectionPanel
-        title="Your catalog"
-      >
+      <SectionPanel className="overflow-visible">
         {draft.sources.length === 0 && (
           <div className="mb-5 flex flex-wrap items-center gap-3">
             <Button
@@ -70,39 +98,70 @@ export function CatalogPanel({
             </Button>
           </div>
         )}
-        <CatalogFilter value={filter} onChange={updateFilter} />
-        {chargers.length > 0 && (
-          <div className="my-5 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-muted/40 p-3">
-            <div className="flex flex-wrap items-center gap-3">
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={disabled}
-                onClick={() =>
-                  setSelected(
-                    selectedVisible.size === chargers.length
-                      ? new Set()
-                      : new Set(chargers.map((charger) => charger.id)),
-                  )
-                }
-              >
-                {selectedVisible.size === chargers.length
-                  ? "Clear selection"
-                  : "Select shown chargers"}
-              </Button>
-              <p className="text-sm" aria-live="polite">
-                {selectedVisible.size
-                  ? `${selectedVisible.size} selected for editing`
-                  : `${chargers.length} chargers shown`}
-              </p>
-            </div>
+        <CatalogFilter
+          value={filter}
+          onChange={updateFilter}
+          categories={categories}
+        />
+        {measurements.length > 0 && (
+          <div
+            className={`my-4 flex flex-wrap items-center gap-3 rounded-xl p-3 ${selectedVisible.size ? "sticky top-20 z-10 border bg-background/95 shadow-sm backdrop-blur" : "bg-muted/30"}`}
+          >
             <Button
               size="sm"
-              disabled={disabled || selectedVisible.size === 0}
-              onClick={() => setEditing(selectedVisible)}
+              variant="outline"
+              disabled={disabled}
+              onClick={() =>
+                setSelected(
+                  selectedVisible.size === measurements.length
+                    ? new Set()
+                    : new Set(measurements),
+                )
+              }
             >
-              Configure selected
+              {selectedVisible.size === measurements.length
+                ? "Clear selection"
+                : `Select ${measurements.length} measurements`}
             </Button>
+            {selectedVisible.size > 0 ? (
+              <>
+                <span className="text-sm" aria-live="polite">
+                  {selectedVisible.size} selected
+                </span>
+                <PolicyPicker
+                  label="Collection for selected measurements"
+                  value={policy}
+                  disabled={disabled}
+                  onChange={setPolicy}
+                />
+                <Button
+                  size="sm"
+                  disabled={disabled || !validPolicy(policy)}
+                  onClick={() =>
+                    change(
+                      setMeasurementPolicies(draft, selectedVisible, policy),
+                    )
+                  }
+                >
+                  Apply to {selectedVisible.size}{" "}
+                  {selectedVisible.size === 1 ? "measurement" : "measurements"}
+                </Button>
+                {selectedVisible.size !== measurements.length && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setSelected(new Set())}
+                  >
+                    Clear selection
+                  </Button>
+                )}
+                {!validPolicy(policy) && (
+                  <p role="alert" className="text-xs text-destructive">
+                    Use whole seconds from 1 to 3600.
+                  </p>
+                )}
+              </>
+            ) : null}
           </div>
         )}
         <CatalogEditor
@@ -111,25 +170,28 @@ export function CatalogPanel({
           disabled={disabled}
           onChange={change}
           filter={filter}
-          showAll={() => updateFilter({ query: "", evidence: "all" })}
+          showAll={() =>
+            updateFilter({ query: "", evidence: "all", category: "" })
+          }
           selected={selectedVisible}
-          onSelect={(id, checked) =>
+          onSelect={(ids, checked) =>
             setSelected((current) => {
               const next = new Set(current);
-              if (checked) next.add(id);
-              else next.delete(id);
+              for (const id of ids) {
+                if (checked) next.add(id);
+                else next.delete(id);
+              }
               return next;
             })
           }
-          onConfigure={(id) => setEditing(new Set([id]))}
         />
         <details className="mt-6 min-w-0 rounded-lg border px-3 py-2 text-sm">
           <summary className="cursor-pointer text-muted-foreground">
             Import and history
           </summary>
           <p className="my-3 text-xs text-muted-foreground">
-            Importing or loading a revision replaces your draft catalog and collection
-            settings. Save changes to apply.
+            Importing or loading a revision replaces your draft catalog and
+            collection settings. Save changes to apply.
           </p>
           <div className="flex flex-wrap gap-2">
             <input
@@ -145,7 +207,7 @@ export function CatalogPanel({
                     if (file.size > 1024 * 1024)
                       throw new Error("Catalog files must be under 1 MB");
                     await importCatalog(JSON.parse(await file.text()));
-                    updateFilter({ query: "", evidence: "all" });
+                    updateFilter({ query: "", evidence: "all", category: "" });
                   });
               }}
             />
@@ -181,7 +243,7 @@ export function CatalogPanel({
                         `${endpoint}/revisions/${revision}`,
                       ),
                     );
-                    updateFilter({ query: "", evidence: "all" });
+                    updateFilter({ query: "", evidence: "all", category: "" });
                   });
                 }}
               >
@@ -196,20 +258,6 @@ export function CatalogPanel({
           </div>
         </details>
       </SectionPanel>
-      {editing && (
-        <CollectionEditor
-          catalog={draft}
-          chargerIds={editing}
-          disabled={disabled}
-          conflict={conflict}
-          readOnly={!snapshot.can_edit}
-          onClose={() => setEditing(null)}
-          onSave={(catalog) => {
-            change(catalog);
-            setEditing(null);
-          }}
-        />
-      )}
     </>
   );
 }

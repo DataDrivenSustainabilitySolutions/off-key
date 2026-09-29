@@ -369,30 +369,6 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
       timelineExtent,
     ],
   );
-  const zoomIn = useCallback(() => {
-    const extent = timelineExtent ?? chartModel.extent;
-    if (!extent) return;
-    const startMs = viewport.mode === "absolute" ? viewport.startMs : extent[0];
-    const endMs = viewport.mode === "absolute" ? viewport.endMs : extent[1];
-    const inset = (endMs - startMs) / 4;
-    if (!Number.isFinite(inset) || inset <= 0) return;
-    commitNavigationState({
-      ...activeNavigationState,
-      viewport: {
-        mode: "absolute",
-        startMs: startMs + inset,
-        endMs: endMs - inset,
-      },
-      inspectionDataEndMs:
-        activeNavigationState.inspectionDataEndMs ?? extent[1],
-    });
-  }, [
-    activeNavigationState,
-    chartModel.extent,
-    commitNavigationState,
-    timelineExtent,
-    viewport,
-  ]);
   const hasNewData =
     viewport.mode === "absolute" &&
     activeNavigationState.inspectionDataEndMs !== undefined &&
@@ -567,29 +543,24 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
             </div>
           ) : chartOption && chartModel ? (
             <>
-              <div
-                className="mb-2 flex flex-wrap items-center justify-end gap-2 text-xs text-muted-foreground"
-                aria-live="polite"
-              >
-                <Button type="button" variant="ghost" size="sm" onClick={zoomIn}>
-                  Zoom in
-                </Button>
-                {viewport.mode === "absolute" && (
-                  <>
-                    <span>
-                      {hasNewData ? "New data available" : "Inspection paused"}
-                    </span>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={resetViewport}
-                    >
-                      Return to live
-                    </Button>
-                  </>
-                )}
-              </div>
+              {viewport.mode === "absolute" && (
+                <div
+                  className="mb-2 flex flex-wrap items-center justify-end gap-2 text-xs text-muted-foreground"
+                  aria-live="polite"
+                >
+                  <span>
+                    {hasNewData ? "New data available" : "Inspection paused"}
+                  </span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={resetViewport}
+                  >
+                    Return to live
+                  </Button>
+                </div>
+              )}
               <EChart
                 option={chartOption}
                 resolvedTheme={resolvedTheme}

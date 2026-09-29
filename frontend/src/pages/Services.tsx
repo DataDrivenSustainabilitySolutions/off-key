@@ -3,7 +3,6 @@ import { Link } from "react-router-dom";
 import {
   Activity,
   AlertTriangle,
-  CheckCircle2,
   Database,
   ExternalLink,
   RadioTower,
@@ -216,9 +215,7 @@ export default function Services() {
       <NavigationBar />
       <PageShell>
         <PageHeader
-          eyebrow="Monitoring"
           title="Services"
-          description="Inspect RADAR monitoring workloads and their live Docker state."
           actions={
             <Button variant="outline" onClick={loadServices} disabled={isLoading}>
               <RefreshCw className={isLoading ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
@@ -228,63 +225,29 @@ export default function Services() {
         />
 
         <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
-          <MetricCard label="Services" value={services.length} helper="Tracked workloads" />
+          <MetricCard label="Services" value={services.length} />
           <MetricCard
             label="Running"
             value={runningCount}
-            helper="Docker state"
             tone={runningCount > 0 ? "success" : "default"}
           />
           <MetricCard
             label="Static"
             value={staticCount}
-            helper="Baseline mode"
             tone="info"
           />
           <MetricCard
             label="Missing"
             value={missingCount}
-            helper="DB row without workload"
+            help="The service is registered, but its workload is missing."
             tone={missingCount > 0 ? "danger" : "default"}
           />
-        </div>
-
-        <div className="flex flex-col gap-3 rounded-2xl border border-border/65 bg-card px-4 py-4 shadow-[0_1px_2px_hsl(220_20%_10%/0.025)] sm:flex-row sm:items-center sm:justify-between sm:px-5">
-          <div className="flex min-w-0 items-center gap-3">
-            <div
-              className={cn(
-                "flex size-9 shrink-0 items-center justify-center rounded-xl border",
-                missingCount > 0
-                  ? "border-red-200 bg-red-50 text-red-700 dark:border-red-900/60 dark:bg-red-950/25 dark:text-red-200"
-                  : "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/25 dark:text-emerald-200"
-              )}
-            >
-              {missingCount > 0 ? (
-                <AlertTriangle className="h-4 w-4" />
-              ) : (
-                <CheckCircle2 className="h-4 w-4" />
-              )}
-            </div>
-            <div className="min-w-0">
-              <div className="text-sm font-medium">
-                {missingCount > 0
-                  ? `${missingCount} services need attention`
-                  : "Service inventory is clean"}
-              </div>
-              <div className="text-sm text-muted-foreground">
-                {runningCount} running, {staticCount} static
-              </div>
-            </div>
-          </div>
-          <div className="text-xs text-muted-foreground">
-            Auto-refreshes every 15 seconds
-          </div>
         </div>
 
         <SectionPanel
           title="Monitoring Services"
           description={
-            isLoading ? "Refreshing service state..." : `${services.length} loaded`
+            isLoading ? "Refreshing services…" : undefined
           }
           contentClassName="p-0"
         >
@@ -292,9 +255,6 @@ export default function Services() {
             <div className="flex min-h-48 flex-col items-center justify-center px-4 py-10 text-center">
               <RefreshCw className="mb-3 h-5 w-5 animate-spin text-muted-foreground" />
               <div className="text-sm font-medium">Loading services</div>
-              <div className="mt-1 text-sm text-muted-foreground">
-                Fetching current workload state.
-              </div>
             </div>
           ) : services.length > 0 ? (
             <Table>

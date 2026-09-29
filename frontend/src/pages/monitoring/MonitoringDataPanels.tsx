@@ -48,7 +48,6 @@ export function MonitoringDataPanels({
     <>
       <SectionPanel
         title="Active services"
-        description="Runtime lifecycle and current stream ownership."
         actions={
           <Button
             variant="outline"
@@ -147,7 +146,7 @@ export function MonitoringDataPanels({
 
       <SectionPanel
         title="Recent alarm transitions"
-        description="Only new threshold crossings are anomaly events; the full evidence path is persisted for charts."
+        help="Events mark new threshold crossings. Charts retain the full evidence history."
         actions={
           <Button
             variant="outline"

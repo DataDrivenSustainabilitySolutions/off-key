@@ -8,17 +8,16 @@ import { cn } from "@/lib/utils";
 import type { ActiveService, ModelDefinition } from "@/types/monitoring";
 import {
   Database,
-  FlaskConical,
-  Layers3,
   LockKeyhole,
   RadioTower,
   Send,
   ShieldCheck,
-  Sparkles,
 } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 
+import { HelpTooltip } from "@/components/HelpTooltip";
+import { SettingLabel } from "./SettingLabel";
 import { AdvancedSettings } from "./AdvancedSettings";
 import {
   buildStaticMonitoringRequest,
@@ -40,7 +39,6 @@ import {
 import {
   ConfigSection,
   FieldError,
-  LifecycleStep,
 } from "./MonitoringUi";
 
 interface StaticMonitoringSetupProps {
@@ -142,34 +140,8 @@ export function StaticMonitoringSetup({
   return (
     <>
       <SectionPanel
-        title="Static evidence lifecycle"
-        description="Chronological samples; one purpose per phase."
-      >
-        <div className="grid gap-4 lg:grid-cols-3">
-          <LifecycleStep
-            number={1}
-            title="Learn the baseline"
-            description="Fit the detector on the first block of aligned sensor vectors."
-            icon={Layers3}
-          />
-          <LifecycleStep
-            number={2}
-            title="Calibrate scores"
-            description="Use a separate subsequent block to obtain conformal p-values."
-            icon={FlaskConical}
-          />
-          <LifecycleStep
-            number={3}
-            title="Accumulate evidence"
-            description="Feed each p-value to the configured martingale trackers and evaluate new threshold crossings."
-            icon={Sparkles}
-          />
-        </div>
-      </SectionPanel>
-
-      <SectionPanel
         title="Configure static monitoring"
-        description="Select unassigned sensors, the detector, and the two sample blocks."
+        help="Train the detector on the first sample block, calibrate p-values on a separate later block, then accumulate evidence. New threshold crossings create anomaly events."
         actions={
           <Button
             onClick={() => void submit()}
@@ -184,7 +156,7 @@ export function StaticMonitoringSetup({
           <div className="space-y-5">
             <ConfigSection
               title="Telemetry scope"
-              description="Choose the concrete streams owned exclusively by this monitor."
+              description="Each sensor can belong to one active monitor."
               icon={RadioTower}
             >
               <label className={LABEL_CLASS}>Topic input mode</label>
@@ -263,8 +235,7 @@ export function StaticMonitoringSetup({
                     placeholder={`One concrete sensor per line, e.g. ${buildDeviceTelemetryTopic(chargerId, "L1")}`}
                   />
                   <p className={HELP_CLASS}>
-                    Namespaces stay distinct. The backend verifies wildcard overlap
-                    before creation.
+                    Topic patterns must not overlap another monitor.
                   </p>
                 </div>
               )}
@@ -273,11 +244,12 @@ export function StaticMonitoringSetup({
 
             <ConfigSection
               title="Baseline and sample windows"
-              description="Select a static detector, then define its chronological training and calibration blocks."
+              help="Training and calibration use separate, consecutive sample blocks."
               icon={Database}
             >
-              <label className={LABEL_CLASS}>Detector</label>
+              <SettingLabel label="Detector" htmlFor="static-detector" help={modelDefinition?.description} />
               <select
+                id="static-detector"
                 className={cn(CONTROL_CLASS, "mt-2")}
                 value={draft.modelType}
                 disabled={loadingModels}
@@ -294,10 +266,6 @@ export function StaticMonitoringSetup({
                   </option>
                 ))}
               </select>
-              <p className={HELP_CLASS}>
-                {modelDefinition?.description ||
-                  "A train-once PyOD detector for stable multivariate structure."}
-              </p>
 
               <div className="mt-5 grid gap-4 sm:grid-cols-2">
                 {(
@@ -317,8 +285,9 @@ export function StaticMonitoringSetup({
                   ] as const
                 ).map(([field, label, min, help]) => (
                   <div key={field}>
-                    <label className={LABEL_CLASS}>{label}</label>
+                    <SettingLabel label={label} htmlFor={`static-${field}`} help={help} />
                     <input
+                      id={`static-${field}`}
                       type="number"
                       min={min}
                       className={cn(CONTROL_CLASS, "mt-2")}
@@ -335,7 +304,6 @@ export function StaticMonitoringSetup({
                         clearError(field);
                       }}
                     />
-                    <p className={HELP_CLASS}>{help}</p>
                     <FieldError field={field} errors={fieldErrors} />
                   </div>
                 ))}
@@ -356,6 +324,7 @@ export function StaticMonitoringSetup({
               <div className="flex items-center gap-2 text-emerald-700 dark:text-emerald-300">
                 <ShieldCheck className="h-5 w-5" />
                 <h3 className="font-semibold">Martingale ensemble</h3>
+                <HelpTooltip label="Martingale ensemble">Each tracker has a betting method, alarm statistic, and threshold. A new crossing by any tracker creates an anomaly.</HelpTooltip>
               </div>
               <div className="mt-5 flex items-end justify-between gap-3">
                 <div className="text-5xl font-semibold tracking-[-0.05em] tabular-nums">
@@ -365,11 +334,6 @@ export function StaticMonitoringSetup({
                   {draft.martingaleTrackers.length === 1 ? "Tracker" : "Trackers"}
                 </span>
               </div>
-              <p className="mt-3 text-sm leading-6 text-muted-foreground">
-                Each tracker selects a betting method, alarm statistic, and
-                threshold. An anomaly is emitted when any tracker records a new
-                crossing.
-              </p>
             </div>
             <div className="rounded-2xl border border-border/65 bg-card p-5">
               <div className="flex items-center gap-2">
@@ -396,9 +360,7 @@ export function StaticMonitoringSetup({
               </dl>
             </div>
             <div className="rounded-2xl border border-amber-500/25 bg-amber-500/[0.045] p-5 text-sm leading-6 text-muted-foreground">
-              Evidence assumes the static calibration remains representative.
-              Temporal dependence is intentionally deferred to the coming-soon
-              dynamic lane.
+              Static monitoring assumes calibration data remains representative.
             </div>
           </aside>
         </div>

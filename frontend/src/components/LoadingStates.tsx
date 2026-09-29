@@ -201,7 +201,7 @@ export const NoDataFound: React.FC<{
   <EmptyState
     icon={<Database />}
     title={message}
-    description="There's no data available for the selected criteria. Try adjusting your filters or check back later."
+    description="Adjust your filters or check back later."
     action={onRefresh ? {
       label: 'Refresh',
       onClick: onRefresh,
@@ -214,7 +214,7 @@ export const NoAnomaliesFound: React.FC<{ onRefresh?: () => void }> = ({ onRefre
   <EmptyState
     icon={<AlertCircle />}
     title="No anomalies detected"
-    description="No anomalies have been detected for the selected time period. This is good news!"
+    description="No detections in this time period."
     action={onRefresh ? {
       label: 'Refresh Data',
       onClick: onRefresh,
@@ -227,7 +227,7 @@ export const NoChartsAvailable: React.FC<{ onRefresh?: () => void }> = ({ onRefr
   <EmptyState
     icon={<BarChart3 />}
     title="No chart data available"
-    description="Unable to display charts. Data may still be loading or unavailable."
+    description="No telemetry available yet."
     action={onRefresh ? {
       label: 'Try Again',
       onClick: onRefresh,
@@ -240,7 +240,7 @@ export const ConnectionError: React.FC<{ onRetry?: () => void }> = ({ onRetry })
   <EmptyState
     icon={<Wifi />}
     title="Connection error"
-    description="Unable to connect to the server. Please check your internet connection and try again."
+    description="Check your connection and try again."
     action={onRetry ? {
       label: 'Retry Connection',
       onClick: onRetry,

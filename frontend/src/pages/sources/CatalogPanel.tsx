@@ -52,7 +52,6 @@ export function CatalogPanel({
     <>
       <SectionPanel
         title="Your catalog"
-        description="Brokers → chargers → measurements"
       >
         {draft.sources.length === 0 && (
           <div className="mb-5 flex flex-wrap items-center gap-3">
@@ -129,9 +128,8 @@ export function CatalogPanel({
             Import and history
           </summary>
           <p className="my-3 text-xs text-muted-foreground">
-            Importing or loading a revision replaces both definitions and
-            collection settings in your unsaved changes. Save changes to apply
-            them.
+            Importing or loading a revision replaces your draft catalog and collection
+            settings. Save changes to apply.
           </p>
           <div className="flex flex-wrap gap-2">
             <input

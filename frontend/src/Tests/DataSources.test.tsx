@@ -647,7 +647,7 @@ describe("catalog collection UI", () => {
       ).closest("fieldset")?.disabled,
     ).toBe(true);
     expect(
-      screen.getByText(/View only · these are the saved collection settings/),
+      screen.getByText(/Saved collection settings · view only/),
     ).toBeTruthy();
   });
 

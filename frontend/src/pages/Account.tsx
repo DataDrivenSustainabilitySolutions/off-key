@@ -68,20 +68,18 @@ export default function AccountPage() {
       <NavigationBar />
       <PageShell>
         <PageHeader
-          eyebrow="Organization"
           title="Account"
-          description="This installation is a shared workspace for one organization."
           actions={
             <Button variant="outline" asChild>
               <Link to="/account/settings">Settings</Link>
             </Button>
           }
         />
-        <SectionPanel title="Your account" description="All active members can view the organization's data. Administrators manage members, collection, and monitoring.">
+        <SectionPanel title="Your account" help="Members can view all organization data. Administrators also manage access, collection, and monitoring.">
           <p className="text-sm">{member?.email} · {isAdmin ? "Administrator" : "Member"}</p>
         </SectionPanel>
         {isAdmin && (
-          <SectionPanel title="Organization members" description="Invite colleagues or manage their access. At least one active administrator must remain.">
+          <SectionPanel title="Organization members" help="Keep at least one active administrator. Disabling a member revokes their sessions immediately.">
             <form className="mb-6 flex flex-wrap items-end gap-3" onSubmit={(event) => { event.preventDefault(); void invite(email, role); }}>
               <div className="grid gap-2">
                 <Label htmlFor="member-email">Email</Label>

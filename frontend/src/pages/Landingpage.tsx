@@ -134,23 +134,19 @@ export default function ChargerTable() {
       <NavigationBar />
       <PageShell>
         <PageHeader
-          eyebrow="Fleet Cockpit"
           title="Charging Stations"
-          description="Monitor charger availability, last contact, and favorites from a single operational view."
         />
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4">
-          <MetricCard label="Total" value={statusCounts.all} helper="Known chargers" />
+          <MetricCard label="Total" value={statusCounts.all} />
           <MetricCard
             label="Online"
             value={statusCounts.online}
-            helper="Currently active"
             tone="success"
           />
           <MetricCard
             label="Offline"
             value={statusCounts.offline}
-            helper="Needs attention"
             tone={statusCounts.offline > 0 ? "danger" : "default"}
           />
         </div>

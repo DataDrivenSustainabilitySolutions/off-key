@@ -260,8 +260,8 @@ export function CollectionEditor({
               </div>
               <p className="pb-2 text-xs text-muted-foreground">
                 {byCharger
-                  ? "Expand each charger to choose its measurements. Switching views keeps your selections."
-                  : "Check a category, or expand it to choose individual measurements."}
+                  ? "Expand a charger to choose measurements."
+                  : "Select a category or expand it to choose measurements."}
               </p>
               {groups.map(({ id, label, detail, items }) => {
                 const count = items.filter((item) =>
@@ -413,8 +413,8 @@ export function CollectionEditor({
                 {rate === null
                   ? "Individual rates are shown below. Newly selected measurements use their existing rate or a 10-second interval."
                   : rate.mode === "original"
-                    ? "Records arrive at the source’s full rate. Storage use depends on how often it publishes."
-                    : "Keep the newest reading in each interval. Quiet sensors do not produce repeated readings."}
+                    ? "Collect every reading; storage use follows the source rate."
+                    : "Keep the latest reading per interval; no repeats for quiet sensors."}
               </p>
               <details>
                 <summary className="cursor-pointer text-sm">
@@ -464,8 +464,8 @@ export function CollectionEditor({
             )}
             <p className="text-xs text-muted-foreground">
               {readOnly
-                ? "View only · these are the saved collection settings."
-                : "Choose Done to keep these edits, then Save changes to apply them."}
+                ? "Saved collection settings · view only"
+                : "Done keeps your edits. Save changes applies them."}
             </p>
             <div className="flex justify-end gap-2">
               <Button type="button" variant="outline" onClick={onClose}>

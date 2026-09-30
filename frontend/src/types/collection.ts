@@ -57,16 +57,21 @@ export type RuntimeState = {
   counters?: Record<string, number>;
   sources?: Record<string, { status: string; error?: string }>;
 };
+export type SensorActivity = {
+  received_at: string;
+  is_snapshot: boolean;
+};
 export type CatalogSnapshot = {
   revision: number;
   catalog: Catalog;
   can_edit: boolean;
   collection: RuntimeState;
+  sensor_activity: Record<string, Record<string, SensorActivity>>;
   ingress: RuntimeState;
   updated_at: string | null;
   updated_by: string | null;
 };
-export type CollectionStatus = Pick<CatalogSnapshot, "revision" | "collection" | "ingress">;
+export type CollectionStatus = Pick<CatalogSnapshot, "revision" | "collection" | "ingress" | "sensor_activity">;
 export type CatalogPreview = {
   revision: number;
   catalog: Catalog;

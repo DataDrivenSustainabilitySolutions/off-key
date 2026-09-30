@@ -34,6 +34,8 @@ const newCharger = (chargers: CatalogCharger[] = []): CatalogCharger => {
 export function CatalogEditor({
   catalog,
   snapshot,
+  activityAvailable,
+  now,
   disabled,
   onChange,
   filter,
@@ -43,6 +45,8 @@ export function CatalogEditor({
 }: {
   catalog: Catalog;
   snapshot: CatalogSnapshot;
+  activityAvailable: boolean;
+  now: number;
   disabled: boolean;
   onChange: (catalog: Catalog) => void;
   filter: CatalogFilter;
@@ -208,6 +212,9 @@ export function CatalogEditor({
                     key={charger.id}
                     catalog={catalog}
                     source={source}
+                    snapshot={snapshot}
+                    now={now}
+                    activityAvailable={activityAvailable && state?.status === "connected"}
                     charger={charger}
                     saved={saved?.chargers.find(
                       (item) => item.id === charger.id,

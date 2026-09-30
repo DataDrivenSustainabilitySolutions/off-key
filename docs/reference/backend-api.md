@@ -87,6 +87,15 @@ GET /v1/telemetry/charger-123/data?type=controllerCpuUsage&limit=200
 Authorization: Bearer <token>
 ```
 
+### Data sources
+
+`GET /sources` and `GET /sources/status` require an active member and include
+`sensor_activity`, keyed by application charger ID and sensor key. Each entry
+contains `received_at` and `is_snapshot` from the latest accepted observation.
+Retained snapshots do not establish live sensor activity. Activity is empty until
+the collector has applied the current catalog revision; sensor values remain
+available from `GET /sources/state/{charger_id}`.
+
 ### Monitoring and model discovery
 
 | Method | Path | Purpose | Key inputs |

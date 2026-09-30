@@ -89,6 +89,7 @@ const snapshot = (catalog = empty, can_edit = true): CatalogSnapshot => ({
   revision: 1,
   catalog,
   can_edit,
+  sensor_activity: {},
   ingress: {},
   collection: {},
   updated_at: null,
@@ -335,7 +336,7 @@ describe("direct collection editor", () => {
     setRate("Yard", "Temperature", "sample", "60");
     setRate("Yard", "AC current", "original");
     setRate("Yard", "Connected", "off");
-    expect(screen.getByText(/2\/3 active · Mixed rates/)).toBeTruthy();
+    expect(screen.getByText(/2\/3 enabled · Mixed rates/)).toBeTruthy();
     expect(api.put).not.toHaveBeenCalled();
     const next = await save();
     const yard = next.sources[0]!.chargers[0]!;
@@ -962,4 +963,132 @@ describe("direct collection editor", () => {
       "Collector unavailable",
     );
   });
+});
+
+
+describe("sensor activity evidence", () => {
+  const activitySnapshot = (canEdit = true) => {
+    const data = snapshot(inventory(), canEdit);
+    data.catalog.sources[0]!.chargers[0]!.policy = null;
+    const state = {
+      revision: 1,
+      status: "applied",
+      checked_at: new Date(Date.now()).toISOString(),
+    };
+    data.collection = state;
+    data.ingress = {
+      ...state,
+      sources: { "broker-1": { status: "connected" } },
+    };
+    data.sensor_activity = {
+      "charger-0": {
+        temperature: {
+          received_at: new Date(Date.now() - 3000).toISOString(),
+          is_snapshot: false,
+        },
+        current: {
+          received_at: new Date(Date.now()).toISOString(),
+          is_snapshot: true,
+        },
+      },
+    };
+    return data;
+  };
+
+  it("shows member-visible evidence for individual sensors, not broker discovery", async () => {
+    const data = activitySnapshot(false);
+    mockSnapshot(data);
+    show();
+    const yard = await openCharger();
+    const temperature = within(yard.getByRole("group", { name: "Measurement Temperature" }));
+    expect(temperature.getByText("Recent data")).toBeTruthy();
+    expect(temperature.getByText(/^Last received/).getAttribute("datetime")).toBe(
+      data.sensor_activity["charger-0"]!.temperature!.received_at,
+    );
+    expect(within(yard.getByRole("group", { name: "Measurement AC current" })).getByText("Retained snapshot")).toBeTruthy();
+    expect(within(yard.getByRole("group", { name: "Measurement Connected" })).getByText("No data yet")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Show measurements for Garage" }));
+    expect(within(screen.getByRole("region", { name: "Charger Garage" })).getAllByText("Collection off")).toHaveLength(3);
+    expect(screen.queryByRole("button", { name: "Save changes" })).toBeNull();
+  });
+
+  it.each([
+    { interval: 10, age: 61000, label: "No recent data" },
+    { interval: 600, age: 900000, label: "Recent data" },
+    { interval: 10, age: -60000, label: "No recent data" },
+  ])("uses saved sampling cadence ($interval seconds) and receipt age ($age milliseconds)", async ({ interval, age, label }) => {
+    const data = activitySnapshot();
+    data.catalog.sources[0]!.chargers[0]!.policy = {
+      mode: "sample", interval_seconds: interval,
+    };
+    data.sensor_activity["charger-0"]!.temperature!.received_at =
+      new Date(Date.now() - age).toISOString();
+    mockSnapshot(data);
+    show();
+    const yard = await openCharger();
+    expect(within(yard.getByRole("group", { name: "Measurement Temperature" })).getByText(label)).toBeTruthy();
+  });
+
+  it("refreshes evidence without changing an unsaved collection policy and handles failures", async () => {
+    const intervals = vi.spyOn(globalThis, "setInterval");
+    const data = activitySnapshot();
+    mockSnapshot(data);
+    show();
+    const yard = await openCharger();
+    const temperature = within(yard.getByRole("group", { name: "Measurement Temperature" }));
+    setRate("Yard", "Temperature", "off");
+    expect(temperature.getByText("Recent data")).toBeTruthy();
+    const refresh = intervals.mock.calls.find(([, delay]) => delay === 3000)![0] as () => Promise<void>;
+    api.get.mockResolvedValue({ ...data, sensor_activity: {} });
+    await act(refresh);
+    expect(temperature.getByText("No data yet")).toBeTruthy();
+    expect((screen.getByLabelText("Collection for Yard · Temperature") as HTMLSelectElement).value).toBe("off");
+    api.get.mockRejectedValueOnce(new Error("Network lost"));
+    await act(refresh);
+    expect(temperature.getByText("Status unavailable")).toBeTruthy();
+    api.get.mockResolvedValue(data);
+    await act(refresh);
+    expect(temperature.getByText("Recent data")).toBeTruthy();
+    expect(api.put).not.toHaveBeenCalled();
+  });
+
+  it("expires live evidence while status requests are still pending", async () => {
+    const intervals = vi.spyOn(globalThis, "setInterval");
+    const data = activitySnapshot();
+    const now = Date.now();
+    mockSnapshot(data);
+    show();
+    const yard = await openCharger();
+    const temperature = within(yard.getByRole("group", { name: "Measurement Temperature" }));
+    expect(temperature.getByText("Recent data")).toBeTruthy();
+    api.get.mockImplementation(() => new Promise(() => {}));
+    vi.spyOn(Date, "now").mockReturnValue(now + 18000);
+    const refresh = intervals.mock.calls.find(([, delay]) => delay === 3000)![0] as () => Promise<void>;
+    await act(refresh);
+    expect(temperature.getByText("Status unavailable")).toBeTruthy();
+  });
+
+  it.each(["broker", "charger", "topic", "type"])(
+    "does not certify an unsaved %s binding with another stream's data", async (binding) => {
+      mockSnapshot(activitySnapshot());
+      show();
+      const yard = await openCharger();
+      if (binding === "broker") {
+        edit("Hostname", "other.ts.net", within(
+          screen.getByRole("region", { name: "Broker Main broker" }),
+        ));
+      }
+      else if (binding === "charger") edit("Local charger ID", "other", yard);
+      else {
+        fireEvent.click(screen.getByRole("button", { name: "Details for Yard · Temperature" }));
+        fireEvent.change(screen.getByLabelText(binding === "topic" ? "Upstream topic" : "Value type"), {
+          target: { value: binding === "topic" ? "device/evCharger/0/replacement" : "text" },
+        });
+        fireEvent.click(screen.getByRole("button", { name: "Close" }));
+      }
+      expect(within(yard.getByRole("group", { name: "Measurement Temperature" })).getByText("Save to observe")).toBeTruthy();
+      expect(yard.queryByText("Recent data")).toBeNull();
+      expect(api.put).not.toHaveBeenCalled();
+    },
+  );
 });

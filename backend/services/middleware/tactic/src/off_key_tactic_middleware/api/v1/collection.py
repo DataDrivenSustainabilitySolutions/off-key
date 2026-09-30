@@ -19,6 +19,7 @@ from off_key_core.schemas.collection import (
     CatalogChange,
     CatalogPreview,
     CatalogSnapshot,
+    SensorActivity,
 )
 from off_key_core.schemas.storage import StorageStatus
 from off_key_core.utils.enum import RoleEnum
@@ -34,12 +35,36 @@ from .data_services import _raise_http_from_domain
 router = APIRouter(prefix="/collection", tags=["collection"])
 
 
+async def read_sensor_activity(
+    session: AsyncSession, revision: int, collection: dict
+) -> dict[str, dict[str, SensorActivity]]:
+    if collection.get("revision") != revision or collection.get("status") != "applied":
+        return {}
+    rows = await session.execute(
+        select(
+            CollectionState.charger_id,
+            CollectionState.sensor_key,
+            CollectionState.received_at,
+            CollectionState.is_snapshot,
+        )
+    )
+    activity = {}
+    for charger_id, sensor_key, received_at, is_snapshot in rows:
+        activity.setdefault(charger_id, {})[sensor_key] = SensorActivity(
+            received_at=received_at, is_snapshot=is_snapshot
+        )
+    return activity
+
+
 @router.get("")
 async def get_catalog(
     user: User = Depends(current_member),
     session: AsyncSession = Depends(get_db_async),
 ):
     snapshot = await read_collection_configuration(session)
+    snapshot.sensor_activity = await read_sensor_activity(
+        session, snapshot.revision, snapshot.collection
+    )
     if not get_ambibox_settings().AMBIBOX_INGRESS_ENABLED:
         snapshot.ingress = {
             "status": "disabled",
@@ -82,6 +107,9 @@ async def get_status(
             "ingress": {},
             "collection": {},
         }
+    )
+    result["sensor_activity"] = await read_sensor_activity(
+        session, result["revision"], result["collection"]
     )
     if not get_ambibox_settings().AMBIBOX_INGRESS_ENABLED:
         result["ingress"] = {"status": "disabled"}

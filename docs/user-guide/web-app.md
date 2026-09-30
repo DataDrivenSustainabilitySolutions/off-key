@@ -50,6 +50,20 @@ also manage data sources, monitors, and anomalies.
 3. Select the telemetry type and time range.
 4. Review the rendered charts and data.
 
+## Data-source activity
+
+Open `/sources`, expand a broker and charger, and inspect the badge beside each
+measurement. **Recent data** confirms a live reading within three saved sampling
+intervals, with a minimum window of one minute. Original-rate sensors use one
+minute. **No recent data** shows an older live reading; **Retained snapshot** is
+cached MQTT data; **No data yet** means no observation has arrived. The receipt
+time appears beside observed measurements.
+
+Activity reflects saved settings. Measurements with collection off are not
+observed. Unsaved changes to a broker, charger binding, sensor topic, or value
+type show **Save to observe**. **Status unavailable** means live status could not
+be confirmed, including stale worker reports.
+
 ## Favourites workflow
 
 1. Add or remove a favourite from a charger view.

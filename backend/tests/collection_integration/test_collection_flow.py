@@ -18,6 +18,7 @@ from off_key_core.schemas.collection import (
 )
 from off_key_mqtt_proxy import proxy as proxy_module
 from off_key_mqtt_proxy.config.config import MQTTSettings
+from off_key_tactic_middleware.api.v1.collection import read_sensor_activity
 from off_key_tactic_middleware.config.collection import AmbiboxSettings
 from off_key_tactic_middleware.services import ambibox_ingress as ingress_module
 from off_key_tactic_middleware.services import collection as collection_module
@@ -183,6 +184,13 @@ async def test_broker_isolation_sampling_pause_reconnect_and_idle(
         async with sessions() as session:
             states = list(await session.scalars(select(CollectionState)))
             assert len(states) == 4 and all(row.is_snapshot for row in states)
+            activity = await read_sensor_activity(session, 1, proxy.state)
+            assert set(activity) == {row.charger_id for row in states}
+            assert all(
+                observation.is_snapshot
+                for sensors in activity.values()
+                for observation in sensors.values()
+            )
             assert not any(await session.scalars(select(Charger.online)))
         # A live state value establishes contact without creating numeric history.
         await asyncio.to_thread(
@@ -228,6 +236,11 @@ async def test_broker_isolation_sampling_pause_reconnect_and_idle(
         async with sessions() as session:
             rows = list(await session.scalars(select(Telemetry)))
             assert all(await session.scalars(select(Charger.online)))
+            activity = await read_sensor_activity(session, 1, proxy.state)
+            assert set(activity) == {row.charger_id for row in rows}
+            assert all(
+                not sensors["temperature"].is_snapshot for sensors in activity.values()
+            )
         assert {row.charger_id for row in rows} == {
             str(source.chargers[0].id) for source in config.sources
         }

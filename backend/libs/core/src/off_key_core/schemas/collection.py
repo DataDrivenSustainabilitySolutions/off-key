@@ -2,6 +2,7 @@
 
 import re
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Literal, Self
 from uuid import UUID, uuid4
 
@@ -186,11 +187,17 @@ class CatalogChange(CatalogModel):
     pause_affected_monitors: bool = False
 
 
+class SensorActivity(CatalogModel):
+    received_at: datetime
+    is_snapshot: bool
+
+
 class CatalogSnapshot(CatalogModel):
     revision: int
     catalog: AmbiboxCatalog
     ingress: dict = Field(default_factory=dict)
     collection: dict = Field(default_factory=dict)
+    sensor_activity: dict[str, dict[str, SensorActivity]] = Field(default_factory=dict)
     updated_at: str | None = None
     updated_by: str | None = None
 

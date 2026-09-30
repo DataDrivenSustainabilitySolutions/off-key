@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import { SectionPanel } from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
+import { HelpTooltip } from "@/components/HelpTooltip";
 import { apiUtils } from "@/lib/api-client";
 import type {
   Catalog,
@@ -26,6 +27,8 @@ const endpoint = "/v1/sources";
 export function CatalogPanel({
   draft,
   snapshot,
+  activityAvailable,
+  now,
   busy,
   change,
   task,
@@ -33,6 +36,8 @@ export function CatalogPanel({
 }: {
   draft: Catalog;
   snapshot: CatalogSnapshot;
+  activityAvailable: boolean;
+  now: number;
   busy: boolean;
   change: (catalog: Catalog) => void;
   task: (work: () => Promise<void>) => Promise<void>;
@@ -98,6 +103,15 @@ export function CatalogPanel({
             </Button>
           </div>
         )}
+        <div className="mb-3 flex items-center gap-1 text-xs text-muted-foreground">
+          Sensor activity reflects saved settings
+          <HelpTooltip label="Sensor activity">
+            Recent data means a live reading was received within three sampling
+            intervals, with a minimum window of one minute. Original-rate sensors
+            use one minute. Retained snapshots do not confirm live data. Sensors
+            with collection off are not observed.
+          </HelpTooltip>
+        </div>
         <CatalogFilter
           value={filter}
           onChange={updateFilter}
@@ -167,6 +181,8 @@ export function CatalogPanel({
         <CatalogEditor
           catalog={draft}
           snapshot={snapshot}
+          activityAvailable={activityAvailable}
+          now={now}
           disabled={disabled}
           onChange={change}
           filter={filter}

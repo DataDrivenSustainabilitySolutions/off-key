@@ -18,16 +18,21 @@ import {
   type CatalogSource,
   type CatalogCharger,
   type CatalogSensor,
+  type CatalogSnapshot,
 } from "@/types/collection";
 import { InlineField, fieldClass } from "./InlineField";
 import { PolicyPicker } from "./PolicyPicker";
 import { MeasurementDetails } from "./MeasurementDetails";
+import { SensorActivityBadge } from "./SensorActivityBadge";
 
 export function ChargerEditor({
   catalog,
   source,
   charger,
   saved,
+  snapshot,
+  activityAvailable,
+  now,
   disabled,
   filter,
   showAll,
@@ -40,6 +45,9 @@ export function ChargerEditor({
   source: CatalogSource;
   charger: CatalogCharger;
   saved?: CatalogCharger;
+  snapshot: CatalogSnapshot;
+  activityAvailable: boolean;
+  now: number;
   disabled: boolean;
   filter: CatalogFilter;
   showAll: () => void;
@@ -58,6 +66,12 @@ export function ChargerEditor({
     effectivePolicy(catalog, charger, sensor),
   );
   const rates = new Set(policies.map(policyLabel));
+  const savedSource = snapshot.catalog.sources.find(
+    (item) => item.id === source.id,
+  );
+  const savedBinding =
+    savedSource?.host === source.host && savedSource?.port === source.port &&
+    saved?.local_id === charger.local_id;
   const metadata = (patch: Partial<CatalogCharger>) => {
     showAll();
     onChange({ ...charger, ...patch });
@@ -125,7 +139,7 @@ export function ChargerEditor({
           />
           <p className="ml-2 text-xs text-muted-foreground">
             {policies.filter((policy) => policy.mode !== "off").length}/
-            {policies.length} active ·{" "}
+            {policies.length} enabled ·{" "}
             {rates.size > 1
               ? "Mixed rates"
               : ([...rates][0] ?? "No measurements")}
@@ -206,6 +220,13 @@ export function ChargerEditor({
               const index = charger.sensors.indexOf(sensor);
               const id = `${charger.id}:${sensor.key}`;
               const policy = effectivePolicy(catalog, charger, sensor);
+              const savedSensor = savedBinding
+                ? saved?.sensors.find(
+                    (item) => item.key === sensor.key &&
+                      item.upstream_topic === sensor.upstream_topic &&
+                      item.value_type === sensor.value_type,
+                  )
+                : undefined;
               return (
                 <div
                   key={index}
@@ -243,6 +264,20 @@ export function ChargerEditor({
                       onChange={(unit) =>
                         editSensor(index, { unit: unit || null })
                       }
+                    />
+                    <SensorActivityBadge
+                      activity={
+                        savedSensor
+                          ? snapshot.sensor_activity?.[charger.id]?.[sensor.key]
+                          : undefined
+                      }
+                      policy={
+                        savedSensor && saved
+                          ? effectivePolicy(snapshot.catalog, saved, savedSensor)
+                          : undefined
+                      }
+                      available={activityAvailable}
+                      now={now}
                     />
                   </div>
                   <div className="col-start-2 min-w-0 text-xs text-muted-foreground lg:col-start-auto">

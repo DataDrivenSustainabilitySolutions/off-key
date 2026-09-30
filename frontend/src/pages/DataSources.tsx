@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { apiUtils } from "@/lib/api-client";
 import { catalogRemovals } from "@/lib/catalog-changes";
 import { validPolicy } from "@/lib/collection-selection";
+import { diagnosticsFresh } from "@/lib/collection-diagnostics";
 import { getErrorMessage } from "@/lib/errors";
 import type {
   Catalog,
@@ -27,6 +28,7 @@ export default function DataSources() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [statusError, setStatusError] = useState("");
+  const [now, setNow] = useState(Date.now);
   const initialized = useRef(false);
   const changed =
     !!draft &&
@@ -70,6 +72,7 @@ export default function DataSources() {
               revision: data.revision,
               ingress: data.ingress,
               collection: data.collection,
+              sensor_activity: data.sensor_activity ?? {},
             }
           );
         });
@@ -83,7 +86,10 @@ export default function DataSources() {
       }
     };
     void refresh();
-    const timer = setInterval(() => void refresh(), 3000);
+    const timer = setInterval(() => {
+      setNow(Date.now());
+      void refresh();
+    }, 3000);
     return () => {
       active = false;
       clearInterval(timer);
@@ -206,6 +212,7 @@ export default function DataSources() {
               revision: current.revision,
               ingress: current.ingress,
               collection: current.collection,
+              sensor_activity: current.sensor_activity,
             }
           : {}),
       }));
@@ -267,6 +274,14 @@ export default function DataSources() {
         <CatalogPanel
           draft={draft}
           snapshot={snapshot}
+          now={now}
+          activityAvailable={
+            !statusError && !conflict &&
+            [snapshot.collection, snapshot.ingress].every(
+              (state) => state.revision === snapshot.revision &&
+                state.status === "applied" && diagnosticsFresh(state, now),
+            )
+          }
           busy={busy || conflict}
           change={change}
           task={task}

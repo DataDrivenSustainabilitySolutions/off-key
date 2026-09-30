@@ -3,7 +3,7 @@ from urllib.parse import unquote
 from ..config.logs import logger
 
 
-def clean_string(input_string: str) -> None | str:
+def clean_string(input_string: str) -> str | None:
     """
     Decodes URL encoding and removes forward slashes from the input string.
     Example: 'Sensor%2FPower%2FCurrent' -> 'SensorPowerCurrent'

@@ -7,7 +7,7 @@ including Docker API configuration,
 RADAR orchestration settings, and service-specific parameters.
 """
 
-from enum import Enum
+from enum import StrEnum
 from functools import lru_cache
 
 from off_key_core.config.database import build_postgres_database_url
@@ -24,7 +24,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 RADAR_SENSOR_KEY_STRATEGIES = {"full_hierarchy", "top_level", "leaf"}
 
 
-class RadarWorkloadLifecycle(str, Enum):
+class RadarWorkloadLifecycle(StrEnum):
     """Lifecycle behavior for TACTIC-managed RADAR workloads."""
 
     EPHEMERAL = "ephemeral"

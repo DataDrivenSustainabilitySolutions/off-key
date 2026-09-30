@@ -18,7 +18,6 @@ from contextlib import suppress
 from datetime import datetime
 
 from off_key_core.config.logs import logger
-from off_key_core.schemas.radar import AdaptiveStreamConfig, StaticBaselineConfig
 
 from .adaptive_detector import AdaptiveStreamDetectionService
 from .checkpoint_manager import CheckpointManager
@@ -290,7 +289,8 @@ class RadarService:
 
         logger.info(
             "Anomaly detection setup complete with model: "
-            f"{anomaly_config.monitoring.model_type} strategy={anomaly_config.monitoring.strategy}"
+            f"{anomaly_config.monitoring.model_type} "
+            f"strategy={anomaly_config.monitoring.strategy}"
         )
 
         if self.required_sensors and self.state_cache:

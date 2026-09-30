@@ -146,7 +146,9 @@ class CollectionService:
         async with sessions.begin() as session:
             await session.execute(
                 update(MonitoringService)
-                .where(MonitoringService.id.in_(ids), MonitoringService.status.is_(True))
+                .where(
+                    MonitoringService.id.in_(ids), MonitoringService.status.is_(True)
+                )
                 .values(stop_requested_at=datetime.now(UTC))
             )
 
@@ -164,7 +166,8 @@ class CollectionService:
             except Exception as exc:
                 raise InfrastructureError(
                     "The catalog was not applied. Monitor stops are saved and will "
-                    "be retried automatically; retry the catalog change after they finish."
+                    "be retried automatically; retry the catalog change "
+                    "after they finish."
                 ) from exc
         self.session.expire_all()
 

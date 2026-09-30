@@ -48,7 +48,9 @@ class UpdateModelRequest(BaseModel):
     @classmethod
     def reject_explicit_null(cls, value):
         if value is None:
-            raise ValueError("This field cannot be null; omit it to keep its current value")
+            raise ValueError(
+                "This field cannot be null; omit it to keep its current value"
+            )
         return value
 
 

@@ -123,7 +123,9 @@ async def test_write_anomaly_applies_backpressure_at_queue_limit(
 
 @pytest.mark.asyncio
 async def test_in_flight_batch_counts_towards_capacity_and_stop_wakes_producers(
-    db_config, sample_anomaly_result, mock_session_factory,
+    db_config,
+    sample_anomaly_result,
+    mock_session_factory,
 ):
     from off_key_mqtt_radar.database import DatabaseWriter
 

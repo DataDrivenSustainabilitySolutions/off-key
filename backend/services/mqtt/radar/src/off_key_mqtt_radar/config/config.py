@@ -9,10 +9,10 @@ from typing import Any, Self
 from dotenv import load_dotenv
 from off_key_core.config.validation import validate_environment as _validate_environment
 from off_key_core.schemas.radar import (
+    LegacyMonitoringConfig,
     MonitoringConfig,
     PerformanceConfig,
     StaticBaselineConfig,
-    parse_legacy_monitoring_config,
 )
 from off_key_core.utils.mqtt_topics import normalize_static_monitoring_topics
 from pydantic import ConfigDict, Field, field_validator, model_validator
@@ -69,6 +69,7 @@ class AnomalyDetectionConfig(PerformanceConfig):
     # Memory management
     reset_threshold_mb: int = 500
 
+
 class MQTTRadarConfig(AnomalyDetectionConfig):
     """MQTT RADAR service configuration"""
 
@@ -114,6 +115,7 @@ class MQTTRadarConfig(AnomalyDetectionConfig):
     def validate_subscription_topics(cls, value: list[str]) -> list[str]:
         """Keep the runtime feature schema concrete and single-charger."""
         return normalize_static_monitoring_topics(value)
+
 
 class RadarSettings(BaseSettings):
     """Environment-based settings for RADAR service"""
@@ -229,20 +231,25 @@ class RadarSettings(BaseSettings):
         )
 
         legacy_names = {
-            "RADAR_MONITORING_STRATEGY", "RADAR_MODEL_TYPE", "RADAR_MODEL_PARAMS",
-            "RADAR_STATIC_BASELINE_CONFIG", "RADAR_ADAPTIVE_STREAM_CONFIG",
+            "RADAR_MONITORING_STRATEGY",
+            "RADAR_MODEL_TYPE",
+            "RADAR_MODEL_PARAMS",
+            "RADAR_STATIC_BASELINE_CONFIG",
+            "RADAR_ADAPTIVE_STREAM_CONFIG",
         }
         monitoring = self.RADAR_MONITORING_CONFIG
         if monitoring is not None and self.model_fields_set & legacy_names:
-            raise ValueError("Do not mix RADAR_MONITORING_CONFIG with legacy strategy fields")
+            raise ValueError(
+                "Do not mix RADAR_MONITORING_CONFIG with legacy strategy fields"
+            )
         if monitoring is None:
-            monitoring = parse_legacy_monitoring_config(
+            monitoring = LegacyMonitoringConfig(
                 strategy=self.RADAR_MONITORING_STRATEGY,
                 model_type=self.RADAR_MODEL_TYPE,
                 model_params=self.RADAR_MODEL_PARAMS,
                 static_baseline_config=self.RADAR_STATIC_BASELINE_CONFIG or None,
                 adaptive_stream_config=self.RADAR_ADAPTIVE_STREAM_CONFIG or None,
-            )
+            ).to_monitoring()
 
         return MQTTRadarConfig(
             broker_host=self.RADAR_MQTT_BROKER_HOST,

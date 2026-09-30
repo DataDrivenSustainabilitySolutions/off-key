@@ -1,12 +1,12 @@
-from enum import Enum
+from enum import StrEnum
 
 
-class RoleEnum(str, Enum):
+class RoleEnum(StrEnum):
     user = "user"
     admin = "admin"
 
 
-class HealthStatus(str, Enum):
+class HealthStatus(StrEnum):
     HEALTHY = "healthy"
     UNHEALTHY = "unhealthy"
     DISABLED = "disabled"

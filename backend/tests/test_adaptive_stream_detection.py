@@ -137,7 +137,7 @@ def test_every_released_detector_runs_warmup_calibration_and_operational(
     detector = AdaptiveStreamDetectionService(config)
     monkeypatch.setattr(detector, "_checkpoint_model", lambda: None)
     count = _feature_count(model_type)
-    total = config.adaptive_stream_config.training_window_size + 2  # type: ignore[union-attr]
+    total = config.monitoring.training_window_size + 2
     results = [
         detector.process_data_point(_point(index, count)) for index in range(total)
     ]
@@ -226,7 +226,7 @@ def test_native_pipeline_checkpoint_preserves_future_scores(
     config = _runtime_config(model_type)
     detector = AdaptiveStreamDetectionService(config)
     feature_count = _feature_count(model_type)
-    total = config.adaptive_stream_config.training_window_size + 1
+    total = config.monitoring.training_window_size + 1
     for index in range(total):
         detector.process_data_point(_point(index, feature_count))
 
@@ -265,7 +265,7 @@ def test_runtime_validates_parameter_dependent_warmup_before_learning():
         AdaptiveStreamDetectionService(
             _runtime_config("aberrant_random_cut_forest", training=2).model_copy(
                 update={
-                    "adaptive_stream_config": AdaptiveStreamConfig(
+                    "monitoring": AdaptiveStreamConfig(
                         model_type="aberrant_random_cut_forest",
                         model_params={"n_trees": 2, "sample_size": 20},
                         training_window_size=2,
@@ -293,7 +293,7 @@ def test_runtime_executes_constructor_validation_at_startup():
         model_params={"subsequence_length": 8, "window_size": 8},
     )
     config = _runtime_config("aberrant_rolling_matrix_profile").model_copy(
-        update={"adaptive_stream_config": adaptive}
+        update={"monitoring": adaptive}
     )
     with pytest.raises(ConfigurationError, match="window_size"):
         AdaptiveStreamDetectionService(config)

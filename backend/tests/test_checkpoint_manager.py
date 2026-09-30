@@ -2,8 +2,8 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
-from off_key_core.schemas.radar import StaticBaselineConfig
 from off_key_mqtt_radar.checkpoint_manager import CheckpointManager
+from off_key_mqtt_radar.config.config import AnomalyDetectionConfig, MQTTRadarConfig
 from off_key_mqtt_radar.detector import StaticConformalDetectionService
 from off_key_mqtt_radar.service import RadarService
 
@@ -30,6 +30,27 @@ def test_checkpoint_manager_saves_and_loads_one_atomic_envelope(tmp_path, monkey
     assert list(tmp_path.glob("*.sig")) == []
 
 
+def test_static_checkpoint_before_config_consolidation_remains_readable(monkeypatch):
+    checkpoint = {
+        "strategy": "static_baseline",
+        "static_state": "collecting",
+        "processed_count": 21,
+        "training_buffer": [{"L1": 1.5}],
+        "schema_signature": (
+            "b9e29f162055df516aa44c3dfc9cc9826681f3109c83d597872893b7857b78d1"
+        ),
+    }
+    monkeypatch.setattr(CheckpointManager, "load", lambda self, path: checkpoint)
+    config = AnomalyDetectionConfig(subscription_topics=["device/evCharger/c1/L1"])
+
+    restored = StaticConformalDetectionService.from_checkpoint("legacy.pkl", config)
+    try:
+        assert restored.processed_count == 21
+        assert restored.training_buffer == [{"L1": 1.5}]
+    finally:
+        restored.shutdown()
+
+
 @pytest.mark.asyncio
 async def test_service_falls_back_to_older_valid_checkpoint(monkeypatch):
     attempts = []
@@ -51,16 +72,7 @@ async def test_service_falls_back_to_older_valid_checkpoint(monkeypatch):
     manager.claim.return_value = True
 
     service = object.__new__(RadarService)
-    service.config = SimpleNamespace(
-        strategy="static_baseline",
-        static_baseline_config=StaticBaselineConfig(),
-        subscription_topics=[],
-        sensor_key_strategy="full_hierarchy",
-        batch_size=100,
-        batch_timeout=1.0,
-        memory_limit_mb=1000,
-        checkpoint_interval=10000,
-    )
+    service.config = MQTTRadarConfig()
     service.checkpoint_manager = manager
     service.required_sensors = set()
     service.state_cache = None

@@ -300,18 +300,28 @@ describe("<Details />", () => {
 
   it("clears charger data immediately on navigation even if the next load fails", async () => {
     renderDetails();
-    fireEvent.click(await screen.findByRole("button", { name: "Navigate controllerCpuUsage" }));
-    expect(screen.getByTestId("navigation-controllerCpuUsage").textContent).toContain('"startMs":1000');
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Navigate controllerCpuUsage" }),
+    );
+    expect(screen.getByTestId("navigation-controllerCpuUsage").textContent).toContain(
+      '"startMs":1000',
+    );
 
     mockLoadAllTelemetryTypes.mockRejectedValueOnce(new Error("unavailable"));
     fireEvent.click(screen.getByRole("link", { name: "Switch charger" }));
     expect(screen.queryAllByTestId("telemetry-chart")).toHaveLength(0);
-    expect(await screen.findByText(/no telemetry data available for this charger/i)).toBeTruthy();
-    expect(mockLoadAllTelemetryTypes).toHaveBeenLastCalledWith("456", expect.any(AbortSignal));
+    expect(
+      await screen.findByText(/no telemetry data available for this charger/i),
+    ).toBeTruthy();
+    expect(mockLoadAllTelemetryTypes).toHaveBeenLastCalledWith(
+      "456", expect.any(AbortSignal),
+    );
 
     document.dispatchEvent(new Event("visibilitychange"));
     await screen.findByText(/processor metrics/i);
-    expect(screen.getByTestId("navigation-controllerCpuUsage").textContent).toContain('"mode":"live"');
-    expect(mockChartAnomalyProps.at(-1)).toEqual([]);
+    expect(screen.getByTestId("navigation-controllerCpuUsage").textContent).toContain(
+      '"mode":"live"',
+    );
+    expect(mockChartAnomalyProps[mockChartAnomalyProps.length - 1]).toEqual([]);
   });
 });

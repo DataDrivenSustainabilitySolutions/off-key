@@ -156,7 +156,15 @@ unknown errors remain eligible for retry.
 | `RADAR_MQTT_BROKER_PORT` | `1883` | Broker port |
 | `RADAR_MQTT_USE_TLS` | `false` | MQTT TLS toggle |
 | `RADAR_MQTT_USE_AUTH` | `false` | MQTT authentication toggle |
-| `RADAR_SUBSCRIPTION_TOPICS` | Three simulator sensor topics | Comma-separated concrete topics or valid filters |
+| `RADAR_SUBSCRIPTION_TOPICS` | Simulator sine sensor topic | Comma-separated concrete topics for one charger |
+| `RADAR_MONITORING_CONFIG` | Default static baseline | JSON strategy configuration containing `strategy`, model parameters, and training/calibration settings |
+
+TACTIC-managed workloads receive `RADAR_MONITORING_CONFIG` as their single
+monitoring configuration. Standalone RADAR still accepts the legacy
+`RADAR_MONITORING_STRATEGY`, `RADAR_MODEL_TYPE`, `RADAR_MODEL_PARAMS`,
+`RADAR_STATIC_BASELINE_CONFIG`, and `RADAR_ADAPTIVE_STREAM_CONFIG` variables when
+the canonical variable is absent. Do not mix the formats; conflicting settings
+prevent startup.
 
 ## Internal services, retention, and logging
 

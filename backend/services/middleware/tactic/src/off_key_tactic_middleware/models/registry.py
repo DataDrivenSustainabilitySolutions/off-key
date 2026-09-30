@@ -20,11 +20,9 @@ from off_key_core.models import (
     adaptive_model_metadata,
     validate_adaptive_model_params,
 )
+from off_key_core.models.static import STATIC_MODELS, validate_static_model_params
 from sqlalchemy import and_, func, inspect, or_, text
 from sqlalchemy.orm import Session
-
-from off_key_core.models.static import STATIC_MODELS, validate_static_model_params
-
 
 logger = logging.getLogger(__name__)
 
@@ -157,7 +155,9 @@ class ModelRegistryService:
                 "category": "model",
                 "family": STATIC_MODEL_FAMILY,
                 "name": definition.name,
-                "description": f"Static {definition.name} detector wrapped by conformal p-values",
+                "description": (
+                    f"Static {definition.name} detector wrapped by conformal p-values"
+                ),
                 "complexity": definition.complexity,
                 "memory_usage": definition.memory_usage,
                 "import_paths": [definition.import_path],
@@ -203,8 +203,12 @@ class ModelRegistryService:
             )
             if existing:
                 for key in (
-                    "category", "family", "import_paths", "parameter_schema",
-                    "version", "requires_special_handling",
+                    "category",
+                    "family",
+                    "import_paths",
+                    "parameter_schema",
+                    "version",
+                    "requires_special_handling",
                 ):
                     setattr(existing, key, model_data[key])
                 self._validate_params_with_schema(existing, {})
@@ -221,7 +225,9 @@ class ModelRegistryService:
                     and_(
                         ModelRegistry.is_active,
                         ModelRegistry.category == "model",
-                        ModelRegistry.model_type.in_([*STATIC_MODELS, *ADAPTIVE_MODELS_BY_TYPE]),
+                        ModelRegistry.model_type.in_(
+                            [*STATIC_MODELS, *ADAPTIVE_MODELS_BY_TYPE]
+                        ),
                         ModelRegistry.family.in_(
                             [STATIC_MODEL_FAMILY, ADAPTIVE_MODEL_FAMILY]
                         ),
@@ -298,8 +304,13 @@ class ModelRegistryService:
         category: str | None = None,
         family: str | None = None,
     ) -> ModelRegistry | None:
-        if model_type not in STATIC_MODELS and model_type not in ADAPTIVE_MODELS_BY_TYPE:
-            raise ValueError(f"Model '{model_type}' is not shipped in the RADAR runtime")
+        if (
+            model_type not in STATIC_MODELS
+            and model_type not in ADAPTIVE_MODELS_BY_TYPE
+        ):
+            raise ValueError(
+                f"Model '{model_type}' is not shipped in the RADAR runtime"
+            )
         query = session.query(ModelRegistry).filter(
             ModelRegistry.model_type == model_type,
             ModelRegistry.is_active,

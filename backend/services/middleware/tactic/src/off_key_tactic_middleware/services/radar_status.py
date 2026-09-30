@@ -69,7 +69,9 @@ def derive_operational_status(
         return _override_operational_status(status, "stopped", "Service stopped")
 
     if docker_state in UNVERIFIED_WORKLOAD_STATES:
-        return _mark_operational_status_stale(status, "Docker status could not be verified")
+        return _mark_operational_status_stale(
+            status, "Docker status could not be verified"
+        )
 
     if docker_state == "running":
         updated_at = coerce_utc(service.operational_updated_at)

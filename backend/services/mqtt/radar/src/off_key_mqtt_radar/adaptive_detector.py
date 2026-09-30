@@ -145,12 +145,12 @@ class AdaptiveStreamDetectionService:
     @staticmethod
     def _build_schema_signature(config: AnomalyDetectionConfig) -> str:
         adaptive_config = config.monitoring
+        if not isinstance(adaptive_config, AdaptiveStreamConfig):
+            raise ValueError("Adaptive detector requires adaptive_stream configuration")
         payload = {
             "strategy": "adaptive_stream",
-            "adaptive_stream_config": (
-                adaptive_config.model_dump(mode="json", exclude_none=True, exclude={"strategy"})
-                if adaptive_config
-                else None
+            "adaptive_stream_config": adaptive_config.model_dump(
+                mode="json", exclude_none=True, exclude={"strategy"}
             ),
             "subscription_topics": sorted(config.subscription_topics),
             "sensor_key_strategy": config.sensor_key_strategy,

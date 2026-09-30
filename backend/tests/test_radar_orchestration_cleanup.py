@@ -1,9 +1,9 @@
-from off_key_core.schemas.radar import RadarStartConfig
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import docker
 import pytest
+from off_key_core.schemas.radar import RadarStartConfig
 from off_key_tactic_middleware.facades.docker import (
     get_workload_docker_status,
     should_fallback_to_container,
@@ -1140,11 +1140,13 @@ async def test_create_radar_service_removes_workload_when_db_commit_fails(
     service.workloads.remove_after_failure = AsyncMock()
 
     with pytest.raises(RuntimeError, match="commit failed"):
-        await service.create_radar_service(RadarStartConfig(
-            container_name="radar-duplicate",
-            mqtt_topics=["device/evCharger/charger-1/sine"],
-            model_type="pyod_knn"
-        ))
+        await service.create_radar_service(
+            RadarStartConfig(
+                container_name="radar-duplicate",
+                mqtt_topics=["device/evCharger/charger-1/sine"],
+                model_type="pyod_knn",
+            )
+        )
 
     session.rollback.assert_awaited_once()
     service.workloads.remove_after_failure.assert_awaited_once_with(workload)
@@ -1205,11 +1207,13 @@ async def test_existing_active_service_with_missing_workload_is_recreated(
     )
     service.workloads.validate_started = AsyncMock()
 
-    created = await service.create_radar_service(RadarStartConfig(
+    created = await service.create_radar_service(
+        RadarStartConfig(
             container_name="radar-stale",
             mqtt_topics=["device/evCharger/charger-1/sine"],
-            model_type="pyod_iforest"
-        ))
+            model_type="pyod_iforest",
+        )
+    )
 
     assert created.container_name == "radar-stale"
     assert created.container_id == "new-workload"
@@ -1258,11 +1262,13 @@ async def test_existing_active_service_rejects_config_fingerprint_mismatch(
     )
 
     with pytest.raises(ValueError, match="different RADAR configuration"):
-        await service.create_radar_service(RadarStartConfig(
-            container_name="radar-existing",
-            mqtt_topics=["device/evCharger/charger-1/sine"],
-            model_type="pyod_knn"
-        ))
+        await service.create_radar_service(
+            RadarStartConfig(
+                container_name="radar-existing",
+                mqtt_topics=["device/evCharger/charger-1/sine"],
+                model_type="pyod_knn",
+            )
+        )
 
     assert db_row.status is True
     session.commit.assert_not_awaited()

@@ -127,7 +127,9 @@ async def test_unverified_or_starting_workload_keeps_sensor_claim(docker_status)
     session.bind = SimpleNamespace(dialect=SimpleNamespace(name="sqlite"))
     monitor = SimpleNamespace(
         stop_requested_at=None,
-        status=True, container_name="existing", container_id="ctr-1",
+        status=True,
+        container_name="existing",
+        container_id="ctr-1",
         mqtt_topic=["device/evCharger/charger-1/L1"],
     )
     session.execute.return_value = _query_result([monitor])
@@ -136,15 +138,19 @@ async def test_unverified_or_starting_workload_keeps_sensor_claim(docker_status)
 
     with pytest.raises(ValueError, match="one monitoring service"):
         await service._assert_topics_available(
-            mqtt_topics=monitor.mqtt_topic, container_name="replacement",
+            mqtt_topics=monitor.mqtt_topic,
+            container_name="replacement",
         )
     assert monitor.status is True
     session.flush.assert_not_awaited()
 
     with pytest.raises(ValueError, match="not confirmed stopped"):
         await service._resolve_existing_service_request(
-            existing_service=monitor, container_name="existing",
-            mqtt_topics=monitor.mqtt_topic, strategy="static_baseline",
-            model_type="pyod_iforest", config_fingerprint="fingerprint",
+            existing_service=monitor,
+            container_name="existing",
+            mqtt_topics=monitor.mqtt_topic,
+            strategy="static_baseline",
+            model_type="pyod_iforest",
+            config_fingerprint="fingerprint",
         )
     session.delete.assert_not_awaited()

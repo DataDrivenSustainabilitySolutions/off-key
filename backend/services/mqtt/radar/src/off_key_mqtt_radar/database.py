@@ -216,8 +216,11 @@ class DatabaseWriter:
 
         async with self._queue_changed:
             await self._queue_changed.wait_for(
-                lambda: self._shutdown_event.is_set()
-                or len(self.write_queue) + self._in_flight < self.config.max_queue_size
+                lambda: (
+                    self._shutdown_event.is_set()
+                    or len(self.write_queue) + self._in_flight
+                    < self.config.max_queue_size
+                )
             )
             if self._shutdown_event.is_set():
                 raise RuntimeError("Database writer is stopped")
@@ -623,7 +626,9 @@ class DatabaseWriter:
             return {"status": "disabled", "reason": "write_disabled_in_config"}
 
         error_rate = self.total_errors / max(self.total_written + self.total_errors, 1)
-        queue_usage = (len(self.write_queue) + self._in_flight) / self.config.max_queue_size
+        queue_usage = (
+            len(self.write_queue) + self._in_flight
+        ) / self.config.max_queue_size
 
         if error_rate > 0.1:  # > 10% error rate
             return {

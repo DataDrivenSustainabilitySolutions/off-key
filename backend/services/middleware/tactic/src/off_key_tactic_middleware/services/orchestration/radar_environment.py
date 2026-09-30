@@ -96,41 +96,19 @@ def build_radar_environment(
         "RADAR_MQTT_USERNAME": mqtt_config.get("username", defaults.mqtt_username),
         "RADAR_SUBSCRIPTION_TOPICS": ",".join(config.mqtt_topics),
         "RADAR_SUBSCRIPTION_QOS": str(mqtt_config.get("qos", defaults.mqtt_qos)),
-        "RADAR_BATCH_SIZE": str(
-            defaults.batch_size
-        ),
-        "RADAR_BATCH_TIMEOUT": str(
-            defaults.batch_timeout
-        ),
-        "RADAR_MEMORY_LIMIT_MB": str(
-            defaults.memory_limit_mb
-        ),
-        "RADAR_CHECKPOINT_INTERVAL": str(
-            defaults.checkpoint_interval
-        ),
-        "RADAR_SENSOR_KEY_STRATEGY": str(
-            performance.sensor_key_strategy
-        ),
-        "RADAR_SENSOR_FRESHNESS_SECONDS": str(
-            performance.sensor_freshness_seconds
-        ),
-        "RADAR_DB_WRITE_ENABLED": str(
-            defaults.db_write_enabled
-        ).lower(),
-        "RADAR_DB_BATCH_SIZE": str(
-            defaults.db_batch_size
-        ),
-        "RADAR_DB_BATCH_TIMEOUT": str(
-            defaults.db_batch_timeout
-        ),
+        "RADAR_BATCH_SIZE": str(defaults.batch_size),
+        "RADAR_BATCH_TIMEOUT": str(defaults.batch_timeout),
+        "RADAR_MEMORY_LIMIT_MB": str(defaults.memory_limit_mb),
+        "RADAR_CHECKPOINT_INTERVAL": str(defaults.checkpoint_interval),
+        "RADAR_SENSOR_KEY_STRATEGY": str(performance.sensor_key_strategy),
+        "RADAR_SENSOR_FRESHNESS_SECONDS": str(performance.sensor_freshness_seconds),
+        "RADAR_DB_WRITE_ENABLED": str(defaults.db_write_enabled).lower(),
+        "RADAR_DB_BATCH_SIZE": str(defaults.db_batch_size),
+        "RADAR_DB_BATCH_TIMEOUT": str(defaults.db_batch_timeout),
         "RADAR_DATABASE_URL": runtime.radar_database_url,
-        "RADAR_HEALTH_CHECK_INTERVAL": str(
-            defaults.health_check_interval
-        ),
+        "RADAR_HEALTH_CHECK_INTERVAL": str(defaults.health_check_interval),
         "RADAR_LOG_LEVEL": defaults.log_level,
-        "RADAR_RATE_LIMIT_PER_MINUTE": str(
-            defaults.rate_limit_per_minute
-        ),
+        "RADAR_RATE_LIMIT_PER_MINUTE": str(defaults.rate_limit_per_minute),
     }
     if runtime.ENVIRONMENT == "production":
         environment["RADAR_MQTT_CA_FILE"] = "/run/secrets/EMQX_CA_CERT"
@@ -154,5 +132,7 @@ def build_radar_environment(
 
     monitoring = monitoring.model_copy(update={"model_params": validated_params})
     environment["RADAR_MONITORING_CONFIG"] = monitoring.model_dump_json()
-    logger.info("Model params validated for %s: %s", monitoring.model_type, validated_params)
+    logger.info(
+        "Model params validated for %s: %s", monitoring.model_type, validated_params
+    )
     return environment

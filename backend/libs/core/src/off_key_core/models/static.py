@@ -29,17 +29,28 @@ class StaticModelDefinition:
 
 STATIC_MODELS = {
     "pyod_iforest": StaticModelDefinition(
-        "PyOD Isolation Forest", "pyod.models.iforest.IForest", PyODIsolationForestParams,
+        "PyOD Isolation Forest",
+        "pyod.models.iforest.IForest",
+        PyODIsolationForestParams,
     ),
     "pyod_knn": StaticModelDefinition("PyOD KNN", "pyod.models.knn.KNN", PyODKNNParams),
     "pyod_lof": StaticModelDefinition(
-        "PyOD Local Outlier Factor", "pyod.models.lof.LOF", PyODLOFParams,
+        "PyOD Local Outlier Factor",
+        "pyod.models.lof.LOF",
+        PyODLOFParams,
     ),
     "pyod_ocsvm": StaticModelDefinition(
-        "PyOD One-Class SVM", "pyod.models.ocsvm.OCSVM", PyODOCSVMParams, complexity="high",
+        "PyOD One-Class SVM",
+        "pyod.models.ocsvm.OCSVM",
+        PyODOCSVMParams,
+        complexity="high",
     ),
     "pyod_hbos": StaticModelDefinition(
-        "PyOD HBOS", "pyod.models.hbos.HBOS", PyODHBOSParams, complexity="low", memory_usage="low",
+        "PyOD HBOS",
+        "pyod.models.hbos.HBOS",
+        PyODHBOSParams,
+        complexity="low",
+        memory_usage="low",
     ),
     "pyod_pca": StaticModelDefinition("PyOD PCA", "pyod.models.pca.PCA", PyODPCAParams),
 }
@@ -53,7 +64,10 @@ def get_static_model_definition(model_type: str) -> StaticModelDefinition:
 
 
 def validate_static_model_params(
-    model_type: str, params: dict[str, Any], *, include_defaults: bool = True,
+    model_type: str,
+    params: dict[str, Any],
+    *,
+    include_defaults: bool = True,
 ) -> dict[str, Any]:
     definition = get_static_model_definition(model_type)
     return definition.parameters.model_validate(params, strict=True).model_dump(

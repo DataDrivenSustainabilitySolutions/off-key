@@ -105,9 +105,17 @@ The chart cursor is the complete tuple `after_created`, `after_timestamp`, `afte
 A monitor start body contains:
 
 - required `container_name` and `mqtt_topics`
-- `strategy`: `static_baseline` or `adaptive_stream`
-- the matching `static_baseline_config` or `adaptive_stream_config`
-- optional `model_type`, `model_params`, and `performance_config`
+- `monitoring`: the strategy configuration, including `strategy`
+  (`static_baseline` or `adaptive_stream`), `model_type`, `model_params`, and
+  the strategy's training, calibration, and alarm settings
+- optional `performance_config` for sensor alignment
+
+Omitting `monitoring` selects the default static baseline. The former top-level
+`strategy`, `model_type`, `model_params`, `static_baseline_config`, and
+`adaptive_stream_config` fields remain accepted at API ingress and are converted
+to `monitoring`. Mixing the two formats, conflicting model fields, and malformed
+configuration return HTTP 422. The gateway forwards only the canonical format to
+TACTIC.
 
 Use `/monitors/models` as the source for valid model names and parameter schemas.
 
@@ -176,11 +184,16 @@ Health and readiness remain available without this service credential.
 | `GET` | `/models/` | List active models |
 | `GET` | `/models/info/{model_type}` | Get model details |
 | `POST` | `/models/validate` | Validate parameters |
-| `POST` | `/models/create-instance` | Instantiate and validate a model |
+| `POST` | `/models/create-instance` | Validate runtime model parameters |
 | `GET` | `/models/categories/models` | List model families |
 | `GET` | `/models/health` | Registry health |
 
-Admin routes under `/admin/models` provide create, update, deactivate, list, and instantiation-test operations. Restrict these routes at the deployment boundary until route-level authorization is enforced.
+Admin routes under `/admin/models` provide list, update, deactivate, and
+parameter-validation operations for shipped models. Updates can change display
+metadata, default parameters, and activation; executable model definitions and
+parameter schemas come from the application's catalog. Adding a model requires
+shipping its implementation and catalog entry. Restrict these routes at the
+deployment boundary until route-level authorization is enforced.
 
 ### Middleware health
 

@@ -39,12 +39,13 @@ async def until(check):
 
 
 @pytest_asyncio.fixture
-async def database():
+async def database(monkeypatch):
     # Fixed local fixture DSN: this test never uses application credentials or DB URLs.
     engine = create_async_engine(
         "postgresql+asyncpg://collection_test:collection-test-password@127.0.0.1:25432/collection_test"
     )
     sessions = async_sessionmaker(engine, expire_on_commit=False)
+    monkeypatch.setattr(collection_module, "get_async_session_local", lambda: sessions)
     async with engine.begin() as connection:
         await connection.run_sync(bootstrap_schema)
         await connection.execute(

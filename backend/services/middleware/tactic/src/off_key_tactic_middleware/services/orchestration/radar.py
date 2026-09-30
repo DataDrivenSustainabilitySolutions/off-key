@@ -75,7 +75,9 @@ class RadarOrchestrationService:
         )
         db_service_id = str(uuid.uuid4())
         env_vars = build_radar_environment(
-            service_id=db_service_id, config=config, model_registry=self.model_registry,
+            service_id=db_service_id,
+            config=config,
+            model_registry=self.model_registry,
         )
         env_vars["RADAR_COLLECTION_FINGERPRINT"] = hashlib.sha256(
             json.dumps(
@@ -206,7 +208,8 @@ class RadarOrchestrationService:
         """Reuse a matching live workload or clear a stale row before recreation."""
         if existing_service.stop_requested_at is not None:
             raise ValueError(
-                f"RADAR service '{container_name}' is stopping after a collection change. "
+                f"RADAR service '{container_name}' is stopping after a "
+                "collection change. "
                 "Wait for it to stop before restarting."
             )
         docker_status, labels = await self.workloads.get_status_and_labels(
@@ -215,7 +218,8 @@ class RadarOrchestrationService:
         if docker_status != "running" and docker_status not in TERMINAL_WORKLOAD_STATES:
             raise ValueError(
                 f"RADAR service name '{container_name}' already exists, but "
-                f"its workload is not confirmed stopped (Docker status: {docker_status}). "
+                "its workload is not confirmed stopped "
+                f"(Docker status: {docker_status}). "
                 "Wait for the existing workload or stop it before retrying."
             )
 

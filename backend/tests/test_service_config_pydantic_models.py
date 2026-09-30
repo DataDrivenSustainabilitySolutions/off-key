@@ -1,6 +1,9 @@
-from off_key_core.schemas.radar import AdaptiveStreamConfig
 import pytest
-from off_key_core.schemas.radar import StaticBaselineConfig, StaticMartingaleConfig
+from off_key_core.schemas.radar import (
+    AdaptiveStreamConfig,
+    StaticBaselineConfig,
+    StaticMartingaleConfig,
+)
 from off_key_mqtt_proxy.config.config import MQTTConfig, MQTTSettings
 from off_key_mqtt_radar.config.config import (
     AnomalyDetectionConfig,
@@ -100,7 +103,7 @@ def test_anomaly_detection_config_uses_strategy_specific_adaptive_config():
         AnomalyDetectionConfig(preprocessing_steps=[])
 
     config = AnomalyDetectionConfig(
-        monitoring=AdaptiveStreamConfig(**{"training_window_size": 1200}),
+        monitoring=AdaptiveStreamConfig(training_window_size=1200),
     )
     assert config.monitoring.strategy == "adaptive_stream"
     assert config.monitoring.training_window_size == 1200
@@ -138,9 +141,7 @@ def test_radar_settings_parse_static_baseline_strategy(monkeypatch):
     assert cfg.monitoring.model_params["n_estimators"] == 128
     assert cfg.monitoring.training_window_size == 240
     assert cfg.monitoring.calibration_window_size == 80
-    threshold = cfg.monitoring.martingale_config.trackers[
-        0
-    ].threshold_config
+    threshold = cfg.monitoring.martingale_config.trackers[0].threshold_config
     assert threshold.mode == "manual"
     assert threshold.value == 100
 

@@ -20,8 +20,11 @@ from typing import Any
 
 import numpy as np
 import psutil
+from off_key_core.models.static import (
+    get_static_model_definition,
+    validate_static_model_params,
+)
 from off_key_core.schemas.radar import StaticBaselineConfig
-from off_key_core.models.static import get_static_model_definition, validate_static_model_params
 
 from .alarm_calibration import resolve_tracker_thresholds
 from .checkpoint_manager import CheckpointManager
@@ -175,37 +178,20 @@ class StaticConformalDetectionService:
 
         return cls(config, checkpoint=checkpoint)
 
-    @classmethod
-    def _build_schema_signature_from_config(cls, config: Any) -> str:
+    @staticmethod
+    def _build_schema_signature_from_config(config: AnomalyDetectionConfig) -> str:
         static_config = config.monitoring
-        if static_config is not None and hasattr(static_config, "model_dump"):
-            static_payload = static_config.model_dump(exclude_none=True, exclude={"strategy"})
-        else:
-            static_payload = {}
-        return cls._build_static_schema_signature(config, static_payload)
-
-    @classmethod
-    def _build_static_schema_signature(
-        cls, config: Any, static_payload: dict[str, Any]
-    ) -> str:
-        subscription_topics = [
-            str(topic)
-            for topic in (getattr(config, "subscription_topics", []) or [])
-            if topic is not None
-        ]
+        if not isinstance(static_config, StaticBaselineConfig):
+            raise ValueError("Static detector requires static_baseline configuration")
         payload = {
             "strategy": "static_baseline",
-            "model_type": str(
-                static_payload.get("model_type", getattr(config, "model_type", ""))
+            "model_type": static_config.model_type,
+            "model_params": static_config.model_params,
+            "static_baseline_config": static_config.model_dump(
+                exclude_none=True, exclude={"strategy"}
             ),
-            "model_params": static_payload.get(
-                "model_params", getattr(config, "model_params", {}) or {}
-            ),
-            "static_baseline_config": static_payload,
-            "subscription_topics": sorted(subscription_topics),
-            "sensor_key_strategy": str(
-                getattr(config, "sensor_key_strategy", "full_hierarchy")
-            ),
+            "subscription_topics": sorted(config.subscription_topics),
+            "sensor_key_strategy": config.sensor_key_strategy,
         }
         payload_json = json.dumps(payload, sort_keys=True, separators=(",", ":"))
         return hashlib.sha256(payload_json.encode("utf-8")).hexdigest()
@@ -537,15 +523,22 @@ class StaticConformalDetectionService:
         model_type = self.static_config.model_type
         params = dict(self.static_config.model_params or {})
         definition = get_static_model_definition(model_type)
-        if self.static_config.seed is not None and "random_state" in definition.parameters.model_fields:
+        if (
+            self.static_config.seed is not None
+            and "random_state" in definition.parameters.model_fields
+        ):
             params.setdefault("random_state", self.static_config.seed)
         return self._instantiate_pyod_detector(model_type, params)
 
-    def _instantiate_pyod_detector(self, model_type: str, params: dict[str, Any]) -> Any:
+    def _instantiate_pyod_detector(
+        self, model_type: str, params: dict[str, Any]
+    ) -> Any:
         definition = get_static_model_definition(model_type)
         module, _, name = definition.import_path.rpartition(".")
         detector_class = getattr(importlib.import_module(module), name)
-        return detector_class(**validate_static_model_params(model_type, params, include_defaults=False))
+        return detector_class(
+            **validate_static_model_params(model_type, params, include_defaults=False)
+        )
 
     def _complete_training_if_ready(self) -> None:
         if self.state != StaticConformalState.TRAINING or self._training_future is None:

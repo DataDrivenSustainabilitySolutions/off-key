@@ -27,17 +27,27 @@ class ModelRegistryAdminService:
         if model is None:
             raise NotFoundError(f"Model '{model_type}' not found")
 
-        if model_type not in STATIC_MODELS and model_type not in ADAPTIVE_MODELS_BY_TYPE:
-            raise ValidationError(f"Model '{model_type}' is not shipped in the RADAR runtime")
+        if (
+            model_type not in STATIC_MODELS
+            and model_type not in ADAPTIVE_MODELS_BY_TYPE
+        ):
+            raise ValidationError(
+                f"Model '{model_type}' is not shipped in the RADAR runtime"
+            )
         if "default_parameters" in update_data:
             validate = (
-                validate_static_model_params if model_type in STATIC_MODELS
+                validate_static_model_params
+                if model_type in STATIC_MODELS
                 else validate_adaptive_model_params
             )
             try:
-                update_data = {**update_data, "default_parameters": validate(
-                    model_type, update_data["default_parameters"],
-                )}
+                update_data = {
+                    **update_data,
+                    "default_parameters": validate(
+                        model_type,
+                        update_data["default_parameters"],
+                    ),
+                }
             except ValueError as exc:
                 raise ValidationError(str(exc)) from exc
 

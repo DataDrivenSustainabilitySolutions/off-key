@@ -67,10 +67,6 @@ class SubscriptionManager:
             return True
         return False
 
-    async def resubscribe_all(self) -> None:
-        for topic in self.get_all_topics():
-            await self.subscribe(topic)
-
     def get_subscriptions(self) -> set[str]:
         return self.subscriptions.copy()
 
@@ -82,10 +78,6 @@ class SubscriptionManager:
 
     def get_subscription_count(self) -> int:
         return len(self.subscriptions)
-
-    def clear_all(self) -> None:
-        self.subscriptions.clear()
-        self.pending_subscriptions.clear()
 
     def _ack(self, client, operation: str, mid: int, success: bool) -> None:
         def finish():

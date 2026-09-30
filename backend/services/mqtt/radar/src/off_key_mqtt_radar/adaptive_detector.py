@@ -61,8 +61,8 @@ class AdaptiveStreamDetectionService:
         checkpoint: dict[str, Any] | None = None,
     ) -> None:
         self.config = config
-        adaptive_config = config.adaptive_stream_config
-        if adaptive_config is None:
+        adaptive_config = config.monitoring
+        if not isinstance(adaptive_config, AdaptiveStreamConfig):
             raise ValueError("adaptive_stream_config is required")
         self.adaptive_config: AdaptiveStreamConfig = adaptive_config
         if aberrant_version != ABERRANT_VERSION:
@@ -144,11 +144,11 @@ class AdaptiveStreamDetectionService:
 
     @staticmethod
     def _build_schema_signature(config: AnomalyDetectionConfig) -> str:
-        adaptive_config = config.adaptive_stream_config
+        adaptive_config = config.monitoring
         payload = {
             "strategy": "adaptive_stream",
             "adaptive_stream_config": (
-                adaptive_config.model_dump(mode="json", exclude_none=True)
+                adaptive_config.model_dump(mode="json", exclude_none=True, exclude={"strategy"})
                 if adaptive_config
                 else None
             ),

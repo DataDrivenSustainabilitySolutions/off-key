@@ -33,9 +33,6 @@ class ModelRegistryAdminRepository:
 
         return list(query.all())
 
-    def add(self, model: ModelRegistry) -> None:
-        self._session.add(model)
-
     def commit(self) -> None:
         self._session.commit()
 

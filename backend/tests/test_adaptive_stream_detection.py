@@ -106,10 +106,7 @@ def _runtime_config(
         preprocessing_steps=preprocessing_steps or [],
     )
     return AnomalyDetectionConfig(
-        strategy="adaptive_stream",
-        model_type=model_type,
-        model_params=adaptive.model_params,
-        adaptive_stream_config=adaptive,
+        monitoring=adaptive,
         subscription_topics=["device/evCharger/c1/x"],
         checkpoint_interval=1_000_000,
     )

@@ -144,7 +144,8 @@ class DatabaseWriter:
         self._writer_task: asyncio.Task | None = None
         self._shutdown_event = asyncio.Event()
         self._flush_event = asyncio.Event()
-        self._queue_lock = asyncio.Lock()
+        self._queue_changed = asyncio.Condition()
+        self._in_flight = 0
         self._flush_lock = asyncio.Lock()
 
         logger.info("event=radar.db_writer_initialized")
@@ -153,6 +154,9 @@ class DatabaseWriter:
         """Start the database writer"""
         if not self.config.db_write_enabled:
             logger.debug("event=radar.db_writer_disabled")
+            return
+
+        if self._writer_task is not None and not self._writer_task.done():
             return
 
         self._shutdown_event.clear()
@@ -177,6 +181,8 @@ class DatabaseWriter:
         # Signal shutdown
         self._shutdown_event.set()
         self._flush_event.set()
+        async with self._queue_changed:
+            self._queue_changed.notify_all()
 
         cancelled_error: asyncio.CancelledError | None = None
 
@@ -208,21 +214,23 @@ class DatabaseWriter:
         if not self.config.db_write_enabled:
             return
 
-        async with self._queue_lock:
+        async with self._queue_changed:
+            await self._queue_changed.wait_for(
+                lambda: self._shutdown_event.is_set()
+                or len(self.write_queue) + self._in_flight < self.config.max_queue_size
+            )
+            if self._shutdown_event.is_set():
+                raise RuntimeError("Database writer is stopped")
             self.write_queue.append(result)
             queue_size = len(self.write_queue)
             should_flush = (
-                queue_size >= self.config.db_batch_size
+                queue_size >= min(self.config.db_batch_size, self.config.max_queue_size)
                 or (time.time() - self.last_write_time) > self.config.db_batch_timeout
             )
 
         # Keep the MQTT consumer off the database I/O path during normal operation.
         if should_flush:
             self._flush_event.set()
-
-        # Preserve bounded backpressure if persistence cannot keep up.
-        if queue_size >= self.config.max_queue_size:
-            await self._flush_batch()
 
     async def write_anomaly(self, result: AnomalyResult):
         """Queue a result; retained as the public writer entry point."""
@@ -348,6 +356,10 @@ class DatabaseWriter:
                 str(e),
                 exc_info=True,
             )
+        finally:
+            self._shutdown_event.set()
+            async with self._queue_changed:
+                self._queue_changed.notify_all()
 
         logger.info("event=radar.db_writer_loop_stopped")
 
@@ -390,14 +402,20 @@ class DatabaseWriter:
     async def _flush_batch(self):
         """Flush current batch to core anomalies table"""
         async with self._flush_lock:
-            async with self._queue_lock:
+            async with self._queue_changed:
                 if not self.write_queue:
                     return
 
                 batch_snapshot = list(self.write_queue)
                 del self.write_queue[: len(batch_snapshot)]
+                self._in_flight = len(batch_snapshot)
 
-            await self._persist_snapshot(batch_snapshot)
+            try:
+                await self._persist_snapshot(batch_snapshot)
+            finally:
+                async with self._queue_changed:
+                    self._in_flight = 0
+                    self._queue_changed.notify_all()
 
     async def _persist_snapshot(self, batch_snapshot: list[AnomalyResult]) -> None:
         """Retain ownership until a snapshot is written, rejected, or requeued."""
@@ -502,7 +520,7 @@ class DatabaseWriter:
     async def _requeue_results(self, results: list[AnomalyResult]) -> None:
         if not results:
             return
-        async with self._queue_lock:
+        async with self._queue_changed:
             self.write_queue = list(results) + self.write_queue
 
     async def _retry_failed_batch(self, *, batch_snapshot: list[AnomalyResult]) -> bool:
@@ -592,7 +610,7 @@ class DatabaseWriter:
             "total_rejected": self.total_rejected,
             "error_rate": self.total_errors
             / max(self.total_written + self.total_errors, 1),
-            "queue_size": len(self.write_queue),
+            "queue_size": len(self.write_queue) + self._in_flight,
             "avg_write_time_seconds": avg_write_time,
             "throughput_per_second": throughput,
             "last_write_time": datetime.fromtimestamp(self.last_write_time).isoformat(),
@@ -605,7 +623,7 @@ class DatabaseWriter:
             return {"status": "disabled", "reason": "write_disabled_in_config"}
 
         error_rate = self.total_errors / max(self.total_written + self.total_errors, 1)
-        queue_usage = len(self.write_queue) / max(self.config.db_batch_size * 2, 1)
+        queue_usage = (len(self.write_queue) + self._in_flight) / self.config.max_queue_size
 
         if error_rate > 0.1:  # > 10% error rate
             return {
@@ -624,7 +642,7 @@ class DatabaseWriter:
         return {
             "status": "healthy",
             "reason": "ok",
-            "queue_size": len(self.write_queue),
+            "queue_size": len(self.write_queue) + self._in_flight,
             "error_rate": error_rate,
         }
 

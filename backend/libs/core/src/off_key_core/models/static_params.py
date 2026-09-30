@@ -1,5 +1,5 @@
 """
-Pydantic schemas for ML model hyperparameters.
+Shared parameter contracts for the static detectors shipped in RADAR.
 
 Each model in the registry has a corresponding schema that defines
 its configurable hyperparameters with defaults and validation.

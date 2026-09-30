@@ -8,12 +8,12 @@ from off_key_core.schemas.radar import RadarOperationalStatus
 
 from .time_utils import coerce_utc
 
-FAILED_WORKLOAD_STATES = {"dead", "error", "exited", "failed", "rejected"}
+UNVERIFIED_WORKLOAD_STATES = {"error", "unknown"}
+FAILED_WORKLOAD_STATES = {"dead", "exited", "failed", "rejected"}
 STOPPED_WORKLOAD_STATES = {
     "complete",
     "completed",
     "no_container_id",
-    "no_tasks",
     "not_found",
     "removed",
     "stopped",
@@ -68,6 +68,9 @@ def derive_operational_status(
     if not service.status:
         return _override_operational_status(status, "stopped", "Service stopped")
 
+    if docker_state in UNVERIFIED_WORKLOAD_STATES:
+        return _mark_operational_status_stale(status, "Docker status could not be verified")
+
     if docker_state == "running":
         updated_at = coerce_utc(service.operational_updated_at)
         if updated_at is None:
@@ -90,6 +93,20 @@ def apply_terminal_operational_status(
     service.operational_stage = status["stage"]
     service.operational_status = status
     service.operational_updated_at = coerce_utc(status.get("updated_at"))
+
+
+def mark_collection_monitor_stopped(service: MonitoringService) -> None:
+    """Complete a durable stop request after workload removal succeeds."""
+    status = RadarOperationalStatus(
+        stage="stopped",
+        detail="Collection changed. Restart with fresh calibration.",
+        updated_at=datetime.now(UTC),
+    )
+    service.status = False
+    service.operational_stage = status.stage
+    service.operational_updated_at = status.updated_at
+    service.operational_status = status.model_dump(mode="json", exclude_none=True)
+    service.stop_requested_at = None
 
 
 def _override_operational_status(

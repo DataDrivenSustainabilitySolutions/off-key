@@ -94,6 +94,3 @@ class WriteBatch:
 
     def get_charger_ids(self) -> set[str]:
         return {record.charger_id for record in self.records}
-
-    def get_age_seconds(self) -> float:
-        return (datetime.now(UTC) - self.created_at).total_seconds()

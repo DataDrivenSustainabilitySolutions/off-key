@@ -82,17 +82,77 @@ async def test_writer_loop_flushes_signalled_batch(db_config):
 async def test_write_anomaly_applies_backpressure_at_queue_limit(
     db_config,
     sample_anomaly_result,
+    mock_session_factory,
 ):
     from off_key_mqtt_radar.database import DatabaseWriter
 
     db_config.max_queue_size = 2
-    writer = DatabaseWriter(db_config, session_factory=AsyncMock())
-    writer._flush_batch = AsyncMock()
+    writer = DatabaseWriter(db_config, session_factory=mock_session_factory)
+    writer._execute_upsert = AsyncMock(side_effect=RuntimeError("database unavailable"))
+    writer._retry_failed_batch = AsyncMock(return_value=False)
 
     await writer.write_anomaly(sample_anomaly_result)
     await writer.write_anomaly(sample_anomaly_result)
 
-    writer._flush_batch.assert_awaited_once()
+    producers = [
+        asyncio.create_task(writer.write_result(sample_anomaly_result))
+        for _ in range(3)
+    ]
+    try:
+        for _ in range(5):
+            await writer._flush_batch()
+            await asyncio.sleep(0)
+            assert len(writer.write_queue) == 2
+            assert all(not task.done() for task in producers)
+
+        writer._execute_upsert = AsyncMock()
+        await writer._flush_batch()
+        await asyncio.sleep(0)
+        assert sum(task.done() for task in producers) == 2
+        assert len(writer.write_queue) == 2
+        await writer._flush_batch()
+        await asyncio.gather(*producers)
+        await writer._flush_batch()
+        assert writer.total_written == 5
+        assert writer.write_queue == []
+    finally:
+        for task in producers:
+            task.cancel()
+        await asyncio.gather(*producers, return_exceptions=True)
+
+
+@pytest.mark.asyncio
+async def test_in_flight_batch_counts_towards_capacity_and_stop_wakes_producers(
+    db_config, sample_anomaly_result, mock_session_factory,
+):
+    from off_key_mqtt_radar.database import DatabaseWriter
+
+    db_config.max_queue_size = 1
+    writer = DatabaseWriter(db_config, session_factory=mock_session_factory)
+    committing, release_commit = asyncio.Event(), asyncio.Event()
+
+    async def slow_upsert(*args):
+        committing.set()
+        await release_commit.wait()
+
+    writer._execute_upsert = slow_upsert
+    await writer.write_result(sample_anomaly_result)
+    flush = asyncio.create_task(writer._flush_batch())
+    await committing.wait()
+    producer = asyncio.create_task(writer.write_result(sample_anomaly_result))
+    await asyncio.sleep(0)
+    assert not producer.done()
+    assert writer.get_performance_metrics()["queue_size"] == 1
+
+    stop = asyncio.create_task(writer.stop())
+    try:
+        with pytest.raises(RuntimeError, match="stopped"):
+            await asyncio.wait_for(producer, timeout=1)
+    finally:
+        release_commit.set()
+        await asyncio.gather(flush, stop)
+    assert writer.total_written == 1
+    assert writer.write_queue == []
 
 
 def test_build_evidence_record_preserves_static_inference_context(

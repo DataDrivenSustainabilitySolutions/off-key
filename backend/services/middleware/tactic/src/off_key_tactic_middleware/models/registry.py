@@ -1,17 +1,13 @@
 """
 Database-backed Model Registry for TACTIC Middleware.
 
-Replaces hardcoded MODEL_REGISTRY with dynamic database-backed registry
-that allows runtime addition of new models without code changes.
+Stores metadata, defaults, and activation for the detectors shipped in RADAR.
 """
 
 import asyncio
-import importlib
 import logging
 from typing import Any
 
-from jsonschema import validate as jsonschema_validate
-from jsonschema.exceptions import ValidationError as JsonSchemaValidationError
 from off_key_core.db.base import get_engine
 from off_key_core.db.models import ModelRegistry
 from off_key_core.models import (
@@ -27,14 +23,8 @@ from off_key_core.models import (
 from sqlalchemy import and_, func, inspect, or_, text
 from sqlalchemy.orm import Session
 
-from .schemas import (
-    PyODHBOSParams,
-    PyODIsolationForestParams,
-    PyODKNNParams,
-    PyODLOFParams,
-    PyODOCSVMParams,
-    PyODPCAParams,
-)
+from off_key_core.models.static import STATIC_MODELS, validate_static_model_params
+
 
 logger = logging.getLogger(__name__)
 
@@ -163,80 +153,25 @@ class ModelRegistryService:
 
         default_models = [
             {
-                "model_type": "pyod_iforest",
+                "model_type": model_type,
                 "category": "model",
                 "family": STATIC_MODEL_FAMILY,
-                "name": "PyOD Isolation Forest",
-                "description": (
-                    "Static Isolation Forest wrapped by conformal p-values"
-                ),
-                "complexity": "medium",
-                "memory_usage": "medium",
-                "import_paths": ["pyod.models.iforest.IForest"],
-                "parameter_schema": PyODIsolationForestParams.model_json_schema(),
-                "default_parameters": PyODIsolationForestParams().model_dump(),
-            },
-            {
-                "model_type": "pyod_knn",
-                "category": "model",
-                "family": STATIC_MODEL_FAMILY,
-                "name": "PyOD KNN",
-                "description": "Static KNN detector wrapped by conformal p-values",
-                "complexity": "medium",
-                "memory_usage": "medium",
-                "import_paths": ["pyod.models.knn.KNN"],
-                "parameter_schema": PyODKNNParams.model_json_schema(),
-                "default_parameters": PyODKNNParams().model_dump(),
-            },
-            {
-                "model_type": "pyod_lof",
-                "category": "model",
-                "family": STATIC_MODEL_FAMILY,
-                "name": "PyOD Local Outlier Factor",
-                "description": "Static LOF detector wrapped by conformal p-values",
-                "complexity": "medium",
-                "memory_usage": "medium",
-                "import_paths": ["pyod.models.lof.LOF"],
-                "parameter_schema": PyODLOFParams.model_json_schema(),
-                "default_parameters": PyODLOFParams().model_dump(),
-            },
-            {
-                "model_type": "pyod_ocsvm",
-                "category": "model",
-                "family": STATIC_MODEL_FAMILY,
-                "name": "PyOD One-Class SVM",
-                "description": ("Static OCSVM detector wrapped by conformal p-values"),
-                "complexity": "high",
-                "memory_usage": "medium",
-                "import_paths": ["pyod.models.ocsvm.OCSVM"],
-                "parameter_schema": PyODOCSVMParams.model_json_schema(),
-                "default_parameters": PyODOCSVMParams().model_dump(),
-            },
-            {
-                "model_type": "pyod_hbos",
-                "category": "model",
-                "family": STATIC_MODEL_FAMILY,
-                "name": "PyOD HBOS",
-                "description": "Static HBOS detector wrapped by conformal p-values",
-                "complexity": "low",
-                "memory_usage": "low",
-                "import_paths": ["pyod.models.hbos.HBOS"],
-                "parameter_schema": PyODHBOSParams.model_json_schema(),
-                "default_parameters": PyODHBOSParams().model_dump(),
-            },
-            {
-                "model_type": "pyod_pca",
-                "category": "model",
-                "family": STATIC_MODEL_FAMILY,
-                "name": "PyOD PCA",
-                "description": "Static PCA detector wrapped by conformal p-values",
-                "complexity": "medium",
-                "memory_usage": "medium",
-                "import_paths": ["pyod.models.pca.PCA"],
-                "parameter_schema": PyODPCAParams.model_json_schema(),
-                "default_parameters": PyODPCAParams().model_dump(),
-            },
+                "name": definition.name,
+                "description": f"Static {definition.name} detector wrapped by conformal p-values",
+                "complexity": definition.complexity,
+                "memory_usage": definition.memory_usage,
+                "import_paths": [definition.import_path],
+                "parameter_schema": definition.parameters.model_json_schema(),
+                "default_parameters": definition.parameters().model_dump(),
+                "version": "1.0.0",
+                "requires_special_handling": False,
+            }
+            for model_type, definition in STATIC_MODELS.items()
         ]
+        session.query(ModelRegistry).filter(
+            ModelRegistry.family == STATIC_MODEL_FAMILY,
+            ModelRegistry.model_type.notin_(STATIC_MODELS),
+        ).update({ModelRegistry.is_active: False}, synchronize_session=False)
 
         session.query(ModelRegistry).filter(
             ModelRegistry.family == ADAPTIVE_MODEL_FAMILY,
@@ -267,9 +202,12 @@ class ModelRegistryService:
                 .first()
             )
             if existing:
-                for key, value in model_data.items():
-                    setattr(existing, key, value)
-                existing.is_active = True
+                for key in (
+                    "category", "family", "import_paths", "parameter_schema",
+                    "version", "requires_special_handling",
+                ):
+                    setattr(existing, key, model_data[key])
+                self._validate_params_with_schema(existing, {})
             else:
                 session.add(ModelRegistry(**model_data))
 
@@ -283,6 +221,7 @@ class ModelRegistryService:
                     and_(
                         ModelRegistry.is_active,
                         ModelRegistry.category == "model",
+                        ModelRegistry.model_type.in_([*STATIC_MODELS, *ADAPTIVE_MODELS_BY_TYPE]),
                         ModelRegistry.family.in_(
                             [STATIC_MODEL_FAMILY, ADAPTIVE_MODEL_FAMILY]
                         ),
@@ -310,27 +249,6 @@ class ModelRegistryService:
                 for m in models
             ]
 
-    def get_model_class(self, model_type: str) -> type:
-        """Dynamically import and return the model class."""
-        self._ensure_ready()
-        with Session(get_engine()) as session:
-            model = self._get_active_entry(
-                session, model_type, family=STATIC_MODEL_FAMILY
-            )
-
-            if not model:
-                available = [
-                    m.model_type
-                    for m in session.query(ModelRegistry.model_type)
-                    .filter(ModelRegistry.is_active)
-                    .all()
-                ]
-                raise ValueError(
-                    f"Unknown model type: '{model_type}'. Available: {available}"
-                )
-
-            return self._import_model_class(model_type, model.import_paths)
-
     def validate_model_params(
         self,
         model_type: str,
@@ -346,34 +264,9 @@ class ModelRegistryService:
                 session, model_type, category=category, family=family
             )
             if not model:
-                raise ValueError(
-                    self._format_missing_model_message(model_type, category)
-                )
+                raise ValueError(f"Unknown model type: '{model_type}'")
 
             return self._validate_params_with_schema(model, params)
-
-    @staticmethod
-    def _import_class(import_path: str) -> type:
-        module_path, class_name = import_path.rsplit(".", 1)
-        module = importlib.import_module(module_path)
-        return getattr(module, class_name)
-
-    def create_model_instance(
-        self, model_type: str, params: dict[str, Any] | None = None
-    ) -> Any:
-        """Reject in-process execution; RADAR owns all static model instances."""
-        self._ensure_ready()
-        with Session(get_engine()) as session:
-            model = self._get_active_entry(session, model_type, category="model")
-            if not model:
-                raise ValueError(
-                    self._format_missing_model_message(model_type, "model")
-                )
-            self._validate_params_with_schema(model, params or {})
-            raise ValueError(
-                f"Model '{model_type}' is instantiated by the RADAR runtime. "
-                "TACTIC validates its registry schema only."
-            )
 
     def validate_model_instantiation(
         self, model_type: str, params: dict[str, Any] | None = None
@@ -383,9 +276,7 @@ class ModelRegistryService:
         with Session(get_engine()) as session:
             model = self._get_active_entry(session, model_type, category="model")
             if not model:
-                raise ValueError(
-                    self._format_missing_model_message(model_type, "model")
-                )
+                raise ValueError(f"Unknown model type: '{model_type}'")
 
             validated_params = self._validate_params_with_schema(model, params or {})
             return {
@@ -393,12 +284,6 @@ class ModelRegistryService:
                 "instantiated": False,
                 "runtime_owner": "radar",
             }
-
-    @staticmethod
-    def _format_missing_model_message(model_type: str, category: str | None) -> str:
-        if category == "model":
-            return f"Unknown model type: '{model_type}'"
-        return f"Unknown model type: '{model_type}'"
 
     @staticmethod
     def _strategy_for_model(model: ModelRegistry) -> str:
@@ -413,6 +298,8 @@ class ModelRegistryService:
         category: str | None = None,
         family: str | None = None,
     ) -> ModelRegistry | None:
+        if model_type not in STATIC_MODELS and model_type not in ADAPTIVE_MODELS_BY_TYPE:
+            raise ValueError(f"Model '{model_type}' is not shipped in the RADAR runtime")
         query = session.query(ModelRegistry).filter(
             ModelRegistry.model_type == model_type,
             ModelRegistry.is_active,
@@ -431,45 +318,10 @@ class ModelRegistryService:
         return query.first()
 
     @staticmethod
-    def _import_model_class(model_type: str, import_paths: list[str]) -> type:
-        errors = []
-        for import_path in import_paths:
-            try:
-                return ModelRegistryService._import_class(import_path)
-            except (ImportError, AttributeError, ModuleNotFoundError) as e:
-                errors.append(f"{import_path}: {e}")
-                continue
-
-        error_msg = "; ".join(errors) if errors else "unknown"
-        logger.error(
-            "Failed to import model '%s' from any known path: %s",
-            model_type,
-            error_msg,
-        )
-        raise ImportError(f"Cannot import model '{model_type}'. Tried: {import_paths}")
-
-    @staticmethod
     def _validate_params_with_schema(
         model: ModelRegistry, params: dict[str, Any]
     ) -> dict[str, Any]:
+        merged = {**(model.default_parameters or {}), **params}
         if model.family == ADAPTIVE_MODEL_FAMILY:
-            return validate_adaptive_model_params(model.model_type, params)
-        defaults = model.default_parameters or {}
-        merged = {**defaults, **params}
-
-        schema = model.parameter_schema or {}
-        if not schema:
-            raise ValueError(
-                f"No parameter schema available for model '{model.model_type}'"
-            )
-
-        try:
-            jsonschema_validate(instance=merged, schema=schema)
-        except JsonSchemaValidationError as exc:
-            path = ".".join(str(p) for p in exc.path) if exc.path else ""
-            message = f"{path}: {exc.message}" if path else exc.message
-            raise ValueError(
-                f"Invalid parameters for model '{model.model_type}': {message}"
-            ) from exc
-
-        return merged
+            return validate_adaptive_model_params(model.model_type, merged)
+        return validate_static_model_params(model.model_type, merged)

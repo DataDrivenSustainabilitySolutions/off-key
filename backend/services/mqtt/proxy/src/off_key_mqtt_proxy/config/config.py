@@ -136,10 +136,6 @@ class MQTTConfig(BaseModel):
 
         return self
 
-    def get_websocket_url(self) -> str:
-        protocol = "wss" if self.use_tls else "ws"
-        return f"{protocol}://{self.broker_host}:{self.broker_port}/mqtt"
-
     def get_client_id(self) -> str:
         return f"{self.client_id_prefix}_{uuid.uuid4().hex[:8]}"
 

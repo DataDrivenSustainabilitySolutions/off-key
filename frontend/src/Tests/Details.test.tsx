@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { Link, MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import Details from "../pages/Details";
@@ -79,6 +79,7 @@ vi.mock("../components/DynamicTelemetryChart", () => ({
 function renderDetails(initialEntry = "/details/123") {
   return render(
     <MemoryRouter initialEntries={[initialEntry]}>
+      <Link to="/details/456">Switch charger</Link>
       <Routes>
         <Route path="/details/:chargerId" element={<Details />} />
       </Routes>
@@ -295,5 +296,22 @@ describe("<Details />", () => {
       name: "Unlink chart navigation",
     });
     expect(unlinkButton.getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("clears charger data immediately on navigation even if the next load fails", async () => {
+    renderDetails();
+    fireEvent.click(await screen.findByRole("button", { name: "Navigate controllerCpuUsage" }));
+    expect(screen.getByTestId("navigation-controllerCpuUsage").textContent).toContain('"startMs":1000');
+
+    mockLoadAllTelemetryTypes.mockRejectedValueOnce(new Error("unavailable"));
+    fireEvent.click(screen.getByRole("link", { name: "Switch charger" }));
+    expect(screen.queryAllByTestId("telemetry-chart")).toHaveLength(0);
+    expect(await screen.findByText(/no telemetry data available for this charger/i)).toBeTruthy();
+    expect(mockLoadAllTelemetryTypes).toHaveBeenLastCalledWith("456", expect.any(AbortSignal));
+
+    document.dispatchEvent(new Event("visibilitychange"));
+    await screen.findByText(/processor metrics/i);
+    expect(screen.getByTestId("navigation-controllerCpuUsage").textContent).toContain('"mode":"live"');
+    expect(mockChartAnomalyProps.at(-1)).toEqual([]);
   });
 });

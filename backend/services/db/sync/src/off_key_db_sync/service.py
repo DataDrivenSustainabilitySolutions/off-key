@@ -78,11 +78,6 @@ class SyncService:
             )
             return False
 
-    def _on_initial_sync_complete(self):
-        """Callback when initial sync completes"""
-        self.initial_sync_complete = True
-        logger.info("Initial sync marked as complete", extra=self._log_context)
-
     async def _wait_for_database(self, max_retries: int = 30, delay: int = 2) -> bool:
         """
         Wait for database to become available.

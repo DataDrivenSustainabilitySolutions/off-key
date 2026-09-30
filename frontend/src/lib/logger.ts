@@ -18,9 +18,6 @@ export interface ClientLogger {
   error: (entry: ClientLogEntry) => void;
 }
 
-type LogContextOverrides = Partial<Pick<ClientLogEntry, "correlationId" | "requestId">>;
-
-const baseContext: LogContextOverrides = {};
 const isProduction = import.meta.env.PROD;
 let productionOverride: boolean | null = null;
 
@@ -91,12 +88,12 @@ const emit = (level: ClientLogLevel, entry: ClientLogEntry): void => {
     payload.context = entry.context;
   }
 
-  const correlationId = entry.correlationId ?? baseContext.correlationId;
+  const correlationId = entry.correlationId;
   if (correlationId) {
     payload.correlationId = correlationId;
   }
 
-  const requestId = entry.requestId ?? baseContext.requestId;
+  const requestId = entry.requestId;
   if (requestId) {
     payload.requestId = requestId;
   }
@@ -107,15 +104,6 @@ const emit = (level: ClientLogLevel, entry: ClientLogEntry): void => {
   }
 
   writeToConsole(level, payload);
-};
-
-export const setClientLogContext = (context: LogContextOverrides): void => {
-  if (context.correlationId !== undefined) {
-    baseContext.correlationId = context.correlationId;
-  }
-  if (context.requestId !== undefined) {
-    baseContext.requestId = context.requestId;
-  }
 };
 
 export const setClientLoggerProductionOverride = (

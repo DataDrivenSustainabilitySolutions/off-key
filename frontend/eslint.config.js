@@ -32,9 +32,7 @@ export default tseslint.config(
         {
           allowConstantExport: true,
           allowExportNames: [
-            'badgeVariants',
             'buttonVariants',
-            'navigationMenuTriggerStyle',
             'useAuth',
             'useTheme',
           ],

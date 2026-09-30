@@ -10,10 +10,9 @@ from off_key_core.db.collection import (
     read_collection_configuration,
 )
 from off_key_core.db.models import MonitoringService, MqttTopic
-from off_key_core.schemas.radar import RadarOperationalStatus
+from off_key_core.schemas.radar import RadarOperationalStatus, RadarStartConfig
 from off_key_core.utils.mqtt_topics import (
     mqtt_topic_filters_overlap,
-    normalize_static_monitoring_topics,
     normalize_telemetry_topic_filters,
 )
 from sqlalchemy import delete, select, text
@@ -49,35 +48,11 @@ class RadarOrchestrationService:
         self.model_registry = model_registry
         logger.info("RadarOrchestrationService initialized.")
 
-    async def create_radar_service(
-        self,
-        container_name: str,
-        mqtt_topics: list[str],
-        strategy: str = "static_baseline",
-        model_type: str | None = None,
-        model_params: dict[str, Any] | None = None,
-        mqtt_config: dict[str, Any] | None = None,
-        performance_config: dict[str, Any] | None = None,
-        static_baseline_config: dict[str, Any] | None = None,
-        adaptive_stream_config: dict[str, Any] | None = None,
-    ) -> MonitoringService:
-        """
-        Create and start a RADAR Docker service for anomaly detection.
-
-        Args:
-            container_name (str): Name for the Docker container
-            mqtt_topics (List[str]): List of MQTT topics to monitor
-            strategy (str): Monitoring strategy selected by the user
-            model_type (str): Static PyOD model type
-            model_params (Dict, optional): Model-specific parameters
-            mqtt_config (Dict, optional): MQTT connection configuration
-            performance_config (Dict, optional): Performance and resource settings
-            static_baseline_config (Dict, optional): Static conformal settings
-
-        Returns:
-            MonitoringService: The created monitoring service database entry
-        """
-        mqtt_topics = normalize_static_monitoring_topics(mqtt_topics)
+    async def create_radar_service(self, config: RadarStartConfig) -> MonitoringService:
+        """Claim catalog sensors and launch the validated RADAR configuration."""
+        mqtt_topics = config.mqtt_topics
+        container_name = config.container_name
+        strategy = config.monitoring.strategy
         await lock_collection_configuration(self.session)
         collection = await read_collection_configuration(self.session)
         streams = {
@@ -94,23 +69,13 @@ class RadarOrchestrationService:
             or collection.collection.get("status") != "applied"
         ):
             raise ValueError("Wait until the collection configuration is applied")
-        strategy = (strategy or "static_baseline").strip().lower()
         await self._assert_topics_available(
             mqtt_topics=mqtt_topics,
             container_name=container_name,
         )
         db_service_id = str(uuid.uuid4())
         env_vars = build_radar_environment(
-            service_id=db_service_id,
-            mqtt_topics=mqtt_topics,
-            strategy=strategy,
-            model_type=model_type,
-            model_params=model_params or {},
-            mqtt_config=mqtt_config or {},
-            performance_config=performance_config or {},
-            static_baseline_config=static_baseline_config or {},
-            adaptive_stream_config=adaptive_stream_config or {},
-            model_registry=self.model_registry,
+            service_id=db_service_id, config=config, model_registry=self.model_registry,
         )
         env_vars["RADAR_COLLECTION_FINGERPRINT"] = hashlib.sha256(
             json.dumps(
@@ -132,7 +97,7 @@ class RadarOrchestrationService:
                 container_name=container_name,
                 mqtt_topics=mqtt_topics,
                 strategy=strategy,
-                model_type=env_vars.get("RADAR_MODEL_TYPE", ""),
+                model_type=config.monitoring.model_type,
                 config_fingerprint=config_fingerprint,
             )
             if resolved_service:
@@ -211,6 +176,9 @@ class RadarOrchestrationService:
         claimants: list[MonitoringService] = []
         reconciled = False
         for service in result.scalars().all():
+            if service.stop_requested_at is not None:
+                claimants.append(service)
+                continue
             docker_status, _ = await self.workloads.get_status_and_labels(
                 getattr(service, "container_id", "") or ""
             )
@@ -236,14 +204,19 @@ class RadarOrchestrationService:
         config_fingerprint: str,
     ) -> MonitoringService | None:
         """Reuse a matching live workload or clear a stale row before recreation."""
+        if existing_service.stop_requested_at is not None:
+            raise ValueError(
+                f"RADAR service '{container_name}' is stopping after a collection change. "
+                "Wait for it to stop before restarting."
+            )
         docker_status, labels = await self.workloads.get_status_and_labels(
             existing_service.container_id or ""
         )
-        if docker_status == "error":
+        if docker_status != "running" and docker_status not in TERMINAL_WORKLOAD_STATES:
             raise ValueError(
                 f"RADAR service name '{container_name}' already exists, but "
-                "Docker status could not be verified. Try again after Docker "
-                "connectivity recovers."
+                f"its workload is not confirmed stopped (Docker status: {docker_status}). "
+                "Wait for the existing workload or stop it before retrying."
             )
 
         if docker_status != "running":

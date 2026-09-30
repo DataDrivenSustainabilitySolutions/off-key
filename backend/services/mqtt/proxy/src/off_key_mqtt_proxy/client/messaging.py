@@ -145,10 +145,6 @@ class MessageHandler:
         """Get current message queue size"""
         return len(self.message_queue)
 
-    def clear_queue(self) -> None:
-        """Clear all queued messages"""
-        self.message_queue.clear()
-
     def get_metrics(self) -> dict:
         """Get message handling metrics"""
         return {

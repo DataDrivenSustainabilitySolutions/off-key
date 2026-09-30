@@ -263,10 +263,6 @@ class MQTTClient:
         """Get messages from the message queue"""
         return self.message_handler.get_queued_messages(count)
 
-    def clear_message_queue(self) -> None:
-        """Clear all queued messages"""
-        self.message_handler.clear_queue()
-
     async def _on_connected(self) -> None:
         """Called when connection is established"""
         client = self.connection_manager.client

@@ -26,12 +26,13 @@ from ..facades.docker import (
 )
 from .radar_status import (
     TERMINAL_WORKLOAD_STATES,
+    UNVERIFIED_WORKLOAD_STATES,
     apply_terminal_operational_status,
+    mark_collection_monitor_stopped,
 )
 from .time_utils import coerce_utc
 
 _TERMINAL_OPERATIONAL_STAGES = {"failed", "stopped"}
-_RETRY_LATER_WORKLOAD_STATES = {"error", "unknown"}
 
 
 @dataclass(frozen=True, slots=True)
@@ -138,7 +139,7 @@ class RadarStatusReconciliationService:
         Args:
             session: Database session to use for queries and updates
         """
-        query = select(MonitoringService)
+        query = select(MonitoringService).with_for_update(skip_locked=True)
         result = await session.execute(query)
         services = result.scalars().all()
 
@@ -162,10 +163,15 @@ class RadarStatusReconciliationService:
         service: MonitoringService,
     ) -> _ReconciliationOutcome:
         """Apply the state transition for one persisted RADAR service."""
+        if service.stop_requested_at is not None:
+            await self._remove_workload_if_present(service.container_id)
+            mark_collection_monitor_stopped(service)
+            return _ReconciliationOutcome(updated=True)
+
         docker_status = await self._get_docker_status(service.container_id)
         docker_state = (docker_status or "").strip().lower()
 
-        if docker_state in _RETRY_LATER_WORKLOAD_STATES:
+        if docker_state in UNVERIFIED_WORKLOAD_STATES:
             logger.warning(
                 "Skipping service '%s' reconciliation until Docker status "
                 "is verifiable (docker_status=%s)",

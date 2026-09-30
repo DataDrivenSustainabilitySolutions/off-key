@@ -200,9 +200,6 @@ class ResilientAnomalyDetector:
         self.state = ServiceState.HEALTHY
         self.logger.info("Circuit breaker closed - resuming normal processing")
 
-    def get_service_state(self) -> ServiceState:
-        return self.state
-
     def get_health_info(self) -> dict[str, Any]:
         refresh_background_state = getattr(
             self.primary_service, "refresh_background_state", None

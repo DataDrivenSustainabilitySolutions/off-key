@@ -4,13 +4,15 @@ from datetime import datetime
 from math import ceil
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, field_validator, model_validator
 
 from off_key_core.models import (
     ABERRANT_VERSION,
     ADAPTIVE_MODELS_BY_TYPE,
     validate_adaptive_model_params,
 )
+from off_key_core.models.static import get_static_model_definition, validate_static_model_params
+from off_key_core.utils.mqtt_topics import derive_monitoring_sensor_keys, normalize_static_monitoring_topics
 
 __all__ = [
     "AdaptivePreprocessingStep",
@@ -27,12 +29,13 @@ __all__ = [
     "RadarOperationalProgress",
     "RadarOperationalStage",
     "RadarOperationalStatus",
-    "ResolvedMonitoringConfig",
+    "MonitoringConfig",
+    "RadarStartConfig",
     "SimpleJumperMartingaleTrackerConfig",
     "SimpleMixtureMartingaleTrackerConfig",
     "StaticBaselineConfig",
     "StaticMartingaleConfig",
-    "resolve_monitoring_strategy_config",
+    "parse_legacy_monitoring_config",
 ]
 
 _SENSOR_KEY_STRATEGIES = {"full_hierarchy", "top_level", "leaf"}
@@ -167,6 +170,7 @@ class AdaptiveStreamConfig(BaseModel):
 
     model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
+    strategy: Literal["adaptive_stream"] = "adaptive_stream"
     aberrant_version: str = ABERRANT_VERSION
     model_type: str = "aberrant_online_isolation_forest"
     model_params: dict[str, Any] = Field(default_factory=dict)
@@ -510,6 +514,7 @@ class StaticBaselineConfig(BaseModel):
 
     model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
+    strategy: Literal["static_baseline"] = "static_baseline"
     model_type: str = "pyod_iforest"
     model_params: dict[str, Any] = Field(default_factory=dict)
     training_window_size: int = Field(default=1200, ge=20, le=1_000_000)
@@ -524,115 +529,109 @@ class StaticBaselineConfig(BaseModel):
     @classmethod
     def validate_static_model_type(cls, value: str) -> str:
         normalized = value.strip().lower()
-        if not normalized:
-            raise ValueError("model_type must not be empty")
+        get_static_model_definition(normalized)
         return normalized
 
-
-class ResolvedMonitoringConfig(BaseModel):
-    """Canonical strategy configuration shared by Gateway, TACTIC, and RADAR."""
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-    strategy: MonitoringStrategy
-    model_type: str
-    model_params: dict[str, Any]
-    static_baseline_config: StaticBaselineConfig | None = None
-    adaptive_stream_config: AdaptiveStreamConfig | None = None
+    @model_validator(mode="after")
+    def validate_parameters(self) -> "StaticBaselineConfig":
+        object.__setattr__(self, "model_params", validate_static_model_params(
+            self.model_type, self.model_params, include_defaults=False,
+        ))
+        return self
 
 
-def resolve_monitoring_strategy_config(
-    *,
-    strategy: MonitoringStrategy,
-    model_type: str | None,
-    model_params: dict[str, Any] | None,
-    static_baseline_config: StaticBaselineConfig | dict[str, Any] | None,
-    adaptive_stream_config: AdaptiveStreamConfig | dict[str, Any] | None,
-) -> ResolvedMonitoringConfig:
-    """Resolve strategy defaults and enforce compatibility-mirror invariants."""
-    if strategy == "adaptive_stream":
-        return _resolve_adaptive_monitoring_config(
-            model_type=model_type,
-            model_params=model_params,
-            static_baseline_config=static_baseline_config,
-            adaptive_stream_config=adaptive_stream_config,
-        )
-
-    return _resolve_static_monitoring_config(
-        model_type=model_type,
-        model_params=model_params,
-        static_baseline_config=static_baseline_config,
-        adaptive_stream_config=adaptive_stream_config,
-    )
+MonitoringConfig = Annotated[
+    StaticBaselineConfig | AdaptiveStreamConfig,
+    Field(discriminator="strategy"),
+]
 
 
-def _resolve_adaptive_monitoring_config(
-    *,
-    model_type: str | None,
-    model_params: dict[str, Any] | None,
-    static_baseline_config: StaticBaselineConfig | dict[str, Any] | None,
-    adaptive_stream_config: AdaptiveStreamConfig | dict[str, Any] | None,
-) -> ResolvedMonitoringConfig:
-    if static_baseline_config is not None:
-        raise ValueError("static_baseline_config is not valid for adaptive_stream")
-    if adaptive_stream_config is None:
-        adaptive = AdaptiveStreamConfig(
-            model_type=model_type or "aberrant_online_isolation_forest",
-            model_params=model_params or {},
-        )
-    else:
-        adaptive = (
-            adaptive_stream_config
-            if isinstance(adaptive_stream_config, AdaptiveStreamConfig)
-            else AdaptiveStreamConfig(**adaptive_stream_config)
-        )
-    if model_type is not None and model_type != adaptive.model_type:
-        raise ValueError("model_type conflicts with adaptive_stream_config.model_type")
+def parse_legacy_monitoring_config(
+    *, strategy: MonitoringStrategy = "static_baseline",
+    model_type: str | None = None, model_params: dict[str, Any] | None = None,
+    static_baseline_config: dict[str, Any] | StaticBaselineConfig | None = None,
+    adaptive_stream_config: dict[str, Any] | AdaptiveStreamConfig | None = None,
+) -> MonitoringConfig:
+    """Normalize former API/environment fields only at their ingress boundary."""
+    configs = {
+        "static_baseline": static_baseline_config,
+        "adaptive_stream": adaptive_stream_config,
+    }
+    if strategy not in configs:
+        raise ValueError(f"Unsupported monitoring strategy: {strategy}")
+    for name, value in configs.items():
+        if name != strategy and value is not None:
+            raise ValueError(f"{name}_config is not valid for {strategy}")
+    payload = configs[strategy]
+    if isinstance(payload, BaseModel):
+        payload = payload.model_dump()
+    if payload is None:
+        payload = {}
+        if model_type is not None:
+            payload["model_type"] = model_type
+        if model_params is not None:
+            payload["model_params"] = model_params
+    if payload.get("strategy", strategy) != strategy:
+        raise ValueError("strategy conflicts with the nested configuration")
+    config = TypeAdapter(MonitoringConfig).validate_python({**payload, "strategy": strategy})
+    if model_type is not None and model_type.strip().lower() != config.model_type:
+        raise ValueError(f"model_type conflicts with {strategy}_config.model_type")
     if model_params is not None:
-        normalized_params = validate_adaptive_model_params(
-            adaptive.model_type, model_params
+        normalized = (
+            validate_adaptive_model_params(config.model_type, model_params)
+            if isinstance(config, AdaptiveStreamConfig)
+            else validate_static_model_params(config.model_type, model_params, include_defaults=False)
         )
-        if normalized_params != adaptive.model_params:
-            raise ValueError(
-                "model_params conflicts with adaptive_stream_config.model_params"
+        if normalized != config.model_params:
+            raise ValueError(f"model_params conflicts with {strategy}_config.model_params")
+    return config
+
+
+class RadarStartConfig(BaseModel):
+    """One validated launch contract, from the HTTP boundary to orchestration."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    container_name: str = Field(min_length=1)
+    mqtt_topics: list[str]
+    monitoring: MonitoringConfig = Field(default_factory=StaticBaselineConfig)
+    performance_config: PerformanceConfig = Field(default_factory=PerformanceConfig)
+    mqtt_config: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_legacy_fields(cls, value: Any) -> Any:
+        if not isinstance(value, dict):
+            return value
+        legacy_keys = {
+            "strategy", "model_type", "model_params",
+            "static_baseline_config", "adaptive_stream_config",
+        }
+        legacy = {key: value[key] for key in legacy_keys if key in value}
+        if not legacy:
+            return value
+        if "monitoring" in value:
+            raise ValueError("Do not mix monitoring with legacy strategy fields")
+        return {
+            **{key: item for key, item in value.items() if key not in legacy_keys},
+            "monitoring": parse_legacy_monitoring_config(**legacy),
+        }
+
+    @field_validator("mqtt_topics")
+    @classmethod
+    def validate_topics(cls, value: list[str]) -> list[str]:
+        return normalize_static_monitoring_topics(value)
+
+    @field_validator("performance_config", "mqtt_config", mode="before")
+    @classmethod
+    def normalize_optional_options(cls, value: Any) -> Any:
+        return {} if value is None else value
+
+    @model_validator(mode="after")
+    def validate_feature_schema(self) -> "RadarStartConfig":
+        if isinstance(self.monitoring, AdaptiveStreamConfig):
+            keys = derive_monitoring_sensor_keys(
+                self.mqtt_topics, sensor_key_strategy=self.performance_config.sensor_key_strategy,
             )
-    return ResolvedMonitoringConfig(
-        strategy="adaptive_stream",
-        model_type=adaptive.model_type,
-        model_params=adaptive.model_params,
-        adaptive_stream_config=adaptive,
-    )
-
-
-def _resolve_static_monitoring_config(
-    *,
-    model_type: str | None,
-    model_params: dict[str, Any] | None,
-    static_baseline_config: StaticBaselineConfig | dict[str, Any] | None,
-    adaptive_stream_config: AdaptiveStreamConfig | dict[str, Any] | None,
-) -> ResolvedMonitoringConfig:
-    if adaptive_stream_config is not None:
-        raise ValueError("adaptive_stream_config is not valid for static_baseline")
-    if static_baseline_config is None:
-        static = StaticBaselineConfig(
-            model_type=model_type or "pyod_iforest",
-            model_params=model_params or {},
-        )
-    else:
-        static = (
-            static_baseline_config
-            if isinstance(static_baseline_config, StaticBaselineConfig)
-            else StaticBaselineConfig(**static_baseline_config)
-        )
-    if model_type is not None and model_type != static.model_type:
-        raise ValueError("model_type conflicts with static_baseline_config.model_type")
-    if model_params is not None and model_params != static.model_params:
-        raise ValueError(
-            "model_params conflicts with static_baseline_config.model_params"
-        )
-    return ResolvedMonitoringConfig(
-        strategy="static_baseline",
-        model_type=static.model_type,
-        model_params=static.model_params,
-        static_baseline_config=static,
-    )
+            self.monitoring.validate_feature_schema(keys)
+        return self

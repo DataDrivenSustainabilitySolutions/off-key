@@ -28,6 +28,7 @@ def _service(
 ):
     return SimpleNamespace(
         id=service_id,
+        stop_requested_at=None,
         container_id=f"ctr-{service_id}",
         container_name=f"radar-{service_id}",
         status=status,

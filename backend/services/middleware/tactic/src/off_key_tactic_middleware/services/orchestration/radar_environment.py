@@ -3,12 +3,10 @@
 import hashlib
 import json
 from datetime import UTC, datetime
-from typing import Any
 
 from off_key_core.config.logs import logger
 from off_key_core.models import ADAPTIVE_MODEL_FAMILY, STATIC_MODEL_FAMILY
-from off_key_core.schemas.radar import resolve_monitoring_strategy_config
-from off_key_core.utils.mqtt_topics import derive_monitoring_sensor_keys
+from off_key_core.schemas.radar import RadarStartConfig
 
 from ...config.config import (
     get_radar_container_runtime_settings,
@@ -41,6 +39,7 @@ def build_radar_workload_labels(
     environment: dict[str, str], radar_image: str
 ) -> dict[str, str]:
     """Build the canonical labels shared by Swarm and container workloads."""
+    monitoring = json.loads(environment["RADAR_MONITORING_CONFIG"])
     return {
         "owner": "tactic_middleware",
         "started_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
@@ -48,10 +47,8 @@ def build_radar_workload_labels(
         "env": get_radar_container_runtime_settings().ENVIRONMENT,
         "service_type": "radar",
         "managed_by": "tactic",
-        "monitoring_strategy": environment.get(
-            "RADAR_MONITORING_STRATEGY", "static_baseline"
-        ),
-        "radar_model_type": environment.get("RADAR_MODEL_TYPE", ""),
+        "monitoring_strategy": monitoring["strategy"],
+        "radar_model_type": monitoring["model_type"],
         "radar_config_fingerprint": build_radar_config_fingerprint(environment),
         "radar_image": radar_image,
     }
@@ -60,21 +57,13 @@ def build_radar_workload_labels(
 def build_radar_environment(
     *,
     service_id: str,
-    mqtt_topics: list[str],
-    strategy: str,
-    model_type: str | None,
-    model_params: dict[str, Any] | None,
-    mqtt_config: dict[str, Any],
-    performance_config: dict[str, Any],
-    static_baseline_config: dict[str, Any] | None,
-    adaptive_stream_config: dict[str, Any] | None = None,
+    config: RadarStartConfig,
     model_registry: ModelRegistryService,
 ) -> dict[str, str]:
     """Compile validated service configuration into RADAR environment variables."""
-    strategy = (strategy or "static_baseline").strip().lower()
-    if strategy not in {"static_baseline", "adaptive_stream"}:
-        raise ValueError("Invalid monitoring strategy")
-
+    monitoring = config.monitoring
+    mqtt_config = config.mqtt_config
+    performance = config.performance_config
     defaults = get_tactic_settings().config.radar_defaults
     runtime = get_radar_container_runtime_settings()
     if runtime.ENVIRONMENT == "production":
@@ -88,38 +77,9 @@ def build_radar_environment(
         } & mqtt_config.keys()
         if forbidden:
             raise ValueError("Production MQTT connection settings cannot be overridden")
-    resolved = resolve_monitoring_strategy_config(
-        strategy=strategy,
-        model_type=model_type,
-        model_params=model_params,
-        static_baseline_config=static_baseline_config or None,
-        adaptive_stream_config=adaptive_stream_config or None,
-    )
-    model_type = resolved.model_type
-    model_params = resolved.model_params
-    normalized_static_config = (
-        resolved.static_baseline_config.model_dump(exclude_none=True)
-        if resolved.static_baseline_config
-        else {}
-    )
-    normalized_adaptive_config = (
-        resolved.adaptive_stream_config.model_dump(exclude_none=True)
-        if resolved.adaptive_stream_config
-        else {}
-    )
-    if resolved.adaptive_stream_config is not None:
-        feature_keys = derive_monitoring_sensor_keys(
-            mqtt_topics,
-            sensor_key_strategy=performance_config.get(
-                "sensor_key_strategy", "full_hierarchy"
-            ),
-        )
-        resolved.adaptive_stream_config.validate_feature_schema(feature_keys)
-
     environment = {
         "SERVICE_ID": service_id,
         "ENVIRONMENT": runtime.ENVIRONMENT,
-        "RADAR_MONITORING_STRATEGY": strategy,
         "RADAR_MQTT_BROKER_HOST": mqtt_config.get("host", defaults.mqtt_broker_host),
         "RADAR_MQTT_BROKER_PORT": str(
             mqtt_config.get("port", defaults.mqtt_broker_port)
@@ -134,49 +94,42 @@ def build_radar_environment(
             mqtt_config.get("use_auth", defaults.mqtt_use_auth)
         ).lower(),
         "RADAR_MQTT_USERNAME": mqtt_config.get("username", defaults.mqtt_username),
-        "RADAR_SUBSCRIPTION_TOPICS": ",".join(mqtt_topics),
+        "RADAR_SUBSCRIPTION_TOPICS": ",".join(config.mqtt_topics),
         "RADAR_SUBSCRIPTION_QOS": str(mqtt_config.get("qos", defaults.mqtt_qos)),
-        "RADAR_MODEL_TYPE": model_type or defaults.model_type,
         "RADAR_BATCH_SIZE": str(
-            performance_config.get("batch_size", defaults.batch_size)
+            defaults.batch_size
         ),
         "RADAR_BATCH_TIMEOUT": str(
-            performance_config.get("batch_timeout", defaults.batch_timeout)
+            defaults.batch_timeout
         ),
         "RADAR_MEMORY_LIMIT_MB": str(
-            performance_config.get("memory_limit_mb", defaults.memory_limit_mb)
+            defaults.memory_limit_mb
         ),
         "RADAR_CHECKPOINT_INTERVAL": str(
-            performance_config.get("checkpoint_interval", defaults.checkpoint_interval)
+            defaults.checkpoint_interval
         ),
         "RADAR_SENSOR_KEY_STRATEGY": str(
-            performance_config.get("sensor_key_strategy", defaults.sensor_key_strategy)
+            performance.sensor_key_strategy
         ),
         "RADAR_SENSOR_FRESHNESS_SECONDS": str(
-            performance_config.get(
-                "sensor_freshness_seconds", defaults.sensor_freshness_seconds
-            )
+            performance.sensor_freshness_seconds
         ),
         "RADAR_DB_WRITE_ENABLED": str(
-            performance_config.get("db_write_enabled", defaults.db_write_enabled)
+            defaults.db_write_enabled
         ).lower(),
         "RADAR_DB_BATCH_SIZE": str(
-            performance_config.get("db_batch_size", defaults.db_batch_size)
+            defaults.db_batch_size
         ),
         "RADAR_DB_BATCH_TIMEOUT": str(
-            performance_config.get("db_batch_timeout", defaults.db_batch_timeout)
+            defaults.db_batch_timeout
         ),
         "RADAR_DATABASE_URL": runtime.radar_database_url,
         "RADAR_HEALTH_CHECK_INTERVAL": str(
-            performance_config.get(
-                "health_check_interval", defaults.health_check_interval
-            )
+            defaults.health_check_interval
         ),
-        "RADAR_LOG_LEVEL": performance_config.get("log_level", defaults.log_level),
+        "RADAR_LOG_LEVEL": defaults.log_level,
         "RADAR_RATE_LIMIT_PER_MINUTE": str(
-            performance_config.get(
-                "rate_limit_per_minute", defaults.rate_limit_per_minute
-            )
+            defaults.rate_limit_per_minute
         ),
     }
     if runtime.ENVIRONMENT == "production":
@@ -186,29 +139,20 @@ def build_radar_environment(
 
     try:
         validated_params = model_registry.validate_model_params(
-            model_type,
-            model_params,
+            monitoring.model_type,
+            monitoring.model_params,
             category="model",
             family=(
                 ADAPTIVE_MODEL_FAMILY
-                if strategy == "adaptive_stream"
+                if monitoring.strategy == "adaptive_stream"
                 else STATIC_MODEL_FAMILY
             ),
         )
     except ValueError as exc:
-        logger.error("Invalid model parameters for %s: %s", model_type, exc)
+        logger.error("Invalid model parameters for %s: %s", monitoring.model_type, exc)
         raise ValueError(f"Invalid model parameters: {exc}") from exc
 
-    environment["RADAR_MODEL_PARAMS"] = json.dumps(validated_params)
-    if strategy == "adaptive_stream":
-        normalized_adaptive_config["model_params"] = validated_params
-        environment["RADAR_ADAPTIVE_STREAM_CONFIG"] = json.dumps(
-            normalized_adaptive_config
-        )
-    else:
-        normalized_static_config["model_params"] = validated_params
-        environment["RADAR_STATIC_BASELINE_CONFIG"] = json.dumps(
-            normalized_static_config
-        )
-    logger.info("Model params validated for %s: %s", model_type, validated_params)
+    monitoring = monitoring.model_copy(update={"model_params": validated_params})
+    environment["RADAR_MONITORING_CONFIG"] = monitoring.model_dump_json()
+    logger.info("Model params validated for %s: %s", monitoring.model_type, validated_params)
     return environment

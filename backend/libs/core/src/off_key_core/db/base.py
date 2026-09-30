@@ -114,38 +114,6 @@ async def get_db_async():
             raise
 
 
-# Dependency for synchronous database sessions
-def get_db_sync():
-    """
-    Provides a synchronous database session.
-    Commits the transaction if no exceptions occur.
-    Automatically closes the session when done.
-    """
-    session_factory = get_sync_session_local()
-    db = session_factory()
-    try:
-        yield db
-        db.commit()
-    except Exception as e:
-        db.rollback()
-        logger.warning(f"Database transaction rolled back: {e!s}")
-        raise
-    finally:
-        db.close()
-
-
-# Dependency for asynchronous database sessions without auto-commit
-async def get_db_transactional():
-    """
-    Provides an asynchronous database session without auto-commit.
-    Useful for complex transactions where manual commit/rollback control is needed.
-    The caller is responsible for committing or rolling back the transaction.
-    """
-    session_factory = get_async_session_local()
-    async with session_factory() as db:
-        yield db
-
-
 # Dependency for synchronous database sessions without auto-commit
 def get_db_sync_transactional():
     """

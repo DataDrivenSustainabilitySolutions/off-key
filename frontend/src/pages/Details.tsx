@@ -94,7 +94,11 @@ const LiveTelemetryIndicator: React.FC<{
 };
 
 const Details: React.FC = () => {
-  const { chargerId } = useParams<{ chargerId: string }>();
+  const { chargerId = "" } = useParams<{ chargerId: string }>();
+  return <ChargerDetails key={chargerId} chargerId={chargerId} />;
+};
+
+const ChargerDetails: React.FC<{ chargerId: string }> = ({ chargerId }) => {
   const [searchParams, setSearchParams] = useSearchParams();
 
   const [isLoadingTelemetry, setIsLoadingTelemetry] = useState(true);

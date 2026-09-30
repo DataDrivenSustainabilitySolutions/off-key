@@ -98,6 +98,18 @@ per-row deletion deadline. Startup does not explicitly execute cleanup; the sche
 
 ## Applying a revision
 
+Before upgrading an existing database to durable monitor pauses, run
+`backend/migrations/002_monitor_stop_intent.sql` with `psql -v ON_ERROR_STOP=1`.
+It adds the persisted stop request and repairs status payloads written by the
+former collection pause path. Fresh databases include the column automatically.
+
+Affected monitor stop requests are committed before Docker removal. Each completed
+stop is saved independently; the catalog revision changes only after every stop
+succeeds. If a stop or catalog write fails, completed stops remain stopped and the
+previous catalog stays active. The status reconciler retries pending stops after
+failures or restarts. Retry the catalog save after those stops finish, then restart
+the monitors with fresh calibration.
+
 A save uses an expected revision and a PostgreSQL advisory transaction lock.
 Concurrent edits receive a conflict instead of silently overwriting each other.
 Catalog changes and monitor starts use the same lock.

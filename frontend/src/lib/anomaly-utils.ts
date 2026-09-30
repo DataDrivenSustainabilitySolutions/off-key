@@ -6,10 +6,6 @@
 import { timestampsAreClose } from './time-utils';
 import { INTERVALS } from './constants';
 import type { Anomaly, TelemetryDataPoint } from '@/types/charger';
-import {
-  formatAnomalyValue,
-  getAnomalyValueLabel,
-} from '@/lib/anomaly-semantics';
 
 export type { Anomaly };
 export const MULTIVARIATE_TELEMETRY_TYPE = "__multivariate__";
@@ -227,23 +223,6 @@ export const filterAnomalies = (
 
     return true;
   });
-};
-
-/**
- * Create tooltip content for anomaly visualization
- */
-export const createAnomalyTooltip = (anomaly: Anomaly): string => {
-  const formattedTime = new Date(anomaly.timestamp).toLocaleString();
-  const valueLabel = getAnomalyValueLabel(anomaly.value_type);
-  const formattedValue = formatAnomalyValue(
-    anomaly.anomaly_value,
-    anomaly.value_type
-  );
-  return `Anomaly: ${anomaly.anomaly_type}
-${valueLabel}: ${formattedValue}
-Time: ${formattedTime}
-Type: ${anomaly.telemetry_type}
-Sensors: ${formatAnomalySensorSet(anomaly.sensor_set)}`;
 };
 
 /**

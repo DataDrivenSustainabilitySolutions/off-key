@@ -9,12 +9,12 @@ from .radar import (
     PerformanceConfig,
     PowerMartingaleTrackerConfig,
     RadarOperationalStatus,
-    ResolvedMonitoringConfig,
+    MonitoringConfig,
     SimpleJumperMartingaleTrackerConfig,
     SimpleMixtureMartingaleTrackerConfig,
     StaticBaselineConfig,
     StaticMartingaleConfig,
-    resolve_monitoring_strategy_config,
+    parse_legacy_monitoring_config,
 )
 from .user import (
     ForgotPasswordRequest,
@@ -35,7 +35,7 @@ __all__ = [
     "PowerMartingaleTrackerConfig",
     "RadarOperationalStatus",
     "ResetPasswordRequest",
-    "ResolvedMonitoringConfig",
+    "MonitoringConfig",
     "SimpleJumperMartingaleTrackerConfig",
     "SimpleMixtureMartingaleTrackerConfig",
     "StaticBaselineConfig",
@@ -43,5 +43,5 @@ __all__ = [
     "UserCreate",
     "UserLogin",
     "UserVerification",
-    "resolve_monitoring_strategy_config",
+    "parse_legacy_monitoring_config",
 ]

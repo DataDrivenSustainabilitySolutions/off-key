@@ -1,18 +1,16 @@
 """
 TACTIC Admin API for ML Model Registry Management.
 
-Provides admin endpoints for dynamically adding, updating, and managing models.
+Manages metadata, defaults, and activation for models shipped in RADAR.
 """
 
 import logging
-import re
-from typing import Any, Literal
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
-from off_key_core.models import STATIC_MODEL_FAMILY
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from ...domain import ConflictError, DomainError, InfrastructureError, NotFoundError
+from ...domain import DomainError, InfrastructureError, NotFoundError, ValidationError
 from ...models.registry import ModelRegistryService
 from ...provider import get_model_registry_admin_service, get_model_registry_service
 from ...services.admin_models import ModelRegistryAdminService
@@ -24,8 +22,8 @@ router = APIRouter(prefix="/admin/models", tags=["admin", "models"])
 
 def _raise_http_from_domain(error: DomainError) -> None:
     """Map domain errors to HTTP response codes."""
-    if isinstance(error, ConflictError):
-        raise HTTPException(status_code=409, detail=str(error))
+    if isinstance(error, ValidationError):
+        raise HTTPException(status_code=422, detail=str(error))
     if isinstance(error, NotFoundError):
         raise HTTPException(status_code=404, detail=str(error))
     if isinstance(error, InfrastructureError):
@@ -34,89 +32,24 @@ def _raise_http_from_domain(error: DomainError) -> None:
     raise HTTPException(status_code=500, detail="Unexpected domain error")
 
 
-# Request/Response models for admin operations
-class CreateModelRequest(BaseModel):
-    """Request to create a new model in registry."""
-
-    model_type: str = Field(..., description="Unique model type identifier")
-    category: Literal["model"] = Field(
-        default="model", description="Static model registry category"
-    )
-    family: str = Field(
-        ...,
-        description="Static detector family",
-    )
-    name: str = Field(..., description="Human-readable model name")
-    description: str | None = Field(None, description="Model description")
-    complexity: str | None = Field("medium", description="Computational complexity")
-    memory_usage: str | None = Field("medium", description="Memory usage level")
-    import_paths: list[str] = Field(..., description="Python import paths to try")
-    parameter_schema: dict[str, Any] = Field(
-        ..., description="JSON schema for parameters"
-    )
-    default_parameters: dict[str, Any] = Field(
-        default_factory=dict, description="Default parameter values"
-    )
-    version: str = Field(default="1.0.0", description="Model version")
-    requires_special_handling: bool = Field(
-        default=False, description="Requires custom instantiation logic"
-    )
-
-    @field_validator("model_type")
-    @classmethod
-    def validate_model_type(cls, value: str) -> str:
-        normalized = value.strip().lower()
-        if not re.fullmatch(r"[a-z][a-z0-9_]*", normalized):
-            raise ValueError(
-                "model_type must start with a letter and contain only "
-                "lowercase letters, numbers, and underscores"
-            )
-        return normalized
-
-    @field_validator("family")
-    @classmethod
-    def validate_family(cls, value: str) -> str:
-        normalized = value.strip().lower()
-        if normalized != STATIC_MODEL_FAMILY:
-            raise ValueError(f"family must be {STATIC_MODEL_FAMILY}")
-        return normalized
-
-
 class UpdateModelRequest(BaseModel):
-    """Request to update an existing model."""
+    """Administrator-owned metadata; executable definitions belong to the runtime."""
 
-    name: str | None = Field(None, description="Human-readable model name")
-    description: str | None = Field(None, description="Model description")
-    family: str | None = Field(
-        None,
-        description="Static detector family",
-    )
-    complexity: str | None = Field(None, description="Computational complexity")
-    memory_usage: str | None = Field(None, description="Memory usage level")
-    import_paths: list[str] | None = Field(
-        None, description="Python import paths to try"
-    )
-    parameter_schema: dict[str, Any] | None = Field(
-        None, description="JSON schema for parameters"
-    )
-    default_parameters: dict[str, Any] | None = Field(
-        None, description="Default parameter values"
-    )
-    version: str | None = Field(None, description="Model version")
-    is_active: bool | None = Field(None, description="Whether model is active")
-    requires_special_handling: bool | None = Field(
-        None, description="Requires custom instantiation logic"
-    )
+    model_config = ConfigDict(extra="forbid")
 
-    @field_validator("family")
+    name: str | None = Field(default=None, min_length=1)
+    description: str | None = None
+    complexity: str | None = None
+    memory_usage: str | None = None
+    default_parameters: dict[str, Any] | None = None
+    is_active: bool | None = None
+
+    @field_validator("name", "default_parameters", "is_active")
     @classmethod
-    def validate_family(cls, value: str | None) -> str | None:
+    def reject_explicit_null(cls, value):
         if value is None:
-            return value
-        normalized = value.strip().lower()
-        if normalized != STATIC_MODEL_FAMILY:
-            raise ValueError(f"family must be {STATIC_MODEL_FAMILY}")
-        return normalized
+            raise ValueError("This field cannot be null; omit it to keep its current value")
+        return value
 
 
 class ModelRegistryResponse(BaseModel):
@@ -138,24 +71,6 @@ class ModelRegistryResponse(BaseModel):
     requires_special_handling: bool
     created_at: str
     updated_at: str
-
-
-@router.post("/", response_model=ModelRegistryResponse)
-async def create_model(
-    request: CreateModelRequest,
-    service: ModelRegistryAdminService = Depends(get_model_registry_admin_service),
-) -> ModelRegistryResponse:
-    """
-    Create a new model in the registry.
-
-    This allows adding new models dynamically without code changes.
-    """
-    try:
-        return ModelRegistryResponse(
-            **service.create_model(payload=request.model_dump()),
-        )
-    except DomainError as exc:
-        _raise_http_from_domain(exc)
 
 
 @router.put("/{model_type}", response_model=ModelRegistryResponse)
@@ -224,9 +139,7 @@ async def test_model_instantiation(
     model_registry: ModelRegistryService = Depends(get_model_registry_service),
 ) -> dict[str, Any]:
     """
-    Test that a model can be instantiated with given parameters.
-
-    Useful for validating new model definitions before deployment.
+    Validate parameters against the catalog shipped with the RADAR runtime.
     """
     try:
         validation_result = model_registry.validate_model_instantiation(

@@ -4,8 +4,10 @@ from typing import Any
 
 from off_key_core.config.logs import logger
 from off_key_core.db.models import ModelRegistry
+from off_key_core.models import ADAPTIVE_MODELS_BY_TYPE, validate_adaptive_model_params
+from off_key_core.models.static import STATIC_MODELS, validate_static_model_params
 
-from ..domain import ConflictError, InfrastructureError, NotFoundError
+from ..domain import InfrastructureError, NotFoundError, ValidationError
 from ..repositories import ModelRegistryAdminRepository
 
 
@@ -14,23 +16,6 @@ class ModelRegistryAdminService:
 
     def __init__(self, repository: ModelRegistryAdminRepository):
         self._repository = repository
-
-    def create_model(self, *, payload: dict[str, Any]) -> dict[str, Any]:
-        existing = self._repository.get_by_model_type(model_type=payload["model_type"])
-        if existing is not None:
-            raise ConflictError(f"Model type '{payload['model_type']}' already exists")
-
-        model = ModelRegistry(**payload, is_active=True)
-        try:
-            self._repository.add(model)
-            self._repository.commit()
-            self._repository.refresh(model)
-            logger.info(f"Created new model: {payload['model_type']}")
-        except Exception as exc:
-            self._repository.rollback()
-            raise InfrastructureError(f"Failed to create model: {exc}") from exc
-
-        return self._to_response(model)
 
     def update_model(
         self,
@@ -41,6 +26,20 @@ class ModelRegistryAdminService:
         model = self._repository.get_by_model_type(model_type=model_type)
         if model is None:
             raise NotFoundError(f"Model '{model_type}' not found")
+
+        if model_type not in STATIC_MODELS and model_type not in ADAPTIVE_MODELS_BY_TYPE:
+            raise ValidationError(f"Model '{model_type}' is not shipped in the RADAR runtime")
+        if "default_parameters" in update_data:
+            validate = (
+                validate_static_model_params if model_type in STATIC_MODELS
+                else validate_adaptive_model_params
+            )
+            try:
+                update_data = {**update_data, "default_parameters": validate(
+                    model_type, update_data["default_parameters"],
+                )}
+            except ValueError as exc:
+                raise ValidationError(str(exc)) from exc
 
         for field, value in update_data.items():
             setattr(model, field, value)

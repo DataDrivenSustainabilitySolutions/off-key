@@ -1,3 +1,4 @@
+from off_key_core.schemas.radar import RadarStartConfig
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
@@ -592,6 +593,7 @@ async def test_stop_radar_service_deletes_db_row_after_removing_workload(
 ):
     fake_docker = _FakeAsyncDocker()
     db_row = SimpleNamespace(
+        stop_requested_at=None,
         id="svc-1",
         container_id="ctr-1",
         container_name="radar-static",
@@ -632,6 +634,7 @@ async def test_stop_radar_service_deletes_db_row_when_workload_is_missing(
 ):
     fake_docker = _FakeAsyncDocker()
     db_row = SimpleNamespace(
+        stop_requested_at=None,
         id="svc-1",
         container_id="missing-ctr",
         container_name="radar-static",
@@ -668,6 +671,7 @@ async def test_stop_radar_service_deletes_db_row_when_workload_is_missing(
 async def test_stop_radar_service_deletes_db_row_by_container_id(monkeypatch):
     fake_docker = _FakeAsyncDocker()
     db_row = SimpleNamespace(
+        stop_requested_at=None,
         id="svc-1",
         container_id="ctr-1",
         container_name="radar-static",
@@ -790,6 +794,7 @@ async def test_get_radar_service_returns_none_for_invalid_identifier(monkeypatch
 async def test_get_radar_service_resolves_by_container_id(monkeypatch):
     fake_docker = _FakeAsyncDocker()
     db_row = SimpleNamespace(
+        stop_requested_at=None,
         id="svc-1",
         container_id="ctr-1",
         container_name="radar-static",
@@ -841,6 +846,7 @@ async def test_get_radar_service_resolves_by_container_id(monkeypatch):
 async def test_get_radar_service_resolves_by_container_name(monkeypatch):
     fake_docker = _FakeAsyncDocker()
     db_row = SimpleNamespace(
+        stop_requested_at=None,
         id="svc-2",
         container_id="ctr-2",
         container_name="radar-static-name",
@@ -884,6 +890,7 @@ async def test_get_radar_service_resolves_by_container_name(monkeypatch):
 async def test_delete_radar_service_removes_running_workload_and_db_rows(monkeypatch):
     fake_docker = _FakeAsyncDocker()
     db_row = SimpleNamespace(
+        stop_requested_at=None,
         id="svc-1",
         container_id="ctr-1",
         container_name="radar-static",
@@ -946,6 +953,7 @@ async def test_delete_radar_service_leaves_db_row_when_workload_remove_fails(
 ):
     fake_docker = _FakeAsyncDocker()
     db_row = SimpleNamespace(
+        stop_requested_at=None,
         id="svc-1",
         container_id="ctr-1",
         container_name="radar-static",
@@ -1132,11 +1140,11 @@ async def test_create_radar_service_removes_workload_when_db_commit_fails(
     service.workloads.remove_after_failure = AsyncMock()
 
     with pytest.raises(RuntimeError, match="commit failed"):
-        await service.create_radar_service(
+        await service.create_radar_service(RadarStartConfig(
             container_name="radar-duplicate",
             mqtt_topics=["device/evCharger/charger-1/sine"],
-            model_type="knn",
-        )
+            model_type="pyod_knn"
+        ))
 
     session.rollback.assert_awaited_once()
     service.workloads.remove_after_failure.assert_awaited_once_with(workload)
@@ -1151,6 +1159,7 @@ async def test_existing_active_service_with_missing_workload_is_recreated(
     monkeypatch.setattr(radar_module, "get_async_docker", lambda: fake_docker)
 
     db_row = SimpleNamespace(
+        stop_requested_at=None,
         id="old-svc",
         container_id="missing-workload",
         container_name="radar-stale",
@@ -1196,11 +1205,11 @@ async def test_existing_active_service_with_missing_workload_is_recreated(
     )
     service.workloads.validate_started = AsyncMock()
 
-    created = await service.create_radar_service(
-        container_name="radar-stale",
-        mqtt_topics=["device/evCharger/charger-1/sine"],
-        model_type="pyod_iforest",
-    )
+    created = await service.create_radar_service(RadarStartConfig(
+            container_name="radar-stale",
+            mqtt_topics=["device/evCharger/charger-1/sine"],
+            model_type="pyod_iforest"
+        ))
 
     assert created.container_name == "radar-stale"
     assert created.container_id == "new-workload"
@@ -1218,6 +1227,7 @@ async def test_existing_active_service_rejects_config_fingerprint_mismatch(
     monkeypatch.setattr(radar_module, "get_async_docker", lambda: fake_docker)
 
     db_row = SimpleNamespace(
+        stop_requested_at=None,
         id="svc-existing",
         container_id="workload-1",
         container_name="radar-existing",
@@ -1248,11 +1258,11 @@ async def test_existing_active_service_rejects_config_fingerprint_mismatch(
     )
 
     with pytest.raises(ValueError, match="different RADAR configuration"):
-        await service.create_radar_service(
+        await service.create_radar_service(RadarStartConfig(
             container_name="radar-existing",
             mqtt_topics=["device/evCharger/charger-1/sine"],
-            model_type="knn",
-        )
+            model_type="pyod_knn"
+        ))
 
     assert db_row.status is True
     session.commit.assert_not_awaited()

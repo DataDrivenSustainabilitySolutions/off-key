@@ -1,3 +1,4 @@
+from off_key_core.schemas.radar import AdaptiveStreamConfig
 import pytest
 from off_key_core.schemas.radar import StaticBaselineConfig, StaticMartingaleConfig
 from off_key_mqtt_proxy.config.config import MQTTConfig, MQTTSettings
@@ -70,10 +71,10 @@ def test_mqtt_radar_config_mutable_defaults_are_isolated():
     cfg_two = MQTTRadarConfig()
 
     cfg_one.subscription_topics.append("device/evCharger/charger-sim-1/cosine")
-    cfg_one.static_baseline_config.model_params["n_estimators"] = 8
+    cfg_one.monitoring.model_params["n_estimators"] = 8
 
     assert cfg_two.subscription_topics == ["device/evCharger/charger-sim-1/sine"]
-    assert cfg_two.static_baseline_config.model_params == {}
+    assert cfg_two.monitoring.model_params == {}
 
 
 @pytest.mark.parametrize(
@@ -99,12 +100,10 @@ def test_anomaly_detection_config_uses_strategy_specific_adaptive_config():
         AnomalyDetectionConfig(preprocessing_steps=[])
 
     config = AnomalyDetectionConfig(
-        strategy="adaptive_stream",
-        model_type="aberrant_online_isolation_forest",
-        adaptive_stream_config={"training_window_size": 1200},
+        monitoring=AdaptiveStreamConfig(**{"training_window_size": 1200}),
     )
-    assert config.strategy == "adaptive_stream"
-    assert config.adaptive_stream_config.training_window_size == 1200
+    assert config.monitoring.strategy == "adaptive_stream"
+    assert config.monitoring.training_window_size == 1200
 
 
 def test_radar_settings_parse_static_baseline_strategy(monkeypatch):
@@ -134,12 +133,12 @@ def test_radar_settings_parse_static_baseline_strategy(monkeypatch):
 
     cfg = RadarSettings().config
 
-    assert cfg.strategy == "static_baseline"
-    assert cfg.model_type == "pyod_iforest"
-    assert cfg.model_params["n_estimators"] == 128
-    assert cfg.static_baseline_config.training_window_size == 240
-    assert cfg.static_baseline_config.calibration_window_size == 80
-    threshold = cfg.static_baseline_config.martingale_config.trackers[
+    assert cfg.monitoring.strategy == "static_baseline"
+    assert cfg.monitoring.model_type == "pyod_iforest"
+    assert cfg.monitoring.model_params["n_estimators"] == 128
+    assert cfg.monitoring.training_window_size == 240
+    assert cfg.monitoring.calibration_window_size == 80
+    threshold = cfg.monitoring.martingale_config.trackers[
         0
     ].threshold_config
     assert threshold.mode == "manual"
@@ -155,9 +154,9 @@ def test_radar_settings_parse_adaptive_strategy(monkeypatch):
     )
 
     config = RadarSettings().config
-    assert config.strategy == "adaptive_stream"
-    assert config.model_type == "aberrant_online_isolation_forest"
-    assert config.adaptive_stream_config.threshold_config.quantile == 1.0
+    assert config.monitoring.strategy == "adaptive_stream"
+    assert config.monitoring.model_type == "aberrant_online_isolation_forest"
+    assert config.monitoring.threshold_config.quantile == 1.0
 
 
 def test_radar_settings_reject_conflicting_static_compatibility_mirrors(monkeypatch):

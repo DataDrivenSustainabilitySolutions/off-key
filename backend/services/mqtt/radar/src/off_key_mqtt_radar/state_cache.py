@@ -341,22 +341,6 @@ class SensorStateCache:
             self._readings_by_charger.clear()
             self._last_emitted_versions.clear()
 
-    def get_stats(self) -> dict[str, int | float]:
-        """Get cache statistics."""
-        with self._lock:
-            total_sensors = sum(
-                len(sensors) for sensors in self._readings_by_charger.values()
-            )
-            return {
-                "chargers": len(self._readings_by_charger),
-                "total_sensor_entries": total_sensors,
-                "max_chargers": self.max_chargers,
-                "ttl_seconds": int(self.ttl_seconds),
-                "max_sensor_age_seconds": self.max_sensor_age_seconds,
-                "strict_barrier_emit_count": self.strict_barrier_emit_count,
-                "strict_barrier_wait_count": self.strict_barrier_wait_count,
-            }
-
 
 AlignmentStatus = Literal[
     "aligned_emit",

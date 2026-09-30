@@ -199,6 +199,7 @@ class MonitoringService(Base):
         JSON().with_variant(JSONB(), "postgresql"), nullable=False, default=dict
     )
     operational_updated_at = Column(DateTime(timezone=True), nullable=True)
+    stop_requested_at = Column(DateTime(timezone=True), nullable=True)
 
 
 class MqttTopic(Base):

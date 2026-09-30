@@ -9,12 +9,13 @@ from typing import Any, Self
 from dotenv import load_dotenv
 from off_key_core.config.validation import validate_environment as _validate_environment
 from off_key_core.schemas.radar import (
-    AdaptiveStreamConfig,
+    MonitoringConfig,
+    PerformanceConfig,
     StaticBaselineConfig,
-    resolve_monitoring_strategy_config,
+    parse_legacy_monitoring_config,
 )
 from off_key_core.utils.mqtt_topics import normalize_static_monitoring_topics
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import ConfigDict, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 SENSOR_KEY_STRATEGIES = {"full_hierarchy", "top_level", "leaf"}
@@ -51,22 +52,13 @@ def load_configuration(custom_config_file: str | None = None):
     return None
 
 
-class AnomalyDetectionConfig(BaseModel):
+class AnomalyDetectionConfig(PerformanceConfig):
     """Configuration for anomaly detection models"""
 
     model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
-    strategy: str = "static_baseline"
-    model_type: str = "pyod_iforest"
-    model_params: dict[str, Any] = Field(default_factory=dict)
-    static_baseline_config: StaticBaselineConfig = Field(
-        default_factory=StaticBaselineConfig
-    )
-    adaptive_stream_config: AdaptiveStreamConfig | None = None
+    monitoring: MonitoringConfig = Field(default_factory=StaticBaselineConfig)
     subscription_topics: list[str] = Field(default_factory=list)
-    sensor_key_strategy: str = "full_hierarchy"
-    sensor_freshness_seconds: float = Field(default=30.0, gt=0.0)
-
     memory_limit_mb: int = 1000
     checkpoint_interval: int = 10000
 
@@ -77,19 +69,7 @@ class AnomalyDetectionConfig(BaseModel):
     # Memory management
     reset_threshold_mb: int = 500
 
-    @field_validator("sensor_key_strategy")
-    @classmethod
-    def validate_sensor_key_strategy(cls, value: str) -> str:
-        """Validate sensor key strategy for model schema consistency."""
-        return _normalize_sensor_key_strategy(value, "sensor_key_strategy")
-
-    @field_validator("strategy")
-    @classmethod
-    def validate_strategy(cls, value: str) -> str:
-        return _normalize_strategy(value, "strategy")
-
-
-class MQTTRadarConfig(BaseModel):
+class MQTTRadarConfig(AnomalyDetectionConfig):
     """MQTT RADAR service configuration"""
 
     model_config = ConfigDict(extra="forbid", validate_assignment=True)
@@ -111,13 +91,10 @@ class MQTTRadarConfig(BaseModel):
         default_factory=lambda: ["device/evCharger/charger-sim-1/sine"]
     )
     subscription_qos: int = 0
-    sensor_key_strategy: str = "full_hierarchy"
-    sensor_freshness_seconds: float = Field(default=30.0, gt=0.0)
-
     # Database settings
     db_write_enabled: bool = True
-    db_batch_size: int = 50
-    db_batch_timeout: float = 2.0
+    db_batch_size: int = Field(default=50, gt=0)
+    db_batch_timeout: float = Field(default=2.0, gt=0)
 
     # Monitoring
     health_check_interval: float = 30.0
@@ -125,45 +102,18 @@ class MQTTRadarConfig(BaseModel):
 
     # Performance
     worker_threads: int = 4
-    max_queue_size: int = 10000
+    max_queue_size: int = Field(default=10000, gt=0)
 
     # Security
     rate_limit_per_minute: int = 1000
     max_feature_count: int = 100
     max_string_length: int = 1000
 
-    # Memory Management
-    memory_limit_mb: int = 1000
-
-    # Anomaly Detection
-    strategy: str = "static_baseline"
-    model_type: str = "pyod_iforest"
-    model_params: dict[str, Any] = Field(default_factory=dict)
-    static_baseline_config: StaticBaselineConfig = Field(
-        default_factory=StaticBaselineConfig
-    )
-    adaptive_stream_config: AdaptiveStreamConfig | None = None
-    batch_size: int = 100
-    batch_timeout: float = 1.0
-    checkpoint_interval: int = 10000
-
-    @field_validator("sensor_key_strategy")
-    @classmethod
-    def validate_sensor_key_strategy(cls, value: str) -> str:
-        """Validate feature-key strategy used by topic parsing."""
-        return _normalize_sensor_key_strategy(value, "sensor_key_strategy")
-
     @field_validator("subscription_topics")
     @classmethod
     def validate_subscription_topics(cls, value: list[str]) -> list[str]:
         """Keep the runtime feature schema concrete and single-charger."""
         return normalize_static_monitoring_topics(value)
-
-    @field_validator("strategy")
-    @classmethod
-    def validate_strategy(cls, value: str) -> str:
-        return _normalize_strategy(value, "strategy")
-
 
 class RadarSettings(BaseSettings):
     """Environment-based settings for RADAR service"""
@@ -196,7 +146,8 @@ class RadarSettings(BaseSettings):
     RADAR_DB_BATCH_SIZE: int = 50
     RADAR_DB_BATCH_TIMEOUT: float = 2.0
 
-    # Anomaly Detection
+    # Canonical launch configuration; legacy environment fields are read only here.
+    RADAR_MONITORING_CONFIG: MonitoringConfig | None = None
     RADAR_MONITORING_STRATEGY: str = "static_baseline"
     RADAR_MODEL_TYPE: str | None = None
     RADAR_MODEL_PARAMS: dict[str, Any] | None = None
@@ -277,18 +228,21 @@ class RadarSettings(BaseSettings):
             ]
         )
 
-        strategy = self.RADAR_MONITORING_STRATEGY
-        resolved = resolve_monitoring_strategy_config(
-            strategy=strategy,
-            model_type=self.RADAR_MODEL_TYPE,
-            model_params=self.RADAR_MODEL_PARAMS,
-            static_baseline_config=self.RADAR_STATIC_BASELINE_CONFIG or None,
-            adaptive_stream_config=self.RADAR_ADAPTIVE_STREAM_CONFIG or None,
-        )
-        static_baseline_config = (
-            resolved.static_baseline_config or StaticBaselineConfig()
-        )
-        adaptive_stream_config = resolved.adaptive_stream_config
+        legacy_names = {
+            "RADAR_MONITORING_STRATEGY", "RADAR_MODEL_TYPE", "RADAR_MODEL_PARAMS",
+            "RADAR_STATIC_BASELINE_CONFIG", "RADAR_ADAPTIVE_STREAM_CONFIG",
+        }
+        monitoring = self.RADAR_MONITORING_CONFIG
+        if monitoring is not None and self.model_fields_set & legacy_names:
+            raise ValueError("Do not mix RADAR_MONITORING_CONFIG with legacy strategy fields")
+        if monitoring is None:
+            monitoring = parse_legacy_monitoring_config(
+                strategy=self.RADAR_MONITORING_STRATEGY,
+                model_type=self.RADAR_MODEL_TYPE,
+                model_params=self.RADAR_MODEL_PARAMS,
+                static_baseline_config=self.RADAR_STATIC_BASELINE_CONFIG or None,
+                adaptive_stream_config=self.RADAR_ADAPTIVE_STREAM_CONFIG or None,
+            )
 
         return MQTTRadarConfig(
             broker_host=self.RADAR_MQTT_BROKER_HOST,
@@ -310,11 +264,7 @@ class RadarSettings(BaseSettings):
             log_level=self.RADAR_LOG_LEVEL,
             rate_limit_per_minute=self.RADAR_RATE_LIMIT_PER_MINUTE,
             memory_limit_mb=self.RADAR_MEMORY_LIMIT_MB,
-            strategy=strategy,
-            model_type=resolved.model_type,
-            model_params=resolved.model_params,
-            static_baseline_config=static_baseline_config,
-            adaptive_stream_config=adaptive_stream_config,
+            monitoring=monitoring,
             batch_size=self.RADAR_BATCH_SIZE,
             batch_timeout=self.RADAR_BATCH_TIMEOUT,
             checkpoint_interval=self.RADAR_CHECKPOINT_INTERVAL,

@@ -3,6 +3,7 @@
 from datetime import UTC, datetime
 from math import ceil
 
+from off_key_core.db.base import get_async_session_local
 from off_key_core.db.collection import (
     lock_collection_configuration,
     read_collection_configuration,
@@ -28,6 +29,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..config.collection import get_ambibox_settings
 from ..domain import ConflictError, InfrastructureError, ValidationError
 from .orchestration.radar_workloads import RadarWorkloadManager, get_async_docker
+from .radar_status import mark_collection_monitor_stopped
 
 
 def changed_collection_topics(
@@ -137,24 +139,34 @@ class CollectionService:
     async def _pause_monitors(self, affected: list[dict]) -> None:
         if not affected:
             return
+        # The caller holds the catalog lock. Commit stop intent independently:
+        # Docker removal cannot be rolled back with a failed catalog transaction.
+        sessions = get_async_session_local()
+        ids = [item["id"] for item in affected]
+        async with sessions.begin() as session:
+            await session.execute(
+                update(MonitoringService)
+                .where(MonitoringService.id.in_(ids), MonitoringService.status.is_(True))
+                .values(stop_requested_at=datetime.now(UTC))
+            )
+
         workloads = RadarWorkloadManager(get_async_docker())
-        for item in affected:
-            monitor = await self.session.get(MonitoringService, item["id"])
-            if monitor is None:
-                continue
+        for monitor_id in ids:
             try:
-                await workloads.remove(monitor.container_id)
+                async with sessions.begin() as session:
+                    monitor = await session.get(
+                        MonitoringService, monitor_id, with_for_update=True
+                    )
+                    if monitor is None or monitor.stop_requested_at is None:
+                        continue
+                    await workloads.remove(monitor.container_id)
+                    mark_collection_monitor_stopped(monitor)
             except Exception as exc:
                 raise InfrastructureError(
-                    "Could not stop an affected monitor; the catalog was not applied"
+                    "The catalog was not applied. Monitor stops are saved and will "
+                    "be retried automatically; retry the catalog change after they finish."
                 ) from exc
-            monitor.status = False
-            monitor.operational_stage = "stopped"
-            monitor.operational_updated_at = datetime.now(UTC)
-            monitor.operational_status = {
-                "stage": "stopped",
-                "message": "Collection changed. Restart with fresh calibration.",
-            }
+        self.session.expire_all()
 
     async def _update_bindings(self, catalog: AmbiboxCatalog) -> None:
         old_ids = set(await self.session.scalars(select(CollectionBinding.charger_id)))

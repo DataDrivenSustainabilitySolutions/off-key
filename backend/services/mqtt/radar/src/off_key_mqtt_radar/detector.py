@@ -7,6 +7,7 @@ of MQTT telemetry data with resilient error handling and monitoring.
 
 import concurrent.futures
 import hashlib
+import importlib
 import json
 import logging
 import os
@@ -19,6 +20,8 @@ from typing import Any
 
 import numpy as np
 import psutil
+from off_key_core.schemas.radar import StaticBaselineConfig
+from off_key_core.models.static import get_static_model_definition, validate_static_model_params
 
 from .alarm_calibration import resolve_tracker_thresholds
 from .checkpoint_manager import CheckpointManager
@@ -57,7 +60,9 @@ class StaticConformalDetectionService:
         self.config = config
         self.logger = logging.getLogger(__name__)
         self.schema_signature = self._build_schema_signature_from_config(config)
-        self.static_config = config.static_baseline_config
+        if not isinstance(config.monitoring, StaticBaselineConfig):
+            raise ValueError("Static detector requires static_baseline configuration")
+        self.static_config = config.monitoring
         self.start_time = time.time()
         self.processing_times: deque = deque(maxlen=1000)
         self._training_executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
@@ -72,7 +77,7 @@ class StaticConformalDetectionService:
         self.logger.info(
             "Initialized static conformal detection service with model: %s "
             "(restored=%s)",
-            config.model_type,
+            config.monitoring.model_type,
             checkpoint is not None,
         )
 
@@ -172,9 +177,9 @@ class StaticConformalDetectionService:
 
     @classmethod
     def _build_schema_signature_from_config(cls, config: Any) -> str:
-        static_config = getattr(config, "static_baseline_config", None)
+        static_config = config.monitoring
         if static_config is not None and hasattr(static_config, "model_dump"):
-            static_payload = static_config.model_dump(exclude_none=True)
+            static_payload = static_config.model_dump(exclude_none=True, exclude={"strategy"})
         else:
             static_payload = {}
         return cls._build_static_schema_signature(config, static_payload)
@@ -436,7 +441,7 @@ class StaticConformalDetectionService:
                     "threshold": alarm_context["threshold"],
                     "fired_tracker_ids": alarm_context["fired_tracker_ids"],
                     "alarm_count": alarm_context["alarm_count"],
-                    "model_type": self.config.model_type,
+                    "model_type": self.config.monitoring.model_type,
                     "charger_id": charger_id,
                 },
             )
@@ -531,49 +536,16 @@ class StaticConformalDetectionService:
     def _create_pyod_detector(self) -> Any:
         model_type = self.static_config.model_type
         params = dict(self.static_config.model_params or {})
-        if self.static_config.seed is not None:
+        definition = get_static_model_definition(model_type)
+        if self.static_config.seed is not None and "random_state" in definition.parameters.model_fields:
             params.setdefault("random_state", self.static_config.seed)
-
         return self._instantiate_pyod_detector(model_type, params)
 
-    def _instantiate_pyod_detector(
-        self, model_type: str, params: dict[str, Any]
-    ) -> Any:
-        if model_type == "pyod_iforest":
-            from pyod.models.iforest import IForest
-
-            return IForest(**params)
-        if model_type == "pyod_knn":
-            params.pop("random_state", None)
-            from pyod.models.knn import KNN
-
-            return KNN(**params)
-        if model_type == "pyod_lof":
-            params.pop("random_state", None)
-            from pyod.models.lof import LOF
-
-            return LOF(**params)
-        if model_type == "pyod_ocsvm":
-            params.pop("random_state", None)
-            from pyod.models.ocsvm import OCSVM
-
-            return OCSVM(**params)
-        if model_type == "pyod_hbos":
-            params.pop("random_state", None)
-            from pyod.models.hbos import HBOS
-
-            return HBOS(**params)
-        if model_type == "pyod_pca":
-            params.pop("random_state", None)
-            from pyod.models.pca import PCA
-
-            return PCA(**params)
-
-        raise ValueError(
-            f"Unsupported static PyOD model '{model_type}'. "
-            "Expected one of pyod_iforest, pyod_knn, pyod_lof, pyod_ocsvm, "
-            "pyod_hbos, pyod_pca."
-        )
+    def _instantiate_pyod_detector(self, model_type: str, params: dict[str, Any]) -> Any:
+        definition = get_static_model_definition(model_type)
+        module, _, name = definition.import_path.rpartition(".")
+        detector_class = getattr(importlib.import_module(module), name)
+        return detector_class(**validate_static_model_params(model_type, params, include_defaults=False))
 
     def _complete_training_if_ready(self) -> None:
         if self.state != StaticConformalState.TRAINING or self._training_future is None:
@@ -661,7 +633,7 @@ class StaticConformalDetectionService:
         self.processing_times.append(processing_time)
         context = {
             "processing_time_ms": processing_time * 1000,
-            "model_type": self.config.model_type,
+            "model_type": self.config.monitoring.model_type,
             "static_conformal": {
                 "phase": phase,
                 "state": self.state.value,

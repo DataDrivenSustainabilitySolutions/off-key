@@ -1,19 +1,9 @@
 from datetime import UTC, datetime
-from typing import Any, Optional
+from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException, Query, Request, Response
-from off_key_core.schemas.radar import (
-    AdaptiveStreamConfig,
-    MonitoringStrategy,
-    PerformanceConfig,
-    StaticBaselineConfig,
-    resolve_monitoring_strategy_config,
-)
-from off_key_core.utils.mqtt_topics import (
-    derive_monitoring_sensor_keys,
-    normalize_static_monitoring_topics,
-)
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from off_key_core.schemas.radar import MonitoringStrategy, RadarStartConfig
+from pydantic import BaseModel, Field
 
 from ...facades.tactic import TacticError, tactic
 from ..errors import raise_tactic_http_error
@@ -59,50 +49,9 @@ def _normalize_models_for_gateway(
     return normalized
 
 
-class MonitoringServiceConfig(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    container_name: str = Field(
-        ..., description="Name for the monitoring service container"
-    )
-    service_type: str = Field(
-        default="radar", description="Type of monitoring service (radar, custom, etc.)"
-    )
-    mqtt_topics: list[str] = Field(..., description="List of MQTT topics to monitor")
-    strategy: MonitoringStrategy = Field(
-        default="static_baseline",
-        description="Static baseline monitoring strategy",
-    )
-    model_type: str | None = Field(
-        default=None,
-        description="Compatibility mirror of the strategy-specific model type",
-    )
-    model_params: dict[str, Any] | None = Field(
-        default=None, description="Model-specific parameters"
-    )
-    performance_config: Optional["PerformanceConfig"] = Field(
-        default=None,
-        description=("Sensor alignment and runtime settings"),
-    )
-    static_baseline_config: Optional["StaticBaselineConfig"] = Field(
-        default=None,
-        description="Static baseline conformal detector settings",
-    )
-    adaptive_stream_config: AdaptiveStreamConfig | None = Field(
-        default=None,
-        description="Adaptive score-then-learn detector settings",
-    )
-    requirements: list[str] | None = Field(
-        None, description="List of pip packages to install"
-    )
-    environment_variables: dict[str, str] | None = Field(
-        None, description="Additional environment variables"
-    )
-
-    @field_validator("mqtt_topics")
-    @classmethod
-    def validate_mqtt_topics(cls, value: list[str]) -> list[str]:
-        return normalize_static_monitoring_topics(value)
+class MonitoringServiceConfig(RadarStartConfig):
+    service_type: Literal["radar"] = Field(default="radar", exclude=True)
+    mqtt_config: None = Field(default=None, exclude=True)
 
 
 class ServiceResponse(BaseModel):
@@ -111,54 +60,6 @@ class ServiceResponse(BaseModel):
     container_name: str
     status: str
     mqtt_topics: list[str]
-
-
-MonitoringServiceConfig.model_rebuild()
-
-
-def _resolve_effective_start_config(
-    config: MonitoringServiceConfig,
-) -> dict[str, Any]:
-    """Resolve and normalize the selected monitoring strategy."""
-    performance_config = config.performance_config
-    resolved = resolve_monitoring_strategy_config(
-        strategy=config.strategy,
-        model_type=config.model_type,
-        model_params=config.model_params,
-        static_baseline_config=config.static_baseline_config,
-        adaptive_stream_config=config.adaptive_stream_config,
-    )
-    if resolved.adaptive_stream_config is not None:
-        feature_keys = derive_monitoring_sensor_keys(
-            config.mqtt_topics,
-            sensor_key_strategy=(
-                performance_config.sensor_key_strategy
-                if performance_config
-                else "full_hierarchy"
-            ),
-        )
-        resolved.adaptive_stream_config.validate_feature_schema(feature_keys)
-
-    return {
-        "strategy": resolved.strategy,
-        "model_type": resolved.model_type,
-        "model_params": resolved.model_params,
-        "performance_config": (
-            performance_config.model_dump(exclude_none=True)
-            if performance_config
-            else None
-        ),
-        "static_baseline_config": (
-            resolved.static_baseline_config.model_dump(exclude_none=True)
-            if resolved.static_baseline_config
-            else None
-        ),
-        "adaptive_stream_config": (
-            resolved.adaptive_stream_config.model_dump(exclude_none=True)
-            if resolved.adaptive_stream_config
-            else None
-        ),
-    }
 
 
 @router.get("/all", response_model=list[dict[str, Any]])
@@ -266,26 +167,7 @@ async def start_monitoring_service(
     Starts a new monitoring service container via TACTIC orchestration.
     """
     try:
-        if config.service_type == "radar":
-            effective_config = _resolve_effective_start_config(config)
-            response = await tactic.start_radar_service(
-                container_name=config.container_name,
-                mqtt_topics=config.mqtt_topics,
-                strategy=effective_config["strategy"],
-                model_type=effective_config["model_type"],
-                model_params=effective_config["model_params"],
-                mqtt_config=None,
-                performance_config=effective_config["performance_config"],
-                static_baseline_config=effective_config["static_baseline_config"],
-                adaptive_stream_config=effective_config["adaptive_stream_config"],
-            )
-        else:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Unsupported service type: {config.service_type}",
-            )
-
-        return response
+        return await tactic.start_radar_service(config)
     except TacticError as e:
         raise_tactic_http_error(e)
     except HTTPException:

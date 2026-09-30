@@ -31,6 +31,7 @@ async def test_sensor_claim_rejects_overlapping_wildcard():
         _query_result(
             [
                 SimpleNamespace(
+                    stop_requested_at=None,
                     container_name="radar-existing",
                     mqtt_topic=["device/evCharger/charger-1/#"],
                 )
@@ -55,6 +56,7 @@ async def test_sensor_claim_preserves_literal_namespace_boundaries():
     session.execute.return_value = _query_result(
         [
             SimpleNamespace(
+                stop_requested_at=None,
                 container_name="radar-existing",
                 mqtt_topic=["device/evCharger/charger-1/#"],
             )
@@ -77,6 +79,7 @@ async def test_sensor_claim_ignores_current_container_for_idempotent_start():
     session.execute.return_value = _query_result(
         [
             SimpleNamespace(
+                stop_requested_at=None,
                 container_name="radar-same",
                 mqtt_topic=["device/evCharger/+/#"],
             )
@@ -95,6 +98,7 @@ async def test_sensor_claim_releases_missing_workload_before_overlap_check():
     session = AsyncMock()
     session.bind = SimpleNamespace(dialect=SimpleNamespace(name="sqlite"))
     stale_service = SimpleNamespace(
+        stop_requested_at=None,
         container_name="radar-dead",
         container_id="missing-container",
         mqtt_topic=["device/evCharger/charger-1/L1"],
@@ -114,3 +118,33 @@ async def test_sensor_claim_releases_missing_workload_before_overlap_check():
 
     assert stale_service.status is False
     session.flush.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("docker_status", ["error", "unknown", "no_tasks", "pending"])
+async def test_unverified_or_starting_workload_keeps_sensor_claim(docker_status):
+    session = AsyncMock()
+    session.bind = SimpleNamespace(dialect=SimpleNamespace(name="sqlite"))
+    monitor = SimpleNamespace(
+        stop_requested_at=None,
+        status=True, container_name="existing", container_id="ctr-1",
+        mqtt_topic=["device/evCharger/charger-1/L1"],
+    )
+    session.execute.return_value = _query_result([monitor])
+    service = _service_with_session(session)
+    service.workloads.get_status_and_labels.return_value = (docker_status, {})
+
+    with pytest.raises(ValueError, match="one monitoring service"):
+        await service._assert_topics_available(
+            mqtt_topics=monitor.mqtt_topic, container_name="replacement",
+        )
+    assert monitor.status is True
+    session.flush.assert_not_awaited()
+
+    with pytest.raises(ValueError, match="not confirmed stopped"):
+        await service._resolve_existing_service_request(
+            existing_service=monitor, container_name="existing",
+            mqtt_topics=monitor.mqtt_topic, strategy="static_baseline",
+            model_type="pyod_iforest", config_fingerprint="fingerprint",
+        )
+    session.delete.assert_not_awaited()

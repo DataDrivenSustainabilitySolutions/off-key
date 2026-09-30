@@ -62,10 +62,7 @@ def _static_config(
 ) -> AnomalyDetectionConfig:
     model_params = model_params or {"n_estimators": 100}
     return AnomalyDetectionConfig(
-        strategy="static_baseline",
-        model_type=model_type,
-        model_params=model_params,
-        static_baseline_config=StaticBaselineConfig(
+        monitoring=StaticBaselineConfig(
             model_type=model_type,
             model_params=model_params,
             training_window_size=training_window_size,
@@ -520,10 +517,7 @@ def test_static_conformal_rejects_incomplete_ready_checkpoint(
 
 def test_static_conformal_uses_static_config_model_params(monkeypatch):
     config = AnomalyDetectionConfig(
-        strategy="static_baseline",
-        model_type="pyod_iforest",
-        model_params={},
-        static_baseline_config=StaticBaselineConfig(
+        monitoring=StaticBaselineConfig(
             model_type="pyod_knn",
             model_params={"n_neighbors": 7, "contamination": 0.08},
             training_window_size=20,

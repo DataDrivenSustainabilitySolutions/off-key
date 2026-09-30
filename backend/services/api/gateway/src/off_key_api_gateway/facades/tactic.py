@@ -13,7 +13,7 @@ import aiohttp
 from off_key_core.config.logs import logger
 from off_key_core.config.service_auth import get_service_auth_settings
 from off_key_core.config.services import get_service_endpoints_settings
-from off_key_core.schemas.radar import MonitoringStrategy
+from off_key_core.schemas.radar import RadarStartConfig
 
 
 class TacticError(Exception):
@@ -171,56 +171,12 @@ class Tactic:
             except json.JSONDecodeError:
                 return text
 
-    async def start_radar_service(
-        self,
-        container_name: str,
-        mqtt_topics: list[str],
-        strategy: MonitoringStrategy = "static_baseline",
-        model_type: str = "pyod_iforest",
-        model_params: dict[str, Any] | None = None,
-        mqtt_config: dict[str, Any] | None = None,
-        performance_config: dict[str, Any] | None = None,
-        static_baseline_config: dict[str, Any] | None = None,
-        adaptive_stream_config: dict[str, Any] | None = None,
-    ) -> dict[str, Any]:
-        """
-        Start a new RADAR service via TACTIC.
-
-        Args:
-            container_name: Name for the Docker container
-            mqtt_topics: List of MQTT topics to monitor
-            strategy: Monitoring strategy to run inside RADAR
-            model_type: ML model type
-            model_params: Model-specific parameters
-            mqtt_config: MQTT configuration
-            performance_config: Performance settings
-            static_baseline_config: Static baseline detector settings
-
-        Returns:
-            Dict: Service creation response
-        """
-        payload = {
-            "container_name": container_name,
-            "mqtt_topics": mqtt_topics,
-            "strategy": strategy,
-            "model_type": model_type,
-        }
-
-        if model_params:
-            payload["model_params"] = model_params
-        if mqtt_config:
-            payload["mqtt_config"] = mqtt_config
-        if performance_config:
-            payload["performance_config"] = performance_config
-        if static_baseline_config:
-            payload["static_baseline_config"] = static_baseline_config
-        if adaptive_stream_config:
-            payload["adaptive_stream_config"] = adaptive_stream_config
-
+    async def start_radar_service(self, config: RadarStartConfig) -> dict[str, Any]:
+        """Forward the canonical launch configuration to TACTIC."""
         return await self._make_request(
             method="POST",
             endpoint="/api/v1/orchestration/radar/services/start/",
-            json_data=payload,
+            json_data=config.model_dump(mode="json"),
         )
 
     async def stop_radar_service(

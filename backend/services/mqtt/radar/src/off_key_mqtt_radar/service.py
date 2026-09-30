@@ -155,7 +155,7 @@ class RadarService:
                 extra={
                     **self._log_context,
                     "subscribed_topics": self.config.subscription_topics,
-                    "model_type": self.config.model_type,
+                    "model_type": self.config.monitoring.model_type,
                     "db_enabled": self.config.db_write_enabled,
                 },
             )
@@ -241,41 +241,10 @@ class RadarService:
         """
         logger.info("Setting up anomaly detection")
 
-        strategy = getattr(self.config, "strategy", "static_baseline")
-        static_baseline_config = (
-            getattr(self.config, "static_baseline_config", None)
-            or StaticBaselineConfig()
+        anomaly_config = AnomalyDetectionConfig.model_validate(
+            self.config.model_dump(include=set(AnomalyDetectionConfig.model_fields))
         )
-        adaptive_stream_config = getattr(self.config, "adaptive_stream_config", None)
-        if strategy == "adaptive_stream" and adaptive_stream_config is None:
-            adaptive_stream_config = AdaptiveStreamConfig()
-        if strategy not in {"static_baseline", "adaptive_stream"}:
-            raise ValueError(f"Unsupported monitoring strategy: {strategy}")
-
-        # Create anomaly detection config
-        anomaly_config = AnomalyDetectionConfig(
-            strategy=strategy,
-            model_type=(
-                adaptive_stream_config.model_type
-                if strategy == "adaptive_stream" and adaptive_stream_config
-                else static_baseline_config.model_type
-            ),
-            model_params=(
-                adaptive_stream_config.model_params
-                if strategy == "adaptive_stream" and adaptive_stream_config
-                else static_baseline_config.model_params
-            ),
-            static_baseline_config=static_baseline_config,
-            adaptive_stream_config=adaptive_stream_config,
-            subscription_topics=getattr(self.config, "subscription_topics", []),
-            sensor_key_strategy=getattr(
-                self.config, "sensor_key_strategy", "full_hierarchy"
-            ),
-            batch_size=getattr(self.config, "batch_size", 100),
-            batch_timeout=getattr(self.config, "batch_timeout", 1.0),
-            memory_limit_mb=getattr(self.config, "memory_limit_mb", 1000),
-            checkpoint_interval=getattr(self.config, "checkpoint_interval", 10000),
-        )
+        strategy = anomaly_config.monitoring.strategy
 
         service_cls = (
             AdaptiveStreamDetectionService
@@ -321,7 +290,7 @@ class RadarService:
 
         logger.info(
             "Anomaly detection setup complete with model: "
-            f"{anomaly_config.model_type} strategy={anomaly_config.strategy}"
+            f"{anomaly_config.monitoring.model_type} strategy={anomaly_config.monitoring.strategy}"
         )
 
         if self.required_sensors and self.state_cache:

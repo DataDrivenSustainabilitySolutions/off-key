@@ -1,14 +1,8 @@
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from off_key_core.schemas.radar import (
-    AdaptiveStreamConfig,
-    MonitoringStrategy,
-    PerformanceConfig,
-    StaticBaselineConfig,
-)
-from off_key_core.utils.mqtt_topics import normalize_static_monitoring_topics
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from off_key_core.schemas.radar import RadarStartConfig as RadarConfig
+from pydantic import BaseModel
 
 from ...models.registry import ModelRegistryService
 from ...provider import (
@@ -20,52 +14,6 @@ from ...services.orchestration.radar import (
 )
 
 router = APIRouter()
-
-
-class RadarConfig(BaseModel):
-    """Configuration for creating a RADAR anomaly detection service."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    container_name: str = Field(..., description="Name for the Docker container")
-    mqtt_topics: list[str] = Field(..., description="List of MQTT topics to monitor")
-
-    # Model Configuration
-    strategy: MonitoringStrategy = Field(
-        default="static_baseline",
-        description="Static baseline monitoring strategy.",
-    )
-    model_type: str | None = Field(
-        default=None,
-        description="Compatibility mirror of the strategy-specific model type.",
-    )
-    model_params: dict[str, Any] | None = Field(
-        default=None,
-        description="Model-specific hyperparameters. Use GET /api/v1/models/ to see"
-        " available parameters for each model.",
-    )
-    # MQTT Configuration
-    mqtt_config: dict[str, Any] | None = Field(
-        default=None, description="MQTT connection settings"
-    )
-
-    # Performance Configuration
-    performance_config: PerformanceConfig | None = Field(
-        default=None, description="Performance and resource settings"
-    )
-    static_baseline_config: StaticBaselineConfig | None = Field(
-        default=None,
-        description="Static baseline conformal detector settings.",
-    )
-    adaptive_stream_config: AdaptiveStreamConfig | None = Field(
-        default=None,
-        description="Adaptive score-then-learn detector settings.",
-    )
-
-    @field_validator("mqtt_topics")
-    @classmethod
-    def validate_mqtt_topics(cls, value: list[str]) -> list[str]:
-        return normalize_static_monitoring_topics(value)
 
 
 class RadarServiceResponse(BaseModel):
@@ -117,29 +65,7 @@ async def start_radar_service(
     - Store results in the database
     """
     try:
-        radar_service = await service.create_radar_service(
-            container_name=config.container_name,
-            mqtt_topics=config.mqtt_topics,
-            strategy=config.strategy,
-            model_type=config.model_type,
-            model_params=config.model_params,
-            mqtt_config=config.mqtt_config,
-            performance_config=(
-                config.performance_config.model_dump(exclude_none=True)
-                if config.performance_config
-                else None
-            ),
-            static_baseline_config=(
-                config.static_baseline_config.model_dump(exclude_none=True)
-                if config.static_baseline_config
-                else None
-            ),
-            adaptive_stream_config=(
-                config.adaptive_stream_config.model_dump(exclude_none=True)
-                if config.adaptive_stream_config
-                else None
-            ),
-        )
+        radar_service = await service.create_radar_service(config)
 
         return {
             "service_id": radar_service.id,

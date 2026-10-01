@@ -3,7 +3,7 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Header, HTTPException
-from off_key_core.schemas.collection import CatalogChange
+from off_key_core.schemas.collection import CatalogChange, SourceProbeRequest
 from off_key_core.schemas.storage import StorageStatus
 
 from ...facades.tactic import TacticError, tactic
@@ -42,6 +42,20 @@ async def preview_catalog(
 ):
     return await collection_request(
         "POST", authorization, "/preview", change.model_dump(mode="json")
+    )
+
+
+@router.post("/{source_id}/probe")
+async def probe_broker(
+    source_id: UUID,
+    request: SourceProbeRequest,
+    authorization: str | None = Header(default=None),
+):
+    return await collection_request(
+        "POST",
+        authorization,
+        f"/sources/{source_id}/probe",
+        request.model_dump(mode="json"),
     )
 
 

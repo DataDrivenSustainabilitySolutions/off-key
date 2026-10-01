@@ -1,5 +1,6 @@
 """Authenticated catalog editing and collection status."""
 
+import asyncio
 from datetime import UTC, datetime
 from importlib.resources import files
 from uuid import UUID
@@ -19,6 +20,9 @@ from off_key_core.schemas.collection import (
     CatalogChange,
     CatalogPreview,
     CatalogSnapshot,
+    SensorActivity,
+    SourceProbeRequest,
+    SourceProbeResult,
 )
 from off_key_core.schemas.storage import StorageStatus
 from off_key_core.utils.enum import RoleEnum
@@ -26,12 +30,34 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...config.collection import get_ambibox_settings
-from ...domain import DomainError
+from ...domain import DomainError, InfrastructureError
 from ...services.collection import CollectionService
+from ...services.source_probe import PROBE_SECONDS, probe_source
 from ..collection_auth import current_member, require_admin
 from .data_services import _raise_http_from_domain
 
 router = APIRouter(prefix="/collection", tags=["collection"])
+
+
+async def read_sensor_activity(
+    session: AsyncSession, revision: int, collection: dict
+) -> dict[str, dict[str, SensorActivity]]:
+    if collection.get("revision") != revision or collection.get("status") != "applied":
+        return {}
+    rows = await session.execute(
+        select(
+            CollectionState.charger_id,
+            CollectionState.sensor_key,
+            CollectionState.received_at,
+            CollectionState.is_snapshot,
+        )
+    )
+    activity = {}
+    for charger_id, sensor_key, received_at, is_snapshot in rows:
+        activity.setdefault(charger_id, {})[sensor_key] = SensorActivity(
+            received_at=received_at, is_snapshot=is_snapshot
+        )
+    return activity
 
 
 @router.get("")
@@ -40,6 +66,9 @@ async def get_catalog(
     session: AsyncSession = Depends(get_db_async),
 ):
     snapshot = await read_collection_configuration(session)
+    snapshot.sensor_activity = await read_sensor_activity(
+        session, snapshot.revision, snapshot.collection
+    )
     if not get_ambibox_settings().AMBIBOX_INGRESS_ENABLED:
         snapshot.ingress = {
             "status": "disabled",
@@ -58,6 +87,54 @@ async def preview_catalog(
         return await CollectionService(session).preview(change)
     except DomainError as exc:
         _raise_http_from_domain(exc)
+
+
+@router.post("/sources/{source_id}/probe", response_model=SourceProbeResult)
+async def probe_broker(
+    source_id: UUID,
+    request: SourceProbeRequest,
+    user: User = Depends(require_admin),
+    session: AsyncSession = Depends(get_db_async),
+):
+    snapshot = await read_collection_configuration(session)
+    if request.expected_revision != snapshot.revision:
+        raise HTTPException(409, "The catalog changed. Reload before listening.")
+    source = next(
+        (source for source in snapshot.catalog.sources if source.id == source_id), None
+    )
+    if source is None:
+        raise HTTPException(404, "Broker not found in the saved catalog")
+    settings = get_ambibox_settings()
+    if not settings.AMBIBOX_INGRESS_ENABLED:
+        raise HTTPException(503, "Broker access is disabled by the operator")
+    if not settings.allows_host(source.host):
+        raise HTTPException(403, "This broker is not allowed by the operator")
+    try:
+        checked_at = datetime.fromisoformat(snapshot.ingress.get("checked_at", ""))
+        fresh = 0 <= (datetime.now(UTC) - checked_at).total_seconds() <= 15
+    except (ValueError, TypeError):
+        fresh = False
+    if (
+        source.forward_port is None
+        or snapshot.ingress.get("revision") != snapshot.revision
+        or snapshot.ingress.get("status") != "applied"
+        or not fresh
+    ):
+        raise HTTPException(409, "Wait for broker setup to finish before listening.")
+    try:
+        activity = await asyncio.to_thread(probe_source, source, settings)
+    except InfrastructureError as exc:
+        raise HTTPException(502, str(exc)) from exc
+    revision = await session.scalar(
+        select(CollectionConfiguration.revision).where(CollectionConfiguration.id == 1)
+    )
+    if revision != snapshot.revision:
+        raise HTTPException(
+            409, "The catalog changed while listening. Reload and retry."
+        )
+    return SourceProbeResult(
+        revision=revision, window_seconds=PROBE_SECONDS, sensor_activity=activity
+    )
 
 
 @router.get("/status")
@@ -82,6 +159,9 @@ async def get_status(
             "ingress": {},
             "collection": {},
         }
+    )
+    result["sensor_activity"] = await read_sensor_activity(
+        session, result["revision"], result["collection"]
     )
     if not get_ambibox_settings().AMBIBOX_INGRESS_ENABLED:
         result["ingress"] = {"status": "disabled"}

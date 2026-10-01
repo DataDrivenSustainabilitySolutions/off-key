@@ -7,12 +7,14 @@ import { NavigationBar } from "@/components/NavigationBar";
 import { Button } from "@/components/ui/button";
 import { apiUtils } from "@/lib/api-client";
 import { catalogRemovals } from "@/lib/catalog-changes";
-import { validPolicy } from "@/lib/collection-selection";
+import { setMeasurementPolicies, validPolicy } from "@/lib/collection-selection";
+import { diagnosticsFresh } from "@/lib/collection-diagnostics";
 import { getErrorMessage } from "@/lib/errors";
 import type {
   Catalog,
   CatalogPreview,
   CatalogSnapshot,
+  SourceProbeResult,
 } from "@/types/collection";
 import { effectivePolicy, runtimeLabel } from "@/types/collection";
 import { CatalogPanel } from "./sources/CatalogPanel";
@@ -25,8 +27,10 @@ export default function DataSources() {
   const [baseRevision, setBaseRevision] = useState(0);
   const [busy, setBusy] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [listening, setListening] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [statusError, setStatusError] = useState("");
+  const [now, setNow] = useState(Date.now);
   const initialized = useRef(false);
   const changed =
     !!draft &&
@@ -60,6 +64,7 @@ export default function DataSources() {
           first ? endpoint : `${endpoint}/status`,
         );
         if (!active) return;
+        setNow(Date.now());
         setStatusError("");
         setSnapshot((current) => {
           if (current && current.revision > data.revision) return current;
@@ -70,6 +75,7 @@ export default function DataSources() {
               revision: data.revision,
               ingress: data.ingress,
               collection: data.collection,
+              sensor_activity: data.sensor_activity ?? {},
             }
           );
         });
@@ -83,7 +89,10 @@ export default function DataSources() {
       }
     };
     void refresh();
-    const timer = setInterval(() => void refresh(), 3000);
+    const timer = setInterval(() => {
+      setNow(Date.now());
+      void refresh();
+    }, 3000);
     return () => {
       active = false;
       clearInterval(timer);
@@ -165,55 +174,106 @@ export default function DataSources() {
               ? "Changes applied"
               : "Saved · Applying changes…";
 
+  const saveCatalog = async (catalog: Catalog) => {
+    const preview = await apiUtils.post<CatalogPreview>(
+      `${endpoint}/preview`,
+      {
+        expected_revision: baseRevision,
+        catalog,
+      },
+    );
+    const removals = catalogRemovals(snapshot.catalog, preview.catalog);
+    const monitors = preview.affected_monitors;
+    const consequences = [
+      ...(removals.length
+        ? [`Remove from the catalog:\n${removals.join("\n")}`]
+        : []),
+      ...(monitors.length
+        ? [
+            `Stop these running monitors:\n${monitors.map((monitor) => monitor.name).join("\n")}\nThey must be restarted with fresh calibration.`,
+          ]
+        : []),
+    ];
+    if (
+      consequences.length &&
+      !window.confirm(`${consequences.join("\n\n")}\n\nSave these changes?`)
+    )
+      return false;
+    const result = await apiUtils.put<CatalogSnapshot>(endpoint, {
+      expected_revision: preview.revision,
+      catalog: preview.catalog,
+      pause_affected_monitors: monitors.length > 0,
+    });
+    setNow(Date.now());
+    setSnapshot((current) => ({
+      ...result,
+      can_edit: snapshot.can_edit,
+      ...(current && current.revision > result.revision
+        ? {
+            revision: current.revision,
+            ingress: current.ingress,
+            collection: current.collection,
+            sensor_activity: current.sensor_activity,
+          }
+        : {}),
+    }));
+    setDraft(result.catalog);
+    setBaseRevision(result.revision);
+    return true;
+  };
   const save = async () => {
     if (invalid.length) return;
     setSaving(true);
     await task(async () => {
-      const preview = await apiUtils.post<CatalogPreview>(
-        `${endpoint}/preview`,
-        {
-          expected_revision: baseRevision,
-          catalog: draft,
-        },
-      );
-      const removals = catalogRemovals(snapshot.catalog, preview.catalog);
-      const monitors = preview.affected_monitors;
-      const consequences = [
-        ...(removals.length
-          ? [`Remove from the catalog:\n${removals.join("\n")}`]
-          : []),
-        ...(monitors.length
-          ? [
-              `Stop these running monitors:\n${monitors.map((monitor) => monitor.name).join("\n")}\nThey must be restarted with fresh calibration.`,
-            ]
-          : []),
-      ];
-      if (
-        consequences.length &&
-        !window.confirm(`${consequences.join("\n\n")}\n\nSave these changes?`)
-      )
-        return;
-      const result = await apiUtils.put<CatalogSnapshot>(endpoint, {
-        expected_revision: preview.revision,
-        catalog: preview.catalog,
-        pause_affected_monitors: monitors.length > 0,
-      });
-      setSnapshot((current) => ({
-        ...result,
-        can_edit: snapshot.can_edit,
-        ...(current && current.revision > result.revision
-          ? {
-              revision: current.revision,
-              ingress: current.ingress,
-              collection: current.collection,
-            }
-          : {}),
-      }));
-      setDraft(result.catalog);
-      setBaseRevision(result.revision);
-      toast.success("Changes saved");
+      if (await saveCatalog(draft)) toast.success("Changes saved");
     });
     setSaving(false);
+  };
+  const listen = async (sourceId: string) => {
+    if (changed || conflict || busy || !snapshot.can_edit) return;
+    setListening(sourceId);
+    await task(async () => {
+      const result = await apiUtils.post<SourceProbeResult>(
+        `${endpoint}/${sourceId}/probe`,
+        { expected_revision: baseRevision },
+        { timeout: 35000 },
+      );
+      if (result.revision !== baseRevision)
+        throw new Error("The catalog changed. Reload before listening.");
+      const source = draft.sources.find((item) => item.id === sourceId)!;
+      const live = source.chargers.flatMap((charger) =>
+        charger.sensors
+          .filter((sensor) => {
+            const receipt = result.sensor_activity[charger.id]?.[sensor.key];
+            return receipt && !receipt.is_snapshot;
+          })
+          .map((sensor) => ({ charger, sensor })),
+      );
+      const selected = new Set(
+        live
+          .filter(({ charger, sensor }) =>
+            effectivePolicy(draft, charger, sensor).mode === "off",
+          )
+          .map(({ charger, sensor }) => `${charger.id}:${sensor.key}`),
+      );
+      if (!selected.size) {
+        toast.success(
+          live.length
+            ? "All sensors sending live data are already enabled"
+            : `No live readings in ${result.window_seconds} seconds. Try again when chargers are sending data.`,
+        );
+        return;
+      }
+      const policy =
+        draft.default_policy.mode === "off"
+          ? { mode: "sample" as const, interval_seconds: 10 }
+          : draft.default_policy;
+      if (await saveCatalog(setMeasurementPolicies(draft, selected, policy)))
+        toast.success(
+          `Listening to ${selected.size} more ${selected.size === 1 ? "measurement" : "measurements"}`,
+        );
+    });
+    setListening(null);
   };
 
   return (
@@ -267,7 +327,23 @@ export default function DataSources() {
         <CatalogPanel
           draft={draft}
           snapshot={snapshot}
+          now={now}
+          activityAvailable={
+            !statusError && !conflict &&
+            [snapshot.collection, snapshot.ingress].every(
+              (state) => state.revision === snapshot.revision &&
+                state.status === "applied" && diagnosticsFresh(state, now),
+            )
+          }
           busy={busy || conflict}
+          listen={listen}
+          listening={listening}
+          listenDisabled={
+            changed || !!statusError ||
+            snapshot.ingress.revision !== snapshot.revision ||
+            snapshot.ingress.status !== "applied" ||
+            !diagnosticsFresh(snapshot.ingress, now)
+          }
           change={change}
           task={task}
           importCatalog={importCatalog}

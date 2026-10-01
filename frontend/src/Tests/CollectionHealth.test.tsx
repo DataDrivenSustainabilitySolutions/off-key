@@ -18,6 +18,7 @@ const metrics = (): CollectionDiagnostics => ({
 });
 const snapshot = (): CatalogSnapshot => ({
   revision: 1, can_edit: true, updated_at: null, updated_by: null,
+  sensor_activity: {},
   catalog: { schema_version: 1, provider: "ambibox", default_policy: { mode: "off", interval_seconds: 10 }, sources: [] },
   collection: { revision: 1, status: "applied", selected_sensors: 1, checked_at: new Date().toISOString(), diagnostics: metrics() },
   ingress: { revision: 1, status: "applied", checked_at: new Date().toISOString(), sources: { broker: { status: "connected" } } },

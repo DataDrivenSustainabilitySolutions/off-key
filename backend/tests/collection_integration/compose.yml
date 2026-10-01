@@ -19,6 +19,8 @@ services:
     command: ['-api', 'offkey:test-gost-password@:18080']
     ports:
       - '127.0.0.1:28080:18080'
+      - '127.0.0.1:20000:20000'
+      - '127.0.0.1:20001:20001'
   socks:
     image: gogost/gost:3.3.0
     command: ['-L', 'socks5://:1055']

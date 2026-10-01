@@ -61,6 +61,11 @@ export type SensorActivity = {
   received_at: string;
   is_snapshot: boolean;
 };
+export type SourceProbeResult = {
+  revision: number;
+  window_seconds: number;
+  sensor_activity: Record<string, Record<string, SensorActivity>>;
+};
 export type CatalogSnapshot = {
   revision: number;
   catalog: Catalog;

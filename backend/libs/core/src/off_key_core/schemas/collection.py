@@ -1,5 +1,7 @@
 """The AmbiBox catalog and the collection policy shared by API and ingestion."""
 
+import json
+import math
 import re
 from dataclasses import dataclass
 from datetime import datetime
@@ -41,6 +43,28 @@ class SensorDefinition(CatalogModel):
         if not re.fullmatch(r"[A-Za-z0-9_-]+(?:/[A-Za-z0-9_-]+)*", value):
             raise ValueError("Use a concrete AmbiBox topic without wildcards")
         return value
+
+
+def parse_value(value, kind: str) -> float | bool | str:
+    if isinstance(value, str):
+        if len(value.encode()) > 4096:
+            raise ValueError("Oversized value")
+        # Plain text/identifiers must preserve numeric-looking strings, including
+        # leading zeros. Only decode them when the producer used a JSON string.
+        if kind in {"number", "boolean"} or value.startswith('"'):
+            value = json.loads(value)
+    if kind == "number":
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise ValueError("Expected a number")
+        value = float(value)
+        if not math.isfinite(value):
+            raise ValueError("Non-finite value")
+    elif kind == "boolean":
+        if not isinstance(value, bool):
+            raise ValueError("Expected a boolean")
+    elif not isinstance(value, str) or len(value.encode()) > 4096 or "\x00" in value:
+        raise ValueError("Expected bounded UTF-8 text without NUL")
+    return value
 
 
 class CatalogCharger(CatalogModel):
@@ -190,6 +214,16 @@ class CatalogChange(CatalogModel):
 class SensorActivity(CatalogModel):
     received_at: datetime
     is_snapshot: bool
+
+
+class SourceProbeRequest(CatalogModel):
+    expected_revision: int = Field(ge=0)
+
+
+class SourceProbeResult(CatalogModel):
+    revision: int
+    window_seconds: int
+    sensor_activity: dict[str, dict[str, SensorActivity]]
 
 
 class CatalogSnapshot(CatalogModel):

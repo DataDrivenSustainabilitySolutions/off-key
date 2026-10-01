@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ChevronDown, ChevronRight, MoreHorizontal } from "lucide-react";
+import { ChevronDown, ChevronRight, MoreHorizontal, Radio } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -37,6 +37,9 @@ export function CatalogEditor({
   activityAvailable,
   now,
   disabled,
+  listen,
+  listening,
+  listenDisabled,
   onChange,
   filter,
   showAll,
@@ -48,6 +51,9 @@ export function CatalogEditor({
   activityAvailable: boolean;
   now: number;
   disabled: boolean;
+  listen: (sourceId: string) => Promise<void>;
+  listening: string | null;
+  listenDisabled: boolean;
   onChange: (catalog: Catalog) => void;
   filter: CatalogFilter;
   showAll: () => void;
@@ -170,6 +176,21 @@ export function CatalogEditor({
                 {source.chargers.length}{" "}
                 {source.chargers.length === 1 ? "charger" : "chargers"}
               </Button>
+              {snapshot.can_edit && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  aria-label={`Listen to ${source.label}`}
+                  aria-busy={listening === source.id}
+                  disabled={disabled || listenDisabled || !saved?.forward_port ||
+                    !source.chargers.some((charger) => charger.sensors.length)}
+                  title="Check for live readings for 20 seconds and enable the sensors that send them. Existing rates are kept. Save or discard draft changes first."
+                  onClick={() => void listen(source.id)}
+                >
+                  <Radio aria-hidden="true" />
+                  {listening === source.id ? "Checking live data…" : "Listen"}
+                </Button>
+              )}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button

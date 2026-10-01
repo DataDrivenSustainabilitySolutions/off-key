@@ -1052,6 +1052,21 @@ describe("sensor activity evidence", () => {
     expect(api.put).not.toHaveBeenCalled();
   });
 
+  it("recognizes a live receipt arriving after the request started", async () => {
+    const initial = Date.now();
+    const clock = vi.spyOn(Date, "now").mockReturnValue(initial);
+    const data = activitySnapshot();
+    let resolve!: (value: CatalogSnapshot) => void;
+    api.get.mockImplementation(() => new Promise((done) => { resolve = done; }));
+    show();
+    clock.mockReturnValue(initial + 5000);
+    data.sensor_activity["charger-0"]!.temperature!.received_at =
+      new Date(initial + 5000).toISOString();
+    await act(async () => resolve(data));
+    const yard = await openCharger();
+    expect(within(yard.getByRole("group", { name: "Measurement Temperature" })).getByText("Recent data")).toBeTruthy();
+  });
+
   it("expires live evidence while status requests are still pending", async () => {
     const intervals = vi.spyOn(globalThis, "setInterval");
     const data = activitySnapshot();
@@ -1091,4 +1106,130 @@ describe("sensor activity evidence", () => {
       expect(api.put).not.toHaveBeenCalled();
     },
   );
+});
+
+describe("listen to live sensors", () => {
+  const ready = (canEdit = true) => {
+    const data = snapshot(inventory(), canEdit);
+    const state = {
+      revision: 1,
+      status: "applied",
+      checked_at: new Date().toISOString(),
+    };
+    data.collection = state;
+    data.ingress = { ...state, sources: { "broker-1": { status: "paused" } } };
+    return data;
+  };
+  const receipt = (is_snapshot = false) => ({
+    received_at: new Date().toISOString(), is_snapshot,
+  });
+  const probe = (sensor_activity: CatalogSnapshot["sensor_activity"], monitors: { id: string; name: string }[] = []) => {
+    const preview = api.post.getMockImplementation()!;
+    api.post.mockImplementation(async (url, body, options) =>
+      url.endsWith("/probe")
+        ? { revision: 1, window_seconds: 20, sensor_activity }
+        : { ...(await preview(url, body, options)), affected_monitors: monitors },
+    );
+  };
+
+  it("enables observed paused sensors in one broker and preserves existing rates", async () => {
+    const data = ready();
+    const yard = data.catalog.sources[0]!.chargers[0]!;
+    yard.sensors[0]!.policy = { mode: "sample", interval_seconds: 75 };
+    yard.sensors[1]!.policy = { mode: "original", interval_seconds: 10 };
+    mockSnapshot(data);
+    probe({
+      "charger-0": { temperature: receipt(), current: receipt(), connected: receipt() },
+      "charger-1": { temperature: receipt(), current: receipt(true) },
+      unrelated: { connected: receipt() },
+    });
+    show();
+    fireEvent.click(await screen.findByRole("button", { name: "Listen to Main broker" }));
+    await waitFor(() => expect(api.put).toHaveBeenCalledTimes(1));
+    expect(api.post.mock.calls[0]).toEqual([
+      "/v1/sources/broker-1/probe", { expected_revision: 1 }, { timeout: 35000 },
+    ]);
+    expect(api.post.mock.calls[1]![0]).toBe("/v1/sources/preview");
+    const saved = api.put.mock.calls[0]![1].catalog as Catalog;
+    const chargers = saved.sources[0]!.chargers;
+    expect(chargers[0]!.sensors[0]!.policy).toEqual(yard.sensors[0]!.policy);
+    expect(chargers[0]!.sensors[1]!.policy).toEqual(yard.sensors[1]!.policy);
+    expect(effectivePolicy(saved, chargers[0]!, chargers[0]!.sensors[2]!)).toEqual(saved.default_policy);
+    expect(effectivePolicy(saved, chargers[1]!, chargers[1]!.sensors[0]!)).toEqual(saved.default_policy);
+    expect(effectivePolicy(saved, chargers[1]!, chargers[1]!.sensors[1]!).mode).toBe("off");
+    expect(saved.sources[1]).toEqual(data.catalog.sources[1]);
+    expect(api.put.mock.calls[0]![1].pause_affected_monitors).toBe(false);
+    expect(toast.success).toHaveBeenCalledWith("Listening to 2 more measurements");
+    expect(screen.queryByText("Unsaved changes")).toBeNull();
+  });
+
+  it("uses a ten-second rate when the catalog default is Off", async () => {
+    const data = ready();
+    data.catalog.default_policy.mode = "off";
+    mockSnapshot(data);
+    probe({ "charger-0": { temperature: receipt() } });
+    show();
+    fireEvent.click(await screen.findByRole("button", { name: "Listen to Main broker" }));
+    await waitFor(() => expect(api.put).toHaveBeenCalledTimes(1));
+    const saved = api.put.mock.calls[0]![1].catalog as Catalog;
+    const charger = saved.sources[0]!.chargers[0]!;
+    expect(charger.sensors[0]!.policy).toEqual({ mode: "sample", interval_seconds: 10 });
+    expect(saved.default_policy.mode).toBe("off");
+  });
+
+  it.each<CatalogSnapshot["sensor_activity"]>([{}, { "charger-0": { temperature: receipt(true) } }])(
+    "does not save when the broker provides no valid live readings", async (activity) => {
+      mockSnapshot(ready());
+      probe(activity);
+      show();
+      fireEvent.click(await screen.findByRole("button", { name: "Listen to Main broker" }));
+      await waitFor(() => expect(toast.success).toHaveBeenCalledWith(expect.stringContaining("No live readings in 20 seconds")));
+      expect(api.put).not.toHaveBeenCalled();
+      expect(api.post).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it("keeps the normal monitor confirmation and leaves settings unchanged if cancelled", async () => {
+    mockSnapshot(ready());
+    probe({ "charger-0": { temperature: receipt() } }, [{ id: "monitor-1", name: "Yard temperature" }]);
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    show();
+    fireEvent.click(await screen.findByRole("button", { name: "Listen to Main broker" }));
+    await waitFor(() => expect(confirm).toHaveBeenCalledTimes(1));
+    expect(confirm.mock.calls[0]![0]).toContain("fresh calibration");
+    expect(api.put).not.toHaveBeenCalled();
+    expect(screen.queryByText("Unsaved changes")).toBeNull();
+  });
+
+  it("blocks Listen while unrelated draft changes are unsaved", async () => {
+    mockSnapshot(ready());
+    show();
+    const button = await screen.findByRole("button", { name: "Listen to Main broker" });
+    expect((button as HTMLButtonElement).disabled).toBe(false);
+    edit("Broker name", "Changed", within(screen.getByRole("region", { name: "Broker Main broker" })));
+    expect((screen.getByRole("button", { name: "Listen to Changed" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(api.post).not.toHaveBeenCalled();
+  });
+
+  it("shows checking progress and allows retry after a failed probe", async () => {
+    mockSnapshot(ready());
+    let reject!: (reason: Error) => void;
+    api.post.mockImplementation(() => new Promise((_, fail) => { reject = fail; }));
+    show();
+    const button = await screen.findByRole("button", { name: "Listen to Main broker" });
+    fireEvent.click(button);
+    expect(screen.getByText("Checking live data…")).toBeTruthy();
+    expect((button as HTMLButtonElement).disabled).toBe(true);
+    await act(async () => reject(new Error("The broker did not respond")));
+    expect((await screen.findByRole("alert")).textContent).toContain("The broker did not respond");
+    expect((button as HTMLButtonElement).disabled).toBe(false);
+    expect(api.put).not.toHaveBeenCalled();
+  });
+
+  it("does not offer Listen to read-only members", async () => {
+    mockSnapshot(ready(false));
+    show();
+    await screen.findByRole("button", { name: "Show chargers for Main broker" });
+    expect(screen.queryByRole("button", { name: /^Listen to/ })).toBeNull();
+  });
 });

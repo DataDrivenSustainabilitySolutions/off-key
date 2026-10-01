@@ -96,6 +96,16 @@ Retained snapshots do not establish live sensor activity. Activity is empty unti
 the collector has applied the current catalog revision; sensor values remain
 available from `GET /sources/state/{charger_id}`.
 
+`POST /sources/{source_id}/probe` requires an administrator and an
+`expected_revision` body. It observes concrete saved sensor topics for 20 seconds
+through the existing GOST route, even when collection is Off. It returns the
+catalog revision, `window_seconds`, and per-sensor receipt metadata without storing
+values or changing the catalog. Retained snapshots remain marked as snapshots;
+invalid payloads are excluded using the collector's value validation. A changed
+catalog, an unapplied or stale route, and operator-disabled access prevent use of
+the probe. The web app enables observed live sensors through the normal
+preview/apply flow and preserves existing rates.
+
 ### Monitoring and model discovery
 
 | Method | Path | Purpose | Key inputs |

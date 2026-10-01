@@ -30,6 +30,9 @@ export function CatalogPanel({
   activityAvailable,
   now,
   busy,
+  listen,
+  listening,
+  listenDisabled,
   change,
   task,
   importCatalog,
@@ -39,6 +42,9 @@ export function CatalogPanel({
   activityAvailable: boolean;
   now: number;
   busy: boolean;
+  listen: (sourceId: string) => Promise<void>;
+  listening: string | null;
+  listenDisabled: boolean;
   change: (catalog: Catalog) => void;
   task: (work: () => Promise<void>) => Promise<void>;
   importCatalog: (catalog: Catalog) => Promise<void>;
@@ -109,7 +115,10 @@ export function CatalogPanel({
             Recent data means a live reading was received within three sampling
             intervals, with a minimum window of one minute. Original-rate sensors
             use one minute. Retained snapshots do not confirm live data. Sensors
-            with collection off are not observed.
+            with collection off are not observed. Listen checks a broker for 20
+            seconds and saves collection for sensors sending live data, including
+            paused chargers. Save or discard draft changes first. New measurements
+            use the catalog default rate, or 10 seconds when the default is Off.
           </HelpTooltip>
         </div>
         <CatalogFilter
@@ -184,6 +193,9 @@ export function CatalogPanel({
           activityAvailable={activityAvailable}
           now={now}
           disabled={disabled}
+          listen={listen}
+          listening={listening}
+          listenDisabled={listenDisabled}
           onChange={change}
           filter={filter}
           showAll={() =>

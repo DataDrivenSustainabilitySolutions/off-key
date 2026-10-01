@@ -64,6 +64,15 @@ observed. Unsaved changes to a broker, charger binding, sensor topic, or value
 type show **Save to observe**. **Status unavailable** means live status could not
 be confirmed, including stale worker reports.
 
+Administrators can click **Listen** beside a saved broker to check its configured
+sensors for 20 seconds, including chargers whose collection is Off. Measurements
+that send valid live data are enabled and saved in one action. Existing rates are
+kept; newly enabled measurements use the catalog default, or a 10-second sampling
+interval when that default is Off. Retained snapshots alone do not enable
+collection. A quiet sensor may send less frequently than the check window; try
+again when chargers are sending data or enable it manually. Save or discard any
+existing draft before listening. Normal monitor-change confirmations still apply.
+
 ## Favourites workflow
 
 1. Add or remove a favourite from a charger view.

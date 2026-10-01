@@ -22,6 +22,7 @@ from off_key_tactic_middleware.api.v1.collection import read_sensor_activity
 from off_key_tactic_middleware.config.collection import AmbiboxSettings
 from off_key_tactic_middleware.services import ambibox_ingress as ingress_module
 from off_key_tactic_middleware.services import collection as collection_module
+from off_key_tactic_middleware.services import source_probe
 from paho.mqtt.publish import multiple, single
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
@@ -37,6 +38,21 @@ async def until(check):
         # External brokers and DB state have no local event to await.
         while not await check():  # noqa: ASYNC110
             await asyncio.sleep(0.1)
+
+
+async def publish_probe_readings():
+    for _ in range(6):
+        await asyncio.sleep(0.4)
+        await asyncio.to_thread(
+            multiple,
+            [
+                {"topic": "device/evCharger/0/power", "payload": "124"},
+                {"topic": "device/evCharger/0/temperature", "payload": "invalid"},
+                {"topic": "device/evCharger/0/unknown", "payload": "999"},
+            ],
+            hostname="127.0.0.1",
+            port=28884,
+        )
 
 
 @pytest_asyncio.fixture
@@ -300,6 +316,31 @@ async def test_broker_isolation_sampling_pause_reconnect_and_idle(
         assert proxy.get_readiness_status()["ready"]
         assert proxy.state["idle"]
         assert not proxy.mqtt_client.subscription_manager.get_subscriptions()
+        # Probe the real GOST route while all collection is off.
+        await asyncio.to_thread(
+            single,
+            "device/evCharger/0/power",
+            "123",
+            hostname="127.0.0.1",
+            port=28884,
+            retain=True,
+        )
+        monkeypatch.setattr(source_probe, "PROBE_SECONDS", 3)
+        observed, _ = await asyncio.gather(
+            asyncio.to_thread(
+                source_probe.probe_source,
+                config.sources[0],
+                settings.model_copy(update={"AMBIBOX_FORWARD_HOST": "127.0.0.1"}),
+            ),
+            publish_probe_readings(),
+        )
+        assert set(observed) == {str(config.sources[0].chargers[0].id)}
+        sensors = observed[str(config.sources[0].chargers[0].id)]
+        assert sensors["temperature"].is_snapshot
+        assert sensors["version"].is_snapshot
+        assert not sensors["power"].is_snapshot
+        assert set(sensors) == {"temperature", "version", "power"}
+        assert await count() == baseline
         # Removing a source must also work when its retained cache is already empty.
         for source in config.sources:
             await ingress.emqx.request(

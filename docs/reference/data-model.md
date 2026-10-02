@@ -19,7 +19,9 @@ Use this page when mapping API behaviour to persisted entities and relationships
 | `users` | `id` | Identity, credentials, role, and verification state |
 | `chargers` | `charger_id` | Charger inventory and MQTT/connection metadata |
 | `telemetry` | `(charger_id, timestamp, type)` | Observed time-series values by charger and sensor type |
-| `services` | `id` | Monitoring workload, topics, lifecycle, and operational stage |
+| `services` | `id` | Monitoring workload, topics, saved launch configuration, lifecycle, and operational stage |
+| `deployment_maintenance` | `id` (singleton) | Durable release phase and monitor restart plan |
+| `off_key_schema_migrations` | `version` | Reviewed SQL migration checksums and application times |
 | `mqtt_topics` | `id` | Service-to-topic mappings |
 | `favorites` | `favorite_id` | User-to-charger favourite mappings |
 | `anomalies` | `(charger_id, timestamp, telemetry_type)` | Detected anomaly events and contributing sensor set |
@@ -76,6 +78,9 @@ TACTIC and the Gateway monitoring endpoints use these definitions for discovery 
   readiness without rewriting existing data; use a fresh development database.
   Current tables, indexes, identity synchronization, and TimescaleDB policies are
   owned by `off_key_core.db.models` and `off_key_core.db.schema`.
+- Production runs the packaged migration CLI before starting the target writers.
+  Migrations and checksum records commit in one PostgreSQL transaction under a
+  migration lock. See [Production deployment](../operations/production.md).
 
 ## Related pages
 

@@ -24,7 +24,7 @@ from off_key_tactic_middleware.services import ambibox_ingress as ingress_module
 from off_key_tactic_middleware.services import collection as collection_module
 from off_key_tactic_middleware.services import source_probe
 from paho.mqtt.publish import multiple, single
-from sqlalchemy import func, select, text
+from sqlalchemy import delete, func, select, text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 pytestmark = pytest.mark.skipif(
@@ -65,9 +65,9 @@ async def database(monkeypatch):
     monkeypatch.setattr(collection_module, "get_async_session_local", lambda: sessions)
     async with engine.begin() as connection:
         await connection.run_sync(bootstrap_schema)
-        await connection.execute(
-            text("TRUNCATE " + ", ".join(Base.metadata.tables) + " CASCADE")
-        )
+        # TRUNCATE CASCADE can drop Timescale foreign keys once chunks exist.
+        for table in reversed(Base.metadata.sorted_tables):
+            await connection.execute(delete(table))
     try:
         yield engine, sessions
     finally:
@@ -448,7 +448,9 @@ async def test_catalog_api_authorization_revisions_and_monitor_pause(
         template = await client.get("/collection/ambibox-template", headers=reader)
         assert template.status_code == 200
         inventory = AmbiboxCatalog.model_validate(template.json())
-        assert sum(source.verified for source in inventory.sources) == 4
+        assert len(inventory.sources) == 1
+        assert inventory.sources[0].host == "charger.example.invalid"
+        assert not inventory.sources[0].verified
         assert not inventory.streams(selected_only=True)
 
         async with sessions() as session:

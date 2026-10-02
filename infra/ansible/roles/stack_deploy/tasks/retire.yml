@@ -1,0 +1,22 @@
+---
+- name: List production stack services for Mailpit retirement
+  command:
+    argv:
+      - docker
+      - service
+      - ls
+      - --format
+      - '{% raw %}{{.Name}}{% endraw %}'
+      - --filter
+      - "label=com.docker.stack.namespace={{ stack_name }}"
+  register: production_stack_services
+  changed_when: false
+  when: offkey_env == 'prod'
+
+# stack deploy keeps removed services; broad --prune could delete runtime workers.
+- name: Remove retired production Mailpit service
+  command:
+    argv: [docker, service, rm, "{{ stack_name }}_mailpit"]
+  when:
+    - offkey_env == 'prod'
+    - (stack_name ~ '_mailpit') in production_stack_services.stdout_lines

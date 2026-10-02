@@ -1,0 +1,58 @@
+---
+- name: Discover Tailscale IP for swarm advertise address
+  command: tailscale ip -4
+  register: tailscale_ip_raw
+  changed_when: false
+  when: swarm_advertise_addr is not defined
+
+- name: Set swarm_advertise_addr from Tailscale IP
+  set_fact:
+    swarm_advertise_addr: "{{ tailscale_ip_raw.stdout | trim }}"
+  when: swarm_advertise_addr is not defined
+
+- name: Check current Swarm state
+  command: docker info --format json
+  register: docker_info_raw
+  changed_when: false
+
+- name: Parse Swarm state
+  set_fact:
+    swarm_local_state: "{{ (docker_info_raw.stdout | from_json).Swarm.LocalNodeState }}"
+    swarm_node_addr:   "{{ (docker_info_raw.stdout | from_json).Swarm.NodeAddr | default('') }}"
+
+- name: Initialize Swarm
+  command: docker swarm init --advertise-addr {{ swarm_advertise_addr }}
+  when: swarm_local_state != 'active'
+
+- name: Verify Swarm advertise address matches expected
+  assert:
+    that: swarm_node_addr == swarm_advertise_addr
+    fail_msg: >-
+      Swarm NodeAddr '{{ swarm_node_addr }}' does not match swarm_advertise_addr '{{ swarm_advertise_addr }}'.
+      If this is an existing Swarm, verify the node was initialized with the correct address.
+      Stop here and inspect the existing Swarm membership and advertised address.
+      Manager replacement needs a deliberate recovery procedure; forcing this node
+      to leave can discard the cluster's management state.
+  when: swarm_local_state == 'active'
+
+- name: Retrieve worker join token
+  command: docker swarm join-token worker -q
+  register: worker_token_raw
+  changed_when: false
+  no_log: true
+
+- name: Store the worker join token as a fact (in-memory only)
+  set_fact:
+    swarm_worker_token:  "{{ worker_token_raw.stdout | trim }}"
+  no_log: true
+
+- name: Create stack directory
+  file:
+    path: "{{ stack_dir }}"
+    state: directory
+    mode: "0750"
+    owner: root
+    group: docker
+
+# The nfs_server role manages the shared Ambibox export and seeds missing identity
+# state from the environment's ignored backup directory.

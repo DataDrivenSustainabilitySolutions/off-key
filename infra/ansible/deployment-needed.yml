@@ -1,0 +1,52 @@
+---
+- name: Compare runtime files against the last verified production release
+  hosts: swarm_manager[0]
+  gather_facts: false
+  tasks:
+    - name: Look for the verified release record
+      stat:
+        path: "{{ stack_dir }}/release.json"
+      register: verified_release_stat
+
+    - name: Read the verified release
+      slurp:
+        src: "{{ stack_dir }}/release.json"
+      register: verified_release
+      when: verified_release_stat.stat.exists
+
+    - name: Compare the runtime paths since the verified release
+      command:
+        argv:
+          - git
+          - diff
+          - --quiet
+          - "{{ (verified_release.content | b64decode | from_json).application_revision }}"
+          - "{{ lookup('env', 'OFFKEY_RELEASE_REVISION') }}"
+          - --
+          - backend
+          - frontend
+          - infra/ansible
+          - infra/stack
+          - infra/scripts
+          - infra/pyproject.toml
+          - infra/uv.lock
+          - docker-compose.yml
+          - .env.example
+          - .github/workflows/deploy-production.yml
+          - .github/workflows/docker-images.yml
+      args:
+        chdir: "{{ playbook_dir }}/../.."
+      delegate_to: localhost
+      become: false
+      register: runtime_diff
+      changed_when: false
+      failed_when: runtime_diff.rc not in [0, 1]
+      when: verified_release_stat.stat.exists
+
+    - name: Write the deployment decision without private inventory details
+      copy:
+        dest: "{{ deployment_decision_file }}"
+        mode: "0600"
+        content: "{{ 'yes' if not verified_release_stat.stat.exists or runtime_diff.rc == 1 else 'no' }}"
+      delegate_to: localhost
+      become: false

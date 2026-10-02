@@ -1,0 +1,56 @@
+# Traefik ingress overlay.
+#
+# Merged on top of docker-compose.swarm.yml by the stack_deploy role via a second -f
+# (always — Traefik is the ingress). Kept out of the base file so the router lives on its
+# own, reviewable and committable independently. References the base's overlay networks
+# (public/app/emqx), which compose merges across -f files — so this file is NOT valid on its
+# own, only as an overlay. See INGRESS.md.
+#
+# Sits behind the Cloudflare Tunnel connector, host-routing subdomains to services.
+# TLS is terminated upstream (Cloudflare edge /
+# wireguard), so Traefik is HTTP-only on :80 with no published ports — reached over the
+# overlay by service name `traefik`.
+#
+# SECURITY: as the internet-facing component, Traefik is given NO Docker socket access.
+# Routes come from the file provider (traefik-dynamic.yml, delivered as a Swarm config), not
+# from service labels + the Swarm provider — so a Traefik compromise has no path to the
+# Docker API. It is intentionally NOT on socket-network.
+
+services:
+
+  traefik:
+    image: "${TRAEFIK_IMAGE:-traefik:v3.5.4}"   # v3.4+ required: the oauth-errors middleware uses statusRewrites
+    command:
+      - "--providers.file.filename=/etc/traefik/dynamic.yml"
+      - "--providers.file.watch=true"
+      - "--entryPoints.web.address=:80"
+      - "--ping=true"
+      - "--api.dashboard=true"   # exposes api@internal; the traefik. router gates it behind oauth2
+      - "--accesslog=true"
+      - "--log.level=INFO"
+    configs:
+      - source: traefik_dynamic
+        target: /etc/traefik/dynamic.yml
+    networks:
+      - public-network
+      - app-network
+      - emqx-network
+    healthcheck:
+      test: [ "CMD", "traefik", "healthcheck", "--ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      restart_policy:
+        condition: any
+
+configs:
+  traefik_dynamic:
+    # Hash-suffixed name so editing the routes creates a NEW config instead of an (illegal)
+    # in-place update. TRAEFIK_DYNAMIC_HASH is rendered into .env by stack_prepare.
+    name: traefik_dynamic_${TRAEFIK_DYNAMIC_HASH}
+    file: ./traefik-dynamic.yml

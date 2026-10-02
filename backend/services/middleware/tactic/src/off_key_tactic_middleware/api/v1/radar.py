@@ -1,6 +1,7 @@
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from off_key_core.db.maintenance import DeploymentInProgressError
 from off_key_core.schemas.radar import RadarStartConfig as RadarConfig
 from pydantic import BaseModel
 
@@ -74,6 +75,8 @@ async def start_radar_service(
             "status": "running" if radar_service.status else "stopped",
             "mqtt_topics": radar_service.mqtt_topic,
         }
+    except DeploymentInProgressError:
+        raise
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e)) from e
     except Exception as e:
@@ -111,7 +114,7 @@ async def get_radar_service_details(
             raise HTTPException(status_code=404, detail="RADAR service not found")
 
         return service_detail
-    except HTTPException:
+    except (HTTPException, DeploymentInProgressError):
         raise
     except Exception as e:
         raise HTTPException(
@@ -158,7 +161,7 @@ async def stop_radar_service(
             "message": f"RADAR service '{lookup_target}'"
             f" stopped and deleted successfully",
         }
-    except HTTPException:
+    except (HTTPException, DeploymentInProgressError):
         raise
     except Exception as e:
         raise HTTPException(
@@ -191,7 +194,7 @@ async def delete_radar_service(
             "service_id": service_id,
             "message": f"RADAR service '{service_id}' deleted successfully",
         }
-    except HTTPException:
+    except (HTTPException, DeploymentInProgressError):
         raise
     except Exception as e:
         raise HTTPException(

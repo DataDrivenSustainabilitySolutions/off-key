@@ -1,0 +1,10 @@
+---
+# Send or resend the first administrator invitation without redeploying.
+- name: Set up administrator access
+  hosts: swarm_manager
+  gather_facts: false
+  tasks:
+    - name: Send the administrator invitation
+      include_role:
+        name: stack_deploy
+        tasks_from: bootstrap_admin

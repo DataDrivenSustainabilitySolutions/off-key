@@ -156,44 +156,19 @@ docker compose -f docker-compose.yml -f docker-compose.cluster.yml up -d --build
 
 This adds `emqx-worker` and updates EMQX seeds for a two-node cluster.
 
-### Swarm deployment
+### Production deployment
 
-Set production credentials and pinned image references in `.env`, then render
-the Compose model before handing it to Swarm:
-
-```bash
-docker compose \
-  --env-file .env \
-  -f docker-compose.swarm.yml \
-  config \
-  | docker stack deploy --with-registry-auth -c - off-key
-```
-
-The render step is required because `docker stack deploy` does not load Compose
-environment files for variable interpolation.
-
-The existing per-service image variables can use either the convenience
-`latest` tag or the already-published `sha-<commit>` tag. Pinning those same
-variables to the SHA tag avoids an unchanged `latest` service specification and
-does not change the deployment command. Verify what Swarm actually resolved:
+Production infrastructure is integrated under [`infra/`](infra/README.md). Configure
+GitHub's protected production environment using the [setup guide](docs/operations/github-setup.md).
+After the controlled first cutover, green main runtime changes deploy automatically.
 
 ```bash
-docker stack services off-key --format '{{.Name}} {{.Image}}'
-docker service inspect off-key_frontend \
-  --format '{{.Spec.TaskTemplate.ContainerSpec.Image}}'
-docker service inspect off-key_mqtt-proxy \
-  --format '{{.Spec.TaskTemplate.ContainerSpec.Image}}'
+make check-infra
+make deploy-prod REVISION=<full-tested-main-commit-SHA>
 ```
 
-On a node running a task, the OCI revision label proves which commit is inside
-the container:
-
-```bash
-container_id=$(docker ps -q \
-  --filter label=com.docker.swarm.service.name=off-key_frontend)
-docker inspect "$container_id" \
-  --format '{{index .Config.Labels "org.opencontainers.image.revision"}} {{.Image}}'
-```
+Use the [production runbook](docs/operations/production.md) and
+[recovery runbook](docs/operations/recovery.md) for provisioning and recovery.
 
 ### Switching modes
 

@@ -105,8 +105,11 @@ export function CatalogPanel({
                 )
               }
             >
-              Load AmbiBox inventory
+              Load AmbiBox template
             </Button>
+            <p className="text-sm text-muted-foreground">
+              Starts with an example broker. Enter your broker details before saving.
+            </p>
           </div>
         )}
         <div className="mb-3 flex items-center gap-1 text-xs text-muted-foreground">

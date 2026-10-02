@@ -1,0 +1,134 @@
+name: Deploy Production
+
+on:
+  workflow_run:
+    workflows: [CI, Deployment Smoke, Docker Publish, MQTT Collection Integration, Infrastructure Validation]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      revision:
+        description: Full tested main commit SHA (retry or rollback)
+        required: true
+        type: string
+      bootstrap:
+        description: Controlled first deployment; stop old writers and capture existing monitors
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  eligibility:
+    if: >-
+      github.repository == 'DataDrivenSustainabilitySolutions/off-key' &&
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'workflow_dispatch' ||
+       (github.event.workflow_run.event == 'push' &&
+        github.event.workflow_run.head_repository.full_name == github.repository &&
+        github.event.workflow_run.conclusion == 'success'))
+    runs-on: ubuntu-latest
+    outputs:
+      revision: ${{ steps.release.outputs.revision }}
+      ready: ${{ steps.release.outputs.ready }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Require all latest workflow attempts to succeed on the same main commit
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 infra/scripts/release_ready.py
+
+  deploy:
+    needs: eligibility
+    if: needs.eligibility.outputs.ready == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: production
+    concurrency:
+      group: offkey-production
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      actions: read
+      packages: read
+      id-token: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      OFFKEY_RELEASE_REVISION: ${{ needs.eligibility.outputs.revision }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Select the private temporary configuration directory
+        run: echo "OFFKEY_DEPLOY_DIRECTORY=$RUNNER_TEMP/offkey-production" >> "$GITHUB_ENV"
+      - name: Recheck eligibility after waiting for the deployment slot
+        id: release
+        env:
+          AUTO_DEPLOY_ENABLED: ${{ vars.AUTO_DEPLOY_ENABLED }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = workflow_run ] && [ "$AUTO_DEPLOY_ENABLED" != true ]; then
+            echo 'Automatic deployment is disabled until the first controlled cutover succeeds.'
+            echo 'ready=false' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          python3 infra/scripts/release_ready.py --revision "$OFFKEY_RELEASE_REVISION"
+      - name: Check out the exact tested application and infrastructure commit
+        if: steps.release.outputs.ready == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.eligibility.outputs.revision }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Create private deployment configuration
+        if: steps.release.outputs.ready == 'true'
+        env:
+          OFFKEY_PROD_VAULT: ${{ secrets.OFFKEY_PROD_VAULT }}
+          OFFKEY_VAULT_PASSWORD: ${{ secrets.OFFKEY_VAULT_PASSWORD }}
+          OFFKEY_PROD_INVENTORY: ${{ secrets.OFFKEY_PROD_INVENTORY }}
+          OFFKEY_DEPLOY_SSH_KEY: ${{ secrets.OFFKEY_DEPLOY_SSH_KEY }}
+          OFFKEY_DEPLOY_KNOWN_HOSTS: ${{ secrets.OFFKEY_DEPLOY_KNOWN_HOSTS }}
+        run: python3 infra/scripts/prepare_ci_secrets.py
+      - name: Connect the ephemeral runner to the management tailnet
+        if: steps.release.outputs.ready == 'true'
+        uses: tailscale/github-action@d1b6cd204f8dceda5b3eaad7f1f767be390056cd # v4
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          audience: ${{ secrets.TS_AUDIENCE }}
+          tags: tag:offkey-ci
+          use-cache: 'false'
+      - name: Set up the locked Ansible tooling
+        if: steps.release.outputs.ready == 'true'
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: "0.12.0"
+          enable-cache: false
+      - name: Deploy only runtime changes and verify production
+        if: steps.release.outputs.ready == 'true'
+        env:
+          BOOTSTRAP: ${{ inputs.bootstrap || false }}
+          ANSIBLE_PRIVATE_KEY_FILE: ${{ runner.temp }}/offkey-production/deploy-key
+          ANSIBLE_SSH_ARGS: -o StrictHostKeyChecking=yes -o UserKnownHostsFile=${{ runner.temp }}/offkey-production/known-hosts -o IdentitiesOnly=yes
+        run: |
+          set -euo pipefail
+          umask 077
+          cd infra/ansible
+          export ANSIBLE_CONFIG="$PWD/ansible.cfg"
+          uv run --frozen ansible-playbook deployment-needed.yml --vault-password-file "$OFFKEY_DEPLOY_DIRECTORY/vault-password" -e "@$OFFKEY_DEPLOY_DIRECTORY/registry.json" -e "deployment_decision_file=$OFFKEY_DEPLOY_DIRECTORY/deploy-needed" > "$OFFKEY_DEPLOY_DIRECTORY/preflight.log" 2>&1 || { echo "Production preflight failed; check private SSH/configuration and the setup guide."; exit 1; }
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ] || [ "$(cat "$OFFKEY_DEPLOY_DIRECTORY/deploy-needed")" = yes ]; then
+            uv run --frozen ansible-playbook deploy.yml --vault-password-file "$OFFKEY_DEPLOY_DIRECTORY/vault-password" -e "@$OFFKEY_DEPLOY_DIRECTORY/registry.json" -e "release_bootstrap=$BOOTSTRAP" > "$OFFKEY_DEPLOY_DIRECTORY/deploy.log" 2>&1 || { echo "Production release failed; inspect private server records and retry the attempted SHA."; exit 1; }
+          else
+            echo 'No runtime changes since the last verified release; production is unchanged.'
+          fi
+      - name: Remove all temporary production material
+        if: always()
+        run: |
+          rm -f infra/ansible/inventories/prod/hosts.yml infra/ansible/inventories/prod/group_vars/all/vault.yml
+          rm -rf "$OFFKEY_DEPLOY_DIRECTORY"

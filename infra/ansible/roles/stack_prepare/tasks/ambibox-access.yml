@@ -1,0 +1,82 @@
+---
+# Credential transfer happens once. The application has no legacy connector path.
+- name: Create private stack directory for AmbiBox access
+  file:
+    path: "{{ stack_dir }}"
+    state: directory
+    mode: '0750'
+    owner: "{{ stack_file_owner }}"
+    group: "{{ stack_file_group }}"
+
+- name: Restore missing AmbiBox access from the selected recovery files
+  include_tasks: ambibox-seed.yml
+
+- name: Check persisted AmbiBox controller access
+  stat:
+    path: "{{ stack_dir }}/ambibox-access.json"
+  register: ambibox_access_file
+
+- name: Read existing AmbiBox MQTT access on backend nodes
+  command:
+    argv:
+      - python3
+      - -c
+      - "{{ lookup('file', role_path ~ '/../../../scripts/read-ambibox-mqtt-access.py') }}"
+      - "{{ stack_name }}"
+  delegate_to: "{{ item }}"
+  loop: "{{ groups['swarm_backend'] }}"
+  register: ambibox_existing_access
+  changed_when: false
+  when:
+    - not ambibox_access_file.stat.exists
+    - ambibox_mqtt_password | default('') | length == 0
+  no_log: true
+
+- name: Resolve existing upstream MQTT credentials
+  set_fact:
+    ambibox_initial_access: >-
+      {{ {'mqtt_username': ambibox_mqtt_username, 'mqtt_password': ambibox_mqtt_password}
+         if ambibox_mqtt_password | default('') | length > 0 else
+         (ambibox_existing_access.results | map(attribute='stdout') | map('from_json') |
+          selectattr('mqtt_password', 'defined') | first | default({})) }}
+  when: not ambibox_access_file.stat.exists
+  no_log: true
+
+- name: Require existing AmbiBox access before creating controller secrets
+  assert:
+    that:
+      - ambibox_initial_access.mqtt_username | default('') | length > 0
+      - ambibox_initial_access.mqtt_password | default('') | length > 0
+    fail_msg: >-
+      Could not read the existing AmbiBox MQTT connector. Bring EMQX online, or
+      supply ambibox_mqtt_username and ambibox_mqtt_password in the vault.
+      No new vendor tailnet key is required.
+  when: not ambibox_access_file.stat.exists
+  no_log: true
+
+- name: Persist private AmbiBox access and new internal API credentials
+  copy:
+    dest: "{{ stack_dir }}/ambibox-access.json"
+    mode: '0600'
+    owner: root
+    group: root
+    force: false
+    content: >-
+      {{ ambibox_initial_access | combine({
+           'api_key': 'off-key-collection',
+           'api_secret': lookup('password', '/dev/null length=64 chars=ascii_letters,digits'),
+           'gost_password': lookup('password', '/dev/null length=64 chars=ascii_letters,digits')
+         }) | to_json }}
+  when: not ambibox_access_file.stat.exists
+  no_log: true
+
+- name: Read private AmbiBox access for Swarm secret provisioning
+  slurp:
+    src: "{{ stack_dir }}/ambibox-access.json"
+  register: ambibox_access_document
+  no_log: true
+
+- name: Use persisted AmbiBox access
+  set_fact:
+    ambibox_access: "{{ ambibox_access_document.content | b64decode | from_json }}"
+  no_log: true

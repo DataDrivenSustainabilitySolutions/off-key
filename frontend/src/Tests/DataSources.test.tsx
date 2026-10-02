@@ -743,7 +743,7 @@ describe("direct collection editor", () => {
     );
     show();
     fireEvent.click(
-      await screen.findByRole("button", { name: "Load AmbiBox inventory" }),
+      await screen.findByRole("button", { name: "Load AmbiBox template" }),
     );
     await openCharger();
     expect(

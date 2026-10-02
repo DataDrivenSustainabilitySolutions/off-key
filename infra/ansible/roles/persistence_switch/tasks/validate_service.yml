@@ -1,0 +1,41 @@
+---
+- name: Wait for the stateful service update to finish without rollback
+  command:
+    argv: [docker, service, inspect, "{{ stack_name }}_{{ svc }}"]
+  register: replacement_service
+  changed_when: false
+  no_log: true
+  until: (replacement_service.stdout | from_json)[0].UpdateStatus.State | default('completed') == 'completed'
+  retries: 60
+  delay: 5
+
+- name: Wait for the replacement stateful task
+  include_tasks: _service_container.yml
+
+- name: Require a replacement task on the original volume node
+  assert:
+    that:
+      - svc_task_id != persistence_service_tasks[svc]
+      - svc_node == persistence_service_nodes[svc]
+    fail_msg: "{{ svc }} did not move to a new task on its original data node; writers remain stopped."
+
+- name: Inspect the replacement container mounts
+  command:
+    argv: [docker, inspect, "{{ svc_container }}", --format, '{% raw %}{{json .Mounts}}{% endraw %}']
+  delegate_to: "{{ svc_node }}"
+  register: replacement_mounts
+  changed_when: false
+
+- name: Require the intended mount before restoring any data
+  assert:
+    that:
+      - >-
+        (item.enabled | bool and mounted | length == 1
+         and mounted[0].Type == 'volume' and mounted[0].Name == stack_name ~ '_' ~ item.volume)
+        or (not (item.enabled | bool) and mounted | length == 0)
+    fail_msg: "{{ svc }}:{{ item.path }} has the wrong mount; writers remain stopped."
+  vars:
+    mounted: "{{ replacement_mounts.stdout | from_json | selectattr('Destination', 'equalto', item.path) | list }}"
+  loop: "{{ persistence_flips | selectattr('service', 'equalto', svc) | list }}"
+  loop_control:
+    label: "{{ item.path }}"

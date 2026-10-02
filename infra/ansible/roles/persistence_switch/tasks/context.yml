@@ -1,0 +1,5 @@
+---
+- name: Initialise the recovery run
+  set_fact:
+    persistence_run_ts: "{{ now(utc=true, fmt='%Y%m%dT%H%M%S%fZ') }}"
+    persistence_backup_paths: {}

@@ -4,7 +4,6 @@ import asyncio
 import hashlib
 import os
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 from uuid import uuid4
@@ -14,6 +13,7 @@ import pytest_asyncio
 from fastapi import HTTPException
 from fastapi.security import HTTPAuthorizationCredentials
 from off_key_api_gateway.services.auth import create_jwt
+from off_key_core.db.migrate import migration_files
 from off_key_core.db.models import User
 from off_key_core.schemas.members import MemberInvitation, MemberUpdate
 from off_key_core.utils import mail
@@ -376,10 +376,8 @@ async def test_membership_migration_preserves_existing_accounts(member_database)
         await connection.execute(
             text("UPDATE users SET verification_token = 'legacy-link'")
         )
-    migration = (
-        Path(__file__).parents[1] / "migrations/001_membership.sql"
-    ).read_text()
-    async with engine.connect() as connection:
+    migration = migration_files()["001_membership.sql"]
+    async with engine.begin() as connection:
         raw = await connection.get_raw_connection()
         await raw.driver_connection.execute(migration)
         await raw.driver_connection.execute(migration)

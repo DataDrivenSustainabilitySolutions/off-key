@@ -1,0 +1,109 @@
+---
+# Full end-to-end provisioning playbook.
+# Idempotent — safe to re-run on already-provisioned clusters.
+#
+# Prod: ansible-playbook -i inventories/prod provision.yml --ask-vault-pass
+
+- name: Check production manager enrollment before changing hosts
+  hosts: swarm_manager
+  gather_facts: false
+  any_errors_fatal: true
+  tasks:
+    - name: Read manager management-tailnet state
+      command: tailscale status --json
+      register: manager_tailnet_status
+      changed_when: false
+      failed_when: false
+      when: offkey_env == 'prod'
+
+    - name: Require a key when the production manager is not yet connected
+      assert:
+        that:
+          - >-
+            (manager_tailnet_status.rc == 0
+             and manager_tailnet_status.stdout | length > 0
+             and (manager_tailnet_status.stdout | from_json).BackendState == 'Running')
+            or (tailscale_os_authkey | default('') | trim | length > 0)
+        fail_msg: >-
+          {{ inventory_hostname }} is not connected to the management tailnet and
+          ingress_ts_authkey in the production vault is empty. Add a valid reusable
+          auth key there, or log this manager in interactively, then rerun provisioning.
+      when: offkey_env == 'prod'
+
+    - name: Require the production Cloudflare Tunnel token before changing hosts
+      assert:
+        that:
+          - cloudflare_tunnel_token | default('') | trim | length > 40
+          - (cloudflare_tunnel_token | default('') | trim).startswith('eyJ')
+        fail_msg: >-
+          cloudflare_tunnel_token must be the eyJ... token for the existing
+          production Cloudflare Tunnel. Retrieve it from Cloudflare and add it to the
+          production vault before provisioning the replacement manager.
+      when: offkey_env == 'prod'
+
+- name: Bootstrap production managers before contacting workers
+  hosts: swarm_manager
+  gather_facts: false
+  any_errors_fatal: true
+  tasks:
+    - name: Prepare the production manager's management connection
+      when: offkey_env == 'prod'
+      block:
+        - name: Gather production manager facts
+          setup:
+
+        - name: Apply the production manager OS baseline
+          include_role:
+            name: base
+
+        - name: Install Docker on the production manager
+          include_role:
+            name: docker_install
+
+        - name: Connect the production manager to the management tailnet
+          include_role:
+            name: tailscale_install
+
+# Production managers already ran these roles above. Other hosts retain the
+# existing worker provisioning order.
+- name: OS baseline
+  hosts: all
+  gather_facts: true
+  any_errors_fatal: true
+  roles:
+    - role: base
+      when: offkey_env != 'prod' or inventory_hostname not in groups['swarm_manager']
+
+- name: Install Docker
+  hosts: all
+  any_errors_fatal: true
+  roles:
+    - role: docker_install
+      when: offkey_env != 'prod' or inventory_hostname not in groups['swarm_manager']
+
+- name: Install Tailscale (OS-level management plane)
+  hosts: all
+  any_errors_fatal: true
+  roles:
+    - role: tailscale_install
+      when: offkey_env != 'prod' or inventory_hostname not in groups['swarm_manager']
+
+- name: Initialize Swarm manager
+  hosts: swarm_manager
+  any_errors_fatal: true
+  roles:
+    - swarm_manager
+
+- name: Join workers to Swarm
+  hosts: swarm_worker
+  any_errors_fatal: true
+  roles:
+    - swarm_worker
+
+- name: Apply Swarm node labels
+  hosts: swarm_manager
+  roles:
+    - swarm_labels
+
+# Provisioning gathered the host facts above; the deployment playbook reuses them.
+- import_playbook: deploy.yml

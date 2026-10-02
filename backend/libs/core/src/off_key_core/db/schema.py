@@ -13,23 +13,30 @@ from .models import Base
 from .retention import reconcile_retention_policies
 
 
-def validate_existing_schema(connection: Connection) -> None:
+def validate_existing_schema(
+    connection: Connection, *, tables=None, excluded_columns=None
+) -> None:
     """Reject obsolete table shapes before executing any bootstrap DDL."""
     inspector = inspect(connection)
     existing = set(inspector.get_table_names())
-    for table in Base.metadata.sorted_tables:
+    for table in Base.metadata.sorted_tables if tables is None else tables:
         if table.name not in existing:
             continue
         columns = {
             column["name"]: column for column in inspector.get_columns(table.name)
         }
-        expected = {column.name for column in table.columns}
+        declared = [
+            column
+            for column in table.columns
+            if column.name not in (excluded_columns or {}).get(table.name, ())
+        ]
+        expected = {column.name for column in declared}
         compatible = set(columns) == expected and all(
             columns[column.name]["nullable"] == column.nullable
             and isinstance(columns[column.name]["type"], type(column.type))
             and getattr(columns[column.name]["type"], "timezone", None)
             == getattr(column.type, "timezone", None)
-            for column in table.columns
+            for column in declared
         )
         primary_key = inspector.get_pk_constraint(table.name)
         compatible = compatible and primary_key["constrained_columns"] == [

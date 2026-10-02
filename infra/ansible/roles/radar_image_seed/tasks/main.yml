@@ -1,0 +1,42 @@
+---
+# Seed the RADAR image onto the nodes that run runtime RADAR workloads.
+#
+# Why this exists: TACTIC launches RADAR services at runtime via the Docker API
+# (services.create through the socket-proxy). Unlike `docker stack deploy
+# --with-registry-auth`, that runtime path carries NO registry credentials, so an
+# anonymous pull of the private GHCR image fails with 401. Swarm's agent tolerates a
+# pull failure and falls back to a locally-present image, so pre-pulling the image here
+# lets the runtime workload start without the runtime path ever needing to authenticate.
+#
+# Runs on the backend nodes only — TACTIC's runtime placement constraint is pinned to
+# `node.labels.backend == true` (tactic_docker_default_constraints), matching this target
+# and the static mqtt-radar service. The manager does not run the task and only performs
+# a (non-fatal) digest-resolution attempt, so it does not need the image.
+#
+# The GHCR login is TRANSIENT: docker_login writes the PAT (base64, trivially decodable)
+# into the node's ~/.docker/config.json, which the pull consumes, and the `always` block
+# logs back out so the credential leaves no trace on disk once seeding is done. The
+# block/always structure guarantees the logout even if the pull fails — a failed pull
+# must not strand the PAT on the node.
+
+- name: Seed the RADAR image with a transient GHCR login
+  block:
+    - name: Log in to GitHub Container Registry on backend nodes
+      community.docker.docker_login:
+        registry_url: ghcr.io
+        username: "{{ ghcr_username }}"
+        password: "{{ ghcr_token }}"
+      no_log: true
+
+    - name: Pull the RADAR image so runtime workloads find it locally
+      community.docker.docker_image:
+        name: "{{ mqtt_radar_image }}"
+        source: pull
+        # Refresh on every run so a moving tag (e.g. :latest) stays current — the runtime
+        # workload can only ever use what is seeded here, since its own pull is unauthenticated.
+        force_source: true
+  always:
+    - name: Log out of GHCR so the PAT leaves no trace on the node
+      community.docker.docker_login:
+        registry_url: ghcr.io
+        state: absent

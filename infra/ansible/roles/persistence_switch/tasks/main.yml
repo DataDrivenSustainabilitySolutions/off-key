@@ -1,0 +1,44 @@
+---
+- name: Validate persistence changes before stopping services
+  include_tasks: preflight.yml
+
+- name: Initialise the cutover recovery context
+  include_tasks: context.yml
+  when: persistence_flips | length > 0
+
+- name: Stop application writers for the cutover
+  include_tasks: quiesce.yml
+  when: persistence_flips | length > 0
+
+# ── Back up before changing anything ─────────────────────────────────────────────────────
+# Always, on every detected flip, regardless of the restore setting. It is cheap, and it is
+# the difference between a reversible mistake and an unrecoverable one.
+- name: Back up state before the switch
+  include_tasks: "backup_{{ backup_mount.kind }}.yml"
+  when: backup_mount.kind != 'none'
+  loop: "{{ persistence_backup_mounts }}"
+  loop_control:
+    loop_var: backup_mount
+    label: "{{ backup_mount.service }}:{{ backup_mount.path }} ({{ backup_mount.kind }})"
+
+# Wipe only after a successful backup, and only where the operator asked for a restore.
+- name: Remove stale volume so the restore lands in a clean one
+  command: "docker volume rm {{ stack_name }}_{{ item.0.volume }}"
+  when:
+    - item.0.enabled | bool
+    - item.1.stdout | trim == 'hasdata'
+    - item.0.restore | bool
+  delegate_to: "{{ persistence_service_nodes[item.0.service] }}"
+  loop: "{{ (persistence_flips | default([])) | zip(persistence_vol_state.results | default([])) | list }}"
+  loop_control:
+    label: "{{ item.0.volume }}"
+
+- name: Stop the old stateful tasks before deploying replacement mounts
+  command:
+    argv: [docker, service, scale, "{{ stack_name }}_{{ item }}=0"]
+  loop: "{{ persistence_flips | map(attribute='service') | unique | list }}"
+
+- name: Confirm the old stateful tasks have stopped
+  include_tasks: wait_stopped.yml
+  vars:
+    service_names: "{{ persistence_flips | map(attribute='service') | unique | map('regex_replace', '^', stack_name ~ '_') | list }}"

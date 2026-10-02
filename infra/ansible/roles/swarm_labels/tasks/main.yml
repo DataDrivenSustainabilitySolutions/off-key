@@ -1,0 +1,32 @@
+---
+# All label operations run on the manager node via delegate_to.
+# The `item` variable is an inventory hostname, which must match the Docker node name.
+# The base role sets the OS hostname to inventory_hostname, ensuring this matches.
+
+- name: Apply backend=true label to backend nodes
+  command: "docker node update --label-add backend=true {{ item }}"
+  loop: "{{ groups['swarm_backend'] }}"
+  delegate_to: "{{ groups['swarm_manager'][0] }}"
+  changed_when: false
+
+- name: Apply frontend=true label to frontend nodes
+  command: "docker node update --label-add frontend=true {{ item }}"
+  loop: "{{ groups['swarm_frontend'] }}"
+  delegate_to: "{{ groups['swarm_manager'][0] }}"
+  changed_when: false
+
+- name: Verify labels are applied
+  command: docker node inspect {{ item }} --format json
+  register: node_inspect
+  loop: "{{ groups['swarm_backend'] + groups['swarm_frontend'] }}"
+  delegate_to: "{{ groups['swarm_manager'][0] }}"
+  changed_when: false
+
+- name: Show node labels
+  debug:
+    msg: >-
+      Node {{ item.item }}:
+      {{ (item.stdout | from_json)[0].Spec.Labels }}
+  loop: "{{ node_inspect.results }}"
+  loop_control:
+    label: "{{ item.item }}"

@@ -2,11 +2,8 @@ name: Deployment Smoke
 
 on:
   pull_request:
-    paths:
-      - ".github/workflows/deployment-smoke.yml"
-      - "backend/**"
-      - "docker-compose*.yml"
-      - "frontend/**"
+  merge_group:
+    types: [checks_requested]
   push:
     branches:
       - main
@@ -69,16 +66,6 @@ jobs:
           docker compose \
             -f docker-compose.yml \
             -f docker-compose.cluster.yml \
-            config --quiet
-          docker compose \
-            --env-file .env \
-            -f docker-compose.swarm.yml \
-            config --quiet
-          docker compose \
-            --env-file .env \
-            --env-file .env.ingress.example \
-            -f docker-compose.swarm.yml \
-            -f docker-compose.ingress.yml \
             config --quiet
 
       - name: Reset deployment smoke stack
@@ -380,7 +367,8 @@ jobs:
           export E2E_GATEWAY_URL=http://localhost:8000
           export E2E_MQTT_HOST=localhost
           export E2E_MQTT_PORT=1883
-          export E2E_AUTH_TOKEN="$(node -e "const state=require('./frontend/test-results/.auth/user.json'); const token=state.origins.flatMap(({localStorage=[]})=>localStorage).find(({name})=>name==='auth_token')?.value; if (!token) process.exit(1); process.stdout.write(token)")"
+          E2E_AUTH_TOKEN="$(node -e "const state=require('./frontend/test-results/.auth/user.json'); const token=state.origins.flatMap(({localStorage=[]})=>localStorage).find(({name})=>name==='auth_token')?.value; if (!token) process.exit(1); process.stdout.write(token)")"
+          export E2E_AUTH_TOKEN
           uv run --project backend python -m pytest backend/tests/test_adaptive_lane_e2e.py -q
 
       - name: Collect deployment smoke diagnostics

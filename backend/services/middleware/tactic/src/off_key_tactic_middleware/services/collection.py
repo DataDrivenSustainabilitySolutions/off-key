@@ -8,6 +8,7 @@ from off_key_core.db.collection import (
     lock_collection_configuration,
     read_collection_configuration,
 )
+from off_key_core.db.maintenance import require_application_writes
 from off_key_core.db.models import (
     Charger,
     CollectionBinding,
@@ -98,6 +99,7 @@ class CollectionService:
 
     async def apply(self, change: CatalogChange, *, actor: str) -> CatalogSnapshot:
         await lock_collection_configuration(self.session)
+        await require_application_writes(self.session)
         preview = await self.preview(change)
         if preview.affected_monitors and not change.pause_affected_monitors:
             raise ConflictError(

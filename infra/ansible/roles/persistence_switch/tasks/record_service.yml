@@ -1,0 +1,8 @@
+---
+- name: Resolve the current stateful task
+  include_tasks: _service_container.yml
+
+- name: Record the task and node being replaced
+  set_fact:
+    persistence_service_nodes: "{{ persistence_service_nodes | combine({svc: svc_node}) }}"
+    persistence_service_tasks: "{{ persistence_service_tasks | combine({svc: svc_task_id}) }}"

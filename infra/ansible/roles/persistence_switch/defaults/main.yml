@@ -1,0 +1,23 @@
+---
+# Per-service persistence toggles. Default OFF everywhere: the safe default is the current
+# behaviour, so adding this role changes nothing until an inventory opts in.
+# Role defaults are the lowest-precedence source, so inventory group_vars always win.
+
+persist_postgres:  false
+persist_emqx_data: false
+persist_emqx_log:  false
+
+# After a detected flip, restore the backup that was just taken. Per-service override:
+#   persist_postgres_restore: false
+persistence_restore_on_switch: true
+
+# Runtime gate. Never set this in an inventory — pass it per-run:
+#   make deploy-prod ANSIBLE_EXTRA="-e persistence_switch_confirm=true"
+# Required only in prod, and only when a flip is actually detected.
+persistence_switch_confirm: false
+
+# Control-host backup root. Mirrors ambibox_seed_dir: env-scoped so one environment can never
+# restore another's data, and under the gitignored stack/state/.
+# NOTE: a prod pg_dump is a different sensitivity class from a tailnet key — same directory,
+# same "never commit, manage out of band" rule.
+persistence_backup_dir: "{{ playbook_dir }}/../stack/state/{{ offkey_env }}"

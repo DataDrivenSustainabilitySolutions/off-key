@@ -1,0 +1,8 @@
+# Swarm advertise address must be the Tailscale IP of the manager node — overlay traffic
+# between nodes traverses Tailscale since the providers are different.
+#
+# It is set per-host in hosts.yml, NOT here: host vars outrank group vars, so a value in
+# this file would be silently ignored whenever hosts.yml also defines one. Keeping a
+# single definition means the two can never drift apart.
+#
+# No manager-specific overrides needed beyond that.

@@ -1,0 +1,79 @@
+---
+# Logical restore into the freshly-mounted data directory.
+#
+# The sequence below is the documented TimescaleDB procedure and the order matters:
+#   create db -> CREATE EXTENSION -> timescaledb_pre_restore() -> pg_restore -> post_restore()
+# Skipping pre/post_restore corrupts the TimescaleDB catalogs.
+
+- name: Discover the node running postgres
+  include_tasks: _service_container.yml
+  vars:
+    svc: postgres
+
+- name: postgres | wait for readiness
+  command: "docker exec {{ svc_container }} pg_isready -U {{ postgres_user }}"
+  delegate_to: "{{ svc_node }}"
+  register: pg_ready
+  until: pg_ready.rc == 0
+  retries: 30
+  delay: 5
+  changed_when: false
+
+- name: postgres | create the restore staging directory
+  file:
+    path: "{{ persistence_stage_dir }}/restore"
+    state: directory
+    mode: "0700"
+  become: true
+  delegate_to: "{{ svc_node }}"
+
+- name: postgres | push the dump directory back to the node
+  copy:
+    src: "{{ persistence_backup_paths.postgres }}/"
+    dest: "{{ persistence_stage_dir }}/restore/"
+    mode: "0600"
+  become: true
+  delegate_to: "{{ svc_node }}"
+
+- name: postgres | restore roles and globals
+  shell: >-
+    docker exec -i {{ svc_container }}
+    psql -U {{ postgres_user }} -d postgres
+    < {{ persistence_stage_dir }}/restore/roles.sql
+  args: {executable: /bin/bash}
+  become: true
+  delegate_to: "{{ svc_node }}"
+  changed_when: true
+
+- name: postgres | enumerate dumps to restore
+  find:
+    paths: "{{ persistence_stage_dir }}/restore"
+    patterns: "*.dump"
+  become: true
+  delegate_to: "{{ svc_node }}"
+  register: pg_dumps
+
+- name: postgres | restore each database
+  # NOTE: deliberately no -j on pg_restore. Parallel restore does not correctly restore the
+  # TimescaleDB catalogs, and the corruption is silent. Do not "optimise" this.
+  shell: |
+    set -euo pipefail
+    db={{ item.path | basename | regex_replace('\.dump$', '') | quote }}
+    cid="{{ svc_container }}"
+    docker exec "$cid" dropdb -U {{ postgres_user | quote }} --maintenance-db=template1 --if-exists --force "$db"
+    docker exec "$cid" createdb -U {{ postgres_user | quote }} --maintenance-db=template1 --template=template0 "$db"
+    docker exec "$cid" psql -U {{ postgres_user | quote }} -v ON_ERROR_STOP=1 -d "$db" -c "CREATE EXTENSION IF NOT EXISTS timescaledb;"
+    docker exec "$cid" psql -U {{ postgres_user | quote }} -v ON_ERROR_STOP=1 -d "$db" -c "SELECT timescaledb_pre_restore();"
+    docker exec -i "$cid" pg_restore --exit-on-error -U {{ postgres_user | quote }} -d "$db" < "{{ item.path }}"
+    docker exec "$cid" psql -U {{ postgres_user | quote }} -v ON_ERROR_STOP=1 -d "$db" -c "SELECT timescaledb_post_restore();"
+  args: {executable: /bin/bash}
+  become: true
+  delegate_to: "{{ svc_node }}"
+  loop: "{{ pg_dumps.files }}"
+  loop_control:
+    label: "{{ item.path | basename }}"
+  changed_when: true
+
+- name: postgres | report
+  debug:
+    msg: "Restored {{ pg_dumps.files | length }} database(s) from {{ persistence_backup_paths.postgres }}"

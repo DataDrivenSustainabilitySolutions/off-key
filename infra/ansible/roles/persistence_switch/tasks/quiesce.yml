@@ -1,0 +1,74 @@
+---
+- name: List current stack services and runtime RADAR workers
+  command:
+    argv: [docker, service, ls, --quiet, --filter, "{{ item }}"]
+  loop:
+    - "label=com.docker.stack.namespace={{ stack_name }}"
+    - label=managed_by=tactic
+  register: persistence_services
+  changed_when: false
+
+- name: Inspect services before stopping writers
+  command:
+    argv: "{{ ['docker', 'service', 'inspect'] + service_ids }}"
+  vars:
+    service_ids: "{{ persistence_services.results | map(attribute='stdout_lines') | flatten | unique | list }}"
+  register: persistence_service_specs
+  changed_when: false
+  no_log: true
+
+- name: Record writer replica counts
+  set_fact:
+    persistence_writer_replicas: >-
+      {{ dict((persistence_service_specs.stdout | from_json)
+         | rejectattr('Spec.Name', 'in', [stack_name ~ '_postgres', stack_name ~ '_emqx-main'])
+         | map(attribute='Spec.Name')
+         | zip((persistence_service_specs.stdout | from_json)
+         | rejectattr('Spec.Name', 'in', [stack_name ~ '_postgres', stack_name ~ '_emqx-main'])
+         | map(attribute='Spec.Mode.Replicated.Replicas'))) }}
+  no_log: true
+
+- name: Read any interrupted recovery plan
+  stat:
+    path: "{{ stack_dir }}/recovery-pending.json"
+  register: recovery_plan_stat
+
+- name: Load the original writer counts when retrying a restore
+  slurp:
+    src: "{{ stack_dir }}/recovery-pending.json"
+  register: recovery_plan
+  when: recovery_plan_stat.stat.exists
+  no_log: true
+
+- name: Preserve the original replica counts across restore retries
+  set_fact:
+    persistence_writer_replicas: >-
+      {{ persistence_writer_replicas | combine((recovery_plan.content | b64decode | from_json).writer_replicas) }}
+  when: recovery_plan_stat.stat.exists
+
+- name: Ensure the recovery plan directory exists
+  file:
+    path: "{{ stack_dir }}"
+    state: directory
+    mode: "0750"
+
+- name: Save the recovery plan before stopping any writer
+  copy:
+    dest: "{{ stack_dir }}/recovery-pending.json"
+    mode: "0600"
+    content: >-
+      {{ {'timestamp': persistence_run_ts, 'backup_root': persistence_backup_dir,
+          'restore_from': restore_from | default(none), 'backup_paths': persistence_backup_paths,
+          'writer_replicas': persistence_writer_replicas} | to_nice_json }}
+
+- name: Stop writers before taking the backup
+  command:
+    argv: [docker, service, scale, "{{ item.key }}=0"]
+  loop: "{{ persistence_writer_replicas | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}"
+
+- name: Confirm all writers have stopped
+  include_tasks: wait_stopped.yml
+  vars:
+    service_names: "{{ persistence_writer_replicas.keys() | list }}"

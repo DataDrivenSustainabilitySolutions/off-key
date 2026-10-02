@@ -1,0 +1,16 @@
+---
+- name: Exercise the real missing-file recovery tasks without starting Tailscale
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  become: false
+  tasks:
+    - name: Restore the selected identity seed
+      include_role:
+        name: nfs_server
+        tasks_from: seed
+
+    - name: Restore the selected access seed
+      include_role:
+        name: stack_prepare
+        tasks_from: ambibox-seed

@@ -1,0 +1,21 @@
+---
+- name: Check for selected AmbiBox access recovery material
+  stat:
+    path: "{{ ambibox_seed_dir | dirname }}/ambibox-access.json"
+  delegate_to: localhost
+  become: false
+  register: ambibox_access_seed
+  when: ambibox_seed_dir is defined
+
+- name: Seed missing AmbiBox access without replacing existing credentials
+  copy:
+    src: "{{ ambibox_seed_dir | dirname }}/ambibox-access.json"
+    dest: "{{ stack_dir }}/ambibox-access.json"
+    mode: '0600'
+    owner: "{{ stack_file_owner }}"
+    group: "{{ stack_file_group }}"
+    force: false
+  when:
+    - ambibox_seed_dir is defined
+    - ambibox_access_seed.stat.exists | default(false)
+  no_log: true

@@ -1,0 +1,36 @@
+---
+- name: Render deployment artifacts with supplied discovery results
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  become: false
+  vars_files:
+    - "../ansible/inventories/prod/group_vars/all/vars.yml"
+    - "../ansible/inventories/prod/group_vars/all/vault.yml.example"
+    - ../ansible/group_vars/all.yml
+  tasks:
+    - name: Load the production release
+      include_vars: ../ansible/inventories/prod/group_vars/all/release.yml
+      when: validation_environment == 'prod'
+
+    - name: Validate the discovered NFS client addresses
+      include_role:
+        name: nfs_server
+        tasks_from: clients
+
+    - name: Run the same rendering tasks as stack preparation
+      include_role:
+        name: stack_prepare
+        tasks_from: render
+
+    - name: Render the actual NFS export template
+      template:
+        src: ../ansible/roles/nfs_server/templates/ambibox.exports.j2
+        dest: "{{ stack_dir }}/ambibox.exports"
+        mode: "0600"
+
+    - name: Record the overlay selection consumed by stack deployment
+      copy:
+        dest: "{{ stack_dir }}/validation.json"
+        mode: "0600"
+        content: "{{ {'compose_files': stack_compose_files, 'ambibox_api_bootstrap': mqtt_secret_material.get('ambibox_api_bootstrap')} | to_json }}"

@@ -109,8 +109,8 @@ Gateway liveness can succeed while TACTIC-backed data or monitoring operations r
 
 - **Local default:** `docker compose up -d --build`
 - **Cluster override:** `docker-compose.cluster.yml`
-- **Swarm:** `docker-compose.swarm.yml`
-- **Swarm ingress overlay:** add `docker-compose.ingress.yml`
+- **Swarm:** `infra/stack/docker-compose.swarm.yml`
+- **Swarm ingress overlay:** add the integrated production ingress overlays
 
 See [Deployment modes](../operations/deployment-modes.md) for operational commands.
 
@@ -157,11 +157,9 @@ configuration fingerprint, input keys, package version, and lifecycle state.
 Signed atomic checkpoint I/O remains owned by Offkey. Runtime model information
 includes the resolved model identity and capabilities.
 
-For upgrades from 0.5.0, publish coordinated Gateway, TACTIC, and RADAR images from
-this commit and pin their release tags or digests. Rerun off-key-infra's
-`radar_image_seed` role on backend nodes before starting new workloads. Existing
-persistent RADAR services need recreation with the new image/configuration;
-changing the image used for new services does not upgrade existing containers.
+Integrated production releases seed the tested RADAR image on backend nodes, stop
+active workers and restart their saved configurations under new UUIDs with fresh
+calibration. The production workflow verifies them before completing the release.
 Adaptive configuration carries its expected Aberrant version to reject mixed
 versions. Cross-version model pickles are incompatible: preserve them for a
 rollback, but allow the upgraded monitors to warm up and calibrate afresh.

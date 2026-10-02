@@ -1,0 +1,57 @@
+# Persistence overlay — RENDERED, do not edit on the manager.
+#
+# Source: stack/docker-compose.persistence.yml.j2 (rendered by the stack_prepare role).
+# Merged on top of docker-compose.swarm.yml by stack_deploy via a second -f, and only when
+# at least one persist_* toggle is true. See README "Persistence".
+#
+# Why an overlay rather than editing the base compose file: the base file stays static and
+# reviewable, and per-service persistence stays a per-environment variable instead of a
+# hand-edit. None of the services below declare `volumes:` in the base file, so this is the
+# sole source of those keys and there is no list-merge ambiguity across the two -f files.
+#
+# `order: stop-first` is pinned explicitly on every stateful service. It is already the Swarm
+# default; it requests that the old task stop before its replacement starts. It is not
+# fencing: an unreachable node or stuck process still needs operator recovery.
+#
+# NOTE: these are node-local volumes with the default local driver. Deliberately no
+# driver_opts — Docker never updates driver_opts on an existing volume, which is the trap
+# that tailscale-ambibox-state hit. Both services are constrained to
+# node.labels.backend == true; with more than one backend node they must be pinned to a
+# specific host or moved to shared storage, or a reschedule finds an empty volume.
+
+services:
+{% if persist_postgres | default(false) | bool %}
+
+  postgres:
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    deploy:
+      update_config:
+        order: stop-first
+{% endif %}
+{% if (persist_emqx_data | default(false) | bool) or (persist_emqx_log | default(false) | bool) %}
+
+  emqx-main:
+    volumes:
+{% if persist_emqx_data | default(false) | bool %}
+      # mnesia: retained messages, auth/ACL, dashboard users, API keys, node identity
+      - emqx_data:/opt/emqx/data
+{% endif %}
+{% if persist_emqx_log | default(false) | bool %}
+      - emqx_log:/opt/emqx/log
+{% endif %}
+    deploy:
+      update_config:
+        order: stop-first
+{% endif %}
+
+volumes:
+{% if persist_postgres | default(false) | bool %}
+  postgres_data:
+{% endif %}
+{% if persist_emqx_data | default(false) | bool %}
+  emqx_data:
+{% endif %}
+{% if persist_emqx_log | default(false) | bool %}
+  emqx_log:
+{% endif %}

@@ -2,7 +2,6 @@
 .env
 .env.*
 !.env.example
-!.env.ingress.example
 compose.env
 dev.env
 *.local

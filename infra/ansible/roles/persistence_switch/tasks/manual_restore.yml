@@ -1,0 +1,96 @@
+---
+- name: Initialise the restore context
+  include_tasks: context.yml
+
+- name: List available backups when no timestamp was given
+  when: restore_from is not defined
+  block:
+    - name: Find backup directories
+      find:
+        paths: "{{ persistence_backup_dir }}"
+        file_type: directory
+        recurse: true
+        depth: 2
+      delegate_to: localhost
+      become: false
+      register: available
+
+    - name: Report available backups without changing services
+      fail:
+        msg: >-
+          No restore_from given. Available backups under {{ persistence_backup_dir }}:
+          {{ available.files | map(attribute='path') | map('basename') | unique | sort | join(', ') | default('(none)', true) }}.
+          Re-run with -e restore_from=<timestamp>.
+
+- name: Parse the requested services
+  set_fact:
+    persistence_restore_services: "{{ restore_services.split(',') | map('trim') | unique | list }}"
+
+- name: Validate the explicit restore selection
+  assert:
+    that:
+      - restore_from is match('^[0-9]{8}T[0-9]{6}([0-9]{6})?Z$')
+      - persistence_restore_services | length > 0
+      - persistence_restore_services | difference(['postgres', 'emqx']) | length == 0
+    fail_msg: "Choose a backup timestamp and a comma-separated subset of postgres,emqx."
+
+- name: Find the selected backup files
+  find:
+    paths: "{{ persistence_backup_dir }}/{{ item }}/{{ restore_from }}"
+    file_type: file
+  delegate_to: localhost
+  become: false
+  loop: "{{ persistence_restore_services }}"
+  register: restore_files
+
+- name: Require a complete backup for each selected service
+  assert:
+    that: >-
+      (item.item == 'postgres' and 'roles.sql' in filenames
+       and filenames | select('match', '^.+\.dump$') | list | length > 0)
+      or (item.item == 'emqx'
+       and filenames | select('match', '^emqx-export-.+\.tar\.gz$') | list | length == 1)
+    fail_msg: "The selected {{ item.item }} backup is missing or incomplete. No services have been stopped."
+  vars:
+    filenames: "{{ item.files | map(attribute='path') | map('basename') | list }}"
+  loop: "{{ restore_files.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+- name: Record the selected backup paths
+  set_fact:
+    persistence_backup_paths: >-
+      {{ persistence_backup_paths | combine({item.item:
+         (persistence_backup_dir ~ '/postgres/' ~ restore_from) if item.item == 'postgres'
+         else (item.files | map(attribute='path') | select('match', '^.*emqx-export-.+\.tar\.gz$') | first)}) }}
+  loop: "{{ restore_files.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+- name: Restore while application writers are stopped
+  block:
+    - name: Stop writers and wait for their tasks
+      include_tasks: quiesce.yml
+
+    - name: Restore the selected state
+      include_tasks: "restore_{{ restore_service }}.yml"
+      loop: "{{ persistence_restore_services }}"
+      loop_control:
+        loop_var: restore_service
+
+    - name: Resume the original writer replicas
+      command:
+        argv: [docker, service, scale, "{{ item.key }}={{ item.value }}"]
+      loop: "{{ persistence_writer_replicas | dict2items }}"
+      loop_control:
+        label: "{{ item.key }}"
+    - name: Clear the completed recovery plan
+      file:
+        path: "{{ stack_dir }}/recovery-pending.json"
+        state: absent
+  rescue:
+    - name: Report the interrupted restore
+      fail:
+        msg: >-
+          Restore stopped at '{{ ansible_failed_task.name }}'. Writers have not been
+          automatically resumed. Resolve the failure before resuming services.

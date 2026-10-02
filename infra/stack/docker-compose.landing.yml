@@ -1,0 +1,26 @@
+# Public website, production only. Static content is a versioned Swarm config;
+# no application build, credentials, or connection to the backend network is needed.
+services:
+  landing:
+    image: "${LANDING_IMAGE:-nginx:1.30.5-alpine}"
+    configs:
+      - source: landing_page
+        target: /usr/share/nginx/html/index.html
+    networks:
+      - public-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1/"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    deploy:
+      replicas: 1
+      placement:
+        constraints: [node.labels.frontend == true]
+      restart_policy:
+        condition: any
+
+configs:
+  landing_page:
+    name: landing_page_${LANDING_PAGE_HASH}
+    file: ./landing.html

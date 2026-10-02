@@ -1,0 +1,5 @@
+---
+stack_source_dir: "{{ role_path }}/../../../stack"
+stack_file_owner: root
+stack_file_group: docker
+ambibox_ingress_enabled: true

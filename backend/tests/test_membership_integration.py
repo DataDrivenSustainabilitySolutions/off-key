@@ -1,7 +1,6 @@
 """Membership invariants against an explicitly supplied disposable database."""
 
 import asyncio
-import hashlib
 import os
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -215,10 +214,7 @@ async def test_invitation_reset_and_immediate_session_revocation(
         pending = await session.scalar(
             select(User).where(User.email == invitation["email"])
         )
-        assert (
-            pending.verification_token
-            == hashlib.sha256(invitation["token"].encode()).hexdigest()
-        )
+        assert pending.verification_token == service._hash_token(invitation["token"])
         replacement = await service.invite(
             MemberInvitation(email="member@example.com"), actor
         )

@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
-"""One-time transfer of existing EMQX MQTT credentials; run only under no_log."""
+"""Save existing EMQX MQTT credentials privately and report only the file path."""
 
 import json
+import os
 import subprocess
 import sys
+import tempfile
 
 containers = subprocess.run(
     [
@@ -18,7 +20,6 @@ containers = subprocess.run(
     text=True,
 ).stdout.split()
 if not containers:
-    print("{}")
     sys.exit(0)
 
 expression = (
@@ -38,7 +39,6 @@ matches = [
     if name == "ambibox" or name.startswith("offkey_ambibox_")
 ]
 if not matches:
-    print("{}")
     sys.exit(0)
 credentials = {
     (value.get("username", ""), value.get("password", "")) for value in matches
@@ -50,4 +50,13 @@ if len(credentials) != 1:
 username, password = credentials.pop()
 if not username or not password or password == "******":
     raise SystemExit("Existing AmbiBox credentials are unavailable")
-print(json.dumps({"mqtt_username": username, "mqtt_password": password}))
+destination = tempfile.NamedTemporaryFile(
+    mode="w", prefix="offkey-ambibox-", delete=False
+)
+try:
+    with destination:
+        json.dump({"mqtt_username": username, "mqtt_password": password}, destination)
+except BaseException:
+    os.unlink(destination.name)
+    raise
+print(destination.name)

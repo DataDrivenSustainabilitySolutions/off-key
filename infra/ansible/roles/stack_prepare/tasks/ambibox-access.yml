@@ -16,28 +16,49 @@
     path: "{{ stack_dir }}/ambibox-access.json"
   register: ambibox_access_file
 
-- name: Read existing AmbiBox MQTT access on backend nodes
-  command:
-    argv:
-      - python3
-      - -c
-      - "{{ lookup('file', role_path ~ '/../../../scripts/read-ambibox-mqtt-access.py') }}"
-      - "{{ stack_name }}"
-  delegate_to: "{{ item }}"
-  loop: "{{ groups['swarm_backend'] }}"
-  register: ambibox_existing_access
-  changed_when: false
+- name: Recover existing AmbiBox MQTT access privately
   when:
     - not ambibox_access_file.stat.exists
     - ambibox_mqtt_password | default('') | length == 0
-  no_log: true
+  block:
+    - name: Save existing AmbiBox MQTT access privately on backend nodes
+      command:
+        argv:
+          - python3
+          - -c
+          - "{{ lookup('file', role_path ~ '/../../../scripts/read-ambibox-mqtt-access.py') }}"
+          - "{{ stack_name }}"
+      delegate_to: "{{ item }}"
+      loop: "{{ groups['swarm_backend'] }}"
+      register: ambibox_existing_access
+      changed_when: false
+      no_log: true
+
+    - name: Read private MQTT credential transfer files
+      slurp:
+        src: "{{ item.stdout | trim }}"
+      delegate_to: "{{ item.item }}"
+      loop: "{{ ambibox_existing_access.results }}"
+      when: item.stdout | default('') | trim | length > 0
+      register: ambibox_recovered_access
+      no_log: true
+  always:
+    - name: Remove private MQTT credential transfer files
+      file:
+        path: "{{ item.stdout | trim }}"
+        state: absent
+      delegate_to: "{{ item.item }}"
+      loop: "{{ ambibox_existing_access.results | default([]) }}"
+      when: item.stdout | default('') | trim | length > 0
+      no_log: true
 
 - name: Resolve existing upstream MQTT credentials
   set_fact:
     ambibox_initial_access: >-
       {{ {'mqtt_username': ambibox_mqtt_username, 'mqtt_password': ambibox_mqtt_password}
          if ambibox_mqtt_password | default('') | length > 0 else
-         (ambibox_existing_access.results | map(attribute='stdout') | map('from_json') |
+         (ambibox_recovered_access.results | selectattr('content', 'defined') |
+          map(attribute='content') | map('b64decode') | map('from_json') |
           selectattr('mqtt_password', 'defined') | first | default({})) }}
   when: not ambibox_access_file.stat.exists
   no_log: true

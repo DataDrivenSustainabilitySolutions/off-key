@@ -1,0 +1,10 @@
+# Generated from explicit service environment maps. Escape dollars for Compose;
+# its resolved config preserves that escaping for Swarm's interpolation pass.
+services:
+{% for service, environment in service_environment.items() %}
+  {{ service }}:
+    environment:
+{% for key, value in environment.items() if value is not none %}
+      {{ key }}: {{ value | string | replace('$', '$$') | to_json }}
+{% endfor %}
+{% endfor %}

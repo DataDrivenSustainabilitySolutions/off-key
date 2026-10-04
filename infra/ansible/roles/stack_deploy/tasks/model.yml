@@ -1,0 +1,24 @@
+---
+- name: Resolve the desired stack model before stopping any service
+  shell: >-
+    set -euo pipefail;
+    docker compose --env-file {{ (stack_dir ~ '/.env') | quote }}
+    -f {{ stack_compose_files | map('quote') | join(' -f ') }} config --format json
+    | python3 -c {{ lookup('file', role_path ~ '/../../../scripts/compile_stack.py') | quote }}
+  args:
+    executable: /bin/bash
+  register: stack_config
+  changed_when: false
+  no_log: true
+
+- name: Record the desired service model
+  set_fact:
+    stack_compose_model: "{{ stack_config.stdout | from_json }}"
+  no_log: true
+
+- name: Save the canonical deployment model for submission and verification
+  copy:
+    dest: "{{ stack_dir }}/deployment-model.json"
+    content: "{{ stack_compose_model | to_nice_json }}"
+    mode: "0600"
+  no_log: true

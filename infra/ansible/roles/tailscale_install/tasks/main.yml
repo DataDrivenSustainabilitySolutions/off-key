@@ -1,0 +1,187 @@
+---
+# OS-level Tailscale for the management tailnet.
+# This is NOT the vendor tailnet used by the tailscale-ambibox Swarm service.
+
+# cloud-init may have run install.sh which drops these files with a different Signed-By path,
+# causing an apt conflict with the Ansible-managed DEB822 source below.
+- name: Remove Tailscale sources installed by install.sh
+  file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /etc/apt/sources.list.d/tailscale.list
+    - /usr/share/keyrings/tailscale-archive-keyring.gpg
+
+- name: Create Tailscale apt keyring directory
+  file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: "0755"
+
+- name: Remove legacy Tailscale keyring if present
+  file:
+    path: /etc/apt/keyrings/tailscale.gpg
+    state: absent
+
+- name: Download Tailscale GPG key
+  get_url:
+    url: "https://pkgs.tailscale.com/stable/{{ ansible_facts['distribution'] | lower }}/{{ ansible_facts['distribution_release'] }}.gpg"
+    dest: /etc/apt/keyrings/tailscale.asc
+    mode: "0644"
+    force: false
+
+- name: Get dpkg architecture
+  command: dpkg --print-architecture
+  register: dpkg_arch
+  changed_when: false
+
+- name: Add Tailscale apt repository (DEB822 format)
+  copy:
+    dest: /etc/apt/sources.list.d/tailscale.sources
+    mode: "0644"
+    content: |
+      Types: deb
+      URIs: https://pkgs.tailscale.com/stable/{{ ansible_facts['distribution'] | lower }}
+      Suites: {{ ansible_facts['distribution_release'] }}
+      Components: main
+      Architectures: {{ dpkg_arch.stdout }}
+      Signed-By: /etc/apt/keyrings/tailscale.asc
+
+- name: Update apt cache after adding Tailscale repo
+  apt:
+    update_cache: true
+    lock_timeout: 120
+
+- name: Install Tailscale
+  apt:
+    name:
+      - tailscale
+      - ethtool
+    state: present
+    lock_timeout: 120
+
+- name: Ensure networkd-dispatcher routable.d directory exists
+  file:
+    path: /etc/networkd-dispatcher/routable.d
+    state: directory
+    mode: "0755"
+
+- name: Install UDP offload disable script (persists across reboots)
+  copy:
+    dest: /etc/networkd-dispatcher/routable.d/50-tailscale
+    mode: "0755"
+    content: |
+      #!/bin/sh
+      # Disable UDP GRO/GSO offloads on the default NIC — improves Tailscale throughput.
+      NETDEV=$(ip route show default | awk '/default/ {print $5}' | head -n1)
+      [ -n "$NETDEV" ] && ethtool -K "$NETDEV" rx-udp-gro-forwarding on rx-gro-list off
+
+- name: Apply UDP offload settings now
+  shell: |
+    NETDEV=$(ip route show default | awk '/default/ {print $5}' | head -n1)
+    [ -n "$NETDEV" ] && ethtool -K "$NETDEV" rx-udp-gro-forwarding on rx-gro-list off
+  changed_when: false
+
+- name: Create tailscaled systemd override directory
+  file:
+    path: /etc/systemd/system/tailscaled.service.d
+    state: directory
+    mode: "0755"
+  when: tailscale_userspace_networking | default(false)
+
+- name: Configure tailscaled for userspace networking
+  copy:
+    dest: /etc/systemd/system/tailscaled.service.d/userspace.conf
+    mode: "0644"
+    content: |
+      [Service]
+      ExecStart=
+      ExecStart=/usr/sbin/tailscaled --tun=userspace-networking --state=/var/lib/tailscale/tailscaled.state --socket=/run/tailscale/tailscaled.sock --port=41641
+  when: tailscale_userspace_networking | default(false)
+  register: tailscaled_override
+
+- name: Reload systemd daemon after override change
+  systemd:
+    daemon_reload: true
+  when: tailscaled_override is defined and tailscaled_override is changed
+
+- name: Enable and start tailscaled
+  systemd:
+    name: tailscaled
+    enabled: true
+    state: started
+
+- name: Wait for tailscaled to be ready
+  command: tailscale status --json
+  register: ts_status_raw
+  changed_when: false
+  failed_when: false
+  retries: 15
+  delay: 2
+  until: ts_status_raw.rc == 0 and ts_status_raw.stdout | length > 0
+
+- name: Check current Tailscale backend state
+  command: tailscale status --json
+  register: ts_status_raw
+  changed_when: false
+  failed_when: false
+
+- name: Parse Tailscale backend state
+  set_fact:
+    ts_backend_state: >-
+      {{ (ts_status_raw.stdout | from_json).BackendState
+         if ts_status_raw.rc == 0 and ts_status_raw.stdout | length > 0
+         else 'Stopped' }}
+
+- name: Require an auth key for a disconnected production node
+  assert:
+    that: tailscale_os_authkey | default('') | trim | length > 0
+    fail_msg: >-
+      {{ inventory_hostname }} is not connected to the management tailnet and
+      ingress_ts_authkey in the production vault is empty. Add a valid reusable
+      auth key there, or log this node in interactively, then rerun provisioning.
+  when:
+    - offkey_env == 'prod'
+    - ts_backend_state != 'Running'
+
+- name: Warn when a disconnected non-production node has no management auth key
+  debug:
+    msg: "tailscale_os_authkey is not defined — the node cannot join the management tailnet"
+  when:
+    - offkey_env != 'prod'
+    - ts_backend_state != 'Running'
+    - tailscale_os_authkey is not defined or tailscale_os_authkey | trim | length == 0
+
+- name: Join management tailnet
+  command:
+    argv:
+      - tailscale
+      - up
+      - --auth-key=file:/dev/stdin
+      - --hostname={{ inventory_hostname }}
+      - --accept-dns=false
+    stdin: "{{ tailscale_os_authkey }}"
+    stdin_add_newline: false
+  when:
+    - ts_backend_state != 'Running'
+    - tailscale_os_authkey is defined
+    - tailscale_os_authkey | trim | length > 0
+  no_log: true
+
+- name: Check management tailnet connection after login
+  command: tailscale status --json
+  register: ts_verify
+  changed_when: false
+  failed_when: false
+  when: offkey_env == 'prod' or tailscale_os_authkey is defined
+
+- name: Require management tailnet connection
+  assert:
+    that:
+      - ts_verify.rc == 0
+      - (ts_verify.stdout | from_json).BackendState == 'Running'
+    fail_msg: >-
+      {{ inventory_hostname }} is not connected to the management tailnet.
+      Set tailscale_os_authkey in this environment's inventory (or log in once
+      interactively), then rerun provisioning.
+  when: offkey_env == 'prod' or tailscale_os_authkey is defined

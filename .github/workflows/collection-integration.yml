@@ -52,7 +52,7 @@ jobs:
       - name: Test membership invariants against PostgreSQL
         env:
           TEST_SCHEMA_DATABASE_URL: postgresql+asyncpg://collection_test:collection-test-password@127.0.0.1:25432/collection_test
-        run: uv run --project backend python -m pytest backend/tests/test_membership_integration.py -q --tb=short
+        run: uv run --project backend python -m pytest backend/tests/test_membership_integration.py backend/tests/test_release_maintenance.py -q --tb=short
 
       - name: Test routing, collection and recovery under load
         run: timeout 300 uv run --project backend python -m pytest backend/tests/collection_integration -q --tb=short

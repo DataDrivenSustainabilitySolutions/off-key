@@ -21,6 +21,10 @@ nav = [
   ] },
   { "Operations" = [
     { "Deployment modes" = "operations/deployment-modes.md" },
+    { "GitHub setup" = "operations/github-setup.md" },
+    { "Production releases" = "operations/production.md" },
+    { "Recovery" = "operations/recovery.md" },
+    { "Collection operations" = "operations/ambibox-collection.md" },
   ] },
   { "Reference" = [
     { "Backend API" = "reference/backend-api.md" },
@@ -31,7 +35,6 @@ nav = [
     { "Archive index" = "archive/index.md" },
     { "Project setup" = "archive/project-setup.md" },
     { "Docker guide" = "archive/docker-guide.md" },
-    { "WSL networking" = "archive/wsl.md" },
     { "Frontend setup" = "archive/frontend-setup.md" },
     { "Frontend implementation notes" = "archive/frontend-documentation.md" },
     { "Client integration guide" = "archive/client-integration-guide.md" },

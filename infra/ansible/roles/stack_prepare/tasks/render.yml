@@ -1,0 +1,263 @@
+---
+- name: Require a dedicated internal API credential
+  assert:
+    that:
+      - internal_api_secret | default('') | length >= 32
+      - internal_api_secret != jwt_secret
+      - "'CHANGE_ME' not in internal_api_secret"
+    fail_msg: Set internal_api_secret to a new random secret of at least 32 characters in the environment vault.
+  no_log: true
+
+- name: Validate the Resend API key without exposing it
+  set_fact:
+    resend_api_key_valid: >-
+      {{ email_password | default('') is match('^re_.{10,}$')
+         and email_password != 're_xxxxxxxxx' }}
+  when: smtp_server == 'smtp.resend.com'
+  no_log: true
+
+- name: Require the real Resend API key in the vault email_password field
+  assert:
+    that:
+      - resend_api_key_valid
+    fail_msg: >-
+      The effective email_password is missing, malformed, or still a placeholder.
+      Edit inventories/prod/group_vars/all/vault.yml with ansible-vault edit and
+      replace its existing email_password value with your complete Resend API key
+      starting with re_. Ensure email_password appears only once in the vault.
+  when: smtp_server == 'smtp.resend.com'
+
+- name: Require authenticated Resend SMTP with certificate validation and TLS
+  assert:
+    that:
+      - email_username == 'resend'
+      - use_credentials | bool
+      - validate_certs | bool
+      - (mail_starttls | bool) != (mail_ssl_tls | bool)
+    fail_msg: >-
+      The failed assertion names the incorrect SMTP setting. Resend requires
+      email_username=resend, use_credentials=True, validate_certs=True, and exactly
+      one of mail_starttls or mail_ssl_tls. Check production vars.yml and any vault
+      overrides; see docs/email-delivery.md.
+  when: smtp_server == 'smtp.resend.com'
+
+# Shared by deployment and offline configuration checks. All inputs are supplied
+# by inventory/discovery; this task file only renders files and derived facts.
+- name: Require immutable production images from a named application revision
+  assert:
+    that:
+      - release.application_revision is match('^[0-9a-f]{40}$')
+      - release.images.keys() | sort == ['api', 'cloudflared', 'db_sync', 'emqx', 'frontend', 'gost', 'landing', 'mqtt_proxy', 'mqtt_radar', 'oauth2', 'postgres', 'socket_proxy', 'tailscale', 'tactic', 'traefik'] | sort
+      - release.images.values() | reject('match', '^.+@sha256:[0-9a-f]{64}$') | list | length == 0
+      - '[api_image, frontend_image, mqtt_proxy_image, tactic_image, mqtt_radar_image, db_sync_image] | difference(release.images.values()) | length == 0'
+    fail_msg: The resolved production release must contain the complete set of immutable image references.
+  when: offkey_env == 'prod'
+
+- name: Require the existing Cloudflare Tunnel token in production
+  assert:
+    that:
+      - cloudflare_tunnel_token | default('') | trim | length > 40
+      - (cloudflare_tunnel_token | default('') | trim).startswith('eyJ')
+    fail_msg: >-
+      Set cloudflare_tunnel_token in the production vault to the eyJ... token
+      for the existing production Cloudflare Tunnel, not the installation command.
+  when: offkey_env == 'prod'
+
+- name: Name the versioned Cloudflare Tunnel secret
+  set_fact:
+    cloudflared_tunnel_secret_name: >-
+      {{ stack_name }}_cloudflared_tunnel_token_{{ ((cloudflare_tunnel_token | trim) | hash('sha256'))[:12] }}
+  when: offkey_env == 'prod'
+  no_log: true
+
+- name: Require production MQTT certificate and credential material
+  assert:
+    that:
+      - emqx_ca_cert | default('') | length > 100
+      - emqx_server_cert | default('') | length > 100
+      - emqx_server_key | default('') | length > 100
+      - "'-----BEGIN CERTIFICATE-----' in emqx_ca_cert"
+      - "'-----BEGIN CERTIFICATE-----' in emqx_server_cert"
+      - "emqx_server_key is search('-----BEGIN (RSA )?PRIVATE KEY-----')"
+      - "'TEST_ONLY' not in emqx_ca_cert"
+      - "'TEST_ONLY' not in emqx_server_cert"
+      - "'TEST_ONLY' not in emqx_server_key"
+      - mqtt_proxy_password | default('') | length >= 32
+      - mqtt_radar_password | default('') | length >= 32
+      - radar_checkpoint_secret | default('') | length >= 32
+      - mqtt_proxy_password != mqtt_radar_password
+      - "'TEST_ONLY' not in mqtt_proxy_password"
+      - "'TEST_ONLY' not in mqtt_radar_password"
+      - "'TEST_ONLY' not in radar_checkpoint_secret"
+    fail_msg: Add a dedicated EMQX CA, broker certificate/key and separate MQTT credentials to the production vault.
+  when: offkey_env == 'prod'
+  no_log: true
+
+- name: Define production MQTT secret material
+  set_fact:
+    mqtt_secret_material:
+      emqx_ca_cert: "{{ emqx_ca_cert }}"
+      emqx_server_cert: "{{ emqx_server_cert }}"
+      emqx_server_key: "{{ emqx_server_key }}"
+      mqtt_proxy_password: "{{ mqtt_proxy_password }}"
+      mqtt_radar_password: "{{ mqtt_radar_password }}"
+      radar_checkpoint_secret: "{{ radar_checkpoint_secret }}"
+      emqx_auth_users: >-
+        {{ [
+          {'user_id': mqtt_local_proxy_username, 'password': mqtt_proxy_password, 'is_superuser': false},
+          {'user_id': radar_mqtt_username, 'password': mqtt_radar_password, 'is_superuser': false}
+        ] | to_json }}
+  when: offkey_env == 'prod'
+  no_log: true
+
+- name: Require collection controller access
+  assert:
+    that:
+      - ambibox_access.mqtt_username | default('') | length > 0
+      - ambibox_access.mqtt_password | default('') | length > 0
+      - ambibox_access.api_secret | default('') | length >= 32
+      - ambibox_access.gost_password | default('') | length >= 32
+  when: ambibox_ingress_enabled | bool
+  no_log: true
+
+- name: Define collection controller secrets
+  set_fact:
+    mqtt_secret_material: >-
+      {{ mqtt_secret_material | default({}) | combine({
+        'ambibox_mqtt_username': ambibox_access.mqtt_username,
+        'ambibox_mqtt_password': ambibox_access.mqtt_password,
+        'ambibox_api_key': ambibox_access.api_key,
+        'ambibox_api_secret': ambibox_access.api_secret,
+        'ambibox_gost_password': ambibox_access.gost_password,
+        'ambibox_api_bootstrap': ambibox_access.api_key ~ ':' ~ ambibox_access.api_secret,
+        'ambibox_gost_config': {'api': {'addr': ':18080', 'auth': {
+          'username': 'off-key', 'password': ambibox_access.gost_password
+        }}} | to_json
+      }) }}
+  when: ambibox_ingress_enabled | bool
+  no_log: true
+
+- name: Name versioned MQTT secrets
+  set_fact:
+    mqtt_secret_names: >-
+      {{ mqtt_secret_names | default({}) | combine({item.key: stack_name ~ '_' ~ item.key ~ '_' ~ (item.value | hash('sha256'))[:12]}) }}
+  loop: "{{ mqtt_secret_material | default({}) | dict2items }}"
+  no_log: true
+
+- name: Create stack directory
+  file:
+    path: "{{ stack_dir }}"
+    state: directory
+    mode: "0750"
+    owner: "{{ stack_file_owner }}"
+    group: "{{ stack_file_group }}"
+
+- name: Render .env file from template
+  template:
+    src: env.j2
+    dest: "{{ stack_dir }}/.env"
+    mode: "0600"
+    owner: "{{ stack_file_owner }}"
+    group: "{{ stack_file_group }}"
+  no_log: true
+
+- name: Render explicit service environment maps
+  template:
+    src: environment.yml.j2
+    dest: "{{ stack_dir }}/docker-compose.environment.yml"
+    mode: "0600"
+    owner: "{{ stack_file_owner }}"
+    group: "{{ stack_file_group }}"
+  no_log: true
+
+- name: Remove obsolete service dotenv files
+  file:
+    path: "{{ stack_dir }}/.env.{{ item }}"
+    state: absent
+  loop: "{{ service_environment.keys() | list }}"
+
+- name: Copy shared stack files
+  copy:
+    src: "{{ stack_source_dir }}/{{ item }}"
+    dest: "{{ stack_dir }}/{{ item }}"
+    mode: "0640"
+    owner: "{{ stack_file_owner }}"
+    group: "{{ stack_file_group }}"
+  loop:
+    - docker-compose.swarm.yml
+    - docker-compose.traefik.yml
+    - docker-compose.oauth2.yml
+
+- name: Remove obsolete Mailpit deployment files
+  file:
+    path: "{{ stack_dir }}/{{ item }}"
+    state: absent
+  loop: "{{ ['.env.mailpit', 'docker-compose.mailpit.yml'] }}"
+
+- name: Render environment-specific Traefik routes
+  template:
+    src: "{{ stack_source_dir }}/traefik-dynamic.yml.j2"
+    dest: "{{ stack_dir }}/traefik-dynamic.yml"
+    mode: "0640"
+    owner: "{{ stack_file_owner }}"
+    group: "{{ stack_file_group }}"
+
+- name: Copy production EMQX security configuration
+  copy:
+    src: "{{ stack_source_dir }}/emqx-security.hocon"
+    dest: "{{ stack_dir }}/emqx-security.hocon"
+    mode: "0640"
+    owner: "{{ stack_file_owner }}"
+    group: "{{ stack_file_group }}"
+  when: offkey_env == 'prod'
+
+- name: Copy production landing page overlay
+  copy:
+    src: "{{ stack_source_dir }}/docker-compose.landing.yml"
+    dest: "{{ stack_dir }}/docker-compose.landing.yml"
+    mode: "0640"
+    owner: "{{ stack_file_owner }}"
+    group: "{{ stack_file_group }}"
+  when: offkey_env == 'prod'
+
+- name: Render the public landing page
+  template:
+    src: "{{ stack_source_dir }}/landing.html.j2"
+    dest: "{{ stack_dir }}/landing.html"
+    mode: "0640"
+    owner: "{{ stack_file_owner }}"
+    group: "{{ stack_file_group }}"
+  when: offkey_env == 'prod'
+
+- name: Render production Cloudflare Tunnel connector overlay
+  template:
+    src: "{{ stack_source_dir }}/docker-compose.cloudflared.yml.j2"
+    dest: "{{ stack_dir }}/docker-compose.cloudflared.yml"
+    mode: "0640"
+    owner: "{{ stack_file_owner }}"
+    group: "{{ stack_file_group }}"
+  when: offkey_env == 'prod'
+
+- name: Render MQTT security and collection controller overlay
+  template:
+    src: "{{ stack_source_dir }}/docker-compose.mqtt-security.yml.j2"
+    dest: "{{ stack_dir }}/docker-compose.mqtt-security.yml"
+    mode: "0640"
+    owner: "{{ stack_file_owner }}"
+    group: "{{ stack_file_group }}"
+  when: offkey_env == 'prod' or ambibox_ingress_enabled | bool
+
+- name: Render persistence overlay
+  template:
+    src: "{{ stack_source_dir }}/docker-compose.persistence.yml.j2"
+    dest: "{{ stack_dir }}/docker-compose.persistence.yml"
+    mode: "0640"
+    owner: "{{ stack_file_owner }}"
+    group: "{{ stack_file_group }}"
+  when: persistence_any_enabled | bool
+
+- name: Remove persistence overlay when all toggles are off
+  file:
+    path: "{{ stack_dir }}/docker-compose.persistence.yml"
+    state: absent
+  when: not (persistence_any_enabled | bool)

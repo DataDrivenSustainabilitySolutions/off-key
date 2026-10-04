@@ -1,0 +1,23 @@
+---
+# On-demand backup of the stateful services, independent of any persistence flip.
+# Run it before risky changes, or on a schedule.
+#
+#   uv run ansible-playbook -i inventories/prod/hosts.yml backup-stack-state.yml --ask-vault-pass
+#
+# Backups land in stack/state/<env>/<service>/<UTC timestamp>/ on the control host, matching
+# the env-scoped layout used by ambibox_seed_dir. That directory is gitignored — a prod
+# pg_dump contains every row of production data and hashed credentials, so treat it with the
+# same care as the vault itself.
+#
+# Works whether or not persistence is enabled: dumping is done from the running container, so
+# it does not care whether the data lives in a volume or the container's writable layer.
+
+- name: Back up stateful service data
+  hosts: swarm_manager[0]
+  gather_facts: false
+  any_errors_fatal: true
+  tasks:
+    - name: Run the recovery workflow
+      include_role:
+        name: persistence_switch
+        tasks_from: backup

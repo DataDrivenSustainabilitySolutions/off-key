@@ -1,0 +1,28 @@
+---
+# Replace the fake addresses, users and inventory names with the existing Swarm nodes.
+# Names MUST match docker node ls. Do not add local SSH key paths or proxy commands.
+all:
+  children:
+    swarm_manager:
+      hosts:
+        manager:
+          ansible_host: 100.100.10.1
+          ansible_user: deploy
+          ansible_port: 22
+    swarm_worker:
+      children:
+        swarm_backend:
+          hosts:
+            backend:
+              ansible_host: 100.100.10.2
+              ansible_user: deploy
+              ansible_port: 2222
+        swarm_frontend:
+          hosts:
+            frontend:
+              ansible_host: 100.100.10.3
+              ansible_user: deploy
+              ansible_port: 2222
+    ambibox_nfs:
+      hosts:
+        manager:

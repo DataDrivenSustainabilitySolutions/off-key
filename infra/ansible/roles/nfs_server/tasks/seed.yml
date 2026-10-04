@@ -1,0 +1,27 @@
+- name: Check whether ambibox state is already present on the export
+  stat:
+    path: "{{ stack_dir }}/tailscale-ambibox-data/tailscaled.state"
+  register: ambibox_state
+
+- name: Check whether an ambibox identity backup exists on the control host
+  stat:
+    path: "{{ ambibox_seed_dir }}/tailscaled.state"
+  delegate_to: localhost
+  become: false
+  register: ambibox_seed
+
+- name: Seed ambibox state from control-host backup (only if export empty and a seed exists)
+  copy:
+    src: "{{ ambibox_seed_dir }}/"
+    dest: "{{ stack_dir }}/tailscale-ambibox-data/"
+    mode: preserve
+  when:
+    - not ambibox_state.stat.exists
+    - ambibox_seed.stat.exists
+
+- name: Require recovery of the existing vendor identity before deployment
+  assert:
+    that: ambibox_state.stat.exists or ambibox_seed.stat.exists
+    fail_msg: >-
+      The vendor identity is missing. Restore its private backup to the NFS export
+      or the local gitignored seed directory before deploying. CI must not register a replacement identity.

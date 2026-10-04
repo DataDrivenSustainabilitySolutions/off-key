@@ -1,0 +1,79 @@
+---
+# Run deliberately, outside deployment or credential rotation. No vendor login occurs.
+- name: Back up the AmbiBox identity and access together
+  hosts: ambibox_nfs
+  gather_facts: false
+  tasks:
+    - name: Read the vendor identity from the NFS host
+      slurp:
+        src: "{{ stack_dir }}/tailscale-ambibox-data/tailscaled.state"
+      register: ambibox_identity_backup
+      no_log: true
+
+    - name: Read MQTT and controller credentials from the manager
+      slurp:
+        src: "{{ stack_dir }}/ambibox-access.json"
+      delegate_to: "{{ groups['swarm_manager'][0] }}"
+      register: ambibox_credentials_backup
+      no_log: true
+
+    - name: Validate both documents before creating a backup
+      assert:
+        that:
+          - identity is mapping
+          - identity | length > 0
+          - access is mapping
+          - access.mqtt_username | length > 0
+          - access.mqtt_password | length > 0
+          - access.api_key | length > 0
+          - access.api_secret | length >= 32
+          - access.gost_password | length >= 32
+      vars:
+        identity: "{{ ambibox_identity_backup.content | b64decode | from_json }}"
+        access: "{{ ambibox_credentials_backup.content | b64decode | from_json }}"
+      no_log: true
+
+    - name: Select a new environment-scoped recovery directory
+      set_fact:
+        ambibox_backup_directory: >-
+          {{ playbook_dir }}/../stack/state/{{ offkey_env }}/ambibox/{{ now(utc=true, fmt='%Y%m%dT%H%M%S%fZ') }}
+
+    - name: Create the private recovery directory
+      file:
+        path: "{{ ambibox_backup_directory }}/tailscale-ambibox-data"
+        state: directory
+        mode: '0700'
+      delegate_to: localhost
+      become: false
+
+    - name: Save the private vendor identity
+      copy:
+        dest: "{{ ambibox_backup_directory }}/tailscale-ambibox-data/tailscaled.state"
+        content: "{{ ambibox_identity_backup.content | b64decode }}"
+        mode: '0600'
+      delegate_to: localhost
+      become: false
+      no_log: true
+
+    - name: Save the matching private MQTT and controller credentials
+      copy:
+        dest: "{{ ambibox_backup_directory }}/ambibox-access.json"
+        content: "{{ ambibox_credentials_backup.content | b64decode }}"
+        mode: '0600'
+      delegate_to: localhost
+      become: false
+      no_log: true
+
+    - name: Mark the complete recovery bundle with checksums
+      copy:
+        dest: "{{ ambibox_backup_directory }}/SHA256SUMS"
+        mode: '0600'
+        content: |
+          {{ ambibox_identity_backup.content | b64decode | hash('sha256') }}  tailscale-ambibox-data/tailscaled.state
+          {{ ambibox_credentials_backup.content | b64decode | hash('sha256') }}  ambibox-access.json
+      delegate_to: localhost
+      become: false
+
+    - name: Report the complete backup location
+      debug:
+        msg: "Complete AmbiBox recovery bundle: {{ ambibox_backup_directory }}. Active seeds were not overwritten."

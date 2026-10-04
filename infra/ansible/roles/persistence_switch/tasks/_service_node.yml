@@ -1,0 +1,31 @@
+---
+# Resolve one running Swarm task. Its ID also identifies the container during updates.
+- name: "{{ svc }} | wait for one running task"
+  command:
+    argv:
+      - docker
+      - service
+      - ps
+      - "{{ stack_name }}_{{ svc }}"
+      - --no-trunc
+      - --filter
+      - desired-state=running
+      - --format
+      - '{% raw %}{{json .}}{% endraw %}'
+  register: _svc_tasks
+  changed_when: false
+  until: >-
+    _svc_tasks.stdout_lines | length == 1
+    and (_svc_tasks.stdout_lines[0] | from_json).CurrentState.startswith('Running ')
+  retries: 30
+  delay: 5
+
+- name: "{{ svc }} | require an inventory node"
+  assert:
+    that: (_svc_tasks.stdout_lines[0] | from_json).Node in groups['all']
+    fail_msg: "The running {{ stack_name }}_{{ svc }} task is on a node outside this inventory."
+
+- name: "{{ svc }} | record the running task"
+  set_fact:
+    svc_node: "{{ (_svc_tasks.stdout_lines[0] | from_json).Node }}"
+    svc_task_id: "{{ (_svc_tasks.stdout_lines[0] | from_json).ID }}"

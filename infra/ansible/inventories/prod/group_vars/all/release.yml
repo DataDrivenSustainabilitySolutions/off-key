@@ -1,0 +1,22 @@
+{
+  "release": {
+    "application_revision": "ed893dff68a7c2d32ebfb09c84a413f84a2d8387",
+    "images": {
+      "api": "ghcr.io/datadrivensustainabilitysolutions/off-key-api-gateway:sha-ed893df@sha256:bb399ecd66d9b25644beb9792833b2e272cd91a6e5b23c94a6e36928e98542fe",
+      "frontend": "ghcr.io/datadrivensustainabilitysolutions/off-key-frontend:sha-ed893df@sha256:dca1a11afaa5c11e1c8e45f629db1bf311e08bafe17a6d944c785e053aa1bd0f",
+      "mqtt_proxy": "ghcr.io/datadrivensustainabilitysolutions/off-key-mqtt-proxy:sha-ed893df@sha256:3e63104d1e3ecad8fb47a22375f3517bcd0bda12c7c1f89e7b81364b0609820a",
+      "tactic": "ghcr.io/datadrivensustainabilitysolutions/off-key-tactic-middleware:sha-ed893df@sha256:e1a522c84ed92bfd388dab7ca4da65fde89feb04cc458018ebed2248b4e51165",
+      "mqtt_radar": "ghcr.io/datadrivensustainabilitysolutions/off-key-mqtt-radar:sha-ed893df@sha256:51ffe55df165013c4bea3912ce4f05d56de2cdb0e149fb0ab997706c1e436ba4",
+      "db_sync": "ghcr.io/datadrivensustainabilitysolutions/off-key-db-sync:sha-ed893df@sha256:21157df06eb983c056bb0e516aabf7a3add83bf13925095857890ec08197e532",
+      "postgres": "timescale/timescaledb:latest-pg15@sha256:6343bdc87ca132c6b53acb26113a6bad1821d188fa39975a745f32ddd9757634",
+      "socket_proxy": "tecnativa/docker-socket-proxy:latest@sha256:1f5038b54f06c3e18422902cf00ba21803d1c97805aae032e5e6673d532d3459",
+      "tailscale": "tailscale/tailscale:latest@sha256:c507f3a2a6ab1cabd8d809b98edeb41edbd5c3fb6ad9632ffd098b4c7d0b4065",
+      "gost": "gogost/gost:3.3.0@sha256:f7a958c451928fbe1b99046d25bd0c9bf42019d4c60a82200f50dc8e617b7580",
+      "emqx": "emqx/emqx:5.8.7@sha256:556aea6d62134524ecd1fcca53380b460b52995344dce571d484f042d9b15e7d",
+      "traefik": "traefik:v3.5.4@sha256:4df0a50fcf71b454c0d7ad17675776dc8d37359deae3291895bdaa008c1b9972",
+      "oauth2": "quay.io/oauth2-proxy/oauth2-proxy:v7.7.1@sha256:f6a4aa83a27e316114bf79664302b1ffb2cc8ce697fb479273af4feb3fb16fe3",
+      "landing": "nginx:1.30.5-alpine@sha256:0985e772fb9f729e6fa0980da05fca5d9c468e870eed43071545afa9d2e27d94",
+      "cloudflared": "cloudflare/cloudflared:2026.9.1@sha256:b269e8abd07a5bf6f3f4be65d5050b2174eca89c56a0241a8ff32a16aec454e4"
+    }
+  }
+}

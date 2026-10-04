@@ -1,0 +1,20 @@
+---
+# Restore a previously captured backup. This OVERWRITES live data, so the timestamp must be
+# given explicitly — there is deliberately no "latest" default.
+#
+#   uv run ansible-playbook -i inventories/prod/hosts.yml restore-stack-state.yml \
+#     --ask-vault-pass -e restore_from=20260807T120000Z -e restore_services=postgres
+#
+# restore_services is a comma-separated subset of: postgres, emqx.
+
+- name: Restore stateful service data
+  hosts: swarm_manager[0]
+  gather_facts: false
+  vars:
+    restore_services: postgres,emqx
+  any_errors_fatal: true
+  tasks:
+    - name: Run the recovery workflow
+      include_role:
+        name: persistence_switch
+        tasks_from: manual_restore

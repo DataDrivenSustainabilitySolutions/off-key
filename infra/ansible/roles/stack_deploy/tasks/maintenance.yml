@@ -1,0 +1,168 @@
+---
+- name: Inspect the existing database service
+  command:
+    argv: [docker, service, inspect, "{{ stack_name }}_postgres"]
+  register: release_database
+  changed_when: false
+  failed_when: release_database.rc != 0 and 'no such service' not in release_database.stderr | lower
+  no_log: true
+
+- name: Initialize only the database on a new cluster
+  when: release_database.rc != 0
+  block:
+    - name: Require explicit bootstrap on a new cluster
+      assert:
+        that: release_bootstrap | default(false) | bool
+        fail_msg: A new cluster requires a controlled BOOTSTRAP=true deployment.
+
+    - name: Save the database-only model before starting application writers
+      copy:
+        dest: "{{ stack_dir }}/database-bootstrap.json"
+        mode: "0600"
+        content: "{{ stack_compose_model | combine({'services': {'postgres': stack_compose_model.services.postgres}}) | to_nice_json }}"
+      no_log: true
+
+    - name: Start the database and attachable application network
+      command:
+        argv: [docker, stack, deploy, -c, "{{ stack_dir }}/database-bootstrap.json", --with-registry-auth, "{{ stack_name }}"]
+
+- name: Locate the running production database
+  include_role:
+    name: persistence_switch
+    tasks_from: _service_container
+  vars:
+    svc: postgres
+
+- name: Wait for the database before migration preflight
+  command:
+    argv: [docker, exec, "{{ svc_container }}", pg_isready, -U, "{{ postgres_user }}", -d, "{{ postgres_db }}"]
+  delegate_to: "{{ svc_node }}"
+  register: release_database_ready
+  changed_when: false
+  retries: 30
+  delay: 2
+  until: release_database_ready.rc == 0
+
+- name: Inspect the target schema migration requirements
+  include_tasks: job.yml
+  vars:
+    release_job_service: db-sync
+    release_job_image: "{{ db_sync_image }}"
+    release_job_module: off_key_core.db.migrate
+    release_job_arguments: [status]
+
+- name: Keep the migration preflight result
+  set_fact:
+    release_migration_status: "{{ release_job_output }}"
+
+- name: Initialize the monitor maintenance phase
+  set_fact:
+    release_monitor_phase: complete
+
+- name: Read any existing monitor operation before retrying the bootstrap
+  when: release_migration_status.pending | length == 0
+  block:
+    - name: Read the persisted monitor maintenance phase
+      include_tasks: monitor_job.yml
+      vars:
+        monitor_action: status
+
+    - name: Preserve the original cutover on a retry
+      set_fact:
+        release_monitor_phase: "{{ release_job_output.phase }}"
+
+- name: Record the release before any application writer is stopped
+  copy:
+    dest: "{{ stack_dir }}/release-maintenance.json"
+    mode: "0600"
+    content: "{{ {'revision': release.application_revision} | to_nice_json }}"
+
+- name: Stop application writers and back up before upgrading the schema
+  when: release_migration_status.pending | length > 0 or ((release_bootstrap | default(false) | bool) and release_monitor_phase == 'complete')
+  block:
+    - name: List the existing application services and runtime workers
+      command:
+        argv: [docker, service, ls, --format, '{% raw %}{{.Name}}{% endraw %}', --filter, "{{ item }}"]
+      loop:
+        - "label=com.docker.stack.namespace={{ stack_name }}"
+        - label=managed_by=tactic
+      register: release_writer_services
+      changed_when: false
+
+    - name: Select writers to quiesce
+      set_fact:
+        release_writers: "{{ release_writer_services.results | map(attribute='stdout_lines') | flatten | unique | difference([stack_name ~ '_postgres', stack_name ~ '_emqx-main']) }}"
+
+    - name: Stop writers before the database backup
+      command:
+        argv: [docker, service, scale, "{{ item }}=0"]
+      loop: "{{ release_writers }}"
+
+    - name: Confirm every old writer has stopped
+      include_role:
+        name: persistence_switch
+        tasks_from: wait_stopped
+      vars:
+        service_names: "{{ release_writers }}"
+
+    - name: Locate the database for a private server-side backup
+      include_role:
+        name: persistence_switch
+        tasks_from: _service_container
+      vars:
+        svc: postgres
+
+    - name: Create a private release backup directory on the database node
+      file:
+        path: "{{ stack_dir }}/.backup/releases/{{ release.application_revision }}"
+        state: directory
+        mode: "0700"
+      delegate_to: "{{ svc_node }}"
+
+    - name: Save and validate the original database without copying it to the runner
+      shell: |
+        set -euo pipefail
+        umask 077
+        backup={{ (stack_dir ~ '/.backup/releases/' ~ release.application_revision) | quote }}
+        if [ ! -f "$backup/database.dump" ]; then
+          docker exec {{ svc_container | quote }} pg_dump -U {{ postgres_user | quote }} -d {{ postgres_db | quote }} -Fc > "$backup/database.dump.pending"
+          docker exec -i {{ svc_container | quote }} pg_restore --list < "$backup/database.dump.pending" > /dev/null
+          mv "$backup/database.dump.pending" "$backup/database.dump"
+        fi
+        docker exec -i {{ svc_container | quote }} pg_restore --list < "$backup/database.dump" > /dev/null
+        if [ ! -f "$backup/database.dump.sha256" ]; then
+          sha256sum "$backup/database.dump" > "$backup/database.dump.sha256.pending"
+          mv "$backup/database.dump.sha256.pending" "$backup/database.dump.sha256"
+        fi
+        sha256sum --check "$backup/database.dump.sha256" > /dev/null
+      args:
+        executable: /bin/bash
+      delegate_to: "{{ svc_node }}"
+
+    - name: Apply the target SQL migrations in one transaction
+      include_tasks: job.yml
+      vars:
+        release_job_service: db-sync
+        release_job_image: "{{ db_sync_image }}"
+        release_job_module: off_key_core.db.migrate
+        release_job_arguments: [apply]
+
+- name: Adopt and validate the migration ledger when no upgrade is required
+  include_tasks: job.yml
+  vars:
+    release_job_service: db-sync
+    release_job_image: "{{ db_sync_image }}"
+    release_job_module: off_key_core.db.migrate
+    release_job_arguments: [apply]
+  when: release_migration_status.pending | length == 0 and not ((release_bootstrap | default(false) | bool) and release_monitor_phase == 'complete')
+
+- name: Capture the original active monitor configuration during the controlled cutover
+  include_tasks: monitor_job.yml
+  vars:
+    monitor_action: capture
+  when: (release_bootstrap | default(false) | bool) and release_monitor_phase == 'complete'
+
+- name: Stop active monitors with a durable restart plan
+  include_tasks: monitor_job.yml
+  vars:
+    monitor_action: begin

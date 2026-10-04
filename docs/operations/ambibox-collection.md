@@ -9,7 +9,7 @@ isolation or other providers.
 The database holds the authoritative configuration and its revision history.
 Exported JSON is a portable catalog, not a second runtime configuration source.
 Credentials, allowed broker hostnames and network access remain operator settings.
-The infrastructure provisions controller access for dev, WSL and production;
+The integrated production infrastructure provisions controller access;
 production MQTT TLS policy remains specific to production.
 The UI never receives vendor or management credentials.
 
@@ -98,10 +98,9 @@ per-row deletion deadline. Startup does not explicitly execute cleanup; the sche
 
 ## Applying a revision
 
-Before upgrading an existing database to durable monitor pauses, run
-`backend/migrations/002_monitor_stop_intent.sql` with `psql -v ON_ERROR_STOP=1`.
-It adds the persisted stop request and repairs status payloads written by the
-former collection pause path. Fresh databases include the column automatically.
+The production release applies packaged SQL migrations transactionally before the
+new application starts. Do not apply individual SQL files manually. See
+[Production releases](production.md) for the upgrade and maintenance sequence.
 
 Affected monitor stop requests are committed before Docker removal. Each completed
 stop is saved independently; the catalog revision changes only after every stop
@@ -135,11 +134,10 @@ connections use PostgreSQL advisory locks and stop work if the connection is los
 
 ## Initial catalog and local development
 
-The bundled AmbiBox inventory contains 31 candidate hosts from the development
-inspection. Four brokers were observed; sensor definitions on the others are
-unverified assumptions. All chargers start paused. Loading it does not scan the
-network or automatically subscribe to the hosts. Select the observed chargers or
-other known endpoints and apply a collection policy.
+The bundled AmbiBox template contains one fictional broker and charger, with
+standard sensor definitions and collection paused. Replace its broker details
+before saving. It makes no claim that a real broker or sensor has been observed.
+Existing production catalogs stay in the database and are preserved by deployment.
 
 For a local Compose stack, import `dev/ambibox/local-catalog.json` instead. It
 matches the existing simulator's two chargers on `source-broker:1883`. Start the
@@ -156,35 +154,20 @@ request another vendor tailnet key. If MQTT credentials are supplied explicitly,
 use the existing pair in the Ansible vault. Credential rotation is an operator
 operation; update the private access file and redeploy its versioned secrets.
 
-## One-time clean cutover
+## Deployment and development reset
 
-This release deliberately has no charger-ID aliasing or legacy forwarding path.
-Build and deploy the application and infrastructure changes together.
+Use the [GitHub setup guide](github-setup.md) for the first controlled production
+cutover. Production upgrades preserve the saved catalog, telemetry and monitoring
+evidence, and restart active monitors with the same settings and fresh calibration.
+Vendor Tailscale identity and broker credentials are reused. Revoked access or
+previously unseen broker ACLs still require the provider to resolve them; a visible
+tailnet peer alone does not prove its MQTT broker is reachable.
 
-1. Stop managed RADAR workloads through the application. Keep the existing EMQX
-   connector until infrastructure has transferred its credentials.
-2. Deploy the new images and infrastructure. Let DB Sync create the new tables.
-   Preserve the existing vendor tailnet state/NFS volume and singleton placement.
-3. Stop TACTIC and MQTT Proxy while resetting development data. Run
-   `dev/ambibox/reset-development.sql` with `psql` against the intended database.
-   It refuses running collection locks or active monitor records and clears
-   charger/telemetry/monitoring/catalog data while preserving accounts and the
-   model registry. This is an explicit operator action, never a startup migration.
-4. Remove the old EMQX rule `rule_besa`, source `mqtt:Ambibox` and connector
-   `mqtt:ambibox` after confirming the credential transfer. Environments using the
-   old development helper may instead have source `mqtt:ambibox-wildcard`; remove
-   its referring rule first. Remove the old retained `device/evCharger/0/#` cache.
-   Do not delete the new controller-owned resources or vendor identity.
-5. Restart TACTIC and MQTT Proxy. Sign in as the configured verified administrator,
-   open Data sources, load/build/import the catalog, select sensors and save
-   changes. Wait for both workers' matching revision.
-6. Check each selected broker's connection state in Data sources and numeric
-   charts in the dashboard or charger details. Start new monitors using the new
-   charger UUIDs.
-
-An unexpired existing tailnet identity and broker credentials are reused; revoked
-access or previously unseen broker ACLs still require the provider to resolve them.
-A visible tailnet peer alone does not prove that its MQTT broker is reachable.
+For an intentional **development-only** reset, stop TACTIC and MQTT Proxy and run
+`dev/ambibox/reset-development.sql` against the disposable development database.
+It refuses active collection locks or monitor records, preserves accounts and the
+model registry, and clears collection/monitoring history. It is never a production
+startup migration.
 
 ## Continuous integration
 
@@ -217,29 +200,6 @@ the default fixture is production's EMQX 5.8.7. Run `down -v` between broker
 versions so a downgrade never reuses a newer EMQX data directory. Tests cover identity isolation,
 retention, sampling, pause, reconnect, idle state, API authorization, concurrent
 saves and affected monitor acknowledgement.
-
-Implementation verification on 27 September 2026: 609 backend tests passed (four
-opt-in tests skipped in that run), 183 frontend tests passed, and 15 infrastructure
-checks passed. Frontend lint/build, pre-commit, all four Compose models, and both
-Terraform roots also passed. Terraform validation used Linux to match the locked
-provider packages in CI.
-
-The two collection integration tests passed separately on EMQX 5.8.7 and 6.3.1,
-including topic remapping, state-only liveness, and cleanup of empty retained caches.
-The full local Docker stack passed all nine browser smoke tests with test retries
-disabled, two additional consecutive charger-ingress runs, and the adaptive backend
-lifecycle E2E. Existing verified and pending-registration accounts were reused to
-check retry behavior. Desktop/mobile catalog editing was checked in Chromium with
-mocked API responses; authenticated catalog changes were checked against PostgreSQL.
-The guarded reset was exercised only in the disposable fixture, and the packaged
-TACTIC wheel includes the inventory. Production and the live vendor fleet were not
-changed.
-
-An Astra Max thermonuclear review identified six actionable issues: deployment
-coverage, CI configuration, retained cleanup retries, charger contact status,
-credential refresh, and repeatable E2E setup/cleanup. All were corrected and the
-reviewer's focused follow-up found no remaining actionable findings. The full
-reruns additionally caught and corrected empty-cache cleanup and async test setup.
 
 ## Collection diagnostics
 
@@ -280,7 +240,7 @@ separates observed brokers from candidate hosts; observed is catalog evidence,
 while live connection status is reported separately. Inventory counts come from
 the current edits rather than fixed development totals.
 
-From an empty installation, **Load AmbiBox inventory** creates an unsaved catalog
+From an empty installation, **Load AmbiBox template** creates an unsaved catalog
 with collection off. Use **Configure** on a charger, or select several chargers
 and choose **Configure selected**. Changing the search or evidence filter clears
 this edit selection, so hidden chargers cannot accidentally be included.

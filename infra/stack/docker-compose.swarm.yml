@@ -1,0 +1,325 @@
+services:
+
+  postgres:
+    image: "${POSTGRES_IMAGE:-timescale/timescaledb:latest-pg15}"
+    #    ports:
+    #      - target: 5432
+    #        published: "${POSTGRES_PORT}"
+    #        mode: ingress
+    #    volumes:
+    #      - postgres_data:/var/lib/postgresql/data
+    networks:
+      app-network:
+        aliases:
+          - postgres
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    deploy:
+      replicas: 1
+      placement:
+        constraints: [node.labels.backend == true ]
+      restart_policy:
+        condition: any
+
+  api:
+    image: "${API_IMAGE:-off-key-api-gateway:latest}"
+    #    ports:
+    #      - target: 8000
+    #        published: "${BACKEND_PORT}"
+    #        mode: ingress
+    networks:
+      app-network:
+        aliases:
+          - api-gateway
+    #      - socket-network
+    #    healthcheck:
+    #      test: [ "CMD", "curl", "-f", "http://localhost:8000/health" ]
+    #      interval: 10s
+    #      retries: 5
+    environment:
+      - SYNC_ENABLED=false
+    command: ["uvicorn", "off_key_api_gateway.main:app",
+              "--host", "0.0.0.0", "--port", "8000"]
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints: [node.labels.backend == true ]
+      restart_policy:
+        condition: any
+
+  tactic:
+    image: "${TACTIC_IMAGE:-off-key-tactic-middleware:latest}"
+    #    ports:
+    #      - target: 8001
+    #        published: 8001
+    #        mode: ingress
+    networks:
+      - app-network
+      - socket-network
+      - emqx-network
+    environment:
+      - TACTIC_DOCKER_DEFAULT_NETWORK=off-key_emqx-network
+    command: [ "/app/bin/python", "-m", "off_key_tactic_middleware" ]
+    deploy:
+      replicas: 1
+      placement:
+        constraints: [node.labels.frontend == true ]
+      restart_policy:
+        condition: any
+
+  socket-proxy:
+    image: "${SOCKET_PROXY_IMAGE:-tecnativa/docker-socket-proxy:latest}"
+    networks:
+      - socket-network
+    #    ports:
+    #      - target: 2375
+    #        published: 2375
+    #        mode: host
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+    environment:
+      - LOG_LEVEL=info # debug,info,notice,warning,err,crit,alert,emerg
+      ## Variables match the URL prefix (i.e. AUTH blocks access to /auth/* parts of the API, etc.).
+      # 0 to revoke access.
+      # 1 to grant access.
+      ## Granted by Default
+      - EVENTS=1
+      - PING=1
+      - VERSION=1
+      ## Revoked by Default
+      # Security critical
+      - AUTH=0
+      - SECRETS=0
+      - POST=1 # Container(s) Lifecycle Management
+      # Not always needed
+      - BUILD=0
+      - COMMIT=0
+      - CONFIGS=0
+      - CONTAINERS=1 # Traefik, portainer, etc.
+      - DISTRIBUTION=0
+      - EXEC=0
+      - IMAGES=1 # Portainer
+      - INFO=1 # Portainer
+      - NETWORKS=1 # Portainer
+      - NODES=0
+      - PLUGINS=0
+      - SERVICES=1 # Portainer
+      - SESSION=0
+      - SWARM=0
+      - SYSTEM=0
+      - TASKS=1 # Portainer
+      - VOLUMES=1 # Portainer
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      restart_policy:
+        condition: any
+
+  frontend:
+    image: "${FRONTEND_IMAGE:-off-key-frontend:latest}"
+    #    ports:
+    #      - target: 5173
+    #        published: "${FRONTEND_PORT}"
+    #        mode: ingress
+    networks:
+      - public-network
+      - app-network
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints: [ node.labels.frontend == true ]
+      restart_policy:
+        condition: any
+
+  db-sync:
+    image: "${DB_SYNC_IMAGE:-off-key-db-sync:latest}"
+    command: [ "/app/bin/python", "-m", "off_key_db_sync" ]
+    networks:
+      - app-network
+    healthcheck:
+      test: [ "CMD", "/app/bin/python", "-c",
+              "import urllib.request; urllib.request.urlopen('http://localhost:8009/ready/schema', timeout=2)" ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    deploy:
+      replicas: 1
+      placement:
+        constraints: [ node.labels.backend == true ]
+      restart_policy:
+        condition: any
+
+  mqtt-proxy:
+    image: "${MQTT_PROXY_IMAGE:-off-key-mqtt-proxy:latest}"
+    command: ["/app/bin/python", "-m", "off_key_mqtt_proxy"]
+    networks:
+      - app-network
+      - emqx-network
+    environment:
+      - SERVICE_TYPE=mqtt_proxy
+      # The production inventory sets this to production and adds TLS/auth secrets.
+      #  - SERVICE_TYPE=radar
+    #    volumes:
+    #      - mqtt_logs:/app/logs
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints: [ node.labels.backend == true ]
+      restart_policy:
+        condition: any
+
+  mqtt-radar:
+    image: "${MQTT_RADAR_IMAGE:-off-key-mqtt-radar:latest}"
+    command: [ "/app/bin/python", "-m", "off_key_mqtt_radar" ]
+    networks:
+      - app-network
+      - emqx-network
+    deploy:
+      replicas: 0
+      placement:
+        constraints: [ node.labels.backend == true ]
+      restart_policy:
+        condition: any
+
+
+  tailscale-ambibox:
+    image: "${TAILSCALE_IMAGE:-tailscale/tailscale:latest}"
+    cap_add:
+      - net_admin
+      - sys_module
+    volumes:
+      - tailscale-ambibox-state:/var/lib/tailscale
+
+    environment:
+      # TS_AUTHKEY is normally EMPTY — identity restores from the persisted state volume.
+      # It is only consumed when there is no valid state (fresh register / deliberate
+      # rotation: set tailscale_ambibox_authkey in vault AND clear tailscaled.state from the
+      # NFS export, otherwise valid state always wins and the key is ignored).
+      - TS_USERSPACE=true
+      - TS_STATE_DIR=/var/lib/tailscale
+      # SOCKS5 proxy on port 1055 — used by emqx-main to reach vendor MQTT over tailnet
+      - TS_SOCKS5_SERVER=0.0.0.0:1055
+    networks:
+      - emqx-network
+    deploy:
+      replicas: 1
+      update_config:
+        # Request shutdown before replacement. A stuck or unreachable old instance
+        # still needs verified shutdown or isolation before this identity is reused.
+        order: stop-first
+      placement:
+        constraints: [ node.labels.backend == true ]
+      restart_policy:
+        condition: any
+
+  mqtt-tailscale-bridge:
+    # TACTIC reconciles catalog routes through this private API. The existing
+    # singleton tailnet identity still resolves/dials every vendor hostname.
+    image: "${GOST_IMAGE:-gogost/gost:3.3.0}"
+    command: ["-api", ":18080"]
+    networks:
+      - emqx-network
+    deploy:
+      replicas: 1
+      placement:
+        constraints: [ node.labels.backend == true ]
+      restart_policy:
+        condition: any
+
+  emqx-main:
+    image: "${EMQX_IMAGE:-emqx/emqx:5.8.7}"
+    # The container hostname MUST equal the host part of EMQX_NODE_NAME. `emqx ctl` reaches
+    # the running broker over Erlang distribution to node emqx@emqx-main; without a matching
+    # hostname that lookup fails with "Node 'emqx@emqx-main' not responding to pings", which
+    # breaks `emqx ctl status`, the healthcheck, and `emqx ctl data export`. MQTT listeners
+    # keep working regardless (they use the network alias), which is why this stays hidden
+    # until you run a ctl command. In Swarm the alias below does NOT set the hostname, so it
+    # is set explicitly here. Do NOT change the node name once /opt/emqx/data is persisted —
+    # mnesia lives in data/mnesia/<node name> and a rename orphans it.
+    hostname: emqx-main.internal
+    environment:
+      - "EMQX_NODE_NAME=emqx@emqx-main.internal"
+      - "EMQX_HOST=emqx-main.internal"
+      - "EMQX_CLUSTER__DISCOVERY_STRATEGY=static"
+      - "EMQX_CLUSTER__STATIC__SEEDS=[emqx@emqx-main.internal]"
+    #    healthcheck:
+    #      test: ["CMD", "/opt/emqx/bin/emqx", "ctl", "status"]
+    #      interval: 5s
+    #      timeout: 25s
+    #      retries: 5
+    networks:
+      emqx-network:
+        aliases:
+          - emqx-main
+    #    ports:
+    #      - target: 1883
+    #        published: 1883
+    #        mode: ingress
+    #      - target: 8083
+    #        published: 8083
+    #        mode: ingress
+    #      - target: 8084
+    #        published: 8084
+    #        mode: ingress
+    #      - target: 8883
+    #        published: 8883
+    #        mode: ingress
+    #      - target: 18083
+    #        published: 18083
+    #        mode: ingress
+    deploy:
+      replicas: 1
+      placement:
+        constraints: [ node.labels.backend == true ]
+      restart_policy:
+        condition: any
+
+volumes:
+  tailscale-ambibox-state:
+    # Shared NFS export (host selected by the ambibox_nfs inventory group) holding the vendor tailnet identity
+    # (tailscaled.state). Mounting it from any backend lets the ambibox singleton fail
+    # over without re-seeding. Ansible seeds/backs it up to the gitignored stack/state/
+    # on the control host. The explicit name changes only when the NFS mount spec
+    # changes: Docker never updates driver_opts on an existing named volume.
+    name: "${STACK_NAME}_tailscale-ambibox-state_${TAILSCALE_AMBIBOX_NFS_VOLUME_ID}"
+    driver: local
+    driver_opts:
+      type: nfs
+      o: "addr=${TAILSCALE_AMBIBOX_NFS_ADDR},${TAILSCALE_AMBIBOX_NFS_OPTS}"
+      device: ":${TAILSCALE_AMBIBOX_NFS_EXPORT}"
+
+# WARNING: Encrypted overlay is incompatible with Tailscale
+# MTU=1280 for tailscale0 compatibility
+networks:
+  public-network:
+    driver: overlay
+    attachable: true
+    driver_opts:
+      com.docker.network.driver.mtu: 1280
+      # encrypted: "true"
+  app-network:
+    driver: overlay
+    driver_opts:
+      com.docker.network.driver.mtu: 1280
+      # encrypted: "true"
+    attachable: true
+  socket-network:
+    driver: overlay
+    driver_opts:
+      com.docker.network.driver.mtu: 1280
+      # encrypted: "true"
+  emqx-network:
+    driver: overlay
+    attachable: true
+    driver_opts:
+      com.docker.network.driver.mtu: 1280
+      # encrypted: "true"

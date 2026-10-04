@@ -12,7 +12,7 @@ import pytest
 ROOT = Path(__file__).parents[2]
 
 
-@pytest.mark.parametrize("filename", ["docker-compose.yml", "docker-compose.swarm.yml"])
+@pytest.mark.parametrize("filename", ["docker-compose.yml"])
 def test_compose_scopes_secrets_and_preserves_service_settings(tmp_path, filename):
     if shutil.which("docker") is None:
         pytest.skip("Docker Compose is required for deployment contract checks")

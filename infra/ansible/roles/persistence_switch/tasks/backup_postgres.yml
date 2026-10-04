@@ -1,0 +1,81 @@
+---
+# Logical backup of the live Postgres, taken before its data path is switched.
+# Dumps from the running container, so it works identically whether the data currently sits
+# in a volume or in the container's writable layer — which is exactly the case we are here
+# to change.
+
+- name: Discover the node running postgres
+  include_tasks: _service_container.yml
+  vars:
+    svc: postgres
+
+- name: postgres | create staging directory on the node
+  file:
+    path: "{{ persistence_stage_dir }}"
+    state: directory
+    mode: "0700"
+  become: true
+  delegate_to: "{{ svc_node }}"
+
+- name: postgres | dump roles and globals
+  shell: >-
+    umask 077;
+    docker exec {{ svc_container }}
+    pg_dumpall -U {{ postgres_user }} --roles-only
+    > {{ persistence_stage_dir }}/roles.sql
+  args: {executable: /bin/bash}
+  become: true
+  delegate_to: "{{ svc_node }}"
+  changed_when: true
+
+- name: postgres | list databases
+  shell: >-
+    umask 077;
+    docker exec {{ svc_container }}
+    psql -U {{ postgres_user }} -At -c
+    "SELECT datname FROM pg_database WHERE datistemplate = false AND datallowconn"
+  args: {executable: /bin/bash}
+  delegate_to: "{{ svc_node }}"
+  register: pg_dbs
+  changed_when: false
+
+# -Fc (custom format) is what the TimescaleDB restore procedure expects. Best practice per
+# the Tiger Data docs is one database at a time rather than a single pg_dumpall.
+- name: postgres | dump each database
+  shell: >-
+    umask 077;
+    docker exec {{ svc_container }}
+    pg_dump -U {{ postgres_user }} -Fc -d {{ item | quote }}
+    > {{ (persistence_stage_dir ~ '/' ~ item ~ '.dump') | quote }}
+  args: {executable: /bin/bash}
+  become: true
+  delegate_to: "{{ svc_node }}"
+  loop: "{{ pg_dbs.stdout_lines }}"
+  changed_when: true
+
+- name: postgres | protect the control-host backup directories
+  file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0700"
+  delegate_to: localhost
+  become: false
+  loop:
+    - "{{ persistence_backup_dir }}"
+    - "{{ persistence_backup_dir }}/postgres"
+    - "{{ persistence_backup_dir }}/postgres/{{ persistence_run_ts }}"
+
+- name: postgres | pull the dumps to the control host
+  fetch:
+    src: "{{ persistence_stage_dir }}/{{ item }}"
+    dest: "{{ persistence_backup_dir }}/postgres/{{ persistence_run_ts }}/"
+    flat: true
+  become: true
+  delegate_to: "{{ svc_node }}"
+  loop: "{{ ['roles.sql'] + (pg_dbs.stdout_lines | map('regex_replace', '$', '.dump') | list) }}"
+
+- name: postgres | record where the backup landed
+  set_fact:
+    persistence_backup_paths: >-
+      {{ persistence_backup_paths | default({})
+         | combine({'postgres': persistence_backup_dir ~ '/postgres/' ~ persistence_run_ts}) }}

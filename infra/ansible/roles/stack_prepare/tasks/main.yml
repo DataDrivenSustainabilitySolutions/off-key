@@ -1,0 +1,152 @@
+---
+# Runs on the manager node only. Rendering is shared with offline validation.
+
+- name: Identify the production release before changing the stack
+  include_tasks: release.yml
+  when: offkey_env == 'prod'
+
+- name: Discover the Ambibox NFS host's Tailscale address
+  command: tailscale ip -4
+  delegate_to: "{{ groups['ambibox_nfs'][0] }}"
+  register: ambibox_nfs_tailnet_ip
+  changed_when: false
+  when: groups.get('ambibox_nfs', []) | length > 0
+
+- name: Require the Ambibox NFS host's Tailscale IPv4 address
+  assert:
+    that:
+      - ambibox_nfs_tailnet_ip.stdout | trim | length > 0
+    fail_msg: >-
+      The Ambibox NFS host has no Tailscale IPv4 address. Connect that host to
+      the management tailnet before deploying the stack.
+  when: groups.get('ambibox_nfs', []) | length > 0
+
+- name: Use the Ambibox NFS host's Tailscale address for backend mounts
+  set_fact:
+    ambibox_nfs_addr: "{{ ambibox_nfs_tailnet_ip.stdout | trim }}"
+  when: groups.get('ambibox_nfs', []) | length > 0
+
+- name: Validate production MQTT certificate chain and broker identity
+  command:
+    argv:
+      - "{{ ansible_playbook_python }}"
+      - "{{ playbook_dir }}/../scripts/validate-emqx-pki.py"
+    stdin: >-
+      {{ {'ca_cert': emqx_ca_cert, 'server_cert': emqx_server_cert,
+          'server_key': emqx_server_key} | to_json }}
+    stdin_add_newline: false
+  delegate_to: localhost
+  become: false
+  changed_when: false
+  when: offkey_env == 'prod'
+  no_log: true
+
+- name: Reuse vendor access and provision collection controller credentials
+  include_tasks: ambibox-access.yml
+  when: ambibox_ingress_enabled | bool
+
+- name: Render deployment files
+  include_tasks: render.yml
+
+- name: Record the intended release separately from the last verified deployment
+  copy:
+    dest: "{{ stack_dir }}/release-pending.json"
+    mode: "0644"
+    content: >-
+      {{ release | combine({'infrastructure_revision': infrastructure_revision.stdout,
+         'attempted_at': now(utc=true, fmt='%Y-%m-%dT%H:%M:%SZ')}) | to_nice_json }}
+  when: offkey_env == 'prod'
+
+- name: Inspect existing production MQTT client secret references
+  command:
+    argv: [docker, service, inspect, "{{ stack_name }}_{{ item.service }}"]
+  loop:
+    - {service: mqtt-proxy, target: MQTT_APIKEY, key: mqtt_proxy_password}
+    - {service: mqtt-radar, target: RADAR_MQTT_API_KEY, key: mqtt_radar_password}
+  register: existing_mqtt_clients
+  changed_when: false
+  failed_when: false
+  when: offkey_env == 'prod'
+  no_log: true
+
+- name: Require broker user rotation before changing MQTT client passwords
+  assert:
+    that:
+      - >-
+        current_secret_name == '' or
+        current_secret_name == mqtt_secret_names[item.item.key] or
+        (mqtt_passwords_rotated_in_emqx | default(false) | bool)
+    fail_msg: >-
+      MQTT client password changed in the vault, but EMQX bootstrap users are not
+      updated on redeploy. Update the corresponding EMQX user first, then rerun
+      with -e mqtt_passwords_rotated_in_emqx=true.
+  vars:
+    container_spec: >-
+      {{ (item.stdout | from_json)[0].Spec.TaskTemplate.ContainerSpec if item.rc == 0 else {} }}
+    current_secret_name: >-
+      {{ container_spec.Secrets | default([]) |
+         selectattr('File.Name', 'equalto', item.item.target) |
+         map(attribute='SecretName') | first | default('') }}
+  loop: "{{ existing_mqtt_clients.results | default([]) }}"
+  when: offkey_env == 'prod'
+  no_log: true
+
+- name: Check whether the Cloudflare Tunnel secret already exists
+  command:
+    argv:
+      - docker
+      - secret
+      - inspect
+      - "{{ cloudflared_tunnel_secret_name }}"
+  register: cloudflared_secret_inspect
+  changed_when: false
+  failed_when: false
+  when: offkey_env == 'prod'
+  no_log: true
+
+- name: Create the Cloudflare Tunnel secret
+  command:
+    argv:
+      - docker
+      - secret
+      - create
+      - "{{ cloudflared_tunnel_secret_name }}"
+      - '-'
+    stdin: "{{ cloudflare_tunnel_token | trim }}"
+    stdin_add_newline: false
+  when:
+    - offkey_env == 'prod'
+    - cloudflared_secret_inspect.rc | default(1) != 0
+  no_log: true
+
+- name: Check whether MQTT secrets exist
+  command:
+    argv: [docker, secret, inspect, "{{ mqtt_secret_names[item.key] }}"]
+  loop: "{{ mqtt_secret_material | default({}) | dict2items }}"
+  register: mqtt_secret_inspect
+  changed_when: false
+  failed_when: false
+  no_log: true
+
+- name: Create MQTT secrets
+  command:
+    argv: [docker, secret, create, "{{ mqtt_secret_names[item.item.key] }}", '-']
+    stdin: "{{ item.item.value }}"
+    stdin_add_newline: false
+  loop: "{{ mqtt_secret_inspect.results | default([]) }}"
+  when: item.rc | default(0) != 0
+  no_log: true
+
+- name: Log in to GitHub Container Registry
+  command:
+    argv:
+      - docker
+      - login
+      - ghcr.io
+      - --username
+      - "{{ ghcr_username }}"
+      - --password-stdin
+    stdin: "{{ ghcr_token }}"
+    stdin_add_newline: false
+  no_log: true
+  changed_when: false

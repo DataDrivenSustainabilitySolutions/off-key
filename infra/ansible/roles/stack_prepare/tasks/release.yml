@@ -1,0 +1,110 @@
+---
+- name: Read the infrastructure revision from the control checkout
+  command: git -C {{ (playbook_dir ~ '/../..') | quote }} rev-parse HEAD
+  delegate_to: localhost
+  become: false
+  changed_when: false
+  register: infrastructure_revision
+
+- name: Check for uncommitted infrastructure changes
+  command: git -C {{ (playbook_dir ~ '/../..') | quote }} status --porcelain --untracked-files=normal
+  delegate_to: localhost
+  become: false
+  changed_when: false
+  register: infrastructure_changes
+
+- name: Require a committed production deployment
+  assert:
+    that: infrastructure_changes.stdout | trim == ''
+    fail_msg: Commit the infrastructure changes before deploying production so the release can be reproduced.
+
+- name: Resolve the release with temporary control-host registry credentials
+  delegate_to: localhost
+  become: false
+  run_once: true
+  block:
+    - name: Create an isolated Docker configuration
+      tempfile:
+        state: directory
+        prefix: off-key-release-
+      register: release_docker_config
+
+    - name: Set temporary registry authentication and retain local CLI plugins
+      copy:
+        dest: "{{ release_docker_config.path }}/config.json"
+        mode: "0600"
+        content: >-
+          {{ {'auths': {'ghcr.io': {'auth': (ghcr_username ~ ':' ~ ghcr_token) | b64encode}},
+              'cliPluginsExtraDirs': [(lookup('env', 'DOCKER_CONFIG') |
+             default(lookup('env', 'HOME') ~ '/.docker', true)) ~ '/cli-plugins']} | to_json }}
+      no_log: true
+
+    - name: Resolve the tested and published application release
+      command:
+        argv:
+          - "{{ ansible_playbook_python }}"
+          - "{{ playbook_dir }}/../scripts/pin_release.py"
+          - "{{ application_release_revision }}"
+          - --stdout
+      environment:
+        DOCKER_CONFIG: "{{ release_docker_config.path }}"
+      changed_when: false
+      register: resolved_release
+  always:
+    - name: Remove the temporary registry credentials
+      file:
+        path: "{{ release_docker_config.path }}"
+        state: absent
+      when: release_docker_config.path is defined
+
+- name: Use the same resolved release on every node and in subsequent plays
+  set_fact:
+    release: "{{ (resolved_release.stdout | from_json).release }}"
+  delegate_to: "{{ item }}"
+  delegate_facts: true
+  loop: "{{ groups['all'] }}"
+  run_once: true
+
+- name: Read the currently deployed frontend image
+  command:
+    argv:
+      - docker
+      - service
+      - inspect
+      - "{{ stack_name }}_frontend"
+      - --format
+      - "{% raw %}{{.Spec.TaskTemplate.ContainerSpec.Image}}{% endraw %}"
+  changed_when: false
+  register: deployed_frontend
+  failed_when: deployed_frontend.rc != 0 and 'no such service:' not in deployed_frontend.stderr | lower
+
+- name: Show the deployed and selected application versions
+  debug:
+    msg:
+      - "Deployed frontend: {{ deployed_frontend.stdout | trim if deployed_frontend.rc == 0 else 'not deployed yet' }}"
+      - "Selected application: {{ release.application_revision }}"
+      - "Target frontend: {{ release.images.frontend }}"
+      - "{{ 'Application version is unchanged.' if deployed_frontend.stdout | trim == release.images.frontend else 'Application version will change.' }}"
+      - "{{ resolved_release.stderr | trim or 'All required release workflows succeeded.' }}"
+
+- name: Check for a pending production operation
+  stat:
+    path: "{{ stack_dir }}/release-maintenance.json"
+  register: release_maintenance_stat
+
+- name: Read the pending operation
+  slurp:
+    src: "{{ stack_dir }}/release-maintenance.json"
+  register: release_maintenance_record
+  when: release_maintenance_stat.stat.exists
+
+- name: Require recovery of a different interrupted release
+  assert:
+    that: (release_maintenance_record.content | b64decode | from_json).revision == release.application_revision
+    fail_msg: A different release is incomplete. Retry that revision or complete recovery before changing releases.
+  when: release_maintenance_stat.stat.exists
+
+- name: Require one application and infrastructure commit
+  assert:
+    that: release.application_revision == infrastructure_revision.stdout
+    fail_msg: Check out the tested target commit before deploying; application and infrastructure must match.

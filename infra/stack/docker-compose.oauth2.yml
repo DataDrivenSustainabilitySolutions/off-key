@@ -1,0 +1,26 @@
+# oauth2-proxy overlay — the forwardAuth backend for Traefik.
+#
+# Merged on top of docker-compose.swarm.yml by stack_deploy via a second -f (always, alongside
+# the traefik overlay). Kept out of the base file so the auth layer lives on its own, reviewable
+# and committable independently. References the base's overlay networks, so it is NOT valid on
+# its own — only as an overlay. See INGRESS.md.
+#
+# oauth2-proxy runs in forwardAuth mode: Traefik calls its /oauth2/auth endpoint per request
+# (header-only), so oauth2-proxy is NEVER in the request/response body path. All config comes
+# from the explicit service environment map. Reached by
+# Traefik over public-network; reaches GitHub via normal overlay egress.
+#
+# No healthcheck: the image is distroless (no shell / wget), and oauth2-proxy exposes no
+# healthcheck subcommand. A broken oauth2-proxy surfaces immediately as failing Traefik
+# forwardAuth (502/redirect loops), which is the practical signal.
+
+services:
+
+  oauth2-proxy:
+    image: "${OAUTH2_IMAGE:-quay.io/oauth2-proxy/oauth2-proxy:v7.7.1}"   # pin; verify current v7 release
+    networks:
+      - public-network
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: any

@@ -45,7 +45,7 @@ Run the smallest relevant tests while developing, then run the complete gate bef
 
 - Keep generated artifacts out of commits unless the project explicitly requires them.
 - Preserve lockfile changes when dependency resolution intentionally changed.
-- Treat `.env`, `.env.ingress.local`, credentials, and production endpoint details as local or secret-store data.
+- Treat `.env`, encrypted production vaults, inventories and credentials, and production endpoint details as local or secret-store data.
 - Review `git diff --check` and the staged diff before pushing.
 
 ## Related pages

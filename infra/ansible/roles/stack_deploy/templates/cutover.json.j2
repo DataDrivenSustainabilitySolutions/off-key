@@ -1,0 +1,7 @@
+{% set services = {} %}
+{% for name, service in stack_compose_model.services.items() %}
+{% set deploy = service.deploy | default({}) %}
+{% set paused = service | combine({'deploy': deploy | combine({'replicas': 0})}) %}
+{% set _ = services.update({name: service if name in ['postgres', 'emqx-main'] else paused}) %}
+{% endfor %}
+{{ stack_compose_model | combine({'services': services}) | to_nice_json }}

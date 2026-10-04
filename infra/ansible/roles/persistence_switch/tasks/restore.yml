@@ -1,0 +1,24 @@
+---
+- name: Validate every replacement task and mount before restoring
+  include_tasks: validate_service.yml
+  loop: "{{ persistence_flips | map(attribute='service') | unique | list }}"
+  loop_control:
+    loop_var: svc
+
+- name: Nothing to restore
+  debug:
+    msg: "No persistence flips in this run, or restore is disabled for all of them."
+  when: persistence_backup_mounts | selectattr('restore') | list | length == 0
+
+- name: Restore state after the switch
+  include_tasks: "restore_{{ restore_mount.kind }}.yml"
+  when:
+    - restore_mount.kind != 'none'
+    - restore_mount.restore | bool
+    - >-
+      restore_mount.path not in persistence_deployed[restore_mount.service]
+      or ((restore_mount.path in persistence_deployed[restore_mount.service]) != (restore_mount.enabled | bool))
+  loop: "{{ persistence_backup_mounts }}"
+  loop_control:
+    loop_var: restore_mount
+    label: "{{ restore_mount.service }}:{{ restore_mount.path }} ({{ restore_mount.kind }})"

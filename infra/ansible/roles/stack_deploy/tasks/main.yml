@@ -1,0 +1,92 @@
+---
+# Runs on the manager node only. Ingress verification is in verify.yml and must
+# run after the playbook's persistence restore stage.
+
+- name: Resolve the production service model
+  include_tasks: model.yml
+
+- name: Refuse unexpected persistence transitions before any release cutover
+  include_role:
+    name: persistence_switch
+    tasks_from: preflight
+
+- name: Prepare schema and retire active monitor workers
+  include_tasks: maintenance.yml
+
+- name: Find TACTIC-managed RADAR services before the production MQTT cutover
+  command:
+    argv:
+      - docker
+      - service
+      - ls
+      - --quiet
+      - --filter
+      - label=managed_by=tactic
+      - --filter
+      - label=service_type=radar
+  register: tactic_radar_services
+  changed_when: false
+  when: offkey_env == 'prod'
+
+- name: Inspect existing TACTIC-managed RADAR services
+  command:
+    argv: [docker, service, inspect, "{{ item }}"]
+  loop: "{{ tactic_radar_services.stdout_lines | default([]) }}"
+  register: tactic_radar_specs
+  changed_when: false
+  when: offkey_env == 'prod'
+  no_log: true
+
+- name: Require secure TACTIC-managed RADAR services from the intended release
+  assert:
+    that:
+      - "container_spec.Image.split('@')[-1] == mqtt_radar_image.split('@')[-1]"
+      - "'ENVIRONMENT=production' in radar_env"
+      - "'RADAR_MQTT_BROKER_HOST=emqx-main' in radar_env"
+      - "'RADAR_MQTT_BROKER_PORT=8883' in radar_env"
+      - "'RADAR_MQTT_USE_TLS=true' in radar_env"
+      - "'RADAR_MQTT_USE_AUTH=true' in radar_env"
+      - "'RADAR_MQTT_USERNAME=offkey-radar' in radar_env"
+      - "'RADAR_MQTT_CA_FILE=/run/secrets/EMQX_CA_CERT' in radar_env"
+      - "radar_env | select('match', '^RADAR_MQTT_API_KEY=') | list | length == 0"
+      - "radar_env | select('match', '^RADAR_CHECKPOINT_SECRET=') | list | length == 0"
+      - "['EMQX_CA_CERT', 'RADAR_MQTT_API_KEY', 'RADAR_CHECKPOINT_SECRET'] | difference(secret_targets) | length == 0"
+      - "secret_names.EMQX_CA_CERT == [mqtt_secret_names.emqx_ca_cert]"
+      - "secret_names.RADAR_MQTT_API_KEY == [mqtt_secret_names.mqtt_radar_password]"
+      - "secret_names.RADAR_CHECKPOINT_SECRET == [mqtt_secret_names.radar_checkpoint_secret]"
+    fail_msg: >-
+      An existing TACTIC-managed RADAR service uses an older/mutable image or old MQTT credentials.
+      Stop the affected monitors before deploying, then recreate them with the intended release.
+  vars:
+    container_spec: "{{ (item.stdout | from_json)[0].Spec.TaskTemplate.ContainerSpec }}"
+    radar_env: "{{ container_spec.Env | default([]) }}"
+    secret_targets: "{{ container_spec.Secrets | default([]) | map(attribute='File.Name') | list }}"
+    secret_names:
+      EMQX_CA_CERT: >-
+        {{ container_spec.Secrets | default([]) | selectattr('File.Name', 'equalto', 'EMQX_CA_CERT') | map(attribute='SecretName') | list }}
+      RADAR_MQTT_API_KEY: >-
+        {{ container_spec.Secrets | default([]) | selectattr('File.Name', 'equalto', 'RADAR_MQTT_API_KEY') | map(attribute='SecretName') | list }}
+      RADAR_CHECKPOINT_SECRET: >-
+        {{ container_spec.Secrets | default([]) | selectattr('File.Name', 'equalto', 'RADAR_CHECKPOINT_SECRET') | map(attribute='SecretName') | list }}
+  loop: "{{ tactic_radar_specs.results | default([]) }}"
+  when: offkey_env == 'prod'
+  no_log: true
+
+- name: Deploy and restore the production service model
+  include_tasks: apply.yml
+
+- name: Show deploy output
+  debug:
+    msg: "{{ stack_deploy_result.stdout_lines }}"
+
+- name: Retire obsolete production services
+  include_tasks: retire.yml
+
+- name: Show service status
+  command: docker service ls --filter name={{ stack_name }}
+  register: svc_list
+  changed_when: false
+
+- name: Print service status
+  debug:
+    msg: "{{ svc_list.stdout_lines }}"

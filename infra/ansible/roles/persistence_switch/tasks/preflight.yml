@@ -1,0 +1,143 @@
+---
+# Called by stack_deploy; no writer resumes until its restore stage succeeds.
+
+- name: Check for an interrupted recovery
+  stat:
+    path: "{{ stack_dir }}/recovery-pending.json"
+  register: persistence_pending
+
+- name: Require completion of the previous recovery before deployment
+  assert:
+    that: not persistence_pending.stat.exists
+    fail_msg: >-
+      An interrupted recovery is recorded in {{ stack_dir }}/recovery-pending.json.
+      Use restore-stack-state.yml with the saved backup timestamp to finish recovery
+      before deploying again. The saved plan contains the original writer replica counts.
+
+- name: Inspect currently deployed service specs
+  command: "docker service inspect {{ stack_name }}_{{ item }}"
+  loop: "{{ persistence_mounts | map(attribute='service') | unique | list }}"
+  register: persistence_svc_inspect
+  changed_when: false
+  failed_when: false
+
+# `none` marks a service that is not deployed yet — a first deploy is not a flip, and must
+# not trigger the guard or a pointless backup.
+- name: Index deployed mount targets per service
+  set_fact:
+    persistence_deployed: "{{ persistence_deployed | default({}) | combine({item.item: targets}) }}"
+  vars:
+    targets: >-
+      {{ (((item.stdout | from_json | first).Spec.TaskTemplate.ContainerSpec.Mounts | default([]))
+          | map(attribute='Target') | list) if item.rc == 0 else none }}
+  loop: "{{ persistence_svc_inspect.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+- name: Initialise the flip list
+  # Always defined, so the steady-state "nothing is flipping" path is a clean no-op rather
+  # than an undefined-variable crash further down.
+  set_fact:
+    persistence_flips: []
+
+- name: Determine which mounts are flipping
+  set_fact:
+    # Coerce to real booleans here so downstream selectattr() cannot be fooled by a
+    # string "False" arriving from an inventory that quoted its values.
+    persistence_flips: >-
+      {{ persistence_flips | default([]) + [item | combine({
+           'was':     item.path in persistence_deployed[item.service],
+           'enabled': item.enabled | bool,
+           'restore': item.restore | bool })] }}
+  when:
+    - persistence_deployed[item.service] is not none
+    - (item.path in persistence_deployed[item.service]) != (item.enabled | bool)
+  loop: "{{ persistence_mounts }}"
+  loop_control:
+    label: "{{ item.service }}:{{ item.path }}"
+
+- name: Record data-bearing mounts of every service being replaced
+  set_fact:
+    persistence_backup_mounts: >-
+      {{ persistence_mounts | selectattr('service', 'in', persistence_flips | map(attribute='service') | list)
+         | rejectattr('kind', 'equalto', 'none') | list }}
+
+- name: Report detected persistence transitions
+  debug:
+    msg: >-
+      FLIP {{ item.service }}:{{ item.path }} —
+      {{ 'ephemeral -> persistent' if item.enabled | bool else 'persistent -> ephemeral' }}
+      (restore={{ item.restore | bool }})
+  loop: "{{ persistence_flips | default([]) }}"
+  loop_control:
+    label: "{{ item.service }}:{{ item.path }}"
+
+- name: Report that nothing is changing
+  debug:
+    msg: "No persistence transitions — every managed mount already matches the desired state."
+  when: persistence_flips | default([]) | length == 0
+
+- name: Require explicit confirmation for a persistence change in prod
+  assert:
+    that: persistence_switch_confirm | bool
+    fail_msg: >-
+      Persistence change detected in prod for
+      {{ persistence_flips | map(attribute='service') | zip(persistence_flips | map(attribute='path')) | map('join', ':') | join(', ') }}.
+      This changes what the container sees on disk and is not reversible by re-running the
+      playbook. Nothing has been changed. Re-run with -e persistence_switch_confirm=true
+      once you have read the plan above.
+    success_msg: "Persistence change confirmed for prod."
+  when:
+    - offkey_env == 'prod'
+    - persistence_flips | default([]) | length > 0
+
+- name: Initialise the cutover task map
+  set_fact:
+    persistence_service_nodes: {}
+    persistence_service_tasks: {}
+
+- name: Resolve each service before the cutover
+  include_tasks: record_service.yml
+  loop: "{{ persistence_flips | map(attribute='service') | unique | list }}"
+  loop_control:
+    loop_var: svc
+
+# ── Volume state on the node that actually holds it ──────────────────────────────────────
+# absent / empty / hasdata. "hasdata" on an OFF->ON flip is the dangerous case: the volume
+# survived an earlier ON->OFF, so turning persistence back on would silently resurrect data
+# that is older than what the live container has been writing to its own layer.
+- name: Inspect target volume state on the stateful node
+  shell: |
+    set -o pipefail
+    name="{{ stack_name }}_{{ item.volume }}"
+    if ! mp=$(docker volume inspect "$name" --format '{% raw %}{{.Mountpoint}}{% endraw %}' 2>/dev/null); then
+      echo absent; exit 0
+    fi
+    if [ -z "$(ls -A "$mp" 2>/dev/null)" ]; then echo empty; else echo hasdata; fi
+  args:
+    executable: /bin/bash
+  become: true
+  delegate_to: "{{ persistence_service_nodes[item.service] }}"
+  loop: "{{ persistence_flips | default([]) }}"
+  loop_control:
+    label: "{{ item.volume }}"
+  register: persistence_vol_state
+  changed_when: false
+
+- name: Refuse to adopt a stale volume without an explicit restore
+  fail:
+    msg: >-
+      {{ item.0.service }}:{{ item.0.path }} is being switched to persistent, but volume
+      {{ stack_name }}_{{ item.0.volume }} already contains data from a previous run and
+      restore is disabled for it. Starting now would silently serve that stale data instead
+      of what the service is currently using. Nothing has been changed. Either set
+      restore=true for this service (the old volume is wiped and the fresh backup restored),
+      or remove the volume yourself on {{ persistence_service_nodes[item.0.service] }}:
+        docker volume rm {{ stack_name }}_{{ item.0.volume }}
+  when:
+    - item.0.enabled | bool
+    - item.1.stdout | trim == 'hasdata'
+    - not (item.0.restore | bool)
+  loop: "{{ (persistence_flips | default([])) | zip(persistence_vol_state.results | default([])) | list }}"
+  loop_control:
+    label: "{{ item.0.service }}:{{ item.0.path }}"

@@ -1,0 +1,64 @@
+---
+- name: Deploy and restore while application writers are stopped
+  block:
+    - name: Detect persistence transitions and capture state
+      include_role:
+        name: persistence_switch
+
+    - name: Hold application replicas at zero in the cutover model
+      template:
+        src: cutover.json.j2
+        dest: "{{ stack_dir }}/persistence-cutover.json"
+        mode: "0600"
+      when: persistence_flips | length > 0
+      no_log: true
+
+    - name: Deploy the resolved Docker Swarm model
+      command:
+        argv:
+          - docker
+          - stack
+          - deploy
+          - -c
+          - "{{ stack_dir }}/{{ 'persistence-cutover.json' if persistence_flips | length > 0 else 'deployment-model.json' }}"
+          - --with-registry-auth
+          - "{{ stack_name }}"
+      register: stack_deploy_result
+      changed_when: true
+
+    - name: Restore into the confirmed replacement tasks
+      include_role:
+        name: persistence_switch
+        tasks_from: restore
+
+    - name: Resume desired stack services after successful restoration
+      command:
+        argv: [docker, service, scale, "{{ stack_name }}_{{ item.key }}={{ item.value.deploy.replicas | default(1) }}"]
+      loop: "{{ stack_compose_model.services | dict2items }}"
+      loop_control:
+        label: "{{ item.key }}"
+      when:
+        - persistence_flips | length > 0
+        - item.key not in ['postgres', 'emqx-main']
+      no_log: true
+
+    - name: Resume runtime workers with their original replica counts
+      command:
+        argv: [docker, service, scale, "{{ item.key }}={{ item.value }}"]
+      loop: "{{ persistence_writer_replicas | default({}) | dict2items }}"
+      loop_control:
+        label: "{{ item.key }}"
+      when: item.key not in (stack_compose_model.services.keys() | map('regex_replace', '^', stack_name ~ '_') | list)
+    - name: Clear the completed cutover plan
+      file:
+        path: "{{ stack_dir }}/recovery-pending.json"
+        state: absent
+      when: persistence_flips | length > 0
+  rescue:
+    - name: Report the interrupted deployment
+      fail:
+        msg: >-
+          Deployment stopped at '{{ ansible_failed_task.name }}'. Application writers that
+          were stopped for the persistence cutover have not been automatically resumed.
+          Backups are in {{ persistence_backup_dir | default('the configured recovery directory') }}.
+          Resolve the failed step and restore state before resuming services.

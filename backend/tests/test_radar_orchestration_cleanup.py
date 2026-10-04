@@ -1,3 +1,4 @@
+import json
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
@@ -31,6 +32,12 @@ class _FakeAsyncDocker:
 
     async def run(self, func, *args, **kwargs):
         return func(*args, **kwargs)
+
+
+@pytest.fixture(autouse=True)
+def collection_lock(monkeypatch):
+    # Docker lifecycle tests use mock sessions; real locking has separate coverage.
+    monkeypatch.setattr(radar_module, "lock_collection_configuration", AsyncMock())
 
 
 @pytest.fixture
@@ -153,6 +160,7 @@ async def test_teardown_managed_radar_workloads_removes_workloads_and_clears_db(
     service_id_result.scalars.return_value.all.return_value = ["svc-1"]
 
     session = AsyncMock()
+    session.scalar.return_value = None
     session.execute = AsyncMock(
         side_effect=[service_id_result, MagicMock(rowcount=0), MagicMock(rowcount=1)]
     )
@@ -191,6 +199,7 @@ async def test_teardown_managed_radar_workloads_raises_on_remove_failure(
     monkeypatch.setattr(radar_module, "get_async_docker", lambda: fake_docker)
 
     session = AsyncMock()
+    session.scalar.return_value = None
     session.execute = AsyncMock()
     session.commit = AsyncMock()
     session.rollback = AsyncMock()
@@ -240,6 +249,7 @@ async def test_teardown_managed_radar_workloads_cleans_up_successes_on_partial_f
     service_id_result = MagicMock()
     service_id_result.scalars.return_value.all.return_value = ["svc-ok"]
     session = AsyncMock()
+    session.scalar.return_value = None
     session.execute = AsyncMock(
         side_effect=[service_id_result, MagicMock(rowcount=0), MagicMock(rowcount=1)]
     )
@@ -568,6 +578,7 @@ async def test_teardown_managed_radar_workloads_handles_non_swarm_docker(
     service_id_result.scalars.return_value.all.return_value = ["svc-1"]
 
     session = AsyncMock()
+    session.scalar.return_value = None
     session.execute = AsyncMock(
         side_effect=[service_id_result, MagicMock(rowcount=0), MagicMock(rowcount=1)]
     )
@@ -612,6 +623,7 @@ async def test_stop_radar_service_deletes_db_row_after_removing_workload(
     monkeypatch.setattr(radar_module, "get_async_docker", lambda: fake_docker)
 
     session = AsyncMock()
+    session.scalar.return_value = None
     service_delete_result = MagicMock(rowcount=1)
     session.execute = AsyncMock(
         side_effect=[query_result, MagicMock(rowcount=0), service_delete_result]
@@ -652,6 +664,7 @@ async def test_stop_radar_service_deletes_db_row_when_workload_is_missing(
     monkeypatch.setattr(radar_module, "get_async_docker", lambda: fake_docker)
 
     session = AsyncMock()
+    session.scalar.return_value = None
     service_delete_result = MagicMock(rowcount=1)
     session.execute = AsyncMock(
         side_effect=[query_result, MagicMock(rowcount=0), service_delete_result]
@@ -690,6 +703,7 @@ async def test_stop_radar_service_deletes_db_row_by_container_id(monkeypatch):
     monkeypatch.setattr(radar_module, "get_async_docker", lambda: fake_docker)
 
     session = AsyncMock()
+    session.scalar.return_value = None
     service_delete_result = MagicMock(rowcount=1)
     session.execute = AsyncMock(
         side_effect=[query_result, MagicMock(rowcount=0), service_delete_result]
@@ -717,6 +731,7 @@ async def test_stop_radar_service_returns_false_when_service_not_found(monkeypat
     query_result.scalars.return_value.first.return_value = None
 
     session = AsyncMock()
+    session.scalar.return_value = None
     session.execute = AsyncMock(return_value=query_result)
     session.commit = AsyncMock()
     session.rollback = AsyncMock()
@@ -742,6 +757,7 @@ async def test_stop_radar_service_returns_false_when_missing_by_container_id(
     query_result.scalars.return_value.first.return_value = None
 
     session = AsyncMock()
+    session.scalar.return_value = None
     session.execute = AsyncMock(return_value=query_result)
     session.commit = AsyncMock()
     session.rollback = AsyncMock()
@@ -762,6 +778,7 @@ async def test_stop_radar_service_requires_identifier(monkeypatch):
     monkeypatch.setattr(radar_module, "get_async_docker", lambda: fake_docker)
 
     session = AsyncMock()
+    session.scalar.return_value = None
     session.commit = AsyncMock()
     session.rollback = AsyncMock()
     service = RadarOrchestrationService(session=session, model_registry=MagicMock())
@@ -827,6 +844,7 @@ async def test_get_radar_service_resolves_by_container_id(monkeypatch):
     monkeypatch.setattr(radar_module, "get_async_docker", lambda: fake_docker)
 
     session = AsyncMock()
+    session.scalar.return_value = None
     session.execute = AsyncMock(return_value=query_result)
 
     service = RadarOrchestrationService(session=session, model_registry=MagicMock())
@@ -872,6 +890,7 @@ async def test_get_radar_service_resolves_by_container_name(monkeypatch):
     monkeypatch.setattr(radar_module, "get_async_docker", lambda: fake_docker)
 
     session = AsyncMock()
+    session.scalar.return_value = None
     session.execute = AsyncMock(return_value=query_result)
 
     service = RadarOrchestrationService(session=session, model_registry=MagicMock())
@@ -909,6 +928,7 @@ async def test_delete_radar_service_removes_running_workload_and_db_rows(monkeyp
     monkeypatch.setattr(radar_module, "get_async_docker", lambda: fake_docker)
 
     session = AsyncMock()
+    session.scalar.return_value = None
     session.execute = AsyncMock(
         side_effect=[query_result, MagicMock(rowcount=0), MagicMock(rowcount=1)]
     )
@@ -935,6 +955,7 @@ async def test_delete_radar_service_returns_false_when_service_not_found(monkeyp
     query_result.scalars.return_value.first.return_value = None
 
     session = AsyncMock()
+    session.scalar.return_value = None
     session.execute = AsyncMock(return_value=query_result)
     session.commit = AsyncMock()
     session.rollback = AsyncMock()
@@ -972,6 +993,7 @@ async def test_delete_radar_service_leaves_db_row_when_workload_remove_fails(
     monkeypatch.setattr(radar_module, "get_async_docker", lambda: fake_docker)
 
     session = AsyncMock()
+    session.scalar.return_value = None
     session.execute = AsyncMock(return_value=query_result)
     session.commit = AsyncMock()
     session.rollback = AsyncMock()
@@ -1095,6 +1117,7 @@ async def test_startup_validation_raises_with_logs_when_container_exits(
     )
 
     session = AsyncMock()
+    session.scalar.return_value = None
     service = RadarOrchestrationService(session=session, model_registry=MagicMock())
 
     with pytest.raises(RuntimeError, match="missing dependency"):
@@ -1116,6 +1139,7 @@ async def test_create_radar_service_removes_workload_when_db_commit_fails(
     query_result.scalars.return_value.first.return_value = None
 
     session = AsyncMock()
+    session.scalar.return_value = None
     session.execute = AsyncMock(return_value=query_result)
     session.add = MagicMock()
     session.commit = AsyncMock(side_effect=RuntimeError("commit failed"))
@@ -1131,6 +1155,14 @@ async def test_create_radar_service_removes_workload_when_db_commit_fails(
                 "RADAR_SUBSCRIPTION_TOPICS": "device/evCharger/charger-1/sine",
                 "RADAR_MONITORING_STRATEGY": "static_baseline",
                 "RADAR_MODEL_TYPE": "pyod_iforest",
+                "RADAR_MONITORING_CONFIG": json.dumps(
+                    {
+                        "strategy": "static_baseline",
+                        "model_type": "pyod_iforest",
+                    }
+                ),
+                "RADAR_SUBSCRIPTION_QOS": "1",
+                "RADAR_MQTT_CLIENT_ID_PREFIX": "radar",
             }
         ),
     )
@@ -1175,6 +1207,7 @@ async def test_existing_active_service_with_missing_workload_is_recreated(
     query_result.scalars.return_value.first.return_value = db_row
 
     session = AsyncMock()
+    session.scalar.return_value = None
     ownership_result = MagicMock()
     ownership_result.scalars.return_value.all.return_value = []
     session.execute = AsyncMock(
@@ -1197,6 +1230,14 @@ async def test_existing_active_service_with_missing_workload_is_recreated(
                 "RADAR_SUBSCRIPTION_TOPICS": "device/evCharger/charger-1/sine",
                 "RADAR_MONITORING_STRATEGY": "static_baseline",
                 "RADAR_MODEL_TYPE": "pyod_iforest",
+                "RADAR_MONITORING_CONFIG": json.dumps(
+                    {
+                        "strategy": "static_baseline",
+                        "model_type": "pyod_iforest",
+                    }
+                ),
+                "RADAR_SUBSCRIPTION_QOS": "1",
+                "RADAR_MQTT_CLIENT_ID_PREFIX": "radar",
             }
         ),
     )
@@ -1242,6 +1283,7 @@ async def test_existing_active_service_rejects_config_fingerprint_mismatch(
     query_result.scalars.return_value.first.return_value = db_row
 
     session = AsyncMock()
+    session.scalar.return_value = None
     session.execute = AsyncMock(return_value=query_result)
 
     monkeypatch.setattr(

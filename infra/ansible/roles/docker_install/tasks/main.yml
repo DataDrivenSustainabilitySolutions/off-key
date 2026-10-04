@@ -1,0 +1,102 @@
+---
+- name: Remove conflicting Docker packages
+  apt:
+    name:
+      - docker.io
+      - docker-compose
+      - docker-doc
+      - podman-docker
+      - containerd
+      - runc
+    state: absent
+    lock_timeout: 120
+
+- name: Install prerequisite packages
+  apt:
+    name:
+      - ca-certificates
+      - curl
+    state: present
+    lock_timeout: 120
+
+- name: Create Docker apt keyring directory
+  file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: "0755"
+
+- name: Get dpkg architecture
+  command: dpkg --print-architecture
+  register: dpkg_arch
+  changed_when: false
+
+- name: Remove legacy Docker keyring and repo list if present
+  file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /etc/apt/keyrings/docker.gpg
+    - /etc/apt/sources.list.d/docker.list
+
+- name: Download Docker GPG key
+  get_url:
+    url: "https://download.docker.com/linux/{{ ansible_facts['distribution'] | lower }}/gpg"
+    dest: /etc/apt/keyrings/docker.asc
+    mode: "0644"
+    force: false
+
+- name: Add Docker apt repository (DEB822 format)
+  copy:
+    dest: /etc/apt/sources.list.d/docker.sources
+    mode: "0644"
+    content: |
+      Types: deb
+      URIs: https://download.docker.com/linux/{{ ansible_facts['distribution'] | lower }}
+      Suites: {{ ansible_facts['distribution_release'] }}
+      Components: stable
+      Architectures: {{ dpkg_arch.stdout }}
+      Signed-By: /etc/apt/keyrings/docker.asc
+  register: docker_repo
+
+- name: Update apt cache after adding Docker repo
+  apt:
+    update_cache: true
+    lock_timeout: 120
+
+- name: Install Docker packages
+  apt:
+    name:
+      - docker-ce
+      - docker-ce-cli
+      - containerd.io
+      - docker-buildx-plugin
+      - docker-compose-plugin
+    state: present
+    update_cache: true
+    lock_timeout: 120
+  notify: restart docker
+
+- name: Ensure Docker config directory exists
+  file:
+    path: /etc/docker
+    state: directory
+    mode: "0755"
+
+- name: Template Docker daemon configuration
+  template:
+    src: daemon.json.j2
+    dest: /etc/docker/daemon.json
+    mode: "0644"
+  notify: restart docker
+
+- name: Enable and start Docker
+  systemd:
+    name: docker
+    enabled: true
+    state: started
+
+- name: Add Ansible user to docker group
+  user:
+    name: "{{ ansible_user }}"
+    groups: docker
+    append: true

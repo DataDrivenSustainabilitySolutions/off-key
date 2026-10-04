@@ -57,6 +57,8 @@ class DockerConfig(BaseModel):
     @property
     def base_url(self) -> str:
         """Get Docker API base URL"""
+        if self.api_url.startswith("unix://"):
+            return self.api_url
         return f"{self.api_url}:{self.api_port}"
 
 

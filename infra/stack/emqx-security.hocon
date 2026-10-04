@@ -1,0 +1,28 @@
+# This file replaces EMQX's base.hocon only in production. The persisted
+# cluster.hocon must not define these listeners or the SSL authentication chain.
+listeners.tcp.default.enable = false
+listeners.ws.default.enable = false
+listeners.wss.default.enable = false
+
+listeners.ssl.default {
+  enable = true
+  bind = "0.0.0.0:8883"
+  enable_authn = quick_deny_anonymous
+  ssl_options {
+    certfile = "/run/secrets/emqx_server_cert.pem"
+    keyfile = "/run/secrets/emqx_server_key.pem"
+  }
+  authentication = [
+    {
+      mechanism = password_based
+      backend = built_in_database
+      user_id_type = username
+      password_hash_algorithm {
+        name = sha256
+        salt_position = suffix
+      }
+      bootstrap_file = "/run/secrets/emqx_auth_users.json"
+      bootstrap_type = plain
+    }
+  ]
+}

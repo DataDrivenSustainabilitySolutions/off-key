@@ -653,9 +653,11 @@ describe("direct collection editor", () => {
     confirm.mockReturnValue(true);
     fireEvent.click(screen.getByRole("button", { name: "Discard changes" }));
     await screen.findByRole("button", { name: "Reload saved catalog" });
-    const cleanUnload = new Event("beforeunload", { cancelable: true });
-    window.dispatchEvent(cleanUnload);
-    expect(cleanUnload.defaultPrevented).toBe(false);
+    await waitFor(() => {
+      const cleanUnload = new Event("beforeunload", { cancelable: true });
+      window.dispatchEvent(cleanUnload);
+      expect(cleanUnload.defaultPrevented).toBe(false);
+    });
   });
 
   it("blocks stale inline and measurement edits when another administrator saves", async () => {

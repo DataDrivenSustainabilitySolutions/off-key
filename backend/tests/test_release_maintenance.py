@@ -1,10 +1,8 @@
 """Verify release locking, retries and migration transactions in isolated databases."""
 
-import os
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
-from uuid import uuid4
 
 import pytest
 from off_key_core.db.collection import lock_collection_configuration
@@ -29,33 +27,14 @@ from off_key_tactic_middleware.services.orchestration import radar
 from off_key_tactic_middleware.services.orchestration.radar import (
     RadarOrchestrationService,
 )
-from sqlalchemy import create_engine, insert, inspect, text
-from sqlalchemy.engine import make_url
+from sqlalchemy import insert, inspect, text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 
-@pytest.fixture
-def database():
-    value = os.getenv("TEST_SCHEMA_DATABASE_URL")
-    if not value:
-        pytest.skip("Requires an explicitly supplied disposable PostgreSQL database")
-    url = make_url(value).set(drivername="postgresql+psycopg2")
-    name = "offkey_release_test_" + uuid4().hex
-    admin = create_engine(url, isolation_level="AUTOCOMMIT")
-    with admin.connect() as connection:
-        connection.exec_driver_sql(f'CREATE DATABASE "{name}"')
-    engine = create_engine(url.set(database=name))
-    try:
-        yield engine
-    finally:
-        engine.dispose()
-        with admin.connect() as connection:
-            connection.exec_driver_sql(f'DROP DATABASE "{name}" WITH (FORCE)')
-        admin.dispose()
-
-
-def test_migrations_adopt_verified_baseline_preserve_data_and_repeat(database):
-    with database.begin() as connection:
+def test_migrations_adopt_verified_baseline_preserve_data_and_repeat(
+    disposable_database,
+):
+    with disposable_database.begin() as connection:
         assert migration_status(connection)["fresh"]
         apply_migrations(connection)
         assert migration_status(connection)["pending"] == []
@@ -70,7 +49,7 @@ def test_migrations_adopt_verified_baseline_preserve_data_and_repeat(database):
         connection.execute(text("DROP TABLE off_key_schema_migrations"))
         connection.execute(text("DROP TABLE deployment_maintenance"))
         connection.execute(text("ALTER TABLE services DROP COLUMN launch_config"))
-    with database.begin() as connection:
+    with disposable_database.begin() as connection:
         assert migration_status(connection)["pending"] == [
             "003_deployment_maintenance.sql"
         ]
@@ -87,19 +66,22 @@ def test_migrations_adopt_verified_baseline_preserve_data_and_repeat(database):
 
 
 def test_failed_migration_rolls_back_ddl_and_ledger_and_lock_blocks_competitors(
-    database,
+    disposable_database,
 ):
-    with database.begin() as connection:
+    with disposable_database.begin() as connection:
         apply_migrations(connection)
     migrations = migration_files() | {
         "004_failure.sql": "CREATE TABLE release_probe (id integer); SELECT 1 / 0;"
     }
     with (
         pytest.raises(Exception, match="division by zero"),
-        database.begin() as connection,
+        disposable_database.begin() as connection,
     ):
         apply_migrations(connection, migrations)
-    with database.begin() as owner, database.begin() as competitor:
+    with (
+        disposable_database.begin() as owner,
+        disposable_database.begin() as competitor,
+    ):
         assert not inspect(owner).has_table("release_probe")
         assert migration_status(owner)["pending"] == []
         owner.execute(
@@ -111,11 +93,13 @@ def test_failed_migration_rolls_back_ddl_and_ledger_and_lock_blocks_competitors(
 
 @pytest.mark.asyncio
 async def test_monitor_cutover_blocks_writes_preserves_intent_and_resumes_once(
-    database, monkeypatch
+    disposable_database, monkeypatch
 ):
-    with database.begin() as connection:
+    with disposable_database.begin() as connection:
         apply_migrations(connection)
-    engine = create_async_engine(database.url.set(drivername="postgresql+asyncpg"))
+    engine = create_async_engine(
+        disposable_database.url.set(drivername="postgresql+asyncpg")
+    )
     revision = "a" * 40
     config = RadarStartConfig(
         container_name="first",
@@ -129,6 +113,7 @@ async def test_monitor_cutover_blocks_writes_preserves_intent_and_resumes_once(
         client = SimpleNamespace(
             services=SimpleNamespace(
                 get=lambda identifier: SimpleNamespace(
+                    attrs={"Spec": {"Mode": {"Replicated": {"Replicas": 0}}}},
                     scale=lambda replicas: states.update(
                         {identifier + "-task": "shutdown"}
                     ),
@@ -138,7 +123,7 @@ async def test_monitor_cutover_blocks_writes_preserves_intent_and_resumes_once(
                 tasks=lambda **kw: [
                     {
                         "ID": kw["filters"]["service"] + "-task",
-                        "Status": {"State": "running"},
+                        "Status": {"State": states[kw["filters"]["service"] + "-task"]},
                     }
                 ],
                 inspect_task=lambda task: {"Status": {"State": states[task]}},
@@ -270,20 +255,36 @@ async def test_monitor_cutover_blocks_writes_preserves_intent_and_resumes_once(
 
 @pytest.mark.asyncio
 async def test_task_removal_requires_actual_shutdown(monkeypatch):
+    import docker
+
     monkeypatch.setattr(deployment.asyncio, "sleep", AsyncMock())
+    service = SimpleNamespace(attrs={"Spec": {"Mode": {"Replicated": {"Replicas": 0}}}})
+    get = MagicMock(return_value=service)
+    tasks = MagicMock(return_value=[{"Status": {"State": "running"}}])
     workloads = SimpleNamespace(
         async_docker=SimpleNamespace(
             client=SimpleNamespace(
-                api=SimpleNamespace(
-                    inspect_task=lambda task: {"Status": {"State": "running"}}
-                )
+                services=SimpleNamespace(get=get),
+                api=SimpleNamespace(tasks=tasks),
             ),
-            run=AsyncMock(return_value={"Status": {"State": "running"}}),
+            run=AsyncMock(
+                side_effect=lambda function, *args, **kwargs: function(*args, **kwargs)
+            ),
         )
     )
     with pytest.raises(ValueError, match="did not stop"):
-        await deployment.wait_stopped(workloads, ["task"], attempts=1)
-    workloads.async_docker.run.assert_awaited_once()
+        await deployment.wait_stopped(workloads, "service", attempts=1)
+    tasks.return_value = [{"Status": {"State": "shutdown"}}]
+    await deployment.wait_stopped(workloads, "service", attempts=1)
+    # Cancelled tasks can disappear without being retained in Swarm history.
+    tasks.return_value = []
+    await deployment.wait_stopped(workloads, "service", attempts=1)
+    service.attrs["Spec"]["Mode"]["Replicated"]["Replicas"] = 1
+    with pytest.raises(ValueError, match="zero replicas"):
+        await deployment.wait_stopped(workloads, "service", attempts=1)
+    get.side_effect = docker.errors.NotFound("missing service")
+    with pytest.raises(ValueError, match="recovery is required"):
+        await deployment.wait_stopped(workloads, "service", attempts=1)
 
 
 def test_maintenance_docker_socket_url_has_no_tcp_port():

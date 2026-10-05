@@ -23,7 +23,10 @@ with (root / 'commands.jsonl').open('a') as log:
 def spec(name):
     return {'Spec': {'Name': name, 'Mode': {'Replicated': {'Replicas': state['replicas'][name]}},
             'TaskTemplate': {'ContainerSpec': {'Image': 'example/' + name,
-              'Mounts': [{'Target': '/var/lib/postgresql/data'}] if name == 'off-key_postgres' and state['deployed'] else []}}}}
+              'Mounts': [{'Type': 'volume', 'Source': 'off-key_postgres_data',
+                          'Target': '/var/lib/postgresql/data'}]
+                        if name == 'off-key_postgres' and (state.get('persistent', state['deployed'])
+                            or (state['deployed'] and os.environ.get('CONFIGURED_MOUNT'))) else []}}}}
 
 if a[:2] == ['compose', '--env-file']:
     if a[-2:] == ['--format', 'json']:
@@ -67,14 +70,18 @@ elif a[0] == 'ps':
         print('retiring-old-container\nreplacement')
 elif a[0] == 'inspect':
     assert a[1] == 'replacement'
-    print(json.dumps([{'Destination': '/var/lib/postgresql/data', 'Type': 'volume',
-                      'Name': 'wrong-volume' if os.environ.get('WRONG_MOUNT') else 'off-key_postgres_data'}]))
+    mounts = [{'Destination': '/var/lib/postgresql/data', 'Type': 'volume',
+               'Name': 'wrong-volume' if os.environ.get('WRONG_MOUNT') else
+                       ('off-key_postgres_data' if state.get('persistent', True) else 'anonymous-volume')}]
+    print(json.dumps({'mounts': json.loads(os.environ.get('CONTAINER_MOUNTS', json.dumps(mounts))),
+                      'image_volumes': json.loads(os.environ.get('IMAGE_VOLUMES', '{"/var/lib/postgresql/data":{}}'))}))
 elif a[:2] == ['stack', 'deploy']:
     model = json.loads(Path(a[a.index('-c') + 1]).read_text())
     assert model['services']['api']['deploy']['replicas'] == 0
     assert state['replicas']['off-key_api'] == state['replicas']['radar-runtime'] == 0
     assert state['replicas']['off-key_postgres'] == 0
     state['deployed'] = True
+    state['persistent'] = os.environ.get('PERSIST_POSTGRES', '1') == '1'
     state['replicas']['off-key_postgres'] = 1
 elif a[0] == 'exec':
     cid = a[2] if a[1] == '-i' else a[1]
@@ -128,7 +135,7 @@ elif a[0] == 'exec':""",
 
 
 class PersistenceTests(unittest.TestCase):
-    def run_cutover(self, directory, **environment):
+    def run_cutover(self, directory, *, persistent=True, **environment):
         root = Path(directory)
         (root / "docker").write_text(f"#!{sys.executable}\n" + DOCKER)
         (root / "docker").chmod(0o755)
@@ -143,6 +150,7 @@ class PersistenceTests(unittest.TestCase):
                             "radar-runtime": 2,
                         },
                         "deployed": False,
+                        "persistent": not persistent,
                     }
                 )
             )
@@ -193,7 +201,7 @@ class PersistenceTests(unittest.TestCase):
             "stack_dir": str(root / "stack"),
             "stack_compose_files": [str(root / "stack/compose.yml")],
             "postgres_user": "fixture",
-            "persist_postgres": True,
+            "persist_postgres": persistent,
             "persistence_backup_dir": str(root / "backups"),
         }
         env = (
@@ -202,6 +210,7 @@ class PersistenceTests(unittest.TestCase):
                 "PATH": str(root) + os.pathsep + os.environ["PATH"],
                 "DOCKER_FIXTURE": str(root),
                 "ANSIBLE_CONFIG": str(ROOT / "ansible/ansible.cfg"),
+                "PERSIST_POSTGRES": "1" if persistent else "0",
             }
             | environment
         )
@@ -222,19 +231,74 @@ class PersistenceTests(unittest.TestCase):
         return result, json.loads((root / "state.json").read_text()), commands
 
     def test_cutover_restores_only_the_replacement_after_stopping_all_writers(self):
-        with tempfile.TemporaryDirectory() as directory:
-            result, state, commands = self.run_cutover(directory)
-            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-            self.assertEqual(
-                state["replicas"],
-                {"off-key_postgres": 1, "off-key_api": 1, "radar-runtime": 2},
-            )
-            restore = next(command for command in commands if "pg_restore" in command)
-            self.assertEqual(restore[1:3], ["-i", "replacement"])
-            self.assertTrue(
-                list((Path(directory) / "backups/postgres").glob("*/fixture_db.dump"))
-            )
-            self.assertFalse((Path(directory) / "stack/recovery-pending.json").exists())
+        for persistent in (True, False):
+            with (
+                self.subTest(persistent=persistent),
+                tempfile.TemporaryDirectory() as directory,
+            ):
+                result, state, commands = self.run_cutover(
+                    directory, persistent=persistent
+                )
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertEqual(
+                    state["replicas"],
+                    {"off-key_postgres": 1, "off-key_api": 1, "radar-runtime": 2},
+                )
+                restore = next(
+                    command for command in commands if "pg_restore" in command
+                )
+                self.assertEqual(restore[1:3], ["-i", "replacement"])
+                self.assertTrue(
+                    list(
+                        (Path(directory) / "backups/postgres").glob("*/fixture_db.dump")
+                    )
+                )
+                self.assertFalse(
+                    (Path(directory) / "stack/recovery-pending.json").exists()
+                )
+
+    def test_ephemeral_mount_must_be_unconfigured_and_image_defined(self):
+        invalid_mounts = (
+            {"CONFIGURED_MOUNT": "1"},
+            {"IMAGE_VOLUMES": "{}"},
+            {
+                "CONTAINER_MOUNTS": json.dumps(
+                    [
+                        {
+                            "Destination": "/var/lib/postgresql/data",
+                            "Type": "bind",
+                            "Source": "/data",
+                        }
+                    ]
+                )
+            },
+            {
+                "CONTAINER_MOUNTS": json.dumps(
+                    [
+                        {
+                            "Destination": "/var/lib/postgresql/data",
+                            "Type": "volume",
+                            "Name": "off-key_postgres_data",
+                        }
+                    ]
+                )
+            },
+        )
+        for environment in invalid_mounts:
+            with (
+                self.subTest(environment=environment),
+                tempfile.TemporaryDirectory() as directory,
+            ):
+                result, state, commands = self.run_cutover(
+                    directory, persistent=False, **environment
+                )
+                self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertEqual(state["replicas"]["off-key_api"], 0)
+                self.assertEqual(state["replicas"]["radar-runtime"], 0)
+                self.assertFalse(any("pg_restore" in command for command in commands))
+                self.assertTrue(
+                    (Path(directory) / "stack/recovery-pending.json").exists()
+                )
 
     def test_failed_restore_or_wrong_mount_never_resumes_writers(self):
         for failure in ("RESTORE_FAIL", "WRONG_MOUNT"):
@@ -454,7 +518,7 @@ class PersistenceTests(unittest.TestCase):
             root = Path(directory)
             fixture = EMQX_DOCKER.replace(
                 "off-key_postgres\\noff-key_api", "off-key_emqx-main\\noff-key_api"
-            )
+            ).replace("name == 'off-key_postgres'", "name == 'off-key_emqx-main'")
             fixture = fixture.replace(
                 "/var/lib/postgresql/data", "/opt/emqx/log"
             ).replace("off-key_postgres_data", "off-key_emqx_log")

@@ -1,6 +1,5 @@
 """Run against an explicitly supplied disposable TimescaleDB database."""
 
-import os
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -19,11 +18,10 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 
 @pytest.mark.asyncio
-async def test_current_schema_bootstrap_and_integrity():
-    url = os.getenv("TEST_SCHEMA_DATABASE_URL")
-    if not url:
-        pytest.skip("TEST_SCHEMA_DATABASE_URL requires a disposable TimescaleDB")
-    engine = create_async_engine(url)
+async def test_current_schema_bootstrap_and_integrity(disposable_database):
+    engine = create_async_engine(
+        disposable_database.url.set(drivername="postgresql+asyncpg")
+    )
     try:
         async with engine.begin() as connection:
             await connection.run_sync(bootstrap_schema)
@@ -96,11 +94,12 @@ async def test_current_schema_bootstrap_and_integrity():
 
 
 @pytest.mark.asyncio
-async def test_retention_changes_existing_jobs_and_reports_persisted_state(monkeypatch):
-    url = os.getenv("TEST_SCHEMA_DATABASE_URL")
-    if not url:
-        pytest.skip("TEST_SCHEMA_DATABASE_URL requires a disposable TimescaleDB")
-    engine = create_async_engine(url)
+async def test_retention_changes_existing_jobs_and_reports_persisted_state(
+    disposable_database, monkeypatch
+):
+    engine = create_async_engine(
+        disposable_database.url.set(drivername="postgresql+asyncpg")
+    )
 
     async def bootstrap(days):
         monkeypatch.setenv("TELEMETRY_RETENTION_DAYS", str(days))

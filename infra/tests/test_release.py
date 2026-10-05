@@ -127,10 +127,13 @@ class ReleaseTests(unittest.TestCase):
         ):
             release.select_revision("latest")
 
-    def test_stdout_resolves_application_images_without_changing_platform_or_manifest(
-        self,
-    ):
+    def test_stdout_uses_tested_digests_without_resolving_mutable_tags(self):
         document = json.loads(release.RELEASE.read_text())
+        tested = deepcopy(document["release"])
+        tested["application_revision"] = "a" * 40
+        for name in release.APPLICATION_IMAGES:
+            repository = tested["images"][name].split("@", 1)[0].rsplit(":", 1)[0]
+            tested["images"][name] = repository + "@sha256:" + "b" * 64
         with tempfile.TemporaryDirectory() as directory:
             manifest = Path(directory) / "release.yml"
             original = json.dumps(document)
@@ -140,22 +143,13 @@ class ReleaseTests(unittest.TestCase):
                 patch.object(release, "RELEASE", manifest),
                 patch.object(sys, "argv", ["pin_release.py", "--stdout"]),
                 patch.object(release, "select_revision", return_value="a" * 40),
-                patch.object(
-                    release, "pin", side_effect=lambda ref, sha: ref + "-resolved"
-                ) as pin,
+                patch.object(release, "tested_release", return_value=tested),
+                patch.object(release, "pin") as pin,
                 redirect_stdout(output),
             ):
                 release.main()
-            resolved = json.loads(output.getvalue())["release"]
-            self.assertEqual(resolved["application_revision"], "a" * 40)
-            self.assertEqual(pin.call_count, 6)
-            for name, reference in document["release"]["images"].items():
-                expected = (
-                    reference + "-resolved"
-                    if name in release.APPLICATION_IMAGES
-                    else reference
-                )
-                self.assertEqual(resolved["images"][name], expected)
+            self.assertEqual(json.loads(output.getvalue())["release"], tested)
+            pin.assert_not_called()
             self.assertEqual(manifest.read_text(), original)
             with (
                 patch.object(release, "RELEASE", manifest),
@@ -163,13 +157,103 @@ class ReleaseTests(unittest.TestCase):
                 patch.object(release, "select_revision", return_value="a" * 40),
                 patch.object(
                     release,
-                    "pin",
-                    side_effect=["resolved", ValueError("missing image")],
+                    "tested_release",
+                    side_effect=ValueError("missing tested artifact"),
                 ),
-                self.assertRaisesRegex(ValueError, "missing image"),
+                self.assertRaisesRegex(ValueError, "missing tested artifact"),
             ):
                 release.main()
             self.assertEqual(manifest.read_text(), original)
+
+    def test_tested_artifact_requires_matching_images_and_latest_main_run(self):
+        revision = "a" * 40
+        document = json.loads(release.RELEASE.read_text())
+        document["release"]["application_revision"] = revision
+        successful = {
+            "id": 10,
+            "run_attempt": 1,
+            "head_sha": revision,
+            "head_branch": "main",
+            "event": "push",
+            "status": "completed",
+            "conclusion": "success",
+        }
+
+        def download(args, **kwargs):
+            self.assertEqual(args[:4], ["gh", "run", "download", "10"])
+            Path(args[-1], "production-release.json").write_text(json.dumps(document))
+
+        with (
+            patch.object(
+                release, "github", return_value={"workflow_runs": [successful]}
+            ),
+            patch.object(release.subprocess, "run", side_effect=download),
+            patch.object(
+                release,
+                "inspect",
+                return_value={
+                    "architecture": "amd64",
+                    "config": {
+                        "Labels": {"org.opencontainers.image.revision": revision}
+                    },
+                },
+            ) as inspect,
+        ):
+            self.assertEqual(release.tested_release(revision), document["release"])
+            self.assertEqual(inspect.call_count, len(release.APPLICATION_IMAGES))
+            for call in inspect.call_args_list:
+                self.assertRegex(call.args[0], r"@sha256:[0-9a-f]{64}$")
+            original = deepcopy(document)
+            changes = [
+                ("revision", "b" * 40),
+                ("api", "ghcr.io/attacker/api@sha256:" + "b" * 64),
+                (
+                    "api",
+                    "ghcr.io/datadrivensustainabilitysolutions/off-key-api-gateway:latest",
+                ),
+                (
+                    "postgres",
+                    original["release"]["images"]["postgres"].split("@", 1)[0]
+                    + "@sha256:"
+                    + "b" * 64,
+                ),
+            ]
+            for name, value in changes:
+                with (
+                    self.subTest(change=name, value=value),
+                    self.assertRaises(ValueError),
+                ):
+                    document = deepcopy(original)
+                    if name == "revision":
+                        document["release"]["application_revision"] = value
+                    else:
+                        document["release"]["images"][name] = value
+                    release.tested_release(revision)
+            document = deepcopy(original)
+            with (
+                patch.object(
+                    release, "inspect", return_value={"architecture": "amd64"}
+                ),
+                self.assertRaisesRegex(ValueError, "belongs to"),
+            ):
+                release.tested_release(revision)
+            for changes in (
+                {"run_attempt": 2, "status": "in_progress", "conclusion": None},
+                {"id": 11, "conclusion": "failure"},
+                {"id": 11, "conclusion": "cancelled"},
+            ):
+                with (
+                    self.subTest(run=changes),
+                    patch.object(
+                        release,
+                        "github",
+                        return_value={
+                            "workflow_runs": [successful, successful | changes]
+                        },
+                    ),
+                    self.assertRaisesRegex(ValueError, "No successful"),
+                ):
+                    release.tested_release(revision)
 
     def test_selected_release_reaches_workers_in_later_plays(self):
         document = json.loads(release.RELEASE.read_text())

@@ -91,19 +91,10 @@ async def prepare_operation(session, workloads, revision: str):
         config = (
             RadarStartConfig.model_validate(service.launch_config) if restart else None
         )
-        tasks = await workloads.async_docker.run(
-            workloads.async_docker.client.api.tasks,
-            filters={"service": service.container_id},
-        )
         snapshots.append(
             {
                 "previous_id": service.id,
                 "workload_id": service.container_id,
-                "tasks": [
-                    task["ID"]
-                    for task in tasks
-                    if task["Status"]["State"] not in TERMINAL_TASKS
-                ],
                 "stopped": False,
                 "config": config.model_dump(mode="json")
                 if config is not None
@@ -122,20 +113,25 @@ async def prepare_operation(session, workloads, revision: str):
     return operation
 
 
-async def wait_stopped(workloads, task_ids: list[str], *, attempts: int = 120):
+async def wait_stopped(workloads, workload_id: str, *, attempts: int = 120):
     for _ in range(attempts):
-        running = False
-        for task_id in task_ids:
-            try:
-                task = await workloads.async_docker.run(
-                    workloads.async_docker.client.api.inspect_task, task_id
-                )
-            except docker.errors.NotFound as exc:
-                raise ValueError(
-                    "Cannot verify a retiring RADAR task; recovery is required"
-                ) from exc
-            running |= task["Status"]["State"] not in TERMINAL_TASKS
-        if not running:
+        try:
+            service = await workloads.async_docker.run(
+                workloads.async_docker.client.services.get, workload_id
+            )
+        except docker.errors.NotFound as exc:
+            raise ValueError(
+                "Cannot verify the retiring RADAR service; recovery is required"
+            ) from exc
+        if service.attrs["Spec"]["Mode"]["Replicated"]["Replicas"] != 0:
+            raise ValueError("The retiring RADAR service must have zero replicas")
+        # Swarm removes cancelled task records while scaling down. Poll the
+        # service's current tasks, including retiring tasks, rather than stale IDs.
+        tasks = await workloads.async_docker.run(
+            workloads.async_docker.client.api.tasks,
+            filters={"service": workload_id},
+        )
+        if all(task["Status"]["State"] in TERMINAL_TASKS for task in tasks):
             return
         await asyncio.sleep(1)
     raise ValueError("A retiring RADAR task did not stop; deployment remains blocked")
@@ -153,7 +149,7 @@ async def begin(session, orchestration, revision: str) -> dict:
                 monitor["workload_id"],
             )
             await orchestration.workloads.async_docker.run(workload.scale, 0)
-            await wait_stopped(orchestration.workloads, monitor["tasks"])
+            await wait_stopped(orchestration.workloads, monitor["workload_id"])
             snapshots[index] = monitor | {"stopped": True}
             operation.monitors = list(snapshots)
             operation.updated_at = datetime.now(UTC)

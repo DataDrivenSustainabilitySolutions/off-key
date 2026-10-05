@@ -9,10 +9,14 @@ Provides common fixtures for:
 """
 
 import asyncio
+import os
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
+from uuid import uuid4
 
 import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.engine import make_url
 
 # ============================================================================
 # Async Support
@@ -106,6 +110,27 @@ def sample_anomaly_result():
 # ============================================================================
 # Database Fixtures
 # ============================================================================
+
+
+@pytest.fixture
+def disposable_database():
+    """Give each real database test its own database on the CI fixture server."""
+    value = os.getenv("TEST_SCHEMA_DATABASE_URL")
+    if not value:
+        pytest.skip("Requires an explicitly supplied disposable PostgreSQL server")
+    url = make_url(value).set(drivername="postgresql+psycopg2")
+    name = "offkey_test_" + uuid4().hex
+    admin = create_engine(url, isolation_level="AUTOCOMMIT")
+    with admin.connect() as connection:
+        connection.exec_driver_sql(f'CREATE DATABASE "{name}"')
+    engine = create_engine(url.set(database=name))
+    try:
+        yield engine
+    finally:
+        engine.dispose()
+        with admin.connect() as connection:
+            connection.exec_driver_sql(f'DROP DATABASE "{name}" WITH (FORCE)')
+        admin.dispose()
 
 
 @pytest.fixture

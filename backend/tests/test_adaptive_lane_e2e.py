@@ -212,6 +212,15 @@ def test_gateway_to_postgres_adaptive_multisensor_input_correlation() -> None:
                 hostname=os.getenv("E2E_MQTT_HOST", "localhost"),
                 port=int(os.getenv("E2E_MQTT_PORT", "1883")),
                 client_id=f"adaptive-e2e-{charger_id}",
+                tls={"ca_certs": os.environ["E2E_MQTT_CA_FILE"]}
+                if os.getenv("E2E_MQTT_CA_FILE")
+                else None,
+                auth={
+                    "username": os.environ["E2E_MQTT_USERNAME"],
+                    "password": os.environ["E2E_MQTT_PASSWORD"],
+                }
+                if os.getenv("E2E_MQTT_USERNAME")
+                else None,
             )
 
             deadline = time.monotonic() + 120

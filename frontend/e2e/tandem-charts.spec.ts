@@ -190,7 +190,10 @@ type CanvasReadout = {
   width: number;
   height: number;
   tintAlpha: number;
-  tintBands: Array<{ left: number; right: number; top: number; bottom: number; gapPixels: number }>;
+  tintBands: Array<{
+    left: number; right: number; top: number; bottom: number; gapPixels: number;
+    firstRegionRight: number; nextRegionLeft: number;
+  }>;
   orange: PixelGlyph;
   topRed: PixelGlyph;
   overflowPixels: number;
@@ -249,10 +252,23 @@ const readCanvas = (chart: Locator): Promise<CanvasReadout> => chart.evaluate((c
         right = Math.max(right, x);
       }
     }
-    // The fixture's unevaluated observation is one quarter through the time range.
-    const gapColumn = Math.round(left + (right - left) / 4);
+    const regions: Array<{ first: number; last: number }> = [];
+    for (let x = left; x <= right; x += 1) {
+      if (!columns[x]) continue;
+      const previous = regions[regions.length - 1];
+      if (previous && x - previous.last <= 3 * scaleX) previous.last = x;
+      else regions.push({ first: x, last: x });
+    }
+    const firstRegion = regions[0];
+    const nextRegion = regions[1];
+    if (!firstRegion || !nextRegion) throw new Error("Expected separate evaluated observation cells");
+    // The fixture's first blank cell is bounded by timestamps 30s and 90s.
+    // These clean internal edges establish shared time scale and alignment even
+    // when the overflow triangle covers the final alarm-region edge.
+    const gapColumn = Math.round((firstRegion.last + nextRegion.first) / 2);
     return { left: left / scaleX, right: right / scaleX, top: row.first / scaleY,
-      bottom: row.last / scaleY, gapPixels: columns[gapColumn] ?? 0 };
+      bottom: row.last / scaleY, gapPixels: columns[gapColumn] ?? 0,
+      firstRegionRight: firstRegion.last / scaleX, nextRegionLeft: nextRegion.first / scaleX };
   });
   let tintAlpha = 0;
   for (let alpha = 1; alpha < histogram.length; alpha += 1) {
@@ -326,7 +342,8 @@ test.describe("Tandem anomaly chart regression", () => {
             expect(band.bottom - band.top).toBeGreaterThan(6);
             expect(band.gapPixels).toBe(0);
             expect(Math.abs(band.left - pixels.tintBands[0]!.left)).toBeLessThanOrEqual(2);
-            expect(Math.abs(band.right - pixels.tintBands[0]!.right)).toBeLessThanOrEqual(2);
+            expect(Math.abs(band.firstRegionRight - pixels.tintBands[0]!.firstRegionRight)).toBeLessThanOrEqual(2);
+            expect(Math.abs(band.nextRegionLeft - pixels.tintBands[0]!.nextRegionLeft)).toBeLessThanOrEqual(2);
           }
           if (mode !== "adaptive") expect(pixels.overflowPixels).toBeGreaterThan(10);
           const box = await chart.boundingBox();

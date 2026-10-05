@@ -22,7 +22,6 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:
-      OFFKEY_REHEARSAL_DIR: ${{ runner.temp }}/offkey-rehearsal
       ANSIBLE_CONFIG: ${{ github.workspace }}/infra/ansible/ansible.cfg
 
     steps:
@@ -61,6 +60,7 @@ jobs:
 
       - name: Install existing E2E and infrastructure tools
         run: |
+          echo "OFFKEY_REHEARSAL_DIR=$RUNNER_TEMP/offkey-rehearsal" >> "$GITHUB_ENV"
           npm ci --prefix frontend
           uv sync --project backend --all-packages --all-groups --frozen
           uv sync --project infra --frozen

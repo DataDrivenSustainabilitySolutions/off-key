@@ -9,23 +9,25 @@ import { ChevronDown } from "lucide-react";
 
 import DateTimePicker from "@/components/DateTimePicker";
 import { EChart } from "@/components/EChart";
+import { TelemetryDetectorControls } from "@/components/TelemetryDetectorControls";
+import { TelemetryEventDetails } from "@/components/TelemetryEventDetails";
+import { TelemetryChartSummary } from "@/components/TelemetryChartSummary";
 import { NoChartsAvailable } from "@/components/LoadingStates";
 import { useTheme } from "@/components/theme-provider";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardTitle } from "@/components/ui/card";
 import {
   createAnomalyMarkers,
-  createAnomalyZones,
   filterAnomalies,
 } from "@/lib/anomaly-utils";
 import { resolveChartThemeColors } from "@/lib/echarts-theme";
 import { getEvidenceTimeForSensor } from "@/lib/monitoring-chart";
+import { getChartDomain } from "@/lib/telemetry-thresholds";
+import { useDetectorSelection } from "@/hooks/use-detector-selection";
 import {
   buildTelemetryChartModel,
   buildTelemetryChartOption,
   DEFAULT_CHART_NAVIGATION,
-  formatChartTime,
-  formatNumber,
   getLocalTimeZone,
   areChartNavigationStatesEqual,
   type ChartNavigationState,
@@ -232,17 +234,36 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
       ),
     [evidence, telemetryData.type],
   );
+  const serviceEvidence = useMemo(
+    () => sensorEvidence.filter((item) => !monitoringService || item.service_id === monitoringService.id),
+    [monitoringService, sensorEvidence],
+  );
+  const detectorCatalog = useMemo(
+    () => buildTelemetryChartModel({
+      telemetryType: telemetryData.type,
+      telemetryName: displayName,
+      telemetryUnit: telemetryData.unit,
+      telemetryColor: themeColors.primary,
+      telemetry: telemetryData.data,
+      evidence: serviceEvidence,
+      anomalyZones: [],
+      anomalyMarkers: [],
+    }).detectors,
+    [displayName, serviceEvidence, telemetryData, themeColors.primary],
+  );
+  const { selectedDetectorIds, controlCatalog, unavailableIds, onSelect: selectDetector } =
+    useDetectorSelection(detectorCatalog, `${telemetryData.type}\u0000${monitoringService?.id ?? ""}`);
   const telemetryEvidence = useMemo(
     () =>
-      sensorEvidence.filter((item) => {
+      serviceEvidence.filter((item) => {
         const time = getEvidenceTimeForSensor(item, telemetryData.type);
         if (time === undefined) return false;
         if (!isWithinTimeRange(new Date(time).toISOString(), fromDate, toDate)) {
           return false;
         }
-        return !monitoringService || item.service_id === monitoringService.id;
+        return true;
       }),
-    [fromDate, monitoringService, sensorEvidence, telemetryData.type, toDate],
+    [fromDate, serviceEvidence, telemetryData.type, toDate],
   );
   const operationalEvidence = useMemo(
     () =>
@@ -286,17 +307,22 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
       telemetryColor: themeColors.primary,
       telemetry: filteredData,
       evidence: telemetryEvidence,
+      selectedDetectorIds,
+      range: activeNavigationState.range,
       pendingTelemetryTimestamps,
-      anomalyZones: createAnomalyZones(telemetryAnomalies),
-      anomalyMarkers: createAnomalyMarkers(filteredData, telemetryAnomalies),
+      anomalyZones: [],
+      anomalyMarkers: createAnomalyMarkers(telemetryData.data, telemetryAnomalies),
     });
   }, [
     displayName,
     filteredData,
     telemetryAnomalies,
+    telemetryData.data,
     telemetryData.type,
     telemetryData.unit,
     telemetryEvidence,
+    selectedDetectorIds,
+    activeNavigationState.range,
     pendingTelemetryTimestamps,
     themeColors.primary,
   ]);
@@ -309,7 +335,8 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
       (series) => series.pane === "adaptive",
     ).length;
     const pendingCount = chartModel.pendingTelemetry.length;
-    return `${displayName} telemetry chart with ${pointCount} points${staticCount ? `, ${staticCount} logarithmic static-evidence series` : ""}${adaptiveCount ? `, and ${adaptiveCount} linear adaptive score and threshold series` : ""}${pendingCount ? `, with ${pendingCount} observations awaiting anomaly scores` : ""}. Evidence panes share the telemetry time axis. Times are shown in ${timeZone}.`;
+    const overflowCount = chartModel.secondarySeries.reduce((count, series) => count + series.overflow.length, 0);
+    return `${displayName} telemetry chart with ${pointCount} points${staticCount ? `, ${staticCount} logarithmic static-evidence series` : ""}${adaptiveCount ? `, and ${adaptiveCount} linear adaptive score series` : ""}${pendingCount ? `, with ${pendingCount} observations awaiting anomaly scores` : ""}. Evidence panes share the telemetry time axis. ${staticCount ? "Static alarm regions indicate evidence greater than or equal to the threshold. " : ""}${adaptiveCount ? "Adaptive alarm regions indicate scores greater than the threshold. " : ""}${staticCount || adaptiveCount ? "Unshaded gaps have no evaluated evidence. " : ""}${overflowCount ? `${overflowCount} observations are outside the plotted range and represented by triangles. ` : ""}Times are shown in ${timeZone}.`;
   }, [chartModel, displayName, timeZone]);
   const chartOption = useMemo(
     () =>
@@ -374,9 +401,12 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
     activeNavigationState.inspectionDataEndMs !== undefined &&
     chartModel.extent !== undefined &&
     chartModel.extent[1] > activeNavigationState.inspectionDataEndMs;
-  const latestTelemetry = chartModel.telemetry.data[
-    chartModel.telemetry.data.length - 1
-  ];
+  const displayedExtent = viewport.mode === "absolute"
+    ? [viewport.startMs, viewport.endMs]
+    : getChartDomain(timelineExtent ?? chartModel.extent, activeNavigationState.range);
+  const displayedEventGroups = chartModel.anomalyMarkers.filter((group) =>
+    !displayedExtent || (group.timeMs >= displayedExtent[0]! && group.timeMs <= displayedExtent[1]!),
+  );
 
   const hasStaticPane = chartModel.secondarySeries.some(
     (series) => series.pane === "static",
@@ -403,6 +433,7 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
         </div>
         <CardContent>
           <NoChartsAvailable />
+          <TelemetryEventDetails groups={displayedEventGroups} timeZone={timeZone} unit={telemetryData.unit} />
         </CardContent>
       </Card>
     );
@@ -416,16 +447,16 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
       <div
         className={`flex gap-3 border-b border-border/60 bg-muted/[0.12] px-5 py-4 ${collapsed ? "flex-row items-center justify-between" : "flex-col lg:flex-row lg:items-center lg:justify-between"}`}
       >
-        <div className="flex min-w-0 flex-1 items-center gap-3">
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-3">
           <CardTitle
-            className={`${collapsed ? "whitespace-normal break-words" : "truncate"} text-base`}
+            className="min-w-0 whitespace-normal break-words text-base"
           >
             {displayName}
           </CardTitle>
           {hasStaticPane && (
             <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/[0.07] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-emerald-700 dark:text-emerald-300">
               <span className="size-1.5 rounded-full bg-emerald-500" />
-              Restarted evidence
+              Sequential evidence
             </span>
           )}
           {hasAdaptivePane && (
@@ -522,6 +553,18 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
 
       {!collapsed && (
         <CardContent className="pb-5 pt-5">
+          {isChartVisible && controlCatalog.some((detector) =>
+            controlCatalog.filter((other) => other.pane === detector.pane).length > 1,
+          ) && (
+            <div className="mb-4">
+              <TelemetryDetectorControls
+                detectors={controlCatalog}
+                selected={selectedDetectorIds}
+                unavailableIds={unavailableIds}
+                onSelect={selectDetector}
+              />
+            </div>
+          )}
           {!isChartVisible ? (
             <div className={chartHeightClass} aria-hidden="true" />
           ) : filteredData.length === 0 ? (
@@ -543,6 +586,16 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
             </div>
           ) : chartOption && chartModel ? (
             <>
+              {controlCatalog.filter((detector) =>
+                detector.id === selectedDetectorIds[detector.pane] &&
+                !chartModel.secondarySeries.some((series) => series.id === detector.id),
+              ).map((detector) => (
+                <div key={detector.id} role="status" className="mb-3 text-sm text-muted-foreground">
+                  {detector.name}: {unavailableIds.has(detector.id)
+                    ? "No evaluated observations available"
+                    : "No evaluated observations in selected range"}
+                </div>
+              ))}
               {viewport.mode === "absolute" && (
                 <div
                   className="mb-2 flex flex-wrap items-center justify-end gap-2 text-xs text-muted-foreground"
@@ -568,27 +621,13 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
                 onViewportChange={handleViewportChange}
                 className={`${chartHeightClass} w-full min-w-0 touch-none`}
               />
-              <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 border-t border-border/60 pt-3 text-xs text-muted-foreground">
-                {latestTelemetry && (
-                  <span>
-                    Current {displayName}: {latestTelemetry[1]}
-                    {telemetryData.unit ? ` ${telemetryData.unit}` : ""} at{" "}
-                    {formatChartTime(latestTelemetry[0], timeZone, "tooltip")}
-                  </span>
-                )}
-                {chartModel.secondarySeries.map((series) => {
-                  const latest = [...series.data]
-                    .reverse()
-                    .find(([, value]) => value !== null);
-                  return latest ? (
-                    <span key={series.id}>
-                      {series.name}: {formatNumber(latest[1] as number)}
-                    </span>
-                  ) : null;
-                })}
-              </div>
+              <TelemetryChartSummary model={chartModel} timeZone={timeZone} />
+              <TelemetryEventDetails groups={displayedEventGroups} timeZone={timeZone} unit={telemetryData.unit} />
             </>
           ) : null}
+          {isChartVisible && filteredData.length === 0 && (
+            <TelemetryEventDetails groups={displayedEventGroups} timeZone={timeZone} unit={telemetryData.unit} />
+          )}
         </CardContent>
       )}
     </Card>

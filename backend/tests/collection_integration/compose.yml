@@ -37,7 +37,7 @@ services:
     ports:
       - '127.0.0.1:28885:1883'
   database:
-    image: timescale/timescaledb:latest-pg15
+    image: ${POSTGRES_TEST_IMAGE:-timescale/timescaledb:latest-pg15}
     environment:
       POSTGRES_USER: collection_test
       POSTGRES_PASSWORD: collection-test-password

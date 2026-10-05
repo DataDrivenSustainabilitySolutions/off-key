@@ -19,9 +19,9 @@
       - svc_node == persistence_service_nodes[svc]
     fail_msg: "{{ svc }} did not move to a new task on its original data node; writers remain stopped."
 
-- name: Inspect the replacement container mounts
+- name: Inspect the replacement container mounts and image-defined volumes
   command:
-    argv: [docker, inspect, "{{ svc_container }}", --format, '{% raw %}{{json .Mounts}}{% endraw %}']
+    argv: [docker, inspect, "{{ svc_container }}", --format, '{% raw %}{"mounts":{{json .Mounts}},"image_volumes":{{json .Config.Volumes}}}{% endraw %}']
   delegate_to: "{{ svc_node }}"
   register: replacement_mounts
   changed_when: false
@@ -29,13 +29,26 @@
 - name: Require the intended mount before restoring any data
   assert:
     that:
+      - configured | length == (1 if item.enabled | bool else 0)
+      - >-
+        not (item.enabled | bool)
+        or (configured[0].Type == 'volume' and configured[0].Source == expected_volume)
       - >-
         (item.enabled | bool and mounted | length == 1
-         and mounted[0].Type == 'volume' and mounted[0].Name == stack_name ~ '_' ~ item.volume)
-        or (not (item.enabled | bool) and mounted | length == 0)
+         and mounted[0].Type == 'volume' and mounted[0].Name == expected_volume)
+        or (not (item.enabled | bool) and (mounted | length == 0 or image_volume))
     fail_msg: "{{ svc }}:{{ item.path }} has the wrong mount; writers remain stopped."
   vars:
-    mounted: "{{ replacement_mounts.stdout | from_json | selectattr('Destination', 'equalto', item.path) | list }}"
+    expected_volume: "{{ stack_name }}_{{ item.volume }}"
+    configured: >-
+      {{ (replacement_service.stdout | from_json)[0].Spec.TaskTemplate.ContainerSpec.Mounts | default([])
+         | selectattr('Target', 'equalto', item.path) | list }}
+    mounted: "{{ (replacement_mounts.stdout | from_json).mounts | selectattr('Destination', 'equalto', item.path) | list }}"
+    # With no service mount, Docker creates a new anonymous volume for an image VOLUME.
+    # It is ephemeral across Swarm task replacements, unlike the managed named volume.
+    image_volume: >-
+      {{ mounted | length == 1 and mounted[0].Type == 'volume' and mounted[0].Name != expected_volume
+         and item.path in ((replacement_mounts.stdout | from_json).image_volumes | default({}, true)) }}
   loop: "{{ persistence_flips | selectattr('service', 'equalto', svc) | list }}"
   loop_control:
     label: "{{ item.path }}"

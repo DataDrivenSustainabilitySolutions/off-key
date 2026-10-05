@@ -33,4 +33,4 @@
       copy:
         dest: "{{ stack_dir }}/validation.json"
         mode: "0600"
-        content: "{{ {'compose_files': stack_compose_files, 'ambibox_api_bootstrap': mqtt_secret_material.get('ambibox_api_bootstrap')} | to_json }}"
+        content: "{{ {'compose_files': stack_compose_files, 'ambibox_api_bootstrap': mqtt_secret_material.get('ambibox_api_bootstrap'), 'mqtt_secret_material': mqtt_secret_material} | to_json }}"

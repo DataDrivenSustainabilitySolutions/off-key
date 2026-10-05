@@ -1,0 +1,40 @@
+---
+# Only used with a disposable local Swarm and generated synthetic configuration.
+- name: Exercise production cutover and verification tasks
+  hosts: swarm_manager
+  connection: local
+  gather_facts: false
+  become: false
+  vars_files:
+    - ../ansible/inventories/prod/group_vars/all/vars.yml
+    - ../ansible/inventories/prod/group_vars/all/vault.yml.example
+    - ../ansible/group_vars/all.yml
+  vars:
+    stack_compose_model: "{{ lookup('file', stack_dir ~ '/deployment-model.json') | from_json }}"
+    infrastructure_revision:
+      stdout: "{{ release.application_revision }}"
+  tasks:
+    - name: Apply the release with the production schema and persistence sequence
+      when: rehearsal_phase == 'apply'
+      block:
+        - include_role:
+            name: stack_deploy
+            tasks_from: maintenance
+        - include_role:
+            name: stack_deploy
+            tasks_from: apply
+        - include_role:
+            name: stack_deploy
+            tasks_from: retire
+      rescue:
+        - name: Report the synthetic rehearsal CLI failure
+          debug:
+            msg: "{{ release_job_result.stdout_lines | default([]) + release_job_result.stderr_lines | default([]) }}"
+        - fail:
+            msg: Production rehearsal failed during application maintenance or cutover.
+
+    - name: Verify the release and resume monitors through the production tasks
+      include_role:
+        name: stack_deploy
+        tasks_from: verify
+      when: rehearsal_phase == 'verify'

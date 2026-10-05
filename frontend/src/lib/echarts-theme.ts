@@ -22,7 +22,7 @@ const FALLBACK_COLORS: Record<ResolvedTheme, ChartThemeColors> = {
   },
 };
 
-const TOKEN_NAMES: Record<keyof ChartThemeColors, string> = {
+const TOKEN_NAMES = {
   foreground: "--foreground",
   mutedForeground: "--muted-foreground",
   border: "--border",
@@ -30,7 +30,7 @@ const TOKEN_NAMES: Record<keyof ChartThemeColors, string> = {
   popoverForeground: "--popover-foreground",
   muted: "--muted",
   primary: "--primary",
-};
+} as const;
 
 export const resolveChartThemeColors = (
   resolvedTheme: ResolvedTheme,
@@ -38,7 +38,7 @@ export const resolveChartThemeColors = (
 ): ChartThemeColors => {
   const styles = getComputedStyle(root);
   const fallback = FALLBACK_COLORS[resolvedTheme];
-  const resolveColor = (key: keyof ChartThemeColors): string => {
+  const resolveColor = (key: keyof typeof TOKEN_NAMES): string => {
     const value = styles.getPropertyValue(TOKEN_NAMES[key]).trim();
     return value ? `hsl(${value})` : fallback[key];
   };
@@ -50,6 +50,10 @@ export const resolveChartThemeColors = (
     popoverForeground: resolveColor("popoverForeground"),
     muted: resolveColor("muted"),
     primary: resolveColor("primary"),
+    alarmBoundary: resolvedTheme === "dark" ? "#f87171" : "#b91c1c",
+    alarmFill: resolvedTheme === "dark"
+      ? "rgba(248, 113, 113, 0.14)"
+      : "rgba(185, 28, 28, 0.10)",
   };
 };
 

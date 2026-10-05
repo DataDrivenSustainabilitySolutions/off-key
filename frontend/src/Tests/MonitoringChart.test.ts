@@ -6,6 +6,7 @@ import {
   formatChartTime,
   formatTelemetryTooltip,
   getLocalTimeZone,
+  getDefaultDetectorId,
   type ChartThemeColors,
   type TelemetryChartModel,
   type TelemetryChartOption,
@@ -39,7 +40,7 @@ const evidence = (
 const adaptiveEvidence = (
   serviceId: string,
   timestamp: string,
-  score: number,
+  score: number | null,
   threshold = 2,
 ): MonitoringChartEvidence => ({
   service_id: serviceId,
@@ -52,7 +53,7 @@ const adaptiveEvidence = (
   anomaly_score: score,
   restarted_martingale: null,
   threshold,
-  alarm: score > threshold,
+  alarm: score !== null && score > threshold,
   created: timestamp,
 });
 
@@ -124,14 +125,14 @@ const buildOption = (
 
 type InspectableOption = {
   aria: { enabled: boolean; description: string };
-  grid: Array<{ left?: number | string; right?: number | string }>;
+  grid: Array<{ left?: number | string; right?: number | string; outerBoundsMode?: string }>;
   xAxis: Array<{
     gridIndex: number;
     min?: number;
     max?: number;
     name?: string;
   }>;
-  yAxis: Array<{ type: string; max?: number }>;
+  yAxis: Array<{ type: string; min?: number; max?: number; name?: string }>;
   axisPointer: { link: Array<{ xAxisIndex: string }> };
   dataZoom: Array<{ xAxisIndex: number[]; startValue?: number; endValue?: number; bottom?: number; height?: number }>;
   tooltip: { formatter: (params: unknown) => string; renderMode: string };
@@ -144,9 +145,9 @@ type InspectableOption = {
     connectNulls?: boolean;
     data: Array<[number, number | null]>;
     lineStyle?: { width?: number; type?: string };
-    markArea?: { data: unknown[] };
-    markPoint?: { data: unknown[] };
-    markLine?: { data: Array<{ yAxis: number }> };
+    markArea?: { data: Array<[{ xAxis: number; yAxis: number }, { xAxis: number; yAxis: number }]>; itemStyle?: { color?: string }; z?: number; silent?: boolean };
+    markPoint?: { data: Array<{ coord?: [number, number]; symbol?: string; tooltip?: { formatter?: () => string } }> };
+    markLine?: { data: unknown[] };
   }>;
 };
 
@@ -190,7 +191,8 @@ describe("telemetry chart model", () => {
       ],
     });
 
-    expect(model.secondarySeries).toHaveLength(2);
+    expect(model.detectors).toHaveLength(2);
+    expect(model.secondarySeries).toHaveLength(1);
     expect(model.secondarySeries[0]?.name).toContain("Restarted e-process");
     expect(model.secondarySeries[0]?.data).toEqual([
       [Date.parse("2026-01-01T00:00:00Z"), 1],
@@ -200,7 +202,7 @@ describe("telemetry chart model", () => {
     ]);
   });
 
-  it("renders every configured tracker and ignores the legacy projection", () => {
+  it("catalogs every tracker and plots only the selected tracker, ignoring the legacy projection", () => {
     const row = evidence("service-a", "2026-01-01T00:00:00Z", 999);
     row.tracker_results = [
       trackerResult("mixture-cusum", "simple_mixture", "cusum", 3, 25),
@@ -213,17 +215,38 @@ describe("telemetry chart model", () => {
       ),
     ];
 
-    const model = buildModel({ evidence: [row] });
+    const model = buildModel({ evidence: [row], selectedDetectorIds: { static: "martingale:service-a:mixture-cusum" } });
 
-    expect(model.secondarySeries).toHaveLength(2);
-    expect(model.secondarySeries.map((series) => series.name)).toEqual([
+    expect(model.secondarySeries).toHaveLength(1);
+    expect(model.detectors.map((series) => series.name).sort()).toEqual([
       "CUSUM (Simple mixture · mixture-cusum)",
       "Shiryaev-Roberts (Simple jumper · jumper-sr)",
     ]);
-    expect(model.secondarySeries.map((series) => series.threshold)).toEqual([
-      25,
-      40,
-    ]);
+    expect(model.secondarySeries[0]?.threshold).toBe(25);
+  });
+
+  it("defaults to primary deterministically and does not replace an explicitly unavailable selection", () => {
+    const row = evidence("service-a", "2026-01-01T00:00:00Z", 999);
+    row.tracker_results = [
+      trackerResult("aaa-cusum", "simple_mixture", "cusum", 3, 25),
+      trackerResult("primary", "power", "restarted_martingale", 4, 40),
+    ];
+    const model = buildModel({ evidence: [row] });
+    expect(getDefaultDetectorId(model.detectors, "static")).toBe("restarted-martingale:service-a");
+    expect(model.secondarySeries[0]?.id).toBe("restarted-martingale:service-a");
+    const selectedOutsideRange = buildModel({
+      evidence: [row], selectedDetectorIds: { static: "martingale:service-a:missing" },
+    });
+    expect(selectedOutsideRange.detectors).toHaveLength(2);
+    expect(selectedOutsideRange.secondarySeries).toEqual([]);
+  });
+
+  it("does not catalog buffered or wholly unscored detector observations", () => {
+    const unmatched = adaptiveEvidence("buffered", "2026-01-01T00:03:00Z", 1);
+    const unavailable = adaptiveEvidence("unavailable", "2026-01-01T00:00:00Z", null);
+    const model = buildModel({ evidence: [unmatched, unavailable] });
+    expect(model.detectors).toEqual([]);
+    expect(model.secondarySeries).toEqual([]);
   });
 });
 
@@ -253,9 +276,10 @@ describe("telemetry ECharts option", () => {
 
     expect(option.grid).toHaveLength(2);
     expect(option.grid.map(({ left, right }) => ({ left, right }))).toEqual([
-      { left: 68, right: 34 },
-      { left: 68, right: 34 },
+      { left: 68, right: 40 },
+      { left: 68, right: 40 },
     ]);
+    expect(option.grid.every((grid) => grid.outerBoundsMode === "none")).toBe(true);
     expect(option.xAxis.map(({ gridIndex }) => gridIndex)).toEqual([0, 1]);
     expect(option.xAxis.map(({ min, max }) => ({ min, max }))).toEqual([
       {
@@ -268,7 +292,8 @@ describe("telemetry ECharts option", () => {
       },
     ]);
     expect(option.yAxis.map(({ type }) => type)).toEqual(["value", "log"]);
-    expect(option.yAxis[1]?.max).toBe(100);
+    expect(option.yAxis[1]?.max).toBeGreaterThan(100);
+    expect(option.yAxis[1]?.name).toBe("Sequential evidence (log)");
     expect(option.axisPointer.link).toEqual([{ xAxisIndex: "all" }]);
     expect(option.dataZoom[0]?.xAxisIndex).toEqual([0, 1]);
     expect(option.dataZoom[1]?.xAxisIndex).toEqual([0, 1]);
@@ -287,11 +312,14 @@ describe("telemetry ECharts option", () => {
       symbolSize: 3,
       connectNulls: false,
       lineStyle: { width: 2.25, type: "solid" },
-      markLine: { data: [{ yAxis: 100 }] },
     });
+    expect(option.series[1]?.markArea?.data).toEqual([[
+      { xAxis: Date.parse("2026-01-01T00:00:30Z"), yAxis: 100 },
+      { xAxis: Date.parse(alignedTimestamp), yAxis: option.yAxis[1]?.max },
+    ]]);
   });
 
-  it("renders adaptive score and per-point threshold on a linear pane", () => {
+  it("renders the adaptive score with a shaded alarm region on a linear pane", () => {
     const timestamp = "2026-01-01T00:01:00Z";
     const option = inspect(buildOption(buildModel({
       evidence: [adaptiveEvidence("adaptive-a", timestamp, 2.5, 2)],
@@ -310,18 +338,163 @@ describe("telemetry ECharts option", () => {
         [Date.parse(timestamp), 2.5],
       ],
     });
-    expect(option.series[2]).toMatchObject({
-      id: "adaptive-threshold:adaptive-a",
-      step: "end",
-      showSymbol: true,
-      symbolSize: 3,
-      connectNulls: false,
-      lineStyle: { width: 1.5, type: "dashed" },
-      data: [
-        [Date.parse("2026-01-01T00:00:00Z"), null],
-        [Date.parse(timestamp), 2],
+    expect(option.series).toHaveLength(2);
+    expect(option.series[1]?.markArea?.data).toEqual([[
+      { xAxis: Date.parse("2026-01-01T00:00:30Z"), yAxis: 2 },
+      { xAxis: Date.parse(timestamp), yAxis: option.yAxis[1]?.max },
+    ]]);
+    expect(option.series[1]?.markArea).toMatchObject({
+      silent: true, z: 0, itemStyle: { color: "rgba(220, 38, 38, 0.12)" },
+    });
+  });
+
+  it("preserves changing threshold history and leaves missing or unevaluated cells unshaded", () => {
+    const times = [0, 1, 2, 3, 4].map((second) => `2026-01-01T00:00:0${second}Z`);
+    const model = buildModel({
+      telemetry: times.map((timestamp, value) => ({ timestamp, value })),
+      evidence: [
+        adaptiveEvidence("adaptive-a", times[0]!, 1, 2),
+        adaptiveEvidence("adaptive-a", times[1]!, 2, 4),
+        adaptiveEvidence("adaptive-a", times[2]!, null, 5),
+        adaptiveEvidence("adaptive-a", times[3]!, 2, 3),
       ],
     });
+    const start = Date.parse(times[0]!);
+    expect(model.secondarySeries[0]?.thresholdRegions).toEqual([
+      { startMs: start, endMs: start + 500, threshold: 2 },
+      { startMs: start + 500, endMs: start + 1500, threshold: 4 },
+      { startMs: start + 2500, endMs: start + 3500, threshold: 3 },
+    ]);
+    expect(model.secondarySeries[0]?.data).toEqual([
+      [start, 1], [start + 1000, 2], [start + 2000, null],
+      [start + 3000, 2], [start + 4000, null],
+    ]);
+    expect(inspect(buildOption(model)).series[1]?.markArea?.data).toHaveLength(3);
+  });
+
+  it("keeps static threshold history separate from the latest threshold summary", () => {
+    const first = evidence("static-a", "2026-01-01T00:00:00Z", 2);
+    const second = { ...evidence("static-a", "2026-01-01T00:01:00Z", 3), threshold: 200 };
+    const model = buildModel({ evidence: [first, second] });
+    expect(model.secondarySeries[0]?.threshold).toBe(200);
+    expect(model.secondarySeries[0]?.thresholdRegions.map(({ threshold }) => threshold)).toEqual([100, 200]);
+    const option = inspect(buildOption(model));
+    expect(option.yAxis[1]?.max).toBeGreaterThan(200);
+    expect(option.series[1]?.markArea?.data.map(([start]) => start.yAxis)).toEqual([100, 200]);
+  });
+
+  it("gives a singleton a visible band even for an exact From/To range", () => {
+    const timestamp = "2026-01-01T00:00:00Z";
+    const time = Date.parse(timestamp);
+    const model = buildModel({
+      telemetry: [{ timestamp, value: 230 }],
+      evidence: [adaptiveEvidence("adaptive-a", timestamp, 1, 2)],
+      range: { fromMs: time, toMs: time },
+    });
+    const option = inspect(buildOption(model));
+    expect(option.xAxis[0]).toMatchObject({ min: time - 500, max: time + 500 });
+    expect(option.series[1]?.markArea?.data[0]).toEqual([
+      { xAxis: time - 500, yAxis: 2 },
+      { xAxis: time + 500, yAxis: option.yAxis[1]?.max },
+    ]);
+    expect(option.yAxis[1]?.max).toBeGreaterThan(2);
+  });
+
+  it("clips evaluated cells to From/To bounds without changing threshold values", () => {
+    const first = "2026-01-01T00:00:00Z";
+    const second = "2026-01-01T00:01:00Z";
+    const start = Date.parse(first) + 10_000;
+    const end = Date.parse(second) - 10_000;
+    const model = buildModel({
+      evidence: [adaptiveEvidence("adaptive-a", first, 1), adaptiveEvidence("adaptive-a", second, 1)],
+      range: { fromMs: start, toMs: end },
+    });
+    const option = inspect(buildOption(model));
+    expect(option.xAxis[1]).toMatchObject({ min: start, max: end });
+    expect(option.series[1]?.markArea?.data).toEqual([[
+      { xAxis: start, yAxis: 2 }, { xAxis: end, yAxis: option.yAxis[1]?.max },
+    ]]);
+  });
+
+  it("retains explicit From/To bounds when the selected range is wider than loaded telemetry", () => {
+    const first = "2026-01-01T00:00:00Z";
+    const second = "2026-01-01T00:01:00Z";
+    const start = Date.parse(first) - 20_000;
+    const end = Date.parse(second) + 20_000;
+    const model = buildModel({
+      evidence: [adaptiveEvidence("adaptive-a", first, 1), adaptiveEvidence("adaptive-a", second, 1)],
+      range: { fromMs: start, toMs: end },
+    });
+    const option = inspect(buildOption(model));
+    expect(option.xAxis.map(({ min, max }) => ({ min, max }))).toEqual([
+      { min: start, max: end }, { min: start, max: end },
+    ]);
+    expect(option.dataZoom[0]).toMatchObject({ startValue: start, endValue: end });
+    expect(option.series[1]?.markArea?.data).toEqual([[
+      { xAxis: Date.parse(first), yAxis: 2 },
+      { xAxis: Date.parse(second), yAxis: option.yAxis[1]?.max },
+    ]]);
+  });
+
+  it("retains overflow-only alarms as labelled edge markers with no invented finite scores", () => {
+    const timestamp = "2026-01-01T00:00:00Z";
+    const time = Date.parse(timestamp);
+    const row = evidence("static-a", timestamp, null);
+    row.tracker_results = [{
+      ...trackerResult("primary", "power", "restarted_martingale", 1, 100),
+      statistic_value: null, statistic_is_infinite: true,
+      log_statistic_value: 750, alarm_active: true,
+    }];
+    const model = buildModel({ telemetry: [{ timestamp, value: 230 }], evidence: [row] });
+    expect(model.detectors).toHaveLength(1);
+    expect(model.secondarySeries[0]?.data).toEqual([[time, null]]);
+    expect(model.secondarySeries[0]?.latestObservation).toMatchObject({ timeMs: time, value: null, isInfinite: true, alarmActive: true });
+    const option = inspect(buildOption(model));
+    expect(option.grid).toHaveLength(2);
+    expect(option.yAxis[1]?.max).toBeGreaterThan(100);
+    expect(option.series[1]?.markArea?.data).toHaveLength(1);
+    const marker = option.series[1]?.markPoint?.data[0];
+    expect(marker?.coord).toEqual([time, option.yAxis[1]?.max]);
+    expect(marker?.tooltip?.formatter?.()).toContain("Beyond numeric range");
+    expect(marker?.tooltip?.formatter?.()).toContain("Log evidence: 750");
+    expect(marker?.tooltip?.formatter?.()).toContain("Alarm threshold: 100");
+    expect(marker?.tooltip?.formatter?.()).toContain("Alarm: active");
+  });
+
+  it("does not shade an overflow observation with an unavailable threshold and reports that in inspection", () => {
+    const timestamp = "2026-01-01T00:00:00Z";
+    const row = evidence("static-a", timestamp, null);
+    row.tracker_results = [{
+      ...trackerResult("primary", "power", "restarted_martingale", 1, Number.NaN),
+      statistic_value: null, statistic_is_infinite: true,
+      log_statistic_value: null, alarm_active: true,
+    }];
+    const model = buildModel({ telemetry: [{ timestamp, value: 230 }], evidence: [row] });
+    expect(model.secondarySeries[0]?.overflow[0]?.threshold).toBeNull();
+    const option = inspect(buildOption(model));
+    expect(option.series[1]?.markArea?.data).toEqual([]);
+    expect(option.series[1]?.markLine?.data).toEqual([]);
+    const tooltip = option.series[1]?.markPoint?.data[0]?.tooltip?.formatter?.();
+    expect(tooltip).toContain("Beyond numeric range");
+    expect(tooltip).toContain("Alarm threshold: unavailable");
+    expect(tooltip).toContain("Alarm: active");
+  });
+
+  it("keeps finite log bounds for extreme evidence and shows the threshold used at the hovered observation", () => {
+    const timestamp = "2026-01-01T00:00:00Z";
+    const row = evidence("static-a", timestamp, 1e250);
+    row.threshold = 1e200;
+    const model = buildModel({ evidence: [row] });
+    const option = inspect(buildOption(model));
+    expect(Number.isFinite(option.yAxis[1]?.max)).toBe(true);
+    expect(option.yAxis[1]?.max).toBeGreaterThan(1e250);
+    expect((option.series[1]?.lineStyle as { color?: string })?.color).toBe(colors.primary);
+    const text = option.tooltip.formatter([{
+      seriesId: "restarted-martingale:static-a", seriesName: "Restarted e-process",
+      value: [Date.parse(timestamp), 1e250],
+    }]);
+    expect(text).toContain("Alarm threshold: 1.00e+200");
+    expect(text).toContain("Alarm: inactive");
   });
 
   it("projects multivariate evidence onto the current sensor input", () => {
@@ -467,7 +640,7 @@ describe("telemetry ECharts option", () => {
     const slider = option.dataZoom[1] as { bottom: number; height: number };
     const sliderTop = 680 - slider.bottom - slider.height;
 
-    expect(finalXAxis.nameGap).toBe(20);
+    expect(finalXAxis.nameGap).toBe(35);
     expect(sliderTop - labelBottom).toBeGreaterThanOrEqual(30);
   });
 
@@ -482,6 +655,7 @@ describe("telemetry ECharts option", () => {
           timestamp: "2026-01-01T00:00:00Z",
           time: timestamp,
           value: 12,
+          sample: { timestamp: "2026-01-01T00:00:00Z", time: timestamp, value: 12 },
           anomaly: {
             anomaly_id: "anomaly-1",
             charger_id: "charger-1",

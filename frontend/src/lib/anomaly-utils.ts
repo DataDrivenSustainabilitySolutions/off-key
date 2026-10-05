@@ -16,10 +16,17 @@ export interface RedZone {
   anomalies: Anomaly[];
 }
 
-export interface AnomalyMarker extends TelemetryDataPoint {
+export interface AnomalySample extends TelemetryDataPoint {
+  time: number;
+}
+
+export interface AnomalyMarker {
+  timestamp: string;
   time: number;
   anomaly: Anomaly;
   style: AnomalyStyle;
+  sample?: AnomalySample;
+  value?: number;
 }
 
 const ISO_TIMESTAMP_REGEX = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})?$/u;
@@ -46,7 +53,7 @@ const multivariateAnomalyAppliesToTelemetry = (
   return anomaly.sensor_set.includes(telemetryType);
 };
 
-interface AnomalyStyle {
+export interface AnomalyStyle {
   color: string;
   radius: number;
   opacity: number;
@@ -140,56 +147,64 @@ export const hasAnomaly = (
 };
 
 /**
- * Match telemetry points to anomalies once, before the chart option is built.
+ * Preserve each event at its recorded time. A nearby finite sample supplies
+ * context, rather than changing the event time or marking all nearby samples.
  */
 export const createAnomalyMarkers = (
   telemetry: TelemetryDataPoint[],
   anomalies: Anomaly[],
   toleranceMs: number = 5 * INTERVALS.POLLING
 ): AnomalyMarker[] => {
-  if (telemetry.length === 0 || anomalies.length === 0 || toleranceMs < 0) {
+  if (anomalies.length === 0 || !Number.isFinite(toleranceMs) || toleranceMs < 0) {
     return [];
   }
 
-  const bucketSize = Math.max(toleranceMs, 1);
-  const buckets = new Map<number, Array<{ anomaly: Anomaly; index: number; time: number }>>();
+  const samplesByTime = new Map<number, AnomalySample>();
+  telemetry.forEach((point) => {
+    const time = Date.parse(point.timestamp);
+    if (!Number.isFinite(time) || !Number.isFinite(point.value)) return;
+    samplesByTime.set(time, { ...point, time });
+  });
+  const samples = [...samplesByTime.values()].sort((left, right) => left.time - right.time);
 
+  const eventsByIdentity = new Map<string, { anomaly: Anomaly; time: number }>();
   anomalies.forEach((anomaly, index) => {
     const time = Date.parse(anomaly.timestamp);
     if (!Number.isFinite(time)) return;
-    const bucket = Math.floor(time / bucketSize);
-    const entries = buckets.get(bucket) ?? [];
-    entries.push({ anomaly, index, time });
-    buckets.set(bucket, entries);
+    const identity = anomaly.anomaly_id ? `id:${anomaly.anomaly_id}` : `row:${index}`;
+    eventsByIdentity.set(identity, { anomaly, time });
   });
 
-  return telemetry.flatMap((point) => {
-    const time = Date.parse(point.timestamp);
-    if (!Number.isFinite(time)) return [];
-
-    let match: { anomaly: Anomaly; index: number } | undefined;
-    const firstBucket = Math.floor((time - toleranceMs) / bucketSize);
-    const lastBucket = Math.floor((time + toleranceMs) / bucketSize);
-    for (let bucket = firstBucket; bucket <= lastBucket; bucket += 1) {
-      for (const candidate of buckets.get(bucket) ?? []) {
-        if (
-          Math.abs(time - candidate.time) <= toleranceMs &&
-          (match === undefined || candidate.index < match.index)
-        ) {
-          match = candidate;
-        }
+  return [...eventsByIdentity.values()]
+    .sort((left, right) =>
+      left.time - right.time || (left.anomaly.anomaly_id ?? "").localeCompare(right.anomaly.anomaly_id ?? ""),
+    )
+    .map(({ anomaly, time }) => {
+      let lower = 0;
+      let upper = samples.length;
+      while (lower < upper) {
+        const middle = Math.floor((lower + upper) / 2);
+        if (samples[middle]!.time < time) lower = middle + 1;
+        else upper = middle;
       }
-    }
 
-    return match
-      ? [{
-          ...point,
-          time,
-          anomaly: match.anomaly,
-          style: getAnomalyStyle(match.anomaly.anomaly_type),
-        }]
-      : [];
-  });
+      const before = samples[lower - 1];
+      const after = samples[lower];
+      const nearest = before && (!after || time - before.time <= after.time - time)
+        ? before
+        : after;
+      const sample = nearest && Math.abs(nearest.time - time) <= toleranceMs
+        ? nearest
+        : undefined;
+
+      return {
+        timestamp: anomaly.timestamp,
+        time,
+        anomaly,
+        style: getAnomalyStyle(anomaly.anomaly_type),
+        ...(sample ? { sample, value: sample.value } : {}),
+      };
+    });
 };
 
 /**

@@ -59,7 +59,7 @@ const applyTimeRangeToExtent = (
     return undefined;
   }
   return startMs === endMs
-    ? [startMs - 30_000, endMs + 30_000]
+    ? [startMs - 500, endMs + 500]
     : [startMs, endMs];
 };
 

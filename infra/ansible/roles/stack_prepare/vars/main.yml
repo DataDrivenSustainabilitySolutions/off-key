@@ -44,6 +44,9 @@ service_environment:
     POSTGRES_USER: "{{ postgres_user }}"
     POSTGRES_PASSWORD: "{{ postgres_password }}"
     POSTGRES_DB: "{{ postgres_db }}"
+  tailscale-ambibox:
+    TS_EXTRA_ARGS: "{{ tailscale_ambibox_extra_args }}"
+    TS_HOSTNAME: "{{ tailscale_ambibox_hostname }}"
   api:
     <<: [*common, *auth, *email]
     ENVIRONMENT: "{{ app_environment }}"

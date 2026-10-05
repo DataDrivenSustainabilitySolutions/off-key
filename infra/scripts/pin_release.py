@@ -42,6 +42,20 @@ def github(path):
     return json.loads(result.stdout)
 
 
+def main_runs(workflow, revision=None):
+    query = "branch=main&event=push&per_page=100"
+    if revision:
+        query += f"&head_sha={revision}"
+    runs = github(f"actions/workflows/{workflow}/runs?{query}")["workflow_runs"]
+    latest = {}
+    for run in sorted(
+        runs, key=lambda run: (run["id"], run["run_attempt"]), reverse=True
+    ):
+        if run["head_branch"] == "main" and run["event"] == "push":
+            latest.setdefault(run["head_sha"], run)
+    return latest
+
+
 def select_revision(requested):
     if requested != "latest" and not re.fullmatch(r"[0-9a-f]{40}", requested):
         raise ValueError("revision must be 'latest' or a full lowercase commit SHA")
@@ -56,17 +70,8 @@ def select_revision(requested):
             raise ValueError("The target revision must belong to main history")
     successful = []
     for workflow in REQUIRED_WORKFLOWS:
-        query = "branch=main&event=push&per_page=100"
-        if requested != "latest":
-            query += f"&head_sha={requested}"
-        runs = github(f"actions/workflows/{workflow}/runs?{query}")["workflow_runs"]
-        latest_runs = {}
         # Do not accept an older success if a newer run failed or is still running.
-        for run in sorted(
-            runs, key=lambda run: (run["id"], run["run_attempt"]), reverse=True
-        ):
-            if run["head_branch"] == "main" and run["event"] == "push":
-                latest_runs.setdefault(run["head_sha"], run)
+        latest_runs = main_runs(workflow, None if requested == "latest" else requested)
         successful.append(
             {
                 sha
@@ -117,17 +122,69 @@ def pin(reference, revision=None):
     pinned = f"{reference}@{digest}"
     if revision:
         # Read the label by digest, so a moving tag cannot race this check.
-        image = inspect(pinned, "Image")
-        if image.get("architecture") is None:
-            image = image["linux/amd64"]
-        actual = (
-            image.get("config", {})
-            .get("Labels", {})
-            .get("org.opencontainers.image.revision")
-        )
-        if actual != revision:
-            raise ValueError(f"{reference} belongs to {actual}, not {revision}")
+        require_image_revision(pinned, revision)
     return pinned
+
+
+def require_image_revision(reference, revision):
+    image = inspect(reference, "Image")
+    if image.get("architecture") is None:
+        image = image["linux/amd64"]
+    actual = (
+        image.get("config", {})
+        .get("Labels", {})
+        .get("org.opencontainers.image.revision")
+    )
+    if actual != revision:
+        raise ValueError(f"{reference} belongs to {actual}, not {revision}")
+
+
+def tested_release(revision):
+    run = main_runs("deployment-smoke.yml", revision).get(revision)
+    if not run or run["status"] != "completed" or run["conclusion"] != "success":
+        raise ValueError("No successful production rehearsal for this main revision")
+    with tempfile.TemporaryDirectory(prefix="offkey-tested-release-") as directory:
+        subprocess.run(
+            [
+                "gh",
+                "run",
+                "download",
+                str(run["id"]),
+                "--repo",
+                REPOSITORY,
+                "--name",
+                "production-release",
+                "--dir",
+                directory,
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        document = json.loads((Path(directory) / "production-release.json").read_text())
+    result = document["release"]
+    expected = json.loads(RELEASE.read_text())["release"]
+    if (
+        result["application_revision"] != revision
+        or result["images"].keys() != expected["images"].keys()
+    ):
+        raise ValueError(
+            "The tested release manifest does not match the selected revision"
+        )
+    for name, reference in result["images"].items():
+        repository = expected["images"][name].split("@", 1)[0].rsplit(":", 1)[0]
+        if not re.fullmatch(
+            re.escape(repository) + r"(?::[^@]+)?@sha256:[0-9a-f]{64}", reference
+        ):
+            raise ValueError(f"Invalid tested image for {name}")
+        if name in APPLICATION_IMAGES:
+            require_image_revision(reference, revision)
+        elif reference != expected["images"][name]:
+            raise ValueError(
+                f"The tested platform image for {name} differs from this checkout"
+            )
+    return result
 
 
 def main():
@@ -143,20 +200,10 @@ def main():
         action="store_true",
         help="Print the resolved release without changing the manifest",
     )
-    parser.add_argument(
-        "--refresh-platform",
-        action="store_true",
-        help="Also resolve the platform image tags again",
-    )
     args = parser.parse_args()
     revision = select_revision(args.revision)
     document = json.loads(RELEASE.read_text())
-    release = document["release"]
-    for name, reference in release["images"].items():
-        if name in APPLICATION_IMAGES or args.refresh_platform:
-            release["images"][name] = pin(
-                reference, revision if name in APPLICATION_IMAGES else None
-            )
+    release = document["release"] = tested_release(revision)
     release["application_revision"] = revision
     if args.stdout:
         print(json.dumps(document))

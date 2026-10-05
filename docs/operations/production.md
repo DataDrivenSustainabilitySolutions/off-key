@@ -12,8 +12,10 @@ released from one tested main commit. See [GitHub setup](github-setup.md) before
    and verified SSH. Superseded automatic candidates stop before deployment.
 3. Runtime files are compared against the manager's last verified release. Documentation
    changes do not deploy; intervening undeployed runtime changes remain visible.
-4. Images resolve to immutable digests; their OCI revision labels must match the SHA.
-   The control checkout must be clean and match that same commit.
+4. Deployment uses the exact immutable image digests saved by that SHA's successful
+   production rehearsal. OCI revision labels must match the SHA; a missing or expired
+   rehearsal artifact blocks deployment. The control checkout must be clean and match
+   that same commit.
 5. A durable database operation fences monitor start/stop/delete and catalog writes.
    Normal requests receive HTTP 503 during release maintenance.
 6. Pending schema migrations require all application writers to stop. A validated
@@ -36,6 +38,24 @@ The workflow captures Ansible output in private temporary files and deletes it w
 its configuration at job exit. Database backups, vendor identity, recovery records
 and private inventories are not published as Actions artifacts. Investigate live
 failures through trusted SSH and the server-side records, not public log uploads.
+
+## Checks before production
+
+Deployment Smoke runs the existing browser and adaptive-monitor journeys against a
+disposable Swarm using the production frontend, TLS/authenticated MQTT and deployment
+tasks. PRs build production images; main tests the published image digests before
+making them eligible for deployment. Synthetic accounts, saved catalog definitions,
+telemetry and a running monitor must survive actual database backup/restore and
+repeated deployment, with exactly one restarted monitor and resumed collection.
+
+The database integration job uses the pinned production TimescaleDB image and checks
+schema bootstrap, hypertables, constraints, retention jobs and real retention deletion
+in isolated databases. Existing fast unit/configuration tests remain in place.
+
+External email, source brokers and VPN transport use local fixtures. Live verification
+still checks the actual service images, schema, collector, restarted monitors and
+public routes. The rehearsal artifact contains image references only and is retained
+for 90 days; synthetic failure diagnostics do not contain production configuration.
 
 ## Provisioning and existing state
 

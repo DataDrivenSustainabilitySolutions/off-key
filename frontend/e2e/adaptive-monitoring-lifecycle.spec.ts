@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { expect, test } from "@playwright/test";
 import { connectAsync, type MqttClient } from "mqtt";
+import { ingressOptions } from "./helpers/mqtt";
 
 import { addTestCharger, removeTestCharger } from "./helpers/collection";
 import { zoomChart } from "./helpers/chart";
@@ -75,7 +76,7 @@ test.describe("adaptive monitoring production lifecycle", () => {
     try {
       const activePublisher = await connectAsync(
         process.env.MQTT_INGRESS_URL ?? "mqtt://127.0.0.1:1883",
-        { clientId: `playwright-${chargerId}` },
+        { ...ingressOptions(), clientId: `playwright-${chargerId}` },
       );
       publisher = activePublisher;
       await page.goto(`/monitoring/${chargerId}`);

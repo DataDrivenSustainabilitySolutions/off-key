@@ -46,13 +46,23 @@ jobs:
       - name: Install backend dependencies
         run: uv sync --project backend --all-packages --all-groups --frozen
 
+      - name: Use the production TimescaleDB image
+        run: |
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          release = json.loads(Path("infra/ansible/inventories/prod/group_vars/all/release.yml").read_text())["release"]
+          with open(os.environ["GITHUB_ENV"], "a") as output:
+              output.write(f"POSTGRES_TEST_IMAGE={release['images']['postgres']}\n")
+          PY
+
       - name: Start isolated brokers and database
         run: docker compose up -d --wait --wait-timeout 120
 
-      - name: Test membership invariants against PostgreSQL
+      - name: Test schema, retention, membership and release transactions
         env:
           TEST_SCHEMA_DATABASE_URL: postgresql+asyncpg://collection_test:collection-test-password@127.0.0.1:25432/collection_test
-        run: uv run --project backend python -m pytest backend/tests/test_membership_integration.py backend/tests/test_release_maintenance.py -q --tb=short
+        run: uv run --project backend python -m pytest backend/tests/test_membership_integration.py backend/tests/test_release_maintenance.py backend/tests/test_schema_bootstrap_integration.py -q --tb=short
 
       - name: Test routing, collection and recovery under load
         run: timeout 300 uv run --project backend python -m pytest backend/tests/collection_integration -q --tb=short

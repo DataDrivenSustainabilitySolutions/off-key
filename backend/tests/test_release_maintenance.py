@@ -113,6 +113,7 @@ async def test_monitor_cutover_blocks_writes_preserves_intent_and_resumes_once(
         client = SimpleNamespace(
             services=SimpleNamespace(
                 get=lambda identifier: SimpleNamespace(
+                    attrs={"Spec": {"Mode": {"Replicated": {"Replicas": 0}}}},
                     scale=lambda replicas: states.update(
                         {identifier + "-task": "shutdown"}
                     ),
@@ -122,7 +123,7 @@ async def test_monitor_cutover_blocks_writes_preserves_intent_and_resumes_once(
                 tasks=lambda **kw: [
                     {
                         "ID": kw["filters"]["service"] + "-task",
-                        "Status": {"State": "running"},
+                        "Status": {"State": states[kw["filters"]["service"] + "-task"]},
                     }
                 ],
                 inspect_task=lambda task: {"Status": {"State": states[task]}},
@@ -254,20 +255,36 @@ async def test_monitor_cutover_blocks_writes_preserves_intent_and_resumes_once(
 
 @pytest.mark.asyncio
 async def test_task_removal_requires_actual_shutdown(monkeypatch):
+    import docker
+
     monkeypatch.setattr(deployment.asyncio, "sleep", AsyncMock())
+    service = SimpleNamespace(attrs={"Spec": {"Mode": {"Replicated": {"Replicas": 0}}}})
+    get = MagicMock(return_value=service)
+    tasks = MagicMock(return_value=[{"Status": {"State": "running"}}])
     workloads = SimpleNamespace(
         async_docker=SimpleNamespace(
             client=SimpleNamespace(
-                api=SimpleNamespace(
-                    inspect_task=lambda task: {"Status": {"State": "running"}}
-                )
+                services=SimpleNamespace(get=get),
+                api=SimpleNamespace(tasks=tasks),
             ),
-            run=AsyncMock(return_value={"Status": {"State": "running"}}),
+            run=AsyncMock(
+                side_effect=lambda function, *args, **kwargs: function(*args, **kwargs)
+            ),
         )
     )
     with pytest.raises(ValueError, match="did not stop"):
-        await deployment.wait_stopped(workloads, ["task"], attempts=1)
-    workloads.async_docker.run.assert_awaited_once()
+        await deployment.wait_stopped(workloads, "service", attempts=1)
+    tasks.return_value = [{"Status": {"State": "shutdown"}}]
+    await deployment.wait_stopped(workloads, "service", attempts=1)
+    # Cancelled tasks can disappear without being retained in Swarm history.
+    tasks.return_value = []
+    await deployment.wait_stopped(workloads, "service", attempts=1)
+    service.attrs["Spec"]["Mode"]["Replicated"]["Replicas"] = 1
+    with pytest.raises(ValueError, match="zero replicas"):
+        await deployment.wait_stopped(workloads, "service", attempts=1)
+    get.side_effect = docker.errors.NotFound("missing service")
+    with pytest.raises(ValueError, match="recovery is required"):
+        await deployment.wait_stopped(workloads, "service", attempts=1)
 
 
 def test_maintenance_docker_socket_url_has_no_tcp_port():

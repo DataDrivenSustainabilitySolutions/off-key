@@ -161,10 +161,13 @@ def test_redeploy_restores_saved_state_and_resumes_one_monitor():
             publish.single(topic, "24.5", hostname="localhost", port=1884, qos=1)
             wait_for_measurement(client, charger, 24.5)
         finally:
-            monitors = client.get(
-                "/v1/monitors/all", params={"include_docker_status": "false"}
-            ).json()
-            for worker in monitors:
-                if worker["container_name"] == worker_name:
-                    client.delete(f"/v1/monitors/{worker['id']}").raise_for_status()
-            _remove_catalog_charger(client, source_id, charger)
+            # Failed cutovers fence mutations. Preserve their original failure;
+            # the Swarm fixture cleanup removes all resources after diagnostics.
+            if not (directory / "stack/release-maintenance.json").exists():
+                monitors = client.get(
+                    "/v1/monitors/all", params={"include_docker_status": "false"}
+                ).json()
+                for worker in monitors:
+                    if worker["container_name"] == worker_name:
+                        client.delete(f"/v1/monitors/{worker['id']}").raise_for_status()
+                _remove_catalog_charger(client, source_id, charger)

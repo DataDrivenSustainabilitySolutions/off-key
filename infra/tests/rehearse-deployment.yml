@@ -26,6 +26,25 @@
         - include_role:
             name: stack_deploy
             tasks_from: retire
+      rescue:
+        - name: Report the synthetic rehearsal CLI failure
+          debug:
+            msg: "{{ release_job_result.stdout_lines | default([]) + release_job_result.stderr_lines | default([]) }}"
+        - name: Diagnose monitor maintenance using only the synthetic test configuration
+          command:
+            argv: >-
+              {{ ['docker', 'run', '--rm', '--network', stack_name ~ '_app-network',
+                  '--user', '0:0', '--mount', 'type=bind,src=/var/run/docker.sock,dst=/var/run/docker.sock']
+                 + release_job_environment_args + [release.images.tactic, '/app/bin/python', '-c',
+                   "import asyncio, sys; from off_key_tactic_middleware.deployment import run; asyncio.run(run('begin', sys.argv[1]))",
+                   release.application_revision] }}
+          register: rehearsal_diagnosis
+          failed_when: false
+          no_log: true
+        - debug:
+            msg: "{{ rehearsal_diagnosis.stdout_lines + rehearsal_diagnosis.stderr_lines }}"
+        - fail:
+            msg: Production rehearsal failed during application maintenance or cutover.
 
     - name: Verify the release and resume monitors through the production tasks
       include_role:

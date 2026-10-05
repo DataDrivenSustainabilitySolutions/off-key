@@ -1,6 +1,7 @@
 ---
 - name: Resolve the current stateful task
-  include_tasks: _service_container.yml
+  include_role:
+    name: swarm_task
 
 - name: Record the task and node being replaced
   set_fact:

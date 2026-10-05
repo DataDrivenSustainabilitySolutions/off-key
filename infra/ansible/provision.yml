@@ -4,6 +4,8 @@
 #
 # Prod: ansible-playbook -i inventories/prod provision.yml --ask-vault-pass
 
+- import_playbook: validate-inventory.yml
+
 - name: Check production manager enrollment before changing hosts
   hosts: swarm_manager
   gather_facts: false

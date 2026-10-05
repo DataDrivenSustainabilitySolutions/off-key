@@ -54,6 +54,35 @@ These explicit operator tools may transfer backups to the ignored local
 A persistence restore resumes writers only after it verifies the replacement task
 and restored state. An interrupted persistence recovery must finish before CD retries.
 
+Each PostgreSQL/EMQX backup publishes `manifest.json` last, after every expected
+artifact has reached the control host. The manifest records the service, timestamp,
+exact artifact names and SHA-256 checksums. Restore verifies every listed artifact
+before stopping any service and restores only that list. A directory without a
+manifest is incomplete, even if it contains `roles.sql` and some database dumps.
+Take a new complete backup instead of using those artifacts. Older backups and
+older pending plans require a separately reviewed recovery procedure; do not add a
+manifest by guessing which databases should have been captured.
+
+An interrupted cutover's `recovery-pending.json` records its original timestamp,
+complete backup references, required services, writer counts and replacement-task
+checks. Retry with **that timestamp and exactly that service set**. For example, an
+EMQX-only cutover requires `SERVICES=emqx`, including a log-only persistence change.
+An unrelated backup or a subset cannot clear the transaction. A failed retry keeps
+the original plan and writer counts; successful recovery clears it only after the
+entire recorded service set has restored.
+If an additional runtime writer is running outside that original plan, recovery
+refuses to change any writers or restore data. Stop the unexpected writer before
+retrying; additional stopped workers stay stopped and are not added to the plan.
+
+A backup failure before stateful replacement cancels the cutover, resumes the
+original writers and clears its plan only after resumption succeeds. If resumption
+also fails, the backup-phase plan remains: some writers may already be running.
+Verify that the original stateful tasks and data are intact, restore the recorded
+writer counts, then clear that backup-phase plan. Do not restore its incomplete
+artifacts. If a failure occurred after replacement began, keep writers stopped and
+ensure the intended replacement tasks and mounts are running before retrying the
+recorded restore; the restore command validates them before importing data.
+
 Preserve the vendor NFS identity and private access material independently. Restore
 an identity only after fencing its former holder; do not run two vendor nodes from
 one copied identity. Missing identity fails deployment until explicitly restored.

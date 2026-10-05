@@ -8,7 +8,7 @@ import unittest
 from pathlib import Path
 
 import yaml
-from support import ROOT, ansible
+from support import ROOT, ansible, run
 
 DOCKER = r"""
 import json, os, sys
@@ -21,12 +21,15 @@ with (root / 'commands.jsonl').open('a') as log:
     log.write(json.dumps(a) + '\n')
 
 def spec(name):
-    return {'Spec': {'Name': name, 'Mode': {'Replicated': {'Replicas': state['replicas'][name]}},
+    result = {'Spec': {'Name': name, 'Mode': {'Replicated': {'Replicas': state['replicas'][name]}},
             'TaskTemplate': {'ContainerSpec': {'Image': 'example/' + name,
               'Mounts': [{'Type': 'volume', 'Source': 'off-key_postgres_data',
                           'Target': '/var/lib/postgresql/data'}]
                         if name == 'off-key_postgres' and (state.get('persistent', state['deployed'])
                             or (state['deployed'] and os.environ.get('CONFIGURED_MOUNT'))) else []}}}}
+    if name in state.get('mounts', {}):
+        result['Spec']['TaskTemplate']['ContainerSpec']['Mounts'] = state['mounts'][name]
+    return result
 
 if a[:2] == ['compose', '--env-file']:
     if a[-2:] == ['--format', 'json']:
@@ -42,13 +45,15 @@ elif a[:2] == ['service', 'inspect']:
     print(json.dumps([spec(name) for name in names]))
 elif a[:2] == ['service', 'ls']:
     if 'label=managed_by=tactic' in a:
-        print('radar-runtime')
+        print('\n'.join(name for name in state['replicas'] if name.startswith('radar-')))
     elif '--quiet' in a:
         print('off-key_postgres\noff-key_api')
     else:
         print('fixture services')
 elif a[:2] == ['service', 'scale']:
     name, replicas = a[2].split('=')
+    if int(replicas) and name == os.environ.get('SCALE_FAIL_SERVICE'):
+        sys.exit(1)
     state['replicas'][name] = int(replicas)
 elif a[:2] == ['service', 'ps']:
     name = next(v for v in a[2:] if v in state['replicas'])
@@ -95,7 +100,7 @@ elif a[0] == 'exec':
             sys.exit(1)
     elif 'psql' in a:
         if '-At' in a:
-            print('fixture_db')
+            print(os.environ.get('DATABASES', 'fixture_db'))
         elif '-tc' in a:
             print('1')
     elif not any(command in a for command in ('pg_isready', 'dropdb', 'createdb')):
@@ -135,7 +140,9 @@ elif a[0] == 'exec':""",
 
 
 class PersistenceTests(unittest.TestCase):
-    def run_cutover(self, directory, *, persistent=True, **environment):
+    def run_cutover(
+        self, directory, *, persistent=True, extra_vars=None, **environment
+    ):
         root = Path(directory)
         (root / "docker").write_text(f"#!{sys.executable}\n" + DOCKER)
         (root / "docker").chmod(0o755)
@@ -203,7 +210,7 @@ class PersistenceTests(unittest.TestCase):
             "postgres_user": "fixture",
             "persist_postgres": persistent,
             "persistence_backup_dir": str(root / "backups"),
-        }
+        } | (extra_vars or {})
         env = (
             os.environ
             | {
@@ -408,6 +415,9 @@ class PersistenceTests(unittest.TestCase):
             (root / "ansible").mkdir()
             playbook = root / "ansible/restore-stack-state.yml"
             playbook.write_text((ROOT / "ansible/restore-stack-state.yml").read_text())
+            (playbook.parent / "validate-inventory.yml").write_text(
+                (ROOT / "ansible/validate-inventory.yml").read_text()
+            )
             timestamp = "20260807T120000Z"
             backup = root / "stack/state/dev/postgres" / timestamp
             backup.mkdir(parents=True)
@@ -486,6 +496,33 @@ class PersistenceTests(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("missing or incomplete", result.stdout)
             self.assertFalse((root / "commands.jsonl").exists())
+            legacy = ansible(
+                "playbook",
+                "-i",
+                str(inventory),
+                str(playbook),
+                "-e",
+                json.dumps(
+                    variables
+                    | {"restore_from": timestamp, "restore_services": "postgres"}
+                ),
+                env=env,
+                check=False,
+            )
+            self.assertNotEqual(legacy.returncode, 0)
+            self.assertIn("no completion manifest", legacy.stdout)
+            self.assertFalse((root / "commands.jsonl").exists())
+            run(
+                sys.executable,
+                str(ROOT / "scripts/backup_manifest.py"),
+                "create",
+                str(backup),
+                "postgres",
+                timestamp,
+                "roles.sql",
+                "fixture_db.dump",
+            )
+            (backup / "unlisted.dump").write_text("must never be restored")
             result = ansible(
                 "playbook",
                 "-i",
@@ -512,6 +549,340 @@ class PersistenceTests(unittest.TestCase):
                 ),
                 1,
             )
+            commands = [
+                json.loads(line)
+                for line in (root / "commands.jsonl").read_text().splitlines()
+            ]
+            self.assertFalse(any("unlisted" in command for command in commands))
+
+    def test_interrupted_fetch_never_publishes_a_complete_backup_or_replaces_tasks(
+        self,
+    ):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            timestamp = "20260807T120000Z"
+            backup = root / "backups/postgres" / timestamp
+            (backup / "second_db.dump").mkdir(parents=True)
+            result, state, commands = self.run_cutover(
+                directory,
+                extra_vars={"persistence_run_ts": timestamp},
+                DATABASES="first_db\nsecond_db",
+            )
+            self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertTrue((backup / "roles.sql").exists())
+            self.assertTrue((backup / "first_db.dump").exists())
+            self.assertFalse((backup / "manifest.json").exists())
+            self.assertFalse(
+                any(command[:2] == ["stack", "deploy"] for command in commands)
+            )
+            self.assertEqual(
+                state["replicas"],
+                {"off-key_postgres": 1, "off-key_api": 1, "radar-runtime": 2},
+            )
+            self.assertFalse((root / "stack/recovery-pending.json").exists())
+            verified = run(
+                sys.executable,
+                str(ROOT / "scripts/backup_manifest.py"),
+                "verify",
+                str(backup),
+                "postgres",
+                timestamp,
+                check=False,
+            )
+            self.assertNotEqual(verified.returncode, 0)
+            self.assertIn("no completion manifest", verified.stderr)
+
+    def test_damaged_backup_is_rejected_before_stopping_writers(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            timestamp = "20260807T120000Z"
+            backup = root / "backups/postgres" / timestamp
+            backup.mkdir(parents=True)
+            (backup / "roles.sql").write_text("synthetic roles")
+            (backup / "first_db.dump").write_text("synthetic data")
+            run(
+                sys.executable,
+                str(ROOT / "scripts/backup_manifest.py"),
+                "create",
+                str(backup),
+                "postgres",
+                timestamp,
+                "roles.sql",
+                "first_db.dump",
+            )
+            (backup / "first_db.dump").write_text("damaged")
+            playbook = root / "restore.yml"
+            playbook.write_text(
+                yaml.safe_dump(
+                    [
+                        {
+                            "hosts": "localhost",
+                            "gather_facts": False,
+                            "tasks": [
+                                {
+                                    "include_role": {
+                                        "name": "persistence_switch",
+                                        "tasks_from": "manual_restore",
+                                    }
+                                }
+                            ],
+                        }
+                    ]
+                )
+            )
+            result = ansible(
+                "playbook",
+                "-i",
+                "localhost,",
+                str(playbook),
+                "-e",
+                json.dumps(
+                    {
+                        "ansible_connection": "local",
+                        "ansible_become": False,
+                        "ansible_python_interpreter": sys.executable,
+                        "offkey_env": "dev",
+                        "stack_dir": str(root / "stack"),
+                        "persistence_backup_dir": str(root / "backups"),
+                        "restore_from": timestamp,
+                        "restore_services": "postgres",
+                    }
+                ),
+                check=False,
+            )
+            self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertIn("checksum mismatch", result.stdout)
+            self.assertFalse((root / "commands.jsonl").exists())
+            self.assertFalse((root / "stack/recovery-pending.json").exists())
+
+    def test_failed_backup_resumption_keeps_original_plan_and_reports_partial_resume(
+        self,
+    ):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            timestamp = "20260807T120000Z"
+            backup = root / "backups/postgres" / timestamp
+            (backup / "second_db.dump").mkdir(parents=True)
+            result, state, commands = self.run_cutover(
+                directory,
+                extra_vars={"persistence_run_ts": timestamp},
+                DATABASES="first_db\nsecond_db",
+                SCALE_FAIL_SERVICE="radar-runtime",
+            )
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("Some writers may already be running", result.stdout)
+            plan = json.loads((root / "stack/recovery-pending.json").read_text())
+            self.assertEqual(plan["phase"], "backup")
+            self.assertEqual(plan["timestamp"], timestamp)
+            self.assertEqual(
+                plan["writer_replicas"], {"off-key_api": 1, "radar-runtime": 2}
+            )
+            self.assertEqual(
+                state["replicas"],
+                {"off-key_postgres": 1, "off-key_api": 1, "radar-runtime": 0},
+            )
+            self.assertFalse(
+                any(command[:2] == ["stack", "deploy"] for command in commands)
+            )
+
+    def test_interrupted_multi_service_cutover_requires_whole_original_backup(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "stack").mkdir()
+            (root / "docker").write_text(f"#!{sys.executable}\n" + EMQX_DOCKER)
+            (root / "docker").chmod(0o755)
+            initial = {
+                "replicas": {
+                    "off-key_postgres": 1,
+                    "off-key_emqx-main": 1,
+                    "off-key_api": 1,
+                    "radar-runtime": 2,
+                },
+                "deployed": False,
+            }
+            (root / "state.json").write_text(json.dumps(initial))
+            inventory = root / "inventory.yml"
+            inventory.write_text(
+                yaml.safe_dump(
+                    {
+                        "all": {
+                            "children": {
+                                "swarm_manager": {
+                                    "hosts": {
+                                        "localhost": {"ansible_connection": "local"}
+                                    }
+                                }
+                            }
+                        }
+                    }
+                )
+            )
+            variables = {
+                "ansible_become": False,
+                "ansible_python_interpreter": sys.executable,
+                "offkey_env": "dev",
+                "stack_name": "off-key",
+                "postgres_user": "fixture",
+                "stack_dir": str(root / "stack"),
+                "persist_postgres": True,
+                "persist_emqx_data": True,
+                "persistence_backup_dir": str(root / "backups"),
+            }
+            env = os.environ | {
+                "PATH": str(root) + os.pathsep + os.environ["PATH"],
+                "DOCKER_FIXTURE": str(root),
+                "EXPORT_MODE": "fresh",
+                "ANSIBLE_CONFIG": str(ROOT / "ansible/ansible.cfg"),
+            }
+            cutover = root / "cutover.yml"
+            cutover.write_text(
+                yaml.safe_dump(
+                    [
+                        {
+                            "hosts": "swarm_manager",
+                            "gather_facts": False,
+                            "tasks": [
+                                {"include_role": {"name": "persistence_switch"}},
+                                {
+                                    "fail": {
+                                        "msg": "Injected interruption before restore"
+                                    }
+                                },
+                            ],
+                        }
+                    ]
+                )
+            )
+            interrupted = ansible(
+                "playbook",
+                "-i",
+                str(inventory),
+                str(cutover),
+                "-e",
+                json.dumps(variables),
+                env=env,
+                check=False,
+            )
+            self.assertNotEqual(interrupted.returncode, 0)
+            pending = root / "stack/recovery-pending.json"
+            original_plan = pending.read_text()
+            plan = json.loads(original_plan)
+            self.assertEqual(plan["services"], ["emqx", "postgres"])
+            self.assertEqual(sorted(plan["backup_paths"]), ["emqx", "postgres"])
+            self.assertEqual(plan["phase"], "restore")
+            mounts = {
+                "off-key_postgres": [
+                    {
+                        "Type": "volume",
+                        "Source": "off-key_postgres_data",
+                        "Target": "/var/lib/postgresql/data",
+                    }
+                ],
+                "off-key_emqx-main": [
+                    {
+                        "Type": "volume",
+                        "Source": "off-key_emqx_data",
+                        "Target": "/opt/emqx/data",
+                    }
+                ],
+            }
+            replacement = initial | {
+                "deployed": True,
+                "mounts": mounts,
+                "replicas": initial["replicas"]
+                | {"off-key_api": 0, "radar-runtime": 0},
+            }
+            (root / "state.json").write_text(json.dumps(replacement))
+            restore = root / "restore.yml"
+            restore.write_text((ROOT / "ansible/restore-stack-state.yml").read_text())
+            (root / "validate-inventory.yml").write_text(
+                (ROOT / "ansible/validate-inventory.yml").read_text()
+            )
+            restore_env = env | {
+                "CONTAINER_MOUNTS": json.dumps(
+                    [
+                        {
+                            "Type": "volume",
+                            "Name": mount["Source"],
+                            "Destination": mount["Target"],
+                        }
+                        for service_mounts in mounts.values()
+                        for mount in service_mounts
+                    ]
+                )
+            }
+
+            def retry(
+                timestamp=plan["timestamp"], services="postgres,emqx", **environment
+            ):
+                return ansible(
+                    "playbook",
+                    "-i",
+                    str(inventory),
+                    str(restore),
+                    "-e",
+                    json.dumps(
+                        variables
+                        | {"restore_from": timestamp, "restore_services": services}
+                    ),
+                    env=restore_env | environment,
+                    check=False,
+                )
+
+            for timestamp, services in (
+                (plan["timestamp"], "postgres"),
+                ("20260807T120000Z", "postgres,emqx"),
+            ):
+                before = (root / "commands.jsonl").read_text()
+                rejected = retry(timestamp, services)
+                self.assertNotEqual(
+                    rejected.returncode, 0, rejected.stdout + rejected.stderr
+                )
+                self.assertIn("entire service set", rejected.stdout)
+                self.assertEqual(pending.read_text(), original_plan)
+                self.assertEqual((root / "commands.jsonl").read_text(), before)
+            replacement["replicas"].update({"off-key_api": 1, "radar-new": 1})
+            (root / "state.json").write_text(json.dumps(replacement))
+            commands = root / "commands.jsonl"
+            before = len(commands.read_text().splitlines())
+            unexpected = retry()
+            self.assertNotEqual(unexpected.returncode, 0)
+            self.assertIn("Stop these unexpected runtime writers", unexpected.stdout)
+            self.assertEqual(pending.read_text(), original_plan)
+            attempted = [
+                json.loads(line) for line in commands.read_text().splitlines()[before:]
+            ]
+            self.assertFalse(
+                any(
+                    command[:2] == ["service", "scale"] or "pg_restore" in command
+                    for command in attempted
+                )
+            )
+            self.assertEqual(
+                json.loads((root / "state.json").read_text())["replicas"][
+                    "off-key_api"
+                ],
+                1,
+            )
+            replacement["replicas"]["radar-new"] = 0
+            (root / "state.json").write_text(json.dumps(replacement))
+            failed = retry(RESTORE_FAIL="1")
+            self.assertNotEqual(failed.returncode, 0)
+            self.assertEqual(pending.read_text(), original_plan)
+            self.assertEqual(
+                json.loads((root / "state.json").read_text())["replicas"][
+                    "off-key_api"
+                ],
+                0,
+            )
+            completed = retry()
+            self.assertEqual(
+                completed.returncode, 0, completed.stdout + completed.stderr
+            )
+            final = json.loads((root / "state.json").read_text())
+            self.assertTrue(final["emqx_restored"])
+            self.assertEqual(final["replicas"], initial["replicas"] | {"radar-new": 0})
+            self.assertFalse(pending.exists())
 
     def test_log_only_cutover_preserves_ephemeral_emqx_data(self):
         with tempfile.TemporaryDirectory() as directory:

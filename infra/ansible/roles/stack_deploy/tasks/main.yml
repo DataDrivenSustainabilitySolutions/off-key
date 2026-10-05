@@ -51,9 +51,9 @@
       - "radar_env | select('match', '^RADAR_MQTT_API_KEY=') | list | length == 0"
       - "radar_env | select('match', '^RADAR_CHECKPOINT_SECRET=') | list | length == 0"
       - "['EMQX_CA_CERT', 'RADAR_MQTT_API_KEY', 'RADAR_CHECKPOINT_SECRET'] | difference(secret_targets) | length == 0"
-      - "secret_names.EMQX_CA_CERT == [mqtt_secret_names.emqx_ca_cert]"
-      - "secret_names.RADAR_MQTT_API_KEY == [mqtt_secret_names.mqtt_radar_password]"
-      - "secret_names.RADAR_CHECKPOINT_SECRET == [mqtt_secret_names.radar_checkpoint_secret]"
+      - "secret_names.EMQX_CA_CERT == [deployment_secret_names.emqx_ca_cert]"
+      - "secret_names.RADAR_MQTT_API_KEY == [deployment_secret_names.mqtt_radar_password]"
+      - "secret_names.RADAR_CHECKPOINT_SECRET == [deployment_secret_names.radar_checkpoint_secret]"
     fail_msg: >-
       An existing TACTIC-managed RADAR service uses an older/mutable image or old MQTT credentials.
       Stop the affected monitors before deploying, then recreate them with the intended release.

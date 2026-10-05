@@ -1,4 +1,6 @@
 ---
+- import_playbook: validate-inventory.yml
+
 - name: Compare runtime files against the last verified production release
   hosts: swarm_manager[0]
   gather_facts: false

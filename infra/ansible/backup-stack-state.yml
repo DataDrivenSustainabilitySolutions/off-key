@@ -12,6 +12,8 @@
 # Works whether or not persistence is enabled: dumping is done from the running container, so
 # it does not care whether the data lives in a volume or the container's writable layer.
 
+- import_playbook: validate-inventory.yml
+
 - name: Back up stateful service data
   hosts: swarm_manager[0]
   gather_facts: false

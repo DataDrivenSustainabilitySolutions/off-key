@@ -1,5 +1,7 @@
 ---
 # Send or resend the first administrator invitation without redeploying.
+- import_playbook: validate-inventory.yml
+
 - name: Set up administrator access
   hosts: swarm_manager
   gather_facts: false

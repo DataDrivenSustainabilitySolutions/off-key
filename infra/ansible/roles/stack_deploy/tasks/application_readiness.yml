@@ -1,0 +1,17 @@
+---
+- name: Initialize application readiness result
+  set_fact:
+    application_readiness: {rc: 1}
+
+- name: Wait for database, APIs, catalog application and selected broker routes
+  include_tasks: application_readiness_attempt.yml
+  loop: "{{ range(30) | list }}"
+  loop_control:
+    loop_var: application_readiness_attempt
+
+- name: Require application readiness after startup
+  assert:
+    that: application_readiness.rc == 0
+    fail_msg: >-
+      The application did not become ready after 30 attempts.
+      {{ application_readiness.stderr }}

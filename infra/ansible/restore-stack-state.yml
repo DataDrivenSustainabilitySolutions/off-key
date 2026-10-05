@@ -7,6 +7,8 @@
 #
 # restore_services is a comma-separated subset of: postgres, emqx.
 
+- import_playbook: validate-inventory.yml
+
 - name: Restore stateful service data
   hosts: swarm_manager[0]
   gather_facts: false

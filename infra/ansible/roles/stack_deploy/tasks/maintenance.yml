@@ -28,8 +28,7 @@
 
 - name: Locate the running production database
   include_role:
-    name: persistence_switch
-    tasks_from: _service_container
+    name: swarm_task
   vars:
     svc: postgres
 
@@ -107,8 +106,7 @@
 
     - name: Locate the database for a private server-side backup
       include_role:
-        name: persistence_switch
-        tasks_from: _service_container
+        name: swarm_task
       vars:
         svc: postgres
 

@@ -63,11 +63,10 @@
       for the existing production Cloudflare Tunnel, not the installation command.
   when: offkey_env == 'prod'
 
-- name: Name the versioned Cloudflare Tunnel secret
+- name: Initialise deployment secrets
   set_fact:
-    cloudflared_tunnel_secret_name: >-
-      {{ stack_name }}_cloudflared_tunnel_token_{{ ((cloudflare_tunnel_token | trim) | hash('sha256'))[:12] }}
-  when: offkey_env == 'prod'
+    deployment_secret_material: {}
+    deployment_secret_names: {}
   no_log: true
 
 - name: Require production MQTT certificate and credential material
@@ -93,9 +92,10 @@
   when: offkey_env == 'prod'
   no_log: true
 
-- name: Define production MQTT secret material
+- name: Define production deployment secret material
   set_fact:
-    mqtt_secret_material:
+    deployment_secret_material:
+      cloudflared_tunnel_token: "{{ cloudflare_tunnel_token | trim }}"
       emqx_ca_cert: "{{ emqx_ca_cert }}"
       emqx_server_cert: "{{ emqx_server_cert }}"
       emqx_server_key: "{{ emqx_server_key }}"
@@ -122,8 +122,8 @@
 
 - name: Define collection controller secrets
   set_fact:
-    mqtt_secret_material: >-
-      {{ mqtt_secret_material | default({}) | combine({
+    deployment_secret_material: >-
+      {{ deployment_secret_material | combine({
         'ambibox_mqtt_username': ambibox_access.mqtt_username,
         'ambibox_mqtt_password': ambibox_access.mqtt_password,
         'ambibox_api_key': ambibox_access.api_key,
@@ -137,11 +137,11 @@
   when: ambibox_ingress_enabled | bool
   no_log: true
 
-- name: Name versioned MQTT secrets
+- name: Name content-addressed deployment secrets
   set_fact:
-    mqtt_secret_names: >-
-      {{ mqtt_secret_names | default({}) | combine({item.key: stack_name ~ '_' ~ item.key ~ '_' ~ (item.value | hash('sha256'))[:12]}) }}
-  loop: "{{ mqtt_secret_material | default({}) | dict2items }}"
+    deployment_secret_names: >-
+      {{ deployment_secret_names | combine({item.key: stack_name ~ '_' ~ item.key ~ '_' ~ (item.value | hash('sha256'))[:12]}) }}
+  loop: "{{ deployment_secret_material | dict2items }}"
   no_log: true
 
 - name: Create stack directory

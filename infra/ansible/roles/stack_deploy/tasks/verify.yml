@@ -14,31 +14,8 @@
       delay: 5
       until: stack_convergence.rc == 0
 
-    - name: Locate the collection worker's node
-      include_role:
-        name: persistence_switch
-        tasks_from: _service_node
-      vars:
-        svc: mqtt-proxy
-
     - name: Wait for database, APIs, catalog application and selected broker routes
-      shell: |
-        set -euo pipefail
-        mapfile -t containers < <(docker ps -q --filter 'label=com.docker.swarm.service.name={{ stack_name }}_mqtt-proxy' --filter status=running)
-        if [ -z "${containers[0]:-}" ] || [ -n "${containers[1]:-}" ]; then
-          echo "Expected exactly one running collection worker" >&2
-          exit 1
-        fi
-        docker exec -i "${containers[0]}" /app/bin/python -
-      args:
-        executable: /bin/bash
-        stdin: "{{ lookup('file', playbook_dir ~ '/../scripts/check_application.py') }}"
-      delegate_to: "{{ svc_node }}"
-      register: application_readiness
-      changed_when: false
-      retries: 30
-      delay: 5
-      until: application_readiness.rc == 0
+      include_tasks: application_readiness.yml
 
     - name: Report application readiness and upstream broker warnings
       debug:

@@ -6,20 +6,44 @@
   include_tasks: context.yml
   when: persistence_flips | length > 0
 
-- name: Stop application writers for the cutover
-  include_tasks: quiesce.yml
+- name: Capture complete backups while the original stateful tasks remain intact
   when: persistence_flips | length > 0
+  block:
+    - name: Record every service required to recover this cutover
+      set_fact:
+        persistence_required_services: "{{ persistence_backup_mounts | map(attribute='kind') | unique | list }}"
+        persistence_recovery_phase: backup
 
-# ── Back up before changing anything ─────────────────────────────────────────────────────
-# Always, on every detected flip, regardless of the restore setting. It is cheap, and it is
-# the difference between a reversible mistake and an unrecoverable one.
-- name: Back up state before the switch
-  include_tasks: "backup_{{ backup_mount.kind }}.yml"
-  when: backup_mount.kind != 'none'
-  loop: "{{ persistence_backup_mounts }}"
-  loop_control:
-    loop_var: backup_mount
-    label: "{{ backup_mount.service }}:{{ backup_mount.path }} ({{ backup_mount.kind }})"
+    - name: Stop application writers for the cutover
+      include_tasks: quiesce.yml
+
+    - name: Back up state before the switch
+      include_tasks: "backup_{{ backup_mount.kind }}.yml"
+      loop: "{{ persistence_backup_mounts }}"
+      loop_control:
+        loop_var: backup_mount
+        label: "{{ backup_mount.service }}:{{ backup_mount.path }}"
+
+    - name: Commit complete backup references before replacement can begin
+      set_fact:
+        persistence_recovery_plan: >-
+          {{ persistence_recovery_plan | combine({'phase': 'restore',
+             'backup_paths': persistence_backup_paths, 'backup_files': persistence_backup_files}) }}
+
+    - name: Save the complete cutover recovery plan
+      include_tasks: save_recovery.yml
+  rescue:
+    - name: Resume writers after a backup failure before replacement began
+      include_tasks: resume_writers.yml
+      when: persistence_recovery_plan | length > 0
+
+    - name: Report the cancelled cutover
+      fail:
+        msg: >-
+          Backup failed before stateful replacement at '{{ ansible_failed_task.name }}'.
+          The original stateful tasks and data were preserved and original writers resumed.
+          Incomplete backup directories have no completion manifest and cannot be restored.
+          Fix the failure and retry deployment to capture a new complete backup.
 
 # Wipe only after a successful backup, and only where the operator asked for a restore.
 - name: Remove stale volume so the restore lands in a clean one

@@ -1,5 +1,7 @@
 ---
 # Run deliberately, outside deployment or credential rotation. No vendor login occurs.
+- import_playbook: validate-inventory.yml
+
 - name: Back up the AmbiBox identity and access together
   hosts: ambibox_nfs
   gather_facts: false

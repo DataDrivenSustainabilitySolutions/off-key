@@ -1,4 +1,12 @@
 ---
+- name: Verify all captured backups before any restore
+  include_tasks: verify_backup.yml
+  vars:
+    persistence_restore_timestamp: "{{ persistence_run_ts }}"
+  loop: "{{ persistence_backup_mounts | map(attribute='kind') | unique | list }}"
+  loop_control:
+    loop_var: backup_service
+
 - name: Validate every replacement task and mount before restoring
   include_tasks: validate_service.yml
   loop: "{{ persistence_flips | map(attribute='service') | unique | list }}"

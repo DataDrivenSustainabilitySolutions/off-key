@@ -6,7 +6,8 @@
 # Skipping pre/post_restore corrupts the TimescaleDB catalogs.
 
 - name: Discover the node running postgres
-  include_tasks: _service_container.yml
+  include_role:
+    name: swarm_task
   vars:
     svc: postgres
 
@@ -27,13 +28,14 @@
   become: true
   delegate_to: "{{ svc_node }}"
 
-- name: postgres | push the dump directory back to the node
+- name: postgres | push only the verified backup artifacts back to the node
   copy:
-    src: "{{ persistence_backup_paths.postgres }}/"
-    dest: "{{ persistence_stage_dir }}/restore/"
+    src: "{{ persistence_backup_paths.postgres }}/{{ item }}"
+    dest: "{{ persistence_stage_dir }}/restore/{{ item }}"
     mode: "0600"
   become: true
   delegate_to: "{{ svc_node }}"
+  loop: "{{ persistence_backup_files.postgres }}"
 
 - name: postgres | restore roles and globals
   shell: >-
@@ -45,35 +47,27 @@
   delegate_to: "{{ svc_node }}"
   changed_when: true
 
-- name: postgres | enumerate dumps to restore
-  find:
-    paths: "{{ persistence_stage_dir }}/restore"
-    patterns: "*.dump"
-  become: true
-  delegate_to: "{{ svc_node }}"
-  register: pg_dumps
-
 - name: postgres | restore each database
   # NOTE: deliberately no -j on pg_restore. Parallel restore does not correctly restore the
   # TimescaleDB catalogs, and the corruption is silent. Do not "optimise" this.
   shell: |
     set -euo pipefail
-    db={{ item.path | basename | regex_replace('\.dump$', '') | quote }}
+    db={{ item | regex_replace('\.dump$', '') | quote }}
     cid="{{ svc_container }}"
     docker exec "$cid" dropdb -U {{ postgres_user | quote }} --maintenance-db=template1 --if-exists --force "$db"
     docker exec "$cid" createdb -U {{ postgres_user | quote }} --maintenance-db=template1 --template=template0 "$db"
     docker exec "$cid" psql -U {{ postgres_user | quote }} -v ON_ERROR_STOP=1 -d "$db" -c "CREATE EXTENSION IF NOT EXISTS timescaledb;"
     docker exec "$cid" psql -U {{ postgres_user | quote }} -v ON_ERROR_STOP=1 -d "$db" -c "SELECT timescaledb_pre_restore();"
-    docker exec -i "$cid" pg_restore --exit-on-error -U {{ postgres_user | quote }} -d "$db" < "{{ item.path }}"
+    docker exec -i "$cid" pg_restore --exit-on-error -U {{ postgres_user | quote }} -d "$db" < {{ (persistence_stage_dir ~ '/restore/' ~ item) | quote }}
     docker exec "$cid" psql -U {{ postgres_user | quote }} -v ON_ERROR_STOP=1 -d "$db" -c "SELECT timescaledb_post_restore();"
   args: {executable: /bin/bash}
   become: true
   delegate_to: "{{ svc_node }}"
-  loop: "{{ pg_dumps.files }}"
+  loop: "{{ persistence_backup_files.postgres | reject('equalto', 'roles.sql') | list }}"
   loop_control:
-    label: "{{ item.path | basename }}"
+    label: "{{ item }}"
   changed_when: true
 
 - name: postgres | report
   debug:
-    msg: "Restored {{ pg_dumps.files | length }} database(s) from {{ persistence_backup_paths.postgres }}"
+    msg: "Restored {{ persistence_backup_files.postgres | length - 1 }} database(s) from {{ persistence_backup_paths.postgres }}"

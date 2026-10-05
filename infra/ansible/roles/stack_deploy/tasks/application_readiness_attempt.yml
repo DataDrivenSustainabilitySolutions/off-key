@@ -1,0 +1,30 @@
+---
+# Resolve the current task on each attempt: startup can replace an unhealthy task.
+- name: Probe the current collection worker until application readiness succeeds
+  when: application_readiness.rc != 0
+  block:
+    - name: Locate the collection worker's task
+      include_role:
+        name: swarm_task
+      vars:
+        svc: mqtt-proxy
+
+    - name: Probe database, APIs, catalog application and selected broker routes
+      command:
+        argv: [docker, exec, -i, "{{ svc_container }}", /app/bin/python, '-']
+        stdin: "{{ lookup('file', playbook_dir ~ '/../scripts/check_application.py') }}"
+      delegate_to: "{{ svc_node }}"
+      register: _application_readiness_probe
+      changed_when: false
+      failed_when: false
+
+    - name: Keep the last completed application readiness probe
+      set_fact:
+        application_readiness: "{{ _application_readiness_probe }}"
+
+    - name: Wait before the next application readiness attempt
+      pause:
+        seconds: 5
+      when:
+        - application_readiness.rc != 0
+        - application_readiness_attempt < 29

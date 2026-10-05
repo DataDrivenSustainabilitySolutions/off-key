@@ -62,6 +62,8 @@ for 90 days; synthetic failure diagnostics do not contain production configurati
 For controlled provisioning, use `make -C infra provision-prod REVISION=<full SHA>
 BOOTSTRAP=true` with the ignored inventory and encrypted vault. Existing SSH users,
 node names, ports, management Tailscale enrollment and node labels remain authoritative.
+The inventory must contain exactly one Swarm manager; every operator playbook checks
+this on the controller before contacting hosts.
 The vendor identity must exist on the manager's NFS export or be restored from a
 private seed before deployment. CI never registers a replacement vendor device.
 NFS permits the discovered backend management-tailnet /32 addresses only.

@@ -1,27 +1,14 @@
 ---
-- name: Locate the TACTIC node for administrator setup
+- name: Locate the TACTIC task for administrator setup
   include_role:
-    name: persistence_switch
-    tasks_from: _service_node
+    name: swarm_task
   vars:
     svc: tactic
-
-- name: Find the running TACTIC task
-  command:
-    argv: [docker, ps, -q, --filter, 'label=com.docker.swarm.service.name={{ stack_name }}_tactic', --filter, status=running]
-  delegate_to: "{{ svc_node }}"
-  register: administrator_containers
-  changed_when: false
-
-- name: Require exactly one running TACTIC task
-  assert:
-    that: administrator_containers.stdout_lines | length == 1
-    fail_msg: Expected exactly one running TACTIC task before initializing administrator access.
 
 - name: Email the first administrator invitation
   command:
     argv: >-
-      {{ ['docker', 'exec', administrator_containers.stdout_lines[0], '/app/bin/python',
+      {{ ['docker', 'exec', svc_container, '/app/bin/python',
           '-m', 'off_key_tactic_middleware.bootstrap_admin', '--send-email']
          + (['--resend'] if bootstrap_admin_resend | default(false) | bool else []) }}
   delegate_to: "{{ svc_node }}"

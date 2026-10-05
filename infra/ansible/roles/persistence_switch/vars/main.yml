@@ -5,7 +5,7 @@
 #
 # Both services are constrained to node.labels.backend == true in the base compose, so
 # their volumes and containers live on a backend node, not the manager. Which node is
-# discovered per service at run time (see _service_node.yml). Container-level
+# discovered per service at run time (see roles/swarm_task/tasks/main.yml). Container-level
 # work is delegated there; service-level work (inspect, scale) runs on the manager.
 
 persistence_mounts:

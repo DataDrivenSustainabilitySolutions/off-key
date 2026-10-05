@@ -1,5 +1,5 @@
 ---
-# Resolve one running Swarm task. Its ID also identifies the container during updates.
+# Input: svc. Results: svc_node, svc_task_id, and that task's svc_container.
 - name: "{{ svc }} | wait for one running task"
   command:
     argv:
@@ -29,3 +29,25 @@
   set_fact:
     svc_node: "{{ (_svc_tasks.stdout_lines[0] | from_json).Node }}"
     svc_task_id: "{{ (_svc_tasks.stdout_lines[0] | from_json).ID }}"
+
+- name: "{{ svc }} | wait for the running task's container"
+  command:
+    argv:
+      - docker
+      - ps
+      - --quiet
+      - --no-trunc
+      - --filter
+      - "label=com.docker.swarm.task.id={{ svc_task_id }}"
+      - --filter
+      - status=running
+  delegate_to: "{{ svc_node }}"
+  register: _svc_containers
+  changed_when: false
+  until: _svc_containers.stdout_lines | length == 1
+  retries: 30
+  delay: 5
+
+- name: "{{ svc }} | record container"
+  set_fact:
+    svc_container: "{{ _svc_containers.stdout_lines[0] }}"

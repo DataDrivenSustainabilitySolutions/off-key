@@ -381,7 +381,7 @@ def prepare(directory):
     }
     model["volumes"].pop("tailscale-ambibox-state", None)
     secret_values = json.loads((directory / "stack/validation.json").read_text())[
-        "mqtt_secret_material"
+        "deployment_secret_material"
     ]
     used_secrets = {
         item["source"]

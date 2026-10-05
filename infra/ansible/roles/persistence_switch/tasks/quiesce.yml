@@ -28,23 +28,23 @@
          | map(attribute='Spec.Mode.Replicated.Replicas'))) }}
   no_log: true
 
-- name: Read any interrupted recovery plan
-  stat:
-    path: "{{ stack_dir }}/recovery-pending.json"
-  register: recovery_plan_stat
-
-- name: Load the original writer counts when retrying a restore
-  slurp:
-    src: "{{ stack_dir }}/recovery-pending.json"
-  register: recovery_plan
-  when: recovery_plan_stat.stat.exists
-  no_log: true
+- name: Refuse unexpected running writers before retrying recovery
+  assert:
+    that: unexpected_writers | length == 0
+    fail_msg: >-
+      Running writers outside the original recovery plan: {{ unexpected_writers | join(', ') }}.
+      Stop these unexpected runtime writers before retrying. The original plan and replica
+      counts have been preserved; no writer has been changed by this retry.
+  vars:
+    unexpected_writers: >-
+      {{ persistence_writer_replicas | dict2items | selectattr('value', 'gt', 0)
+         | map(attribute='key') | difference(persistence_recovery_plan.writer_replicas.keys() | list) }}
+  when: persistence_recovery_plan | length > 0
 
 - name: Preserve the original replica counts across restore retries
   set_fact:
-    persistence_writer_replicas: >-
-      {{ persistence_writer_replicas | combine((recovery_plan.content | b64decode | from_json).writer_replicas) }}
-  when: recovery_plan_stat.stat.exists
+    persistence_writer_replicas: "{{ persistence_recovery_plan.writer_replicas }}"
+  when: persistence_recovery_plan | length > 0
 
 - name: Ensure the recovery plan directory exists
   file:
@@ -52,14 +52,24 @@
     state: directory
     mode: "0750"
 
+- name: Record the complete recovery obligation before stopping any writer
+  set_fact:
+    persistence_recovery_plan:
+      version: 1
+      phase: "{{ persistence_recovery_phase }}"
+      timestamp: "{{ restore_from | default(persistence_run_ts) }}"
+      services: "{{ persistence_required_services | sort }}"
+      backup_root: "{{ persistence_backup_dir }}"
+      backup_paths: "{{ persistence_backup_paths }}"
+      backup_files: "{{ persistence_backup_files }}"
+      writer_replicas: "{{ persistence_writer_replicas }}"
+      flips: "{{ persistence_flips | default([]) }}"
+      service_nodes: "{{ persistence_service_nodes | default({}) }}"
+      service_tasks: "{{ persistence_service_tasks | default({}) }}"
+  when: persistence_recovery_plan | length == 0
+
 - name: Save the recovery plan before stopping any writer
-  copy:
-    dest: "{{ stack_dir }}/recovery-pending.json"
-    mode: "0600"
-    content: >-
-      {{ {'timestamp': persistence_run_ts, 'backup_root': persistence_backup_dir,
-          'restore_from': restore_from | default(none), 'backup_paths': persistence_backup_paths,
-          'writer_replicas': persistence_writer_replicas} | to_nice_json }}
+  include_tasks: save_recovery.yml
 
 - name: Stop writers before taking the backup
   command:

@@ -58,7 +58,8 @@
     - name: Report the interrupted deployment
       fail:
         msg: >-
-          Deployment stopped at '{{ ansible_failed_task.name }}'. Application writers that
-          were stopped for the persistence cutover have not been automatically resumed.
+          Deployment stopped at '{{ ansible_failed_task.name }}'.
           Backups are in {{ persistence_backup_dir | default('the configured recovery directory') }}.
-          Resolve the failed step and restore state before resuming services.
+          Inspect recovery-pending.json and actual writer replica counts before retrying
+          or resuming services; backup cancellation or a failed resumption may have
+          already restarted some writers.

@@ -2,6 +2,37 @@
 - name: Initialise the restore context
   include_tasks: context.yml
 
+- name: Check for an interrupted recovery transaction
+  stat:
+    path: "{{ stack_dir }}/recovery-pending.json"
+  register: recovery_plan_stat
+
+- name: Load the original recovery obligation
+  slurp:
+    src: "{{ stack_dir }}/recovery-pending.json"
+  register: saved_recovery
+  when: recovery_plan_stat.stat.exists
+
+- name: Preserve the original recovery transaction
+  set_fact:
+    persistence_recovery_plan: "{{ saved_recovery.content | b64decode | from_json }}"
+  when: recovery_plan_stat.stat.exists
+
+- name: Require a complete supported recovery plan
+  assert:
+    that:
+      - persistence_recovery_plan.version | default(0) == 1
+      - persistence_recovery_plan.phase | default('') == 'restore'
+      - >-
+        ['timestamp', 'services', 'backup_paths', 'backup_files', 'writer_replicas',
+         'flips', 'service_nodes', 'service_tasks'] | difference(persistence_recovery_plan.keys() | list) | length == 0
+    fail_msg: >-
+      The pending recovery plan predates complete backup transactions or backup did not finish.
+      Do not restore incomplete artifacts or clear this plan to bypass it.
+      Verify the original stateful tasks and resume its recorded writer counts before clearing
+      a backup-phase plan; legacy recovery requires a separately reviewed procedure.
+  when: persistence_recovery_plan | length > 0
+
 - name: List available backups when no timestamp was given
   when: restore_from is not defined
   block:
@@ -34,43 +65,50 @@
       - persistence_restore_services | difference(['postgres', 'emqx']) | length == 0
     fail_msg: "Choose a backup timestamp and a comma-separated subset of postgres,emqx."
 
-- name: Find the selected backup files
-  find:
-    paths: "{{ persistence_backup_dir }}/{{ item }}/{{ restore_from }}"
-    file_type: file
-  delegate_to: localhost
-  become: false
-  loop: "{{ persistence_restore_services }}"
-  register: restore_files
-
-- name: Require a complete backup for each selected service
+- name: Require the entire original recovery obligation on retries
   assert:
-    that: >-
-      (item.item == 'postgres' and 'roles.sql' in filenames
-       and filenames | select('match', '^.+\.dump$') | list | length > 0)
-      or (item.item == 'emqx'
-       and filenames | select('match', '^emqx-export-.+\.tar\.gz$') | list | length == 1)
-    fail_msg: "The selected {{ item.item }} backup is missing or incomplete. No services have been stopped."
-  vars:
-    filenames: "{{ item.files | map(attribute='path') | map('basename') | list }}"
-  loop: "{{ restore_files.results }}"
-  loop_control:
-    label: "{{ item.item }}"
+    that:
+      - restore_from == persistence_recovery_plan.timestamp
+      - persistence_restore_services | sort == persistence_recovery_plan.services
+      - persistence_recovery_plan.services | difference(persistence_recovery_plan.backup_paths.keys() | list) | length == 0
+      - persistence_recovery_plan.services | difference(persistence_recovery_plan.backup_files.keys() | list) | length == 0
+    fail_msg: >-
+      An interrupted recovery requires its original timestamp {{ persistence_recovery_plan.timestamp }}
+      and the entire service set {{ persistence_recovery_plan.services | join(',') }}.
+      No services have been changed. Partial restores cannot resume writers or clear this transaction.
+  when: persistence_recovery_plan | length > 0
 
-- name: Record the selected backup paths
+- name: Keep the original complete backup references on retries
   set_fact:
-    persistence_backup_paths: >-
-      {{ persistence_backup_paths | combine({item.item:
-         (persistence_backup_dir ~ '/postgres/' ~ restore_from) if item.item == 'postgres'
-         else (item.files | map(attribute='path') | select('match', '^.*emqx-export-.+\.tar\.gz$') | first)}) }}
-  loop: "{{ restore_files.results }}"
+    persistence_backup_paths: "{{ persistence_recovery_plan.backup_paths }}"
+  when: persistence_recovery_plan | length > 0
+
+- name: Verify every selected backup before changing any service
+  include_tasks: verify_backup.yml
+  vars:
+    persistence_restore_timestamp: "{{ restore_from }}"
+  loop: "{{ persistence_restore_services }}"
   loop_control:
-    label: "{{ item.item }}"
+    loop_var: backup_service
+
+- name: Record the selected recovery boundary
+  set_fact:
+    persistence_required_services: "{{ persistence_restore_services }}"
+    persistence_recovery_phase: restore
+    persistence_flips: "{{ persistence_recovery_plan.flips | default([]) }}"
+    persistence_service_nodes: "{{ persistence_recovery_plan.service_nodes | default({}) }}"
+    persistence_service_tasks: "{{ persistence_recovery_plan.service_tasks | default({}) }}"
 
 - name: Restore while application writers are stopped
   block:
     - name: Stop writers and wait for their tasks
       include_tasks: quiesce.yml
+
+    - name: Validate replacement tasks and mounts from the original cutover
+      include_tasks: validate_service.yml
+      loop: "{{ persistence_flips | map(attribute='service') | unique | list }}"
+      loop_control:
+        loop_var: svc
 
     - name: Restore the selected state
       include_tasks: "restore_{{ restore_service }}.yml"
@@ -78,19 +116,12 @@
       loop_control:
         loop_var: restore_service
 
-    - name: Resume the original writer replicas
-      command:
-        argv: [docker, service, scale, "{{ item.key }}={{ item.value }}"]
-      loop: "{{ persistence_writer_replicas | dict2items }}"
-      loop_control:
-        label: "{{ item.key }}"
-    - name: Clear the completed recovery plan
-      file:
-        path: "{{ stack_dir }}/recovery-pending.json"
-        state: absent
+    - name: Resume writers only after the complete recovery succeeded
+      include_tasks: resume_writers.yml
   rescue:
     - name: Report the interrupted restore
       fail:
         msg: >-
-          Restore stopped at '{{ ansible_failed_task.name }}'. Writers have not been
-          automatically resumed. Resolve the failure before resuming services.
+          Restore stopped at '{{ ansible_failed_task.name }}'; the original recovery plan remains.
+          Writers stay stopped until restoration succeeds. If writer resumption itself failed,
+          some may already be running; inspect replica counts and complete the recorded transaction.

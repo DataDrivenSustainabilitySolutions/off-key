@@ -52,6 +52,8 @@ def render(directory, environment, **overrides):
         "ambibox_nfs_addr": "100.100.10.1",
         "ambibox_nfs_backend_ips": discovery(CLIENTS),
         "cloudflare_tunnel_token": TOKEN,
+        "tailscale_ambibox_extra_args": "--accept-dns --advertise-tags=tag:fixture --login-server=https://vpn.example.invalid",
+        "tailscale_ambibox_hostname": "fixture-tailnet-host",
         "ambibox_access": {
             "mqtt_username": "fixture-vendor",
             "mqtt_password": "fixture-vendor-password",
@@ -191,6 +193,22 @@ class DeploymentTests(unittest.TestCase):
         )
         self.assertNotIn("TS_AUTHKEY", services["tailscale-ambibox"]["environment"])
 
+    def test_vendor_identity_settings_reach_compose_and_swarm(self):
+        for name, result in self.results.items():
+            for model in ("config", "swarm_config"):
+                with self.subTest(case=name, model=model):
+                    environment = result[model]["services"]["tailscale-ambibox"][
+                        "environment"
+                    ]
+                    self.assertEqual(
+                        environment["TS_EXTRA_ARGS"],
+                        result["inputs"]["tailscale_ambibox_extra_args"],
+                    )
+                    self.assertEqual(
+                        environment["TS_HOSTNAME"],
+                        result["inputs"]["tailscale_ambibox_hostname"],
+                    )
+
     def test_every_production_image_is_immutable_and_radar_matches_runtime(self):
         config = self.results["prod"]["config"]
         release = yaml.safe_load(
@@ -275,7 +293,7 @@ class DeploymentTests(unittest.TestCase):
         )["release"]
         self.assertNotIn("mailpit", release["images"])
 
-    def test_deployment_retires_only_production_mailpit_and_can_repeat(self):
+    def test_deployment_retires_only_named_production_services_and_can_repeat(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             services = root / "services.json"
@@ -283,6 +301,8 @@ class DeploymentTests(unittest.TestCase):
                 "off-key_api",
                 "off-key_mailpit",
                 "off-key_mailpit-other",
+                "off-key_tailscale-dev-proxy",
+                "off-key_tailscale-dev-proxy-other",
                 "radar-runtime",
             ]
             services.write_text(json.dumps(original))
@@ -296,7 +316,8 @@ class DeploymentTests(unittest.TestCase):
                 "    if 'label=managed_by=tactic' not in args:\n"
                 "        print('\\n'.join(json.loads(state.read_text())))\n"
                 "elif args[:2] == ['service', 'rm']:\n"
-                "    assert args == ['service', 'rm', 'off-key_mailpit'], args\n"
+                "    assert args[:2] == ['service', 'rm'] and len(args) == 3, args\n"
+                "    assert args[2] in {'off-key_mailpit', 'off-key_tailscale-dev-proxy'}, args\n"
                 "    current = json.loads(state.read_text())\n"
                 "    current.remove(args[2])\n"
                 "    state.write_text(json.dumps(current))\n"
@@ -347,7 +368,12 @@ class DeploymentTests(unittest.TestCase):
                         "-e",
                         f"offkey_env={environment}",
                     )
-                    expected = [name for name in original if name != "off-key_mailpit"]
+                    expected = [
+                        name
+                        for name in original
+                        if name
+                        not in {"off-key_mailpit", "off-key_tailscale-dev-proxy"}
+                    ]
                     self.assertEqual(json.loads(services.read_text()), expected)
 
     def test_resend_rejects_placeholder_credentials_and_insecure_transport(self):

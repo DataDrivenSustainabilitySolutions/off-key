@@ -405,6 +405,9 @@ def prepare(directory):
         )
         created_secrets.append(definition["name"])
         (directory / "created-secrets.json").write_text(json.dumps(created_secrets))
+    # Production seeds this private image on backend nodes before runtime monitors
+    # start. The single rehearsal node already has the temporary registry login.
+    run("docker", "pull", release["images"]["mqtt_radar"], timeout=300)
     deploy(directory, "apply", release_bootstrap=True)
     ready(directory)
     invitation = run(

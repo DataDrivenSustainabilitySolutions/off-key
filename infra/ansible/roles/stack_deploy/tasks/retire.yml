@@ -1,5 +1,5 @@
 ---
-- name: List production stack services for Mailpit retirement
+- name: List production stack services for retirement
   command:
     argv:
       - docker
@@ -14,9 +14,12 @@
   when: offkey_env == 'prod'
 
 # stack deploy keeps removed services; broad --prune could delete runtime workers.
-- name: Remove retired production Mailpit service
+- name: Remove retired production services
   command:
-    argv: [docker, service, rm, "{{ stack_name }}_mailpit"]
+    argv: [docker, service, rm, "{{ stack_name }}_{{ item }}"]
+  loop:
+    - mailpit
+    - tailscale-dev-proxy
   when:
     - offkey_env == 'prod'
-    - (stack_name ~ '_mailpit') in production_stack_services.stdout_lines
+    - (stack_name ~ '_' ~ item) in production_stack_services.stdout_lines

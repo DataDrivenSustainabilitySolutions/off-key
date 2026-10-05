@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-FROM ghcr.io/astral-sh/uv:0.12.19 AS uv
+FROM ghcr.io/astral-sh/uv:0.12.23 AS uv
 FROM python:3.14-slim-bookworm AS builder
 
 # Build context MUST be backend/

@@ -1,0 +1,92 @@
+---
+# Export from the live broker, including an ephemeral container's writable layer.
+- name: Discover the running emqx-main task and container
+  include_tasks: _service_container.yml
+  vars:
+    svc: emqx-main
+
+- name: emqx | require the broker to be fully started before backing it up
+  command: "docker exec {{ svc_container }} emqx ctl status"
+  delegate_to: "{{ svc_node }}"
+  register: emqx_status
+  until: emqx_status.rc == 0 and 'is started' in emqx_status.stdout
+  retries: 24
+  delay: 5
+  changed_when: false
+
+- name: emqx | list existing archives
+  command:
+    argv: [docker, exec, "{{ svc_container }}", sh, -c, "{{ archive_listing }}"]
+  vars:
+    archive_listing: "if [ -d /opt/emqx/data/backup ]; then find /opt/emqx/data/backup -maxdepth 1 -name '*.tar.gz' -type f; fi"
+  delegate_to: "{{ svc_node }}"
+  register: emqx_archives_before
+  changed_when: false
+
+- name: emqx | export built-in database and config
+  command: "docker exec {{ svc_container }} emqx ctl data export"
+  delegate_to: "{{ svc_node }}"
+  changed_when: true
+
+- name: emqx | list archives after the export
+  command:
+    argv: [docker, exec, "{{ svc_container }}", find, /opt/emqx/data/backup, -maxdepth, '1', -name, '*.tar.gz', -type, f]
+  delegate_to: "{{ svc_node }}"
+  register: emqx_archives_after
+  changed_when: false
+
+- name: emqx | require a new archive from this export
+  assert:
+    that: new_archives | length == 1
+    fail_msg: "EMQX did not produce exactly one new backup archive. Refusing to switch its data path."
+  vars:
+    new_archives: "{{ emqx_archives_after.stdout_lines | difference(emqx_archives_before.stdout_lines) }}"
+
+- name: emqx | record the new export filename
+  set_fact:
+    emqx_export_file: "{{ (emqx_archives_after.stdout_lines | difference(emqx_archives_before.stdout_lines))[0] }}"
+
+- name: emqx | create staging directory on the node
+  file:
+    path: "{{ persistence_stage_dir }}"
+    state: directory
+    mode: "0700"
+  become: true
+  delegate_to: "{{ svc_node }}"
+
+- name: emqx | copy the archive out of the container
+  shell: >-
+    umask 077;
+    docker exec {{ svc_container | quote }} cat {{ emqx_export_file | quote }}
+    > {{ (persistence_stage_dir ~ '/' ~ (emqx_export_file | basename)) | quote }}
+  args: {executable: /bin/bash}
+  become: true
+  delegate_to: "{{ svc_node }}"
+  changed_when: true
+
+- name: emqx | protect the control-host backup directories
+  file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0700"
+  delegate_to: localhost
+  become: false
+  loop:
+    - "{{ persistence_backup_dir }}"
+    - "{{ persistence_backup_dir }}/emqx"
+    - "{{ persistence_backup_dir }}/emqx/{{ persistence_run_ts }}"
+
+- name: emqx | pull the archive to the control host
+  fetch:
+    src: "{{ persistence_stage_dir }}/{{ emqx_export_file | basename }}"
+    dest: "{{ persistence_backup_dir }}/emqx/{{ persistence_run_ts }}/"
+    flat: true
+  become: true
+  delegate_to: "{{ svc_node }}"
+
+- name: emqx | record the completed backup
+  set_fact:
+    persistence_backup_paths: >-
+      {{ persistence_backup_paths | default({})
+         | combine({'emqx': persistence_backup_dir ~ '/emqx/' ~ persistence_run_ts
+                            ~ '/' ~ (emqx_export_file | basename)}) }}

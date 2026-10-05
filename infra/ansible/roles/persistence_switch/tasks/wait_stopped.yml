@@ -1,0 +1,17 @@
+---
+# Include with service_names. Check actual task states, including retiring tasks.
+- name: Wait for every task to stop
+  shell: |
+    set -euo pipefail
+    tasks=$(docker service ps --quiet --no-trunc {{ item | quote }})
+    if [ -n "$tasks" ]; then
+      docker inspect --type task --format '{% raw %}{{.Status.State}}{% endraw %}' $tasks
+    fi
+  args:
+    executable: /bin/bash
+  loop: "{{ service_names }}"
+  register: stopped_tasks
+  changed_when: false
+  until: stopped_tasks.stdout_lines | difference(['shutdown', 'complete', 'failed', 'rejected', 'remove']) | length == 0
+  retries: 60
+  delay: 5

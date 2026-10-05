@@ -1,0 +1,15 @@
+---
+- name: Initialise the backup context
+  include_tasks: context.yml
+
+- name: Back up postgres
+  include_tasks: backup_postgres.yml
+
+- name: Back up EMQX
+  include_tasks: backup_emqx.yml
+
+- name: Report the completed backup
+  debug:
+    msg:
+      - "Backup complete: {{ persistence_run_ts }}"
+      - "{{ persistence_backup_paths }}"

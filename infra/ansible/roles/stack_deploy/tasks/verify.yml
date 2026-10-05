@@ -1,0 +1,111 @@
+---
+# Called last by provision.yml and deploy.yml, after persistence restoration.
+# Read-only probes do not publish synthetic telemetry into the production catalog.
+- name: Verify the production application after the stack update and restore stage
+  when: offkey_env == 'prod'
+  block:
+    - name: Wait for all stack services to converge without a rollback
+      command:
+        argv: [python3, '-', "{{ stack_name }}", "{{ stack_dir }}/deployment-model.json", "{{ release.images.mqtt_radar }}"]
+        stdin: "{{ lookup('file', playbook_dir ~ '/../scripts/check_swarm.py') }}"
+      register: stack_convergence
+      changed_when: false
+      retries: 60
+      delay: 5
+      until: stack_convergence.rc == 0
+
+    - name: Locate the collection worker's node
+      include_role:
+        name: persistence_switch
+        tasks_from: _service_node
+      vars:
+        svc: mqtt-proxy
+
+    - name: Wait for database, APIs, catalog application and selected broker routes
+      shell: |
+        set -euo pipefail
+        mapfile -t containers < <(docker ps -q --filter 'label=com.docker.swarm.service.name={{ stack_name }}_mqtt-proxy' --filter status=running)
+        if [ -z "${containers[0]:-}" ] || [ -n "${containers[1]:-}" ]; then
+          echo "Expected exactly one running collection worker" >&2
+          exit 1
+        fi
+        docker exec -i "${containers[0]}" /app/bin/python -
+      args:
+        executable: /bin/bash
+        stdin: "{{ lookup('file', playbook_dir ~ '/../scripts/check_application.py') }}"
+      delegate_to: "{{ svc_node }}"
+      register: application_readiness
+      changed_when: false
+      retries: 30
+      delay: 5
+      until: application_readiness.rc == 0
+
+    - name: Report application readiness and upstream broker warnings
+      debug:
+        msg: "{{ application_readiness.stdout_lines }}"
+
+    - name: Restart the original monitors with fresh calibration
+      include_tasks: monitor_job.yml
+      vars:
+        monitor_action: resume
+
+    - name: Verify restarted workers and exact release images
+      command:
+        argv: [python3, '-', "{{ stack_name }}", "{{ stack_dir }}/deployment-model.json", "{{ release.images.mqtt_radar }}"]
+        stdin: "{{ lookup('file', playbook_dir ~ '/../scripts/check_swarm.py') }}"
+      register: restarted_convergence
+      changed_when: false
+      retries: 60
+      delay: 5
+      until: restarted_convergence.rc == 0
+
+    - name: Require fresh healthy worker heartbeats without requiring charger traffic
+      include_tasks: monitor_job.yml
+      vars:
+        monitor_action: verify
+
+    - name: Check the public website and dashboard HTTP responses through Cloudflare
+      uri:
+        url: "{{ item }}/"
+        method: GET
+        follow_redirects: none
+        status_code: [200, 301, 302, 307, 308]
+        timeout: 10
+        headers:
+          Cache-Control: no-cache
+      register: public_route
+      retries: 12
+      delay: 5
+      until: public_route.status | default(0) in [200, 301, 302, 307, 308]
+      loop:
+        - "https://{{ ingress_base_domain }}"
+        - "{{ frontend_base_url }}"
+
+    - name: Initialize administrator access after application verification
+      include_tasks: bootstrap_admin.yml
+
+    - name: End application maintenance after successful verification
+      include_tasks: monitor_job.yml
+      vars:
+        monitor_action: finish
+
+    - name: Record the successfully verified release
+      copy:
+        dest: "{{ stack_dir }}/release.json"
+        mode: "0644"
+        content: >-
+          {{ release | combine({'infrastructure_revision': infrastructure_revision.stdout,
+             'verified_at': now(utc=true, fmt='%Y-%m-%dT%H:%M:%SZ')}) | to_nice_json }}
+    - name: Remove the completed release operation record
+      file:
+        path: "{{ stack_dir }}/release-maintenance.json"
+        state: absent
+  rescue:
+    - name: Report application verification failure after deployment
+      fail:
+        msg: >-
+          The stack update was submitted and the persistence restore stage completed,
+          but verification failed at '{{ ansible_failed_task.name }}'.
+          The last verified release.json has not been changed; release-pending.json
+          records the attempted release. No automatic rollback was performed.
+          Inspect the failed probe and service logs before retrying.

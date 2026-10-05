@@ -56,48 +56,15 @@ docker compose \
 
 This adds `emqx-worker` and cluster seed wiring for broker-cluster testing.
 
-## 4. Swarm — base
+## 4. Production Swarm
 
-Docker Swarm does not apply Compose `.env` substitution during `docker stack deploy`. Render the file first:
+Production uses the single authoritative model under `infra/`, released through
+GitHub Actions after all main checks pass. See [GitHub setup](github-setup.md),
+[Production releases](production.md), and [Recovery](recovery.md).
 
 ```bash
-docker compose \
-  --env-file .env \
-  -f docker-compose.swarm.yml \
-  config \
-  | docker stack deploy --with-registry-auth -c - off-key
+make deploy-prod REVISION=<full-tested-main-SHA>
 ```
-
-Pin the `*_IMAGE` variables in `.env` to immutable release tags before a deployment.
-
-## 5. Swarm ingress overlay — Tailscale and gost
-
-1. Copy the ingress template:
-
-    ```bash
-    cp .env.ingress.example .env.ingress.local
-    ```
-
-2. Provide the operator management credentials and persisted tailnet state-directory values. Broker hosts belong in the UI catalog.
-3. Ensure the host state directory exists on the target backend node.
-4. Render both Compose files and deploy:
-
-    ```bash
-    docker compose \
-      --env-file .env \
-      --env-file .env.ingress.local \
-      -f docker-compose.swarm.yml \
-      -f docker-compose.ingress.yml \
-      config \
-      | docker stack deploy --with-registry-auth -c - off-key
-    ```
-
-5. Provision private EMQX API credentials and enable its bootstrap file. The production
-   `off-key-infra` deployment performs this and reuses vendor MQTT credentials.
-6. Open Data sources to import/build a catalog and select collection. Do not create
-   a second manual EMQX bridge.
-
-See [AmbiBox collection](ambibox-collection.md) for the clean cutover and load controls.
 
 ## Safe mode switching
 
@@ -117,7 +84,7 @@ docker compose down
 | Day-to-day development | Local default |
 | Detection logic with synthetic data | Local plus `mqtt-sim` |
 | Multi-node broker behaviour | Local plus cluster override |
-| VPN ingress from an external broker | Swarm plus ingress overlay |
+| Production and external broker ingress | Integrated production Swarm |
 
 ## Configuration reference
 

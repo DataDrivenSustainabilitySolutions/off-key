@@ -200,6 +200,20 @@ class MonitoringService(Base):
     )
     operational_updated_at = Column(DateTime(timezone=True), nullable=True)
     stop_requested_at = Column(DateTime(timezone=True), nullable=True)
+    launch_config = Column(JSON, nullable=True)
+
+
+class DeploymentMaintenance(Base):
+    __tablename__ = "deployment_maintenance"
+    __table_args__ = (
+        CheckConstraint("id = 1", name="deployment_maintenance_singleton"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    revision = Column(Text, nullable=False)
+    phase = Column(Text, nullable=False)
+    monitors = Column(JSON().with_variant(JSONB(), "postgresql"), nullable=False)
+    updated_at = Column(DateTime(timezone=True), nullable=False)
 
 
 class MqttTopic(Base):

@@ -1,0 +1,77 @@
+services:
+  emqx-main:
+{% if ambibox_ingress_enabled | bool %}
+    environment:
+      EMQX_API_KEY__BOOTSTRAP_FILE: /run/secrets/ambibox_api_bootstrap
+{% endif %}
+{% if offkey_env == 'prod' %}
+    configs:
+      - source: emqx_security_cfg
+        target: /opt/emqx/etc/base.hocon
+{% endif %}
+    secrets:
+{% if offkey_env == 'prod' %}
+      - source: emqx_server_cert
+        target: emqx_server_cert.pem
+      - source: emqx_server_key
+        target: emqx_server_key.pem
+      - source: emqx_auth_users
+        target: emqx_auth_users.json
+{% endif %}
+{% if ambibox_ingress_enabled | bool %}
+      - source: ambibox_api_bootstrap
+        target: ambibox_api_bootstrap
+
+  tactic:
+    secrets:
+      - source: ambibox_api_key
+        target: AMBIBOX_EMQX_API_KEY
+      - source: ambibox_api_secret
+        target: AMBIBOX_EMQX_API_SECRET
+      - source: ambibox_gost_password
+        target: AMBIBOX_GOST_PASSWORD
+      - source: ambibox_mqtt_username
+        target: AMBIBOX_MQTT_USERNAME
+      - source: ambibox_mqtt_password
+        target: AMBIBOX_MQTT_PASSWORD
+
+  mqtt-tailscale-bridge:
+    command: ["-C", "/run/secrets/ambibox_gost_config.json"]
+    secrets:
+      - source: ambibox_gost_config
+        target: ambibox_gost_config.json
+{% endif %}
+
+{% if offkey_env == 'prod' %}
+  mqtt-proxy:
+    environment:
+      MQTT_CA_FILE: /run/secrets/EMQX_CA_CERT
+    secrets:
+      - source: emqx_ca_cert
+        target: EMQX_CA_CERT
+      - source: mqtt_proxy_password
+        target: MQTT_APIKEY
+
+  mqtt-radar:
+    environment:
+      RADAR_MQTT_CA_FILE: /run/secrets/EMQX_CA_CERT
+    secrets:
+      - source: emqx_ca_cert
+        target: EMQX_CA_CERT
+      - source: mqtt_radar_password
+        target: RADAR_MQTT_API_KEY
+      - source: radar_checkpoint_secret
+        target: RADAR_CHECKPOINT_SECRET
+
+configs:
+  emqx_security_cfg:
+    name: emqx_security_cfg_${EMQX_SECURITY_CFG_HASH}
+    file: ./emqx-security.hocon
+{% endif %}
+
+secrets:
+{% for key, name in mqtt_secret_names.items() %}
+  {{ key }}:
+    external: true
+    name: {{ name }}
+{% endfor %}

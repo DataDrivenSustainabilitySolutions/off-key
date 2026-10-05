@@ -67,7 +67,9 @@ def stops(monkeypatch, tmp_path):
 async def test_partial_pause_survives_rollback_and_reconciliation_finishes(stops):
     sessions, workloads = stops
     workloads.remove.side_effect = [True, RuntimeError("Docker unavailable")]
-    service = collection.CollectionService(AsyncMock(expire_all=MagicMock()))
+    service = collection.CollectionService(
+        AsyncMock(expire_all=MagicMock(), scalar=AsyncMock(return_value=None))
+    )
 
     with pytest.raises(InfrastructureError, match="retried automatically"):
         await service._pause_monitors([{"id": "0"}, {"id": "1"}])
@@ -103,7 +105,9 @@ async def test_partial_pause_survives_rollback_and_reconciliation_finishes(stops
 async def test_catalog_failure_does_not_undo_successful_stops(stops, monkeypatch):
     sessions, workloads = stops
     monkeypatch.setattr(collection, "lock_collection_configuration", AsyncMock())
-    service = collection.CollectionService(AsyncMock(expire_all=MagicMock()))
+    service = collection.CollectionService(
+        AsyncMock(expire_all=MagicMock(), scalar=AsyncMock(return_value=None))
+    )
     service.preview = AsyncMock(
         return_value=CatalogPreview(
             revision=0,

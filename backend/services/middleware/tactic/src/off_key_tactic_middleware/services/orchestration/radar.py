@@ -9,6 +9,7 @@ from off_key_core.db.collection import (
     lock_collection_configuration,
     read_collection_configuration,
 )
+from off_key_core.db.maintenance import require_application_writes
 from off_key_core.db.models import MonitoringService, MqttTopic
 from off_key_core.schemas.radar import RadarOperationalStatus, RadarStartConfig
 from off_key_core.utils.mqtt_topics import (
@@ -48,12 +49,17 @@ class RadarOrchestrationService:
         self.model_registry = model_registry
         logger.info("RadarOrchestrationService initialized.")
 
-    async def create_radar_service(self, config: RadarStartConfig) -> MonitoringService:
+    async def create_radar_service(
+        self, config: RadarStartConfig, *, deployment_revision: str | None = None
+    ) -> MonitoringService:
         """Claim catalog sensors and launch the validated RADAR configuration."""
         mqtt_topics = config.mqtt_topics
         container_name = config.container_name
         strategy = config.monitoring.strategy
         await lock_collection_configuration(self.session)
+        await require_application_writes(
+            self.session, deployment_revision=deployment_revision
+        )
         collection = await read_collection_configuration(self.session)
         streams = {
             stream.accepted_topic: stream
@@ -124,6 +130,15 @@ class RadarOrchestrationService:
                     mode="json", exclude_none=True
                 ),
                 operational_updated_at=None,
+                launch_config=config.model_dump(mode="json")
+                | {
+                    "monitoring": json.loads(env_vars["RADAR_MONITORING_CONFIG"]),
+                    "mqtt_config": config.mqtt_config
+                    | {
+                        "qos": int(env_vars["RADAR_SUBSCRIPTION_QOS"]),
+                        "client_id_prefix": env_vars["RADAR_MQTT_CLIENT_ID_PREFIX"],
+                    },
+                },
             )
 
             # Add to database
@@ -347,6 +362,8 @@ class RadarOrchestrationService:
             return False
 
     async def delete_radar_service(self, service_id: str) -> bool:
+        await lock_collection_configuration(self.session)
+        await require_application_writes(self.session)
         stmt = select(MonitoringService).where(MonitoringService.id == service_id)
         result = await self.session.execute(stmt)
         service = result.scalars().first()
@@ -358,7 +375,11 @@ class RadarOrchestrationService:
         return await self._delete_service(service)
 
     async def stop_radar_service(
-        self, container_name: str | None = None, container_id: str | None = None
+        self,
+        container_name: str | None = None,
+        container_id: str | None = None,
+        *,
+        deployment_revision: str | None = None,
     ) -> bool:
         """
         Stop and remove a running RADAR service.
@@ -378,6 +399,11 @@ class RadarOrchestrationService:
                 "(container_name or container_id)"
             )
             return False
+
+        await lock_collection_configuration(self.session)
+        await require_application_writes(
+            self.session, deployment_revision=deployment_revision
+        )
 
         # Find the service in the database
         stmt = select(MonitoringService)

@@ -1,0 +1,67 @@
+---
+# Hosts the single shared NFS export that holds the tailscale-ambibox tailnet state
+# (tailscaled.state — the vendor node identity). Any backend node mounts this read-write,
+# so the singleton can move to another backend without re-seeding once its old
+# instance has stopped or been isolated.
+# Runs on the host in the `ambibox_nfs` inventory group (currently the manager).
+
+- name: Require at least one NFS client backend
+  assert:
+    that: groups.get('swarm_backend', []) | length > 0
+    fail_msg: "The NFS export needs at least one inventory backend."
+
+- name: Read each backend's Tailscale IPv4 address
+  command:
+    argv: [tailscale, ip, '-4']
+  delegate_to: "{{ item }}"
+  loop: "{{ groups['swarm_backend'] }}"
+  register: ambibox_nfs_backend_ips
+  changed_when: false
+
+- name: Validate and select NFS clients before changing the export
+  include_tasks: clients.yml
+
+- name: Install NFS server
+  apt:
+    name: nfs-kernel-server
+    state: present
+    lock_timeout: 120
+
+- name: Ensure ambibox state export directory exists
+  file:
+    path: "{{ stack_dir }}/tailscale-ambibox-data"
+    state: directory
+    mode: "0750"
+    owner: root
+    group: root
+
+- name: Seed a missing vendor identity from the selected recovery files
+  include_tasks: seed.yml
+
+- name: Ensure /etc/exports.d exists
+  file:
+    path: /etc/exports.d
+    state: directory
+    mode: "0755"
+    owner: root
+    group: root
+
+- name: Configure NFS export for ambibox state
+  # no_root_squash lets the root-owned tailscaled process write its state.
+  # Access is restricted to exact backend Tailscale IPs.
+  template:
+    src: ambibox.exports.j2
+    dest: /etc/exports.d/ambibox.exports
+    mode: "0644"
+  register: ambibox_export
+
+- name: Re-export NFS shares
+  command: exportfs -ra
+  when: ambibox_export is changed
+  changed_when: ambibox_export is changed
+
+- name: Enable and start NFS server
+  systemd:
+    name: nfs-server
+    enabled: true
+    state: started

@@ -1,0 +1,28 @@
+---
+# CLI arguments are explicit; Compose dotenv quoting is not Docker env-file syntax.
+- name: Assemble the private release job environment
+  set_fact:
+    release_job_environment_args: []
+  no_log: true
+
+- name: Add the service configuration to the release job
+  set_fact:
+    release_job_environment_args: "{{ release_job_environment_args + ['--env', item.key ~ '=' ~ (item.value | string)] }}"
+  loop: "{{ stack_compose_model.services[release_job_service].environment | combine(release_job_overrides | default({})) | dict2items }}"
+  no_log: true
+
+- name: Run the release CLI against the production database
+  command:
+    argv: >-
+      {{ ['docker', 'run', '--rm', '--network', stack_name ~ '_app-network']
+         + (['--user', '0:0', '--mount', 'type=bind,src=/var/run/docker.sock,dst=/var/run/docker.sock'] if release_job_service == 'tactic' else [])
+         + release_job_environment_args + [release_job_image, '/app/bin/python', '-m', release_job_module]
+         + release_job_arguments }}
+  register: release_job_result
+  changed_when: release_job_arguments[0] != 'status'
+  no_log: true
+
+- name: Read the release job result without exposing service configuration
+  set_fact:
+    release_job_output: "{{ release_job_result.stdout_lines | last | from_json }}"
+  no_log: true

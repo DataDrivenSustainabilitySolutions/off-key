@@ -1,0 +1,113 @@
+---
+- name: Wait for cloud-init to complete
+  command: timeout 120 cloud-init status --wait
+  changed_when: false
+  failed_when: false
+
+- name: Wait for internet connectivity
+  wait_for:
+    host: 1.1.1.1
+    port: 443
+    timeout: 60
+    msg: "No internet connectivity after 60s — check passt/network configuration"
+
+- name: Wait for DNS resolution
+  command: getent hosts debian.org
+  register: dns_check
+  until: dns_check.rc == 0
+  retries: 12
+  delay: 5
+  changed_when: false
+  failed_when: dns_check.rc != 0 and dns_check.attempts == 12
+
+# Poll the apt lock files directly — avoids false positives from systemctl is-active
+# which returns rc=0 whenever the service unit is "active", even when idle.
+# fuser returns rc=0 if any process holds the file, rc=1 if not, so the until
+# condition is satisfied immediately when no lock is held.
+- name: Wait for apt lock to be free
+  command: fuser /var/lib/dpkg/lock-frontend /var/lib/dpkg/lock /var/cache/apt/archives/lock
+  register: apt_lock
+  until: apt_lock.rc != 0
+  retries: 60
+  delay: 20
+  changed_when: false
+  failed_when: false
+
+- name: Remove Tailscale sources installed by cloud-init install.sh
+  file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /etc/apt/sources.list.d/tailscale.list
+    - /usr/share/keyrings/tailscale-archive-keyring.gpg
+
+- name: Update apt cache and upgrade packages
+  apt:
+    update_cache: true
+    upgrade: safe
+    cache_valid_time: 3600
+    lock_timeout: 120
+
+- name: Install base packages
+  apt:
+    name:
+      - curl
+      - ca-certificates
+      - gnupg
+      - python3-pip
+      - python3-setuptools
+      - chrony
+      - jq
+      - git
+      - unzip
+      - rsync        # used by backup-ambibox-state.yml (synchronize) to pull tailnet state
+      - nfs-common   # NFS client — lets backends mount the shared ambibox-state volume
+    state: present
+    lock_timeout: 120
+
+- name: Set system hostname
+  hostname:
+    name: "{{ inventory_hostname }}"
+
+- name: Update /etc/hosts with correct hostname
+  lineinfile:
+    path: /etc/hosts
+    regexp: '^127\.0\.1\.1'
+    line: "127.0.1.1 {{ inventory_hostname }}"
+
+- name: Persist kernel modules required for Docker overlay networking
+  copy:
+    dest: /etc/modules-load.d/docker.conf
+    content: |
+      overlay
+      br_netfilter
+
+- name: Load kernel modules now
+  modprobe:
+    name: "{{ item }}"
+    state: present
+  loop:
+    - overlay
+    - br_netfilter
+
+- name: Configure sysctl for Docker overlay networking
+  sysctl:
+    name: "{{ item.key }}"
+    value: "{{ item.value }}"
+    sysctl_set: true
+    reload: true
+    state: present
+  loop:
+    - { key: net.ipv4.ip_forward, value: "1" }
+    - { key: net.bridge.bridge-nf-call-iptables, value: "1" }
+    - { key: net.bridge.bridge-nf-call-ip6tables, value: "1" }
+
+- name: Disable swap immediately
+  command: swapoff -a
+  changed_when: false
+
+- name: Remove swap from fstab
+  replace:
+    path: /etc/fstab
+    regexp: '^([^#].*\s+swap\s+.*)$'
+    replace: '# \1'

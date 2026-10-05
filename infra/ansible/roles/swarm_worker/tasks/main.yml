@@ -1,0 +1,76 @@
+---
+- name: Discover Tailscale IP for swarm advertise address
+  command: tailscale ip -4
+  register: tailscale_ip_raw
+  changed_when: false
+  when: swarm_advertise_addr is not defined
+
+- name: Set swarm_advertise_addr from Tailscale IP
+  set_fact:
+    swarm_advertise_addr: "{{ tailscale_ip_raw.stdout | trim }}"
+  when: swarm_advertise_addr is not defined
+
+- name: Check current Swarm state
+  command: docker info --format json
+  register: docker_info_raw
+  changed_when: false
+
+- name: Parse Swarm state
+  set_fact:
+    swarm_local_state: "{{ (docker_info_raw.stdout | from_json).Swarm.LocalNodeState }}"
+    swarm_node_id: "{{ (docker_info_raw.stdout | from_json).Swarm.NodeID | default('') }}"
+    swarm_control_available: "{{ (docker_info_raw.stdout | from_json).Swarm.ControlAvailable | default(false) }}"
+
+- name: List nodes in the intended Swarm
+  command: docker node ls -q
+  delegate_to: "{{ groups['swarm_manager'][0] }}"
+  register: intended_swarm_nodes
+  changed_when: false
+
+- name: Decide whether this worker must join the intended Swarm
+  set_fact:
+    swarm_join_required: >-
+      {{ swarm_local_state != 'active'
+         or swarm_node_id not in intended_swarm_nodes.stdout_lines }}
+
+- name: Refuse to remove a manager from another Swarm
+  assert:
+    that: not (swarm_control_available | bool)
+    fail_msg: >-
+      {{ inventory_hostname }} is a manager in a different Swarm.
+      Migrate or demote it deliberately before provisioning it as a worker.
+  when:
+    - swarm_join_required | bool
+    - swarm_local_state != 'inactive'
+
+- name: Leave an old Swarm before joining the intended one
+  command: docker swarm leave
+  when:
+    - swarm_join_required | bool
+    - swarm_local_state != 'inactive'
+
+- name: Join Swarm as worker
+  command: >-
+    docker swarm join
+    --advertise-addr {{ swarm_advertise_addr }}
+    --token {{ hostvars[groups['swarm_manager'][0]].swarm_worker_token }}
+    {{ hostvars[groups['swarm_manager'][0]].swarm_advertise_addr }}:2377
+  when: swarm_join_required | bool
+  no_log: true
+
+- name: Verify Swarm join succeeded
+  command: docker info --format json
+  register: docker_info_verify
+  changed_when: false
+  failed_when: >-
+    (docker_info_verify.stdout | from_json).Swarm.LocalNodeState != 'active'
+
+- name: Verify the manager sees the worker after joining
+  command: >-
+    docker node inspect {{ (docker_info_verify.stdout | from_json).Swarm.NodeID }}
+  delegate_to: "{{ groups['swarm_manager'][0] }}"
+  register: manager_worker_inspect
+  changed_when: false
+  retries: 6
+  delay: 2
+  until: manager_worker_inspect.rc == 0

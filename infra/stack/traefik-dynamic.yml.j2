@@ -1,0 +1,140 @@
+# Traefik dynamic configuration (file provider).
+#
+# Traefik is the internet-facing ingress, so it is deliberately given NO access to the
+# Docker socket / socket-proxy: routes are defined here instead of via service labels +
+# the Swarm provider. A Traefik compromise therefore cannot reach the Docker API at all.
+# Delivered as a Swarm config (see docker-compose.swarm.yml `configs:`) and shipped by the
+# stack_prepare ansible role. Hostnames come from each inventory. Changing routes = edit this
+# file + redeploy (same operational model as tailscale-serve.json). See INGRESS.md.
+#
+# Load balancing is Docker's built-in mesh: each service `url` is the service name, which
+# resolves to the Swarm VIP over the shared overlay. Traefik must share a network with each
+# target (public-network: frontend/mailpit/oauth2-proxy, app-network: api, emqx-network: emqx-main).
+#
+# AUTH: emqx./traefik. sit behind oauth2-proxy via a forwardAuth middleware (oauth2-proxy
+# is never in the data path — only the /oauth2/auth sub-request). oauth2-proxy's public endpoints
+# (callback, sign-in) live on a dedicated `auth.{{ ingress_base_domain }}` host, routed
+# UNauthenticated so the GitHub callback can complete; the shared
+# `.{{ ingress_base_domain }}` cookie set there covers the protected hosts (SSO).
+
+http:
+  routers:
+{% if offkey_env == 'prod' %}
+    landing:
+      rule: "Host(`{{ ingress_base_domain }}`)"
+      entryPoints: [web]
+      priority: 1
+      middlewares: [landing-headers]
+      service: landing
+
+    # Preserve existing bookmarks and verification/reset links, including their query strings.
+    legacy-app:
+      rule: "Host(`{{ ingress_base_domain }}`) && PathRegexp(`^/(login|register|verify|forgot-password|reset-password|details|monitoring|services|favourites|account|anomalies)(/|$)`)"
+      entryPoints: [web]
+      priority: 10
+      middlewares: [dashboard-redirect]
+      service: noop@internal
+
+{% endif %}
+    frontend:
+      rule: "Host(`{{ frontend_hostname }}`)"
+      entryPoints: [web]
+      priority: 1          # keep the Host-only fallback below the API route
+      service: frontend
+
+    api:
+      rule: "Host(`{{ frontend_hostname }}`) && PathPrefix(`/api`)"
+      entryPoints: [web]
+      priority: 10          # beat the frontend Host-only rule for /api/*
+      middlewares: [api-strip]
+      service: api
+
+    # oauth2-proxy's public endpoints on the dedicated auth host — NO auth middleware, since the
+    # GitHub callback/sign-in must complete without a session (else an infinite auth loop).
+    oauth2:
+      rule: "Host(`auth.{{ ingress_base_domain }}`) && PathPrefix(`/oauth2/`)"
+      entryPoints: [web]
+      service: oauth2-proxy
+
+
+    emqx:
+      rule: "Host(`emqx.{{ ingress_base_domain }}`)"
+      entryPoints: [web]
+      middlewares: [oauth-errors, oauth-auth]
+      service: emqx
+
+    # Traefik's own dashboard (api@internal), behind the same oauth2 gate.
+    traefik-dashboard:
+      rule: "Host(`traefik.{{ ingress_base_domain }}`)"
+      entryPoints: [web]
+      middlewares: [oauth-errors, oauth-auth]
+      service: api@internal
+
+  services:
+{% if offkey_env == 'prod' %}
+    landing:
+      loadBalancer:
+        servers:
+          - url: "http://landing:80"
+{% endif %}
+    frontend:
+      loadBalancer:
+        servers:
+          - url: "http://frontend:5173"
+    api:
+      loadBalancer:
+        servers:
+          - url: "http://api:8000"
+    emqx:
+      loadBalancer:
+        servers:
+          - url: "http://emqx-main:18083"
+    oauth2-proxy:
+      loadBalancer:
+        servers:
+          - url: "http://oauth2-proxy:4180"
+
+  middlewares:
+{% if offkey_env == 'prod' %}
+    dashboard-redirect:
+      redirectRegex:
+        regex: '^https?://[^/]+/(.*)'
+        replacement: '{{ frontend_base_url }}/${1}'
+        permanent: true
+
+    landing-headers:
+      headers:
+        # Admin SSO still uses a parent-domain cookie. Do not forward it to the public site.
+        customRequestHeaders:
+          Cookie: ""
+          Authorization: ""
+        contentTypeNosniff: true
+        referrerPolicy: no-referrer
+        contentSecurityPolicy: "default-src 'none'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+{% endif %}
+    api-strip:
+      stripPrefix:
+        prefixes:
+          - /api
+
+    # forwardAuth: Traefik calls oauth2-proxy /oauth2/auth per request. 202 → allow (identity
+    # headers copied through); 401 → handled by oauth-errors below. This is a header-only
+    # sub-request — the request body never passes through oauth2-proxy.
+    oauth-auth:
+      forwardAuth:
+        address: "http://oauth2-proxy:4180/oauth2/auth"
+        trustForwardHeader: true
+        authResponseHeaders:
+          - X-Auth-Request-User
+          - X-Auth-Request-Email
+
+    # Convert the 401 into a redirect to the GitHub sign-in. statusRewrites 401→302 is REQUIRED
+    # so the browser follows it automatically (otherwise it renders a "Found." link).
+    oauth-errors:
+      errors:
+        status:
+          - "401-403"
+        service: oauth2-proxy
+        query: "/oauth2/sign_in?rd={url}"
+        statusRewrites:
+          "401": 302

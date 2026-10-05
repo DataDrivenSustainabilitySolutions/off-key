@@ -1,0 +1,28 @@
+# Production Cloudflare Tunnel connector. The existing tunnel's public hostname
+# routes are configured in Cloudflare; this service only keeps its connector online.
+# The token is a Swarm secret, never a command argument or an environment variable.
+services:
+  cloudflared:
+    image: "${CLOUDFLARED_IMAGE:-cloudflare/cloudflared:2026.9.1}"
+    command:
+      - tunnel
+      - --no-autoupdate
+      - run
+      - --token-file
+      - /run/secrets/cloudflared_tunnel_token
+    secrets:
+      - cloudflared_tunnel_token
+    networks:
+      - public-network
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      restart_policy:
+        condition: any
+
+secrets:
+  cloudflared_tunnel_token:
+    external: true
+    name: {{ cloudflared_tunnel_secret_name }}

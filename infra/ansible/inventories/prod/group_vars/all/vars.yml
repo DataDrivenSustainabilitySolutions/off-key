@@ -1,0 +1,270 @@
+# Application images are resolved once during stack preparation; platform pins stay committed.
+application_release_revision: "{{ lookup('env', 'OFFKEY_RELEASE_REVISION') | default('latest', true) }}"
+api_image: "{{ release.images.api }}"
+frontend_image: "{{ release.images.frontend }}"
+mqtt_proxy_image: "{{ release.images.mqtt_proxy }}"
+tactic_image: "{{ release.images.tactic }}"
+mqtt_radar_image: "{{ release.images.mqtt_radar }}"
+db_sync_image: "{{ release.images.db_sync }}"
+
+# ── Environment identity ──────────────────────────────────────────────────────
+
+offkey_env:  prod
+stack_name:  off-key
+stack_dir:   /opt/stacks/off-key
+
+# The existing ingress auth key belongs to the prod management tailnet. Reuse
+# that vaulted value for OS-level nodes instead of duplicating the secret.
+tailscale_os_authkey: "{{ ingress_ts_authkey }}"
+
+# ── Docker ───────────────────────────────────────────────────────────────────
+
+docker_mtu: 1280
+
+# ── Application environment flags ────────────────────────────────────────────
+
+app_environment:  production
+debug:        "False"
+log_level:    WARNING
+
+# Pin runtime RADAR workloads to backend nodes so they land where the radar_image_seed
+# role pre-pulls the image (the runtime services.create path has no registry auth and
+# relies on the locally-seeded image). Matches the static mqtt-radar service constraint.
+tactic_docker_default_constraints: "node.labels.backend == true"
+# Prod: RADAR workloads survive TACTIC restarts
+tactic_radar_workload_lifecycle: persistent
+
+# ── URLs ─────────────────────────────────────────────────────────────────────
+# Prod ingress: Cloudflare Tunnel -> Traefik (the `traefik` service in the
+# Swarm stack) -> services. aberration.app serves the public landing page;
+# dashboard.aberration.app serves the frontend, with /api/* -> api:8000
+# (prefix stripped by the api-strip middleware).
+# The emqx. and traefik. dashboards are protected by oauth2-proxy; publishing either
+# requires the auth. hostname for login. These are browser-facing values: the public
+# hostname, never an internal service name. Frontend and API share the dashboard origin.
+#
+# NOTE: no ports: blocks are published; cloudflared reaches `traefik:80` over the
+# public-network attachable overlay, and Traefik reaches each service over its overlay.
+# The cloudflared connector is managed by the Swarm stack; its Cloudflare-hosted
+# public-hostname routes and DNS records are managed in Cloudflare. See docs/operations/production.md.
+#
+# vite_additional_server_allowed_hosts feeds Vite's server.allowedHosts. The prod
+# frontend image is nginx-based and builds with VITE_API_URL=/api. Runtime VITE_*
+# variables do not rewrite that bundle; the relative API path follows the dashboard host.
+
+frontend_hostname:                    "dashboard.aberration.app"
+ingress_base_domain:                  "aberration.app"
+frontend_base_url:                    "https://dashboard.aberration.app"
+cors_allowed_origins:                 '["https://dashboard.aberration.app"]'
+vite_api_url:                         "https://dashboard.aberration.app/api"
+vite_additional_server_allowed_hosts: "dashboard.aberration.app"
+
+# ── oauth2-proxy (ingress auth) ───────────────────────────────────────────────
+# GitHub OAuth gate in front of emqx./traefik. Secrets (client id/secret, cookie secret)
+# live in vault.yml; these are the non-secret knobs. See docs/operations/production.md.
+#
+# Access gate: GitHub ORG membership and/or an explicit username allowlist. At least ONE of
+# oauth2_github_org / oauth2_github_users must be set — if BOTH are empty, oauth2-proxy allows
+# ANY GitHub account (fail-open). The org placeholder fails CLOSED until you set your real org
+# slug. If your org restricts third-party OAuth Apps, an org owner must approve this app for the
+# membership check to work.
+oauth2_github_org:    "DataDrivenSustainabilitySolutions"
+oauth2_github_users:  ""         # optional extra always-allow usernames (comma-separated)
+oauth2_cookie_secure: "true"     # prod is HTTPS (Cloudflare-terminated)
+oauth2_redirect_url:  "https://auth.aberration.app/oauth2/callback"
+
+# ── Database ──────────────────────────────────────────────────────────────────
+
+postgres_user: postgres
+postgres_db:   postgres
+postgres_host: postgres
+
+# ── SMTP ─────────────────────────────────────────────────────────────────────
+# Verify aberration.app in Resend and save a sending API key as email_password
+# in the encrypted production vault. Local Compose uses Mailpit.
+# See docs/operations/production.md for DNS, credentials and first-admin setup.
+smtp_server:     smtp.resend.com
+smtp_port:       "587"
+mail_starttls:   "True"
+mail_ssl_tls:    "False"
+use_credentials: "True"
+validate_certs:  "True"
+email_from:      "no-reply@aberration.app"
+email_username:  "resend"
+
+# ── Vendor Tailscale (ambibox MQTT bridge) ────────────────────────────────────
+# ambibox uses pre-seeded tailscaled.state — no auth key needed.
+
+tailscale_ambibox_extra_args: "--accept-dns --advertise-tags=tag:iao --login-server=https://vpn.ambibox.de"
+# Broker endpoints and sensors are configured in the Data sources catalog.
+
+# Vendor tailnet hostname. ambibox_hostname_id is set per cluster/site in vault.yml.
+# Falls back to "DDSS-<env>" when ambibox_hostname_id is empty/unset.
+tailscale_ambibox_hostname: "DDSS-{{ offkey_env }}{{ ('-' ~ ambibox_hostname_id) if ambibox_hostname_id | default('') else '' }}"
+
+# ambibox state lives on ONE shared NFS export so the singleton can run on (and fail
+# over to) any backend without re-seeding. The NFS host is a single point of failure:
+# the `ambibox_nfs` inventory group currently selects the manager (see hosts.yml).
+# stack_prepare discovers its Tailscale IP; ansible_host may be a public SSH address.
+# nfs_server discovers each inventory backend's Tailscale IP and permits that /32
+# with explicit export options. No manual export-CIDR update is needed when adding
+# a backend; every backend must be reachable and connected to the management tailnet.
+
+# Private recovery material stays in the ignored production state directory.
+# A vendor identity must never be copied while another cluster still uses it.
+ambibox_seed_dir: "{{ playbook_dir }}/../stack/state/{{ offkey_env }}/tailscale-ambibox-data"
+
+# ── Persistence ──────────────────────────────────────────────────────────────────────────
+# Which stateful paths are volume-backed. Flipping any of these is a data-visibility change,
+# so the persistence_switch role detects it, backs up first, and refuses to run in prod
+# without -e persistence_switch_confirm=true. See README "Persistence".
+#
+# Prod persists everything: with no volume, ANY change to a value in .env rewrites the
+# service spec, Swarm recreates the task, and the database starts empty.
+
+persist_postgres:  true
+persist_emqx_data: true
+persist_emqx_log:  true
+
+# Restore the backup taken at the moment of the flip. Per-service override available as
+# persist_<service>_restore.
+persistence_restore_on_switch: true
+
+# ── EMQX ─────────────────────────────────────────────────────────────────────
+
+emqx_dashboard_username: ddss
+
+# ── Pionix HTTP API (prod only) ───────────────────────────────────────────────
+
+pionix_user_agent:                    "offkey/1.0"
+pionix_chargers_endpoint:             "chargers"
+pionix_device_model_endpoint:         "chargers/{charger_id}/deviceModel"
+pionix_telemetry_endpoint:            "chargers/{charger_id}/telemetry/{hierarchy}"
+pionix_mqtt_telemetry_topic:          "charger/{charger_id}/live-telemetry/{hierarchy}"
+# pionix_key comes from vault.yml
+
+# ── MQTT — internal EMQX listener (TLS, username/password auth) ─────────────
+
+mqtt_proxy_environment:         "{{ app_environment }}"
+mqtt_broker_host:               emqx-main
+mqtt_broker_port:               "8883"
+mqtt_use_tls:                   "true"
+mqtt_transport:                 tcp
+mqtt_client_id_prefix:          offkey-backend
+mqtt_use_auth:                  "true"
+mqtt_local_proxy_username:      offkey-proxy
+# mqtt_proxy_password comes from vault.yml and is mounted only in mqtt-proxy.
+mqtt_topic_regex:               "^device/evCharger/(?P<charger_id>[^/]+)/(?P<telemetry_type>.+)$"
+mqtt_telemetry_enabled:         "true"
+mqtt_reconnect_delay:           "5"
+mqtt_batch_size:                "100"
+mqtt_max_message_queue_size:    "10000"
+mqtt_batch_timeout:             "5"
+mqtt_worker_threads:            "4"
+mqtt_subscription_qos:          "1"
+mqtt_health_log_reminder_interval: "10"
+mqtt_shutdown_timeout:          "10.0"
+mqtt_graceful_shutdown_timeout: "30.0"
+mqtt_retry_base_delay:          "0.1"
+mqtt_retry_max_delay:           "5.0"
+mqtt_retry_exponential_base:    "2.0"
+mqtt_retry_jitter_enabled:      "true"
+mqtt_retry_jitter_magnitude:    "0.2"
+mqtt_cleanup_interval:          "60.0"
+mqtt_metrics_interval:          "300.0"
+mqtt_health_monitor_interval:   "30.0"
+
+# ── RADAR ─────────────────────────────────────────────────────────────────────
+
+radar_environment:            "{{ app_environment }}"
+radar_mqtt_broker_host:       emqx-main
+radar_mqtt_broker_port:       "8883"
+radar_mqtt_use_tls:           "true"
+radar_mqtt_use_auth:          "true"
+radar_mqtt_username:          offkey-radar
+radar_subscription_topics:    ""  # Managed monitors use catalog UUID topics.
+radar_heuristic_zscore_threshold: "2.0"
+
+# ── TACTIC ───────────────────────────────────────────────────────────────────
+
+tactic_service_name:      tactic-middleware
+tactic_service_version:   "0.1.0"
+tactic_host:              "0.0.0.0"
+tactic_port:              "8001"
+tactic_service_url:       "http://tactic:8001"
+tactic_log_level:         WARNING
+tactic_service_host:      tactic
+tactic_service_port:      "8001"
+tactic_docker_api_url:    "http://socket-proxy"
+tactic_docker_api_port:   "2375"
+tactic_docker_max_concurrent_calls: "5"
+# Fully-qualified Swarm network name (stack name prefix). The compose inline env
+# overrides the env_file value for TACTIC to this, so they must match.
+tactic_docker_default_network:      "off-key_emqx-network"
+tactic_docker_additional_networks:  "off-key_app-network"
+tactic_docker_default_restart_policy: on-failure
+tactic_docker_default_restart_max_attempts: "3"
+tactic_docker_default_memory_limit: 512m
+tactic_docker_default_cpu_limit:    "0.5"
+tactic_radar_default_mqtt_broker_host:      emqx-main
+tactic_radar_default_mqtt_broker_port:      "8883"
+tactic_radar_default_mqtt_use_tls:          "true"
+tactic_radar_default_mqtt_client_id_prefix: radar
+tactic_radar_default_mqtt_use_auth:         "true"
+tactic_radar_default_mqtt_username:         offkey-radar
+tactic_radar_default_mqtt_qos:              "0"
+tactic_radar_default_model_type:            isolation_forest
+tactic_radar_default_batch_size:            "100"
+tactic_radar_default_batch_timeout:         "1.0"
+tactic_radar_default_memory_limit_mb:       "1000"
+tactic_radar_default_checkpoint_interval:   "10000"
+tactic_radar_default_db_write_enabled:      "true"
+tactic_radar_default_db_batch_size:         "50"
+tactic_radar_default_db_batch_timeout:      "2.0"
+tactic_radar_default_health_check_interval: "30.0"
+tactic_radar_default_log_level:             WARNING
+tactic_radar_default_rate_limit_per_minute: "1000"
+
+# ── Dev proxy (disabled in prod) ─────────────────────────────────────────────
+
+
+# ── Simulator (disabled in prod) ──────────────────────────────────────────────
+
+simulator_enabled:          "false"
+simulator_interval_seconds: "1.0"
+simulator_charger_ids:      ""
+simulator_features:         ""
+simulator_value_min:        "0.0"
+simulator_value_max:        "100.0"
+simulator_blip_probability: "0.0"
+simulator_blip_multiplier_min: "1.8"
+simulator_blip_multiplier_max: "2.6"
+
+# ── Ports ─────────────────────────────────────────────────────────────────────
+
+postgres_port: "5432"
+backend_port:  "8000"
+frontend_port: "5173"
+
+# ── DB Sync ──────────────────────────────────────────────────────────────────
+
+sync_hostname:            db-sync
+telemetry_retention_days: "14"
+sync_api_host:            "0.0.0.0"
+sync_api_port:            "8009"
+
+# ── Logging ──────────────────────────────────────────────────────────────────
+
+log_truncate_length:         "200"
+log_file:                    /tmp/service.log
+log_format:                  json
+log_correlation_header:      X-Correlation-ID
+log_redact_pii:              "True"
+log_pii_debug_unmask:        "False"
+log_heartbeat_interval_seconds: "60"
+log_repeat_suppression_seconds: "60"
+enable_request_logging:       "False"
+enable_performance_logging:   "False"
+uvicorn_access_log_level:     WARNING
+sqlalchemy_log_level:         WARNING
+rate_limit_log_level:         WARNING

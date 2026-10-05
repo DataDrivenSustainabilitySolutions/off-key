@@ -4,7 +4,7 @@ This page is the canonical runtime-configuration reference for the tracked envir
 
 ## When to use this page
 
-Use this page when configuring local, cluster, Swarm, or external-ingress deployments.
+Use this page when configuring local Compose or production deployments.
 
 ## Configuration files
 
@@ -12,8 +12,8 @@ Use this page when configuring local, cluster, Swarm, or external-ingress deploy
 | --- | --- | --- |
 | `.env.example` | Tracked local-development template | Commit-safe placeholders only |
 | `.env` | Local Compose and application configuration | Never commit |
-| `.env.ingress.example` | Tracked Swarm ingress template | Commit-safe placeholders only |
-| `.env.ingress.local` | Ingress credentials, upstream, and host state path | Never commit |
+| `infra/ansible/inventories/prod/group_vars/all/vault.yml.example` | Production secret names | Placeholders only |
+| GitHub `production` environment | Encrypted vault, inventory and CI access | Private secrets |
 
 Create the local files from the templates:
 
@@ -21,18 +21,19 @@ Create the local files from the templates:
 
     ```bash
     cp .env.example .env
-    cp .env.ingress.example .env.ingress.local
     ```
 
 === "PowerShell"
 
     ```powershell
     Copy-Item .env.example .env
-    Copy-Item .env.ingress.example .env.ingress.local
     ```
 
 !!! important
     Secret-bearing values are intentionally not reproduced in this documentation. Variable names and validation requirements are safe to document; runtime values belong in ignored files or a production secret store.
+
+Production values are rendered by Ansible from the encrypted vault. See
+[GitHub setup](../operations/github-setup.md) for secret names and access.
 
 ## Secret handling rules
 
@@ -47,7 +48,6 @@ Treat the values of these variables as secrets:
 | `EMQX_DASHBOARD_PASSWORD` | Unique EMQX administrative credential |
 | `EMQX_NODE_COOKIE` | Shared only by trusted nodes in the same EMQX cluster |
 | `MQTT_APIKEY` | Required only when MQTT authentication is enabled |
-| `INGRESS_TS_AUTHKEY` | Bootstrap credential for the Tailscale ingress node |
 
 Generate secrets locally and put the output directly into the intended secret store or ignored environment file:
 
@@ -181,27 +181,14 @@ prevent startup.
 | `ENABLE_REQUEST_LOGGING` | `true` | HTTP request logging toggle |
 | `ENABLE_PERFORMANCE_LOGGING` | `true` | Performance logging toggle |
 
-## Swarm image overrides
+## Production images and collection ingress
 
-The tracked `.env.example` includes commented placeholders for immutable images:
-
-- `API_GATEWAY_IMAGE`
-- `FRONTEND_IMAGE`
-- `MQTT_PROXY_IMAGE`
-- `MQTT_RADAR_IMAGE`
-- `TACTIC_MIDDLEWARE_IMAGE`
-- `DB_SYNC_IMAGE`
-
-Use an immutable release or commit tag. Do not deploy floating development tags when reproducibility matters.
-
-## Ingress overlay
+Production resolves every application image to the digest published from the exact
+tested main commit. Images are recorded in the verified server release; local
+`.env` image overrides do not control production.
 
 | Variable | Default / requirement | Purpose |
 | --- | --- | --- |
-| `INGRESS_TS_AUTH_ONCE` | `true` recommended | Reuse persisted Tailscale state and authenticate only when needed |
-| `INGRESS_TS_AUTHKEY` | Secret; required for first login unless state is pre-seeded | Tailscale bootstrap credential |
-| `INGRESS_TS_EXTRA_ARGS` | `--accept-dns=false` | Extra `tailscale up` flags |
-| `INGRESS_TS_STATE_DIR` | Required host path | Persistent Tailscale state directory on the backend node |
 | `AMBIBOX_INGRESS_ENABLED` | `false` in service defaults; enabled in local/prod deployment | Run the catalog controller |
 | `AMBIBOX_ALLOWED_HOST_SUFFIXES` | `[".ts.net"]` | Broker host allowlist suffixes |
 | `AMBIBOX_ALLOWED_HOSTS` | `["source-broker"]` in local Compose | Explicit additional allowed hosts |

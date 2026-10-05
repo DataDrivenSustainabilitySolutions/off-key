@@ -12,6 +12,7 @@ from pathlib import Path
 import uvicorn
 from fastapi import APIRouter, Depends, FastAPI, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from off_key_core.api_docs import router as api_docs_router
 from off_key_core.config.auth import get_auth_settings
 from off_key_core.config.env import load_env
@@ -23,6 +24,7 @@ from off_key_core.config.logs import (
 from off_key_core.config.service_auth import get_service_auth_settings
 from off_key_core.config.validation import validate_settings
 from off_key_core.db.base import get_async_session_local
+from off_key_core.db.maintenance import DeploymentInProgressError
 from starlette.middleware.gzip import GZipMiddleware
 
 from .api.service_auth import require_gateway
@@ -255,6 +257,10 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
     app.include_router(api_docs_router)
+
+    @app.exception_handler(DeploymentInProgressError)
+    async def deployment_in_progress(request: Request, exc: DeploymentInProgressError):
+        return JSONResponse(status_code=503, content={"detail": str(exc)})
 
     # Add CORS middleware
     app.add_middleware(

@@ -1,0 +1,70 @@
+# Rename to vault.yml and encrypt:
+#   ansible-vault encrypt inventories/prod/group_vars/all/vault.yml
+
+# Dedicated API-to-TACTIC credential: openssl rand -hex 32
+internal_api_secret: "CHANGE_ME_generate_with_openssl_rand_hex_32"
+
+jwt_secret: "CHANGE_ME"
+# Keep a separate value while pre-membership application images are deployed.
+postgres_password: "CHANGE_ME"
+emqx_dashboard_password: "CHANGE_ME"
+# Generate a dedicated CA and a server certificate whose SAN is DNS:emqx-main.
+# Paste PEM files as YAML literal blocks (|), keeping their final newline.
+# Keep the encrypted CA private key offline; only the public CA certificate goes here.
+emqx_ca_cert: |
+  -----BEGIN CERTIFICATE-----
+  TEST_ONLY_REPLACE_WITH_CA_CERTIFICATE
+  -----END CERTIFICATE-----
+emqx_server_cert: |
+  -----BEGIN CERTIFICATE-----
+  TEST_ONLY_REPLACE_WITH_SERVER_CERTIFICATE
+  -----END CERTIFICATE-----
+emqx_server_key: "TEST_ONLY_REPLACE_WITH_SERVER_PRIVATE_KEY_PEM"
+mqtt_proxy_password: "TEST_ONLY_REPLACE_WITH_RANDOM_32_BYTE_PASSWORD"
+mqtt_radar_password: "TEST_ONLY_REPLACE_WITH_DIFFERENT_RANDOM_32_BYTE_PASSWORD"
+radar_checkpoint_secret: "TEST_ONLY_REPLACE_WITH_RANDOM_32_BYTE_SECRET"
+
+# Reusable auth key for the prod management tailnet. The prod inventory maps this to
+# tailscale_os_authkey so new managers/workers can join during provision-prod.
+ingress_ts_authkey: "tskey-auth-CHANGE_ME"
+
+# Token for the EXISTING Cloudflare Tunnel that will serve aberration.app.
+# Dashboard: Networking > Tunnels > select tunnel > Overview > Add a replica.
+# Copy only the eyJ... token from the installation command, not the full command.
+cloudflare_tunnel_token: ""
+
+# ── oauth2-proxy (GitHub OAuth App — one per environment) ─────────────────────
+# Create a GitHub OAuth App (Settings → Developer settings → OAuth Apps). Callback URL for prod:
+#   https://auth.aberration.app/oauth2/callback
+# Cookie secret MUST be exactly 16/24/32 bytes. Generate with:  openssl rand -hex 16  (→ 32 chars).
+# Do NOT use `openssl rand -base64 32` — that is 44 chars, not URL-safe, and oauth2-proxy rejects it.
+oauth2_client_id: "CHANGE_ME"
+oauth2_client_secret: "CHANGE_ME"
+oauth2_cookie_secret: "CHANGE_ME_openssl_rand_hex_16"
+
+# MagicDNS hostname of the vendor MQTT broker on the vendor tailnet, reached via the
+# ambibox SOCKS5 bridge.
+# Broker hosts belong in the UI catalog. Optional on first controller setup:
+# ambibox_mqtt_username: "existing-vendor-username"
+# ambibox_mqtt_password: "existing-vendor-password"
+# Otherwise the deployment reads the existing EMQX AmbiBox connector once.
+
+# Optional vendor auth key to (re)register the ambibox node. Leave EMPTY normally — identity
+# restores from persisted state. Set only for a deliberate re-register, and clear the old
+# tailscaled.state from the NFS export so the key is used.
+tailscale_ambibox_authkey: ""
+
+# Hostname suffix for the prod ambibox node (a cluster/site id). Valid DNS label.
+# Empty → DDSS-prod.
+ambibox_hostname_id: ""
+
+ghcr_username: "your-github-username"
+ghcr_token: "ghp_CHANGE_ME"
+
+# Replace this placeholder with a Resend sending API key in the encrypted vault.
+email_password: "re_xxxxxxxxx"
+superuser_mail: "admin@example.com"
+anomaly_alert_recipients: "admin@example.com"
+
+access_token_expire_minutes: "30"
+algorithm: HS256

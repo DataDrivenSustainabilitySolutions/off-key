@@ -1,0 +1,26 @@
+---
+# Consumes tailscale discovery results; shared with offline configuration checks.
+- name: Require discovered NFS clients
+  assert:
+    that: ambibox_nfs_backend_ips.results | length > 0
+    fail_msg: "The NFS export needs at least one discovered backend address."
+
+- name: Require one valid IPv4 address for every NFS client
+  assert:
+    that:
+      - item.stdout_lines | length == 1
+      - item.stdout | trim is match('^([0-9]{1,3}[.]){3}[0-9]{1,3}$')
+      - item.stdout | trim | split('.') | map('int') | max <= 255
+    fail_msg: >-
+      Cannot determine a single Tailscale IPv4 address for {{ item.item }}.
+      The NFS export has not been changed. Connect every inventory backend
+      to the environment's management tailnet before deploying.
+  loop: "{{ ambibox_nfs_backend_ips.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+- name: Limit the NFS export to the discovered backend addresses
+  set_fact:
+    ambibox_nfs_export_clients: >-
+      {{ ambibox_nfs_backend_ips.results | map(attribute='stdout') | map('trim')
+         | unique | sort | map('regex_replace', '$', '/32') | list }}

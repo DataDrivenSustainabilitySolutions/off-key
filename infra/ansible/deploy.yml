@@ -1,0 +1,44 @@
+---
+- name: Deploy the tested production release
+  hosts: swarm_manager[0]
+  gather_facts: false
+  any_errors_fatal: true
+  tasks:
+    - name: Prepare, migrate, deploy and verify production
+      block:
+        - name: Prepare production stack files and credentials
+          include_role:
+            name: stack_prepare
+            public: true
+
+        - name: Require the manager to host the vendor identity export
+          assert:
+            that: inventory_hostname in groups['ambibox_nfs']
+            fail_msg: The production vendor identity NFS export must be on the manager.
+
+        - name: Prepare the existing shared vendor identity
+          include_role:
+            name: nfs_server
+
+        - name: Seed the exact RADAR image on backend nodes
+          include_role:
+            name: radar_image_seed
+            apply:
+              delegate_to: "{{ backend_node }}"
+          loop: "{{ groups['swarm_backend'] }}"
+          loop_control:
+            loop_var: backend_node
+
+        - name: Submit the production release
+          include_role:
+            name: stack_deploy
+
+        - name: Verify and record the complete production release
+          include_role:
+            name: stack_deploy
+            tasks_from: verify
+      always:
+        - name: Remove temporary manager registry credentials
+          command:
+            argv: [docker, logout, ghcr.io]
+          changed_when: false

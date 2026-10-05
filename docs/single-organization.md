@@ -48,8 +48,8 @@ The server prevents removing the last active, verified administrator.
    Add `--resend` to replace a pending link, including after SMTP delivery failed.
    Other existing-account states require operator recovery and are not modified.
    On Swarm, execute the module inside a TACTIC task. Production infrastructure
-   runs this step automatically after readiness checks; `make invite-admin-prod`
-   in `off-key-infra` explicitly resends the initial invitation.
+   runs this step automatically after readiness checks; `make -C infra invite-admin-prod`
+   explicitly resends the initial invitation with private local recovery configuration.
 
    Without `--send-email`, the command retains its trusted-console behavior: print
    a one-time URL instead of emailing it. Treat that URL as a secret and deliver

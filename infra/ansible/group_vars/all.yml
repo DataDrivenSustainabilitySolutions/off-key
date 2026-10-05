@@ -1,0 +1,31 @@
+---
+# Playbook-adjacent group_vars: loaded for every play in every inventory.
+#
+# Only DERIVED deployment values live here, because playbook group_vars outrank inventory
+# group_vars — anything an inventory must be able to override belongs in the inventory, not
+# in this file. The persist_* toggles themselves are set per inventory (and default to false
+# in roles/persistence_switch/defaults/), which is why every reference below is guarded with
+# default(false) preserves missing toggle semantics in explicit recovery operations.
+#
+# These are needed by stack_prepare and stack_deploy, which cannot see another role's vars/.
+
+persistence_any_enabled: >-
+  {{ (persist_postgres   | default(false) | bool)
+     or (persist_emqx_data | default(false) | bool)
+     or (persist_emqx_log  | default(false) | bool) }}
+
+# One overlay selection for deployment and offline validation.
+stack_compose_files: >-
+  {{ [stack_dir ~ '/docker-compose.swarm.yml',
+      stack_dir ~ '/docker-compose.traefik.yml',
+      stack_dir ~ '/docker-compose.oauth2.yml',
+      stack_dir ~ '/docker-compose.environment.yml']
+     + ([stack_dir ~ '/docker-compose.cloudflared.yml'] if offkey_env == 'prod' else [])
+     + ([stack_dir ~ '/docker-compose.landing.yml'] if offkey_env == 'prod' else [])
+     + ([stack_dir ~ '/docker-compose.mqtt-security.yml'] if offkey_env == 'prod' or (ambibox_ingress_enabled | default(true) | bool) else [])
+     + ([stack_dir ~ '/docker-compose.persistence.yml'] if persistence_any_enabled | bool else []) }}
+
+# NOTE: there is deliberately no static "stateful node" variable here. Volumes are node-local,
+# but which node runs a given service is discovered at run time from `docker service ps`
+# (roles/persistence_switch/tasks/_service_node.yml), so backup/restore follow the task
+# wherever Swarm placed it rather than assuming the first backend.

@@ -1,0 +1,11 @@
+---
+# Day-2 playbook: re-apply Swarm node labels.
+# Run after adding nodes to inventory groups or to repair drifted labels.
+#
+# Prod: ansible-playbook -i inventories/prod update_labels.yml
+
+- name: Apply Swarm node labels
+  hosts: swarm_manager
+  gather_facts: false
+  roles:
+    - swarm_labels

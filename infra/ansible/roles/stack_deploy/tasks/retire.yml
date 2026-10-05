@@ -1,0 +1,25 @@
+---
+- name: List production stack services for retirement
+  command:
+    argv:
+      - docker
+      - service
+      - ls
+      - --format
+      - '{% raw %}{{.Name}}{% endraw %}'
+      - --filter
+      - "label=com.docker.stack.namespace={{ stack_name }}"
+  register: production_stack_services
+  changed_when: false
+  when: offkey_env == 'prod'
+
+# stack deploy keeps removed services; broad --prune could delete runtime workers.
+- name: Remove retired production services
+  command:
+    argv: [docker, service, rm, "{{ stack_name }}_{{ item }}"]
+  loop:
+    - mailpit
+    - tailscale-dev-proxy
+  when:
+    - offkey_env == 'prod'
+    - (stack_name ~ '_' ~ item) in production_stack_services.stdout_lines

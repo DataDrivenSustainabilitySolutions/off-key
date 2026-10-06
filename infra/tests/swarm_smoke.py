@@ -121,13 +121,13 @@ def images(release, revision):
         os.getenv("GITHUB_EVENT_NAME") == "push"
         and os.getenv("GITHUB_REF") == "refs/heads/main"
     ):
-        # Docker Publish runs concurrently. A digest and its full revision label
-        # must exist before this job tests it. No mutable tag reaches deployment.
+        # The workflow has checked Docker Publish's latest attempt for this SHA.
+        # Allow brief registry propagation, then verify each digest's revision.
         for name in sorted(APPLICATION_IMAGES):
             release["images"][name] = wait(
                 lambda name=name: pin(release["images"][name], revision),
                 f"published {name} image",
-                timeout=1200,
+                timeout=60,
             )
         return
 

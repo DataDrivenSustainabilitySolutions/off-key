@@ -44,7 +44,9 @@ failures through trusted SSH and the server-side records, not public log uploads
 Deployment Smoke runs the existing browser and adaptive-monitor journeys against a
 disposable Swarm using the production frontend, TLS/authenticated MQTT and deployment
 tasks. PRs build production images; main tests the published image digests before
-making them eligible for deployment. Synthetic accounts, saved catalog definitions,
+making them eligible for deployment. Main first requires the latest Docker Publish
+attempt for that SHA to succeed; publisher failures are reported directly before
+the disposable Swarm starts. Synthetic accounts, saved catalog definitions,
 telemetry and a running monitor must survive actual database backup/restore and
 repeated deployment, with exactly one restarted monitor and resumed collection.
 

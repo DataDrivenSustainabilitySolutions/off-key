@@ -28,10 +28,12 @@ const ResetPassword = lazy(() => import("@/pages/ResetPassword"));
 const Services = lazy(() => import("@/pages/Services"));
 const Settings = lazy(() => import("@/pages/Settings"));
 const Verification = lazy(() => import("@/pages/Verification"));
+const SpatialLab = lazy(() => import("@/pages/SpatialLab"));
 
 const router = createBrowserRouter(
   createRoutesFromElements(
     <>
+      {import.meta.env.DEV && <Route path="/spatial-lab" element={<SpatialLab />} />}
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Registration />} />
       <Route path="/verify" element={<Verification />} />

@@ -10,6 +10,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
   packages: read
 
 concurrency:
@@ -65,6 +66,13 @@ jobs:
           uv sync --project backend --all-packages --all-groups --frozen
           uv sync --project infra --frozen
 
+      - name: Require successful image publication for this main commit
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        timeout-minutes: 25
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 infra/scripts/wait_for_publish.py "$GITHUB_SHA"
+
       - name: Prepare disposable production Swarm
         timeout-minutes: 35
         run: |
@@ -116,7 +124,7 @@ jobs:
         if: failure()
         run: |
           mkdir -p deployment-smoke-diagnostics
-          docker stack ps --no-trunc offkey-smoke > deployment-smoke-diagnostics/tasks.txt
+          docker stack ps --no-trunc offkey-smoke > deployment-smoke-diagnostics/tasks.txt 2>&1 || true
           for service in $(docker service ls --format '{{.Name}}' --filter label=com.docker.stack.namespace=offkey-smoke); do
             docker service logs --tail 100 "$service" > "deployment-smoke-diagnostics/$service.log" 2>&1 || true
           done

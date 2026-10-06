@@ -1,6 +1,8 @@
 """Single-installation membership and single-use account links."""
 
 import hashlib
+import hmac
+import os
 import secrets
 from datetime import UTC, datetime, timedelta
 
@@ -16,8 +18,14 @@ from ..domain import AuthenticationError, ConflictError, NotFoundError, Validati
 
 
 class MemberService:
+    _TOKEN_HASH_KEY = os.getenv("MEMBER_TOKEN_HASH_KEY", "member-token-hash-key").encode()
+
     def __init__(self, session: AsyncSession):
         self.session = session
+
+    @classmethod
+    def _hash_token(cls, token: str) -> str:
+        return hmac.new(cls._TOKEN_HASH_KEY, token.encode(), hashlib.sha256).hexdigest()
 
     async def _lock_membership(self, actor: User | None = None) -> None:
         await self.session.execute(text("SELECT pg_advisory_xact_lock(73128004)"))
@@ -105,7 +113,7 @@ class MemberService:
             self.session.add(user)
         token = secrets.token_urlsafe(32)
         user.role = invitation.role
-        user.verification_token = hashlib.sha256(token.encode()).hexdigest()
+        user.verification_token = self._hash_token(token)
         user.invitation_expires_at = datetime.now(UTC) + timedelta(hours=48)
         await self.session.commit()
         log_security_event(
@@ -152,9 +160,7 @@ class MemberService:
         await self._lock_membership()
         user = await self.session.scalar(
             select(User)
-            .where(
-                User.verification_token == hashlib.sha256(token.encode()).hexdigest()
-            )
+            .where(User.verification_token == self._hash_token(token))
             .with_for_update()
         )
         if (
@@ -182,7 +188,7 @@ class MemberService:
         if user is None or not user.is_active or not user.is_verified:
             return None
         token = secrets.token_urlsafe(32)
-        user.reset_token_hash = hashlib.sha256(token.encode()).hexdigest()
+        user.reset_token_hash = self._hash_token(token)
         user.reset_token_expires_at = datetime.now(UTC) + timedelta(minutes=30)
         await self.session.commit()
         return {"email": user.email, "token": token}
@@ -190,7 +196,7 @@ class MemberService:
     async def reset_password(self, token: str, password: str) -> None:
         user = await self.session.scalar(
             select(User)
-            .where(User.reset_token_hash == hashlib.sha256(token.encode()).hexdigest())
+            .where(User.reset_token_hash == self._hash_token(token))
             .with_for_update()
         )
         if (

@@ -58,7 +58,7 @@ describe("catalog removal confirmation", () => {
     after.sources[0]!.chargers[0]!.sensors.pop();
     expect(catalogRemovals(before, after)).toEqual(["Charger · power"]);
     after.sources[0]!.chargers = [];
-    expect(catalogRemovals(before, after)).toEqual(["Charger Charger"]);
+    expect(catalogRemovals(before, after)).toEqual(["Entity Charger"]);
     after.sources = [];
     expect(catalogRemovals(before, after)).toEqual(["Broker Yard"]);
   });

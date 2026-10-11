@@ -14,6 +14,11 @@ from .schema import bootstrap_schema, validate_existing_schema
 
 MIGRATION_LOCK = 73128004
 LEDGER = "off_key_schema_migrations"
+SYSTEM_TABLES = {
+    "system_configuration",
+    "system_revisions",
+    "system_collection_configuration",
+}
 
 
 def migration_files() -> dict[str, str]:
@@ -33,17 +38,20 @@ def adopted_versions(connection: Connection, migrations: dict[str, str]) -> list
         if existing - {LEDGER}:
             raise ValueError("Cannot initialize a database containing unknown tables")
         return []
-    if application_tables <= existing:
+    if application_tables - SYSTEM_TABLES <= existing:
         validate_existing_schema(connection)
-        return [
+        adopted = [
             "001_membership.sql",
             "002_monitor_stop_intent.sql",
             "003_deployment_maintenance.sql",
         ]
+        if existing >= SYSTEM_TABLES:
+            adopted.append("004_system_catalogue.sql")
+        return adopted
     baseline = [
         table
         for table in Base.metadata.sorted_tables
-        if table.name != "deployment_maintenance"
+        if table.name not in SYSTEM_TABLES | {"deployment_maintenance"}
     ]
     if not {table.name for table in baseline} <= existing:
         raise ValueError("A reviewed baseline is required for this database")

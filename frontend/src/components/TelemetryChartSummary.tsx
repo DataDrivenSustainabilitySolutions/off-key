@@ -1,10 +1,10 @@
 import { formatChartTime, formatNumber, type TelemetryChartModel } from "@/lib/telemetry-chart";
 
-export function TelemetryChartSummary({ model, timeZone }: { model: TelemetryChartModel; timeZone: string }) {
+export function TelemetryChartSummary({ model, timeZone, showTelemetry = true }: { model: TelemetryChartModel; timeZone: string; showTelemetry?: boolean }) {
   const latestTelemetry = model.telemetry.data[model.telemetry.data.length - 1];
   return (
     <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 border-t border-border/60 pt-3 text-xs text-muted-foreground">
-      {latestTelemetry && (
+      {showTelemetry && latestTelemetry && (
         <span>
           Current {model.telemetry.name}: {latestTelemetry[1]}
           {model.telemetry.unit ? ` ${model.telemetry.unit}` : ""} at{" "}

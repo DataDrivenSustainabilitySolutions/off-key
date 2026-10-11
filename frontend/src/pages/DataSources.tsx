@@ -127,7 +127,7 @@ export default function DataSources() {
     );
     const link = document.createElement("a");
     link.href = url;
-    link.download = "ambibox-catalog.json";
+    link.download = "aberration-catalog.json";
     link.click();
     URL.revokeObjectURL(url);
   };
@@ -137,7 +137,7 @@ export default function DataSources() {
       <>
         <NavigationBar />
         <PageShell>
-          <PageHeader title="Data sources" />
+          <PageHeader title="Sources" />
           <p role={statusError ? "alert" : "status"}>
             {statusError || "Loading catalog…"}
           </p>
@@ -259,8 +259,8 @@ export default function DataSources() {
       if (!selected.size) {
         toast.success(
           live.length
-            ? "All sensors sending live data are already enabled"
-            : `No live readings in ${result.window_seconds} seconds. Try again when chargers are sending data.`,
+            ? "All active readings are already enabled"
+            : `No live readings received in ${result.window_seconds} seconds.`,
         );
         return;
       }
@@ -281,7 +281,7 @@ export default function DataSources() {
       <NavigationBar />
       <PageShell>
         <PageHeader
-          title="Data sources"
+          title="Sources"
           actions={
             <Button variant="outline" onClick={exportCatalog}>
               Export catalog
@@ -311,7 +311,7 @@ export default function DataSources() {
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-card px-4 py-3 text-sm">
           <p>
             <strong>{draft.sources.length} brokers</strong> · {chargers.length}{" "}
-            chargers · {activeCount} of {sensors.length} measurements enabled
+            entities · {activeCount} of {sensors.length} measurements enabled
           </p>
           {!snapshot.can_edit && (
             <p className="text-muted-foreground">
@@ -354,7 +354,7 @@ export default function DataSources() {
             1 to 3600.
           </p>
         )}
-        <div className="sticky bottom-3 z-20 flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-background p-4 shadow-lg">
+        <div className="sticky bottom-3 z-20 flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-background px-4 py-3 shadow-sm">
           <div className="text-sm" role="status">
             <p className="font-medium">
               {changed ? "Unsaved changes" : status}

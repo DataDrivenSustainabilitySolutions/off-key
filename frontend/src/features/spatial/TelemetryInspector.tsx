@@ -1,11 +1,7 @@
 import { useMemo, useState } from "react";
-import {
-  Activity,
-  ArrowUpRight,
-  LockKeyhole,
-  Radio,
-  UnlockKeyhole,
-} from "lucide-react";
+import { Activity, ArrowUpRight, Radio, Box, PlugZap } from "lucide-react";
+import { CatalogObjectDetails } from "./CatalogObjectDetails";
+import { InlineName } from "./InlineName";
 import { EChart } from "@/components/EChart";
 import type { TelemetryChartOption } from "@/lib/telemetry-chart";
 import type { NodeTelemetry, SpatialGroup, SpatialNode } from "./types";
@@ -16,13 +12,17 @@ type Props = {
   groups: SpatialGroup[];
   snapshot: NodeTelemetry | undefined;
   now: number;
-  editMode: boolean;
   isDemo: boolean;
+  isCatalogPreview?: boolean;
+  related?: readonly SpatialNode[];
+  onSelectRelated?: (id: string) => void;
   onGroup: (groupId: string) => void;
-  onLock: () => void;
-  onPosition: (axis: "x" | "z", value: number) => void;
   onRate: (value: number) => void;
   onFocus: () => void;
+  onRename?: (name: string) => Promise<void>;
+  nameEditable?: boolean;
+  nameDisabledReason?: string;
+  nameSaveError?: string;
 };
 
 const number = (value: number) =>
@@ -34,13 +34,17 @@ export function TelemetryInspector({
   groups,
   snapshot,
   now,
-  editMode,
   isDemo,
+  isCatalogPreview,
+  related,
+  onSelectRelated,
   onGroup,
-  onLock,
-  onPosition,
   onRate,
   onFocus,
+  onRename,
+  nameEditable,
+  nameDisabledReason,
+  nameSaveError,
 }: Props) {
   const samples = snapshot?.samples;
   const [viewport, setViewport] = useState<{
@@ -117,39 +121,54 @@ export function TelemetryInspector({
   const age = snapshot?.lastSeen
     ? Math.max(0, Math.floor((now - snapshot.lastSeen) / 1000))
     : null;
-  const pinned = node.locked || !!group?.locked;
 
   return (
     <div className="sp-inspector-content">
       <div className="sp-inspector-identity">
         <span className="sp-object-glyph" style={{ color: group?.color }}>
-          <Radio size={22} />
+          {node.kind === "charger" ? (
+            <PlugZap size={22} />
+          ) : node.kind === "broker" ? (
+            <Box size={22} />
+          ) : (
+            <Radio size={22} />
+          )}
         </span>
         <div>
           <span className="sp-overline">
             {node.kind === "broker"
               ? "MQTT broker"
-              : node.kind === "group"
-                ? "Collection"
-                : "Sensor stream"}
+              : node.kind === "charger"
+                ? "EV charger"
+                : node.kind === "group"
+                  ? "Collection"
+                  : "Sensor stream"}
           </span>
-          <h2>{node.label}</h2>
+          <h2>
+            {onRename ? (
+              <InlineName
+                value={node.label}
+                onSave={onRename}
+                editable={nameEditable}
+                disabledReason={nameDisabledReason}
+                saveError={nameSaveError}
+                ariaLabel="Rename object"
+              />
+            ) : (
+              node.label
+            )}
+          </h2>
+          {isCatalogPreview && node.kind === "sensor" && (
+            <p className="sp-topic-owner">
+              {related?.find((item) => item.kind === "charger")?.label}
+            </p>
+          )}
         </div>
       </div>
       <div className="sp-inspector-actions">
         <button onClick={onFocus}>
           <ArrowUpRight size={14} /> Focus
         </button>
-        {node.kind !== "group" && (
-          <button onClick={onLock} aria-pressed={node.locked}>
-            {node.locked ? (
-              <LockKeyhole size={14} />
-            ) : (
-              <UnlockKeyhole size={14} />
-            )}
-            {node.locked ? "Pinned" : "Pin object"}
-          </button>
-        )}
       </div>
       <section className="sp-reading">
         <div>
@@ -164,7 +183,9 @@ export function TelemetryInspector({
         <span className="sp-freshness">
           <i className={age !== null && age < 10 ? "active" : ""} />
           {age === null
-            ? "Waiting for data"
+            ? isCatalogPreview
+              ? "Catalog only"
+              : "Waiting for data"
             : age === 0
               ? "Just received"
               : `${age}s ago`}
@@ -174,41 +195,70 @@ export function TelemetryInspector({
         <div>
           <span>Arrival rate</span>
           <strong>
-            {snapshot ? number(snapshot.rate) : "0"}
+            {snapshot ? number(snapshot.rate) : isCatalogPreview ? "—" : "0"}
             <small> msg/s</small>
           </strong>
         </div>
         <div>
           <span>Received</span>
-          <strong>{number(snapshot?.received ?? 0)}</strong>
+          <strong>
+            {isCatalogPreview && !snapshot
+              ? "—"
+              : number(snapshot?.received ?? 0)}
+          </strong>
         </div>
       </div>
-      <section className="sp-chart-section">
-        <div className="sp-section-title">
-          <h3>Signal history</h3>
-          <span>
-            {isDemo ? "Simulated · 360 samples max" : "Latest 360 samples"}
-          </span>
+      {isCatalogPreview ? (
+        <div className="sp-catalog-waiting">
+          <Activity size={19} />
+          <strong>
+            {node.kind === "sensor" && node.catalog?.valueType === "number"
+              ? "Ready for a real signal."
+              : "Definition, ready to connect."}
+          </strong>
+          <p>
+            {node.kind !== "sensor"
+              ? "Explore the exact topic definitions below. No readings or message rates are simulated for this catalog."
+              : node.catalog?.valueType !== "number"
+                ? "This topic carries a state, text, or identifier. It will use a value view rather than a numeric line chart."
+                : "A chart will appear when live measurements are connected. No readings or message rates are simulated for this catalog."}
+          </p>
         </div>
-        <EChart
-          onViewportChange={(startValue, endValue) =>
-            setViewport({ startValue, endValue })
-          }
-          option={option}
-          resolvedTheme="light"
-          accessibleDescription={`${node.label} ${node.metric} in ${node.unit} over time. Scroll to zoom the chart.`}
-          className="sp-inspector-chart"
+      ) : (
+        <section className="sp-chart-section">
+          <div className="sp-section-title">
+            <h3>Signal history</h3>
+            <span>
+              {isDemo ? "Simulated · 360 samples max" : "Latest 360 samples"}
+            </span>
+          </div>
+          <EChart
+            onViewportChange={(startValue, endValue) =>
+              setViewport({ startValue, endValue })
+            }
+            option={option}
+            resolvedTheme="light"
+            accessibleDescription={`${node.label} ${node.metric} in ${node.unit} over time. Scroll to zoom the chart.`}
+            className="sp-inspector-chart"
+          />
+          <div className="sp-chart-hint">
+            {viewport ? (
+              <button onClick={() => setViewport(null)}>
+                Return to live range ↗
+              </button>
+            ) : (
+              "Scroll to zoom · drag the range below"
+            )}
+          </div>
+        </section>
+      )}
+      {node.catalog && (
+        <CatalogObjectDetails
+          node={node}
+          related={related ?? []}
+          onSelect={onSelectRelated ?? (() => {})}
         />
-        <div className="sp-chart-hint">
-          {viewport ? (
-            <button onClick={() => setViewport(null)}>
-              Return to live range ↗
-            </button>
-          ) : (
-            "Scroll to zoom · drag the range below"
-          )}
-        </div>
-      </section>
+      )}
       {isDemo && node.kind === "sensor" && (
         <section className="sp-cadence">
           <label htmlFor="sp-cadence">
@@ -230,7 +280,7 @@ export function TelemetryInspector({
         </section>
       )}
       <section className="sp-placement">
-        <h3>Placement</h3>
+        <h3>Organization</h3>
         <label htmlFor="sp-node-group">Collection</label>
         <select
           id="sp-node-group"
@@ -244,43 +294,12 @@ export function TelemetryInspector({
             </option>
           ))}
         </select>
-        <div className="sp-coordinate-fields">
-          {(["x", "z"] as const).map((axis) => (
-            <label key={axis}>
-              {axis.toUpperCase()}
-              <input
-                aria-label={`${axis.toUpperCase()} position`}
-                type="number"
-                step="0.5"
-                value={Number(node.position[axis].toFixed(1))}
-                disabled={!editMode || pinned || node.kind === "group"}
-                onChange={(event) => {
-                  const value = Number(event.target.value);
-                  if (
-                    event.target.value &&
-                    Number.isFinite(value) &&
-                    Math.abs(value) <= 1000
-                  )
-                    onPosition(axis, value);
-                }}
-              />
-            </label>
-          ))}
-        </div>
-        <p>
-          {group?.locked
-            ? "This collection is locked. Unlock it to arrange members."
-            : pinned
-              ? "Pinned objects keep their position when arranging a collection."
-              : editMode
-                ? "Drag this object on the plane, or use arrow keys after selecting it."
-                : "Enable Arrange to move objects. Inspection stays available."}
-        </p>
+        <p>Collections organize the view. Object positions are automatic.</p>
       </section>
       <p className="sp-draft-note">
         <Activity size={14} />
-        This draft previews telemetry and layout. Detection evidence will use
-        the application's existing charts when connected.
+        This draft previews telemetry. Detection evidence will use the
+        application's existing charts when connected.
       </p>
     </div>
   );

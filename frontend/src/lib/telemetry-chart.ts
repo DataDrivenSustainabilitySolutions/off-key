@@ -7,7 +7,7 @@ import type {
   LegendComponentOption,
   TooltipComponentOption,
 } from "echarts/components";
-import type { ComposeOption } from "echarts/core";
+import { color as chartColor, type ComposeOption } from "echarts/core";
 import { buildDetectionSeriesOption } from "@/lib/telemetry-detection-series";
 
 import type { AnomalyMarker, RedZone } from "@/lib/anomaly-utils";
@@ -139,6 +139,8 @@ interface BuildTelemetryChartOptionInput {
   colors: ChartThemeColors;
   accessibleDescription: string;
   locale?: string;
+  layout?: "standard" | "compact";
+  valueType?: "number" | "boolean";
 }
 
 const dateTimeFormatters = new Map<string, Intl.DateTimeFormat>();
@@ -348,13 +350,16 @@ const axisLabelFormatterCache = new Map<string, (value: number) => string>();
 const axisLabelFormatter = (
   timeZone: string,
   locale?: string,
+  timeOnly = false,
 ): ((value: number) => string) => {
-  const key = `${timeZone}\u0000${locale === undefined ? "\u0000" : locale}`;
+  const key = `${timeZone}\u0000${locale === undefined ? "\u0000" : locale}\u0000${timeOnly}`;
   const cached = axisLabelFormatterCache.get(key);
   if (cached) return cached;
   const date = new Intl.DateTimeFormat(locale, { timeZone, month: "short", day: "2-digit" });
-  const time = new Intl.DateTimeFormat(locale, { timeZone, hour: "2-digit", minute: "2-digit", second: "2-digit" });
-  const formatter = (value: number) => `${date.format(Number(value))}\n${time.format(Number(value))}`;
+  const time = new Intl.DateTimeFormat(locale, { timeZone, hour: "2-digit", minute: "2-digit", second: "2-digit",
+    ...(timeOnly ? { hourCycle: "h23" as const } : {}) });
+  const formatter = (value: number) => timeOnly ? time.format(Number(value))
+    : `${date.format(Number(value))}\n${time.format(Number(value))}`;
   axisLabelFormatterCache.set(key, formatter);
   return formatter;
 };
@@ -367,7 +372,10 @@ export const buildTelemetryChartOption = ({
   colors,
   accessibleDescription,
   locale,
+  layout = "standard",
+  valueType = "number",
 }: BuildTelemetryChartOptionInput): TelemetryChartOption => {
+  const compact = layout === "compact";
   const hasStaticPane = model.secondarySeries.some((series) => series.pane === "static");
   const hasAdaptivePane = model.secondarySeries.some((series) => series.pane === "adaptive");
   const panes = [
@@ -387,7 +395,13 @@ export const buildTelemetryChartOption = ({
     return extent ? [Math.min(extent[0], value), Math.max(extent[1], value)] : [value, value];
   }, undefined);
 
-  const grid: GridComponentOption[] = panes.length === 1
+  const grid: GridComponentOption[] = compact
+    ? panes.map((_, index) => ({
+        left: 44, right: 16,
+        top: index === 0 ? 22 : 242 + (index - 1) * 164,
+        ...(panes.length === 1 ? { bottom: 76 } : { height: index === 0 ? 164 : 112 }),
+      }))
+    : panes.length === 1
     ? [{ left: 68, right: 40, top: 58, bottom: 84 }]
     : panes.length === 2
       ? [
@@ -402,7 +416,7 @@ export const buildTelemetryChartOption = ({
   const axisLabel = {
     color: colors.mutedForeground,
     fontSize: 11,
-    formatter: axisLabelFormatter(timeZone, locale),
+    formatter: axisLabelFormatter(timeZone, locale, compact),
     hideOverlap: true,
     alignMinLabel: "left" as const,
     alignMaxLabel: "right" as const,
@@ -411,15 +425,18 @@ export const buildTelemetryChartOption = ({
     id: `${panes[index]}-time`,
     type: "time" as const,
     gridIndex: index,
+    ...(compact ? { splitNumber: 4 } : {}),
     min: domain?.[0],
     max: domain?.[1],
     axisLabel: index < panes.length - 1 ? { show: false } : axisLabel,
     axisLine: { lineStyle: { color: colors.border } },
     axisTick: { show: false },
     splitLine: { show: false },
-    axisPointer: { show: true, snap: false },
+    axisPointer: { show: true, snap: false,
+      ...(compact ? { label: { formatter: (params: { value: number | string | Date }) => axisLabelFormatter(timeZone, locale, true)(Number(params.value)) } } : {}),
+    },
     name:
-      index === panes.length - 1 ? `Local time (${timeZone})` : undefined,
+      !compact && index === panes.length - 1 ? `Local time (${timeZone})` : undefined,
     nameLocation: "middle" as const,
     nameGap: 35,
     nameTextStyle: { color: colors.mutedForeground, fontSize: 11 },
@@ -439,8 +456,10 @@ export const buildTelemetryChartOption = ({
     yAxisIndex: 0,
     data: model.telemetry.data,
     smooth: false,
-    step: false,
-    showSymbol: false,
+    step: valueType === "boolean" ? "end" : false,
+    showSymbol: model.telemetry.data.length === 1,
+    symbolSize: 5,
+    ...(valueType === "number" ? { sampling: "lttb" } : {}),
     connectNulls: false,
     lineStyle: { color: model.telemetry.color, width: 2.25 },
     itemStyle: { color: model.telemetry.color },
@@ -495,11 +514,12 @@ export const buildTelemetryChartOption = ({
   );
 
   return {
+    backgroundColor: "transparent",
     animation: false,
     aria: { enabled: true, description: accessibleDescription },
     color: [model.telemetry.color, ...model.secondarySeries.map(({ color }) => color)],
     grid: grid.map((pane) => ({ ...pane, outerBoundsMode: "none" })),
-    legend: {
+    legend: compact ? { show: false } : {
       id: "telemetry-legend",
       type: "scroll",
       top: 10,
@@ -535,8 +555,10 @@ export const buildTelemetryChartOption = ({
         type: "value",
         scale: true,
         boundaryGap: ["10%", "10%"],
+        ...(valueType === "boolean" ? { scale: false, min: 0, max: 1, interval: 1 } : {}),
+        ...(compact ? { splitNumber: 4 } : {}),
         gridIndex: 0,
-        name: model.telemetry.unit
+        name: compact ? model.telemetry.unit : model.telemetry.unit
           ? `${model.telemetry.name} (${model.telemetry.unit})`
           : model.telemetry.name,
         nameTextStyle: { color: colors.mutedForeground, fontSize: 11, align: "left" as const },
@@ -580,7 +602,8 @@ export const buildTelemetryChartOption = ({
               gridIndex: panes.indexOf("adaptive"),
               name: "Adaptive anomaly score",
               nameTextStyle: { color: colors.mutedForeground, fontSize: 11, align: "left" as const },
-              axisLabel: { color: colors.mutedForeground, fontSize: 11 },
+              axisLabel: { color: colors.mutedForeground, fontSize: 11,
+                formatter: (value: number) => formatNumber(Number(value)), hideOverlap: true },
               axisLine: { show: false },
               axisTick: { show: false },
               splitLine: { lineStyle: { color: colors.border, type: "dashed" as const } },
@@ -592,10 +615,12 @@ export const buildTelemetryChartOption = ({
       {
         id: "telemetry-inside-zoom",
         type: "inside",
+        ...(compact ? { throttle: 50 } : {}),
         xAxisIndex: xAxisIndices,
         filterMode: "none",
+        ...(domain ? { rangeMode: ["value", "value"] as ["value", "value"] } : {}),
         zoomOnMouseWheel: "ctrl",
-        moveOnMouseWheel: true,
+        moveOnMouseWheel: compact ? "shift" : true,
         moveOnMouseMove: true,
         preventDefaultMouseMove: true,
         ...dataZoomRange,
@@ -603,14 +628,22 @@ export const buildTelemetryChartOption = ({
       {
         id: "telemetry-slider-zoom",
         type: "slider",
+        ...(compact ? { throttle: 50, moveHandleSize: 0 } : {}),
         xAxisIndex: xAxisIndices,
         filterMode: "none",
+        ...(domain ? { rangeMode: ["value", "value"] as ["value", "value"] } : {}),
         bottom: 8,
-        height: 18,
+        height: compact ? 26 : 18,
         showDetail: false,
         borderColor: colors.border,
         backgroundColor: colors.muted,
-        fillerColor: "rgba(15, 159, 142, 0.18)",
+        fillerColor: chartColor.modifyAlpha(colors.primary, 0.1) ?? colors.muted,
+        handleStyle: { color: colors.popover, borderColor: colors.primary, borderWidth: 1 },
+        moveHandleStyle: { color: colors.border },
+        emphasis: {
+          handleStyle: { color: colors.popover, borderColor: colors.primary },
+          moveHandleStyle: { color: colors.primary },
+        },
         dataBackground: {
           lineStyle: { color: colors.mutedForeground },
           areaStyle: { color: colors.muted },

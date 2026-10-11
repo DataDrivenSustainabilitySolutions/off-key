@@ -1,9 +1,17 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 
-type Props = { open: boolean; onOpenChange: (open: boolean) => void };
+type Props = {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  configuredSystem?: boolean;
+};
 
-export function SpatialHelp({ open, onOpenChange }: Props) {
+export function SpatialHelp({
+  open,
+  onOpenChange,
+  configuredSystem = false,
+}: Props) {
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Overlay className="sp-help-backdrop">
@@ -26,26 +34,40 @@ export function SpatialHelp({ open, onOpenChange }: Props) {
             <dd>
               Scroll to zoom. Drag empty space to pan; right-drag to orbit.
             </dd>
-            <dt>Arrange</dt>
-            <dd>Enable Arrange, then drag objects or collection tiles.</dd>
-            <dt>Pin</dt>
+            <dt>Automatic layout</dt>
             <dd>
-              Pin objects or lock a whole collection to preserve its placement.
+              Objects are placed automatically from the system structure. Use
+              groups and search to focus on what matters.
             </dd>
             <dt>Keyboard</dt>
             <dd>
-              Arrow keys move selected objects. Shift moves further. F focuses.
-              Escape closes. ⌘/Ctrl Z undoes.
+              {configuredSystem
+                ? "Click a title to rename it. Enter or clicking elsewhere saves; Escape cancels."
+                : "F focuses the selected object. Escape closes the selection."}
             </dd>
+            {configuredSystem && (
+              <>
+                <dt>Connect</dt>
+                <dd>
+                  Connect listens to the saved MQTT topics. Select a stream
+                  for real values and its recent chart. Pulses sample fresh
+                  arrivals; counters include every delivery. Preview data stays
+                  in memory. Disconnect, edit the saved system, or leave the tab
+                  to release the connection. Members can view an administrator's
+                  active preview.
+                </dd>
+              </>
+            )}
             <dt>Keep your place</dt>
             <dd>
-              Camera, layout, groups, and locks save automatically. Save named
+              Camera and groups save automatically on this browser. Save named
               perspectives in preferences.
             </dd>
             <dt>Performance</dt>
             <dd>
-              Try 250 or 1,000 streams in preferences. Economy caps resolution
-              and frame rate. Hidden tabs stop rendering.
+              {configuredSystem
+                ? "The scene renders on demand while idle. Economy caps resolution and frame rate. Hidden tabs stop rendering."
+                : "Try 250 or 1,000 streams in preferences. Economy caps resolution and frame rate. Hidden tabs stop rendering."}
             </dd>
           </dl>
           <button

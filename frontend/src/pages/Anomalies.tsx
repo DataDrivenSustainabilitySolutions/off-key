@@ -1,7 +1,7 @@
 import { useAuth } from "@/auth/AuthContext";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { RefreshCw, Trash2 } from "lucide-react";
+import { RefreshCw } from "lucide-react";
 import toast from "react-hot-toast";
 
 import {
@@ -134,14 +134,13 @@ export default function AnomalyTable() {
             tone={data.length > 0 ? "warning" : "default"}
           />
           <MetricCard
-            label="Affected chargers"
+            label="Affected entities"
             value={affectedChargers}
             tone="info"
           />
           <MetricCard
             label="p-values"
             value={probabilityValueCount}
-            help="Events reported with tail or conformal p-values."
           />
         </div>
 
@@ -152,7 +151,7 @@ export default function AnomalyTable() {
         ) : null}
 
         <SectionPanel
-          title="Fleet Anomalies"
+          title="Events"
           description={
             isLoading
               ? "Loading anomalies..."
@@ -163,11 +162,11 @@ export default function AnomalyTable() {
           <Table>
             <TableHeader>
               <TableRow className="bg-muted/30 hover:bg-muted/30">
-                <TableHead>Charger ID</TableHead>
+                <TableHead>Entity</TableHead>
                 <TableHead>Timestamp</TableHead>
-                <TableHead>Telemetry Type</TableHead>
-                <TableHead>Sensors</TableHead>
-                <TableHead>Anomaly Type</TableHead>
+                <TableHead>Reading</TableHead>
+                <TableHead>Readings</TableHead>
+                <TableHead>Type</TableHead>
                 <TableHead>Signal</TableHead>
                 <TableHead className="text-right">Delete</TableHead>
               </TableRow>
@@ -232,13 +231,12 @@ export default function AnomalyTable() {
                     <TableCell className="text-right">
                       {isAdmin && <Button
                         type="button"
-                        variant="ghost"
-                        size="icon"
+                        variant="destructive"
+                        size="sm"
                         onClick={() => handleDelete(anomaly)}
                         aria-label="delete"
-                        className="text-destructive hover:text-destructive"
                       >
-                        <Trash2 className="h-4 w-4" />
+                        Delete
                       </Button>}
                     </TableCell>
                   </TableRow>

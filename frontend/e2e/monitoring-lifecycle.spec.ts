@@ -30,7 +30,7 @@ test.describe("monitoring lifecycle smoke", () => {
       await page.reload();
 
       await expect(
-        page.getByRole("heading", { name: `Charger ${chargerId}` }),
+        page.getByRole("heading", { name: `Monitoring · Charger ${chargerId}` }),
       ).toBeVisible();
 
       await page.getByRole("combobox").first().selectOption("direct_patterns");

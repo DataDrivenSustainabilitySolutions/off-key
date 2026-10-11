@@ -1,5 +1,6 @@
-import { Layers, LockKeyhole, Trash2, UnlockKeyhole } from "lucide-react";
-import type { SpatialGroup, SpatialWorkspace } from "./types";
+import { PlugZap, Layers, Trash2 } from "lucide-react";
+import type { SpatialGroup, SpatialWorkspace, SpatialNode } from "./types";
+import { InlineName } from "./InlineName";
 
 type Props = {
   group: SpatialGroup;
@@ -7,6 +8,14 @@ type Props = {
   onChange: (workspace: SpatialWorkspace) => void;
   memberCount?: number;
   rate?: number;
+  previewOnly?: boolean;
+  members?: readonly SpatialNode[];
+  onSelectMember?: (id: string) => void;
+  onRename?: (name: string) => Promise<void>;
+  nameEditable?: boolean;
+  nameDisabledReason?: string;
+  nameValue?: string;
+  nameSaveError?: string;
 };
 
 export function CollectionInspector({
@@ -15,6 +24,14 @@ export function CollectionInspector({
   onChange,
   memberCount,
   rate,
+  previewOnly,
+  members,
+  onSelectMember,
+  onRename,
+  nameEditable,
+  nameDisabledReason,
+  nameValue,
+  nameSaveError,
 }: Props) {
   const update = (changes: Partial<SpatialGroup>) =>
     onChange({
@@ -33,7 +50,20 @@ export function CollectionInspector({
       <span className="sp-object-glyph" style={{ color: group.color }}>
         <Layers size={24} />
       </span>
-      <h2>{group.name}</h2>
+      <h2>
+        {onRename ? (
+          <InlineName
+            value={nameValue ?? group.name}
+            onSave={onRename}
+            editable={nameEditable}
+            disabledReason={nameDisabledReason}
+            saveError={nameSaveError}
+            ariaLabel="Rename charger"
+          />
+        ) : (
+          group.name
+        )}
+      </h2>
       {(memberCount !== undefined || rate !== undefined) && (
         <div className="sp-inspector-metrics">
           <div>
@@ -53,18 +83,38 @@ export function CollectionInspector({
           </div>
         </div>
       )}
-      <label>
-        Collection name
-        <input
-          aria-label="Collection name"
-          value={group.name}
-          maxLength={40}
-          onChange={(event) => update({ name: event.target.value })}
-          onBlur={() => {
-            if (!group.name.trim()) update({ name: "Untitled collection" });
-          }}
-        />
-      </label>
+      {previewOnly && (
+        <>
+          <p>Exact imported catalog. No live broker connection is open.</p>
+          {members
+            ?.filter((node) => node.kind === "charger")
+            .map((node) => (
+              <button
+                key={node.id}
+                className="sp-wide-button"
+                onClick={() => onSelectMember?.(node.id)}
+              >
+                <PlugZap size={15} />
+                Open charger ·{" "}
+                {members.filter((item) => item.kind === "sensor").length} topics
+              </button>
+            ))}
+        </>
+      )}
+      {!onRename && (
+        <label>
+          Collection name
+          <input
+            aria-label="Collection name"
+            value={group.name}
+            maxLength={40}
+            onChange={(event) => update({ name: event.target.value })}
+            onBlur={() => {
+              if (!group.name.trim()) update({ name: "Untitled collection" });
+            }}
+          />
+        </label>
+      )}
       <label className="sp-color-field">
         Collection colour
         <input
@@ -80,22 +130,14 @@ export function CollectionInspector({
       </p>
       <button
         className="sp-wide-button"
-        aria-pressed={group.locked}
-        onClick={() => update({ locked: !group.locked })}
-      >
-        {group.locked ? <UnlockKeyhole size={15} /> : <LockKeyhole size={15} />}
-        {group.locked ? "Unlock collection" : "Lock collection"}
-      </button>
-      <button
-        className="sp-wide-button"
         aria-expanded={!group.collapsed}
         onClick={() => update({ collapsed: !group.collapsed })}
       >
         {group.collapsed ? "Expand collection" : "Collapse collection"}
       </button>
       <p>
-        Drag the collection tile in Arrange mode to move it. Individually pinned
-        members stay in place.
+        Object positions are automatic. Collections organize the view without
+        changing data routes.
       </p>
       {canDelete && (
         <button

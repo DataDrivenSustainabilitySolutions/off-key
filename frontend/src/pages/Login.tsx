@@ -35,6 +35,10 @@ const Login: React.FC = () => {
   const [passwordError, setPasswordError] = useState<string | undefined>();
   const navigate = useNavigate();
   const { login } = useAuth();
+  const configuredAdminEmail = import.meta.env.VITE_LOCAL_ADMIN_EMAIL?.trim();
+  const localAdminEmail = ["127.0.0.1", "localhost", "[::1]", "::1"].includes(globalThis.location.hostname)
+    && configuredAdminEmail && validateEmail(configuredAdminEmail).isValid
+    ? configuredAdminEmail : undefined;
   // Removed sync functions - frontend is now a viewer only
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -46,7 +50,8 @@ const Login: React.FC = () => {
     setMessage("");
 
     // Validate inputs
-    const emailValidation = validateEmail(email);
+    const loginEmail = localAdminEmail && email.trim() === "admin" ? localAdminEmail : email;
+    const emailValidation = validateEmail(loginEmail);
 
     if (!emailValidation.isValid) {
       setEmailError(emailValidation.message);
@@ -60,7 +65,7 @@ const Login: React.FC = () => {
 
     try {
       // Sanitize inputs before sending
-      const sanitizedEmail = sanitizeInput(email);
+      const sanitizedEmail = sanitizeInput(loginEmail);
       const sanitizedPassword = password; // Don't sanitize password as it might contain special chars
       const response = await fetch(getApiUrl(API_CONFIG.ENDPOINTS.AUTH.LOGIN), {
         method: "POST",
@@ -100,8 +105,10 @@ const Login: React.FC = () => {
           </Label>
           <Input
             id="email"
-            type="email"
+            type={localAdminEmail ? "text" : "email"}
             placeholder="Email"
+            inputMode="email"
+            autoComplete="username"
             value={email}
             onChange={(e) => {
               setEmail(e.target.value);
@@ -117,35 +124,38 @@ const Login: React.FC = () => {
           )}
         </div>
 
-        <div className="relative">
+        <div>
           <Label htmlFor="password" className={AUTH_LABEL_CLASS}>
             Password
           </Label>
+          <div className="relative">
           <Input
             id="password"
             type={showPassword ? "text" : "password"}
+            autoComplete="current-password"
             placeholder="Password"
             value={password}
             onChange={(e) => {
               setPassword(e.target.value);
               if (passwordError) setPasswordError(undefined);
             }}
-            className={passwordError ? 'pr-10 border-destructive' : 'pr-10'}
+            className={passwordError ? 'pr-12 border-destructive' : 'pr-12'}
             aria-invalid={Boolean(passwordError)}
             aria-describedby={passwordError ? 'password-error' : undefined}
             required
           />
-          {passwordError && (
-            <p id="password-error" className="text-sm text-destructive mt-1 mr-10">{passwordError}</p>
-          )}
           <button
             type="button"
-            className="absolute right-3 top-9 text-muted-foreground transition-colors hover:text-foreground"
+            className="absolute inset-y-0 right-0 flex w-11 items-center justify-center rounded-r-md text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/25"
             onClick={() => setShowPassword(!showPassword)}
             aria-label={showPassword ? "Hide password" : "Show password"}
           >
             {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
           </button>
+          </div>
+          {passwordError && (
+            <p id="password-error" className="text-sm text-destructive mt-1">{passwordError}</p>
+          )}
         </div>
 
         <div className="flex items-center space-x-2 text-sm">
@@ -188,11 +198,6 @@ const Login: React.FC = () => {
           >
             Forgot password?
           </Link>
-        </div>
-        <div className="text-xs mt-4 text-center">
-          <p>
-            Ask your administrator for an invitation.
-          </p>
         </div>
       </form>
     </AuthLayout>

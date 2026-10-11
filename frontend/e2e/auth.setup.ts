@@ -18,15 +18,10 @@ setup(
       process.env.SUPERUSER_MAIL ?? "admin@example.com",
     );
 
-    await expect(page.getByPlaceholder(/search by charger id/i)).toBeVisible();
-    await expect(page.getByLabel(/all/i)).toBeVisible();
-    await expect(page.getByLabel(/online/i)).toBeVisible();
-    await expect(page.getByLabel(/offline/i)).toBeVisible();
-    await expect(page.getByRole("switch")).toBeVisible();
-    await expect(page.getByRole("link", { name: "aberration", exact: true })).toBeVisible();
-    await expect
-      .poll(async () => page.getByText(/loading data/i).count())
-      .toBe(0);
+    await expect(page.getByRole("heading", { name: "Monitoring", exact: true })).toBeVisible();
+    await expect(page.getByRole("searchbox", { name: "Search catalogue", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Application menu", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "No monitoring services", exact: true })).toBeVisible();
 
     const sessionState = await page.evaluate(() => ({
       localAuthToken: localStorage.getItem("auth_token"),

@@ -77,13 +77,9 @@ test.describe("device topic ingress", () => {
         })
         .toBe(true);
 
-      await page.reload();
-      await expect(
-        page.locator(`a[href="/details/${chargerId}"]`).first(),
-      ).toBeVisible();
       await page.goto(`/details/${chargerId}`);
       await expect(
-        page.getByRole("heading", { name: `Charger ${chargerId}` }),
+        page.getByRole("heading", { name: `Entity ${chargerId}` }),
       ).toBeVisible();
 
       for (const title of [

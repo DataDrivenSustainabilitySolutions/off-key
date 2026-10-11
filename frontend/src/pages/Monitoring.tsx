@@ -16,7 +16,9 @@ import { useAuth } from "@/auth/AuthContext";
 import { Activity, Database } from "lucide-react";
 import { useMemo, useState } from "react";
 import toast from "react-hot-toast";
-import { useParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
+import { useSystemDocument } from "@/features/spatial/useSystemDocument";
+import { Button } from "@/components/ui/button";
 
 import { buildSensorClaims, mqttFiltersOverlap } from "./monitoring/config";
 import { AdaptiveMonitoringSetup } from "./monitoring/AdaptiveMonitoringSetup";
@@ -27,11 +29,23 @@ import { useMonitoringData } from "./monitoring/useMonitoringData";
 
 function Monitoring() {
   const { chargerId = "" } = useParams<{ chargerId: string }>();
-  return <ChargerMonitoring key={chargerId} chargerId={chargerId} />;
+  const [params] = useSearchParams();
+  const initialReading = params.get("reading") ?? undefined;
+  return <ChargerMonitoring key={`${chargerId}:${initialReading ?? ""}`} chargerId={chargerId} initialReading={initialReading} />;
 }
 
-function ChargerMonitoring({ chargerId }: { chargerId: string }) {
-  const { isAdmin } = useAuth();
+function ChargerMonitoring({ chargerId, initialReading }: { chargerId: string; initialReading?: string }) {
+  const { isAdmin, isAuthenticated, userId } = useAuth();
+  const catalogue = useSystemDocument({ isAuthenticated, accountKey: userId });
+  const sensorLabels = useMemo(() => new Map((catalogue.document?.streams ?? []).flatMap((stream) => {
+    const binding = catalogue.snapshot?.runtime.bindings?.[stream.id];
+    return binding?.entity_id === chargerId ? [[binding.telemetry_key, stream.label] as const] : [];
+  })), [catalogue.document, catalogue.snapshot, chargerId]);
+  const entityName = useMemo(() => {
+    const stream = catalogue.document?.streams.find((item) => catalogue.snapshot?.runtime.bindings?.[item.id]?.entity_id === chargerId);
+    return catalogue.document?.devices.find((item) => item.id === stream?.device_id)?.label
+      ?? catalogue.document?.connections.find((item) => item.id === stream?.connection_id)?.label;
+  }, [catalogue.document, catalogue.snapshot, chargerId]);
   const data = useMonitoringData(chargerId);
   const sensorTypes = data.sensors.data;
   const models = data.models.data;
@@ -96,16 +110,20 @@ function ChargerMonitoring({ chargerId }: { chargerId: string }) {
       <NavigationBar />
       <PageShell>
         <PageHeader
-          eyebrow="Monitoring"
-          title={`Charger ${chargerId}`}
+          title={`Monitoring · ${entityName ?? chargerId}`}
+          actions={
+            <Button variant="ghost" asChild>
+              <Link to="/entities">Entities</Link>
+            </Button>
+          }
         />
         <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
           <MetricCard
-            label="Sensors"
+            label="Readings"
             value={sensorTypes.length}
           />
           <MetricCard
-            label="Unassigned sensors"
+            label="Available readings"
             value={sensorTypes.length - claimsBySensor.size}
             tone="info"
           />
@@ -124,21 +142,21 @@ function ChargerMonitoring({ chargerId }: { chargerId: string }) {
         {isAdmin && <>
         <SectionPanel title="Monitoring mode">
           <div className="grid gap-4 lg:grid-cols-2">
-            <LaneCard title="Static relationships" description="A fixed baseline with calibrated, sequential evidence." selected={selectedLane === "static_baseline"} onSelect={() => setSelectedLane("static_baseline")} icon={Database} />
-            <LaneCard title="Adaptive streams" description="A model that adapts to new data, with a fixed alarm threshold." selected={selectedLane === "adaptive_stream"} onSelect={() => setSelectedLane("adaptive_stream")} icon={Activity} />
+            <LaneCard title="Static baseline" selected={selectedLane === "static_baseline"} onSelect={() => setSelectedLane("static_baseline")} icon={Database} />
+            <LaneCard title="Adaptive stream" selected={selectedLane === "adaptive_stream"} onSelect={() => setSelectedLane("adaptive_stream")} icon={Activity} />
           </div>
         </SectionPanel>
 
         {selectedLane === "static_baseline" ? (
-          <StaticMonitoringSetup chargerId={chargerId} sensorTypes={sensorTypes} claimsBySensor={claimsBySensor} staticModels={staticModels} loadingModels={loadingModels} onStarted={loadServices} />
+          <StaticMonitoringSetup chargerId={chargerId} sensorTypes={sensorTypes} claimsBySensor={claimsBySensor} staticModels={staticModels} loadingModels={loadingModels} onStarted={loadServices} initialReading={initialReading} sensorLabels={sensorLabels} />
         ) : (
-          <AdaptiveMonitoringSetup chargerId={chargerId} sensorTypes={sensorTypes} claimsBySensor={claimsBySensor} adaptiveModels={adaptiveModels} loadingModels={loadingModels} onStarted={loadServices} />
+          <AdaptiveMonitoringSetup chargerId={chargerId} sensorTypes={sensorTypes} claimsBySensor={claimsBySensor} adaptiveModels={adaptiveModels} loadingModels={loadingModels} onStarted={loadServices} initialReading={initialReading} sensorLabels={sensorLabels} />
         )}
 
         </>}
 
         <MonitoringDataPanels
-          services={services}
+          services={chargerServices}
           anomalies={anomalies}
           loadingServices={loadingServices}
           loadingAnomalies={loadingAnomalies}

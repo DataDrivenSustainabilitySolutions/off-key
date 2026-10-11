@@ -384,8 +384,8 @@ test.describe("Tandem anomaly chart regression", () => {
     await expect(card.getByText("New data available")).toBeVisible();
     await expect(adaptiveDetector).toHaveValue(selected);
     await expect(card.getByRole("button", { name: "Return to live" })).toBeVisible();
-    await page.getByRole("button", { name: "Toggle theme" }).click();
-    await page.getByRole("menuitem", { name: "Dark" }).click();
+    await page.getByRole("button", { name: "Theme", exact: true }).click();
+    await page.getByRole("menuitemradio", { name: "Dark", exact: true }).click();
     await expect(page.locator("html")).toHaveClass(/dark/u);
     await expect(adaptiveDetector).toHaveValue(selected);
     await expect(card.getByRole("button", { name: "Return to live" })).toBeVisible();

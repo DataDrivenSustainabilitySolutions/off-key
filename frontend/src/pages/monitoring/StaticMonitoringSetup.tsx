@@ -47,7 +47,11 @@ interface StaticMonitoringSetupProps {
   claimsBySensor: Map<string, ActiveService>;
   staticModels: Record<string, ModelDefinition>;
   loadingModels: boolean;
-  onStarted: () => Promise<void>;
+  onStarted: (serviceId?: string) => Promise<void>;
+  displayName?: string;
+  initialReading?: string;
+  sensorLabels?: Map<string, string>;
+  sensorTopics?: Map<string, string>;
 }
 
 export function StaticMonitoringSetup({
@@ -57,6 +61,7 @@ export function StaticMonitoringSetup({
   staticModels,
   loadingModels,
   onStarted,
+  initialReading, sensorLabels, sensorTopics, displayName,
 }: StaticMonitoringSetupProps) {
   const [draft, setDraft] = useState(createDefaultStaticDraft);
   const [topicMode, setTopicMode] =
@@ -72,18 +77,18 @@ export function StaticMonitoringSetup({
     () =>
       sensorTypes.filter(
         (sensor) =>
-          !claimsBySensor.has(sensor) && (selectedSensors[sensor] ?? true),
+          !claimsBySensor.has(sensor) && (selectedSensors[sensor] ?? (!initialReading || sensor === initialReading)),
       ),
-    [claimsBySensor, selectedSensors, sensorTypes],
+    [claimsBySensor, selectedSensors, sensorTypes, initialReading],
   );
   const effectiveTopics = useMemo(
     () =>
       topicMode === "selected_sensors"
         ? availableSelectedSensors.map(
-            (sensor) => buildDeviceTelemetryTopic(chargerId, sensor),
+            (sensor) => sensorTopics?.get(sensor) ?? buildDeviceTelemetryTopic(chargerId, sensor),
           )
         : parseTopicPatterns(topicPatternInput),
-    [availableSelectedSensors, chargerId, topicMode, topicPatternInput],
+    [availableSelectedSensors, chargerId, topicMode, topicPatternInput, sensorTopics],
   );
   const modelDefinition = staticModels[draft.modelType];
   const modelProperties = modelDefinition?.parameters?.properties ?? {};
@@ -123,13 +128,13 @@ export function StaticMonitoringSetup({
 
     setStarting(true);
     try {
-      await apiUtils.post(
+      const result = await apiUtils.post<{ service_id: string }>(
         API_CONFIG.ENDPOINTS.MONITORING.START,
-        validation.request,
+        { ...validation.request, ...(displayName ? { display_name: displayName } : {}) },
         { timeout: API_CONFIG.MONITORING_LIFECYCLE_TIMEOUT },
       );
       toast.success("Static monitoring service started.");
-      await onStarted();
+      await onStarted(result?.service_id);
     } catch (error) {
       toast.error(`Failed to start monitoring: ${getErrorMessage(error)}`);
     } finally {
@@ -155,8 +160,8 @@ export function StaticMonitoringSetup({
         <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_21rem]">
           <div className="space-y-5">
             <ConfigSection
-              title="Telemetry scope"
-              description="Each sensor can belong to one active monitor."
+              title="Readings"
+              help="A reading can belong to one active monitor."
               icon={RadioTower}
             >
               <label className={LABEL_CLASS}>Topic input mode</label>
@@ -171,7 +176,7 @@ export function StaticMonitoringSetup({
                   )
                 }
               >
-                <option value="selected_sensors">Select discovered sensors</option>
+                <option value="selected_sensors">Select recorded readings</option>
                 <option value="direct_patterns">Enter MQTT topic patterns</option>
               </select>
 
@@ -180,12 +185,12 @@ export function StaticMonitoringSetup({
                   {sensorTypes.map((sensor) => {
                     const owner = claimsBySensor.get(sensor);
                     const checked =
-                      !owner && (selectedSensors[sensor] ?? true);
+                      !owner && (selectedSensors[sensor] ?? (!initialReading || sensor === initialReading));
                     return (
                       <label
                         key={sensor}
                         className={cn(
-                          "flex items-start gap-3 rounded-xl border p-3.5 transition-[border-color,background-color,box-shadow]",
+                          "flex min-w-0 items-start gap-3 rounded-md border p-3 transition-colors",
                           owner
                             ? "cursor-not-allowed border-border/60 bg-muted/35 opacity-65"
                             : checked
@@ -207,12 +212,12 @@ export function StaticMonitoringSetup({
                         />
                         <span className="min-w-0">
                           <span className="block truncate text-sm font-medium">
-                            {humanize(sensor)}
+                            {sensorLabels?.get(sensor) ?? humanize(sensor)}
                           </span>
                           <span className="block truncate text-xs text-muted-foreground">
                             {owner
                               ? `Assigned to ${owner.container_name}`
-                              : sensor}
+                              : sensorLabels?.has(sensor) ? "" : sensor}
                           </span>
                         </span>
                       </label>
@@ -220,7 +225,7 @@ export function StaticMonitoringSetup({
                   })}
                   {!sensorTypes.length && (
                     <p className="col-span-full rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
-                      No telemetry types discovered yet.
+                      No recorded readings.
                     </p>
                   )}
                 </div>
@@ -232,7 +237,7 @@ export function StaticMonitoringSetup({
                     onChange={(event) =>
                       setTopicPatternInput(event.target.value)
                     }
-                    placeholder={`One concrete sensor per line, e.g. ${buildDeviceTelemetryTopic(chargerId, "L1")}`}
+                    placeholder={`One topic per line, e.g. ${buildDeviceTelemetryTopic(chargerId, "L1")}`}
                   />
                   <p className={HELP_CLASS}>
                     Topic patterns must not overlap another monitor.

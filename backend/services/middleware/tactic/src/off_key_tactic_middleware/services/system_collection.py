@@ -1,0 +1,286 @@
+"""Explicit collection actions and safe runtime reconciliation of catalogue edits."""
+
+from datetime import UTC, datetime
+from math import ceil
+from uuid import uuid4
+
+from off_key_core.db.collection import (
+    lock_collection_configuration,
+    read_collection_configuration,
+)
+from off_key_core.db.collection_runtime import read_collection_runtime
+from off_key_core.db.maintenance import require_application_writes
+from off_key_core.db.models import Charger, CollectionBinding, MonitoringService
+from off_key_core.db.system import SystemCollectionConfiguration
+from off_key_core.schemas.collection import CollectionPolicy
+from off_key_core.schemas.system_collection import (
+    SystemCollectionDefinition,
+    SystemCollectionPreview,
+    build_bindings,
+    runtime_fingerprint,
+)
+from sqlalchemy import select
+
+from ..config.collection import get_ambibox_settings
+from ..config.system_live import get_system_live_settings
+from ..domain import ConflictError, ValidationError
+from .ambibox_live_access import AmbiboxLiveAccess
+from .collection import CollectionService
+
+
+class SystemCollectionService:
+    def __init__(self, session):
+        self.session = session
+
+    async def current(self, document):
+        runtime = await read_collection_runtime(self.session)
+        legacy = await read_collection_configuration(self.session)
+        previous = (
+            runtime.catalog
+            if isinstance(runtime.catalog, SystemCollectionDefinition)
+            else None
+        )
+        bindings = build_bindings(
+            document, legacy.catalog, previous.bindings if previous else None
+        )
+        policies = (
+            {
+                item.id: item.policy or previous.document.default_policy
+                for item in previous.document.streams
+            }
+            if previous
+            else {
+                stream.accepted_topic: stream.policy
+                for stream in legacy.catalog.streams()
+            }
+        )
+        copy = document.model_copy(deep=True)
+        copy.default_policy = CollectionPolicy()
+        for stream in copy.streams:
+            stream.policy = policies.get(
+                stream.id if previous else bindings[stream.id].accepted_topic,
+                CollectionPolicy(),
+            )
+        return runtime, SystemCollectionDefinition(
+            document=copy,
+            bindings=bindings,
+            generation=previous.generation if previous else "initial",
+        )
+
+    async def prepare(self, snapshot, change):
+        runtime, proposed = await self.current(snapshot.document)
+        revision = (
+            runtime.revision
+            if isinstance(runtime.catalog, SystemCollectionDefinition)
+            else 0
+        )
+        if (
+            snapshot.revision != change.expected_revision
+            or revision != change.expected_collection_revision
+        ):
+            raise ConflictError(
+                "The catalogue or collection changed. "
+                "Reload before applying this change."
+            )
+        selected = set(change.stream_ids)
+        known = {stream.id for stream in proposed.document.streams}
+        if not selected <= known:
+            raise ValidationError("Select existing catalogue readings.")
+        for stream in proposed.document.streams:
+            if stream.id in selected:
+                stream.policy = change.policy
+        if change.policy.mode != "off":
+            self._validate_access(proposed)
+        affected = await self.affected(runtime.catalog, proposed)
+        streams = proposed.streams(selected_only=True)
+        numeric = [item for item in streams if item.value_type == "number"]
+        preview = SystemCollectionPreview(
+            revision=snapshot.revision,
+            collection_revision=revision,
+            selected_readings=len(streams),
+            sampled_rows_per_day_ceiling=sum(
+                ceil(86400 / item.policy.interval_seconds)
+                for item in numeric
+                if item.policy.mode == "sample"
+            ),
+            original_rate_readings=sum(
+                item.policy.mode == "original" for item in numeric
+            ),
+            affected_monitors=affected,
+        )
+        return proposed, preview
+
+    @staticmethod
+    def _validate_access(definition):
+        if not definition.streams(selected_only=True):
+            return
+        settings = get_system_live_settings()
+        if not settings.SYSTEM_COLLECTION_ENABLED:
+            raise ValidationError("Collection is disabled by the operator.")
+        access = AmbiboxLiveAccess(get_ambibox_settings())
+        selected = {item.source_id for item in definition.streams(selected_only=True)}
+        for connection in definition.sources:
+            if connection.id not in selected:
+                continue
+            if not settings.allows_host(connection.host) and access(connection) is None:
+                raise ValidationError(
+                    "A selected broker is outside the operator's broker allowlist."
+                )
+            if (
+                connection.credential_ref
+                and connection.credential_ref not in settings.SYSTEM_LIVE_CREDENTIALS
+            ):
+                raise ValidationError(
+                    "A selected broker's credential reference "
+                    "is not configured by the operator."
+                )
+
+    async def affected(self, before, after):
+        def signatures(catalog):
+            return {
+                item.accepted_topic: item.signature
+                for item in catalog.streams(selected_only=True)
+            }
+
+        old, new = signatures(before), signatures(after)
+        changed = {
+            key for key in old.keys() | new.keys() if old.get(key) != new.get(key)
+        }
+        # Migrating the envelope does not change the admitted detector inputs.
+        if not isinstance(before, SystemCollectionDefinition):
+            old_streams = {
+                item.accepted_topic: item for item in before.streams(selected_only=True)
+            }
+            for item in after.streams(selected_only=True):
+                previous = old_streams.get(item.accepted_topic)
+                if (
+                    previous
+                    and previous.sensor.value_type == item.value_type
+                    and previous.policy == item.policy
+                ):
+                    changed.discard(item.accepted_topic)
+        if not changed:
+            return []
+        monitors = await self.session.scalars(
+            select(MonitoringService).where(MonitoringService.status.is_(True))
+        )
+        return [
+            {"id": item.id, "name": item.container_name}
+            for item in monitors
+            if changed.intersection(item.mqtt_topic or [])
+        ]
+
+    async def apply(self, change, *, actor):
+        await lock_collection_configuration(self.session)
+        await require_application_writes(self.session)
+        from off_key_core.schemas.system import SystemChange
+
+        from .system import SystemService
+
+        snapshot = await SystemService(self.session).read()
+        proposed, preview = await self.prepare(snapshot, change)
+        await self._protect_monitors(
+            preview.affected_monitors, change.pause_affected_monitors
+        )
+        await self.persist(proposed, actor=actor)
+        return await SystemService(self.session).save(
+            SystemChange(
+                expected_revision=snapshot.revision, document=proposed.document
+            ),
+            actor=actor,
+        )
+
+    async def sync_structure(self, document, *, actor, pause_monitors=False):
+        row = await self.session.scalar(
+            select(SystemCollectionConfiguration).where(
+                SystemCollectionConfiguration.id == 1
+            )
+        )
+        if row is None:
+            return document
+        runtime, proposed = await self.current(document)
+        if runtime_fingerprint(runtime.catalog) != runtime_fingerprint(proposed):
+            self._validate_access(proposed)
+        affected = await self.affected(runtime.catalog, proposed)
+        await self._protect_monitors(affected, pause_monitors)
+        await self.persist(proposed, actor=actor)
+        return proposed.document
+
+    async def _protect_monitors(self, affected, pause):
+        if affected and not pause:
+            raise ConflictError(
+                "This change affects running monitors. "
+                "Pause them in Services before changing their inputs."
+            )
+        await CollectionService(self.session)._pause_monitors(affected)
+
+    async def persist(self, definition, *, actor):
+        row = await self.session.scalar(
+            select(SystemCollectionConfiguration).where(
+                SystemCollectionConfiguration.id == 1
+            )
+        )
+        previous = (
+            SystemCollectionDefinition.model_validate(row.document) if row else None
+        )
+        changed = previous is None or runtime_fingerprint(
+            previous
+        ) != runtime_fingerprint(definition)
+        if changed:
+            definition.generation = uuid4().hex
+        if row is None:
+            row = SystemCollectionConfiguration(id=1, revision=0)
+            self.session.add(row)
+        row.document = definition.model_dump(mode="json")
+        row.updated_by = actor
+        row.updated_at = datetime.now(UTC)
+        if changed:
+            row.revision += 1
+            row.ingress_status = {}
+            row.collection_status = {}
+        devices = {item.id: item.label for item in definition.document.devices}
+        connections = {item.id: item.label for item in definition.sources}
+        identities = {binding.entity_id for binding in definition.bindings.values()}
+        existing = {
+            item.charger_id: item
+            for item in await self.session.scalars(
+                select(Charger).where(Charger.charger_id.in_(identities))
+            )
+        }
+        bound = set(
+            await self.session.scalars(
+                select(CollectionBinding.charger_id).where(
+                    CollectionBinding.charger_id.in_(identities)
+                )
+            )
+        )
+        new_bindings = []
+        for stream in definition.document.streams:
+            binding = definition.bindings[stream.id]
+            entity = existing.get(binding.entity_id)
+            label = devices.get(stream.device_id) or connections[stream.connection_id]
+            if entity is None:
+                entity = Charger(
+                    charger_id=binding.entity_id,
+                    charger_name=label,
+                    manufacturer_name="",
+                    online=False,
+                    mqtt_connected=False,
+                )
+                self.session.add(entity)
+                existing[binding.entity_id] = entity
+            else:
+                entity.charger_name = label
+            if binding.entity_id not in bound:
+                new_bindings.append(
+                    CollectionBinding(
+                        charger_id=binding.entity_id,
+                        source_id=stream.connection_id,
+                        local_id=binding.entity_id,
+                    )
+                )
+                bound.add(binding.entity_id)
+        await self.session.flush()
+        for binding in new_bindings:
+            self.session.add(binding)
+        await self.session.flush()

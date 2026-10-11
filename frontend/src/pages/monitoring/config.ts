@@ -271,18 +271,18 @@ export const buildAdaptiveMonitoringRequest = ({
   containerName: string;
 }): RequestValidation<AdaptiveAnomalyDetectionRequest> => {
   const errors: FieldErrors = {};
-  if (!topics.length) errors.topics = "Select at least one unassigned sensor.";
+  if (!topics.length) errors.topics = "Select at least one available reading.";
   else if (topics.some((topic) => topic.split("/").some((part) => part === "+" || part === "#"))) {
-    errors.topics = "Adaptive monitoring requires concrete sensor topics.";
+    errors.topics = "Adaptive monitoring requires concrete reading topics.";
   } else if (topics.some((topic) => parseDeviceTelemetryTopic(topic) === null)) {
     errors.topics =
-      "Sensor topics must use device/evCharger/<charger_id>/<telemetry_type>.";
+      "This monitor requires the configured device telemetry topic format.";
   } else if (
     topics.some(
       (topic) => parseDeviceTelemetryTopic(topic)?.chargerId !== chargerId,
     )
   ) {
-    errors.topics = `All sensor topics must belong to charger ${chargerId}.`;
+    errors.topics = `All reading topics must belong to entity ${chargerId}.`;
   }
   const trainingWindow = parseNumber({
     value: draft.trainingWindow, label: "Warm-up samples", field: "trainingWindow",
@@ -297,7 +297,7 @@ export const buildAdaptiveMonitoringRequest = ({
     field: "thresholdQuantile", errors, min: Number.MIN_VALUE, max: 1,
   });
   const sensorFreshness = parseNumber({
-    value: draft.sensorFreshness, label: "Sensor freshness",
+    value: draft.sensorFreshness, label: "Reading freshness",
     field: "sensorFreshness", errors, min: 1,
   });
   const preprocessingSteps: AdaptivePreprocessingStep[] = [];
@@ -323,7 +323,7 @@ export const buildAdaptiveMonitoringRequest = ({
       field: "projectionComponents", errors, integer: true, min: 1,
     });
     if (nComponents !== undefined && nComponents > topics.length) {
-      errors.projectionComponents = "Projection components cannot exceed selected sensors.";
+      errors.projectionComponents = "Projection components cannot exceed selected readings.";
     }
     if (draft.projection === "incremental_pca") {
       const n0 = parseNumber({
@@ -424,23 +424,23 @@ export const buildStaticMonitoringRequest = ({
 }): RequestValidation<StaticAnomalyDetectionRequest> => {
   const errors: FieldErrors = {};
   if (!topics.length) {
-    errors.topics = "Select at least one unassigned sensor or enter a topic.";
+    errors.topics = "Select at least one available reading or enter a topic.";
   } else if (
     topics.some((topic) =>
       topic.split("/").some((part) => part === "+" || part === "#"),
     )
   ) {
     errors.topics =
-      "Static monitoring requires concrete sensor topics without MQTT wildcards.";
+      "Static monitoring requires concrete reading topics without MQTT wildcards.";
   } else if (topics.some((topic) => parseDeviceTelemetryTopic(topic) === null)) {
     errors.topics =
-      "Sensor topics must use device/evCharger/<charger_id>/<telemetry_type>.";
+      "This monitor requires the configured device telemetry topic format.";
   } else if (
     topics.some(
       (topic) => parseDeviceTelemetryTopic(topic)?.chargerId !== chargerId,
     )
   ) {
-    errors.topics = `All sensor topics must belong to charger ${chargerId}.`;
+    errors.topics = `All reading topics must belong to entity ${chargerId}.`;
   }
 
   const trainingWindow = parseNumber({
@@ -659,7 +659,7 @@ export const buildStaticMonitoringRequest = ({
   }
   const sensorFreshness = parseNumber({
     value: draft.sensorFreshness,
-    label: "Sensor freshness",
+    label: "Reading freshness",
     field: "sensorFreshness",
     errors,
     min: 1,

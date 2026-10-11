@@ -2,7 +2,15 @@ import { describe, expect, it } from "vitest";
 import * as THREE from "three";
 import { SpatialConnectionLayer } from "../features/spatial/SpatialConnectionLayer";
 import { SpatialNodeLayer } from "../features/spatial/SpatialNodeLayer";
-import { curvePoint, fitCameraDepth } from "../features/spatial/sceneGeometry";
+import {
+  curvePoint,
+  fitCameraDepth,
+  groupBounds,
+  nodeVisualKind,
+  nodeVisualHeight,
+  sceneNodeLabel,
+  visibleSceneLabels,
+} from "../features/spatial/sceneGeometry";
 import type { SpatialNode } from "../features/spatial/types";
 
 const sensor: SpatialNode = {
@@ -80,6 +88,118 @@ describe("spatial rendering geometry", () => {
       layer.update([sensor], positions, groups, null, camera);
       expect(pick(5)).toBe(sensor.id);
       expect(pick(-5)).toBeNull();
+    } finally {
+      layer.dispose();
+    }
+  });
+
+  it("renders collapsed and expanded charger anchors together without losing their selection IDs", () => {
+    const layer = new SpatialNodeLayer();
+    const charger: SpatialNode = {
+      ...sensor,
+      id: "charger-1",
+      kind: "charger",
+      catalog: { sourceId: "catalog", chargerId: "charger-1" },
+    };
+    const collapsed: SpatialNode = {
+      ...charger,
+      id: "group:charger-2",
+      kind: "group",
+      groupId: "charger-2",
+      position: { x: 5, z: 0 },
+      catalog: { sourceId: "catalog", chargerId: "charger-2" },
+    };
+    const positions = new Map(
+      [charger, collapsed].map((node) => [node.id, node.position]),
+    );
+    const camera = topCamera();
+    try {
+      layer.update([charger, collapsed], positions, [], collapsed.id, camera);
+      layer.object.updateMatrixWorld(true);
+      const pick = (x: number) => {
+        const ray = new THREE.Raycaster(
+          new THREE.Vector3(x, 20, 0),
+          new THREE.Vector3(0, -1, 0),
+        );
+        const hit = ray.intersectObjects(layer.pickables, false)[0];
+        return hit ? layer.nodeForIntersection(hit) : null;
+      };
+      expect(nodeVisualKind(collapsed)).toBe("charger");
+      expect(layer.visibleCount).toBe(2);
+      expect(pick(-5)).toBe(charger.id);
+      expect(pick(5)).toBe(collapsed.id);
+      expect(pick(6)).toBe(collapsed.id);
+      expect(pick(-4)).toBeNull();
+      expect(nodeVisualHeight(collapsed)).toBeGreaterThan(
+        nodeVisualHeight(charger) * 2,
+      );
+      // The same GPU batch holds both assets rather than adding meshes for every charger.
+      expect(layer.pickables.filter((mesh) => mesh.count === 2)).toHaveLength(
+        1,
+      );
+      const bounds = groupBounds([collapsed], positions).get("charger-2")!;
+      expect(bounds.minX).toBeCloseTo(2.35);
+      expect(bounds.maxX).toBeCloseTo(7.65);
+      expect(bounds.minZ).toBeCloseTo(-2.65);
+      expect(bounds.maxZ).toBeCloseTo(2.65);
+    } finally {
+      layer.dispose();
+    }
+  });
+
+  it("keeps fleet labels compact while retaining exact names on focused objects", () => {
+    const node: SpatialNode = {
+      ...sensor,
+      kind: "group",
+      label: "AmbiBox charger 1000279",
+      catalog: { sourceId: "catalog", chargerId: "charger-1", localId: "0" },
+    };
+    expect(sceneNodeLabel(node)).toBe("AmbiBox charge…");
+    expect(sceneNodeLabel(node, true)).toBe(node.label);
+    expect(sceneNodeLabel(sensor)).toBe(sensor.label);
+  });
+
+  it("suppresses overlapping labels but keeps selected and hovered identities visible", () => {
+    const labels = [
+      { id: "background", x: 10, y: 10, width: 80, height: 27, priority: 0 },
+      { id: "selected", x: 10, y: 10, width: 190, height: 27, priority: 2 },
+      { id: "hovered", x: 20, y: 10, width: 190, height: 27, priority: 1 },
+      { id: "clear", x: 230, y: 10, width: 80, height: 27, priority: 0 },
+    ];
+    expect([...visibleSceneLabels(labels)]).toEqual([
+      "selected",
+      "hovered",
+      "clear",
+    ]);
+    expect(labels[0]?.id).toBe("background");
+    expect(
+      visibleSceneLabels(
+        Array.from({ length: 100 }, (_, index) => ({
+          id: String(index),
+          x: index * 100,
+          y: 0,
+          width: 80,
+          height: 27,
+          priority: 0,
+        })),
+      ).size,
+    ).toBe(40);
+  });
+
+  it("does not invent traffic pulses for a catalog charger with no subscription edge", () => {
+    const layer = new SpatialConnectionLayer();
+    const charger: SpatialNode = {
+      ...sensor,
+      id: "charger",
+      kind: "charger",
+    };
+    try {
+      layer.setTopology([charger], [], [], "balanced");
+      layer.updateLines(new Map([[charger.id, charger.position]]), charger.id);
+      expect(
+        layer.receive({ nodeId: charger.id, timestamp: 1, value: 0 }, 1500),
+      ).toBe(false);
+      expect(layer.activeCount).toBe(0);
     } finally {
       layer.dispose();
     }

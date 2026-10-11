@@ -1,34 +1,19 @@
 """Opt-in production-like adaptive lane test against the Docker stack."""
 
-from __future__ import annotations
-
-import json
 import os
 import time
-import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import datetime
 
 import httpx
 import pytest
-from paho.mqtt import publish as mqtt_publish
+from paho.mqtt.client import CallbackAPIVersion, Client
+
+from .integration_catalogue import add_recorded_entity, remove_recorded_entity
 
 pytestmark = pytest.mark.skipif(
     os.getenv("RUN_ADAPTIVE_E2E") != "1",
     reason="requires the Docker Gateway/TACTIC/RADAR/MQTT/PostgreSQL stack",
 )
-
-
-def _mqtt_message(
-    topic: str, value: float, timestamp: datetime
-) -> tuple[str, str, int, bool]:
-    payload = json.dumps(
-        {
-            "payload": json.dumps(value),
-            "received_at": round(timestamp.timestamp() * 1000),
-            "upstream_retained": False,
-        }
-    )
-    return topic, payload, 0, False
 
 
 def _wait_until_service_accepts_data(
@@ -55,118 +40,31 @@ def _wait_until_service_accepts_data(
                     f"Adaptive service entered terminal stage {stage!r}: {last_status}"
                 )
         time.sleep(1)
-
     pytest.fail(
         f"Adaptive service did not become ready within {timeout:g} seconds; "
         f"last status: {last_status}"
     )
 
 
-def _remove_catalog_charger(
-    client: httpx.Client, source_id: str, charger_id: str
-) -> None:
-    current = client.get("/v1/sources")
-    current.raise_for_status()
-    snapshot = current.json()
-    for binding in snapshot["catalog"]["sources"]:
-        binding["chargers"] = [
-            charger for charger in binding["chargers"] if charger["id"] != charger_id
-        ]
-    snapshot["catalog"]["sources"] = [
-        binding
-        for binding in snapshot["catalog"]["sources"]
-        if binding["id"] != source_id or binding["chargers"]
-    ]
-    removed = client.put(
-        "/v1/sources",
-        json={
-            "expected_revision": snapshot["revision"],
-            "catalog": snapshot["catalog"],
-            "pause_affected_monitors": True,
-        },
-    )
-    removed.raise_for_status()
-
-
 def test_gateway_to_postgres_adaptive_multisensor_input_correlation() -> None:
-    token = os.environ["E2E_AUTH_TOKEN"]
     gateway_url = os.getenv("E2E_GATEWAY_URL", "http://localhost:8000").rstrip("/")
-    charger_id = str(uuid.uuid4())
-    topics = [
-        f"device/evCharger/{charger_id}/L1",
-        f"device/evCharger/{charger_id}/L2",
-    ]
-    service_id: str | None = None
-    headers = {"Authorization": f"Bearer {token}"}
-
+    headers = {"Authorization": f"Bearer {os.environ['E2E_AUTH_TOKEN']}"}
     with httpx.Client(base_url=gateway_url, headers=headers, timeout=210) as client:
-        openapi_response = client.get("/openapi.json")
-        openapi_response.raise_for_status()
-        assert "/v1/monitors/start" in openapi_response.json().get("paths", {}), (
-            f"Gateway at {gateway_url} does not expose /v1/monitors/start"
-        )
-
-        snapshot_response = client.get("/v1/sources")
-        snapshot_response.raise_for_status()
-        snapshot = snapshot_response.json()
-        catalog = snapshot["catalog"]
-        source = next(
-            (item for item in catalog["sources"] if item["host"] == "source-broker"),
-            None,
-        )
-        if source is None:
-            source = {
-                "id": str(uuid.uuid4()),
-                "label": "Test broker",
-                "host": "source-broker",
-                "chargers": [],
-            }
-            catalog["sources"].append(source)
-        source["chargers"].append(
-            {
-                "id": charger_id,
-                "local_id": charger_id,
-                "label": "Adaptive test",
-                "policy": {"mode": "original"},
-                "sensors": [
-                    {"key": key, "label": key, "upstream_topic": topic}
-                    for key, topic in zip(("L1", "L2"), topics, strict=True)
-                ],
-            }
+        openapi = client.get("/openapi.json")
+        openapi.raise_for_status()
+        assert "/v1/monitors/start" in openapi.json()["paths"]
+        entity = add_recorded_entity(client, label="Adaptive test", keys=("L1", "L2"))
+        service_id = None
+        publisher = Client(
+            CallbackAPIVersion.VERSION2, client_id=f"adaptive-e2e-{entity.device_id}"
         )
         try:
-            saved = client.put(
-                "/v1/sources",
-                json={
-                    "expected_revision": snapshot["revision"],
-                    "catalog": catalog,
-                },
-            )
-            saved.raise_for_status()
-            revision = saved.json()["revision"]
-            deadline = time.monotonic() + 120
-            while time.monotonic() < deadline:
-                status_response = client.get("/v1/sources/status")
-                status_response.raise_for_status()
-                state = status_response.json()["collection"]
-                if (
-                    state.get("revision") == revision
-                    and state.get("status") == "applied"
-                ):
-                    break
-                time.sleep(1)
-            else:
-                pytest.fail("Collection was not applied before the monitoring test")
-            ingress_topics = [
-                f"ingress/ambibox/{source['id']}/{topic}" for topic in topics
-            ]
-
             response = client.post(
                 "/v1/monitors/start",
                 json={
-                    "container_name": f"radar-{charger_id}",
+                    "container_name": f"radar-{entity.device_id}",
                     "service_type": "radar",
-                    "mqtt_topics": topics,
+                    "mqtt_topics": list(entity.accepted_topics),
                     "strategy": "adaptive_stream",
                     "model_type": "aberrant_online_isolation_forest",
                     "model_params": {"num_trees": 4, "max_leaf_samples": 4},
@@ -185,82 +83,94 @@ def test_gateway_to_postgres_adaptive_multisensor_input_correlation() -> None:
             response.raise_for_status()
             service_id = response.json()["service_id"]
             _wait_until_service_accepts_data(client, service_id)
-            cycle_start = datetime.fromtimestamp(round(time.time() * 1000) / 1000, UTC)
-            published_cycles: list[dict[str, datetime]] = []
-            messages: list[tuple[str, str, int, bool]] = []
-            for index in range(8):
-                l1_time = cycle_start + timedelta(milliseconds=index * 100)
-                l2_time = l1_time + timedelta(milliseconds=50)
-                messages.extend(
-                    [
-                        _mqtt_message(
-                            ingress_topics[0],
-                            100.0 if index == 7 else 1.0 + index / 100,
-                            l1_time,
-                        ),
-                        _mqtt_message(
-                            ingress_topics[1],
-                            50.0 if index == 7 else 2.0 + index / 100,
-                            l2_time,
-                        ),
-                    ]
-                )
-                published_cycles.append({"L1": l1_time, "L2": l2_time})
-            last_published_cycle = published_cycles[-1]
-            mqtt_publish.multiple(
-                messages,
-                hostname=os.getenv("E2E_MQTT_HOST", "localhost"),
-                port=int(os.getenv("E2E_MQTT_PORT", "1883")),
-                client_id=f"adaptive-e2e-{charger_id}",
-                tls={"ca_certs": os.environ["E2E_MQTT_CA_FILE"]}
-                if os.getenv("E2E_MQTT_CA_FILE")
-                else None,
-                auth={
-                    "username": os.environ["E2E_MQTT_USERNAME"],
-                    "password": os.environ["E2E_MQTT_PASSWORD"],
-                }
-                if os.getenv("E2E_MQTT_USERNAME")
-                else None,
+            publisher.connect(
+                os.getenv("E2E_SOURCE_MQTT_HOST", "localhost"),
+                int(os.getenv("E2E_SOURCE_MQTT_PORT", "1884")),
             )
-
+            publisher.loop_start()
+            published_values = []
+            for index in range(8):
+                values = {
+                    "L1": 100.0 if index == 7 else 1.0 + index / 100,
+                    "L2": 50.0 if index == 7 else 2.0 + index / 100,
+                }
+                published_values.append(values)
+                for key, value in values.items():
+                    message = publisher.publish(entity.topics[key], str(value), qos=1)
+                    message.wait_for_publish(timeout=5)
+                    assert message.is_published()
+                time.sleep(0.1)
+            # Compare evidence with persisted observations from the real upstream
+            # path, including each input's individual ingestion timestamp.
+            observations = {}
             deadline = time.monotonic() + 120
             while time.monotonic() < deadline:
-                evidence_response = client.get(
-                    "/v1/monitors/evidence", params={"charger_id": charger_id}
+                for key, telemetry_key in entity.keys.items():
+                    response = client.get(
+                        f"/v1/telemetry/{entity.entity_id}/data",
+                        params={"type": telemetry_key},
+                    )
+                    response.raise_for_status()
+                    observations[key] = {
+                        row["value"]: datetime.fromisoformat(row["timestamp"])
+                        for row in response.json()
+                    }
+                if all(
+                    all(values[key] in observations[key] for values in published_values)
+                    for key in entity.keys
+                ):
+                    break
+                time.sleep(1)
+            else:
+                pytest.fail(
+                    "The upstream multivariate observations did not reach history"
                 )
-                evidence_response.raise_for_status()
-                adaptive = [
+            cycles = [
+                {
+                    entity.keys[key]: observations[key][value]
+                    for key, value in values.items()
+                }
+                for values in published_values
+            ]
+            deadline = time.monotonic() + 120
+            while time.monotonic() < deadline:
+                response = client.get(
+                    "/v1/monitors/evidence", params={"charger_id": entity.entity_id}
+                )
+                response.raise_for_status()
+                evidence = [
                     row
-                    for row in evidence_response.json()
+                    for row in response.json()
                     if row.get("service_id") == service_id
                     and row.get("strategy") == "adaptive_stream"
                 ]
-                if adaptive:
-                    assert all(row["anomaly_score"] is not None for row in adaptive)
-                    assert all(row["threshold"] is not None for row in adaptive)
-                    assert all(row["p_value"] is None for row in adaptive)
-                    parsed_cycles: list[dict[str, datetime]] = []
-                    for row in adaptive:
-                        input_timestamps = row["input_timestamps"]
-                        assert isinstance(input_timestamps, dict)
-                        assert set(input_timestamps) == {"L1", "L2"}
-                        parsed_inputs = {
-                            key: datetime.fromisoformat(str(value))
-                            for key, value in input_timestamps.items()
-                        }
-                        assert parsed_inputs in published_cycles
-                        parsed_cycles.append(parsed_inputs)
-                        assert datetime.fromisoformat(str(row["timestamp"])) == max(
-                            parsed_inputs.values()
-                        )
-                    if last_published_cycle in parsed_cycles:
-                        break
+                seen = []
+                for row in evidence:
+                    assert (
+                        row["anomaly_score"] is not None
+                        and row["threshold"] is not None
+                    )
+                    assert row["p_value"] is None
+                    assert set(row["input_timestamps"]) == set(entity.keys.values())
+                    inputs = {
+                        key: datetime.fromisoformat(value)
+                        for key, value in row["input_timestamps"].items()
+                    }
+                    assert inputs in cycles
+                    assert datetime.fromisoformat(row["timestamp"]) == max(
+                        inputs.values()
+                    )
+                    seen.append(inputs)
+                if cycles[-1] in seen:
+                    break
                 time.sleep(2)
             else:
                 pytest.fail(
                     "Final adaptive input cycle did not reach PostgreSQL evidence"
                 )
         finally:
+            publisher.disconnect()
+            publisher.loop_stop()
             if service_id:
-                client.delete(f"/v1/monitors/{service_id}")
-            _remove_catalog_charger(client, source["id"], charger_id)
+                client.delete(f"/v1/monitors/{service_id}").raise_for_status()
+            remove_recorded_entity(client, entity)

@@ -54,7 +54,7 @@ export function MeasurementDetails({
           className="space-y-4 overflow-y-auto px-4 pb-4"
         >
           <label className="block text-sm">
-            Sensor key
+            Reading key
             <input
               className={fieldClass}
               value={sensor.key}
@@ -103,7 +103,7 @@ export function MeasurementDetails({
           </Button>
         </fieldset>
         <div className="mt-auto border-t p-4 text-xs text-muted-foreground break-all">
-          Charger ID: {charger.id}
+          Entity ID: {charger.id}
         </div>
       </SheetContent>
     </Sheet>

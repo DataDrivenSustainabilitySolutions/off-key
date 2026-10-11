@@ -4,6 +4,7 @@ import type {
   Perspective,
   Point,
   SpatialGroup,
+  SpatialPersonalGroup,
   SpatialWorkspace,
 } from "./types";
 
@@ -14,7 +15,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 const isId = (value: unknown): value is string =>
   typeof value === "string" &&
-  /^[\w:.-]{1,128}$/.test(value) &&
+  /^[\w:./-]{1,280}$/.test(value) &&
   !INVALID_KEYS.has(value);
 const isName = (value: unknown): value is string =>
   typeof value === "string" && value.trim().length > 0 && value.length <= 80;
@@ -54,6 +55,18 @@ const isPerspective = (value: unknown): value is Perspective =>
   (value.view === undefined ||
     value.view === "isometric" ||
     value.view === "top");
+const isPersonalGroup = (value: unknown): value is SpatialPersonalGroup =>
+  isRecord(value) &&
+  isId(value.id) &&
+  typeof value.name === "string" &&
+  value.name.trim().length > 0 &&
+  value.name.length <= 120 &&
+  typeof value.color === "string" &&
+  /^#[0-9a-fA-F]{6}$/.test(value.color) &&
+  Array.isArray(value.memberIds) &&
+  value.memberIds.length <= MAX_OBJECTS &&
+  value.memberIds.every(isId) &&
+  new Set(value.memberIds).size === value.memberIds.length;
 
 function validMap(
   value: unknown,
@@ -71,9 +84,15 @@ function validatedWorkspace(value: unknown): SpatialWorkspace | undefined {
   if (!isRecord(value) || value.version !== 1 || !isCamera(value.camera))
     return;
   if (
+    value.layoutMode !== undefined &&
+    value.layoutMode !== "automatic" &&
+    value.layoutMode !== "manual"
+  )
+    return;
+  if (
     !Array.isArray(value.groups) ||
     !value.groups.length ||
-    value.groups.length > 64 ||
+    value.groups.length > 129 ||
     !value.groups.every(isGroup)
   )
     return;
@@ -96,8 +115,22 @@ function validatedWorkspace(value: unknown): SpatialWorkspace | undefined {
     value.perspectives.length
   )
     return;
+  if (
+    value.personalGroups !== undefined &&
+    (!Array.isArray(value.personalGroups) ||
+      value.personalGroups.length > 128 ||
+      !value.personalGroups.every(isPersonalGroup) ||
+      new Set(value.personalGroups.map((group) => group.id)).size !==
+        value.personalGroups.length ||
+      value.personalGroups.reduce(
+        (sum, group) => sum + group.memberIds.length,
+        0,
+      ) > 32_768)
+  )
+    return;
   return {
     version: 1,
+    ...(value.layoutMode !== undefined ? { layoutMode: value.layoutMode } : {}),
     positions: Object.fromEntries(
       Object.entries(value.positions).map(([id, point]) => [
         id,
@@ -118,6 +151,16 @@ function validatedWorkspace(value: unknown): SpatialWorkspace | undefined {
       collapsed: group.collapsed,
       locked: group.locked,
     })),
+    ...(value.personalGroups !== undefined
+      ? {
+          personalGroups: value.personalGroups.map((group) => ({
+            id: group.id,
+            name: group.name,
+            color: group.color,
+            memberIds: [...group.memberIds],
+          })),
+        }
+      : {}),
     camera: {
       position: [...value.camera.position],
       target: [...value.camera.target],

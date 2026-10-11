@@ -7,11 +7,15 @@ from typing import Any
 from off_key_core.config.logs import logger
 from off_key_core.db.collection import (
     lock_collection_configuration,
-    read_collection_configuration,
 )
+from off_key_core.db.collection_runtime import read_collection_runtime
 from off_key_core.db.maintenance import require_application_writes
 from off_key_core.db.models import MonitoringService, MqttTopic
-from off_key_core.schemas.radar import RadarOperationalStatus, RadarStartConfig
+from off_key_core.schemas.radar import (
+    RadarOperationalStatus,
+    RadarStartConfig,
+    validate_service_name,
+)
 from off_key_core.utils.mqtt_topics import (
     mqtt_topic_filters_overlap,
     normalize_telemetry_topic_filters,
@@ -60,7 +64,7 @@ class RadarOrchestrationService:
         await require_application_writes(
             self.session, deployment_revision=deployment_revision
         )
-        collection = await read_collection_configuration(self.session)
+        collection = await read_collection_runtime(self.session)
         streams = {
             stream.accepted_topic: stream
             for stream in collection.catalog.streams(selected_only=True)
@@ -449,10 +453,15 @@ class RadarOrchestrationService:
 
         service_list = []
         for service in services:
+            configuration = getattr(service, "launch_config", None) or {}
+            monitoring = configuration.get("monitoring") or {}
             service_dict = {
                 "id": service.id,
                 "container_id": service.container_id,
                 "container_name": service.container_name,
+                "display_name": configuration.get("display_name"),
+                "monitoring_strategy": monitoring.get("strategy"),
+                "model_type": monitoring.get("model_type"),
                 "mqtt_topics": service.mqtt_topic,
                 "status": service.status,
                 "operational_status": derive_operational_status(service),
@@ -479,6 +488,26 @@ class RadarOrchestrationService:
             service_list.append(service_dict)
 
         return service_list
+
+    async def rename_radar_service(self, service_id: str, display_name: str) -> bool:
+        """Persist a presentation name without changing the workload or its inputs."""
+        display_name = validate_service_name(display_name)
+        await lock_collection_configuration(self.session)
+        await require_application_writes(self.session)
+        result = await self.session.execute(
+            select(MonitoringService)
+            .where(MonitoringService.id == service_id)
+            .with_for_update()
+        )
+        service = result.scalars().first()
+        if service is None:
+            return False
+        service.launch_config = {
+            **(service.launch_config or {}),
+            "display_name": display_name,
+        }
+        await self.session.commit()
+        return True
 
     async def get_radar_service(
         self, container_name: str | None = None, container_id: str | None = None
@@ -520,18 +549,28 @@ class RadarOrchestrationService:
             service.container_id
         )
 
+        configuration = getattr(service, "launch_config", None) or {}
+        monitoring = configuration.get("monitoring") or {}
+
         return {
             "id": service.id,
             "container_id": service.container_id,
             "container_name": service.container_name,
+            "display_name": configuration.get("display_name"),
+            "configuration": {
+                "monitoring": monitoring,
+                "performance_config": configuration.get("performance_config") or {},
+            },
             "mqtt_topics": service.mqtt_topic,
             "db_status": service.status,
             "docker_status": docker_service_status,
             "operational_status": derive_operational_status(
                 service, docker_service_status
             ),
-            "monitoring_strategy": labels.get("monitoring_strategy"),
-            "model_type": labels.get("radar_model_type"),
+            "monitoring_strategy": monitoring.get("strategy")
+            or labels.get("monitoring_strategy"),
+            "model_type": monitoring.get("model_type")
+            or labels.get("radar_model_type"),
             "created_at": (
                 service.created_at.isoformat() if service.created_at else None
             ),

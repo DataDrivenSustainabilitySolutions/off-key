@@ -16,9 +16,11 @@ from off_key_core.db.models import (
     CollectionRevision,
     MonitoringService,
 )
+from off_key_core.db.system import SystemCollectionConfiguration
 from off_key_core.schemas.collection import (
     AmbiboxCatalog,
     CatalogChange,
+    CatalogLabelChange,
     CatalogPreview,
     CatalogSnapshot,
     assign_forward_ports,
@@ -28,7 +30,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..config.collection import get_ambibox_settings
-from ..domain import ConflictError, InfrastructureError, ValidationError
+from ..domain import ConflictError, InfrastructureError, NotFoundError, ValidationError
 from .orchestration.radar_workloads import RadarWorkloadManager, get_async_docker
 from .radar_status import mark_collection_monitor_stopped
 
@@ -100,6 +102,7 @@ class CollectionService:
     async def apply(self, change: CatalogChange, *, actor: str) -> CatalogSnapshot:
         await lock_collection_configuration(self.session)
         await require_application_writes(self.session)
+        await self._require_legacy_runtime()
         preview = await self.preview(change)
         if preview.affected_monitors and not change.pause_affected_monitors:
             raise ConflictError(
@@ -137,6 +140,90 @@ class CollectionService:
         # Refresh after SQL upsert even if a previous read populated the identity map.
         self.session.expire_all()
         return await read_collection_configuration(self.session)
+
+    async def rename(
+        self, change: CatalogLabelChange, *, actor: str
+    ) -> CatalogSnapshot:
+        await lock_collection_configuration(self.session)
+        await require_application_writes(self.session)
+        await self._require_legacy_runtime()
+        # Workers also write status on this row. Keep their latest observations
+        # intact while advancing the catalog's presentation revision.
+        row = await self.session.scalar(
+            select(CollectionConfiguration)
+            .where(CollectionConfiguration.id == 1)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        revision = row.revision if row is not None else 0
+        if revision != change.expected_revision:
+            raise ConflictError("The catalog changed. Reload it before renaming.")
+        if row is None:
+            raise NotFoundError("Broker not found in the saved catalog")
+        catalog = AmbiboxCatalog.model_validate(row.document)
+        target = self._rename_target(catalog, change)
+        if target.label == change.label:
+            return await read_collection_configuration(self.session)
+        target.label = change.label
+        if change.kind == "charger":
+            await self.session.execute(
+                update(Charger)
+                .where(Charger.charger_id == str(change.charger_id))
+                .values(charger_name=change.label)
+            )
+        row.revision = revision + 1
+        row.document = catalog.model_dump(mode="json")
+        row.updated_at = datetime.now(UTC)
+        row.updated_by = actor
+        for attribute in ("ingress_status", "collection_status"):
+            state = getattr(row, attribute)
+            if state.get("revision") == revision:
+                setattr(row, attribute, {**state, "revision": row.revision})
+        self.session.add(
+            CollectionRevision(
+                revision=row.revision, document=row.document, updated_by=actor
+            )
+        )
+        await self.session.flush()
+        return await read_collection_configuration(self.session)
+
+    @staticmethod
+    def _rename_target(catalog: AmbiboxCatalog, change: CatalogLabelChange):
+        source = next(
+            (source for source in catalog.sources if source.id == change.source_id),
+            None,
+        )
+        if source is None:
+            raise NotFoundError("Broker not found in the saved catalog")
+        if change.kind == "source":
+            return source
+        charger = next(
+            (charger for charger in source.chargers if charger.id == change.charger_id),
+            None,
+        )
+        if charger is None:
+            raise NotFoundError("Charger not found in this saved broker")
+        if change.kind == "charger":
+            return charger
+        sensor = next(
+            (sensor for sensor in charger.sensors if sensor.key == change.sensor_key),
+            None,
+        )
+        if sensor is None:
+            raise NotFoundError("Sensor not found in this saved charger")
+        return sensor
+
+    async def _require_legacy_runtime(self):
+        active = await self.session.scalar(
+            select(SystemCollectionConfiguration).where(
+                SystemCollectionConfiguration.id == 1
+            )
+        )
+        if active is not None:
+            raise ConflictError(
+                "The catalogue is managed in the monitoring workspace. "
+                "Use its catalogue and collection controls."
+            )
 
     async def _pause_monitors(self, affected: list[dict]) -> None:
         if not affected:

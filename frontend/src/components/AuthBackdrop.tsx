@@ -1,8 +1,6 @@
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
-const MONOGRAM_CELLS = Array.from({ length: 360 }, (_, index) => index);
-
 interface AuthBackdropProps {
   children: ReactNode;
   className?: string;
@@ -17,26 +15,11 @@ export function AuthBackdrop({
   return (
     <div
       className={cn(
-        "auth-backdrop flex min-h-screen items-center justify-center px-4 py-8",
+        "auth-backdrop flex min-h-dvh items-center justify-center px-5 py-10",
         className
       )}
     >
-      <div className="auth-monogram-grid" aria-hidden="true">
-        {MONOGRAM_CELLS.map((cell) => (
-          <span className="auth-monogram" key={cell}>
-            <svg
-              className="auth-monogram-icon"
-              viewBox="0 0 64 64"
-              focusable="false"
-            >
-              <path
-                className="auth-monogram-slash"
-                d="M37 12h9L27 52h-9Z"
-              />
-            </svg>
-          </span>
-        ))}
-      </div>
+      <div className="auth-monogram-pattern" aria-hidden="true" />
       <div className={cn("relative z-10 w-full", contentClassName)}>
         {children}
       </div>

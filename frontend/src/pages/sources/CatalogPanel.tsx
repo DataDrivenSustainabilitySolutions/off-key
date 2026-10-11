@@ -93,9 +93,11 @@ export function CatalogPanel({
     <>
       <SectionPanel className="overflow-visible">
         {draft.sources.length === 0 && (
-          <div className="mb-5 flex flex-wrap items-center gap-3">
+          <details className="mb-4 text-sm">
+            <summary className="cursor-pointer text-muted-foreground">Sample catalogue</summary>
             <Button
               variant="outline"
+              className="mt-2"
               disabled={disabled}
               onClick={() =>
                 void task(async () =>
@@ -105,23 +107,16 @@ export function CatalogPanel({
                 )
               }
             >
-              Load AmbiBox template
+              Load sample template
             </Button>
-            <p className="text-sm text-muted-foreground">
-              Starts with an example broker. Enter your broker details before saving.
-            </p>
-          </div>
+          </details>
         )}
         <div className="mb-3 flex items-center gap-1 text-xs text-muted-foreground">
-          Sensor activity reflects saved settings
-          <HelpTooltip label="Sensor activity">
-            Recent data means a live reading was received within three sampling
-            intervals, with a minimum window of one minute. Original-rate sensors
-            use one minute. Retained snapshots do not confirm live data. Sensors
-            with collection off are not observed. Listen checks a broker for 20
-            seconds and saves collection for sensors sending live data, including
-            paused chargers. Save or discard draft changes first. New measurements
-            use the catalog default rate, or 10 seconds when the default is Off.
+          Activity
+          <HelpTooltip label="Reading activity">
+            Activity uses saved collection settings. Retained snapshots do not
+            confirm live data. Listen checks a broker for 20 seconds and enables
+            readings that arrive; save or discard draft changes first.
           </HelpTooltip>
         </div>
         <CatalogFilter

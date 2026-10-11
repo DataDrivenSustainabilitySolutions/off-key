@@ -1,3 +1,5 @@
+import type { SpatialSystemMetadata } from "./systemTypes";
+
 export type Point = { x: number; z: number };
 export type CameraPose = {
   position: [number, number, number];
@@ -11,10 +13,17 @@ export type SpatialGroup = {
   collapsed: boolean;
   locked: boolean;
 };
+/** Personal organization is presentation only and can span catalog groups. */
+export type SpatialPersonalGroup = {
+  id: string;
+  name: string;
+  color: string;
+  memberIds: string[];
+};
 export type SpatialNode = {
   id: string;
   label: string;
-  kind: "broker" | "sensor" | "group";
+  kind: "broker" | "charger" | "device" | "sensor" | "group";
   brokerId?: string;
   groupId: string;
   position: Point;
@@ -22,6 +31,19 @@ export type SpatialNode = {
   unit: string;
   metric: string;
   baseRate: number;
+  color?: string;
+  system?: SpatialSystemMetadata;
+  catalog?: {
+    sourceId: string;
+    chargerId?: string;
+    sensorKey?: string;
+    upstreamTopic?: string;
+    valueType?: "number" | "boolean" | "text" | "identifier";
+    collectionMode?: "off" | "original" | "sample";
+    intervalSeconds?: number;
+    category?: string;
+    localId?: string;
+  };
 };
 export type SpatialEdge = { id: string; source: string; target: string };
 export type Topology = { nodes: SpatialNode[]; edges: SpatialEdge[] };
@@ -46,10 +68,12 @@ export type Perspective = {
 };
 export type SpatialWorkspace = {
   version: 1;
+  layoutMode?: "automatic" | "manual";
   positions: Record<string, Point>;
   locks: Record<string, boolean>;
   memberships: Record<string, string>;
   groups: SpatialGroup[];
+  personalGroups?: SpatialPersonalGroup[];
   camera: CameraPose;
   perspectives: Perspective[];
 };

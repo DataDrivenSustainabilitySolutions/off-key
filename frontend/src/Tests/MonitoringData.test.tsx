@@ -21,7 +21,8 @@ vi.mock("../pages/monitoring/StaticMonitoringSetup", () => ({
     <div data-testid="sensors">{sensorTypes.join(",")}</div>,
 }));
 vi.mock("../pages/monitoring/MonitoringDataPanels", () => ({
-  MonitoringDataPanels: () => null,
+  MonitoringDataPanels: ({ services }: { services: { id: string }[] }) =>
+    <div data-testid="entity-services">{services.map((service) => service.id).join(",")}</div>,
 }));
 
 function deferred<T>() {
@@ -40,6 +41,23 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.useRealTimers();
+});
+
+it("shows only monitoring services assigned to the selected entity", async () => {
+  get.mockImplementation(async (url) => {
+    if (url.includes("models")) return {};
+    if (url.includes("active_only")) return [
+      { id: "selected-service", mqtt_topics: ["device/evCharger/entity-A/temperature"] },
+      { id: "another-service", mqtt_topics: ["device/evCharger/entity-B/temperature"] },
+    ];
+    return [];
+  });
+  const router = createMemoryRouter([
+    { path: "/monitoring/:chargerId", element: <Monitoring /> },
+  ], { initialEntries: ["/monitoring/entity-A"] });
+  render(<RouterProvider router={router} />);
+  await act(() => vi.advanceTimersByTimeAsync(1));
+  expect(screen.getByTestId("entity-services").textContent).toBe("selected-service");
 });
 
 it("isolates charger state and ignores an old response after navigation", async () => {

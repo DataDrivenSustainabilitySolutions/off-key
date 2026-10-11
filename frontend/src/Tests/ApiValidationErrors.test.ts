@@ -1,6 +1,6 @@
 import { AxiosError } from "axios";
 import { expect, it } from "vitest";
-import { apiClient } from "../lib/api-client";
+import { ApiRequestError, apiClient, apiUtils, type ApiRequestOptions } from "../lib/api-client";
 
 it("shows actionable field errors from catalog validation", async () => {
   const client = apiClient;
@@ -28,4 +28,31 @@ it("shows actionable field errors from catalog validation", async () => {
   } finally {
     client.defaults.adapter = original;
   }
+});
+
+it("preserves a conflict status for safe versioned catalog retries", async () => {
+  const original = apiClient.defaults.adapter;
+  apiClient.defaults.adapter = async (config) => {
+    throw new AxiosError("Conflict", "409", config, undefined, {
+      status: 409, statusText: "Conflict", headers: {}, config,
+      data: { detail: "The catalog changed. Reload before editing." },
+    });
+  };
+  try {
+    await expect(apiClient.patch("/v1/sources/labels", {})).rejects.toMatchObject({ name: "ApiRequestError", status: 409 });
+    await expect(apiClient.patch("/v1/sources/labels", {})).rejects.toBeInstanceOf(ApiRequestError);
+  } finally { apiClient.defaults.adapter = original; }
+});
+
+it("lets optional preview requests surface an expired session without forcing navigation", async () => {
+  const original = apiClient.defaults.adapter;
+  apiClient.defaults.adapter = async (config) => {
+    expect((config as typeof config & ApiRequestOptions).redirectOnUnauthorized).toBe(false);
+    throw new AxiosError("Unauthorized", "401", config, undefined, {
+      status: 401, statusText: "Unauthorized", headers: {}, config, data: { detail: "Login required" },
+    });
+  };
+  try {
+    await expect(apiUtils.get("/v1/sources", { redirectOnUnauthorized: false })).rejects.toMatchObject({ name: "ApiRequestError", status: 401 });
+  } finally { apiClient.defaults.adapter = original; }
 });

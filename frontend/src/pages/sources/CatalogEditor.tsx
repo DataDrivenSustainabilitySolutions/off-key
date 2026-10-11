@@ -25,7 +25,7 @@ const newCharger = (chargers: CatalogCharger[] = []): CatalogCharger => {
   return {
     id: crypto.randomUUID(),
     local_id: String(localId),
-    label: "New charger",
+    label: "New entity",
     policy: pausedPolicy,
     sensors: [],
   };
@@ -160,7 +160,7 @@ export function CatalogEditor({
               </div>
               <Button
                 variant="ghost"
-                aria-label={`${open ? "Hide" : "Show"} chargers for ${source.label}`}
+                aria-label={`${open ? "Hide" : "Show"} entities for ${source.label}`}
                 aria-expanded={open}
                 aria-controls={`broker-${source.id}`}
                 onClick={() =>
@@ -174,7 +174,7 @@ export function CatalogEditor({
               >
                 {open ? <ChevronDown /> : <ChevronRight />}
                 {source.chargers.length}{" "}
-                {source.chargers.length === 1 ? "charger" : "chargers"}
+                {source.chargers.length === 1 ? "entity" : "entities"}
               </Button>
               {snapshot.can_edit && (
                 <Button
@@ -184,7 +184,7 @@ export function CatalogEditor({
                   aria-busy={listening === source.id}
                   disabled={disabled || listenDisabled || !saved?.forward_port ||
                     !source.chargers.some((charger) => charger.sensors.length)}
-                  title="Check for live readings for 20 seconds and enable the sensors that send them. Existing rates are kept. Save or discard draft changes first."
+                  title="Check for live readings for 20 seconds and enable collection. Save or discard changes first."
                   onClick={() => void listen(source.id)}
                 >
                   <Radio aria-hidden="true" />
@@ -278,7 +278,7 @@ export function CatalogEditor({
                     });
                   }}
                 >
-                  Add charger
+                  Add entity
                 </Button>
               </div>
             )}

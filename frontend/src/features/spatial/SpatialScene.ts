@@ -1,8 +1,17 @@
 import * as THREE from "three";
+import type { PulseRoute } from "./focusedSystemTopology";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { SpatialConnectionLayer } from "./SpatialConnectionLayer";
 import { SpatialNodeLayer } from "./SpatialNodeLayer";
-import { fitCameraDepth, groupBounds } from "./sceneGeometry";
+import { SpatialGroundLayer } from "./SpatialGroundLayer";
+import {
+  fitCameraDepth,
+  groupBounds,
+  nodeVisualHeight,
+  sceneNodeLabel,
+  visibleSceneLabels,
+  type ScreenLabel,
+} from "./sceneGeometry";
 import type {
   CameraPose,
   Point,
@@ -32,11 +41,13 @@ export type SpatialCanvasProps = {
   focusRequest?: number;
   fitRequest?: number;
   pulseSources?: Record<string, string>;
+  pulseRoutes?: Record<string, PulseRoute>;
   view: "isometric" | "top";
 };
 
-type ObjectLabel = { element: HTMLButtonElement; id: string };
-type GroupLabel = { element: HTMLSpanElement; id: string };
+type LabelSize = { width: number; height: number; priority: number };
+type ObjectLabel = LabelSize & { element: HTMLButtonElement; id: string };
+type GroupLabel = LabelSize & { element: HTMLSpanElement; id: string };
 type Drag = {
   id: string | null;
   groupId: string | null;
@@ -70,6 +81,7 @@ export class SpatialScene {
   private readonly controls: OrbitControls;
   private readonly nodes = new SpatialNodeLayer();
   private readonly connections = new SpatialConnectionLayer();
+  private readonly floor = new SpatialGroundLayer();
   private readonly labels = document.createElement("div");
   private objectLabels: ObjectLabel[] = [];
   private groupLabels: GroupLabel[] = [];
@@ -79,9 +91,9 @@ export class SpatialScene {
   private readonly groundPoint = new THREE.Vector3();
   private readonly projected = new THREE.Vector3();
   private readonly positions = new Map<string, Point>();
+  private nodeById = new Map<string, SpatialNode>();
   private readonly targets = new Map<string, Point>();
   private readonly sourcePositions = new Map<string, Point>();
-  private readonly resources: { dispose: () => void }[] = [];
   private readonly resizeObserver: ResizeObserver;
   private readonly motionQuery = window.matchMedia(
     "(prefers-reduced-motion: reduce)",
@@ -144,29 +156,11 @@ export class SpatialScene {
     const keyLight = new THREE.DirectionalLight("#ffffff", 2.5);
     keyLight.position.set(8, 24, 14);
     this.scene.add(keyLight);
-    const planeGeometry = new THREE.PlaneGeometry(300, 300);
-    const planeMaterial = new THREE.MeshStandardMaterial({
-      color: "#f9fafb",
-      roughness: 1,
-    });
-    const plane = new THREE.Mesh(planeGeometry, planeMaterial);
-    plane.rotation.x = -Math.PI / 2;
-    plane.position.y = -0.018;
-    this.scene.add(plane);
-    const grid = new THREE.GridHelper(160, 160, "#dfe5e9", "#e9edf0");
-    grid.position.y = -0.003;
-    const gridMaterial = grid.material;
-    if (!Array.isArray(gridMaterial)) {
-      gridMaterial.transparent = true;
-      gridMaterial.opacity = 0.6;
-    }
-    this.resources.push(
-      planeGeometry,
-      planeMaterial,
-      grid.geometry,
-      ...(Array.isArray(gridMaterial) ? gridMaterial : [gridMaterial]),
+    this.scene.add(
+      this.floor.object,
+      this.nodes.object,
+      this.connections.object,
     );
-    this.scene.add(grid, this.nodes.object, this.connections.object);
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
     this.controls.enableDamping = false;
     this.controls.screenSpacePanning = false;
@@ -281,7 +275,8 @@ export class SpatialScene {
   }
 
   private syncTopology() {
-    const alive = new Set(this.props.nodes.map((node) => node.id));
+    this.nodeById = new Map(this.props.nodes.map((node) => [node.id, node]));
+    const alive = new Set(this.nodeById.keys());
     for (const id of this.positions.keys()) {
       if (!alive.has(id)) {
         this.positions.delete(id);
@@ -326,7 +321,9 @@ export class SpatialScene {
       const arrival = visibleSource
         ? { ...message, nodeId: visibleSource }
         : message;
-      if (this.connections.receive(arrival, performance.now())) this.schedule();
+      const route = this.props.pulseRoutes?.[message.nodeId];
+      if (this.connections.receive(arrival, performance.now(), route))
+        this.schedule();
     });
   }
 
@@ -401,7 +398,12 @@ export class SpatialScene {
     const offset = this.camera.position.clone().sub(this.controls.target);
     if (offset.lengthSq() < 1) offset.set(22, 28, 30);
     if (this.props.view === "top") offset.set(0, offset.length(), 0.01);
-    const depth = fitCameraDepth({ minX, maxX, minZ, maxZ }, offset.length());
+    const height = Math.max(1.25, ...this.props.nodes.map(nodeVisualHeight));
+    const depth = fitCameraDepth(
+      { minX, maxX, minZ, maxZ },
+      offset.length(),
+      height,
+    );
     offset.normalize().multiplyScalar(depth.distance);
     this.camera.far = depth.far;
     this.controls.target.set((minX + maxX) / 2, 0, (minZ + maxZ) / 2);
@@ -414,7 +416,7 @@ export class SpatialScene {
       extentY = 0;
     for (const x of [minX, maxX])
       for (const z of [minZ, maxZ])
-        for (const y of [0, 1.25]) {
+        for (const y of [0, height]) {
           this.projected.set(x, y, z).project(this.camera);
           extentX = Math.max(extentX, Math.abs(this.projected.x));
           extentY = Math.max(extentY, Math.abs(this.projected.y));
@@ -656,6 +658,7 @@ export class SpatialScene {
     const important = this.props.nodes.filter(
       (node) =>
         node.kind !== "sensor" ||
+        node.system?.kind === "stream" ||
         node.id === this.props.selectedId ||
         node.id === this.hoverId,
     );
@@ -668,7 +671,11 @@ export class SpatialScene {
       const label = document.createElement("button");
       label.type = "button";
       label.className = `spatial-object-label${node.id === this.props.selectedId ? " selected" : ""}`;
-      label.textContent = node.label;
+      const focused =
+        node.id === this.props.selectedId || node.id === this.hoverId;
+      const text = sceneNodeLabel(node, focused);
+      label.textContent = text;
+      label.setAttribute("aria-label", node.label);
       label.title = `${node.label} · ${node.kind}${node.locked ? " · locked" : ""}`;
       Object.assign(label.style, {
         position: "absolute",
@@ -699,9 +706,25 @@ export class SpatialScene {
         this.props.onSelect(node.id);
       });
       this.labels.append(label);
-      this.objectLabels.push({ element: label, id: node.id });
+      this.objectLabels.push({
+        element: label,
+        id: node.id,
+        width: Math.min(190, text.length * 6.2 + 20),
+        height: 27,
+        priority:
+          node.id === this.props.selectedId
+            ? 2
+            : node.id === this.hoverId
+              ? 1
+              : 0,
+      });
     }
-    for (const group of this.props.groups.slice(0, 24)) {
+    const occupiedGroups = new Set(
+      this.props.nodes.map((node) => node.groupId),
+    );
+    for (const group of this.props.groups
+      .filter((group) => occupiedGroups.has(group.id))
+      .slice(0, Math.max(0, 40 - this.objectLabels.length))) {
       if (
         this.props.nodes.some(
           (node) => node.kind === "group" && node.groupId === group.id,
@@ -721,9 +744,19 @@ export class SpatialScene {
         letterSpacing: "0.07em",
         textTransform: "uppercase",
         whiteSpace: "nowrap",
+        maxWidth: "190px",
+        overflow: "hidden",
+        textOverflow: "ellipsis",
       });
+      label.title = group.name;
       this.labels.append(label);
-      this.groupLabels.push({ element: label, id: group.id });
+      this.groupLabels.push({
+        element: label,
+        id: group.id,
+        width: Math.min(190, label.textContent.length * 6.4 + 22),
+        height: 28,
+        priority: 0,
+      });
     }
   }
 
@@ -733,7 +766,7 @@ export class SpatialScene {
     y: number,
     z: number,
     offset: number,
-  ) {
+  ): { x: number; y: number } | undefined {
     this.projected.set(x, y, z).project(this.camera);
     const screenX = (this.projected.x * 0.5 + 0.5) * this.width;
     const screenY = (-this.projected.y * 0.5 + 0.5) * this.height + offset;
@@ -744,39 +777,67 @@ export class SpatialScene {
       screenX < this.width - 24 &&
       screenY > 10 &&
       screenY < this.height - 10;
-    element.style.display = visible ? "" : "none";
-    if (visible)
+    element.style.display = "none";
+    if (visible) {
       element.style.transform = `translate(${screenX.toFixed(1)}px,${screenY.toFixed(1)}px) translate(-50%,-100%)`;
+      return { x: screenX, y: screenY };
+    }
   }
 
   private updateLabels() {
+    const candidates: ScreenLabel[] = [];
+    const elements = new Map<string, HTMLElement>();
     for (const label of this.objectLabels) {
       const position = this.positions.get(label.id);
-      const node = this.props.nodes.find(
-        (candidate) => candidate.id === label.id,
-      );
-      if (position && node)
-        this.positionLabel(
+      const node = this.nodeById.get(label.id);
+      if (position && node) {
+        const projected = this.positionLabel(
           label.element,
           position.x,
-          node.kind === "broker" ? 1 : 0.6,
+          nodeVisualHeight(node),
           position.z,
           -10,
         );
-      else label.element.style.display = "none";
+        if (projected) {
+          const id = `object:${label.id}`;
+          candidates.push({
+            ...label,
+            id,
+            x: projected.x - label.width / 2,
+            y: projected.y - label.height,
+          });
+          elements.set(id, label.element);
+        }
+      } else label.element.style.display = "none";
     }
     for (const label of this.groupLabels) {
       const bounds = this.nodes.bounds.get(label.id);
-      if (bounds)
-        this.positionLabel(
+      if (bounds) {
+        const projected = this.positionLabel(
           label.element,
           (bounds.minX + bounds.maxX) / 2,
           0.1,
           bounds.maxZ + 0.26,
           18,
         );
-      else label.element.style.display = "none";
+        if (projected) {
+          const id = `group:${label.id}`;
+          candidates.push({
+            ...label,
+            id,
+            x: projected.x - label.width / 2,
+            y: projected.y - label.height,
+          });
+          elements.set(id, label.element);
+        }
+      } else label.element.style.display = "none";
     }
+    const visible = visibleSceneLabels(
+      candidates,
+      this.camera.zoom < 0.3 ? 12 : 6,
+    );
+    for (const [id, element] of elements)
+      element.style.display = visible.has(id) ? "" : "none";
   }
 
   private invalidate(geometry = false) {
@@ -862,6 +923,7 @@ export class SpatialScene {
       ? this.connections.updatePulses(now, this.motionQuery.matches)
       : false;
     if (this.dirty || activeParticles || hadParticles) {
+      this.floor.update(this.camera);
       this.renderer.render(this.scene, this.camera);
       this.updateLabels();
       this.frameCount += 1;
@@ -978,7 +1040,7 @@ export class SpatialScene {
     this.controls.dispose();
     this.nodes.dispose();
     this.connections.dispose();
-    for (const resource of this.resources) resource.dispose();
+    this.floor.dispose();
     this.scene.clear();
     this.renderer.dispose();
     this.renderer.domElement.remove();

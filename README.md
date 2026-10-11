@@ -37,6 +37,12 @@ Compose stack; CI's deployment smoke workflow performs that full-system check.
 
 ### Local development (default)
 
+For an isolated deployment of a rework, including a compiled frontend, real
+authentication, persistent database, email capture, and local MQTT services, use
+the [local deployment workflow](docs/development/local-deployment.md). It builds
+the current checkout and runs alongside other previews without sharing their
+database or image tags.
+
 Use the base compose file for stable local networking and host port access:
 
 ```bash
@@ -135,7 +141,7 @@ docker compose --profile mqtt-sim up -d --build
 
 ### AmbiBox catalog and collection
 
-Open **Data sources** as a verified administrator to build or import the catalog,
+Open **Sources** as a verified administrator to build or import the catalog,
 select chargers and sensors, and apply original-rate or sampled collection. New
 chargers start paused. The application manages per-broker EMQX sources and GOST
 routes through private management APIs; topics are no longer configured in proxy

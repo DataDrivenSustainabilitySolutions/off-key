@@ -28,14 +28,18 @@ from off_key_core.db.maintenance import DeploymentInProgressError
 from starlette.middleware.gzip import GZipMiddleware
 
 from .api.service_auth import require_gateway
-from .api.v1 import collection, data_services, members, models, radar
+from .api.v1 import collection, data_services, members, models, radar, system
 from .api.v1.admin_models import router as admin_models_router
 from .config.config import RadarWorkloadLifecycle, TacticConfig, get_tactic_settings
+from .config.system_live import get_system_live_settings
 from .facades.docker import AsyncDocker
 from .models.registry import ModelRegistryNotReadyError, ModelRegistryService
 from .services.ambibox_ingress import AmbiboxIngress
+from .services.ambibox_live_access import AmbiboxLiveAccess
 from .services.orchestration.radar import RadarOrchestrationService
 from .services.reconciliation import RadarStatusReconciliationService
+from .services.system import SystemService
+from .services.system_live import SystemLiveService
 
 
 async def _initialize_model_registry(
@@ -168,9 +172,21 @@ async def _start_reconciliation(app: FastAPI, config: TacticConfig) -> None:
     )
 
 
+async def _shutdown_system_live(app: FastAPI) -> None:
+    live = getattr(app.state, "system_live", None)
+    if live is not None:
+        try:
+            await live.close()
+        except Exception:
+            logger.exception("Error stopping generic live observation")
+        finally:
+            app.state.system_live = None
+
+
 async def _shutdown_services(app: FastAPI, config: TacticConfig) -> None:
     """Best-effort shutdown for every service initialized during startup."""
-    for attribute in ("ambibox_ingress", "reconciliation_service"):
+    await _shutdown_system_live(app)
+    for attribute in ("system_ingress", "ambibox_ingress", "reconciliation_service"):
         service = getattr(app.state, attribute, None)
         if service is not None:
             try:
@@ -222,6 +238,7 @@ async def lifespan(app: FastAPI):
     app.state.model_registry_recovery_task = None
     app.state.docker_client = None
     app.state.reconciliation_service = None
+    app.state.system_live = None
 
     try:
         await _start_model_registry(app, config)
@@ -238,6 +255,22 @@ async def lifespan(app: FastAPI):
         app.state.ambibox_ingress = AmbiboxIngress()
         if app.state.ambibox_ingress.settings.AMBIBOX_INGRESS_ENABLED:
             await app.state.ambibox_ingress.start()
+        app.state.system_live = SystemLiveService(
+            get_system_live_settings(),
+            access_resolver=AmbiboxLiveAccess(app.state.ambibox_ingress.settings),
+        )
+        from .services.system_ingress import SystemIngress
+
+        app.state.system_ingress = SystemIngress(
+            access_resolver=AmbiboxLiveAccess(app.state.ambibox_ingress.settings),
+        )
+        await app.state.system_ingress.start()
+
+        async def read_live_configuration():
+            async with get_async_session_local()() as session:
+                return await SystemService(session).read()
+
+        app.state.system_live.start_supervisor(read_live_configuration)
         yield
     finally:
         await _shutdown_services(app, config)
@@ -281,6 +314,7 @@ def create_app() -> FastAPI:
     )
     business.include_router(models.router, prefix="/api/v1", tags=["models"])
     business.include_router(collection.router, prefix="/api/v1")
+    business.include_router(system.router, prefix="/api/v1")
     business.include_router(admin_models_router, prefix="/api/v1", tags=["admin"])
 
     business.include_router(members.router, prefix="/api/v1")

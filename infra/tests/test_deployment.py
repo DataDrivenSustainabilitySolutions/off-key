@@ -89,6 +89,14 @@ class DeploymentTests(unittest.TestCase):
             ("prod-ephemeral", "prod", all_off | {"persist_mailpit": True}),
             ("prod-mixed", "prod", all_off | {"persist_emqx_log": True}),
             ("prod-collection-disabled", "prod", {"mqtt_telemetry_enabled": "false"}),
+            (
+                "prod-ingress-disabled",
+                "prod",
+                {
+                    "ambibox_ingress_enabled": False,
+                    "system_collection_enabled": False,
+                },
+            ),
         ]
         cls.results = {}
         for name, environment, overrides in cases:
@@ -504,6 +512,10 @@ class DeploymentTests(unittest.TestCase):
         controller = config["services"]["tactic"]
         self.assertIn("emqx-network", controller["networks"])
         self.assertEqual(controller["environment"]["AMBIBOX_INGRESS_ENABLED"], "true")
+        self.assertEqual(controller["environment"]["SYSTEM_LIVE_ENABLED"], "true")
+        self.assertIn(
+            "app-network", config["services"]["tailscale-ambibox"]["networks"]
+        )
         self.assertNotIn("MQTT_SOURCE_TOPICS", proxy["environment"])
         self.assertNotIn("TAILSCALE_AMBIBOX_UPSTREAM_HOST", proxy["environment"])
         self.assertEqual(
@@ -538,6 +550,8 @@ class DeploymentTests(unittest.TestCase):
                         "AMBIBOX_GOST_PASSWORD",
                         "AMBIBOX_MQTT_USERNAME",
                         "AMBIBOX_MQTT_PASSWORD",
+                        "EMQX_CA_CERT",
+                        "SYSTEM_COLLECTION_MQTT_API_KEY",
                     },
                 )
                 broker = services["emqx-main"]
@@ -578,6 +592,20 @@ class DeploymentTests(unittest.TestCase):
             config["services"]["mqtt-proxy"]["environment"]["MQTT_TELEMETRY_ENABLED"],
             "false",
         )
+
+    def test_readiness_receives_the_same_ingress_switches_as_the_controller(self):
+        for name in ("prod", "prod-ingress-disabled"):
+            services = self.results[name]["swarm_config"]["services"]
+            expected = "false" if name == "prod-ingress-disabled" else "true"
+            for service in ("tactic", "mqtt-proxy"):
+                self.assertEqual(
+                    services[service]["environment"]["SYSTEM_COLLECTION_ENABLED"],
+                    expected,
+                )
+                self.assertEqual(
+                    services[service]["environment"]["AMBIBOX_INGRESS_ENABLED"],
+                    expected,
+                )
 
     @unittest.skipUnless(
         os.environ.get("OFFKEY_GOST_SMOKE") == "1",

@@ -128,19 +128,19 @@ afterEach(() => vi.restoreAllMocks());
 
 const openBroker = async (name = "Main broker") => {
   const button = screen.queryByRole("button", {
-    name: `Show chargers for ${name}`,
+    name: `Show entities for ${name}`,
   });
   if (button) fireEvent.click(button);
-  else await screen.findByRole("button", { name: `Hide chargers for ${name}` });
+  else await screen.findByRole("button", { name: `Hide entities for ${name}` });
 };
 const openCharger = async (name = "Yard") => {
-  await screen.findByRole("button", { name: /chargers for Main broker/ });
+  await screen.findByRole("button", { name: /entities for Main broker/ });
   await openBroker();
   const button = screen.queryByRole("button", {
     name: `Show measurements for ${name}`,
   });
   if (button) fireEvent.click(button);
-  return within(screen.getByRole("region", { name: `Charger ${name}` }));
+  return within(screen.getByRole("region", { name: `Entity ${name}` }));
 };
 const edit = (
   label: string,
@@ -178,13 +178,13 @@ describe("direct collection editor", () => {
     mockSnapshot(snapshot(inventory()));
     show();
     const expand = await screen.findByRole("button", {
-      name: "Show chargers for Main broker",
+      name: "Show entities for Main broker",
     });
     expect(expand.getAttribute("aria-expanded")).toBe("false");
     expect(
       screen.getByRole("button", { name: "Edit Hostname: main.ts.net" }),
     ).toBeTruthy();
-    expect(screen.queryByRole("region", { name: "Charger Yard" })).toBeNull();
+    expect(screen.queryByRole("region", { name: "Entity Yard" })).toBeNull();
     edit(
       "Broker name",
       "Renamed",
@@ -192,13 +192,13 @@ describe("direct collection editor", () => {
     );
     expect(
       screen
-        .getByRole("button", { name: "Show chargers for Renamed" })
+        .getByRole("button", { name: "Show entities for Renamed" })
         .getAttribute("aria-expanded"),
     ).toBe("false");
     await openBroker("Renamed");
-    const yard = within(screen.getByRole("region", { name: "Charger Yard" }));
+    const yard = within(screen.getByRole("region", { name: "Entity Yard" }));
     expect(
-      yard.getByRole("button", { name: "Edit Local charger ID: 0" }),
+      yard.getByRole("button", { name: "Edit Local entity ID: 0" }),
     ).toBeTruthy();
     expect(yard.queryByRole("combobox", { name: /Collection for/ })).toBeNull();
     fireEvent.click(
@@ -231,7 +231,7 @@ describe("direct collection editor", () => {
     );
     expect(screen.queryAllByText("Unsaved changes")).toHaveLength(0);
     expect(
-      screen.getByRole("button", { name: "Show chargers for Main broker" }),
+      screen.getByRole("button", { name: "Show entities for Main broker" }),
     ).toBeTruthy();
     expect(api.put).not.toHaveBeenCalled();
   });
@@ -269,21 +269,21 @@ describe("direct collection editor", () => {
         screen.getByRole("button", {
           name:
             entity === "charger"
-              ? "Actions for charger Yard"
+              ? "Actions for entity Yard"
               : "Actions for broker Main broker",
         }),
         { key: "Enter" },
       );
       fireEvent.click(
         await screen.findByRole("menuitem", {
-          name: entity === "charger" ? "Remove charger" : "Remove broker",
+          name: entity === "charger" ? "Remove entity" : "Remove broker",
         }),
       );
       expect(confirm).not.toHaveBeenCalled();
       fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
       await waitFor(() => expect(confirm).toHaveBeenCalledTimes(1));
       expect(confirm.mock.calls[0]![0]).toContain(
-        entity === "charger" ? "Charger Yard" : "Broker Main broker",
+        entity === "charger" ? "Entity Yard" : "Broker Main broker",
       );
       expect(api.put).not.toHaveBeenCalled();
     },
@@ -293,8 +293,8 @@ describe("direct collection editor", () => {
     show();
     fireEvent.click(await screen.findByRole("button", { name: "Add broker" }));
     edit("Hostname", "charger.ts.net");
-    fireEvent.click(screen.getByRole("button", { name: "Add charger" }));
-    edit("Charger name", "Yard charger");
+    fireEvent.click(screen.getByRole("button", { name: "Add entity" }));
+    edit("Entity name", "Yard charger");
     fireEvent.click(
       screen.getByRole("button", {
         name: "Show measurements for Yard charger",
@@ -304,7 +304,7 @@ describe("direct collection editor", () => {
     const dialog = within(
       screen.getByRole("dialog", { name: "Measurement details" }),
     );
-    fireEvent.change(dialog.getByLabelText("Sensor key"), {
+    fireEvent.change(dialog.getByLabelText("Reading key"), {
       target: { value: "temperature" },
     });
     fireEvent.change(dialog.getByLabelText("Upstream topic"), {
@@ -379,7 +379,7 @@ describe("direct collection editor", () => {
         ) as HTMLInputElement
       ).value,
     ).toBe("15");
-    edit("Charger name", "Yard renamed", yard);
+    edit("Entity name", "Yard renamed", yard);
     const next = await save();
     expect(next.sources[0]!.chargers[0]).toEqual({
       ...original.sources[0]!.chargers[0],
@@ -551,7 +551,7 @@ describe("direct collection editor", () => {
     expect(
       (
         yard.getByRole("button", {
-          name: "View Charger name: Yard",
+          name: "View Entity name: Yard",
         }) as HTMLButtonElement
       ).disabled,
     ).toBe(true);
@@ -571,7 +571,7 @@ describe("direct collection editor", () => {
       screen.getByRole("button", { name: "Details for Yard · Temperature" }),
     );
     expect(
-      screen.getByLabelText("Sensor key").closest("fieldset")?.disabled,
+      screen.getByLabelText("Reading key").closest("fieldset")?.disabled,
     ).toBe(true);
     expect(api.post).not.toHaveBeenCalled();
   });
@@ -595,7 +595,7 @@ describe("direct collection editor", () => {
     await openCharger();
     setRate("Yard", "Temperature", "sample", "120");
     fireEvent.click(
-      screen.getByRole("button", { name: "Hide chargers for Main broker" }),
+      screen.getByRole("button", { name: "Hide entities for Main broker" }),
     );
     await openCharger();
     expect(
@@ -675,7 +675,7 @@ describe("direct collection editor", () => {
     api.get.mockResolvedValue({ ...snapshot(inventory()), revision: 2 });
     await act(refresh);
     expect(
-      screen.getByLabelText("Sensor key").closest("fieldset")?.disabled,
+      screen.getByLabelText("Reading key").closest("fieldset")?.disabled,
     ).toBe(true);
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
     expect(screen.getByRole("alert").textContent).toContain(
@@ -729,7 +729,7 @@ describe("direct collection editor", () => {
     mockSnapshot(snapshot(inventory()));
     show();
     const yard = await openCharger();
-    edit("Local charger ID", "west", yard);
+    edit("Local entity ID", "west", yard);
     const next = await save();
     expect(
       next.sources[0]!.chargers[0]!.sensors.every((sensor) =>
@@ -744,9 +744,8 @@ describe("direct collection editor", () => {
       url.endsWith("ambibox-template") ? inventory() : get(url),
     );
     show();
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Load AmbiBox template" }),
-    );
+    fireEvent.click(await screen.findByText("Sample catalogue"));
+    fireEvent.click(screen.getByRole("button", { name: "Load sample template" }));
     await openCharger();
     expect(
       (
@@ -834,9 +833,9 @@ describe("direct collection editor", () => {
     mockSnapshot(snapshot(inventory()));
     show();
     await screen.findByRole("button", {
-      name: "Show chargers for Main broker",
+      name: "Show entities for Main broker",
     });
-    api.post.mockRejectedValueOnce(new Error("Sensor keys must be unique"));
+    api.post.mockRejectedValueOnce(new Error("Reading keys must be unique"));
     fireEvent.change(document.querySelector('input[type="file"]')!, {
       target: {
         files: [
@@ -848,7 +847,7 @@ describe("direct collection editor", () => {
       "must be unique",
     );
     expect(
-      screen.getByRole("button", { name: "Show chargers for Main broker" }),
+      screen.getByRole("button", { name: "Show entities for Main broker" }),
     ).toBeTruthy();
     expect(api.put).not.toHaveBeenCalled();
     fireEvent.change(document.querySelector('input[type="file"]')!, {
@@ -858,7 +857,7 @@ describe("direct collection editor", () => {
     });
     await waitFor(() =>
       expect(
-        screen.queryByRole("button", { name: "Show chargers for Main broker" }),
+        screen.queryByRole("button", { name: "Show entities for Main broker" }),
       ).toBeNull(),
     );
     expect(api.put).not.toHaveBeenCalled();
@@ -1010,7 +1009,7 @@ describe("sensor activity evidence", () => {
     expect(within(yard.getByRole("group", { name: "Measurement AC current" })).getByText("Retained snapshot")).toBeTruthy();
     expect(within(yard.getByRole("group", { name: "Measurement Connected" })).getByText("No data yet")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Show measurements for Garage" }));
-    expect(within(screen.getByRole("region", { name: "Charger Garage" })).getAllByText("Collection off")).toHaveLength(3);
+    expect(within(screen.getByRole("region", { name: "Entity Garage" })).getAllByText("Collection off")).toHaveLength(3);
     expect(screen.queryByRole("button", { name: "Save changes" })).toBeNull();
   });
 
@@ -1095,7 +1094,7 @@ describe("sensor activity evidence", () => {
           screen.getByRole("region", { name: "Broker Main broker" }),
         ));
       }
-      else if (binding === "charger") edit("Local charger ID", "other", yard);
+      else if (binding === "charger") edit("Local entity ID", "other", yard);
       else {
         fireEvent.click(screen.getByRole("button", { name: "Details for Yard · Temperature" }));
         fireEvent.change(screen.getByLabelText(binding === "topic" ? "Upstream topic" : "Value type"), {
@@ -1185,7 +1184,7 @@ describe("listen to live sensors", () => {
       probe(activity);
       show();
       fireEvent.click(await screen.findByRole("button", { name: "Listen to Main broker" }));
-      await waitFor(() => expect(toast.success).toHaveBeenCalledWith(expect.stringContaining("No live readings in 20 seconds")));
+      await waitFor(() => expect(toast.success).toHaveBeenCalledWith(expect.stringContaining("No live readings received in 20 seconds")));
       expect(api.put).not.toHaveBeenCalled();
       expect(api.post).toHaveBeenCalledTimes(1);
     },
@@ -1231,7 +1230,7 @@ describe("listen to live sensors", () => {
   it("does not offer Listen to read-only members", async () => {
     mockSnapshot(ready(false));
     show();
-    await screen.findByRole("button", { name: "Show chargers for Main broker" });
+    await screen.findByRole("button", { name: "Show entities for Main broker" });
     expect(screen.queryByRole("button", { name: /^Listen to/ })).toBeNull();
   });
 });

@@ -23,6 +23,9 @@ from sqlalchemy.dialects.postgresql import JSONB
 
 from ..utils.enum import RoleEnum
 from .base import Base
+from .system import SystemCollectionConfiguration as SystemCollectionConfiguration
+from .system import SystemConfiguration as SystemConfiguration
+from .system import SystemRevision as SystemRevision
 from .table_contracts import monitoring_evidence_table
 
 

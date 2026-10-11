@@ -3,22 +3,22 @@ import type { ChartThemeColors } from "@/lib/telemetry-chart";
 
 const FALLBACK_COLORS: Record<ResolvedTheme, ChartThemeColors> = {
   light: {
-    foreground: "hsl(220 24% 12%)",
-    mutedForeground: "hsl(218 10% 44%)",
-    border: "hsl(216 18% 88%)",
-    popover: "hsl(0 0% 100%)",
-    popoverForeground: "hsl(222 18% 10%)",
-    muted: "hsl(214 22% 95%)",
-    primary: "hsl(173 80% 32%)",
+    foreground: "#26303B",
+    mutedForeground: "hsl(210, 10%, 45%)",
+    border: "hsl(210, 15%, 88%)",
+    popover: "#FFFFFF",
+    popoverForeground: "#26303B",
+    muted: "hsl(210, 15%, 97%)",
+    primary: "#3A7E72",
   },
   dark: {
-    foreground: "hsl(210 12% 94%)",
-    mutedForeground: "hsl(220 8% 72%)",
-    border: "hsl(220 8% 24%)",
-    popover: "hsl(220 7% 15%)",
-    popoverForeground: "hsl(210 12% 94%)",
-    muted: "hsl(220 8% 19%)",
-    primary: "hsl(173 70% 42%)",
+    foreground: "#E0E6EB",
+    mutedForeground: "hsl(210, 10%, 62%)",
+    border: "hsl(213, 12%, 25%)",
+    popover: "hsl(213, 16%, 13%)",
+    popoverForeground: "#E0E6EB",
+    muted: "hsl(213, 14%, 16%)",
+    primary: "#89BDAF",
   },
 };
 
@@ -40,7 +40,15 @@ export const resolveChartThemeColors = (
   const fallback = FALLBACK_COLORS[resolvedTheme];
   const resolveColor = (key: keyof typeof TOKEN_NAMES): string => {
     const value = styles.getPropertyValue(TOKEN_NAMES[key]).trim();
-    return value ? `hsl(${value})` : fallback[key];
+    if (!value) return fallback[key];
+    // The canvas accepts modern CSS colors, but ZRender's hover/gradient color
+    // parser requires comma-separated channels. Use that syntax everywhere.
+    if (value.includes(",")) return `hsl(${value})`;
+    const [channels = "", alpha] = value.split("/");
+    const components = channels.trim().split(/\s+/).join(", ");
+    return alpha === undefined
+      ? `hsl(${components})`
+      : `hsla(${components}, ${alpha.trim()})`;
   };
   return {
     foreground: resolveColor("foreground"),

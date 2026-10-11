@@ -18,22 +18,20 @@ import { ThemeProvider } from "@/components/theme-provider";
 const Account = lazy(() => import("@/pages/Account"));
 const Anomalies = lazy(() => import("@/pages/Anomalies"));
 const Details = lazy(() => import("@/pages/Details"));
-const DataSources = lazy(() => import("@/pages/DataSources"));
+const DataSources = lazy(() => import("@/pages/SystemCatalogue"));
 const ForgotPassword = lazy(() => import("@/pages/ForgotPassword"));
-const LandingPage = lazy(() => import("@/pages/Landingpage"));
+const Entities = lazy(() => import("@/pages/Entities"));
 const Login = lazy(() => import("@/pages/Login"));
 const Monitoring = lazy(() => import("@/pages/Monitoring"));
 const Registration = lazy(() => import("@/pages/Registration"));
 const ResetPassword = lazy(() => import("@/pages/ResetPassword"));
-const Services = lazy(() => import("@/pages/Services"));
 const Settings = lazy(() => import("@/pages/Settings"));
 const Verification = lazy(() => import("@/pages/Verification"));
-const SpatialLab = lazy(() => import("@/pages/SpatialLab"));
+const MonitoringWorkspace = lazy(() => import("@/pages/MonitoringWorkspace"));
 
 const router = createBrowserRouter(
   createRoutesFromElements(
     <>
-      {import.meta.env.DEV && <Route path="/spatial-lab" element={<SpatialLab />} />}
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Registration />} />
       <Route path="/verify" element={<Verification />} />
@@ -47,12 +45,16 @@ const router = createBrowserRouter(
           </ProtectedRoute>
         }
       >
-        <Route path="/" element={<LandingPage />} />
+        <Route path="/" element={<MonitoringWorkspace />} />
+        <Route path="/explorer" element={<Navigate to="/" replace />} />
+        <Route path="/spatial-lab" element={<Navigate to="/" replace />} />
+        <Route path="/entities" element={<Entities />} />
+        <Route path="/stations" element={<Navigate to="/entities" replace />} />
         <Route path="/details/:chargerId" element={<Details />} />
         <Route path="/monitoring/:chargerId" element={<Monitoring />} />
-        <Route path="/services" element={<Services />} />
+        <Route path="/services" element={<Navigate to="/" replace />} />
         <Route path="/sources" element={<DataSources />} />
-        <Route path="/favourites" element={<Navigate to="/?state=favorites" replace />} />
+        <Route path="/favourites" element={<Navigate to="/entities" replace />} />
         <Route path="/account" element={<Account />} />
         <Route path="/account/settings" element={<Settings />} />
         <Route path="/anomalies" element={<Anomalies />} />

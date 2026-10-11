@@ -41,9 +41,9 @@ def collection_lock(monkeypatch):
 
 
 @pytest.fixture
-def selected_collection(monkeypatch):
+def selected_collection(monkeypatch, request):
     stream = SimpleNamespace(
-        accepted_topic="device/evCharger/charger-1/sine",
+        accepted_topic=getattr(request, "param", "device/evCharger/charger-1/sine"),
         sensor=SimpleNamespace(value_type="number"),
         signature=("source", "charger-1", "sine", "sample", 10),
     )
@@ -54,8 +54,9 @@ def selected_collection(monkeypatch):
     )
     monkeypatch.setattr(radar_module, "lock_collection_configuration", AsyncMock())
     monkeypatch.setattr(
-        radar_module, "read_collection_configuration", AsyncMock(return_value=snapshot)
+        radar_module, "read_collection_runtime", AsyncMock(return_value=snapshot)
     )
+    return stream
 
 
 @pytest.mark.asyncio
@@ -1128,6 +1129,14 @@ async def test_startup_validation_raises_with_logs_when_container_exits(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "selected_collection",
+    [
+        "device/evCharger/charger-1/sine",
+        f"telemetry/entity-{'a' * 64}/reading-{'b' * 64}",
+    ],
+    indirect=True,
+)
 async def test_create_radar_service_removes_workload_when_db_commit_fails(
     monkeypatch,
     selected_collection,
@@ -1152,7 +1161,7 @@ async def test_create_radar_service_removes_workload_when_db_commit_fails(
         MagicMock(
             return_value={
                 "SERVICE_ID": "service-1",
-                "RADAR_SUBSCRIPTION_TOPICS": "device/evCharger/charger-1/sine",
+                "RADAR_SUBSCRIPTION_TOPICS": selected_collection.accepted_topic,
                 "RADAR_MONITORING_STRATEGY": "static_baseline",
                 "RADAR_MODEL_TYPE": "pyod_iforest",
                 "RADAR_MONITORING_CONFIG": json.dumps(
@@ -1175,7 +1184,7 @@ async def test_create_radar_service_removes_workload_when_db_commit_fails(
         await service.create_radar_service(
             RadarStartConfig(
                 container_name="radar-duplicate",
-                mqtt_topics=["device/evCharger/charger-1/sine"],
+                mqtt_topics=[selected_collection.accepted_topic],
                 model_type="pyod_knn",
             )
         )

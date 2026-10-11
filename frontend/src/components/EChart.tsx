@@ -60,6 +60,7 @@ type DataZoomPayload = {
 };
 
 const finiteNumber = (value: unknown): number | undefined => {
+  if (value === undefined || value === null || value === "") return undefined;
   const numericValue = Number(value);
   return Number.isFinite(numericValue) ? numericValue : undefined;
 };

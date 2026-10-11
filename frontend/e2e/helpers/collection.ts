@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { expect, type APIRequestContext } from "@playwright/test";
 
-import type { Catalog, CatalogSnapshot } from "../../src/types/collection";
+import type { Catalog, CatalogSnapshot, CollectionPolicy } from "../../src/types/collection";
+import type { SystemSnapshot } from "../../src/features/spatial/systemTypes";
 
 // The development broker uses the same scalar topic contract as AmbiBox.
 export const addTestCharger = async (
@@ -10,6 +11,7 @@ export const addTestCharger = async (
   chargerId: string,
   localId: string,
   keys: readonly string[],
+  policy: CollectionPolicy = { mode: "original", interval_seconds: 10 },
 ): Promise<Record<string, string>> => {
   const headers = { Authorization: `Bearer ${token}` };
   const response = await api.get("/api/v1/sources", { headers });
@@ -36,7 +38,7 @@ export const addTestCharger = async (
     id: chargerId,
     local_id: localId,
     label: `Charger ${chargerId}`,
-    policy: { mode: "original", interval_seconds: 10 },
+    policy,
     sensors: keys.map((key) => ({
       key,
       label: key,
@@ -61,7 +63,7 @@ export const addTestCharger = async (
         return (
           current.collection.revision === revision &&
           current.collection.status === "applied" &&
-          current.ingress.sources?.[source.id]?.status === "connected"
+          (policy.mode === "off" || current.ingress.sources?.[source.id]?.status === "connected")
         );
       },
       { timeout: 120_000, intervals: [1_000] },
@@ -81,6 +83,29 @@ export const removeTestCharger = async (
   chargerId: string,
 ): Promise<void> => {
   const headers = { Authorization: `Bearer ${token}` };
+  const systemResponse = await api.get("/api/v1/system", { headers });
+  expect(systemResponse.ok(), await systemResponse.text()).toBeTruthy();
+  const system = (await systemResponse.json()) as SystemSnapshot;
+  if ((system.runtime.collection_revision ?? 0) > 0) {
+    const removedReadings = new Set(Object.entries(system.runtime.bindings ?? {})
+      .filter(([, binding]) => binding.entity_id === chargerId).map(([id]) => id));
+    const removedDevices = new Set(system.document.streams.filter(stream => removedReadings.has(stream.id))
+      .flatMap(stream => stream.device_id ?? []));
+    system.document.streams = system.document.streams.filter(stream => !removedReadings.has(stream.id));
+    system.document.devices = system.document.devices.filter(device => !removedDevices.has(device.id));
+    const removedConnections = new Set(system.document.connections
+      .filter(connection => !system.document.streams.some(stream => stream.connection_id === connection.id)
+        && !system.document.devices.some(device => device.connection_id === connection.id)).map(connection => connection.id));
+    system.document.connections = system.document.connections.filter(connection => !removedConnections.has(connection.id));
+    const removedIds = new Set([...removedReadings, ...removedDevices, ...removedConnections]);
+    system.document.groups = system.document.groups.map(group => ({ ...group, member_ids: group.member_ids.filter(id => !removedIds.has(id)) }))
+      .filter(group => group.member_ids.length);
+    const saved = await api.put("/api/v1/system", { headers, data: {
+      expected_revision: system.revision, document: system.document, pause_affected_monitors: true,
+    } });
+    expect(saved.ok(), await saved.text()).toBeTruthy();
+    return;
+  }
   const response = await api.get("/api/v1/sources", { headers });
   expect(response.ok(), await response.text()).toBeTruthy();
   const snapshot = (await response.json()) as CatalogSnapshot;

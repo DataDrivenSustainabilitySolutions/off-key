@@ -8,12 +8,16 @@ import {
   Upload,
   X,
 } from "lucide-react";
+import { SpatialCatalogImport } from "./SpatialCatalogImport";
+import type { SpatialCatalogProjection } from "./catalog";
 import { MAX_WORKSPACE_BYTES, parseWorkspace } from "./workspace";
 import type { Perspective, SpatialWorkspace } from "./types";
 
-type SourceMode = "demo" | "hsl";
+type SourceMode = "demo" | "hsl" | "ambibox";
 type Props = {
   workspace: SpatialWorkspace;
+  catalog?: SpatialCatalogProjection;
+  onCatalog: (catalog: SpatialCatalogProjection) => void;
   source: SourceMode;
   sensorCount: number;
   viewName: string;
@@ -30,10 +34,17 @@ type Props = {
   onImport: (workspace: SpatialWorkspace) => boolean;
   onResetCamera: () => void;
   onNotice: (message: string) => void;
+  namePersistenceStatus?: string;
+  namePersistenceError?: string;
+  onRefreshNames?: () => void;
+  onOpenSavedCatalog?: () => Promise<SpatialCatalogProjection>;
+  allowCatalogImport?: boolean;
 };
 
 export function WorkspacePreferences({
   workspace,
+  catalog,
+  onCatalog,
   source,
   sensorCount,
   viewName,
@@ -50,6 +61,11 @@ export function WorkspacePreferences({
   onImport,
   onResetCamera,
   onNotice,
+  namePersistenceStatus,
+  namePersistenceError,
+  onRefreshNames,
+  onOpenSavedCatalog,
+  allowCatalogImport = true,
 }: Props) {
   const fileInput = useRef<HTMLInputElement>(null);
   const [importing, setImporting] = useState(false);
@@ -57,7 +73,7 @@ export function WorkspacePreferences({
   const importLayout = async (file: File) => {
     if (file.size > MAX_WORKSPACE_BYTES) {
       onNotice(
-        "Layout import failed: the file exceeds 1 MB. Your current layout is unchanged.",
+        "View import failed: the file exceeds 1 MB. Your current view is unchanged.",
       );
       return;
     }
@@ -66,20 +82,20 @@ export function WorkspacePreferences({
       const imported = parseWorkspace(await file.text());
       if (!imported) {
         onNotice(
-          "Layout import failed: invalid or unsupported layout. Your current layout is unchanged.",
+          "View import failed: invalid or unsupported view. Your current view is unchanged.",
         );
       } else if (onImport(imported)) {
         onNotice(
-          "Layout imported and saved on this browser. Telemetry was not imported.",
+          "View imported and saved on this browser. Object positions remain automatic.",
         );
       } else {
         onNotice(
-          "Layout import failed: browser storage is unavailable. Your current layout is unchanged.",
+          "View import failed: browser storage is unavailable. Your current view is unchanged.",
         );
       }
     } catch {
       onNotice(
-        "Layout import failed: the file could not be read. Your current layout is unchanged.",
+        "View import failed: the file could not be read. Your current view is unchanged.",
       );
     } finally {
       setImporting(false);
@@ -90,8 +106,8 @@ export function WorkspacePreferences({
     <div className="sp-preferences">
       <h2>Make it yours.</h2>
       <p>
-        Placement, colours, locks, and camera position save automatically for
-        this browser and user.
+        Collections, colours, and camera position save automatically for this
+        browser and user. Object positions are automatic.
       </p>
       <label>
         Data source
@@ -102,6 +118,9 @@ export function WorkspacePreferences({
         >
           <option value="demo">Simulated sensor system</option>
           <option value="hsl">Live public MQTT · Helsinki</option>
+          {catalog && (
+            <option value="ambibox">AmbiBox · imported catalog</option>
+          )}
         </select>
       </label>
       {source === "demo" && (
@@ -117,6 +136,34 @@ export function WorkspacePreferences({
             <option value="1000">1,000 sensor streams</option>
           </select>
         </label>
+      )}
+      {allowCatalogImport && (
+        <SpatialCatalogImport
+          catalog={catalog}
+          active={source === "ambibox"}
+          workspace={workspace}
+          onCatalog={onCatalog}
+          onChange={onChange}
+          onNotice={onNotice}
+          onOpenSaved={onOpenSavedCatalog}
+        />
+      )}
+      {source === "ambibox" && namePersistenceStatus && (
+        <section className="sp-name-persistence">
+          <h3>Saved catalog names</h3>
+          <p>
+            {namePersistenceStatus} Click an object or charger title in its
+            inspector to rename it.
+          </p>
+          {namePersistenceError && <p role="alert">{namePersistenceError}</p>}
+          {onRefreshNames ? (
+            <button className="sp-wide-button" onClick={onRefreshNames}>
+              Refresh saved names
+            </button>
+          ) : (
+            <a href="/login">Sign in to edit names ↗</a>
+          )}
+        </section>
       )}
       <section>
         <h3>Perspectives</h3>
@@ -175,14 +222,14 @@ export function WorkspacePreferences({
               if (
                 event.key === "Enter" &&
                 newGroupName.trim() &&
-                workspace.groups.length < 24
+                workspace.groups.length < 128
               )
                 onCreateGroup();
             }}
           />
           <button
             aria-label="Add collection"
-            disabled={!newGroupName.trim() || workspace.groups.length >= 24}
+            disabled={!newGroupName.trim() || workspace.groups.length >= 128}
             onClick={onCreateGroup}
           >
             <FolderPlus size={16} />
@@ -195,7 +242,7 @@ export function WorkspacePreferences({
       </section>
       <button className="sp-wide-button" onClick={onExport}>
         <ArrowDownToLine size={15} />
-        Export layout
+        Export view
       </button>
       <button
         className="sp-wide-button"
@@ -203,14 +250,14 @@ export function WorkspacePreferences({
         onClick={() => fileInput.current?.click()}
       >
         <Upload size={15} />
-        {importing ? "Importing layout…" : "Import layout"}
+        {importing ? "Importing view…" : "Import view"}
       </button>
       <input
         ref={fileInput}
         type="file"
         hidden
         accept=".json,application/json"
-        aria-label="Layout JSON file"
+        aria-label="View JSON file"
         onChange={(event) => {
           const file = event.target.files?.[0];
           event.target.value = "";
@@ -222,8 +269,8 @@ export function WorkspacePreferences({
         Reset camera
       </button>
       <p className="sp-storage-note">
-        Browser-local in this draft. Account sync and shared team layouts can
-        build on the same versioned layout format.
+        Camera perspectives and collections stay local to this browser in the
+        telemetry preview.
       </p>
       {source === "hsl" && (
         <a

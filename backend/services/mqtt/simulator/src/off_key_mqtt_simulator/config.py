@@ -10,6 +10,7 @@ class SimulatorConfig(BaseModel):
     model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
     enabled: bool
+    workshop_enabled: bool = False
     broker_host: str
     broker_port: int
     use_tls: bool
@@ -102,6 +103,7 @@ class SimulatorSettings(BaseSettings):
     model_config = SettingsConfigDict(case_sensitive=True, extra="ignore")
 
     SIMULATOR_ENABLED: bool = True
+    SIMULATOR_WORKSHOP_ENABLED: bool = False
     SIMULATOR_BROKER_HOST: str = "source-broker"
     SIMULATOR_BROKER_PORT: int = 1883
     SIMULATOR_USE_TLS: bool = False
@@ -127,6 +129,7 @@ class SimulatorSettings(BaseSettings):
 
         return SimulatorConfig(
             enabled=self.SIMULATOR_ENABLED,
+            workshop_enabled=self.SIMULATOR_WORKSHOP_ENABLED,
             broker_host=self.SIMULATOR_BROKER_HOST,
             broker_port=self.SIMULATOR_BROKER_PORT,
             use_tls=self.SIMULATOR_USE_TLS,

@@ -3,6 +3,7 @@
 from datetime import datetime
 from math import ceil
 from typing import Annotated, Any, Literal
+from unicodedata import category
 
 from pydantic import (
     BaseModel,
@@ -44,11 +45,13 @@ __all__ = [
     "RadarOperationalProgress",
     "RadarOperationalStage",
     "RadarOperationalStatus",
+    "RadarServiceLabel",
     "RadarStartConfig",
     "SimpleJumperMartingaleTrackerConfig",
     "SimpleMixtureMartingaleTrackerConfig",
     "StaticBaselineConfig",
     "StaticMartingaleConfig",
+    "validate_service_name",
 ]
 
 _SENSOR_KEY_STRATEGIES = {"full_hierarchy", "top_level", "leaf"}
@@ -614,16 +617,40 @@ class LegacyMonitoringConfig(BaseModel):
         return config
 
 
+def validate_service_name(value: str) -> str:
+    value = value.strip()
+    if not value or len(value) > 120 or any(category(char) == "Cc" for char in value):
+        raise ValueError(
+            "Use a service name of 1 to 120 characters without control characters"
+        )
+    return value
+
+
+class RadarServiceLabel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    display_name: str = Field(min_length=1, max_length=120, strict=True)
+
+    _name = field_validator("display_name")(validate_service_name)
+
+
 class RadarStartConfig(BaseModel):
     """One validated launch contract, from the HTTP boundary to orchestration."""
 
     model_config = ConfigDict(extra="forbid")
 
     container_name: str = Field(min_length=1)
+    display_name: str | None = Field(
+        default=None, min_length=1, max_length=120, strict=True
+    )
     mqtt_topics: list[str]
     monitoring: MonitoringConfig = Field(default_factory=StaticBaselineConfig)
     performance_config: PerformanceConfig = Field(default_factory=PerformanceConfig)
     mqtt_config: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("display_name")
+    @classmethod
+    def validate_display_name(cls, value: str | None) -> str | None:
+        return validate_service_name(value) if value is not None else None
 
     @model_validator(mode="before")
     @classmethod

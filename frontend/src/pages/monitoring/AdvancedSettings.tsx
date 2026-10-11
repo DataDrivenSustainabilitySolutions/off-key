@@ -5,7 +5,7 @@ import type {
   MartingaleBettingFunction,
   ParameterSchema,
 } from "@/types/monitoring";
-import { ChevronDown, Plus, Settings2, Trash2 } from "lucide-react";
+import { ChevronDown, Plus, Settings2 } from "lucide-react";
 import type { Dispatch, SetStateAction } from "react";
 import { useId, useState } from "react";
 
@@ -280,8 +280,8 @@ export function AdvancedSettings({
                       <h4 className="font-medium">Tracker {index + 1}</h4>
                       <Button
                         type="button"
-                        variant="ghost"
-                        size="icon"
+                        variant="destructive"
+                        size="sm"
                         aria-label={`Remove tracker ${index + 1}`}
                         disabled={draft.martingaleTrackers.length === 1}
                         onClick={() =>
@@ -293,7 +293,7 @@ export function AdvancedSettings({
                           }))
                         }
                       >
-                        <Trash2 className="size-4" />
+                        Remove
                       </Button>
                     </div>
                     <div className="mt-3 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -664,7 +664,7 @@ export function AdvancedSettings({
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
               <SettingLabel
-                label="Sensor freshness (s)"
+                label="Reading freshness (s)"
                 help="Maximum receive-time age allowed for every required sensor in a strict multivariate alignment. An older sensor blocks inference until it updates."
                 htmlFor="advanced-sensor-freshness"
               />
@@ -687,7 +687,7 @@ export function AdvancedSettings({
             </div>
             <div>
               <SettingLabel
-                label="Sensor identity"
+                label="Reading identity"
                 help="Controls feature names derived from MQTT topics. Full hierarchy avoids collisions; top level or leaf can intentionally group shallower topic segments."
                 htmlFor="advanced-sensor-identity"
               />

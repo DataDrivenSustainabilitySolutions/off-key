@@ -20,7 +20,7 @@ export function CatalogFilter({
             type="search"
             className={fieldClass}
             value={value.query}
-            placeholder="Broker, charger, sensor or topic…"
+            placeholder="Broker, entity, reading or topic…"
             onChange={(e) => onChange({ ...value, query: e.target.value })}
           />
         </label>

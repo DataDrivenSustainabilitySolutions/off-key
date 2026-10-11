@@ -2,6 +2,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from off_key_core.db.maintenance import DeploymentInProgressError
+from off_key_core.schemas.radar import RadarServiceLabel
 from off_key_core.schemas.radar import RadarStartConfig as RadarConfig
 from pydantic import BaseModel
 
@@ -167,6 +168,18 @@ async def stop_radar_service(
         raise HTTPException(
             status_code=500, detail=f"Failed to stop RADAR service: {e!s}"
         ) from e
+
+
+@router.patch("/radar/services/{service_id}/label")
+async def rename_radar_service(
+    request: Request,
+    service_id: str,
+    change: RadarServiceLabel,
+    service: RadarOrchestrationService = Depends(get_radar_orchestration_service),
+):
+    if not await service.rename_radar_service(service_id, change.display_name):
+        raise HTTPException(status_code=404, detail="Monitoring service not found")
+    return {"id": service_id, "display_name": change.display_name}
 
 
 @router.delete("/radar/services/{service_id}")

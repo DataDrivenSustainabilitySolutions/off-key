@@ -1,10 +1,18 @@
 import * as THREE from "three";
-import { groupBounds, type GroupBounds } from "./sceneGeometry";
+import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
+import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
+import {
+  groupBounds,
+  nodeVisualKind,
+  nodeVisualScale,
+  type GroupBounds,
+  type NodeVisualKind,
+} from "./sceneGeometry";
 import type { Point, SpatialGroup, SpatialNode } from "./types";
 
 type NodeBatch = {
   mesh: THREE.InstancedMesh;
-  kind: SpatialNode["kind"] | "cap" | "shadow";
+  kind: NodeVisualKind | "cap" | "chargerDetail" | "deviceDetail" | "shadow";
   ids: string[];
 };
 
@@ -57,7 +65,13 @@ export class SpatialNodeLayer {
     mesh.count = 0;
     this.object.add(mesh);
     this.batches.push({ mesh, kind, ids: [] });
-    if (kind !== "cap" && kind !== "shadow") this.pickables.push(mesh);
+    if (
+      kind !== "cap" &&
+      kind !== "chargerDetail" &&
+      kind !== "deviceDetail" &&
+      kind !== "shadow"
+    )
+      this.pickables.push(mesh);
   }
 
   private ensureCapacity(count: number) {
@@ -74,7 +88,7 @@ export class SpatialNodeLayer {
     this.capacity = Math.max(32, 2 ** Math.ceil(Math.log2(Math.max(1, count))));
     this.createBatch(
       "broker",
-      new THREE.BoxGeometry(1.45, 0.88, 1.1),
+      new RoundedBoxGeometry(1.45, 0.52, 1.1, 2, 0.09),
       new THREE.MeshStandardMaterial({
         color: "#ffffff",
         roughness: 0.85,
@@ -90,6 +104,48 @@ export class SpatialNodeLayer {
       "group",
       new THREE.BoxGeometry(1.25, 0.3, 1.25),
       new THREE.MeshStandardMaterial({ color: "#ffffff", roughness: 0.85 }),
+    );
+    this.createBatch(
+      "device",
+      new RoundedBoxGeometry(1.35, 0.34, 0.95, 2, 0.1),
+      new THREE.MeshStandardMaterial({
+        color: "#ffffff",
+        roughness: 0.76,
+        metalness: 0.025,
+      }),
+    );
+    const deviceDetail = new RoundedBoxGeometry(0.46, 0.025, 0.065, 1, 0.012);
+    deviceDetail.translate(0, 0.185, 0.24);
+    this.createBatch(
+      "deviceDetail",
+      deviceDetail,
+      new THREE.MeshStandardMaterial({ color: "#ffffff", roughness: 0.8 }),
+    );
+    this.createBatch(
+      "charger",
+      new RoundedBoxGeometry(0.88, 1.4, 0.6, 2, 0.09),
+      new THREE.MeshStandardMaterial({
+        color: "#ffffff",
+        roughness: 0.72,
+        metalness: 0.04,
+      }),
+    );
+    const display = new THREE.BoxGeometry(0.34, 0.26, 0.025);
+    display.translate(0, 0.31, 0.308);
+    const port = new THREE.TorusGeometry(0.115, 0.024, 5, 16);
+    port.translate(0, -0.15, 0.315);
+    const detailGeometry = mergeGeometries([display, port])!;
+    display.dispose();
+    port.dispose();
+    this.createBatch(
+      "chargerDetail",
+      detailGeometry,
+      new THREE.MeshStandardMaterial({
+        color: "#ffffff",
+        roughness: 0.6,
+        emissive: "#ffffff",
+        emissiveIntensity: 0.04,
+      }),
     );
     this.createBatch(
       "cap",
@@ -167,6 +223,10 @@ export class SpatialNodeLayer {
       broker: 0,
       sensor: 0,
       group: 0,
+      charger: 0,
+      device: 0,
+      deviceDetail: 0,
+      chargerDetail: 0,
       cap: 0,
       shadow: 0,
     };
@@ -175,43 +235,68 @@ export class SpatialNodeLayer {
     for (const batch of this.batches) batch.ids.length = 0;
     for (const node of nodes) {
       const position = positions.get(node.id) ?? node.position;
-      this.sphere.center.set(position.x, 0.4, position.z);
+      const kind = nodeVisualKind(node);
+      const scale = nodeVisualScale(node);
+      this.sphere.radius = 1.2 * scale;
+      this.sphere.center.set(
+        position.x,
+        kind === "charger" ? 0.09 + 0.72 * scale : 0.4,
+        position.z,
+      );
       if (!this.frustum.intersectsSphere(this.sphere)) continue;
       this.visibleCount += 1;
-      const batch = byKind.get(node.kind);
+      const batch = byKind.get(kind);
       if (!batch) continue;
-      const index = counts[node.kind]++;
+      const index = counts[kind]++;
       batch.ids.push(node.id);
       this.transform.position.set(
         position.x,
-        node.kind === "broker" ? 0.52 : node.kind === "group" ? 0.23 : 0.3,
+        kind === "charger"
+          ? 0.09 + 0.72 * scale
+          : kind === "broker"
+            ? 0.36
+            : kind === "group"
+              ? 0.23
+              : kind === "device"
+                ? 0.29
+                : 0.3,
         position.z,
       );
-      this.transform.scale.set(1, 1, 1);
+      this.transform.scale.set(scale, scale, scale);
       this.transform.updateMatrix();
       batch.mesh.setMatrixAt(index, this.transform.matrix);
       this.color
-        .set(colors.get(node.groupId) ?? "#6b8daf")
-        .lerp(this.white, node.kind === "broker" ? 0.87 : 0.92);
+        .set(node.color ?? colors.get(node.groupId) ?? "#6b8daf")
+        .lerp(this.white, kind === "broker" ? 0.87 : 0.92);
       batch.mesh.setColorAt(index, this.color);
+      const detail = byKind.get("chargerDetail");
+      if (kind === "charger" && detail) {
+        const detailIndex = counts.chargerDetail++;
+        detail.mesh.setMatrixAt(detailIndex, this.transform.matrix);
+        this.color.set(node.color ?? colors.get(node.groupId) ?? "#6b8daf");
+        detail.mesh.setColorAt(detailIndex, this.color);
+      }
+      const entityDetail = byKind.get("deviceDetail");
+      if (kind === "device" && entityDetail) {
+        const detailIndex = counts.deviceDetail++;
+        entityDetail.mesh.setMatrixAt(detailIndex, this.transform.matrix);
+        this.color.set(node.color ?? colors.get(node.groupId) ?? "#6b8daf");
+        entityDetail.mesh.setColorAt(detailIndex, this.color);
+      }
       const cap = byKind.get("cap");
-      if (cap) {
+      if (cap && kind !== "charger" && kind !== "device") {
         const capIndex = counts.cap++;
         cap.ids.push(node.id);
         this.transform.position.y =
-          node.kind === "broker"
-            ? 0.977
-            : node.kind === "group"
-              ? 0.403
-              : 0.522;
+          kind === "broker" ? 0.647 : kind === "group" ? 0.403 : 0.522;
         this.transform.scale.set(
-          node.kind === "broker" ? 1.65 : node.kind === "group" ? 1.5 : 1,
+          kind === "broker" ? 1.65 : kind === "group" ? 1.5 : 1,
           1,
-          node.kind === "broker" ? 1.65 : node.kind === "group" ? 1.5 : 1,
+          kind === "broker" ? 1.65 : kind === "group" ? 1.5 : 1,
         );
         this.transform.updateMatrix();
         cap.mesh.setMatrixAt(capIndex, this.transform.matrix);
-        this.color.set(colors.get(node.groupId) ?? "#6b8daf");
+        this.color.set(node.color ?? colors.get(node.groupId) ?? "#6b8daf");
         cap.mesh.setColorAt(capIndex, this.color);
       }
       const shadow = byKind.get("shadow");
@@ -223,9 +308,21 @@ export class SpatialNodeLayer {
           position.z + 0.08,
         );
         this.transform.scale.set(
-          node.kind === "broker" ? 1.35 : 0.75,
+          (kind === "broker"
+            ? 1.35
+            : kind === "charger"
+              ? 0.9
+              : kind === "device"
+                ? 1.2
+                : 0.75) * scale,
           1,
-          node.kind === "broker" ? 1.03 : 0.75,
+          (kind === "broker"
+            ? 1.03
+            : kind === "charger"
+              ? 0.65
+              : kind === "device"
+                ? 0.85
+                : 0.75) * scale,
         );
         this.transform.updateMatrix();
         shadow.mesh.setMatrixAt(shadowIndex, this.transform.matrix);
@@ -238,7 +335,9 @@ export class SpatialNodeLayer {
       if (
         batch.kind === "broker" ||
         batch.kind === "sensor" ||
-        batch.kind === "group"
+        batch.kind === "group" ||
+        batch.kind === "charger" ||
+        batch.kind === "device"
       )
         batch.mesh.computeBoundingSphere();
       if (batch.mesh.instanceColor) batch.mesh.instanceColor.needsUpdate = true;
@@ -286,9 +385,17 @@ export class SpatialNodeLayer {
     if (selected) {
       const position = positions.get(selected.id) ?? selected.position;
       this.selection.position.set(position.x, 0.095, position.z);
+      const selectedKind = nodeVisualKind(selected);
       const scale =
-        selected.kind === "broker" ? 1.6 : selected.kind === "group" ? 1.55 : 1;
-      this.selection.scale.set(scale, scale, scale);
+        selectedKind === "broker"
+          ? 1.6
+          : selectedKind === "group"
+            ? 1.55
+            : selectedKind === "charger" || selectedKind === "device"
+              ? 1.35
+              : 1;
+      const visualScale = scale * nodeVisualScale(selected);
+      this.selection.scale.set(visualScale, visualScale, visualScale);
     }
   }
 

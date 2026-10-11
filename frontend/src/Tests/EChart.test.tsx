@@ -169,6 +169,10 @@ describe("EChart lifecycle", () => {
 
     act(() => handler?.({ batch: [{ startValue: 1_800, endValue: 1_200 }] }));
     expect(onViewportChange).toHaveBeenLastCalledWith(1_200, 1_800);
+
+    act(() => handler?.({ startValue: null, endValue: null, start: 20, end: 80 }));
+    expect(onViewportChange).toHaveBeenCalledTimes(3);
+    expect(onViewportChange).toHaveBeenLastCalledWith(1_200, 1_800);
   });
 
   it("cleans up both Strict Mode instances", async () => {

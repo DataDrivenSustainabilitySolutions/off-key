@@ -3,7 +3,11 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Header, HTTPException
-from off_key_core.schemas.collection import CatalogChange, SourceProbeRequest
+from off_key_core.schemas.collection import (
+    CatalogChange,
+    CatalogLabelChange,
+    SourceProbeRequest,
+)
 from off_key_core.schemas.storage import StorageStatus
 
 from ...facades.tactic import TacticError, tactic
@@ -75,6 +79,15 @@ async def apply_catalog(
 ):
     return await collection_request(
         "PUT", authorization, body=change.model_dump(mode="json")
+    )
+
+
+@router.patch("/labels")
+async def rename_catalog_entity(
+    change: CatalogLabelChange, authorization: str | None = Header(default=None)
+):
+    return await collection_request(
+        "PATCH", authorization, "/labels", change.model_dump(mode="json")
     )
 
 

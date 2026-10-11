@@ -18,6 +18,7 @@ from off_key_core.db.retention import read_storage_status
 from off_key_core.schemas.collection import (
     AmbiboxCatalog,
     CatalogChange,
+    CatalogLabelChange,
     CatalogPreview,
     CatalogSnapshot,
     SensorActivity,
@@ -184,6 +185,18 @@ async def apply_catalog(
 ):
     try:
         return await CollectionService(session).apply(change, actor=user.email)
+    except DomainError as exc:
+        _raise_http_from_domain(exc)
+
+
+@router.patch("/labels", response_model=CatalogSnapshot)
+async def rename_catalog_entity(
+    change: CatalogLabelChange,
+    user: User = Depends(require_admin),
+    session: AsyncSession = Depends(get_db_async),
+):
+    try:
+        return await CollectionService(session).rename(change, actor=user.email)
     except DomainError as exc:
         _raise_http_from_domain(exc)
 

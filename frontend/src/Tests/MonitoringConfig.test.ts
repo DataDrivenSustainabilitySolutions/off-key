@@ -80,7 +80,7 @@ describe("monitoring configuration", () => {
     });
 
     expect(result.request).toBeUndefined();
-    expect(result.errors.projectionComponents).toMatch(/selected sensors/);
+    expect(result.errors.projectionComponents).toMatch(/selected readings/);
   });
 
   it("preserves explicit null adaptive model parameters", () => {
@@ -234,7 +234,7 @@ describe("monitoring configuration", () => {
       containerName: "unused",
     });
     expect(invalid.request).toBeUndefined();
-    expect(invalid.errors.topics).toMatch(/belong to charger charger-1/);
+    expect(invalid.errors.topics).toMatch(/belong to entity charger-1/);
     expect(invalid.errors.trainingWindow).toBe(
       "Training samples must be an integer.",
     );

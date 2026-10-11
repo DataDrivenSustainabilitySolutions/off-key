@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
 import { useAuth } from "@/auth/AuthContext";
 import { NavigationBar } from "@/components/NavigationBar";
 import { PageHeader, PageShell, SectionPanel } from "@/components/DashboardLayout";
@@ -67,21 +66,14 @@ export default function AccountPage() {
     <>
       <NavigationBar />
       <PageShell>
-        <PageHeader
-          title="Account"
-          actions={
-            <Button variant="outline" asChild>
-              <Link to="/account/settings">Settings</Link>
-            </Button>
-          }
-        />
-        <SectionPanel title="Your account" help="Members can view all organization data. Administrators also manage access, collection, and monitoring.">
-          <p className="text-sm">{member?.email} · {isAdmin ? "Administrator" : "Member"}</p>
+        <PageHeader title="Account" />
+        <SectionPanel title="Account" help="Members can view all organization data. Administrators manage access, collection, and monitoring.">
+          <p className="break-words text-sm">{member?.email} · {isAdmin ? "Administrator" : "Member"}</p>
         </SectionPanel>
         {isAdmin && (
-          <SectionPanel title="Organization members" help="Keep at least one active administrator. Disabling a member revokes their sessions immediately.">
+          <SectionPanel title="Members" help="Keep at least one active administrator. Disabling access revokes sessions immediately.">
             <form className="mb-6 flex flex-wrap items-end gap-3" onSubmit={(event) => { event.preventDefault(); void invite(email, role); }}>
-              <div className="grid gap-2">
+              <div className="grid min-w-0 flex-1 gap-2 sm:flex-none">
                 <Label htmlFor="member-email">Email</Label>
                 <Input id="member-email" type="email" required value={email} onChange={(event) => setEmail(event.target.value)} />
               </div>
@@ -99,8 +91,8 @@ export default function AccountPage() {
             <ul className="divide-y">
               {members.map((target) => (
                 <li key={target.id} className="flex flex-wrap items-center justify-between gap-3 py-4">
-                  <div>
-                    <p className="text-sm font-medium">{target.email}</p>
+                  <div className="min-w-0">
+                    <p className="break-words text-sm font-medium">{target.email}</p>
                     <p className="text-xs text-muted-foreground">{!target.is_active ? "Disabled" : target.is_verified ? "Active" : "Invitation pending"}</p>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">

@@ -24,7 +24,10 @@
     - name: Wait for database, APIs, catalog application and selected broker routes
       shell: |
         set -euo pipefail
-        mapfile -t containers < <(docker ps -q --filter 'label=com.docker.swarm.service.name={{ stack_name }}_mqtt-proxy' --filter status=running)
+        containers=()
+        while IFS= read -r container; do
+          containers+=("$container")
+        done < <(docker ps -q --filter 'label=com.docker.swarm.service.name={{ stack_name }}_mqtt-proxy' --filter status=running)
         if [ -z "${containers[0]:-}" ] || [ -n "${containers[1]:-}" ]; then
           echo "Expected exactly one running collection worker" >&2
           exit 1

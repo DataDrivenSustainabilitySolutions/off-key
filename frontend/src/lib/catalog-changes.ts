@@ -24,7 +24,7 @@ export function catalogRemovals(before: Catalog, after: Catalog): string[] {
     for (const charger of source.chargers) {
       const next = chargers.get(charger.id);
       if (!next) {
-        removed.push(`Charger ${charger.label}`);
+        removed.push(`Entity ${charger.label}`);
         continue;
       }
       const keys = new Set(next.sensors.map((sensor) => sensor.key));

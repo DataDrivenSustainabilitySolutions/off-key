@@ -5,6 +5,7 @@ import type {
   SpatialWorkspace,
   Topology,
 } from "./types";
+import { tidyLocalPositions } from "./localArrangement";
 
 export const DEFAULT_CAMERA: CameraPose = {
   position: [22, 28, 30],
@@ -14,11 +15,21 @@ export const DEFAULT_CAMERA: CameraPose = {
 
 const GROUP_IDS = ["workshop", "energy", "environment"] as const;
 const SPACING = 3.2;
-const MIN_DISTANCE = 2.4;
+
+/** Configuration IDs may match ordinary Object.prototype names. */
+export function workspaceValue<T>(
+  values: Record<string, T>,
+  id: string,
+): T | undefined {
+  return Object.prototype.hasOwnProperty.call(values, id)
+    ? values[id]
+    : undefined;
+}
 
 export function createDefaultWorkspace(): SpatialWorkspace {
   return {
     version: 1,
+    layoutMode: "automatic",
     positions: {},
     locks: {},
     memberships: {},
@@ -118,15 +129,15 @@ function effectiveNodes(
 ): SpatialNode[] {
   const groups = new Map(workspace.groups.map((group) => [group.id, group]));
   return base.nodes.map((node) => {
-    const savedGroup = workspace.memberships[node.id];
+    const savedGroup = workspaceValue(workspace.memberships, node.id);
     const groupId =
       savedGroup && groups.has(savedGroup) ? savedGroup : node.groupId;
     return {
       ...node,
       groupId,
-      position: workspace.positions[node.id] ?? node.position,
+      position: workspaceValue(workspace.positions, node.id) ?? node.position,
       locked:
-        (workspace.locks[node.id] ?? node.locked) ||
+        (workspaceValue(workspace.locks, node.id) ?? node.locked) ||
         (groups.get(groupId)?.locked ?? false),
     };
   });
@@ -161,6 +172,8 @@ export function resolveTopology(
       id,
       label: group.name,
       kind: "group",
+      catalog: members.find((node) => node.kind === "charger")?.catalog,
+      system: members.find((node) => node.kind === "device")?.system,
       groupId: group.id,
       position: {
         x: centroid.x / members.length,
@@ -194,85 +207,12 @@ export function resolveTopology(
   return { nodes: visible, edges };
 }
 
-/** A deterministic grid reserves fixed objects before placing movable ones. */
+/** Local, Finder-like cleanup preserves neighborhoods and rigid collapsed groups. */
 export function arrangeTopology(
   base: Topology,
   workspace: SpatialWorkspace,
 ): SpatialWorkspace {
-  const nodes = effectiveNodes(base, workspace);
-  const positions = { ...workspace.positions };
-  // Spatial buckets keep arrangement linear for large sensor catalogs.
-  const occupied = new Map<string, Point[]>();
-  const key = (x: number, z: number) =>
-    `${Math.floor(x / MIN_DISTANCE)},${Math.floor(z / MIN_DISTANCE)}`;
-  const occupy = (point: Point) => {
-    const cellKey = key(point.x, point.z);
-    const bucket = occupied.get(cellKey) ?? [];
-    bucket.push(point);
-    occupied.set(cellKey, bucket);
-  };
-  const isFree = (point: Point) => {
-    const x = Math.floor(point.x / MIN_DISTANCE);
-    const z = Math.floor(point.z / MIN_DISTANCE);
-    for (let dx = -1; dx <= 1; dx += 1) {
-      for (let dz = -1; dz <= 1; dz += 1) {
-        if (
-          occupied
-            .get(`${x + dx},${z + dz}`)
-            ?.some(
-              (other) =>
-                Math.hypot(point.x - other.x, point.z - other.z) < MIN_DISTANCE,
-            )
-        )
-          return false;
-      }
-    }
-    return true;
-  };
-  for (const node of nodes) {
-    if (node.locked) {
-      positions[node.id] = node.position;
-      occupy(node.position);
-    }
-  }
-  const largestGroup = Math.max(
-    1,
-    ...workspace.groups.map(
-      (group) => nodes.filter((node) => node.groupId === group.id).length - 1,
-    ),
-  );
-  const columns = Math.max(3, Math.ceil(Math.sqrt(largestGroup)));
-  const groupWidth = columns * SPACING + 1.4;
-  for (const [groupIndex, group] of workspace.groups.entries()) {
-    const members = nodes
-      .filter((node) => node.groupId === group.id && !node.locked)
-      .sort((a, b) => {
-        if (a.kind !== b.kind) return a.kind === "broker" ? -1 : 1;
-        return a.id.localeCompare(b.id, undefined, { numeric: true });
-      });
-    const center =
-      (groupIndex - (workspace.groups.length - 1) / 2) * groupWidth;
-    let slot = 0;
-    for (const node of members) {
-      let candidate: Point;
-      do {
-        candidate =
-          slot === 0 && node.kind === "broker"
-            ? { x: center, z: -3.5 }
-            : {
-                x:
-                  center +
-                  ((Math.max(0, slot - 1) % columns) - (columns - 1) / 2) *
-                    SPACING,
-                z: 1 + Math.floor(Math.max(0, slot - 1) / columns) * SPACING,
-              };
-        slot += 1;
-      } while (!isFree(candidate));
-      positions[node.id] = candidate;
-      occupy(candidate);
-    }
-  }
-  return { ...workspace, positions };
+  return tidyLocalPositions(effectiveNodes(base, workspace), workspace);
 }
 
 function inferredGroup(id: string): string | undefined {
@@ -289,10 +229,11 @@ export function moveNodes(
 ): SpatialWorkspace {
   const positions = { ...workspace.positions };
   for (const [id, point] of Object.entries(changes)) {
-    const groupId = workspace.memberships[id] ?? inferredGroup(id);
+    const groupId =
+      workspaceValue(workspace.memberships, id) ?? inferredGroup(id);
     const group = workspace.groups.find((item) => item.id === groupId);
     if (
-      !workspace.locks[id] &&
+      !workspaceValue(workspace.locks, id) &&
       !group?.locked &&
       Number.isFinite(point.x) &&
       Number.isFinite(point.z)

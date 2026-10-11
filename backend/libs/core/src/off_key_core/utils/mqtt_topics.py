@@ -69,6 +69,10 @@ class TopicMetadataExtractor:
         telemetry_type: str | None = None
 
         topic_match = self._compiled_regex.match(topic)
+        if topic_match is None and self.topic_regex == DEFAULT_TOPIC_REGEX:
+            topic_match = re.match(
+                r"^telemetry/(?P<charger_id>[^/]+)/(?P<telemetry_type>.+)$", topic
+            )
         if topic_match:
             charger_id = self._normalize_value(topic_match.group("charger_id"))
             telemetry_type = self._normalize_value(topic_match.group("telemetry_type"))
@@ -175,6 +179,10 @@ def validate_telemetry_topic_filter(topic: str) -> str:
         return normalized
 
     levels = normalized.split("/")
+    if levels[0] == "telemetry" and len(levels) >= 3:
+        return normalized
+
+    levels = normalized.split("/")
     if len(levels) < 4:
         raise ValueError(
             "MQTT telemetry topic filters must use 'device/#' or "
@@ -210,7 +218,8 @@ def normalize_static_monitoring_topics(topics: Iterable[str]) -> list[str]:
             "Static monitoring requires concrete MQTT topics; wildcards are not "
             "valid sensor assignments"
         )
-    charger_ids = {topic.split("/")[2] for topic in normalized}
+    extractor = TopicMetadataExtractor()
+    charger_ids = {extractor.extract(topic).charger_id for topic in normalized}
     if len(charger_ids) != 1:
         raise ValueError(
             "A static monitoring service must belong to exactly one charger"

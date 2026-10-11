@@ -73,12 +73,14 @@ def derive_operational_status(
             status, "Docker status could not be verified"
         )
 
-    if docker_state == "running":
-        updated_at = coerce_utc(service.operational_updated_at)
-        if updated_at is None:
-            return _mark_operational_status_stale(
-                status, "Runtime heartbeat has not arrived"
-            )
+    updated_at = coerce_utc(status.get("updated_at"))
+    if docker_state == "running" and updated_at is None:
+        return _mark_operational_status_stale(
+            status, "Runtime heartbeat has not arrived"
+        )
+    # The cheap overview must age persisted heartbeats too. Checking freshness
+    # does not require probing every workload in Docker.
+    if updated_at is not None:
         age_seconds = (datetime.now(UTC) - updated_at).total_seconds()
         if age_seconds > RUNTIME_STATUS_STALE_AFTER_SECONDS:
             return _mark_operational_status_stale(status, "Runtime heartbeat is stale")

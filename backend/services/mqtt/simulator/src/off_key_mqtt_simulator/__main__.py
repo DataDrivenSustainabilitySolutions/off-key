@@ -14,6 +14,7 @@ from off_key_core.config.logs import logger
 from off_key_core.config.validation import validate_settings
 
 from .config import SimulatorConfig, get_simulator_settings
+from .workshop import build_workshop_messages
 
 
 class SimulatorService:
@@ -28,6 +29,7 @@ class SimulatorService:
             client_id=f"{config.client_id_prefix}-{uuid.uuid4().hex[:8]}",
             transport="tcp",
         )
+        self._client.max_queued_messages_set(64)
         if config.use_tls:
             context = ssl.create_default_context()
             self._client.tls_set_context(context)
@@ -74,6 +76,7 @@ class SimulatorService:
                 "chargers": self.config.charger_ids,
                 "features": self.config.features,
                 "interval_seconds": self.config.interval_seconds,
+                "workshop_enabled": self.config.workshop_enabled,
                 "blip_probability": self.config.blip_probability,
                 "blip_multiplier_range": (
                     self.config.blip_multiplier_min,
@@ -121,6 +124,16 @@ class SimulatorService:
                                 feature,
                                 bounded_value,
                             )
+                if self.config.workshop_enabled:
+                    for topic, payload in build_workshop_messages(
+                        self._tick, self.config.interval_seconds
+                    ):
+                        self._client.publish(
+                            topic,
+                            json.dumps(payload, allow_nan=False),
+                            qos=self.config.qos,
+                            retain=False,
+                        )
                 self._tick += 1
                 await asyncio.sleep(self.config.interval_seconds)
         finally:

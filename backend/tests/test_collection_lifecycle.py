@@ -96,7 +96,7 @@ async def test_activation_waits_for_matching_ingress_revision(proxy, monkeypatch
         revision=2, catalog=catalog(), ingress={"revision": 1, "status": "applied"}
     )
     monkeypatch.setattr(
-        proxy_module, "read_collection_configuration", AsyncMock(return_value=snapshot)
+        proxy_module, "read_collection_runtime", AsyncMock(return_value=snapshot)
     )
     proxy.session_factory = MagicMock(return_value=AsyncMock())
     await proxy._refresh_configuration()
@@ -111,14 +111,133 @@ async def test_activation_waits_for_matching_ingress_revision(proxy, monkeypatch
 
 
 @pytest.mark.asyncio
+async def test_label_revision_preserves_admission_samples_and_deadlines(
+    proxy, monkeypatch
+):
+    snapshot = CatalogSnapshot(
+        revision=3, catalog=catalog(), ingress={"revision": 3, "status": "applied"}
+    )
+    read = AsyncMock(return_value=snapshot)
+    monkeypatch.setattr(proxy_module, "read_collection_runtime", read)
+    await proxy._refresh_configuration()
+    proxy.buffer.configure(snapshot.catalog, now=0)
+    proxy.buffer.receive(message(snapshot.catalog, 42))
+    streams = proxy.buffer._streams
+    deadlines = proxy.buffer._deadlines.copy()
+    renamed = snapshot.model_copy(deep=True)
+    renamed.revision = 4
+    renamed.ingress["revision"] = 4
+    source = renamed.catalog.sources[0]
+    source.label = "Assembly broker"
+    source.chargers[0].label = "Assembly charger"
+    source.chargers[0].sensors[0].label = "Assembly temperature"
+    settings = AmbiboxSettings()
+    assert source_resources(
+        snapshot.catalog.sources[0], snapshot.catalog, settings
+    ) == source_resources(source, renamed.catalog, settings)
+    read.return_value = renamed
+    proxy._apply = AsyncMock(wraps=proxy._apply)
+    proxy.database_writer.drain.reset_mock()
+    proxy.mqtt_client.drain_publishes.reset_mock()
+    proxy.mqtt_client.subscribe.reset_mock()
+    proxy.mqtt_client.unsubscribe.reset_mock()
+    await proxy._refresh_configuration()
+    proxy._apply.assert_not_awaited()
+    proxy.database_writer.drain.assert_not_awaited()
+    proxy.mqtt_client.drain_publishes.assert_not_awaited()
+    proxy.mqtt_client.subscribe.assert_not_awaited()
+    proxy.mqtt_client.unsubscribe.assert_not_awaited()
+    assert proxy.revision == proxy._prepared_revision == 4
+    assert proxy.buffer._streams is streams and proxy.buffer._deadlines == deadlines
+    assert proxy.state["status"] == "applied" and proxy.state["revision"] == 4
+    assert proxy.buffer.take(now=9) == []
+    assert proxy.buffer.take(now=10)[0].value == 42
+    assert proxy.get_readiness_status()["ready"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("change", ["policy", "host", "topic", "generation"])
+async def test_runtime_change_or_reconnect_still_reapplies_collection(
+    proxy, monkeypatch, change
+):
+    snapshot = CatalogSnapshot(
+        revision=3, catalog=catalog(), ingress={"revision": 3, "status": "applied"}
+    )
+    read = AsyncMock(return_value=snapshot)
+    monkeypatch.setattr(proxy_module, "read_collection_runtime", read)
+    await proxy._refresh_configuration()
+    changed = snapshot.model_copy(deep=True)
+    changed.revision = 4
+    changed.ingress["revision"] = 4
+    source = changed.catalog.sources[0]
+    source.label = "Renamed broker"
+    if change == "policy":
+        source.chargers[0].policy.mode = "original"
+    elif change == "host":
+        source.host = "changed.ts.net"
+    elif change == "topic":
+        source.chargers[0].sensors[0].upstream_topic = "device/evCharger/0/changed"
+    else:
+        proxy.mqtt_client.subscription_manager.generation += 1
+    read.return_value = changed
+    proxy._apply = AsyncMock(wraps=proxy._apply)
+    await proxy._refresh_configuration()
+    proxy._apply.assert_awaited_once_with(changed)
+    assert proxy.revision == 4
+
+
+@pytest.mark.asyncio
 async def test_no_selection_is_healthy_idle(proxy, monkeypatch):
     snapshot = CatalogSnapshot(revision=0, catalog={})
     monkeypatch.setattr(
-        proxy_module, "read_collection_configuration", AsyncMock(return_value=snapshot)
+        proxy_module, "read_collection_runtime", AsyncMock(return_value=snapshot)
     )
     proxy.session_factory = MagicMock(return_value=AsyncMock())
     await proxy._refresh_configuration()
     assert proxy.get_readiness_status()["ready"] and proxy.state["idle"]
+    proxy.mqtt_client.subscribe.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("generic", [False, True])
+async def test_all_off_catalogue_is_ready_without_an_ingress_worker(
+    proxy, monkeypatch, generic
+):
+    from off_key_core.db.collection_runtime import CollectionRuntimeSnapshot
+    from off_key_core.schemas.collection import CollectionPolicy
+    from off_key_core.schemas.system_adapter import adapt_ambibox_catalog
+    from off_key_core.schemas.system_collection import (
+        SystemCollectionDefinition,
+        build_bindings,
+    )
+
+    legacy = catalog()
+    legacy.default_policy = CollectionPolicy()
+    for source in legacy.sources:
+        for entity in source.chargers:
+            entity.policy = CollectionPolicy()
+            for sensor in entity.sensors:
+                sensor.policy = CollectionPolicy()
+    if generic:
+        document = adapt_ambibox_catalog(legacy)
+        snapshot = CollectionRuntimeSnapshot(
+            revision=4,
+            catalog=SystemCollectionDefinition(
+                document=document,
+                bindings=build_bindings(document, legacy),
+            ),
+            collection={},
+            ingress={},
+        )
+    else:
+        snapshot = CatalogSnapshot(revision=4, catalog=legacy)
+    monkeypatch.setattr(
+        proxy_module, "read_collection_runtime", AsyncMock(return_value=snapshot)
+    )
+    await proxy._refresh_configuration()
+    assert proxy.revision == 4
+    assert proxy.state["status"] == "applied" and proxy.state["idle"]
+    assert proxy.get_readiness_status()["ready"]
     proxy.mqtt_client.subscribe.assert_not_awaited()
 
 

@@ -600,6 +600,75 @@ class ReleaseTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "not applied"):
             application.check_collection(snapshot, datetime.now(timezone.utc))
 
+    def test_generic_readiness_checks_the_active_workers_and_selected_subscriptions(
+        self,
+    ):
+        now = datetime.now(timezone.utc)
+        selected = [
+            SimpleNamespace(source_id="broker"),
+            SimpleNamespace(source_id="broker"),
+        ]
+        snapshot = SimpleNamespace(
+            revision=9,
+            catalog=SimpleNamespace(
+                sources=[
+                    SimpleNamespace(
+                        id="broker", label="Lab", host="source-broker", port=1883
+                    )
+                ],
+                streams=lambda **kwargs: selected,
+            ),
+            collection={
+                "revision": 9,
+                "status": "applied",
+                "checked_at": now.isoformat(),
+            },
+            ingress={
+                "revision": 9,
+                "status": "applied",
+                "checked_at": now.isoformat(),
+                "sources": {"broker": {"state": "connected", "message": None}},
+            },
+        )
+        with redirect_stdout(StringIO()) as output:
+            self.assertEqual(
+                application.check_collection(snapshot, now, generic=True),
+                {"revision": 9, "selected_sensors": 2},
+            )
+        self.assertEqual(output.getvalue(), "")
+        for phase in ("connecting", "waiting", "reconnecting"):
+            snapshot.ingress["sources"]["broker"]["state"] = phase
+            with redirect_stdout(StringIO()) as output:
+                application.check_collection(snapshot, now, generic=True)
+            self.assertEqual(output.getvalue().count("WARNING:"), 1)
+        for phase in ("blocked", "error", "disconnected", None):
+            snapshot.ingress["sources"]["broker"]["state"] = phase
+            with self.assertRaisesRegex(ValueError, "no applied ingress route"):
+                application.check_collection(snapshot, now, generic=True)
+        snapshot.ingress["sources"]["broker"]["state"] = "connected"
+        with self.assertRaisesRegex(ValueError, "disabled"):
+            application.check_collection(
+                snapshot, now, ingress_enabled=False, generic=True
+            )
+        for worker in ("collection", "ingress"):
+            for changes in (
+                {"revision": 8},
+                {"status": "error"},
+                {"checked_at": (now - timedelta(seconds=31)).isoformat()},
+            ):
+                broken = deepcopy(snapshot)
+                setattr(broken, worker, getattr(broken, worker) | changes)
+                with self.assertRaises(ValueError):
+                    application.check_collection(broken, now, generic=True)
+        selected.clear()
+        snapshot.ingress["sources"] = {}
+        self.assertEqual(
+            application.check_collection(snapshot, now, generic=True)["revision"], 9
+        )
+        snapshot.ingress["status"] = "error"
+        with self.assertRaises(ValueError):
+            application.check_collection(snapshot, now, generic=True)
+
     def test_runtime_worker_created_during_deploy_cannot_escape_final_verification(
         self,
     ):

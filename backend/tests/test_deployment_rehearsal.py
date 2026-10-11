@@ -9,16 +9,13 @@ import os
 import subprocess
 import time
 from pathlib import Path
-from uuid import uuid4
 
 import httpx
 import pytest
 from paho.mqtt import publish
 
-from .test_adaptive_lane_e2e import (
-    _remove_catalog_charger,
-    _wait_until_service_accepts_data,
-)
+from .integration_catalogue import add_recorded_entity, remove_recorded_entity
+from .test_adaptive_lane_e2e import _wait_until_service_accepts_data
 
 pytestmark = pytest.mark.skipif(
     os.getenv("OFFKEY_DEPLOYMENT_REHEARSAL") != "1",
@@ -26,11 +23,12 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-def wait_for_measurement(client, charger, value):
+def wait_for_measurement(client, entity, value):
     deadline = time.monotonic() + 120
     while time.monotonic() < deadline:
         response = client.get(
-            f"/v1/telemetry/{charger}/data", params={"type": "temperature"}
+            f"/v1/telemetry/{entity.entity_id}/data",
+            params={"type": entity.keys["temperature"]},
         )
         response.raise_for_status()
         points = response.json()
@@ -43,71 +41,30 @@ def wait_for_measurement(client, charger, value):
 def test_redeploy_restores_saved_state_and_resumes_one_monitor():
     directory = Path(os.environ["OFFKEY_REHEARSAL_DIR"])
     root = Path(__file__).resolve().parents[2]
-    charger = str(uuid4())
-    source_id = str(uuid4())
-    topic = f"device/evCharger/{charger}/temperature"
-    worker_name = "rehearsal-" + charger
     headers = {"Authorization": f"Bearer {os.environ['E2E_AUTH_TOKEN']}"}
     with httpx.Client(
-        base_url="http://localhost:8000", headers=headers, timeout=210
+        base_url=os.getenv("E2E_GATEWAY_URL", "http://localhost:8000"),
+        headers=headers,
+        timeout=210,
     ) as client:
         member = client.get("/v1/members/me")
         member.raise_for_status()
-        snapshot = client.get("/v1/sources").json()
-        catalog = snapshot["catalog"]
-        catalog["sources"].append(
-            {
-                "id": source_id,
-                "label": "Rehearsal source",
-                "host": "source-broker",
-                "port": 1883,
-                "verified": True,
-                "chargers": [
-                    {
-                        "id": charger,
-                        "local_id": charger,
-                        "label": "Rehearsal charger",
-                        "policy": {"mode": "original"},
-                        "sensors": [
-                            {
-                                "key": "temperature",
-                                "label": "Temperature",
-                                "upstream_topic": topic,
-                            }
-                        ],
-                    }
-                ],
-            }
+        legacy_catalog = client.get("/v1/sources").json()
+        entity = add_recorded_entity(
+            client, label="Rehearsal entity", keys=("temperature",)
         )
-        response = client.put(
-            "/v1/sources",
-            json={"expected_revision": snapshot["revision"], "catalog": catalog},
-        )
-        response.raise_for_status()
-        revision = response.json()["revision"]
-        catalog = response.json()["catalog"]
+        worker_name = "rehearsal-" + entity.device_id
+        snapshot = client.get("/v1/system").json()
+        topic = entity.topics["temperature"]
         try:
-            deadline = time.monotonic() + 120
-            while time.monotonic() < deadline:
-                status = client.get("/v1/sources/status").json()
-                if (
-                    status["ingress"]
-                    .get("sources", {})
-                    .get(source_id, {})
-                    .get("status")
-                    == "connected"
-                ):
-                    break
-                time.sleep(1)
-            else:
-                pytest.fail("Test source did not connect before the redeploy")
             publish.single(topic, "23.5", hostname="localhost", port=1884, qos=1)
-            saved_data = wait_for_measurement(client, charger, 23.5)
+            saved_data = wait_for_measurement(client, entity, 23.5)
             started = client.post(
                 "/v1/monitors/start",
                 json={
                     "container_name": worker_name,
-                    "mqtt_topics": [topic],
+                    "display_name": "Saved monitoring service",
+                    "mqtt_topics": list(entity.accepted_topics),
                     "model_type": "pyod_iforest",
                 },
             )
@@ -131,12 +88,21 @@ def test_redeploy_restores_saved_state_and_resumes_one_monitor():
                     command.append("--restore")
                 subprocess.run(command, cwd=root, check=True, timeout=1200)
                 assert client.get("/v1/members/me").json() == member.json()
-                current = client.get("/v1/sources").json()
-                assert current["revision"] == revision
-                assert current["catalog"] == catalog
+                current = client.get("/v1/system").json()
+                assert current["revision"] == snapshot["revision"]
+                assert current["document"] == snapshot["document"]
+                assert current["runtime"]["bindings"] == snapshot["runtime"]["bindings"]
+                assert (
+                    current["runtime"]["collection_revision"]
+                    == snapshot["runtime"]["collection_revision"]
+                )
+                preserved_legacy = client.get("/v1/sources").json()
+                assert preserved_legacy["revision"] == legacy_catalog["revision"]
+                assert preserved_legacy["catalog"] == legacy_catalog["catalog"]
                 assert (
                     client.get(
-                        f"/v1/telemetry/{charger}/data", params={"type": "temperature"}
+                        f"/v1/telemetry/{entity.entity_id}/data",
+                        params={"type": entity.keys["temperature"]},
                     ).json()
                     == saved_data
                 )
@@ -151,6 +117,7 @@ def test_redeploy_restores_saved_state_and_resumes_one_monitor():
                     if item["container_name"] == worker_name
                 ]
                 assert len(workers) == 1
+                assert workers[0]["display_name"] == "Saved monitoring service"
                 _wait_until_service_accepts_data(client, workers[0]["id"])
                 record = json.loads((directory / "stack/release.json").read_text())
                 assert (
@@ -159,7 +126,7 @@ def test_redeploy_restores_saved_state_and_resumes_one_monitor():
                 assert not (directory / "stack/release-maintenance.json").exists()
             assert list((directory / "backups/postgres").glob("*/*.dump"))
             publish.single(topic, "24.5", hostname="localhost", port=1884, qos=1)
-            wait_for_measurement(client, charger, 24.5)
+            wait_for_measurement(client, entity, 24.5)
         finally:
             # Failed cutovers fence mutations. Preserve their original failure;
             # the Swarm fixture cleanup removes all resources after diagnostics.
@@ -170,4 +137,4 @@ def test_redeploy_restores_saved_state_and_resumes_one_monitor():
                 for worker in monitors:
                     if worker["container_name"] == worker_name:
                         client.delete(f"/v1/monitors/{worker['id']}").raise_for_status()
-                _remove_catalog_charger(client, source_id, charger)
+                remove_recorded_entity(client, entity)

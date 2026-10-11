@@ -7,14 +7,14 @@ import {
 import { AuthBackdrop } from "@/components/AuthBackdrop";
 import { cn } from "@/lib/utils";
 
-export const AUTH_LINK_CLASS = "text-primary hover:underline";
+export const AUTH_LINK_CLASS = "text-primary underline-offset-4 hover:underline";
 export const AUTH_ERROR_CLASS = "text-red-700 dark:text-red-400";
 export const AUTH_SUCCESS_CLASS = "text-emerald-700 dark:text-emerald-400";
 
-export const AUTH_LABEL_CLASS = "mb-1 block text-sm";
+export const AUTH_LABEL_CLASS = "mb-1.5 block text-[13px] font-medium";
 
 export const AUTH_SUBMIT_BUTTON_CLASS =
-  "w-full rounded-full bg-primary text-primary-foreground font-semibold transition-all duration-200 hover:bg-primary/90 hover:scale-[1.01] cursor-pointer";
+  "w-full bg-primary text-primary-foreground hover:bg-primary/90";
 
 interface AuthLayoutProps {
   title: string;
@@ -32,22 +32,15 @@ export function AuthLayout({
   const { className: titleClassName, ...restTitleProps } = titleProps ?? {};
 
   return (
-    <AuthBackdrop contentClassName="max-w-md">
-      <Card className="w-full max-w-md gap-5 border-white/35 bg-card/95 pb-7 shadow-2xl shadow-black/10 backdrop-blur-xl dark:border-white/10">
+    <AuthBackdrop contentClassName="max-w-sm">
+      <Card className="w-full gap-6 border-border py-7 sm:py-8">
         <CardHeader>
-          <div className="mb-4 flex items-center justify-center gap-2.5 font-mono text-base font-semibold tracking-[-0.02em]">
-            <img
-              src="/favicon.svg"
-              alt=""
-              width={32}
-              height={32}
-              className="size-8 rounded-lg ring-1 ring-foreground/10"
-            />
+          <div className="mb-5 text-center font-mono text-[17px] font-semibold tracking-[-0.02em]">
             <span>aberration</span>
           </div>
           <h1
             data-slot="card-title"
-            className={cn("text-center text-2xl leading-none font-semibold", titleClassName)}
+            className={cn("text-center text-xl font-medium leading-7 tracking-[-0.02em]", titleClassName)}
             {...restTitleProps}
           >
             {title}

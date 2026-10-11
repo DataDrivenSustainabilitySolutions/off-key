@@ -211,6 +211,53 @@ class CatalogChange(CatalogModel):
     pause_affected_monitors: bool = False
 
 
+class CatalogLabelChange(CatalogModel):
+    """Rename a saved entity without accepting operational catalog fields."""
+
+    expected_revision: int = Field(ge=0)
+    kind: Literal["source", "charger", "sensor"]
+    source_id: UUID
+    charger_id: UUID | None = None
+    sensor_key: str | None = Field(
+        default=None, min_length=1, max_length=160, pattern=r"^[\w-]+(?:/[\w-]+)*$"
+    )
+    label: str = Field(min_length=1, max_length=120)
+
+    @field_validator("label", mode="before")
+    @classmethod
+    def clean_label(cls, value):
+        if isinstance(value, str):
+            if any(ord(character) < 32 or ord(character) == 127 for character in value):
+                raise ValueError("Names cannot contain control characters")
+            return value.strip()
+        return value
+
+    @model_validator(mode="after")
+    def entity_identity(self) -> Self:
+        if self.kind == "source":
+            if self.charger_id is not None or self.sensor_key is not None:
+                raise ValueError("Broker renames use only the source identifier")
+        elif self.charger_id is None:
+            raise ValueError("Charger and sensor renames require a charger identifier")
+        elif self.kind == "charger" and self.sensor_key is not None:
+            raise ValueError("Charger renames do not accept a sensor key")
+        elif self.kind == "sensor" and self.sensor_key is None:
+            raise ValueError("Sensor renames require a sensor key")
+        return self
+
+
+def collection_runtime_configuration(catalog: AmbiboxCatalog) -> dict:
+    """Comparable runtime configuration with presentation names removed."""
+    document = catalog.model_dump(mode="json")
+    for source in document["sources"]:
+        del source["label"]
+        for charger in source["chargers"]:
+            del charger["label"]
+            for sensor in charger["sensors"]:
+                del sensor["label"]
+    return document
+
+
 class SensorActivity(CatalogModel):
     received_at: datetime
     is_snapshot: bool

@@ -58,5 +58,9 @@ describe("<Services />", () => {
     expect(serviceRow.getByText("Adaptive")).toBeTruthy();
     expect(serviceRow.getByText("Running")).toBeTruthy();
     expect(serviceRow.queryByText("Retired")).toBeNull();
+    expect(serviceRow.getByRole("link", { name: "charger-1" }).getAttribute("href"))
+      .toBe("/monitoring/charger-1");
+    expect(screen.getByRole("columnheader", { name: "Entity" })).toBeTruthy();
+    expect(screen.queryByRole("columnheader", { name: "Charger" })).toBeNull();
   });
 });

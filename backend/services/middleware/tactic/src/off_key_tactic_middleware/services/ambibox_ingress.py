@@ -18,7 +18,7 @@ from off_key_core.db.collection import (
 )
 from off_key_core.db.models import CollectionConfiguration
 from off_key_core.schemas.collection import AmbiboxCatalog, CatalogSource
-from sqlalchemy import text, update
+from sqlalchemy import select, text, update
 
 from ..config.collection import AmbiboxSettings, get_ambibox_settings
 
@@ -437,7 +437,21 @@ class AmbiboxIngress:
                     await ownership.execute(text("SELECT 1"))
                     await ownership.commit()
                     async with session_factory() as session:
+                        from off_key_core.db.system import SystemCollectionConfiguration
+
+                        generic = await session.scalar(
+                            select(SystemCollectionConfiguration).where(
+                                SystemCollectionConfiguration.id == 1
+                            )
+                        )
                         snapshot = await read_collection_configuration(session)
+                    if generic is not None:
+                        # The generic runtime owns the selected inputs. Retire
+                        # legacy connectors once rather than maintaining two feeds.
+                        gost_config = await self.gost.request("GET", "config")
+                        await self._remove_obsolete(set(), gost_config)
+                        await asyncio.sleep(5)
+                        continue
                     try:
                         state = await self.reconcile(snapshot)
                     except IngressError as exc:

@@ -111,7 +111,7 @@ export function ChargerEditor({
 
   return (
     <section
-      aria-label={`Charger ${charger.label}`}
+      aria-label={`Entity ${charger.label}`}
       className="rounded-lg border bg-card"
     >
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2 p-3">
@@ -131,7 +131,7 @@ export function ChargerEditor({
         <div className="min-w-0 flex-1 basis-40">
           <InlineField
             className="font-medium"
-            label="Charger name"
+            label="Entity name"
             value={charger.label}
             maxLength={120}
             disabled={disabled}
@@ -148,7 +148,7 @@ export function ChargerEditor({
         <div className="min-w-0 max-w-full text-sm">
           <span className="ml-2 text-xs text-muted-foreground">Local ID</span>
           <InlineField
-            label="Local charger ID"
+            label="Local entity ID"
             value={charger.local_id}
             maxLength={80}
             disabled={disabled}
@@ -181,7 +181,7 @@ export function ChargerEditor({
             <Button
               variant="ghost"
               size="icon"
-              aria-label={`Actions for charger ${charger.label}`}
+              aria-label={`Actions for entity ${charger.label}`}
               disabled={disabled}
             >
               <MoreHorizontal />
@@ -189,7 +189,7 @@ export function ChargerEditor({
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             <DropdownMenuItem onSelect={onRemove}>
-              Remove charger
+              Remove entity
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -374,8 +374,7 @@ export function ChargerEditor({
                   ))}
               </select>
               <HelpTooltip label="Copy measurements">
-                Replaces this charger's measurements and turns their collection
-                off. Save changes applies the replacement.
+                Replaces this entity's measurements with collection off.
               </HelpTooltip>
             </div>
           </div>

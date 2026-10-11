@@ -3,12 +3,11 @@ import {
   Box,
   ChevronDown,
   ChevronRight,
-  LockKeyhole,
   Plus,
   Radio,
+  PlugZap,
   Search,
   Settings2,
-  UnlockKeyhole,
 } from "lucide-react";
 import type { SpatialNode, SpatialWorkspace } from "./types";
 
@@ -22,7 +21,7 @@ type Props = {
   matchCount: number;
   paused: boolean;
   status: string;
-  source: "demo" | "hsl";
+  source: "demo" | "hsl" | "ambibox";
   onQueryChange: (query: string) => void;
   onCreateCollection: () => void;
   onSelectGroup: (id: string) => void;
@@ -47,6 +46,15 @@ export function SpatialSidebar({
   onSelectNode,
   onChange,
 }: Props) {
+  const fleetOverview = source === "ambibox" && !query.trim();
+  const listedCount = fleetOverview
+    ? nodes.filter((node) => node.kind === "charger").length
+    : matchCount;
+  const chargerLabels = new Map(
+    nodes
+      .filter((node) => node.kind === "charger")
+      .map((node) => [node.catalog?.chargerId, node.label]),
+  );
   return (
     <aside className="sp-sidebar">
       <div className="sp-sidebar-heading">
@@ -113,52 +121,49 @@ export function SpatialSidebar({
                 <span>{group.name}</span>
                 <small>{members}</small>
               </button>
-              <button
-                className="sp-group-lock"
-                aria-label={`${group.locked ? "Unlock" : "Lock"} ${group.name}`}
-                onClick={() =>
-                  onChange({
-                    ...workspace,
-                    groups: workspace.groups.map((item) =>
-                      item.id === group.id
-                        ? { ...item, locked: !item.locked }
-                        : item,
-                    ),
-                  })
-                }
-              >
-                {group.locked ? (
-                  <LockKeyhole size={12} />
-                ) : (
-                  <UnlockKeyhole size={12} />
-                )}
-              </button>
             </div>
           );
         })}
       </div>
       <div className="sp-section-title sp-object-heading">
-        <h2>{query ? "Results" : "Objects"}</h2>
-        <span>{matchCount}</span>
+        <h2>{fleetOverview ? "Chargers" : query ? "Results" : "Objects"}</h2>
+        <span>{listedCount}</span>
       </div>
       <div className="sp-object-list">
-        {displayNodes.map((node) => (
-          <button
-            className={`sp-object-row ${selectedId === node.id ? "is-active" : ""}`}
-            key={node.id}
-            onClick={() => onSelectNode(node.id)}
-          >
-            {node.kind === "broker" ? <Box size={15} /> : <Radio size={15} />}
-            <span>{node.label}</span>
-            {node.locked && <LockKeyhole size={11} />}
-          </button>
-        ))}
-        {matchCount > 40 && (
+        {displayNodes.map((node) => {
+          const owner =
+            source === "ambibox" && !fleetOverview && node.kind === "sensor"
+              ? chargerLabels.get(node.catalog?.chargerId)
+              : undefined;
+          return (
+            <button
+              className={`sp-object-row ${selectedId === node.id ? "is-active" : ""}`}
+              key={node.id}
+              aria-label={owner ? `${node.label} · ${owner}` : node.label}
+              title={owner ? `${node.label} · ${owner}` : node.label}
+              onClick={() => onSelectNode(node.id)}
+            >
+              {node.kind === "broker" ? (
+                <Box size={15} />
+              ) : node.kind === "charger" ? (
+                <PlugZap size={15} />
+              ) : (
+                <Radio size={15} />
+              )}
+              <span>
+                {node.label}
+                {owner && <small>{owner}</small>}
+              </span>
+            </button>
+          );
+        })}
+        {listedCount > displayNodes.length && (
           <p className="sp-list-limit">
-            Showing 40 objects. Search to find any of the {matchCount}.
+            Showing {displayNodes.length} objects. Search to find any of the{" "}
+            {listedCount}.
           </p>
         )}
-        {!matchCount && <p className="sp-list-limit">No matching objects.</p>}
+        {!listedCount && <p className="sp-list-limit">No matching objects.</p>}
       </div>
       <div className="sp-sidebar-bottom">
         <span className="sp-source-icon">
@@ -167,9 +172,11 @@ export function SpatialSidebar({
         <div>
           <strong>{paused ? "Stream paused" : status}</strong>
           <span>
-            {source === "demo"
-              ? "Local simulator · no backend required"
-              : "HSL open data · CC BY 4.0"}
+            {source === "ambibox"
+              ? "Private catalog · no live connection"
+              : source === "demo"
+                ? "Local simulator · no backend required"
+                : "HSL open data · CC BY 4.0"}
           </span>
         </div>
       </div>

@@ -380,7 +380,7 @@ describe("DynamicTelemetryChart", () => {
       const option = inspectOption();
       expect(option?.series).toBeDefined();
       const telemetrySeries = option.series.find(({ id }) => id === "telemetry");
-      expect(telemetrySeries?.lineStyle?.color).toBe("hsl(173 80% 32%)");
+      expect(telemetrySeries?.lineStyle?.color).toBe("#3A7E72");
     });
   });
 

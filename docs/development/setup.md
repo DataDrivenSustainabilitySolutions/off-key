@@ -13,13 +13,13 @@ Use this page when setting up a contributor environment, choosing a run mode, or
 
 ## Prerequisites
 
-| Tool | Supported version or role |
-| --- | --- |
-| Python | 3.12 |
+| Tool                             | Supported version or role             |
+| -------------------------------- | ------------------------------------- |
+| Python                           | 3.12                                  |
 | [uv](https://docs.astral.sh/uv/) | Backend dependency and command runner |
-| Node.js | 24 |
-| npm | Frontend dependencies and scripts |
-| Docker with Compose | Containerized stack |
+| Node.js                          | 24                                    |
+| npm                              | Frontend dependencies and scripts     |
+| Docker with Compose              | Containerized stack                   |
 
 ## Install dependencies
 
@@ -33,6 +33,14 @@ npm --prefix frontend ci
 Use `uv sync` without `--frozen` only when intentionally updating the backend lock state.
 
 ## Run modes — choose one intentionally
+
+### Isolated deployment for reworks
+
+Use the [local deployment workflow](local-deployment.md) to build and run the
+current checkout as a complete local application. It uses a compiled frontend,
+the normal backend services, a separate persistent database, captured email, and
+local MQTT infrastructure. Its ports, images, and Compose project are separate
+from the default stack and other previews.
 
 ### Mode 1: Full stack in containers
 
@@ -62,12 +70,12 @@ uv run --project backend python -m pytest -q
 
 ## Host versus container expectations
 
-| Concern | Host runtime | Container runtime |
-| --- | --- | --- |
-| Gateway URL for frontend | `http://localhost:8000` | `http://api-gateway:8000` |
-| Database host | Host-mapped address | Compose service name such as `timescaledb` |
-| Log access | Process standard output | `docker compose logs -f <service>` |
-| Networking | Published ports | Compose service DNS |
+| Concern                  | Host runtime            | Container runtime                          |
+| ------------------------ | ----------------------- | ------------------------------------------ |
+| Gateway URL for frontend | `http://localhost:8000` | `http://api-gateway:8000`                  |
+| Database host            | Host-mapped address     | Compose service name such as `timescaledb` |
+| Log access               | Process standard output | `docker compose logs -f <service>`         |
+| Networking               | Published ports         | Compose service DNS                        |
 
 If requests fail after switching modes, check `VITE_API_URL` and the configured CORS origins first.
 
@@ -101,12 +109,12 @@ npm --prefix frontend run build
 
 ## Failure-oriented setup triage
 
-| Symptom | Likely cause | First action |
-| --- | --- | --- |
-| Frontend cannot call the API in host mode | `VITE_API_URL` still uses container DNS | Set it to `http://localhost:8000` |
-| Gateway restarts during boot | Database schema is not ready | Wait, then inspect `db-sync` and gateway logs |
+| Symptom                                     | Likely cause                                             | First action                                        |
+| ------------------------------------------- | -------------------------------------------------------- | --------------------------------------------------- |
+| Frontend cannot call the API in host mode   | `VITE_API_URL` still uses container DNS                  | Set it to `http://localhost:8000`                   |
+| Gateway restarts during boot                | Database schema is not ready                             | Wait, then inspect `db-sync` and gateway logs       |
 | Monitoring endpoints return upstream errors | TACTIC is not ready or cannot reach the Docker API proxy | Check <http://localhost:8001/ready> and TACTIC logs |
-| Pre-commit fails unexpectedly | Dependencies differ from the lockfiles | Re-run the frozen dependency installs |
+| Pre-commit fails unexpectedly               | Dependencies differ from the lockfiles                   | Re-run the frozen dependency installs               |
 
 ## Related pages
 

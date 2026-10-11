@@ -108,6 +108,7 @@ const ChargerDetails: React.FC<{ chargerId: string }> = ({ chargerId }) => {
   const [monitoringServices, setMonitoringServices] = useState<ActiveService[]>([]);
   const [now, setNow] = useState(() => Date.now());
   const [refreshRequest, setRefreshRequest] = useState(0);
+  const [telemetryUnavailable, setTelemetryUnavailable] = useState(false);
 
   useEffect(() => {
     if (!chargerId) {
@@ -172,6 +173,7 @@ const ChargerDetails: React.FC<{ chargerId: string }> = ({ chargerId }) => {
 
       if (!cancelled) {
         if (telemetryResult.status === "fulfilled") {
+          setTelemetryUnavailable(false);
           setAllTelemetryData((current) =>
             telemetryLoaded
               ? mergeTelemetryData(current, telemetryResult.value)
@@ -182,9 +184,10 @@ const ChargerDetails: React.FC<{ chargerId: string }> = ({ chargerId }) => {
             if (series.cursor) telemetryCursors.set(series.type, series.cursor);
           });
         } else {
+          setTelemetryUnavailable(true);
           clientLogger.error({
             event: "details.telemetry_load_failed",
-            message: "Error loading charger telemetry",
+            message: "Error loading entity readings",
             error: telemetryResult.reason,
             context: { chargerId },
           });
@@ -199,7 +202,7 @@ const ChargerDetails: React.FC<{ chargerId: string }> = ({ chargerId }) => {
         } else {
           clientLogger.error({
             event: "details.anomalies_load_failed",
-            message: "Error loading charger anomalies",
+            message: "Error loading entity anomalies",
             error: anomaliesResult.reason,
             context: { chargerId },
           });
@@ -345,10 +348,12 @@ const ChargerDetails: React.FC<{ chargerId: string }> = ({ chargerId }) => {
       <NavigationBar />
       <PageShell>
         <PageHeader
-          eyebrow="Charger Detail"
-          title={`Charger ${chargerId}`}
+          title={`Entity ${chargerId}`}
           actions={
             <>
+              <Button variant="ghost" asChild>
+                <Link to="/entities">Entities</Link>
+              </Button>
               <LiveTelemetryIndicator
                 hasRecentTelemetry={hasRecentTelemetry}
                 hasTelemetry={latestTelemetryTimestamp !== undefined}
@@ -365,7 +370,7 @@ const ChargerDetails: React.FC<{ chargerId: string }> = ({ chargerId }) => {
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4">
           <MetricCard
-            label="Telemetry Series"
+            label="Readings"
             value={allTelemetryData.length}
           />
           <MetricCard
@@ -382,7 +387,7 @@ const ChargerDetails: React.FC<{ chargerId: string }> = ({ chargerId }) => {
 
         <section className="space-y-5">
           <div className="flex items-end justify-between gap-4 border-b border-border/60 pb-4">
-            <h2 className="text-lg font-semibold tracking-[-0.02em]">Telemetry</h2>
+            <h2 className="text-base font-medium">Readings</h2>
             <div className="flex items-center gap-2">
               {allTelemetryData.length > 1 && (
                 <Tooltip>
@@ -415,11 +420,17 @@ const ChargerDetails: React.FC<{ chargerId: string }> = ({ chargerId }) => {
                   </TooltipContent>
                 </Tooltip>
               )}
-              <span className="hidden rounded-full border border-border/70 bg-card px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground sm:inline-flex">
-                Auto refresh
-              </span>
             </div>
           </div>
+
+          {telemetryUnavailable && allTelemetryData.length > 0 && (
+            <div role="alert" className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-destructive/30 px-3 py-2 text-sm">
+              <span>Readings could not be refreshed.</span>
+              <Button variant="ghost" size="sm" onClick={() => setRefreshRequest((request) => request + 1)}>
+                Retry
+              </Button>
+            </div>
+          )}
 
           {!isLoadingTelemetry && allTelemetryData.length > 0 && (
             <div className="space-y-2">
@@ -469,7 +480,7 @@ const ChargerDetails: React.FC<{ chargerId: string }> = ({ chargerId }) => {
           ) : allTelemetryData.length === 0 ? (
             <div className="h-80">
               <NoDataFound
-                message="No telemetry data available for this charger"
+                message={telemetryUnavailable ? "Readings could not be loaded" : "No recorded readings for this entity"}
                 onRefresh={() => {
                   setIsLoadingTelemetry(true);
                   setRefreshRequest((request) => request + 1);
@@ -484,8 +495,8 @@ const ChargerDetails: React.FC<{ chargerId: string }> = ({ chargerId }) => {
             <div className="space-y-6">
               {visibleCategories.map(([category, telemetrySeries]) => (
                 <div key={category} className="space-y-4">
-                  <h3 className="text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">
-                    {category} Metrics
+                  <h3 className="text-sm font-medium text-muted-foreground">
+                    {category}
                   </h3>
                   {telemetrySeries.map((telemetryData) => (
                     <DynamicTelemetryChart

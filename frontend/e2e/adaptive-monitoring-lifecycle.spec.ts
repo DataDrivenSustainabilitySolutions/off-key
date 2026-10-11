@@ -133,7 +133,7 @@ test.describe("adaptive monitoring production lifecycle", () => {
       await expect(page.getByText("L2", { exact: true }).first()).toBeVisible({
         timeout: 30_000,
       });
-      await page.getByRole("button", { name: /Adaptive streams/i }).click();
+      await page.getByRole("button", { name: /Adaptive stream/i }).click();
       await expect(
         page.getByRole("heading", { name: "Configure adaptive monitoring", exact: true }),
       ).toBeVisible();

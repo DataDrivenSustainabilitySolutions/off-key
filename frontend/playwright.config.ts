@@ -44,12 +44,19 @@ export default defineConfig({
     },
     {
       name: "chromium",
-      testIgnore: /.*\.setup\.ts/,
+      testIgnore: [/.*\.setup\.ts/, /system-workspace\.spec\.ts/],
       use: {
         ...chromiumUse,
         storageState: authStateFile,
       },
       dependencies: ["auth-setup"],
+    },
+    {
+      name: "system-workspace",
+      testMatch: /system-workspace\.spec\.ts/,
+      use: { ...chromiumUse, storageState: authStateFile },
+      // Exercise legacy ingress/monitoring first, then its explicit migration.
+      dependencies: ["chromium"],
     },
   ],
 });

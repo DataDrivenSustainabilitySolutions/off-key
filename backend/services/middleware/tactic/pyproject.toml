@@ -29,7 +29,7 @@ dependencies = [
     "python-jose>=3.4.0",
     "jsonschema>=4.21.1",
     "pydantic-settings>=2.0.0",
-    "paho-mqtt>=2.1.0"
+    "paho-mqtt[proxy]>=2.1.0"
 ]
 
 [build-system]

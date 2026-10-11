@@ -9,6 +9,7 @@ from . import (
     favorites,
     members,
     monitors,
+    system,
     telemetry,
 )
 
@@ -33,6 +34,7 @@ protected.include_router(
     dependencies=[Depends(operational_access)],
 )
 protected.include_router(collection.router, prefix="/sources", tags=["collection"])
+protected.include_router(system.router, prefix="/system", tags=["system"])
 
 protected.include_router(members.router, prefix="/members", tags=["members"])
 router.include_router(protected)

@@ -21,7 +21,7 @@ import {
   getStatusDisplay,
 } from "@/types/monitoring";
 import type { ActiveService } from "@/types/monitoring";
-import { RefreshCw, Trash2 } from "lucide-react";
+import { RefreshCw } from "lucide-react";
 
 import { humanize } from "./config";
 
@@ -90,7 +90,7 @@ export function MonitoringDataPanels({
                   return (
                     <TableRow key={service.id}>
                       <TableCell>
-                        <div className="font-medium">{service.container_name}</div>
+                        <div className="max-w-64 truncate font-medium" title={service.container_name}>{service.container_name}</div>
                         <div className="text-xs text-muted-foreground">
                           {service.model_type
                             ? humanize(service.model_type)
@@ -125,14 +125,14 @@ export function MonitoringDataPanels({
                       </TableCell>
                       <TableCell className="text-right">
                         {onDeleteService && <Button
-                          variant="ghost"
-                          size="icon"
+                          variant="destructive"
+                          size="sm"
                           aria-label={
                             getServiceDeleteActionDisplay(service).ariaLabel
                           }
                           onClick={() => onDeleteService(service)}
                         >
-                          <Trash2 className="h-4 w-4 text-destructive" />
+                          Delete
                         </Button>}
                       </TableCell>
                     </TableRow>
@@ -145,7 +145,7 @@ export function MonitoringDataPanels({
       </SectionPanel>
 
       <SectionPanel
-        title="Recent alarm transitions"
+        title="Recent alarms"
         help="Events mark new threshold crossings. Charts retain the full evidence history."
         actions={
           <Button
@@ -163,7 +163,7 @@ export function MonitoringDataPanels({
       >
         {!anomalies.length ? (
           <p className="m-5 rounded-xl border border-dashed p-5 text-sm text-muted-foreground sm:m-6">
-            No recent alarm transitions.
+            No recent alarms.
           </p>
         ) : (
           <div className="overflow-x-auto">
@@ -171,7 +171,7 @@ export function MonitoringDataPanels({
               <TableHeader>
                 <TableRow className="bg-muted/30 hover:bg-muted/30">
                   <TableHead>Time</TableHead>
-                  <TableHead>Sensors</TableHead>
+                  <TableHead>Readings</TableHead>
                   <TableHead>Evidence input</TableHead>
                   <TableHead>Type</TableHead>
                 </TableRow>

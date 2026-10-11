@@ -56,7 +56,11 @@ async def capture_existing(session, workloads: RadarWorkloadManager) -> dict:
     )
     count = 0
     for service in services:
-        if service.launch_config is not None:
+        configuration = service.launch_config or {}
+        if all(
+            key in configuration
+            for key in ("container_name", "mqtt_topics", "monitoring")
+        ):
             continue
         workload = await workloads.async_docker.run(
             workloads.async_docker.client.services.get, service.container_id
@@ -65,6 +69,8 @@ async def capture_existing(session, workloads: RadarWorkloadManager) -> dict:
         service.launch_config = captured_configuration(
             service.container_name, environment
         )
+        if configuration.get("display_name"):
+            service.launch_config["display_name"] = configuration["display_name"]
         count += 1
     await session.commit()
     return {"captured": count}
@@ -84,7 +90,10 @@ async def prepare_operation(session, workloads, revision: str):
     )
     for service in services:
         restart = service.stop_requested_at is None
-        if restart and service.launch_config is None:
+        if restart and not all(
+            key in (service.launch_config or {})
+            for key in ("container_name", "mqtt_topics", "monitoring")
+        ):
             raise ValueError(
                 "Capture existing active monitor configuration before cutover"
             )

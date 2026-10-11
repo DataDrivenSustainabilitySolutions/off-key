@@ -1,5 +1,6 @@
 import * as THREE from "three";
-import { curvePoint } from "./sceneGeometry";
+import { curvePoint, nodeVisualHeight } from "./sceneGeometry";
+import type { PulseRoute } from "./focusedSystemTopology";
 import type {
   Point,
   SpatialEdge,
@@ -16,6 +17,7 @@ type Pulse = {
   direction: number;
   started: number;
   color: string;
+  activityNode: string | null;
 };
 
 /** A fixed particle pool and one line batch bound the cost of streaming traffic. */
@@ -48,11 +50,18 @@ export class SpatialConnectionLayer {
   private readonly particleColors = new Float32Array(MAX_PARTICLES * 3);
   private readonly pulses: Pulse[] = Array.from(
     { length: MAX_PARTICLES },
-    () => ({ edge: null, direction: 1, started: 0, color: "#5b93c6" }),
+    () => ({
+      edge: null,
+      direction: 1,
+      started: 0,
+      color: "#5b93c6",
+      activityNode: null,
+    }),
   );
   private positions: ReadonlyMap<string, Point> = new Map();
   private edges: SpatialEdge[] = [];
   private edgesByNode = new Map<string, SpatialEdge>();
+  private nodeById = new Map<string, SpatialNode>();
   private colors = new Map<string, string>();
   private allocation = 0;
   private colorDirty = false;
@@ -96,15 +105,16 @@ export class SpatialConnectionLayer {
     this.quality = quality;
     this.edgesByNode.clear();
     const byId = new Map(nodes.map((node) => [node.id, node]));
+    this.nodeById = byId;
     const groupColors = new Map(groups.map((group) => [group.id, group.color]));
     this.colors = new Map(
       nodes.map((node) => [
         node.id,
-        groupColors.get(node.groupId) ?? "#5b93c6",
+        node.color ?? groupColors.get(node.groupId) ?? "#5b93c6",
       ]),
     );
     for (const edge of edges) {
-      // Sensor arrivals travel towards their broker, irrespective of edge storage direction.
+      // Legacy previews choose a nearby edge; configured stream arrivals provide an explicit source route.
       const source = byId.get(edge.source);
       const target = byId.get(edge.target);
       if (!this.edgesByNode.has(edge.source) || target?.kind === "broker")
@@ -181,8 +191,14 @@ export class SpatialConnectionLayer {
     colorAttribute.needsUpdate = true;
   }
 
-  receive(message: TelemetryMessage, now: number) {
-    const edge = this.edgesByNode.get(message.nodeId);
+  receive(message: TelemetryMessage, now: number, route?: PulseRoute) {
+    const edge = route
+      ? {
+          id: `arrival:${route.source}:${route.target}`,
+          source: route.source,
+          target: route.target,
+        }
+      : this.edgesByNode.get(message.nodeId);
     if (
       !edge ||
       !this.positions.has(edge.source) ||
@@ -211,6 +227,9 @@ export class SpatialConnectionLayer {
     this.nextSlot += 1;
     if (!pulse) return false;
     pulse.edge = edge;
+    pulse.activityNode = this.nodeById.get(message.nodeId)?.system
+      ? message.nodeId
+      : null;
     pulse.direction = edge.source === message.nodeId ? 1 : -1;
     pulse.started = now;
     pulse.color = this.colors.get(message.nodeId) ?? "#5b93c6";
@@ -236,19 +255,32 @@ export class SpatialConnectionLayer {
       const target = pulse.edge
         ? this.positions.get(pulse.edge.target)
         : undefined;
-      if (pulse.edge && source && target && elapsed < TRANSIT_MS) {
-        const progress = reducedMotion
-          ? pulse.direction === 1
-            ? 0
-            : 1
-          : pulse.direction === 1
-            ? elapsed / TRANSIT_MS
-            : 1 - elapsed / TRANSIT_MS;
-        curvePoint(source, target, progress, this.vector);
+      const duration = pulse.activityNode ? 650 : TRANSIT_MS;
+      if (pulse.edge && source && target && elapsed < duration) {
+        const activityPosition = pulse.activityNode
+          ? this.positions.get(pulse.activityNode)
+          : undefined;
+        if (activityPosition) {
+          // A local blink means arrival, never an inferred journey or network latency.
+          const node = this.nodeById.get(pulse.activityNode!);
+          this.vector.set(
+            activityPosition.x,
+            node ? nodeVisualHeight(node) + 0.05 : 0.65,
+            activityPosition.z,
+          );
+        } else {
+          const progress = reducedMotion
+            ? pulse.direction === 1
+              ? 0
+              : 1
+            : pulse.direction === 1
+              ? elapsed / TRANSIT_MS
+              : 1 - elapsed / TRANSIT_MS;
+          curvePoint(source, target, progress, this.vector);
+        }
         this.particlePositions[index * 3] = this.vector.x;
-        this.particlePositions[index * 3 + 1] = reducedMotion
-          ? 0.64
-          : this.vector.y + 0.035;
+        this.particlePositions[index * 3 + 1] =
+          reducedMotion && !pulse.activityNode ? 0.64 : this.vector.y + 0.035;
         this.particlePositions[index * 3 + 2] = this.vector.z;
         active += 1;
       } else {

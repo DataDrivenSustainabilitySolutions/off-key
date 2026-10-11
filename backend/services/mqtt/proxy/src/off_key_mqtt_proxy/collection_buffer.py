@@ -11,6 +11,8 @@ from off_key_core.schemas.collection import (
     CollectionStream,
     parse_value,
 )
+from off_key_core.schemas.system_collection import SystemCollectionStream
+from off_key_core.utils.payload_decode import PayloadDecoder
 
 from .client.models import MQTTMessage
 
@@ -36,7 +38,11 @@ def parse_observation(stream: CollectionStream, message: MQTTMessage) -> Observa
     envelope = message.payload
     if not isinstance(envelope, dict):
         raise ValueError("Expected ingress envelope")
-    value = parse_value(envelope["payload"], stream.sensor.value_type)
+    value = (
+        PayloadDecoder(envelope["payload"].encode("utf-8")).value(stream.definition)
+        if isinstance(stream, SystemCollectionStream)
+        else parse_value(envelope["payload"], stream.sensor.value_type)
+    )
     millis = envelope["received_at"]
     if isinstance(millis, bool) or not isinstance(millis, (int, float)):
         raise ValueError("Expected broker observation time")

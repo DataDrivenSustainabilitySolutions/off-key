@@ -135,7 +135,8 @@ class SystemCollectionService:
                     "is not configured by the operator."
                 )
 
-    async def affected(self, before, after):
+    @staticmethod
+    def _changed_inputs(before, after):
         def signatures(catalog):
             return {
                 item.accepted_topic: item.signature
@@ -159,6 +160,10 @@ class SystemCollectionService:
                     and previous.policy == item.policy
                 ):
                     changed.discard(item.accepted_topic)
+        return changed
+
+    async def affected(self, before, after):
+        changed = self._changed_inputs(before, after)
         if not changed:
             return []
         monitors = await self.session.scalars(
@@ -196,9 +201,12 @@ class SystemCollectionService:
                 SystemCollectionConfiguration.id == 1
             )
         )
-        if row is None:
-            return document
         runtime, proposed = await self.current(document)
+        # Presentation edits can keep main's working routes. A changed admitted
+        # input must hand over collection, otherwise removed inputs keep writing
+        # behind a catalogue that no longer exposes them.
+        if row is None and not self._changed_inputs(runtime.catalog, proposed):
+            return document
         if runtime_fingerprint(runtime.catalog) != runtime_fingerprint(proposed):
             self._validate_access(proposed)
         affected = await self.affected(runtime.catalog, proposed)

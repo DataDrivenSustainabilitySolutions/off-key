@@ -121,6 +121,77 @@ async def test_main_collection_status_and_history_bindings_survive_the_new_view(
     assert session.session.get(SystemCollectionConfiguration, 1) is None
 
 
+async def main_recorded_catalogue(session):
+    legacy = catalog()
+    legacy.sources[0].chargers[0].policy = CollectionPolicy(mode="original")
+    session.add(
+        CollectionConfiguration(
+            id=1,
+            revision=7,
+            document=legacy.model_dump(mode="json"),
+            updated_by="operator",
+        )
+    )
+    await session.flush()
+    return await SystemService(session).read()
+
+
+@pytest.mark.asyncio
+async def test_renaming_main_inputs_keeps_the_existing_collection_route(session):
+    original = await main_recorded_catalogue(session)
+    renamed = original.document.model_copy(deep=True)
+    renamed.streams[0].label = "Renamed input"
+    saved = await SystemService(session).save(
+        SystemChange(expected_revision=0, document=renamed), actor="test@example.com"
+    )
+    assert saved.document.streams[0].label == "Renamed input"
+    assert saved.runtime.bindings == original.runtime.bindings
+    assert session.session.get(SystemCollectionConfiguration, 1) is None
+    assert session.session.get(CollectionConfiguration, 1).revision == 7
+
+
+@pytest.mark.asyncio
+async def test_removing_a_main_recorded_input_stops_its_hidden_collection(session):
+    original = await main_recorded_catalogue(session)
+    edited = original.document.model_copy(deep=True)
+    edited.streams = []
+    edited.groups = []
+    await SystemService(session).save(
+        SystemChange(expected_revision=0, document=edited), actor="test@example.com"
+    )
+    runtime = await read_collection_runtime(session)
+    assert isinstance(runtime.catalog, SystemCollectionDefinition)
+    assert runtime.catalog.streams(selected_only=True) == []
+    # The archived main configuration is retained, but no longer drives admission.
+    assert session.session.get(CollectionConfiguration, 1).revision == 7
+    assert session.session.get(SystemCollectionConfiguration, 1).revision == 1
+
+
+@pytest.mark.asyncio
+async def test_main_monitor_inputs_are_protected_before_structure_handover(session):
+    original = await main_recorded_catalogue(session)
+    topic = next(iter(original.runtime.bindings.values()))["accepted_topic"]
+    session.add(
+        MonitoringService(
+            id="main-monitor",
+            container_name="main-monitor",
+            mqtt_topic=[topic],
+            status=True,
+        )
+    )
+    await session.flush()
+    edited = original.document.model_copy(deep=True)
+    edited.streams = []
+    edited.groups = []
+    with pytest.raises(ConflictError, match="running monitors"):
+        await SystemService(session).save(
+            SystemChange(expected_revision=0, document=edited), actor="test@example.com"
+        )
+    assert session.session.get(SystemConfiguration, 1) is None
+    assert session.session.get(SystemCollectionConfiguration, 1) is None
+    assert session.session.get(MonitoringService, "main-monitor").status is True
+
+
 @pytest.mark.asyncio
 async def test_metadata_import_never_enables_recording_but_explicit_action_does(
     session,

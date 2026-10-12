@@ -154,7 +154,7 @@ mqtt_client_id_prefix:          offkey-backend
 mqtt_use_auth:                  "true"
 mqtt_local_proxy_username:      offkey-proxy
 # mqtt_proxy_password comes from vault.yml and is mounted only in mqtt-proxy.
-mqtt_topic_regex:               "^device/evCharger/(?P<charger_id>[^/]+)/(?P<telemetry_type>.+)$"
+mqtt_topic_regex:               "^telemetry/(?P<charger_id>[^/]+)/(?P<telemetry_type>.+)$"
 mqtt_telemetry_enabled:         "true"
 mqtt_reconnect_delay:           "5"
 mqtt_batch_size:                "100"

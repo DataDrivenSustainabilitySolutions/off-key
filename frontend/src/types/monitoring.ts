@@ -87,6 +87,7 @@ export interface ActiveService {
   id: string;
   container_id: string;
   container_name: string;
+  display_name?: string | null;
   mqtt_topics: string[];
   status: boolean;
   operational_status: OperationalStatus;
@@ -184,6 +185,7 @@ export interface AdaptiveStreamRequestConfig {
 // Anomaly detection request payload
 interface AnomalyDetectionRequestBase {
   container_name: string;
+  display_name?: string;
   service_type: 'radar';
   mqtt_topics: string[];
   model_type: string;

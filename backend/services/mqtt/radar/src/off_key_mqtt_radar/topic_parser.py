@@ -69,13 +69,14 @@ class TopicParser:
             except ValueError:
                 continue
             levels = normalized.split("/")
-            if normalized == "device/#" or any(
-                level in {"+", "#"} for level in levels[3:]
+            offset = 2
+            if normalized == "telemetry/#" or any(
+                level in {"+", "#"} for level in levels[offset:]
             ):
                 continue
             try:
                 sensors.add(
-                    canonical_sensor_key("/".join(levels[3:]), sensor_key_strategy)
+                    canonical_sensor_key("/".join(levels[offset:]), sensor_key_strategy)
                 )
             except ValueError:
                 continue
@@ -83,7 +84,7 @@ class TopicParser:
 
     @staticmethod
     def build_topic(charger_id: str, sensor_type: str) -> str:
-        return f"device/evCharger/{charger_id}/{sensor_type}"
+        return f"telemetry/{charger_id}/{sensor_type}"
 
     @staticmethod
     def matches_pattern(topic: str, pattern: str) -> bool:

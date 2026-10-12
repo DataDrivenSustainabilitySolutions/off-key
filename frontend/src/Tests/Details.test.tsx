@@ -121,8 +121,8 @@ describe("<Details />", () => {
         expect.any(AbortSignal),
       );
     });
-    expect(screen.getByRole("heading", { name: "Processor Metrics" })).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "Voltage Metrics" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Processor" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Voltage" })).toBeTruthy();
     expect(screen.queryByText(/other metrics/i)).toBeNull();
     expect(screen.getAllByTestId("telemetry-chart")).toHaveLength(2);
     expect(screen.getByRole("button", { name: "All categories (2)" }).getAttribute("aria-pressed")).toBe("true");
@@ -144,13 +144,13 @@ describe("<Details />", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "Charging diagnostics (2)" }));
     expect(screen.getAllByTestId("telemetry-chart")).toHaveLength(2);
-    expect(screen.getByRole("heading", { name: "Charging diagnostics Metrics" })).toBeTruthy();
-    expect(screen.queryByRole("heading", { name: "Voltage Metrics" })).toBeNull();
+    expect(screen.getByRole("heading", { name: "Charging diagnostics" })).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "Voltage" })).toBeNull();
     expect(screen.getByText("Showing 2 of 4 charts")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "Temperature (1)" }));
     expect(screen.getAllByTestId("telemetry-chart")).toHaveLength(3);
-    expect(screen.getByRole("heading", { name: "Temperature Metrics" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Temperature" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "All categories (4)" }).getAttribute("aria-pressed")).toBe("false");
 
     fireEvent.click(screen.getByRole("button", { name: "Charging diagnostics (2)" }));
@@ -168,7 +168,7 @@ describe("<Details />", () => {
     const voltage = await screen.findByRole("button", { name: "Voltage (1)" });
     expect(voltage.getAttribute("aria-pressed")).toBe("true");
     expect(screen.getAllByTestId("telemetry-chart")).toHaveLength(1);
-    expect(screen.queryByRole("heading", { name: "Processor Metrics" })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Processor" })).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "All categories (2)" }));
     expect(screen.getAllByTestId("telemetry-chart")).toHaveLength(2);
@@ -208,7 +208,7 @@ describe("<Details />", () => {
 
   it("preserves chart anomaly references across telemetry refreshes", async () => {
     renderDetails();
-    await screen.findByText(/processor metrics/i);
+    await screen.findByRole("heading", { name: "Processor" });
     const firstReference = mockChartAnomalyProps[0];
 
     document.dispatchEvent(new Event("visibilitychange"));
@@ -228,13 +228,27 @@ describe("<Details />", () => {
     renderDetails();
 
     expect(
-      await screen.findByText(/no telemetry data available for this charger/i)
+      await screen.findByText(/no recorded readings for this entity/i)
     ).toBeTruthy();
+  });
+
+  it("preserves charts on a failed refresh and clears the error after recovery", async () => {
+    renderDetails();
+    await screen.findByRole("heading", { name: "Processor" });
+    mockLoadAllTelemetryTypes.mockRejectedValueOnce(new Error("unavailable"));
+
+    document.dispatchEvent(new Event("visibilitychange"));
+    expect((await screen.findByRole("alert")).textContent).toContain("Readings could not be refreshed");
+    expect(screen.getAllByTestId("telemetry-chart")).toHaveLength(2);
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+    expect(screen.getAllByTestId("telemetry-chart")).toHaveLength(2);
   });
 
   it("switches between independent and linked horizontal navigation", async () => {
     renderDetails();
-    await screen.findByText(/processor metrics/i);
+    await screen.findByRole("heading", { name: "Processor" });
 
     const linkButton = screen.getByRole("button", {
       name: "Link chart navigation",
@@ -311,14 +325,14 @@ describe("<Details />", () => {
     fireEvent.click(screen.getByRole("link", { name: "Switch charger" }));
     expect(screen.queryAllByTestId("telemetry-chart")).toHaveLength(0);
     expect(
-      await screen.findByText(/no telemetry data available for this charger/i),
+      await screen.findByText(/readings could not be loaded/i),
     ).toBeTruthy();
     expect(mockLoadAllTelemetryTypes).toHaveBeenLastCalledWith(
       "456", expect.any(AbortSignal),
     );
 
     document.dispatchEvent(new Event("visibilitychange"));
-    await screen.findByText(/processor metrics/i);
+    await screen.findByRole("heading", { name: "Processor" });
     expect(screen.getByTestId("navigation-controllerCpuUsage").textContent).toContain(
       '"mode":"live"',
     );

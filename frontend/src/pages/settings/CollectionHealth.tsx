@@ -25,7 +25,7 @@ export function CollectionHealth() {
       if (pending) return;
       pending = true;
       try {
-        const result = await apiUtils.get<CollectionStatus>("/v1/sources/status");
+        const result = await apiUtils.get<CollectionStatus>("/v1/system/health");
         if (active) {
           setSnapshot(result);
           setError("");

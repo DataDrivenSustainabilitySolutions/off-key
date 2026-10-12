@@ -30,7 +30,9 @@ def test_checkpoint_manager_saves_and_loads_one_atomic_envelope(tmp_path, monkey
     assert list(tmp_path.glob("*.sig")) == []
 
 
-def test_static_checkpoint_before_config_consolidation_remains_readable(monkeypatch):
+def test_old_namespace_checkpoint_requires_fresh_calibration_after_clean_break(
+    monkeypatch,
+):
     checkpoint = {
         "strategy": "static_baseline",
         "static_state": "collecting",
@@ -41,14 +43,10 @@ def test_static_checkpoint_before_config_consolidation_remains_readable(monkeypa
         ),
     }
     monkeypatch.setattr(CheckpointManager, "load", lambda self, path: checkpoint)
-    config = AnomalyDetectionConfig(subscription_topics=["device/evCharger/c1/L1"])
+    config = AnomalyDetectionConfig(subscription_topics=["telemetry/c1/L1"])
 
-    restored = StaticConformalDetectionService.from_checkpoint("legacy.pkl", config)
-    try:
-        assert restored.processed_count == 21
-        assert restored.training_buffer == [{"L1": 1.5}]
-    finally:
-        restored.shutdown()
+    with pytest.raises(ValueError, match="schema signature"):
+        StaticConformalDetectionService.from_checkpoint("legacy.pkl", config)
 
 
 @pytest.mark.asyncio

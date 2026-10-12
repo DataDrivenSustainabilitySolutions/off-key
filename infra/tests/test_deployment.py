@@ -97,6 +97,14 @@ class DeploymentTests(unittest.TestCase):
             ("prod-ephemeral", "prod", all_off | {"persist_mailpit": True}),
             ("prod-mixed", "prod", all_off | {"persist_emqx_log": True}),
             ("prod-collection-disabled", "prod", {"mqtt_telemetry_enabled": "false"}),
+            (
+                "prod-ingress-disabled",
+                "prod",
+                {
+                    "ambibox_ingress_enabled": False,
+                    "system_collection_enabled": False,
+                },
+            ),
         ]
         cls.results = {}
         for name, environment, overrides in cases:
@@ -479,7 +487,7 @@ class DeploymentTests(unittest.TestCase):
             self.assertIn("changed=0", repeated.stdout)
             self.assertEqual(json.loads(state.read_text()), expected)
 
-    def test_production_secrets_remain_scoped_to_their_original_services(self):
+    def test_production_secrets_are_scoped_to_the_services_that_need_them(self):
         expected = {
             "cloudflared": {
                 "cloudflared_tunnel_token": "/run/secrets/cloudflared_tunnel_token",
@@ -500,6 +508,8 @@ class DeploymentTests(unittest.TestCase):
                 "radar_checkpoint_secret": "RADAR_CHECKPOINT_SECRET",
             },
             "tactic": {
+                "emqx_ca_cert": "EMQX_CA_CERT",
+                "mqtt_proxy_password": "SYSTEM_COLLECTION_MQTT_API_KEY",
                 "ambibox_api_key": "AMBIBOX_EMQX_API_KEY",
                 "ambibox_api_secret": "AMBIBOX_EMQX_API_SECRET",
                 "ambibox_gost_password": "AMBIBOX_GOST_PASSWORD",
@@ -589,6 +599,7 @@ class DeploymentTests(unittest.TestCase):
         config = self.results["prod"]["config"]
         proxy = config["services"]["mqtt-proxy"]
         radar = config["services"]["mqtt-radar"]
+        tactic = config["services"]["tactic"]
         broker = config["services"]["emqx-main"]
         self.assertEqual(proxy["environment"]["ENVIRONMENT"], "production")
         self.assertEqual(proxy["environment"]["MQTT_BROKER_PORT"], "8883")
@@ -604,6 +615,20 @@ class DeploymentTests(unittest.TestCase):
         self.assertNotIn("RADAR_MQTT_API_KEY", radar["environment"])
         self.assertEqual(
             radar["environment"]["RADAR_MQTT_CA_FILE"], "/run/secrets/EMQX_CA_CERT"
+        )
+        self.assertEqual(
+            tactic["environment"]["SYSTEM_COLLECTION_MQTT_USERNAME"], "offkey-proxy"
+        )
+        self.assertNotIn("SYSTEM_COLLECTION_MQTT_API_KEY", tactic["environment"])
+        self.assertEqual(
+            tactic["environment"]["SYSTEM_COLLECTION_MQTT_CA_FILE"],
+            "/run/secrets/EMQX_CA_CERT",
+        )
+        self.assertEqual(
+            tactic["environment"]["TACTIC_RADAR_DEFAULT_MQTT_BROKER_PORT"], "8883"
+        )
+        self.assertEqual(
+            tactic["environment"]["TACTIC_RADAR_DEFAULT_MQTT_USE_TLS"], "true"
         )
         self.assertEqual(
             {secret["target"] for secret in radar["secrets"]},
@@ -628,6 +653,10 @@ class DeploymentTests(unittest.TestCase):
         controller = config["services"]["tactic"]
         self.assertIn("emqx-network", controller["networks"])
         self.assertEqual(controller["environment"]["AMBIBOX_INGRESS_ENABLED"], "true")
+        self.assertEqual(controller["environment"]["SYSTEM_LIVE_ENABLED"], "true")
+        self.assertIn(
+            "app-network", config["services"]["tailscale-ambibox"]["networks"]
+        )
         self.assertNotIn("MQTT_SOURCE_TOPICS", proxy["environment"])
         self.assertNotIn("TAILSCALE_AMBIBOX_UPSTREAM_HOST", proxy["environment"])
         self.assertEqual(
@@ -662,6 +691,8 @@ class DeploymentTests(unittest.TestCase):
                         "AMBIBOX_GOST_PASSWORD",
                         "AMBIBOX_MQTT_USERNAME",
                         "AMBIBOX_MQTT_PASSWORD",
+                        "EMQX_CA_CERT",
+                        "SYSTEM_COLLECTION_MQTT_API_KEY",
                     },
                 )
                 broker = services["emqx-main"]
@@ -702,6 +733,20 @@ class DeploymentTests(unittest.TestCase):
             config["services"]["mqtt-proxy"]["environment"]["MQTT_TELEMETRY_ENABLED"],
             "false",
         )
+
+    def test_readiness_receives_the_same_ingress_switches_as_the_controller(self):
+        for name in ("prod", "prod-ingress-disabled"):
+            services = self.results[name]["swarm_config"]["services"]
+            expected = "false" if name == "prod-ingress-disabled" else "true"
+            for service in ("tactic", "mqtt-proxy"):
+                self.assertEqual(
+                    services[service]["environment"]["SYSTEM_COLLECTION_ENABLED"],
+                    expected,
+                )
+                self.assertEqual(
+                    services[service]["environment"]["AMBIBOX_INGRESS_ENABLED"],
+                    expected,
+                )
 
     @unittest.skipUnless(
         os.environ.get("OFFKEY_GOST_SMOKE") == "1",

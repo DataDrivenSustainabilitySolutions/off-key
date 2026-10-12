@@ -27,7 +27,11 @@ interface Props {
   claimsBySensor: Map<string, ActiveService>;
   adaptiveModels: Record<string, ModelDefinition>;
   loadingModels: boolean;
-  onStarted: () => Promise<void>;
+  onStarted: (serviceId?: string) => Promise<void>;
+  displayName?: string;
+  initialReading?: string;
+  sensorLabels?: Map<string, string>;
+  sensorTopics?: Map<string, string>;
 }
 
 export function AdaptiveMonitoringSetup({
@@ -37,6 +41,7 @@ export function AdaptiveMonitoringSetup({
   adaptiveModels,
   loadingModels,
   onStarted,
+  initialReading, sensorLabels, sensorTopics, displayName,
 }: Props) {
   const [draft, setDraft] = useState(createDefaultAdaptiveDraft);
   const [selectedSensors, setSelectedSensors] = useState<Record<string, boolean>>({});
@@ -47,8 +52,8 @@ export function AdaptiveMonitoringSetup({
     [claimsBySensor, sensorTypes],
   );
   const activeSensors = useMemo(
-    () => availableSensors.filter((sensor) => selectedSensors[sensor] ?? true),
-    [availableSensors, selectedSensors],
+    () => availableSensors.filter((sensor) => selectedSensors[sensor] ?? (!initialReading || sensor === initialReading)),
+    [availableSensors, selectedSensors, initialReading],
   );
   const effectiveFeatureCount = draft.projection === "none"
     ? activeSensors.length
@@ -83,7 +88,7 @@ export function AdaptiveMonitoringSetup({
 
   const submit = async () => {
     const topics = activeSensors.map((sensor) =>
-      buildDeviceTelemetryTopic(chargerId, sensor),
+      sensorTopics?.get(sensor) ?? buildDeviceTelemetryTopic(chargerId, sensor),
     );
     const validation = buildAdaptiveMonitoringRequest({
       chargerId,
@@ -99,11 +104,12 @@ export function AdaptiveMonitoringSetup({
     }
     setStarting(true);
     try {
-      await apiUtils.post(API_CONFIG.ENDPOINTS.MONITORING.START, validation.request, {
+      const result = await apiUtils.post<{ service_id: string }>(API_CONFIG.ENDPOINTS.MONITORING.START,
+        { ...validation.request, ...(displayName ? { display_name: displayName } : {}) }, {
         timeout: API_CONFIG.MONITORING_LIFECYCLE_TIMEOUT,
       });
       toast.success("Adaptive monitoring service started.");
-      await onStarted();
+      await onStarted(result?.service_id);
     } catch (error) {
       toast.error(`Failed to start adaptive monitoring: ${getErrorMessage(error)}`);
     } finally {
@@ -119,29 +125,29 @@ export function AdaptiveMonitoringSetup({
         actions={<Button onClick={() => void submit()} disabled={starting || loadingModels || !draft.modelType}><Send className="size-4" />{starting ? "Starting..." : "Start adaptive monitoring"}</Button>}
       >
         <div className="space-y-5">
-          <ConfigSection title="Telemetry scope" description="Each sensor can belong to one active monitor." icon={RadioTower}>
+          <ConfigSection title="Readings" help="A reading can belong to one active monitor." icon={RadioTower}>
             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
               {sensorTypes.map((sensor) => {
                 const owner = claimsBySensor.get(sensor);
-                const checked = !owner && (selectedSensors[sensor] ?? true);
+                const checked = !owner && (selectedSensors[sensor] ?? (!initialReading || sensor === initialReading));
                 return (
-                  <label key={sensor} className={cn("flex items-center gap-3 rounded-xl border p-3 text-sm", owner && "opacity-50")}>
+                  <label key={sensor} className={cn("flex min-w-0 items-center gap-3 rounded-md border p-3 text-sm", owner && "opacity-50")}>
                     <input type="checkbox" checked={checked} disabled={Boolean(owner)} onChange={(event) => {
                       setSelectedSensors((current) => ({ ...current, [sensor]: event.target.checked }));
                       clearError("topics");
                     }} />
-                    <span className="min-w-0"><span className="block truncate font-medium">{sensor}</span>{owner && <span className="block truncate text-xs text-muted-foreground">Owned by {owner.container_name}</span>}</span>
+                    <span className="min-w-0"><span className="block truncate font-medium">{sensorLabels?.get(sensor) ?? sensor}</span>{owner && <span className="block truncate text-xs text-muted-foreground">Owned by {owner.container_name}</span>}</span>
                   </label>
                 );
               })}
             </div>
-            {!sensorTypes.length && <p className={HELP_CLASS}>No telemetry sensors have been discovered.</p>}
+            {!sensorTypes.length && <p className={HELP_CLASS}>No recorded readings.</p>}
             <FieldError field="topics" errors={fieldErrors} />
           </ConfigSection>
 
           <div className="grid gap-5 xl:grid-cols-2">
             <ConfigSection title="Detector" description={`${Object.keys(compatibleModels).length} of ${Object.keys(adaptiveModels).length} models support ${effectiveFeatureCount} ${effectiveFeatureCount === 1 ? "feature" : "features"}.`} icon={BrainCircuit}>
-              <label className={LABEL_CLASS} htmlFor="adaptive-model">Aberrant model</label>
+              <label className={LABEL_CLASS} htmlFor="adaptive-model">Model</label>
               <select id="adaptive-model" className={cn(CONTROL_CLASS, "mt-2")} value={draft.modelType} onChange={(event) => {
                 const modelType = event.target.value;
                 const requiresUnitInterval = adaptiveModels[modelType]?.default_capabilities?.requires_unit_interval;

@@ -53,9 +53,9 @@ export const FullPageLoading: React.FC<{ message?: string }> = ({
   message = 'Loading...'
 }) => (
   <div className="app-canvas flex min-h-screen items-center justify-center">
-    <div className="space-y-4 text-center">
-      <Loader2 className="animate-spin text-primary h-12 w-12" />
-      <p className="text-muted-foreground">{message}</p>
+    <div role="status" className="flex items-center gap-3 text-sm text-muted-foreground">
+      <Loader2 aria-hidden="true" className="size-4 animate-spin" />
+      <p>{message}</p>
     </div>
   </div>
 );
@@ -78,12 +78,12 @@ const EmptyState: React.FC<EmptyStateProps> = ({
   description,
   action,
 }) => (
-  <Card className="w-full border-dashed bg-card/70 shadow-none">
+  <Card className="w-full shadow-none">
     <CardContent className="flex flex-col items-center justify-center px-6 py-12 text-center">
-      <div className="mb-4 flex size-11 items-center justify-center rounded-xl border border-border/70 bg-muted/45 text-muted-foreground [&_svg]:size-5">
+      <div aria-hidden="true" className="mb-4 flex size-10 items-center justify-center rounded-lg bg-muted text-muted-foreground [&_svg]:size-5">
         {icon || <Database />}
       </div>
-      <h3 className="mb-2 text-base font-semibold">{title}</h3>
+      <h3 className="mb-2 text-sm font-medium">{title}</h3>
       {description && (
         <p className="mb-4 max-w-sm text-sm leading-6 text-muted-foreground">{description}</p>
       )}
@@ -107,7 +107,6 @@ export const NoDataFound: React.FC<{
   <EmptyState
     icon={<Database />}
     title={message}
-    description="Adjust your filters or check back later."
     action={onRefresh ? {
       label: 'Refresh',
       onClick: onRefresh,
@@ -120,9 +119,8 @@ export const NoChartsAvailable: React.FC<{ onRefresh?: () => void }> = ({ onRefr
   <EmptyState
     icon={<BarChart3 />}
     title="No chart data available"
-    description="No telemetry available yet."
     action={onRefresh ? {
-      label: 'Try Again',
+      label: 'Refresh',
       onClick: onRefresh,
     } : undefined}
   />

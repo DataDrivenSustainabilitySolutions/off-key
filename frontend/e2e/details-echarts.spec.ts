@@ -179,7 +179,7 @@ const installDelayedEvidenceApi = async (page: Page) => {
           container_id: "container-delayed",
           container_name: "radar-delayed",
           mqtt_topics: [
-            `device/evCharger/${CHARGER_ID}/systemVoltage`,
+            `telemetry/${CHARGER_ID}/systemVoltage`,
           ],
           status: true,
           monitoring_strategy: "adaptive_stream",
@@ -244,20 +244,16 @@ test.describe("Details telemetry ECharts", () => {
   });
 
   test.beforeEach(async ({ page }) => {
-    await page.route("**/v1/sources", async (route) => {
+    await page.route("**/v1/system", async (route) => {
       await route.fulfill({
         json: {
-          catalog: {
-            sources: [{
-              chargers: [{
-                id: CHARGER_ID,
-                sensors: [
-                  { key: "systemVoltage", category: "Voltage" },
-                  { key: "systemCurrent", category: "Current" },
-                ],
-              }],
-            }],
-          },
+          document: { streams: [
+            { id: "voltage", category: "Voltage" }, { id: "current", category: "Current" },
+          ] },
+          runtime: { bindings: {
+            voltage: { entity_id: CHARGER_ID, telemetry_key: "systemVoltage" },
+            current: { entity_id: CHARGER_ID, telemetry_key: "systemCurrent" },
+          } },
         },
       });
     });
@@ -273,7 +269,7 @@ test.describe("Details telemetry ECharts", () => {
     await page.setViewportSize({ width: 1600, height: 900 });
     await page.goto(`/details/${CHARGER_ID}`);
 
-    const navbar = page.locator('[data-slot="navigation-menu"]');
+    const navbar = page.getByTestId("application-header");
     const primaryLinks = page.getByTestId("navbar-primary-links");
     const navbarActions = page.getByTestId("navbar-actions");
     await expect(navbarActions).toBeVisible();
@@ -310,7 +306,7 @@ test.describe("Details telemetry ECharts", () => {
       .filter({ hasText: "System Voltage" })
       .first();
     await expect(chart).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Voltage Metrics" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Voltage" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Voltage (1)" })).toBeVisible();
     const desktopChartBox = await chart.boundingBox();
     expect(desktopChartBox).not.toBeNull();
@@ -323,8 +319,8 @@ test.describe("Details telemetry ECharts", () => {
     );
     await expect(card.getByText(/Current System Voltage:/u)).toBeVisible();
     await expect(card.getByText(/Restarted e-process/u)).toBeVisible();
-    await page.getByRole("button", { name: "Toggle theme" }).click();
-    await page.getByRole("menuitem", { name: "Dark" }).click();
+    await page.getByRole("button", { name: "Theme", exact: true }).click();
+    await page.getByRole("menuitemradio", { name: "Dark", exact: true }).click();
     await expect(page.locator("html")).toHaveClass(/dark/u);
 
     await page.setViewportSize({ width: 390, height: 844 });

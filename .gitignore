@@ -48,6 +48,9 @@ npm-debug.log*
 /logs/
 *.log
 tailscale-ambibox/data/
+# Private local AmbiBox catalog used for development/import
+/infra/stack/state/prod/ambibox-development-catalog.json
+/infra/stack/state/prod/ambibox-development-system.json
 
 # Local tool state
 /.agents/
@@ -63,6 +66,7 @@ AGENTS.md
 CLAUDE.md
 
 # Local deployment and smoke-test output
+/dev/local/state/
 docker-compose.local-swarm.yml
 /browser-smoke-compose.log
 /browser-smoke-compose-ps.txt

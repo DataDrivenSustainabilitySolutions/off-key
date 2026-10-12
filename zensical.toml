@@ -24,7 +24,7 @@ nav = [
     { "GitHub setup" = "operations/github-setup.md" },
     { "Production releases" = "operations/production.md" },
     { "Recovery" = "operations/recovery.md" },
-    { "Collection operations" = "operations/ambibox-collection.md" },
+    { "Collection operations" = "operations/system-collection.md" },
   ] },
   { "Reference" = [
     { "Backend API" = "reference/backend-api.md" },

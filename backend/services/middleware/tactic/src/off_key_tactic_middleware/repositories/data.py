@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from off_key_core.db.collection import read_collection_configuration
+from off_key_core.db.collection_runtime import read_collection_runtime
 from off_key_core.db.models import (
     Anomaly,
     AnomalyIdentity,
@@ -57,7 +57,7 @@ class TelemetryRepository:
         self._session = session
 
     async def list_types(self, *, charger_id: str, limit: int) -> list[str]:
-        snapshot = await read_collection_configuration(self._session)
+        snapshot = await read_collection_runtime(self._session)
         return sorted(
             stream.sensor.key
             for stream in snapshot.catalog.streams(selected_only=True)

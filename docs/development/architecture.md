@@ -47,13 +47,13 @@ The platform runs as a Docker-based service mesh:
 
 ### 2. Telemetry ingestion flow
 
-1. An administrator saves broker, charger and sensor definitions through Data sources.
-2. TACTIC reconciles per-broker EMQX sources and routes through the existing tailnet.
-3. EMQX wraps known scalar topics in source-scoped raw envelopes.
-4. MQTT Proxy subscribes only to selected streams and applies collection policy before storage and accepted MQTT output.
-5. RADAR consumes accepted numeric topics by charger UUID. Gateway serves history and latest state to the UI.
+1. An administrator saves MQTT broker, entity, topic and payload-field definitions through Sources.
+2. Collection is explicitly enabled for chosen readings; saving definitions alone does not select them.
+3. TACTIC subscribes to selected upstream topics using operator-provisioned networking and credentials, then forwards generation-scoped envelopes through internal EMQX.
+4. MQTT Proxy decodes admitted readings, applies collection policy, stores numeric history/latest state and emits accepted topics.
+5. RADAR consumes `telemetry/<entity>/<reading>` observations. Gateway serves stored history and live monitoring evidence to the UI.
 
-See [AmbiBox collection](../operations/ambibox-collection.md) for revision transitions and limits.
+See [Collection](../operations/system-collection.md) for revision transitions and limits.
 
 ### 3. Monitoring lifecycle flow
 

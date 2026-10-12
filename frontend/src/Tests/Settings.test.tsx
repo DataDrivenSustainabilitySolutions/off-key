@@ -1,8 +1,7 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import Account from "../pages/Account";
 import Settings from "../pages/Settings";
 import type { StorageStatus } from "../types/collection";
 
@@ -12,7 +11,6 @@ const auth = vi.hoisted(() => ({ isAdmin: true, member: { email: "admin@example.
 vi.mock("../lib/api-client", () => ({ apiUtils: api }));
 vi.mock("../auth/AuthContext", () => ({ useAuth: () => auth }));
 vi.mock("../components/NavigationBar", () => ({ NavigationBar: () => null }));
-vi.mock("../lib/member-api", () => ({ getMembers: vi.fn().mockResolvedValue([]) }));
 const status: StorageStatus = {
   database_size_bytes: 1500000000,
   retention_policies: [
@@ -24,35 +22,28 @@ const status: StorageStatus = {
 beforeEach(() => {
   vi.clearAllMocks();
   getStorage.mockResolvedValue(status);
-  api.get.mockImplementation((url) => url === "/v1/sources/storage"
+  api.get.mockImplementation((url) => url === "/v1/system/storage"
     ? getStorage()
     : Promise.resolve({ revision: 0, collection: {}, ingress: {} }));
 });
 
 describe("storage and retention", () => {
-  it.each([true, false])("opens storage settings through Account (administrator: %s)", async (isAdmin) => {
+  it.each([true, false])("loads storage settings (administrator: %s)", async (isAdmin) => {
     auth.isAdmin = isAdmin;
     render(
-      <MemoryRouter initialEntries={["/account"]}>
-        <Routes>
-          <Route path="/account" element={<Account />} />
-          <Route path="/account/settings" element={<Settings />} />
-        </Routes>
+      <MemoryRouter initialEntries={["/account/settings"]}>
+        <Settings />
       </MemoryRouter>,
     );
-    expect(api.get).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("link", { name: "Settings" }));
     expect(screen.getByRole("heading", { name: "Settings", level: 1 })).toBeTruthy();
     expect(await screen.findByText("1.5 GB")).toBeTruthy();
     expect(screen.getByText("30 days")).toBeTruthy();
     expect(screen.getByText("7 days")).toBeTruthy();
-    expect(api.get).toHaveBeenCalledWith("/v1/sources/storage");
+    expect(api.get).toHaveBeenCalledWith("/v1/system/storage");
     expect(screen.getByRole("heading", { name: "Collection diagnostics" })).toBeTruthy();
     expect(screen.getByText("Not configured")).toBeTruthy();
-    expect(api.get).toHaveBeenCalledWith("/v1/sources/status");
-    expect(api.get).not.toHaveBeenCalledWith("/v1/sources");
-    fireEvent.click(screen.getByRole("link", { name: "Back to account" }));
-    expect(screen.getByRole("heading", { name: "Account", level: 1 })).toBeTruthy();
+    expect(api.get).toHaveBeenCalledWith("/v1/system/health");
+    expect(api.get).not.toHaveBeenCalledWith("/v1/system");
   });
 
   it("distinguishes paused and missing policies without substituting defaults", async () => {

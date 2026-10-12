@@ -15,7 +15,7 @@ export function HelpTooltip({ label, children }: { label: string; children: Reac
         <button
           type="button"
           aria-label={`About ${label}`}
-          className="inline-flex size-6 shrink-0 items-center justify-center rounded-full text-muted-foreground outline-none transition-colors hover:bg-primary/10 hover:text-primary focus-visible:ring-2 focus-visible:ring-ring/40"
+          className="inline-flex size-11 shrink-0 items-center justify-center rounded-md text-muted-foreground outline-none transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/25 sm:size-7"
         >
           <CircleHelp className="size-3.5" aria-hidden="true" />
         </button>

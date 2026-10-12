@@ -271,7 +271,7 @@ export function ChargerListResults({
       <Table>
         <TableHeader>
           <TableRow className="bg-muted/30 hover:bg-muted/30">
-            <TableHead>Charger ID</TableHead>
+            <TableHead>Entity ID</TableHead>
             <TableHead>Name</TableHead>
             <TableHead>{tableStatusLabel}</TableHead>
             <TableHead>Last Seen</TableHead>

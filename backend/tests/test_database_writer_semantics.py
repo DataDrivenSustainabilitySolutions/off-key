@@ -37,7 +37,7 @@ def _build_result(
         timestamp=datetime.now(UTC),
         model_info={"model_type": "isolation_forest"},
         raw_data={"value": 1.0},
-        topic="device/evCharger/charger-1/sine",
+        topic="telemetry/charger-1/sine",
         charger_id="charger-1",
         context={
             **detector_context,

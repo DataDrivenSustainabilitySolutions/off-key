@@ -30,11 +30,15 @@ beforeEach(() => {
   localStorage.clear();
   sessionStorage.clear();
   mockNavigate.mockReset();
+  vi.stubEnv("VITE_LOCAL_ADMIN_EMAIL", undefined);
+  vi.stubGlobal("location", { hostname: "localhost" });
 });
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
   vi.resetAllMocks();
+  vi.unstubAllEnvs();
+  vi.unstubAllGlobals();
 });
 
 const renderLogin = () =>
@@ -68,6 +72,63 @@ describe("Login", () => {
       screen.getByLabelText(/password/i, { selector: "input" })
     ).toBeTruthy();
     expect(screen.getByRole("button", { name: /log in/i })).toBeTruthy();
+  });
+
+  it.each(["127.0.0.1", "localhost", "[::1]", "::1"])(
+    "submits the configured email for the local admin alias on %s",
+    async (hostname) => {
+      vi.stubEnv("VITE_LOCAL_ADMIN_EMAIL", "admin@example.com");
+      vi.stubGlobal("location", { hostname });
+      fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ detail: "Invalid credentials" }), {
+        status: 401, headers: { "Content-Type": "application/json" },
+      }));
+      renderLogin();
+
+      const email = screen.getByLabelText("Email") as HTMLInputElement;
+      const password = screen.getByLabelText(/password/i, { selector: "input" }) as HTMLInputElement;
+      expect(email.type).toBe("text");
+      expect(email.placeholder).toBe("Email");
+      expect(email.inputMode).toBe("email");
+      expect(email.autocomplete).toBe("username");
+      expect(password.autocomplete).toBe("current-password");
+      fireEvent.change(email, { target: { value: "admin" } });
+      fireEvent.change(password, { target: { value: "admin" } });
+      fireEvent.click(screen.getByRole("button", { name: /log in/i }));
+
+      await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
+      expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
+        email: "admin@example.com", password: "admin",
+      });
+      expect(await screen.findByText("Invalid credentials")).toBeTruthy();
+    },
+  );
+
+  it.each([
+    { hostname: "localhost", configuredEmail: undefined },
+    { hostname: "app.example.com", configuredEmail: "admin@example.com" },
+    { hostname: "127.0.0.1.example.com", configuredEmail: "admin@example.com" },
+    { hostname: "localhost", configuredEmail: "invalid-email" },
+  ])("keeps email login and rejects the alias with $hostname/$configuredEmail", ({ hostname, configuredEmail }) => {
+    vi.stubEnv("VITE_LOCAL_ADMIN_EMAIL", configuredEmail);
+    vi.stubGlobal("location", { hostname });
+    renderLogin();
+    const email = screen.getByLabelText("Email") as HTMLInputElement;
+    expect(email.type).toBe("email");
+    fireEvent.change(email, { target: { value: "admin" } });
+    fireEvent.change(screen.getByLabelText(/password/i, { selector: "input" }), { target: { value: "admin" } });
+    fireEvent.submit(screen.getByRole("button", { name: /log in/i }).closest("form")!);
+    expect(screen.getByText("Please enter a valid email address")).toBeTruthy();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("only maps the exact admin alias when local login is enabled", () => {
+    vi.stubEnv("VITE_LOCAL_ADMIN_EMAIL", "admin@example.com");
+    renderLogin();
+    fireEvent.change(screen.getByLabelText("Email"), { target: { value: "administrator" } });
+    fireEvent.change(screen.getByLabelText(/password/i, { selector: "input" }), { target: { value: "admin" } });
+    fireEvent.click(screen.getByRole("button", { name: /log in/i }));
+    expect(screen.getByText("Please enter a valid email address")).toBeTruthy();
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("shows an error message for invalid credentials", async () => {

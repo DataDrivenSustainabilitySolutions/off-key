@@ -110,8 +110,8 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
   }, []);
 
   const displayName = useMemo(
-    () => formatDisplayName(telemetryData.type),
-    [telemetryData.type],
+    () => telemetryData.label ?? formatDisplayName(telemetryData.type),
+    [telemetryData.type, telemetryData.label],
   );
   const timeZone = useMemo(() => getLocalTimeZone(), []);
   const themeColors = useMemo(

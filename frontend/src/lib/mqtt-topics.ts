@@ -1,5 +1,6 @@
-export const DEVICE_TELEMETRY_FILTER = "device/#";
-export const DEVICE_TELEMETRY_PREFIX = "device/evCharger";
+export const DEVICE_TELEMETRY_FILTER = "telemetry/#";
+export const DEVICE_TELEMETRY_PREFIX = "telemetry";
+
 
 export interface DeviceTelemetryTopic {
   chargerId: string;
@@ -22,7 +23,7 @@ export const buildDeviceTelemetryTopic = (
   telemetryType: string,
 ): string => {
   if (!isConcreteHierarchy(chargerId) || chargerId.includes("/")) {
-    throw new Error("Charger ID must be one concrete MQTT level.");
+    throw new Error("Entity ID must be one concrete MQTT level.");
   }
   if (!isConcreteHierarchy(telemetryType)) {
     throw new Error("Telemetry type must be a concrete MQTT hierarchy.");
@@ -32,7 +33,7 @@ export const buildDeviceTelemetryTopic = (
 
 export const buildDeviceTelemetryChargerFilter = (chargerId: string): string => {
   if (!isConcreteHierarchy(chargerId) || chargerId.includes("/")) {
-    throw new Error("Charger ID must be one concrete MQTT level.");
+    throw new Error("Entity ID must be one concrete MQTT level.");
   }
   return `${DEVICE_TELEMETRY_PREFIX}/${chargerId}/#`;
 };
@@ -41,15 +42,15 @@ export const parseDeviceTelemetryTopic = (
   topic: string,
 ): DeviceTelemetryTopic | null => {
   const levels = topic.trim().split("/");
+  const offset = 1;
   if (
-    levels.length < 4 ||
-    levels[0] !== "device" ||
-    levels[1] !== "evCharger"
+    levels.length < offset + 2 ||
+    levels[0] !== "telemetry"
   ) {
     return null;
   }
-  const chargerId = levels[2] ?? "";
-  const telemetryLevels = levels.slice(3);
+  const chargerId = levels[offset] ?? "";
+  const telemetryLevels = levels.slice(offset + 1);
   if (
     !isConcreteHierarchy(chargerId) ||
     chargerId.includes("/") ||

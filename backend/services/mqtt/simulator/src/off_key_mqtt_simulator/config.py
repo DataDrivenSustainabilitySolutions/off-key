@@ -10,6 +10,7 @@ class SimulatorConfig(BaseModel):
     model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
     enabled: bool
+    workshop_enabled: bool = False
     broker_host: str
     broker_port: int
     use_tls: bool
@@ -102,6 +103,7 @@ class SimulatorSettings(BaseSettings):
     model_config = SettingsConfigDict(case_sensitive=True, extra="ignore")
 
     SIMULATOR_ENABLED: bool = True
+    SIMULATOR_WORKSHOP_ENABLED: bool = False
     SIMULATOR_BROKER_HOST: str = "source-broker"
     SIMULATOR_BROKER_PORT: int = 1883
     SIMULATOR_USE_TLS: bool = False
@@ -113,7 +115,7 @@ class SimulatorSettings(BaseSettings):
     SIMULATOR_QOS: int = 0
     SIMULATOR_CHARGER_IDS: str = "charger-sim-1,charger-sim-2"
     SIMULATOR_FEATURES: str = "sine,cosine,random"
-    SIMULATOR_TOPIC_TEMPLATE: str = "device/evCharger/{charger_id}/{feature}"
+    SIMULATOR_TOPIC_TEMPLATE: str = "telemetry/{charger_id}/{feature}"
     SIMULATOR_VALUE_MIN: float = 0.0
     SIMULATOR_VALUE_MAX: float = 100.0
     SIMULATOR_BLIP_PROBABILITY: float = 0.0025
@@ -127,6 +129,7 @@ class SimulatorSettings(BaseSettings):
 
         return SimulatorConfig(
             enabled=self.SIMULATOR_ENABLED,
+            workshop_enabled=self.SIMULATOR_WORKSHOP_ENABLED,
             broker_host=self.SIMULATOR_BROKER_HOST,
             broker_port=self.SIMULATOR_BROKER_PORT,
             use_tls=self.SIMULATOR_USE_TLS,

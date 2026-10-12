@@ -35,7 +35,7 @@ it("shows member access without offering administrator controls", async () => {
   render(<MemoryRouter><Account /></MemoryRouter>);
   expect(screen.queryByRole("button", { name: "Send invitation" })).toBeNull();
   expect(getMembers).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole("button", { name: "About Your account" }));
+  fireEvent.click(screen.getByRole("button", { name: "About Account" }));
   expect((await screen.findByRole("tooltip")).textContent).toContain("Members can view all organization data");
 });
 

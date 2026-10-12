@@ -46,7 +46,7 @@ export function collectionDiagnosis(snapshot: CollectionStatus, now = Date.now()
   if (ingress.status === "disabled")
     return [
       "Ingress disabled",
-      "The operator has disabled the AmbiBox connection.",
+      "The operator has disabled broker access.",
     ];
   if (!diagnosticsFresh(ingress, now))
     return [
@@ -57,7 +57,7 @@ export function collectionDiagnosis(snapshot: CollectionStatus, now = Date.now()
     return [
       "Broker routes failed",
       ingress.error ?? Object.values(ingress.sources ?? {}).find((source) => source.error)?.error ??
-        "Check the broker controller, vendor tailnet and endpoint configuration.",
+        "Check the broker controller, network and endpoint configuration.",
     ];
   if (ingress.revision !== revision || ingress.status !== "applied")
     return [
@@ -69,10 +69,10 @@ export function collectionDiagnosis(snapshot: CollectionStatus, now = Date.now()
       "Applying changes",
       "Wait for the collector to activate the saved catalog.",
     ];
-  if (Object.values(ingress.sources ?? {}).some((source) => !["connected", "paused"].includes(source.status)))
+  if (Object.values(ingress.sources ?? {}).some((source) => !["connected", "paused"].includes(source.state)))
     return [
       "Broker disconnected",
-      "At least one selected broker is unavailable. Check its endpoint, vendor tailnet and credentials.",
+      "At least one selected broker is unavailable. Check its endpoint, network and credentials.",
     ];
   if (data.database_retrying)
     return [
@@ -97,7 +97,7 @@ export function collectionDiagnosis(snapshot: CollectionStatus, now = Date.now()
   if (data.rates.received === 0)
     return [
       "Connected but quiet",
-      "Connections are ready, but selected topics have no recent messages. Check the topics and whether the chargers are sending.",
+      "Connections are ready, but selected topics have no recent messages. Check the topics and whether the entities are sending.",
     ];
   return [
     "Collecting",

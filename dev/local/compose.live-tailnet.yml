@@ -1,0 +1,23 @@
+# Opt-in private tailnet connection with its own local device identity.
+services:
+  live-tailnet:
+    image: "${LOCAL_LIVE_TAILNET_IMAGE:-tailscale/tailscale:latest@sha256:c507f3a2a6ab1cabd8d809b98edeb41edbd5c3fb6ad9632ffd098b4c7d0b4065}"
+    entrypoint: ["tailscaled"]
+    command:
+      - --tun=userspace-networking
+      - --state=/var/lib/tailscale/tailscaled.state
+      - --socket=/var/run/tailscale/tailscaled.sock
+      - --socks5-server=0.0.0.0:1055
+    volumes:
+      - local_live_tailnet_state:/var/lib/tailscale
+    networks:
+      - app-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "tailscale", "status", "--json"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+volumes:
+  local_live_tailnet_state:

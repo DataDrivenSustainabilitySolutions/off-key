@@ -21,9 +21,18 @@ services:
 {% if ambibox_ingress_enabled | bool %}
       - source: ambibox_api_bootstrap
         target: ambibox_api_bootstrap
+{% endif %}
 
+{% if offkey_env == 'prod' or ambibox_ingress_enabled | bool %}
   tactic:
     secrets:
+{% if offkey_env == 'prod' %}
+      - source: emqx_ca_cert
+        target: EMQX_CA_CERT
+      - source: mqtt_proxy_password
+        target: SYSTEM_COLLECTION_MQTT_API_KEY
+{% endif %}
+{% if ambibox_ingress_enabled | bool %}
       - source: ambibox_api_key
         target: AMBIBOX_EMQX_API_KEY
       - source: ambibox_api_secret
@@ -34,7 +43,10 @@ services:
         target: AMBIBOX_MQTT_USERNAME
       - source: ambibox_mqtt_password
         target: AMBIBOX_MQTT_PASSWORD
+{% endif %}
+{% endif %}
 
+{% if ambibox_ingress_enabled | bool %}
   mqtt-tailscale-bridge:
     command: ["-C", "/run/secrets/ambibox_gost_config.json"]
     secrets:

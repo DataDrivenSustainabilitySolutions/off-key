@@ -2,7 +2,7 @@ import { act, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { collectionDiagnosis } from "../lib/collection-diagnostics";
 import { CollectionHealth } from "../pages/settings/CollectionHealth";
-import type { CatalogSnapshot, CollectionDiagnostics } from "../types/collection";
+import type { CollectionStatus, CollectionDiagnostics } from "../types/collection";
 
 const api = vi.hoisted(() => ({ get: vi.fn() }));
 vi.mock("../lib/api-client", () => ({ apiUtils: api }));
@@ -16,12 +16,10 @@ const metrics = (): CollectionDiagnostics => ({
   original_queue: 5, original_capacity: 10, sample_slots: 2,
   database_queue: 0, database_capacity: 1000, database_retrying: false,
 });
-const snapshot = (): CatalogSnapshot => ({
-  revision: 1, can_edit: true, updated_at: null, updated_by: null,
-  sensor_activity: {},
-  catalog: { schema_version: 1, provider: "ambibox", default_policy: { mode: "off", interval_seconds: 10 }, sources: [] },
+const snapshot = (): CollectionStatus => ({
+  revision: 1,
   collection: { revision: 1, status: "applied", selected_sensors: 1, checked_at: new Date().toISOString(), diagnostics: metrics() },
-  ingress: { revision: 1, status: "applied", checked_at: new Date().toISOString(), sources: { broker: { status: "connected" } } },
+  ingress: { revision: 1, status: "applied", checked_at: new Date().toISOString(), sources: { broker: { state: "connected" } } },
 });
 
 describe("collection diagnostics", () => {
@@ -57,7 +55,7 @@ describe("collection diagnostics", () => {
       api.get.mockResolvedValueOnce(paused);
       await act(() => vi.advanceTimersByTimeAsync(3000));
       expect(screen.getByRole("status").textContent).toBe("Paused");
-      expect(api.get).toHaveBeenCalledWith("/v1/sources/status");
+      expect(api.get).toHaveBeenCalledWith("/v1/system/health");
       expect(api.get).toHaveBeenCalledTimes(3);
       view.unmount();
       await act(() => vi.advanceTimersByTimeAsync(6000));
@@ -68,15 +66,15 @@ describe("collection diagnostics", () => {
   });
   it.each([
     ["Collecting", () => {}],
-    ["Paused", (s: CatalogSnapshot) => { s.collection.selected_sensors = 0; }],
-    ["Disconnected", (s: CatalogSnapshot) => { s.collection.diagnostics!.mqtt_connected = false; }],
-    ["Broker disconnected", (s: CatalogSnapshot) => { s.ingress.sources!.broker!.status = "connecting"; }],
-    ["Connected but quiet", (s: CatalogSnapshot) => { s.collection.diagnostics!.rates.received = 0; }],
-    ["Invalid payloads", (s: CatalogSnapshot) => { s.collection.diagnostics!.rates.invalid = 1; }],
-    ["Overloaded", (s: CatalogSnapshot) => { s.collection.diagnostics!.rates.overload_dropped = 1; }],
-    ["Database retrying", (s: CatalogSnapshot) => { s.collection.diagnostics!.database_retrying = true; }],
-    ["Worker not reporting", (s: CatalogSnapshot) => { s.collection.checked_at = new Date(Date.now() - 60000).toISOString(); }],
-    ["Applying changes", (s: CatalogSnapshot) => { s.collection.revision = 0; }],
+    ["Paused", (s: CollectionStatus) => { s.collection.selected_sensors = 0; }],
+    ["Disconnected", (s: CollectionStatus) => { s.collection.diagnostics!.mqtt_connected = false; }],
+    ["Broker disconnected", (s: CollectionStatus) => { s.ingress.sources!.broker!.state = "connecting"; }],
+    ["Connected but quiet", (s: CollectionStatus) => { s.collection.diagnostics!.rates.received = 0; }],
+    ["Invalid payloads", (s: CollectionStatus) => { s.collection.diagnostics!.rates.invalid = 1; }],
+    ["Overloaded", (s: CollectionStatus) => { s.collection.diagnostics!.rates.overload_dropped = 1; }],
+    ["Database retrying", (s: CollectionStatus) => { s.collection.diagnostics!.database_retrying = true; }],
+    ["Worker not reporting", (s: CollectionStatus) => { s.collection.checked_at = new Date(Date.now() - 60000).toISOString(); }],
+    ["Applying changes", (s: CollectionStatus) => { s.collection.revision = 0; }],
   ])("explains %s", (expected, modify) => {
     const value = snapshot();
     modify(value);

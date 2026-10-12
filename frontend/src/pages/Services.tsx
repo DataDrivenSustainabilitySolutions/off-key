@@ -7,7 +7,6 @@ import {
   ExternalLink,
   RadioTower,
   RefreshCw,
-  Trash2,
 } from "lucide-react";
 import toast from "react-hot-toast";
 
@@ -31,6 +30,7 @@ import { apiUtils } from "@/lib/api-client";
 import { getErrorMessage } from "@/lib/errors";
 import { API_CONFIG } from "@/lib/api-config";
 import { cn } from "@/lib/utils";
+import { parseDeviceTelemetryTopic } from "@/lib/mqtt-topics";
 import {
   getMonitoringStrategyDisplay,
   getOperationalStageDisplay,
@@ -39,9 +39,16 @@ import {
 } from "@/types/monitoring";
 import type { ActiveService } from "@/types/monitoring";
 
-const extractChargerIdFromContainer = (containerName: string): string => {
-  const match = containerName.match(/^radar-(.+)-\d+$/);
-  return match?.[1] ?? "Unknown";
+const entityIdsForService = (service: ActiveService): string[] => {
+  const ids = new Set(
+    service.mqtt_topics.flatMap((topic) => {
+      const parsed = parseDeviceTelemetryTopic(topic);
+      return parsed ? [parsed.chargerId] : [];
+    }),
+  );
+  if (ids.size) return [...ids];
+  const match = service.container_name.match(/^radar-(?:adaptive-)?(.+)-\d+$/);
+  return match?.[1] ? [match[1]] : [];
 };
 
 function StatusBadge({
@@ -128,10 +135,6 @@ function EmptyServicesState() {
         <RadioTower className="h-5 w-5" />
       </div>
       <div className="text-sm font-medium">No monitoring services found</div>
-      <div className="mt-1 max-w-md text-sm text-muted-foreground">
-        New RADAR workloads will appear here after they are started from a charger
-        monitoring page.
-      </div>
     </div>
   );
 }
@@ -261,7 +264,7 @@ export default function Services() {
               <TableHeader>
                 <TableRow className="bg-muted/30 hover:bg-muted/30">
                   <TableHead>Service</TableHead>
-                  <TableHead>Charger</TableHead>
+                  <TableHead>Entity</TableHead>
                   <TableHead>Mode</TableHead>
                   <TableHead>Model</TableHead>
                   <TableHead>Topics</TableHead>
@@ -277,9 +280,7 @@ export default function Services() {
                       service.docker_status,
                       service.status
                     );
-                    const chargerId = extractChargerIdFromContainer(
-                      service.container_name
-                    );
+                    const entityIds = entityIdsForService(service);
                     const deleteAction = getServiceDeleteActionDisplay(service);
                     const topicPreview = service.mqtt_topics.slice(0, 2);
 
@@ -294,16 +295,16 @@ export default function Services() {
                           </div>
                         </TableCell>
                         <TableCell>
-                          {chargerId === "Unknown" ? (
+                          {entityIds.length !== 1 ? (
                             <span className="text-sm text-muted-foreground">
-                              Unknown
+                              {entityIds.length ? `${entityIds.length} entities` : "—"}
                             </span>
                           ) : (
                             <Link
-                              to={`/monitoring/${chargerId}`}
+                              to={`/monitoring/${encodeURIComponent(entityIds[0]!)}`}
                               className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-sm font-medium text-primary hover:bg-accent"
                             >
-                              {chargerId}
+                              {entityIds[0]}
                               <ExternalLink className="h-3.5 w-3.5" />
                             </Link>
                           )}
@@ -359,13 +360,12 @@ export default function Services() {
                         <TableCell className="text-right">
                           <Button
                             type="button"
-                            variant="ghost"
-                            size="icon"
+                            variant="destructive"
+                            size="sm"
                             onClick={() => deleteService(service)}
                             aria-label={deleteAction.ariaLabel}
-                            className="text-destructive hover:text-destructive"
                           >
-                            <Trash2 className="h-4 w-4" />
+                            Delete
                           </Button>
                         </TableCell>
                       </TableRow>

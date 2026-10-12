@@ -3,7 +3,7 @@ import { expect, test } from "@playwright/test";
 import { connectAsync, type MqttClient } from "mqtt";
 import { ingressOptions } from "./helpers/mqtt";
 
-import { addTestCharger, removeTestCharger } from "./helpers/collection";
+import { addTestCharger, removeTestCharger, fixtureEntityId, fixtureReadingKey } from "./helpers/collection";
 import { zoomChart } from "./helpers/chart";
 
 const publish = async (
@@ -53,7 +53,7 @@ interface ChartEvidence {
   strategy: string;
   anomaly_score: number | null;
   threshold: number;
-  input_timestamps: InputTimestamps;
+  input_timestamps: Record<string, string>;
 }
 
 test.describe("adaptive monitoring production lifecycle", () => {
@@ -63,7 +63,9 @@ test.describe("adaptive monitoring production lifecycle", () => {
     page,
     playwright,
   }) => {
-    const chargerId = randomUUID();
+    const deviceId = randomUUID();
+    const chargerId = fixtureEntityId(deviceId);
+    const l1Key = fixtureReadingKey(deviceId, "L1"), l2Key = fixtureReadingKey(deviceId, "L2");
     let serviceId: string | undefined;
     let authToken: string | null = null;
     let publisher: MqttClient | undefined;
@@ -87,14 +89,14 @@ test.describe("adaptive monitoring production lifecycle", () => {
       const inputs = await addTestCharger(
         api,
         authToken!,
-        chargerId,
-        chargerId,
+        deviceId,
+        deviceId,
         ["L1", "L2"],
       );
       if (!inputs.L1 || !inputs.L2)
         throw new Error("Missing catalog test topics");
       const topics = { L1: inputs.L1, L2: inputs.L2 };
-      const expectedTelemetryTypes = ["L1", "L2"] as const;
+      const expectedTelemetryTypes = [l1Key, l2Key].sort();
       await publishCycle(activePublisher, topics, 0);
       const readTelemetryTypes = async () => {
         const response = await api.get(`/api/v1/telemetry/${chargerId}/type`, {
@@ -133,7 +135,7 @@ test.describe("adaptive monitoring production lifecycle", () => {
       await expect(page.getByText("L2", { exact: true }).first()).toBeVisible({
         timeout: 30_000,
       });
-      await page.getByRole("button", { name: /Adaptive streams/i }).click();
+      await page.getByRole("button", { name: /Adaptive stream/i }).click();
       await expect(
         page.getByRole("heading", { name: "Configure adaptive monitoring", exact: true }),
       ).toBeVisible();
@@ -223,9 +225,9 @@ test.describe("adaptive monitoring production lifecycle", () => {
                 row.strategy === "adaptive_stream" &&
                 Number.isFinite(row.anomaly_score) &&
                 Number.isFinite(row.threshold) &&
-                Date.parse(row.input_timestamps.L1) ===
+                Date.parse(row.input_timestamps[l1Key]!) ===
                   Date.parse(lastPublishedCycle.L1) &&
-                Date.parse(row.input_timestamps.L2) ===
+                Date.parse(row.input_timestamps[l2Key]!) ===
                   Date.parse(lastPublishedCycle.L2),
             );
           },
@@ -234,16 +236,16 @@ test.describe("adaptive monitoring production lifecycle", () => {
         .toBe(true);
 
       for (const row of operationalEvidence) {
-        expect(Object.keys(row.input_timestamps).sort()).toEqual(["L1", "L2"]);
+        expect(Object.keys(row.input_timestamps).sort()).toEqual(expectedTelemetryTypes);
         const normalizedInputs = {
-          L1: new Date(row.input_timestamps.L1).toISOString(),
-          L2: new Date(row.input_timestamps.L2).toISOString(),
+          L1: new Date(row.input_timestamps[l1Key]!).toISOString(),
+          L2: new Date(row.input_timestamps[l2Key]!).toISOString(),
         };
         expect(publishedCycles).toContainEqual(normalizedInputs);
         expect(Date.parse(row.timestamp)).toBe(
           Math.max(
-            Date.parse(row.input_timestamps.L1),
-            Date.parse(row.input_timestamps.L2),
+            Date.parse(row.input_timestamps[l1Key]!),
+            Date.parse(row.input_timestamps[l2Key]!),
           ),
         );
       }
@@ -275,7 +277,7 @@ test.describe("adaptive monitoring production lifecycle", () => {
         .poll(
           async () => {
             const response = await api.get(
-              `/api/v1/telemetry/${chargerId}/data?type=L1&limit=1000`,
+              `/api/v1/telemetry/${chargerId}/data?type=${encodeURIComponent(l1Key)}&limit=1000`,
               { headers: { Authorization: `Bearer ${authToken}` } },
             );
             const rows = (await response.json()) as Array<{
@@ -293,7 +295,7 @@ test.describe("adaptive monitoring production lifecycle", () => {
         const url = new URL(response.url());
         return (
           url.pathname.includes(`/v1/telemetry/${chargerId}/data`) &&
-          url.searchParams.get("type") === "L1" &&
+          url.searchParams.get("type") === l1Key &&
           url.searchParams.has("after_created")
         );
       });
@@ -319,8 +321,8 @@ test.describe("adaptive monitoring production lifecycle", () => {
             delayedEvidence = rows.find(
               (row) =>
                 row.service_id === serviceId &&
-                Date.parse(row.input_timestamps.L1) === Date.parse(pendingL1) &&
-                Date.parse(row.input_timestamps.L2) === Date.parse(pendingL2),
+                Date.parse(row.input_timestamps[l1Key]!) === Date.parse(pendingL1) &&
+                Date.parse(row.input_timestamps[l2Key]!) === Date.parse(pendingL2),
             );
             return delayedEvidence !== undefined;
           },
@@ -335,7 +337,7 @@ test.describe("adaptive monitoring production lifecycle", () => {
         .poll(
           async () => {
             const response = await api.get(
-              `/api/v1/telemetry/${chargerId}/data?type=L2&limit=1000`,
+              `/api/v1/telemetry/${chargerId}/data?type=${encodeURIComponent(l2Key)}&limit=1000`,
               {
                 headers: { Authorization: `Bearer ${authToken}` },
               },
@@ -362,7 +364,7 @@ test.describe("adaptive monitoring production lifecycle", () => {
         const url = new URL(response.url());
         return (
           url.pathname.includes(`/v1/telemetry/${chargerId}/data`) &&
-          url.searchParams.get("type") === "L2" &&
+          url.searchParams.get("type") === l2Key &&
           url.searchParams.has("after_created")
         );
       });

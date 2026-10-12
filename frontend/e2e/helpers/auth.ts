@@ -48,7 +48,7 @@ export const loginWithEmail = async (
     `Login failed (${loginResponse.status()}): ${loginBody}`,
   ).toBeTruthy();
 
-  await expect(page.getByPlaceholder(/search by charger id/i)).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Monitoring", exact: true })).toBeVisible();
 };
 
 export const acceptInvitationAndLogin = async (page: Page, email: string): Promise<string> => {

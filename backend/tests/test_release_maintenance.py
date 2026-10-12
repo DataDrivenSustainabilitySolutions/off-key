@@ -17,16 +17,20 @@ from off_key_core.db.migrate import (
     migration_status,
 )
 from off_key_core.db.models import (
+    CollectionConfiguration,
     DeploymentMaintenance,
     MonitoringEvidence,
     MonitoringService,
+    Telemetry,
 )
 from off_key_core.schemas.radar import RadarStartConfig
 from off_key_tactic_middleware import deployment
+from off_key_tactic_middleware.services.members import MemberService
 from off_key_tactic_middleware.services.orchestration import radar
 from off_key_tactic_middleware.services.orchestration.radar import (
     RadarOrchestrationService,
 )
+from off_key_tactic_middleware.services.system_ingress import SYSTEM_INGRESS_LOCK
 from sqlalchemy import insert, inspect, text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
@@ -49,12 +53,22 @@ def test_migrations_adopt_verified_baseline_preserve_data_and_repeat(
         connection.execute(text("DROP TABLE off_key_schema_migrations"))
         connection.execute(text("DROP TABLE deployment_maintenance"))
         connection.execute(text("ALTER TABLE services DROP COLUMN launch_config"))
+        for table in (
+            "system_configuration",
+            "system_revisions",
+            "system_collection_configuration",
+        ):
+            connection.execute(text(f"DROP TABLE {table}"))
     with disposable_database.begin() as connection:
         assert migration_status(connection)["pending"] == [
-            "003_deployment_maintenance.sql"
+            "003_deployment_maintenance.sql",
+            "004_system_catalogue.sql",
+            "005_generic_runtime.sql",
         ]
         assert apply_migrations(connection)["applied"] == [
-            "003_deployment_maintenance.sql"
+            "003_deployment_maintenance.sql",
+            "004_system_catalogue.sql",
+            "005_generic_runtime.sql",
         ]
         assert (
             connection.scalar(text("SELECT count(*) FROM services WHERE id='old'")) == 1
@@ -65,13 +79,119 @@ def test_migrations_adopt_verified_baseline_preserve_data_and_repeat(
             migration_status(connection, changed)
 
 
+@pytest.mark.parametrize("ledger", [False, True])
+def test_clean_break_preserves_configuration_and_history_and_runs_once(
+    disposable_database, ledger
+):
+    with disposable_database.begin() as connection:
+        apply_migrations(connection)
+        connection.execute(
+            insert(MonitoringService).values(
+                id="existing-service",
+                container_name="existing-service",
+                status=False,
+                mqtt_topic=["telemetry/existing/temperature"],
+                launch_config={
+                    "display_name": "Existing monitor",
+                    "training_window_size": 32,
+                },
+            )
+        )
+        connection.execute(
+            insert(CollectionConfiguration).values(
+                id=1,
+                revision=7,
+                document={
+                    "sources": [],
+                    "default_policy": {"mode": "off", "interval_seconds": 10},
+                },
+                ingress_status={},
+                collection_status={},
+                updated_by="operator",
+            )
+        )
+        connection.execute(
+            insert(Telemetry).values(
+                charger_id="existing",
+                timestamp=datetime.now(UTC),
+                type="temperature",
+                value=24.5,
+                data_source="mqtt",
+            )
+        )
+        for table in (
+            "system_configuration",
+            "system_revisions",
+            "system_collection_configuration",
+        ):
+            connection.execute(text(f"DROP TABLE {table}"))
+        if ledger:
+            connection.execute(
+                text(
+                    "DELETE FROM off_key_schema_migrations "
+                    "WHERE version >= '004_system_catalogue.sql'"
+                )
+            )
+        else:
+            connection.execute(text("DROP TABLE off_key_schema_migrations"))
+    with disposable_database.begin() as connection:
+        assert migration_status(connection)["pending"] == [
+            "004_system_catalogue.sql",
+            "005_generic_runtime.sql",
+        ]
+        assert apply_migrations(connection)["applied"] == [
+            "004_system_catalogue.sql",
+            "005_generic_runtime.sql",
+        ]
+        assert (
+            connection.scalar(
+                text("SELECT revision FROM collection_configuration WHERE id=1")
+            )
+            == 7
+        )
+        assert (
+            connection.scalar(
+                text("SELECT value FROM telemetry WHERE charger_id='existing'")
+            )
+            == 24.5
+        )
+        assert connection.scalar(
+            text("SELECT launch_config FROM services WHERE id='existing-service'")
+        ) == {
+            "display_name": "Existing monitor",
+            "training_window_size": 32,
+        }
+        assert (
+            connection.scalar(
+                text("SELECT count(*) FROM system_collection_configuration")
+            )
+            == 1
+        )
+        assert connection.scalar(text("SELECT count(*) FROM system_configuration")) == 1
+        connection.execute(
+            insert(Telemetry).values(
+                charger_id="existing",
+                timestamp=datetime.now(UTC),
+                type="temperature",
+                value=30,
+                data_source="mqtt",
+            )
+        )
+        assert apply_migrations(connection)["applied"] == []
+        assert sorted(
+            connection.scalars(
+                text("SELECT value FROM telemetry WHERE charger_id='existing'")
+            )
+        ) == [24.5, 30]
+
+
 def test_failed_migration_rolls_back_ddl_and_ledger_and_lock_blocks_competitors(
     disposable_database,
 ):
     with disposable_database.begin() as connection:
         apply_migrations(connection)
     migrations = migration_files() | {
-        "004_failure.sql": "CREATE TABLE release_probe (id integer); SELECT 1 / 0;"
+        "006_failure.sql": "CREATE TABLE release_probe (id integer); SELECT 1 / 0;"
     }
     with (
         pytest.raises(Exception, match="division by zero"),
@@ -92,6 +212,36 @@ def test_failed_migration_rolls_back_ddl_and_ledger_and_lock_blocks_competitors(
 
 
 @pytest.mark.asyncio
+async def test_ingress_ownership_does_not_block_account_management_or_migrations(
+    disposable_database,
+):
+    with disposable_database.begin() as connection:
+        apply_migrations(connection)
+    engine = create_async_engine(
+        disposable_database.url.set(drivername="postgresql+asyncpg")
+    )
+    try:
+        with disposable_database.connect() as ownership:
+            ownership.execute(
+                text("SELECT pg_advisory_lock(:key)"), {"key": SYSTEM_INGRESS_LOCK}
+            )
+            ownership.commit()
+            try:
+                with disposable_database.begin() as connection:
+                    assert apply_migrations(connection)["applied"] == []
+                async with AsyncSession(engine) as session:
+                    await session.execute(text("SET LOCAL lock_timeout = '1s'"))
+                    await MemberService(session)._lock_membership()
+            finally:
+                ownership.execute(
+                    text("SELECT pg_advisory_unlock(:key)"),
+                    {"key": SYSTEM_INGRESS_LOCK},
+                )
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
 async def test_monitor_cutover_blocks_writes_preserves_intent_and_resumes_once(
     disposable_database, monkeypatch
 ):
@@ -103,7 +253,7 @@ async def test_monitor_cutover_blocks_writes_preserves_intent_and_resumes_once(
     revision = "a" * 40
     config = RadarStartConfig(
         container_name="first",
-        mqtt_topics=["device/evCharger/charger-1/sine"],
+        mqtt_topics=["telemetry/charger-1/sine"],
         model_type="pyod_iforest",
     )
     config2 = config.model_copy(update={"container_name": "stopping"})
@@ -165,7 +315,7 @@ async def test_monitor_cutover_blocks_writes_preserves_intent_and_resumes_once(
         ),
     )
     monkeypatch.setattr(
-        radar, "read_collection_configuration", AsyncMock(return_value=snapshot)
+        radar, "read_collection_runtime", AsyncMock(return_value=snapshot)
     )
     monkeypatch.setattr(radar, "get_async_docker", Docker)
     registry = MagicMock()

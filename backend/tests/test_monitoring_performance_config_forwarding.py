@@ -50,8 +50,8 @@ async def test_gateway_start_monitor_forwards_static_performance_config():
         container_name="radar-charger-1",
         service_type="radar",
         mqtt_topics=[
-            "device/evCharger/charger-1/sine",
-            "device/evCharger/charger-1/cosine",
+            "telemetry/charger-1/sine",
+            "telemetry/charger-1/cosine",
         ],
         model_type="pyod_iforest",
         model_params={"n_estimators": 128},
@@ -111,7 +111,7 @@ def test_gateway_monitoring_config_rejects_root_wildcard_topic():
 
 
 def test_gateway_accepts_adaptive_strategy_and_rejects_cross_lane_config():
-    base = dict(container_name="radar", mqtt_topics=["device/evCharger/c1/sine"])
+    base = dict(container_name="radar", mqtt_topics=["telemetry/c1/sine"])
     config = MonitoringServiceConfig(
         **base,
         strategy="adaptive_stream",
@@ -134,7 +134,7 @@ def test_gateway_rejects_incompatible_adaptive_feature_count():
     with pytest.raises(ValueError, match="exactly one feature"):
         MonitoringServiceConfig(
             container_name="radar",
-            mqtt_topics=["device/evCharger/c1/L1", "device/evCharger/c1/L2"],
+            mqtt_topics=["telemetry/c1/L1", "telemetry/c1/L2"],
             strategy="adaptive_stream",
             model_type="aberrant_moving_average",
         )
@@ -147,8 +147,8 @@ def test_gateway_rejects_sensor_key_collisions_before_launch():
         MonitoringServiceConfig(
             container_name="radar",
             mqtt_topics=[
-                "device/evCharger/c1/phase/L1",
-                "device/evCharger/c1/phase/L2",
+                "telemetry/c1/phase/L1",
+                "telemetry/c1/phase/L2",
             ],
             strategy="adaptive_stream",
             performance_config={"sensor_key_strategy": "top_level"},
@@ -158,7 +158,7 @@ def test_gateway_rejects_sensor_key_collisions_before_launch():
 def test_gateway_resolves_strategy_specific_default_model():
     config = MonitoringServiceConfig(
         container_name="radar",
-        mqtt_topics=["device/evCharger/c1/L1"],
+        mqtt_topics=["telemetry/c1/L1"],
         strategy="adaptive_stream",
     )
     assert config.monitoring.model_type == "aberrant_online_isolation_forest"
@@ -167,7 +167,7 @@ def test_gateway_resolves_strategy_specific_default_model():
 def test_gateway_resolves_default_static_baseline_config():
     config = MonitoringServiceConfig(
         container_name="radar-charger-1",
-        mqtt_topics=["device/evCharger/charger-1/sine"],
+        mqtt_topics=["telemetry/charger-1/sine"],
         model_type="pyod_iforest",
         model_params={"n_estimators": 128},
     )
@@ -295,9 +295,9 @@ def test_tactic_builds_static_environment():
         config=RadarStartConfig(
             container_name="radar",
             mqtt_topics=[
-                "device/evCharger/c1/L1",
-                "device/evCharger/c1/L2",
-                "device/evCharger/c1/L3",
+                "telemetry/c1/L1",
+                "telemetry/c1/L2",
+                "telemetry/c1/L3",
             ],
             strategy="static_baseline",
             model_type="pyod_iforest",
@@ -367,9 +367,7 @@ def test_tactic_production_radar_inherits_security_and_rejects_broker_overrides(
         ENVIRONMENT="production",
         radar_database_url="postgresql+asyncpg://user:pass@postgres/radar",
     )
-    config = RadarStartConfig(
-        container_name="radar", mqtt_topics=["device/evCharger/c1/L1"]
-    )
+    config = RadarStartConfig(container_name="radar", mqtt_topics=["telemetry/c1/L1"])
     module = "off_key_tactic_middleware.services.orchestration.radar_environment"
     with (
         patch(f"{module}.get_tactic_settings", return_value=settings),
@@ -401,7 +399,7 @@ def test_tactic_builds_adaptive_environment():
         model_registry=registry,
         config=RadarStartConfig(
             container_name="radar",
-            mqtt_topics=["device/evCharger/charger-1/L1"],
+            mqtt_topics=["telemetry/charger-1/L1"],
             strategy="adaptive_stream",
             model_type="aberrant_online_isolation_forest",
             model_params={"num_trees": 2},
@@ -435,7 +433,7 @@ def test_tactic_resolves_minimal_adaptive_request_and_rejects_mirror_conflict():
         model_registry=registry,
         config=RadarStartConfig(
             container_name="radar",
-            mqtt_topics=["device/evCharger/charger-1/L1"],
+            mqtt_topics=["telemetry/charger-1/L1"],
             strategy="adaptive_stream",
             model_type=None,
             model_params={},
@@ -455,7 +453,7 @@ def test_tactic_resolves_minimal_adaptive_request_and_rejects_mirror_conflict():
             model_registry=registry,
             config=RadarStartConfig(
                 container_name="radar",
-                mqtt_topics=["device/evCharger/charger-1/L1"],
+                mqtt_topics=["telemetry/charger-1/L1"],
                 strategy="adaptive_stream",
                 model_type="aberrant_knn",
                 model_params=None,

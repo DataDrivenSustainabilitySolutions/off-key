@@ -87,24 +87,29 @@ GET /v1/telemetry/charger-123/data?type=controllerCpuUsage&limit=200
 Authorization: Bearer <token>
 ```
 
-### Data sources
+### Generic catalogue and collection
 
-`GET /sources` and `GET /sources/status` require an active member and include
-`sensor_activity`, keyed by application charger ID and sensor key. Each entry
-contains `received_at` and `is_snapshot` from the latest accepted observation.
-Retained snapshots do not establish live sensor activity. Activity is empty until
-the collector has applied the current catalog revision; sensor values remain
-available from `GET /sources/state/{charger_id}`.
+| Method | Path | Purpose | Access |
+| --- | --- | --- | --- |
+| `GET` | `/system` | Saved generic document, revision, bindings and runtime | Member |
+| `PUT` | `/system` | Save structural changes at `expected_revision` | Administrator |
+| `PATCH` | `/system/labels` | Persist object labels without changing IDs | Administrator |
+| `POST` | `/system/collection/status` | Scoped collector status and latest readings | Member |
+| `POST` | `/system/collection/preview` | Review explicit collection changes and affected monitors | Administrator |
+| `PUT` | `/system/collection` | Apply confirmed opt-in policies | Administrator |
+| `GET` | `/system/health` | Matching ingress/collector revision and status | Member |
+| `GET` | `/system/storage` | Storage size and managed retention status | Member |
 
-`POST /sources/{source_id}/probe` requires an administrator and an
-`expected_revision` body. It observes concrete saved sensor topics for 20 seconds
-through the existing GOST route, even when collection is Off. It returns the
-catalog revision, `window_seconds`, and per-sensor receipt metadata without storing
-values or changing the catalog. Retained snapshots remain marked as snapshots;
-invalid payloads are excluded using the collector's value validation. A changed
-catalog, an unapplied or stale route, and operator-disabled access prevent use of
-the probe. The web app enables observed live sensors through the normal
-preview/apply flow and preserves existing rates.
+Catalogue documents use only `aberration-system` schema version 1. New inputs
+remain Off regardless of policy metadata in an import. The UI reviews structural
+replacement before saving; existing selections survive by stable reading ID.
+`/sources` and the provider-specific catalogue endpoints have been removed.
+
+The `/system/live` session API starts explicitly bounded in-memory previews.
+Acquiring a lease requires an administrator; members can inspect an existing
+session. Preview does not enable persistent collection. Accepted detector topics
+use only `telemetry/<entity>/<reading>`; upstream topics can use arbitrary concrete
+MQTT paths and JSON Pointer payload bindings.
 
 ### Monitoring and model discovery
 

@@ -27,6 +27,15 @@ export interface ApiRequestOptions {
   params?: Record<string, unknown>;
   signal?: AbortSignal;
   timeout?: number;
+  /** Optional views can show a sign-in state instead of navigating away. */
+  redirectOnUnauthorized?: boolean;
+}
+
+export class ApiRequestError extends Error {
+  constructor(message: string, readonly status?: number) {
+    super(message);
+    this.name = 'ApiRequestError';
+  }
 }
 
 // Token management
@@ -92,12 +101,14 @@ const createApiClient = (): AxiosInstance => {
   client.interceptors.response.use(
     (response: AxiosResponse) => response,
     (error: AxiosError<ApiError>) => {
+      if (axios.isCancel(error)) return Promise.reject(error);
       // Handle 401 Unauthorized
       if (error.response?.status === 401) {
         tokenManager.removeToken();
         // Redirect to login page
-        window.location.href = '/login';
-        return Promise.reject(new Error('Session expired. Please login again.'));
+        const options = error.config as (InternalAxiosRequestConfig & ApiRequestOptions) | undefined;
+        if (options?.redirectOnUnauthorized !== false) window.location.href = '/login';
+        return Promise.reject(new ApiRequestError('Session expired. Please login again.', 401));
       }
 
       // Handle other common errors
@@ -106,16 +117,16 @@ const createApiClient = (): AxiosInstance => {
         const message = Array.isArray(detail)
           ? detail.map(issue => `${issue.loc.filter(part => part !== 'body').join('.')}: ${issue.msg}`).join('; ')
           : detail;
-        return Promise.reject(new Error(message));
+        return Promise.reject(new ApiRequestError(message, error.response.status));
       }
 
       // Network errors
       if (!error.response) {
-        return Promise.reject(new Error('Network error. Please check your connection.'));
+        return Promise.reject(new ApiRequestError('Network error. Please check your connection.'));
       }
 
       // Generic error
-      return Promise.reject(new Error(`Request failed with status ${error.response.status}`));
+      return Promise.reject(new ApiRequestError(`Request failed with status ${error.response.status}`, error.response.status));
     }
   );
 
@@ -152,6 +163,15 @@ export const apiUtils = {
    */
   async put<T>(endpoint: string, data?: unknown): Promise<T> {
     const response = await apiClient.put<T>(endpoint, data);
+    return response.data;
+  },
+
+  async patch<T>(
+    endpoint: string,
+    data?: unknown,
+    options?: ApiRequestOptions
+  ): Promise<T> {
+    const response = await apiClient.patch<T>(endpoint, data, options);
     return response.data;
   },
 

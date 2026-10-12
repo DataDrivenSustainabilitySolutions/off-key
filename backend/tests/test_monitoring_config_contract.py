@@ -58,7 +58,7 @@ def test_invalid_start_returns_422_without_launching(
             path,
             json={
                 "container_name": "radar-test",
-                "mqtt_topics": ["device/evCharger/c1/L1"],
+                "mqtt_topics": ["telemetry/c1/L1"],
                 **invalid_config,
             },
         )
@@ -94,7 +94,7 @@ async def test_gateway_to_runtime_preserves_one_monitoring_config(
 ):
     config = monitors.MonitoringServiceConfig(
         container_name="radar-test",
-        mqtt_topics=["device/evCharger/c1/L1", "device/evCharger/c1/L2"],
+        mqtt_topics=["telemetry/c1/L1", "telemetry/c1/L2"],
         performance_config={
             "sensor_key_strategy": "leaf",
             "sensor_freshness_seconds": 12.0,

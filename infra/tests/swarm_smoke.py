@@ -217,6 +217,15 @@ def prepare(directory):
     release = json.loads(
         (ROOT / "ansible/inventories/prod/group_vars/all/release.yml").read_text()
     )["release"]
+    socket_proxy = os.getenv("OFFKEY_REHEARSAL_SOCKET_PROXY_IMAGE")
+    if socket_proxy:
+        if os.getenv("CI"):
+            raise ValueError(
+                "CI must rehearse the canonical production platform images"
+            )
+        # The production proxy is amd64-only. Local ARM rehearsals can supply a
+        # compatible native proxy; release CI always checks the canonical image.
+        release["images"]["socket_proxy"] = pin(socket_proxy)
     revision = (
         os.getenv("GITHUB_SHA")
         or run("git", "rev-parse", "HEAD", cwd=PROJECT).stdout.strip()
@@ -356,14 +365,14 @@ def prepare(directory):
         "image": pin("axllent/mailpit:latest"),
         "networks": ["app-network"],
     }
-    for service, port in (
-        ("frontend", 5173),
-        ("api", 8000),
-        ("tactic", 8001),
-        ("emqx-main", 8883),
+    for service, port, published in (
+        ("frontend", 5173, 5173),
+        ("api", 8000, int(os.getenv("OFFKEY_REHEARSAL_API_PORT", "8000"))),
+        ("tactic", 8001, 8001),
+        ("emqx-main", 8883, 8883),
     ):
         model["services"][service]["ports"] = [
-            {"target": port, "published": port, "mode": "host"}
+            {"target": port, "published": published, "mode": "host"}
         ]
     # The controller's production allowlist is private. Only the test broker is dialled.
     model["services"]["tactic"]["environment"].update(
@@ -521,6 +530,7 @@ if __name__ == "__main__":
     parser.add_argument("--directory", type=Path, required=True)
     parser.add_argument("--restore", action="store_true")
     args = parser.parse_args()
+    args.directory = args.directory.resolve()
     args.directory.mkdir(parents=True, exist_ok=True, mode=0o700)
     if args.action == "prepare":
         prepare(args.directory)

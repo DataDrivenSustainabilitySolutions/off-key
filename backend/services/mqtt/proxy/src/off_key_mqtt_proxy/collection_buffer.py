@@ -6,18 +6,18 @@ from collections import Counter, deque
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from off_key_core.schemas.collection import (
-    AmbiboxCatalog,
-    CollectionStream,
-    parse_value,
+from off_key_core.schemas.system_collection import (
+    SystemCollectionDefinition,
+    SystemCollectionStream,
 )
+from off_key_core.utils.payload_decode import PayloadDecoder
 
 from .client.models import MQTTMessage
 
 
 @dataclass(frozen=True)
 class Observation:
-    stream: CollectionStream
+    stream: SystemCollectionStream
     value: float | bool | str
     received_at: datetime
     snapshot: bool
@@ -32,11 +32,13 @@ class Observation:
         )
 
 
-def parse_observation(stream: CollectionStream, message: MQTTMessage) -> Observation:
+def parse_observation(
+    stream: SystemCollectionStream, message: MQTTMessage
+) -> Observation:
     envelope = message.payload
     if not isinstance(envelope, dict):
         raise ValueError("Expected ingress envelope")
-    value = parse_value(envelope["payload"], stream.sensor.value_type)
+    value = PayloadDecoder(envelope["payload"].encode("utf-8")).value(stream.definition)
     millis = envelope["received_at"]
     if isinstance(millis, bool) or not isinstance(millis, (int, float)):
         raise ValueError("Expected broker observation time")
@@ -52,7 +54,7 @@ def parse_observation(stream: CollectionStream, message: MQTTMessage) -> Observa
 class CollectionBuffer:
     def __init__(self, original_capacity: int = 10000):
         self._lock = threading.Lock()
-        self._streams: dict[str, CollectionStream] = {}
+        self._streams: dict[str, SystemCollectionStream] = {}
         self._latest: dict[str, Observation] = {}
         self._deadlines: dict[str, float] = {}
         self._original: deque[Observation] = deque()
@@ -67,7 +69,9 @@ class CollectionBuffer:
             self._latest.clear()
             self._original.clear()
 
-    def configure(self, catalog: AmbiboxCatalog, *, now: float | None = None) -> None:
+    def configure(
+        self, catalog: SystemCollectionDefinition, *, now: float | None = None
+    ) -> None:
         now = time.monotonic() if now is None else now
         with self._lock:
             self._streams = {

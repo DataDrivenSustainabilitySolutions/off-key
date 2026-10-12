@@ -27,25 +27,16 @@ const mockPost = vi.mocked(apiUtils.post);
 const mockDelete = vi.mocked(apiUtils.delete);
 
 const catalogResponse = {
-  catalog: {
-    sources: [
-      {
-        chargers: [{
-          id: "charger-2",
-          sensors: [{ key: "systemVoltage", category: "Electrical" }],
-        }],
-      },
-      {
-        chargers: [{
-          id: "charger-1",
-          sensors: [
-            { key: "controllerCpuUsage", category: "Processor" },
-            { key: "systemVoltage", category: "Voltage" },
-          ],
-        }],
-      },
-    ],
-  },
+  document: { streams: [
+    { id: "other-voltage", category: "Electrical" },
+    { id: "cpu", category: "Processor" },
+    { id: "voltage", category: "Voltage" },
+  ] },
+  runtime: { bindings: {
+    "other-voltage": { entity_id: "charger-2", telemetry_key: "systemVoltage" },
+    cpu: { entity_id: "charger-1", telemetry_key: "controllerCpuUsage" },
+    voltage: { entity_id: "charger-1", telemetry_key: "systemVoltage" },
+  } },
 };
 
 describe("charger API", () => {
@@ -85,7 +76,7 @@ describe("charger API", () => {
         data: [{ timestamp: "now", value: 230 }],
       },
     ]);
-    expect(mockGet).toHaveBeenCalledWith("/v1/sources", { signal });
+    expect(mockGet).toHaveBeenCalledWith("/v1/system", { signal });
   });
 
   it.each([
@@ -219,20 +210,22 @@ describe("charger API", () => {
     expect(mergeTelemetryData([existing], [added])).toEqual([existing, added]);
   });
 
-  it("applies catalog category edits even when no new telemetry arrives", () => {
+  it("applies catalog name and category edits even when no new telemetry arrives", () => {
     const existing = {
       type: "systemVoltage",
       category: "Voltage",
+      label: "Original voltage",
       data: [{ timestamp: "2026-01-01T00:00:01Z", value: 230 }],
       cursor: { created: "2026-01-01T00:00:02Z", timestamp: "2026-01-01T00:00:01Z" },
     };
     const merged = mergeTelemetryData([existing], [{
       type: existing.type,
       category: "Electrical",
+      label: "Renamed voltage",
       data: [],
     }]);
 
-    expect(merged).toEqual([{ ...existing, category: "Electrical" }]);
+    expect(merged).toEqual([{ ...existing, category: "Electrical", label: "Renamed voltage" }]);
     expect(merged[0]?.data).toBe(existing.data);
   });
 

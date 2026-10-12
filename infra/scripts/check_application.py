@@ -28,18 +28,16 @@ def check_collection(snapshot, now, ingress_enabled=True):
         if not 0 <= (now - checked_at).total_seconds() <= 30:
             raise ValueError(f"{name} heartbeat is stale")
     if selected and not ingress_enabled:
-        raise ValueError("Sensors are selected but AmbiBox ingress is disabled")
+        raise ValueError("Readings are selected but collection ingress is disabled")
     sources = {str(source.id): source for source in snapshot.catalog.sources}
     for source_id in sorted({str(stream.source_id) for stream in selected}):
         source = sources[source_id]
         broker = f"{source.label} ({source.host}:{source.port})"
         state = snapshot.ingress.get("sources", {}).get(source_id, {})
-        if state.get("configured") is not True or state.get("status") not in {
-            "connected",
-            "connecting",
-        }:
+        phase = state.get("state")
+        if phase not in {"connected", "connecting", "waiting", "reconnecting"}:
             raise ValueError(f"Selected broker {broker} has no applied ingress route")
-        if state["status"] == "connecting":
+        if phase != "connected":
             print(
                 f"WARNING: Selected broker {broker} is not connected. "
                 "Its ingress route is applied; connection retries continue automatically.",
@@ -50,7 +48,7 @@ def check_collection(snapshot, now, ingress_enabled=True):
 
 async def main():
     from off_key_core.db.base import get_async_engine, get_async_session_local
-    from off_key_core.db.collection import read_collection_configuration
+    from off_key_core.db.collection_runtime import read_collection_runtime
 
     endpoints = {
         "schema": "http://db-sync:8009/ready/schema",
@@ -64,11 +62,11 @@ async def main():
         print(f"{name}: ready", flush=True)
     try:
         async with get_async_session_local()() as session:
-            snapshot = await read_collection_configuration(session)
+            snapshot = await read_collection_runtime(session)
         result = check_collection(
             snapshot,
             datetime.now(timezone.utc),
-            os.environ.get("AMBIBOX_INGRESS_ENABLED", "true").lower() == "true",
+            os.environ.get("SYSTEM_COLLECTION_ENABLED", "true").lower() == "true",
         )
         print(json.dumps(result))
     finally:

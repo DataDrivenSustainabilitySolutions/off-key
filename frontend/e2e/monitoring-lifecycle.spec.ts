@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { expect, test } from "@playwright/test";
 
-import { addTestCharger, removeTestCharger } from "./helpers/collection";
+import { addTestCharger, removeTestCharger, fixtureEntityId, fixtureReadingKey } from "./helpers/collection";
 
 test.describe("monitoring lifecycle smoke", () => {
   test.setTimeout(300_000);
@@ -10,8 +10,9 @@ test.describe("monitoring lifecycle smoke", () => {
     page,
     playwright,
   }) => {
-    const chargerId = randomUUID();
-    const topic = `device/evCharger/${chargerId}/L1`;
+    const deviceId = randomUUID();
+    const chargerId = fixtureEntityId(deviceId);
+    const topic = `telemetry/${chargerId}/${fixtureReadingKey(deviceId, "L1")}`;
     let serviceId: string | undefined;
     let containerName: string | undefined;
     let authToken: string | null = null;
@@ -24,13 +25,13 @@ test.describe("monitoring lifecycle smoke", () => {
       await page.goto(`/monitoring/${chargerId}`);
       authToken = await page.evaluate(() => localStorage.getItem("auth_token"));
       expect(authToken).toBeTruthy();
-      await addTestCharger(cleanupRequest, authToken!, chargerId, chargerId, [
+      await addTestCharger(cleanupRequest, authToken!, deviceId, deviceId, [
         "L1",
       ]);
       await page.reload();
 
       await expect(
-        page.getByRole("heading", { name: `Charger ${chargerId}` }),
+        page.getByRole("heading", { name: `Monitoring · Entity ${deviceId}` }),
       ).toBeVisible();
 
       await page.getByRole("combobox").first().selectOption("direct_patterns");

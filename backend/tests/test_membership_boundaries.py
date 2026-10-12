@@ -49,7 +49,7 @@ async def test_anonymous_and_invalid_tokens_cannot_reach_business_handlers(
         "/monitors/all",
         "/favorites?user_id=99",
         "/anomalies/count",
-        "/sources",
+        "/system",
         "/members",
     )
     async with AsyncClient(
@@ -138,7 +138,7 @@ async def test_tactic_rejects_direct_business_requests_without_service_credentia
             ("GET", "/api/v1/data/chargers"),
             ("POST", "/api/v1/data/users"),
             ("POST", "/api/v1/data/auth/login"),
-            ("GET", "/api/v1/collection"),
+            ("GET", "/api/v1/system"),
             ("GET", "/api/v1/members/me"),
         ):
             assert (await client.request(method, path, json={})).status_code == 401

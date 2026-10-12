@@ -29,9 +29,7 @@ def _base_mqtt_config() -> dict:
         "use_auth": True,
         "mqtt_username": "user",
         "mqtt_api_key": "secret-key-123",
-        "topic_regex": (
-            r"^device/evCharger/(?P<charger_id>[^/]+)/(?P<telemetry_type>.+)$"
-        ),
+        "topic_regex": (r"^telemetry/(?P<charger_id>[^/]+)/(?P<telemetry_type>.+)$"),
         "enabled": True,
         "reconnect_delay": 5,
         "max_reconnect_attempts": 10,
@@ -73,23 +71,23 @@ def test_mqtt_radar_config_mutable_defaults_are_isolated():
     cfg_one = MQTTRadarConfig()
     cfg_two = MQTTRadarConfig()
 
-    cfg_one.subscription_topics.append("device/evCharger/charger-sim-1/cosine")
+    cfg_one.subscription_topics.append("telemetry/charger-sim-1/cosine")
     cfg_one.monitoring.model_params["n_estimators"] = 8
 
-    assert cfg_two.subscription_topics == ["device/evCharger/charger-sim-1/sine"]
+    assert cfg_two.subscription_topics == ["telemetry/charger-sim-1/sine"]
     assert cfg_two.monitoring.model_params == {}
 
 
 @pytest.mark.parametrize(
     "topics, message",
     [
-        (["device/evCharger/+/sine"], "concrete MQTT topics"),
+        (["telemetry/+/sine"], "concrete MQTT topics"),
         (
             [
-                "device/evCharger/charger-a/sine",
-                "device/evCharger/charger-b/cosine",
+                "telemetry/charger-a/sine",
+                "telemetry/charger-b/cosine",
             ],
-            "exactly one charger",
+            "exactly one entity",
         ),
     ],
 )

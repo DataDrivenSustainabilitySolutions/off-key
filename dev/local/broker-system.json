@@ -1,0 +1,3487 @@
+{
+  "format": "aberration-system",
+  "schema_version": 1,
+  "label": "Connected places · synthetic MQTT",
+  "default_policy": {
+    "mode": "off",
+    "interval_seconds": 10
+  },
+  "connections": [
+    {
+      "id": "fixture:campus",
+      "label": "Campus · shared broker",
+      "protocol": "mqtt",
+      "host": "fixture-broker-campus",
+      "port": 1883,
+      "transport": "tcp",
+      "tls": false
+    },
+    {
+      "id": "fixture:production",
+      "label": "Production · shared broker",
+      "protocol": "mqtt",
+      "host": "fixture-broker-production",
+      "port": 1883,
+      "transport": "tcp",
+      "tls": false
+    },
+    {
+      "id": "fixture:greenhouse",
+      "label": "Greenhouse · shared broker",
+      "protocol": "mqtt",
+      "host": "fixture-broker-greenhouse",
+      "port": 1883,
+      "transport": "tcp",
+      "tls": false
+    },
+    {
+      "id": "fixture:meter",
+      "label": "Power meter · dedicated broker",
+      "protocol": "mqtt",
+      "host": "fixture-broker-meter",
+      "port": 1883,
+      "transport": "tcp",
+      "tls": false
+    },
+    {
+      "id": "fixture:weather",
+      "label": "Weather station · dedicated broker",
+      "protocol": "mqtt",
+      "host": "fixture-broker-weather",
+      "port": 1883,
+      "transport": "tcp",
+      "tls": false
+    },
+    {
+      "id": "fixture:pump",
+      "label": "Water pump · dedicated broker",
+      "protocol": "mqtt",
+      "host": "fixture-broker-pump",
+      "port": 1883,
+      "transport": "tcp",
+      "tls": false
+    }
+  ],
+  "devices": [
+    {
+      "id": "fixture:campus:room-01",
+      "label": "Room 01",
+      "kind": "room",
+      "connection_id": "fixture:campus"
+    },
+    {
+      "id": "fixture:campus:room-02",
+      "label": "Room 02",
+      "kind": "room",
+      "connection_id": "fixture:campus"
+    },
+    {
+      "id": "fixture:campus:room-03",
+      "label": "Room 03",
+      "kind": "room",
+      "connection_id": "fixture:campus"
+    },
+    {
+      "id": "fixture:campus:room-04",
+      "label": "Room 04",
+      "kind": "room",
+      "connection_id": "fixture:campus"
+    },
+    {
+      "id": "fixture:campus:room-05",
+      "label": "Room 05",
+      "kind": "room",
+      "connection_id": "fixture:campus"
+    },
+    {
+      "id": "fixture:campus:room-06",
+      "label": "Room 06",
+      "kind": "room",
+      "connection_id": "fixture:campus"
+    },
+    {
+      "id": "fixture:campus:room-07",
+      "label": "Room 07",
+      "kind": "room",
+      "connection_id": "fixture:campus"
+    },
+    {
+      "id": "fixture:campus:room-08",
+      "label": "Room 08",
+      "kind": "room",
+      "connection_id": "fixture:campus"
+    },
+    {
+      "id": "fixture:campus:room-09",
+      "label": "Room 09",
+      "kind": "room",
+      "connection_id": "fixture:campus"
+    },
+    {
+      "id": "fixture:campus:room-10",
+      "label": "Room 10",
+      "kind": "room",
+      "connection_id": "fixture:campus"
+    },
+    {
+      "id": "fixture:campus:room-11",
+      "label": "Room 11",
+      "kind": "room",
+      "connection_id": "fixture:campus"
+    },
+    {
+      "id": "fixture:campus:room-12",
+      "label": "Room 12",
+      "kind": "room",
+      "connection_id": "fixture:campus"
+    },
+    {
+      "id": "fixture:production:station-01",
+      "label": "Station 01",
+      "kind": "machine",
+      "connection_id": "fixture:production"
+    },
+    {
+      "id": "fixture:production:station-02",
+      "label": "Station 02",
+      "kind": "machine",
+      "connection_id": "fixture:production"
+    },
+    {
+      "id": "fixture:production:station-03",
+      "label": "Station 03",
+      "kind": "machine",
+      "connection_id": "fixture:production"
+    },
+    {
+      "id": "fixture:production:station-04",
+      "label": "Station 04",
+      "kind": "machine",
+      "connection_id": "fixture:production"
+    },
+    {
+      "id": "fixture:production:station-05",
+      "label": "Station 05",
+      "kind": "machine",
+      "connection_id": "fixture:production"
+    },
+    {
+      "id": "fixture:production:station-06",
+      "label": "Station 06",
+      "kind": "machine",
+      "connection_id": "fixture:production"
+    },
+    {
+      "id": "fixture:production:station-07",
+      "label": "Station 07",
+      "kind": "machine",
+      "connection_id": "fixture:production"
+    },
+    {
+      "id": "fixture:production:station-08",
+      "label": "Station 08",
+      "kind": "machine",
+      "connection_id": "fixture:production"
+    },
+    {
+      "id": "fixture:production:station-09",
+      "label": "Station 09",
+      "kind": "machine",
+      "connection_id": "fixture:production"
+    },
+    {
+      "id": "fixture:production:station-10",
+      "label": "Station 10",
+      "kind": "machine",
+      "connection_id": "fixture:production"
+    },
+    {
+      "id": "fixture:production:station-11",
+      "label": "Station 11",
+      "kind": "machine",
+      "connection_id": "fixture:production"
+    },
+    {
+      "id": "fixture:production:station-12",
+      "label": "Station 12",
+      "kind": "machine",
+      "connection_id": "fixture:production"
+    },
+    {
+      "id": "fixture:greenhouse:bed-01",
+      "label": "Growing bed 01",
+      "kind": "growing-bed",
+      "connection_id": "fixture:greenhouse"
+    },
+    {
+      "id": "fixture:greenhouse:bed-02",
+      "label": "Growing bed 02",
+      "kind": "growing-bed",
+      "connection_id": "fixture:greenhouse"
+    },
+    {
+      "id": "fixture:greenhouse:bed-03",
+      "label": "Growing bed 03",
+      "kind": "growing-bed",
+      "connection_id": "fixture:greenhouse"
+    },
+    {
+      "id": "fixture:greenhouse:bed-04",
+      "label": "Growing bed 04",
+      "kind": "growing-bed",
+      "connection_id": "fixture:greenhouse"
+    },
+    {
+      "id": "fixture:greenhouse:bed-05",
+      "label": "Growing bed 05",
+      "kind": "growing-bed",
+      "connection_id": "fixture:greenhouse"
+    },
+    {
+      "id": "fixture:greenhouse:bed-06",
+      "label": "Growing bed 06",
+      "kind": "growing-bed",
+      "connection_id": "fixture:greenhouse"
+    },
+    {
+      "id": "fixture:greenhouse:bed-07",
+      "label": "Growing bed 07",
+      "kind": "growing-bed",
+      "connection_id": "fixture:greenhouse"
+    },
+    {
+      "id": "fixture:greenhouse:bed-08",
+      "label": "Growing bed 08",
+      "kind": "growing-bed",
+      "connection_id": "fixture:greenhouse"
+    },
+    {
+      "id": "fixture:greenhouse:bed-09",
+      "label": "Growing bed 09",
+      "kind": "growing-bed",
+      "connection_id": "fixture:greenhouse"
+    },
+    {
+      "id": "fixture:greenhouse:bed-10",
+      "label": "Growing bed 10",
+      "kind": "growing-bed",
+      "connection_id": "fixture:greenhouse"
+    },
+    {
+      "id": "fixture:greenhouse:bed-11",
+      "label": "Growing bed 11",
+      "kind": "growing-bed",
+      "connection_id": "fixture:greenhouse"
+    },
+    {
+      "id": "fixture:greenhouse:bed-12",
+      "label": "Growing bed 12",
+      "kind": "growing-bed",
+      "connection_id": "fixture:greenhouse"
+    },
+    {
+      "id": "fixture:meter:main-meter",
+      "label": "Main power meter",
+      "kind": "meter",
+      "connection_id": "fixture:meter"
+    },
+    {
+      "id": "fixture:weather:roof-station",
+      "label": "Roof weather station",
+      "kind": "weather-station",
+      "connection_id": "fixture:weather"
+    },
+    {
+      "id": "fixture:pump:water-pump",
+      "label": "Water pump",
+      "kind": "pump",
+      "connection_id": "fixture:pump"
+    }
+  ],
+  "streams": [
+    {
+      "id": "fixture:campus:room-01:value",
+      "label": "Temperature",
+      "connection_id": "fixture:campus",
+      "device_id": "fixture:campus:room-01",
+      "topic": "demo/campus/room-01/telemetry",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "category": "Measurement",
+      "unit": "°C"
+    },
+    {
+      "id": "fixture:campus:room-01:active",
+      "label": "Active",
+      "connection_id": "fixture:campus",
+      "device_id": "fixture:campus:room-01",
+      "topic": "demo/campus/room-01/telemetry",
+      "payload_pointer": "/active",
+      "value_type": "boolean",
+      "category": "State"
+    },
+    {
+      "id": "fixture:campus:room-01:mode",
+      "label": "Operating mode",
+      "connection_id": "fixture:campus",
+      "device_id": "fixture:campus:room-01",
+      "topic": "demo/campus/room-01/telemetry",
+      "payload_pointer": "/mode",
+      "value_type": "text",
+      "category": "State"
+    },
+    {
+      "id": "fixture:campus:room-01:sample_id",
+      "label": "Sample identifier",
+      "connection_id": "fixture:campus",
+      "device_id": "fixture:campus:room-01",
+      "topic": "demo/campus/room-01/telemetry",
+      "payload_pointer": "/sample_id",
+      "value_type": "identifier",
+      "category": "State"
+    },
+    {
+      "id": "fixture:campus:room-02:value",
+      "label": "Temperature",
+      "connection_id": "fixture:campus",
+      "device_id": "fixture:campus:room-02",
+      "topic": "demo/campus/room-02/telemetry",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "category": "Measurement",
+      "unit": "°C"
+    },
+    {
+      "id": "fixture:campus:room-02:active",
+      "label": "Active",
+      "connection_id": "fixture:campus",
+      "device_id": "fixture:campus:room-02",
+      "topic": "demo/campus/room-02/telemetry",
+      "payload_pointer": "/active",
+      "value_type": "boolean",
+      "category": "State"
+    },
+    {
+      "id": "fixture:campus:room-02:mode",
+      "label": "Operating mode",
+      "connection_id": "fixture:campus",
+      "device_id": "fixture:campus:room-02",
+      "topic": "demo/campus/room-02/telemetry",
+      "payload_pointer": "/mode",
+      "value_type": "text",
+      "category": "State"
+    },
+    {
+      "id": "fixture:campus:room-02:sample_id",
+      "label": "Sample identifier",
+      "connection_id": "fixture:campus",
+      "device_id": "fixture:campus:room-02",
+      "topic": "demo/campus/room-02/telemetry",
+      "payload_pointer": "/sample_id",
+      "value_type": "identifier",
+      "category": "State"
+    },
+    {
+      "id": "fixture:campus:room-03:value",
+      "label": "Temperature",
+      "connection_id": "fixture:campus",
+      "device_id": "fixture:campus:room-03",
+      "topic": "demo/campus/room-03/telemetry",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "category": "Measurement",
+      "unit": "°C"
+    },
+    {
+      "id": "fixture:campus:room-03:active",
+      "label": "Active",
+      "connection_id": "fixture:campus",
+      "device_id": "fixture:campus:room-03",
+      "topic": "demo/campus/room-03/telemetry",
+      "payload_pointer": "/active",
+      "value_type": "boolean",
+      "category": "State"
+    },
+    {
+      "id": "fixture:campus:room-03:mode",
+      "label": "Operating mode",
+      "connection_id": "fixture:campus",
+      "device_id": "fixture:campus:room-03",
+      "topic": "demo/campus/room-03/telemetry",
+      "payload_pointer": "/mode",
+      "value_type": "text",
+      "category": "State"
+    },
+    {
+      "id": "fixture:campus:room-03:sample_id",
+      "label": "Sample identifier",
+      "connection_id": "fixture:campus",
+      "device_id": "fixture:campus:room-03",
+      "topic": "demo/campus/room-03/telemetry",
+      "payload_pointer": "/sample_id",
+      "value_type": "identifier",
+      "category": "State"
+    },
+    {
+      "id": "fixture:campus:room-04:value",
+      "label": "Temperature",
+      "connection_id": "fixture:campus",
+      "device_id": "fixture:campus:room-04",
+      "topic": "demo/campus/room-04/telemetry",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "category": "Measurement",
+      "unit": "°C"
+    },
+    {
+      "id": "fixture:campus:room-04:active",
+      "label": "Active",
+      "connection_id": "fixture:campus",
+      "device_id": "fixture:campus:room-04",
+      "topic": "demo/campus/room-04/telemetry",
+      "payload_pointer": "/active",
+      "value_type": "boolean",
+      "category": "State"
+    },
+    {
+      "id": "fixture:campus:room-04:mode",
+      "label": "Operating mode",
+      "connection_id": "fixture:campus",
+      "device_id": "fixture:campus:room-04",
+      "topic": "demo/campus/room-04/telemetry",
+      "payload_pointer": "/mode",
+      "value_type": "text",
+      "category": "State"
+    },
+    {
+      "id": "fixture:campus:room-04:sample_id",
+      "label": "Sample identifier",
+      "connection_id": "fixture:campus",
+      "device_id": "fixture:campus:room-04",
+      "topic": "demo/campus/room-04/telemetry",
+      "payload_pointer": "/sample_id",
+      "value_type": "identifier",
+      "category": "State"
+    },
+    {
+      "id": "fixture:campus:room-05:value",
+      "label": "Temperature",
+      "connection_id": "fixture:campus",
+      "device_id": "fixture:campus:room-05",
+      "topic": "demo/campus/room-05/telemetry",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "category": "Measurement",
+      "unit": "°C"
+    },
+    {
+      "id": "fixture:campus:room-05:active",
+      "label": "Active",
+      "connection_id": "fixture:campus",
+      "device_id": "fixture:campus:room-05",
+      "topic": "demo/campus/room-05/telemetry",
+      "payload_pointer": "/active",
+      "value_type": "boolean",
+      "category": "State"
+    },
+    {
+      "id": "fixture:campus:room-05:mode",
+      "label": "Operating mode",
+      "connection_id": "fixture:campus",
+      "device_id": "fixture:campus:room-05",
+      "topic": "demo/campus/room-05/telemetry",
+      "payload_pointer": "/mode",
+      "value_type": "text",
+      "category": "State"
+    },
+    {
+      "id": "fixture:campus:room-05:sample_id",
+      "label": "Sample identifier",
+      "connection_id": "fixture:campus",
+      "device_id": "fixture:campus:room-05",
+      "topic": "demo/campus/room-05/telemetry",
+      "payload_pointer": "/sample_id",
+      "value_type": "identifier",
+      "category": "State"
+    },
+    {
+      "id": "fixture:campus:room-06:value",
+      "label": "Temperature",
+      "connection_id": "fixture:campus",
+      "device_id": "fixture:campus:room-06",
+      "topic": "demo/campus/room-06/telemetry",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "category": "Measurement",
+      "unit": "°C"
+    },
+    {
+      "id": "fixture:campus:room-06:active",
+      "label": "Active",
+      "connection_id": "fixture:campus",
+      "device_id": "fixture:campus:room-06",
+      "topic": "demo/campus/room-06/telemetry",
+      "payload_pointer": "/active",
+      "value_type": "boolean",
+      "category": "State"
+    },
+    {
+      "id": "fixture:campus:room-06:mode",
+      "label": "Operating mode",
+      "connection_id": "fixture:campus",
+      "device_id": "fixture:campus:room-06",
+      "topic": "demo/campus/room-06/telemetry",
+      "payload_pointer": "/mode",
+      "value_type": "text",
+      "category": "State"
+    },
+    {
+      "id": "fixture:campus:room-06:sample_id",
+      "label": "Sample identifier",
+      "connection_id": "fixture:campus",
+      "device_id": "fixture:campus:room-06",
+      "topic": "demo/campus/room-06/telemetry",
+      "payload_pointer": "/sample_id",
+      "value_type": "identifier",
+      "category": "State"
+    },
+    {
+      "id": "fixture:campus:room-07:value",
+      "label": "Temperature",
+      "connection_id": "fixture:campus",
+      "device_id": "fixture:campus:room-07",
+      "topic": "demo/campus/room-07/telemetry",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "category": "Measurement",
+      "unit": "°C"
+    },
+    {
+      "id": "fixture:campus:room-07:active",
+      "label": "Active",
+      "connection_id": "fixture:campus",
+      "device_id": "fixture:campus:room-07",
+      "topic": "demo/campus/room-07/telemetry",
+      "payload_pointer": "/active",
+      "value_type": "boolean",
+      "category": "State"
+    },
+    {
+      "id": "fixture:campus:room-07:mode",
+      "label": "Operating mode",
+      "connection_id": "fixture:campus",
+      "device_id": "fixture:campus:room-07",
+      "topic": "demo/campus/room-07/telemetry",
+      "payload_pointer": "/mode",
+      "value_type": "text",
+      "category": "State"
+    },
+    {
+      "id": "fixture:campus:room-07:sample_id",
+      "label": "Sample identifier",
+      "connection_id": "fixture:campus",
+      "device_id": "fixture:campus:room-07",
+      "topic": "demo/campus/room-07/telemetry",
+      "payload_pointer": "/sample_id",
+      "value_type": "identifier",
+      "category": "State"
+    },
+    {
+      "id": "fixture:campus:room-08:value",
+      "label": "Temperature",
+      "connection_id": "fixture:campus",
+      "device_id": "fixture:campus:room-08",
+      "topic": "demo/campus/room-08/telemetry",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "category": "Measurement",
+      "unit": "°C"
+    },
+    {
+      "id": "fixture:campus:room-08:active",
+      "label": "Active",
+      "connection_id": "fixture:campus",
+      "device_id": "fixture:campus:room-08",
+      "topic": "demo/campus/room-08/telemetry",
+      "payload_pointer": "/active",
+      "value_type": "boolean",
+      "category": "State"
+    },
+    {
+      "id": "fixture:campus:room-08:mode",
+      "label": "Operating mode",
+      "connection_id": "fixture:campus",
+      "device_id": "fixture:campus:room-08",
+      "topic": "demo/campus/room-08/telemetry",
+      "payload_pointer": "/mode",
+      "value_type": "text",
+      "category": "State"
+    },
+    {
+      "id": "fixture:campus:room-08:sample_id",
+      "label": "Sample identifier",
+      "connection_id": "fixture:campus",
+      "device_id": "fixture:campus:room-08",
+      "topic": "demo/campus/room-08/telemetry",
+      "payload_pointer": "/sample_id",
+      "value_type": "identifier",
+      "category": "State"
+    },
+    {
+      "id": "fixture:campus:room-09:value",
+      "label": "Temperature",
+      "connection_id": "fixture:campus",
+      "device_id": "fixture:campus:room-09",
+      "topic": "demo/campus/room-09/telemetry",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "category": "Measurement",
+      "unit": "°C"
+    },
+    {
+      "id": "fixture:campus:room-09:active",
+      "label": "Active",
+      "connection_id": "fixture:campus",
+      "device_id": "fixture:campus:room-09",
+      "topic": "demo/campus/room-09/telemetry",
+      "payload_pointer": "/active",
+      "value_type": "boolean",
+      "category": "State"
+    },
+    {
+      "id": "fixture:campus:room-09:mode",
+      "label": "Operating mode",
+      "connection_id": "fixture:campus",
+      "device_id": "fixture:campus:room-09",
+      "topic": "demo/campus/room-09/telemetry",
+      "payload_pointer": "/mode",
+      "value_type": "text",
+      "category": "State"
+    },
+    {
+      "id": "fixture:campus:room-09:sample_id",
+      "label": "Sample identifier",
+      "connection_id": "fixture:campus",
+      "device_id": "fixture:campus:room-09",
+      "topic": "demo/campus/room-09/telemetry",
+      "payload_pointer": "/sample_id",
+      "value_type": "identifier",
+      "category": "State"
+    },
+    {
+      "id": "fixture:campus:room-10:value",
+      "label": "Temperature",
+      "connection_id": "fixture:campus",
+      "device_id": "fixture:campus:room-10",
+      "topic": "demo/campus/room-10/telemetry",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "category": "Measurement",
+      "unit": "°C"
+    },
+    {
+      "id": "fixture:campus:room-10:active",
+      "label": "Active",
+      "connection_id": "fixture:campus",
+      "device_id": "fixture:campus:room-10",
+      "topic": "demo/campus/room-10/telemetry",
+      "payload_pointer": "/active",
+      "value_type": "boolean",
+      "category": "State"
+    },
+    {
+      "id": "fixture:campus:room-10:mode",
+      "label": "Operating mode",
+      "connection_id": "fixture:campus",
+      "device_id": "fixture:campus:room-10",
+      "topic": "demo/campus/room-10/telemetry",
+      "payload_pointer": "/mode",
+      "value_type": "text",
+      "category": "State"
+    },
+    {
+      "id": "fixture:campus:room-10:sample_id",
+      "label": "Sample identifier",
+      "connection_id": "fixture:campus",
+      "device_id": "fixture:campus:room-10",
+      "topic": "demo/campus/room-10/telemetry",
+      "payload_pointer": "/sample_id",
+      "value_type": "identifier",
+      "category": "State"
+    },
+    {
+      "id": "fixture:campus:room-11:value",
+      "label": "Temperature",
+      "connection_id": "fixture:campus",
+      "device_id": "fixture:campus:room-11",
+      "topic": "demo/campus/room-11/telemetry",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "category": "Measurement",
+      "unit": "°C"
+    },
+    {
+      "id": "fixture:campus:room-11:active",
+      "label": "Active",
+      "connection_id": "fixture:campus",
+      "device_id": "fixture:campus:room-11",
+      "topic": "demo/campus/room-11/telemetry",
+      "payload_pointer": "/active",
+      "value_type": "boolean",
+      "category": "State"
+    },
+    {
+      "id": "fixture:campus:room-11:mode",
+      "label": "Operating mode",
+      "connection_id": "fixture:campus",
+      "device_id": "fixture:campus:room-11",
+      "topic": "demo/campus/room-11/telemetry",
+      "payload_pointer": "/mode",
+      "value_type": "text",
+      "category": "State"
+    },
+    {
+      "id": "fixture:campus:room-11:sample_id",
+      "label": "Sample identifier",
+      "connection_id": "fixture:campus",
+      "device_id": "fixture:campus:room-11",
+      "topic": "demo/campus/room-11/telemetry",
+      "payload_pointer": "/sample_id",
+      "value_type": "identifier",
+      "category": "State"
+    },
+    {
+      "id": "fixture:campus:room-12:value",
+      "label": "Temperature",
+      "connection_id": "fixture:campus",
+      "device_id": "fixture:campus:room-12",
+      "topic": "demo/campus/room-12/telemetry",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "category": "Measurement",
+      "unit": "°C"
+    },
+    {
+      "id": "fixture:campus:room-12:active",
+      "label": "Active",
+      "connection_id": "fixture:campus",
+      "device_id": "fixture:campus:room-12",
+      "topic": "demo/campus/room-12/telemetry",
+      "payload_pointer": "/active",
+      "value_type": "boolean",
+      "category": "State"
+    },
+    {
+      "id": "fixture:campus:room-12:mode",
+      "label": "Operating mode",
+      "connection_id": "fixture:campus",
+      "device_id": "fixture:campus:room-12",
+      "topic": "demo/campus/room-12/telemetry",
+      "payload_pointer": "/mode",
+      "value_type": "text",
+      "category": "State"
+    },
+    {
+      "id": "fixture:campus:room-12:sample_id",
+      "label": "Sample identifier",
+      "connection_id": "fixture:campus",
+      "device_id": "fixture:campus:room-12",
+      "topic": "demo/campus/room-12/telemetry",
+      "payload_pointer": "/sample_id",
+      "value_type": "identifier",
+      "category": "State"
+    },
+    {
+      "id": "fixture:production:station-01:value",
+      "label": "Vibration",
+      "connection_id": "fixture:production",
+      "device_id": "fixture:production:station-01",
+      "topic": "demo/production/station-01/telemetry",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "category": "Measurement",
+      "unit": "mm/s"
+    },
+    {
+      "id": "fixture:production:station-01:active",
+      "label": "Active",
+      "connection_id": "fixture:production",
+      "device_id": "fixture:production:station-01",
+      "topic": "demo/production/station-01/telemetry",
+      "payload_pointer": "/active",
+      "value_type": "boolean",
+      "category": "State"
+    },
+    {
+      "id": "fixture:production:station-01:mode",
+      "label": "Operating mode",
+      "connection_id": "fixture:production",
+      "device_id": "fixture:production:station-01",
+      "topic": "demo/production/station-01/telemetry",
+      "payload_pointer": "/mode",
+      "value_type": "text",
+      "category": "State"
+    },
+    {
+      "id": "fixture:production:station-01:sample_id",
+      "label": "Sample identifier",
+      "connection_id": "fixture:production",
+      "device_id": "fixture:production:station-01",
+      "topic": "demo/production/station-01/telemetry",
+      "payload_pointer": "/sample_id",
+      "value_type": "identifier",
+      "category": "State"
+    },
+    {
+      "id": "fixture:production:station-01:channel:thermal/sensor-01/temperature",
+      "label": "Temperature probe 01",
+      "connection_id": "fixture:production",
+      "device_id": "fixture:production:station-01",
+      "topic": "demo/production/station-01/thermal/sensor-01/temperature",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "°C",
+      "category": "Thermal"
+    },
+    {
+      "id": "fixture:production:station-01:channel:thermal/sensor-02/temperature",
+      "label": "Temperature probe 02",
+      "connection_id": "fixture:production",
+      "device_id": "fixture:production:station-01",
+      "topic": "demo/production/station-01/thermal/sensor-02/temperature",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "°C",
+      "category": "Thermal"
+    },
+    {
+      "id": "fixture:production:station-01:channel:thermal/sensor-03/temperature",
+      "label": "Temperature probe 03",
+      "connection_id": "fixture:production",
+      "device_id": "fixture:production:station-01",
+      "topic": "demo/production/station-01/thermal/sensor-03/temperature",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "°C",
+      "category": "Thermal"
+    },
+    {
+      "id": "fixture:production:station-01:channel:thermal/sensor-04/temperature",
+      "label": "Temperature probe 04",
+      "connection_id": "fixture:production",
+      "device_id": "fixture:production:station-01",
+      "topic": "demo/production/station-01/thermal/sensor-04/temperature",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "°C",
+      "category": "Thermal"
+    },
+    {
+      "id": "fixture:production:station-01:channel:thermal/sensor-05/temperature",
+      "label": "Temperature probe 05",
+      "connection_id": "fixture:production",
+      "device_id": "fixture:production:station-01",
+      "topic": "demo/production/station-01/thermal/sensor-05/temperature",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "°C",
+      "category": "Thermal"
+    },
+    {
+      "id": "fixture:production:station-01:channel:thermal/sensor-06/temperature",
+      "label": "Temperature probe 06",
+      "connection_id": "fixture:production",
+      "device_id": "fixture:production:station-01",
+      "topic": "demo/production/station-01/thermal/sensor-06/temperature",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "°C",
+      "category": "Thermal"
+    },
+    {
+      "id": "fixture:production:station-01:channel:thermal/sensor-07/temperature",
+      "label": "Temperature probe 07",
+      "connection_id": "fixture:production",
+      "device_id": "fixture:production:station-01",
+      "topic": "demo/production/station-01/thermal/sensor-07/temperature",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "°C",
+      "category": "Thermal"
+    },
+    {
+      "id": "fixture:production:station-01:channel:thermal/sensor-08/temperature",
+      "label": "Temperature probe 08",
+      "connection_id": "fixture:production",
+      "device_id": "fixture:production:station-01",
+      "topic": "demo/production/station-01/thermal/sensor-08/temperature",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "°C",
+      "category": "Thermal"
+    },
+    {
+      "id": "fixture:production:station-01:channel:thermal/sensor-09/temperature",
+      "label": "Temperature probe 09",
+      "connection_id": "fixture:production",
+      "device_id": "fixture:production:station-01",
+      "topic": "demo/production/station-01/thermal/sensor-09/temperature",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "°C",
+      "category": "Thermal"
+    },
+    {
+      "id": "fixture:production:station-01:channel:thermal/sensor-10/temperature",
+      "label": "Temperature probe 10",
+      "connection_id": "fixture:production",
+      "device_id": "fixture:production:station-01",
+      "topic": "demo/production/station-01/thermal/sensor-10/temperature",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "°C",
+      "category": "Thermal"
+    },
+    {
+      "id": "fixture:production:station-01:channel:thermal/sensor-11/temperature",
+      "label": "Temperature probe 11",
+      "connection_id": "fixture:production",
+      "device_id": "fixture:production:station-01",
+      "topic": "demo/production/station-01/thermal/sensor-11/temperature",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "°C",
+      "category": "Thermal"
+    },
+    {
+      "id": "fixture:production:station-01:channel:thermal/sensor-12/temperature",
+      "label": "Temperature probe 12",
+      "connection_id": "fixture:production",
+      "device_id": "fixture:production:station-01",
+      "topic": "demo/production/station-01/thermal/sensor-12/temperature",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "°C",
+      "category": "Thermal"
+    },
+    {
+      "id": "fixture:production:station-01:channel:mechanical/sensor-01/vibration",
+      "label": "Vibration channel 01",
+      "connection_id": "fixture:production",
+      "device_id": "fixture:production:station-01",
+      "topic": "demo/production/station-01/mechanical/sensor-01/vibration",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "mm/s",
+      "category": "Mechanical"
+    },
+    {
+      "id": "fixture:production:station-01:channel:mechanical/sensor-02/vibration",
+      "label": "Vibration channel 02",
+      "connection_id": "fixture:production",
+      "device_id": "fixture:production:station-01",
+      "topic": "demo/production/station-01/mechanical/sensor-02/vibration",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "mm/s",
+      "category": "Mechanical"
+    },
+    {
+      "id": "fixture:production:station-01:channel:mechanical/sensor-03/vibration",
+      "label": "Vibration channel 03",
+      "connection_id": "fixture:production",
+      "device_id": "fixture:production:station-01",
+      "topic": "demo/production/station-01/mechanical/sensor-03/vibration",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "mm/s",
+      "category": "Mechanical"
+    },
+    {
+      "id": "fixture:production:station-01:channel:mechanical/sensor-04/vibration",
+      "label": "Vibration channel 04",
+      "connection_id": "fixture:production",
+      "device_id": "fixture:production:station-01",
+      "topic": "demo/production/station-01/mechanical/sensor-04/vibration",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "mm/s",
+      "category": "Mechanical"
+    },
+    {
+      "id": "fixture:production:station-01:channel:mechanical/sensor-05/vibration",
+      "label": "Vibration channel 05",
+      "connection_id": "fixture:production",
+      "device_id": "fixture:production:station-01",
+      "topic": "demo/production/station-01/mechanical/sensor-05/vibration",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "mm/s",
+      "category": "Mechanical"
+    },
+    {
+      "id": "fixture:production:station-01:channel:mechanical/sensor-06/vibration",
+      "label": "Vibration channel 06",
+      "connection_id": "fixture:production",
+      "device_id": "fixture:production:station-01",
+      "topic": "demo/production/station-01/mechanical/sensor-06/vibration",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "mm/s",
+      "category": "Mechanical"
+    },
+    {
+      "id": "fixture:production:station-01:channel:mechanical/sensor-07/vibration",
+      "label": "Vibration channel 07",
+      "connection_id": "fixture:production",
+      "device_id": "fixture:production:station-01",
+      "topic": "demo/production/station-01/mechanical/sensor-07/vibration",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "mm/s",
+      "category": "Mechanical"
+    },
+    {
+      "id": "fixture:production:station-01:channel:mechanical/sensor-08/vibration",
+      "label": "Vibration channel 08",
+      "connection_id": "fixture:production",
+      "device_id": "fixture:production:station-01",
+      "topic": "demo/production/station-01/mechanical/sensor-08/vibration",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "mm/s",
+      "category": "Mechanical"
+    },
+    {
+      "id": "fixture:production:station-01:channel:mechanical/sensor-09/vibration",
+      "label": "Vibration channel 09",
+      "connection_id": "fixture:production",
+      "device_id": "fixture:production:station-01",
+      "topic": "demo/production/station-01/mechanical/sensor-09/vibration",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "mm/s",
+      "category": "Mechanical"
+    },
+    {
+      "id": "fixture:production:station-01:channel:mechanical/sensor-10/vibration",
+      "label": "Vibration channel 10",
+      "connection_id": "fixture:production",
+      "device_id": "fixture:production:station-01",
+      "topic": "demo/production/station-01/mechanical/sensor-10/vibration",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "mm/s",
+      "category": "Mechanical"
+    },
+    {
+      "id": "fixture:production:station-01:channel:mechanical/sensor-11/vibration",
+      "label": "Vibration channel 11",
+      "connection_id": "fixture:production",
+      "device_id": "fixture:production:station-01",
+      "topic": "demo/production/station-01/mechanical/sensor-11/vibration",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "mm/s",
+      "category": "Mechanical"
+    },
+    {
+      "id": "fixture:production:station-01:channel:mechanical/sensor-12/vibration",
+      "label": "Vibration channel 12",
+      "connection_id": "fixture:production",
+      "device_id": "fixture:production:station-01",
+      "topic": "demo/production/station-01/mechanical/sensor-12/vibration",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "mm/s",
+      "category": "Mechanical"
+    },
+    {
+      "id": "fixture:production:station-01:channel:electrical/sensor-01/current",
+      "label": "Motor current 01",
+      "connection_id": "fixture:production",
+      "device_id": "fixture:production:station-01",
+      "topic": "demo/production/station-01/electrical/sensor-01/current",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "A",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:production:station-01:channel:electrical/sensor-02/current",
+      "label": "Motor current 02",
+      "connection_id": "fixture:production",
+      "device_id": "fixture:production:station-01",
+      "topic": "demo/production/station-01/electrical/sensor-02/current",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "A",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:production:station-01:channel:electrical/sensor-03/current",
+      "label": "Motor current 03",
+      "connection_id": "fixture:production",
+      "device_id": "fixture:production:station-01",
+      "topic": "demo/production/station-01/electrical/sensor-03/current",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "A",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:production:station-01:channel:electrical/sensor-04/current",
+      "label": "Motor current 04",
+      "connection_id": "fixture:production",
+      "device_id": "fixture:production:station-01",
+      "topic": "demo/production/station-01/electrical/sensor-04/current",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "A",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:production:station-01:channel:electrical/sensor-05/current",
+      "label": "Motor current 05",
+      "connection_id": "fixture:production",
+      "device_id": "fixture:production:station-01",
+      "topic": "demo/production/station-01/electrical/sensor-05/current",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "A",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:production:station-01:channel:electrical/sensor-06/current",
+      "label": "Motor current 06",
+      "connection_id": "fixture:production",
+      "device_id": "fixture:production:station-01",
+      "topic": "demo/production/station-01/electrical/sensor-06/current",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "A",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:production:station-01:channel:electrical/sensor-07/current",
+      "label": "Motor current 07",
+      "connection_id": "fixture:production",
+      "device_id": "fixture:production:station-01",
+      "topic": "demo/production/station-01/electrical/sensor-07/current",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "A",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:production:station-01:channel:electrical/sensor-08/current",
+      "label": "Motor current 08",
+      "connection_id": "fixture:production",
+      "device_id": "fixture:production:station-01",
+      "topic": "demo/production/station-01/electrical/sensor-08/current",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "A",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:production:station-01:channel:electrical/sensor-09/current",
+      "label": "Motor current 09",
+      "connection_id": "fixture:production",
+      "device_id": "fixture:production:station-01",
+      "topic": "demo/production/station-01/electrical/sensor-09/current",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "A",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:production:station-01:channel:electrical/sensor-10/current",
+      "label": "Motor current 10",
+      "connection_id": "fixture:production",
+      "device_id": "fixture:production:station-01",
+      "topic": "demo/production/station-01/electrical/sensor-10/current",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "A",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:production:station-01:channel:electrical/sensor-11/current",
+      "label": "Motor current 11",
+      "connection_id": "fixture:production",
+      "device_id": "fixture:production:station-01",
+      "topic": "demo/production/station-01/electrical/sensor-11/current",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "A",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:production:station-01:channel:electrical/sensor-12/current",
+      "label": "Motor current 12",
+      "connection_id": "fixture:production",
+      "device_id": "fixture:production:station-01",
+      "topic": "demo/production/station-01/electrical/sensor-12/current",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "A",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:production:station-01:channel:diagnostics/sensor-01/latency",
+      "label": "Controller latency 01",
+      "connection_id": "fixture:production",
+      "device_id": "fixture:production:station-01",
+      "topic": "demo/production/station-01/diagnostics/sensor-01/latency",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "ms",
+      "category": "Diagnostics"
+    },
+    {
+      "id": "fixture:production:station-01:channel:diagnostics/sensor-02/latency",
+      "label": "Controller latency 02",
+      "connection_id": "fixture:production",
+      "device_id": "fixture:production:station-01",
+      "topic": "demo/production/station-01/diagnostics/sensor-02/latency",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "ms",
+      "category": "Diagnostics"
+    },
+    {
+      "id": "fixture:production:station-01:channel:diagnostics/sensor-03/latency",
+      "label": "Controller latency 03",
+      "connection_id": "fixture:production",
+      "device_id": "fixture:production:station-01",
+      "topic": "demo/production/station-01/diagnostics/sensor-03/latency",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "ms",
+      "category": "Diagnostics"
+    },
+    {
+      "id": "fixture:production:station-01:channel:diagnostics/sensor-04/latency",
+      "label": "Controller latency 04",
+      "connection_id": "fixture:production",
+      "device_id": "fixture:production:station-01",
+      "topic": "demo/production/station-01/diagnostics/sensor-04/latency",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "ms",
+      "category": "Diagnostics"
+    },
+    {
+      "id": "fixture:production:station-01:channel:diagnostics/sensor-05/latency",
+      "label": "Controller latency 05",
+      "connection_id": "fixture:production",
+      "device_id": "fixture:production:station-01",
+      "topic": "demo/production/station-01/diagnostics/sensor-05/latency",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "ms",
+      "category": "Diagnostics"
+    },
+    {
+      "id": "fixture:production:station-01:channel:diagnostics/sensor-06/latency",
+      "label": "Controller latency 06",
+      "connection_id": "fixture:production",
+      "device_id": "fixture:production:station-01",
+      "topic": "demo/production/station-01/diagnostics/sensor-06/latency",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "ms",
+      "category": "Diagnostics"
+    },
+    {
+      "id": "fixture:production:station-01:channel:diagnostics/sensor-07/latency",
+      "label": "Controller latency 07",
+      "connection_id": "fixture:production",
+      "device_id": "fixture:production:station-01",
+      "topic": "demo/production/station-01/diagnostics/sensor-07/latency",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "ms",
+      "category": "Diagnostics"
+    },
+    {
+      "id": "fixture:production:station-01:channel:diagnostics/sensor-08/latency",
+      "label": "Controller latency 08",
+      "connection_id": "fixture:production",
+      "device_id": "fixture:production:station-01",
+      "topic": "demo/production/station-01/diagnostics/sensor-08/latency",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "ms",
+      "category": "Diagnostics"
+    },
+    {
+      "id": "fixture:production:station-01:channel:diagnostics/sensor-09/latency",
+      "label": "Controller latency 09",
+      "connection_id": "fixture:production",
+      "device_id": "fixture:production:station-01",
+      "topic": "demo/production/station-01/diagnostics/sensor-09/latency",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "ms",
+      "category": "Diagnostics"
+    },
+    {
+      "id": "fixture:production:station-01:channel:diagnostics/sensor-10/latency",
+      "label": "Controller latency 10",
+      "connection_id": "fixture:production",
+      "device_id": "fixture:production:station-01",
+      "topic": "demo/production/station-01/diagnostics/sensor-10/latency",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "ms",
+      "category": "Diagnostics"
+    },
+    {
+      "id": "fixture:production:station-01:channel:diagnostics/sensor-11/latency",
+      "label": "Controller latency 11",
+      "connection_id": "fixture:production",
+      "device_id": "fixture:production:station-01",
+      "topic": "demo/production/station-01/diagnostics/sensor-11/latency",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "ms",
+      "category": "Diagnostics"
+    },
+    {
+      "id": "fixture:production:station-01:channel:diagnostics/sensor-12/latency",
+      "label": "Controller latency 12",
+      "connection_id": "fixture:production",
+      "device_id": "fixture:production:station-01",
+      "topic": "demo/production/station-01/diagnostics/sensor-12/latency",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "ms",
+      "category": "Diagnostics"
+    },
+    {
+      "id": "fixture:production:station-02:value",
+      "label": "Vibration",
+      "connection_id": "fixture:production",
+      "device_id": "fixture:production:station-02",
+      "topic": "demo/production/station-02/telemetry",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "category": "Measurement",
+      "unit": "mm/s"
+    },
+    {
+      "id": "fixture:production:station-02:active",
+      "label": "Active",
+      "connection_id": "fixture:production",
+      "device_id": "fixture:production:station-02",
+      "topic": "demo/production/station-02/telemetry",
+      "payload_pointer": "/active",
+      "value_type": "boolean",
+      "category": "State"
+    },
+    {
+      "id": "fixture:production:station-02:mode",
+      "label": "Operating mode",
+      "connection_id": "fixture:production",
+      "device_id": "fixture:production:station-02",
+      "topic": "demo/production/station-02/telemetry",
+      "payload_pointer": "/mode",
+      "value_type": "text",
+      "category": "State"
+    },
+    {
+      "id": "fixture:production:station-02:sample_id",
+      "label": "Sample identifier",
+      "connection_id": "fixture:production",
+      "device_id": "fixture:production:station-02",
+      "topic": "demo/production/station-02/telemetry",
+      "payload_pointer": "/sample_id",
+      "value_type": "identifier",
+      "category": "State"
+    },
+    {
+      "id": "fixture:production:station-03:value",
+      "label": "Vibration",
+      "connection_id": "fixture:production",
+      "device_id": "fixture:production:station-03",
+      "topic": "demo/production/station-03/telemetry",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "category": "Measurement",
+      "unit": "mm/s"
+    },
+    {
+      "id": "fixture:production:station-03:active",
+      "label": "Active",
+      "connection_id": "fixture:production",
+      "device_id": "fixture:production:station-03",
+      "topic": "demo/production/station-03/telemetry",
+      "payload_pointer": "/active",
+      "value_type": "boolean",
+      "category": "State"
+    },
+    {
+      "id": "fixture:production:station-03:mode",
+      "label": "Operating mode",
+      "connection_id": "fixture:production",
+      "device_id": "fixture:production:station-03",
+      "topic": "demo/production/station-03/telemetry",
+      "payload_pointer": "/mode",
+      "value_type": "text",
+      "category": "State"
+    },
+    {
+      "id": "fixture:production:station-03:sample_id",
+      "label": "Sample identifier",
+      "connection_id": "fixture:production",
+      "device_id": "fixture:production:station-03",
+      "topic": "demo/production/station-03/telemetry",
+      "payload_pointer": "/sample_id",
+      "value_type": "identifier",
+      "category": "State"
+    },
+    {
+      "id": "fixture:production:station-04:value",
+      "label": "Vibration",
+      "connection_id": "fixture:production",
+      "device_id": "fixture:production:station-04",
+      "topic": "demo/production/station-04/telemetry",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "category": "Measurement",
+      "unit": "mm/s"
+    },
+    {
+      "id": "fixture:production:station-04:active",
+      "label": "Active",
+      "connection_id": "fixture:production",
+      "device_id": "fixture:production:station-04",
+      "topic": "demo/production/station-04/telemetry",
+      "payload_pointer": "/active",
+      "value_type": "boolean",
+      "category": "State"
+    },
+    {
+      "id": "fixture:production:station-04:mode",
+      "label": "Operating mode",
+      "connection_id": "fixture:production",
+      "device_id": "fixture:production:station-04",
+      "topic": "demo/production/station-04/telemetry",
+      "payload_pointer": "/mode",
+      "value_type": "text",
+      "category": "State"
+    },
+    {
+      "id": "fixture:production:station-04:sample_id",
+      "label": "Sample identifier",
+      "connection_id": "fixture:production",
+      "device_id": "fixture:production:station-04",
+      "topic": "demo/production/station-04/telemetry",
+      "payload_pointer": "/sample_id",
+      "value_type": "identifier",
+      "category": "State"
+    },
+    {
+      "id": "fixture:production:station-05:value",
+      "label": "Vibration",
+      "connection_id": "fixture:production",
+      "device_id": "fixture:production:station-05",
+      "topic": "demo/production/station-05/telemetry",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "category": "Measurement",
+      "unit": "mm/s"
+    },
+    {
+      "id": "fixture:production:station-05:active",
+      "label": "Active",
+      "connection_id": "fixture:production",
+      "device_id": "fixture:production:station-05",
+      "topic": "demo/production/station-05/telemetry",
+      "payload_pointer": "/active",
+      "value_type": "boolean",
+      "category": "State"
+    },
+    {
+      "id": "fixture:production:station-05:mode",
+      "label": "Operating mode",
+      "connection_id": "fixture:production",
+      "device_id": "fixture:production:station-05",
+      "topic": "demo/production/station-05/telemetry",
+      "payload_pointer": "/mode",
+      "value_type": "text",
+      "category": "State"
+    },
+    {
+      "id": "fixture:production:station-05:sample_id",
+      "label": "Sample identifier",
+      "connection_id": "fixture:production",
+      "device_id": "fixture:production:station-05",
+      "topic": "demo/production/station-05/telemetry",
+      "payload_pointer": "/sample_id",
+      "value_type": "identifier",
+      "category": "State"
+    },
+    {
+      "id": "fixture:production:station-06:value",
+      "label": "Vibration",
+      "connection_id": "fixture:production",
+      "device_id": "fixture:production:station-06",
+      "topic": "demo/production/station-06/telemetry",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "category": "Measurement",
+      "unit": "mm/s"
+    },
+    {
+      "id": "fixture:production:station-06:active",
+      "label": "Active",
+      "connection_id": "fixture:production",
+      "device_id": "fixture:production:station-06",
+      "topic": "demo/production/station-06/telemetry",
+      "payload_pointer": "/active",
+      "value_type": "boolean",
+      "category": "State"
+    },
+    {
+      "id": "fixture:production:station-06:mode",
+      "label": "Operating mode",
+      "connection_id": "fixture:production",
+      "device_id": "fixture:production:station-06",
+      "topic": "demo/production/station-06/telemetry",
+      "payload_pointer": "/mode",
+      "value_type": "text",
+      "category": "State"
+    },
+    {
+      "id": "fixture:production:station-06:sample_id",
+      "label": "Sample identifier",
+      "connection_id": "fixture:production",
+      "device_id": "fixture:production:station-06",
+      "topic": "demo/production/station-06/telemetry",
+      "payload_pointer": "/sample_id",
+      "value_type": "identifier",
+      "category": "State"
+    },
+    {
+      "id": "fixture:production:station-07:value",
+      "label": "Vibration",
+      "connection_id": "fixture:production",
+      "device_id": "fixture:production:station-07",
+      "topic": "demo/production/station-07/telemetry",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "category": "Measurement",
+      "unit": "mm/s"
+    },
+    {
+      "id": "fixture:production:station-07:active",
+      "label": "Active",
+      "connection_id": "fixture:production",
+      "device_id": "fixture:production:station-07",
+      "topic": "demo/production/station-07/telemetry",
+      "payload_pointer": "/active",
+      "value_type": "boolean",
+      "category": "State"
+    },
+    {
+      "id": "fixture:production:station-07:mode",
+      "label": "Operating mode",
+      "connection_id": "fixture:production",
+      "device_id": "fixture:production:station-07",
+      "topic": "demo/production/station-07/telemetry",
+      "payload_pointer": "/mode",
+      "value_type": "text",
+      "category": "State"
+    },
+    {
+      "id": "fixture:production:station-07:sample_id",
+      "label": "Sample identifier",
+      "connection_id": "fixture:production",
+      "device_id": "fixture:production:station-07",
+      "topic": "demo/production/station-07/telemetry",
+      "payload_pointer": "/sample_id",
+      "value_type": "identifier",
+      "category": "State"
+    },
+    {
+      "id": "fixture:production:station-08:value",
+      "label": "Vibration",
+      "connection_id": "fixture:production",
+      "device_id": "fixture:production:station-08",
+      "topic": "demo/production/station-08/telemetry",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "category": "Measurement",
+      "unit": "mm/s"
+    },
+    {
+      "id": "fixture:production:station-08:active",
+      "label": "Active",
+      "connection_id": "fixture:production",
+      "device_id": "fixture:production:station-08",
+      "topic": "demo/production/station-08/telemetry",
+      "payload_pointer": "/active",
+      "value_type": "boolean",
+      "category": "State"
+    },
+    {
+      "id": "fixture:production:station-08:mode",
+      "label": "Operating mode",
+      "connection_id": "fixture:production",
+      "device_id": "fixture:production:station-08",
+      "topic": "demo/production/station-08/telemetry",
+      "payload_pointer": "/mode",
+      "value_type": "text",
+      "category": "State"
+    },
+    {
+      "id": "fixture:production:station-08:sample_id",
+      "label": "Sample identifier",
+      "connection_id": "fixture:production",
+      "device_id": "fixture:production:station-08",
+      "topic": "demo/production/station-08/telemetry",
+      "payload_pointer": "/sample_id",
+      "value_type": "identifier",
+      "category": "State"
+    },
+    {
+      "id": "fixture:production:station-09:value",
+      "label": "Vibration",
+      "connection_id": "fixture:production",
+      "device_id": "fixture:production:station-09",
+      "topic": "demo/production/station-09/telemetry",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "category": "Measurement",
+      "unit": "mm/s"
+    },
+    {
+      "id": "fixture:production:station-09:active",
+      "label": "Active",
+      "connection_id": "fixture:production",
+      "device_id": "fixture:production:station-09",
+      "topic": "demo/production/station-09/telemetry",
+      "payload_pointer": "/active",
+      "value_type": "boolean",
+      "category": "State"
+    },
+    {
+      "id": "fixture:production:station-09:mode",
+      "label": "Operating mode",
+      "connection_id": "fixture:production",
+      "device_id": "fixture:production:station-09",
+      "topic": "demo/production/station-09/telemetry",
+      "payload_pointer": "/mode",
+      "value_type": "text",
+      "category": "State"
+    },
+    {
+      "id": "fixture:production:station-09:sample_id",
+      "label": "Sample identifier",
+      "connection_id": "fixture:production",
+      "device_id": "fixture:production:station-09",
+      "topic": "demo/production/station-09/telemetry",
+      "payload_pointer": "/sample_id",
+      "value_type": "identifier",
+      "category": "State"
+    },
+    {
+      "id": "fixture:production:station-10:value",
+      "label": "Vibration",
+      "connection_id": "fixture:production",
+      "device_id": "fixture:production:station-10",
+      "topic": "demo/production/station-10/telemetry",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "category": "Measurement",
+      "unit": "mm/s"
+    },
+    {
+      "id": "fixture:production:station-10:active",
+      "label": "Active",
+      "connection_id": "fixture:production",
+      "device_id": "fixture:production:station-10",
+      "topic": "demo/production/station-10/telemetry",
+      "payload_pointer": "/active",
+      "value_type": "boolean",
+      "category": "State"
+    },
+    {
+      "id": "fixture:production:station-10:mode",
+      "label": "Operating mode",
+      "connection_id": "fixture:production",
+      "device_id": "fixture:production:station-10",
+      "topic": "demo/production/station-10/telemetry",
+      "payload_pointer": "/mode",
+      "value_type": "text",
+      "category": "State"
+    },
+    {
+      "id": "fixture:production:station-10:sample_id",
+      "label": "Sample identifier",
+      "connection_id": "fixture:production",
+      "device_id": "fixture:production:station-10",
+      "topic": "demo/production/station-10/telemetry",
+      "payload_pointer": "/sample_id",
+      "value_type": "identifier",
+      "category": "State"
+    },
+    {
+      "id": "fixture:production:station-11:value",
+      "label": "Vibration",
+      "connection_id": "fixture:production",
+      "device_id": "fixture:production:station-11",
+      "topic": "demo/production/station-11/telemetry",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "category": "Measurement",
+      "unit": "mm/s"
+    },
+    {
+      "id": "fixture:production:station-11:active",
+      "label": "Active",
+      "connection_id": "fixture:production",
+      "device_id": "fixture:production:station-11",
+      "topic": "demo/production/station-11/telemetry",
+      "payload_pointer": "/active",
+      "value_type": "boolean",
+      "category": "State"
+    },
+    {
+      "id": "fixture:production:station-11:mode",
+      "label": "Operating mode",
+      "connection_id": "fixture:production",
+      "device_id": "fixture:production:station-11",
+      "topic": "demo/production/station-11/telemetry",
+      "payload_pointer": "/mode",
+      "value_type": "text",
+      "category": "State"
+    },
+    {
+      "id": "fixture:production:station-11:sample_id",
+      "label": "Sample identifier",
+      "connection_id": "fixture:production",
+      "device_id": "fixture:production:station-11",
+      "topic": "demo/production/station-11/telemetry",
+      "payload_pointer": "/sample_id",
+      "value_type": "identifier",
+      "category": "State"
+    },
+    {
+      "id": "fixture:production:station-12:value",
+      "label": "Vibration",
+      "connection_id": "fixture:production",
+      "device_id": "fixture:production:station-12",
+      "topic": "demo/production/station-12/telemetry",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "category": "Measurement",
+      "unit": "mm/s"
+    },
+    {
+      "id": "fixture:production:station-12:active",
+      "label": "Active",
+      "connection_id": "fixture:production",
+      "device_id": "fixture:production:station-12",
+      "topic": "demo/production/station-12/telemetry",
+      "payload_pointer": "/active",
+      "value_type": "boolean",
+      "category": "State"
+    },
+    {
+      "id": "fixture:production:station-12:mode",
+      "label": "Operating mode",
+      "connection_id": "fixture:production",
+      "device_id": "fixture:production:station-12",
+      "topic": "demo/production/station-12/telemetry",
+      "payload_pointer": "/mode",
+      "value_type": "text",
+      "category": "State"
+    },
+    {
+      "id": "fixture:production:station-12:sample_id",
+      "label": "Sample identifier",
+      "connection_id": "fixture:production",
+      "device_id": "fixture:production:station-12",
+      "topic": "demo/production/station-12/telemetry",
+      "payload_pointer": "/sample_id",
+      "value_type": "identifier",
+      "category": "State"
+    },
+    {
+      "id": "fixture:greenhouse:bed-01:value",
+      "label": "Soil moisture",
+      "connection_id": "fixture:greenhouse",
+      "device_id": "fixture:greenhouse:bed-01",
+      "topic": "demo/greenhouse/bed-01/telemetry",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "category": "Measurement",
+      "unit": "%"
+    },
+    {
+      "id": "fixture:greenhouse:bed-01:active",
+      "label": "Active",
+      "connection_id": "fixture:greenhouse",
+      "device_id": "fixture:greenhouse:bed-01",
+      "topic": "demo/greenhouse/bed-01/telemetry",
+      "payload_pointer": "/active",
+      "value_type": "boolean",
+      "category": "State"
+    },
+    {
+      "id": "fixture:greenhouse:bed-01:mode",
+      "label": "Operating mode",
+      "connection_id": "fixture:greenhouse",
+      "device_id": "fixture:greenhouse:bed-01",
+      "topic": "demo/greenhouse/bed-01/telemetry",
+      "payload_pointer": "/mode",
+      "value_type": "text",
+      "category": "State"
+    },
+    {
+      "id": "fixture:greenhouse:bed-01:sample_id",
+      "label": "Sample identifier",
+      "connection_id": "fixture:greenhouse",
+      "device_id": "fixture:greenhouse:bed-01",
+      "topic": "demo/greenhouse/bed-01/telemetry",
+      "payload_pointer": "/sample_id",
+      "value_type": "identifier",
+      "category": "State"
+    },
+    {
+      "id": "fixture:greenhouse:bed-02:value",
+      "label": "Soil moisture",
+      "connection_id": "fixture:greenhouse",
+      "device_id": "fixture:greenhouse:bed-02",
+      "topic": "demo/greenhouse/bed-02/telemetry",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "category": "Measurement",
+      "unit": "%"
+    },
+    {
+      "id": "fixture:greenhouse:bed-02:active",
+      "label": "Active",
+      "connection_id": "fixture:greenhouse",
+      "device_id": "fixture:greenhouse:bed-02",
+      "topic": "demo/greenhouse/bed-02/telemetry",
+      "payload_pointer": "/active",
+      "value_type": "boolean",
+      "category": "State"
+    },
+    {
+      "id": "fixture:greenhouse:bed-02:mode",
+      "label": "Operating mode",
+      "connection_id": "fixture:greenhouse",
+      "device_id": "fixture:greenhouse:bed-02",
+      "topic": "demo/greenhouse/bed-02/telemetry",
+      "payload_pointer": "/mode",
+      "value_type": "text",
+      "category": "State"
+    },
+    {
+      "id": "fixture:greenhouse:bed-02:sample_id",
+      "label": "Sample identifier",
+      "connection_id": "fixture:greenhouse",
+      "device_id": "fixture:greenhouse:bed-02",
+      "topic": "demo/greenhouse/bed-02/telemetry",
+      "payload_pointer": "/sample_id",
+      "value_type": "identifier",
+      "category": "State"
+    },
+    {
+      "id": "fixture:greenhouse:bed-03:value",
+      "label": "Soil moisture",
+      "connection_id": "fixture:greenhouse",
+      "device_id": "fixture:greenhouse:bed-03",
+      "topic": "demo/greenhouse/bed-03/telemetry",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "category": "Measurement",
+      "unit": "%"
+    },
+    {
+      "id": "fixture:greenhouse:bed-03:active",
+      "label": "Active",
+      "connection_id": "fixture:greenhouse",
+      "device_id": "fixture:greenhouse:bed-03",
+      "topic": "demo/greenhouse/bed-03/telemetry",
+      "payload_pointer": "/active",
+      "value_type": "boolean",
+      "category": "State"
+    },
+    {
+      "id": "fixture:greenhouse:bed-03:mode",
+      "label": "Operating mode",
+      "connection_id": "fixture:greenhouse",
+      "device_id": "fixture:greenhouse:bed-03",
+      "topic": "demo/greenhouse/bed-03/telemetry",
+      "payload_pointer": "/mode",
+      "value_type": "text",
+      "category": "State"
+    },
+    {
+      "id": "fixture:greenhouse:bed-03:sample_id",
+      "label": "Sample identifier",
+      "connection_id": "fixture:greenhouse",
+      "device_id": "fixture:greenhouse:bed-03",
+      "topic": "demo/greenhouse/bed-03/telemetry",
+      "payload_pointer": "/sample_id",
+      "value_type": "identifier",
+      "category": "State"
+    },
+    {
+      "id": "fixture:greenhouse:bed-04:value",
+      "label": "Soil moisture",
+      "connection_id": "fixture:greenhouse",
+      "device_id": "fixture:greenhouse:bed-04",
+      "topic": "demo/greenhouse/bed-04/telemetry",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "category": "Measurement",
+      "unit": "%"
+    },
+    {
+      "id": "fixture:greenhouse:bed-04:active",
+      "label": "Active",
+      "connection_id": "fixture:greenhouse",
+      "device_id": "fixture:greenhouse:bed-04",
+      "topic": "demo/greenhouse/bed-04/telemetry",
+      "payload_pointer": "/active",
+      "value_type": "boolean",
+      "category": "State"
+    },
+    {
+      "id": "fixture:greenhouse:bed-04:mode",
+      "label": "Operating mode",
+      "connection_id": "fixture:greenhouse",
+      "device_id": "fixture:greenhouse:bed-04",
+      "topic": "demo/greenhouse/bed-04/telemetry",
+      "payload_pointer": "/mode",
+      "value_type": "text",
+      "category": "State"
+    },
+    {
+      "id": "fixture:greenhouse:bed-04:sample_id",
+      "label": "Sample identifier",
+      "connection_id": "fixture:greenhouse",
+      "device_id": "fixture:greenhouse:bed-04",
+      "topic": "demo/greenhouse/bed-04/telemetry",
+      "payload_pointer": "/sample_id",
+      "value_type": "identifier",
+      "category": "State"
+    },
+    {
+      "id": "fixture:greenhouse:bed-05:value",
+      "label": "Soil moisture",
+      "connection_id": "fixture:greenhouse",
+      "device_id": "fixture:greenhouse:bed-05",
+      "topic": "demo/greenhouse/bed-05/telemetry",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "category": "Measurement",
+      "unit": "%"
+    },
+    {
+      "id": "fixture:greenhouse:bed-05:active",
+      "label": "Active",
+      "connection_id": "fixture:greenhouse",
+      "device_id": "fixture:greenhouse:bed-05",
+      "topic": "demo/greenhouse/bed-05/telemetry",
+      "payload_pointer": "/active",
+      "value_type": "boolean",
+      "category": "State"
+    },
+    {
+      "id": "fixture:greenhouse:bed-05:mode",
+      "label": "Operating mode",
+      "connection_id": "fixture:greenhouse",
+      "device_id": "fixture:greenhouse:bed-05",
+      "topic": "demo/greenhouse/bed-05/telemetry",
+      "payload_pointer": "/mode",
+      "value_type": "text",
+      "category": "State"
+    },
+    {
+      "id": "fixture:greenhouse:bed-05:sample_id",
+      "label": "Sample identifier",
+      "connection_id": "fixture:greenhouse",
+      "device_id": "fixture:greenhouse:bed-05",
+      "topic": "demo/greenhouse/bed-05/telemetry",
+      "payload_pointer": "/sample_id",
+      "value_type": "identifier",
+      "category": "State"
+    },
+    {
+      "id": "fixture:greenhouse:bed-06:value",
+      "label": "Soil moisture",
+      "connection_id": "fixture:greenhouse",
+      "device_id": "fixture:greenhouse:bed-06",
+      "topic": "demo/greenhouse/bed-06/telemetry",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "category": "Measurement",
+      "unit": "%"
+    },
+    {
+      "id": "fixture:greenhouse:bed-06:active",
+      "label": "Active",
+      "connection_id": "fixture:greenhouse",
+      "device_id": "fixture:greenhouse:bed-06",
+      "topic": "demo/greenhouse/bed-06/telemetry",
+      "payload_pointer": "/active",
+      "value_type": "boolean",
+      "category": "State"
+    },
+    {
+      "id": "fixture:greenhouse:bed-06:mode",
+      "label": "Operating mode",
+      "connection_id": "fixture:greenhouse",
+      "device_id": "fixture:greenhouse:bed-06",
+      "topic": "demo/greenhouse/bed-06/telemetry",
+      "payload_pointer": "/mode",
+      "value_type": "text",
+      "category": "State"
+    },
+    {
+      "id": "fixture:greenhouse:bed-06:sample_id",
+      "label": "Sample identifier",
+      "connection_id": "fixture:greenhouse",
+      "device_id": "fixture:greenhouse:bed-06",
+      "topic": "demo/greenhouse/bed-06/telemetry",
+      "payload_pointer": "/sample_id",
+      "value_type": "identifier",
+      "category": "State"
+    },
+    {
+      "id": "fixture:greenhouse:bed-07:value",
+      "label": "Soil moisture",
+      "connection_id": "fixture:greenhouse",
+      "device_id": "fixture:greenhouse:bed-07",
+      "topic": "demo/greenhouse/bed-07/telemetry",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "category": "Measurement",
+      "unit": "%"
+    },
+    {
+      "id": "fixture:greenhouse:bed-07:active",
+      "label": "Active",
+      "connection_id": "fixture:greenhouse",
+      "device_id": "fixture:greenhouse:bed-07",
+      "topic": "demo/greenhouse/bed-07/telemetry",
+      "payload_pointer": "/active",
+      "value_type": "boolean",
+      "category": "State"
+    },
+    {
+      "id": "fixture:greenhouse:bed-07:mode",
+      "label": "Operating mode",
+      "connection_id": "fixture:greenhouse",
+      "device_id": "fixture:greenhouse:bed-07",
+      "topic": "demo/greenhouse/bed-07/telemetry",
+      "payload_pointer": "/mode",
+      "value_type": "text",
+      "category": "State"
+    },
+    {
+      "id": "fixture:greenhouse:bed-07:sample_id",
+      "label": "Sample identifier",
+      "connection_id": "fixture:greenhouse",
+      "device_id": "fixture:greenhouse:bed-07",
+      "topic": "demo/greenhouse/bed-07/telemetry",
+      "payload_pointer": "/sample_id",
+      "value_type": "identifier",
+      "category": "State"
+    },
+    {
+      "id": "fixture:greenhouse:bed-08:value",
+      "label": "Soil moisture",
+      "connection_id": "fixture:greenhouse",
+      "device_id": "fixture:greenhouse:bed-08",
+      "topic": "demo/greenhouse/bed-08/telemetry",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "category": "Measurement",
+      "unit": "%"
+    },
+    {
+      "id": "fixture:greenhouse:bed-08:active",
+      "label": "Active",
+      "connection_id": "fixture:greenhouse",
+      "device_id": "fixture:greenhouse:bed-08",
+      "topic": "demo/greenhouse/bed-08/telemetry",
+      "payload_pointer": "/active",
+      "value_type": "boolean",
+      "category": "State"
+    },
+    {
+      "id": "fixture:greenhouse:bed-08:mode",
+      "label": "Operating mode",
+      "connection_id": "fixture:greenhouse",
+      "device_id": "fixture:greenhouse:bed-08",
+      "topic": "demo/greenhouse/bed-08/telemetry",
+      "payload_pointer": "/mode",
+      "value_type": "text",
+      "category": "State"
+    },
+    {
+      "id": "fixture:greenhouse:bed-08:sample_id",
+      "label": "Sample identifier",
+      "connection_id": "fixture:greenhouse",
+      "device_id": "fixture:greenhouse:bed-08",
+      "topic": "demo/greenhouse/bed-08/telemetry",
+      "payload_pointer": "/sample_id",
+      "value_type": "identifier",
+      "category": "State"
+    },
+    {
+      "id": "fixture:greenhouse:bed-09:value",
+      "label": "Soil moisture",
+      "connection_id": "fixture:greenhouse",
+      "device_id": "fixture:greenhouse:bed-09",
+      "topic": "demo/greenhouse/bed-09/telemetry",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "category": "Measurement",
+      "unit": "%"
+    },
+    {
+      "id": "fixture:greenhouse:bed-09:active",
+      "label": "Active",
+      "connection_id": "fixture:greenhouse",
+      "device_id": "fixture:greenhouse:bed-09",
+      "topic": "demo/greenhouse/bed-09/telemetry",
+      "payload_pointer": "/active",
+      "value_type": "boolean",
+      "category": "State"
+    },
+    {
+      "id": "fixture:greenhouse:bed-09:mode",
+      "label": "Operating mode",
+      "connection_id": "fixture:greenhouse",
+      "device_id": "fixture:greenhouse:bed-09",
+      "topic": "demo/greenhouse/bed-09/telemetry",
+      "payload_pointer": "/mode",
+      "value_type": "text",
+      "category": "State"
+    },
+    {
+      "id": "fixture:greenhouse:bed-09:sample_id",
+      "label": "Sample identifier",
+      "connection_id": "fixture:greenhouse",
+      "device_id": "fixture:greenhouse:bed-09",
+      "topic": "demo/greenhouse/bed-09/telemetry",
+      "payload_pointer": "/sample_id",
+      "value_type": "identifier",
+      "category": "State"
+    },
+    {
+      "id": "fixture:greenhouse:bed-10:value",
+      "label": "Soil moisture",
+      "connection_id": "fixture:greenhouse",
+      "device_id": "fixture:greenhouse:bed-10",
+      "topic": "demo/greenhouse/bed-10/telemetry",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "category": "Measurement",
+      "unit": "%"
+    },
+    {
+      "id": "fixture:greenhouse:bed-10:active",
+      "label": "Active",
+      "connection_id": "fixture:greenhouse",
+      "device_id": "fixture:greenhouse:bed-10",
+      "topic": "demo/greenhouse/bed-10/telemetry",
+      "payload_pointer": "/active",
+      "value_type": "boolean",
+      "category": "State"
+    },
+    {
+      "id": "fixture:greenhouse:bed-10:mode",
+      "label": "Operating mode",
+      "connection_id": "fixture:greenhouse",
+      "device_id": "fixture:greenhouse:bed-10",
+      "topic": "demo/greenhouse/bed-10/telemetry",
+      "payload_pointer": "/mode",
+      "value_type": "text",
+      "category": "State"
+    },
+    {
+      "id": "fixture:greenhouse:bed-10:sample_id",
+      "label": "Sample identifier",
+      "connection_id": "fixture:greenhouse",
+      "device_id": "fixture:greenhouse:bed-10",
+      "topic": "demo/greenhouse/bed-10/telemetry",
+      "payload_pointer": "/sample_id",
+      "value_type": "identifier",
+      "category": "State"
+    },
+    {
+      "id": "fixture:greenhouse:bed-11:value",
+      "label": "Soil moisture",
+      "connection_id": "fixture:greenhouse",
+      "device_id": "fixture:greenhouse:bed-11",
+      "topic": "demo/greenhouse/bed-11/telemetry",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "category": "Measurement",
+      "unit": "%"
+    },
+    {
+      "id": "fixture:greenhouse:bed-11:active",
+      "label": "Active",
+      "connection_id": "fixture:greenhouse",
+      "device_id": "fixture:greenhouse:bed-11",
+      "topic": "demo/greenhouse/bed-11/telemetry",
+      "payload_pointer": "/active",
+      "value_type": "boolean",
+      "category": "State"
+    },
+    {
+      "id": "fixture:greenhouse:bed-11:mode",
+      "label": "Operating mode",
+      "connection_id": "fixture:greenhouse",
+      "device_id": "fixture:greenhouse:bed-11",
+      "topic": "demo/greenhouse/bed-11/telemetry",
+      "payload_pointer": "/mode",
+      "value_type": "text",
+      "category": "State"
+    },
+    {
+      "id": "fixture:greenhouse:bed-11:sample_id",
+      "label": "Sample identifier",
+      "connection_id": "fixture:greenhouse",
+      "device_id": "fixture:greenhouse:bed-11",
+      "topic": "demo/greenhouse/bed-11/telemetry",
+      "payload_pointer": "/sample_id",
+      "value_type": "identifier",
+      "category": "State"
+    },
+    {
+      "id": "fixture:greenhouse:bed-12:value",
+      "label": "Soil moisture",
+      "connection_id": "fixture:greenhouse",
+      "device_id": "fixture:greenhouse:bed-12",
+      "topic": "demo/greenhouse/bed-12/telemetry",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "category": "Measurement",
+      "unit": "%"
+    },
+    {
+      "id": "fixture:greenhouse:bed-12:active",
+      "label": "Active",
+      "connection_id": "fixture:greenhouse",
+      "device_id": "fixture:greenhouse:bed-12",
+      "topic": "demo/greenhouse/bed-12/telemetry",
+      "payload_pointer": "/active",
+      "value_type": "boolean",
+      "category": "State"
+    },
+    {
+      "id": "fixture:greenhouse:bed-12:mode",
+      "label": "Operating mode",
+      "connection_id": "fixture:greenhouse",
+      "device_id": "fixture:greenhouse:bed-12",
+      "topic": "demo/greenhouse/bed-12/telemetry",
+      "payload_pointer": "/mode",
+      "value_type": "text",
+      "category": "State"
+    },
+    {
+      "id": "fixture:greenhouse:bed-12:sample_id",
+      "label": "Sample identifier",
+      "connection_id": "fixture:greenhouse",
+      "device_id": "fixture:greenhouse:bed-12",
+      "topic": "demo/greenhouse/bed-12/telemetry",
+      "payload_pointer": "/sample_id",
+      "value_type": "identifier",
+      "category": "State"
+    },
+    {
+      "id": "fixture:meter:main-meter:value",
+      "label": "Power",
+      "connection_id": "fixture:meter",
+      "device_id": "fixture:meter:main-meter",
+      "topic": "demo/meter/main-meter/telemetry",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "category": "Measurement",
+      "unit": "kW"
+    },
+    {
+      "id": "fixture:meter:main-meter:active",
+      "label": "Active",
+      "connection_id": "fixture:meter",
+      "device_id": "fixture:meter:main-meter",
+      "topic": "demo/meter/main-meter/telemetry",
+      "payload_pointer": "/active",
+      "value_type": "boolean",
+      "category": "State"
+    },
+    {
+      "id": "fixture:meter:main-meter:mode",
+      "label": "Operating mode",
+      "connection_id": "fixture:meter",
+      "device_id": "fixture:meter:main-meter",
+      "topic": "demo/meter/main-meter/telemetry",
+      "payload_pointer": "/mode",
+      "value_type": "text",
+      "category": "State"
+    },
+    {
+      "id": "fixture:meter:main-meter:sample_id",
+      "label": "Sample identifier",
+      "connection_id": "fixture:meter",
+      "device_id": "fixture:meter:main-meter",
+      "topic": "demo/meter/main-meter/telemetry",
+      "payload_pointer": "/sample_id",
+      "value_type": "identifier",
+      "category": "State"
+    },
+    {
+      "id": "fixture:meter:main-meter:channel:circuits/circuit-01/phase-l1/voltage",
+      "label": "Circuit 01 · L1 voltage",
+      "connection_id": "fixture:meter",
+      "device_id": "fixture:meter:main-meter",
+      "topic": "demo/meter/main-meter/circuits/circuit-01/phase-l1/voltage",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "V",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:meter:main-meter:channel:circuits/circuit-01/phase-l1/current",
+      "label": "Circuit 01 · L1 current",
+      "connection_id": "fixture:meter",
+      "device_id": "fixture:meter:main-meter",
+      "topic": "demo/meter/main-meter/circuits/circuit-01/phase-l1/current",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "A",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:meter:main-meter:channel:circuits/circuit-01/phase-l1/power",
+      "label": "Circuit 01 · L1 power",
+      "connection_id": "fixture:meter",
+      "device_id": "fixture:meter:main-meter",
+      "topic": "demo/meter/main-meter/circuits/circuit-01/phase-l1/power",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "kW",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:meter:main-meter:channel:circuits/circuit-01/phase-l1/frequency",
+      "label": "Circuit 01 · L1 frequency",
+      "connection_id": "fixture:meter",
+      "device_id": "fixture:meter:main-meter",
+      "topic": "demo/meter/main-meter/circuits/circuit-01/phase-l1/frequency",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "Hz",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:meter:main-meter:channel:circuits/circuit-01/phase-l2/voltage",
+      "label": "Circuit 01 · L2 voltage",
+      "connection_id": "fixture:meter",
+      "device_id": "fixture:meter:main-meter",
+      "topic": "demo/meter/main-meter/circuits/circuit-01/phase-l2/voltage",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "V",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:meter:main-meter:channel:circuits/circuit-01/phase-l2/current",
+      "label": "Circuit 01 · L2 current",
+      "connection_id": "fixture:meter",
+      "device_id": "fixture:meter:main-meter",
+      "topic": "demo/meter/main-meter/circuits/circuit-01/phase-l2/current",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "A",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:meter:main-meter:channel:circuits/circuit-01/phase-l2/power",
+      "label": "Circuit 01 · L2 power",
+      "connection_id": "fixture:meter",
+      "device_id": "fixture:meter:main-meter",
+      "topic": "demo/meter/main-meter/circuits/circuit-01/phase-l2/power",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "kW",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:meter:main-meter:channel:circuits/circuit-01/phase-l2/frequency",
+      "label": "Circuit 01 · L2 frequency",
+      "connection_id": "fixture:meter",
+      "device_id": "fixture:meter:main-meter",
+      "topic": "demo/meter/main-meter/circuits/circuit-01/phase-l2/frequency",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "Hz",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:meter:main-meter:channel:circuits/circuit-01/phase-l3/voltage",
+      "label": "Circuit 01 · L3 voltage",
+      "connection_id": "fixture:meter",
+      "device_id": "fixture:meter:main-meter",
+      "topic": "demo/meter/main-meter/circuits/circuit-01/phase-l3/voltage",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "V",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:meter:main-meter:channel:circuits/circuit-01/phase-l3/current",
+      "label": "Circuit 01 · L3 current",
+      "connection_id": "fixture:meter",
+      "device_id": "fixture:meter:main-meter",
+      "topic": "demo/meter/main-meter/circuits/circuit-01/phase-l3/current",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "A",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:meter:main-meter:channel:circuits/circuit-01/phase-l3/power",
+      "label": "Circuit 01 · L3 power",
+      "connection_id": "fixture:meter",
+      "device_id": "fixture:meter:main-meter",
+      "topic": "demo/meter/main-meter/circuits/circuit-01/phase-l3/power",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "kW",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:meter:main-meter:channel:circuits/circuit-01/phase-l3/frequency",
+      "label": "Circuit 01 · L3 frequency",
+      "connection_id": "fixture:meter",
+      "device_id": "fixture:meter:main-meter",
+      "topic": "demo/meter/main-meter/circuits/circuit-01/phase-l3/frequency",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "Hz",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:meter:main-meter:channel:circuits/circuit-02/phase-l1/voltage",
+      "label": "Circuit 02 · L1 voltage",
+      "connection_id": "fixture:meter",
+      "device_id": "fixture:meter:main-meter",
+      "topic": "demo/meter/main-meter/circuits/circuit-02/phase-l1/voltage",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "V",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:meter:main-meter:channel:circuits/circuit-02/phase-l1/current",
+      "label": "Circuit 02 · L1 current",
+      "connection_id": "fixture:meter",
+      "device_id": "fixture:meter:main-meter",
+      "topic": "demo/meter/main-meter/circuits/circuit-02/phase-l1/current",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "A",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:meter:main-meter:channel:circuits/circuit-02/phase-l1/power",
+      "label": "Circuit 02 · L1 power",
+      "connection_id": "fixture:meter",
+      "device_id": "fixture:meter:main-meter",
+      "topic": "demo/meter/main-meter/circuits/circuit-02/phase-l1/power",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "kW",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:meter:main-meter:channel:circuits/circuit-02/phase-l1/frequency",
+      "label": "Circuit 02 · L1 frequency",
+      "connection_id": "fixture:meter",
+      "device_id": "fixture:meter:main-meter",
+      "topic": "demo/meter/main-meter/circuits/circuit-02/phase-l1/frequency",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "Hz",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:meter:main-meter:channel:circuits/circuit-02/phase-l2/voltage",
+      "label": "Circuit 02 · L2 voltage",
+      "connection_id": "fixture:meter",
+      "device_id": "fixture:meter:main-meter",
+      "topic": "demo/meter/main-meter/circuits/circuit-02/phase-l2/voltage",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "V",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:meter:main-meter:channel:circuits/circuit-02/phase-l2/current",
+      "label": "Circuit 02 · L2 current",
+      "connection_id": "fixture:meter",
+      "device_id": "fixture:meter:main-meter",
+      "topic": "demo/meter/main-meter/circuits/circuit-02/phase-l2/current",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "A",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:meter:main-meter:channel:circuits/circuit-02/phase-l2/power",
+      "label": "Circuit 02 · L2 power",
+      "connection_id": "fixture:meter",
+      "device_id": "fixture:meter:main-meter",
+      "topic": "demo/meter/main-meter/circuits/circuit-02/phase-l2/power",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "kW",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:meter:main-meter:channel:circuits/circuit-02/phase-l2/frequency",
+      "label": "Circuit 02 · L2 frequency",
+      "connection_id": "fixture:meter",
+      "device_id": "fixture:meter:main-meter",
+      "topic": "demo/meter/main-meter/circuits/circuit-02/phase-l2/frequency",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "Hz",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:meter:main-meter:channel:circuits/circuit-02/phase-l3/voltage",
+      "label": "Circuit 02 · L3 voltage",
+      "connection_id": "fixture:meter",
+      "device_id": "fixture:meter:main-meter",
+      "topic": "demo/meter/main-meter/circuits/circuit-02/phase-l3/voltage",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "V",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:meter:main-meter:channel:circuits/circuit-02/phase-l3/current",
+      "label": "Circuit 02 · L3 current",
+      "connection_id": "fixture:meter",
+      "device_id": "fixture:meter:main-meter",
+      "topic": "demo/meter/main-meter/circuits/circuit-02/phase-l3/current",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "A",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:meter:main-meter:channel:circuits/circuit-02/phase-l3/power",
+      "label": "Circuit 02 · L3 power",
+      "connection_id": "fixture:meter",
+      "device_id": "fixture:meter:main-meter",
+      "topic": "demo/meter/main-meter/circuits/circuit-02/phase-l3/power",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "kW",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:meter:main-meter:channel:circuits/circuit-02/phase-l3/frequency",
+      "label": "Circuit 02 · L3 frequency",
+      "connection_id": "fixture:meter",
+      "device_id": "fixture:meter:main-meter",
+      "topic": "demo/meter/main-meter/circuits/circuit-02/phase-l3/frequency",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "Hz",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:meter:main-meter:channel:circuits/circuit-03/phase-l1/voltage",
+      "label": "Circuit 03 · L1 voltage",
+      "connection_id": "fixture:meter",
+      "device_id": "fixture:meter:main-meter",
+      "topic": "demo/meter/main-meter/circuits/circuit-03/phase-l1/voltage",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "V",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:meter:main-meter:channel:circuits/circuit-03/phase-l1/current",
+      "label": "Circuit 03 · L1 current",
+      "connection_id": "fixture:meter",
+      "device_id": "fixture:meter:main-meter",
+      "topic": "demo/meter/main-meter/circuits/circuit-03/phase-l1/current",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "A",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:meter:main-meter:channel:circuits/circuit-03/phase-l1/power",
+      "label": "Circuit 03 · L1 power",
+      "connection_id": "fixture:meter",
+      "device_id": "fixture:meter:main-meter",
+      "topic": "demo/meter/main-meter/circuits/circuit-03/phase-l1/power",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "kW",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:meter:main-meter:channel:circuits/circuit-03/phase-l1/frequency",
+      "label": "Circuit 03 · L1 frequency",
+      "connection_id": "fixture:meter",
+      "device_id": "fixture:meter:main-meter",
+      "topic": "demo/meter/main-meter/circuits/circuit-03/phase-l1/frequency",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "Hz",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:meter:main-meter:channel:circuits/circuit-03/phase-l2/voltage",
+      "label": "Circuit 03 · L2 voltage",
+      "connection_id": "fixture:meter",
+      "device_id": "fixture:meter:main-meter",
+      "topic": "demo/meter/main-meter/circuits/circuit-03/phase-l2/voltage",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "V",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:meter:main-meter:channel:circuits/circuit-03/phase-l2/current",
+      "label": "Circuit 03 · L2 current",
+      "connection_id": "fixture:meter",
+      "device_id": "fixture:meter:main-meter",
+      "topic": "demo/meter/main-meter/circuits/circuit-03/phase-l2/current",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "A",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:meter:main-meter:channel:circuits/circuit-03/phase-l2/power",
+      "label": "Circuit 03 · L2 power",
+      "connection_id": "fixture:meter",
+      "device_id": "fixture:meter:main-meter",
+      "topic": "demo/meter/main-meter/circuits/circuit-03/phase-l2/power",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "kW",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:meter:main-meter:channel:circuits/circuit-03/phase-l2/frequency",
+      "label": "Circuit 03 · L2 frequency",
+      "connection_id": "fixture:meter",
+      "device_id": "fixture:meter:main-meter",
+      "topic": "demo/meter/main-meter/circuits/circuit-03/phase-l2/frequency",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "Hz",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:meter:main-meter:channel:circuits/circuit-03/phase-l3/voltage",
+      "label": "Circuit 03 · L3 voltage",
+      "connection_id": "fixture:meter",
+      "device_id": "fixture:meter:main-meter",
+      "topic": "demo/meter/main-meter/circuits/circuit-03/phase-l3/voltage",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "V",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:meter:main-meter:channel:circuits/circuit-03/phase-l3/current",
+      "label": "Circuit 03 · L3 current",
+      "connection_id": "fixture:meter",
+      "device_id": "fixture:meter:main-meter",
+      "topic": "demo/meter/main-meter/circuits/circuit-03/phase-l3/current",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "A",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:meter:main-meter:channel:circuits/circuit-03/phase-l3/power",
+      "label": "Circuit 03 · L3 power",
+      "connection_id": "fixture:meter",
+      "device_id": "fixture:meter:main-meter",
+      "topic": "demo/meter/main-meter/circuits/circuit-03/phase-l3/power",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "kW",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:meter:main-meter:channel:circuits/circuit-03/phase-l3/frequency",
+      "label": "Circuit 03 · L3 frequency",
+      "connection_id": "fixture:meter",
+      "device_id": "fixture:meter:main-meter",
+      "topic": "demo/meter/main-meter/circuits/circuit-03/phase-l3/frequency",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "Hz",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:meter:main-meter:channel:circuits/circuit-04/phase-l1/voltage",
+      "label": "Circuit 04 · L1 voltage",
+      "connection_id": "fixture:meter",
+      "device_id": "fixture:meter:main-meter",
+      "topic": "demo/meter/main-meter/circuits/circuit-04/phase-l1/voltage",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "V",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:meter:main-meter:channel:circuits/circuit-04/phase-l1/current",
+      "label": "Circuit 04 · L1 current",
+      "connection_id": "fixture:meter",
+      "device_id": "fixture:meter:main-meter",
+      "topic": "demo/meter/main-meter/circuits/circuit-04/phase-l1/current",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "A",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:meter:main-meter:channel:circuits/circuit-04/phase-l1/power",
+      "label": "Circuit 04 · L1 power",
+      "connection_id": "fixture:meter",
+      "device_id": "fixture:meter:main-meter",
+      "topic": "demo/meter/main-meter/circuits/circuit-04/phase-l1/power",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "kW",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:meter:main-meter:channel:circuits/circuit-04/phase-l1/frequency",
+      "label": "Circuit 04 · L1 frequency",
+      "connection_id": "fixture:meter",
+      "device_id": "fixture:meter:main-meter",
+      "topic": "demo/meter/main-meter/circuits/circuit-04/phase-l1/frequency",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "Hz",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:meter:main-meter:channel:circuits/circuit-04/phase-l2/voltage",
+      "label": "Circuit 04 · L2 voltage",
+      "connection_id": "fixture:meter",
+      "device_id": "fixture:meter:main-meter",
+      "topic": "demo/meter/main-meter/circuits/circuit-04/phase-l2/voltage",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "V",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:meter:main-meter:channel:circuits/circuit-04/phase-l2/current",
+      "label": "Circuit 04 · L2 current",
+      "connection_id": "fixture:meter",
+      "device_id": "fixture:meter:main-meter",
+      "topic": "demo/meter/main-meter/circuits/circuit-04/phase-l2/current",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "A",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:meter:main-meter:channel:circuits/circuit-04/phase-l2/power",
+      "label": "Circuit 04 · L2 power",
+      "connection_id": "fixture:meter",
+      "device_id": "fixture:meter:main-meter",
+      "topic": "demo/meter/main-meter/circuits/circuit-04/phase-l2/power",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "kW",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:meter:main-meter:channel:circuits/circuit-04/phase-l2/frequency",
+      "label": "Circuit 04 · L2 frequency",
+      "connection_id": "fixture:meter",
+      "device_id": "fixture:meter:main-meter",
+      "topic": "demo/meter/main-meter/circuits/circuit-04/phase-l2/frequency",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "Hz",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:meter:main-meter:channel:circuits/circuit-04/phase-l3/voltage",
+      "label": "Circuit 04 · L3 voltage",
+      "connection_id": "fixture:meter",
+      "device_id": "fixture:meter:main-meter",
+      "topic": "demo/meter/main-meter/circuits/circuit-04/phase-l3/voltage",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "V",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:meter:main-meter:channel:circuits/circuit-04/phase-l3/current",
+      "label": "Circuit 04 · L3 current",
+      "connection_id": "fixture:meter",
+      "device_id": "fixture:meter:main-meter",
+      "topic": "demo/meter/main-meter/circuits/circuit-04/phase-l3/current",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "A",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:meter:main-meter:channel:circuits/circuit-04/phase-l3/power",
+      "label": "Circuit 04 · L3 power",
+      "connection_id": "fixture:meter",
+      "device_id": "fixture:meter:main-meter",
+      "topic": "demo/meter/main-meter/circuits/circuit-04/phase-l3/power",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "kW",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:meter:main-meter:channel:circuits/circuit-04/phase-l3/frequency",
+      "label": "Circuit 04 · L3 frequency",
+      "connection_id": "fixture:meter",
+      "device_id": "fixture:meter:main-meter",
+      "topic": "demo/meter/main-meter/circuits/circuit-04/phase-l3/frequency",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "Hz",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:meter:main-meter:channel:circuits/circuit-05/phase-l1/voltage",
+      "label": "Circuit 05 · L1 voltage",
+      "connection_id": "fixture:meter",
+      "device_id": "fixture:meter:main-meter",
+      "topic": "demo/meter/main-meter/circuits/circuit-05/phase-l1/voltage",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "V",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:meter:main-meter:channel:circuits/circuit-05/phase-l1/current",
+      "label": "Circuit 05 · L1 current",
+      "connection_id": "fixture:meter",
+      "device_id": "fixture:meter:main-meter",
+      "topic": "demo/meter/main-meter/circuits/circuit-05/phase-l1/current",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "A",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:meter:main-meter:channel:circuits/circuit-05/phase-l1/power",
+      "label": "Circuit 05 · L1 power",
+      "connection_id": "fixture:meter",
+      "device_id": "fixture:meter:main-meter",
+      "topic": "demo/meter/main-meter/circuits/circuit-05/phase-l1/power",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "kW",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:meter:main-meter:channel:circuits/circuit-05/phase-l1/frequency",
+      "label": "Circuit 05 · L1 frequency",
+      "connection_id": "fixture:meter",
+      "device_id": "fixture:meter:main-meter",
+      "topic": "demo/meter/main-meter/circuits/circuit-05/phase-l1/frequency",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "Hz",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:meter:main-meter:channel:circuits/circuit-05/phase-l2/voltage",
+      "label": "Circuit 05 · L2 voltage",
+      "connection_id": "fixture:meter",
+      "device_id": "fixture:meter:main-meter",
+      "topic": "demo/meter/main-meter/circuits/circuit-05/phase-l2/voltage",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "V",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:meter:main-meter:channel:circuits/circuit-05/phase-l2/current",
+      "label": "Circuit 05 · L2 current",
+      "connection_id": "fixture:meter",
+      "device_id": "fixture:meter:main-meter",
+      "topic": "demo/meter/main-meter/circuits/circuit-05/phase-l2/current",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "A",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:meter:main-meter:channel:circuits/circuit-05/phase-l2/power",
+      "label": "Circuit 05 · L2 power",
+      "connection_id": "fixture:meter",
+      "device_id": "fixture:meter:main-meter",
+      "topic": "demo/meter/main-meter/circuits/circuit-05/phase-l2/power",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "kW",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:meter:main-meter:channel:circuits/circuit-05/phase-l2/frequency",
+      "label": "Circuit 05 · L2 frequency",
+      "connection_id": "fixture:meter",
+      "device_id": "fixture:meter:main-meter",
+      "topic": "demo/meter/main-meter/circuits/circuit-05/phase-l2/frequency",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "Hz",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:meter:main-meter:channel:circuits/circuit-05/phase-l3/voltage",
+      "label": "Circuit 05 · L3 voltage",
+      "connection_id": "fixture:meter",
+      "device_id": "fixture:meter:main-meter",
+      "topic": "demo/meter/main-meter/circuits/circuit-05/phase-l3/voltage",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "V",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:meter:main-meter:channel:circuits/circuit-05/phase-l3/current",
+      "label": "Circuit 05 · L3 current",
+      "connection_id": "fixture:meter",
+      "device_id": "fixture:meter:main-meter",
+      "topic": "demo/meter/main-meter/circuits/circuit-05/phase-l3/current",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "A",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:meter:main-meter:channel:circuits/circuit-05/phase-l3/power",
+      "label": "Circuit 05 · L3 power",
+      "connection_id": "fixture:meter",
+      "device_id": "fixture:meter:main-meter",
+      "topic": "demo/meter/main-meter/circuits/circuit-05/phase-l3/power",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "kW",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:meter:main-meter:channel:circuits/circuit-05/phase-l3/frequency",
+      "label": "Circuit 05 · L3 frequency",
+      "connection_id": "fixture:meter",
+      "device_id": "fixture:meter:main-meter",
+      "topic": "demo/meter/main-meter/circuits/circuit-05/phase-l3/frequency",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "Hz",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:meter:main-meter:channel:circuits/circuit-06/phase-l1/voltage",
+      "label": "Circuit 06 · L1 voltage",
+      "connection_id": "fixture:meter",
+      "device_id": "fixture:meter:main-meter",
+      "topic": "demo/meter/main-meter/circuits/circuit-06/phase-l1/voltage",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "V",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:meter:main-meter:channel:circuits/circuit-06/phase-l1/current",
+      "label": "Circuit 06 · L1 current",
+      "connection_id": "fixture:meter",
+      "device_id": "fixture:meter:main-meter",
+      "topic": "demo/meter/main-meter/circuits/circuit-06/phase-l1/current",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "A",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:meter:main-meter:channel:circuits/circuit-06/phase-l1/power",
+      "label": "Circuit 06 · L1 power",
+      "connection_id": "fixture:meter",
+      "device_id": "fixture:meter:main-meter",
+      "topic": "demo/meter/main-meter/circuits/circuit-06/phase-l1/power",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "kW",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:meter:main-meter:channel:circuits/circuit-06/phase-l1/frequency",
+      "label": "Circuit 06 · L1 frequency",
+      "connection_id": "fixture:meter",
+      "device_id": "fixture:meter:main-meter",
+      "topic": "demo/meter/main-meter/circuits/circuit-06/phase-l1/frequency",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "Hz",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:meter:main-meter:channel:circuits/circuit-06/phase-l2/voltage",
+      "label": "Circuit 06 · L2 voltage",
+      "connection_id": "fixture:meter",
+      "device_id": "fixture:meter:main-meter",
+      "topic": "demo/meter/main-meter/circuits/circuit-06/phase-l2/voltage",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "V",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:meter:main-meter:channel:circuits/circuit-06/phase-l2/current",
+      "label": "Circuit 06 · L2 current",
+      "connection_id": "fixture:meter",
+      "device_id": "fixture:meter:main-meter",
+      "topic": "demo/meter/main-meter/circuits/circuit-06/phase-l2/current",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "A",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:meter:main-meter:channel:circuits/circuit-06/phase-l2/power",
+      "label": "Circuit 06 · L2 power",
+      "connection_id": "fixture:meter",
+      "device_id": "fixture:meter:main-meter",
+      "topic": "demo/meter/main-meter/circuits/circuit-06/phase-l2/power",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "kW",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:meter:main-meter:channel:circuits/circuit-06/phase-l2/frequency",
+      "label": "Circuit 06 · L2 frequency",
+      "connection_id": "fixture:meter",
+      "device_id": "fixture:meter:main-meter",
+      "topic": "demo/meter/main-meter/circuits/circuit-06/phase-l2/frequency",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "Hz",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:meter:main-meter:channel:circuits/circuit-06/phase-l3/voltage",
+      "label": "Circuit 06 · L3 voltage",
+      "connection_id": "fixture:meter",
+      "device_id": "fixture:meter:main-meter",
+      "topic": "demo/meter/main-meter/circuits/circuit-06/phase-l3/voltage",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "V",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:meter:main-meter:channel:circuits/circuit-06/phase-l3/current",
+      "label": "Circuit 06 · L3 current",
+      "connection_id": "fixture:meter",
+      "device_id": "fixture:meter:main-meter",
+      "topic": "demo/meter/main-meter/circuits/circuit-06/phase-l3/current",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "A",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:meter:main-meter:channel:circuits/circuit-06/phase-l3/power",
+      "label": "Circuit 06 · L3 power",
+      "connection_id": "fixture:meter",
+      "device_id": "fixture:meter:main-meter",
+      "topic": "demo/meter/main-meter/circuits/circuit-06/phase-l3/power",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "kW",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:meter:main-meter:channel:circuits/circuit-06/phase-l3/frequency",
+      "label": "Circuit 06 · L3 frequency",
+      "connection_id": "fixture:meter",
+      "device_id": "fixture:meter:main-meter",
+      "topic": "demo/meter/main-meter/circuits/circuit-06/phase-l3/frequency",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "Hz",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:meter:main-meter:channel:circuits/circuit-07/phase-l1/voltage",
+      "label": "Circuit 07 · L1 voltage",
+      "connection_id": "fixture:meter",
+      "device_id": "fixture:meter:main-meter",
+      "topic": "demo/meter/main-meter/circuits/circuit-07/phase-l1/voltage",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "V",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:meter:main-meter:channel:circuits/circuit-07/phase-l1/current",
+      "label": "Circuit 07 · L1 current",
+      "connection_id": "fixture:meter",
+      "device_id": "fixture:meter:main-meter",
+      "topic": "demo/meter/main-meter/circuits/circuit-07/phase-l1/current",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "A",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:meter:main-meter:channel:circuits/circuit-07/phase-l1/power",
+      "label": "Circuit 07 · L1 power",
+      "connection_id": "fixture:meter",
+      "device_id": "fixture:meter:main-meter",
+      "topic": "demo/meter/main-meter/circuits/circuit-07/phase-l1/power",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "kW",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:meter:main-meter:channel:circuits/circuit-07/phase-l1/frequency",
+      "label": "Circuit 07 · L1 frequency",
+      "connection_id": "fixture:meter",
+      "device_id": "fixture:meter:main-meter",
+      "topic": "demo/meter/main-meter/circuits/circuit-07/phase-l1/frequency",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "Hz",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:meter:main-meter:channel:circuits/circuit-07/phase-l2/voltage",
+      "label": "Circuit 07 · L2 voltage",
+      "connection_id": "fixture:meter",
+      "device_id": "fixture:meter:main-meter",
+      "topic": "demo/meter/main-meter/circuits/circuit-07/phase-l2/voltage",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "V",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:meter:main-meter:channel:circuits/circuit-07/phase-l2/current",
+      "label": "Circuit 07 · L2 current",
+      "connection_id": "fixture:meter",
+      "device_id": "fixture:meter:main-meter",
+      "topic": "demo/meter/main-meter/circuits/circuit-07/phase-l2/current",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "A",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:meter:main-meter:channel:circuits/circuit-07/phase-l2/power",
+      "label": "Circuit 07 · L2 power",
+      "connection_id": "fixture:meter",
+      "device_id": "fixture:meter:main-meter",
+      "topic": "demo/meter/main-meter/circuits/circuit-07/phase-l2/power",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "kW",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:meter:main-meter:channel:circuits/circuit-07/phase-l2/frequency",
+      "label": "Circuit 07 · L2 frequency",
+      "connection_id": "fixture:meter",
+      "device_id": "fixture:meter:main-meter",
+      "topic": "demo/meter/main-meter/circuits/circuit-07/phase-l2/frequency",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "Hz",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:meter:main-meter:channel:circuits/circuit-07/phase-l3/voltage",
+      "label": "Circuit 07 · L3 voltage",
+      "connection_id": "fixture:meter",
+      "device_id": "fixture:meter:main-meter",
+      "topic": "demo/meter/main-meter/circuits/circuit-07/phase-l3/voltage",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "V",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:meter:main-meter:channel:circuits/circuit-07/phase-l3/current",
+      "label": "Circuit 07 · L3 current",
+      "connection_id": "fixture:meter",
+      "device_id": "fixture:meter:main-meter",
+      "topic": "demo/meter/main-meter/circuits/circuit-07/phase-l3/current",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "A",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:meter:main-meter:channel:circuits/circuit-07/phase-l3/power",
+      "label": "Circuit 07 · L3 power",
+      "connection_id": "fixture:meter",
+      "device_id": "fixture:meter:main-meter",
+      "topic": "demo/meter/main-meter/circuits/circuit-07/phase-l3/power",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "kW",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:meter:main-meter:channel:circuits/circuit-07/phase-l3/frequency",
+      "label": "Circuit 07 · L3 frequency",
+      "connection_id": "fixture:meter",
+      "device_id": "fixture:meter:main-meter",
+      "topic": "demo/meter/main-meter/circuits/circuit-07/phase-l3/frequency",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "Hz",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:meter:main-meter:channel:circuits/circuit-08/phase-l1/voltage",
+      "label": "Circuit 08 · L1 voltage",
+      "connection_id": "fixture:meter",
+      "device_id": "fixture:meter:main-meter",
+      "topic": "demo/meter/main-meter/circuits/circuit-08/phase-l1/voltage",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "V",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:meter:main-meter:channel:circuits/circuit-08/phase-l1/current",
+      "label": "Circuit 08 · L1 current",
+      "connection_id": "fixture:meter",
+      "device_id": "fixture:meter:main-meter",
+      "topic": "demo/meter/main-meter/circuits/circuit-08/phase-l1/current",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "A",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:meter:main-meter:channel:circuits/circuit-08/phase-l1/power",
+      "label": "Circuit 08 · L1 power",
+      "connection_id": "fixture:meter",
+      "device_id": "fixture:meter:main-meter",
+      "topic": "demo/meter/main-meter/circuits/circuit-08/phase-l1/power",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "kW",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:meter:main-meter:channel:circuits/circuit-08/phase-l1/frequency",
+      "label": "Circuit 08 · L1 frequency",
+      "connection_id": "fixture:meter",
+      "device_id": "fixture:meter:main-meter",
+      "topic": "demo/meter/main-meter/circuits/circuit-08/phase-l1/frequency",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "Hz",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:meter:main-meter:channel:circuits/circuit-08/phase-l2/voltage",
+      "label": "Circuit 08 · L2 voltage",
+      "connection_id": "fixture:meter",
+      "device_id": "fixture:meter:main-meter",
+      "topic": "demo/meter/main-meter/circuits/circuit-08/phase-l2/voltage",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "V",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:meter:main-meter:channel:circuits/circuit-08/phase-l2/current",
+      "label": "Circuit 08 · L2 current",
+      "connection_id": "fixture:meter",
+      "device_id": "fixture:meter:main-meter",
+      "topic": "demo/meter/main-meter/circuits/circuit-08/phase-l2/current",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "A",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:meter:main-meter:channel:circuits/circuit-08/phase-l2/power",
+      "label": "Circuit 08 · L2 power",
+      "connection_id": "fixture:meter",
+      "device_id": "fixture:meter:main-meter",
+      "topic": "demo/meter/main-meter/circuits/circuit-08/phase-l2/power",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "kW",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:meter:main-meter:channel:circuits/circuit-08/phase-l2/frequency",
+      "label": "Circuit 08 · L2 frequency",
+      "connection_id": "fixture:meter",
+      "device_id": "fixture:meter:main-meter",
+      "topic": "demo/meter/main-meter/circuits/circuit-08/phase-l2/frequency",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "Hz",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:meter:main-meter:channel:circuits/circuit-08/phase-l3/voltage",
+      "label": "Circuit 08 · L3 voltage",
+      "connection_id": "fixture:meter",
+      "device_id": "fixture:meter:main-meter",
+      "topic": "demo/meter/main-meter/circuits/circuit-08/phase-l3/voltage",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "V",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:meter:main-meter:channel:circuits/circuit-08/phase-l3/current",
+      "label": "Circuit 08 · L3 current",
+      "connection_id": "fixture:meter",
+      "device_id": "fixture:meter:main-meter",
+      "topic": "demo/meter/main-meter/circuits/circuit-08/phase-l3/current",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "A",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:meter:main-meter:channel:circuits/circuit-08/phase-l3/power",
+      "label": "Circuit 08 · L3 power",
+      "connection_id": "fixture:meter",
+      "device_id": "fixture:meter:main-meter",
+      "topic": "demo/meter/main-meter/circuits/circuit-08/phase-l3/power",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "kW",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:meter:main-meter:channel:circuits/circuit-08/phase-l3/frequency",
+      "label": "Circuit 08 · L3 frequency",
+      "connection_id": "fixture:meter",
+      "device_id": "fixture:meter:main-meter",
+      "topic": "demo/meter/main-meter/circuits/circuit-08/phase-l3/frequency",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "Hz",
+      "category": "Electrical"
+    },
+    {
+      "id": "fixture:weather:roof-station:value",
+      "label": "Wind speed",
+      "connection_id": "fixture:weather",
+      "device_id": "fixture:weather:roof-station",
+      "topic": "demo/weather/roof-station/telemetry",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "category": "Measurement",
+      "unit": "m/s"
+    },
+    {
+      "id": "fixture:weather:roof-station:active",
+      "label": "Active",
+      "connection_id": "fixture:weather",
+      "device_id": "fixture:weather:roof-station",
+      "topic": "demo/weather/roof-station/telemetry",
+      "payload_pointer": "/active",
+      "value_type": "boolean",
+      "category": "State"
+    },
+    {
+      "id": "fixture:weather:roof-station:mode",
+      "label": "Operating mode",
+      "connection_id": "fixture:weather",
+      "device_id": "fixture:weather:roof-station",
+      "topic": "demo/weather/roof-station/telemetry",
+      "payload_pointer": "/mode",
+      "value_type": "text",
+      "category": "State"
+    },
+    {
+      "id": "fixture:weather:roof-station:sample_id",
+      "label": "Sample identifier",
+      "connection_id": "fixture:weather",
+      "device_id": "fixture:weather:roof-station",
+      "topic": "demo/weather/roof-station/telemetry",
+      "payload_pointer": "/sample_id",
+      "value_type": "identifier",
+      "category": "State"
+    },
+    {
+      "id": "fixture:pump:water-pump:value",
+      "label": "Pressure",
+      "connection_id": "fixture:pump",
+      "device_id": "fixture:pump:water-pump",
+      "topic": "demo/pump/water-pump/telemetry",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "category": "Measurement",
+      "unit": "bar"
+    },
+    {
+      "id": "fixture:pump:water-pump:active",
+      "label": "Active",
+      "connection_id": "fixture:pump",
+      "device_id": "fixture:pump:water-pump",
+      "topic": "demo/pump/water-pump/telemetry",
+      "payload_pointer": "/active",
+      "value_type": "boolean",
+      "category": "State"
+    },
+    {
+      "id": "fixture:pump:water-pump:mode",
+      "label": "Operating mode",
+      "connection_id": "fixture:pump",
+      "device_id": "fixture:pump:water-pump",
+      "topic": "demo/pump/water-pump/telemetry",
+      "payload_pointer": "/mode",
+      "value_type": "text",
+      "category": "State"
+    },
+    {
+      "id": "fixture:pump:water-pump:sample_id",
+      "label": "Sample identifier",
+      "connection_id": "fixture:pump",
+      "device_id": "fixture:pump:water-pump",
+      "topic": "demo/pump/water-pump/telemetry",
+      "payload_pointer": "/sample_id",
+      "value_type": "identifier",
+      "category": "State"
+    }
+  ],
+  "groups": []
+}

@@ -22,7 +22,7 @@ export function FieldError({
 
 export function LaneCard({ title, description, selected = false, icon: Icon, onSelect }: {
   title: string;
-  description: string;
+  description?: string;
   selected?: boolean;
   icon: ElementType;
   onSelect?: () => void;
@@ -32,17 +32,17 @@ export function LaneCard({ title, description, selected = false, icon: Icon, onS
       type="button"
       onClick={onSelect}
       className={cn(
-        "rounded-xl border p-4 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-        selected ? "border-primary/35 bg-primary/[0.035]" : "border-border/70 bg-card hover:border-primary/35",
+        "rounded-md border px-3 py-2.5 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+        selected ? "border-primary/40 bg-accent" : "border-border bg-card hover:bg-accent/60",
       )}
       aria-pressed={selected}
     >
-      <span className="flex items-center gap-2 font-semibold">
+      <span className="flex items-center gap-2 font-medium">
         <Icon className="size-4 text-primary" aria-hidden="true" />
         {title}
         {selected && <CheckCircle2 className="ml-auto size-4 text-primary" aria-hidden="true" />}
       </span>
-      <span className="mt-2 block text-sm text-muted-foreground">{description}</span>
+      {description && <span className="mt-1 block text-sm text-muted-foreground">{description}</span>}
     </button>
   );
 }
@@ -61,20 +61,18 @@ export function ConfigSection({
   children: ReactNode;
 }) {
   return (
-    <section className="rounded-2xl border border-border/65 bg-muted/[0.16] p-4">
-      <div className="flex items-start gap-3">
-        <span className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-primary/15 bg-primary/[0.07] text-primary">
-          <Icon className="size-4" />
-        </span>
+    <section className="min-w-0 space-y-4 rounded-lg border border-border bg-card p-4">
+      <div className="flex items-start gap-2">
+        <Icon className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
         <div>
           <div className="flex items-center gap-1">
-            <h3 className="font-semibold tracking-[-0.01em]">{title}</h3>
+            <h3 className="text-sm font-medium">{title}</h3>
             {help && <HelpTooltip label={title}>{help}</HelpTooltip>}
           </div>
           {description && <p className="mt-1 text-sm text-muted-foreground">{description}</p>}
         </div>
       </div>
-      <div className="mt-4">{children}</div>
+      <div>{children}</div>
     </section>
   );
 }

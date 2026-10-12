@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { expect, test } from "@playwright/test";
 import { connectAsync, type MqttClient } from "mqtt";
 
-import { addTestCharger, removeTestCharger } from "./helpers/collection";
+import { addTestCharger, removeTestCharger, fixtureEntityId, fixtureReadingKey } from "./helpers/collection";
 
 const telemetry = [
   ["voltageAc3", 233.3],
@@ -19,7 +19,8 @@ test.describe("device topic ingress", () => {
     page,
     playwright,
   }) => {
-    const chargerId = randomUUID();
+    const deviceId = randomUUID();
+    const chargerId = fixtureEntityId(deviceId);
     let publisher: MqttClient | undefined;
     let authToken: string | null = null;
     const api = await playwright.request.newContext({
@@ -35,7 +36,7 @@ test.describe("device topic ingress", () => {
       await addTestCharger(
         api,
         authToken!,
-        chargerId,
+        deviceId,
         "0",
         telemetry.map(([key]) => key),
       );
@@ -45,13 +46,13 @@ test.describe("device topic ingress", () => {
       );
       for (const [telemetryType, value] of telemetry) {
         await publisher.publishAsync(
-          `device/evCharger/0/${telemetryType}`,
+          `tests/0/${telemetryType}`,
           JSON.stringify(value),
           { qos: 1, retain: false },
         );
       }
 
-      const expectedTypes = telemetry.map(([type]) => type).sort();
+      const expectedTypes = telemetry.map(([type]) => fixtureReadingKey(deviceId, type)).sort();
 
       await expect
         .poll(async () => {
@@ -77,22 +78,12 @@ test.describe("device topic ingress", () => {
         })
         .toBe(true);
 
-      await page.reload();
-      await expect(
-        page.locator(`a[href="/details/${chargerId}"]`).first(),
-      ).toBeVisible();
       await page.goto(`/details/${chargerId}`);
       await expect(
-        page.getByRole("heading", { name: `Charger ${chargerId}` }),
+        page.getByRole("heading", { name: `Entity ${chargerId}` }),
       ).toBeVisible();
 
-      for (const title of [
-        "Voltage Ac3",
-        "Voltage Ac",
-        "Current Dc",
-        "Voltage Ac2",
-        "Voltage Ac1",
-      ]) {
+      for (const [title] of telemetry) {
         const card = page
           .locator('[data-slot="card"]')
           .filter({ has: page.getByText(title, { exact: true }) })

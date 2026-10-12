@@ -176,7 +176,10 @@ class Tactic:
         return await self._make_request(
             method="POST",
             endpoint="/api/v1/orchestration/radar/services/start/",
-            json_data=config.model_dump(mode="json"),
+            json_data=config.model_dump(
+                mode="json",
+                exclude={"display_name"} if config.display_name is None else None,
+            ),
         )
 
     async def stop_radar_service(
@@ -219,6 +222,15 @@ class Tactic:
         return await self._make_request(
             method="DELETE",
             endpoint=f"/api/v1/orchestration/radar/services/{_path_segment(service_id)}",
+        )
+
+    async def rename_radar_service(
+        self, service_id: str, display_name: str
+    ) -> dict[str, Any]:
+        return await self._make_request(
+            method="PATCH",
+            endpoint=f"/api/v1/orchestration/radar/services/{_path_segment(service_id)}/label",
+            json_data={"display_name": display_name},
         )
 
     async def list_radar_services(

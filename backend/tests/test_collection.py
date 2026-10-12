@@ -2,18 +2,19 @@ import asyncio
 from datetime import UTC, datetime
 
 import pytest
-from off_key_core.schemas.collection import (
+from off_key_core.db.catalogue_upgrade import convert_definition
+from off_key_core.db.catalogue_v1 import adapt_ambibox_catalog
+from off_key_core.db.catalogue_v1_models import (
     AmbiboxCatalog,
     CatalogCharger,
     CatalogSource,
     CollectionPolicy,
     SensorDefinition,
-    assign_forward_ports,
 )
 from off_key_mqtt_proxy.client.models import MQTTMessage
 from off_key_mqtt_proxy.client.subscriptions import SubscriptionManager
 from off_key_mqtt_proxy.collection_buffer import CollectionBuffer
-from off_key_tactic_middleware.services.collection import changed_collection_topics
+from off_key_tactic_middleware.services.system_collection import SystemCollectionService
 from pydantic import ValidationError
 
 
@@ -42,12 +43,21 @@ def catalog(mode="sample", kind="number"):
     )
 
 
+def runtime_catalog(mode="sample", kind="number"):
+    legacy = catalog(mode, kind)
+    result = convert_definition(adapt_ambibox_catalog(legacy), legacy)
+    result.generation = "test"
+    return result
+
+
 def message(configuration, value, *, retained=False, upstream_retained=False):
     now = datetime.now(UTC)
     return MQTTMessage(
         configuration.streams()[0].ingress_topic,
         {
-            "payload": value,
+            "payload": value
+            if isinstance(value, str)
+            else __import__("json").dumps(value),
             "received_at": int(now.timestamp() * 1000),
             "upstream_retained": upstream_retained,
         },
@@ -57,21 +67,8 @@ def message(configuration, value, *, retained=False, upstream_retained=False):
     )
 
 
-def test_two_local_zero_chargers_get_distinct_identity_and_routes():
-    first, second = catalog(), catalog()
-    second.sources[0].host = "second.ts.net"
-    combined = AmbiboxCatalog(sources=first.sources + second.sources)
-    routes = assign_forward_ports(combined, AmbiboxCatalog())
-    a, b = routes.streams()
-    assert a.accepted_topic != b.accepted_topic
-    assert a.ingress_topic != b.ingress_topic
-    assert a.sensor.upstream_topic == b.sensor.upstream_topic
-    assert [s.forward_port for s in routes.sources] == [20000, 20001]
-    assert assign_forward_ports(routes, routes) == routes
-
-
 def test_sampler_keeps_latest_new_observation_and_original_time_without_forward_fill():
-    config = catalog()
+    config = runtime_catalog()
     buffer = CollectionBuffer()
     buffer.configure(config, now=0)
     for value in range(1000):
@@ -87,7 +84,7 @@ def test_sampler_keeps_latest_new_observation_and_original_time_without_forward_
 
 @pytest.mark.parametrize("retained,upstream", [(True, False), (False, True)])
 def test_retained_values_are_snapshots(retained, upstream):
-    config = catalog("original")
+    config = runtime_catalog("original")
     buffer = CollectionBuffer()
     buffer.configure(config, now=0)
     buffer.receive(message(config, 12, retained=retained, upstream_retained=upstream))
@@ -97,7 +94,7 @@ def test_retained_values_are_snapshots(retained, upstream):
 
 
 def test_pause_and_unknown_topics_fail_closed_and_original_rate_is_bounded():
-    config = catalog("original")
+    config = runtime_catalog("original")
     buffer = CollectionBuffer(original_capacity=3)
     buffer.configure(config, now=0)
     for value in range(10):
@@ -114,7 +111,7 @@ def test_pause_and_unknown_topics_fail_closed_and_original_rate_is_bounded():
     "value", [True, float("nan"), float("inf"), {}, [], "bad", "x" * 5000]
 )
 def test_invalid_numeric_payloads_are_rejected(value):
-    config = catalog("original")
+    config = runtime_catalog("original")
     buffer = CollectionBuffer()
     buffer.configure(config, now=0)
     buffer.receive(message(config, value))
@@ -123,15 +120,15 @@ def test_invalid_numeric_payloads_are_rejected(value):
 
 
 def test_state_is_coalesced_and_policy_changes_invalidate_monitor_inputs():
-    config = catalog("original", "boolean")
+    config = runtime_catalog("original", "boolean")
     buffer = CollectionBuffer()
     buffer.configure(config, now=0)
     buffer.receive(message(config, True))
     buffer.receive(message(config, False))
     assert buffer.take(now=1)[0].value is False
     changed = config.model_copy(deep=True)
-    changed.sources[0].chargers[0].policy.mode = "off"
-    assert changed_collection_topics(config, changed) == {
+    changed.document.streams[0].policy.mode = "off"
+    assert SystemCollectionService._changed_inputs(config, changed) == {
         config.streams()[0].accepted_topic
     }
 
@@ -200,7 +197,7 @@ async def test_require_admin_does_not_trust_client_role():
 
 @pytest.mark.parametrize("kind,value", [("text", "123"), ("identifier", "000123")])
 def test_text_and_identifiers_preserve_numeric_looking_payloads(kind, value):
-    config = catalog("original", kind)
+    config = runtime_catalog("original", kind)
     buffer = CollectionBuffer()
     buffer.configure(config, now=0)
     buffer.receive(message(config, value))
@@ -208,7 +205,7 @@ def test_text_and_identifiers_preserve_numeric_looking_payloads(kind, value):
 
 
 def test_retained_replay_cannot_replace_pending_live_sample():
-    config = catalog()
+    config = runtime_catalog()
     buffer = CollectionBuffer()
     buffer.configure(config, now=0)
     buffer.receive(message(config, 123))
@@ -219,7 +216,7 @@ def test_retained_replay_cannot_replace_pending_live_sample():
 
 @pytest.mark.parametrize("value", ['"\\u0000"', '"\\ud800"'])
 def test_invalid_json_text_is_rejected_before_state_persistence(value):
-    config = catalog("original", "text")
+    config = runtime_catalog("original", "text")
     buffer = CollectionBuffer()
     buffer.configure(config, now=0)
     buffer.receive(message(config, value))

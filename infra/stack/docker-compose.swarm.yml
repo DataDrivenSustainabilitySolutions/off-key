@@ -210,6 +210,7 @@ services:
       - TS_SOCKS5_SERVER=0.0.0.0:1055
     networks:
       - emqx-network
+      - app-network
     deploy:
       replicas: 1
       update_config:

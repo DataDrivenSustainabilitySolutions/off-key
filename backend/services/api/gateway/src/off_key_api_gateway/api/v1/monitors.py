@@ -2,7 +2,11 @@ from datetime import UTC, datetime
 from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException, Query, Request, Response
-from off_key_core.schemas.radar import MonitoringStrategy, RadarStartConfig
+from off_key_core.schemas.radar import (
+    MonitoringStrategy,
+    RadarServiceLabel,
+    RadarStartConfig,
+)
 from pydantic import BaseModel, Field
 
 from ...facades.tactic import TacticError, tactic
@@ -268,6 +272,17 @@ async def stop_monitoring_service(
         raise HTTPException(
             status_code=500, detail=f"Failed to stop monitoring service: {e!s}"
         ) from e
+
+
+@router.patch("/{service_id}/label")
+@shared_limit_execute
+async def rename_monitoring_service(
+    request: Request, service_id: str, change: RadarServiceLabel
+):
+    try:
+        return await tactic.rename_radar_service(service_id, change.display_name)
+    except TacticError as e:
+        raise_tactic_http_error(e)
 
 
 @router.delete("/{service_id}")

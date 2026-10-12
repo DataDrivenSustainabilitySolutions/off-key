@@ -107,7 +107,7 @@ const operationalService: ActiveService = {
   id: "service-adaptive",
   container_id: "container-1",
   container_name: "radar-adaptive",
-  mqtt_topics: ["device/evCharger/charger-1/voltage"],
+  mqtt_topics: ["telemetry/charger-1/voltage"],
   status: true,
   monitoring_strategy: "adaptive_stream",
   operational_status: {
@@ -380,7 +380,7 @@ describe("DynamicTelemetryChart", () => {
       const option = inspectOption();
       expect(option?.series).toBeDefined();
       const telemetrySeries = option.series.find(({ id }) => id === "telemetry");
-      expect(telemetrySeries?.lineStyle?.color).toBe("hsl(173 80% 32%)");
+      expect(telemetrySeries?.lineStyle?.color).toBe("#3A7E72");
     });
   });
 

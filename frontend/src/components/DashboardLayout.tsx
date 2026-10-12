@@ -13,11 +13,11 @@ export function PageShell({ children, className }: PageShellProps) {
   return (
     <main
       className={cn(
-        "app-canvas min-h-[calc(100vh-4rem)] text-foreground",
+        "app-page-shell",
         className
       )}
     >
-      <div className="mx-auto flex w-full max-w-7xl flex-col gap-5 px-4 py-6 sm:px-6 sm:py-7 lg:px-8 lg:py-8">
+      <div className="app-page-content">
         {children}
       </div>
     </main>
@@ -40,18 +40,17 @@ export function PageHeader({
   return (
     <div
       className={cn(
-        "flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between",
+        "app-page-heading",
         className
       )}
     >
       <div className="min-w-0">
         {eyebrow ? (
-          <p className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-primary">
-            <span className="size-1.5 rounded-full bg-primary" aria-hidden="true" />
+          <p className="mb-1.5 text-xs text-muted-foreground">
             {eyebrow}
           </p>
         ) : null}
-        <h1 className="overflow-visible pb-1 text-3xl font-semibold leading-[1.08] tracking-[-0.03em] sm:text-4xl">
+        <h1 className="app-page-title">
           {title}
         </h1>
       </div>
@@ -82,11 +81,11 @@ export function SectionPanel({
   return (
     <Card className={cn("gap-0 overflow-hidden py-0", className)}>
       {(title || description || actions) && (
-        <div className="flex flex-col gap-3 border-b border-border/60 px-5 py-4.5 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+        <div className="flex flex-col gap-3 border-b border-border px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
           <div className="min-w-0">
             {title ? (
               <div className="flex items-center gap-1">
-                <h2 className="text-base font-semibold leading-6 tracking-[-0.01em]">{title}</h2>
+                <h2 className="text-sm font-medium leading-6">{title}</h2>
                 {help && <HelpTooltip label={typeof title === "string" ? title : "this section"}>{help}</HelpTooltip>}
               </div>
             ) : null}
@@ -126,13 +125,13 @@ export function MetricCard({
   tone = "default",
 }: MetricCardProps) {
   return (
-    <div className="rounded-2xl border border-border/65 bg-card p-4 shadow-[0_1px_2px_hsl(220_20%_10%/0.025)] sm:p-5">
-      <div className="flex min-h-6 items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+    <div className="rounded-lg border border-border bg-card p-4 sm:p-5">
+      <div className="flex min-h-5 items-center gap-2 text-xs text-muted-foreground">
         <span className={cn("size-1.5 rounded-full", metricToneClassName[tone])} />
         {label}
         {help && <HelpTooltip label={label}>{help}</HelpTooltip>}
       </div>
-      <div className="mt-3 text-3xl font-semibold leading-none tracking-[-0.04em] tabular-nums">{value}</div>
+      <div className="mt-2.5 text-2xl font-medium leading-none tracking-[-0.03em] tabular-nums">{value}</div>
       {helper ? <div className="mt-2 text-xs leading-5 text-muted-foreground">{helper}</div> : null}
     </div>
   );

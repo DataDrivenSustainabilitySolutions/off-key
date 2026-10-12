@@ -10,9 +10,11 @@ from off_key_core.config.logs import logger
 from off_key_core.db.base import get_async_engine, get_async_session_local
 from off_key_core.db.collection import (
     COLLECTION_PROXY_LOCK,
-    read_collection_configuration,
 )
-from off_key_core.db.models import Charger, CollectionConfiguration, CollectionState
+from off_key_core.db.collection_runtime import read_collection_runtime
+from off_key_core.db.models import Charger, CollectionState
+from off_key_core.db.system import SystemCollectionConfiguration
+from off_key_core.schemas.system_collection import runtime_fingerprint
 from sqlalchemy import case, delete, text, update
 from sqlalchemy.dialects.postgresql import insert
 
@@ -43,8 +45,11 @@ class MQTTProxyService:
         self.is_running = False
         self.revision = -1
         self._prepared_revision = -1
+        self._prepared_configuration: list | None = None
         self._generation = -1
         self.state = {"status": "starting"}
+        self.status_model = SystemCollectionConfiguration
+        self._prepared_model = None
         self._task: asyncio.Task | None = None
         self.diagnostics = CollectionDiagnostics(self.buffer, self.database_writer)
 
@@ -82,6 +87,8 @@ class MQTTProxyService:
             self.buffer.pause()
             raise
         self._prepared_revision = snapshot.revision
+        self._prepared_model = self.status_model
+        self._prepared_configuration = runtime_fingerprint(snapshot.catalog)
         self._generation = subscriptions.generation
         self.state = {
             "revision": snapshot.revision,
@@ -93,7 +100,8 @@ class MQTTProxyService:
 
     async def _refresh_configuration(self) -> None:
         async with self.session_factory() as session:
-            snapshot = await read_collection_configuration(session)
+            snapshot = await read_collection_runtime(session)
+        self.status_model = SystemCollectionConfiguration
         if not self.mqtt_client.is_connected:
             self.buffer.pause()
             self.revision = self._prepared_revision = -1
@@ -102,7 +110,22 @@ class MQTTProxyService:
             if not self.mqtt_client.is_connected:
                 raise RuntimeError("Local MQTT broker is disconnected")
         if (
+            self._prepared_revision >= 0
+            and self._prepared_model == self.status_model
+            and self._prepared_revision != snapshot.revision
+            and self._generation == self.mqtt_client.subscription_manager.generation
+            and self._prepared_configuration == runtime_fingerprint(snapshot.catalog)
+        ):
+            # Names do not affect admission, routes, retained state or sampling
+            # deadlines. Adopt their revision without closing a running collector.
+            previous = self._prepared_revision
+            self._prepared_revision = snapshot.revision
+            if self.revision == previous:
+                self.revision = snapshot.revision
+            self.state["revision"] = snapshot.revision
+        if (
             self._prepared_revision != snapshot.revision
+            or self._prepared_model != self.status_model
             or self._generation != self.mqtt_client.subscription_manager.generation
         ):
             self.revision = -1
@@ -112,7 +135,7 @@ class MQTTProxyService:
             and snapshot.ingress.get("status") == "applied"
         )
         if self.revision != snapshot.revision and (
-            ingress_ready or not snapshot.catalog.sources
+            ingress_ready or not snapshot.catalog.streams(selected_only=True)
         ):
             self.buffer.configure(snapshot.catalog)
             # Re-request retained snapshots only after routes match this revision.
@@ -134,10 +157,10 @@ class MQTTProxyService:
         )
         async with self.session_factory() as session:
             await session.execute(
-                update(CollectionConfiguration)
+                update(self.status_model)
                 .where(
-                    CollectionConfiguration.id == 1,
-                    CollectionConfiguration.revision == revision,
+                    self.status_model.id == 1,
+                    self.status_model.revision == revision,
                 )
                 .values(collection_status=self.state.copy())
             )

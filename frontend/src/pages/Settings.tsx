@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
 
 import {
   MetricCard,
@@ -21,7 +20,7 @@ export default function Settings() {
 
   useEffect(() => {
     let active = true;
-    void apiUtils.get<StorageStatus>("/v1/sources/storage").then(
+    void apiUtils.get<StorageStatus>("/v1/system/storage").then(
       (result) => {
         if (active) setStatus(result);
       },
@@ -43,18 +42,11 @@ export default function Settings() {
     <>
       <NavigationBar />
       <PageShell>
-        <PageHeader
-          title="Settings"
-          actions={
-            <Button variant="outline" asChild>
-              <Link to="/account">Back to account</Link>
-            </Button>
-          }
-        />
+        <PageHeader title="Settings" />
         <CollectionHealth />
         <SectionPanel
           title="Storage and retention"
-          help="Your operator manages retention. Cleanup runs periodically, so expiry is not an exact deletion deadline. Retention covers telemetry and monitoring evidence; size includes all tables and indexes, but excludes backups and server logs."
+          help="Retention is managed by the operator. Cleanup runs periodically. Database size includes tables and indexes, excluding backups and logs."
           actions={
             <Button
               variant="outline"

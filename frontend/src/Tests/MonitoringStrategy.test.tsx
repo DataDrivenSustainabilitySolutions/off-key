@@ -169,7 +169,7 @@ describe("<Monitoring /> static setup", () => {
       target: { value: "direct_patterns" },
     });
     fireEvent.change(screen.getByRole("textbox"), {
-      target: { value: "device/evCharger/charger-1/L1" },
+      target: { value: "telemetry/charger-1/L1" },
     });
     fireEvent.click(screen.getByRole("button", { name: /start monitoring/i }));
 
@@ -209,9 +209,9 @@ describe("<Monitoring /> static setup", () => {
     const payload = getSubmittedPayload();
 
     expect(payload.mqtt_topics).toEqual([
-      "device/evCharger/charger-1/L1",
-      "device/evCharger/charger-1/L2",
-      "device/evCharger/charger-1/L3",
+      "telemetry/charger-1/L1",
+      "telemetry/charger-1/L2",
+      "telemetry/charger-1/L3",
     ]);
     expect(payload.performance_config).not.toHaveProperty("alignment_mode");
   });
@@ -342,7 +342,7 @@ describe("<Monitoring /> static setup", () => {
     renderMonitoring();
 
     expect(await screen.findByText(/Martingale ensemble/i)).toBeTruthy();
-    const dynamicLane = screen.getByRole("button", { name: /Adaptive streams/i });
+    const dynamicLane = screen.getByRole("button", { name: /Adaptive stream/i });
     expect(dynamicLane.getAttribute("aria-pressed")).toBe("false");
     fireEvent.click(dynamicLane);
     expect(await screen.findByRole("heading", { name: "Configure adaptive monitoring" })).toBeTruthy();
@@ -354,8 +354,8 @@ describe("<Monitoring /> static setup", () => {
   it("submits an explicit None value for nullable adaptive parameters", async () => {
     renderMonitoring();
 
-    fireEvent.click(await screen.findByRole("button", { name: /Adaptive streams/i }));
-    fireEvent.change(screen.getByLabelText("Aberrant model"), {
+    fireEvent.click(await screen.findByRole("button", { name: /Adaptive stream/i }));
+    fireEvent.change(screen.getByLabelText("Model"), {
       target: { value: "aberrant_x_stream" },
     });
     const noneControl = screen.getByLabelText("Max Feature Cache Size is None");
@@ -377,7 +377,7 @@ describe("<Monitoring /> static setup", () => {
   it("uses catalog families, availability, and feature limits for model selection", async () => {
     renderMonitoring();
 
-    fireEvent.click(await screen.findByRole("button", { name: /Adaptive streams/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /Adaptive stream/i }));
     const scalarModel = screen.getByRole("option", { name: /Rolling Matrix Profile/ }) as HTMLOptionElement;
     expect(scalarModel.parentElement?.getAttribute("label")).toBe("Time Series");
     expect(scalarModel.disabled).toBe(true);
@@ -386,7 +386,7 @@ describe("<Monitoring /> static setup", () => {
     fireEvent.click(screen.getByRole("checkbox", { name: "L2" }));
     fireEvent.click(screen.getByRole("checkbox", { name: "L3" }));
     expect(scalarModel.disabled).toBe(false);
-    fireEvent.change(screen.getByLabelText("Aberrant model"), {
+    fireEvent.change(screen.getByLabelText("Model"), {
       target: { value: "aberrant_rolling_matrix_profile" },
     });
     expect(screen.getByText(/Windows count aligned observations/)).toBeTruthy();
@@ -400,8 +400,8 @@ describe("<Monitoring /> static setup", () => {
   it("configures unit-interval scaling and rejects incompatible preprocessing", async () => {
     renderMonitoring();
 
-    fireEvent.click(await screen.findByRole("button", { name: /Adaptive streams/i }));
-    fireEvent.change(screen.getByLabelText("Aberrant model"), {
+    fireEvent.click(await screen.findByRole("button", { name: /Adaptive stream/i }));
+    fireEvent.change(screen.getByLabelText("Model"), {
       target: { value: "aberrant_half_space_trees" },
     });
     expect((screen.getByLabelText("Scaler") as HTMLSelectElement).value).toBe("min_max_scaler");
@@ -418,8 +418,8 @@ describe("<Monitoring /> static setup", () => {
   it("validates and submits numeric parameters inside a catalog component", async () => {
     renderMonitoring();
 
-    fireEvent.click(await screen.findByRole("button", { name: /Adaptive streams/i }));
-    fireEvent.change(screen.getByLabelText("Aberrant model"), {
+    fireEvent.click(await screen.findByRole("button", { name: /Adaptive stream/i }));
+    fireEvent.change(screen.getByLabelText("Model"), {
       target: { value: "aberrant_knn" },
     });
     fireEvent.change(screen.getByLabelText("Warm Up"), { target: { value: "1.5" } });
@@ -442,7 +442,7 @@ describe("<Monitoring /> static setup", () => {
         return Promise.resolve([{
           id: 7,
           container_name: "radar-existing",
-          mqtt_topics: ["device/evCharger/charger-1/L1"],
+          mqtt_topics: ["telemetry/charger-1/L1"],
           status: "running",
         }]);
       }
@@ -458,8 +458,8 @@ describe("<Monitoring /> static setup", () => {
     fireEvent.click(screen.getByRole("button", { name: /start monitoring/i }));
     await waitFor(() => expect(mockPost).toHaveBeenCalled());
     expect(getSubmittedPayload().mqtt_topics).toEqual([
-      "device/evCharger/charger-1/L2",
-      "device/evCharger/charger-1/L3",
+      "telemetry/charger-1/L2",
+      "telemetry/charger-1/L3",
     ]);
   });
 });

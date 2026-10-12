@@ -89,7 +89,7 @@ class MQTTRadarConfig(AnomalyDetectionConfig):
 
     # Subscription settings
     subscription_topics: list[str] = Field(
-        default_factory=lambda: ["device/evCharger/charger-sim-1/sine"]
+        default_factory=lambda: ["telemetry/charger-sim-1/sine"]
     )
     subscription_qos: int = 0
     # Database settings
@@ -136,9 +136,7 @@ class RadarSettings(BaseSettings):
     RADAR_MQTT_API_KEY: str = ""
 
     # Topics
-    RADAR_SUBSCRIPTION_TOPICS: str = (
-        "device/evCharger/charger-sim-1/sine"  # Comma-separated
-    )
+    RADAR_SUBSCRIPTION_TOPICS: str = "telemetry/charger-sim-1/sine"  # Comma-separated
     RADAR_SUBSCRIPTION_QOS: int = 0
     RADAR_SENSOR_KEY_STRATEGY: str = "full_hierarchy"
     RADAR_SENSOR_FRESHNESS_SECONDS: float = 30.0

@@ -1,0 +1,21 @@
+---
+- name: Resume the original writer replicas
+  block:
+    - name: Restore each original writer replica count
+      command:
+        argv: [docker, service, scale, "{{ item.key }}={{ item.value }}"]
+      loop: "{{ persistence_writer_replicas | dict2items }}"
+      loop_control:
+        label: "{{ item.key }}"
+  rescue:
+    - name: Preserve the recovery plan after an incomplete writer resumption
+      fail:
+        msg: >-
+          Writer resumption failed. Some writers may already be running; the original
+          recovery plan remains at {{ stack_dir }}/recovery-pending.json.
+          Restore its recorded writer counts before clearing the transaction.
+
+- name: Clear the completed recovery transaction
+  file:
+    path: "{{ stack_dir }}/recovery-pending.json"
+    state: absent

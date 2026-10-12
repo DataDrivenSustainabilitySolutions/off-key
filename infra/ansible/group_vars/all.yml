@@ -27,5 +27,5 @@ stack_compose_files: >-
 
 # NOTE: there is deliberately no static "stateful node" variable here. Volumes are node-local,
 # but which node runs a given service is discovered at run time from `docker service ps`
-# (roles/persistence_switch/tasks/_service_node.yml), so backup/restore follow the task
+# (roles/swarm_task/tasks/main.yml), so backup/restore follow the task
 # wherever Swarm placed it rather than assuming the first backend.

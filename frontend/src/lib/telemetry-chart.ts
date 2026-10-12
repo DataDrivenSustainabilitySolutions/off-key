@@ -10,28 +10,20 @@ import type {
 import type { ComposeOption } from "echarts/core";
 import { buildDetectionSeriesOption } from "@/lib/telemetry-detection-series";
 
-import type { AnomalyMarker, RedZone } from "@/lib/anomaly-utils";
-import type { TelemetryDataPoint } from "@/types/charger";
-import type { MonitoringChartEvidence } from "@/types/monitoring";
+import type { AnomalyMarker } from "@/lib/anomaly-utils";
+import type { TimeValue } from "@/lib/telemetry-data";
 import {
-  collectTelemetryChartDetectors,
-  selectDetectorSeries,
-  type ChartDetector,
+  buildSelectedDetectorSeries,
+  type TelemetryChartDetector,
   type SecondaryChartSeries,
   type SelectedDetectorIds,
 } from "@/lib/telemetry-detectors";
-import {
-  getChartDomain,
-  getDetectionValueBounds,
-} from "@/lib/telemetry-thresholds";
+import { getChartDomain } from "@/lib/telemetry-thresholds";
 import {
   groupTelemetryEvents,
   buildTelemetryEventMarkPoints,
   type TelemetryEventGroup,
 } from "@/lib/telemetry-events";
-
-export { getDefaultDetectorId, collectTelemetryChartDetectors } from "@/lib/telemetry-detectors";
-export type { ChartDetector, SecondaryChartSeries, SelectedDetectorIds } from "@/lib/telemetry-detectors";
 
 export type TelemetryChartOption = ComposeOption<
   | AriaComponentOption
@@ -43,9 +35,6 @@ export type TelemetryChartOption = ComposeOption<
   | ScatterSeriesOption
   | TooltipComponentOption
 >;
-
-export type TimeValue = [epochMilliseconds: number, value: number];
-export type NullableTimeValue = [epochMilliseconds: number, value: number | null];
 
 export type ChartViewport =
   | { mode: "live" }
@@ -88,18 +77,10 @@ export interface TelemetryChartSeries {
   data: TimeValue[];
 }
 
-export type ChartAnomalyMarker = TelemetryEventGroup;
-
 export interface TelemetryChartModel {
   telemetry: TelemetryChartSeries;
   pendingTelemetry: TimeValue[];
-  anomalyZones: Array<{
-    startMs: number;
-    endMs: number;
-    anomalyCount: number;
-  }>;
-  anomalyMarkers: ChartAnomalyMarker[];
-  detectors: ChartDetector[];
+  anomalyMarkers: TelemetryEventGroup[];
   secondarySeries: SecondaryChartSeries[];
   range: ChartTimeRange;
   extent?: [startMs: number, endMs: number];
@@ -118,14 +99,12 @@ export interface ChartThemeColors {
 }
 
 interface BuildTelemetryChartModelInput {
-  telemetryType: string;
   telemetryName: string;
   telemetryUnit?: string;
   telemetryColor: string;
-  telemetry: TelemetryDataPoint[];
-  evidence: MonitoringChartEvidence[];
+  telemetry: TimeValue[];
+  detectors: readonly TelemetryChartDetector[];
   pendingTelemetryTimestamps?: readonly number[];
-  anomalyZones: RedZone[];
   anomalyMarkers: AnomalyMarker[];
   selectedDetectorIds?: SelectedDetectorIds;
   range?: ChartTimeRange;
@@ -203,65 +182,22 @@ export const formatChartTime = (
 ): string =>
   getDateTimeFormatter(timeZone, locale, detail).format(epochMilliseconds);
 
-const toFiniteTime = (timestamp: string): number | undefined => {
-  const time = Date.parse(timestamp);
-  return Number.isFinite(time) ? time : undefined;
-};
-
-const normalizeTelemetry = (points: TelemetryDataPoint[]): TimeValue[] => {
-  const valuesByTime = new Map<number, number>();
-  for (const point of points) {
-    const time = toFiniteTime(point.timestamp);
-    if (time === undefined || !Number.isFinite(point.value)) continue;
-    valuesByTime.set(time, point.value);
-  }
-
-  return [...valuesByTime.entries()].sort((left, right) => left[0] - right[0]);
-};
-
-const getExtent = (
-  telemetry: TimeValue[],
-  secondarySeries: SecondaryChartSeries[],
-): [number, number] | undefined => {
-  let minimum = Number.POSITIVE_INFINITY;
-  let maximum = Number.NEGATIVE_INFINITY;
-
-  for (const [time] of telemetry) {
-    minimum = Math.min(minimum, time);
-    maximum = Math.max(maximum, time);
-  }
-  for (const series of secondarySeries) {
-    for (const [time] of series.data) {
-      minimum = Math.min(minimum, time);
-      maximum = Math.max(maximum, time);
-    }
-  }
-
-  return Number.isFinite(minimum) && Number.isFinite(maximum)
-    ? [minimum, maximum]
-    : undefined;
-};
-
 export const buildTelemetryChartModel = ({
-  telemetryType,
   telemetryName,
   telemetryUnit,
   telemetryColor,
   telemetry,
-  evidence,
+  detectors,
   pendingTelemetryTimestamps = [],
-  anomalyZones,
   anomalyMarkers,
   selectedDetectorIds,
   range = {},
 }: BuildTelemetryChartModelInput): TelemetryChartModel => {
-  const telemetryData = normalizeTelemetry(telemetry);
-  const telemetryTimes = telemetryData.map(([time]) => time);
+  const telemetryTimes = telemetry.map(([time]) => time);
   const pendingTimes = new Set(pendingTelemetryTimestamps);
-  const allDetectors = collectTelemetryChartDetectors({ evidence, telemetryType, telemetryTimes, range })
-    .map((series) => ({ ...series, color: telemetryColor }));
-  const secondarySeries = selectDetectorSeries(allDetectors, selectedDetectorIds);
-  const events = groupTelemetryEvents(anomalyMarkers);
+  const secondarySeries = buildSelectedDetectorSeries({ detectors, telemetryTimes, selectedDetectorIds, range });
+  const startMs = telemetryTimes[0];
+  const endMs = telemetryTimes[telemetryTimes.length - 1];
 
   return {
     telemetry: {
@@ -269,33 +205,20 @@ export const buildTelemetryChartModel = ({
       name: telemetryName,
       unit: telemetryUnit,
       color: telemetryColor,
-      data: telemetryData,
+      data: telemetry,
     },
-    pendingTelemetry: telemetryData.filter(([time]) => pendingTimes.has(time)),
-    anomalyZones: anomalyZones
-      .filter(
-        (zone) =>
-          Number.isFinite(zone.startMs) &&
-          Number.isFinite(zone.endMs) &&
-          zone.endMs >= zone.startMs,
-      )
-      .map((zone) => ({
-        startMs: zone.startMs,
-        endMs: zone.endMs,
-        anomalyCount: zone.anomalies.length,
-      })),
-    anomalyMarkers: events,
-    detectors: allDetectors.map(({ id, serviceId, trackerId, name, pane }) => ({ id, serviceId, trackerId, name, pane })),
+    pendingTelemetry: telemetry.filter(([time]) => pendingTimes.has(time)),
+    anomalyMarkers: groupTelemetryEvents(anomalyMarkers),
     secondarySeries,
     range,
-    extent: getExtent(telemetryData, secondarySeries),
+    extent: startMs !== undefined && endMs !== undefined ? [startMs, endMs] : undefined,
   };
 };
 
 type TooltipEntry = {
   seriesName?: unknown;
-  seriesId?: unknown;
   value?: unknown;
+  data?: unknown;
 };
 
 const readTimeValue = (value: unknown): TimeValue | undefined => {
@@ -311,12 +234,22 @@ const readTimeValue = (value: unknown): TimeValue | undefined => {
   return [Number(value[0]), Number(value[1])];
 };
 
+const readObservationDetails = (data: unknown): { threshold: number | null; alarmActive: boolean } | undefined => {
+  if (typeof data !== "object" || data === null || !("observation" in data)) return undefined;
+  const { observation } = data;
+  if (typeof observation !== "object" || observation === null ||
+      !("threshold" in observation) || !("alarmActive" in observation) ||
+      typeof observation.alarmActive !== "boolean") return undefined;
+  const { threshold, alarmActive } = observation;
+  if (threshold !== null && (typeof threshold !== "number" || !Number.isFinite(threshold))) return undefined;
+  return { threshold, alarmActive };
+};
+
 export const formatTelemetryTooltip = (
   params: unknown,
   timeZone: string,
   units: ReadonlyMap<string, string>,
   locale?: string,
-  detectors: readonly SecondaryChartSeries[] = [],
 ): string => {
   const entries = (Array.isArray(params) ? params : [params]).filter(
     (entry): entry is TooltipEntry => typeof entry === "object" && entry !== null,
@@ -334,8 +267,7 @@ export const formatTelemetryTooltip = (
     lines.push(
       `${entry.seriesName}: ${formattedValue}${unit ? ` ${unit}` : ""}`,
     );
-    const detector = detectors.find((series) => series.id === entry.seriesId);
-    const observation = detector?.observations.slice().reverse().find((item) => item.timeMs === value[0]);
+    const observation = readObservationDetails(entry.data);
     if (observation) {
       lines.push(`Alarm threshold: ${observation.threshold !== null ? formatNumber(observation.threshold) : "unavailable"}`);
       lines.push(`Alarm: ${observation.alarmActive ? "active" : "inactive"}`);
@@ -377,9 +309,7 @@ export const buildTelemetryChartOption = ({
   ] as const;
   const xAxisIndices = panes.map((_, index) => index);
   const domain = getChartDomain(timelineExtent ?? model.extent, model.range);
-  const boundsByPane = new Map(model.secondarySeries.map((series) => [
-    series.pane, getDetectionValueBounds(series.scale, series.data, series.thresholds),
-  ]));
+  const boundsByPane = new Map(model.secondarySeries.map((series) => [series.pane, series.bounds]));
   const units = new Map<string, string>();
   if (model.telemetry.unit) units.set(model.telemetry.name, model.telemetry.unit);
   const telemetryValueExtent = model.telemetry.data.reduce<[number, number] | undefined>((extent, [, value]) => {
@@ -486,7 +416,6 @@ export const buildTelemetryChartOption = ({
     buildDetectionSeriesOption(
       series,
       panes.indexOf(series.pane),
-      boundsByPane.get(series.pane)!,
       domain,
       colors,
       (time) => formatChartTime(time, timeZone, "tooltip", locale),
@@ -497,7 +426,7 @@ export const buildTelemetryChartOption = ({
   return {
     animation: false,
     aria: { enabled: true, description: accessibleDescription },
-    color: [model.telemetry.color, ...model.secondarySeries.map(({ color }) => color)],
+    color: [model.telemetry.color, colors.primary],
     grid: grid.map((pane) => ({ ...pane, outerBoundsMode: "none" })),
     legend: {
       id: "telemetry-legend",
@@ -526,7 +455,7 @@ export const buildTelemetryChartOption = ({
       textStyle: { color: colors.popoverForeground, fontSize: 12 },
       axisPointer: { type: "cross" },
       formatter: (params: unknown) =>
-        formatTelemetryTooltip(params, timeZone, units, locale, model.secondarySeries),
+        formatTelemetryTooltip(params, timeZone, units, locale),
     },
     xAxis,
     yAxis: [

@@ -2,7 +2,8 @@
 # Keep the original EMQX export filename when importing.
 
 - name: Discover the node running emqx-main
-  include_tasks: _service_container.yml
+  include_role:
+    name: swarm_task
   vars:
     svc: emqx-main
 
@@ -25,8 +26,8 @@
 
 - name: emqx | stage the archive on the node
   copy:
-    src: "{{ persistence_backup_paths.emqx }}"
-    dest: "{{ persistence_stage_dir }}/restore/{{ persistence_backup_paths.emqx | basename }}"
+    src: "{{ persistence_backup_paths.emqx }}/{{ persistence_backup_files.emqx[0] }}"
+    dest: "{{ persistence_stage_dir }}/restore/{{ persistence_backup_files.emqx[0] }}"
     mode: "0600"
   become: true
   delegate_to: "{{ svc_node }}"
@@ -35,7 +36,7 @@
   shell: |
     set -euo pipefail
     cid="{{ svc_container }}"
-    f="{{ persistence_backup_paths.emqx | basename }}"
+    f="{{ persistence_backup_files.emqx[0] }}"
     docker exec "$cid" mkdir -p /opt/emqx/data/backup
     docker cp "{{ persistence_stage_dir }}/restore/$f" "$cid:/opt/emqx/data/backup/$f"
   args: {executable: /bin/bash}
@@ -46,7 +47,7 @@
 - name: emqx | import
   command: >-
     docker exec {{ svc_container }}
-    emqx ctl data import /opt/emqx/data/backup/{{ persistence_backup_paths.emqx | basename }}
+    emqx ctl data import /opt/emqx/data/backup/{{ persistence_backup_files.emqx[0] }}
   delegate_to: "{{ svc_node }}"
   register: emqx_import
   changed_when: true

@@ -1,0 +1,29 @@
+---
+# Resolve the current task on each attempt: startup can replace an unhealthy task.
+- name: Probe the current collection worker until application readiness succeeds
+  when: application_readiness.rc != 0
+  block:
+    - name: Locate the collection worker's task
+      include_role:
+        name: swarm_task
+        tasks_from: resolve
+      vars:
+        svc: mqtt-proxy
+
+    - name: Keep the current task resolution failure
+      set_fact:
+        application_readiness: {rc: 1, stderr: "{{ svc_resolution_error }}"}
+      when: svc_container | length == 0
+
+    # Ansible resolves delegate_to before a task's when condition. Only load the
+    # delegated probe after a complete resolution supplies its node/container.
+    - name: Probe the available collection worker
+      include_tasks: application_readiness_probe.yml
+      when: svc_container | length > 0
+
+    - name: Wait before the next application readiness attempt
+      pause:
+        seconds: 5
+      when:
+        - application_readiness.rc != 0
+        - application_readiness_attempt < 29

@@ -1,5 +1,6 @@
 """Integration checks for actual Ansible rendering and Docker config parsing."""
 
+import hashlib
 import importlib.util
 import ipaddress
 import json
@@ -48,6 +49,8 @@ def read_configuration(directory):
         "config": config,
         "swarm_config": swarm_config,
         "ambibox_api_bootstrap": manifest["ambibox_api_bootstrap"],
+        "deployment_secret_material": manifest["deployment_secret_material"],
+        "deployment_secret_names": manifest["deployment_secret_names"],
         "routes": yaml.safe_load((stack / "traefik-dynamic.yml").read_text())["http"],
         "landing_html": (stack / "landing.html").read_text()
         if (stack / "landing.html").exists()
@@ -74,6 +77,11 @@ class DeploymentTests(unittest.TestCase):
         cases = [
             ("prod", "prod", {}),
             ("prod-repeat", "prod", {}),
+            (
+                "prod-token-whitespace",
+                "prod",
+                {"cloudflare_tunnel_token": " \t" + TOKEN + "\r\n"},
+            ),
             (
                 "literal-credentials",
                 "prod",
@@ -392,12 +400,128 @@ class DeploymentTests(unittest.TestCase):
                 token_argument = tunnel["command"].index("--token-file") + 1
                 self.assertEqual(tunnel["command"][token_argument], str(target))
                 self.assertTrue(config["secrets"][secret["source"]]["external"])
+                token = result["inputs"]["cloudflare_tunnel_token"].strip()
+                expected_name = (
+                    "off-key_cloudflared_tunnel_token_"
+                    + hashlib.sha256(token.encode()).hexdigest()[:12]
+                )
+                self.assertEqual(
+                    config["secrets"][secret["source"]]["name"], expected_name
+                )
+                self.assertEqual(
+                    result["deployment_secret_material"]["cloudflared_tunnel_token"],
+                    token,
+                )
                 self.assertNotIn(
                     result["inputs"]["cloudflare_tunnel_token"], json.dumps(config)
                 )
         original = self.results["prod"]["config"]["secrets"]
         rotated = self.results["prod-rotated"]["config"]["secrets"]
         self.assertNotEqual(original, rotated)
+
+    def test_deployment_secret_creation_preserves_bytes_and_is_idempotent(self):
+        rendered = self.results["prod-token-whitespace"]
+        material = rendered["deployment_secret_material"]
+        names = rendered["deployment_secret_names"]
+        expected = {
+            f"off-key_{key}_{hashlib.sha256(value.encode()).hexdigest()[:12]}": value
+            for key, value in material.items()
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            state = root / "secrets.json"
+            state.write_text("{}")
+            docker = root / "docker"
+            docker.write_text(
+                f"#!{sys.executable}\n"
+                "import json, pathlib, sys\n"
+                f"state = pathlib.Path({str(state)!r})\n"
+                "args = sys.argv[1:]\n"
+                "secrets = json.loads(state.read_text())\n"
+                "if args[:2] == ['secret', 'inspect']:\n"
+                "    sys.exit(0 if args[2] in secrets else 1)\n"
+                "assert args[:2] == ['secret', 'create'] and args[3:] == ['-'], args\n"
+                "assert args[2] not in secrets, 'secret was recreated'\n"
+                "secrets[args[2]] = sys.stdin.read()\n"
+                "state.write_text(json.dumps(secrets))\n"
+            )
+            docker.chmod(0o755)
+            playbook = root / "secrets.yml"
+            playbook.write_text(
+                """- hosts: localhost
+  connection: local
+  gather_facts: false
+  become: false
+  environment:
+    PATH: "{{ fixture_path }}"
+  tasks:
+    - include_role:
+        name: stack_prepare
+        tasks_from: secrets
+"""
+            )
+            variables = {
+                "ansible_python_interpreter": sys.executable,
+                "deployment_secret_material": material,
+                "deployment_secret_names": names,
+                "fixture_path": f"{root}:{os.environ['PATH']}",
+            }
+            args = (
+                "playbook",
+                "-i",
+                "localhost,",
+                str(playbook),
+                "-e",
+                json.dumps(variables),
+            )
+            ansible(*args)
+            repeated = ansible(*args)
+            self.assertIn("changed=0", repeated.stdout)
+            self.assertEqual(json.loads(state.read_text()), expected)
+
+    def test_production_secrets_remain_scoped_to_their_original_services(self):
+        expected = {
+            "cloudflared": {
+                "cloudflared_tunnel_token": "/run/secrets/cloudflared_tunnel_token",
+            },
+            "emqx-main": {
+                "emqx_server_cert": "emqx_server_cert.pem",
+                "emqx_server_key": "emqx_server_key.pem",
+                "emqx_auth_users": "emqx_auth_users.json",
+                "ambibox_api_bootstrap": "ambibox_api_bootstrap",
+            },
+            "mqtt-proxy": {
+                "emqx_ca_cert": "EMQX_CA_CERT",
+                "mqtt_proxy_password": "MQTT_APIKEY",
+            },
+            "mqtt-radar": {
+                "emqx_ca_cert": "EMQX_CA_CERT",
+                "mqtt_radar_password": "RADAR_MQTT_API_KEY",
+                "radar_checkpoint_secret": "RADAR_CHECKPOINT_SECRET",
+            },
+            "tactic": {
+                "ambibox_api_key": "AMBIBOX_EMQX_API_KEY",
+                "ambibox_api_secret": "AMBIBOX_EMQX_API_SECRET",
+                "ambibox_gost_password": "AMBIBOX_GOST_PASSWORD",
+                "ambibox_mqtt_username": "AMBIBOX_MQTT_USERNAME",
+                "ambibox_mqtt_password": "AMBIBOX_MQTT_PASSWORD",
+            },
+            "mqtt-tailscale-bridge": {
+                "ambibox_gost_config": "ambibox_gost_config.json"
+            },
+        }
+        result = self.results["prod"]
+        self.assertEqual(
+            set(result["config"]["secrets"]), set(result["deployment_secret_material"])
+        )
+        for model in ("config", "swarm_config"):
+            for service, definition in result[model]["services"].items():
+                with self.subTest(model=model, service=service):
+                    actual = {
+                        secret["source"]: secret["target"]
+                        for secret in definition.get("secrets", [])
+                    }
+                    self.assertEqual(actual, expected.get(service, {}))
 
     def test_public_site_and_dashboard_are_separate(self):
         result = self.results["prod"]

@@ -4,6 +4,8 @@
 #
 # Prod: ansible-playbook -i inventories/prod update_labels.yml
 
+- import_playbook: validate-inventory.yml
+
 - name: Apply Swarm node labels
   hosts: swarm_manager
   gather_facts: false

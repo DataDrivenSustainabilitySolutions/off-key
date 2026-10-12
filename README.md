@@ -154,10 +154,10 @@ separate from exported catalogues. Local Compose can import
 [Collection](docs/operations/system-collection.md) for the data path and limits.
 
 Migration `005_generic_runtime.sql` makes the generic catalogue the sole runtime.
-It converts saved catalogue and monitor configuration once and discards existing
-sensor measurements and latest-value caches. Accounts, favourites, catalogue
-revisions, monitor settings and monitoring evidence remain. Future opted-in
-recording continues, and later deployments preserve its history. Retired catalogue
+It converts saved catalogue and monitor configuration once. Existing sensor
+measurements, latest values, accounts, favourites, catalogue revisions, monitor
+settings and monitoring evidence remain in place. Recording and retention keep
+their existing behaviour; no separate data archive is required. Retired catalogue
 APIs, provider-specific imports, old accepted-topic namespaces and the 3D
 prototype are removed.
 

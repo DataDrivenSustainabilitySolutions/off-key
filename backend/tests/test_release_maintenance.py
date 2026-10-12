@@ -80,7 +80,7 @@ def test_migrations_adopt_verified_baseline_preserve_data_and_repeat(
 
 
 @pytest.mark.parametrize("ledger", [False, True])
-def test_clean_break_preserves_configurations_discards_old_history_and_runs_once(
+def test_clean_break_preserves_configuration_and_history_and_runs_once(
     disposable_database, ledger
 ):
     with disposable_database.begin() as connection:
@@ -153,7 +153,7 @@ def test_clean_break_preserves_configurations_discards_old_history_and_runs_once
             connection.scalar(
                 text("SELECT value FROM telemetry WHERE charger_id='existing'")
             )
-            is None
+            == 24.5
         )
         assert connection.scalar(
             text("SELECT launch_config FROM services WHERE id='existing-service'")
@@ -178,12 +178,11 @@ def test_clean_break_preserves_configurations_discards_old_history_and_runs_once
             )
         )
         assert apply_migrations(connection)["applied"] == []
-        assert (
-            connection.scalar(
+        assert sorted(
+            connection.scalars(
                 text("SELECT value FROM telemetry WHERE charger_id='existing'")
             )
-            == 30
-        )
+        ) == [24.5, 30]
 
 
 def test_failed_migration_rolls_back_ddl_and_ledger_and_lock_blocks_competitors(

@@ -1,7 +1,7 @@
 """One-time v1 catalogue conversion for migration 005; never used at runtime.
 
-The old configuration tables remain as an archive. Only captured measurement
-history and latest-value caches are discarded by the accompanying SQL migration.
+The old configuration tables remain as an archive. Measurements, latest values,
+accounts and other application records remain in place.
 """
 
 from uuid import uuid4

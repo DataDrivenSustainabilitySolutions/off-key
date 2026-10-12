@@ -76,10 +76,11 @@ changes, and the release captures monitor restart configuration.
 
 Migration `005_generic_runtime.sql` converts saved catalogue and monitor topic
 configuration once. Stable bindings, names, explicit policies, accounts,
-favourites and model settings survive. Only old sensor measurements (`telemetry`)
-and latest-value caches (`collection_state`) are cleared. Catalogue/revision
-archives, monitoring evidence and other application records remain. Later releases
-retain samples recorded after the upgrade.
+favourites and model settings survive. Existing sensor measurements (`telemetry`)
+and latest values (`collection_state`) remain, alongside catalogue revisions,
+monitoring evidence and other records. Stable storage identities make that
+possible without a legacy runtime or a separate data archive. Recording and
+retention continue unchanged.
 
 The generic runtime is the sole operational model. Retired catalogue APIs,
 provider-specific imports and old accepted topics are not supported. Before

@@ -296,8 +296,8 @@ the private local environment to validate a newer release before adopting it.
 ## Upgrade this iteration
 
 The generic catalogue is the only active format. The packaged migration action
-converts existing database configuration once and clears old sensor measurements
-and latest-value caches; future opted-in recording remains enabled. Preserve the
+converts existing database configuration once without deleting sensor measurements
+or latest values; recording and retention keep their existing behaviour. Preserve the
 local database volume and private `.env`. Stop application writers before applying
 migrations, then rebuild/recreate the API, TACTIC, collector and DB sync; also build
 the RADAR runtime image before starting monitors. Never use a database reset to

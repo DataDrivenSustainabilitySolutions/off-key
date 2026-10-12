@@ -117,7 +117,7 @@ def test_upgrade_converts_inputs_and_preserves_accounts_favourites_and_monitor_s
             **configuration,
             "mqtt_topics": [binding.accepted_topic],
         }
-        assert connection.scalar(text("SELECT count(*) FROM telemetry")) == 0
+        assert connection.scalar(select(Telemetry.value)) == 24.5
         revision = connection.scalar(select(SystemConfiguration.revision))
         connection.execute(
             insert(Telemetry).values(
@@ -130,7 +130,7 @@ def test_upgrade_converts_inputs_and_preserves_accounts_favourites_and_monitor_s
         )
         assert apply_migrations(connection)["applied"] == []
         assert connection.scalar(select(SystemConfiguration.revision)) == revision
-        assert connection.scalar(select(Telemetry.value)) == 30
+        assert sorted(connection.scalars(select(Telemetry.value))) == [24.5, 30]
 
 
 def test_topic_conversion_does_not_change_labels_or_sensor_schema():

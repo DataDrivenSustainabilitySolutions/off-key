@@ -8,8 +8,11 @@ import axios, {
   AxiosResponse,
   InternalAxiosRequestConfig,
 } from 'axios';
-import { isTokenExpired } from '@/auth/token';
+import { refreshSession, tokenManager } from '@/auth/session';
+import { getUserIdFromToken } from '@/auth/token';
 import { API_CONFIG, DEFAULT_REQUEST_CONFIG } from './api-config';
+
+export { tokenManager } from '@/auth/session';
 
 // Types for API responses
 export interface ApiError {
@@ -38,41 +41,10 @@ export class ApiRequestError extends Error {
   }
 }
 
-// Token management
-const TOKEN_KEY = 'auth_token';
-const STORAGE_TYPE_KEY = 'token_storage_type';
-
-export const tokenManager = {
-  getToken(): string | null {
-    const storageType = localStorage.getItem(STORAGE_TYPE_KEY);
-    if (storageType === 'localStorage') {
-      return localStorage.getItem(TOKEN_KEY);
-    }
-    return sessionStorage.getItem(TOKEN_KEY);
-  },
-
-  setToken(token: string, rememberMe: boolean = false): void {
-    // Clear both storages first
-    localStorage.removeItem(TOKEN_KEY);
-    sessionStorage.removeItem(TOKEN_KEY);
-
-    if (rememberMe) {
-      localStorage.setItem(TOKEN_KEY, token);
-      localStorage.setItem(STORAGE_TYPE_KEY, 'localStorage');
-    } else {
-      sessionStorage.setItem(TOKEN_KEY, token);
-      localStorage.setItem(STORAGE_TYPE_KEY, 'sessionStorage');
-    }
-  },
-
-  removeToken(): void {
-    localStorage.removeItem(TOKEN_KEY);
-    sessionStorage.removeItem(TOKEN_KEY);
-    localStorage.removeItem(STORAGE_TYPE_KEY);
-  },
-
-  isTokenExpired(token: string): boolean {
-    return isTokenExpired(token);
+const assertSameMember = (previousToken: string | null, nextToken: string | null) => {
+  const previousId = previousToken ? getUserIdFromToken(previousToken) : null;
+  if (previousId && nextToken && getUserIdFromToken(nextToken) !== previousId) {
+    throw new ApiRequestError('The account changed. Please try the request again.', 401);
   }
 };
 
@@ -85,8 +57,13 @@ const createApiClient = (): AxiosInstance => {
 
   // Request interceptor to add auth token
   client.interceptors.request.use(
-    (config: InternalAxiosRequestConfig) => {
-      const token = tokenManager.getToken();
+    async (config: InternalAxiosRequestConfig) => {
+      let token = tokenManager.getToken();
+      const previousToken = token;
+      if (token && tokenManager.isTokenExpired(token) && tokenManager.isRemembered()) {
+        token = await refreshSession();
+      }
+      assertSameMember(previousToken, token);
 
       if (token && !tokenManager.isTokenExpired(token)) {
         config.headers.Authorization = `Bearer ${token}`;
@@ -100,13 +77,36 @@ const createApiClient = (): AxiosInstance => {
   // Response interceptor for error handling
   client.interceptors.response.use(
     (response: AxiosResponse) => response,
-    (error: AxiosError<ApiError>) => {
+    async (error: AxiosError<ApiError>) => {
       if (axios.isCancel(error)) return Promise.reject(error);
+      // Request-interceptor failures (including temporary renewal outages) must
+      // keep their original status and leave the saved session intact.
+      if (!axios.isAxiosError(error)) return Promise.reject(error);
       // Handle 401 Unauthorized
       if (error.response?.status === 401) {
+        const options = error.config as (InternalAxiosRequestConfig & ApiRequestOptions & { sessionRetried?: boolean }) | undefined;
+        if (options && !options.sessionRetried && tokenManager.isRemembered()) {
+          options.sessionRetried = true;
+          // A concurrent request may already have replaced this rejected token.
+          const currentToken = tokenManager.getToken();
+          const rejectedToken = options.headers.Authorization;
+          const token = currentToken && rejectedToken !== `Bearer ${currentToken}` && !tokenManager.isTokenExpired(currentToken)
+            ? currentToken : await refreshSession();
+          if (token) {
+            const authorization = options.headers.Authorization;
+            const previousToken = typeof authorization === 'string' && authorization.startsWith('Bearer ')
+              ? authorization.slice(7) : null;
+            assertSameMember(previousToken, token);
+            options.headers.Authorization = `Bearer ${token}`;
+            return client.request(options);
+          }
+        }
+        const activeToken = tokenManager.getToken();
+        if (activeToken && !tokenManager.isTokenExpired(activeToken) && options?.headers.Authorization !== `Bearer ${activeToken}`) {
+          return Promise.reject(new ApiRequestError('The previous session has ended.', 401));
+        }
         tokenManager.removeToken();
         // Redirect to login page
-        const options = error.config as (InternalAxiosRequestConfig & ApiRequestOptions) | undefined;
         if (options?.redirectOnUnauthorized !== false) window.location.href = '/login';
         return Promise.reject(new ApiRequestError('Session expired. Please login again.', 401));
       }

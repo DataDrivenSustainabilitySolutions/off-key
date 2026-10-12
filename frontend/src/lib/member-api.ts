@@ -9,7 +9,7 @@ export interface Member {
   created_at: string;
 }
 
-export const getCurrentMember = () => apiUtils.get<Member>("/v1/members/me");
+export const getCurrentMember = () => apiUtils.get<Member>("/v1/members/me", { redirectOnUnauthorized: false });
 export const getMembers = () => apiUtils.get<Member[]>("/v1/members");
 export const inviteMember = (email: string, role: Member["role"]) =>
   apiUtils.post<{ message: string }>("/v1/members/invitations", { email, role });

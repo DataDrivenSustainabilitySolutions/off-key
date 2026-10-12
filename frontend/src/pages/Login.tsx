@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
 import { Link } from "react-router-dom";
 import { useAuth } from "@/auth/AuthContext";
+import { waitForLogout } from "@/auth/session";
 import {
   AuthLayout,
   AUTH_LINK_CLASS,
@@ -64,13 +65,15 @@ const Login: React.FC = () => {
     }
 
     try {
+      await waitForLogout();
       // Sanitize inputs before sending
       const sanitizedEmail = sanitizeInput(loginEmail);
       const sanitizedPassword = password; // Don't sanitize password as it might contain special chars
       const response = await fetch(getApiUrl(API_CONFIG.ENDPOINTS.AUTH.LOGIN), {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: sanitizedEmail, password: sanitizedPassword }),
+        body: JSON.stringify({ email: sanitizedEmail, password: sanitizedPassword, remember_me: rememberMe }),
       });
 
       if (!response.ok) {
@@ -164,10 +167,12 @@ const Login: React.FC = () => {
             id="remember"
             className="accent-primary"
             checked={rememberMe}
+            aria-describedby="remember-hint"
             onChange={(e) => setRememberMe(e.target.checked)}
           />
           <label htmlFor="remember">Stay logged in</label>
         </div>
+        <p id="remember-hint" className="text-xs text-muted-foreground">Keep this browser signed in for up to 30 days.</p>
 
         {/* Login Button */}
         <Button

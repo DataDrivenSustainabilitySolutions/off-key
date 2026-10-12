@@ -52,6 +52,7 @@ def test_migrations_adopt_verified_baseline_preserve_data_and_repeat(
         )
         connection.execute(text("DROP TABLE off_key_schema_migrations"))
         connection.execute(text("DROP TABLE deployment_maintenance"))
+        connection.execute(text("DROP TABLE remembered_sessions"))
         connection.execute(text("ALTER TABLE services DROP COLUMN launch_config"))
         for table in (
             "system_configuration",
@@ -64,11 +65,13 @@ def test_migrations_adopt_verified_baseline_preserve_data_and_repeat(
             "003_deployment_maintenance.sql",
             "004_system_catalogue.sql",
             "005_generic_runtime.sql",
+            "006_remembered_sessions.sql",
         ]
         assert apply_migrations(connection)["applied"] == [
             "003_deployment_maintenance.sql",
             "004_system_catalogue.sql",
             "005_generic_runtime.sql",
+            "006_remembered_sessions.sql",
         ]
         assert (
             connection.scalar(text("SELECT count(*) FROM services WHERE id='old'")) == 1
@@ -123,6 +126,7 @@ def test_clean_break_preserves_configuration_and_history_and_runs_once(
             "system_configuration",
             "system_revisions",
             "system_collection_configuration",
+            "remembered_sessions",
         ):
             connection.execute(text(f"DROP TABLE {table}"))
         if ledger:
@@ -138,10 +142,12 @@ def test_clean_break_preserves_configuration_and_history_and_runs_once(
         assert migration_status(connection)["pending"] == [
             "004_system_catalogue.sql",
             "005_generic_runtime.sql",
+            "006_remembered_sessions.sql",
         ]
         assert apply_migrations(connection)["applied"] == [
             "004_system_catalogue.sql",
             "005_generic_runtime.sql",
+            "006_remembered_sessions.sql",
         ]
         assert (
             connection.scalar(

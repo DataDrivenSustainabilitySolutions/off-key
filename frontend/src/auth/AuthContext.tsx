@@ -1,6 +1,6 @@
-import React, { createContext, useContext, useEffect, useState } from "react";
-import { tokenManager } from "@/lib/api-client";
-import { getUserIdFromToken, parseNumericUserId } from "./token";
+import React, { createContext, useContext, useEffect, useReducer, useState, useSyncExternalStore } from "react";
+import { endSession, refreshSession, subscribeToSession, tokenManager } from "./session";
+import { getTokenPayload, getUserIdFromToken, parseNumericUserId } from "./token";
 import { getCurrentMember, type Member } from "@/lib/member-api";
 
 interface AuthContextType {
@@ -8,6 +8,8 @@ interface AuthContextType {
   token: string | null;
   userId: number | null;
   isLoading: boolean;
+  authError: string | null;
+  retryAuthentication: () => void;
   member: Member | null;
   isAdmin: boolean;
   login: (token: string, rememberMe?: boolean, userId?: unknown) => void;
@@ -16,49 +18,98 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-type AuthState = {
-  token: string | null;
-  userId: number | null;
+const getStoredToken = () => tokenManager.getToken();
+const noServerToken = () => null;
+
+type ProfileState = {
+  token: string;
+  attempt: number;
+  member: Member | null;
+  error: string | null;
 };
 
-const getInitialAuthState = (): AuthState => {
-  const savedToken = tokenManager.getToken();
-  if (savedToken && !tokenManager.isTokenExpired(savedToken)) {
-    return {
-      token: savedToken,
-      userId: getUserIdFromToken(savedToken),
-    };
-  }
-
-  return { token: null, userId: null };
+const reusableMember = (profile: ProfileState | null, token: string | null): Member | null => {
+  if (!profile?.member || !token || tokenManager.isTokenExpired(token)) return null;
+  const previous = getTokenPayload(profile.token);
+  const next = getTokenPayload(token);
+  return getUserIdFromToken(token) === profile.member.id
+    && previous?.session_version === next?.session_version
+    && previous?.sub === next?.sub ? profile.member : null;
 };
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
-  const [{ token, userId }, setAuthState] = useState(getInitialAuthState);
-  const [profile, setProfile] = useState<{ token: string; member: Member } | null>(null);
+  const token = useSyncExternalStore(subscribeToSession, getStoredToken, noServerToken);
+  const [profile, setProfile] = useState<ProfileState | null>(null);
+  const [loginIdentity, setLoginIdentity] = useState<{ token: string; id: number | null } | null>(null);
+  const [attempt, retryAuthentication] = useReducer((value: number) => value + 1, 0);
 
   useEffect(() => {
     if (!token) return;
     let cancelled = false;
-    getCurrentMember().then((member) => {
-      if (!cancelled) setProfile({ token, member });
-    }).catch(() => {
-      if (!cancelled) {
-        tokenManager.removeToken();
-        setAuthState({ token: null, userId: null });
+    const resolveProfile = async () => {
+      try {
+        if (tokenManager.isTokenExpired(token)) {
+          if (tokenManager.isRemembered()) await refreshSession();
+          else tokenManager.removeToken();
+          return;
+        }
+        const member = await getCurrentMember();
+        if (!cancelled) setProfile({ token, attempt, member, error: null });
+      } catch (error) {
+        if (cancelled || tokenManager.getToken() !== token) return;
+        const status = (error as { status?: number }).status;
+        if (status === 401) {
+          tokenManager.removeToken();
+        } else {
+          setProfile(previous => ({ token, attempt, member: reusableMember(previous, token), error: "We couldn’t connect to your account. Your saved login is still available." }));
+        }
       }
-    });
+    };
+    void resolveProfile();
     return () => { cancelled = true; };
-  }, [token]);
+  }, [token, attempt]);
 
+  // Renew before expiry while open, and recheck when returning from sleep/offline.
   useEffect(() => {
-    const savedToken = tokenManager.getToken();
-    if (savedToken && tokenManager.isTokenExpired(savedToken)) {
-      tokenManager.removeToken();
-    }
-  }, []);
+    if (!token) return;
+    const expires = getTokenPayload(token)?.exp;
+    const remembered = tokenManager.isRemembered();
+    let cancelled = false;
+    const renew = () => {
+      if (!remembered) {
+        if (tokenManager.isTokenExpired(token)) tokenManager.removeToken();
+        return;
+      }
+      void refreshSession().catch((error: { status?: number }) => {
+        if (!cancelled && error.status !== 401) {
+          setProfile(previous => ({ token, attempt, member: reusableMember(previous, token), error: "We couldn’t renew your session. Your saved login is still available." }));
+        }
+      });
+    };
+    const onResume = () => {
+      if (typeof expires === "number" && expires * 1000 <= Date.now() + 30_000) renew();
+      if (profile?.error || tokenManager.isTokenExpired(token)) retryAuthentication();
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") onResume();
+    };
+    const delay = typeof expires === "number" ? expires * 1000 - Date.now() - (remembered ? 30_000 : 0) : 0;
+    // Expired tokens are handled by the profile effect; avoid racing that path.
+    const timer = !tokenManager.isTokenExpired(token)
+      ? window.setTimeout(renew, Math.max(0, Math.min(delay, 2_147_483_647))) : undefined;
+    window.addEventListener("online", onResume);
+    window.addEventListener("focus", onResume);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+      window.removeEventListener("online", onResume);
+      window.removeEventListener("focus", onResume);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [token, attempt, profile?.error]);
 
   /**
    * Login with token
@@ -66,29 +117,30 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
    * @param rememberMe If true, persist in localStorage; otherwise sessionStorage
    */
   const login = (newToken: string, rememberMe = false, nextUserId?: unknown) => {
+    setLoginIdentity({ token: newToken, id: parseNumericUserId(nextUserId) });
     tokenManager.setToken(newToken, rememberMe);
-    setAuthState({
-      token: newToken,
-      userId: getUserIdFromToken(newToken) ?? parseNumericUserId(nextUserId),
-    });
   };
 
   /**
    * Logout and clear all stored tokens
    */
   const logout = () => {
-    tokenManager.removeToken();
-    setAuthState({ token: null, userId: null });
+    // Clear browser state immediately, even if the server is temporarily offline.
+    void endSession().catch(() => undefined);
   };
 
-  const isAuthenticated = !!token && !tokenManager.isTokenExpired(token);
-  const member = profile?.token === token ? profile.member : null;
-  const isLoading = isAuthenticated && member === null;
+  const resolved = profile?.token === token && profile.attempt === attempt ? profile : null;
+  const expired = !!token && tokenManager.isTokenExpired(token);
+  const member = !expired ? resolved?.member ?? reusableMember(profile, token) : null;
+  const authError = member ? null : resolved?.error ?? null;
+  const isLoading = !!token && !member && (resolved === null || (expired && tokenManager.isRemembered() && !authError));
+  const isAuthenticated = !!token && !expired;
   const isAdmin = member?.role === "admin";
+  const userId = token ? getUserIdFromToken(token) ?? (loginIdentity?.token === token ? loginIdentity.id : null) : null;
 
   return (
     <AuthContext.Provider
-      value={{ isAuthenticated, token, userId, member, isAdmin, isLoading, login, logout }}
+      value={{ isAuthenticated, token, userId, member, isAdmin, isLoading, authError, retryAuthentication, login, logout }}
     >
       {children}
     </AuthContext.Provider>

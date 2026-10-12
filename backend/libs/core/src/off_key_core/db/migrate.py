@@ -19,6 +19,7 @@ SYSTEM_TABLES = {
     "system_revisions",
     "system_collection_configuration",
 }
+SESSION_TABLES = {"remembered_sessions"}
 
 
 def migration_files() -> dict[str, str]:
@@ -50,7 +51,7 @@ def adopted_versions(connection: Connection, migrations: dict[str, str]) -> list
         if existing - {LEDGER}:
             raise ValueError("Cannot initialize a database containing unknown tables")
         return []
-    if application_tables - SYSTEM_TABLES <= existing:
+    if application_tables - SYSTEM_TABLES - SESSION_TABLES <= existing:
         validate_existing_schema(connection)
         adopted = [
             "001_membership.sql",
@@ -63,7 +64,7 @@ def adopted_versions(connection: Connection, migrations: dict[str, str]) -> list
     baseline = [
         table
         for table in Base.metadata.sorted_tables
-        if table.name not in SYSTEM_TABLES | {"deployment_maintenance"}
+        if table.name not in SYSTEM_TABLES | SESSION_TABLES | {"deployment_maintenance"}
     ]
     if not {table.name for table in baseline} <= existing:
         raise ValueError("A reviewed baseline is required for this database")

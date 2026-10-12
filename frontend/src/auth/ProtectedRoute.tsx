@@ -2,9 +2,24 @@ import { Navigate } from "react-router-dom";
 import { useAuth } from "./AuthContext";
 import { JSX } from "react";
 import { AuthBackdrop } from "@/components/AuthBackdrop";
+import { Button } from "@/components/ui/button";
 
 export const ProtectedRoute = ({ children }: { children: JSX.Element }) => {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, authError, retryAuthentication, logout } = useAuth();
+
+  if (authError) {
+    return (
+      <AuthBackdrop contentClassName="flex justify-center">
+        <div role="alert" className="max-w-md space-y-4 rounded-xl border border-border bg-card p-6 text-foreground shadow-sm">
+          <p>{authError}</p>
+          <div className="flex gap-3">
+            <Button onClick={retryAuthentication}>Retry</Button>
+            <Button variant="outline" onClick={logout}>Sign out</Button>
+          </div>
+        </div>
+      </AuthBackdrop>
+    );
+  }
 
   if (isLoading) {
     return (

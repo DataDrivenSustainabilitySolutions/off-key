@@ -50,9 +50,9 @@ export const isTokenExpired = (token: string): boolean => {
   const payload = getTokenPayload(token);
   const exp = payload?.exp;
 
-  if (typeof exp !== "number") {
+  if (typeof exp !== "number" || !Number.isFinite(exp)) {
     return true;
   }
 
-  return exp < Date.now() / 1000;
+  return exp <= Date.now() / 1000;
 };

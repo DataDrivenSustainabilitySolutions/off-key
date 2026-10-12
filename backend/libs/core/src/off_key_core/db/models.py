@@ -23,6 +23,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 
 from ..utils.enum import RoleEnum
 from .base import Base
+from .remembered_sessions import RememberedSession as RememberedSession
 from .system import SystemCollectionConfiguration as SystemCollectionConfiguration
 from .system import SystemConfiguration as SystemConfiguration
 from .system import SystemRevision as SystemRevision

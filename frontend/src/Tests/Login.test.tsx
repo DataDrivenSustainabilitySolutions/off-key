@@ -97,7 +97,7 @@ describe("Login", () => {
 
       await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
       expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
-        email: "admin@example.com", password: "admin",
+        email: "admin@example.com", password: "admin", remember_me: false,
       });
       expect(await screen.findByText("Invalid credentials")).toBeTruthy();
     },
@@ -153,7 +153,7 @@ describe("Login", () => {
     });
   });
 
-  it("stores the token and navigates after a successful login", async () => {
+  it.each([false, true])("submits and persists the remember setting %s after login", async (rememberMe) => {
     const mockToken = createUnsignedToken({
       sub: "test@example.com",
       user_id: 7,
@@ -181,18 +181,27 @@ describe("Login", () => {
     fireEvent.change(screen.getByLabelText(/password/i, { selector: "input" }), {
       target: { value: "correctpass" },
     });
+    if (rememberMe) fireEvent.click(screen.getByLabelText("Stay logged in"));
     fireEvent.click(screen.getByRole("button", { name: /log in/i }));
 
     await waitFor(() => {
       expect(tokenManager.getToken()).toBe(mockToken);
     });
     expect(mockNavigate).toHaveBeenCalledWith("/");
+    expect(fetchMock.mock.calls[0]?.[1]?.credentials).toBe("include");
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)).remember_me).toBe(rememberMe);
+    expect(localStorage.getItem("auth_token")).toBe(rememberMe ? mockToken : null);
+    expect(sessionStorage.getItem("auth_token")).toBe(rememberMe ? null : mockToken);
   });
 
   it("accepts a valid login response even when the token has no user id claim", async () => {
+    const mockToken = createUnsignedToken({
+      sub: "test@example.com",
+      exp: Math.floor(Date.now() / 1000) + 3600,
+    });
     fetchMock.mockResolvedValueOnce(
       new Response(
-        JSON.stringify({ access_token: "abc123", token_type: "bearer" }),
+        JSON.stringify({ access_token: mockToken, token_type: "bearer" }),
         {
           status: 200,
           headers: { "Content-Type": "application/json" },
@@ -210,7 +219,7 @@ describe("Login", () => {
     fireEvent.click(screen.getByRole("button", { name: /log in/i }));
 
     await waitFor(() => {
-      expect(tokenManager.getToken()).toBe("abc123");
+      expect(tokenManager.getToken()).toBe(mockToken);
     });
     expect(mockNavigate).toHaveBeenCalledWith("/");
   });

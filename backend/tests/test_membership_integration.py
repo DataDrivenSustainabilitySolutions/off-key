@@ -10,8 +10,9 @@ from uuid import uuid4
 
 import pytest
 import pytest_asyncio
-from fastapi import HTTPException
+from fastapi import FastAPI, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials
+from httpx import ASGITransport, AsyncClient
 from off_key_api_gateway.services.auth import create_jwt
 from off_key_core.db.migrate import migration_files
 from off_key_core.db.models import RememberedSession, User
@@ -20,6 +21,8 @@ from off_key_core.utils import mail
 from off_key_core.utils.enum import RoleEnum
 from off_key_tactic_middleware import bootstrap_admin
 from off_key_tactic_middleware.api.collection_auth import current_member
+from off_key_tactic_middleware.api.v1.members import member_service
+from off_key_tactic_middleware.api.v1.members import router as members_router
 from off_key_tactic_middleware.domain import (
     AuthenticationError,
     ConflictError,
@@ -120,9 +123,21 @@ async def test_remembered_sessions_obey_current_membership(member_database, chan
         user = await session.get(User, user_id)
         remembered = await RememberedSessionService(session).create(user)
         if change == "password_reset":
-            members = MemberService(session)
-            link = await members.request_password_reset(user.email)
-            await members.reset_password(link["token"], PASSWORD)
+            app = FastAPI()
+            app.include_router(members_router)
+            app.dependency_overrides[member_service] = lambda: MemberService(session)
+            async with AsyncClient(
+                transport=ASGITransport(app=app), base_url="http://test"
+            ) as client:
+                link = await client.post(
+                    "/members/request-password-reset", json={"email": user.email}
+                )
+                assert link.status_code == 200
+                reset = await client.post(
+                    "/members/reset-password",
+                    json={"token": link.json()["token"], "new_password": PASSWORD},
+                )
+                assert reset.status_code == 200
         elif change == "disabled":
             user.is_active = False
         elif change == "unverified":

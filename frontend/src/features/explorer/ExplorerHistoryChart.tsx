@@ -11,6 +11,8 @@ import { resolveChartThemeColors } from "@/lib/echarts-theme";
 import { getEvidenceTimeForSensor } from "@/lib/monitoring-chart";
 import { buildSensorClaims } from "@/lib/monitoring-services";
 import { buildTelemetryChartModel, buildTelemetryChartOption, getLocalTimeZone } from "@/lib/telemetry-chart";
+import { normalizeTelemetry } from "@/lib/telemetry-data";
+import { collectTelemetryChartDetectors } from "@/lib/telemetry-detectors";
 import { getChartDomain } from "@/lib/telemetry-thresholds";
 import type { LiveNodeSnapshot } from "../catalogue/systemLiveTypes";
 import type { SystemConnection, SystemStream, SystemReadingBinding } from "../catalogue/systemTypes";
@@ -42,11 +44,12 @@ export function ExplorerHistoryChart({ stream, connection, snapshot, binding, se
       .filter((sample) => sample.timestamp > lastCollected)
       .map((sample) => ({ timestamp: new Date(sample.timestamp).toISOString(), value: sample.value }))];
   }, [monitoring.telemetry, snapshot?.samples]);
-  const latestTime = history.length ? Date.parse(history[history.length - 1]!.timestamp) : now;
+  const normalizedHistory = useMemo(() => normalizeTelemetry(history), [history]);
+  const latestTime = normalizedHistory[normalizedHistory.length - 1]?.[0] ?? now;
   // Quiet or stopped inputs still open at their latest real observations. The
   // timestamps remain unchanged; the window follows arrivals as they resume.
   const cutoff = inspection?.windowStartMs ?? latestTime - minutes * 60_000;
-  const telemetry = useMemo(() => history.filter((point) => Date.parse(point.timestamp) >= cutoff), [history, cutoff]);
+  const telemetry = useMemo(() => normalizedHistory.filter(([time]) => time >= cutoff), [normalizedHistory, cutoff]);
   const telemetryType = monitoring.binding?.telemetryType ?? stream.id;
   const service = useMemo(() => serviceId ? monitoring.services.find(item => item.id === serviceId) : monitoring.binding ? buildSensorClaims(monitoring.binding.entityId, [telemetryType],
     monitoring.services.filter((item) => item.status)).get(telemetryType) : undefined,
@@ -68,20 +71,21 @@ export function ExplorerHistoryChart({ stream, connection, snapshot, binding, se
   const pending = useMemo(() => operational && lastScoreTime !== undefined ? monitoring.telemetry
     .map((point) => Date.parse(point.timestamp)).filter((time) => time >= cutoff && time > lastScoreTime) : [],
   [operational, lastScoreTime, monitoring.telemetry, cutoff]);
-  const detectorCatalog = useMemo(() => buildTelemetryChartModel({
-    telemetryType, telemetryName: stream.label, telemetryColor: colors.primary,
-    telemetry: history, evidence, anomalyZones: [], anomalyMarkers: [],
-  }).detectors, [telemetryType, stream.label, colors.primary, history, evidence]);
+  const detectors = useMemo(() => collectTelemetryChartDetectors({
+    telemetryType, evidence, telemetryTimes: normalizedHistory.map(([time]) => time),
+  }), [telemetryType, normalizedHistory, evidence]);
+  const detectorCatalog = useMemo(() => detectors.map(({ id, serviceId, trackerId, name, pane }) =>
+    ({ id, serviceId, trackerId, name, pane })), [detectors]);
   const selection = useDetectorSelection(detectorCatalog, `${stream.id}\u0000${service?.id ?? ""}`);
   const selectedDetectorIds = useMemo(() => ({
     static: selection.selectedDetectorIds.static, adaptive: selection.selectedDetectorIds.adaptive,
   }), [selection.selectedDetectorIds.static, selection.selectedDetectorIds.adaptive]);
   const model = useMemo(() => buildTelemetryChartModel({
-    telemetryType, telemetryName: stream.label, telemetryUnit: stream.unit, telemetryColor: colors.primary,
-    telemetry, evidence, selectedDetectorIds,
-    pendingTelemetryTimestamps: pending, anomalyZones: [],
+    telemetryName: stream.label, telemetryUnit: stream.unit, telemetryColor: colors.primary,
+    telemetry, detectors, selectedDetectorIds,
+    pendingTelemetryTimestamps: pending,
     anomalyMarkers: createAnomalyMarkers(history, filterAnomalies(anomalies, telemetryType, new Date(cutoff))),
-  }), [telemetryType, stream.label, stream.unit, colors.primary, telemetry, evidence,
+  }), [telemetryType, stream.label, stream.unit, colors.primary, telemetry, detectors,
     selectedDetectorIds, pending, history, anomalies, cutoff]);
   const domain = getChartDomain(model.extent);
   const description = `${stream.label}. ${model.telemetry.data.length} received samples. Times in ${timeZone}.`

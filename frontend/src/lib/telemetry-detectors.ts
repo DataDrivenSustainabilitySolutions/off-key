@@ -4,7 +4,13 @@ import type {
   MonitoringChartEvidence,
 } from "@/types/monitoring";
 import { getEvidenceTimeForSensor } from "@/lib/monitoring-chart";
-import { buildThresholdRegions, type ThresholdRegion, type DetectionTimeValue } from "@/lib/telemetry-thresholds";
+import {
+  buildThresholdRegions,
+  getDetectionValueBounds,
+  type DetectionTimeValue,
+  type DetectionValueBounds,
+  type ThresholdRegion,
+} from "@/lib/telemetry-thresholds";
 
 export type DetectionPane = "static" | "adaptive";
 
@@ -17,6 +23,7 @@ export interface ChartDetector {
 }
 
 export interface DetectionObservation {
+  sequenceNumber: number;
   timeMs: number;
   value: number | null;
   threshold: number | null;
@@ -25,26 +32,26 @@ export interface DetectionObservation {
   isInfinite: boolean;
 }
 
+export interface TelemetryChartDetector extends ChartDetector {
+  observations: readonly DetectionObservation[];
+}
+
+export interface DetectionChartPoint {
+  value: DetectionTimeValue;
+  observation?: DetectionObservation;
+}
+
 export interface DetectionOverflow {
-  timeMs: number;
-  value: number | null;
-  threshold: number | null;
-  logValue: number | null;
-  alarmActive: boolean;
+  observation: DetectionObservation;
   boundary: "upper" | "lower";
 }
 
 export interface SecondaryChartSeries extends ChartDetector {
-  threshold: number | null;
-  color: string;
-  data: DetectionTimeValue[];
-  thresholds: DetectionTimeValue[];
+  data: DetectionChartPoint[];
   thresholdRegions: ThresholdRegion[];
   overflow: DetectionOverflow[];
-  observations: DetectionObservation[];
   latestObservation: DetectionObservation;
-  scale: "log" | "linear";
-  kind: "static_evidence" | "adaptive_score";
+  bounds: DetectionValueBounds;
 }
 
 export type SelectedDetectorIds = Partial<Record<DetectionPane, string>>;
@@ -64,11 +71,8 @@ const bettingLabels: Record<MartingaleBettingFunction, string> = {
 const finiteOrNull = (value: number | null | undefined): number | null =>
   value != null && Number.isFinite(value) ? value : null;
 
-const addTelemetryGaps = (points: DetectionTimeValue[], times: readonly number[]): DetectionTimeValue[] => {
-  const scoredTimes = new Set(points.map(([time]) => time));
-  return [...points, ...times.filter((time) => !scoredTimes.has(time)).map((time): DetectionTimeValue => [time, null])]
-    .sort((left, right) => left[0] - right[0]);
-};
+const isEvaluatedObservation = (observation: DetectionObservation, pane: DetectionPane): boolean =>
+  observation.value !== null || (pane === "static" && (observation.isInfinite || observation.logValue !== null));
 
 export const getDefaultDetectorId = (
   detectors: readonly ChartDetector[],
@@ -78,26 +82,16 @@ export const getDefaultDetectorId = (
   return (candidates.find((detector) => detector.trackerId === "primary") ?? candidates[0])?.id;
 };
 
-export const selectDetectorSeries = (
-  series: readonly SecondaryChartSeries[],
-  selected: SelectedDetectorIds = {},
-): SecondaryChartSeries[] => ["static", "adaptive"].flatMap((pane) => {
-  const id = selected[pane as DetectionPane] ?? getDefaultDetectorId(series, pane as DetectionPane);
-  const detector = series.find((candidate) => candidate.id === id && candidate.pane === pane);
-  return detector ? [detector] : [];
-});
-
+/** Normalize loaded detector observations once, independently of the displayed range or selection. */
 export const collectTelemetryChartDetectors = ({
   evidence,
   telemetryType,
   telemetryTimes,
-  range = {},
 }: {
   evidence: readonly MonitoringChartEvidence[];
   telemetryType: string;
   telemetryTimes: readonly number[];
-  range?: { fromMs?: number; toMs?: number };
-}): SecondaryChartSeries[] => {
+}): TelemetryChartDetector[] => {
   const times = new Set(telemetryTimes);
   const groups = new Map<string, ChartDetector & { observations: DetectionObservation[] }>();
   const ordered = evidence.map((item) => ({ item, time: getEvidenceTimeForSensor(item, telemetryType) }))
@@ -106,10 +100,12 @@ export const collectTelemetryChartDetectors = ({
     .sort((left, right) => left.time - right.time || left.item.sequence_number - right.item.sequence_number);
   for (const { item, time } of ordered) {
     if (item.strategy === "adaptive_stream") {
-      const score = finiteOrNull(item.anomaly_score);
       const id = `adaptive-score:${item.service_id}`;
       const group = groups.get(id) ?? { id, serviceId: item.service_id, name: "Anomaly score", pane: "adaptive", observations: [] };
-      group.observations.push({ timeMs: time, value: score, threshold: finiteOrNull(item.threshold), alarmActive: item.alarm, logValue: null, isInfinite: false });
+      group.observations.push({
+        sequenceNumber: item.sequence_number, timeMs: time, value: finiteOrNull(item.anomaly_score),
+        threshold: finiteOrNull(item.threshold), alarmActive: item.alarm, logValue: null, isInfinite: false,
+      });
       groups.set(id, group);
       continue;
     }
@@ -130,7 +126,7 @@ export const collectTelemetryChartDetectors = ({
       };
       const threshold = finiteOrNull(tracker.threshold);
       group.observations.push({
-        timeMs: time, value: finiteOrNull(tracker.statistic_value),
+        sequenceNumber: item.sequence_number, timeMs: time, value: finiteOrNull(tracker.statistic_value),
         threshold: threshold !== null && threshold > 0 ? threshold : null,
         alarmActive: tracker.alarm_active, logValue: finiteOrNull(tracker.log_statistic_value),
         isInfinite: tracker.statistic_is_infinite,
@@ -138,39 +134,65 @@ export const collectTelemetryChartDetectors = ({
       groups.set(id, group);
     }
   }
-  return [...groups.values()].sort((left, right) => left.id.localeCompare(right.id)).flatMap((group) => {
-    const staticPane = group.pane === "static";
+  // Buffered or wholly unavailable observations cannot create a detector choice.
+  return [...groups.values()]
+    .filter((group) => group.observations.some((observation) => isEvaluatedObservation(observation, group.pane)))
+    .sort((left, right) => left.id.localeCompare(right.id));
+};
+
+const getOverflowBoundary = (
+  observation: DetectionObservation,
+  pane: DetectionPane,
+): DetectionOverflow["boundary"] | undefined => {
+  if (pane !== "static") return undefined;
+  if (observation.isInfinite) return "upper";
+  if (observation.value === null && observation.logValue !== null) {
+    return observation.logValue >= 0 ? "upper" : "lower";
+  }
+  return observation.value !== null && observation.value <= 0 ? "lower" : undefined;
+};
+
+/** Build presentation only for chosen detectors at the displayed telemetry samples. */
+export const buildSelectedDetectorSeries = ({
+  detectors,
+  telemetryTimes,
+  selectedDetectorIds = {},
+  range = {},
+}: {
+  detectors: readonly TelemetryChartDetector[];
+  telemetryTimes: readonly number[];
+  selectedDetectorIds?: SelectedDetectorIds;
+  range?: { fromMs?: number; toMs?: number };
+}): SecondaryChartSeries[] => {
+  const times = new Set(telemetryTimes);
+  return (["static", "adaptive"] as const).flatMap((pane) => {
+    const id = selectedDetectorIds[pane] ?? getDefaultDetectorId(detectors, pane);
+    const detector = detectors.find((candidate) => candidate.id === id && candidate.pane === pane);
+    if (!detector) return [];
+    const observations = detector.observations.filter((observation) => times.has(observation.timeMs));
+    const latestObservation = observations[observations.length - 1];
+    if (!latestObservation || !observations.some((observation) => isEvaluatedObservation(observation, pane))) return [];
+
     const overflow: DetectionOverflow[] = [];
-    const points: DetectionTimeValue[] = group.observations.map((observation) => {
-      const { timeMs, value, threshold, logValue, isInfinite, alarmActive } = observation;
-      if (staticPane && (isInfinite || (value === null && logValue !== null))) {
-        overflow.push({ timeMs, value, threshold, logValue, alarmActive, boundary: isInfinite || (logValue !== null && logValue >= 0) ? "upper" : "lower" });
-        return [timeMs, null];
-      }
-      if (staticPane && value !== null && value <= 0) {
-        overflow.push({ timeMs, value, threshold, logValue, alarmActive, boundary: "lower" });
-        return [timeMs, null];
-      }
-      return [timeMs, value];
+    const data: DetectionChartPoint[] = observations.map((observation) => {
+      const boundary = getOverflowBoundary(observation, pane);
+      if (boundary) overflow.push({ observation, boundary });
+      return { value: [observation.timeMs, boundary ? null : observation.value], observation };
     });
-    // Buffered or wholly unavailable observations cannot create a detector choice.
-    if (!points.some(([, value]) => value !== null) && overflow.length === 0) return [];
-    const thresholds = addTelemetryGaps(group.observations.map((observation) => [
+    const scoredTimes = new Set(observations.map(({ timeMs }) => timeMs));
+    for (const time of times) {
+      if (!scoredTimes.has(time)) data.push({ value: [time, null] });
+    }
+    data.sort((left, right) => left.value[0] - right.value[0]);
+    const thresholds: DetectionTimeValue[] = observations.map((observation) => [
       observation.timeMs,
-      observation.value !== null || (staticPane && (observation.isInfinite || observation.logValue !== null))
-        ? observation.threshold : null,
-    ]), telemetryTimes);
-    const latestObservation = group.observations[group.observations.length - 1];
-    if (!latestObservation) return [];
+      isEvaluatedObservation(observation, pane) ? observation.threshold : null,
+    ]);
     return [{
-      id: group.id, serviceId: group.serviceId, trackerId: group.trackerId, name: group.name, pane: group.pane,
-      threshold: latestObservation.threshold,
-      color: staticPane ? "#059669" : "#7c3aed",
-      data: addTelemetryGaps(points, telemetryTimes), thresholds,
+      id: detector.id, serviceId: detector.serviceId, trackerId: detector.trackerId, name: detector.name, pane,
+      data, overflow, latestObservation,
       thresholdRegions: buildThresholdRegions(thresholds, telemetryTimes, range),
-      overflow, observations: group.observations, latestObservation,
-      scale: staticPane ? "log" : "linear",
-      kind: staticPane ? "static_evidence" : "adaptive_score",
+      bounds: getDetectionValueBounds(pane === "static" ? "log" : "linear", data.map(({ value }) => value), thresholds),
     }];
   });
 };

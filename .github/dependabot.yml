@@ -66,6 +66,10 @@ updates:
 
   - package-ecosystem: "uv"
     directory: "/backend"
+    ignore:
+      # Requires saved-monitor migration and retained-value warm-up support.
+      - dependency-name: "aberrant"
+        versions: ["1.2.0"]
     schedule:
       interval: "weekly"
       day: "monday"

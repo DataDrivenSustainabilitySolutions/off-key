@@ -174,6 +174,7 @@ describe("workspace chart navigation and monitoring", () => {
     render(<ExplorerHistoryChart stream={system.streams[0]!} connection={system.connections[0]} serviceId="selected" />);
     const option = lastChartProps().option;
     const series = option.series as Array<{ id?: string; markPoint?: { data: unknown[] } }>;
+    expect(series[0]).toMatchObject({ data: [[NOW - 1000, 21], [NOW, 22]] });
     expect(series.some(item => item.id === "adaptive-score:selected")).toBe(true);
     expect(series.some(item => item.id === "adaptive-score:other")).toBe(false);
     expect(series[0]?.markPoint?.data).toHaveLength(1);
@@ -205,7 +206,11 @@ describe("workspace chart navigation and monitoring", () => {
     view.rerender(<ExplorerPreview {...props} />);
     expect(lastChartProps().option.grid).toHaveLength(2);
     expect(lastChartProps().option.series).toEqual(expect.arrayContaining([
-      expect.objectContaining({ id: "adaptive-score:monitor", data: [[NOW - 20_000, 1], [NOW - 10_000, 3], [NOW, null]],
+      expect.objectContaining({ id: "adaptive-score:monitor", data: [
+        expect.objectContaining({ value: [NOW - 20_000, 1], observation: expect.objectContaining({ threshold: 2, sequenceNumber: 1 }) }),
+        expect.objectContaining({ value: [NOW - 10_000, 3], observation: expect.objectContaining({ threshold: 2.5, sequenceNumber: 2 }) }),
+        { value: [NOW, null] },
+      ],
         markLine: expect.objectContaining({ data: expect.arrayContaining([
           [{ coord: [NOW - 20_000, 2] }, { coord: [NOW - 15_000, 2] }],
           [{ coord: [NOW - 15_000, 2.5] }, { coord: [NOW - 5_000, 2.5] }],

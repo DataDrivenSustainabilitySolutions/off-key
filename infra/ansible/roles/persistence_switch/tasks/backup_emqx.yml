@@ -1,7 +1,8 @@
 ---
 # Export from the live broker, including an ephemeral container's writable layer.
 - name: Discover the running emqx-main task and container
-  include_tasks: _service_container.yml
+  include_role:
+    name: swarm_task
   vars:
     svc: emqx-main
 
@@ -84,9 +85,9 @@
   become: true
   delegate_to: "{{ svc_node }}"
 
-- name: emqx | record the completed backup
-  set_fact:
-    persistence_backup_paths: >-
-      {{ persistence_backup_paths | default({})
-         | combine({'emqx': persistence_backup_dir ~ '/emqx/' ~ persistence_run_ts
-                            ~ '/' ~ (emqx_export_file | basename)}) }}
+- name: emqx | complete the backup only after the archive was fetched
+  include_tasks: complete_backup.yml
+  vars:
+    backup_service: emqx
+    backup_directory: "{{ persistence_backup_dir }}/emqx/{{ persistence_run_ts }}"
+    backup_filenames: "{{ [emqx_export_file | basename] }}"

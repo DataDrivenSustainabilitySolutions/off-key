@@ -22,6 +22,8 @@ import {
 } from "@/lib/anomaly-utils";
 import { resolveChartThemeColors } from "@/lib/echarts-theme";
 import { getEvidenceTimeForSensor } from "@/lib/monitoring-chart";
+import { normalizeTelemetry } from "@/lib/telemetry-data";
+import { collectTelemetryChartDetectors } from "@/lib/telemetry-detectors";
 import { getChartDomain } from "@/lib/telemetry-thresholds";
 import { useDetectorSelection } from "@/hooks/use-detector-selection";
 import {
@@ -32,7 +34,6 @@ import {
   areChartNavigationStatesEqual,
   type ChartNavigationState,
 } from "@/lib/telemetry-chart";
-import { isWithinTimeRange } from "@/lib/time-utils";
 import type { Anomaly, TelemetryTypeData } from "@/types/charger";
 import type { ActiveService, MonitoringChartEvidence } from "@/types/monitoring";
 
@@ -216,12 +217,16 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
     commitNavigationState(DEFAULT_CHART_NAVIGATION);
   }, [commitNavigationState]);
 
+  const normalizedTelemetry = useMemo(
+    () => normalizeTelemetry(telemetryData.data),
+    [telemetryData.data],
+  );
   const filteredData = useMemo(
-    () =>
-      telemetryData.data.filter(({ timestamp }) =>
-        isWithinTimeRange(timestamp, fromDate, toDate),
-      ),
-    [telemetryData.data, fromDate, toDate],
+    () => normalizedTelemetry.filter(([time]) =>
+      time >= (activeNavigationState.range.fromMs ?? Number.NEGATIVE_INFINITY) &&
+      time <= (activeNavigationState.range.toMs ?? Number.POSITIVE_INFINITY),
+    ),
+    [normalizedTelemetry, activeNavigationState.range.fromMs, activeNavigationState.range.toMs],
   );
   const telemetryAnomalies = useMemo(
     () => filterAnomalies(anomalies, telemetryData.type, fromDate, toDate),
@@ -238,48 +243,27 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
     () => sensorEvidence.filter((item) => !monitoringService || item.service_id === monitoringService.id),
     [monitoringService, sensorEvidence],
   );
-  const detectorCatalog = useMemo(
-    () => buildTelemetryChartModel({
+  const detectors = useMemo(
+    () => collectTelemetryChartDetectors({
       telemetryType: telemetryData.type,
-      telemetryName: displayName,
-      telemetryUnit: telemetryData.unit,
-      telemetryColor: themeColors.primary,
-      telemetry: telemetryData.data,
       evidence: serviceEvidence,
-      anomalyZones: [],
-      anomalyMarkers: [],
-    }).detectors,
-    [displayName, serviceEvidence, telemetryData, themeColors.primary],
+      telemetryTimes: normalizedTelemetry.map(([time]) => time),
+    }),
+    [serviceEvidence, normalizedTelemetry, telemetryData.type],
+  );
+  const detectorCatalog = useMemo(
+    () => detectors.map(({ id, serviceId, trackerId, name, pane }) => ({ id, serviceId, trackerId, name, pane })),
+    [detectors],
   );
   const { selectedDetectorIds, controlCatalog, unavailableIds, onSelect: selectDetector } =
     useDetectorSelection(detectorCatalog, `${telemetryData.type}\u0000${monitoringService?.id ?? ""}`);
-  const telemetryEvidence = useMemo(
-    () =>
-      serviceEvidence.filter((item) => {
-        const time = getEvidenceTimeForSensor(item, telemetryData.type);
-        if (time === undefined) return false;
-        if (!isWithinTimeRange(new Date(time).toISOString(), fromDate, toDate)) {
-          return false;
-        }
-        return true;
-      }),
-    [fromDate, serviceEvidence, telemetryData.type, toDate],
-  );
-  const operationalEvidence = useMemo(
-    () =>
-      monitoringService
-        ? sensorEvidence.filter(
-            (item) => item.service_id === monitoringService.id,
-          )
-        : [],
-    [monitoringService, sensorEvidence],
-  );
   const latestOperationalEvidenceTime = useMemo(() => {
-    const times = operationalEvidence
+    if (!monitoringService) return undefined;
+    const times = serviceEvidence
       .map((item) => getEvidenceTimeForSensor(item, telemetryData.type))
       .filter((time): time is number => time !== undefined);
     return times.length > 0 ? Math.max(...times) : undefined;
-  }, [operationalEvidence, telemetryData.type]);
+  }, [monitoringService, serviceEvidence, telemetryData.type]);
   const serviceIsOperational = Boolean(
     monitoringService?.status &&
     monitoringService.operational_status.stage === "operational" &&
@@ -291,26 +275,21 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
     () =>
       serviceIsOperational && latestOperationalEvidenceTime !== undefined
         ? filteredData
-            .map(({ timestamp }) => Date.parse(timestamp))
-            .filter(
-              (time) =>
-                Number.isFinite(time) && time > latestOperationalEvidenceTime,
-            )
+            .map(([time]) => time)
+            .filter((time) => time > latestOperationalEvidenceTime)
         : [],
     [filteredData, latestOperationalEvidenceTime, serviceIsOperational],
   );
   const chartModel = useMemo(() => {
     return buildTelemetryChartModel({
-      telemetryType: telemetryData.type,
       telemetryName: displayName,
       telemetryUnit: telemetryData.unit,
       telemetryColor: themeColors.primary,
       telemetry: filteredData,
-      evidence: telemetryEvidence,
+      detectors,
       selectedDetectorIds,
       range: activeNavigationState.range,
       pendingTelemetryTimestamps,
-      anomalyZones: [],
       anomalyMarkers: createAnomalyMarkers(telemetryData.data, telemetryAnomalies),
     });
   }, [
@@ -318,9 +297,8 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
     filteredData,
     telemetryAnomalies,
     telemetryData.data,
-    telemetryData.type,
     telemetryData.unit,
-    telemetryEvidence,
+    detectors,
     selectedDetectorIds,
     activeNavigationState.range,
     pendingTelemetryTimestamps,

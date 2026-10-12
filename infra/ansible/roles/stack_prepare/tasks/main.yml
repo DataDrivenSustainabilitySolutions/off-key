@@ -74,7 +74,7 @@
     that:
       - >-
         current_secret_name == '' or
-        current_secret_name == mqtt_secret_names[item.item.key] or
+        current_secret_name == deployment_secret_names[item.item.key] or
         (mqtt_passwords_rotated_in_emqx | default(false) | bool)
     fail_msg: >-
       MQTT client password changed in the vault, but EMQX bootstrap users are not
@@ -91,51 +91,8 @@
   when: offkey_env == 'prod'
   no_log: true
 
-- name: Check whether the Cloudflare Tunnel secret already exists
-  command:
-    argv:
-      - docker
-      - secret
-      - inspect
-      - "{{ cloudflared_tunnel_secret_name }}"
-  register: cloudflared_secret_inspect
-  changed_when: false
-  failed_when: false
-  when: offkey_env == 'prod'
-  no_log: true
-
-- name: Create the Cloudflare Tunnel secret
-  command:
-    argv:
-      - docker
-      - secret
-      - create
-      - "{{ cloudflared_tunnel_secret_name }}"
-      - '-'
-    stdin: "{{ cloudflare_tunnel_token | trim }}"
-    stdin_add_newline: false
-  when:
-    - offkey_env == 'prod'
-    - cloudflared_secret_inspect.rc | default(1) != 0
-  no_log: true
-
-- name: Check whether MQTT secrets exist
-  command:
-    argv: [docker, secret, inspect, "{{ mqtt_secret_names[item.key] }}"]
-  loop: "{{ mqtt_secret_material | default({}) | dict2items }}"
-  register: mqtt_secret_inspect
-  changed_when: false
-  failed_when: false
-  no_log: true
-
-- name: Create MQTT secrets
-  command:
-    argv: [docker, secret, create, "{{ mqtt_secret_names[item.item.key] }}", '-']
-    stdin: "{{ item.item.value }}"
-    stdin_add_newline: false
-  loop: "{{ mqtt_secret_inspect.results | default([]) }}"
-  when: item.rc | default(0) != 0
-  no_log: true
+- name: Create content-addressed deployment secrets
+  include_tasks: secrets.yml
 
 - name: Log in to GitHub Container Registry
   command:

@@ -28,6 +28,15 @@ type ProfileState = {
   error: string | null;
 };
 
+const reusableMember = (profile: ProfileState | null, token: string | null): Member | null => {
+  if (!profile?.member || !token || tokenManager.isTokenExpired(token)) return null;
+  const previous = getTokenPayload(profile.token);
+  const next = getTokenPayload(token);
+  return getUserIdFromToken(token) === profile.member.id
+    && previous?.session_version === next?.session_version
+    && previous?.sub === next?.sub ? profile.member : null;
+};
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
@@ -54,7 +63,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         if (status === 401) {
           tokenManager.removeToken();
         } else {
-          setProfile({ token, attempt, member: null, error: "We couldn’t connect to your account. Your saved login is still available." });
+          setProfile(previous => ({ token, attempt, member: reusableMember(previous, token), error: "We couldn’t connect to your account. Your saved login is still available." }));
         }
       }
     };
@@ -75,13 +84,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       }
       void refreshSession().catch((error: { status?: number }) => {
         if (!cancelled && error.status !== 401) {
-          setProfile({ token, attempt, member: null, error: "We couldn’t renew your session. Your saved login is still available." });
+          setProfile(previous => ({ token, attempt, member: reusableMember(previous, token), error: "We couldn’t renew your session. Your saved login is still available." }));
         }
       });
     };
     const onResume = () => {
       if (typeof expires === "number" && expires * 1000 <= Date.now() + 30_000) renew();
-      retryAuthentication();
+      if (profile?.error || tokenManager.isTokenExpired(token)) retryAuthentication();
     };
     const onVisibility = () => {
       if (document.visibilityState === "visible") onResume();
@@ -100,7 +109,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       window.removeEventListener("focus", onResume);
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [token, attempt]);
+  }, [token, attempt, profile?.error]);
 
   /**
    * Login with token
@@ -121,10 +130,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   };
 
   const resolved = profile?.token === token && profile.attempt === attempt ? profile : null;
-  const member = resolved?.member ?? null;
-  const authError = resolved?.error ?? null;
   const expired = !!token && tokenManager.isTokenExpired(token);
-  const isLoading = !!token && (resolved === null || (expired && tokenManager.isRemembered() && !authError));
+  const member = !expired ? resolved?.member ?? reusableMember(profile, token) : null;
+  const authError = member ? null : resolved?.error ?? null;
+  const isLoading = !!token && !member && (resolved === null || (expired && tokenManager.isRemembered() && !authError));
   const isAuthenticated = !!token && !expired;
   const isAdmin = member?.role === "admin";
   const userId = token ? getUserIdFromToken(token) ?? (loginIdentity?.token === token ? loginIdentity.id : null) : null;

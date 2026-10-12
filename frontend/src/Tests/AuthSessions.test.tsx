@@ -1,4 +1,5 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { useState } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { AxiosError } from "axios";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -36,6 +37,11 @@ const Consumer = () => {
   return <><p>{isAuthenticated ? "signed in" : "signed out"}</p><p>{profile?.email}</p><button onClick={logout}>Logout</button></>;
 };
 const renderSession = () => render(<AuthProvider><MemoryRouter><ProtectedRoute><Consumer /></ProtectedRoute></MemoryRouter></AuthProvider>);
+const StatefulWorkspace = () => {
+  const [inspection, setInspection] = useState(0);
+  return <button onClick={() => setInspection(value => value + 1)}>Inspection {inspection}</button>;
+};
+const renderWorkspace = () => render(<AuthProvider><MemoryRouter><ProtectedRoute><StatefulWorkspace /></ProtectedRoute></MemoryRouter></AuthProvider>);
 
 describe("remembered session recovery", () => {
   it("renews an expired saved token before rendering protected content", async () => {
@@ -133,6 +139,35 @@ describe("remembered session recovery", () => {
     await act(async () => { complete(response(token(3600, "resumed"))); });
     expect(screen.getByText(member.email)).toBeTruthy();
     expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
+  it("keeps workspace state when a valid session returns to a visible tab", async () => {
+    tokenManager.setToken(token(), true);
+    renderWorkspace();
+    fireEvent.click(await screen.findByRole("button", { name: "Inspection 0" }));
+    await act(async () => { document.dispatchEvent(new Event("visibilitychange")); });
+    expect(screen.getByRole("button", { name: "Inspection 1" })).toBeTruthy();
+    expect(getCurrentMember).toHaveBeenCalledOnce();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it.each([false, true])("keeps workspace state during background renewal, with profile outage %s", async (outage) => {
+    vi.useFakeTimers();
+    tokenManager.setToken(token(600), true);
+    await act(async () => { renderWorkspace(); });
+    fireEvent.click(screen.getByRole("button", { name: "Inspection 0" }));
+    const renewed = token(3600, "background-renewal");
+    fetchMock.mockResolvedValueOnce(response(renewed));
+    if (outage) getCurrentMember.mockRejectedValueOnce(new ApiRequestError("Unavailable", 503));
+    await act(async () => { await vi.advanceTimersByTimeAsync(571_000); });
+    expect(tokenManager.getToken()).toBe(renewed);
+    expect(screen.getByRole("button", { name: "Inspection 1" })).toBeTruthy();
+    expect(getCurrentMember).toHaveBeenCalledTimes(2);
+    if (outage) {
+      await act(async () => { window.dispatchEvent(new Event("online")); });
+      expect(screen.getByRole("button", { name: "Inspection 1" })).toBeTruthy();
+      expect(getCurrentMember).toHaveBeenCalledTimes(3);
+    }
   });
 });
 

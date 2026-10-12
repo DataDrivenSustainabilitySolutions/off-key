@@ -6,21 +6,20 @@
     - name: Locate the collection worker's task
       include_role:
         name: swarm_task
+        tasks_from: resolve
       vars:
         svc: mqtt-proxy
 
-    - name: Probe database, APIs, catalog application and selected broker routes
-      command:
-        argv: [docker, exec, -i, "{{ svc_container }}", /app/bin/python, '-']
-        stdin: "{{ lookup('file', playbook_dir ~ '/../scripts/check_application.py') }}"
-      delegate_to: "{{ svc_node }}"
-      register: _application_readiness_probe
-      changed_when: false
-      failed_when: false
-
-    - name: Keep the last completed application readiness probe
+    - name: Keep the current task resolution failure
       set_fact:
-        application_readiness: "{{ _application_readiness_probe }}"
+        application_readiness: {rc: 1, stderr: "{{ svc_resolution_error }}"}
+      when: svc_container | length == 0
+
+    # Ansible resolves delegate_to before a task's when condition. Only load the
+    # delegated probe after a complete resolution supplies its node/container.
+    - name: Probe the available collection worker
+      include_tasks: application_readiness_probe.yml
+      when: svc_container | length > 0
 
     - name: Wait before the next application readiness attempt
       pause:

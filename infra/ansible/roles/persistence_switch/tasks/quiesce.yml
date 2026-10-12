@@ -17,9 +17,9 @@
   changed_when: false
   no_log: true
 
-- name: Record writer replica counts
+- name: Record the currently observed writer replica counts
   set_fact:
-    persistence_writer_replicas: >-
+    persistence_observed_writer_replicas: >-
       {{ dict((persistence_service_specs.stdout | from_json)
          | rejectattr('Spec.Name', 'in', [stack_name ~ '_postgres', stack_name ~ '_emqx-main'])
          | map(attribute='Spec.Name')
@@ -37,14 +37,23 @@
       counts have been preserved; no writer has been changed by this retry.
   vars:
     unexpected_writers: >-
-      {{ persistence_writer_replicas | dict2items | selectattr('value', 'gt', 0)
+      {{ persistence_observed_writer_replicas | dict2items | selectattr('value', 'gt', 0)
          | map(attribute='key') | difference(persistence_recovery_plan.writer_replicas.keys() | list) }}
   when: persistence_recovery_plan | length > 0
 
-- name: Preserve the original replica counts across restore retries
-  set_fact:
-    persistence_writer_replicas: "{{ persistence_recovery_plan.writer_replicas }}"
+- name: Verify additional zero-replica workers have no remaining live tasks before recovery
+  include_tasks: wait_stopped.yml
+  vars:
+    service_names: >-
+      {{ persistence_observed_writer_replicas.keys() | list
+         | difference(persistence_recovery_plan.writer_replicas.keys() | list) }}
   when: persistence_recovery_plan | length > 0
+
+- name: Keep original resume counts separate from observed writer services
+  set_fact:
+    persistence_writer_replicas: >-
+      {{ persistence_recovery_plan.writer_replicas if persistence_recovery_plan | length > 0
+         else persistence_observed_writer_replicas }}
 
 - name: Ensure the recovery plan directory exists
   file:
@@ -81,4 +90,4 @@
 - name: Confirm all writers have stopped
   include_tasks: wait_stopped.yml
   vars:
-    service_names: "{{ persistence_writer_replicas.keys() | list }}"
+    service_names: "{{ persistence_observed_writer_replicas.keys() | list }}"

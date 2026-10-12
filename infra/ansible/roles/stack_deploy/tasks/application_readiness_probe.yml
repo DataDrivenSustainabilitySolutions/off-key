@@ -1,0 +1,13 @@
+---
+- name: Probe database, APIs, catalog application and selected broker routes
+  command:
+    argv: [docker, exec, -i, "{{ svc_container }}", /app/bin/python, '-']
+    stdin: "{{ lookup('file', playbook_dir ~ '/../scripts/check_application.py') }}"
+  delegate_to: "{{ svc_node }}"
+  register: _application_readiness_probe
+  changed_when: false
+  failed_when: false
+
+- name: Keep the last completed application readiness probe
+  set_fact:
+    application_readiness: "{{ _application_readiness_probe }}"

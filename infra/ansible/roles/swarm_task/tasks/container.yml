@@ -1,0 +1,39 @@
+---
+# Loaded only after discovery returns one running task. Ansible evaluates
+# delegate_to before task conditions, so absent tasks must skip this include.
+- name: "{{ svc }} | require an inventory node"
+  assert:
+    that: _svc_task.Node in groups['all']
+    fail_msg: "The running {{ stack_name }}_{{ svc }} task is on a node outside this inventory."
+
+- name: "{{ svc }} | inspect the current task's running container"
+  command:
+    argv:
+      - docker
+      - ps
+      - --quiet
+      - --no-trunc
+      - --filter
+      - "label=com.docker.swarm.task.id={{ _svc_task.ID }}"
+      - --filter
+      - status=running
+  delegate_to: "{{ _svc_task.Node }}"
+  register: _svc_containers
+  changed_when: false
+  failed_when: false
+
+- name: "{{ svc }} | keep unavailable-container diagnostics"
+  set_fact:
+    svc_resolution_error: >-
+      {{ _svc_containers.stderr if _svc_containers.rc != 0 else
+         'Expected exactly one running container for task ' ~ _svc_task.ID ~ ' on ' ~ _svc_task.Node ~ '.' }}
+
+- name: "{{ svc }} | publish the complete task resolution"
+  set_fact:
+    svc_node: "{{ _svc_task.Node }}"
+    svc_task_id: "{{ _svc_task.ID }}"
+    svc_container: "{{ _svc_containers.stdout_lines[0] }}"
+    svc_resolution_error: ''
+  when:
+    - _svc_containers.rc == 0
+    - _svc_containers.stdout_lines | length == 1

@@ -1,7 +1,7 @@
 ---
 - name: Initialize application readiness result
   set_fact:
-    application_readiness: {rc: 1}
+    application_readiness: {rc: 1, stderr: 'The collection worker has not been probed yet.'}
 
 - name: Wait for database, APIs, catalog application and selected broker routes
   include_tasks: application_readiness_attempt.yml

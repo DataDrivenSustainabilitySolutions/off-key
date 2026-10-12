@@ -73,6 +73,10 @@ entire recorded service set has restored.
 If an additional runtime writer is running outside that original plan, recovery
 refuses to change any writers or restore data. Stop the unexpected writer before
 retrying; additional stopped workers stay stopped and are not added to the plan.
+Zero desired replicas do not prove a worker has stopped: Swarm may still have a
+retiring task. Recovery waits for every task of an additional zero-replica worker
+to become terminal before changing original writers or importing data. If that
+wait fails, the saved plan and original writers remain unchanged.
 
 A backup failure before stateful replacement cancels the cutover, resumes the
 original writers and clears its plan only after resumption succeeds. If resumption

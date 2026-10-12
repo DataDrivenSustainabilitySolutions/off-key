@@ -11,7 +11,7 @@ const { getCurrentMember } = vi.hoisted(() => ({ getCurrentMember: vi.fn() }));
 vi.mock("@/lib/member-api", () => ({ getCurrentMember }));
 
 const member = { id: 42, email: "member@example.com", role: "user", is_active: true, is_verified: true };
-const token = (seconds = 3600, label = "original") => `header.${btoa(JSON.stringify({ user_id: 42, exp: Math.floor(Date.now() / 1000) + seconds, label }))}.signature`;
+const token = (seconds = 3600, label = "original", userId = 42) => `header.${btoa(JSON.stringify({ user_id: userId, exp: Math.floor(Date.now() / 1000) + seconds, label }))}.signature`;
 const response = (accessToken: string) => new Response(JSON.stringify({ access_token: accessToken }), { status: 200 });
 const fetchMock = vi.fn<typeof fetch>();
 const originalAdapter = apiClient.defaults.adapter;
@@ -221,6 +221,41 @@ describe("authenticated API renewal", () => {
     expect(await pending).toBeNull();
     expect(tokenManager.getToken()).toBeNull();
     expect(tokenManager.isRemembered()).toBe(false);
+  });
+
+  it("does not replay an old request under another newly signed-in account", async () => {
+    tokenManager.setToken(token(), true);
+    let complete!: () => void;
+    const adapter = vi.fn(async config => {
+      await new Promise<void>(resolve => { complete = resolve; });
+      throw new AxiosError("Unauthorized", "401", config, undefined, { status: 401, statusText: "Unauthorized", headers: {}, config, data: {} });
+    });
+    apiClient.defaults.adapter = adapter;
+    const rejected = expect(apiUtils.post("/protected", {}, { redirectOnUnauthorized: false })).rejects.toMatchObject({ status: 401 });
+    await waitFor(() => expect(adapter).toHaveBeenCalledOnce());
+    const newLogin = token(3600, "other-member", 84);
+    tokenManager.setToken(newLogin, true);
+    complete();
+    await rejected;
+    expect(adapter).toHaveBeenCalledOnce();
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(tokenManager.getToken()).toBe(newLogin);
+  });
+
+  it("cancels a waiting request when another account signs in during renewal", async () => {
+    tokenManager.setToken(token(-1), true);
+    let complete!: (result: Response) => void;
+    fetchMock.mockReturnValueOnce(new Promise(resolve => { complete = resolve; }));
+    const adapter = vi.fn();
+    apiClient.defaults.adapter = adapter;
+    const rejected = expect(apiUtils.post("/protected", {})).rejects.toMatchObject({ status: 401 });
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
+    const newLogin = token(3600, "other-member", 84);
+    tokenManager.setToken(newLogin, true);
+    complete(response(token(3600, "old-renewal")));
+    await rejected;
+    expect(adapter).not.toHaveBeenCalled();
+    expect(tokenManager.getToken()).toBe(newLogin);
   });
 
   it("waits for cookie deletion before a subsequent login", async () => {

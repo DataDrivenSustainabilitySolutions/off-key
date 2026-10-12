@@ -49,7 +49,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         const member = await getCurrentMember();
         if (!cancelled) setProfile({ token, attempt, member, error: null });
       } catch (error) {
-        if (cancelled) return;
+        if (cancelled || tokenManager.getToken() !== token) return;
         const status = (error as { status?: number }).status;
         if (status === 401) {
           tokenManager.removeToken();

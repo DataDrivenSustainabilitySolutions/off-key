@@ -9,6 +9,7 @@ import axios, {
   InternalAxiosRequestConfig,
 } from 'axios';
 import { refreshSession, tokenManager } from '@/auth/session';
+import { getUserIdFromToken } from '@/auth/token';
 import { API_CONFIG, DEFAULT_REQUEST_CONFIG } from './api-config';
 
 export { tokenManager } from '@/auth/session';
@@ -40,6 +41,13 @@ export class ApiRequestError extends Error {
   }
 }
 
+const assertSameMember = (previousToken: string | null, nextToken: string | null) => {
+  const previousId = previousToken ? getUserIdFromToken(previousToken) : null;
+  if (previousId && nextToken && getUserIdFromToken(nextToken) !== previousId) {
+    throw new ApiRequestError('The account changed. Please try the request again.', 401);
+  }
+};
+
 // Create axios instance
 const createApiClient = (): AxiosInstance => {
   const client = axios.create({
@@ -51,9 +59,11 @@ const createApiClient = (): AxiosInstance => {
   client.interceptors.request.use(
     async (config: InternalAxiosRequestConfig) => {
       let token = tokenManager.getToken();
+      const previousToken = token;
       if (token && tokenManager.isTokenExpired(token) && tokenManager.isRemembered()) {
         token = await refreshSession();
       }
+      assertSameMember(previousToken, token);
 
       if (token && !tokenManager.isTokenExpired(token)) {
         config.headers.Authorization = `Bearer ${token}`;
@@ -83,6 +93,10 @@ const createApiClient = (): AxiosInstance => {
           const token = currentToken && rejectedToken !== `Bearer ${currentToken}` && !tokenManager.isTokenExpired(currentToken)
             ? currentToken : await refreshSession();
           if (token) {
+            const authorization = options.headers.Authorization;
+            const previousToken = typeof authorization === 'string' && authorization.startsWith('Bearer ')
+              ? authorization.slice(7) : null;
+            assertSameMember(previousToken, token);
             options.headers.Authorization = `Bearer ${token}`;
             return client.request(options);
           }

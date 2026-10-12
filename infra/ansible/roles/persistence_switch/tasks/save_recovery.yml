@@ -1,0 +1,6 @@
+---
+- name: Save the original recovery transaction
+  copy:
+    dest: "{{ stack_dir }}/recovery-pending.json"
+    mode: "0600"
+    content: "{{ persistence_recovery_plan | to_nice_json }}"

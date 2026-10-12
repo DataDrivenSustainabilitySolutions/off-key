@@ -6,11 +6,17 @@ import {
   formatChartTime,
   formatTelemetryTooltip,
   getLocalTimeZone,
-  getDefaultDetectorId,
   type ChartThemeColors,
   type TelemetryChartModel,
   type TelemetryChartOption,
 } from "@/lib/telemetry-chart";
+import { normalizeTelemetry } from "@/lib/telemetry-data";
+import {
+  collectTelemetryChartDetectors,
+  getDefaultDetectorId,
+  type DetectionChartPoint,
+} from "@/lib/telemetry-detectors";
+import type { TelemetryDataPoint } from "@/types/charger";
 import {
   getMonitoringEvidenceCursor,
   mergeMonitoringChartEvidence,
@@ -92,23 +98,42 @@ const colors: ChartThemeColors = {
   primary: "hsl(173 80% 32%)",
 };
 
-const buildModel = (
-  overrides: Partial<Parameters<typeof buildTelemetryChartModel>[0]> = {},
-): TelemetryChartModel =>
-  buildTelemetryChartModel({
-    telemetryName: "Voltage",
-    telemetryUnit: "V",
-    telemetryColor: "#2563eb",
-    telemetry: [
+type ModelOverrides = Omit<Partial<Parameters<typeof buildTelemetryChartModel>[0]>, "telemetry"> & {
+  telemetry?: TelemetryDataPoint[];
+  telemetryType?: string;
+  evidence?: MonitoringChartEvidence[];
+};
+
+const buildFixture = (overrides: ModelOverrides = {}) => {
+  const {
+    telemetry = [
       { timestamp: "2026-01-01T00:00:00Z", value: 12 },
       { timestamp: "2026-01-01T00:01:00Z", value: 13 },
     ],
-    evidence: [],
-    anomalyZones: [],
-    anomalyMarkers: [],
-    ...overrides,
-    telemetryType: overrides.telemetryType ?? "L1",
+    telemetryType = "L1",
+    evidence = [],
+    ...modelOptions
+  } = overrides;
+  const normalizedTelemetry = normalizeTelemetry(telemetry);
+  const detectors = overrides.detectors ?? collectTelemetryChartDetectors({
+    telemetryType, evidence, telemetryTimes: normalizedTelemetry.map(([time]) => time),
   });
+  const model = buildTelemetryChartModel({
+    telemetryName: "Voltage",
+    telemetryUnit: "V",
+    telemetryColor: "#2563eb",
+    anomalyMarkers: [],
+    ...modelOptions,
+    telemetry: normalizedTelemetry,
+    detectors,
+  });
+  return { model, detectors };
+};
+
+const buildModel = (overrides: ModelOverrides = {}): TelemetryChartModel => buildFixture(overrides).model;
+
+const chartValues = (points: readonly ([number, number | null] | DetectionChartPoint)[] = []) =>
+  points.map((point) => Array.isArray(point) ? point : point.value);
 
 const buildOption = (
   model: TelemetryChartModel,
@@ -143,7 +168,7 @@ type InspectableOption = {
     showSymbol?: boolean;
     symbolSize?: number;
     connectNulls?: boolean;
-    data: Array<[number, number | null]>;
+    data: Array<[number, number | null] | DetectionChartPoint>;
     lineStyle?: { width?: number; type?: string };
     markArea?: { data: Array<[{ xAxis: number; yAxis: number }, { xAxis: number; yAxis: number }]>; itemStyle?: { color?: string }; z?: number; silent?: boolean };
     markPoint?: { data: Array<{ coord?: [number, number]; symbol?: string; tooltip?: { formatter?: () => string } }> };
@@ -175,7 +200,7 @@ describe("telemetry chart model", () => {
 
   it("keeps secondary observations independent, ordered, and undeduplicated", () => {
     const timestamp = "2026-01-01T00:01:00Z";
-    const model = buildModel({
+    const { model, detectors } = buildFixture({
       telemetry: [
         { timestamp: "2026-01-01T00:00:00Z", value: 12 },
         { timestamp, value: 13 },
@@ -191,10 +216,10 @@ describe("telemetry chart model", () => {
       ],
     });
 
-    expect(model.detectors).toHaveLength(2);
+    expect(detectors).toHaveLength(2);
     expect(model.secondarySeries).toHaveLength(1);
     expect(model.secondarySeries[0]?.name).toContain("Restarted e-process");
-    expect(model.secondarySeries[0]?.data).toEqual([
+    expect(chartValues(model.secondarySeries[0]?.data)).toEqual([
       [Date.parse("2026-01-01T00:00:00Z"), 1],
       [Date.parse(timestamp), 0.25],
       [Date.parse(timestamp), 0.5],
@@ -215,14 +240,14 @@ describe("telemetry chart model", () => {
       ),
     ];
 
-    const model = buildModel({ evidence: [row], selectedDetectorIds: { static: "martingale:service-a:mixture-cusum" } });
+    const { model, detectors } = buildFixture({ evidence: [row], selectedDetectorIds: { static: "martingale:service-a:mixture-cusum" } });
 
     expect(model.secondarySeries).toHaveLength(1);
-    expect(model.detectors.map((series) => series.name).sort()).toEqual([
+    expect(detectors.map((detector) => detector.name).sort()).toEqual([
       "CUSUM (Simple mixture · mixture-cusum)",
       "Shiryaev-Roberts (Simple jumper · jumper-sr)",
     ]);
-    expect(model.secondarySeries[0]?.threshold).toBe(25);
+    expect(model.secondarySeries[0]?.latestObservation.threshold).toBe(25);
   });
 
   it("defaults to primary deterministically and does not replace an explicitly unavailable selection", () => {
@@ -231,22 +256,57 @@ describe("telemetry chart model", () => {
       trackerResult("aaa-cusum", "simple_mixture", "cusum", 3, 25),
       trackerResult("primary", "power", "restarted_martingale", 4, 40),
     ];
-    const model = buildModel({ evidence: [row] });
-    expect(getDefaultDetectorId(model.detectors, "static")).toBe("restarted-martingale:service-a");
+    const { model, detectors } = buildFixture({ evidence: [row] });
+    expect(getDefaultDetectorId(detectors, "static")).toBe("restarted-martingale:service-a");
     expect(model.secondarySeries[0]?.id).toBe("restarted-martingale:service-a");
     const selectedOutsideRange = buildModel({
-      evidence: [row], selectedDetectorIds: { static: "martingale:service-a:missing" },
+      detectors, selectedDetectorIds: { static: "martingale:service-a:missing" },
     });
-    expect(selectedOutsideRange.detectors).toHaveLength(2);
+    expect(detectors).toHaveLength(2);
     expect(selectedOutsideRange.secondarySeries).toEqual([]);
   });
 
   it("does not catalog buffered or wholly unscored detector observations", () => {
     const unmatched = adaptiveEvidence("buffered", "2026-01-01T00:03:00Z", 1);
     const unavailable = adaptiveEvidence("unavailable", "2026-01-01T00:00:00Z", null);
-    const model = buildModel({ evidence: [unmatched, unavailable] });
-    expect(model.detectors).toEqual([]);
+    const { model, detectors } = buildFixture({ evidence: [unmatched, unavailable] });
+    expect(detectors).toEqual([]);
     expect(model.secondarySeries).toEqual([]);
+  });
+
+  it("reuses the full detector catalog across ranges without rendering an unavailable selection", () => {
+    const firstTime = "2026-01-01T00:00:00Z";
+    const secondTime = "2026-01-01T00:01:00Z";
+    const first = evidence("service-a", firstTime, 1);
+    first.tracker_results = [
+      trackerResult("primary", "power", "restarted_martingale", 1, 100),
+      trackerResult("secondary", "power", "cusum", 2, 25),
+    ];
+    const second = evidence("service-a", secondTime, 3, 2);
+    second.tracker_results = [trackerResult("secondary", "power", "cusum", 3, 40)];
+    const { detectors } = buildFixture({ evidence: [second, first] });
+    const catalogBeforeRangeChange = structuredClone(detectors);
+    const primary = buildModel({
+      detectors, telemetry: [{ timestamp: secondTime, value: 13 }],
+      selectedDetectorIds: { static: "restarted-martingale:service-a" },
+    });
+    expect(primary.secondarySeries).toEqual([]);
+    const secondary = buildModel({
+      detectors, telemetry: [{ timestamp: secondTime, value: 13 }],
+      selectedDetectorIds: { static: "martingale:service-a:secondary" },
+      range: { fromMs: Date.parse(secondTime), toMs: Date.parse(secondTime) },
+    });
+    expect(secondary.secondarySeries.map(({ id }) => id)).toEqual(["martingale:service-a:secondary"]);
+    expect(chartValues(secondary.secondarySeries[0]?.data)).toEqual([[Date.parse(secondTime), 3]]);
+    expect(secondary.secondarySeries[0]?.thresholdRegions).toEqual([{
+      startMs: Date.parse(secondTime) - 500, endMs: Date.parse(secondTime) + 500, threshold: 40,
+    }]);
+    const fullRange = buildModel({ detectors });
+    expect(fullRange.secondarySeries[0]?.id).toBe("restarted-martingale:service-a");
+    expect(chartValues(fullRange.secondarySeries[0]?.data)).toEqual([
+      [Date.parse(firstTime), 1], [Date.parse(secondTime), null],
+    ]);
+    expect(detectors).toEqual(catalogBeforeRangeChange);
   });
 });
 
@@ -297,10 +357,10 @@ describe("telemetry ECharts option", () => {
     expect(option.axisPointer.link).toEqual([{ xAxisIndex: "all" }]);
     expect(option.dataZoom[0]?.xAxisIndex).toEqual([0, 1]);
     expect(option.dataZoom[1]?.xAxisIndex).toEqual([0, 1]);
-    expect(option.series[0]?.data[1]?.[0]).toBe(
-      option.series[1]?.data[1]?.[0],
+    expect(chartValues(option.series[0]?.data)[1]?.[0]).toBe(
+      chartValues(option.series[1]?.data)[1]?.[0],
     );
-    expect(option.series[1]?.data[0]).toEqual([
+    expect(chartValues(option.series[1]?.data)[0]).toEqual([
       Date.parse("2026-01-01T00:00:00Z"),
       null,
     ]);
@@ -334,8 +394,8 @@ describe("telemetry ECharts option", () => {
       connectNulls: false,
       lineStyle: { width: 2.25, type: "solid" },
       data: [
-        [Date.parse("2026-01-01T00:00:00Z"), null],
-        [Date.parse(timestamp), 2.5],
+        { value: [Date.parse("2026-01-01T00:00:00Z"), null] },
+        { value: [Date.parse(timestamp), 2.5] },
       ],
     });
     expect(option.series).toHaveLength(2);
@@ -365,7 +425,7 @@ describe("telemetry ECharts option", () => {
       { startMs: start + 500, endMs: start + 1500, threshold: 4 },
       { startMs: start + 2500, endMs: start + 3500, threshold: 3 },
     ]);
-    expect(model.secondarySeries[0]?.data).toEqual([
+    expect(chartValues(model.secondarySeries[0]?.data)).toEqual([
       [start, 1], [start + 1000, 2], [start + 2000, null],
       [start + 3000, 2], [start + 4000, null],
     ]);
@@ -376,7 +436,7 @@ describe("telemetry ECharts option", () => {
     const first = evidence("static-a", "2026-01-01T00:00:00Z", 2);
     const second = { ...evidence("static-a", "2026-01-01T00:01:00Z", 3), threshold: 200 };
     const model = buildModel({ evidence: [first, second] });
-    expect(model.secondarySeries[0]?.threshold).toBe(200);
+    expect(model.secondarySeries[0]?.latestObservation.threshold).toBe(200);
     expect(model.secondarySeries[0]?.thresholdRegions.map(({ threshold }) => threshold)).toEqual([100, 200]);
     const option = inspect(buildOption(model));
     expect(option.yAxis[1]?.max).toBeGreaterThan(200);
@@ -445,9 +505,9 @@ describe("telemetry ECharts option", () => {
       statistic_value: null, statistic_is_infinite: true,
       log_statistic_value: 750, alarm_active: true,
     }];
-    const model = buildModel({ telemetry: [{ timestamp, value: 230 }], evidence: [row] });
-    expect(model.detectors).toHaveLength(1);
-    expect(model.secondarySeries[0]?.data).toEqual([[time, null]]);
+    const { model, detectors } = buildFixture({ telemetry: [{ timestamp, value: 230 }], evidence: [row] });
+    expect(detectors).toHaveLength(1);
+    expect(chartValues(model.secondarySeries[0]?.data)).toEqual([[time, null]]);
     expect(model.secondarySeries[0]?.latestObservation).toMatchObject({ timeMs: time, value: null, isInfinite: true, alarmActive: true });
     const option = inspect(buildOption(model));
     expect(option.grid).toHaveLength(2);
@@ -470,7 +530,7 @@ describe("telemetry ECharts option", () => {
       log_statistic_value: null, alarm_active: true,
     }];
     const model = buildModel({ telemetry: [{ timestamp, value: 230 }], evidence: [row] });
-    expect(model.secondarySeries[0]?.overflow[0]?.threshold).toBeNull();
+    expect(model.secondarySeries[0]?.overflow[0]?.observation.threshold).toBeNull();
     const option = inspect(buildOption(model));
     expect(option.series[1]?.markArea?.data).toEqual([]);
     expect(option.series[1]?.markLine?.data).toEqual([]);
@@ -491,10 +551,43 @@ describe("telemetry ECharts option", () => {
     expect((option.series[1]?.lineStyle as { color?: string })?.color).toBe(colors.primary);
     const text = option.tooltip.formatter([{
       seriesId: "restarted-martingale:static-a", seriesName: "Restarted e-process",
-      value: [Date.parse(timestamp), 1e250],
+      value: [Date.parse(timestamp), 1e250], data: option.series[1]?.data[0],
     }]);
     expect(text).toContain("Alarm threshold: 1.00e+200");
     expect(text).toContain("Alarm: inactive");
+  });
+
+  it.each([
+    ["adaptive", "different scores", 4],
+    ["adaptive", "equal scores", 1],
+    ["static", "different scores", 4],
+    ["static", "equal scores", 1],
+  ] as const)("inspects each %s evaluation at a shared timestamp with %s", (pane, _description, secondValue) => {
+    const timestamp = "2026-01-01T00:01:00Z";
+    const rows = pane === "adaptive"
+      ? [adaptiveEvidence("service-a", timestamp, 1, 2), {
+          ...adaptiveEvidence("service-a", timestamp, secondValue, 3), sequence_number: 2, alarm: true,
+        }]
+      : [{ ...evidence("service-a", timestamp, 1, 1), threshold: 2, alarm: false }, {
+          ...evidence("service-a", timestamp, secondValue, 2), threshold: 3, alarm: true,
+        }];
+    const option = inspect(buildOption(buildModel({ evidence: rows })));
+    const detector = option.series[1]!;
+    const evaluatedPoints = detector.data.filter((point): point is DetectionChartPoint =>
+      !Array.isArray(point) && point.observation !== undefined,
+    );
+    expect(evaluatedPoints.map(({ value }) => value)).toEqual([
+      [Date.parse(timestamp), 1], [Date.parse(timestamp), secondValue],
+    ]);
+    expect(evaluatedPoints.map(({ observation }) => observation?.sequenceNumber)).toEqual([1, 2]);
+    const tooltips = evaluatedPoints.map((point) => option.tooltip.formatter([{
+      seriesId: detector.id, seriesName: pane === "adaptive" ? "Anomaly score" : "Restarted e-process",
+      value: point.value, data: point,
+    }]));
+    expect(tooltips[0]).toContain("Alarm threshold: 2");
+    expect(tooltips[0]).toContain("Alarm: inactive");
+    expect(tooltips[1]).toContain("Alarm threshold: 3");
+    expect(tooltips[1]).toContain("Alarm: active");
   });
 
   it("projects multivariate evidence onto the current sensor input", () => {
@@ -521,10 +614,10 @@ describe("telemetry ECharts option", () => {
       evidence: [row],
     });
 
-    const l1Score = l1Model.secondarySeries[0]?.data.find(
+    const l1Score = chartValues(l1Model.secondarySeries[0]?.data).find(
       ([, value]) => value !== null,
     );
-    const l2Score = l2Model.secondarySeries[0]?.data.find(
+    const l2Score = chartValues(l2Model.secondarySeries[0]?.data).find(
       ([, value]) => value !== null,
     );
     expect(l1Score).toEqual([Date.parse(l1Time), 2.5]);
@@ -568,7 +661,7 @@ describe("telemetry ECharts option", () => {
       ],
     });
 
-    expect(model.secondarySeries[0]?.data).toEqual([
+    expect(chartValues(model.secondarySeries[0]?.data)).toEqual([
       [Date.parse("2026-01-01T00:00:00Z"), 1],
       [Date.parse("2026-01-01T00:00:01Z"), null],
       [Date.parse("2026-01-01T00:00:02Z"), 3],
@@ -602,9 +695,9 @@ describe("telemetry ECharts option", () => {
       connectNulls: false,
       lineStyle: { width: 2.25, type: "solid" },
       data: [
-        [Date.parse(firstTime), 1],
-        [Date.parse(secondTime), 2],
-        [Date.parse(thirdTime), null],
+        { value: [Date.parse(firstTime), 1] },
+        { value: [Date.parse(secondTime), 2] },
+        { value: [Date.parse(thirdTime), null] },
       ],
     });
   });
@@ -647,9 +740,6 @@ describe("telemetry ECharts option", () => {
   it("uses numeric anomaly marks and disables raw HTML tooltips", () => {
     const timestamp = Date.parse("2026-01-01T00:00:00Z");
     const model = buildModel({
-      anomalyZones: [
-        { startMs: timestamp, endMs: timestamp + 1_000, anomalies: [] },
-      ],
       anomalyMarkers: [
         {
           timestamp: "2026-01-01T00:00:00Z",

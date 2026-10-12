@@ -5,7 +5,8 @@
 # to change.
 
 - name: Discover the node running postgres
-  include_tasks: _service_container.yml
+  include_role:
+    name: swarm_task
   vars:
     svc: postgres
 
@@ -74,8 +75,9 @@
   delegate_to: "{{ svc_node }}"
   loop: "{{ ['roles.sql'] + (pg_dbs.stdout_lines | map('regex_replace', '$', '.dump') | list) }}"
 
-- name: postgres | record where the backup landed
-  set_fact:
-    persistence_backup_paths: >-
-      {{ persistence_backup_paths | default({})
-         | combine({'postgres': persistence_backup_dir ~ '/postgres/' ~ persistence_run_ts}) }}
+- name: postgres | complete the backup only after every dump was fetched
+  include_tasks: complete_backup.yml
+  vars:
+    backup_service: postgres
+    backup_directory: "{{ persistence_backup_dir }}/postgres/{{ persistence_run_ts }}"
+    backup_filenames: "{{ ['roles.sql'] + (pg_dbs.stdout_lines | map('regex_replace', '$', '.dump') | list) }}"

@@ -1,9 +1,9 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   getDefaultDetectorId,
   type ChartDetector,
   type SelectedDetectorIds,
-} from "@/lib/telemetry-chart";
+} from "@/lib/telemetry-detectors";
 
 type DetectorSelection = Partial<Record<"static" | "adaptive", ChartDetector>>;
 
@@ -26,10 +26,10 @@ export const useDetectorSelection = (catalog: readonly ChartDetector[], context:
   if (state.context !== context || selected.static !== remembered.static || selected.adaptive !== remembered.adaptive) {
     setState({ context, selected });
   }
-  const selectedDetectorIds: SelectedDetectorIds = {
+  const selectedDetectorIds = useMemo<SelectedDetectorIds>(() => ({
     static: selected.static?.id,
     adaptive: selected.adaptive?.id,
-  };
+  }), [selected.static?.id, selected.adaptive?.id]);
   const availableIds = new Set(catalog.map(({ id }) => id));
   const unavailable = Object.values(selected).filter((detector): detector is ChartDetector =>
     detector !== undefined && !availableIds.has(detector.id));

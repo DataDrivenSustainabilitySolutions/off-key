@@ -1,0 +1,30 @@
+---
+- name: "{{ backup_service }} | verify the completion manifest and every checksum"
+  command:
+    argv: ["{{ ansible_playbook_python }}", '-', verify, "{{ backup_directory }}", "{{ backup_service }}", "{{ persistence_restore_timestamp }}"]
+    stdin: "{{ lookup('file', role_path ~ '/../../../scripts/backup_manifest.py') }}"
+  vars:
+    backup_directory: >-
+      {{ persistence_backup_paths.get(backup_service,
+         persistence_backup_dir ~ '/' ~ backup_service ~ '/' ~ persistence_restore_timestamp) }}
+  delegate_to: localhost
+  become: false
+  register: verified_backup
+  changed_when: false
+
+- name: Require the original complete artifact set on recovery retries
+  assert:
+    that: >-
+      persistence_recovery_plan | length == 0
+      or (verified_backup.stdout | from_json) == persistence_recovery_plan.backup_files[backup_service]
+    fail_msg: "The backup artifact set differs from the original recovery plan. Writers remain stopped."
+
+- name: "{{ backup_service }} | record the exact verified artifacts"
+  set_fact:
+    persistence_backup_files: "{{ persistence_backup_files | combine({backup_service: verified_backup.stdout | from_json}) }}"
+    persistence_backup_paths: >-
+      {{ persistence_backup_paths | combine({backup_service: backup_directory}) }}
+  vars:
+    backup_directory: >-
+      {{ persistence_backup_paths.get(backup_service,
+         persistence_backup_dir ~ '/' ~ backup_service ~ '/' ~ persistence_restore_timestamp) }}

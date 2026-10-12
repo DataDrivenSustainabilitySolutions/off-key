@@ -1,0 +1,11 @@
+---
+- name: Validate the production topology before contacting hosts
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  any_errors_fatal: true
+  tasks:
+    - name: Require exactly one Swarm manager
+      assert:
+        that: groups.get('swarm_manager', []) | length == 1
+        fail_msg: The production inventory must contain exactly one swarm_manager host.

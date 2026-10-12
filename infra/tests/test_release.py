@@ -384,13 +384,16 @@ class ReleaseTests(unittest.TestCase):
             self.assertNotIn("fixture-token", failed.stdout + failed.stderr)
             self.assertFalse(Path((root / "docker-config-path").read_text()).exists())
 
-    def test_shell_probes_are_valid_jinja_templates(self):
-        tasks = yaml.safe_load(
-            (ROOT / "ansible/roles/stack_deploy/tasks/verify.yml").read_text()
-        )
-        for task in tasks[0]["block"]:
-            if "shell" in task:
-                Environment().parse(task["shell"])
+    def test_readiness_tasks_are_valid_jinja_templates(self):
+        for name in (
+            "verify.yml",
+            "application_readiness.yml",
+            "application_readiness_attempt.yml",
+        ):
+            with self.subTest(name=name):
+                Environment().parse(
+                    (ROOT / "ansible/roles/stack_deploy/tasks" / name).read_text()
+                )
 
     def test_pin_validates_revision_against_the_digest_not_the_tag(self):
         revision = "a" * 40

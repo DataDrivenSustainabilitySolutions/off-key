@@ -1,4 +1,4 @@
-import type { ChartDetector } from "@/lib/telemetry-chart";
+import type { ChartDetector } from "@/lib/telemetry-detectors";
 
 interface Props {
   detectors: ChartDetector[];

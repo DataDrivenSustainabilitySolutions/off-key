@@ -1,0 +1,17 @@
+---
+# Strict callers wait for a complete resolution. Readiness owns its own retry
+# budget and calls resolve.yml once per probe attempt.
+- name: Resolve the service's current task and container
+  include_tasks: resolve.yml
+
+- name: Wait for the service's current task and container
+  include_tasks: retry.yml
+  loop: "{{ range(29) | list }}"
+  loop_control:
+    loop_var: swarm_task_attempt
+  when: svc_container | length == 0
+
+- name: "{{ svc }} | require a running task and its container"
+  assert:
+    that: svc_container | length > 0
+    fail_msg: "{{ svc_resolution_error }}"

@@ -215,6 +215,9 @@ class CDTests(unittest.TestCase):
             playbook = root / "infra/ansible/deployment-needed.yml"
             playbook.parent.mkdir(parents=True)
             playbook.write_text((ROOT / "ansible/deployment-needed.yml").read_text())
+            (playbook.parent / "validate-inventory.yml").write_text(
+                (ROOT / "ansible/validate-inventory.yml").read_text()
+            )
             (root / "backend").mkdir()
             runtime = root / "backend/runtime.txt"
             runtime.write_text("old runtime\n")

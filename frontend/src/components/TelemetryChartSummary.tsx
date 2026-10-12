@@ -13,7 +13,6 @@ export function TelemetryChartSummary({ model, timeZone }: { model: TelemetryCha
       )}
       {model.secondarySeries.map((series) => {
         const latest = series.latestObservation;
-        if (!latest) return null;
         return (
           <span key={series.id}>
             {series.name}: {latest.isInfinite || (latest.value === null && latest.logValue !== null) ? (

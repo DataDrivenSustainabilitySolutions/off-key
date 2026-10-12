@@ -69,8 +69,9 @@ configs:
     file: ./emqx-security.hocon
 {% endif %}
 
+# Shared declarations; each service above mounts only the credentials it needs.
 secrets:
-{% for key, name in mqtt_secret_names.items() %}
+{% for key, name in deployment_secret_names.items() %}
   {{ key }}:
     external: true
     name: {{ name }}

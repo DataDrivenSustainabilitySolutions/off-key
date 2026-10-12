@@ -1,0 +1,16 @@
+---
+- name: "{{ backup_service }} | publish the complete backup manifest"
+  command:
+    argv: "{{ [ansible_playbook_python, '-', 'create', backup_directory, backup_service, persistence_run_ts] + backup_filenames }}"
+    stdin: "{{ lookup('file', role_path ~ '/../../../scripts/backup_manifest.py') }}"
+  delegate_to: localhost
+  become: false
+  register: completed_backup
+  changed_when: true
+
+- name: "{{ backup_service }} | record the completed backup artifacts"
+  set_fact:
+    persistence_backup_paths: >-
+      {{ persistence_backup_paths | default({}) | combine({backup_service: backup_directory}) }}
+    persistence_backup_files: >-
+      {{ persistence_backup_files | default({}) | combine({backup_service: completed_backup.stdout | from_json}) }}

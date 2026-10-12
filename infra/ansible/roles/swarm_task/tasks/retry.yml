@@ -1,0 +1,10 @@
+---
+- name: Retry complete task resolution while the service is unavailable
+  when: svc_container | length == 0
+  block:
+    - name: Wait before resolving the current task again
+      pause:
+        seconds: 5
+
+    - name: Resolve the service's current task and container again
+      include_tasks: resolve.yml

@@ -23,7 +23,7 @@ from off_key_tactic_middleware.services.system import SystemService
 from off_key_tactic_middleware.services.system_collection import SystemCollectionService
 from off_key_tactic_middleware.services.system_live import SystemLiveService
 from paho.mqtt.client import CallbackAPIVersion, Client
-from paho.mqtt.publish import single
+from paho.mqtt.publish import multiple, single
 from sqlalchemy import func, select
 
 from . import environment as fixture
@@ -158,7 +158,7 @@ async def test_generic_collection_is_independent_of_view_leases_and_stops_on_off
         await asyncio.to_thread(
             single,
             "factory/machine/readings",
-            json.dumps({"temperature": value, "humidity": 50, "running": True}),
+            readings(value),
             hostname="127.0.0.1",
             port=28884,
         )
@@ -214,7 +214,9 @@ async def test_generic_collection_is_independent_of_view_leases_and_stops_on_off
         await policy(["temperature"], "original")
         await until(lambda: collection_applied(sessions, ingress))
         before = await rows()
-        await publish_sequence(publish, range(45, 53), delay=0.03)
+        # One persistent connection sends fresh observations as fast as QoS 1
+        # acknowledgements allow, without artificial spacing that hides bursts.
+        await publish_sequence(range(45, 53))
         await until(lambda: reached_rows(rows, before + 8))
         assert await rows() == before + 8
         saved = await policy(["temperature", "running"], "off")
@@ -247,7 +249,19 @@ async def reached_rows(rows, expected):
     return await rows() >= expected
 
 
-async def publish_sequence(publish, values, *, delay):
-    for value in values:
-        await publish(value)
-        await asyncio.sleep(delay)
+def readings(value):
+    return json.dumps({"temperature": value, "humidity": 50, "running": True})
+
+
+async def publish_sequence(values):
+    # Paho advances this sequence on PUBACK and returns after every QoS 1
+    # message is acknowledged, preserving upstream ordering on one socket.
+    await asyncio.to_thread(
+        multiple,
+        [
+            {"topic": "factory/machine/readings", "payload": readings(value), "qos": 1}
+            for value in values
+        ],
+        hostname="127.0.0.1",
+        port=28884,
+    )

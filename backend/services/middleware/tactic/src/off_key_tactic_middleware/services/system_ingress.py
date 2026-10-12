@@ -36,6 +36,7 @@ class SystemIngress:
         self.workers = []
         self.states = {}
         self.bindings = {}
+        self._received_at_us = {}
         self.generation = None
         self.output = None
         self.task = None
@@ -97,6 +98,11 @@ class SystemIngress:
                 self.bindings.setdefault(stream.source_id, {}).setdefault(
                     stream.definition.topic, []
                 ).append(stream)
+            self._received_at_us = {
+                key: timestamp
+                for key, timestamp in self._received_at_us.items()
+                if key[1] in self.bindings.get(key[0], {})
+            }
             for connection in definition.sources:
                 topics = self.bindings.get(connection.id)
                 if not topics:
@@ -165,18 +171,30 @@ class SystemIngress:
             if len(payload) > MAX_PAYLOAD_BYTES:
                 self.dropped += 1
                 return
+            streams = self.bindings.get(connection_id, {}).get(topic, [])
+            if not streams:
+                return
             try:
+                decoded = payload.decode("utf-8")
+                key = (connection_id, topic)
+                # PostgreSQL stores microseconds. Preserve separate arrivals even
+                # when a network-thread burst shares one clock tick; all fields
+                # from the same upstream message keep the same observation time.
+                received_at_us = max(
+                    time.time_ns() // 1000, self._received_at_us.get(key, 0) + 1
+                )
+                self._received_at_us[key] = received_at_us
                 envelope = json.dumps(
                     {
-                        "payload": payload.decode("utf-8"),
-                        "received_at": int(time.time() * 1000),
+                        "payload": decoded,
+                        "received_at": received_at_us / 1000,
                         "upstream_retained": retained,
                     }
                 )
             except UnicodeError:
                 self.dropped += 1
                 return
-            for stream in self.bindings.get(connection_id, {}).get(topic, []):
+            for stream in streams:
                 result = self.output.publish(
                     stream.ingress_topic, envelope, qos=1, retain=False
                 )

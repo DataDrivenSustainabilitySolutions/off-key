@@ -507,84 +507,6 @@ class ReleaseTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "unexpected=.*off-key_orphan"):
             swarm.check_services(services + [extra], expected, replicas)
 
-    def test_readiness_accepts_offline_brokers_but_requires_fresh_workers_and_applied_routes(
-        self,
-    ):
-        now = datetime.now(timezone.utc)
-        selected = []
-        snapshot = SimpleNamespace(
-            revision=4,
-            catalog=SimpleNamespace(
-                sources=[
-                    SimpleNamespace(
-                        id="broker", label="Yard", host="yard.ts.net", port=1883
-                    )
-                ],
-                streams=lambda **kwargs: selected,
-            ),
-            collection={
-                "revision": 4,
-                "status": "applied",
-                "checked_at": now.isoformat(),
-            },
-            ingress={
-                "revision": 4,
-                "status": "applied",
-                "checked_at": now.isoformat(),
-                "sources": {"broker": {"status": "connected", "configured": True}},
-            },
-        )
-        with redirect_stdout(StringIO()) as output:
-            self.assertEqual(
-                application.check_collection(snapshot, now)["selected_sensors"], 0
-            )
-            selected.append(SimpleNamespace(source_id="broker"))
-            self.assertEqual(
-                application.check_collection(snapshot, now)["selected_sensors"], 1
-            )
-        self.assertEqual(output.getvalue(), "")
-        snapshot.ingress["sources"]["broker"]["status"] = "connecting"
-        selected.append(SimpleNamespace(source_id="broker"))
-        with redirect_stdout(StringIO()) as output:
-            self.assertEqual(
-                application.check_collection(snapshot, now)["selected_sensors"], 2
-            )
-        self.assertEqual(output.getvalue().count("WARNING:"), 1)
-        self.assertIn("Yard (yard.ts.net:1883) is not connected", output.getvalue())
-        self.assertIn("ingress route is applied", output.getvalue())
-        for changes in (
-            {"ingress": snapshot.ingress | {"sources": {}}},
-            {
-                "ingress": snapshot.ingress
-                | {"sources": {"broker": {"status": "connected"}}}
-            },
-            {
-                "ingress": snapshot.ingress
-                | {"sources": {"broker": {"status": "connecting", "configured": False}}}
-            },
-            {
-                "ingress": snapshot.ingress
-                | {"sources": {"broker": {"status": "paused", "configured": True}}}
-            },
-            {
-                "ingress": snapshot.ingress
-                | {"sources": {"broker": {"status": "error", "configured": True}}}
-            },
-            {
-                "collection": snapshot.collection
-                | {"checked_at": (now - timedelta(seconds=31)).isoformat()}
-            },
-            {"collection": snapshot.collection | {"revision": 3}},
-            {"ingress": snapshot.ingress | {"status": "error"}},
-        ):
-            broken = deepcopy(snapshot)
-            for key, value in changes.items():
-                setattr(broken, key, value)
-            with self.assertRaises(ValueError):
-                application.check_collection(broken, now)
-        with self.assertRaisesRegex(ValueError, "disabled"):
-            application.check_collection(snapshot, now, ingress_enabled=False)
-
     def test_new_database_needs_no_catalog_row_before_the_first_ui_save(self):
         snapshot = SimpleNamespace(
             revision=0,
@@ -632,24 +554,22 @@ class ReleaseTests(unittest.TestCase):
         )
         with redirect_stdout(StringIO()) as output:
             self.assertEqual(
-                application.check_collection(snapshot, now, generic=True),
+                application.check_collection(snapshot, now),
                 {"revision": 9, "selected_sensors": 2},
             )
         self.assertEqual(output.getvalue(), "")
         for phase in ("connecting", "waiting", "reconnecting"):
             snapshot.ingress["sources"]["broker"]["state"] = phase
             with redirect_stdout(StringIO()) as output:
-                application.check_collection(snapshot, now, generic=True)
+                application.check_collection(snapshot, now)
             self.assertEqual(output.getvalue().count("WARNING:"), 1)
         for phase in ("blocked", "error", "disconnected", None):
             snapshot.ingress["sources"]["broker"]["state"] = phase
             with self.assertRaisesRegex(ValueError, "no applied ingress route"):
-                application.check_collection(snapshot, now, generic=True)
+                application.check_collection(snapshot, now)
         snapshot.ingress["sources"]["broker"]["state"] = "connected"
         with self.assertRaisesRegex(ValueError, "disabled"):
-            application.check_collection(
-                snapshot, now, ingress_enabled=False, generic=True
-            )
+            application.check_collection(snapshot, now, ingress_enabled=False)
         for worker in ("collection", "ingress"):
             for changes in (
                 {"revision": 8},
@@ -659,15 +579,13 @@ class ReleaseTests(unittest.TestCase):
                 broken = deepcopy(snapshot)
                 setattr(broken, worker, getattr(broken, worker) | changes)
                 with self.assertRaises(ValueError):
-                    application.check_collection(broken, now, generic=True)
+                    application.check_collection(broken, now)
         selected.clear()
         snapshot.ingress["sources"] = {}
-        self.assertEqual(
-            application.check_collection(snapshot, now, generic=True)["revision"], 9
-        )
+        self.assertEqual(application.check_collection(snapshot, now)["revision"], 9)
         snapshot.ingress["status"] = "error"
         with self.assertRaises(ValueError):
-            application.check_collection(snapshot, now, generic=True)
+            application.check_collection(snapshot, now)
 
     def test_runtime_worker_created_during_deploy_cannot_escape_final_verification(
         self,

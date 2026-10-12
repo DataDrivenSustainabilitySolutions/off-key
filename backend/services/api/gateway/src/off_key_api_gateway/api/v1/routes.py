@@ -5,7 +5,6 @@ from . import (
     anomalies,
     auth,
     charger,
-    collection,
     favorites,
     members,
     monitors,
@@ -33,7 +32,6 @@ protected.include_router(
     tags=["anomalies"],
     dependencies=[Depends(operational_access)],
 )
-protected.include_router(collection.router, prefix="/sources", tags=["collection"])
 protected.include_router(system.router, prefix="/system", tags=["system"])
 
 protected.include_router(members.router, prefix="/members", tags=["members"])

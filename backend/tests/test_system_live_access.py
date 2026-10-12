@@ -50,12 +50,15 @@ def provider(**overrides):
 
 
 @pytest.mark.asyncio
-async def test_preview_reuses_registered_tailnet_and_existing_mqtt_credentials():
+@pytest.mark.parametrize("require_tls", [True, False])
+async def test_preview_reuses_registered_tailnet_and_existing_mqtt_credentials(
+    require_tls,
+):
     worker_factory = MagicMock()
     service = SystemLiveService(
         SystemLiveSettings(SYSTEM_LIVE_ENABLED=True),
         worker_factory=worker_factory,
-        access_resolver=provider(),
+        access_resolver=provider(AMBIBOX_MQTT_TLS=require_tls),
     )
     saved = snapshot(host="vendor-broker")
     original = saved.model_dump_json()
@@ -67,6 +70,7 @@ async def test_preview_reuses_registered_tailnet_and_existing_mqtt_credentials()
         assert arguments[2].username == "operator"
         assert arguments[2].password.get_secret_value() == "private-password"
         assert arguments[0].host == "vendor-broker"
+        assert arguments[0].tls is require_tls
         assert saved.model_dump_json() == original
         assert "private-password" not in json.dumps(lease)
         assert "tailscale-ambibox" not in json.dumps(lease)

@@ -2,8 +2,11 @@
 
 from fastapi import APIRouter, Depends, Request
 from off_key_core.db.base import get_db_async
+from off_key_core.db.collection_runtime import read_collection_runtime
 from off_key_core.db.models import User
+from off_key_core.db.retention import read_storage_status
 from off_key_core.db.system import SystemRevision
+from off_key_core.schemas.storage import StorageStatus
 from off_key_core.schemas.system import SystemChange
 from off_key_core.schemas.system_collection import (
     SystemCollectionChange,
@@ -22,6 +25,27 @@ from .system_live import router as live_router
 
 router = APIRouter(prefix="/system", tags=["system"])
 router.include_router(live_router)
+
+
+@router.get("/health")
+async def collection_health(
+    user: User = Depends(current_member),
+    session: AsyncSession = Depends(get_db_async),
+):
+    snapshot = await read_collection_runtime(session)
+    return {
+        "revision": snapshot.revision,
+        "collection": snapshot.collection,
+        "ingress": snapshot.ingress,
+    }
+
+
+@router.get("/storage", response_model=StorageStatus)
+async def storage_status(
+    user: User = Depends(current_member),
+    session: AsyncSession = Depends(get_db_async),
+):
+    return await read_storage_status(session)
 
 
 @router.post("/collection/status")

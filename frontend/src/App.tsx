@@ -46,15 +46,11 @@ const router = createBrowserRouter(
         }
       >
         <Route path="/" element={<MonitoringWorkspace />} />
-        <Route path="/explorer" element={<Navigate to="/" replace />} />
-        <Route path="/spatial-lab" element={<Navigate to="/" replace />} />
         <Route path="/entities" element={<Entities />} />
-        <Route path="/stations" element={<Navigate to="/entities" replace />} />
         <Route path="/details/:chargerId" element={<Details />} />
         <Route path="/monitoring/:chargerId" element={<Monitoring />} />
         <Route path="/services" element={<Navigate to="/" replace />} />
         <Route path="/sources" element={<DataSources />} />
-        <Route path="/favourites" element={<Navigate to="/entities" replace />} />
         <Route path="/account" element={<Account />} />
         <Route path="/account/settings" element={<Settings />} />
         <Route path="/anomalies" element={<Anomalies />} />

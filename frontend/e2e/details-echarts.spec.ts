@@ -179,7 +179,7 @@ const installDelayedEvidenceApi = async (page: Page) => {
           container_id: "container-delayed",
           container_name: "radar-delayed",
           mqtt_topics: [
-            `device/evCharger/${CHARGER_ID}/systemVoltage`,
+            `telemetry/${CHARGER_ID}/systemVoltage`,
           ],
           status: true,
           monitoring_strategy: "adaptive_stream",
@@ -244,20 +244,16 @@ test.describe("Details telemetry ECharts", () => {
   });
 
   test.beforeEach(async ({ page }) => {
-    await page.route("**/v1/sources", async (route) => {
+    await page.route("**/v1/system", async (route) => {
       await route.fulfill({
         json: {
-          catalog: {
-            sources: [{
-              chargers: [{
-                id: CHARGER_ID,
-                sensors: [
-                  { key: "systemVoltage", category: "Voltage" },
-                  { key: "systemCurrent", category: "Current" },
-                ],
-              }],
-            }],
-          },
+          document: { streams: [
+            { id: "voltage", category: "Voltage" }, { id: "current", category: "Current" },
+          ] },
+          runtime: { bindings: {
+            voltage: { entity_id: CHARGER_ID, telemetry_key: "systemVoltage" },
+            current: { entity_id: CHARGER_ID, telemetry_key: "systemCurrent" },
+          } },
         },
       });
     });

@@ -7,7 +7,7 @@ from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from .collection import CollectionPolicy
+from .collection_policy import CollectionPolicy
 
 EntityId = Annotated[
     str, Field(min_length=1, max_length=280, pattern=r"^[A-Za-z0-9_:./-]+$")
@@ -246,7 +246,6 @@ class SystemRuntime(SystemModel):
         "Saved structure only. Generic connections are not started "
         "by saving this configuration."
     )
-    legacy_collection_revision: int = 0
     collection_revision: int = 0
     collection: dict = Field(default_factory=dict)
     ingress: dict = Field(default_factory=dict)
@@ -257,7 +256,7 @@ class SystemRuntime(SystemModel):
 class SystemSnapshot(SystemModel):
     revision: int
     document: SystemDocument
-    storage_origin: Literal["saved", "legacy_adapter", "empty"]
+    storage_origin: Literal["saved", "empty"]
     runtime: SystemRuntime = Field(default_factory=SystemRuntime)
     updated_at: str | None = None
     updated_by: str | None = None

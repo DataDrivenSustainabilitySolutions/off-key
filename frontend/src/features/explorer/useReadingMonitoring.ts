@@ -7,10 +7,9 @@ import { buildDeviceTelemetryTopic } from "@/lib/mqtt-topics";
 import { mqttFiltersOverlap } from "@/lib/monitoring-services";
 import { getMonitoringEvidenceCursor, mergeMonitoringChartEvidence } from "@/lib/monitoring-chart";
 import type { Anomaly, TelemetryDataPoint } from "@/types/charger";
-import type { CatalogSnapshot } from "@/types/collection";
 import type { ActiveService, MonitoringChartEvidence } from "@/types/monitoring";
-import type { SystemConnection, SystemStream, SystemReadingBinding } from "../spatial/systemTypes";
-import { mergeReadingHistory, resolveReadingMonitoringBinding, type ReadingMonitoringBinding } from "./readingMonitoring";
+import type { SystemConnection, SystemStream, SystemReadingBinding } from "../catalogue/systemTypes";
+import { mergeReadingHistory, type ReadingMonitoringBinding } from "./readingMonitoring";
 import { EMPTY_READING_HISTORY, ReadingHistoryCache, readingHistoryKey, useReadingHistorySnapshot } from "./readingHistoryCache";
 const UNBOUND_HISTORY = { ...EMPTY_READING_HISTORY, loading: false };
 
@@ -121,11 +120,7 @@ export function useReadingMonitoring(connection: SystemConnection | undefined, s
     const connect = async () => {
       try {
         if (context.binding) binding = context.binding;
-        else {
-          const snapshot = await get<CatalogSnapshot>(API_CONFIG.ENDPOINTS.SOURCES.GET);
-          if (signal.aborted) return;
-          binding = resolveReadingMonitoringBinding(context.connection, context.stream, snapshot.catalog);
-        }
+
         if (binding) { void pollTelemetry(); void pollMonitoring(); }
         else cache.update(context.key, () => ({ data: { ...EMPTY_READING_HISTORY, loading: false } }));
       } catch {

@@ -25,8 +25,8 @@ def test_radar_service_enables_alignment_for_explicit_sensor_topics(monkeypatch)
     settings = SimpleNamespace(
         config=_build_radar_config(
             [
-                "device/evCharger/+/sine",
-                "device/evCharger/+/cosine",
+                "telemetry/+/sine",
+                "telemetry/+/cosine",
             ]
         )
     )
@@ -39,7 +39,7 @@ def test_radar_service_enables_alignment_for_explicit_sensor_topics(monkeypatch)
 
 
 def test_radar_service_disables_alignment_for_wildcard_subscription(monkeypatch):
-    settings = SimpleNamespace(config=_build_radar_config(["device/evCharger/+/#"]))
+    settings = SimpleNamespace(config=_build_radar_config(["telemetry/+/#"]))
     monkeypatch.setattr(service_module, "get_radar_settings", lambda: settings)
 
     radar_service = RadarService()

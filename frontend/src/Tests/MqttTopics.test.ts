@@ -9,12 +9,12 @@ import {
 
 describe("canonical device telemetry topics", () => {
   it("builds the canonical filter and concrete topic", () => {
-    expect(DEVICE_TELEMETRY_FILTER).toBe("device/#");
+    expect(DEVICE_TELEMETRY_FILTER).toBe("telemetry/#");
     expect(buildDeviceTelemetryChargerFilter("0")).toBe(
-      "device/evCharger/0/#",
+      "telemetry/0/#",
     );
     expect(buildDeviceTelemetryTopic("0", "voltageAc3")).toBe(
-      "device/evCharger/0/voltageAc3",
+      "telemetry/0/voltageAc3",
     );
   });
 
@@ -26,12 +26,12 @@ describe("canonical device telemetry topics", () => {
     "voltageAc1",
   ])("parses charger zero sensor %s", (telemetryType) => {
     expect(
-      parseDeviceTelemetryTopic(`device/evCharger/0/${telemetryType}`),
+      parseDeviceTelemetryTopic(`telemetry/0/${telemetryType}`),
     ).toEqual({ chargerId: "0", telemetryType });
   });
 
   it("preserves hierarchical telemetry tails", () => {
-    expect(parseDeviceTelemetryTopic("device/evCharger/a/phase/ac/voltage")).toEqual(
+    expect(parseDeviceTelemetryTopic("telemetry/a/phase/ac/voltage")).toEqual(
       { chargerId: "a", telemetryType: "phase/ac/voltage" },
     );
   });
@@ -39,14 +39,14 @@ describe("canonical device telemetry topics", () => {
   it.each([
     "charger/0/live-telemetry/voltageAc",
     "device/charger/0/voltageAc",
-    "device/evCharger/0",
-    "device/evCharger/0/",
-    "device/evCharger/+/voltageAc",
-    "device/evCharger/0/#",
-    "device/evCharger/charger+1/voltageAc",
-    "device/evCharger/charger#1/voltageAc",
-    "device/evCharger/0/voltage+Ac",
-    "device/evCharger/0/voltage#Ac",
+    "telemetry/0",
+    "telemetry/0/",
+    "telemetry/+/voltageAc",
+    "telemetry/0/#",
+    "telemetry/charger+1/voltageAc",
+    "telemetry/charger#1/voltageAc",
+    "telemetry/0/voltage+Ac",
+    "telemetry/0/voltage#Ac",
   ])("rejects non-canonical or non-concrete topic %s", (topic) => {
     expect(parseDeviceTelemetryTopic(topic)).toBeNull();
   });

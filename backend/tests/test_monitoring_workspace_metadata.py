@@ -20,7 +20,7 @@ from pydantic import ValidationError
 def configuration():
     return RadarStartConfig(
         container_name="stable-workload",
-        mqtt_topics=["device/evCharger/room-input/temperature"],
+        mqtt_topics=["telemetry/room-input/temperature"],
         display_name="Climate",
         model_type="pyod_iforest",
     ).model_dump(mode="json")
@@ -32,7 +32,7 @@ def row(config=None):
         container_id="workload",
         container_name="stable-workload",
         launch_config=config,
-        mqtt_topic=["device/evCharger/room-input/temperature"],
+        mqtt_topic=["telemetry/room-input/temperature"],
         status=True,
         created_at=None,
     )
@@ -69,7 +69,7 @@ def test_service_names_are_strict_at_both_boundaries(value):
     with pytest.raises(ValidationError):
         RadarStartConfig(
             container_name="stable",
-            mqtt_topics=["device/evCharger/room-input/value"],
+            mqtt_topics=["telemetry/room-input/value"],
             display_name=value,
         )
 
@@ -112,7 +112,7 @@ async def test_rename_preserves_launch_settings_and_identity_and_locks_the_row(c
         "workload",
         "stable-workload",
     )
-    assert record.mqtt_topic == ["device/evCharger/room-input/temperature"]
+    assert record.mqtt_topic == ["telemetry/room-input/temperature"]
     assert "FOR UPDATE" in str(service.session.execute.await_args.args[0])
     radar.lock_collection_configuration.assert_awaited_once_with(service.session)
     service.session.commit.assert_awaited_once()

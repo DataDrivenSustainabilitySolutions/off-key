@@ -9,3 +9,4 @@ from ..config.system_live import LiveCredential, LiveSocksProxy
 class BrokerAccess:
     credential: LiveCredential | None = None
     proxy: LiveSocksProxy | None = None
+    require_tls: bool = False

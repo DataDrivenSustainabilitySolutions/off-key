@@ -28,7 +28,7 @@ def _writer() -> DatabaseWriter:
 def test_parse_telemetry_message_converts_offset_timestamp_to_utc():
     writer = _writer()
     message = MQTTMessage(
-        topic="device/evCharger/charger-1/sine",
+        topic="telemetry/charger-1/sine",
         payload={"timestamp": "2024-01-01T12:00:00+02:00", "value": "2.5"},
         timestamp=datetime.now(UTC),
         qos=0,
@@ -45,7 +45,7 @@ def test_parse_telemetry_message_converts_offset_timestamp_to_utc():
 def test_parse_telemetry_message_treats_naive_timestamp_as_utc():
     writer = _writer()
     message = MQTTMessage(
-        topic="device/evCharger/charger-1/sine",
+        topic="telemetry/charger-1/sine",
         payload={"timestamp": "2024-01-01T12:00:00", "value": "2.5"},
         timestamp=datetime.now(UTC),
         qos=0,
@@ -61,7 +61,7 @@ def test_parse_telemetry_message_treats_naive_timestamp_as_utc():
 def test_parse_telemetry_message_invalid_topic_returns_safe_failure():
     writer = _writer()
     message = MQTTMessage(
-        topic="device/evCharger/abc",
+        topic="telemetry/abc",
         payload={"timestamp": "2024-01-01T12:00:00+00:00", "value": "2.5"},
         timestamp=datetime.now(UTC),
         qos=0,
@@ -77,7 +77,7 @@ def test_parse_telemetry_message_invalid_topic_returns_safe_failure():
 def test_parse_telemetry_message_invalid_timestamp_returns_safe_failure():
     writer = _writer()
     message = MQTTMessage(
-        topic="device/evCharger/charger-1/sine",
+        topic="telemetry/charger-1/sine",
         payload={"timestamp": "not-a-date", "value": "2.5"},
         timestamp=datetime.now(UTC),
         qos=0,
@@ -94,7 +94,7 @@ def test_parse_telemetry_message_invalid_timestamp_returns_safe_failure():
 def test_parse_telemetry_message_invalid_timezone_offset_returns_safe_failure():
     writer = _writer()
     message = MQTTMessage(
-        topic="device/evCharger/charger-1/sine",
+        topic="telemetry/charger-1/sine",
         payload={"timestamp": "2024-01-01T12:00:00+25:00", "value": "2.5"},
         timestamp=datetime.now(UTC),
         qos=0,
@@ -111,7 +111,7 @@ def test_parse_telemetry_message_invalid_timezone_offset_returns_safe_failure():
 def test_parse_telemetry_message_utc_suffix_timestamp():
     writer = _writer()
     message = MQTTMessage(
-        topic="device/evCharger/charger-1/sine",
+        topic="telemetry/charger-1/sine",
         payload={"timestamp": "2024-01-01T12:00:00Z", "value": "2.5"},
         timestamp=datetime.now(UTC),
         qos=0,
@@ -127,7 +127,7 @@ def test_parse_telemetry_message_utc_suffix_timestamp():
 def test_parse_telemetry_message_unix_epoch_timestamp():
     writer = _writer()
     message = MQTTMessage(
-        topic="device/evCharger/charger-1/sine",
+        topic="telemetry/charger-1/sine",
         payload={"timestamp": 1704110400, "value": "2.5"},
         timestamp=datetime.now(UTC),
         qos=0,
@@ -146,7 +146,7 @@ def test_parse_telemetry_message_unix_epoch_timestamp():
 def test_parse_telemetry_message_invalid_value_returns_safe_failure(value):
     writer = _writer()
     message = MQTTMessage(
-        topic="device/evCharger/charger-1/sine",
+        topic="telemetry/charger-1/sine",
         payload={"timestamp": "2024-01-01T12:00:00+00:00", "value": value},
         timestamp=datetime.now(UTC),
         qos=0,
@@ -164,7 +164,7 @@ def test_parse_telemetry_message_invalid_value_returns_safe_failure(value):
 def test_parse_telemetry_message_rejects_present_invalid_timestamp(timestamp):
     writer = _writer()
     message = MQTTMessage(
-        topic="device/evCharger/charger-1/sine",
+        topic="telemetry/charger-1/sine",
         payload={"timestamp": timestamp, "value": 2.5},
         timestamp=datetime.now(UTC),
         qos=0,
@@ -182,7 +182,7 @@ def test_parse_telemetry_message_uses_ingestion_time_without_timestamp():
     writer = _writer()
     before = datetime.now(UTC)
     message = MQTTMessage(
-        topic="device/evCharger/0/currentDc",
+        topic="telemetry/0/currentDc",
         payload={"value": 12.5},
         timestamp=before,
         qos=0,
@@ -210,7 +210,7 @@ async def test_process_batch_uses_rowcount_for_written_records():
     writer = _writer()
 
     message = MQTTMessage(
-        topic="device/evCharger/charger-1/sine",
+        topic="telemetry/charger-1/sine",
         payload={"timestamp": "2024-01-01T12:00:00+00:00", "value": "2.5"},
         timestamp=datetime.now(UTC),
         qos=0,
@@ -243,7 +243,7 @@ async def test_process_batch_falls_back_to_batch_size_when_rowcount_is_none():
     writer = _writer()
 
     message = MQTTMessage(
-        topic="device/evCharger/charger-1/sine",
+        topic="telemetry/charger-1/sine",
         payload={"timestamp": "2024-01-01T12:00:00+00:00", "value": "2.5"},
         timestamp=datetime.now(UTC),
         qos=0,
@@ -275,7 +275,7 @@ async def test_process_batch_falls_back_to_batch_size_when_rowcount_is_negative(
     writer = _writer()
 
     message = MQTTMessage(
-        topic="device/evCharger/charger-1/sine",
+        topic="telemetry/charger-1/sine",
         payload={"timestamp": "2024-01-01T12:00:00+00:00", "value": "2.5"},
         timestamp=datetime.now(UTC),
         qos=0,
@@ -306,7 +306,7 @@ async def test_process_batch_falls_back_to_batch_size_when_rowcount_is_negative(
 async def test_process_batch_integrity_error_rolls_back_and_reports_failure():
     writer = _writer()
     message = MQTTMessage(
-        topic="device/evCharger/charger-1/sine",
+        topic="telemetry/charger-1/sine",
         payload={"timestamp": "2024-01-01T12:00:00+00:00", "value": "2.5"},
         timestamp=datetime.now(UTC),
         qos=0,
@@ -337,7 +337,7 @@ async def test_process_batch_integrity_error_rolls_back_and_reports_failure():
 async def test_process_batch_sqlalchemy_error_propagates_as_failure():
     writer = _writer()
     message = MQTTMessage(
-        topic="device/evCharger/charger-1/sine",
+        topic="telemetry/charger-1/sine",
         payload={"timestamp": "2024-01-01T12:00:00+00:00", "value": "2.5"},
         timestamp=datetime.now(UTC),
         qos=0,
@@ -366,7 +366,7 @@ async def test_batch_retry_failure_increments_failed_record_metrics(monkeypatch)
     writer.config.get_jittered_backoff_delay = lambda attempt: 0.0
 
     message = MQTTMessage(
-        topic="device/evCharger/charger-1/sine",
+        topic="telemetry/charger-1/sine",
         payload={"timestamp": "2024-01-01T12:00:00+00:00", "value": "2.5"},
         timestamp=datetime.now(UTC),
         qos=0,
@@ -376,7 +376,7 @@ async def test_batch_retry_failure_increments_failed_record_metrics(monkeypatch)
     assert isinstance(result_one, ParseSuccess)
 
     message_two = MQTTMessage(
-        topic="device/evCharger/charger-1/sine",
+        topic="telemetry/charger-1/sine",
         payload={"timestamp": "2024-01-01T12:00:01+00:00", "value": "3.5"},
         timestamp=datetime.now(UTC),
         qos=0,
@@ -412,7 +412,7 @@ async def test_batch_retry_success_keeps_failed_metrics_at_zero(monkeypatch):
     writer.config.get_jittered_backoff_delay = lambda attempt: 0.0
 
     message = MQTTMessage(
-        topic="device/evCharger/charger-1/sine",
+        topic="telemetry/charger-1/sine",
         payload={"timestamp": "2024-01-01T12:00:00+00:00", "value": "2.5"},
         timestamp=datetime.now(UTC),
         qos=0,
@@ -471,7 +471,7 @@ def test_get_health_status_marks_unhealthy_with_excessive_processing_backlog():
 
 def _message() -> MQTTMessage:
     return MQTTMessage(
-        topic="device/evCharger/charger-1/sine",
+        topic="telemetry/charger-1/sine",
         payload={"timestamp": datetime.now(UTC).isoformat(), "value": 1.0},
         timestamp=datetime.now(UTC),
         qos=0,
@@ -580,7 +580,7 @@ async def test_permanent_record_failure_does_not_block_valid_telemetry(sqlstate)
     session.rollback.side_effect = staged.clear
     for sensor in ("good-before", "bad", "good-after"):
         message = _message()
-        message.topic = f"device/evCharger/charger-1/{sensor}"
+        message.topic = f"telemetry/charger-1/{sensor}"
         await writer.write_telemetry_message(message)
     await writer._trigger_batch_processing()
     await writer.write_telemetry_message(_message())

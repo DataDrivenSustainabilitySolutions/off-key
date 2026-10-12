@@ -420,6 +420,8 @@ class SystemLiveService:
         proxy = self.settings.SYSTEM_LIVE_SOCKS_PROXIES.get(connection.host)
         if proxy is None and access:
             proxy = access.proxy
+        if access and access.require_tls:
+            connection = connection.model_copy(update={"tls": True})
         try:
             worker = self.worker_factory(
                 connection,

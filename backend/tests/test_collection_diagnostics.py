@@ -6,7 +6,8 @@ from off_key_mqtt_proxy.collection_buffer import CollectionBuffer
 from off_key_mqtt_proxy.collection_diagnostics import CollectionDiagnostics
 from off_key_mqtt_proxy.telemetry_models import WriteBatch, WriteStatus
 
-from .test_collection import catalog, message
+from .test_collection import message
+from .test_collection import runtime_catalog as catalog
 
 
 def test_rates_measure_wall_time_and_recover_after_old_errors(monkeypatch):

@@ -9,7 +9,7 @@ import type {
   TelemetryTypeData,
 } from "@/types/charger";
 import { normalizeChargerLastSeen } from "@/types/charger";
-import type { CatalogSnapshot } from "@/types/collection";
+import type { SystemSnapshot } from "@/features/catalogue/systemTypes";
 
 const TELEMETRY_PAGE_SIZE = 1000;
 const MAX_FORWARD_PAGES = 10;
@@ -67,13 +67,13 @@ export const getAllTelemetryData = async (
 ): Promise<TelemetryTypeData[]> => {
   const [telemetryTypes, snapshot] = await Promise.all([
     getTelemetryTypes(chargerId, signal),
-    get<CatalogSnapshot>("/v1/sources", signal),
+    get<SystemSnapshot>("/v1/system", signal),
   ]);
-  const charger = snapshot.catalog.sources
-    .flatMap((source) => source.chargers)
-    .find((item) => item.id === chargerId);
-  const categories = new Map(
-    charger?.sensors.map((sensor) => [sensor.key, sensor.category]),
+  const definitions = new Map(
+    snapshot.document.streams.flatMap(stream => {
+      const binding = snapshot.runtime.bindings?.[stream.id];
+      return binding?.entity_id === chargerId ? [[binding.telemetry_key, stream] as const] : [];
+    }),
   );
   const telemetryData = await Promise.all(
     telemetryTypes.map(async (type): Promise<TelemetryTypeData | null> => {
@@ -96,7 +96,8 @@ export const getAllTelemetryData = async (
         const nextCursor = getTelemetryCursor(data);
         return {
           type,
-          category: categories.get(type) ?? "Other",
+          category: definitions.get(type)?.category ?? "Other",
+          ...(definitions.get(type)?.label && { label: definitions.get(type)!.label }),
           data: data.map(({ timestamp, value }) => ({ timestamp, value })),
           ...(nextCursor && { cursor: nextCursor }),
         };
@@ -128,9 +129,9 @@ export const mergeTelemetryData = (
     incomingByType.delete(existing.type);
     if (!series) return existing;
     if (series.data.length === 0) {
-      return series.category === existing.category
+      return series.category === existing.category && series.label === existing.label
         ? existing
-        : { ...existing, category: series.category };
+        : { ...existing, category: series.category, label: series.label };
     }
 
     const points = new Map(existing.data.map((point) => [point.timestamp, point]));

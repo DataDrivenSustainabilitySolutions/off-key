@@ -12,7 +12,8 @@ from off_key_core.db.collection import (
     COLLECTION_PROXY_LOCK,
 )
 from off_key_core.db.collection_runtime import read_collection_runtime
-from off_key_core.db.models import Charger, CollectionConfiguration, CollectionState
+from off_key_core.db.models import Charger, CollectionState
+from off_key_core.db.system import SystemCollectionConfiguration
 from off_key_core.schemas.system_collection import runtime_fingerprint
 from sqlalchemy import case, delete, text, update
 from sqlalchemy.dialects.postgresql import insert
@@ -47,7 +48,7 @@ class MQTTProxyService:
         self._prepared_configuration: list | None = None
         self._generation = -1
         self.state = {"status": "starting"}
-        self.status_model = CollectionConfiguration
+        self.status_model = SystemCollectionConfiguration
         self._prepared_model = None
         self._task: asyncio.Task | None = None
         self.diagnostics = CollectionDiagnostics(self.buffer, self.database_writer)
@@ -100,7 +101,7 @@ class MQTTProxyService:
     async def _refresh_configuration(self) -> None:
         async with self.session_factory() as session:
             snapshot = await read_collection_runtime(session)
-        self.status_model = getattr(snapshot, "status_model", CollectionConfiguration)
+        self.status_model = SystemCollectionConfiguration
         if not self.mqtt_client.is_connected:
             self.buffer.pause()
             self.revision = self._prepared_revision = -1

@@ -3,7 +3,7 @@ import * as Popover from "@radix-ui/react-popover";
 import { ArrowLeft, ChevronDown, Folder, Home, Info, Layers, Search, Settings2, Star, X } from "lucide-react";
 import { ExplorerList, type ExplorerRow, type ListPosition } from "./ExplorerList";
 import { navigationTrail, type ExplorerNode, type NavigationIndex } from "./navigationIndex";
-import type { SystemGroup } from "../spatial/systemTypes";
+import type { SystemGroup } from "../catalogue/systemTypes";
 
 type Props = {
   index: NavigationIndex; scopeKey: string; rows: ExplorerRow[]; title: string;

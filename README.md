@@ -96,7 +96,7 @@ change-detection parameters and must be calibrated for the intended null stream;
 Every ready-phase inference is persisted in `monitoring_evidence`, including the
 p-value, sensor set, aggregate alarm flag, and bounded `tracker_results` evidence
 for every configured martingale. Finite and infinite states are represented
-explicitly. The legacy primary-tracker columns remain populated for compatibility.
+explicitly. The existing primary-tracker columns remain populated for database consistency.
 The gateway exposes this evidence for telemetry charts, where each selected alarm
 statistic is drawn on a logarithmic secondary axis with its threshold overlay.
 Telemetry and evidence use the same normalized payload event timestamp. Their
@@ -139,18 +139,27 @@ If you want to start everything including simulator in one command:
 docker compose --profile mqtt-sim up -d --build
 ```
 
-### AmbiBox catalog and collection
+### Catalogue and collection
 
-Open **Sources** as a verified administrator to build or import the catalog,
-select chargers and sensors, and apply original-rate or sampled collection. New
-chargers start paused. The application manages per-broker EMQX sources and GOST
-routes through private management APIs; topics are no longer configured in proxy
-environment variables or a separate EMQX setup script.
+Open **Sources** as a verified administrator to edit or import the generic
+`aberration-system` catalogue: MQTT brokers, entities, topics, payload fields and
+catalogue groups. Collection is explicitly opt-in; new readings start Off.
+Selected numeric readings accumulate history independently of the browser and
+can feed monitoring services. Temporary **Connect** previews remain in memory.
 
-The production deployment reuses the existing vendor tailnet identity and MQTT
-credentials. For local Compose, import `dev/ambibox/local-catalog.json` and start
-the `mqtt-sim` profile. See [AmbiBox collection](docs/operations/ambibox-collection.md)
-for configuration semantics, limits, tests and the one-time clean cutover.
+The production deployment keeps operator-managed network access and credentials
+separate from exported catalogues. Local Compose can import
+`dev/local/simulator-system.json` with the `mqtt-sim` profile, or
+`dev/local/workshop-system.json` for a different example. See
+[Collection](docs/operations/system-collection.md) for the data path and limits.
+
+Migration `005_generic_runtime.sql` makes the generic catalogue the sole runtime.
+It converts saved catalogue and monitor configuration once and discards existing
+sensor measurements and latest-value caches. Accounts, favourites, catalogue
+revisions, monitor settings and monitoring evidence remain. Future opted-in
+recording continues, and later deployments preserve its history. Retired catalogue
+APIs, provider-specific imports, old accepted-topic namespaces and the 3D
+prototype are removed.
 
 ### EMQX two-node cluster mode
 

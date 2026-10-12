@@ -1,0 +1,113 @@
+{
+  "schema_version": 1,
+  "format": "aberration-system",
+  "label": "Local simulator",
+  "default_policy": {
+    "mode": "off",
+    "interval_seconds": 10
+  },
+  "connections": [
+    {
+      "id": "broker:simulator",
+      "label": "Local broker",
+      "protocol": "mqtt",
+      "transport": "tcp",
+      "host": "source-broker",
+      "port": 1883,
+      "tls": false,
+      "websocket_path": null,
+      "credential_ref": null
+    }
+  ],
+  "devices": [
+    {
+      "id": "entity:charger-sim-1",
+      "label": "Simulated entity 1",
+      "connection_id": "broker:simulator",
+      "parent_id": null,
+      "kind": "device"
+    },
+    {
+      "id": "entity:charger-sim-2",
+      "label": "Simulated entity 2",
+      "connection_id": "broker:simulator",
+      "parent_id": null,
+      "kind": "device"
+    }
+  ],
+  "streams": [
+    {
+      "id": "reading:charger-sim-1:sine",
+      "label": "Sine",
+      "connection_id": "broker:simulator",
+      "device_id": "entity:charger-sim-1",
+      "topic": "telemetry/charger-sim-1/sine",
+      "payload_pointer": null,
+      "value_type": "number",
+      "unit": null,
+      "category": "Synthetic",
+      "policy": null
+    },
+    {
+      "id": "reading:charger-sim-1:cosine",
+      "label": "Cosine",
+      "connection_id": "broker:simulator",
+      "device_id": "entity:charger-sim-1",
+      "topic": "telemetry/charger-sim-1/cosine",
+      "payload_pointer": null,
+      "value_type": "number",
+      "unit": null,
+      "category": "Synthetic",
+      "policy": null
+    },
+    {
+      "id": "reading:charger-sim-1:random",
+      "label": "Random",
+      "connection_id": "broker:simulator",
+      "device_id": "entity:charger-sim-1",
+      "topic": "telemetry/charger-sim-1/random",
+      "payload_pointer": null,
+      "value_type": "number",
+      "unit": null,
+      "category": "Synthetic",
+      "policy": null
+    },
+    {
+      "id": "reading:charger-sim-2:sine",
+      "label": "Sine",
+      "connection_id": "broker:simulator",
+      "device_id": "entity:charger-sim-2",
+      "topic": "telemetry/charger-sim-2/sine",
+      "payload_pointer": null,
+      "value_type": "number",
+      "unit": null,
+      "category": "Synthetic",
+      "policy": null
+    },
+    {
+      "id": "reading:charger-sim-2:cosine",
+      "label": "Cosine",
+      "connection_id": "broker:simulator",
+      "device_id": "entity:charger-sim-2",
+      "topic": "telemetry/charger-sim-2/cosine",
+      "payload_pointer": null,
+      "value_type": "number",
+      "unit": null,
+      "category": "Synthetic",
+      "policy": null
+    },
+    {
+      "id": "reading:charger-sim-2:random",
+      "label": "Random",
+      "connection_id": "broker:simulator",
+      "device_id": "entity:charger-sim-2",
+      "topic": "telemetry/charger-sim-2/random",
+      "payload_pointer": null,
+      "value_type": "number",
+      "unit": null,
+      "category": "Synthetic",
+      "policy": null
+    }
+  ],
+  "groups": []
+}

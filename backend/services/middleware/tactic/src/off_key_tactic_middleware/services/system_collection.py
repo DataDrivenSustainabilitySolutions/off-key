@@ -4,15 +4,12 @@ from datetime import UTC, datetime
 from math import ceil
 from uuid import uuid4
 
-from off_key_core.db.collection import (
-    lock_collection_configuration,
-    read_collection_configuration,
-)
+from off_key_core.db.collection import lock_collection_configuration
 from off_key_core.db.collection_runtime import read_collection_runtime
 from off_key_core.db.maintenance import require_application_writes
 from off_key_core.db.models import Charger, CollectionBinding, MonitoringService
 from off_key_core.db.system import SystemCollectionConfiguration
-from off_key_core.schemas.collection import CollectionPolicy
+from off_key_core.schemas.collection_policy import CollectionPolicy
 from off_key_core.schemas.system_collection import (
     SystemCollectionDefinition,
     SystemCollectionPreview,
@@ -25,7 +22,7 @@ from ..config.collection import get_ambibox_settings
 from ..config.system_live import get_system_live_settings
 from ..domain import ConflictError, ValidationError
 from .ambibox_live_access import AmbiboxLiveAccess
-from .collection import CollectionService
+from .collection_monitors import CollectionMonitorService
 
 
 class SystemCollectionService:
@@ -34,46 +31,25 @@ class SystemCollectionService:
 
     async def current(self, document):
         runtime = await read_collection_runtime(self.session)
-        legacy = await read_collection_configuration(self.session)
-        previous = (
-            runtime.catalog
-            if isinstance(runtime.catalog, SystemCollectionDefinition)
-            else None
-        )
-        bindings = build_bindings(
-            document, legacy.catalog, previous.bindings if previous else None
-        )
-        policies = (
-            {
-                item.id: item.policy or previous.document.default_policy
-                for item in previous.document.streams
-            }
-            if previous
-            else {
-                stream.accepted_topic: stream.policy
-                for stream in legacy.catalog.streams()
-            }
-        )
+        previous = runtime.catalog
+        bindings = build_bindings(document, previous.bindings)
+        policies = {
+            item.id: item.policy or previous.document.default_policy
+            for item in previous.document.streams
+        }
         copy = document.model_copy(deep=True)
         copy.default_policy = CollectionPolicy()
         for stream in copy.streams:
-            stream.policy = policies.get(
-                stream.id if previous else bindings[stream.id].accepted_topic,
-                CollectionPolicy(),
-            )
+            stream.policy = policies.get(stream.id, CollectionPolicy())
         return runtime, SystemCollectionDefinition(
             document=copy,
             bindings=bindings,
-            generation=previous.generation if previous else "initial",
+            generation=previous.generation,
         )
 
     async def prepare(self, snapshot, change):
         runtime, proposed = await self.current(snapshot.document)
-        revision = (
-            runtime.revision
-            if isinstance(runtime.catalog, SystemCollectionDefinition)
-            else 0
-        )
+        revision = runtime.revision
         if (
             snapshot.revision != change.expected_revision
             or revision != change.expected_collection_revision
@@ -144,23 +120,7 @@ class SystemCollectionService:
             }
 
         old, new = signatures(before), signatures(after)
-        changed = {
-            key for key in old.keys() | new.keys() if old.get(key) != new.get(key)
-        }
-        # Migrating the envelope does not change the admitted detector inputs.
-        if not isinstance(before, SystemCollectionDefinition):
-            old_streams = {
-                item.accepted_topic: item for item in before.streams(selected_only=True)
-            }
-            for item in after.streams(selected_only=True):
-                previous = old_streams.get(item.accepted_topic)
-                if (
-                    previous
-                    and previous.sensor.value_type == item.value_type
-                    and previous.policy == item.policy
-                ):
-                    changed.discard(item.accepted_topic)
-        return changed
+        return {key for key in old.keys() | new.keys() if old.get(key) != new.get(key)}
 
     async def affected(self, before, after):
         changed = self._changed_inputs(before, after)
@@ -196,17 +156,7 @@ class SystemCollectionService:
         )
 
     async def sync_structure(self, document, *, actor, pause_monitors=False):
-        row = await self.session.scalar(
-            select(SystemCollectionConfiguration).where(
-                SystemCollectionConfiguration.id == 1
-            )
-        )
         runtime, proposed = await self.current(document)
-        # Presentation edits can keep main's working routes. A changed admitted
-        # input must hand over collection, otherwise removed inputs keep writing
-        # behind a catalogue that no longer exposes them.
-        if row is None and not self._changed_inputs(runtime.catalog, proposed):
-            return document
         if runtime_fingerprint(runtime.catalog) != runtime_fingerprint(proposed):
             self._validate_access(proposed)
         affected = await self.affected(runtime.catalog, proposed)
@@ -220,7 +170,7 @@ class SystemCollectionService:
                 "This change affects running monitors. "
                 "Pause them in Services before changing their inputs."
             )
-        await CollectionService(self.session)._pause_monitors(affected)
+        await CollectionMonitorService(self.session).pause_monitors(affected)
 
     async def persist(self, definition, *, actor):
         row = await self.session.scalar(

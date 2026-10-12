@@ -1,6 +1,6 @@
 # Uses the real application images and services with isolated local state.
 # Requires Docker Compose 2.24.4 or later for !override.
-x-spatial-fixture-broker: &spatial-fixture-broker
+x-broker-fixture-broker: &broker-fixture-broker
   image: eclipse-mosquitto:2.0
   command: ["mosquitto", "-c", "/mosquitto/config/mosquitto.conf"]
   volumes:
@@ -9,7 +9,7 @@ x-spatial-fixture-broker: &spatial-fixture-broker
     - app-network
   restart: unless-stopped
   profiles:
-    - spatial-fixture
+    - broker-fixture
   healthcheck:
     test: ["CMD", "mosquitto_pub", "-h", "localhost", "-t", "_fixture/health", "-n"]
     interval: 10s
@@ -23,7 +23,6 @@ services:
       target: production
       args:
         VITE_API_URL: /api
-        VITE_SPATIAL_LAB_ENABLED: "true"
         VITE_LOCAL_ADMIN_EMAIL: "${SUPERUSER_MAIL:-admin@example.com}"
     environment: !override
       API_UPSTREAM: api-gateway:8000
@@ -110,37 +109,37 @@ services:
       - "127.0.0.1:${LOCAL_SOURCE_MQTT_PORT:-1886}:1883"
 
   fixture-broker-campus:
-    <<: *spatial-fixture-broker
+    <<: *broker-fixture-broker
 
   fixture-broker-production:
-    <<: *spatial-fixture-broker
+    <<: *broker-fixture-broker
 
   fixture-broker-greenhouse:
-    <<: *spatial-fixture-broker
+    <<: *broker-fixture-broker
 
   fixture-broker-meter:
-    <<: *spatial-fixture-broker
+    <<: *broker-fixture-broker
 
   fixture-broker-weather:
-    <<: *spatial-fixture-broker
+    <<: *broker-fixture-broker
 
   fixture-broker-pump:
-    <<: *spatial-fixture-broker
+    <<: *broker-fixture-broker
 
-  spatial-fixture-publisher:
+  broker-fixture-publisher:
     build:
       context: ./backend/
       args:
         SERVICE_NAME: off-key-mqtt-simulator
         SERVICE_ROOT: services/mqtt/simulator
     image: "${MQTT_SIMULATOR_IMAGE:-off-key-mqtt-simulator:latest}"
-    command: ["/app/bin/python", "/opt/spatial_fixture.py", "--publish"]
+    command: ["/app/bin/python", "/opt/broker_fixture.py", "--publish"]
     volumes:
-      - ./dev/local/spatial_fixture.py:/opt/spatial_fixture.py:ro
+      - ./dev/local/broker_fixture.py:/opt/broker_fixture.py:ro
     networks:
       - app-network
     profiles:
-      - spatial-fixture
+      - broker-fixture
     restart: unless-stopped
     depends_on:
       fixture-broker-campus:
@@ -160,7 +159,7 @@ services:
         - CMD
         - /app/bin/python
         - -c
-        - "import pathlib,time; assert time.time()-float(pathlib.Path('/tmp/spatial-fixture.ready').read_text()) < 20"
+        - "import pathlib,time; assert time.time()-float(pathlib.Path('/tmp/broker-fixture.ready').read_text()) < 20"
       interval: 10s
       timeout: 3s
       retries: 10

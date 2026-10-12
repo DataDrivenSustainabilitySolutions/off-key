@@ -28,13 +28,13 @@ from off_key_core.db.maintenance import DeploymentInProgressError
 from starlette.middleware.gzip import GZipMiddleware
 
 from .api.service_auth import require_gateway
-from .api.v1 import collection, data_services, members, models, radar, system
+from .api.v1 import data_services, members, models, radar, system
 from .api.v1.admin_models import router as admin_models_router
+from .config.collection import get_ambibox_settings
 from .config.config import RadarWorkloadLifecycle, TacticConfig, get_tactic_settings
 from .config.system_live import get_system_live_settings
 from .facades.docker import AsyncDocker
 from .models.registry import ModelRegistryNotReadyError, ModelRegistryService
-from .services.ambibox_ingress import AmbiboxIngress
 from .services.ambibox_live_access import AmbiboxLiveAccess
 from .services.orchestration.radar import RadarOrchestrationService
 from .services.reconciliation import RadarStatusReconciliationService
@@ -186,7 +186,7 @@ async def _shutdown_system_live(app: FastAPI) -> None:
 async def _shutdown_services(app: FastAPI, config: TacticConfig) -> None:
     """Best-effort shutdown for every service initialized during startup."""
     await _shutdown_system_live(app)
-    for attribute in ("system_ingress", "ambibox_ingress", "reconciliation_service"):
+    for attribute in ("system_ingress", "reconciliation_service"):
         service = getattr(app.state, attribute, None)
         if service is not None:
             try:
@@ -252,17 +252,15 @@ async def lifespan(app: FastAPI):
             )
 
         await _start_reconciliation(app, config)
-        app.state.ambibox_ingress = AmbiboxIngress()
-        if app.state.ambibox_ingress.settings.AMBIBOX_INGRESS_ENABLED:
-            await app.state.ambibox_ingress.start()
+        operator_access = AmbiboxLiveAccess(get_ambibox_settings())
         app.state.system_live = SystemLiveService(
             get_system_live_settings(),
-            access_resolver=AmbiboxLiveAccess(app.state.ambibox_ingress.settings),
+            access_resolver=operator_access,
         )
         from .services.system_ingress import SystemIngress
 
         app.state.system_ingress = SystemIngress(
-            access_resolver=AmbiboxLiveAccess(app.state.ambibox_ingress.settings),
+            access_resolver=operator_access,
         )
         await app.state.system_ingress.start()
 
@@ -313,7 +311,6 @@ def create_app() -> FastAPI:
         data_services.router, prefix="/api/v1/data", tags=["data-services"]
     )
     business.include_router(models.router, prefix="/api/v1", tags=["models"])
-    business.include_router(collection.router, prefix="/api/v1")
     business.include_router(system.router, prefix="/api/v1")
     business.include_router(admin_models_router, prefix="/api/v1", tags=["admin"])
 

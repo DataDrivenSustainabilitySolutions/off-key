@@ -3,13 +3,13 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { apiUtils } from "@/lib/api-client";
 import { ExplorerCollection } from "@/features/explorer/ExplorerCollection";
-import type { SystemRuntime } from "@/features/spatial/systemTypes";
+import type { SystemRuntime } from "@/features/catalogue/systemTypes";
 
 vi.mock("@/lib/api-client", () => ({ apiUtils: { post: vi.fn() } }));
 beforeEach(() => vi.resetAllMocks());
 afterEach(cleanup);
 const runtime: SystemRuntime = {
-  mode: "configured_only", message: "", legacy_collection_revision: 2, collection_revision: 4,
+  mode: "configured_only", message: "", collection_revision: 4,
   collection: { status: "applied" }, bindings: Object.fromEntries(["one", "two"].map((id) => [id,
     { entity_id: "entity", telemetry_key: id, accepted_topic: `telemetry/entity/${id}`, policy: { mode: "off", interval_seconds: 10 } }]))
 };

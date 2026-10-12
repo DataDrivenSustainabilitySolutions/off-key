@@ -1,6 +1,7 @@
 """Forward saved system requests with member authorization preserved."""
 
 from fastapi import APIRouter, Header, HTTPException, Path, Query, Response
+from off_key_core.schemas.storage import StorageStatus
 from off_key_core.schemas.system import SystemChange
 from off_key_core.schemas.system_collection import (
     SystemCollectionChange,
@@ -36,6 +37,16 @@ async def system_request(
 @router.get("")
 async def get_system(authorization: str | None = Header(default=None)):
     return await system_request("GET", authorization)
+
+
+@router.get("/health")
+async def collection_health(authorization: str | None = Header(default=None)):
+    return await system_request("GET", authorization, "/health")
+
+
+@router.get("/storage", response_model=StorageStatus)
+async def storage_status(authorization: str | None = Header(default=None)):
+    return await system_request("GET", authorization, "/storage")
 
 
 @router.put("")

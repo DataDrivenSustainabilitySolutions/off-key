@@ -27,6 +27,7 @@ export interface TelemetryCursor {
 // Categorized telemetry data
 export interface TelemetryTypeData {
   type: string;
+  label?: string;
   category: string;
   unit?: string;
   data: TelemetryDataPoint[];

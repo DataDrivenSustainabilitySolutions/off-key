@@ -33,7 +33,7 @@ const group = (id = "personal:watchlist", memberIds = ["device:one"]): PersonalG
 const preferences = (groups = [group()]): ExplorerPreferences => ({
   version: 1,
   groups,
-  scopeKey: 'topic:["broker:one","device/evCharger/0"]',
+  scopeKey: 'topic:["broker:one","telemetry/0"]',
   sidebarOpen: false,
 });
 const membershipGroups = (count: number): PersonalGroup[] =>
@@ -217,7 +217,7 @@ describe("explorer preference persistence", () => {
 
 describe("personal group validation and editing", () => {
   it("copies only validated fields and accepts actual stable catalogue identifiers", () => {
-    const source = group("personal:own", ["ambibox:broker:abc", "ambibox:sensor:abc:lineVoltage", "topic:device/evCharger/0.power"]);
+    const source = group("personal:own", ["ambibox:broker:abc", "ambibox:sensor:abc:lineVoltage", "topic:telemetry/0.power"]);
     const parsed = parsePersonalGroups([{ ...source, name: "  Watchlist  ", endpoint: "private" }])!;
     expect(parsed).toEqual([source]);
     expect(parsed[0]).not.toBe(source);

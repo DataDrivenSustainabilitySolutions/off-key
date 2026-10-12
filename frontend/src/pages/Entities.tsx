@@ -7,8 +7,8 @@ import { NavigationBar } from "@/components/NavigationBar";
 import { PageHeader, PageShell } from "@/components/DashboardLayout";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { useSystemDocument } from "@/features/spatial/useSystemDocument";
-import type { SystemDocument } from "@/features/spatial/systemTypes";
+import { useSystemDocument } from "@/features/catalogue/useSystemDocument";
+import type { SystemDocument } from "@/features/catalogue/systemTypes";
 import "./entities.css";
 
 function directoryEntries(document: SystemDocument) {

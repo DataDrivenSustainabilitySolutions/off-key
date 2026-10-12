@@ -63,10 +63,12 @@ def test_migrations_adopt_verified_baseline_preserve_data_and_repeat(
         assert migration_status(connection)["pending"] == [
             "003_deployment_maintenance.sql",
             "004_system_catalogue.sql",
+            "005_generic_runtime.sql",
         ]
         assert apply_migrations(connection)["applied"] == [
             "003_deployment_maintenance.sql",
             "004_system_catalogue.sql",
+            "005_generic_runtime.sql",
         ]
         assert (
             connection.scalar(text("SELECT count(*) FROM services WHERE id='old'")) == 1
@@ -78,7 +80,7 @@ def test_migrations_adopt_verified_baseline_preserve_data_and_repeat(
 
 
 @pytest.mark.parametrize("ledger", [False, True])
-def test_current_main_upgrade_preserves_catalogue_history_and_monitor_configuration(
+def test_clean_break_preserves_configurations_discards_old_history_and_runs_once(
     disposable_database, ledger
 ):
     with disposable_database.begin() as connection:
@@ -127,14 +129,20 @@ def test_current_main_upgrade_preserves_catalogue_history_and_monitor_configurat
             connection.execute(
                 text(
                     "DELETE FROM off_key_schema_migrations "
-                    "WHERE version='004_system_catalogue.sql'"
+                    "WHERE version >= '004_system_catalogue.sql'"
                 )
             )
         else:
             connection.execute(text("DROP TABLE off_key_schema_migrations"))
     with disposable_database.begin() as connection:
-        assert migration_status(connection)["pending"] == ["004_system_catalogue.sql"]
-        assert apply_migrations(connection)["applied"] == ["004_system_catalogue.sql"]
+        assert migration_status(connection)["pending"] == [
+            "004_system_catalogue.sql",
+            "005_generic_runtime.sql",
+        ]
+        assert apply_migrations(connection)["applied"] == [
+            "004_system_catalogue.sql",
+            "005_generic_runtime.sql",
+        ]
         assert (
             connection.scalar(
                 text("SELECT revision FROM collection_configuration WHERE id=1")
@@ -145,7 +153,7 @@ def test_current_main_upgrade_preserves_catalogue_history_and_monitor_configurat
             connection.scalar(
                 text("SELECT value FROM telemetry WHERE charger_id='existing'")
             )
-            == 24.5
+            is None
         )
         assert connection.scalar(
             text("SELECT launch_config FROM services WHERE id='existing-service'")
@@ -157,10 +165,25 @@ def test_current_main_upgrade_preserves_catalogue_history_and_monitor_configurat
             connection.scalar(
                 text("SELECT count(*) FROM system_collection_configuration")
             )
-            == 0
+            == 1
         )
-        assert connection.scalar(text("SELECT count(*) FROM system_configuration")) == 0
+        assert connection.scalar(text("SELECT count(*) FROM system_configuration")) == 1
+        connection.execute(
+            insert(Telemetry).values(
+                charger_id="existing",
+                timestamp=datetime.now(UTC),
+                type="temperature",
+                value=30,
+                data_source="mqtt",
+            )
+        )
         assert apply_migrations(connection)["applied"] == []
+        assert (
+            connection.scalar(
+                text("SELECT value FROM telemetry WHERE charger_id='existing'")
+            )
+            == 30
+        )
 
 
 def test_failed_migration_rolls_back_ddl_and_ledger_and_lock_blocks_competitors(
@@ -169,7 +192,7 @@ def test_failed_migration_rolls_back_ddl_and_ledger_and_lock_blocks_competitors(
     with disposable_database.begin() as connection:
         apply_migrations(connection)
     migrations = migration_files() | {
-        "005_failure.sql": "CREATE TABLE release_probe (id integer); SELECT 1 / 0;"
+        "006_failure.sql": "CREATE TABLE release_probe (id integer); SELECT 1 / 0;"
     }
     with (
         pytest.raises(Exception, match="division by zero"),
@@ -231,7 +254,7 @@ async def test_monitor_cutover_blocks_writes_preserves_intent_and_resumes_once(
     revision = "a" * 40
     config = RadarStartConfig(
         container_name="first",
-        mqtt_topics=["device/evCharger/charger-1/sine"],
+        mqtt_topics=["telemetry/charger-1/sine"],
         model_type="pyod_iforest",
     )
     config2 = config.model_copy(update={"container_name": "stopping"})

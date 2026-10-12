@@ -16,7 +16,7 @@ from off_key_core.db.system import (
     SystemConfiguration,
     SystemRevision,
 )
-from off_key_core.schemas.collection import AmbiboxCatalog, CollectionPolicy
+from off_key_core.schemas.collection_policy import CollectionPolicy
 from off_key_core.schemas.system import SystemChange
 from off_key_core.schemas.system_collection import (
     SystemCollectionChange,
@@ -84,112 +84,21 @@ def change(snapshot, mode="sample", interval=2):
 
 
 @pytest.mark.asyncio
-async def test_main_collection_status_and_history_bindings_survive_the_new_view(
-    session,
-):
-    legacy = catalog()
-    legacy.sources[0].chargers[0].policy = CollectionPolicy(mode="original")
-    source = legacy.sources[0]
+async def test_archived_catalogue_never_drives_runtime(session):
     session.add(
         CollectionConfiguration(
             id=1,
             revision=7,
-            document=legacy.model_dump(mode="json"),
+            document=catalog().model_dump(mode="json"),
             updated_by="operator",
-            collection_status={"revision": 7, "status": "applied"},
-            ingress_status={
-                "revision": 7,
-                "status": "applied",
-                "sources": {
-                    str(source.id): {"status": "connected", "configured": True},
-                },
-            },
         )
     )
     await session.flush()
     snapshot = await SystemService(session).read()
-    connection = snapshot.document.connections[0]
-    assert snapshot.runtime.ingress["sources"][connection.id]["state"] == "connected"
-    assert snapshot.runtime.collection["revision"] == 7
-    binding = next(iter(snapshot.runtime.bindings.values()))
-    original = legacy.streams()[0]
-    assert binding["entity_id"] == original.charger_id
-    assert binding["telemetry_key"] == original.sensor.key
-    assert binding["policy"]["mode"] == "original"
-    row = session.session.get(CollectionConfiguration, 1)
-    assert str(source.id) in row.ingress_status["sources"]
-    assert session.session.get(SystemCollectionConfiguration, 1) is None
-
-
-async def main_recorded_catalogue(session):
-    legacy = catalog()
-    legacy.sources[0].chargers[0].policy = CollectionPolicy(mode="original")
-    session.add(
-        CollectionConfiguration(
-            id=1,
-            revision=7,
-            document=legacy.model_dump(mode="json"),
-            updated_by="operator",
-        )
-    )
-    await session.flush()
-    return await SystemService(session).read()
-
-
-@pytest.mark.asyncio
-async def test_renaming_main_inputs_keeps_the_existing_collection_route(session):
-    original = await main_recorded_catalogue(session)
-    renamed = original.document.model_copy(deep=True)
-    renamed.streams[0].label = "Renamed input"
-    saved = await SystemService(session).save(
-        SystemChange(expected_revision=0, document=renamed), actor="test@example.com"
-    )
-    assert saved.document.streams[0].label == "Renamed input"
-    assert saved.runtime.bindings == original.runtime.bindings
-    assert session.session.get(SystemCollectionConfiguration, 1) is None
-    assert session.session.get(CollectionConfiguration, 1).revision == 7
-
-
-@pytest.mark.asyncio
-async def test_removing_a_main_recorded_input_stops_its_hidden_collection(session):
-    original = await main_recorded_catalogue(session)
-    edited = original.document.model_copy(deep=True)
-    edited.streams = []
-    edited.groups = []
-    await SystemService(session).save(
-        SystemChange(expected_revision=0, document=edited), actor="test@example.com"
-    )
-    runtime = await read_collection_runtime(session)
-    assert isinstance(runtime.catalog, SystemCollectionDefinition)
-    assert runtime.catalog.streams(selected_only=True) == []
-    # The archived main configuration is retained, but no longer drives admission.
-    assert session.session.get(CollectionConfiguration, 1).revision == 7
-    assert session.session.get(SystemCollectionConfiguration, 1).revision == 1
-
-
-@pytest.mark.asyncio
-async def test_main_monitor_inputs_are_protected_before_structure_handover(session):
-    original = await main_recorded_catalogue(session)
-    topic = next(iter(original.runtime.bindings.values()))["accepted_topic"]
-    session.add(
-        MonitoringService(
-            id="main-monitor",
-            container_name="main-monitor",
-            mqtt_topic=[topic],
-            status=True,
-        )
-    )
-    await session.flush()
-    edited = original.document.model_copy(deep=True)
-    edited.streams = []
-    edited.groups = []
-    with pytest.raises(ConflictError, match="running monitors"):
-        await SystemService(session).save(
-            SystemChange(expected_revision=0, document=edited), actor="test@example.com"
-        )
-    assert session.session.get(SystemConfiguration, 1) is None
-    assert session.session.get(SystemCollectionConfiguration, 1) is None
-    assert session.session.get(MonitoringService, "main-monitor").status is True
+    assert snapshot.document.streams == []
+    assert snapshot.runtime.bindings == {}
+    assert snapshot.runtime.collection_revision == 0
+    assert snapshot.storage_origin == "empty"
 
 
 @pytest.mark.asyncio
@@ -202,7 +111,7 @@ async def test_metadata_import_never_enables_recording_but_explicit_action_does(
     snapshot = await SystemService(session).save(
         SystemChange(expected_revision=0, document=proposed), actor="test@example.com"
     )
-    assert session.session.get(SystemCollectionConfiguration, 1) is None
+    assert session.session.get(SystemCollectionConfiguration, 1) is not None
     assert snapshot.runtime.bindings["temperature-1"]["policy"]["mode"] == "off"
     snapshot = await SystemCollectionService(session).apply(
         change(snapshot), actor="test@example.com"
@@ -297,7 +206,7 @@ def runtime_definition():
     doc = document()
     doc.streams[0].policy = CollectionPolicy(mode="sample", interval_seconds=2)
     return SystemCollectionDefinition(
-        document=doc, bindings=build_bindings(doc, AmbiboxCatalog()), generation="test"
+        document=doc, bindings=build_bindings(doc), generation="test"
     )
 
 
@@ -343,7 +252,7 @@ def test_generic_json_pointer_sample_original_off_and_retained_admission():
     assert buffer.take(now=100) == []
 
 
-def test_generic_monitoring_contract_and_legacy_history_binding_are_both_valid():
+def test_generic_monitoring_contract_rejects_the_old_namespace():
     definition = runtime_definition()
     stream = definition.streams()[0]
     parsed = TopicMetadataExtractor().extract(stream.accepted_topic)
@@ -352,56 +261,34 @@ def test_generic_monitoring_contract_and_legacy_history_binding_are_both_valid()
     assert normalize_static_monitoring_topics([stream.accepted_topic]) == [
         stream.accepted_topic
     ]
-    legacy = catalog()
-    from off_key_core.schemas.system_adapter import adapt_ambibox_catalog
-
-    doc = adapt_ambibox_catalog(legacy)
-    binding = build_bindings(doc, legacy)[doc.streams[0].id]
-    assert binding.entity_id == legacy.streams()[0].charger_id
-    assert binding.accepted_topic == legacy.streams()[0].accepted_topic
+    assert TopicMetadataExtractor().extract("device/evCharger/old/temperature") is None
+    with pytest.raises(ValueError):
+        normalize_static_monitoring_topics(["device/evCharger/old/temperature"])
 
 
-def test_duplicate_generic_aliases_cannot_publish_twice_to_one_legacy_binding():
-    from off_key_core.schemas.system_adapter import adapt_ambibox_catalog
-
-    legacy = catalog()
-    doc = adapt_ambibox_catalog(legacy)
-    original = doc.streams[0]
-    alias = original.model_copy(update={"id": "alias"})
-    doc.streams.append(alias)
-    bindings = build_bindings(doc, legacy)
-    assert bindings[original.id].accepted_topic != bindings[alias.id].accepted_topic
+def test_duplicate_inputs_receive_distinct_generic_bindings():
+    doc = document()
+    doc.streams.append(doc.streams[0].model_copy(update={"id": "alias"}))
+    bindings = build_bindings(doc)
+    assert len({binding.accepted_topic for binding in bindings.values()}) == 2
 
 
-def test_reimport_after_removing_a_reading_restores_its_main_history_identity():
-    from off_key_core.schemas.system_adapter import adapt_ambibox_catalog
-
-    legacy = catalog()
-    saved = adapt_ambibox_catalog(legacy)
-    original = build_bindings(saved, legacy)
-    removed = saved.model_copy(deep=True)
+def test_reimport_restores_deterministic_generic_identities():
+    doc = document()
+    original = build_bindings(doc)
+    removed = doc.model_copy(deep=True)
     removed.streams = []
-    remaining = build_bindings(removed, legacy, original)
+    assert build_bindings(doc, build_bindings(removed, original)) == original
 
-    restored = build_bindings(saved, legacy, remaining)
-    assert restored == original
+
+def test_saved_bindings_survive_topic_edits_without_matching_other_catalogues():
+    doc = document()
+    original = build_bindings(doc)
+    doc.streams[0].topic = "another/input"
+    doc.streams.append(doc.streams[0].model_copy(update={"id": "new-reading"}))
+    bindings = build_bindings(doc, original)
+    assert bindings[doc.streams[0].id] == original[doc.streams[0].id]
     assert (
-        next(iter(restored.values())).accepted_topic
-        == legacy.streams()[0].accepted_topic
+        bindings["new-reading"].accepted_topic
+        != original[doc.streams[0].id].accepted_topic
     )
-
-
-def test_reimport_does_not_reuse_history_already_bound_to_an_existing_reading():
-    from off_key_core.schemas.system_adapter import adapt_ambibox_catalog
-
-    legacy = catalog()
-    saved = adapt_ambibox_catalog(legacy)
-    original = build_bindings(saved, legacy)
-    reading = saved.streams[0]
-    changed = saved.model_copy(deep=True)
-    changed.streams[0].topic = "another/input"
-    changed.streams.append(reading.model_copy(update={"id": "new-reading"}))
-
-    bindings = build_bindings(changed, legacy, original)
-    assert bindings[reading.id] == original[reading.id]
-    assert bindings["new-reading"].accepted_topic != original[reading.id].accepted_topic

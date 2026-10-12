@@ -13,7 +13,7 @@ from off_key_core.utils.mqtt_topics import (
 def test_extracts_canonical_topic_shape():
     extractor = TopicMetadataExtractor()
     metadata = extractor.extract(
-        "device/evCharger/0/TopLevel/SubMetric",
+        "telemetry/0/TopLevel/SubMetric",
         payload={"value": 1},
     )
     assert metadata is not None
@@ -24,11 +24,11 @@ def test_extracts_canonical_topic_shape():
 @pytest.mark.parametrize(
     "topic",
     [
-        "device/evCharger/0/voltageAc3",
-        "device/evCharger/0/voltageAc",
-        "device/evCharger/0/currentDc",
-        "device/evCharger/0/voltageAc2",
-        "device/evCharger/0/voltageAc1",
+        "telemetry/0/voltageAc3",
+        "telemetry/0/voltageAc",
+        "telemetry/0/currentDc",
+        "telemetry/0/voltageAc2",
+        "telemetry/0/voltageAc1",
     ],
 )
 def test_extracts_representative_device_topics(topic):
@@ -71,15 +71,15 @@ def test_rejects_regex_without_required_named_groups():
 def test_normalizes_and_deduplicates_monitoring_topic_filters():
     topics = normalize_telemetry_topic_filters(
         [
-            " device/evCharger/charger-1/sine ",
-            "device/evCharger/charger-1/sine",
-            "device/#",
+            " telemetry/charger-1/sine ",
+            "telemetry/charger-1/sine",
+            "telemetry/#",
         ]
     )
 
     assert topics == [
-        "device/evCharger/charger-1/sine",
-        "device/#",
+        "telemetry/charger-1/sine",
+        "telemetry/#",
     ]
 
 
@@ -88,9 +88,9 @@ def test_normalizes_and_deduplicates_monitoring_topic_filters():
     [
         (" ", "must not be empty"),
         ("device//0/sine", "empty levels"),
-        ("device/evCharger/0/foo/#/bar", "last level"),
-        ("device/evCharger/0/foo#", "must occupy a level"),
-        ("device/evCharger/0/foo+bar", "must occupy a level"),
+        ("telemetry/0/foo/#/bar", "last level"),
+        ("telemetry/0/foo#", "must occupy a level"),
+        ("telemetry/0/foo+bar", "must occupy a level"),
     ],
 )
 def test_rejects_malformed_mqtt_topic_filters(topic, message):
@@ -123,13 +123,13 @@ def test_rejects_monitoring_topic_filters_outside_device_namespace(topic):
     "topic",
     [
         "device/evCharger/#",
-        "device/evCharger/charger+1/voltageAc",
-        "device/evCharger/charger#1/voltageAc",
-        "device/evCharger/0/voltage+Ac",
-        "device/evCharger/0/voltage#Ac",
+        "telemetry/charger+1/voltageAc",
+        "telemetry/charger#1/voltageAc",
+        "telemetry/0/voltage+Ac",
+        "telemetry/0/voltage#Ac",
         "device/charger/0/status",
-        "device/evCharger/0/foo/#/bar",
-        "device/evCharger/0/foo+bar",
+        "telemetry/0/foo/#/bar",
+        "telemetry/0/foo+bar",
     ],
 )
 def test_rejects_invalid_monitoring_topic_filter_shapes(topic):
@@ -141,33 +141,33 @@ def test_rejects_invalid_monitoring_topic_filter_shapes(topic):
     ("left", "right", "expected"),
     [
         (
-            "device/evCharger/+/#",
-            "device/evCharger/A/L1",
+            "telemetry/+/#",
+            "telemetry/A/L1",
             True,
         ),
         (
-            "device/evCharger/A/+",
-            "device/evCharger/A/L1",
+            "telemetry/A/+",
+            "telemetry/A/L1",
             True,
         ),
         (
-            "device/evCharger/A/#",
-            "device/evCharger/A",
+            "telemetry/A/#",
+            "telemetry/A",
             True,
         ),
         (
-            "device/evCharger/A/L1",
-            "device/evCharger/B/L1",
+            "telemetry/A/L1",
+            "telemetry/B/L1",
             False,
         ),
         (
-            "device/evCharger/A/L1",
+            "telemetry/A/L1",
             "device/other/A/L1",
             False,
         ),
         (
-            "device/evCharger/A/L1",
-            "device/evCharger/A/L1/phase",
+            "telemetry/A/L1",
+            "telemetry/A/L1/phase",
             False,
         ),
     ],

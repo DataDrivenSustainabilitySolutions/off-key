@@ -78,11 +78,9 @@ def test_init_preserves_private_configuration_and_matches_emqx(launcher):
     assert json.loads(values["SYSTEM_LIVE_ALLOWED_HOSTS"]) == launcher.LOCAL_LIVE_HOSTS
     assert values["SYSTEM_LIVE_CREDENTIALS"] == "{}"
     assert values["SIMULATOR_WORKSHOP_ENABLED"] == "true"
-    catalog = json.loads((ROOT / "dev/ambibox/local-catalog.json").read_text())
+    catalog = json.loads((ROOT / "dev/local/simulator-system.json").read_text())
     assert set(values["SIMULATOR_CHARGER_IDS"].split(",")) == {
-        charger["local_id"]
-        for source in catalog["sources"]
-        for charger in source["chargers"]
+        device["id"].removeprefix("entity:") for device in catalog["devices"]
     }
     assert launcher.default_project(launcher.ROOT) != launcher.default_project(
         launcher.ROOT.parent
@@ -317,7 +315,7 @@ def test_regular_start_preserves_docker_configuration(launcher, monkeypatch):
     assert all(phase["DOCKER_CONTEXT"] == "desktop-linux" for phase in phases)
 
 
-def test_spatial_fixture_is_explicit_and_preserves_existing_allowlist(
+def test_broker_fixture_is_explicit_and_preserves_existing_allowlist(
     launcher, monkeypatch
 ):
     phases = []
@@ -329,9 +327,9 @@ def test_spatial_fixture_is_explicit_and_preserves_existing_allowlist(
         launcher.compose_command(),
         simulator=False,
         public_images=False,
-        spatial_fixture=True,
+        broker_fixture=True,
     )
-    assert phases[1][phases[1].index("--profile") + 1] == "spatial-fixture"
+    assert phases[1][phases[1].index("--profile") + 1] == "broker-fixture"
     assert "mqtt-sim" not in phases[1]
     assert launcher.ENV_FILE.read_bytes() == original
 
@@ -377,7 +375,6 @@ def test_local_compose_builds_current_artifacts_and_isolates_services(launcher):
     assert services["frontend"]["build"]["target"] == "production"
     assert services["frontend"]["build"]["args"] == {
         "VITE_API_URL": "/api",
-        "VITE_SPATIAL_LAB_ENABLED": "true",
         "VITE_LOCAL_ADMIN_EMAIL": "admin@example.com",
     }
     assert "--reload" not in services["api-gateway"]["command"]
@@ -410,8 +407,8 @@ def test_local_compose_builds_current_artifacts_and_isolates_services(launcher):
         "fixture-broker-weather",
         "fixture-broker-pump",
     }
-    for name in fixture_names | {"spatial-fixture-publisher"}:
-        assert services[name]["profiles"] == ["spatial-fixture"]
+    for name in fixture_names | {"broker-fixture-publisher"}:
+        assert services[name]["profiles"] == ["broker-fixture"]
         assert services[name].get("ports", []) == []
         assert set(services[name]["networks"]) == {"app-network"}
-    assert set(services["spatial-fixture-publisher"]["depends_on"]) == fixture_names
+    assert set(services["broker-fixture-publisher"]["depends_on"]) == fixture_names

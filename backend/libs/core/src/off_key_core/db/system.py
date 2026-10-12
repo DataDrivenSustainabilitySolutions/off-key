@@ -31,7 +31,7 @@ class SystemRevision(Base):
 
 
 class SystemCollectionConfiguration(Base):
-    """Active opt-in runtime, created only by an explicit collection action."""
+    """Sole collection runtime; new catalogue inputs remain Off until opted in."""
 
     __tablename__ = "system_collection_configuration"
 

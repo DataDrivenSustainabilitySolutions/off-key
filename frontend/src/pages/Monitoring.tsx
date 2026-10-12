@@ -17,7 +17,7 @@ import { Activity, Database } from "lucide-react";
 import { useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import { Link, useParams, useSearchParams } from "react-router-dom";
-import { useSystemDocument } from "@/features/spatial/useSystemDocument";
+import { useSystemDocument } from "@/features/catalogue/useSystemDocument";
 import { Button } from "@/components/ui/button";
 
 import { buildSensorClaims, mqttFiltersOverlap } from "./monitoring/config";

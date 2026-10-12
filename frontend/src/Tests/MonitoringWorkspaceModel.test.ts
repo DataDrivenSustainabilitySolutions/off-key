@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildMonitoringIndex, serviceName, serviceState, servicesForScope } from "@/features/monitoring/serviceModel";
-import { createEmptySystem } from "@/features/spatial/systemDocument";
-import type { SystemDocument, SystemRuntime } from "@/features/spatial/systemTypes";
+import { createEmptySystem } from "@/features/catalogue/systemDocument";
+import type { SystemDocument, SystemRuntime } from "@/features/catalogue/systemTypes";
 import type { ActiveService, OperationalStage } from "@/types/monitoring";
 
 const monitor = (id: string, topic: string, stage: OperationalStage = "operational"): ActiveService => ({
@@ -16,9 +16,8 @@ function fixture(count = 2) {
     streams: Array.from({ length: count * 20 }, (_, index) => ({ id: `reading-${index}`, label: `Measurement ${index}`, topic: `arbitrary/room/value-${index}`,
       value_type: "number", category: "Environment", connection_id: `broker-${Math.floor(index / 20)}`, device_id: `entity-${Math.floor(index / 20)}` })),
   };
-  const runtime: SystemRuntime = { mode: "configured_only", message: "Configured", legacy_collection_revision: 1,
-    bindings: Object.fromEntries(document.streams.map(stream => [stream.id, { entity_id: `internal-${stream.device_id}`, telemetry_key: stream.id,
-      accepted_topic: `device/evCharger/internal-${stream.device_id}/${stream.id}`, policy: { mode: "off", interval_seconds: 10 } }])) };
+  const runtime: SystemRuntime = { mode: "configured_only", message: "Configured", bindings: Object.fromEntries(document.streams.map(stream => [stream.id, { entity_id: `internal-${stream.device_id}`, telemetry_key: stream.id,
+      accepted_topic: `telemetry/internal-${stream.device_id}/${stream.id}`, policy: { mode: "off", interval_seconds: 10 } }])) };
   return { document, runtime };
 }
 
@@ -49,7 +48,7 @@ describe("monitoring workspace identity and scale", () => {
 
   it("resolves legacy wildcard inputs and leaves unmapped services visible globally", () => {
     const { document, runtime } = fixture();
-    const services = [monitor("legacy", "device/evCharger/internal-entity-0/#"), monitor("unmapped", "device/evCharger/absent/value")];
+    const services = [monitor("legacy", "telemetry/internal-entity-0/#"), monitor("unmapped", "telemetry/absent/value")];
     const index = buildMonitoringIndex(document, runtime, services);
     expect(index.inputs.get("legacy")).toHaveLength(20);
     expect(index.inputs.get("unmapped")).toEqual([]);

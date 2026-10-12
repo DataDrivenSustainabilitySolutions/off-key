@@ -5,9 +5,9 @@ import { ApiRequestError, apiClient, apiUtils } from "@/lib/api-client";
 import MonitoringWorkspace from "@/pages/MonitoringWorkspace";
 import { buildNavigationIndex } from "@/features/explorer/navigationIndex";
 import { createDefaultExplorerPreferences, loadExplorerPreferences, saveExplorerPreferences } from "@/features/explorer/preferences";
-import { createEmptySystem } from "@/features/spatial/systemDocument";
+import { createEmptySystem } from "@/features/catalogue/systemDocument";
 import type { ActiveService } from "@/types/monitoring";
-import type { SystemDocument, SystemSnapshot } from "@/features/spatial/systemTypes";
+import type { SystemDocument, SystemSnapshot } from "@/features/catalogue/systemTypes";
 
 const auth = vi.hoisted(() => ({ userId: 1 as number | null, isAuthenticated: true }));
 vi.mock("@/auth/AuthContext", () => ({ useAuth: () => auth }));
@@ -35,9 +35,9 @@ const fixture = (): SystemDocument => ({
 });
 const snapshot = (document = fixture(), revision = 7, canEdit = true): SystemSnapshot => ({
   document, revision, can_edit: canEdit, storage_origin: "saved",
-  runtime: { mode: "configured_only", legacy_collection_revision: 0, message: "Configuration only", collection_revision: 1, collection: { revision: 1, status: "applied" },
+  runtime: { mode: "configured_only", message: "Configuration only", collection_revision: 1, collection: { revision: 1, status: "applied" },
     bindings: Object.fromEntries(["temperature", "humidity"].map(id => [id, { connection_id: "broker", entity_id: "room-input", telemetry_key: id,
-      accepted_topic: `device/evCharger/room-input/${id}`, policy: { mode: "off", interval_seconds: 10 } }])) },
+      accepted_topic: `telemetry/room-input/${id}`, policy: { mode: "off", interval_seconds: 10 } }])) },
 });
 function Location() { return <output data-testid="location">{useLocation().search}</output>; }
 const mount = (path = "/") => render(<MemoryRouter initialEntries={[path]}><MonitoringWorkspace /><Location /></MemoryRouter>);
@@ -76,7 +76,7 @@ afterEach(() => {
 });
 
 const service = (id = "service-one", name = "Room climate"): ActiveService => ({ id, container_id: `workload-${id}`, container_name: `monitor-${id}`, display_name: name,
-  mqtt_topics: ["device/evCharger/room-input/temperature"], status: true, monitoring_strategy: "adaptive_stream", model_type: "aberrant_knn",
+  mqtt_topics: ["telemetry/room-input/temperature"], status: true, monitoring_strategy: "adaptive_stream", model_type: "aberrant_knn",
   operational_status: { stage: "operational", is_stale: false, message_count: 120, processed_message_count: 118, updated_at: "2026-10-11T10:00:00Z" } });
 function withServices(services: ActiveService[]) {
   vi.mocked(apiUtils.get).mockImplementation(async endpoint => endpoint === "/v1/system" ? snapshot()
@@ -272,11 +272,10 @@ describe("hierarchical explorer workspace", () => {
     fireEvent.click(screen.getByRole("button", { name: "Catalogue settings" }));
     const dialog = await screen.findByRole("dialog", { name: "Catalogue settings" });
     expect(within(dialog).queryByRole("button", { name: "Export workspace" })).toBeNull();
-    const contents = JSON.stringify({ format: "aberration-explorer-workspace", schema_version: 1,
-      system: fixture(), preferences: { groups: [] } });
-    const file = new File([], "previous-workspace.json", { type: "application/json" });
+    const contents = JSON.stringify(fixture());
+    const file = new File([], "catalogue.json", { type: "application/json" });
     Object.defineProperty(file, "text", { value: async () => contents });
-    fireEvent.change(await screen.findByLabelText("Catalogue or workspace file"), { target: { files: [file] } });
+    fireEvent.change(await screen.findByLabelText("Catalogue file"), { target: { files: [file] } });
     fireEvent.click(await screen.findByRole("button", { name: "Replace saved catalogue" }));
     await screen.findByText("Catalogue imported and saved.");
     await waitFor(() => expect(loadExplorerPreferences(1).scopeKey).toBe(buildNavigationIndex(fixture()).rootKey));
@@ -393,7 +392,7 @@ describe("hierarchical explorer workspace", () => {
     mount(); await enterReadings();
     fireEvent.click(screen.getByRole("button", { name: "Catalogue settings" }));
     const imported = { ...fixture(), label: "Imported building" };
-    fireEvent.change(await screen.findByLabelText("Catalogue or workspace file"), { target: { files: [fileFor(imported)] } });
+    fireEvent.change(await screen.findByLabelText("Catalogue file"), { target: { files: [fileFor(imported)] } });
     fireEvent.click(await screen.findByRole("button", { name: "Replace saved catalogue" }));
     await screen.findByText("Catalogue imported and saved.");
     expect(apiClient.put).toHaveBeenCalledExactlyOnceWith("/v1/system", { expected_revision: 7, document: imported }, expect.objectContaining({ redirectOnUnauthorized: false }));
@@ -406,7 +405,7 @@ describe("hierarchical explorer workspace", () => {
   it("keeps a conflicted import unsaved and rejects retry against its obsolete baseline", async () => {
     mount(); await loaded();
     fireEvent.click(screen.getByRole("button", { name: "Catalogue settings" }));
-    fireEvent.change(await screen.findByLabelText("Catalogue or workspace file"), { target: { files: [fileFor({ ...fixture(), label: "My draft" })] } });
+    fireEvent.change(await screen.findByLabelText("Catalogue file"), { target: { files: [fileFor({ ...fixture(), label: "My draft" })] } });
     vi.mocked(apiClient.put).mockRejectedValueOnce(new ApiRequestError("Conflict", 409));
     vi.mocked(apiUtils.get).mockResolvedValue(snapshot({ ...fixture(), label: "Another editor's system" }, 8));
     fireEvent.click(await screen.findByRole("button", { name: "Replace saved catalogue" }));

@@ -107,7 +107,7 @@ def _runtime_config(
     )
     return AnomalyDetectionConfig(
         monitoring=adaptive,
-        subscription_topics=["device/evCharger/c1/x"],
+        subscription_topics=["telemetry/c1/x"],
         checkpoint_interval=1_000_000,
     )
 

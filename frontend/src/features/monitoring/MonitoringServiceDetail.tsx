@@ -6,10 +6,10 @@ import { apiUtils } from "@/lib/api-client";
 import { API_CONFIG } from "@/lib/api-config";
 import { getErrorMessage } from "@/lib/errors";
 import type { ActiveService, JsonValue } from "@/types/monitoring";
-import { InlineName } from "../spatial/InlineName";
+import { InlineName } from "../catalogue/InlineName";
 import { ExplorerHistoryChart } from "../explorer/ExplorerHistoryChart";
 import type { ReadingHistoryCache } from "../explorer/readingHistoryCache";
-import type { SystemDocument } from "../spatial/systemTypes";
+import type { SystemDocument } from "../catalogue/systemTypes";
 import { formatServiceTime, serviceName, serviceState, strategyName, type MonitoringInput } from "./serviceModel";
 
 type Configuration = { monitoring: Record<string, JsonValue>; performance_config: Record<string, JsonValue> };

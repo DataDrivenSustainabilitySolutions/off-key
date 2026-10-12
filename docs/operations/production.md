@@ -97,12 +97,19 @@ Local Compose uses Mailpit. No production Mailpit service remains.
 
 ## Catalog and private observations
 
-The bundled AmbiBox catalog is a synthetic template with collection off. Import
-real source definitions through authenticated Data sources; saved database catalogs
-are preserved across releases. Real fleet observations, university topology and
-vendor registration/recovery notes remain private operator material. They are not
-required for hosted CI. There is no need for the old Windows or university-network
-workstation setup when deploying through the management tailnet.
+Use authenticated **Sources** to import an `aberration-system` catalogue or edit
+brokers, entities and readings. Recording is explicitly opt-in. Operator networking,
+credentials and TLS settings remain private and separate from catalogue exports.
+
+Migration `005_generic_runtime.sql` converts saved configuration once and clears
+old sensor measurements/latest-state caches. It preserves accounts, favourites,
+catalogue revisions, monitor settings and monitoring evidence. Future opted-in
+recording continues, and subsequent deployments retain that history. Do not reset
+an existing database or use the retired catalogue API during the cutover. See
+[Collection](system-collection.md).
+
+Real observations and vendor registration/recovery notes remain private operator
+material. They are not required for hosted CI.
 
 Previously published catalog identifiers remain in earlier public Offkey commits;
 this integration replaces the current template without rewriting public history.

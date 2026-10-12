@@ -22,7 +22,7 @@ const status: StorageStatus = {
 beforeEach(() => {
   vi.clearAllMocks();
   getStorage.mockResolvedValue(status);
-  api.get.mockImplementation((url) => url === "/v1/sources/storage"
+  api.get.mockImplementation((url) => url === "/v1/system/storage"
     ? getStorage()
     : Promise.resolve({ revision: 0, collection: {}, ingress: {} }));
 });
@@ -39,11 +39,11 @@ describe("storage and retention", () => {
     expect(await screen.findByText("1.5 GB")).toBeTruthy();
     expect(screen.getByText("30 days")).toBeTruthy();
     expect(screen.getByText("7 days")).toBeTruthy();
-    expect(api.get).toHaveBeenCalledWith("/v1/sources/storage");
+    expect(api.get).toHaveBeenCalledWith("/v1/system/storage");
     expect(screen.getByRole("heading", { name: "Collection diagnostics" })).toBeTruthy();
     expect(screen.getByText("Not configured")).toBeTruthy();
-    expect(api.get).toHaveBeenCalledWith("/v1/sources/status");
-    expect(api.get).not.toHaveBeenCalledWith("/v1/sources");
+    expect(api.get).toHaveBeenCalledWith("/v1/system/health");
+    expect(api.get).not.toHaveBeenCalledWith("/v1/system");
   });
 
   it("distinguishes paused and missing policies without substituting defaults", async () => {

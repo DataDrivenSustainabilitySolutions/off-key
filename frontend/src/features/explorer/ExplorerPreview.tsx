@@ -1,9 +1,9 @@
 import { useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
 import { Box, Check, Copy, Cpu, Folder, Pencil, Radio, Star, X } from "lucide-react";
-import { InlineName } from "../spatial/InlineName";
-import type { SystemLiveTelemetry } from "../spatial/systemLiveTelemetry";
-import type { LiveStatus } from "../spatial/systemLiveTypes";
-import type { SystemDocument, SystemEntityKind, SystemRuntime } from "../spatial/systemTypes";
+import { InlineName } from "../catalogue/InlineName";
+import type { SystemLiveTelemetry } from "../catalogue/systemLiveTelemetry";
+import type { LiveStatus } from "../catalogue/systemLiveTypes";
+import type { SystemDocument, SystemEntityKind, SystemRuntime } from "../catalogue/systemTypes";
 import { ExplorerHistoryChart } from "./ExplorerHistoryChart";
 import { readingHistoryKey, useReadingHistorySnapshot, type ReadingHistoryCache } from "./readingHistoryCache";
 import { navigationTrail, type ExplorerNode, type NavigationIndex } from "./navigationIndex";

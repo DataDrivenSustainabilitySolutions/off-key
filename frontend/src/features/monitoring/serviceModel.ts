@@ -1,6 +1,6 @@
 import { mqttFiltersOverlap } from "@/lib/monitoring-services";
 import type { ActiveService } from "@/types/monitoring";
-import type { SystemDocument, SystemReadingBinding, SystemRuntime, SystemStream } from "../spatial/systemTypes";
+import type { SystemDocument, SystemReadingBinding, SystemRuntime, SystemStream } from "../catalogue/systemTypes";
 
 export type MonitoringInput = { stream: SystemStream; binding: SystemReadingBinding; path: string };
 export type MonitoringTarget = { id: string; label: string; inputs: MonitoringInput[] };

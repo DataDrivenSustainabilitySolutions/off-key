@@ -8,15 +8,21 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from off_key_api_gateway.api.v1 import system as gateway_system
 from off_key_core.db.base import get_db_async
-from off_key_core.db.models import CollectionConfiguration, CollectionRevision, User
+from off_key_core.db.catalogue_v1 import adapt_ambibox_catalog, legacy_stream_id
+from off_key_core.db.models import (
+    Charger,
+    CollectionBinding,
+    CollectionConfiguration,
+    CollectionRevision,
+    User,
+)
 from off_key_core.db.system import (
     SystemCollectionConfiguration,
     SystemConfiguration,
     SystemRevision,
 )
-from off_key_core.schemas.collection import CollectionPolicy
+from off_key_core.schemas.collection_policy import CollectionPolicy
 from off_key_core.schemas.system import SystemChange, SystemDocument, SystemSnapshot
-from off_key_core.schemas.system_adapter import adapt_ambibox_catalog, legacy_stream_id
 from off_key_core.utils.enum import RoleEnum
 from off_key_tactic_middleware.api.collection_auth import current_member
 from off_key_tactic_middleware.api.v1 import system as system_api
@@ -84,6 +90,8 @@ def document():
 def database(tmp_path, monkeypatch):
     engine = create_engine(f"sqlite:///{tmp_path / 'system.db'}")
     tables = [
+        Charger.__table__,
+        CollectionBinding.__table__,
         CollectionConfiguration.__table__,
         CollectionRevision.__table__,
         SystemConfiguration.__table__,
@@ -269,33 +277,6 @@ def test_legacy_adapter_preserves_identity_topics_and_policies_without_mutation(
 
 
 @pytest.mark.asyncio
-async def test_get_projects_legacy_catalog_without_creating_or_mutating_rows(database):
-    legacy = catalog("off")
-    before = legacy.model_dump(mode="json")
-    with Session(database) as session:
-        session.add(
-            CollectionConfiguration(
-                id=1,
-                revision=3,
-                document=before,
-                ingress_status={},
-                collection_status={},
-                updated_by="operator@example.com",
-            )
-        )
-        session.commit()
-        snapshot = await system_service.SystemService(
-            AsyncSessionAdapter(session)
-        ).read()
-        assert snapshot.storage_origin == "legacy_adapter"
-        assert snapshot.revision == 0
-        assert snapshot.runtime.legacy_collection_revision == 3
-        assert snapshot.runtime.mode == "configured_only"
-        assert session.scalar(select(SystemConfiguration)) is None
-        assert session.scalar(select(CollectionConfiguration)).document == before
-
-
-@pytest.mark.asyncio
 async def test_structure_saves_survive_reopen_and_never_rewrite_active_collection(
     database,
 ):
@@ -323,7 +304,10 @@ async def test_structure_saves_survive_reopen_and_never_rewrite_active_collectio
     with Session(database) as session:
         service = system_service.SystemService(AsyncSessionAdapter(session))
         restored = await service.read()
-        assert restored.document == document()
+        assert restored.document.model_dump(
+            exclude={"streams"}
+        ) == document().model_dump(exclude={"streams"})
+        assert restored.document.streams[0].policy.mode == "off"
         assert restored.updated_by == "admin@example.com"
         changed = restored.document.model_copy(deep=True)
         changed.connections[0].host = "new.example.com"

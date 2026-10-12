@@ -70,9 +70,9 @@ make local-up LOCAL_ARGS=--simulator
 
 The simulator publishes actual MQTT messages to the local source broker. These
 are explicitly synthetic readings, delivered through the normal broker and
-collector path. In **Sources**, import `dev/ambibox/local-catalog.json` and
-select the fixture's chargers and streams to exercise collection and charts.
-The simulator's charger IDs match this catalog.
+collector path. In **Sources**, import `dev/local/simulator-system.json` and
+select the fixture's entities and readings to exercise collection and charts.
+The simulator's upstream topics match this catalogue.
 
 For a domain-neutral example, import `dev/local/workshop-system.json` into the
 monitoring workspace at `/` and choose **Connect** while signed in as an administrator.
@@ -193,10 +193,10 @@ The implementation uses Paho's official `proxy` extra.
 MQTT credentials remain separate from tailnet registration: set a broker's
 `credential_ref` and the matching `SYSTEM_LIVE_CREDENTIALS` entry if required.
 
-## Mixed topology spatial fixture
+## Mixed topology broker fixture
 
 ```sh
-python3 dev/local/run.py up --spatial-fixture
+python3 dev/local/run.py up --broker-fixture
 ```
 
 This opt-in profile starts **six independent Eclipse Mosquitto brokers** and one
@@ -204,7 +204,7 @@ publisher using the existing Paho dependency. The brokers expose no host ports.
 They belong only to this checkout's isolated Compose project. The ordinary stack
 and other local deployments are unchanged.
 
-In the spatial view, explicitly import `dev/local/spatial-system.json`, then
+In **Sources**, explicitly import `dev/local/broker-system.json`, then
 choose **Connect**. Import replaces the current saved system; export any
 configuration you want to keep first. The catalog contains three shared brokers
 (12 rooms, 12 machines, and 12 growing beds) and three dedicated single-entity
@@ -245,9 +245,9 @@ fixture-broker-pump
 ```
 
 Regenerate the catalog after changing fixture definitions using
-`python3 dev/local/spatial_fixture.py --write-catalog`; check that the tracked
+`python3 dev/local/broker_fixture.py --write-catalog`; check that the tracked
 catalog matches using `--check-catalog`. `make local-stop` also stops the optional
-profile without deleting application state. Omitting `--spatial-fixture` on later
+profile without deleting application state. Omitting `--broker-fixture` on later
 starts does not stop a previously running profile; use `local-stop` when done.
 
 ## Iterate and restart
@@ -279,11 +279,10 @@ frontend origin and CORS configuration consistent if editing that file directly.
 The launcher ignores ambient shell overrides for Compose interpolation variables,
 so the local configuration determines this deployment.
 
-## Spatial draft in a compiled build
+## Compiled application
 
-The local Compose override sets `VITE_SPATIAL_LAB_ENABLED=true` at build time.
-Ordinary production builds leave this flag disabled and omit the draft route and
-its assets. The flag does not enable collection or change permissions.
+Development and production builds use the same monitoring home and catalogue
+sidebar. No experiment flag or separate demo route is required.
 
 The tracked launcher and override are in `dev/local/`. They reuse the root
 Compose services and contain no machine-specific absolute paths or private
@@ -293,3 +292,18 @@ The local Docker management proxy is pinned to the official
 [v0.4.2 release](https://github.com/Tecnativa/docker-socket-proxy/releases/tag/v0.4.2)
 from the vendor's recommended GHCR registry. Set `LOCAL_SOCKET_PROXY_IMAGE` in
 the private local environment to validate a newer release before adopting it.
+
+## Upgrade this iteration
+
+The generic catalogue is the only active format. The packaged migration action
+converts existing database configuration once and clears old sensor measurements
+and latest-value caches; future opted-in recording remains enabled. Preserve the
+local database volume and private `.env`. Stop application writers before applying
+migrations, then rebuild/recreate the API, TACTIC, collector and DB sync; also build
+the RADAR runtime image before starting monitors. Never use a database reset to
+upgrade a saved installation.
+
+The ignored private `infra/stack/state/prod/ambibox-development-system.json` is the
+converted generic Ambibox example for local import. It contains configuration
+only; MQTT passwords and private network access remain operator settings. Its
+original catalogue file remains a private archive.

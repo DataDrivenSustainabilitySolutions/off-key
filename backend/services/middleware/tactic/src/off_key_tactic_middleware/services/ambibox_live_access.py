@@ -43,4 +43,5 @@ class AmbiboxLiveAccess:
                 password=settings.AMBIBOX_MQTT_PASSWORD,
             ),
             proxy=proxy,
+            require_tls=settings.AMBIBOX_MQTT_TLS,
         )

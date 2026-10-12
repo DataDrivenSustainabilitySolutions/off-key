@@ -3,8 +3,8 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import Entities from "@/pages/Entities";
 import { apiUtils } from "@/lib/api-client";
-import { createEmptySystem } from "@/features/spatial/systemDocument";
-import type { SystemDocument, SystemSnapshot } from "@/features/spatial/systemTypes";
+import { createEmptySystem } from "@/features/catalogue/systemDocument";
+import type { SystemDocument, SystemSnapshot } from "@/features/catalogue/systemTypes";
 
 vi.mock("@/auth/AuthContext", () => ({ useAuth: () => ({ isAuthenticated: true, userId: 7 }) }));
 vi.mock("@/components/NavigationBar", () => ({ NavigationBar: () => null }));
@@ -44,7 +44,7 @@ function catalogue(): SystemDocument {
 function snapshot(document = catalogue()): SystemSnapshot {
   return {
     document, revision: 9, can_edit: false, storage_origin: "saved",
-    runtime: { mode: "configured_only", message: "Saved", legacy_collection_revision: 0 },
+    runtime: { mode: "configured_only", message: "Saved", },
   };
 }
 

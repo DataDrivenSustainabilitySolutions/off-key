@@ -2,10 +2,7 @@
 
 from datetime import UTC, datetime
 
-from off_key_core.db.collection import (
-    lock_collection_configuration,
-    read_collection_configuration,
-)
+from off_key_core.db.collection import lock_collection_configuration
 from off_key_core.db.maintenance import require_application_writes
 from off_key_core.db.models import CollectionState
 from off_key_core.db.system import SystemConfiguration, SystemRevision
@@ -15,8 +12,6 @@ from off_key_core.schemas.system import (
     SystemRuntime,
     SystemSnapshot,
 )
-from off_key_core.schemas.system_adapter import adapt_ambibox_catalog
-from off_key_core.schemas.system_collection import SystemCollectionDefinition
 from sqlalchemy import select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -29,23 +24,17 @@ class SystemService:
         self.session = session
 
     async def read(self) -> SystemSnapshot:
-        legacy = await read_collection_configuration(self.session)
         row = await self.session.scalar(
             select(SystemConfiguration).where(SystemConfiguration.id == 1)
         )
-        runtime = SystemRuntime(legacy_collection_revision=legacy.revision)
-        document = (
-            row.document if row is not None else adapt_ambibox_catalog(legacy.catalog)
-        )
+        document = row.document if row is not None else SystemDocument()
+        runtime = SystemRuntime()
         active, definition = await SystemCollectionService(self.session).current(
             SystemDocument.model_validate(document)
         )
-        generic = isinstance(active.catalog, SystemCollectionDefinition)
-        runtime.collection_revision = active.revision if generic else 0
+        runtime.collection_revision = active.revision
         runtime.collection = active.collection
-        runtime.ingress = (
-            active.ingress if generic else self._legacy_ingress(active, definition)
-        )
+        runtime.ingress = active.ingress
         if definition.streams(selected_only=True):
             runtime.mode = "collection"
             runtime.message = "Collection follows explicit reading policies."
@@ -68,28 +57,10 @@ class SystemService:
             )
         return SystemSnapshot(
             revision=0,
-            document=adapt_ambibox_catalog(legacy.catalog),
-            storage_origin="legacy_adapter" if legacy.catalog.sources else "empty",
+            document=SystemDocument(),
+            storage_origin="empty",
             runtime=runtime,
         )
-
-    @staticmethod
-    def _legacy_ingress(active, definition):
-        """Present existing routes under the new catalogue's connection IDs."""
-        routes = active.ingress.get("sources", {})
-        legacy_inputs = {item.accepted_topic: item for item in active.catalog.streams()}
-        sources = {}
-        for stream in definition.streams():
-            legacy = legacy_inputs.get(stream.accepted_topic)
-            route = routes.get(str(legacy.source_id)) if legacy else None
-            if route is not None:
-                sources[stream.source_id] = {
-                    "state": route.get("status", "waiting")
-                    if route.get("configured") is True
-                    else "blocked",
-                    "message": route.get("message"),
-                }
-        return {**active.ingress, "sources": sources}
 
     async def save(self, change: SystemChange, *, actor: str) -> SystemSnapshot:
         # Existing maintenance gating and the same advisory lock serialize all

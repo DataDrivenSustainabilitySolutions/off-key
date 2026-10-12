@@ -12,8 +12,8 @@ import { getEvidenceTimeForSensor } from "@/lib/monitoring-chart";
 import { buildSensorClaims } from "@/lib/monitoring-services";
 import { buildTelemetryChartModel, buildTelemetryChartOption, getLocalTimeZone } from "@/lib/telemetry-chart";
 import { getChartDomain } from "@/lib/telemetry-thresholds";
-import type { LiveNodeSnapshot } from "../spatial/systemLiveTypes";
-import type { SystemConnection, SystemStream, SystemReadingBinding } from "../spatial/systemTypes";
+import type { LiveNodeSnapshot } from "../catalogue/systemLiveTypes";
+import type { SystemConnection, SystemStream, SystemReadingBinding } from "../catalogue/systemTypes";
 import { useReadingMonitoring } from "./useReadingMonitoring";
 import type { ReadingHistoryCache } from "./readingHistoryCache";
 

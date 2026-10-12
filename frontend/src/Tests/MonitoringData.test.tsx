@@ -47,8 +47,8 @@ it("shows only monitoring services assigned to the selected entity", async () =>
   get.mockImplementation(async (url) => {
     if (url.includes("models")) return {};
     if (url.includes("active_only")) return [
-      { id: "selected-service", mqtt_topics: ["device/evCharger/entity-A/temperature"] },
-      { id: "another-service", mqtt_topics: ["device/evCharger/entity-B/temperature"] },
+      { id: "selected-service", mqtt_topics: ["telemetry/entity-A/temperature"] },
+      { id: "another-service", mqtt_topics: ["telemetry/entity-B/temperature"] },
     ];
     return [];
   });

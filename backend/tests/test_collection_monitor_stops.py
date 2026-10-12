@@ -5,14 +5,9 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from off_key_core.db.models import MonitoringService
-from off_key_core.schemas.collection import (
-    AmbiboxCatalog,
-    CatalogChange,
-    CatalogPreview,
-)
 from off_key_core.schemas.radar import RadarOperationalStatus
 from off_key_tactic_middleware.domain import InfrastructureError
-from off_key_tactic_middleware.services import collection
+from off_key_tactic_middleware.services import collection_monitors as collection
 from off_key_tactic_middleware.services.radar_status import derive_operational_status
 from off_key_tactic_middleware.services.reconciliation import (
     RadarStatusReconciliationService,
@@ -67,12 +62,12 @@ def stops(monkeypatch, tmp_path):
 async def test_partial_pause_survives_rollback_and_reconciliation_finishes(stops):
     sessions, workloads = stops
     workloads.remove.side_effect = [True, RuntimeError("Docker unavailable")]
-    service = collection.CollectionService(
+    service = collection.CollectionMonitorService(
         AsyncMock(expire_all=MagicMock(), scalar=AsyncMock(return_value=None))
     )
 
     with pytest.raises(InfrastructureError, match="retried automatically"):
-        await service._pause_monitors([{"id": "0"}, {"id": "1"}])
+        await service.pause_monitors([{"id": "0"}, {"id": "1"}])
 
     with sessions() as session:
         stopped, pending = (
@@ -104,37 +99,11 @@ async def test_partial_pause_survives_rollback_and_reconciliation_finishes(stops
 @pytest.mark.asyncio
 async def test_catalog_failure_does_not_undo_successful_stops(stops, monkeypatch):
     sessions, workloads = stops
-    monkeypatch.setattr(collection, "lock_collection_configuration", AsyncMock())
-    service = collection.CollectionService(
-        AsyncMock(expire_all=MagicMock(), scalar=AsyncMock(return_value=None))
-    )
-    service.preview = AsyncMock(
-        return_value=CatalogPreview(
-            revision=0,
-            catalog=AmbiboxCatalog(),
-            chargers=0,
-            selected_sensors=0,
-            sampled_rows_per_day_ceiling=0,
-            original_rate_sensors=0,
-            affected_monitors=[
-                {"id": "0", "name": "first"},
-                {"id": "1", "name": "second"},
-            ],
-        )
-    )
-    service._update_bindings = AsyncMock(
-        side_effect=RuntimeError("catalog write failed")
-    )
-
-    with pytest.raises(RuntimeError, match="catalog write failed"):
-        await service.apply(
-            CatalogChange(
-                expected_revision=0,
-                catalog=AmbiboxCatalog(),
-                pause_affected_monitors=True,
-            ),
-            actor="test",
-        )
+    service = collection.CollectionMonitorService(AsyncMock(expire_all=MagicMock()))
+    await service.pause_monitors([{"id": "0"}, {"id": "1"}])
+    # A later catalogue transaction can roll back without reviving stopped workers.
+    with pytest.raises(RuntimeError, match="catalog write failed"), sessions.begin():
+        raise RuntimeError("catalog write failed")
     assert workloads.remove.await_count == 2
     with sessions() as session:
         assert all(
@@ -157,5 +126,7 @@ async def test_intent_commit_failure_prevents_workload_removal(stops, monkeypatc
     sessions.begin = fail_commit
     monkeypatch.setattr(collection, "get_async_session_local", lambda: sessions)
     with pytest.raises(RuntimeError, match="intent commit failed"):
-        await collection.CollectionService(AsyncMock())._pause_monitors([{"id": "0"}])
+        await collection.CollectionMonitorService(AsyncMock()).pause_monitors(
+            [{"id": "0"}]
+        )
     workloads.remove.assert_not_awaited()

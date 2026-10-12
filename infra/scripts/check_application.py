@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from urllib.request import urlopen
 
 
-def check_collection(snapshot, now, ingress_enabled=True, *, generic=False):
+def check_collection(snapshot, now, ingress_enabled=True):
     selected = list(snapshot.catalog.streams(selected_only=True))
     # Before the first UI save there is no configuration row to hold heartbeats.
     # The caller has still verified the live collector, APIs and database query.
@@ -34,18 +34,8 @@ def check_collection(snapshot, now, ingress_enabled=True, *, generic=False):
         source = sources[source_id]
         broker = f"{source.label} ({source.host}:{source.port})"
         state = snapshot.ingress.get("sources", {}).get(source_id, {})
-        # Generic ingress owns its subscriptions directly. Legacy ingress uses
-        # applied GOST routes. An unavailable upstream is permitted in either
-        # runtime, but a blocked/missing route must fail deployment verification.
-        phase = state.get("state") if generic else state.get("status")
-        allowed = (
-            {"connected", "connecting", "waiting", "reconnecting"}
-            if generic
-            else {"connected", "connecting"}
-        )
-        if phase not in allowed or (
-            not generic and state.get("configured") is not True
-        ):
+        phase = state.get("state")
+        if phase not in {"connected", "connecting", "waiting", "reconnecting"}:
             raise ValueError(f"Selected broker {broker} has no applied ingress route")
         if phase != "connected":
             print(
@@ -59,7 +49,6 @@ def check_collection(snapshot, now, ingress_enabled=True, *, generic=False):
 async def main():
     from off_key_core.db.base import get_async_engine, get_async_session_local
     from off_key_core.db.collection_runtime import read_collection_runtime
-    from off_key_core.schemas.system_collection import SystemCollectionDefinition
 
     endpoints = {
         "schema": "http://db-sync:8009/ready/schema",
@@ -74,15 +63,10 @@ async def main():
     try:
         async with get_async_session_local()() as session:
             snapshot = await read_collection_runtime(session)
-        generic = isinstance(snapshot.catalog, SystemCollectionDefinition)
-        ingress_setting = (
-            "SYSTEM_COLLECTION_ENABLED" if generic else "AMBIBOX_INGRESS_ENABLED"
-        )
         result = check_collection(
             snapshot,
             datetime.now(timezone.utc),
-            os.environ.get(ingress_setting, "true").lower() == "true",
-            generic=generic,
+            os.environ.get("SYSTEM_COLLECTION_ENABLED", "true").lower() == "true",
         )
         print(json.dumps(result))
     finally:

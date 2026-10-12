@@ -1,4 +1,4 @@
-import type { SystemDocument } from "@/features/spatial/systemTypes";
+import type { SystemDocument } from "@/features/catalogue/systemTypes";
 
 export type ExplorerNode = {
   key: string;

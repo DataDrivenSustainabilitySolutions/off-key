@@ -115,7 +115,7 @@ class SimulatorSettings(BaseSettings):
     SIMULATOR_QOS: int = 0
     SIMULATOR_CHARGER_IDS: str = "charger-sim-1,charger-sim-2"
     SIMULATOR_FEATURES: str = "sine,cosine,random"
-    SIMULATOR_TOPIC_TEMPLATE: str = "device/evCharger/{charger_id}/{feature}"
+    SIMULATOR_TOPIC_TEMPLATE: str = "telemetry/{charger_id}/{feature}"
     SIMULATOR_VALUE_MIN: float = 0.0
     SIMULATOR_VALUE_MAX: float = 100.0
     SIMULATOR_BLIP_PROBABILITY: float = 0.0025

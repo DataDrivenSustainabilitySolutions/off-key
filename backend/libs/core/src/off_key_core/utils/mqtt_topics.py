@@ -7,7 +7,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
-DEFAULT_TOPIC_REGEX = r"^device/evCharger/(?P<charger_id>[^/]+)/(?P<telemetry_type>.+)$"
+DEFAULT_TOPIC_REGEX = r"^telemetry/(?P<charger_id>[^/]+)/(?P<telemetry_type>.+)$"
 SENSOR_KEY_STRATEGIES = frozenset({"full_hierarchy", "top_level", "leaf"})
 
 
@@ -69,10 +69,6 @@ class TopicMetadataExtractor:
         telemetry_type: str | None = None
 
         topic_match = self._compiled_regex.match(topic)
-        if topic_match is None and self.topic_regex == DEFAULT_TOPIC_REGEX:
-            topic_match = re.match(
-                r"^telemetry/(?P<charger_id>[^/]+)/(?P<telemetry_type>.+)$", topic
-            )
         if topic_match:
             charger_id = self._normalize_value(topic_match.group("charger_id"))
             telemetry_type = self._normalize_value(topic_match.group("telemetry_type"))
@@ -175,28 +171,14 @@ def _validate_wildcard_levels(levels: list[str]) -> None:
 def validate_telemetry_topic_filter(topic: str) -> str:
     """Validate a filter in the canonical device telemetry namespace."""
     normalized = validate_mqtt_topic_filter(topic)
-    if normalized == "device/#":
-        return normalized
-
     levels = normalized.split("/")
-    if levels[0] == "telemetry" and len(levels) >= 3:
+    if normalized == "telemetry/#" or (levels[0] == "telemetry" and len(levels) >= 3):
         return normalized
-
-    levels = normalized.split("/")
-    if len(levels) < 4:
-        raise ValueError(
-            "MQTT telemetry topic filters must use 'device/#' or "
-            "'device/evCharger/<id>/<type>'"
-        )
-    if levels[0] != "device" or levels[1] != "evCharger":
-        raise ValueError(
-            "MQTT telemetry topic filters must use the device/evCharger namespace"
-        )
-    return normalized
+    raise ValueError("MQTT telemetry filters must use 'telemetry/<entity>/<reading>'")
 
 
 def normalize_telemetry_topic_filters(topics: Iterable[str]) -> list[str]:
-    """Validate, trim, and de-duplicate charger telemetry filters."""
+    """Validate, trim, and de-duplicate entity telemetry filters."""
     normalized_topics: list[str] = []
     seen: set[str] = set()
     for topic in topics:
@@ -211,7 +193,7 @@ def normalize_telemetry_topic_filters(topics: Iterable[str]) -> list[str]:
 
 
 def normalize_static_monitoring_topics(topics: Iterable[str]) -> list[str]:
-    """Validate concrete, single-charger topics for a static feature schema."""
+    """Validate concrete, single-entity topics for a static feature schema."""
     normalized = normalize_telemetry_topic_filters(topics)
     if any(level in {"+", "#"} for topic in normalized for level in topic.split("/")):
         raise ValueError(
@@ -222,7 +204,7 @@ def normalize_static_monitoring_topics(topics: Iterable[str]) -> list[str]:
     charger_ids = {extractor.extract(topic).charger_id for topic in normalized}
     if len(charger_ids) != 1:
         raise ValueError(
-            "A static monitoring service must belong to exactly one charger"
+            "A static monitoring service must belong to exactly one entity"
         )
     return normalized
 

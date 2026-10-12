@@ -6,10 +6,10 @@ import ExplorerPreview from "@/features/explorer/ExplorerPreview";
 import { useReadingMonitoring } from "@/features/explorer/useReadingMonitoring";
 import { EMPTY_READING_HISTORY, ReadingHistoryCache, readingHistoryKey } from "@/features/explorer/readingHistoryCache";
 import { buildNavigationIndex, type ExplorerNode } from "@/features/explorer/navigationIndex";
-import { createEmptySystem } from "@/features/spatial/systemDocument";
-import { SystemLiveTelemetry } from "@/features/spatial/systemLiveTelemetry";
-import type { LiveBatch, LiveValue } from "@/features/spatial/systemLiveTypes";
-import type { SystemDocument, SystemRuntime } from "@/features/spatial/systemTypes";
+import { createEmptySystem } from "@/features/catalogue/systemDocument";
+import { SystemLiveTelemetry } from "@/features/catalogue/systemLiveTelemetry";
+import type { LiveBatch, LiveValue } from "@/features/catalogue/systemLiveTypes";
+import type { SystemDocument, SystemRuntime } from "@/features/catalogue/systemTypes";
 import type { ActiveService, MonitoringChartEvidence } from "@/types/monitoring";
 
 vi.mock("@/components/theme-provider", () => ({ useTheme: () => ({ resolvedTheme: "dark" }) }));
@@ -184,7 +184,7 @@ describe("workspace chart navigation and monitoring", () => {
     const { props } = fixture();
     const service: ActiveService = {
       id: "monitor", container_id: "test", container_name: "Test monitor", status: true,
-      mqtt_topics: ["device/evCharger/entity-id/temperature"],
+      mqtt_topics: ["telemetry/entity-id/temperature"],
       operational_status: { stage: "operational", message_count: 3, processed_message_count: 3, is_stale: false },
     };
     const history = {
@@ -278,7 +278,7 @@ describe("explorer selected-object preview", () => {
     const { props } = fixture();
     const binding = { entity_id: "room", connection_id: "broker", telemetry_key: "temperature", accepted_topic: "telemetry/room/temperature",
       policy: { mode: "sample" as const, interval_seconds: 10 } };
-    const runtime: SystemRuntime = { mode: "collection", legacy_collection_revision: 0, message: "", bindings: { temperature: binding },
+    const runtime: SystemRuntime = { mode: "collection", message: "", bindings: { temperature: binding },
       collection: { status: "applied" }, ingress: { sources: { broker: { state: "connected" } } } };
     const historical = [{ timestamp: new Date(NOW - 3_600_000).toISOString(), value: 20 },
       { timestamp: new Date(NOW - 3_590_000).toISOString(), value: 22 }];

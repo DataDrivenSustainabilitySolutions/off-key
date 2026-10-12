@@ -4,8 +4,8 @@ import { getErrorMessage } from "@/lib/errors";
 import {
   importSystemDocument,
   MAX_SYSTEM_BYTES,
-} from "@/features/spatial/systemDocument";
-import type { SystemDocument, SystemEntityKind } from "@/features/spatial/systemTypes";
+} from "@/features/catalogue/systemDocument";
+import type { SystemDocument, SystemEntityKind } from "@/features/catalogue/systemTypes";
 
 type Props = {
   document: SystemDocument;
@@ -18,21 +18,8 @@ type Props = {
   onCreate: (kind: SystemEntityKind) => void;
 };
 type Candidate = { document: SystemDocument; revision: number };
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
 const itemCount = (count: number, singular: string) =>
   `${count.toLocaleString()} ${count === 1 ? singular : singular === "entity" ? "entities" : `${singular}s`}`;
-
-function importedContents(contents: string): Omit<Candidate, "revision"> {
-  const raw: unknown = JSON.parse(contents);
-  if (!isRecord(raw) || !["aberration-explorer-workspace", "aberration-workspace"].includes(String(raw.format)))
-    return { document: importSystemDocument(contents) };
-  if (raw.schema_version !== 1) throw new Error("Unsupported workspace version.");
-
-  // Previous workspace files remain usable as catalogue backups. Their personal
-  // preferences are inactive and never replace existing browser preferences.
-  return { document: importSystemDocument(JSON.stringify(raw.system)) };
-}
 
 export function ExplorerSettings({
   document, revision, canEdit, saving, error, onImport, onExport, onCreate,
@@ -47,7 +34,7 @@ export function ExplorerSettings({
 
   const failureMessage = (failure: unknown) =>
     failure instanceof SyntaxError
-      ? "Use a valid JSON catalogue or workspace file."
+      ? "Use a valid JSON catalogue file."
       : getErrorMessage(failure).slice(0, 240);
 
   const readFile = async (file: File) => {
@@ -59,14 +46,12 @@ export function ExplorerSettings({
     setCandidate(undefined);
     setFileError("");
     try {
-      if (file.size > MAX_SYSTEM_BYTES * 2)
-        throw new Error("Use a catalogue or workspace file smaller than 2 MiB.");
+      if (file.size > MAX_SYSTEM_BYTES)
+        throw new Error("Use a catalogue file smaller than 1 MiB.");
       const contents = await file.text();
-      if (contents.length > MAX_SYSTEM_BYTES * 2)
-        throw new Error("Use a catalogue or workspace file smaller than 2 MiB.");
-      const imported = importedContents(contents);
+      const imported = importSystemDocument(contents);
       if (sequence === fileSequence.current)
-        setCandidate({ ...imported, revision: selectedRevision });
+        setCandidate({ document: imported, revision: selectedRevision });
     } catch (failure) {
       if (sequence === fileSequence.current) setFileError(failureMessage(failure));
     } finally {
@@ -144,7 +129,7 @@ export function ExplorerSettings({
           hidden
           disabled={!canEdit || disabled}
           accept=".json,application/json"
-          aria-label="Catalogue or workspace file"
+          aria-label="Catalogue file"
           onChange={(event) => {
             const file = event.target.files?.[0];
             event.target.value = "";

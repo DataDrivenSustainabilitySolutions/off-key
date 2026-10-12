@@ -288,7 +288,7 @@ def start_stack(
     *,
     simulator: bool,
     public_images: bool,
-    spatial_fixture: bool = False,
+    broker_fixture: bool = False,
 ) -> None:
     environment = deployment_environment()
     scope = (
@@ -299,11 +299,11 @@ def start_stack(
     with scope as scoped:
         execute([*command, "build", "mqtt-radar"], scoped)
         profile = ["--profile", "mqtt-sim"] if simulator else []
-        if spatial_fixture:
-            profile.extend(["--profile", "spatial-fixture"])
+        if broker_fixture:
+            profile.extend(["--profile", "broker-fixture"])
         execute([*command, *profile, "up", "--build", "--detach", "--wait"], scoped)
-    if spatial_fixture:
-        print("Import dev/local/spatial-system.json, then choose Connect.")
+    if broker_fixture:
+        print("Import dev/local/broker-system.json, then choose Connect.")
         print(
             "Existing local .env files keep their allowlist; include the fixture hosts."
         )
@@ -369,7 +369,7 @@ def main() -> None:
     up = commands.add_parser("up", help="Build this checkout and start the stack")
     up.add_argument("--simulator", action="store_true", help="Publish local MQTT data")
     up.add_argument(
-        "--spatial-fixture",
+        "--broker-fixture",
         action="store_true",
         help="Run six real MQTT brokers with 39 synthetic entities",
     )
@@ -400,7 +400,7 @@ def main() -> None:
             command,
             simulator=args.simulator,
             public_images=args.public_images,
-            spatial_fixture=args.spatial_fixture,
+            broker_fixture=args.broker_fixture,
         )
     elif args.command == "status":
         execute(command + ["ps", "--all"])

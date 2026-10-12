@@ -22,6 +22,7 @@ from sqlalchemy import select, text, update
 
 from ..config.config import get_tactic_settings
 from ..config.system_live import get_system_live_settings
+from .retired_ingress import retire_v1_ingress
 from .system_live_mqtt import LiveMqttWorker
 
 SYSTEM_INGRESS_LOCK = 73128005
@@ -126,6 +127,8 @@ class SystemIngress:
         proxy = self.settings.SYSTEM_LIVE_SOCKS_PROXIES.get(connection.host)
         if proxy is None and access:
             proxy = access.proxy
+        if access and access.require_tls:
+            connection = connection.model_copy(update={"tls": True})
         try:
             worker = LiveMqttWorker(
                 connection,
@@ -201,6 +204,7 @@ class SystemIngress:
                 return
             await ownership.commit()
             try:
+                await retire_v1_ingress()
                 await self._poll_owned(ownership)
             finally:
                 await self._stop_workers()
@@ -229,6 +233,7 @@ class SystemIngress:
                         }
                         state = {
                             "revision": row.revision,
+                            "generation": self.generation,
                             "status": "applied"
                             if self.output.is_connected()
                             else "connecting",

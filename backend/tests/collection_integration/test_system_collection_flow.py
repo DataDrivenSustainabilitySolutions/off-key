@@ -9,7 +9,7 @@ import pytest
 import pytest_asyncio
 from off_key_core.db.collection_runtime import read_collection_runtime
 from off_key_core.db.models import CollectionState, Telemetry
-from off_key_core.schemas.collection import CollectionPolicy
+from off_key_core.schemas.collection_policy import CollectionPolicy
 from off_key_core.schemas.system import SystemChange, SystemDocument
 from off_key_core.schemas.system_collection import SystemCollectionChange
 from off_key_core.utils.mqtt_topics import TopicMetadataExtractor
@@ -26,7 +26,7 @@ from paho.mqtt.client import CallbackAPIVersion, Client
 from paho.mqtt.publish import single
 from sqlalchemy import func, select
 
-from . import test_collection_flow as fixture
+from . import environment as fixture
 
 pytestmark = fixture.pytestmark
 until = fixture.until

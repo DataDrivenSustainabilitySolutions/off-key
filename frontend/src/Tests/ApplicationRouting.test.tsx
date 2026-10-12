@@ -31,13 +31,13 @@ function visit(path: string) {
 }
 
 describe("application home", () => {
-  it.each(["/", "/explorer", "/spatial-lab", "/services"])("opens the monitoring home from %s for signed-in users", async (path) => {
+  it.each(["/", "/services"])("opens the monitoring home from %s for signed-in users", async (path) => {
     const router = visit(path);
     expect(await screen.findByRole("heading", { name: "Monitoring home" })).toBeTruthy();
     expect(router.state.location.pathname).toBe("/");
   });
 
-  it.each(["/", "/explorer", "/spatial-lab", "/entities", "/stations", "/favourites"])("requires sign-in from %s", async (path) => {
+  it.each(["/", "/entities"])("requires sign-in from %s", async (path) => {
     auth.isAuthenticated = false;
     const router = visit(path);
     expect(await screen.findByRole("heading", { name: "Sign in" })).toBeTruthy();
@@ -52,7 +52,7 @@ describe("application home", () => {
     expect(screen.queryByRole("heading", { name: "Monitoring home" })).toBeNull();
   });
 
-  it.each(["/entities", "/stations", "/stations?state=online", "/favourites"])("opens the generic entity directory from %s", async (path) => {
+  it.each(["/entities"])("opens the generic entity directory from %s", async (path) => {
     const router = visit(path);
     expect(await screen.findByRole("heading", { name: "Entity directory" })).toBeTruthy();
     expect(router.state.location.pathname).toBe("/entities");

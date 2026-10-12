@@ -6,14 +6,14 @@ from off_key_mqtt_radar.topic_parser import TopicParser
 
 def test_extract_sensor_type_uses_full_hierarchy_by_default():
     sensor = TopicParser.extract_sensor_type(
-        "device/evCharger/charger-1/TopLevelPart/SubMetricA"
+        "telemetry/charger-1/TopLevelPart/SubMetricA"
     )
     assert sensor == "TopLevelPart/SubMetricA"
 
 
 def test_extract_sensor_type_supports_leaf_strategy():
     sensor = TopicParser.extract_sensor_type(
-        "device/evCharger/charger-1/TopLevelPart/SubMetricA",
+        "telemetry/charger-1/TopLevelPart/SubMetricA",
         sensor_key_strategy="leaf",
     )
     assert sensor == "SubMetricA"
@@ -21,7 +21,7 @@ def test_extract_sensor_type_supports_leaf_strategy():
 
 def test_extract_sensor_type_supports_top_level_strategy():
     sensor = TopicParser.extract_sensor_type(
-        "device/evCharger/charger-1/TopLevelPart/SubMetricA",
+        "telemetry/charger-1/TopLevelPart/SubMetricA",
         sensor_key_strategy="top_level",
     )
     assert sensor == "TopLevelPart"
@@ -29,8 +29,8 @@ def test_extract_sensor_type_supports_top_level_strategy():
 
 def test_derive_required_sensors_uses_full_hierarchy_default():
     topics = [
-        "device/evCharger/+/TopLevelPart/SubMetricA",
-        "device/evCharger/+/TopLevelPart/SubMetricB",
+        "telemetry/+/TopLevelPart/SubMetricA",
+        "telemetry/+/TopLevelPart/SubMetricB",
     ]
     assert TopicParser.derive_required_sensors(topics) == {
         "TopLevelPart/SubMetricA",
@@ -40,8 +40,8 @@ def test_derive_required_sensors_uses_full_hierarchy_default():
 
 def test_derive_required_sensors_supports_leaf_strategy():
     topics = [
-        "device/evCharger/+/TopLevelPart/SubMetricA",
-        "device/evCharger/+/TopLevelPart/SubMetricB",
+        "telemetry/+/TopLevelPart/SubMetricA",
+        "telemetry/+/TopLevelPart/SubMetricB",
     ]
     assert TopicParser.derive_required_sensors(topics, sensor_key_strategy="leaf") == {
         "SubMetricA",
@@ -51,9 +51,9 @@ def test_derive_required_sensors_supports_leaf_strategy():
 
 def test_derive_required_sensors_supports_top_level_strategy():
     topics = [
-        "device/evCharger/+/TopLevelPart/SubMetricA",
-        "device/evCharger/+/TopLevelPart/SubMetricB",
-        "device/evCharger/+/OtherPart/SubMetricC",
+        "telemetry/+/TopLevelPart/SubMetricA",
+        "telemetry/+/TopLevelPart/SubMetricB",
+        "telemetry/+/OtherPart/SubMetricC",
     ]
     assert TopicParser.derive_required_sensors(
         topics, sensor_key_strategy="top_level"
@@ -65,8 +65,8 @@ def test_derive_required_sensors_supports_top_level_strategy():
 
 def test_derive_required_sensors_ignores_wildcard_tail_topics():
     topics = [
-        "device/evCharger/+/#",
-        "device/evCharger/+/+",
+        "telemetry/+/#",
+        "telemetry/+/+",
     ]
     assert TopicParser.derive_required_sensors(topics) == set()
 
@@ -74,7 +74,7 @@ def test_derive_required_sensors_ignores_wildcard_tail_topics():
 def test_extract_sensor_type_rejects_invalid_strategy():
     with pytest.raises(ValueError, match="sensor_key_strategy must be one of"):
         TopicParser.extract_sensor_type(
-            "device/evCharger/charger-1/TopLevelPart/SubMetricA",
+            "telemetry/charger-1/TopLevelPart/SubMetricA",
             sensor_key_strategy="invalid",
         )
 

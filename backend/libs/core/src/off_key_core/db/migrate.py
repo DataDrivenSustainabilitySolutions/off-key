@@ -30,6 +30,18 @@ def migration_files() -> dict[str, str]:
     }
 
 
+def migration_checksum(version: str, sql: str) -> str:
+    contents = sql
+    if version == "005_generic_runtime.sql":
+        for name in (
+            "catalogue_upgrade.py",
+            "catalogue_v1.py",
+            "catalogue_v1_models.py",
+        ):
+            contents += files("off_key_core").joinpath("db", name).read_text()
+    return sha256(contents.encode()).hexdigest()
+
+
 def adopted_versions(connection: Connection, migrations: dict[str, str]) -> list[str]:
     """Adopt only the verified pre-integration schema or a fresh current schema."""
     existing = set(inspect(connection).get_table_names())
@@ -70,9 +82,8 @@ def migration_status(
             connection.execute(text(f"SELECT version, checksum FROM {LEDGER}")).all()
         )
         for version, checksum in rows.items():
-            if (
-                version not in migrations
-                or checksum != sha256(migrations[version].encode()).hexdigest()
+            if version not in migrations or checksum != migration_checksum(
+                version, migrations[version]
             ):
                 raise ValueError("Applied migration history differs from this release")
         applied = [version for version in migrations if version in rows]
@@ -116,13 +127,17 @@ def apply_migrations(
         bootstrap_schema(connection)
     for version, sql in migrations.items():
         if not status["fresh"] and version in status["pending"]:
+            if version == "005_generic_runtime.sql":
+                from .catalogue_upgrade import upgrade_saved_catalogue
+
+                upgrade_saved_catalogue(connection)
             connection.exec_driver_sql(sql)
         connection.execute(
             text(f"""
             INSERT INTO {LEDGER} (version, checksum) VALUES (:version, :checksum)
             ON CONFLICT (version) DO NOTHING
         """),
-            {"version": version, "checksum": sha256(sql.encode()).hexdigest()},
+            {"version": version, "checksum": migration_checksum(version, sql)},
         )
     bootstrap_schema(connection)
     return {"applied": status["pending"], "fresh": status["fresh"]}

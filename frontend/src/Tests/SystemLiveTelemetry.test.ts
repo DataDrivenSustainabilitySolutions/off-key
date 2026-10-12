@@ -1,16 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiRequestError } from "@/lib/api-client";
-import { createEmptySystem } from "@/features/spatial/systemDocument";
+import { createEmptySystem } from "@/features/catalogue/systemDocument";
 import {
   LIVE_HISTORY_LIMIT,
   SystemLiveTelemetry,
-} from "@/features/spatial/systemLiveTelemetry";
+} from "@/features/catalogue/systemLiveTelemetry";
 import type {
   LiveBatch,
   LiveLease,
   LiveStream,
-} from "@/features/spatial/systemLiveTypes";
-import type { SystemDocument } from "@/features/spatial/systemTypes";
+} from "@/features/catalogue/systemLiveTypes";
+import type { SystemDocument } from "@/features/catalogue/systemTypes";
 
 const NOW = Date.parse("2026-10-07T12:00:00Z");
 const iso = (offset = 0) => new Date(NOW + offset).toISOString();

@@ -33,7 +33,7 @@ async def test_sensor_claim_rejects_overlapping_wildcard():
                 SimpleNamespace(
                     stop_requested_at=None,
                     container_name="radar-existing",
-                    mqtt_topic=["device/evCharger/charger-1/#"],
+                    mqtt_topic=["telemetry/charger-1/#"],
                 )
             ]
         ),
@@ -42,7 +42,7 @@ async def test_sensor_claim_rejects_overlapping_wildcard():
 
     with pytest.raises(ValueError, match="one monitoring service"):
         await service._assert_topics_available(
-            mqtt_topics=["device/evCharger/charger-1/L1"],
+            mqtt_topics=["telemetry/charger-1/L1"],
             container_name="radar-new",
         )
 
@@ -58,14 +58,14 @@ async def test_sensor_claim_preserves_literal_namespace_boundaries():
             SimpleNamespace(
                 stop_requested_at=None,
                 container_name="radar-existing",
-                mqtt_topic=["device/evCharger/charger-1/#"],
+                mqtt_topic=["telemetry/charger-1/#"],
             )
         ]
     )
     service = _service_with_session(session)
 
     await service._assert_topics_available(
-        mqtt_topics=["device/evCharger/charger-10/L1"],
+        mqtt_topics=["telemetry/charger-10/L1"],
         container_name="radar-new",
     )
 
@@ -81,14 +81,14 @@ async def test_sensor_claim_ignores_current_container_for_idempotent_start():
             SimpleNamespace(
                 stop_requested_at=None,
                 container_name="radar-same",
-                mqtt_topic=["device/evCharger/+/#"],
+                mqtt_topic=["telemetry/+/#"],
             )
         ]
     )
     service = _service_with_session(session)
 
     await service._assert_topics_available(
-        mqtt_topics=["device/evCharger/charger-1/L1"],
+        mqtt_topics=["telemetry/charger-1/L1"],
         container_name="radar-same",
     )
 
@@ -101,7 +101,7 @@ async def test_sensor_claim_releases_missing_workload_before_overlap_check():
         stop_requested_at=None,
         container_name="radar-dead",
         container_id="missing-container",
-        mqtt_topic=["device/evCharger/charger-1/L1"],
+        mqtt_topic=["telemetry/charger-1/L1"],
         status=True,
         operational_status={},
         operational_stage="operational",
@@ -112,7 +112,7 @@ async def test_sensor_claim_releases_missing_workload_before_overlap_check():
     service.workloads.get_status_and_labels.return_value = ("not_found", {})
 
     await service._assert_topics_available(
-        mqtt_topics=["device/evCharger/charger-1/L1"],
+        mqtt_topics=["telemetry/charger-1/L1"],
         container_name="radar-replacement",
     )
 
@@ -130,7 +130,7 @@ async def test_unverified_or_starting_workload_keeps_sensor_claim(docker_status)
         status=True,
         container_name="existing",
         container_id="ctr-1",
-        mqtt_topic=["device/evCharger/charger-1/L1"],
+        mqtt_topic=["telemetry/charger-1/L1"],
     )
     session.execute.return_value = _query_result([monitor])
     service = _service_with_session(session)

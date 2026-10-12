@@ -2,7 +2,7 @@ import { useCallback, useSyncExternalStore } from "react";
 import type { Anomaly, TelemetryCursor, TelemetryDataPoint } from "@/types/charger";
 import type { ActiveService, MonitoringChartEvidence, MonitoringEvidenceCursor } from "@/types/monitoring";
 import type { ReadingMonitoringBinding } from "./readingMonitoring";
-import type { SystemConnection, SystemStream } from "../spatial/systemTypes";
+import type { SystemConnection, SystemStream } from "../catalogue/systemTypes";
 
 export type ReadingMonitoring = {
   binding?: ReadingMonitoringBinding;

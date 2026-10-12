@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { apiUtils } from "@/lib/api-client";
 import type { CollectionPolicy } from "@/types/collection";
-import type { SystemCollectionChange, SystemCollectionPreview, SystemRuntime } from "../spatial/systemTypes";
+import type { SystemCollectionChange, SystemCollectionPreview, SystemRuntime } from "../catalogue/systemTypes";
 
 type Props = {
   streamIds: string[];

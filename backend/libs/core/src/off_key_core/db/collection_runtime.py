@@ -1,11 +1,11 @@
-"""One admission runtime: generic configuration supersedes the legacy adapter."""
+"""The sole, domain-neutral admission runtime."""
 
 from dataclasses import dataclass
 
 from sqlalchemy import select
 
+from ..schemas.system import SystemDocument
 from ..schemas.system_collection import SystemCollectionDefinition
-from .collection import read_collection_configuration
 from .system import SystemCollectionConfiguration
 
 
@@ -25,7 +25,12 @@ async def read_collection_runtime(session):
         )
     )
     if row is None:
-        return await read_collection_configuration(session)
+        return CollectionRuntimeSnapshot(
+            revision=0,
+            catalog=SystemCollectionDefinition(document=SystemDocument(), bindings={}),
+            ingress={},
+            collection={},
+        )
     return CollectionRuntimeSnapshot(
         revision=row.revision,
         catalog=SystemCollectionDefinition.model_validate(row.document),

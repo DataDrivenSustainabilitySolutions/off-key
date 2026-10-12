@@ -151,10 +151,11 @@ const installMockApi = async (
           id: 1, email: "tandem@example.test", role: "admin", is_active: true,
           is_verified: true, created_at: timestamp(0),
         });
-      case "/v1/sources":
-        return fulfillJson(route, { catalog: { sources: [{ chargers: [{
-          id: CHARGER_ID, sensors: sensors.map((key) => ({ key, category: key === SENSOR ? "Voltage" : "Current" })),
-        }] }] } });
+      case "/v1/system":
+        return fulfillJson(route, {
+          document: { streams: sensors.map(key => ({ id: key, category: key === SENSOR ? "Voltage" : "Current" })) },
+          runtime: { bindings: Object.fromEntries(sensors.map(key => [key, { entity_id: CHARGER_ID, telemetry_key: key }])) },
+        });
       case `/v1/telemetry/${CHARGER_ID}/type`:
         return fulfillJson(route, sensors);
       case `/v1/telemetry/${CHARGER_ID}/data`:

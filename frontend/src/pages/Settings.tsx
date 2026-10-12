@@ -20,7 +20,7 @@ export default function Settings() {
 
   useEffect(() => {
     let active = true;
-    void apiUtils.get<StorageStatus>("/v1/sources/storage").then(
+    void apiUtils.get<StorageStatus>("/v1/system/storage").then(
       (result) => {
         if (active) setStatus(result);
       },

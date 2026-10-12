@@ -89,7 +89,7 @@ describe("service delete action display", () => {
     id: "svc-1",
     container_id: "ctr-1",
     container_name: "radar-charger-1",
-    mqtt_topics: ["device/evCharger/charger-1/sine"],
+    mqtt_topics: ["telemetry/charger-1/sine"],
     status: true,
     operational_status: {
       stage: "operational",

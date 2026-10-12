@@ -1,12 +1,11 @@
 """Domain-neutral collection bindings and the explicit opt-in contract."""
 
 import hashlib
-from collections import Counter
 from dataclasses import dataclass
 
 from pydantic import Field
 
-from .collection import AmbiboxCatalog, CollectionPolicy
+from .collection_policy import CollectionPolicy
 from .system import EntityId, SystemDocument, SystemModel, SystemStream
 
 
@@ -63,8 +62,7 @@ class SystemCollectionStream:
 
     @property
     def charger_id(self):
-        # Compatibility with existing history/evidence tables. Public catalogue
-        # identities and upstream MQTT topics do not use the legacy domain model.
+        # Storage identities are independent of catalogue and upstream topic IDs.
         return self.binding.entity_id
 
     @property
@@ -104,87 +102,27 @@ class SystemCollectionStream:
 
 def build_bindings(
     document: SystemDocument,
-    legacy: AmbiboxCatalog,
     previous: dict[str, ReadingBinding] | None = None,
 ) -> dict[str, ReadingBinding]:
-    """Keep historic IDs where the concrete input matches unambiguously."""
-    legacy_connections = {str(source.id): source for source in legacy.sources}
-    matches: dict[tuple, list] = {}
-    for stream in legacy.streams():
-        source = legacy_connections[stream.source_id]
-        key = (
-            source.host,
-            source.port,
-            stream.sensor.upstream_topic,
-            stream.sensor.value_type,
-        )
-        matches.setdefault(key, []).append(stream)
-    connections = {item.id: item for item in document.connections}
-    inputs = Counter(
-        (
-            connections[item.connection_id].host,
-            connections[item.connection_id].port,
-            item.topic,
-            item.value_type,
-        )
-        for item in document.streams
-    )
-    preserved_topics = {
-        existing.accepted_topic
-        for stream in document.streams
-        if (existing := (previous or {}).get(stream.id))
-        and existing.device_id == stream.device_id
-    }
+    """Keep saved bindings by identity; new readings receive deterministic keys."""
     result = {}
     for stream in document.streams:
         existing = (previous or {}).get(stream.id)
         if existing and existing.device_id == stream.device_id:
             result[stream.id] = existing
             continue
-        connection = connections[stream.connection_id]
-        candidates = matches.get(
-            (connection.host, connection.port, stream.topic, stream.value_type), []
+        entity = stable_key("entity", stream.device_id or stream.connection_id)
+        key = stable_key("reading", stream.id)
+        result[stream.id] = ReadingBinding(
+            entity_id=entity,
+            telemetry_key=key,
+            accepted_topic=f"telemetry/{entity}/{key}",
+            device_id=stream.device_id,
         )
-        if (
-            len(candidates) == 1
-            and candidates[0].accepted_topic not in preserved_topics
-            and inputs[
-                (connection.host, connection.port, stream.topic, stream.value_type)
-            ]
-            == 1
-            and not connection.tls
-            and connection.transport == "tcp"
-            and stream.payload_pointer is None
-        ):
-            candidate = candidates[0]
-            result[stream.id] = ReadingBinding(
-                entity_id=candidate.charger_id,
-                telemetry_key=candidate.sensor.key,
-                accepted_topic=candidate.accepted_topic,
-                device_id=stream.device_id,
-            )
-        else:
-            entity = stable_key("entity", stream.device_id or stream.connection_id)
-            key = stable_key("reading", stream.id)
-            result[stream.id] = ReadingBinding(
-                entity_id=entity,
-                telemetry_key=key,
-                accepted_topic=f"telemetry/{entity}/{key}",
-                device_id=stream.device_id,
-            )
     return result
 
 
 def runtime_fingerprint(catalog) -> list:
-    if isinstance(catalog, AmbiboxCatalog):
-        endpoints = {str(item.id): (item.host, item.port) for item in catalog.sources}
-        return sorted(
-            (
-                (stream.signature, endpoints[stream.source_id])
-                for stream in catalog.streams(selected_only=True)
-            ),
-            key=lambda item: item[0][1],
-        )
     return sorted(
         (stream.signature for stream in catalog.streams(selected_only=True)),
         key=lambda signature: signature[1],

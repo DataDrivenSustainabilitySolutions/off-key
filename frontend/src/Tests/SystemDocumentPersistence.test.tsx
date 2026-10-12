@@ -1,12 +1,12 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiRequestError, apiClient, apiUtils } from "@/lib/api-client";
-import { createEmptySystem } from "@/features/spatial/systemDocument";
-import { useSystemDocument } from "@/features/spatial/useSystemDocument";
+import { createEmptySystem } from "@/features/catalogue/systemDocument";
+import { useSystemDocument } from "@/features/catalogue/useSystemDocument";
 import type {
   SystemDocument,
   SystemSnapshot,
-} from "@/features/spatial/systemTypes";
+} from "@/features/catalogue/systemTypes";
 
 vi.mock("@/lib/api-client", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/api-client")>();
@@ -32,7 +32,6 @@ const snapshot = (
   storage_origin: "saved",
   runtime: {
     mode: "configured_only",
-    legacy_collection_revision: 0,
     message: "Saved configuration",
   },
 });

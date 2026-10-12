@@ -3,8 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ExplorerSidebar } from "@/features/explorer/ExplorerSidebar";
 import { ExplorerList, type ExplorerRow, type ListPosition } from "@/features/explorer/ExplorerList";
 import { buildNavigationIndex, navigationRows } from "@/features/explorer/navigationIndex";
-import { createEmptySystem } from "@/features/spatial/systemDocument";
-import type { SystemDocument } from "@/features/spatial/systemTypes";
+import { createEmptySystem } from "@/features/catalogue/systemDocument";
+import type { SystemDocument } from "@/features/catalogue/systemTypes";
 import { apiClient } from "@/lib/api-client";
 
 const viewportHeight = 360;

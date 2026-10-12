@@ -1,9 +1,8 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import ExplorerSettings from "@/features/explorer/ExplorerSettings";
-import type { PersonalGroup } from "@/features/explorer/preferences";
-import { createEmptySystem, importSystemDocument } from "@/features/spatial/systemDocument";
-import type { SystemDocument } from "@/features/spatial/systemTypes";
+import { createEmptySystem, importSystemDocument } from "@/features/catalogue/systemDocument";
+import type { SystemDocument } from "@/features/catalogue/systemTypes";
 
 const fixture = (): SystemDocument => ({
   ...createEmptySystem("Weather system"),
@@ -17,9 +16,6 @@ const fixture = (): SystemDocument => ({
     connection_id: "broker:weather", device_id: "device:roof", value_type: "number", category: "Weather", unit: "°C",
   }],
 });
-const groups: PersonalGroup[] = [{
-  id: "personal:watchlist", name: "Watchlist", color: "#6589b3", memberIds: ["device:roof"],
-}];
 const common = () => ({
   document: fixture(), revision: 7,
   canEdit: true, saving: false, error: "",
@@ -33,13 +29,9 @@ const file = (contents: string) => {
   return selected;
 };
 const choose = (contents: string) =>
-  fireEvent.change(screen.getByLabelText("Catalogue or workspace file"), { target: { files: [file(contents)] } });
+  fireEvent.change(screen.getByLabelText("Catalogue file"), { target: { files: [file(contents)] } });
 const preview = () => screen.getByRole("button", { name: "Replace saved catalogue" });
 const waitForPreview = () => waitFor(() => expect(preview()).not.toBeNull());
-const bundle = (personal = groups) => JSON.stringify({
-  format: "aberration-explorer-workspace", schema_version: 1, system: fixture(), preferences: { groups: personal },
-});
-
 describe("explorer settings catalogue files", () => {
   it("reviews a plain catalogue before writing and pins its selected revision", async () => {
     const props = common();
@@ -56,67 +48,14 @@ describe("explorer settings catalogue files", () => {
     expect(screen.queryByRole("button", { name: "Replace saved catalogue" })).toBeNull();
   });
 
-  it("reads only the catalogue from a previous explorer workspace", async () => {
-    const props = common();
-    render(<ExplorerSettings {...props} />);
-    choose(JSON.stringify({
-      format: "aberration-explorer-workspace", schema_version: 1,
-      system: fixture(), preferences: {
-        groups: [{ ...groups[0]!, password: "discarded", telemetry: [42] }],
-        scopeKey: "ignored", sidebarOpen: false,
-      },
-    }));
-    await waitForPreview();
-    expect(screen.queryByText(/personal group/i)).toBeNull();
-    fireEvent.click(preview());
-    await waitFor(() => expect(props.onImport).toHaveBeenCalledWith(fixture(), 7));
-  });
-
-  it("accepts old workspace exports and discards obsolete spatial preferences", async () => {
-    const props = common();
-    render(<ExplorerSettings {...props} />);
-    choose(JSON.stringify({
-      format: "aberration-workspace", schema_version: 1, system: fixture(),
-      layout: { version: 1, personalGroups: groups, camera: "obsolete", positions: { arbitrary: [2, 3] } },
-    }));
-    await waitForPreview();
-    fireEvent.click(preview());
-    await waitFor(() => expect(props.onImport).toHaveBeenCalledWith(fixture(), 7));
-  });
-
-  it("does not require inactive personal preferences to restore a valid catalogue", async () => {
-    const props = common();
-    render(<ExplorerSettings {...props} />);
-    choose(bundle([{ ...groups[0]!, color: "obsolete" }]));
-    await waitForPreview();
-    fireEvent.click(preview());
-    await waitFor(() => expect(props.onImport).toHaveBeenCalledWith(fixture(), 7));
-    expect(screen.queryByRole("alert")).toBeNull();
-  });
-
-  it("still accepts legacy Ambibox catalogues through the generic adapter", async () => {
-    const legacy = JSON.stringify({
-      schema_version: 1, provider: "ambibox", default_policy: { mode: "off", interval_seconds: 10 },
-      sources: [{
-        id: "00000000-0000-4000-8000-000000000001", label: "Example broker", host: "broker.example.test", port: 1883,
-        chargers: [{
-          id: "00000000-0000-4000-8000-000000000002", label: "Example device", local_id: "0",
-          sensors: [{ key: "temperature", label: "Temperature", category: "Weather", value_type: "number", unit: "°C", upstream_topic: "device/temperature" }],
-        }],
-      }],
-    });
-    const props = common();
-    render(<ExplorerSettings {...props} />);
-    choose(legacy);
-    await waitForPreview();
-    fireEvent.click(preview());
-    await waitFor(() => expect(props.onImport).toHaveBeenCalledWith(importSystemDocument(legacy), 7));
+  it("rejects retired provider-specific catalogue files", () => {
+    expect(() => importSystemDocument(JSON.stringify({ provider: "ambibox", schema_version: 1, sources: [] }))).toThrow();
   });
 
   it.each([
     ["broken json", "valid JSON"],
-    [JSON.stringify({ format: "aberration-explorer-workspace", schema_version: 9 }), "Unsupported workspace"],
-    [JSON.stringify({ format: "aberration-explorer-workspace", schema_version: 1, system: null }), "expected an object"],
+    [JSON.stringify({ format: "aberration-explorer-workspace", schema_version: 1, system: fixture() }), "unsupported field"],
+    [JSON.stringify({ format: "aberration-workspace", schema_version: 1, system: fixture() }), "unsupported field"],
     [JSON.stringify({ ...fixture(), streams: [{ ...fixture().streams[0]!, connection_id: "missing" }] }), "connection does not exist"],
   ])("rejects invalid input before any database mutation", async (contents, message) => {
     const props = common();
@@ -130,10 +69,10 @@ describe("explorer settings catalogue files", () => {
   it("rejects large files before reading them", async () => {
     const props = common();
     render(<ExplorerSettings {...props} />);
-    const huge = file(" ".repeat(2 * 1_048_576 + 1));
+    const huge = file(" ".repeat(1_048_576 + 1));
     const read = vi.spyOn(huge, "text");
-    fireEvent.change(screen.getByLabelText("Catalogue or workspace file"), { target: { files: [huge] } });
-    await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("2 MiB"));
+    fireEvent.change(screen.getByLabelText("Catalogue file"), { target: { files: [huge] } });
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("1 MiB"));
     expect(read).not.toHaveBeenCalled();
     expect(props.onImport).not.toHaveBeenCalled();
   });
@@ -142,7 +81,7 @@ describe("explorer settings catalogue files", () => {
     let acknowledge!: (saved: boolean) => void;
     const props = { ...common(), onImport: vi.fn(() => new Promise<boolean>((resolve) => { acknowledge = resolve; })) };
     render(<ExplorerSettings {...props} />);
-    choose(bundle());
+    choose(JSON.stringify(fixture()));
     await waitForPreview();
     fireEvent.click(preview());
     fireEvent.click(preview());
@@ -160,7 +99,7 @@ describe("explorer settings catalogue files", () => {
   it("cancels a reviewed import without saving and exports only the catalogue", async () => {
     const props = common();
     render(<ExplorerSettings {...props} />);
-    choose(bundle());
+    choose(JSON.stringify(fixture()));
     await waitForPreview();
     fireEvent.click(screen.getByRole("button", { name: "Cancel import" }));
     expect(props.onImport).not.toHaveBeenCalled();
@@ -195,7 +134,7 @@ describe("explorer settings catalogue files", () => {
     expect(props.onCreate.mock.calls).toEqual([["connection"], ["device"], ["stream"], ["group"]]);
     rerender(<ExplorerSettings {...props} canEdit={false} />);
     expect(screen.getByRole("button", { name: "Add broker" }).matches(":disabled")).toBe(true);
-    expect(screen.getByLabelText("Catalogue or workspace file").matches(":disabled")).toBe(true);
+    expect(screen.getByLabelText("Catalogue file").matches(":disabled")).toBe(true);
     expect(screen.getByRole("button", { name: "Export catalogue" }).matches(":disabled")).toBe(false);
     rerender(<ExplorerSettings {...props} document={createEmptySystem()} />);
     expect(screen.getByRole("button", { name: "Add reading" }).matches(":disabled")).toBe(true);

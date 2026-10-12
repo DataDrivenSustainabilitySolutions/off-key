@@ -1,23 +1,15 @@
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { apiUtils } from "@/lib/api-client";
-import { mergeReadingHistory, resolveReadingMonitoringBinding } from "@/features/explorer/readingMonitoring";
+import { mergeReadingHistory } from "@/features/explorer/readingMonitoring";
 import { useReadingMonitoring } from "@/features/explorer/useReadingMonitoring";
 import { EMPTY_READING_HISTORY, ReadingHistoryCache, READING_HISTORY_CACHE_LIMIT, READING_HISTORY_POINT_LIMIT } from "@/features/explorer/readingHistoryCache";
-import type { Catalog } from "@/types/collection";
-import type { SystemConnection, SystemStream } from "@/features/spatial/systemTypes";
+import type { SystemConnection, SystemStream } from "@/features/catalogue/systemTypes";
 
 vi.mock("@/lib/api-client", () => ({ apiUtils: { get: vi.fn() } }));
 const connection: SystemConnection = { id: "broker", label: "Building", protocol: "mqtt", host: "broker.test", port: 1883, transport: "tcp", tls: false };
 const stream: SystemStream = { id: "reading", label: "Temperature", connection_id: "broker", topic: "site/room/air", value_type: "number", category: "Environment" };
-const catalog: Catalog = {
-  provider: "ambibox", schema_version: 1, default_policy: { mode: "off", interval_seconds: 10 },
-  sources: [{ id: "source", label: "Original broker", host: "broker.test", port: 1883, verified: true, forward_port: null,
-    chargers: [{ id: "canonical-entity", local_id: "room", label: "Original entity", policy: null,
-      sensors: [{ key: "temperature/air", label: "Original reading", upstream_topic: stream.topic, value_type: "number", unit: "°C", category: "Environment", policy: null }],
-    }],
-  }],
-};
+const savedBinding = { entity_id: "canonical-entity", telemetry_key: "temperature/air", accepted_topic: "telemetry/canonical-entity/temperature/air", policy: { mode: "original" as const, interval_seconds: 10 } };
 const time = "2026-10-10T12:00:00Z";
 const points = [{ timestamp: time, created: time, value: 22 }];
 const evidence = [{ service_id: "monitor", timestamp: time, created: time, sequence_number: 1,
@@ -27,7 +19,6 @@ const evidence = [{ service_id: "monitor", timestamp: time, created: time, seque
 beforeEach(() => {
   vi.mocked(apiUtils.get).mockReset();
   vi.mocked(apiUtils.get).mockImplementation(async (endpoint) => {
-    if (endpoint === "/v1/sources") return { catalog };
     if (endpoint.includes("/data?")) return points;
     if (endpoint.includes("/evidence/chart?")) return evidence;
     if (endpoint.startsWith("/v1/anomalies?") || endpoint.startsWith("/v1/monitors/all?")) return [];
@@ -37,25 +28,6 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.useRealTimers(); vi.restoreAllMocks(); });
 
 describe("reading monitoring identity and history", () => {
-  it("resolves an exact input despite renamed objects or arbitrary exported IDs", () => {
-    expect(resolveReadingMonitoringBinding({ ...connection, host: "BROKER.TEST." }, stream, catalog))
-      .toEqual({ entityId: "canonical-entity", telemetryType: "temperature/air" });
-    const renamed = { ...stream, label: "Renamed" };
-    expect(resolveReadingMonitoringBinding(connection, renamed, catalog))
-      .toEqual({ entityId: "canonical-entity", telemetryType: "temperature/air" });
-  });
-
-  it("rejects mismatched, ambiguous, TLS, WebSocket, and payload-field inputs", () => {
-    expect(resolveReadingMonitoringBinding({ ...connection, port: 1884 }, stream, catalog)).toBeUndefined();
-    expect(resolveReadingMonitoringBinding({ ...connection, tls: true }, stream, catalog)).toBeUndefined();
-    expect(resolveReadingMonitoringBinding({ ...connection, transport: "websocket" }, stream, catalog)).toBeUndefined();
-    expect(resolveReadingMonitoringBinding(connection, { ...stream, payload_pointer: "/temperature" }, catalog)).toBeUndefined();
-    expect(resolveReadingMonitoringBinding(connection, { ...stream, value_type: "boolean" }, catalog)).toBeUndefined();
-    const ambiguous = structuredClone(catalog);
-    ambiguous.sources[0]!.chargers.push({ ...ambiguous.sources[0]!.chargers[0]!, id: "another-entity" });
-    expect(resolveReadingMonitoringBinding(connection, stream, ambiguous)).toBeUndefined();
-  });
-
   it("sorts and bounds history, updates corrected samples, and discards invalid points", () => {
     expect(mergeReadingHistory([{ timestamp: time, value: 20 }], [
       { timestamp: "2026-10-10T12:00:01Z", value: 23 }, { timestamp: time, value: 22 },
@@ -69,7 +41,7 @@ describe("selected-reading monitoring subscription", () => {
     const baseGet = vi.mocked(apiUtils.get).getMockImplementation()!;
     vi.mocked(apiUtils.get).mockImplementation((endpoint, options) => endpoint.includes("/evidence/chart?")
       ? new Promise(() => {}) : baseGet(endpoint, options));
-    const hook = renderHook(() => useReadingMonitoring(connection, stream));
+    const hook = renderHook(() => useReadingMonitoring(connection, stream, savedBinding));
     await waitFor(() => expect(hook.result.current.telemetry).toEqual(points));
     expect(hook.result.current.loading).toBe(false);
     expect(hook.result.current.evidence).toEqual([]);
@@ -77,14 +49,14 @@ describe("selected-reading monitoring subscription", () => {
 
   it("opens previously viewed history immediately, catches up, and isolates other inputs and accounts", async () => {
     const cache = new ReadingHistoryCache("account-one");
-    const first = renderHook(() => useReadingMonitoring(connection, stream, undefined, cache));
+    const first = renderHook(() => useReadingMonitoring(connection, stream, savedBinding, cache));
     await waitFor(() => expect(first.result.current.telemetry).toEqual(points));
     first.unmount();
     const baseGet = vi.mocked(apiUtils.get).getMockImplementation()!;
     let resolve: (value: unknown) => void = () => {};
     vi.mocked(apiUtils.get).mockImplementation((endpoint, options) => endpoint.includes("/data?")
       ? new Promise(done => { resolve = done; }) : baseGet(endpoint, options));
-    const returned = renderHook(({ reading, store }) => useReadingMonitoring(connection, reading, undefined, store),
+    const returned = renderHook(({ reading, store }) => useReadingMonitoring(connection, reading, savedBinding, store),
       { initialProps: { reading: stream, store: cache } });
     expect(returned.result.current.telemetry).toEqual(points);
     await act(async () => { await Promise.resolve(); });
@@ -110,14 +82,14 @@ describe("selected-reading monitoring subscription", () => {
   });
 
   it("loads only the selected reading and keeps its binding through display-name edits", async () => {
-    const hook = renderHook(({ reading }) => useReadingMonitoring(connection, reading), { initialProps: { reading: stream } });
+    const hook = renderHook(({ reading }) => useReadingMonitoring(connection, reading, savedBinding), { initialProps: { reading: stream } });
     await waitFor(() => expect(hook.result.current.evidence).toHaveLength(1));
     expect(hook.result.current.telemetry).toEqual(points);
     const telemetryRequests = vi.mocked(apiUtils.get).mock.calls.filter(([endpoint]) => endpoint.includes("/data?"));
     expect(telemetryRequests).toHaveLength(1);
     expect(telemetryRequests[0]![0]).toContain("type=temperature%2Fair");
     hook.rerender({ reading: { ...stream, label: "Renamed on the fly" } });
-    expect(vi.mocked(apiUtils.get).mock.calls.filter(([endpoint]) => endpoint === "/v1/sources")).toHaveLength(1);
+    expect(vi.mocked(apiUtils.get).mock.calls.filter(([endpoint]) => endpoint === "/v1/system")).toHaveLength(0);
     hook.unmount();
     expect(vi.mocked(apiUtils.get).mock.calls[0]![1]?.signal?.aborted).toBe(true);
   });
@@ -125,20 +97,20 @@ describe("selected-reading monitoring subscription", () => {
   it("does not request unrelated stored telemetry when no input matches", async () => {
     renderHook(() => useReadingMonitoring(connection, { ...stream, topic: "site/other/input" }));
     await act(async () => { await Promise.resolve(); });
-    expect(apiUtils.get).toHaveBeenCalledTimes(1);
+    expect(apiUtils.get).toHaveBeenCalledTimes(0);
   });
 
   it("aborts old selections and ignores responses arriving after selection changes", async () => {
     let resolve: (value: unknown) => void = () => {};
     vi.mocked(apiUtils.get).mockImplementationOnce(() => new Promise((done) => { resolve = done; }));
-    const hook = renderHook(({ reading }) => useReadingMonitoring(connection, reading), { initialProps: { reading: stream } });
+    const hook = renderHook(({ reading }) => useReadingMonitoring(connection, reading, savedBinding), { initialProps: { reading: stream } });
     const signal = vi.mocked(apiUtils.get).mock.calls[0]![1]!.signal;
     hook.rerender({ reading: { ...stream, topic: "site/other/input" } });
-    await act(async () => { resolve({ catalog }); });
+    await act(async () => { resolve(points); });
     expect(signal?.aborted).toBe(true);
-    expect(hook.result.current.binding).toBeUndefined();
-    expect(hook.result.current.telemetry).toEqual([]);
-    expect(apiUtils.get).toHaveBeenCalledTimes(2);
+    expect(hook.result.current.binding).toEqual({ entityId: savedBinding.entity_id, telemetryType: savedBinding.telemetry_key });
+    expect(hook.result.current.telemetry).toEqual(points);
+    expect(apiUtils.get).toHaveBeenCalledTimes(8);
   });
 
   it("polls with ingestion cursors, pauses in hidden tabs, and recovers from partial failures", async () => {
@@ -149,7 +121,7 @@ describe("selected-reading monitoring subscription", () => {
       if (fail && endpoint.includes("/evidence/chart?")) return Promise.reject(new Error("Temporarily unavailable"));
       return baseGet(endpoint, options);
     });
-    const hook = renderHook(() => useReadingMonitoring(connection, stream));
+    const hook = renderHook(() => useReadingMonitoring(connection, stream, savedBinding));
     await act(async () => { await Promise.resolve(); });
     expect(hook.result.current.telemetry).toEqual(points);
     expect(hook.result.current.error).toContain("could not be updated");

@@ -22,7 +22,7 @@ it("shows actionable field errors from catalog validation", async () => {
     });
   };
   try {
-    await expect(client.post("/v1/sources/preview", {})).rejects.toThrow(
+    await expect(client.post("/v1/system/collection/preview", {})).rejects.toThrow(
       "catalog.sources.0.host: Use a broker hostname, without a URL or port",
     );
   } finally {
@@ -39,8 +39,8 @@ it("preserves a conflict status for safe versioned catalog retries", async () =>
     });
   };
   try {
-    await expect(apiClient.patch("/v1/sources/labels", {})).rejects.toMatchObject({ name: "ApiRequestError", status: 409 });
-    await expect(apiClient.patch("/v1/sources/labels", {})).rejects.toBeInstanceOf(ApiRequestError);
+    await expect(apiClient.patch("/v1/system/labels", {})).rejects.toMatchObject({ name: "ApiRequestError", status: 409 });
+    await expect(apiClient.patch("/v1/system/labels", {})).rejects.toBeInstanceOf(ApiRequestError);
   } finally { apiClient.defaults.adapter = original; }
 });
 
@@ -53,6 +53,6 @@ it("lets optional preview requests surface an expired session without forcing na
     });
   };
   try {
-    await expect(apiUtils.get("/v1/sources", { redirectOnUnauthorized: false })).rejects.toMatchObject({ name: "ApiRequestError", status: 401 });
+    await expect(apiUtils.get("/v1/system", { redirectOnUnauthorized: false })).rejects.toMatchObject({ name: "ApiRequestError", status: 401 });
   } finally { apiClient.defaults.adapter = original; }
 });

@@ -55,7 +55,7 @@ export default defineConfig({
       name: "system-workspace",
       testMatch: /system-workspace\.spec\.ts/,
       use: { ...chromiumUse, storageState: authStateFile },
-      // Exercise legacy ingress/monitoring first, then its explicit migration.
+      // Keep mutations of the shared fixture catalogue sequential.
       dependencies: ["chromium"],
     },
   ],

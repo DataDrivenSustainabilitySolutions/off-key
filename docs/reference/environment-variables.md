@@ -156,7 +156,7 @@ unknown errors remain eligible for retry.
 | `RADAR_MQTT_BROKER_PORT` | `1883` | Broker port |
 | `RADAR_MQTT_USE_TLS` | `false` | MQTT TLS toggle |
 | `RADAR_MQTT_USE_AUTH` | `false` | MQTT authentication toggle |
-| `RADAR_SUBSCRIPTION_TOPICS` | Simulator sine sensor topic | Comma-separated concrete topics for one charger |
+| `RADAR_SUBSCRIPTION_TOPICS` | `telemetry/#` | Accepted generic topics; managed monitors use selected concrete readings |
 | `RADAR_MONITORING_CONFIG` | Default static baseline | JSON strategy configuration containing `strategy`, model parameters, and training/calibration settings |
 
 TACTIC-managed workloads receive `RADAR_MONITORING_CONFIG` as their single
@@ -189,17 +189,22 @@ tested main commit. Images are recorded in the verified server release; local
 
 | Variable | Default / requirement | Purpose |
 | --- | --- | --- |
-| `AMBIBOX_INGRESS_ENABLED` | `false` in service defaults; enabled in local/prod deployment | Run the catalog controller |
+| `SYSTEM_COLLECTION_ENABLED` | `false` in service defaults; enabled in deployments | Run persistent generic collection independently of previews |
+| `SYSTEM_LIVE_ENABLED` | `false` in service defaults | Permit temporary in-memory previews |
+| `SYSTEM_LIVE_ALLOWED_HOSTS`, `SYSTEM_LIVE_ALLOWED_HOST_SUFFIXES` | Operator configuration | Allowed generic upstream brokers |
+| `SYSTEM_LIVE_CREDENTIALS` | Private JSON mapping | Credential reference to MQTT username/password |
+| `SYSTEM_LIVE_SOCKS_PROXIES` | Private JSON mapping | Exact broker host to SOCKS route |
+| `AMBIBOX_INGRESS_ENABLED` | `false` in service defaults; enabled in local/prod deployment | Allow reuse of operator-provisioned private broker access |
 | `AMBIBOX_ALLOWED_HOST_SUFFIXES` | `[".ts.net"]` | Broker host allowlist suffixes |
 | `AMBIBOX_ALLOWED_HOSTS` | `["source-broker"]` in local Compose | Explicit additional allowed hosts |
 | `AMBIBOX_EMQX_API_URL` | `http://emqx-main:18083/api/v5` | Private EMQX management endpoint |
-| `AMBIBOX_EMQX_API_KEY`, `AMBIBOX_EMQX_API_SECRET` | Operator secrets | EMQX controller access |
+| `AMBIBOX_EMQX_API_KEY`, `AMBIBOX_EMQX_API_SECRET` | Operator secrets | Access used to retire generated v1 ingress resources |
 | `AMBIBOX_GOST_API_URL` | `http://mqtt-tailscale-bridge:18080` | Private GOST management endpoint |
-| `AMBIBOX_GOST_USERNAME`, `AMBIBOX_GOST_PASSWORD` | Operator credentials | Forwarder management access |
+| `AMBIBOX_GOST_USERNAME`, `AMBIBOX_GOST_PASSWORD` | Operator credentials | Access used to retire generated v1 forwarder resources |
 | `AMBIBOX_MQTT_USERNAME`, `AMBIBOX_MQTT_PASSWORD` | Existing vendor credentials | Shared upstream broker access |
 | `AMBIBOX_SOCKS_SERVER` | `tailscale-ambibox:1055` in production | Existing vendor tailnet SOCKS endpoint |
 
-See [Deployment modes](../operations/deployment-modes.md) and [AmbiBox collection](../operations/ambibox-collection.md) for deployment and catalog setup.
+See [Deployment modes](../operations/deployment-modes.md) and [Collection](../operations/system-collection.md) for deployment and catalog setup.
 
 ## Troubleshooting by variable group
 

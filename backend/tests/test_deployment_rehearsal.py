@@ -49,7 +49,6 @@ def test_redeploy_restores_saved_state_and_resumes_one_monitor():
     ) as client:
         member = client.get("/v1/members/me")
         member.raise_for_status()
-        legacy_catalog = client.get("/v1/sources").json()
         entity = add_recorded_entity(
             client, label="Rehearsal entity", keys=("temperature",)
         )
@@ -96,9 +95,6 @@ def test_redeploy_restores_saved_state_and_resumes_one_monitor():
                     current["runtime"]["collection_revision"]
                     == snapshot["runtime"]["collection_revision"]
                 )
-                preserved_legacy = client.get("/v1/sources").json()
-                assert preserved_legacy["revision"] == legacy_catalog["revision"]
-                assert preserved_legacy["catalog"] == legacy_catalog["catalog"]
                 assert (
                     client.get(
                         f"/v1/telemetry/{entity.entity_id}/data",

@@ -2,7 +2,6 @@
 Topic parser utilities for RADAR.
 """
 
-import re
 from collections.abc import Mapping
 from typing import Any, ClassVar
 
@@ -70,8 +69,8 @@ class TopicParser:
             except ValueError:
                 continue
             levels = normalized.split("/")
-            offset = 2 if levels[0] == "telemetry" else 3
-            if normalized == "device/#" or any(
+            offset = 2
+            if normalized == "telemetry/#" or any(
                 level in {"+", "#"} for level in levels[offset:]
             ):
                 continue
@@ -85,9 +84,7 @@ class TopicParser:
 
     @staticmethod
     def build_topic(charger_id: str, sensor_type: str) -> str:
-        if re.fullmatch(r"entity-[a-f0-9]{64}", charger_id):
-            return f"telemetry/{charger_id}/{sensor_type}"
-        return f"device/evCharger/{charger_id}/{sensor_type}"
+        return f"telemetry/{charger_id}/{sensor_type}"
 
     @staticmethod
     def matches_pattern(topic: str, pattern: str) -> bool:

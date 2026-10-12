@@ -39,10 +39,6 @@ export const API_CONFIG = {
       BY_ID: (chargerId: string) => `/v1/chargers/${chargerId}`,
     },
 
-    SOURCES: {
-      GET: '/v1/sources',
-      LABELS: '/v1/sources/labels',
-    },
 
     // Telemetry
     TELEMETRY: {

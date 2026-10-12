@@ -94,6 +94,37 @@ async def test_retirement_failure_is_retried_before_new_ingress_can_start(monkey
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("config", [{}, {"services": None}, {"services": []}])
+async def test_empty_forwarder_configuration_does_not_block_ingress(
+    monkeypatch, config
+):
+    emqx = MagicMock()
+    emqx.request = AsyncMock(
+        side_effect=lambda _, path: (
+            {"data": [], "meta": {"hasnext": False}}
+            if path.startswith("rules?")
+            else []
+        )
+    )
+    gost = MagicMock()
+    gost.request = AsyncMock(return_value=config)
+    monkeypatch.setattr(
+        retired_ingress,
+        "get_ambibox_settings",
+        lambda: AmbiboxSettings(
+            AMBIBOX_EMQX_API_KEY="test-key", AMBIBOX_GOST_PASSWORD="test-password"
+        ),
+    )
+    monkeypatch.setattr(
+        retired_ingress,
+        "ManagementApi",
+        lambda url, *_: emqx if "emqx" in url else gost,
+    )
+    await retired_ingress.retire_v1_ingress()
+    gost.request.assert_awaited_once_with("GET", "config")
+
+
+@pytest.mark.asyncio
 async def test_no_management_access_makes_no_external_request(monkeypatch):
     factory = MagicMock()
     monkeypatch.setattr(

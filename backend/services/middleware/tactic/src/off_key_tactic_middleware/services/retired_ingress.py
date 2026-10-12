@@ -77,7 +77,7 @@ async def retire_v1_ingress():
             settings.AMBIBOX_GOST_PASSWORD.get_secret_value(),
         )
         config = await gost.request("GET", "config") or {}
-        for entry in config.get("services", []):
+        for entry in config.get("services") or []:
             if entry["name"].startswith(RESOURCE_PREFIX):
                 await gost.request(
                     "DELETE", "config/services/" + quote(entry["name"], safe="")

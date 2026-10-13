@@ -10,7 +10,6 @@ import {
   PageShell,
   SectionPanel,
 } from "@/components/DashboardLayout";
-import { NavigationBar } from "@/components/NavigationBar";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -111,7 +110,6 @@ export default function AnomalyTable() {
 
   return (
     <>
-      <NavigationBar />
       <PageShell>
         <PageHeader
           title="Anomalies"

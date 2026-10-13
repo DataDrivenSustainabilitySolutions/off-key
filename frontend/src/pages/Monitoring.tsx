@@ -4,7 +4,6 @@ import {
   PageShell,
   SectionPanel,
 } from "@/components/DashboardLayout";
-import { NavigationBar } from "@/components/NavigationBar";
 import { API_CONFIG } from "@/lib/api-config";
 import { apiUtils } from "@/lib/api-client";
 import { getErrorMessage } from "@/lib/errors";
@@ -107,13 +106,12 @@ function ChargerMonitoring({ chargerId, initialReading }: { chargerId: string; i
 
   return (
     <>
-      <NavigationBar />
       <PageShell>
         <PageHeader
           title={`Monitoring · ${entityName ?? chargerId}`}
           actions={
             <Button variant="ghost" asChild>
-              <Link to="/entities">Entities</Link>
+              <Link to="/sources">Data sources</Link>
             </Button>
           }
         />

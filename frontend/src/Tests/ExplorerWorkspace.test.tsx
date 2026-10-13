@@ -240,11 +240,17 @@ describe("hierarchical explorer workspace", () => {
   it("provides application and account navigation without leaving catalogue changes or starting telemetry", async () => {
     mount(); await loaded();
     expect(screen.queryByRole("link", { name: /Dashboard/ })).toBeNull();
+    const workspaces = within(screen.getByRole("group", { name: "Workspaces" }));
+    for (const [label, path] of [["Monitoring", "/"], ["Data sources", "/sources"], ["Anomalies", "/anomalies"]]) {
+      expect(workspaces.getByRole("link", { name: label }).getAttribute("href")).toBe(path);
+    }
+    expect(workspaces.getByRole("link", { name: "Monitoring" }).getAttribute("aria-current")).toBe("page");
     fireEvent.keyDown(screen.getByRole("button", { name: "Application menu" }), { key: "Enter" });
-    for (const [label, path] of [["Monitoring", "/"], ["Data sources", "/sources"], ["Anomalies", "/anomalies"], ["Entities", "/entities"], ["Account", "/account"], ["Settings", "/account/settings"]]) {
+    for (const [label, path] of [["Account", "/account"], ["Settings", "/account/settings"]]) {
       expect(screen.getByRole("menuitem", { name: label }).getAttribute("href")).toBe(path);
     }
-    expect(screen.getByRole("menuitem", { name: "Monitoring" }).getAttribute("aria-current")).toBe("page");
+    expect(screen.queryByRole("menuitem", { name: "Monitoring" })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: "Entities" })).toBeNull();
     expect(apiClient.put).not.toHaveBeenCalled();
   });
 

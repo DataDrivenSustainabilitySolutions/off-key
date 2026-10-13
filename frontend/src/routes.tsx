@@ -2,6 +2,7 @@ import { lazy } from "react";
 import { createRoutesFromElements, Navigate, Outlet, Route } from "react-router-dom";
 
 import { ProtectedRoute } from "@/auth/ProtectedRoute";
+import { ApplicationWorkspace } from "@/components/ApplicationWorkspace";
 import { RouteErrorBoundary, RouteErrorPage } from "@/components/RouteErrorPage";
 
 export function createAppRoutes() {
@@ -10,7 +11,6 @@ export function createAppRoutes() {
   const Details = lazy(() => import("@/pages/Details"));
   const DataSources = lazy(() => import("@/pages/SystemCatalogue"));
   const ForgotPassword = lazy(() => import("@/pages/ForgotPassword"));
-  const Entities = lazy(() => import("@/pages/Entities"));
   const Login = lazy(() => import("@/pages/Login"));
   const Monitoring = lazy(() => import("@/pages/Monitoring"));
   const Registration = lazy(() => import("@/pages/Registration"));
@@ -35,14 +35,16 @@ export function createAppRoutes() {
         }
       >
         <Route path="/" element={<MonitoringWorkspace />} />
-        <Route path="/entities" element={<Entities />} />
-        <Route path="/details/:chargerId" element={<Details />} />
-        <Route path="/monitoring/:chargerId" element={<Monitoring />} />
+        <Route path="/entities" element={<Navigate to="/sources" replace />} />
         <Route path="/services" element={<Navigate to="/" replace />} />
         <Route path="/sources" element={<DataSources />} />
-        <Route path="/account" element={<Account />} />
-        <Route path="/account/settings" element={<Settings />} />
-        <Route path="/anomalies" element={<Anomalies />} />
+        <Route element={<ApplicationWorkspace />}>
+          <Route path="/details/:chargerId" element={<Details />} />
+          <Route path="/monitoring/:chargerId" element={<Monitoring />} />
+          <Route path="/account" element={<Account />} />
+          <Route path="/account/settings" element={<Settings />} />
+          <Route path="/anomalies" element={<Anomalies />} />
+        </Route>
       </Route>
 
       <Route path="*" element={<RouteErrorPage notFound />} />

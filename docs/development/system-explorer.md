@@ -2,7 +2,7 @@
 
 The `feature/system-explorer` branch makes the monitoring workspace the signed-in application home at `/`. Login, the application wordmark, and the Monitoring navigation item lead here. Development and production builds include this lazy-loaded home. The former `/explorer` and `/spatial-lab` routes and the 3D experiment have been removed.
 
-Every application page uses the same sticky header, theme control, and application menu. The menu provides Monitoring, Entities, Sources, Anomalies, Account, Settings, and Logout. Logout clears the session and returns to login immediately. `/entities` is a searchable, virtualized directory from the generic `/v1/system` catalogue; entity links open their definition in the monitoring workspace. Entity and monitor details retain their functional workflows; accepted detector topics use the generic `telemetry/<entity>/<reading>` contract.
+Every authenticated page provides Monitoring, Data sources, and Anomalies in the upper-left navigation, with the current page marked. Functional pages use the same navigation as the explorer, including a mobile drawer and a way to reopen a hidden sidebar. The sticky header keeps theme controls and a right-hand menu for Account, Settings, and Logout. Logout clears the session and returns to login immediately. Entity definitions are managed within Data sources; old `/entities` links redirect there. Entity and monitor details retain their functional workflows; accepted detector topics use the generic `telemetry/<entity>/<reading>` contract.
 
 ## Navigation
 
@@ -72,15 +72,17 @@ For an existing isolated local deployment, rebuild the frontend, API gateway, TA
 
 ## Shared interface
 
-`App.css` owns semantic colors, typography, spacing and component states. `AppHeader` and `ApplicationMenu` provide identical navigation on the workspace and functional pages; `PageShell` sets their content width and spacing. The explorer uses those tokens rather than a separate palette. Auth, forms, tables, menus, dialogs and empty/error/loading states use the same restrained surfaces. Quiet branding details remain part of the interface: authentication screens use the original repeating slash monogram behind the form, without animation or interaction layers over controls. Mobile controls have 44-pixel targets, including popover actions inside the explorer drawer. Broker and entity definitions display their actual catalogue metadata; user-provided labels and MQTT paths remain verbatim.
+`App.css` owns semantic colors, typography, spacing and component states. `WorkspaceNavigation` supplies the primary links in the explorer and the functional-page `ApplicationWorkspace`; `AppHeader` and `ApplicationMenu` share theme and account controls. `PageShell` sets content width and spacing. The explorer uses those tokens rather than a separate palette. Auth, forms, tables, menus, dialogs and empty/error/loading states use the same restrained surfaces. Quiet branding details remain part of the interface: authentication screens use the original repeating slash monogram behind the form, without animation or interaction layers over controls. Mobile controls have 44-pixel targets, including popover actions inside the explorer drawer. Broker and entity definitions display their actual catalogue metadata; user-provided labels and MQTT paths remain verbatim.
 
 ## Data sources
 
 `/sources` is a separate setup destination. Its hierarchy groups registered readings
 by broker and MQTT topic, across device assignments; entity metadata remains searchable.
-Monitoring and Data sources have direct links above the catalogue search in both
-sidebars, with the current workspace marked. The links also appear in the mobile
-explorer drawer. Returning to Monitoring restores its previous inspection or the
+Monitoring, Data sources, and Anomalies have direct links above the catalogue search
+in both sidebars, with the current workspace marked. The same links remain available
+on Anomalies, detail, and account pages and in their mobile drawers. Catalogue settings
+supports adding entities and editing existing definitions, including entities with no
+readings, without a separate entity directory. Returning to Monitoring restores its previous inspection or the
 explicit service setup return path; unsaved recording changes still block leaving.
 Row selection opens the scope inspector in the main workspace; chevrons browse branches.
 Recording controls live here, with inheritance, child exceptions, future-reading opt-in,
@@ -88,7 +90,7 @@ preview counts, affected-monitor confirmation, and one Apply action. Members ins
 without editing. Catalogue settings remain available without opening automatically.
 
 Monitoring remains the default destination. Setup detours preserve the service draft
-and selected inputs in account-scoped memory. Returning through the menu restores the
+and selected inputs in account-scoped memory. Returning through the left navigation restores the
 Monitoring URL, search, filters, sidebar positions, and chart inspection. The bounded
 history cache is shared between visible workspaces; unmounted views do not poll. Logout
 or account changes clear this memory. Colours use the shared semantic theme tokens.

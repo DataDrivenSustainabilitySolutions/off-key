@@ -6,7 +6,6 @@ import {
   PageShell,
   SectionPanel,
 } from "@/components/DashboardLayout";
-import { NavigationBar } from "@/components/NavigationBar";
 import { Button } from "@/components/ui/button";
 import { apiUtils } from "@/lib/api-client";
 import { getErrorMessage } from "@/lib/errors";
@@ -40,7 +39,6 @@ export default function Settings() {
 
   return (
     <>
-      <NavigationBar />
       <PageShell>
         <PageHeader title="Settings" />
         <CollectionHealth />

@@ -270,7 +270,7 @@ test.describe("Details telemetry ECharts", () => {
     await page.goto(`/details/${CHARGER_ID}`);
 
     const navbar = page.getByTestId("application-header");
-    const primaryLinks = page.getByTestId("navbar-primary-links");
+    const primaryLinks = page.getByRole("group", { name: "Workspaces", exact: true });
     const navbarActions = page.getByTestId("navbar-actions");
     await expect(navbarActions).toBeVisible();
 
@@ -282,9 +282,7 @@ test.describe("Details telemetry ECharts", () => {
     expect(navbarBox).not.toBeNull();
     expect(primaryLinksBox).not.toBeNull();
     expect(navbarActionsBox).not.toBeNull();
-    expect(primaryLinksBox!.x).toBeLessThan(
-      navbarBox!.x + navbarBox!.width / 2,
-    );
+    expect(primaryLinksBox!.x + primaryLinksBox!.width).toBeLessThanOrEqual(navbarBox!.x);
     expect(navbarActionsBox!.x).toBeGreaterThan(
       navbarBox!.x + navbarBox!.width / 2,
     );

@@ -26,11 +26,6 @@
 .ex-icon-button:hover { background: var(--ex-hover); }
 .ex-sidebar { display: flex; flex-direction: column; min-width: 0; min-height: 0; height: 100%; background: var(--ex-side); border-right: 1px solid var(--ex-line); }
 .ex-sidebar-top { display: flex; align-items: flex-start; gap: 6px; flex-shrink: 0; margin: 12px 14px 16px; }
-.ex-workspace-links { flex: 1; min-width: 0; display: grid; gap: 4px; }
-.ex-workspace-link { min-width: 0; min-height: 44px; padding: 10px; display: flex; gap: 10px; align-items: center; text-align: left; border-radius: 7px; color: var(--ex-ink); text-decoration: none; }
-.ex-workspace-link:hover { background: var(--ex-hover); }
-.ex-workspace-link[aria-current="page"] { background: var(--ex-active); color: var(--ex-accent); font-weight: 600; box-shadow: inset 2px 0 0 var(--ex-accent); }
-.ex-workspace-link:focus-visible { outline: 2px solid var(--ex-accent); outline-offset: 2px; }
 .ex-search { margin: 0 18px 21px; min-width: 0; padding: 7px 9px; display: flex; align-items: center; gap: 8px; background: var(--ex-bg); border: 1px solid var(--ex-line); border-radius: 7px; color: var(--ex-muted); }
 .ex-search input { padding: 0; min-width: 0; width: 100%; font: inherit; color: var(--ex-ink); background: transparent; border: 0; outline: 0; }
 .ex-search:focus-within { border-color: var(--ex-accent); box-shadow: 0 0 0 2px color-mix(in srgb,var(--ex-accent) 12%,transparent); }
@@ -104,6 +99,8 @@
 .ex-dialog > header h2 { font-size: 17px; font-weight: 550; margin: 0; }
 .ex-mobile-sidebar { position: fixed; left: 0; top: 0; bottom: 0; width: min(320px,calc(100vw - 32px)); z-index: 80; outline: none; animation: ex-slide 180ms ease-out; }
 .ex-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+.ex-settings-entity { display: flex; gap: 10px; align-items: center; margin-top: 14px; font-size: 12px; }
+.ex-settings-entity select { flex: 1; min-width: 0; padding: 8px 10px; border: 1px solid var(--ex-line); border-radius: 6px; color: var(--ex-ink); background: var(--ex-bg); font: inherit; }
 .ex-shell .sp-inline-name,.ex-dialog .sp-inline-name { display: block; min-width: 0; }
 .ex-shell .sp-inline-name-trigger,.ex-dialog .sp-inline-name-trigger { display: inline-flex; max-width: 100%; text-align: left; gap: 7px; align-items: center; padding: 0; overflow-wrap: anywhere; }
 .ex-shell .sp-inline-name-trigger svg,.ex-dialog .sp-inline-name-trigger svg { flex-shrink: 0; opacity: 0; width: 12px; }

@@ -7,7 +7,6 @@ import {
   PageHeader,
   PageShell,
 } from "@/components/DashboardLayout";
-import { NavigationBar } from "@/components/NavigationBar";
 import { ChartSkeleton, NoDataFound } from "@/components/LoadingStates";
 import DynamicTelemetryChart from "@/components/DynamicTelemetryChart";
 import { Button } from "@/components/ui/button";
@@ -345,14 +344,13 @@ const ChargerDetails: React.FC<{ chargerId: string }> = ({ chargerId }) => {
 
   return (
     <>
-      <NavigationBar />
       <PageShell>
         <PageHeader
           title={`Entity ${chargerId}`}
           actions={
             <>
               <Button variant="ghost" asChild>
-                <Link to="/entities">Entities</Link>
+                <Link to="/sources">Data sources</Link>
               </Button>
               <LiveTelemetryIndicator
                 hasRecentTelemetry={hasRecentTelemetry}

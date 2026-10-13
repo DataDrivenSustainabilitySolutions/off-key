@@ -159,7 +159,7 @@ export function SourcesWorkspace() {
       <header><Dialog.Title>{editor ? "Edit data source" : "Catalogue settings"}</Dialog.Title><button aria-label="Close settings" onClick={dismiss}><X size={18} /></button></header><Dialog.Description className="ex-sr-only">Manage the saved catalogue.</Dialog.Description>
       <Suspense fallback={<p>Loading…</p>}>{editor ? <StructureEditor key={editor.key} document={document} revision={system.revision ?? 0} kind={editor.kind} entityId={editor.id}
         canEdit={system.canEdit} saving={system.saving} saveError={system.error} onSave={system.save} onDone={dismiss} /> : <Settings document={document} revision={system.revision ?? 0}
-        canEdit={system.canEdit && !rules.dirty} saving={system.saving} error={system.error} onImport={importCatalogue} onExport={exportCatalogue} onCreate={openEditor} />}</Suspense>
+        canEdit={system.canEdit && !rules.dirty} saving={system.saving} error={system.error} onImport={importCatalogue} onExport={exportCatalogue} onCreate={openEditor} onEdit={openEditor} />}</Suspense>
     </Dialog.Content></Dialog.Portal></Dialog.Root>
     <Dialog.Root open={blocker.state === "blocked"} onOpenChange={open => { if (!open && blocker.state === "blocked") blocker.reset(); }}><Dialog.Portal><Dialog.Overlay className="ex-dialog-overlay" /><Dialog.Content className="ex-dialog">
       <Dialog.Title>Unsaved recording changes</Dialog.Title><Dialog.Description>Save this broker’s changes or discard them before leaving.</Dialog.Description>

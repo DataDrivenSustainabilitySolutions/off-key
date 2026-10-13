@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "@/auth/AuthContext";
-import { NavigationBar } from "@/components/NavigationBar";
 import { PageHeader, PageShell, SectionPanel } from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -64,7 +63,6 @@ export default function AccountPage() {
 
   return (
     <>
-      <NavigationBar />
       <PageShell>
         <PageHeader title="Account" />
         <SectionPanel title="Account" help="Members can view all organization data. Administrators manage access, collection, and monitoring.">

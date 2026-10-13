@@ -1,5 +1,5 @@
 import { Suspense } from "react";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { createMemoryRouter, RouterProvider, type RouteObject } from "react-router-dom";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -14,15 +14,21 @@ vi.mock("react-router-dom", async (original) => ({
 vi.mock("@/auth/AuthContext", () => ({ useAuth: () => auth }));
 vi.mock("@/pages/MonitoringWorkspace", () => ({ default: () => <h1>Monitoring home</h1> }));
 vi.mock("@/pages/Login", () => ({ default: () => <h1>Sign in</h1> }));
-vi.mock("@/pages/Entities", () => ({ default: () => <h1>Entity directory</h1> }));
+vi.mock("@/pages/SystemCatalogue", () => ({ default: () => <h1>Data sources</h1> }));
+vi.mock("@/pages/Anomalies", () => ({ default: () => <h1>Anomalies</h1> }));
+vi.mock("@/pages/Account", () => ({ default: () => <h1>Account</h1> }));
+vi.mock("@/components/theme-provider", () => ({ useTheme: () => ({ resolvedTheme: "light", setTheme: vi.fn() }) }));
 
 let routes: RouteObject[];
 beforeAll(async () => {
   await import("@/App");
   routes = captureRouter.mock.calls[0]![0];
 });
-beforeEach(() => { auth.isAuthenticated = true; auth.isLoading = false; });
-afterEach(cleanup);
+beforeEach(() => {
+  auth.isAuthenticated = true; auth.isLoading = false;
+  vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() })));
+});
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 function visit(path: string) {
   const router = createMemoryRouter(routes, { initialEntries: [path] });
@@ -37,7 +43,7 @@ describe("application home", () => {
     expect(router.state.location.pathname).toBe("/");
   });
 
-  it.each(["/", "/entities"])("requires sign-in from %s", async (path) => {
+  it.each(["/", "/entities", "/anomalies"])("requires sign-in from %s", async (path) => {
     auth.isAuthenticated = false;
     const router = visit(path);
     expect(await screen.findByRole("heading", { name: "Sign in" })).toBeTruthy();
@@ -52,10 +58,43 @@ describe("application home", () => {
     expect(screen.queryByRole("heading", { name: "Monitoring home" })).toBeNull();
   });
 
-  it.each(["/entities"])("opens the generic entity directory from %s", async (path) => {
-    const router = visit(path);
-    expect(await screen.findByRole("heading", { name: "Entity directory" })).toBeTruthy();
-    expect(router.state.location.pathname).toBe("/entities");
+  it("keeps old entity-directory links usable by taking them to Data sources", async () => {
+    const router = visit("/entities");
+    expect(await screen.findByRole("heading", { name: "Data sources" })).toBeTruthy();
+    expect(router.state.location.pathname).toBe("/sources");
+  });
+
+  it("keeps the primary navigation on Anomalies and provides a way back to Monitoring", async () => {
+    const router = visit("/anomalies");
+    await screen.findByRole("heading", { name: "Anomalies" });
+    const workspaces = within(screen.getByRole("group", { name: "Workspaces" }));
+    expect(workspaces.getAllByRole("link").map(link => link.textContent)).toEqual(["Monitoring", "Data sources", "Anomalies"]);
+    expect(workspaces.getByRole("link", { name: "Anomalies" }).getAttribute("aria-current")).toBe("page");
+    fireEvent.click(workspaces.getByRole("link", { name: "Monitoring" }));
+    await screen.findByRole("heading", { name: "Monitoring home" });
+    expect(router.state.location.pathname).toBe("/");
+  });
+
+  it("can reopen the desktop navigation after hiding it", async () => {
+    visit("/anomalies");
+    await screen.findByRole("heading", { name: "Anomalies" });
+    fireEvent.click(screen.getByRole("button", { name: "Toggle workspace navigation" }));
+    expect(screen.queryByRole("group", { name: "Workspaces" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Toggle workspace navigation" }));
+    expect(screen.getByRole("group", { name: "Workspaces" })).toBeTruthy();
+  });
+
+  it("closes the mobile navigation after choosing a page and restores toggle focus", async () => {
+    vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() })));
+    const router = visit("/account");
+    await screen.findByRole("heading", { name: "Account" });
+    fireEvent.click(screen.getByRole("button", { name: "Toggle workspace navigation" }));
+    const dialog = await screen.findByRole("dialog", { name: "Workspace navigation" });
+    fireEvent.click(within(dialog).getByRole("link", { name: "Anomalies" }));
+    await screen.findByRole("heading", { name: "Anomalies" });
+    expect(router.state.location.pathname).toBe("/anomalies");
+    expect(screen.queryByRole("dialog")).toBeNull();
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("button", { name: "Toggle workspace navigation" })));
   });
 
   it("preserves the selected catalogue entity when opening the monitoring workspace", async () => {

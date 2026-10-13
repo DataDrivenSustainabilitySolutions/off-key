@@ -12,9 +12,6 @@ export function AppHeader({ leading }: Props) {
     <div className="app-header-leading">
       {leading ?? <Link to="/" className="app-brand font-mono">aberration</Link>}
     </div>
-    <nav className="app-header-links" aria-label="Workspace" data-testid="navbar-primary-links">
-      {!leading && <Link to="/" className="app-header-link">Monitoring</Link>}
-    </nav>
     <div className="app-header-actions" data-testid="navbar-actions">
       <ModeToggle />
       <ApplicationMenu />

@@ -161,11 +161,13 @@ describe("explorer sidebar and catalogue list", () => {
     vi.useRealTimers();
   });
 
-  it.each(["/", "/sources?broker=broker"])("links both primary workspaces and identifies the current one at %s", path => {
+  it.each(["/", "/sources?broker=broker"])("links the primary workspaces and identifies the current one at %s", path => {
     render(<ExplorerSidebar {...sidebarOptions()} />, path);
     const workspaces = within(screen.getByRole("group", { name: "Workspaces" }));
     const monitoring = workspaces.getByRole("link", { name: "Monitoring" });
     const sources = workspaces.getByRole("link", { name: "Data sources" });
+    expect(workspaces.getByRole("link", { name: "Anomalies" }).getAttribute("href")).toBe("/anomalies");
+    expect(workspaces.queryByRole("link", { name: "Entities" })).toBeNull();
     expect(monitoring.getAttribute("href")).toBe("/");
     expect(sources.getAttribute("href")).toBe("/sources");
     expect(monitoring.getAttribute("aria-current")).toBe(path === "/" ? "page" : null);

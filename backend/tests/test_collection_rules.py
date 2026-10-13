@@ -1,18 +1,24 @@
 """Scope ownership, future admission and legacy compatibility regressions."""
 
+from unittest.mock import AsyncMock
+
 import pytest
+from off_key_core.db.collection_runtime import CollectionRuntimeSnapshot
 from off_key_core.schemas.collection_policy import CollectionPolicy
 from off_key_core.schemas.collection_rules import (
     CollectionRule,
     CollectionRuleEdit,
     CollectionRuleScope,
 )
+from off_key_core.schemas.system import SystemDocument
 from off_key_core.schemas.system_collection import (
     SystemCollectionDefinition,
     build_bindings,
 )
 from off_key_core.utils.collection_rules import CollectionRuleResolver
+from off_key_tactic_middleware.services import system_collection as collection_module
 from off_key_tactic_middleware.services.collection_rule_edits import apply_rule_edits
+from off_key_tactic_middleware.services.system_collection import SystemCollectionService
 
 from .test_system_configuration import document
 
@@ -169,3 +175,60 @@ def test_restore_preserves_admission_boundary():
         [CollectionRuleEdit(scope=scope(), operation="restore", restore_rule=original)],
     )
     assert all(mode == "off" for mode in modes(value).values())
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("operation", "mode"), [("set", "sample"), ("inherit", "off")])
+async def test_full_legacy_catalogue_avoids_quadratic_leaf_matching(
+    monkeypatch, operation, mode
+):
+    doc = SystemDocument.model_validate(
+        {
+            "connections": [{"id": "b", "label": "Broker", "host": "localhost"}],
+            "streams": [
+                {
+                    "id": f"r{index}",
+                    "label": "Reading",
+                    "connection_id": "b",
+                    "topic": "x",
+                    "payload_pointer": f"/v{index}",
+                    "policy": {"mode": "original"},
+                }
+                for index in range(4096)
+            ],
+        }
+    )
+    legacy = SystemCollectionDefinition(document=doc, bindings=build_bindings(doc))
+    runtime = CollectionRuntimeSnapshot(
+        revision=1, catalog=legacy, ingress={}, collection={}
+    )
+    monkeypatch.setattr(
+        collection_module, "read_collection_runtime", AsyncMock(return_value=runtime)
+    )
+    match_calls = 0
+    matches = CollectionRuleScope.matches
+
+    def counted_matches(self, stream):
+        nonlocal match_calls
+        match_calls += 1
+        return matches(self, stream)
+
+    monkeypatch.setattr(CollectionRuleScope, "matches", counted_matches)
+    _, proposed = await SystemCollectionService(None).current(doc)
+    assert len(proposed.rules) == 4096
+    assert match_calls <= len(doc.streams)
+    apply_rule_edits(
+        proposed,
+        [
+            CollectionRuleEdit(
+                scope=CollectionRuleScope(
+                    kind="reading", connection_id="b", reading_id=stream.id
+                ),
+                operation=operation,
+                policy=CollectionPolicy(mode="sample") if operation == "set" else None,
+            )
+            for stream in doc.streams
+        ],
+    )
+    assert all(policy_mode == mode for policy_mode in modes(proposed).values())
+    assert match_calls <= 2 * len(doc.streams)

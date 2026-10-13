@@ -7,6 +7,15 @@ import type { SystemCollectionPreview, SystemSnapshot } from "./systemTypes";
 type Draft = { broker: string; baseline: SystemSnapshot; edits: RuleEdit[] };
 type Undo = { broker: string; previous: CollectionRule[]; acknowledged: SystemSnapshot };
 
+function readingsNeedingReview(ids: string[], draft: Draft, preview?: SystemCollectionPreview) {
+  const staged = new Set(draft.edits.filter(edit => edit.scope.kind === "reading").map(edit => edit.scope.reading_id));
+  return [...new Set(ids)].filter(id => {
+    const binding = draft.baseline.runtime.bindings?.[id];
+    return binding?.connection_id === draft.broker && !staged.has(id)
+      && (preview?.bindings?.[id] ?? binding).policy_origin?.needs_review;
+  });
+}
+
 export function useRecordingRules(snapshot: SystemSnapshot | null, broker: string | undefined,
   applyRules: (change: RuleChange) => Promise<SystemSnapshot | undefined>) {
   const [draft, setDraft] = useState<Draft>();
@@ -50,9 +59,24 @@ export function useRecordingRules(snapshot: SystemSnapshot | null, broker: strin
       return { ...active, edits };
     });
   };
+  const pendingReadingIds = (ids: string[]) => baseline && broker
+    ? readingsNeedingReview(ids, current ?? { broker, baseline, edits: [] }, preview) : [];
+  const includeReadings = (ids: string[]) => {
+    if (!snapshot || !broker) return;
+    setProblem("");
+    setDraft(previous => {
+      const active = previous?.broker === broker ? previous : { broker, baseline: snapshot, edits: [] };
+      const pending = readingsNeedingReview(ids, active, active === current ? preview : undefined);
+      if (!pending.length) return previous;
+      const admissions: RuleEdit[] = pending.map(reading_id => ({
+        scope: { kind: "reading", connection_id: broker, reading_id }, operation: "inherit",
+      }));
+      return { ...active, edits: [...active.edits, ...admissions] };
+    });
+  };
   const ownRule = (scope: RuleScope) => {
     const change = current?.edits.find(item => scopeKey(item.scope) === scopeKey(scope));
-    if (change?.operation === "set") return { scope, policy: change.policy!, include_future_readings: change.include_future_readings ?? false, admitted_before: 0 };
+    if (change?.operation === "set") return { scope, policy: change.policy, include_future_readings: change.include_future_readings ?? false, admitted_before: 0 };
     if (change?.operation === "inherit") return undefined;
     return rules.find(rule => scopeKey(rule.scope) === scopeKey(scope));
   };
@@ -81,7 +105,7 @@ export function useRecordingRules(snapshot: SystemSnapshot | null, broker: strin
     }
     if (edits.length) { setDraft({ broker: broker!, baseline: snapshot, edits }); setUndo(undefined); }
   };
-  return { dirty, preview, reviewing: dirty && !preview, problem, saving, edit, ownRule, apply,
+  return { dirty, preview, reviewing: dirty && !preview, problem, saving, edit, pendingReadingIds, includeReadings, ownRule, apply,
     canUndo: undo?.broker === broker && !dirty, stageUndo,
     discard: () => { setDraft(undefined); setProblem(""); setReview(undefined); },
     rebase: () => { if (snapshot && current) { setDraft({ ...current, baseline: snapshot }); setProblem(""); } },

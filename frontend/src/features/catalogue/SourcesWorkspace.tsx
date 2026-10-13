@@ -5,7 +5,6 @@ import { Link, useBlocker, useNavigate, useSearchParams } from "react-router-dom
 import { useAuth } from "@/auth/AuthContext";
 import { AppHeader } from "@/components/AppHeader";
 import { Button } from "@/components/ui/button";
-import { apiUtils } from "@/lib/api-client";
 import { ExplorerSidebar } from "../explorer/ExplorerSidebar";
 import { navigationRows, searchNavigation } from "../explorer/navigationIndex";
 import type { ExplorerNode } from "../explorer/navigationIndex";
@@ -18,7 +17,7 @@ import { createEmptySystem, serializeSystemDocument } from "./systemDocument";
 import { buildSourcesIndex, scopeForNode, scopeReadingIds, safeServiceReturn } from "./collectionRules";
 import { useRecordingRules } from "./useRecordingRules";
 import { SourceRecordingInspector } from "./SourceRecordingInspector";
-import type { SystemDocument, SystemEntityKind, SystemRuntime } from "./systemTypes";
+import type { SystemDocument, SystemEntityKind } from "./systemTypes";
 import "../explorer/explorer.css";
 import "./sources.css";
 
@@ -29,10 +28,11 @@ const empty = createEmptySystem();
 
 export function SourcesWorkspace() {
   const { userId, isAuthenticated } = useAuth();
-  const system = useSystemDocument({ isAuthenticated, accountKey: userId });
+  const [params, setParams] = useSearchParams();
+  const system = useSystemDocument({ isAuthenticated, accountKey: userId,
+    runtimeConnectionId: params.has("reading") ? undefined : params.get("broker") ?? undefined });
   const document = system.document ?? empty;
   const index = useMemo(() => buildSourcesIndex(document), [document]);
-  const [params, setParams] = useSearchParams();
   const navigate = useNavigate();
   const selected = useMemo(() => {
     const reading = params.get("reading"), broker = params.get("broker"), topic = params.get("topic");
@@ -61,9 +61,6 @@ export function SourcesWorkspace() {
   const bindings = system.snapshot?.runtime.bindings;
   const numericIds = useMemo(() => new Set(document.streams.filter(item => item.value_type === "number").map(item => item.id)), [document.streams]);
   const liveIds = useMemo(() => ids.filter(id => !numericIds.has(id) || bindings?.[id]?.policy.mode === "off"), [ids, numericIds, bindings]);
-  const brokerId = scope?.connection_id;
-  const { revision, refreshRuntime, updateRuntime } = system;
-  const hasSnapshot = !!system.snapshot;
   const returnTo = params.get("returnTo");
   const safeReturn = safeServiceReturn(returnTo);
   const requestedMissing = system.document && (params.has("broker") || params.has("reading") || params.has("topic")) && !selected;
@@ -82,23 +79,6 @@ export function SourcesWorkspace() {
     window.document.addEventListener("visibilitychange", visibility);
     return () => { window.document.removeEventListener("visibilitychange", visibility); telemetry.stop(); };
   }, [telemetry]);
-  useEffect(() => {
-    if (!hasSnapshot) return;
-    const controller = new AbortController();
-    let busy = false;
-    const streamIds = brokerId ? document.streams.filter(item => item.connection_id === brokerId).map(item => item.id) : document.streams.map(item => item.id);
-    const poll = async () => {
-      if (window.document.hidden || busy) return;
-      busy = true;
-      try {
-        const next = await apiUtils.post<{ revision: number; runtime: SystemRuntime }>("/v1/system/collection/status", { stream_ids: streamIds }, { signal: controller.signal, redirectOnUnauthorized: false });
-        if (!controller.signal.aborted) { if (next.revision !== revision) void refreshRuntime(); else updateRuntime(next); }
-      } catch { /* Keep acknowledged settings through an outage. */ }
-      finally { busy = false; }
-    };
-    const timer = setInterval(() => void poll(), 5000);
-    return () => { clearInterval(timer); controller.abort(); };
-  }, [document, brokerId, revision, refreshRuntime, updateRuntime, hasSnapshot]);
 
   const browse = (key: string) => {
     setBrowseKey(key); setQuery("");

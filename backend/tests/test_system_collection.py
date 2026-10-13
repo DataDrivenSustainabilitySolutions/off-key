@@ -416,3 +416,117 @@ async def test_future_rule_metadata_advances_revision_without_restarting_ingesti
     assert (await read_collection_runtime(session)).catalog.generation == generation
     with pytest.raises(ConflictError):
         await service.apply(request(first, False), actor="test@example.com")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("operation", ["include", "inherit"])
+async def test_moving_an_admitted_reading_requires_review_and_keeps_overrides(
+    session, operation
+):
+    from off_key_core.schemas.collection_rules import (
+        CollectionRuleEdit,
+        CollectionRuleScope,
+        SystemCollectionRuleChange,
+    )
+
+    service = SystemService(session)
+    collection = SystemCollectionService(session)
+    snapshot = await service.save(
+        SystemChange(expected_revision=0, document=document()), actor="test@example.com"
+    )
+    broker = CollectionRuleScope(kind="broker", connection_id="broker-1")
+    humidity = CollectionRuleScope(
+        kind="reading", connection_id="broker-1", reading_id="humidity"
+    )
+
+    async def apply(snapshot, edits):
+        return await collection.apply(
+            SystemCollectionRuleChange(
+                expected_revision=snapshot.revision,
+                expected_collection_revision=snapshot.runtime.collection_revision,
+                rule_changes=edits,
+            ),
+            actor="test@example.com",
+        )
+
+    snapshot = await apply(
+        snapshot,
+        [CollectionRuleEdit(scope=broker, policy=CollectionPolicy(mode="original"))],
+    )
+    next_doc = snapshot.document.model_copy(deep=True)
+    next_doc.streams.append(
+        next_doc.streams[0].model_copy(
+            update={"id": "humidity", "payload_pointer": "/humidity"}
+        )
+    )
+    snapshot = await service.save(
+        SystemChange(expected_revision=snapshot.revision, document=next_doc),
+        actor="test@example.com",
+    )
+    assert snapshot.runtime.bindings["humidity"]["policy_origin"]["needs_review"]
+    snapshot = await apply(
+        snapshot,
+        [
+            CollectionRuleEdit(
+                scope=broker if operation == "include" else humidity,
+                operation=operation,
+            ),
+            CollectionRuleEdit(
+                scope=CollectionRuleScope(
+                    kind="reading",
+                    connection_id="broker-1",
+                    reading_id="temperature-1",
+                ),
+                policy=CollectionPolicy(mode="sample", interval_seconds=7),
+            ),
+        ],
+    )
+    included = await service.read()
+    binding = included.runtime.bindings["humidity"]
+    assert binding["policy"]["mode"] == "original"
+    next_doc = included.document.model_copy(deep=True)
+    next_doc.streams[1].label = "Renamed humidity"
+    renamed = await service.save(
+        SystemChange(expected_revision=included.revision, document=next_doc),
+        actor="test@example.com",
+    )
+    assert renamed.runtime.bindings["humidity"] == binding
+    next_doc = renamed.document.model_copy(deep=True)
+    next_doc.streams[0].topic = "elsewhere/temperature"
+    next_doc.streams[1].topic = "elsewhere/humidity"
+    moved = await service.save(
+        SystemChange(expected_revision=renamed.revision, document=next_doc),
+        actor="test@example.com",
+    )
+    moved_binding = moved.runtime.bindings["humidity"]
+    assert moved_binding["policy"]["mode"] == "off"
+    assert moved_binding["policy_origin"]["needs_review"]
+    assert moved_binding["accepted_topic"] == binding["accepted_topic"]
+    assert moved.runtime.bindings["temperature-1"]["policy"] == {
+        "mode": "sample",
+        "interval_seconds": 7,
+    }
+    assert moved.runtime.collection_revision > renamed.runtime.collection_revision
+    assert all(
+        rule["scope"] != humidity.model_dump(mode="json")
+        for rule in moved.runtime.collection_rules
+    )
+    with pytest.raises(ConflictError):
+        await apply(
+            renamed,
+            [
+                CollectionRuleEdit(
+                    scope=humidity,
+                    operation="restore",
+                    restore_rule=next(
+                        rule
+                        for rule in renamed.runtime.collection_rules
+                        if rule["scope"] == humidity.model_dump(mode="json")
+                    ),
+                )
+            ],
+        )
+    readmitted = await apply(
+        moved, [CollectionRuleEdit(scope=humidity, operation="inherit")]
+    )
+    assert readmitted.runtime.bindings["humidity"]["policy"]["mode"] == "original"

@@ -89,6 +89,49 @@ describe("dedicated Data sources configuration", () => {
     expect((screen.getByLabelText("Recording policy") as HTMLSelectElement).value).toBe("inherit");
   });
 
+  it("includes reviewed readings without replacing the chosen broker policy", async () => {
+    const scope = { kind: "broker" as const, connection_id: "broker" };
+    saved.runtime.collection_rules = [{ scope, policy: { mode: "original", interval_seconds: 10 }, include_future_readings: false, admitted_before: 1 }];
+    saved.runtime.bindings!.temperature!.policy = { mode: "original", interval_seconds: 10 };
+    saved.runtime.bindings!.power!.policy_origin = { scope, inherited: true, needs_review: true };
+    vi.mocked(apiClient.put).mockImplementation(async () => {
+      const policy = { mode: "sample" as const, interval_seconds: 60 };
+      saved = { ...saved, revision: 4, runtime: {
+        ...saved.runtime, collection_revision: 5, collection_rules: [
+          { scope, policy, include_future_readings: false, admitted_before: 1 },
+          { scope: { kind: "reading", connection_id: "broker", reading_id: "power" }, policy: null, include_future_readings: false, admitted_before: 0 },
+        ],
+        bindings: Object.fromEntries(Object.entries(saved.runtime.bindings!).map(([id, binding]) => [id, {
+          ...binding, policy, policy_origin: { scope, inherited: true, needs_review: false },
+        }])),
+      } };
+      return { data: saved };
+    });
+    mount("/sources?broker=broker");
+    fireEvent.change(await screen.findByLabelText("Recording policy"), { target: { value: "sample" } });
+    fireEvent.change(screen.getByLabelText("Recording interval"), { target: { value: "60" } });
+    await waitFor(() => expect(screen.getByRole("button", { name: "Apply changes" }).hasAttribute("disabled")).toBe(false));
+    fireEvent.click(screen.getByRole("button", { name: "Include current readings" }));
+    await waitFor(() => expect(apiUtils.post).toHaveBeenLastCalledWith("/v1/system/collection/preview", expect.objectContaining({
+      rule_changes: [
+        { scope, operation: "set", policy: { mode: "sample", interval_seconds: 60 }, include_future_readings: false },
+        { scope: { kind: "reading", connection_id: "broker", reading_id: "power" }, operation: "inherit" },
+      ],
+    }), expect.anything()));
+    expect((screen.getByLabelText("Recording policy") as HTMLSelectElement).value).toBe("sample");
+    expect(screen.queryByRole("button", { name: "Include current readings" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Apply changes" }));
+    await screen.findByRole("button", { name: "Undo last recording change" });
+    expect(apiClient.put).toHaveBeenCalledOnce();
+    expect(apiClient.put).toHaveBeenCalledWith("/v1/system/collection", expect.objectContaining({
+      rule_changes: expect.arrayContaining([
+        expect.objectContaining({ scope, operation: "set", policy: { mode: "sample", interval_seconds: 60 } }),
+        { scope: { kind: "reading", connection_id: "broker", reading_id: "power" }, operation: "inherit" },
+      ]),
+    }), expect.anything());
+    expect(screen.getByText(/2 of 2 enabled/)).toBeTruthy();
+  });
+
   it("protects an unsaved broker draft when leaving for Monitoring", async () => {
     mount("/sources?broker=broker");
     fireEvent.change(await screen.findByLabelText("Recording policy"), { target: { value: "original" } });

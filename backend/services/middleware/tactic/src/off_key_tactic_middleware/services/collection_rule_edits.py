@@ -48,14 +48,16 @@ def include_readings(definition, rules, selected):
 
 def apply_rule_edits(definition, edits):
     brokers = {item.id for item in definition.sources}
+    readings = {
+        (stream.connection_id, stream.id): stream
+        for stream in definition.document.streams
+    }
     rules = {item.scope.key: item for item in definition.rules}
     for edit in edits:
         scope = edit.scope
-        selected = [
-            stream for stream in definition.document.streams if scope.matches(stream)
-        ]
         if scope.connection_id not in brokers or (
-            scope.kind == "reading" and not selected
+            scope.kind == "reading"
+            and (scope.connection_id, scope.reading_id) not in readings
         ):
             raise ValidationError("Select an existing broker or reading.")
         if edit.operation == "restore":
@@ -68,6 +70,11 @@ def apply_rule_edits(definition, edits):
             else:
                 rules.pop(scope.key, None)
         elif edit.operation == "include":
+            selected = (
+                [readings[scope.connection_id, scope.reading_id]]
+                if scope.kind == "reading"
+                else [stream for stream in readings.values() if scope.matches(stream)]
+            )
             include_readings(definition, rules, selected)
     if len(rules) > 4096:
         raise ValidationError("The catalogue supports at most 4096 recording rules.")

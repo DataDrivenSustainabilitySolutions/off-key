@@ -17,7 +17,7 @@ export function SourceRecordingInspector({ scope, ids, document, runtime, canEdi
   const enabled = selected.filter(item => item.policy.mode !== "off").length;
   const uniform = selected.length && selected.every(item => item.policy.mode === selected[0]!.policy.mode
     && item.policy.interval_seconds === selected[0]!.policy.interval_seconds) ? selected[0]!.policy : undefined;
-  const excluded = selected.filter(item => item.policy_origin?.needs_review).length;
+  const excluded = draft.pendingReadingIds(ids);
   const exceptions = (runtime?.collection_rules ?? []).filter(item => item.policy && scopeKey(item.scope) !== scopeKey(scope)
     && item.scope.connection_id === scope.connection_id && (scope.kind === "broker" || scope.kind === "topic"
       && (item.scope.kind === "topic" ? item.scope.topic_prefix === scope.topic_prefix || item.scope.topic_prefix?.startsWith(`${scope.topic_prefix}/`)
@@ -43,8 +43,8 @@ export function SourceRecordingInspector({ scope, ids, document, runtime, canEdi
       {scope.kind !== "reading" && <label className="source-future"><input type="checkbox" checked={rule?.include_future_readings ?? false}
         disabled={draft.saving || mode === "inherit"} onChange={event => change(mode, interval, event.target.checked)} />
         <span>Include readings added later<small>Applies to registered readings added to this scope. Existing child exceptions stay in place.</small></span></label>}
-      {excluded > 0 && <div className="source-pending"><span>{excluded} added {excluded === 1 ? "reading needs" : "readings need"} review</span>
-        <Button variant="outline" disabled={draft.saving} onClick={() => draft.edit({ scope, operation: "include" })}>Include current readings</Button></div>}
+      {excluded.length > 0 && <div className="source-pending"><span>{excluded.length} added {excluded.length === 1 ? "reading needs" : "readings need"} review</span>
+        <Button variant="outline" disabled={draft.saving} onClick={() => draft.includeReadings(excluded)}>Include current readings</Button></div>}
       {draft.dirty && <div className="source-apply" aria-live="polite">
         {draft.reviewing ? <p>Reviewing changes…</p> : preview && <>
           <p>{preview.starting_readings ?? 0} start · {preview.stopping_readings ?? 0} stop · {preview.rate_changed_readings ?? 0} change rate</p>

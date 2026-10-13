@@ -34,7 +34,11 @@ recorded reading loads existing history, then follows new stored observations.
 Broker and topic rules inherit to registered readings, with explicit child exceptions.
 Choose Off, Sample (1–3600 seconds), or Original, review the automatic preview,
 and Apply once. **Include future registered readings** is unchecked by default;
-new or moved readings stay Off and are marked for review until explicitly included.
+new readings stay Off and are marked for review until explicitly included.
+Moving a reading to another broker or topic invalidates its inherited admission;
+it needs review again unless its new scope includes future readings. Explicit
+reading policies survive topic changes by stable ID. Including current readings
+can be combined with a parent policy change in one Apply action.
 Changing a parent's cadence does not silently admit them. Importing enabled file
 policies cannot activate collection. Existing enabled legacy readings retain explicit
 leaf overrides. Rules match exact MQTT segments, including case and empty segments;

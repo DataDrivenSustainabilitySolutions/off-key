@@ -21,6 +21,7 @@ type Options = {
   isAuthenticated: boolean;
   accountKey?: number | string | null;
   onDocument?: (document: SystemDocument) => void;
+  runtimeConnectionId?: string;
 };
 type State = {
   owner: string;
@@ -51,6 +52,7 @@ export function useSystemDocument({
   isAuthenticated,
   accountKey,
   onDocument,
+  runtimeConnectionId,
 }: Options) {
   const owner = JSON.stringify([isAuthenticated, accountKey ?? null]);
   const [state, setState] = useState<State>(() => ({
@@ -67,6 +69,7 @@ export function useSystemDocument({
   const busy = useRef(false);
   const readController = useRef<AbortController | undefined>(undefined);
   const saveController = useRef<AbortController | undefined>(undefined);
+  const runtimeController = useRef<AbortController | undefined>(undefined);
   const callback = useRef(onDocument);
 
   useEffect(() => {
@@ -110,6 +113,8 @@ export function useSystemDocument({
 
   const refresh = useCallback(async (): Promise<SystemDocument | undefined> => {
     if (!isAuthenticated) return undefined;
+    runtimeController.current?.abort();
+    runtimeController.current = undefined;
     readController.current?.abort();
     const controller = new AbortController();
     readController.current = controller;
@@ -156,18 +161,28 @@ export function useSystemDocument({
 
   const refreshRuntime = useCallback(async () => {
     if (!isAuthenticated || busy.current) return;
+    runtimeController.current?.abort();
+    const controller = new AbortController();
+    runtimeController.current = controller;
     const context = generation.current;
     try {
-      const snapshot = await apiUtils.get<SystemSnapshot>(SYSTEM_ENDPOINT, { redirectOnUnauthorized: false });
-      if (context === generation.current) accept(snapshot, context);
+      const snapshot = await apiUtils.get<SystemSnapshot>(SYSTEM_ENDPOINT, { signal: controller.signal, redirectOnUnauthorized: false });
+      if (!controller.signal.aborted && context === generation.current && !busy.current) accept(snapshot, context);
     } catch { /* Keep the last acknowledged state; the controls can retry. */ }
+    finally { if (runtimeController.current === controller) runtimeController.current = undefined; }
   }, [accept, isAuthenticated]);
 
-  const updateRuntime = useCallback((value: { revision: number; runtime: SystemSnapshot["runtime"] }) => {
+  const updateRuntime = useCallback((value: { revision: number; runtime: SystemSnapshot["runtime"] }, connectionId?: string) => {
     const current = latest.current;
     if (!current || value.revision !== current.revision || busy.current
       || (value.runtime.collection_revision ?? 0) < (current.runtime.collection_revision ?? 0)) return;
-    const runtime = { ...value.runtime, bindings: { ...current.runtime.bindings, ...value.runtime.bindings } };
+    const sources = { ...current.runtime.ingress?.sources };
+    if (connectionId) delete sources[connectionId];
+    const runtime = { ...current.runtime, ...value.runtime,
+      bindings: { ...current.runtime.bindings, ...value.runtime.bindings },
+      latest_readings: { ...current.runtime.latest_readings, ...value.runtime.latest_readings },
+      ingress: connectionId ? { ...value.runtime.ingress, sources: { ...sources, ...value.runtime.ingress?.sources } } : value.runtime.ingress,
+    };
     const snapshot = { ...current, runtime };
     latest.current = snapshot;
     setState((previous) => ({ ...previous, snapshot }));
@@ -190,8 +205,50 @@ export function useSystemDocument({
       generation.current = context + 1;
       readController.current?.abort();
       saveController.current?.abort();
+      runtimeController.current?.abort();
+      runtimeController.current = undefined;
     };
   }, [isAuthenticated, owner, refresh]);
+
+  const runtimeReady = state.owner === owner && (state.status === "ready" || state.status === "read-only");
+  const pollInterval = state.snapshot?.runtime.collection?.status === "applying" ? 2000 : 5000;
+  useEffect(() => {
+    if (!runtimeReady) return;
+    const context = generation.current;
+    const poll = async () => {
+      const current = latest.current;
+      if (!current || document.hidden || busy.current || runtimeController.current) return;
+      const controller = new AbortController();
+      runtimeController.current = controller;
+      let changedRevision = false;
+      const streamIds = current.document.streams.filter(stream => !runtimeConnectionId || stream.connection_id === runtimeConnectionId).map(stream => stream.id);
+      try {
+        const next = await apiUtils.post<{ revision: number; runtime: SystemSnapshot["runtime"] }>(`${SYSTEM_ENDPOINT}/collection/status`,
+          { stream_ids: streamIds }, { signal: controller.signal, redirectOnUnauthorized: false });
+        if (controller.signal.aborted || context !== generation.current || busy.current) return;
+        changedRevision = next.revision !== latest.current?.revision;
+        if (!changedRevision) updateRuntime(next, runtimeConnectionId);
+      } catch { /* Keep acknowledged settings through an outage. */ }
+      finally { if (runtimeController.current === controller) runtimeController.current = undefined; }
+      if (changedRevision) await refreshRuntime();
+    };
+    let timer: ReturnType<typeof setInterval> | undefined;
+    const pause = () => {
+      clearInterval(timer);
+      timer = undefined;
+      runtimeController.current?.abort();
+      runtimeController.current = undefined;
+    };
+    const resume = () => {
+      if (document.hidden) { pause(); return; }
+      timer ??= setInterval(() => void poll(), pollInterval);
+      void poll();
+    };
+    // The initial catalogue read already supplies runtime; poll immediately only on resume.
+    if (!document.hidden) timer = setInterval(() => void poll(), pollInterval);
+    document.addEventListener("visibilitychange", resume);
+    return () => { pause(); document.removeEventListener("visibilitychange", resume); };
+  }, [runtimeReady, runtimeConnectionId, pollInterval, owner, refreshRuntime, updateRuntime]);
 
   const save = useCallback(
     async (
@@ -228,6 +285,8 @@ export function useSystemDocument({
         return false;
       }
       busy.current = true;
+      runtimeController.current?.abort();
+      runtimeController.current = undefined;
       setSaving(true);
       setError("");
       const context = generation.current;
@@ -306,6 +365,8 @@ export function useSystemDocument({
   const applyCollection = useCallback(async (change: SystemCollectionChange | RuleChange): Promise<boolean> => {
     if (busy.current || !permission.current || !latest.current) return false;
     busy.current = true;
+    runtimeController.current?.abort();
+    runtimeController.current = undefined;
     setSaving(true);
     const context = generation.current;
     const controller = new AbortController();

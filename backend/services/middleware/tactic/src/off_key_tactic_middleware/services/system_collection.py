@@ -41,6 +41,7 @@ class SystemCollectionService:
         previous = runtime.catalog
         bindings = build_bindings(document, previous.bindings)
         known = {stream.id for stream in document.streams}
+        reading_ids = {(stream.connection_id, stream.id) for stream in document.streams}
         brokers = {broker.id for broker in document.connections}
         old_inputs = {
             stream.id: (stream.connection_id, stream.topic)
@@ -57,13 +58,19 @@ class SystemCollectionService:
             bindings=bindings,
             generation=previous.generation,
             rules_version=1,
+            # Admissions acknowledge an input; explicit policies follow stable IDs.
             rules=[
                 rule
                 for rule in previous.rules
                 if rule.scope.connection_id in brokers
                 and (
                     rule.scope.kind != "reading"
-                    or any(rule.scope.matches(stream) for stream in document.streams)
+                    or (
+                        (rule.scope.connection_id, rule.scope.reading_id) in reading_ids
+                        and (
+                            rule.policy is not None or rule.scope.reading_id not in new
+                        )
+                    )
                 )
             ],
             registration_clock=clock,

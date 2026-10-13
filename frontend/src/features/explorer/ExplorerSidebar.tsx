@@ -6,6 +6,7 @@ import { isActiveApplicationPath, workspaceNavItems } from "@/components/applica
 import { ExplorerList, type ExplorerRow, type ListPosition } from "./ExplorerList";
 import { navigationTrail, type ExplorerNode, type NavigationIndex } from "./navigationIndex";
 import type { SystemGroup } from "../catalogue/systemTypes";
+import type { ReadingActivitySource } from "./readingActivity";
 
 type Props = {
   index: NavigationIndex; scopeKey: string; rows: ExplorerRow[]; title: string;
@@ -16,6 +17,7 @@ type Props = {
   onOpen: (node: ExplorerNode) => void; onBack: () => void; onInspect: () => void;
   onSettings: () => void; onWorkspace?: () => void; onDismiss?: () => void;
   monitoringHref?: string;
+  activity?: ReadingActivitySource;
   favourites?: Array<{ kind: "service" | "reading"; id: string; label: string }>;
   onFavourite?: (kind: "service" | "reading", id: string) => void;
 };
@@ -99,7 +101,7 @@ export function ExplorerSidebar(props: Props) {
     </div>
     {props.loading ? <div className="ex-list-empty" role="status">Loading catalogue…</div>
       : <ExplorerList rows={rows} viewKey={resultsQuery.trim() ? `search:${resultsQuery}` : scopeKey} positions={positions}
-        selectedKey={selectedKey} onOpen={props.onOpen} onBack={props.onBack} onBrowse={props.onBrowse} />}
+        selectedKey={selectedKey} onOpen={props.onOpen} onBack={props.onBack} onBrowse={props.onBrowse} activity={props.activity} />}
     {query && rows.length === 100 && <p className="ex-search-hint">Refine your search to see more matches.</p>}
     <div className="ex-sidebar-footer"><button onClick={props.onSettings}><Settings2 size={15} /><span>Catalogue settings</span></button>
       <span>{index.counts.readings.toLocaleString()} {index.counts.readings === 1 ? "reading" : "readings"}</span>

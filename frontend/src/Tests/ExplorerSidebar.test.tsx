@@ -8,6 +8,9 @@ import { buildNavigationIndex, navigationRows } from "@/features/explorer/naviga
 import { createEmptySystem } from "@/features/catalogue/systemDocument";
 import type { SystemDocument } from "@/features/catalogue/systemTypes";
 import { apiClient } from "@/lib/api-client";
+import { SystemLiveTelemetry } from "@/features/catalogue/systemLiveTelemetry";
+import type { LiveBatch } from "@/features/catalogue/systemLiveTypes";
+import type { SystemRuntime } from "@/features/catalogue/systemTypes";
 
 const viewportHeight = 360;
 const rowHeight = 72;
@@ -52,6 +55,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
   vi.restoreAllMocks();
   if (initialScrollTo) Object.defineProperty(HTMLElement.prototype, "scrollTo", initialScrollTo);
   else Reflect.deleteProperty(HTMLElement.prototype, "scrollTo");
@@ -94,6 +98,69 @@ function listOptions(document = system()) {
 }
 
 describe("explorer sidebar and catalogue list", () => {
+  it("observes fresh preview traffic and clears the circle when its listener leaves", async () => {
+    const document = system();
+    let batch: LiveBatch = { mode: "live", revision: 1, sequence: 0, reset: true,
+      connections: [{ connection_id: "broker", state: "connected", message: null, received_messages: 1, fresh_count: 0, retained_count: 1, fresh_received_at: null, rate_hz: 0 }],
+      streams: [{ stream_id: "value-0", value: 20, received_at: new Date().toISOString(), is_retained: true, received_count: 1, fresh_count: 0, retained_count: 1,
+        decode_errors: 0, fresh_received_at: null, rate_hz: 0, sequence: 0 }], samples: [],
+      limits: { max_samples: 8192, history_seconds: 7200, sample_interval_seconds: 1, lease_seconds: 45 } };
+    const lease = () => Promise.resolve({ lease_id: "preview", expires_in_seconds: 45, telemetry: batch });
+    const telemetry = new SystemLiveTelemetry({ create: lease, renew: lease, read: async () => batch, release: async () => {} });
+    telemetry.configure(document, 1, "test-member", true);
+    telemetry.setScope(["value-0"]);
+    await telemetry.start();
+    const options = listOptions(document);
+    const view = render(<ExplorerList {...options} activity={{ telemetry, liveStreamIds: ["value-0"] }} />);
+    try {
+      const row = await screen.findByRole("button", { name: "value0, preview" });
+      expect(row.querySelector("svg")!.getAttribute("fill")).toBe("none");
+      expect(row.querySelector(".ex-reading-activity")?.getAttribute("title")).toBe("Listening, waiting for fresh data");
+      batch = { ...batch, sequence: 1, reset: false, streams: [{ ...batch.streams[0]!, value: 21, is_retained: false, fresh_count: 1,
+        fresh_received_at: new Date().toISOString(), sequence: 1 }] };
+      act(() => telemetry.accept(batch, true));
+      expect(row.querySelector("svg")!.getAttribute("fill")).toBe("currentColor");
+      view.rerender(<ExplorerList {...options} activity={{ telemetry, liveStreamIds: ["value-1"] }} />);
+      expect(row.querySelector("svg")!.getAttribute("fill")).toBe("none");
+      view.rerender(<ExplorerList {...options} activity={{ telemetry, liveStreamIds: ["value-0"] }} />);
+      expect(row.querySelector("svg")!.getAttribute("fill")).toBe("currentColor");
+      act(() => telemetry.stop());
+      expect(row.querySelector("svg")!.getAttribute("fill")).toBe("none");
+      expect(row.querySelector(".ex-reading-activity")?.getAttribute("title")).toBe("Not listening");
+    } finally {
+      view.unmount();
+      telemetry.stop();
+    }
+  });
+
+  it("updates same-size circles from fresh traffic to waiting and off without changing selection", async () => {
+    vi.useFakeTimers({ toFake: ["Date", "setInterval", "clearInterval"] });
+    const options = listOptions();
+    const runtime: SystemRuntime = { mode: "collection", message: "", collection_revision: 1, collection: { status: "applied" },
+      ingress: { revision: 1, status: "applied", sources: { broker: { state: "connected" } }, readings: { "value-0": { fresh_received_at: new Date().toISOString() } } },
+      bindings: { "value-0": { entity_id: "room", connection_id: "broker", telemetry_key: "value", accepted_topic: "telemetry/room/value", policy: { mode: "sample", interval_seconds: 3600 } } } };
+    const source = { telemetry: new SystemLiveTelemetry(), runtime, liveStreamIds: [] };
+    const view = render(<ExplorerList {...options} selectedKey={options.rows[0]!.node.key} activity={source} />);
+    const row = await screen.findByRole("button", { name: "value0, preview" });
+    const circle = row.querySelector("svg")!;
+    expect(circle.getAttribute("width")).toBe("16");
+    expect(circle.getAttribute("fill")).toBe("currentColor");
+    expect(document.getElementById(row.getAttribute("aria-describedby")!)?.textContent).toBe("Receiving data (last 30 seconds)");
+    act(() => vi.advanceTimersByTime(30_000));
+    expect(circle.getAttribute("fill")).toBe("none");
+    expect(row.getAttribute("aria-current")).toBe("true");
+    expect(document.getElementById(row.getAttribute("aria-describedby")!)?.textContent).toBe("Listening, waiting for fresh data");
+    source.runtime = { ...runtime, ingress: { ...runtime.ingress, readings: { "value-0": { fresh_received_at: new Date().toISOString() } } } };
+    view.rerender(<ExplorerList {...options} selectedKey={options.rows[0]!.node.key} activity={source} />);
+    expect(circle.getAttribute("fill")).toBe("currentColor");
+    source.runtime = { ...runtime, ingress: { ...runtime.ingress, sources: {} } };
+    view.rerender(<ExplorerList {...options} selectedKey={options.rows[0]!.node.key} activity={source} />);
+    expect(circle.getAttribute("fill")).toBe("none");
+    expect(document.getElementById(row.getAttribute("aria-describedby")!)?.textContent).toBe("Not listening");
+    view.unmount();
+    vi.useRealTimers();
+  });
+
   it.each(["/", "/sources?broker=broker"])("links both primary workspaces and identifies the current one at %s", path => {
     render(<ExplorerSidebar {...sidebarOptions()} />, path);
     const workspaces = within(screen.getByRole("group", { name: "Workspaces" }));

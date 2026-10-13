@@ -36,6 +36,7 @@ class SystemIngress:
         self.workers = []
         self.states = {}
         self.bindings = {}
+        self.readings = {}
         self._received_at_us = {}
         self.generation = None
         self.output = None
@@ -86,6 +87,7 @@ class SystemIngress:
             self.generation = None
             self.bindings = {}
             self.states = {}
+            self.readings = {}
         await asyncio.gather(
             *(asyncio.to_thread(item.stop) for item in workers), return_exceptions=True
         )
@@ -200,6 +202,12 @@ class SystemIngress:
                 )
                 if result.rc == MQTT_ERR_SUCCESS:
                     self.last_publish = datetime.now(UTC).isoformat()
+                    if not retained:
+                        self.readings[stream.definition.id] = {
+                            "fresh_received_at": datetime.fromtimestamp(
+                                received_at_us / 1_000_000, UTC
+                            ).isoformat()
+                        }
                 else:
                     self.dropped += 1
 
@@ -256,6 +264,9 @@ class SystemIngress:
                             if self.output.is_connected()
                             else "connecting",
                             "sources": sources,
+                            "readings": {
+                                key: dict(value) for key, value in self.readings.items()
+                            },
                             "checked_at": datetime.now(UTC).isoformat(),
                             "last_publish_at": self.last_publish,
                             "dropped": self.dropped,

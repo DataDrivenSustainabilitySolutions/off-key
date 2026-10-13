@@ -122,16 +122,56 @@ async def test_arrival_clock_state_is_bounded_by_configured_topics(monkeypatch):
     payload = b'{"temperature":45,"humidity":50}'
     ingress._receive("test", "broker", "machine/readings", payload, False)
     first = ingress._received_at_us[("broker", "machine/readings")]
+    assert set(ingress.readings) == {"temperature", "humidity"}
     for value in range(100):
         ingress._receive("test", "broker", f"unselected/{value}", payload, False)
     assert len(ingress._received_at_us) == 1
+    assert len(ingress.readings) == 2
 
     # A revision retaining this input also retains its collision fence.
     catalog.generation = "next"
     await ingress._configure(catalog)
+    assert ingress.readings == {}
     ingress._receive("next", "broker", "machine/readings", payload, False)
     assert ingress._received_at_us[("broker", "machine/readings")] > first
     for stream in catalog.document.streams:
         stream.policy.mode = "off"
     await ingress._configure(catalog)
     assert ingress._received_at_us == {}
+    assert ingress.readings == {}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("retained", "return_code", "active"),
+    [(False, 0, True), (True, 0, False), (False, 1, False)],
+)
+async def test_activity_requires_a_fresh_successfully_forwarded_message(
+    monkeypatch, retained, return_code, active
+):
+    monkeypatch.setattr(
+        system_ingress, "get_system_live_settings", lambda: SystemLiveSettings()
+    )
+    ingress = system_ingress.SystemIngress()
+    ingress._connect = MagicMock()
+    ingress.output = SimpleNamespace(
+        is_connected=lambda: True,
+        publish=MagicMock(return_value=SimpleNamespace(rc=return_code)),
+    )
+    await ingress._configure(definition())
+    ingress._receive(
+        "test",
+        "broker",
+        "machine/readings",
+        b'{"temperature":45,"humidity":50}',
+        retained,
+    )
+    assert bool(ingress.readings) is active
+    if active:
+        assert set(ingress.readings) == {"temperature", "humidity"}
+        assert (
+            ingress.readings["temperature"]["fresh_received_at"]
+            == ingress.readings["humidity"]["fresh_received_at"]
+        )
+    await ingress._stop_workers()
+    assert ingress.readings == {}

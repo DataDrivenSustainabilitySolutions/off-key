@@ -178,10 +178,18 @@ export function useSystemDocument({
       || (value.runtime.collection_revision ?? 0) < (current.runtime.collection_revision ?? 0)) return;
     const sources = { ...current.runtime.ingress?.sources };
     if (connectionId) delete sources[connectionId];
+    const readings = current.runtime.ingress?.revision === value.runtime.ingress?.revision
+      ? { ...current.runtime.ingress?.readings } : {};
+    if (connectionId) {
+      for (const stream of current.document.streams) {
+        if (stream.connection_id === connectionId) delete readings[stream.id];
+      }
+    }
     const runtime = { ...current.runtime, ...value.runtime,
       bindings: { ...current.runtime.bindings, ...value.runtime.bindings },
       latest_readings: { ...current.runtime.latest_readings, ...value.runtime.latest_readings },
-      ingress: connectionId ? { ...value.runtime.ingress, sources: { ...sources, ...value.runtime.ingress?.sources } } : value.runtime.ingress,
+      ingress: connectionId ? { ...value.runtime.ingress, sources: { ...sources, ...value.runtime.ingress?.sources },
+        readings: { ...readings, ...value.runtime.ingress?.readings } } : value.runtime.ingress,
     };
     const snapshot = { ...current, runtime };
     latest.current = snapshot;

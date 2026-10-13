@@ -17,7 +17,8 @@ import { useMonitoringServices } from "../monitoring/useMonitoringServices";
 import { ExplorerSidebar } from "./ExplorerSidebar";
 import { ExplorerSidebarResize } from "./ExplorerSidebarResize";
 import { DEFAULT_SIDEBAR_WIDTH } from "./sidebarSizing";
-import { ExplorerCollection } from "./ExplorerCollection";
+import { sourceHref } from "../catalogue/collectionRules";
+import { useNavigationDraft, navigationDraft, rememberNavigation } from "@/lib/navigation-draft";
 import { ReadingHistoryCache } from "./readingHistoryCache";
 import type { ExplorerRow, ListPosition } from "./ExplorerList";
 import "./explorer.css";
@@ -39,6 +40,7 @@ const isMobile = () => window.matchMedia("(max-width: 760px)").matches;
 export function ExplorerWorkspace({ initialPanel }: { initialPanel?: "settings" } = {}) {
   const { userId, isAuthenticated } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
+  useEffect(() => { rememberNavigation(`monitoring:${userId}:url`, `/${searchParams.size ? `?${searchParams}` : ""}`); }, [userId, searchParams]);
   const requestedEntity = searchParams.get("entity");
   const requestedService = searchParams.get("service");
   const requestedReading = searchParams.get("reading");
@@ -59,21 +61,21 @@ export function ExplorerWorkspace({ initialPanel }: { initialPanel?: "settings" 
     return validScopes.has(rawPreferences.scopeKey) ? rawPreferences : { ...rawPreferences, scopeKey: "system" };
   }, [system.document, index, rawPreferences, document.groups]);
   const [stored, setStored] = useState(true);
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useNavigationDraft(`monitoring:${userId}:query`, "");
   const deferredQuery = useDeferredValue(query);
-  const [selectedKey, setSelectedKey] = useState<string | null>(null);
-  const [monitorScope, setMonitorScope] = useState<string>();
-  const [panel, setPanel] = useState<"settings" | "collection" | null>(initialPanel ?? (searchParams.get("catalogue") === "settings" ? "settings" : null));
+  const [selectedKey, setSelectedKey] = useNavigationDraft<string | null>(`monitoring:${userId}:selection`, null);
+  const [monitorScope, setMonitorScope] = useNavigationDraft<string | undefined>(`monitoring:${userId}:scope`, undefined);
+  const [panel, setPanel] = useState<"settings" | null>(initialPanel ?? (searchParams.get("catalogue") === "settings" ? "settings" : null));
   const [editor, setEditor] = useState<{ kind: SystemEntityKind; id?: string; key: number }>();
   const [mobileOpen, setMobileOpen] = useState(false);
   const mobile = useSyncExternalStore(subscribeMobile, isMobile, () => false);
-  const [positions] = useState(() => new Map<string, ListPosition>());
+  const [positions] = useNavigationDraft(`monitoring:${userId}:positions`, () => new Map<string, ListPosition>());
   const explorerToggle = useRef<HTMLButtonElement>(null);
   const dialogOrigin = useRef<HTMLElement | null>(null);
   const history = useRef<string[]>([]);
   const [notice, setNotice] = useState("");
   const [telemetry] = useState(() => new SystemLiveTelemetry());
-  const readingHistory = useMemo(() => new ReadingHistoryCache(isAuthenticated ? userId ?? null : null), [isAuthenticated, userId]);
+  const readingHistory = useMemo(() => navigationDraft(`history:${userId}`, () => new ReadingHistoryCache(isAuthenticated ? userId ?? null : null)), [isAuthenticated, userId]);
   const scopeKey = preferences.scopeKey === "system" ? index.rootKey : preferences.scopeKey;
   const selected = !requestedService && !creating && selectedKey ? index.nodes.get(selectedKey) : undefined;
   const recordedStreamIds = useMemo(() => new Set(document.streams.flatMap(stream => stream.value_type === "number"
@@ -135,7 +137,7 @@ export function ExplorerWorkspace({ initialPanel }: { initialPanel?: "settings" 
       setQuery("");
     });
     return () => { active = false; };
-  }, [system.document, requestedEntity, requestedReading, requestedService, creating, document.devices, index]);
+  }, [system.document, requestedEntity, requestedReading, requestedService, creating, document.devices, index, setSelectedKey, setQuery]);
   useEffect(() => {
     const shortcut = (event: KeyboardEvent) => {
       if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== "k") return;
@@ -262,8 +264,7 @@ export function ExplorerWorkspace({ initialPanel }: { initialPanel?: "settings" 
           : setPreferences((previous) => ({ ...previous, sidebarOpen: !previous.sidebarOpen }))}>{mobile ? <Menu size={19} /> : <PanelLeft size={18} />}</button>} />
       <div className="ex-main-content">
         <div className="ex-workspace-heading"><h1>Monitoring</h1>
-          <div className="ex-workspace-actions">{selected && <><button className="ex-collection-action" disabled={!system.document || system.saving || !collectionStreamIds.length}
-            onClick={() => { dialogOrigin.current = window.document.activeElement as HTMLElement; setPanel("collection"); }}>Collection</button>
+          <div className="ex-workspace-actions">{selected && <><Link className="ex-collection-action" to={sourceHref(collectionStreamIds, document)}>Configure in Data sources</Link>
           {!recordedScope && <SystemLiveControls telemetry={telemetry} canStart={canStart} canView={isAuthenticated && !!system.snapshot} disabled={system.saving || !system.document} />}</>}
           {system.canEdit && !creating && <button className="mn-primary" disabled={system.saving || !system.document || !monitoring.ready} onClick={createService}><Plus size={15} />Create service</button>}</div></div>
         {system.status === "sign-in-required" && <p className="ex-banner">Sign in to load the catalogue. <Link to="/login">Sign in <ArrowUpRight size={12} /></Link></p>}
@@ -274,8 +275,7 @@ export function ExplorerWorkspace({ initialPanel }: { initialPanel?: "settings" 
             initialTarget={searchParams.get("target") ?? (requestedReading ? system.snapshot?.runtime.bindings?.[requestedReading]?.entity_id : undefined)} initialReading={requestedReading ?? undefined}
             byStream={monitoringIndex.byStream}
             collectionReady={system.snapshot?.runtime.collection?.status === "applied"}
-            collection={ids => <ExplorerCollection streamIds={ids} runtime={system.snapshot?.runtime} canMonitor={false}
-              revision={revision} canEdit={system.canEdit} saving={system.saving} onApply={system.applyCollection} onRefresh={system.refreshRuntime} onStatus={system.updateRuntime} />}
+            document={document} draftKey={`service-setup:${userId}:${searchParams.get("target") ?? ""}:${requestedReading ?? ""}`}
             onStarted={async id => { await monitoring.reload(); if (id) openService(id); else closeSelection(); }} onBack={closeSelection} />
             : <p className="ex-muted">{system.status === "loading" ? "Loading…" : "An administrator can create monitoring services."}</p>}
         </Suspense> : requestedService ? selectedService ? <Suspense fallback={<p className="ex-muted" role="status">Opening service…</p>}>
@@ -289,12 +289,10 @@ export function ExplorerWorkspace({ initialPanel }: { initialPanel?: "settings" 
           document={document} telemetry={telemetry} historyCache={readingHistory} canEdit={system.canEdit} saving={system.saving} error={system.error} onRename={rename}
           onEdit={openEditor} onClose={closeSelection} runtime={system.snapshot?.runtime}
           favourite={(preferences.favourites ?? []).some(item => item.kind === "reading" && item.id === selected.objectId)} onFavourite={id => toggleFavourite("reading", id)}
-          collectionControls={<ExplorerCollection key={selected.key} streamIds={selected.streamIds} runtime={system.snapshot?.runtime}
-            canMonitor={selected.streamIds.length === 1 && document.streams.find((stream) => stream.id === selected.streamIds[0])?.value_type === "number"}
-            revision={revision} canEdit={system.canEdit} saving={system.saving} onApply={system.applyCollection} onRefresh={system.refreshRuntime} onStatus={system.updateRuntime} />} />
+          collectionControls={<p className="ex-muted">Collection: {selected.streamIds.filter(id => system.snapshot?.runtime.bindings?.[id]?.policy.mode !== "off").length} of {selected.streamIds.length} enabled · <Link to={sourceHref(selected.streamIds, document)}>Configure in Data sources</Link></p>} />
         </Suspense> : <>{scopeInputs && <div className="mn-scope"><span>{document.groups.find(group => `catalogue:${group.id}` === monitorScope)?.label ?? index.nodes.get(monitorScope ?? "")?.label}</span>
           <button onClick={() => setMonitorScope(undefined)}>All services <X size={12} /></button></div>}
-          {isAuthenticated && <MonitoringServiceList services={scopedServices} index={monitoringIndex} ready={monitoring.ready} error={monitoring.error}
+          {isAuthenticated && <MonitoringServiceList draftKey={`monitoring:${userId}:services`} services={scopedServices} index={monitoringIndex} ready={monitoring.ready} error={monitoring.error}
             favourites={favouriteServices} onFavourite={id => toggleFavourite("service", id)} onOpen={openService} onRetry={() => void monitoring.reload()} />}</>}
         {notice && <p className="ex-notice" role="status">{notice}<button aria-label="Dismiss notice" onClick={() => setNotice("")}><X size={14} /></button></p>}
       </div>
@@ -305,15 +303,13 @@ export function ExplorerWorkspace({ initialPanel }: { initialPanel?: "settings" 
     <Dialog.Root open={!!panel || !!editor} onOpenChange={(value) => { if (!value && !system.saving) { setPanel(null); setEditor(undefined); } }}>
       <Dialog.Portal><Dialog.Overlay className="ex-dialog-overlay" /><Dialog.Content className="ex-dialog" onEscapeKeyDown={(event) => { if (system.saving) event.preventDefault(); }}
         onCloseAutoFocus={(event) => { event.preventDefault(); (dialogOrigin.current?.isConnected ? dialogOrigin.current : explorerToggle.current)?.focus(); }}>
-        <header><Dialog.Title>{editor ? "Edit catalogue" : panel === "collection" ? "Collection" : "Catalogue settings"}</Dialog.Title>
+        <header><Dialog.Title>{editor ? "Edit catalogue" : "Catalogue settings"}</Dialog.Title>
           <Dialog.Close className="ex-icon-button" disabled={system.saving} aria-label="Close settings"><X size={18} /></Dialog.Close></header>
         <Dialog.Description className="ex-sr-only">Manage the saved system definition.</Dialog.Description>
         <Suspense fallback={<p className="ex-muted">Loading…</p>}>
           {editor ? <StructureEditor key={editor.key} document={document} revision={revision} kind={editor.kind} entityId={editor.id}
             canEdit={system.canEdit} saving={system.saving} saveError={system.error} onSave={system.save} onDone={() => setEditor(undefined)} />
-            : panel === "collection" ? <ExplorerCollection
-              key={selected?.key ?? scopeKey} streamIds={collectionStreamIds} runtime={system.snapshot?.runtime} revision={revision} canEdit={system.canEdit} saving={system.saving}
-              onApply={system.applyCollection} onRefresh={system.refreshRuntime} onStatus={system.updateRuntime} /> : <Settings document={document}
+            : <Settings document={document}
               revision={revision} canEdit={system.canEdit} saving={system.saving} error={system.error}
               onImport={importConfiguration} onExport={exportConfiguration} onCreate={openEditor} />}
         </Suspense>

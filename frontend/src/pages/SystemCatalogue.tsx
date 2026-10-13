@@ -1,5 +1,5 @@
-import { ExplorerWorkspace } from "@/features/explorer/ExplorerWorkspace";
+import { SourcesWorkspace } from "@/features/catalogue/SourcesWorkspace";
 
 export default function SystemCatalogue() {
-  return <ExplorerWorkspace initialPanel="settings" />;
+  return <SourcesWorkspace />;
 }

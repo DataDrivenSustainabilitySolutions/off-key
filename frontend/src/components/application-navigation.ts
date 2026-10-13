@@ -9,7 +9,7 @@ export type ApplicationNavItem = {
 export const applicationNavItems: ApplicationNavItem[] = [
   { href: "/", label: "Monitoring", icon: Home },
   { href: "/entities", label: "Entities", icon: Box },
-  { href: "/sources", label: "Sources", icon: Database },
+  { href: "/sources", label: "Data sources", icon: Database },
   { href: "/anomalies", label: "Anomalies", icon: AlertTriangle },
 ];
 

@@ -1,4 +1,5 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { clearNavigationDrafts } from "@/lib/navigation-draft";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiRequestError, apiClient, apiUtils } from "@/lib/api-client";
@@ -63,7 +64,7 @@ function fileFor(document: SystemDocument) {
 
 beforeEach(() => {
   auth.userId = 1; auth.isAuthenticated = true;
-  localStorage.clear();
+  localStorage.clear(); clearNavigationDrafts();
   vi.clearAllMocks();
   vi.mocked(apiUtils.get).mockImplementation(async endpoint => endpoint === "/v1/system" ? snapshot() : []);
   vi.mocked(apiClient.put).mockImplementation(async (_endpoint, payload) => ({ data: snapshot((payload as { document: SystemDocument }).document, 8) }));
@@ -72,7 +73,7 @@ beforeEach(() => {
   vi.stubGlobal("cancelAnimationFrame", (handle: number) => window.clearTimeout(handle));
 });
 afterEach(() => {
-  cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals();
+  cleanup(); vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals();
 });
 
 const service = (id = "service-one", name = "Room climate"): ActiveService => ({ id, container_id: `workload-${id}`, container_name: `monitor-${id}`, display_name: name,
@@ -84,6 +85,25 @@ function withServices(services: ActiveService[]) {
 }
 
 describe("service-centred monitoring workspace", () => {
+  it("enables service setup when recording is acknowledged after a Data sources detour", async () => {
+    const saved = snapshot();
+    saved.runtime.collection!.status = "applying";
+    saved.runtime.bindings!.temperature!.policy = { mode: "sample", interval_seconds: 10 };
+    vi.mocked(apiUtils.get).mockImplementation(async endpoint => endpoint === "/v1/system" ? saved
+      : endpoint === "/v1/monitors/models" ? { aberrant_online_isolation_forest: { strategy: "adaptive_stream", parameters: { properties: {} } } } : []);
+    vi.mocked(apiUtils.post).mockResolvedValue({ revision: saved.revision, runtime: { ...saved.runtime, collection: { revision: 1, status: "applied" } } });
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    mount("/?create=monitoring&reading=temperature");
+    const start = await screen.findByRole("button", { name: "Start adaptive monitoring" });
+    expect((start as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText("Waiting for collection to apply…")).toBeTruthy();
+    await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
+    await waitFor(() => expect((start as HTMLButtonElement).disabled).toBe(false));
+    expect(screen.queryByText("Waiting for collection to apply…")).toBeNull();
+    expect(apiUtils.post).toHaveBeenCalledWith("/v1/system/collection/status", { stream_ids: ["temperature", "humidity"] }, expect.objectContaining({ redirectOnUnauthorized: false }));
+    expect(apiClient.put).not.toHaveBeenCalled();
+  });
+
   it("opens a recorded reading without requiring Connect or creating a preview lease", async () => {
     const saved = snapshot();
     saved.runtime.bindings!.temperature!.policy = { mode: "sample", interval_seconds: 10 };
@@ -198,7 +218,7 @@ describe("hierarchical explorer workspace", () => {
     mount(); await loaded();
     expect(screen.queryByRole("link", { name: /Dashboard/ })).toBeNull();
     fireEvent.keyDown(screen.getByRole("button", { name: "Application menu" }), { key: "Enter" });
-    for (const [label, path] of [["Monitoring", "/"], ["Sources", "/sources"], ["Anomalies", "/anomalies"], ["Entities", "/entities"], ["Account", "/account"], ["Settings", "/account/settings"]]) {
+    for (const [label, path] of [["Monitoring", "/"], ["Data sources", "/sources"], ["Anomalies", "/anomalies"], ["Entities", "/entities"], ["Account", "/account"], ["Settings", "/account/settings"]]) {
       expect(screen.getByRole("menuitem", { name: label }).getAttribute("href")).toBe(path);
     }
     expect(screen.getByRole("menuitem", { name: "Monitoring" }).getAttribute("aria-current")).toBe("page");

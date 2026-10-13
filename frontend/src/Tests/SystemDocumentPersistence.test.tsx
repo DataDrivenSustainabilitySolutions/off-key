@@ -1,5 +1,5 @@
-import { act, renderHook, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiRequestError, apiClient, apiUtils } from "@/lib/api-client";
 import { createEmptySystem } from "@/features/catalogue/systemDocument";
 import { useSystemDocument } from "@/features/catalogue/useSystemDocument";
@@ -12,7 +12,7 @@ vi.mock("@/lib/api-client", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/api-client")>();
   return {
     ...actual,
-    apiUtils: { ...actual.apiUtils, get: vi.fn() },
+    apiUtils: { ...actual.apiUtils, get: vi.fn(), post: vi.fn() },
     apiClient: { ...actual.apiClient, put: vi.fn() },
   };
 });
@@ -37,9 +37,35 @@ const snapshot = (
 });
 const acknowledgement = (value: SystemSnapshot) => ({ data: value });
 
+const runtimeSnapshot = (status = "applied", revision = 1): SystemSnapshot => ({
+  ...snapshot(revision),
+  document: { ...document(),
+    connections: ["broker", "other"].map(id => ({ id, label: id, protocol: "mqtt", host: `${id}.example.test`, port: 1883, transport: "tcp", tls: false })),
+    streams: ["temperature", "humidity"].map((id, position) => ({ id, label: id, connection_id: position ? "other" : "broker", topic: `weather/${id}`, value_type: "number", category: "Environment" })),
+  },
+  runtime: {
+    mode: "collection", message: "Recording", collection_revision: 2, collection: { revision: 2, status },
+    bindings: Object.fromEntries(["temperature", "humidity"].map((id, position) => [id, {
+      connection_id: position ? "other" : "broker", entity_id: "device", telemetry_key: id,
+      accepted_topic: `telemetry/device/${id}`, policy: { mode: "sample", interval_seconds: 10 },
+    }])),
+    ingress: { sources: { broker: { state: "connected" }, other: { state: "connected" } } },
+    latest_readings: { humidity: { value: 40, received_at: "2026-10-13T09:00:00Z", is_snapshot: false } },
+  },
+});
+type RuntimeResponse = Pick<SystemSnapshot, "revision" | "runtime">;
+function runtimeTimers() {
+  vi.spyOn(globalThis.document, "hidden", "get").mockReturnValue(false);
+  vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+}
+async function advanceRuntime(milliseconds: number) {
+  await act(async () => { await vi.advanceTimersByTimeAsync(milliseconds); });
+}
+
 beforeEach(() => {
   vi.resetAllMocks();
 });
+afterEach(() => { cleanup(); vi.useRealTimers(); vi.restoreAllMocks(); });
 
 describe("saved system persistence", () => {
   it("does not request or write saved systems for anonymous previews", async () => {
@@ -206,5 +232,135 @@ describe("saved system persistence", () => {
     });
     expect(result.current.canEdit).toBe(false);
     expect(result.current.status).toBe("read-only");
+  });
+});
+
+describe("canonical system runtime polling", () => {
+  it("follows worker acknowledgement and returns to a quiet poll interval", async () => {
+    runtimeTimers();
+    vi.mocked(apiUtils.get).mockResolvedValue(runtimeSnapshot("applying"));
+    vi.mocked(apiUtils.post).mockResolvedValue(runtimeSnapshot("applied"));
+    const { result } = renderHook(() => useSystemDocument({ isAuthenticated: true, accountKey: 1 }));
+    await act(async () => {});
+    expect(result.current.status).toBe("ready");
+    await advanceRuntime(1999);
+    expect(apiUtils.post).not.toHaveBeenCalled();
+    await advanceRuntime(1);
+    expect(result.current.snapshot?.runtime.collection?.status).toBe("applied");
+    await advanceRuntime(4999);
+    expect(apiUtils.post).toHaveBeenCalledOnce();
+    await advanceRuntime(1);
+    expect(apiUtils.post).toHaveBeenCalledTimes(2);
+  });
+
+  it.each(["broker", undefined])("removes stopped subscriptions with runtime scope %s", async runtimeConnectionId => {
+    runtimeTimers();
+    const saved = runtimeSnapshot();
+    const next: RuntimeResponse = { revision: saved.revision, runtime: { ...saved.runtime,
+      bindings: { temperature: { ...saved.runtime.bindings!.temperature!, policy: { mode: "off", interval_seconds: 10 } } },
+      ingress: { sources: {} }, latest_readings: {},
+    } };
+    vi.mocked(apiUtils.get).mockResolvedValue(saved);
+    vi.mocked(apiUtils.post).mockResolvedValue(next);
+    const { result } = renderHook(() => useSystemDocument({ isAuthenticated: true, runtimeConnectionId }));
+    await act(async () => {});
+    expect(result.current.status).toBe("ready");
+    await advanceRuntime(5000);
+    expect(apiUtils.post).toHaveBeenCalledWith("/v1/system/collection/status", { stream_ids: runtimeConnectionId ? ["temperature"] : ["temperature", "humidity"] }, expect.anything());
+    expect(result.current.snapshot?.runtime.ingress?.sources).toEqual(runtimeConnectionId ? { other: { state: "connected" } } : {});
+    expect(result.current.snapshot?.runtime.bindings?.humidity).toEqual(saved.runtime.bindings?.humidity);
+    expect(result.current.snapshot?.runtime.latest_readings?.humidity).toEqual(saved.runtime.latest_readings?.humidity);
+  });
+
+  it("aborts hidden requests, ignores late replies and refreshes immediately on resume", async () => {
+    runtimeTimers();
+    vi.mocked(apiUtils.get).mockResolvedValue(runtimeSnapshot("applying"));
+    let resolveOld!: (value: RuntimeResponse) => void;
+    vi.mocked(apiUtils.post).mockReturnValueOnce(new Promise<RuntimeResponse>(resolve => { resolveOld = resolve; })).mockResolvedValue(runtimeSnapshot("applied"));
+    const { result } = renderHook(() => useSystemDocument({ isAuthenticated: true }));
+    await act(async () => {});
+    expect(result.current.status).toBe("ready");
+    await advanceRuntime(2000);
+    const signal = vi.mocked(apiUtils.post).mock.calls[0]![2]!.signal!;
+    vi.spyOn(globalThis.document, "hidden", "get").mockReturnValue(true);
+    act(() => globalThis.document.dispatchEvent(new Event("visibilitychange")));
+    expect(signal.aborted).toBe(true);
+    await advanceRuntime(20_000);
+    expect(apiUtils.post).toHaveBeenCalledOnce();
+    await act(async () => { resolveOld(runtimeSnapshot("applied")); });
+    expect(result.current.snapshot?.runtime.collection?.status).toBe("applying");
+    vi.spyOn(globalThis.document, "hidden", "get").mockReturnValue(false);
+    await act(async () => { globalThis.document.dispatchEvent(new Event("visibilitychange")); });
+    expect(apiUtils.post).toHaveBeenCalledTimes(2);
+    expect(result.current.snapshot?.runtime.collection?.status).toBe("applied");
+  });
+
+  it("aborts polling on account changes and unmount without accepting old-account runtime", async () => {
+    runtimeTimers();
+    vi.mocked(apiUtils.get).mockResolvedValueOnce(runtimeSnapshot("applying")).mockResolvedValueOnce(runtimeSnapshot("applied"));
+    let resolveOld!: (value: RuntimeResponse) => void;
+    let resolveUnmounted!: (value: RuntimeResponse) => void;
+    vi.mocked(apiUtils.post)
+      .mockReturnValueOnce(new Promise<RuntimeResponse>(resolve => { resolveOld = resolve; }))
+      .mockReturnValueOnce(new Promise<RuntimeResponse>(resolve => { resolveUnmounted = resolve; }));
+    const { result, rerender, unmount } = renderHook(({ accountKey }) => useSystemDocument({ isAuthenticated: true, accountKey }), { initialProps: { accountKey: 1 } });
+    await act(async () => {});
+    expect(result.current.status).toBe("ready");
+    await advanceRuntime(2000);
+    const oldSignal = vi.mocked(apiUtils.post).mock.calls[0]![2]!.signal!;
+    rerender({ accountKey: 2 });
+    await act(async () => {});
+    expect(result.current.snapshot?.runtime.collection?.status).toBe("applied");
+    expect(oldSignal.aborted).toBe(true);
+    await act(async () => { resolveOld(runtimeSnapshot("applying")); });
+    expect(result.current.snapshot?.runtime.collection?.status).toBe("applied");
+    await advanceRuntime(5000);
+    const unmountedSignal = vi.mocked(apiUtils.post).mock.calls[1]![2]!.signal!;
+    unmount();
+    expect(unmountedSignal.aborted).toBe(true);
+    await act(async () => { resolveUnmounted(runtimeSnapshot("applying")); });
+    await advanceRuntime(20_000);
+    expect(apiUtils.post).toHaveBeenCalledTimes(2);
+  });
+
+  it("invalidates a status reply when recording settings are saved", async () => {
+    runtimeTimers();
+    vi.mocked(apiUtils.get).mockResolvedValue(runtimeSnapshot());
+    let resolveOld!: (value: RuntimeResponse) => void;
+    vi.mocked(apiUtils.post).mockReturnValueOnce(new Promise<RuntimeResponse>(resolve => { resolveOld = resolve; }));
+    const changed = runtimeSnapshot("applying");
+    changed.runtime.collection_revision = 3;
+    vi.mocked(apiClient.put).mockResolvedValue(acknowledgement(changed));
+    const { result } = renderHook(() => useSystemDocument({ isAuthenticated: true }));
+    await act(async () => {});
+    expect(result.current.canEdit).toBe(true);
+    await advanceRuntime(5000);
+    const signal = vi.mocked(apiUtils.post).mock.calls[0]![2]!.signal!;
+    await act(async () => {
+      expect(await result.current.applyCollection({ expected_revision: 1, expected_collection_revision: 2,
+        stream_ids: ["temperature"], policy: { mode: "original", interval_seconds: 10 } })).toBe(true);
+    });
+    expect(signal.aborted).toBe(true);
+    const stale = runtimeSnapshot("applied");
+    stale.runtime.collection_revision = 99;
+    await act(async () => { resolveOld(stale); });
+    expect(result.current.snapshot?.runtime.collection_revision).toBe(3);
+    expect(result.current.snapshot?.runtime.collection?.status).toBe("applying");
+  });
+
+  it("refreshes the canonical catalogue when status reports another structure revision", async () => {
+    runtimeTimers();
+    const changed = runtimeSnapshot("applied", 3);
+    changed.document.label = "Changed catalogue";
+    vi.mocked(apiUtils.get).mockResolvedValueOnce(runtimeSnapshot()).mockResolvedValueOnce(changed);
+    vi.mocked(apiUtils.post).mockResolvedValue({ revision: 3, runtime: changed.runtime });
+    const { result } = renderHook(() => useSystemDocument({ isAuthenticated: true }));
+    await act(async () => {});
+    expect(result.current.status).toBe("ready");
+    await advanceRuntime(5000);
+    expect(result.current.revision).toBe(3);
+    expect(result.current.document?.label).toBe("Changed catalogue");
+    expect(apiUtils.get).toHaveBeenCalledTimes(2);
+    expect(apiUtils.get).toHaveBeenLastCalledWith("/v1/system", expect.objectContaining({ signal: expect.any(AbortSignal), redirectOnUnauthorized: false }));
   });
 });

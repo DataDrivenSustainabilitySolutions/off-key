@@ -1,3 +1,4 @@
+import { useNavigationDraft } from "@/lib/navigation-draft";
 import { SectionPanel } from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { API_CONFIG } from "@/lib/api-config";
@@ -22,6 +23,7 @@ import { ConfigSection, FieldError } from "./MonitoringUi";
 import { ModelParameterFields } from "./ModelParameterFields";
 
 interface Props {
+  draftKey?: string;
   chargerId: string;
   sensorTypes: string[];
   claimsBySensor: Map<string, ActiveService>;
@@ -35,6 +37,7 @@ interface Props {
 }
 
 export function AdaptiveMonitoringSetup({
+  draftKey,
   chargerId,
   sensorTypes,
   claimsBySensor,
@@ -43,8 +46,8 @@ export function AdaptiveMonitoringSetup({
   onStarted,
   initialReading, sensorLabels, sensorTopics, displayName,
 }: Props) {
-  const [draft, setDraft] = useState(createDefaultAdaptiveDraft);
-  const [selectedSensors, setSelectedSensors] = useState<Record<string, boolean>>({});
+  const [draft, setDraft] = useNavigationDraft(draftKey && `${draftKey}:parameters`, createDefaultAdaptiveDraft);
+  const [selectedSensors, setSelectedSensors] = useNavigationDraft<Record<string, boolean>>(draftKey && `${draftKey}:readings`, {});
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [starting, setStarting] = useState(false);
   const availableSensors = useMemo(

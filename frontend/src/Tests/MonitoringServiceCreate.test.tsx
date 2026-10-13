@@ -1,5 +1,6 @@
+import { clearNavigationDrafts } from "@/lib/navigation-draft";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, createMemoryRouter, RouterProvider, Link } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MonitoringServiceCreate } from "@/features/monitoring/MonitoringServiceCreate";
 import { apiUtils } from "@/lib/api-client";
@@ -16,12 +17,12 @@ const models = {
   pyod_iforest: { strategy: "static_baseline", parameters: { properties: {} } },
   aberrant_online_isolation_forest: { strategy: "adaptive_stream", parameters: { properties: {} } },
 };
-beforeEach(() => { vi.resetAllMocks(); vi.mocked(apiUtils.get).mockResolvedValue(models); vi.mocked(apiUtils.post).mockResolvedValue({ service_id: "new-service" }); });
+beforeEach(() => { vi.resetAllMocks(); clearNavigationDrafts(); vi.mocked(apiUtils.get).mockResolvedValue(models); vi.mocked(apiUtils.post).mockResolvedValue({ service_id: "new-service" }); });
 afterEach(cleanup);
 function mount(ready = true, services: ActiveService[] = [], byStream = new Map<string, Set<string>>()) {
   const onStarted = vi.fn(async () => {});
   render(<MemoryRouter><MonitoringServiceCreate targets={[target]} services={services} byStream={byStream} initialTarget="room" initialReading="temperature"
-    collectionReady={ready} collection={() => <p>Collection controls</p>} onStarted={onStarted} onBack={vi.fn()} /></MemoryRouter>);
+    collectionReady={ready} onStarted={onStarted} onBack={vi.fn()} /></MemoryRouter>);
   return onStarted;
 }
 
@@ -56,4 +57,19 @@ describe("integrated monitor creation", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Start adaptive monitoring" }));
     expect(apiUtils.post).not.toHaveBeenCalled();
   });
+});
+
+
+it("restores the entire service draft after a Data sources detour", async () => {
+  const router = createMemoryRouter([
+    { path: "/", element: <MonitoringServiceCreate targets={[target]} services={[]} byStream={new Map()} initialTarget="room" initialReading="temperature" collectionReady draftKey="test-detour" onStarted={vi.fn()} onBack={vi.fn()} /> },
+    { path: "/sources", element: <Link to="/?create=monitoring&reading=temperature">Return to service setup</Link> },
+  ], { initialEntries: ["/?create=monitoring&reading=temperature"] });
+  render(<RouterProvider router={router} />);
+  fireEvent.change(screen.getByRole("textbox", { name: "Service name" }), { target: { value: "Saved climate draft" } });
+  fireEvent.change(await screen.findByLabelText("Warm-up samples"), { target: { value: "33" } });
+  fireEvent.click(screen.getByRole("link", { name: "Configure in Data sources" }));
+  fireEvent.click(await screen.findByRole("link", { name: "Return to service setup" }));
+  await waitFor(() => expect((screen.getByRole("textbox", { name: "Service name" }) as HTMLInputElement).value).toBe("Saved climate draft"));
+  expect((await screen.findByLabelText("Warm-up samples") as HTMLInputElement).value).toBe("33");
 });

@@ -1,3 +1,4 @@
+import { clearNavigationDrafts } from "@/lib/navigation-draft";
 import React, { createContext, useContext, useEffect, useReducer, useState, useSyncExternalStore } from "react";
 import { endSession, refreshSession, subscribeToSession, tokenManager } from "./session";
 import { getTokenPayload, getUserIdFromToken, parseNumericUserId } from "./token";
@@ -117,6 +118,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
    * @param rememberMe If true, persist in localStorage; otherwise sessionStorage
    */
   const login = (newToken: string, rememberMe = false, nextUserId?: unknown) => {
+    if (getUserIdFromToken(newToken) !== getUserIdFromToken(tokenManager.getToken() ?? "")) clearNavigationDrafts();
     setLoginIdentity({ token: newToken, id: parseNumericUserId(nextUserId) });
     tokenManager.setToken(newToken, rememberMe);
   };
@@ -125,6 +127,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
    * Logout and clear all stored tokens
    */
   const logout = () => {
+    clearNavigationDrafts();
     // Clear browser state immediately, even if the server is temporarily offline.
     void endSession().catch(() => undefined);
   };
@@ -137,6 +140,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   const isAuthenticated = !!token && !expired;
   const isAdmin = member?.role === "admin";
   const userId = token ? getUserIdFromToken(token) ?? (loginIdentity?.token === token ? loginIdentity.id : null) : null;
+
+  useEffect(() => subscribeToSession(() => {
+    const nextToken = tokenManager.getToken();
+    if (!nextToken || getUserIdFromToken(nextToken) !== userId) clearNavigationDrafts();
+  }), [userId]);
 
   return (
     <AuthContext.Provider

@@ -1,6 +1,6 @@
 # Catalogue and collection
 
-**Sources** opens the generic catalogue editor. Verified administrators can save
+**Data sources** opens a dedicated broker/topic/reading workspace. Select a broker or topic folder to inspect its recording scope; catalogue editing is available in its settings. Verified administrators can save
 brokers, entities, concrete MQTT topics, payload fields and catalogue groups;
 members can inspect them. The installation-wide database is authoritative.
 Export/import uses only `aberration-system` schema version 1. Credentials, host
@@ -31,8 +31,24 @@ recorded reading loads existing history, then follows new stored observations.
 
 ## Explicit collection
 
-New readings start **Off**, including readings imported with enabled policies in
-their file. Existing policies survive edits by stable reading identity. Changes
+Broker and topic rules inherit to registered readings, with explicit child exceptions.
+Choose Off, Sample (1–3600 seconds), or Original, review the automatic preview,
+and Apply once. **Include future registered readings** is unchecked by default;
+new readings stay Off and are marked for review until explicitly included.
+Moving a reading to another broker or topic invalidates its inherited admission;
+it needs review again unless its new scope includes future readings. Explicit
+reading policies survive topic changes by stable ID. Including current readings
+can be combined with a parent policy change in one Apply action.
+Changing a parent's cadence does not silently admit them. Importing enabled file
+policies cannot activate collection. Existing enabled legacy readings retain explicit
+leaf overrides. Rules match exact MQTT segments, including case and empty segments;
+they do not discover unknown broker topics or enable wildcard firehoses.
+
+Drafts are scoped to one broker. Leaving requires Apply, Discard, or Stay. Undo
+stages the previous rule set only while both catalogue and collection revisions
+still match; it cannot restore deleted history or restart stopped monitors.
+Hierarchical rules and admission metadata persist with the operational database;
+version-1 catalogue exports contain effective leaf policies, not operational rules. Changes
 to admitted inputs or cadence require stopping affected active monitors before
 applying; their settings remain available for restart.
 

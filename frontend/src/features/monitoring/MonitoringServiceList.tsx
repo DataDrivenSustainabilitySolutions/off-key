@@ -1,4 +1,5 @@
-import { useDeferredValue, useMemo, useRef, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useRef } from "react";
+import { useNavigationDraft } from "@/lib/navigation-draft";
 import { Link } from "react-router-dom";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Search, Star } from "lucide-react";
@@ -6,14 +7,16 @@ import type { ActiveService } from "@/types/monitoring";
 import { formatServiceTime, serviceName, serviceState, strategyName, type MonitoringIndex } from "./serviceModel";
 
 type Props = {
-  services: ActiveService[]; index: MonitoringIndex; ready: boolean; error: string;
+  draftKey?: string; services: ActiveService[]; index: MonitoringIndex; ready: boolean; error: string;
   favourites: Set<string>; onFavourite: (id: string) => void; onOpen: (id: string) => void; onRetry: () => void;
 };
 
-export function MonitoringServiceList({ services, index, ready, error, favourites, onFavourite, onOpen, onRetry }: Props) {
-  const [query, setQuery] = useState("");
+export function MonitoringServiceList({ draftKey, services, index, ready, error, favourites, onFavourite, onOpen, onRetry }: Props) {
+  const [query, setQuery] = useNavigationDraft(draftKey && `${draftKey}:query`, "");
   const deferred = useDeferredValue(query);
-  const [filter, setFilter] = useState("all");
+  const [filter, setFilter] = useNavigationDraft(draftKey && `${draftKey}:filter`, "all");
+  const [offset, setOffset] = useNavigationDraft(draftKey && `${draftKey}:offset`, 0);
+  const restored = useRef(false);
   const scroll = useRef<HTMLDivElement>(null);
   const rows = useMemo(() => services.map(service => {
     const inputs = index.inputs.get(service.id) ?? [];
@@ -28,6 +31,9 @@ export function MonitoringServiceList({ services, index, ready, error, favourite
   // eslint-disable-next-line react-hooks/incompatible-library
   const virtual = useVirtualizer({ count: shown.length, getScrollElement: () => scroll.current, estimateSize: () => 76,
     getItemKey: position => shown[position]!.service.id, overscan: 6 });
+  useEffect(() => {
+    if (ready && scroll.current && !restored.current) { scroll.current.scrollTop = offset; restored.current = true; }
+  }, [ready, offset]);
   const filters = [{ id: "all", label: "All" }, { id: "monitoring", label: "Monitoring" }, { id: "preparing", label: "Preparing" }, { id: "stopped", label: "Stopped" },
     ...(filter === "attention" || rows.some(row => row.state.category === "attention") ? [{ id: "attention", label: "Attention" }] : []),
     ...(filter === "favourites" || favourites.size ? [{ id: "favourites", label: "Favourites" }] : [])];
@@ -41,7 +47,7 @@ export function MonitoringServiceList({ services, index, ready, error, favourite
         onChange={event => { setQuery(event.target.value); scroll.current?.scrollTo?.(0, 0); }} /></label></div>
       <div role="table" aria-label="Monitoring service list" aria-rowcount={shown.length + 1} aria-colcount={5}>
         <div className="mn-row mn-table-head" role="row"><span role="columnheader">Service</span><span role="columnheader">Inputs</span><span role="columnheader">State</span><span role="columnheader">Last update</span><span role="columnheader" className="ex-sr-only">Favourite</span></div>
-        <div className="mn-table-scroll" ref={scroll} role="rowgroup" style={{ height: `min(${Math.max(1, shown.length) * 76}px, max(320px, calc(100dvh - 260px)))` }}>
+        <div className="mn-table-scroll" ref={scroll} onScroll={event => setOffset(event.currentTarget.scrollTop)} role="rowgroup" style={{ height: `min(${Math.max(1, shown.length) * 76}px, max(320px, calc(100dvh - 260px)))` }}>
           <div className="mn-virtual-rows" style={{ height: virtual.getTotalSize() }}>
             {virtual.getVirtualItems().map(item => {
               const row = shown[item.index]!; const service = row.service; const progress = service.operational_status.progress;

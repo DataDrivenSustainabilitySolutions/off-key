@@ -1,4 +1,8 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useNavigationDraft } from "@/lib/navigation-draft";
+import { Link, useLocation } from "react-router-dom";
+import { sourceHref } from "../catalogue/collectionRules";
+import type { SystemDocument } from "../catalogue/systemTypes";
 import { ArrowLeft } from "lucide-react";
 import { apiUtils } from "@/lib/api-client";
 import { API_CONFIG } from "@/lib/api-config";
@@ -10,12 +14,13 @@ import { MonitoringTargetPicker } from "./MonitoringTargetPicker";
 import type { MonitoringTarget } from "./serviceModel";
 
 type Props = { targets: MonitoringTarget[]; services: ActiveService[]; initialTarget?: string; initialReading?: string;
-  byStream: Map<string, Set<string>>; collectionReady: boolean; collection: (ids: string[]) => ReactNode; onStarted: (id?: string) => Promise<void>; onBack: () => void };
+  byStream: Map<string, Set<string>>; collectionReady: boolean; document?: SystemDocument; draftKey?: string; onStarted: (id?: string) => Promise<void>; onBack: () => void };
 
-export function MonitoringServiceCreate({ targets, services, initialTarget, initialReading, byStream, collectionReady, collection, onStarted, onBack }: Props) {
-  const [targetId, setTargetId] = useState(initialTarget);
-  const [name, setName] = useState("");
-  const [strategy, setStrategy] = useState<MonitoringStrategy>("adaptive_stream");
+export function MonitoringServiceCreate({ targets, services, initialTarget, initialReading, byStream, collectionReady, document, draftKey, onStarted, onBack }: Props) {
+  const location = useLocation();
+  const [targetId, setTargetId] = useNavigationDraft(draftKey && `${draftKey}:target`, initialTarget);
+  const [name, setName] = useNavigationDraft(draftKey && `${draftKey}:name`, "");
+  const [strategy, setStrategy] = useNavigationDraft<MonitoringStrategy>(draftKey && `${draftKey}:strategy`, "adaptive_stream");
   const [models, setModels] = useState<Record<string, ModelDefinition>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -48,7 +53,7 @@ export function MonitoringServiceCreate({ targets, services, initialTarget, init
     return () => controller.abort();
   }, [retry]);
   const displayName = name.trim() || `${target?.label ?? "Monitoring"} · ${strategy === "adaptive_stream" ? "Adaptive" : "Static"}`;
-  const props = { chargerId: target?.id ?? "", sensorTypes: sensors, claimsBySensor: claims, loadingModels: loading || !collectionReady,
+  const props = { draftKey: draftKey && `${draftKey}:${targetId}:${strategy}`, chargerId: target?.id ?? "", sensorTypes: sensors, claimsBySensor: claims, loadingModels: loading || !collectionReady,
     onStarted, displayName, initialReading: target?.inputs.find(input => input.stream.id === initialReading)?.binding.telemetry_key, sensorLabels, sensorTopics };
   return <section className="mn-create" aria-label="Create monitoring service">
     <button className="mn-back" onClick={onBack}><ArrowLeft size={14} />Monitoring</button>
@@ -57,7 +62,7 @@ export function MonitoringServiceCreate({ targets, services, initialTarget, init
       <div className="mn-field"><span>Inputs</span><MonitoringTargetPicker targets={targets} value={targetId} onChange={id => { setTargetId(id); }} /></div></div>
     {!targets.length && <p className="ex-muted">Add numeric readings to the catalogue to configure monitoring.</p>}
     {target && <>
-      {collection(collectionIds)}
+      <p className="ex-muted">{enabledInputs.length} recorded readings · <Link className="ex-collection-monitor" to={sourceHref(collectionIds, document, `${location.pathname}${location.search}`)}>Configure in Data sources</Link></p>
       {enabledInputs.length ? <>
         {!collectionReady && <p className="ex-muted">Waiting for collection to apply…</p>}
         <div className="mn-create-mode" aria-label="Monitoring strategy"><button aria-pressed={strategy === "adaptive_stream"} onClick={() => setStrategy("adaptive_stream")}>Adaptive stream</button>

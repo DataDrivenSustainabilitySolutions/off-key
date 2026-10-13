@@ -12,9 +12,10 @@ type Props = {
   selectedKey: string | null;
   onOpen: (node: ExplorerNode) => void;
   onBack: () => void;
+  onBrowse?: (node: ExplorerNode) => void;
 };
 
-export function ExplorerList({ rows, viewKey, positions, selectedKey, onOpen, onBack }: Props) {
+export function ExplorerList({ rows, viewKey, positions, selectedKey, onOpen, onBack, onBrowse }: Props) {
   const scroll = useRef<HTMLDivElement>(null);
   const position = positions.get(viewKey);
   // Keep this imperative viewport adapter outside React Compiler memoization.
@@ -61,7 +62,9 @@ export function ExplorerList({ rows, viewKey, positions, selectedKey, onOpen, on
     } else if (event.key === "ArrowLeft") {
       event.preventDefault(); onBack();
     } else if (event.key === "ArrowRight") {
-      event.preventDefault(); onOpen(rows[index]!.node);
+      event.preventDefault();
+      const node = rows[index]!.node;
+      (onBrowse && node.children.length ? onBrowse : onOpen)(node);
     }
   };
   return <div className="ex-list-scroll" ref={scroll} onScroll={(event) => {
@@ -75,7 +78,7 @@ export function ExplorerList({ rows, viewKey, positions, selectedKey, onOpen, on
         const Icon = node.kind === "connection" ? Box : node.kind === "device" ? Cpu : node.children.length ? Folder : Radio;
         return <li key={item.key} data-index={item.index} ref={virtualizer.measureElement}
           style={{ position: "absolute", width: "100%", transform: `translateY(${item.start}px)` }}>
-          <button className={`ex-row${selectedKey === node.key ? " is-selected" : ""}`} data-row={item.index}
+          <div className="ex-row-container"><button className={`ex-row${selectedKey === node.key ? " is-selected" : ""}`} data-row={item.index}
             aria-current={selectedKey === node.key ? "true" : undefined}
             aria-label={`${row.label}${node.children.length ? ", open" : ", preview"}`}
             title={row.label} onClick={() => onOpen(node)} onKeyDown={(event) => keyboard(event, item.index)}
@@ -84,8 +87,8 @@ export function ExplorerList({ rows, viewKey, positions, selectedKey, onOpen, on
             <span className="ex-row-text"><span className="ex-row-label">{row.label}</span>
               <span className="ex-row-detail">{row.detail ?? (node.kind === "connection" ? `${node.streamIds.length} readings` : node.kind === "device" ? `${node.streamIds.length} readings` : node.children.length ? `${node.children.length} items` : "Reading")}</span>
             </span>
-            {node.children.length > 0 && <ChevronRight className="ex-row-arrow" size={14} />}
-          </button>
+            {!onBrowse && node.children.length > 0 && <ChevronRight className="ex-row-arrow" size={14} />}
+          </button>{onBrowse && node.children.length > 0 && <button className="ex-browse" aria-label={`Browse children of ${row.label}`} onClick={() => onBrowse(node)}><ChevronRight size={16} /></button>}</div>
         </li>;
       })}
     </ul>

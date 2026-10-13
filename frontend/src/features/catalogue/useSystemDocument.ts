@@ -1,3 +1,4 @@
+import type { RuleChange } from "./collectionRules";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ApiRequestError,
@@ -302,7 +303,7 @@ export function useSystemDocument({
     [save],
   );
 
-  const applyCollection = useCallback(async (change: SystemCollectionChange): Promise<boolean> => {
+  const applyCollection = useCallback(async (change: SystemCollectionChange | RuleChange): Promise<boolean> => {
     if (busy.current || !permission.current || !latest.current) return false;
     busy.current = true;
     setSaving(true);
@@ -354,5 +355,6 @@ export function useSystemDocument({
     save,
     rename,
     applyCollection,
+    applyRules: async (change: RuleChange) => await applyCollection(change) ? latest.current ?? undefined : undefined,
   };
 }

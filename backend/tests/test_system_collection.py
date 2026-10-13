@@ -155,7 +155,10 @@ async def test_new_imported_readings_stay_off_and_renames_keep_runtime_generatio
     )
     assert result.runtime.bindings["humidity-1"]["policy"]["mode"] == "off"
     assert result.runtime.bindings["temperature-1"] == binding
-    assert row.revision == revision and row.document["generation"] == generation
+    assert (
+        row.revision == revision + 1
+    )  # Admission metadata changed; active inputs did not.
+    assert row.document["generation"] == generation
 
 
 @pytest.mark.asyncio
@@ -292,3 +295,124 @@ def test_saved_bindings_survive_topic_edits_without_matching_other_catalogues():
         bindings["new-reading"].accepted_topic
         != original[doc.streams[0].id].accepted_topic
     )
+
+
+@pytest.mark.asyncio
+async def test_scope_rules_survive_structure_edits_and_admit_only_approved_additions(
+    session,
+):
+    from off_key_core.schemas.collection_rules import (
+        CollectionRuleEdit,
+        CollectionRuleScope,
+        SystemCollectionRuleChange,
+    )
+
+    snapshot = await SystemService(session).save(
+        SystemChange(expected_revision=0, document=document()), actor="test@example.com"
+    )
+    broker = CollectionRuleScope(kind="broker", connection_id="broker-1")
+
+    async def apply(snapshot, edit):
+        return await SystemCollectionService(session).apply(
+            SystemCollectionRuleChange(
+                expected_revision=snapshot.revision,
+                expected_collection_revision=snapshot.runtime.collection_revision,
+                rule_changes=[edit],
+            ),
+            actor="test@example.com",
+        )
+
+    snapshot = await apply(
+        snapshot,
+        CollectionRuleEdit(scope=broker, policy=CollectionPolicy(mode="original")),
+    )
+    binding = snapshot.runtime.bindings["temperature-1"]
+    generation = (await read_collection_runtime(session)).catalog.generation
+    next_doc = snapshot.document.model_copy(deep=True)
+    next_doc.streams.append(
+        next_doc.streams[0].model_copy(
+            update={"id": "humidity", "payload_pointer": "/humidity"}
+        )
+    )
+    snapshot = await SystemService(session).save(
+        SystemChange(expected_revision=snapshot.revision, document=next_doc),
+        actor="test@example.com",
+    )
+    assert snapshot.runtime.bindings["temperature-1"] == binding
+    assert snapshot.runtime.bindings["humidity"]["policy"]["mode"] == "off"
+    assert snapshot.runtime.bindings["humidity"]["policy_origin"]["needs_review"]
+    assert (await read_collection_runtime(session)).catalog.generation == generation
+    snapshot = await apply(
+        snapshot,
+        CollectionRuleEdit(
+            scope=broker, policy=CollectionPolicy(mode="sample", interval_seconds=7)
+        ),
+    )
+    assert snapshot.runtime.bindings["humidity"]["policy"]["mode"] == "off"
+    snapshot = await apply(
+        snapshot, CollectionRuleEdit(scope=broker, operation="include")
+    )
+    assert snapshot.runtime.bindings["humidity"]["policy"]["mode"] == "sample"
+    assert snapshot.runtime.bindings["humidity"]["policy_origin"]["inherited"]
+    snapshot = await apply(
+        snapshot,
+        CollectionRuleEdit(
+            scope=broker,
+            policy=CollectionPolicy(mode="original"),
+            include_future_readings=True,
+        ),
+    )
+    next_doc = snapshot.document.model_copy(deep=True)
+    next_doc.streams.append(
+        next_doc.streams[0].model_copy(
+            update={"id": "voltage", "payload_pointer": "/voltage"}
+        )
+    )
+    snapshot = await SystemService(session).save(
+        SystemChange(expected_revision=snapshot.revision, document=next_doc),
+        actor="test@example.com",
+    )
+    assert snapshot.runtime.bindings["voltage"]["policy"]["mode"] == "original"
+    persisted = await read_collection_runtime(session)
+    assert (
+        persisted.catalog.rules
+        and persisted.catalog.bindings["temperature-1"].entity_id
+        == binding["entity_id"]
+    )
+
+
+@pytest.mark.asyncio
+async def test_future_rule_metadata_advances_revision_without_restarting_ingestion(
+    session,
+):
+    from off_key_core.schemas.collection_rules import (
+        CollectionRuleEdit,
+        CollectionRuleScope,
+        SystemCollectionRuleChange,
+    )
+
+    snapshot = await SystemService(session).save(
+        SystemChange(expected_revision=0, document=document()), actor="test@example.com"
+    )
+    service = SystemCollectionService(session)
+
+    def request(snapshot, future):
+        return SystemCollectionRuleChange(
+            expected_revision=snapshot.revision,
+            expected_collection_revision=snapshot.runtime.collection_revision,
+            rule_changes=[
+                CollectionRuleEdit(
+                    scope=CollectionRuleScope(kind="broker", connection_id="broker-1"),
+                    policy=CollectionPolicy(mode="off"),
+                    include_future_readings=future,
+                )
+            ],
+        )
+
+    first = await service.apply(request(snapshot, False), actor="test@example.com")
+    generation = (await read_collection_runtime(session)).catalog.generation
+    second = await service.apply(request(first, True), actor="test@example.com")
+    assert second.runtime.collection_revision == first.runtime.collection_revision + 1
+    assert (await read_collection_runtime(session)).catalog.generation == generation
+    with pytest.raises(ConflictError):
+        await service.apply(request(first, False), actor="test@example.com")

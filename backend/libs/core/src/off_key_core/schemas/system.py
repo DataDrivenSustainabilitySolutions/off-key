@@ -251,6 +251,7 @@ class SystemRuntime(SystemModel):
     ingress: dict = Field(default_factory=dict)
     bindings: dict[str, dict] = Field(default_factory=dict)
     latest_readings: dict[str, dict] = Field(default_factory=dict)
+    collection_rules: list[dict] = Field(default_factory=list)
 
 
 class SystemSnapshot(SystemModel):

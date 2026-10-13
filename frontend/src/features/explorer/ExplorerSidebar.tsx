@@ -10,6 +10,7 @@ type Props = {
   catalogueGroups: SystemGroup[]; query: string; resultsQuery?: string;
   selectedKey: string | null; positions: Map<string, ListPosition>; loading: boolean;
   onQuery: (value: string) => void; onScope: (key: string) => void;
+  onBrowse?: (node: ExplorerNode) => void;
   onOpen: (node: ExplorerNode) => void; onBack: () => void; onInspect: () => void;
   onSettings: () => void; onWorkspace: () => void; onDismiss?: () => void;
   favourites?: Array<{ kind: "service" | "reading"; id: string; label: string }>;
@@ -81,7 +82,7 @@ export function ExplorerSidebar(props: Props) {
     </div>
     {props.loading ? <div className="ex-list-empty" role="status">Loading catalogue…</div>
       : <ExplorerList rows={rows} viewKey={resultsQuery.trim() ? `search:${resultsQuery}` : scopeKey} positions={positions}
-        selectedKey={selectedKey} onOpen={props.onOpen} onBack={props.onBack} />}
+        selectedKey={selectedKey} onOpen={props.onOpen} onBack={props.onBack} onBrowse={props.onBrowse} />}
     {query && rows.length === 100 && <p className="ex-search-hint">Refine your search to see more matches.</p>}
     <div className="ex-sidebar-footer"><button onClick={props.onSettings}><Settings2 size={15} /><span>Catalogue settings</span></button>
       <span>{index.counts.readings.toLocaleString()} {index.counts.readings === 1 ? "reading" : "readings"}</span>

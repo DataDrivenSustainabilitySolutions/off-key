@@ -38,7 +38,7 @@ const rootKey = identity("root");
 const unassignedKey = identity("unassigned");
 
 /** Build once per catalogue revision, independently of live telemetry. */
-export function buildNavigationIndex(document: SystemDocument): NavigationIndex {
+export function buildNavigationIndex(document: SystemDocument, options: { readingLeaves?: boolean } = {}): NavigationIndex {
   const nodes = new Map<string, ExplorerNode>();
   const objectKeys = new Map<string, string[]>();
   const devices = new Map(document.devices.map((device) => [device.id, device]));
@@ -185,7 +185,7 @@ export function buildNavigationIndex(document: SystemDocument): NavigationIndex 
   // Reading leaves make a topic that is both an endpoint and a parent unambiguous.
   for (const endpoint of Array.from(nodes.values())) {
     if (endpoint.kind !== "topic" || endpoint.streamIds.length === 0) continue;
-    if (endpoint.streamIds.length === 1 && endpoint.children.length === 0) {
+    if (!options.readingLeaves && endpoint.streamIds.length === 1 && endpoint.children.length === 0) {
       endpoint.objectId = endpoint.streamIds[0]!;
       endpoint.entityKind = "stream";
       addObjectKey(endpoint.objectId, endpoint.key);

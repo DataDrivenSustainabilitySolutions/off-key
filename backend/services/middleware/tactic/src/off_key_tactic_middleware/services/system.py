@@ -12,6 +12,7 @@ from off_key_core.schemas.system import (
     SystemRuntime,
     SystemSnapshot,
 )
+from off_key_core.utils.collection_rules import CollectionRuleResolver
 from sqlalchemy import select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -38,11 +39,16 @@ class SystemService:
         if definition.streams(selected_only=True):
             runtime.mode = "collection"
             runtime.message = "Collection follows explicit reading policies."
+        runtime.collection_rules = [
+            rule.model_dump(mode="json") for rule in definition.rules
+        ]
+        resolver = CollectionRuleResolver(definition)
         runtime.bindings = {
             item.id: {
                 **definition.bindings[item.id].model_dump(mode="json"),
                 "connection_id": item.connection_id,
                 "policy": item.policy.model_dump(mode="json"),
+                "policy_origin": resolver.resolve(item)[1],
             }
             for item in definition.document.streams
         }

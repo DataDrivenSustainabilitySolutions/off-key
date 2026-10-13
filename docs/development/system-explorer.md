@@ -22,7 +22,7 @@ The overview uses one compact status request every 20 seconds while visible, ref
 
 `/?service=<stable-service-id>` restores a selected monitor; `tab` and `stream` select its detail tab and evidence input. Service names save quietly on Enter or blur through an administrator-only `/v1/monitors/<id>/label` PATCH and persist in the database’s launch metadata. Workload names, IDs and subscriptions remain stable. Restart capture preserves saved service names. Detail settings exclude connection credentials.
 
-Create service chooses a broker/entity, reviews an explicit Off/Sample/Original collection policy, then configures a static or adaptive detector using the acknowledged numeric input bindings. Starting remains disabled until collection is applied. A reading’s Configure monitoring link uses `/?create=monitoring&reading=<stable-reading-id>`; its input is preselected. Active ownership prevents a second service from claiming a reading. A successful launch opens the returned service ID.
+Create service chooses a broker/entity, links to Data sources for recording configuration, then configures a static or adaptive detector using the acknowledged numeric input bindings. Starting remains disabled until collection is applied. A reading’s Configure monitoring link uses `/?create=monitoring&reading=<stable-reading-id>`; its input is preselected. Active ownership prevents a second service from claiming a reading. A successful launch opens the returned service ID.
 
 Stars save service and reading favourites per account **in this browser**, alongside sidebar width and navigation. Favourites appear as direct shortcuts in the sidebar; display-name edits do not break them. They do not alter catalogue structure or collection policy and are not included in catalogue export. Stored unresolved references are retained during temporary failures or loading. Personal grouping remains inactive.
 
@@ -71,3 +71,18 @@ For an existing isolated local deployment, rebuild the frontend, API gateway, TA
 ## Shared interface
 
 `App.css` owns semantic colors, typography, spacing and component states. `AppHeader` and `ApplicationMenu` provide identical navigation on the workspace and functional pages; `PageShell` sets their content width and spacing. The explorer uses those tokens rather than a separate palette. Auth, forms, tables, menus, dialogs and empty/error/loading states use the same restrained surfaces. Quiet branding details remain part of the interface: authentication screens use the original repeating slash monogram behind the form, without animation or interaction layers over controls. Mobile controls have 44-pixel targets, including popover actions inside the explorer drawer. Broker and entity definitions display their actual catalogue metadata; user-provided labels and MQTT paths remain verbatim.
+
+## Data sources
+
+`/sources` is a separate setup destination. Its hierarchy groups registered readings
+by broker and MQTT topic, across device assignments; entity metadata remains searchable.
+Row selection opens the scope inspector in the main workspace; chevrons browse branches.
+Recording controls live here, with inheritance, child exceptions, future-reading opt-in,
+preview counts, affected-monitor confirmation, and one Apply action. Members inspect
+without editing. Catalogue settings remain available without opening automatically.
+
+Monitoring remains the default destination. Setup detours preserve the service draft
+and selected inputs in account-scoped memory. Returning through the menu restores the
+Monitoring URL, search, filters, sidebar positions, and chart inspection. The bounded
+history cache is shared between visible workspaces; unmounted views do not poll. Logout
+or account changes clear this memory. Colours use the shared semantic theme tokens.

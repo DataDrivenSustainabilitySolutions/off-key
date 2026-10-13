@@ -1,6 +1,7 @@
 """Forward saved system requests with member authorization preserved."""
 
 from fastapi import APIRouter, Header, HTTPException, Path, Query, Response
+from off_key_core.schemas.collection_rules import SystemCollectionRuleChange
 from off_key_core.schemas.storage import StorageStatus
 from off_key_core.schemas.system import SystemChange
 from off_key_core.schemas.system_collection import (
@@ -65,7 +66,8 @@ async def list_revisions(authorization: str | None = Header(default=None)):
 
 @router.post("/collection/preview")
 async def preview_collection(
-    change: SystemCollectionChange, authorization: str | None = Header(default=None)
+    change: SystemCollectionChange | SystemCollectionRuleChange,
+    authorization: str | None = Header(default=None),
 ):
     return await system_request(
         "POST", authorization, "/collection/preview", change.model_dump(mode="json")
@@ -83,7 +85,8 @@ async def collection_status(
 
 @router.put("/collection")
 async def apply_collection(
-    change: SystemCollectionChange, authorization: str | None = Header(default=None)
+    change: SystemCollectionChange | SystemCollectionRuleChange,
+    authorization: str | None = Header(default=None),
 ):
     return await system_request(
         "PUT", authorization, "/collection", change.model_dump(mode="json")

@@ -17,6 +17,8 @@ import { getChartDomain } from "@/lib/telemetry-thresholds";
 import type { LiveNodeSnapshot } from "../catalogue/systemLiveTypes";
 import type { SystemConnection, SystemStream, SystemReadingBinding } from "../catalogue/systemTypes";
 import { useReadingMonitoring } from "./useReadingMonitoring";
+import { useNavigationDraft } from "@/lib/navigation-draft";
+import { readingHistoryKey } from "./readingHistoryCache";
 import type { ReadingHistoryCache } from "./readingHistoryCache";
 
 type Inspection = { startMs: number; endMs: number; windowStartMs: number };
@@ -25,9 +27,10 @@ type Props = { stream: SystemStream; connection?: SystemConnection; snapshot?: L
 export function ExplorerHistoryChart({ stream, connection, snapshot, binding, serviceId, historyCache }: Props) {
   const { resolvedTheme } = useTheme();
   const monitoring = useReadingMonitoring(connection, stream, binding, historyCache);
-  const [minutes, setMinutes] = useState(15);
+  const viewKey = historyCache ? `chart:${historyCache.owner}:${readingHistoryKey(connection, stream, binding?.entity_id, binding?.telemetry_key)}:${serviceId ?? ""}` : undefined;
+  const [minutes, setMinutes] = useNavigationDraft(viewKey && `${viewKey}:minutes`, 15);
   const [now, setNow] = useState(Date.now);
-  const [inspection, setInspection] = useState<Inspection>();
+  const [inspection, setInspection] = useNavigationDraft<Inspection | undefined>(viewKey && `${viewKey}:inspection`, undefined);
   const timeZone = useMemo(() => getLocalTimeZone(), []);
   const colors = useMemo(() => resolveChartThemeColors(resolvedTheme), [resolvedTheme]);
   useEffect(() => {
@@ -102,7 +105,7 @@ export function ExplorerHistoryChart({ stream, connection, snapshot, binding, se
     if (end <= start) return;
     setInspection((current) => current && Math.abs(current.startMs - start) < 1 && Math.abs(current.endMs - end) < 1
       ? current : { startMs: start, endMs: end, windowStartMs: current?.windowStartMs ?? cutoff });
-  }, [domain, cutoff]);
+  }, [domain, cutoff, setInspection]);
   const zoom = (factor: number) => {
     if (!domain) return;
     const start = inspection?.startMs ?? domain[0];

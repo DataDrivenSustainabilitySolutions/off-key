@@ -6,6 +6,7 @@ from off_key_core.db.collection_runtime import read_collection_runtime
 from off_key_core.db.models import User
 from off_key_core.db.retention import read_storage_status
 from off_key_core.db.system import SystemRevision
+from off_key_core.schemas.collection_rules import SystemCollectionRuleChange
 from off_key_core.schemas.storage import StorageStatus
 from off_key_core.schemas.system import SystemChange
 from off_key_core.schemas.system_collection import (
@@ -79,7 +80,7 @@ async def collection_status(
 
 @router.post("/collection/preview")
 async def preview_collection(
-    change: SystemCollectionChange,
+    change: SystemCollectionChange | SystemCollectionRuleChange,
     user: User = Depends(require_admin),
     session: AsyncSession = Depends(get_db_async),
 ):
@@ -94,7 +95,7 @@ async def preview_collection(
 
 @router.put("/collection")
 async def apply_collection(
-    change: SystemCollectionChange,
+    change: SystemCollectionChange | SystemCollectionRuleChange,
     user: User = Depends(require_admin),
     session: AsyncSession = Depends(get_db_async),
 ):

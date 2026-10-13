@@ -1,3 +1,4 @@
+import { useNavigationDraft } from "@/lib/navigation-draft";
 import { SectionPanel } from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { API_CONFIG } from "@/lib/api-config";
@@ -42,6 +43,7 @@ import {
 } from "./MonitoringUi";
 
 interface StaticMonitoringSetupProps {
+  draftKey?: string;
   chargerId: string;
   sensorTypes: string[];
   claimsBySensor: Map<string, ActiveService>;
@@ -55,6 +57,7 @@ interface StaticMonitoringSetupProps {
 }
 
 export function StaticMonitoringSetup({
+  draftKey,
   chargerId,
   sensorTypes,
   claimsBySensor,
@@ -63,13 +66,11 @@ export function StaticMonitoringSetup({
   onStarted,
   initialReading, sensorLabels, sensorTopics, displayName,
 }: StaticMonitoringSetupProps) {
-  const [draft, setDraft] = useState(createDefaultStaticDraft);
+  const [draft, setDraft] = useNavigationDraft(draftKey && `${draftKey}:parameters`, createDefaultStaticDraft);
   const [topicMode, setTopicMode] =
-    useState<TopicMode>("selected_sensors");
-  const [topicPatternInput, setTopicPatternInput] = useState("");
-  const [selectedSensors, setSelectedSensors] = useState<
-    Record<string, boolean>
-  >({});
+    useNavigationDraft<TopicMode>(draftKey && `${draftKey}:topic-mode`, "selected_sensors");
+  const [topicPatternInput, setTopicPatternInput] = useNavigationDraft(draftKey && `${draftKey}:topic-pattern`, "");
+  const [selectedSensors, setSelectedSensors] = useNavigationDraft<Record<string, boolean>>(draftKey && `${draftKey}:readings`, {});
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [starting, setStarting] = useState(false);
 

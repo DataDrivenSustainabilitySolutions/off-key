@@ -1,3 +1,4 @@
+import { clearNavigationDrafts } from "@/lib/navigation-draft";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -63,7 +64,7 @@ function fileFor(document: SystemDocument) {
 
 beforeEach(() => {
   auth.userId = 1; auth.isAuthenticated = true;
-  localStorage.clear();
+  localStorage.clear(); clearNavigationDrafts();
   vi.clearAllMocks();
   vi.mocked(apiUtils.get).mockImplementation(async endpoint => endpoint === "/v1/system" ? snapshot() : []);
   vi.mocked(apiClient.put).mockImplementation(async (_endpoint, payload) => ({ data: snapshot((payload as { document: SystemDocument }).document, 8) }));
@@ -198,7 +199,7 @@ describe("hierarchical explorer workspace", () => {
     mount(); await loaded();
     expect(screen.queryByRole("link", { name: /Dashboard/ })).toBeNull();
     fireEvent.keyDown(screen.getByRole("button", { name: "Application menu" }), { key: "Enter" });
-    for (const [label, path] of [["Monitoring", "/"], ["Sources", "/sources"], ["Anomalies", "/anomalies"], ["Entities", "/entities"], ["Account", "/account"], ["Settings", "/account/settings"]]) {
+    for (const [label, path] of [["Monitoring", "/"], ["Data sources", "/sources"], ["Anomalies", "/anomalies"], ["Entities", "/entities"], ["Account", "/account"], ["Settings", "/account/settings"]]) {
       expect(screen.getByRole("menuitem", { name: label }).getAttribute("href")).toBe(path);
     }
     expect(screen.getByRole("menuitem", { name: "Monitoring" }).getAttribute("aria-current")).toBe("page");

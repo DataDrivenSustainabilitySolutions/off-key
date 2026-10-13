@@ -4,6 +4,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/auth/AuthContext";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { navigationDraft } from "@/lib/navigation-draft";
 import { applicationNavItems, isActiveApplicationPath } from "./application-navigation";
 
 type Props = {
@@ -13,7 +14,7 @@ type Props = {
 
 /** Application navigation and account actions shared by every page. */
 export function ApplicationMenu({ navigation = true, trigger }: Props) {
-  const { isAuthenticated, member, logout } = useAuth();
+  const { isAuthenticated, member, logout, userId } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   if (!isAuthenticated) return <Button asChild size="sm"><Link to="/login"><LogIn className="size-4" />Login</Link></Button>;
@@ -22,7 +23,7 @@ export function ApplicationMenu({ navigation = true, trigger }: Props) {
     <DropdownMenuContent align="end" sideOffset={8} className="app-popover app-menu">
       {navigation && <>
         {applicationNavItems.map((item) => <DropdownMenuItem asChild key={item.href} className="app-menu-item">
-          <Link to={item.href} aria-current={isActiveApplicationPath(location.pathname, item.href) ? "page" : undefined}>
+          <Link to={item.href === "/" && location.pathname === "/sources" ? navigationDraft(`monitoring:${userId}:url`, () => "/") : item.href} aria-current={isActiveApplicationPath(location.pathname, item.href) ? "page" : undefined}>
             <item.icon className="size-4" />{item.label}
           </Link>
         </DropdownMenuItem>)}

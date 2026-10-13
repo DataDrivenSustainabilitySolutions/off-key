@@ -10,6 +10,11 @@ import pytest_asyncio
 from off_key_core.db.collection_runtime import read_collection_runtime
 from off_key_core.db.models import CollectionState, Telemetry
 from off_key_core.schemas.collection_policy import CollectionPolicy
+from off_key_core.schemas.collection_rules import (
+    CollectionRuleEdit,
+    CollectionRuleScope,
+    SystemCollectionRuleChange,
+)
 from off_key_core.schemas.system import SystemChange, SystemDocument
 from off_key_core.schemas.system_collection import SystemCollectionChange
 from off_key_core.utils.mqtt_topics import TopicMetadataExtractor
@@ -188,7 +193,33 @@ async def test_generic_collection_is_independent_of_view_leases_and_stops_on_off
         assert viewer.snapshot(0)["samples"]
         await viewer.release(1, lease["lease_id"])
         assert not viewer.workers
-        await policy(["temperature", "running"], "sample")
+        async with sessions.begin() as session:
+            snapshot = await SystemService(session).read()
+            await SystemCollectionService(session).apply(
+                SystemCollectionRuleChange(
+                    expected_revision=snapshot.revision,
+                    expected_collection_revision=snapshot.runtime.collection_revision,
+                    rule_changes=[
+                        CollectionRuleEdit(
+                            scope=CollectionRuleScope(
+                                kind="topic",
+                                connection_id="factory",
+                                topic_prefix="factory/machine",
+                            ),
+                            policy=CollectionPolicy(mode="sample", interval_seconds=1),
+                        ),
+                        CollectionRuleEdit(
+                            scope=CollectionRuleScope(
+                                kind="reading",
+                                connection_id="factory",
+                                reading_id="humidity",
+                            ),
+                            policy=CollectionPolicy(mode="off"),
+                        ),
+                    ],
+                ),
+                actor="integration@example.com",
+            )
         await collector.start()
         await until(lambda: collection_applied(sessions, ingress))
         for value in range(5):
@@ -205,6 +236,58 @@ async def test_generic_collection_is_independent_of_view_leases_and_stops_on_off
         async with sessions() as session:
             states = list(await session.scalars(select(CollectionState)))
             assert any(state.value is True for state in states)
+        # A future catalogue field stays Off until this parent explicitly admits it.
+        async with sessions.begin() as session:
+            snapshot = await SystemService(session).read()
+            addition = snapshot.document.model_copy(deep=True)
+            addition.streams.append(
+                addition.streams[0].model_copy(
+                    update={
+                        "id": "voltage",
+                        "label": "Voltage",
+                        "payload_pointer": "/voltage",
+                    }
+                )
+            )
+            snapshot = await SystemService(session).save(
+                SystemChange(expected_revision=snapshot.revision, document=addition),
+                actor="integration@example.com",
+            )
+            assert snapshot.runtime.bindings["voltage"]["policy"]["mode"] == "off"
+            assert snapshot.runtime.bindings["voltage"]["policy_origin"]["needs_review"]
+            voltage_topic = snapshot.runtime.bindings["voltage"]["accepted_topic"]
+        await until(lambda: collection_applied(sessions, ingress))
+        await publish(31)
+        await asyncio.sleep(1.2)
+        assert all(topic != voltage_topic for topic, _ in accepted)
+        async with sessions.begin() as session:
+            snapshot = await SystemService(session).read()
+            await SystemCollectionService(session).apply(
+                SystemCollectionRuleChange(
+                    expected_revision=snapshot.revision,
+                    expected_collection_revision=snapshot.runtime.collection_revision,
+                    rule_changes=[
+                        CollectionRuleEdit(
+                            scope=CollectionRuleScope(
+                                kind="topic",
+                                connection_id="factory",
+                                topic_prefix="factory/machine",
+                            ),
+                            policy=CollectionPolicy(mode="sample", interval_seconds=1),
+                            include_future_readings=True,
+                        )
+                    ],
+                ),
+                actor="integration@example.com",
+            )
+        await until(lambda: collection_applied(sessions, ingress))
+        await publish(32)
+
+        await until(
+            lambda: voltage_recorded(sessions, snapshot, voltage_topic, accepted)
+        )
+        await policy(["voltage"], "off")
+        await until(lambda: collection_applied(sessions, ingress))
         # Browser is closed; the selected collector remains active.
         before = await rows()
         for value in range(5):
@@ -230,7 +313,10 @@ async def test_generic_collection_is_independent_of_view_leases_and_stops_on_off
         # Unselected fields sharing the same topic never become detector inputs.
         assert all(
             TopicMetadataExtractor().extract(topic).telemetry_type
-            == saved.runtime.bindings["temperature"]["telemetry_key"]
+            in {
+                saved.runtime.bindings["temperature"]["telemetry_key"],
+                saved.runtime.bindings["voltage"]["telemetry_key"],
+            }
             for topic, _ in accepted
         )
     finally:
@@ -239,6 +325,21 @@ async def test_generic_collection_is_independent_of_view_leases_and_stops_on_off
         await collector.stop()
         client.disconnect()
         await asyncio.to_thread(client.loop_stop)
+
+
+async def voltage_recorded(sessions, snapshot, voltage_topic, accepted):
+    async with sessions() as session:
+        state = await session.scalar(
+            select(CollectionState).where(
+                CollectionState.sensor_key
+                == snapshot.runtime.bindings["voltage"]["telemetry_key"]
+            )
+        )
+        return (
+            state is not None
+            and state.value == 230
+            and any(topic == voltage_topic for topic, _ in accepted)
+        )
 
 
 async def has_rows(rows):
@@ -250,7 +351,9 @@ async def reached_rows(rows, expected):
 
 
 def readings(value):
-    return json.dumps({"temperature": value, "humidity": 50, "running": True})
+    return json.dumps(
+        {"temperature": value, "humidity": 50, "running": True, "voltage": 230}
+    )
 
 
 async def publish_sequence(values):

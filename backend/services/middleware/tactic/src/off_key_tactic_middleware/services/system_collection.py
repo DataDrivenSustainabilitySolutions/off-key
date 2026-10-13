@@ -10,12 +10,18 @@ from off_key_core.db.maintenance import require_application_writes
 from off_key_core.db.models import Charger, CollectionBinding, MonitoringService
 from off_key_core.db.system import SystemCollectionConfiguration
 from off_key_core.schemas.collection_policy import CollectionPolicy
+from off_key_core.schemas.collection_rules import (
+    CollectionRuleEdit,
+    CollectionRuleScope,
+    SystemCollectionRuleChange,
+)
 from off_key_core.schemas.system_collection import (
     SystemCollectionDefinition,
     SystemCollectionPreview,
     build_bindings,
     runtime_fingerprint,
 )
+from off_key_core.utils.collection_rules import CollectionRuleResolver
 from sqlalchemy import select
 
 from ..config.collection import get_ambibox_settings
@@ -23,6 +29,7 @@ from ..config.system_live import get_system_live_settings
 from ..domain import ConflictError, ValidationError
 from .ambibox_live_access import AmbiboxLiveAccess
 from .collection_monitors import CollectionMonitorService
+from .collection_rule_edits import apply_rule_edits, policy_metadata
 
 
 class SystemCollectionService:
@@ -33,19 +40,41 @@ class SystemCollectionService:
         runtime = await read_collection_runtime(self.session)
         previous = runtime.catalog
         bindings = build_bindings(document, previous.bindings)
-        policies = {
-            item.id: item.policy or previous.document.default_policy
-            for item in previous.document.streams
+        known = {stream.id for stream in document.streams}
+        brokers = {broker.id for broker in document.connections}
+        old_inputs = {
+            stream.id: (stream.connection_id, stream.topic)
+            for stream in previous.document.streams
         }
-        copy = document.model_copy(deep=True)
-        copy.default_policy = CollectionPolicy()
-        for stream in copy.streams:
-            stream.policy = policies.get(stream.id, CollectionPolicy())
-        return runtime, SystemCollectionDefinition(
-            document=copy,
+        new = {
+            stream.id
+            for stream in document.streams
+            if old_inputs.get(stream.id) != (stream.connection_id, stream.topic)
+        }
+        clock = previous.registration_clock + bool(new)
+        proposed = SystemCollectionDefinition(
+            document=document.model_copy(deep=True),
             bindings=bindings,
             generation=previous.generation,
+            rules_version=1,
+            rules=[
+                rule
+                for rule in previous.rules
+                if rule.scope.connection_id in brokers
+                and (
+                    rule.scope.kind != "reading"
+                    or any(rule.scope.matches(stream) for stream in document.streams)
+                )
+            ],
+            registration_clock=clock,
+            registered_at={
+                key: clock if key in new else previous.registered_at[key]
+                for key in known
+            },
         )
+        proposed.document.default_policy = CollectionPolicy()
+        CollectionRuleResolver(proposed).materialize()
+        return runtime, proposed
 
     async def prepare(self, snapshot, change):
         runtime, proposed = await self.current(snapshot.document)
@@ -58,18 +87,63 @@ class SystemCollectionService:
                 "The catalogue or collection changed. "
                 "Reload before applying this change."
             )
-        selected = set(change.stream_ids)
-        known = {stream.id for stream in proposed.document.streams}
-        if not selected <= known:
-            raise ValidationError("Select existing catalogue readings.")
-        for stream in proposed.document.streams:
-            if stream.id in selected:
-                stream.policy = change.policy
-        if change.policy.mode != "off":
+        if isinstance(change, SystemCollectionRuleChange):
+            apply_rule_edits(proposed, change.rule_changes)
+        else:
+            selected = set(change.stream_ids)
+            known = {stream.id for stream in proposed.document.streams}
+            if not selected <= known:
+                raise ValidationError("Select existing catalogue readings.")
+            apply_rule_edits(
+                proposed,
+                [
+                    CollectionRuleEdit(
+                        scope=CollectionRuleScope(
+                            kind="reading",
+                            connection_id=stream.connection_id,
+                            reading_id=stream.id,
+                        ),
+                        policy=change.policy,
+                    )
+                    for stream in proposed.document.streams
+                    if stream.id in selected
+                ],
+            )
+        previous_inputs = {
+            item.accepted_topic: item.signature
+            for item in runtime.catalog.streams(selected_only=True)
+        }
+        if any(
+            previous_inputs.get(item.accepted_topic) != item.signature
+            for item in proposed.streams(selected_only=True)
+        ):
             self._validate_access(proposed)
         affected = await self.affected(runtime.catalog, proposed)
         streams = proposed.streams(selected_only=True)
         numeric = [item for item in streams if item.value_type == "number"]
+        before = {
+            stream.id: stream.policy or runtime.catalog.document.default_policy
+            for stream in runtime.catalog.document.streams
+        }
+        resolver = CollectionRuleResolver(proposed)
+        starts = stops = rates = 0
+        preview_bindings = {}
+        connections = (
+            {edit.scope.connection_id for edit in change.rule_changes}
+            if isinstance(change, SystemCollectionRuleChange)
+            else None
+        )
+        for stream in proposed.document.streams:
+            old = before.get(stream.id, CollectionPolicy())
+            policy, origin = resolver.resolve(stream)
+            starts += old.mode == "off" and policy.mode != "off"
+            stops += old.mode != "off" and policy.mode == "off"
+            rates += old.mode != "off" and policy.mode != "off" and old != policy
+            if connections is None or stream.connection_id in connections:
+                preview_bindings[stream.id] = {
+                    "policy": policy.model_dump(mode="json"),
+                    "policy_origin": origin,
+                }
         preview = SystemCollectionPreview(
             revision=snapshot.revision,
             collection_revision=revision,
@@ -83,6 +157,12 @@ class SystemCollectionService:
                 item.policy.mode == "original" for item in numeric
             ),
             affected_monitors=affected,
+            changed_readings=starts + stops + rates,
+            starting_readings=starts,
+            stopping_readings=stops,
+            rate_changed_readings=rates,
+            bindings=preview_bindings,
+            rules=proposed.rules,
         )
         return proposed, preview
 
@@ -192,7 +272,11 @@ class SystemCollectionService:
         row.document = definition.model_dump(mode="json")
         row.updated_by = actor
         row.updated_at = datetime.now(UTC)
-        if changed:
+        if (
+            changed
+            or previous is None
+            or policy_metadata(previous) != policy_metadata(definition)
+        ):
             row.revision += 1
             row.ingress_status = {}
             row.collection_status = {}

@@ -23,6 +23,7 @@ type Props = {
   children?: ReactNode;
   collectionControls?: ReactNode;
   runtime?: SystemRuntime;
+  connectionStatusOnly?: boolean;
   favourite?: boolean;
   onFavourite?: (id: string) => void;
 };
@@ -65,7 +66,7 @@ function Binding({ label, value }: { label: string; value: string }) {
 }
 
 export default function ExplorerPreview({
-  node, index, document, telemetry, historyCache, canEdit, saving, error, onRename, onEdit, onClose, children, collectionControls, runtime, favourite, onFavourite,
+  node, index, document, telemetry, historyCache, canEdit, saving, error, onRename, onEdit, onClose, children, collectionControls, runtime, connectionStatusOnly = false, favourite, onFavourite,
 }: Props) {
   const status = useSyncExternalStore(telemetry.subscribeUpdates, telemetry.getStatus);
   const streamsById = useMemo(() => new Map(document.streams.map((stream) => [stream.id, stream])), [document.streams]);
@@ -119,7 +120,9 @@ export default function ExplorerPreview({
   const sources = [...sourceIds].flatMap(id => runtime?.ingress?.sources?.[id] ?? []);
   const recordProblem = sources.find(source => ["error", "blocked"].includes(source.state));
   const recordConnected = sources.length === sourceIds.size && sources.length > 0 && sources.every(source => source.state === "connected");
-  const label = recording ? recordProblem || runtime?.collection?.status === "disabled" ? "Unavailable"
+  const persistentConnection = runtime?.ingress?.sources?.[node.connectionId ?? ""];
+  const brokerLabel = persistentConnection?.state === "connected" ? "Connected" : persistentConnection?.state ? persistentConnection.state[0]!.toUpperCase() + persistentConnection.state.slice(1) : liveLabel;
+  const label = connectionStatusOnly ? brokerLabel : recording ? recordProblem || runtime?.collection?.status === "disabled" ? "Unavailable"
     : runtime?.collection?.status !== "applied" ? "Applying…"
       : recordConnected ? "Recording" : sources.some(source => source.state === "reconnecting") ? "Reconnecting" : "Waiting"
     : liveLabel;
@@ -149,14 +152,15 @@ export default function ExplorerPreview({
         </span>)}
       </nav>
       <div className="ex-preview-status" role="status">
-        <i className={(recording ? label === "Recording" : connection?.state === "connected") ? "active" : ""} />
+        <i className={(connectionStatusOnly ? label === "Connected" : recording ? label === "Recording" : connection?.state === "connected") ? "active" : ""} />
         <strong>{label}</strong>
-        <span>{recording ? stream && stream.value_type !== "number" ? "Recorded state" : "Recorded history" : status.phase === "idle" ? "No live connection"
+        <span>{connectionStatusOnly ? "Broker connection" : recording ? stream && stream.value_type !== "number" ? "Recorded state" : "Recorded history" : status.phase === "idle" ? "No live connection"
           : ["error", "blocked", "paused"].includes(status.phase) ? "Live connection inactive"
             : status.dataSource === "simulated" ? "Simulated data · memory only"
               : "Live data · memory only"}</span>
       </div>
       {problem && <p className="ex-preview-error" role="alert">{problem}</p>}
+      {collectionControls}
       {stream ? <>
         <div className="ex-preview-value">
           <span>Latest value</span>
@@ -176,7 +180,6 @@ export default function ExplorerPreview({
         {snapshot?.isAggregate && <div><strong>{number.format(snapshot.rate)}</strong><span>Arrivals / second</span></div>}
       </div>}
       {children}
-      {collectionControls}
       <section className="ex-preview-details" aria-label="Definition">
         <div className="ex-preview-section-heading"><h3>Definition</h3>
           {node.entityKind && node.objectId && <button type="button" disabled={!canEdit || saving}

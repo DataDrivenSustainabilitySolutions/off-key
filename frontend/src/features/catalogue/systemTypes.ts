@@ -1,3 +1,4 @@
+import type { CollectionRule, PolicyOrigin } from "./collectionRuleTypes";
 import type { CollectionPolicy } from "../../types/collection";
 
 export type SystemConnection = {
@@ -60,6 +61,7 @@ export type SystemRuntime = {
   collection?: { revision?: number; status?: string; records_written?: number; counters?: Record<string, number> };
   ingress?: { status?: string; sources?: Record<string, { state: string; message?: string | null }> };
   bindings?: Record<string, SystemReadingBinding>;
+  collection_rules?: CollectionRule[];
   latest_readings?: Record<string, { value: number | boolean | string; received_at: string; is_snapshot: boolean }>;
 };
 export type SystemReadingBinding = {
@@ -68,6 +70,7 @@ export type SystemReadingBinding = {
   telemetry_key: string;
   accepted_topic: string;
   policy: CollectionPolicy;
+  policy_origin?: PolicyOrigin;
 };
 export type SystemCollectionChange = {
   expected_revision: number;
@@ -83,6 +86,12 @@ export type SystemCollectionPreview = {
   sampled_rows_per_day_ceiling: number;
   original_rate_readings: number;
   affected_monitors: Array<{ id: string; name: string }>;
+  changed_readings?: number;
+  starting_readings?: number;
+  stopping_readings?: number;
+  rate_changed_readings?: number;
+  bindings?: Record<string, Pick<SystemReadingBinding, "policy" | "policy_origin">>;
+  rules?: CollectionRule[];
 };
 export type SystemSnapshot = {
   revision: number;

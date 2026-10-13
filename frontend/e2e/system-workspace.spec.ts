@@ -18,6 +18,9 @@ test("records only an opted-in reading and restores its history in the mobile wo
   let serviceId: string | undefined;
   try {
     await page.goto("/");
+    const workspaces = page.getByRole("group", { name: "Workspaces", exact: true });
+    await expect(workspaces.getByRole("link", { name: "Monitoring", exact: true })).toHaveAttribute("aria-current", "page");
+    await expect(workspaces.getByRole("link", { name: "Data sources", exact: true })).toBeVisible();
     token = await page.evaluate(() => localStorage.getItem("auth_token"));
     expect(token).toBeTruthy();
     const headers = { Authorization: `Bearer ${token}` };
@@ -33,7 +36,8 @@ test("records only an opted-in reading and restores its history in the mobile wo
     expect(initial.runtime.bindings?.[stream.id]?.policy.mode).toBe("off");
 
     await page.setViewportSize({ width: 390, height: 844 });
-    await page.goto("/sources");
+    await page.getByRole("button", { name: "Open explorer", exact: true }).click();
+    await workspaces.getByRole("link", { name: "Data sources", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Data sources", exact: true })).toBeVisible();
     await expect(page.getByRole("dialog")).toHaveCount(0);
     await page.getByRole("button", { name: "Toggle data sources explorer", exact: true }).click();
@@ -107,7 +111,8 @@ test("records only an opted-in reading and restores its history in the mobile wo
     await page.getByLabel("Calibration samples", { exact: true }).fill("2");
     await page.getByRole("link", { name: "Configure in Data sources", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Data sources", exact: true })).toBeVisible();
-    await page.getByRole("link", { name: "Return to service setup", exact: true }).click();
+    await page.getByRole("button", { name: "Toggle data sources explorer", exact: true }).click();
+    await workspaces.getByRole("link", { name: "Monitoring", exact: true }).click();
     await expect(page.getByRole("textbox", { name: "Service name", exact: true })).toHaveValue("Workspace monitor");
     await expect(page.getByLabel("Warm-up samples", { exact: true })).toHaveValue("2");
     await expect(page.getByLabel("Calibration samples", { exact: true })).toHaveValue("2");

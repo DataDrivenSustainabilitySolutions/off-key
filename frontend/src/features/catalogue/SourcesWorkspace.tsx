@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { Menu, PanelLeft, Plus, X } from "lucide-react";
-import { Link, useBlocker, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useBlocker, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/auth/AuthContext";
 import { AppHeader } from "@/components/AppHeader";
 import { Button } from "@/components/ui/button";
@@ -33,7 +33,6 @@ export function SourcesWorkspace() {
     runtimeConnectionId: params.has("reading") ? undefined : params.get("broker") ?? undefined });
   const document = system.document ?? empty;
   const index = useMemo(() => buildSourcesIndex(document), [document]);
-  const navigate = useNavigate();
   const selected = useMemo(() => {
     const reading = params.get("reading"), broker = params.get("broker"), topic = params.get("topic");
     return [...index.nodes.values()].find(node => reading ? node.objectId === reading && node.entityKind === "stream"
@@ -113,11 +112,12 @@ export function SourcesWorkspace() {
     ? document.streams.find(stream => stream.id === node.objectId)?.label ?? node.label : node.label })) : navigationRows(index, currentKey))
     .map(row => ({ ...row, detail: row.node.entityKind === "stream" ? document.streams.find(stream => stream.id === row.node.objectId)?.payload_pointer ?? "Reading" : undefined }));
   const sidebar = <ExplorerSidebar index={index} scopeKey={currentKey} title={index.nodes.get(currentKey)?.label ?? "Data sources"}
+    monitoringHref={safeReturn !== "/" ? safeReturn : navigationDraft(`monitoring:${userId}:url`, () => "/")}
     catalogueGroups={[]} rows={rows} query={query} selectedKey={selected?.key ?? null} positions={positions} loading={system.status === "loading"}
     onQuery={setQuery} onScope={browse} onOpen={select} onBrowse={node => browse(node.key)}
     onBack={() => query ? setQuery("") : browse(index.nodes.get(currentKey)?.parentKey ?? index.rootKey)}
     onInspect={() => { const node = index.nodes.get(currentKey); if (node) select(node); }}
-    onSettings={() => { setMobileOpen(false); setPanel("settings"); }} onWorkspace={() => navigate(safeReturn)} onDismiss={() => setMobileOpen(false)} />;
+    onSettings={() => { setMobileOpen(false); setPanel("settings"); }} onDismiss={() => setMobileOpen(false)} />;
   const dismiss = () => { if (!system.saving) { setPanel(undefined); setEditor(undefined); } };
   const showOverview = () => setParams(safeReturn === "/" ? {} : { returnTo: safeReturn });
   const sourceEditor = scope && <SourceRecordingInspector key={JSON.stringify(scope)} scope={scope} ids={ids} document={document}

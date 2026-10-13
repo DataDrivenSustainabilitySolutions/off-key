@@ -76,6 +76,10 @@ For an existing isolated local deployment, rebuild the frontend, API gateway, TA
 
 `/sources` is a separate setup destination. Its hierarchy groups registered readings
 by broker and MQTT topic, across device assignments; entity metadata remains searchable.
+Monitoring and Data sources have direct links above the catalogue search in both
+sidebars, with the current workspace marked. The links also appear in the mobile
+explorer drawer. Returning to Monitoring restores its previous inspection or the
+explicit service setup return path; unsaved recording changes still block leaving.
 Row selection opens the scope inspector in the main workspace; chevrons browse branches.
 Recording controls live here, with inheritance, child exceptions, future-reading opt-in,
 preview counts, affected-monitor confirmation, and one Apply action. Members inspect

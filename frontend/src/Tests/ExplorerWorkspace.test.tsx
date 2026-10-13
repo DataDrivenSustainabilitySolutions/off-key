@@ -1,9 +1,10 @@
 import { clearNavigationDrafts } from "@/lib/navigation-draft";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { MemoryRouter, useLocation } from "react-router-dom";
+import { createMemoryRouter, MemoryRouter, RouterProvider, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiRequestError, apiClient, apiUtils } from "@/lib/api-client";
 import MonitoringWorkspace from "@/pages/MonitoringWorkspace";
+import { SourcesWorkspace } from "@/features/catalogue/SourcesWorkspace";
 import { buildNavigationIndex } from "@/features/explorer/navigationIndex";
 import { createDefaultExplorerPreferences, loadExplorerPreferences, saveExplorerPreferences } from "@/features/explorer/preferences";
 import { createEmptySystem } from "@/features/catalogue/systemDocument";
@@ -85,6 +86,28 @@ function withServices(services: ActiveService[]) {
 }
 
 describe("service-centred monitoring workspace", () => {
+  it("switches through the upper-left links and restores the inspected monitor", async () => {
+    withServices([service()]);
+    const router = createMemoryRouter([
+      { path: "/", element: <MonitoringWorkspace /> },
+      { path: "/sources", element: <SourcesWorkspace /> },
+    ], { initialEntries: ["/?service=service-one"] });
+    render(<RouterProvider router={router} />);
+    await screen.findByRole("region", { name: "Monitoring service details" });
+    const workspaces = within(screen.getByRole("group", { name: "Workspaces" }));
+    expect(workspaces.getByRole("link", { name: "Monitoring" }).getAttribute("aria-current")).toBe("page");
+    fireEvent.click(workspaces.getByRole("link", { name: "Data sources" }));
+    await screen.findByRole("heading", { name: "Data sources" });
+    const sourcesNavigation = within(screen.getByRole("group", { name: "Workspaces" }));
+    expect(sourcesNavigation.getByRole("link", { name: "Data sources" }).getAttribute("aria-current")).toBe("page");
+    const back = sourcesNavigation.getByRole("link", { name: "Monitoring" });
+    expect(back.getAttribute("href")).toBe("/?service=service-one");
+    fireEvent.click(back);
+    await screen.findByRole("region", { name: "Monitoring service details" });
+    expect(router.state.location.search).toBe("?service=service-one");
+    expect(apiClient.put).not.toHaveBeenCalled();
+  });
+
   it("enables service setup when recording is acknowledged after a Data sources detour", async () => {
     const saved = snapshot();
     saved.runtime.collection!.status = "applying";
@@ -133,7 +156,7 @@ describe("service-centred monitoring workspace", () => {
     expect(screen.getByRole("link", { name: "Room climate" })).toBeTruthy(); expect(screen.queryByRole("link", { name: "Other service" })).toBeNull();
     fireEvent.change(screen.getByRole("searchbox", { name: "Search monitoring services" }), { target: { value: "" } });
     await enterReadings(); expect(screen.queryByRole("link", { name: "Other service" })).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Monitoring" }));
+    fireEvent.click(screen.getByRole("link", { name: "Monitoring" }));
     expect(await screen.findByRole("link", { name: "Other service" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "humidity, preview" })).toBeTruthy();
   });
@@ -240,7 +263,7 @@ describe("hierarchical explorer workspace", () => {
     fireEvent.click(screen.getByRole("button", { name: "Back one level" }));
     expect(screen.getByRole("button", { name: "weather, open" })).toBeTruthy();
     expect(screen.getByRole("region", { name: "Reading preview" })).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Monitoring" }));
+    fireEvent.click(screen.getByRole("link", { name: "Monitoring" }));
     expect(screen.queryByRole("region", { name: "Reading preview" })).toBeNull();
     expect(await screen.findByRole("heading", { name: "No monitoring services" })).toBeTruthy();
   });

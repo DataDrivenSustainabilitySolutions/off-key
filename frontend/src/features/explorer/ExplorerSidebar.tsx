@@ -1,6 +1,8 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type MouseEvent } from "react";
 import * as Popover from "@radix-ui/react-popover";
-import { ArrowLeft, ChevronDown, Folder, Home, Info, Layers, Search, Settings2, Star, X } from "lucide-react";
+import { ArrowLeft, ChevronDown, Folder, Info, Layers, Search, Settings2, Star, X } from "lucide-react";
+import { Link, useLocation } from "react-router-dom";
+import { isActiveApplicationPath, workspaceNavItems } from "@/components/application-navigation";
 import { ExplorerList, type ExplorerRow, type ListPosition } from "./ExplorerList";
 import { navigationTrail, type ExplorerNode, type NavigationIndex } from "./navigationIndex";
 import type { SystemGroup } from "../catalogue/systemTypes";
@@ -12,18 +14,26 @@ type Props = {
   onQuery: (value: string) => void; onScope: (key: string) => void;
   onBrowse?: (node: ExplorerNode) => void;
   onOpen: (node: ExplorerNode) => void; onBack: () => void; onInspect: () => void;
-  onSettings: () => void; onWorkspace: () => void; onDismiss?: () => void;
+  onSettings: () => void; onWorkspace?: () => void; onDismiss?: () => void;
+  monitoringHref?: string;
   favourites?: Array<{ kind: "service" | "reading"; id: string; label: string }>;
   onFavourite?: (kind: "service" | "reading", id: string) => void;
 };
 
 export function ExplorerSidebar(props: Props) {
   const { index, scopeKey, rows, title, catalogueGroups, query, selectedKey, positions } = props;
+  const { pathname } = useLocation();
   const resultsQuery = props.resultsQuery ?? query;
   const search = useRef<HTMLInputElement>(null);
   const trail = navigationTrail(index, scopeKey);
   const current = index.nodes.get(scopeKey);
   const owner = trail.slice(0, -1).reverse().find((ancestor) => ancestor.kind === "device" || ancestor.kind === "connection");
+  const monitoringHome = (event: MouseEvent<HTMLAnchorElement>) => {
+    if (pathname !== "/" || !props.onWorkspace || event.button !== 0
+      || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    props.onWorkspace();
+  };
   useEffect(() => {
     const shortcut = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
@@ -35,7 +45,14 @@ export function ExplorerSidebar(props: Props) {
   }, []);
   return <nav id="system-explorer" className="ex-sidebar" aria-label="System explorer">
     <div className="ex-sidebar-top">
-      <button className="ex-workspace-link" onClick={props.onWorkspace}><Home size={16} strokeWidth={1.6} /><span>Monitoring</span></button>
+      <div className="ex-workspace-links" role="group" aria-label="Workspaces">
+        {workspaceNavItems.map(item => <Link key={item.href} className="ex-workspace-link"
+          to={item.href === "/" ? props.monitoringHref ?? "/" : item.href}
+          aria-current={isActiveApplicationPath(pathname, item.href) ? "page" : undefined}
+          onClick={item.href === "/" ? monitoringHome : undefined}>
+          <item.icon size={16} strokeWidth={1.6} aria-hidden="true" /><span>{item.label}</span>
+        </Link>)}
+      </div>
       {props.onDismiss && <button className="ex-icon-button" aria-label="Close explorer" onClick={props.onDismiss}><X size={18} /></button>}
     </div>
     <div className="ex-search"><Search size={15} aria-hidden="true" />

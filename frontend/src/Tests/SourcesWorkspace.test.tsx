@@ -60,6 +60,18 @@ describe("dedicated Data sources configuration", () => {
     await waitFor(() => expect(router.state.location.search).toBe("?service=retained-service&tab=evidence&stream=temperature"));
   });
 
+  it("uses the explicit service setup return path from the upper-left Monitoring link", async () => {
+    rememberNavigation("monitoring:1:url", "/?service=another-monitor");
+    const returnTo = "/?create=monitoring&reading=temperature";
+    const router = mount(`/sources?broker=broker&returnTo=${encodeURIComponent(returnTo)}`);
+    await screen.findByRole("heading", { name: "Data sources" });
+    const monitoring = within(screen.getByRole("group", { name: "Workspaces" })).getByRole("link", { name: "Monitoring" });
+    expect(monitoring.getAttribute("href")).toBe(returnTo);
+    fireEvent.click(monitoring);
+    await screen.findByRole("heading", { name: "Monitoring home" });
+    expect(router.state.location.search).toBe("?create=monitoring&reading=temperature");
+  });
+
   it("selects a broker directly, automatically previews a rule and applies once", async () => {
     mount();
     fireEvent.click(await screen.findByRole("button", { name: "Workshop broker, open" }));
@@ -135,11 +147,11 @@ describe("dedicated Data sources configuration", () => {
   it("protects an unsaved broker draft when leaving for Monitoring", async () => {
     mount("/sources?broker=broker");
     fireEvent.change(await screen.findByLabelText("Recording policy"), { target: { value: "original" } });
-    fireEvent.click(screen.getByRole("button", { name: "Monitoring" }));
+    fireEvent.click(screen.getByRole("link", { name: "Monitoring" }));
     const dialog = await screen.findByRole("dialog", { name: "Unsaved recording changes" });
     fireEvent.click(within(dialog).getByRole("button", { name: "Stay" }));
     expect((screen.getByLabelText("Recording policy") as HTMLSelectElement).value).toBe("original");
-    fireEvent.click(screen.getByRole("button", { name: "Monitoring" }));
+    fireEvent.click(screen.getByRole("link", { name: "Monitoring" }));
     fireEvent.click(within(await screen.findByRole("dialog", { name: "Unsaved recording changes" })).getByRole("button", { name: "Discard and leave" }));
     await screen.findByRole("heading", { name: "Monitoring home" });
     expect(apiClient.put).not.toHaveBeenCalled();

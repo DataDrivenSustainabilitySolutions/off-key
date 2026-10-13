@@ -6,10 +6,15 @@ export type ApplicationNavItem = {
   icon: LucideIcon;
 };
 
+const monitoring: ApplicationNavItem = { href: "/", label: "Monitoring", icon: Home };
+const sources: ApplicationNavItem = { href: "/sources", label: "Data sources", icon: Database };
+
+export const workspaceNavItems: ApplicationNavItem[] = [monitoring, sources];
+
 export const applicationNavItems: ApplicationNavItem[] = [
-  { href: "/", label: "Monitoring", icon: Home },
+  monitoring,
   { href: "/entities", label: "Entities", icon: Box },
-  { href: "/sources", label: "Data sources", icon: Database },
+  sources,
   { href: "/anomalies", label: "Anomalies", icon: AlertTriangle },
 ];
 

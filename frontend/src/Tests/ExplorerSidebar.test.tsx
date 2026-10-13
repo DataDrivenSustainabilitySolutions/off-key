@@ -1,4 +1,6 @@
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render as renderUI, screen, waitFor, within } from "@testing-library/react";
+import type { ReactNode } from "react";
+import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ExplorerSidebar } from "@/features/explorer/ExplorerSidebar";
 import { ExplorerList, type ExplorerRow, type ListPosition } from "@/features/explorer/ExplorerList";
@@ -11,6 +13,10 @@ const viewportHeight = 360;
 const rowHeight = 72;
 const initialScrollTo = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollTo");
 const initialWindowObserver = Object.getOwnPropertyDescriptor(window, "ResizeObserver");
+
+function render(element: ReactNode, path = "/") {
+  return renderUI(element, { wrapper: ({ children }) => <MemoryRouter initialEntries={[path]}>{children}</MemoryRouter> });
+}
 
 beforeEach(() => {
   // Exercise the real TanStack virtualizer. jsdom provides no element geometry,
@@ -88,6 +94,24 @@ function listOptions(document = system()) {
 }
 
 describe("explorer sidebar and catalogue list", () => {
+  it.each(["/", "/sources?broker=broker"])("links both primary workspaces and identifies the current one at %s", path => {
+    render(<ExplorerSidebar {...sidebarOptions()} />, path);
+    const workspaces = within(screen.getByRole("group", { name: "Workspaces" }));
+    const monitoring = workspaces.getByRole("link", { name: "Monitoring" });
+    const sources = workspaces.getByRole("link", { name: "Data sources" });
+    expect(monitoring.getAttribute("href")).toBe("/");
+    expect(sources.getAttribute("href")).toBe("/sources");
+    expect(monitoring.getAttribute("aria-current")).toBe(path === "/" ? "page" : null);
+    expect(sources.getAttribute("aria-current")).toBe(path === "/" ? null : "page");
+  });
+
+  it("preserves normal link behavior when opening Monitoring in another tab", () => {
+    const options = sidebarOptions();
+    render(<ExplorerSidebar {...options} />);
+    fireEvent.click(screen.getByRole("link", { name: "Monitoring" }), { ctrlKey: true });
+    expect(options.onWorkspace).not.toHaveBeenCalled();
+  });
+
   it("counts brokers independently of the unassigned entity branch", () => {
     const document = system();
     document.devices.push({ id: "loose", label: "Unassigned sensor", kind: "sensor" });
@@ -254,7 +278,7 @@ describe("explorer sidebar and catalogue list", () => {
     expect(screen.getByText("Current path")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "North laboratory" }));
     expect(options.onScope).toHaveBeenLastCalledWith(broker.key);
-    fireEvent.click(screen.getByRole("button", { name: "Monitoring" }));
+    fireEvent.click(screen.getByRole("link", { name: "Monitoring" }));
     expect(options.onWorkspace).toHaveBeenCalledOnce();
     fireEvent.click(screen.getByRole("button", { name: "Catalogue settings" }));
     expect(options.onSettings).toHaveBeenCalledOnce();

@@ -23,6 +23,7 @@ from off_key_core.db.system import (
 )
 from off_key_core.schemas.collection_policy import CollectionPolicy
 from off_key_core.schemas.system import SystemChange, SystemDocument, SystemSnapshot
+from off_key_core.schemas.system_collection import SystemCollectionScope
 from off_key_core.utils.enum import RoleEnum
 from off_key_tactic_middleware.api.collection_auth import current_member
 from off_key_tactic_middleware.api.v1 import system as system_api
@@ -34,6 +35,43 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Session
 
 from .test_collection import catalog
+
+
+@pytest.mark.asyncio
+async def test_scoped_status_returns_only_requested_reading_activity(monkeypatch):
+    snapshot = SystemSnapshot(
+        revision=1,
+        document=document(),
+        storage_origin="saved",
+        runtime={
+            "mode": "collection",
+            "message": "",
+            "bindings": {
+                "temperature-1": {"connection_id": "broker-1"},
+                "humidity-1": {"connection_id": "broker-2"},
+            },
+            "ingress": {
+                "sources": {
+                    "broker-1": {"state": "connected"},
+                    "broker-2": {"state": "connected"},
+                },
+                "readings": {
+                    key: {"fresh_received_at": "2026-10-13T12:00:00Z"}
+                    for key in ("temperature-1", "humidity-1")
+                },
+            },
+        },
+    )
+    service = AsyncMock()
+    service.read.return_value = snapshot
+    service.latest_readings.return_value = {}
+    monkeypatch.setattr(system_api, "SystemService", lambda session: service)
+    result = await system_api.collection_status(
+        SystemCollectionScope(stream_ids=["temperature-1"]), user=None, session=None
+    )
+    assert set(result["runtime"]["ingress"]["readings"]) == {"temperature-1"}
+    assert set(result["runtime"]["ingress"]["sources"]) == {"broker-1"}
+    service.latest_readings.assert_awaited_once_with(snapshot.runtime.bindings)
 
 
 class AsyncSessionAdapter:

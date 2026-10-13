@@ -86,6 +86,11 @@ test("records only an opted-in reading and restores its history in the mobile wo
       const status = await response.json();
       return status.runtime.latest_readings[stream.id]?.value;
     }).toEqual(26);
+    await page.getByRole("button", { name: "Toggle data sources explorer", exact: true }).click();
+    const receivingReading = page.getByRole("button", { name: "temperature, preview", exact: true });
+    await expect(receivingReading.locator(".ex-reading-activity svg")).toHaveAttribute("fill", "currentColor", { timeout: 15_000 });
+    await expect(receivingReading).toHaveAccessibleDescription("Receiving data (last 30 seconds)");
+    await page.getByRole("button", { name: "Close explorer", exact: true }).click();
 
     // Background collection continues after the page has been left.
     await page.goto("/account");

@@ -1,7 +1,8 @@
-import { useLayoutEffect, useRef, type KeyboardEvent } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { Box, ChevronRight, Cpu, Folder, Radio } from "lucide-react";
+import { Box, ChevronRight, Circle, Cpu, Folder } from "lucide-react";
 import type { ExplorerNode } from "./navigationIndex";
+import { readingActivity, type ReadingActivitySource } from "./readingActivity";
 
 export type ExplorerRow = { node: ExplorerNode; label: string; detail?: string; color?: string };
 export type ListPosition = { offset: number; focused?: string };
@@ -13,10 +14,19 @@ type Props = {
   onOpen: (node: ExplorerNode) => void;
   onBack: () => void;
   onBrowse?: (node: ExplorerNode) => void;
+  activity?: ReadingActivitySource;
 };
 
-export function ExplorerList({ rows, viewKey, positions, selectedKey, onOpen, onBack, onBrowse }: Props) {
+const subscribeNothing = () => () => {};
+const noStatus = () => undefined;
+const readingLeaf = (node: ExplorerNode) => !node.children.length && node.streamIds.length > 0
+  && (node.kind === "reading" || node.kind === "topic");
+
+export function ExplorerList({ rows, viewKey, positions, selectedKey, onOpen, onBack, onBrowse, activity }: Props) {
   const scroll = useRef<HTMLDivElement>(null);
+  const activityId = useId();
+  const [now, setNow] = useState(() => Date.now());
+  const liveStatus = useSyncExternalStore(activity?.telemetry.subscribeUpdates ?? subscribeNothing, activity?.telemetry.getStatus ?? noStatus);
   const position = positions.get(viewKey);
   // Keep this imperative viewport adapter outside React Compiler memoization.
   // eslint-disable-next-line react-hooks/incompatible-library
@@ -25,6 +35,13 @@ export function ExplorerList({ rows, viewKey, positions, selectedKey, onOpen, on
     estimateSize: () => 72, overscan: 6, initialOffset: position?.offset ?? 0,
     getItemKey: (index) => rows[index]!.node.key,
   });
+  const items = virtualizer.getVirtualItems();
+  const hasIndicators = !!activity && items.some(item => readingLeaf(rows[item.index]!.node));
+  useEffect(() => {
+    if (!hasIndicators) return;
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [hasIndicators]);
   const previousKey = useRef(viewKey);
   useLayoutEffect(() => {
     if (previousKey.current !== viewKey) {
@@ -72,18 +89,25 @@ export function ExplorerList({ rows, viewKey, positions, selectedKey, onOpen, on
     positions.set(viewKey, { ...positions.get(viewKey), offset: event.currentTarget.scrollTop });
   }}>
     <ul key={viewKey} className={`ex-list${viewKey.startsWith("search:") ? " is-search" : ""}`} aria-label="Catalogue items" style={{ height: virtualizer.getTotalSize() }}>
-      {virtualizer.getVirtualItems().map((item) => {
+      {items.map((item) => {
         const row = rows[item.index]!;
         const node = row.node;
-        const Icon = node.kind === "connection" ? Box : node.kind === "device" ? Cpu : node.children.length ? Folder : Radio;
+        const Icon = node.kind === "connection" ? Box : node.kind === "device" ? Cpu : Folder;
+        const indicator = readingLeaf(node) ? readingActivity(node, activity, liveStatus, now) : undefined;
+        const descriptionId = `${activityId}-${item.index}`;
         return <li key={item.key} data-index={item.index} ref={virtualizer.measureElement}
           style={{ position: "absolute", width: "100%", transform: `translateY(${item.start}px)` }}>
           <div className="ex-row-container"><button className={`ex-row${selectedKey === node.key ? " is-selected" : ""}`} data-row={item.index}
             aria-current={selectedKey === node.key ? "true" : undefined}
             aria-label={`${row.label}${node.children.length ? ", open" : ", preview"}`}
+            aria-describedby={indicator ? descriptionId : undefined}
             title={row.label} onClick={() => onOpen(node)} onKeyDown={(event) => keyboard(event, item.index)}
             onFocus={() => positions.set(viewKey, { offset: scroll.current?.scrollTop ?? 0, focused: node.key })}>
-            <span className="ex-row-icon" style={row.color ? { color: row.color } : undefined}><Icon size={16} strokeWidth={1.6} /></span>
+            <span className={`ex-row-icon${indicator ? " ex-reading-activity" : ""}`} title={indicator?.label}
+              style={!indicator && row.color ? { color: row.color } : undefined}>
+              {indicator ? <><Circle size={16} strokeWidth={1.6} fill={indicator.receiving ? "currentColor" : "none"} aria-hidden="true" />
+                <span id={descriptionId} className="ex-sr-only">{indicator.label}</span></> : <Icon size={16} strokeWidth={1.6} />}
+            </span>
             <span className="ex-row-text"><span className="ex-row-label">{row.label}</span>
               <span className="ex-row-detail">{row.detail ?? (node.kind === "connection" ? `${node.streamIds.length} readings` : node.kind === "device" ? `${node.streamIds.length} readings` : node.children.length ? `${node.children.length} items` : "Reading")}</span>
             </span>

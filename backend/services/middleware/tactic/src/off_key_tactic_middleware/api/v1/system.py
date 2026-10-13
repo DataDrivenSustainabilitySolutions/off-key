@@ -69,6 +69,12 @@ async def collection_status(
             for key, value in snapshot.runtime.ingress["sources"].items()
             if key in connections
         }
+    if "readings" in snapshot.runtime.ingress:
+        snapshot.runtime.ingress["readings"] = {
+            key: value
+            for key, value in snapshot.runtime.ingress["readings"].items()
+            if key in snapshot.runtime.bindings
+        }
     snapshot.runtime.latest_readings = await SystemService(session).latest_readings(
         snapshot.runtime.bindings
     )

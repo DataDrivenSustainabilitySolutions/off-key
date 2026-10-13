@@ -112,6 +112,7 @@ export function SourcesWorkspace() {
     ? document.streams.find(stream => stream.id === node.objectId)?.label ?? node.label : node.label })) : navigationRows(index, currentKey))
     .map(row => ({ ...row, detail: row.node.entityKind === "stream" ? document.streams.find(stream => stream.id === row.node.objectId)?.payload_pointer ?? "Reading" : undefined }));
   const sidebar = <ExplorerSidebar index={index} scopeKey={currentKey} title={index.nodes.get(currentKey)?.label ?? "Data sources"}
+    activity={{ telemetry, liveStreamIds: liveIds, runtime: system.snapshot?.runtime }}
     monitoringHref={safeReturn !== "/" ? safeReturn : navigationDraft(`monitoring:${userId}:url`, () => "/")}
     catalogueGroups={[]} rows={rows} query={query} selectedKey={selected?.key ?? null} positions={positions} loading={system.status === "loading"}
     onQuery={setQuery} onScope={browse} onOpen={select} onBrowse={node => browse(node.key)}

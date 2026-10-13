@@ -247,6 +247,7 @@ export function ExplorerWorkspace({ initialPanel }: { initialPanel?: "settings" 
   };
   const scopeTitle = current?.kind === "topic" ? navigationTrail(index, scopeKey).filter((node) => node.kind === "topic").map((node) => node.label).join("/") : current?.label;
   const sidebar = <ExplorerSidebar index={index} scopeKey={scopeKey} title={canonical?.label ?? scopeTitle ?? document.label}
+    activity={{ telemetry, liveStreamIds, runtime: system.snapshot?.runtime }}
     catalogueGroups={document.groups} rows={rows} query={query} resultsQuery={deferredQuery} selectedKey={selectedKey}
     positions={positions} loading={system.status === "loading"} onQuery={setQuery} onScope={go} onOpen={open} onBack={back}
     onInspect={() => { if (current) { changeView(); setSelectedKey(current.key); } }}

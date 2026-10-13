@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { createMemoryRouter, RouterProvider } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { clearNavigationDrafts, rememberNavigation } from "@/lib/navigation-draft";
@@ -34,7 +34,7 @@ beforeEach(() => {
     return { data: saved };
   });
 });
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+afterEach(() => { cleanup(); vi.useRealTimers(); vi.unstubAllGlobals(); });
 function mount(path = "/sources") {
   const router = createMemoryRouter([{ path: "/sources", element: <SourcesWorkspace /> }, { path: "/", element: <h1>Monitoring home</h1> }], { initialEntries: [path] });
   render(<RouterProvider router={router} />);
@@ -42,6 +42,47 @@ function mount(path = "/sources") {
 }
 
 describe("dedicated Data sources configuration", () => {
+  it("preserves another broker's activity through scoped polling and expires a superseded recording revision", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    saved.document.connections.push({ ...saved.document.connections[0]!, id: "remote", label: "Remote broker" });
+    saved.document.streams.push({ ...saved.document.streams[0]!, id: "remote-value", label: "Remote reading", connection_id: "remote" });
+    saved.runtime.mode = "collection";
+    saved.runtime.bindings!["remote-value"] = { ...saved.runtime.bindings!.temperature!, connection_id: "remote", policy: { mode: "original", interval_seconds: 10 } };
+    saved.runtime.ingress = { revision: 4, status: "applied", sources: { remote: { state: "connected" } },
+      readings: { "remote-value": { fresh_received_at: new Date().toISOString() } } };
+    let collectionRevision = 4;
+    vi.mocked(apiUtils.post).mockImplementation(async endpoint => {
+      expect(endpoint).toBe("/v1/system/collection/status");
+      return { revision: saved.revision, runtime: { ...saved.runtime, collection_revision: collectionRevision,
+        bindings: { temperature: saved.runtime.bindings!.temperature, power: saved.runtime.bindings!.power },
+        ingress: { revision: collectionRevision, status: "applied", sources: {}, readings: {} } } };
+    });
+    mount("/sources?broker=broker");
+    await screen.findByLabelText("Recording policy");
+    fireEvent.change(screen.getByRole("searchbox", { name: "Search catalogue" }), { target: { value: "Remote reading" } });
+    const row = await screen.findByRole("button", { name: "Remote reading, preview" });
+    expect(row.querySelector("svg")?.getAttribute("fill")).toBe("currentColor");
+    await act(async () => { vi.advanceTimersByTime(5000); });
+    expect(apiUtils.post).toHaveBeenCalledWith("/v1/system/collection/status", { stream_ids: ["temperature", "power"] }, expect.anything());
+    expect(row.querySelector("svg")?.getAttribute("fill")).toBe("currentColor");
+    collectionRevision = 5;
+    await act(async () => { vi.advanceTimersByTime(5000); });
+    expect(row.querySelector("svg")?.getAttribute("fill")).toBe("none");
+  });
+
+  it("shows confirmed recording traffic in the sidebar without opening a preview subscription", async () => {
+    saved.runtime.mode = "collection";
+    saved.runtime.bindings!.temperature!.policy = { mode: "sample", interval_seconds: 3600 };
+    saved.runtime.ingress = { revision: 4, status: "applied", sources: { broker: { state: "connected" } },
+      readings: { temperature: { fresh_received_at: new Date().toISOString() } } };
+    mount();
+    fireEvent.change(screen.getByRole("searchbox", { name: "Search catalogue" }), { target: { value: "temperature" } });
+    const row = await screen.findByRole("button", { name: "temperature, preview" });
+    expect(row.querySelector("svg")?.getAttribute("fill")).toBe("currentColor");
+    expect(document.getElementById(row.getAttribute("aria-describedby")!)?.textContent).toBe("Receiving data (last 30 seconds)");
+    expect(apiUtils.post).not.toHaveBeenCalled();
+  });
+
   it("opens an overview without an automatic settings modal or MQTT connection", async () => {
     mount();
     await screen.findByRole("button", { name: "Workshop broker, open" });

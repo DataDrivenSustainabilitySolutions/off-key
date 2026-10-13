@@ -59,7 +59,12 @@ export type SystemRuntime = {
   message: string;
   collection_revision?: number;
   collection?: { revision?: number; status?: string; records_written?: number; counters?: Record<string, number> };
-  ingress?: { status?: string; sources?: Record<string, { state: string; message?: string | null }> };
+  ingress?: {
+    revision?: number;
+    status?: string;
+    sources?: Record<string, { state: string; message?: string | null }>;
+    readings?: Record<string, { fresh_received_at: string }>;
+  };
   bindings?: Record<string, SystemReadingBinding>;
   collection_rules?: CollectionRule[];
   latest_readings?: Record<string, { value: number | boolean | string; received_at: string; is_snapshot: boolean }>;

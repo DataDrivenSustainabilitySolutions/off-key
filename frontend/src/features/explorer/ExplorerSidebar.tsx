@@ -1,8 +1,8 @@
 import { useEffect, useRef, type MouseEvent } from "react";
 import * as Popover from "@radix-ui/react-popover";
 import { ArrowLeft, ChevronDown, Folder, Info, Layers, Search, Settings2, Star, X } from "lucide-react";
-import { Link, useLocation } from "react-router-dom";
-import { isActiveApplicationPath, workspaceNavItems } from "@/components/application-navigation";
+import { useLocation } from "react-router-dom";
+import { WorkspaceNavigation } from "@/components/WorkspaceNavigation";
 import { ExplorerList, type ExplorerRow, type ListPosition } from "./ExplorerList";
 import { navigationTrail, type ExplorerNode, type NavigationIndex } from "./navigationIndex";
 import type { SystemGroup } from "../catalogue/systemTypes";
@@ -47,14 +47,7 @@ export function ExplorerSidebar(props: Props) {
   }, []);
   return <nav id="system-explorer" className="ex-sidebar" aria-label="System explorer">
     <div className="ex-sidebar-top">
-      <div className="ex-workspace-links" role="group" aria-label="Workspaces">
-        {workspaceNavItems.map(item => <Link key={item.href} className="ex-workspace-link"
-          to={item.href === "/" ? props.monitoringHref ?? "/" : item.href}
-          aria-current={isActiveApplicationPath(pathname, item.href) ? "page" : undefined}
-          onClick={item.href === "/" ? monitoringHome : undefined}>
-          <item.icon size={16} strokeWidth={1.6} aria-hidden="true" /><span>{item.label}</span>
-        </Link>)}
-      </div>
+      <WorkspaceNavigation monitoringHref={props.monitoringHref} onMonitoringClick={monitoringHome} />
       {props.onDismiss && <button className="ex-icon-button" aria-label="Close explorer" onClick={props.onDismiss}><X size={18} /></button>}
     </div>
     <div className="ex-search"><Search size={15} aria-hidden="true" />

@@ -91,12 +91,11 @@ describe("dedicated Data sources configuration", () => {
     expect(apiUtils.post).not.toHaveBeenCalled();
   });
 
-  it("returns through the menu to the previously inspected Monitoring URL", async () => {
+  it("returns through the left navigation to the previously inspected Monitoring URL", async () => {
     rememberNavigation("monitoring:1:url", "/?service=retained-service&tab=evidence&stream=temperature");
     const router = mount();
     await screen.findByRole("heading", { name: "Data sources" });
-    fireEvent.pointerDown(screen.getByRole("button", { name: "Application menu" }), { button: 0, ctrlKey: false });
-    const link = await screen.findByRole("menuitem", { name: "Monitoring" });
+    const link = within(screen.getByRole("group", { name: "Workspaces" })).getByRole("link", { name: "Monitoring" });
     fireEvent.click(link);
     await waitFor(() => expect(router.state.location.search).toBe("?service=retained-service&tab=evidence&stream=temperature"));
   });
@@ -111,6 +110,29 @@ describe("dedicated Data sources configuration", () => {
     fireEvent.click(monitoring);
     await screen.findByRole("heading", { name: "Monitoring home" });
     expect(router.state.location.search).toBe("?create=monitoring&reading=temperature");
+  });
+
+  it("opens an existing entity definition in Data sources without creating or saving anything", async () => {
+    mount();
+    await screen.findByRole("heading", { name: "Data sources" });
+    fireEvent.click(screen.getByRole("button", { name: "Catalogue settings" }));
+    const chooser = await screen.findByLabelText("Edit entity");
+    fireEvent.change(chooser, { target: { value: "room" } });
+    const name = await screen.findByLabelText("device name");
+    expect((name as HTMLInputElement).value).toBe("Room station");
+    expect(screen.getByRole("button", { name: "Remove device" })).toBeTruthy();
+    expect(saved.document.devices[0]!.id).toBe("room");
+    expect(apiClient.put).not.toHaveBeenCalled();
+    expect(apiUtils.post).not.toHaveBeenCalled();
+  });
+
+  it("keeps entity editing disabled for members without catalogue edit access", async () => {
+    saved.can_edit = false;
+    mount();
+    await screen.findByRole("heading", { name: "Data sources" });
+    fireEvent.click(screen.getByRole("button", { name: "Catalogue settings" }));
+    expect((await screen.findByLabelText("Edit entity")).hasAttribute("disabled")).toBe(true);
+    expect(apiClient.put).not.toHaveBeenCalled();
   });
 
   it("selects a broker directly, automatically previews a rule and applies once", async () => {

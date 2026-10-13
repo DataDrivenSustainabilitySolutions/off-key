@@ -16,13 +16,14 @@ type Props = {
   onImport: (document: SystemDocument, revision: number) => Promise<boolean>;
   onExport: () => Promise<void>;
   onCreate: (kind: SystemEntityKind) => void;
+  onEdit?: (kind: SystemEntityKind, id: string) => void;
 };
 type Candidate = { document: SystemDocument; revision: number };
 const itemCount = (count: number, singular: string) =>
   `${count.toLocaleString()} ${count === 1 ? singular : singular === "entity" ? "entities" : `${singular}s`}`;
 
 export function ExplorerSettings({
-  document, revision, canEdit, saving, error, onImport, onExport, onCreate,
+  document, revision, canEdit, saving, error, onImport, onExport, onCreate, onEdit,
 }: Props) {
   const fileInput = useRef<HTMLInputElement>(null);
   const busy = useRef(false);
@@ -110,6 +111,12 @@ export function ExplorerSettings({
             ><Plus size={14} aria-hidden="true" />Add {label}</button>
           ))}
         </div>
+        {onEdit && document.devices.length > 0 && <label className="ex-settings-entity">Edit entity
+          <select aria-label="Edit entity" value="" disabled={!canEdit || disabled} onChange={event => { if (event.target.value) onEdit("device", event.target.value); }}>
+            <option value="">Choose an entity…</option>
+            {document.devices.map(entity => <option key={entity.id} value={entity.id}>{entity.label}</option>)}
+          </select>
+        </label>}
       </section>
 
       <section className="ex-settings-section">

@@ -21,6 +21,18 @@ test("records only an opted-in reading and restores its history in the mobile wo
     const workspaces = page.getByRole("group", { name: "Workspaces", exact: true });
     await expect(workspaces.getByRole("link", { name: "Monitoring", exact: true })).toHaveAttribute("aria-current", "page");
     await expect(workspaces.getByRole("link", { name: "Data sources", exact: true })).toBeVisible();
+    await workspaces.getByRole("link", { name: "Anomalies", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Anomalies", exact: true })).toBeVisible();
+    await expect(workspaces.getByRole("link", { name: "Anomalies", exact: true })).toHaveAttribute("aria-current", "page");
+    await page.getByRole("button", { name: "Application menu", exact: true }).click();
+    await expect(page.getByRole("menuitem", { name: "Monitoring", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("menuitem", { name: "Entities", exact: true })).toHaveCount(0);
+    await page.keyboard.press("Escape");
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.getByRole("button", { name: "Toggle workspace navigation", exact: true }).click();
+    await workspaces.getByRole("link", { name: "Monitoring", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Monitoring", exact: true })).toBeVisible();
+    await page.setViewportSize({ width: 1280, height: 720 });
     token = await page.evaluate(() => localStorage.getItem("auth_token"));
     expect(token).toBeTruthy();
     const headers = { Authorization: `Bearer ${token}` };

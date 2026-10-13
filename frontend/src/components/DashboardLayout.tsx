@@ -111,10 +111,10 @@ type MetricCardProps = {
 
 const metricToneClassName: Record<NonNullable<MetricCardProps["tone"]>, string> = {
   default: "bg-muted-foreground/45",
-  success: "bg-emerald-500",
+  success: "bg-primary",
   warning: "bg-amber-500",
-  danger: "bg-red-500",
-  info: "bg-sky-500",
+  danger: "bg-destructive",
+  info: "bg-muted-foreground/45",
 };
 
 export function MetricCard({

@@ -11,7 +11,7 @@ function Location() {
   return <p>{useLocation().pathname}</p>;
 }
 function mount(path = "/") {
-  render(<MemoryRouter initialEntries={[path]}><ApplicationMenu navigation /><Location /></MemoryRouter>);
+  render(<MemoryRouter initialEntries={[path]}><ApplicationMenu /><Location /></MemoryRouter>);
   fireEvent.keyDown(screen.getByRole("button", { name: "Application menu" }), { key: "Enter" });
 }
 
@@ -23,24 +23,19 @@ describe("shared application menu", () => {
     expect(await screen.findByText("/login")).toBeTruthy();
   });
 
-  it.each(["/entities", "/details/entity-one", "/monitoring/entity-one"])("marks the entity directory current from %s while home points to monitoring", async (path) => {
+  it.each(["/", "/sources", "/anomalies", "/details/entity-one"])("keeps only account actions in the right menu at %s", (path) => {
     mount(path);
-    expect(screen.getByRole("menuitem", { name: "Entities" }).getAttribute("aria-current")).toBe("page");
-    expect(screen.getByRole("menuitem", { name: "Monitoring" }).getAttribute("aria-current")).toBeNull();
-    expect(screen.queryByRole("menuitem", { name: "Stations" })).toBeNull();
-    fireEvent.click(screen.getByRole("menuitem", { name: "Monitoring" }));
-    expect(await screen.findByText("/")).toBeTruthy();
+    expect(screen.getAllByRole("menuitem").map(item => item.textContent)).toEqual(["Account", "Settings", "Logout"]);
   });
 
-  it("opens the generic entity directory from the workspace menu", async () => {
-    mount();
-    fireEvent.click(screen.getByRole("menuitem", { name: "Entities" }));
-    expect(await screen.findByText("/entities")).toBeTruthy();
+  it.each([["/account", "Account"], ["/account/settings", "Settings"]])("marks the current account action at %s", (path, label) => {
+    mount(path);
+    expect(screen.getByRole("menuitem", { name: label }).getAttribute("aria-current")).toBe("page");
   });
 
   it("offers sign-in without authenticated application actions", () => {
     auth.isAuthenticated = false;
-    render(<MemoryRouter><ApplicationMenu navigation /></MemoryRouter>);
+    render(<MemoryRouter><ApplicationMenu /></MemoryRouter>);
     expect(screen.getByRole("link", { name: "Login" }).getAttribute("href")).toBe("/login");
     expect(screen.queryByRole("button", { name: "Application menu" })).toBeNull();
   });

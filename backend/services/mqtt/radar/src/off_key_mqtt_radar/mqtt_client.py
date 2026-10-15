@@ -92,7 +92,7 @@ class RadarMQTTClient:
             # Initial startup must be connected and subscribed before the service is
             # considered ready. Background reconnects are only for later failures.
             await self._connect()
-        except Exception:
+        except BaseException:
             await self.stop()
             raise
 
@@ -112,10 +112,7 @@ class RadarMQTTClient:
         self._reconnect_task = None
 
         # Disconnect from broker
-        if self.client:
-            self.client.loop_stop()
-            self.client.disconnect()
-            self.client = None
+        await self._close_client()
 
         # Cancel message processor
         if self._message_processor_task:
@@ -133,6 +130,9 @@ class RadarMQTTClient:
 
     async def _connect(self):
         """Connect to MQTT broker with authentication and TLS support"""
+        # RADAR owns reconnection. Retire the previous client before replacing it;
+        # otherwise its network thread can reconnect and keep delivering messages.
+        await self._close_client()
         try:
             loop = asyncio.get_running_loop()
             self._loop = loop
@@ -144,7 +144,9 @@ class RadarMQTTClient:
             self.is_connected = False
 
             # Use TCP transport for simplicity (bridge handles WebSocket if needed)
-            self.client = mqtt.Client(client_id=client_id, transport="tcp")
+            self.client = mqtt.Client(
+                client_id=client_id, transport="tcp", reconnect_on_failure=False
+            )
 
             # Configure TLS if required
             if self.config.use_tls:
@@ -190,30 +192,36 @@ class RadarMQTTClient:
             self.connection_time = datetime.now()
             self.reconnect_attempts = 0
 
-        except Exception as e:
-            if self.client:
-                try:
-                    self.client.loop_stop()
-                    self.client.disconnect()
-                except Exception:
-                    logger.debug(
-                        "event=radar.mqtt_failed_client_cleanup_error",
-                        exc_info=True,
-                    )
-                finally:
-                    self.client = None
+        except BaseException as e:
+            await self._close_client()
             logger.error(
                 "event=radar.mqtt_connect_failed error=%s", str(e), exc_info=True
             )
             raise
 
+    async def _close_client(self) -> None:
+        """Fence retired callbacks before stopping the owned network thread."""
+        client, self.client = self.client, None
+        self.is_connected = False
+        if client is not None:
+            try:
+                client.disconnect()
+            finally:
+                await asyncio.to_thread(client.loop_stop)
+
     def _notify_connection_result(self, error: RuntimeError | None = None) -> None:
         """Resolve the active connection attempt on the asyncio event loop."""
         if not self._loop or self._loop.is_closed():
             return
-        self._loop.call_soon_threadsafe(self._complete_connection_attempt, error)
+        self._loop.call_soon_threadsafe(
+            self._complete_connection_attempt, self.client, error
+        )
 
-    def _complete_connection_attempt(self, error: RuntimeError | None) -> None:
+    def _complete_connection_attempt(
+        self, client: mqtt.Client | None, error: RuntimeError | None
+    ) -> None:
+        if client is not self.client:
+            return
         connection_result = self._connection_result
         if not connection_result or connection_result.done():
             return
@@ -224,6 +232,8 @@ class RadarMQTTClient:
 
     def _on_connect(self, client, userdata, flags, rc):
         """MQTT connection callback"""
+        if client is not self.client or self._shutdown_event.is_set():
+            return
         if rc == 0:
             self.is_connected = True
             logger.info("event=radar.mqtt_connection_established")
@@ -262,6 +272,8 @@ class RadarMQTTClient:
 
     def _on_disconnect(self, client, userdata, rc):
         """MQTT disconnection callback"""
+        if client is not self.client or self._shutdown_event.is_set():
+            return
         self.is_connected = False
         self._notify_connection_result(
             RuntimeError("Disconnected before MQTT connection was established")

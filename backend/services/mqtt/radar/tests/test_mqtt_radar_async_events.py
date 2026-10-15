@@ -629,7 +629,7 @@ class TestMQTTAsyncEventHandling:
         await mqtt_client.start()
 
         # Simulate disconnection
-        mqtt_client._on_disconnect(None, None, 1)
+        mqtt_client._on_disconnect(mqtt_client.client, None, 1)
 
         # Should update connection state
         assert not mqtt_client.is_connected

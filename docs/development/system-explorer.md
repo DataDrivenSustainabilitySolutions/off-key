@@ -89,6 +89,13 @@ Recording controls live here, with inheritance, child exceptions, future-reading
 preview counts, affected-monitor confirmation, and one Apply action. Members inspect
 without editing. Catalogue settings remain available without opening automatically.
 
+Catalogue settings is available in the Monitoring and Data sources workspaces.
+It shows the current catalogue's actual counts, explains each creation action, and
+provides separate import and export rows and an existing-entity
+chooser. A selected JSON file is reviewed with its name and contents before explicit
+replacement at the captured revision. Export remains available when editing is
+unavailable. The dialog follows both themes and reflows for narrow screens.
+
 Monitoring remains the default destination. Setup detours preserve the service draft
 and selected inputs in account-scoped memory. Returning through the left navigation restores the
 Monitoring URL, search, filters, sidebar positions, and chart inspection. The bounded

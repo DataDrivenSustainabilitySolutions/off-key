@@ -6,6 +6,7 @@ import { useAuth } from "@/auth/AuthContext";
 import { AppHeader } from "@/components/AppHeader";
 import { Button } from "@/components/ui/button";
 import { ExplorerSidebar } from "../explorer/ExplorerSidebar";
+import { CatalogueSettingsHeader } from "../explorer/CatalogueSettingsHeader";
 import { navigationRows, searchNavigation } from "../explorer/navigationIndex";
 import type { ExplorerNode } from "../explorer/navigationIndex";
 import { navigationDraft } from "@/lib/navigation-draft";
@@ -52,6 +53,7 @@ export function SourcesWorkspace() {
   const [panel, setPanel] = useState<"settings" | undefined>();
   const [editor, setEditor] = useState<{ kind: SystemEntityKind; id?: string; key: number }>();
   const toggle = useRef<HTMLButtonElement>(null);
+  const dialogOrigin = useRef<HTMLElement | null>(null);
   const [telemetry] = useState(() => new SystemLiveTelemetry());
   const history = useMemo(() => navigationDraft(`history:${userId}`, () => new ReadingHistoryCache(userId)), [userId]);
   const rules = useRecordingRules(system.snapshot, scope?.connection_id, system.applyRules);
@@ -118,7 +120,7 @@ export function SourcesWorkspace() {
     onQuery={setQuery} onScope={browse} onOpen={select} onBrowse={node => browse(node.key)}
     onBack={() => query ? setQuery("") : browse(index.nodes.get(currentKey)?.parentKey ?? index.rootKey)}
     onInspect={() => { const node = index.nodes.get(currentKey); if (node) select(node); }}
-    onSettings={() => { setMobileOpen(false); setPanel("settings"); }} onDismiss={() => setMobileOpen(false)} />;
+    onSettings={() => { dialogOrigin.current = window.document.activeElement as HTMLElement; setMobileOpen(false); setPanel("settings"); }} onDismiss={() => setMobileOpen(false)} />;
   const dismiss = () => { if (!system.saving) { setPanel(undefined); setEditor(undefined); } };
   const showOverview = () => setParams(safeReturn === "/" ? {} : { returnTo: safeReturn });
   const sourceEditor = scope && <SourceRecordingInspector key={JSON.stringify(scope)} scope={scope} ids={ids} document={document}
@@ -155,8 +157,11 @@ export function SourcesWorkspace() {
       </div></main>
     <Dialog.Root open={mobileOpen} onOpenChange={setMobileOpen}><Dialog.Portal><Dialog.Overlay className="ex-dialog-overlay" /><Dialog.Content className="ex-mobile-sidebar"
       onCloseAutoFocus={event => { event.preventDefault(); toggle.current?.focus(); }}><Dialog.Title className="ex-sr-only">Data sources explorer</Dialog.Title><Dialog.Description className="ex-sr-only">Browse brokers, topic folders and readings.</Dialog.Description>{sidebar}</Dialog.Content></Dialog.Portal></Dialog.Root>
-    <Dialog.Root open={!!panel || !!editor} onOpenChange={open => { if (!open) dismiss(); }}><Dialog.Portal><Dialog.Overlay className="ex-dialog-overlay" /><Dialog.Content className="ex-dialog">
-      <header><Dialog.Title>{editor ? "Edit data source" : "Catalogue settings"}</Dialog.Title><button aria-label="Close settings" onClick={dismiss}><X size={18} /></button></header><Dialog.Description className="ex-sr-only">Manage the saved catalogue.</Dialog.Description>
+    <Dialog.Root open={!!panel || !!editor} onOpenChange={open => { if (!open) dismiss(); }}><Dialog.Portal><Dialog.Overlay className="ex-dialog-overlay" /><Dialog.Content className={editor ? "ex-dialog" : "ex-dialog ex-settings-dialog"}
+      onEscapeKeyDown={event => { if (system.saving) event.preventDefault(); }}
+      onCloseAutoFocus={event => { event.preventDefault(); (dialogOrigin.current?.isConnected ? dialogOrigin.current : toggle.current)?.focus(); }}>
+      {editor ? <><header><Dialog.Title>Edit data source</Dialog.Title><button aria-label="Close settings" onClick={dismiss}><X size={18} /></button></header><Dialog.Description className="ex-sr-only">Manage the saved catalogue.</Dialog.Description></>
+        : <CatalogueSettingsHeader disabled={system.saving} />}
       <Suspense fallback={<p>Loading…</p>}>{editor ? <StructureEditor key={editor.key} document={document} revision={system.revision ?? 0} kind={editor.kind} entityId={editor.id}
         canEdit={system.canEdit} saving={system.saving} saveError={system.error} onSave={system.save} onDone={dismiss} /> : <Settings document={document} revision={system.revision ?? 0}
         canEdit={system.canEdit && !rules.dirty} saving={system.saving} error={system.error} onImport={importCatalogue} onExport={exportCatalogue} onCreate={openEditor} onEdit={openEditor} />}</Suspense>

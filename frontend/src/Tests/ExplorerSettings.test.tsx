@@ -40,6 +40,7 @@ describe("explorer settings catalogue files", () => {
     choose(JSON.stringify(imported));
     await waitForPreview();
     expect(screen.getByText("Roof observations")).not.toBeNull();
+    expect(screen.getByText("system.json")).not.toBeNull();
     expect(screen.getByText("1 broker · 1 entity · 1 reading · 0 catalogue groups")).not.toBeNull();
     expect(props.onImport).not.toHaveBeenCalled();
     rerender(<ExplorerSettings {...props} revision={9} />);
@@ -138,5 +139,17 @@ describe("explorer settings catalogue files", () => {
     expect(screen.getByRole("button", { name: "Export catalogue" }).matches(":disabled")).toBe(false);
     rerender(<ExplorerSettings {...props} document={createEmptySystem()} />);
     expect(screen.getByRole("button", { name: "Add reading" }).matches(":disabled")).toBe(true);
+  });
+
+  it("keeps a reviewed file cancellable when catalogue edit access is lost", async () => {
+    const props = common();
+    const { rerender } = render(<ExplorerSettings {...props} />);
+    choose(JSON.stringify(fixture()));
+    await waitForPreview();
+    rerender(<ExplorerSettings {...props} canEdit={false} />);
+    expect(preview().matches(":disabled")).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Cancel import" }));
+    expect(screen.queryByRole("region", { name: "Import preview" })).toBeNull();
+    expect(props.onImport).not.toHaveBeenCalled();
   });
 });

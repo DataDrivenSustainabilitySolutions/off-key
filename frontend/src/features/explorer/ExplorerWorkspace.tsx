@@ -15,6 +15,7 @@ import { MonitoringServiceList } from "../monitoring/MonitoringServiceList";
 import { buildMonitoringIndex, serviceName, servicesForScope } from "../monitoring/serviceModel";
 import { useMonitoringServices } from "../monitoring/useMonitoringServices";
 import { ExplorerSidebar } from "./ExplorerSidebar";
+import { CatalogueSettingsHeader } from "./CatalogueSettingsHeader";
 import { ExplorerSidebarResize } from "./ExplorerSidebarResize";
 import { DEFAULT_SIDEBAR_WIDTH } from "./sidebarSizing";
 import { sourceHref } from "../catalogue/collectionRules";
@@ -302,11 +303,12 @@ export function ExplorerWorkspace({ initialPanel }: { initialPanel?: "settings" 
       <Dialog.Content className="ex-mobile-sidebar" onCloseAutoFocus={(event) => { event.preventDefault(); if (!panel) explorerToggle.current?.focus(); }}><Dialog.Title className="ex-sr-only">System explorer</Dialog.Title>
         <Dialog.Description className="ex-sr-only">Browse your catalogue or search for a reading.</Dialog.Description>{sidebar}</Dialog.Content></Dialog.Portal></Dialog.Root>
     <Dialog.Root open={!!panel || !!editor} onOpenChange={(value) => { if (!value && !system.saving) { setPanel(null); setEditor(undefined); } }}>
-      <Dialog.Portal><Dialog.Overlay className="ex-dialog-overlay" /><Dialog.Content className="ex-dialog" onEscapeKeyDown={(event) => { if (system.saving) event.preventDefault(); }}
+      <Dialog.Portal><Dialog.Overlay className="ex-dialog-overlay" /><Dialog.Content className={editor ? "ex-dialog" : "ex-dialog ex-settings-dialog"} onEscapeKeyDown={(event) => { if (system.saving) event.preventDefault(); }}
         onCloseAutoFocus={(event) => { event.preventDefault(); (dialogOrigin.current?.isConnected ? dialogOrigin.current : explorerToggle.current)?.focus(); }}>
-        <header><Dialog.Title>{editor ? "Edit catalogue" : "Catalogue settings"}</Dialog.Title>
+        {editor ? <><header><Dialog.Title>Edit catalogue</Dialog.Title>
           <Dialog.Close className="ex-icon-button" disabled={system.saving} aria-label="Close settings"><X size={18} /></Dialog.Close></header>
-        <Dialog.Description className="ex-sr-only">Manage the saved system definition.</Dialog.Description>
+          <Dialog.Description className="ex-sr-only">Manage the saved system definition.</Dialog.Description></>
+          : <CatalogueSettingsHeader disabled={system.saving} />}
         <Suspense fallback={<p className="ex-muted">Loading…</p>}>
           {editor ? <StructureEditor key={editor.key} document={document} revision={revision} kind={editor.kind} entityId={editor.id}
             canEdit={system.canEdit} saving={system.saving} saveError={system.error} onSave={system.save} onDone={() => setEditor(undefined)} />

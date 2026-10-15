@@ -3,149 +3,229 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#090909">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#181c21" media="(prefers-color-scheme: dark)">
   <meta name="description" content="Aberration turns streaming sensor data into evidence of change. Continuous anomaly detection for connected systems.">
   <title>Aberration — Evidence of change.</title>
   <link rel="canonical" href="https://{{ ingress_base_domain | e }}/">
-  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%23090909'/%3E%3Cpath d='M37 12h9L27 52h-9Z' fill='%23f2f2f2'/%3E%3C/svg%3E">
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%233a7e72'/%3E%3Cpath d='M37 12h9L27 52h-9Z' fill='white'/%3E%3C/svg%3E">
   <style>
+    /* Mirror the application tokens in frontend/src/App.css. Keep this page self-contained. */
     :root {
-      color-scheme: dark;
-      --paper: #f2f2f2;
-      --muted: #a3a3a3;
-      --line: #333;
-      font-family: "Courier New", Courier, monospace;
-      background: #090909;
-      color: var(--paper);
+      color-scheme: light;
+      --background: 0 0% 100%;
+      --foreground: 210 22% 19%;
+      --primary: 170 37% 36%;
+      --primary-foreground: 0 0% 100%;
+      --muted: 220 23% 97%;
+      --muted-foreground: 210 10% 44%;
+      --accent: 210 21% 95%;
+      --border: 210 15% 92%;
+      --radius: .5rem;
+      background: hsl(var(--background));
+      color: hsl(var(--foreground));
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        color-scheme: dark;
+        --background: 213 16% 11%;
+        --foreground: 207 22% 90%;
+        --primary: 164 28% 64%;
+        --primary-foreground: 213 16% 11%;
+        --muted: 213 19% 9%;
+        --muted-foreground: 207 11% 63%;
+        --accent: 212 18% 16%;
+        --border: 212 13% 19%;
+      }
     }
     * { box-sizing: border-box; }
-    body { margin: 0; }
-    a { color: inherit; text-underline-offset: .3em; }
-    a:focus-visible { outline: 2px solid var(--paper); outline-offset: 6px; }
-    ::selection { background: var(--paper); color: #090909; }
-    .page { max-width: 1440px; padding: 0 5vw; margin: auto; }
-    .skip-link { position: absolute; left: 5vw; top: -5rem; padding: 1rem; background: #090909; }
-    .skip-link:focus { top: 1rem; z-index: 1; }
-    header { display: flex; align-items: center; justify-content: space-between; gap: 2rem; min-height: 108px; border-bottom: 1px solid var(--line); }
-    .wordmark { display: flex; align-items: center; gap: .85rem; font-size: 1.35rem; font-weight: bold; letter-spacing: -.06em; }
-    .mark { font-size: 1.5rem; font-weight: normal; letter-spacing: -.16em; margin-right: .2rem; }
-    .nav-link { font-size: .875rem; text-decoration: none; padding: .75rem 0; }
-    .nav-link:hover { text-decoration: underline; }
-    .arrow { display: inline-block; margin-left: .8em; }
-    .hero { padding: 5.5rem 0 4.5rem; }
-    .eyebrow { margin: 0 0 2.6rem; font-size: .8125rem; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
-    .hero-grid { display: grid; grid-template-columns: 1.3fr 1fr; gap: 4rem; align-items: center; }
-    h1 { margin: 0; font-size: clamp(3.1rem, 6.1vw, 5.5rem); font-weight: normal; letter-spacing: -.075em; line-height: 1.04; }
-    h1 span { display: block; }
-    .description { max-width: 37rem; margin: 2rem 0; color: var(--muted); font-size: 1rem; line-height: 1.75; }
-    .button { display: inline-flex; align-items: center; justify-content: space-between; gap: 2.5rem; min-height: 52px; padding: 1rem 1.25rem; border: 1px solid var(--paper); background: var(--paper); color: #090909; text-decoration: none; font-size: .875rem; }
-    .button:hover { background: #090909; color: var(--paper); }
-    figure { margin: 0; min-width: 0; }
-    .figure-label { display: flex; justify-content: space-between; gap: 1rem; font-size: .75rem; letter-spacing: .08em; color: var(--muted); }
-    .signal { display: block; width: 100%; height: auto; margin: 1.5rem 0 1rem; overflow: visible; }
-    .signal .grid { stroke: #272727; stroke-width: 1; }
-    .signal .baseline { stroke: #666; stroke-width: 1; stroke-dasharray: 3 5; }
-    .signal .trace { stroke: var(--paper); stroke-width: 1.5; fill: none; stroke-linejoin: round; }
-    .signal .change { stroke: #999; stroke-width: 1; stroke-dasharray: 2 5; }
-    figcaption { padding-top: 1rem; border-top: 1px solid var(--line); color: var(--muted); font-size: .8125rem; line-height: 1.6; }
-    .principle { display: flex; justify-content: space-between; gap: 2rem; margin-top: 5rem; padding-top: 1.3rem; border-top: 1px solid var(--line); font-size: .8125rem; line-height: 1.5; }
-    .principle span:last-child { color: var(--muted); }
-    .method { display: grid; grid-template-columns: repeat(3, 1fr); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
-    .method article { padding: 2rem 2.5rem 2.2rem 0; }
-    .method article + article { padding-left: 2.5rem; border-left: 1px solid var(--line); }
-    .number { color: var(--muted); font-size: .75rem; }
-    h2 { margin: 1.6rem 0 .9rem; font-size: 1.125rem; font-weight: normal; }
-    .method p { margin: 0; max-width: 25rem; color: var(--muted); font-size: .875rem; line-height: 1.8; }
-    footer { display: flex; justify-content: space-between; gap: 2rem; padding: 2rem 0; color: var(--muted); font-size: .75rem; line-height: 1.6; }
-    footer p { margin: 0; }
-    @media (min-width: 1600px) { .page { padding: 0 72px; } }
-    @media (max-width: 900px) {
-      .hero-grid { gap: 2rem; }
-      .hero { padding-top: 4rem; }
-      .method article { padding-right: 1.5rem; }
-      .method article + article { padding-left: 1.5rem; }
+    body { min-width: 320px; margin: 0; font-size: 14px; line-height: 1.5; }
+    a { color: inherit; text-decoration: none; }
+    a:focus-visible { outline: 2px solid hsl(var(--primary)); outline-offset: 5px; }
+    ::selection { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+    .container { width: min(100% - 96px, 1200px); margin-inline: auto; }
+    .skip-link { position: absolute; top: 12px; left: 24px; z-index: 2; padding: 12px 16px; border: 1px solid hsl(var(--border)); border-radius: var(--radius); background: hsl(var(--background)); transform: translateY(-160%); }
+    .skip-link:focus { transform: translateY(0); }
+    .site-header { border-bottom: 1px solid hsl(var(--border)); }
+    .header-inner { display: flex; align-items: center; justify-content: space-between; gap: 24px; min-height: 76px; }
+    .wordmark { display: inline-flex; align-items: center; gap: 10px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 17px; font-weight: 600; letter-spacing: -.02em; }
+    .brand-mark { width: 30px; height: 30px; border: 1px solid hsl(var(--border)); border-radius: 7px; color: hsl(var(--primary)); }
+    .header-link { display: inline-flex; align-items: center; gap: 8px; min-height: 40px; padding: 0 12px; border-radius: 6px; font-size: 13px; font-weight: 500; }
+    .header-link:hover { background: hsl(var(--accent)); }
+    .arrow { width: 16px; height: 16px; flex-shrink: 0; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+    .hero { display: grid; grid-template-columns: 1fr 1.05fr; gap: 80px; align-items: center; padding-block: 96px 88px; }
+    .eyebrow { display: flex; align-items: center; gap: 8px; margin: 0 0 26px; color: hsl(var(--primary)); font-size: 13px; font-weight: 500; }
+    .dot { display: inline-block; width: 6px; height: 6px; flex-shrink: 0; border-radius: 50%; background: currentColor; }
+    h1 { margin: 0; font-size: clamp(56px, 5.8vw, 80px); line-height: 1.06; letter-spacing: -.055em; font-weight: 550; }
+    h1 span { display: block; color: hsl(var(--primary)); }
+    .description { max-width: 430px; margin: 26px 0 30px; color: hsl(var(--muted-foreground)); font-size: 17px; line-height: 1.75; }
+    .hero-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 12px 24px; }
+    .button { display: inline-flex; align-items: center; justify-content: center; gap: 20px; min-height: 44px; padding: 10px 18px; border-radius: 6px; background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); font-size: 13px; font-weight: 500; }
+    .button:hover { background: hsl(var(--primary) / .9); }
+    .text-link { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; font-size: 13px; color: hsl(var(--muted-foreground)); }
+    .text-link:hover { color: hsl(var(--foreground)); }
+    .hero-note { margin: 24px 0 0; color: hsl(var(--muted-foreground)); font-size: 12px; }
+    .pattern-figure { min-width: 0; margin: 0; }
+    .pattern-art { display: block; width: 100%; height: auto; }
+    .pattern-field { fill: hsl(var(--primary) / .035); }
+    .pattern-contours { fill: none; stroke: hsl(var(--muted-foreground) / .28); stroke-width: 1; }
+    .pattern-art path { vector-effect: non-scaling-stroke; }
+    .pattern-change { fill: none; stroke: hsl(var(--primary)); stroke-width: 1.8; stroke-linecap: round; }
+    .pattern-halo { fill: hsl(var(--primary) / .1); }
+    .pattern-point { fill: hsl(var(--primary)); }
+    .pattern-caption { display: flex; align-items: center; justify-content: center; gap: 10px; margin-top: 4px; color: hsl(var(--muted-foreground)); font-size: 12px; }
+    .pattern-caption::before { content: ""; width: 24px; height: 1px; background: hsl(var(--primary)); }
+    .approach { padding-block: 56px 60px; border-block: 1px solid hsl(var(--border)); background: hsl(var(--muted)); scroll-margin-top: 24px; }
+    .section-heading { display: flex; justify-content: space-between; align-items: baseline; gap: 32px; margin-bottom: 38px; }
+    h2 { margin: 0; font-size: 28px; line-height: 1.3; font-weight: 550; letter-spacing: -.035em; }
+    .section-heading > p { margin: 0; max-width: 360px; color: hsl(var(--muted-foreground)); font-size: 14px; }
+    .steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 48px; margin: 0; padding: 0; list-style: none; }
+    .step-label { display: flex; align-items: center; gap: 10px; color: hsl(var(--primary)); font-size: 12px; font-weight: 500; }
+    .step-number { display: inline-flex; align-items: center; justify-content: center; width: 25px; height: 25px; border: 1px solid hsl(var(--primary) / .25); border-radius: 6px; font-size: 10px; font-variant-numeric: tabular-nums; }
+    h3 { margin: 18px 0 10px; font-size: 17px; font-weight: 550; letter-spacing: -.02em; }
+    .steps p { max-width: 330px; margin: 0; color: hsl(var(--muted-foreground)); font-size: 14px; line-height: 1.8; }
+    .closing { display: flex; align-items: center; justify-content: space-between; gap: 32px; padding-block: 52px; }
+    .closing h2 { font-size: 23px; }
+    .closing p { margin: 8px 0 0; color: hsl(var(--muted-foreground)); }
+    .site-footer { border-top: 1px solid hsl(var(--border)); }
+    .footer-inner { display: flex; justify-content: space-between; gap: 24px; padding-block: 24px; color: hsl(var(--muted-foreground)); font-size: 12px; }
+    .footer-inner p { margin: 0; }
+    @media (max-width: 1050px) {
+      .container { width: calc(100% - 56px); }
+      .hero { gap: 40px; padding-block: 72px; }
+      h1 { font-size: 62px; }
+      .description { font-size: 16px; }
+      .steps { gap: 28px; }
+      .section-heading { align-items: flex-start; }
     }
-    @media (max-width: 680px) {
-      .page { padding: 0 6vw; }
-      header { min-height: 88px; gap: 1rem; }
-      .wordmark { font-size: 1.1rem; gap: .6rem; }
-      .nav-link { font-size: .8125rem; }
-      .nav-link .arrow { margin-left: .2rem; }
-      .hero { padding: 3.5rem 0 2.5rem; }
-      .eyebrow { font-size: .75rem; letter-spacing: .06em; margin-bottom: 2rem; }
-      .hero-grid { grid-template-columns: 1fr; gap: 3.5rem; }
-      h1 { font-size: clamp(2.6rem, 11.5vw, 4.5rem); }
-      .description { margin-top: 1.5rem; }
-      figure { max-width: 30rem; }
-      .principle { margin-top: 2.5rem; flex-direction: column; gap: .5rem; }
-      .method { grid-template-columns: 1fr; }
-      .method article, .method article + article { padding: 1.75rem 0; border-left: 0; }
-      .method article + article { border-top: 1px solid var(--line); }
-      h2 { margin-top: .9rem; }
-      .method p { font-size: 1rem; max-width: none; }
-      footer { flex-direction: column; gap: .5rem; }
+    @media (max-width: 760px) {
+      .container { width: calc(100% - 40px); }
+      .header-inner { min-height: 64px; gap: 12px; }
+      .header-link { min-height: 44px; padding-inline: 8px; }
+      .hero { grid-template-columns: minmax(0, 1fr); gap: 40px; padding-block: 52px; }
+      h1 { font-size: clamp(52px, 10vw, 72px); }
+      .eyebrow { margin-bottom: 20px; }
+      .description { max-width: 480px; margin-block: 22px 26px; }
+      .hero-note { margin-top: 18px; }
+      .pattern-figure { width: 100%; max-width: 560px; }
+      .approach { padding-block: 40px; }
+      .section-heading { flex-direction: column; gap: 12px; margin-bottom: 32px; }
+      .section-heading > p { max-width: 480px; }
+      h2 { font-size: 25px; }
+      .steps { grid-template-columns: 1fr; gap: 24px; }
+      .steps li + li { padding-top: 24px; border-top: 1px solid hsl(var(--border)); }
+      h3 { margin-top: 12px; }
+      .steps p { max-width: 480px; }
+      .closing { align-items: flex-start; flex-direction: column; gap: 24px; padding-block: 40px; }
+      .footer-inner { flex-wrap: wrap; gap: 8px 24px; font-size: 11px; }
+    }
+    @media (max-width: 380px) {
+      .wordmark { gap: 7px; font-size: 15px; }
+      .brand-mark { width: 26px; height: 26px; }
+      .header-link { gap: 5px; font-size: 12px; }
+      .hero-actions { gap: 8px 18px; }
+    }
+    @media (forced-colors: active) {
+      .button, .step-number { border: 1px solid ButtonText; }
+      .pattern-contours { stroke: CanvasText; }
+      .pattern-change { stroke: LinkText; }
+      .pattern-point { fill: LinkText; }
     }
   </style>
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
-  <div class="page">
-    <header>
-      <div class="wordmark"><span class="mark" aria-hidden="true">[ / ]</span>aberration</div>
+  <header class="site-header">
+    <div class="container header-inner">
+      <div class="wordmark">
+        <svg class="brand-mark" viewBox="0 0 64 64" aria-hidden="true"><path d="M37 12h9L27 52h-9Z" fill="currentColor"/></svg>
+        <span>aberration</span>
+      </div>
       <nav aria-label="Main navigation">
-        <a class="nav-link" href="{{ frontend_base_url | e }}/">Dashboard<span class="arrow" aria-hidden="true">↗</span></a>
+        <a class="header-link" href="{{ frontend_base_url | e }}/">Dashboard<svg class="arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7M7 7h10v10"/></svg></a>
       </nav>
-    </header>
-    <main id="main">
-      <section class="hero" aria-labelledby="headline">
-        <p class="eyebrow">Streaming data. Statistical evidence.</p>
-        <div class="hero-grid">
-          <div>
-            <h1 id="headline"><span>Evidence</span><span>of change.</span></h1>
-            <p class="description">Every system has a rhythm. Aberration monitors the relationships in your sensor data and surfaces the moments that depart from it.</p>
-            <a class="button" href="{{ frontend_base_url | e }}/">Open dashboard<span aria-hidden="true">↗</span></a>
-          </div>
-          <figure>
-            <div class="figure-label"><span>FIG. 01 / DEVIATION</span><span>TIME →</span></div>
-            <svg class="signal" viewBox="0 0 440 300" role="img" aria-labelledby="signal-title signal-description">
-              <title id="signal-title">A signal departing from its baseline</title>
-              <desc id="signal-description">An illustrative trace begins with small oscillations, then shifts into a larger, sustained deviation. This is a conceptual illustration, not live telemetry.</desc>
-              <g class="grid">
-                <path d="M0 30H440M0 90H440M0 150H440M0 210H440M0 270H440"/>
-                <path d="M20 0V300M100 0V300M180 0V300M260 0V300M340 0V300M420 0V300"/>
-              </g>
-              <path class="baseline" d="M0 150H440"/>
-              <path class="change" d="M260 0V300"/>
-              <path class="trace" d="M0 151 8 151 16 148 24 155 32 146 40 152 48 150 56 155 64 143 72 156 80 150 88 148 96 154 104 145 112 151 120 153 128 147 136 154 144 145 152 150 160 157 168 147 176 152 184 143 192 151 200 155 208 148 216 152 224 145 232 155 240 149 248 152 256 145 264 136 272 147 280 119 288 132 296 104 304 116 312 80 320 95 328 57 336 76 344 43 352 59 360 34 368 50 376 30 384 47 392 26 400 44 408 33 416 50 424 28 432 41 440 30"/>
-              <circle cx="260" cy="140" r="4" fill="#f2f2f2"/>
-            </svg>
-            <figcaption>Small departures. Accumulating evidence.<br>A different view of what your systems are telling you.</figcaption>
-          </figure>
+    </div>
+  </header>
+  <main id="main">
+    <section class="container hero" aria-labelledby="headline">
+      <div>
+        <p class="eyebrow"><span class="dot" aria-hidden="true"></span>Continuous anomaly detection</p>
+        <h1 id="headline">Evidence <span>of change.</span></h1>
+        <p class="description">Every system has a rhythm. Aberration follows the relationships in your sensor data and brings the moments of change into view.</p>
+        <div class="hero-actions">
+          <a class="button" href="{{ frontend_base_url | e }}/">Open dashboard<svg class="arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></a>
+          <a class="text-link" href="#approach">How it works<svg class="arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14m-6-6 6 6 6-6"/></svg></a>
         </div>
-        <div class="principle"><span>Continuous anomaly detection for connected systems.</span><span>Observe / Calibrate / Detect</span></div>
-      </section>
-      <section class="method" aria-label="From observations to evidence">
-        <article>
-          <span class="number">01 / OBSERVE</span>
-          <h2>Read the relationships.</h2>
-          <p>Bring sensor streams into view. Monitor how measurements behave together, beyond individual readings.</p>
-        </article>
-        <article>
-          <span class="number">02 / CALIBRATE</span>
-          <h2>Establish the reference.</h2>
-          <p>Learn from baseline data and calibrate anomaly scores with conformal methods.</p>
-        </article>
-        <article>
-          <span class="number">03 / DETECT</span>
-          <h2>Follow the evidence.</h2>
-          <p>Accumulate evidence as observations arrive. Inspect detected changes alongside the underlying telemetry.</p>
-        </article>
-      </section>
-    </main>
-    <footer>
-      <p>ABERRATION / Anomaly detection</p>
+        <p class="hero-note">Streaming data. Statistical evidence. A clearer picture.</p>
+      </div>
+      <figure class="pattern-figure">
+        <svg class="pattern-art" viewBox="0 0 560 470" role="img" aria-labelledby="pattern-title" aria-describedby="pattern-description">
+          <title id="pattern-title">A new shape emerging from a familiar pattern</title>
+          <desc id="pattern-description">Fine nested contours form a flowing, organic shape. A teal line departs from their shared rhythm and opens into a new direction.</desc>
+          <defs>
+            <path id="contour" d="M85 322C33 255 58 147 165 115C252 90 293 161 380 128C474 92 534 149 506 237C479 327 369 355 278 386C193 416 124 378 85 322Z"/>
+          </defs>
+          <use class="pattern-field" href="#contour"/>
+          <g class="pattern-contours">
+            <use href="#contour"/>
+            <use href="#contour" transform="translate(280 250) scale(.91) translate(-280 -250)"/>
+            <use href="#contour" transform="translate(280 250) scale(.82) translate(-280 -250)"/>
+            <use href="#contour" transform="translate(280 250) scale(.73) translate(-280 -250)"/>
+            <use href="#contour" transform="translate(280 250) scale(.64) translate(-280 -250)"/>
+            <use href="#contour" transform="translate(280 250) scale(.55) translate(-280 -250)"/>
+            <use href="#contour" transform="translate(280 250) scale(.46) translate(-280 -250)"/>
+            <use href="#contour" transform="translate(280 250) scale(.37) translate(-280 -250)"/>
+            <use href="#contour" transform="translate(280 250) scale(.28) translate(-280 -250)"/>
+            <use href="#contour" transform="translate(280 250) scale(.19) translate(-280 -250)"/>
+          </g>
+          <path class="pattern-change" d="M173 296C129 245 147 192 216 178C284 165 302 217 348 187C391 157 416 93 461 113C510 136 460 218 407 257C364 287 320 302 276 324C232 346 193 327 173 296Z"/>
+          <circle class="pattern-halo" cx="461" cy="113" r="12"/>
+          <circle class="pattern-point" cx="461" cy="113" r="3.5"/>
+        </svg>
+        <figcaption class="pattern-caption">Patterns emerge. Change stands out.</figcaption>
+      </figure>
+    </section>
+    <section class="approach" id="approach" aria-labelledby="approach-heading">
+      <div class="container">
+        <div class="section-heading">
+          <h2 id="approach-heading">See the change in context.</h2>
+          <p>From connected sensor streams to evidence you can explore, in one continuous workflow.</p>
+        </div>
+        <ol class="steps">
+          <li>
+            <div class="step-label"><span class="step-number" aria-hidden="true">01</span>Observe</div>
+            <h3>Read the relationships.</h3>
+            <p>Bring your sensor streams together. See how measurements behave in relation to one another, beyond individual readings.</p>
+          </li>
+          <li>
+            <div class="step-label"><span class="step-number" aria-hidden="true">02</span>Calibrate</div>
+            <h3>Establish the reference.</h3>
+            <p>Learn from baseline data and calibrate anomaly scores with conformal methods. Give new observations a meaningful reference.</p>
+          </li>
+          <li>
+            <div class="step-label"><span class="step-number" aria-hidden="true">03</span>Detect</div>
+            <h3>Follow the evidence.</h3>
+            <p>Accumulate evidence as observations arrive. Explore detected changes alongside the telemetry that explains them.</p>
+          </li>
+        </ol>
+      </div>
+    </section>
+    <section class="container closing" aria-labelledby="closing-heading">
+      <div>
+        <h2 id="closing-heading">Your systems, in perspective.</h2>
+        <p>Explore your streams and follow the evidence.</p>
+      </div>
+      <a class="button" href="{{ frontend_base_url | e }}/">Open dashboard<svg class="arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></a>
+    </section>
+  </main>
+  <footer class="site-footer">
+    <div class="container footer-inner">
+      <p>aberration <span aria-hidden="true">/</span> Anomaly detection for connected systems.</p>
       <p>Built around evidence.</p>
-    </footer>
-  </div>
+    </div>
+  </footer>
 </body>
 </html>

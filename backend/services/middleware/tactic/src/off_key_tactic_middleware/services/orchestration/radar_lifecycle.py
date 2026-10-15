@@ -2,6 +2,7 @@
 
 from datetime import UTC, datetime
 
+from off_key_core.config.logs import logger
 from off_key_core.db.models import MonitoringService
 from off_key_core.schemas.radar import RadarOperationalStatus, RadarStartConfig
 from sqlalchemy import select, update
@@ -140,8 +141,6 @@ class RadarLifecycleController:
             try:
                 await self.complete_creation(service_id)
             except Exception:
-                from off_key_core.config.logs import logger
-
                 await self.session.rollback()
                 logger.exception(
                     "RADAR pending creation requires retry service_id=%s", service_id
@@ -155,14 +154,23 @@ class RadarLifecycleController:
         for workload_id in await self.workloads.list_managed_ids(
             controller_id=controller_id
         ):
-            _, labels = await self.workloads.get_status_and_labels(workload_id)
-            service_id = labels.get("radar_service_id")
-            if not service_id:
-                continue  # Existing workers are reconciled through their DB IDs.
-            service = await self.session.get(
-                MonitoringService, service_id, populate_existing=True
-            )
-            remove = service is None or service.desired_state != "running"
-            await self.session.commit()
-            if remove:
-                await self.workloads.remove(workload_id)
+            try:
+                await self._remove_orphan(workload_id)
+            except Exception:
+                await self.session.rollback()
+                logger.exception(
+                    "RADAR orphan cleanup deferred workload_id=%s", workload_id
+                )
+
+    async def _remove_orphan(self, workload_id):
+        _, labels = await self.workloads.get_status_and_labels(workload_id)
+        service_id = labels.get("radar_service_id")
+        if not service_id:
+            return  # Existing workers are reconciled through their DB IDs.
+        service = await self.session.get(
+            MonitoringService, service_id, populate_existing=True
+        )
+        remove = service is None or service.desired_state != "running"
+        await self.session.commit()
+        if remove:
+            await self.workloads.remove(workload_id)

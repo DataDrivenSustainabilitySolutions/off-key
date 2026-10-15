@@ -25,7 +25,7 @@ validated observation time as well as receipt time.
 - [x] 5. Persist desired workload state before Docker mutation and recover interruption.
 - [x] 6. Degrade health when required input or successful inference stops progressing.
 - [x] 7. Require successful SUBACKs before readiness, including reconnects.
-- [ ] 8. Move external workload inspection outside database locks/transactions.
+- [x] 8. Move external workload inspection outside database locks/transactions.
 - [x] 9. Bound thread-to-loop ingestion and run detector work serially off the loop.
 - [ ] 10. Validate observation age, regression, duplicates and cross-sensor skew.
 - [x] Reconcile runtime resource budgets, documentation and deployment contracts.
@@ -133,3 +133,12 @@ backlog stalls independently of heartbeat timestamps. Validation: eight focused
 activity tests including a real MQTT/Aberrant pause/recovery and actual blocked
 PostgreSQL evidence commit with a concurrent health heartbeat; 34 frontend tests
 and TypeScript pass.
+
+Step 8: Reconciliation snapshots and commits before bounded Docker probes, then
+re-reads each row briefly to compare generation, intent and workload identity.
+Newer heartbeats survive stale observations. Collection edits release catalogue
+locks while stopping monitors and revalidate both revisions before applying.
+Sensor claims remain held until actual Swarm tasks stop, including tasks left
+running after external service deletion. Validation: 136 affected unit/SQLite
+tests and four real PostgreSQL/Swarm scenarios cover heartbeat concurrency,
+delayed termination, residual tasks and concurrent catalogue edits.

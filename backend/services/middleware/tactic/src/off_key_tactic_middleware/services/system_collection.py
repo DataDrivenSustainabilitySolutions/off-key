@@ -8,7 +8,7 @@ from off_key_core.db.collection import lock_collection_configuration
 from off_key_core.db.collection_runtime import read_collection_runtime
 from off_key_core.db.maintenance import require_application_writes
 from off_key_core.db.models import Charger, CollectionBinding, MonitoringService
-from off_key_core.db.system import SystemCollectionConfiguration
+from off_key_core.db.system import SystemCollectionConfiguration, SystemConfiguration
 from off_key_core.schemas.collection_policy import CollectionPolicy
 from off_key_core.schemas.collection_rules import (
     CollectionRuleEdit,
@@ -257,7 +257,28 @@ class SystemCollectionService:
                 "This change affects running monitors. "
                 "Pause them in Services before changing their inputs."
             )
+        if not affected:
+            return
+        before = await self._revision_guard()
         await CollectionMonitorService(self.session).pause_monitors(affected)
+        await lock_collection_configuration(self.session)
+        await require_application_writes(self.session)
+        if await self._revision_guard() != before:
+            raise ConflictError(
+                "The catalogue or collection changed while monitors stopped. "
+                "Reload before applying this change."
+            )
+
+    async def _revision_guard(self):
+        system = await self.session.scalar(
+            select(SystemConfiguration.revision).where(SystemConfiguration.id == 1)
+        )
+        collection = await self.session.scalar(
+            select(SystemCollectionConfiguration.revision).where(
+                SystemCollectionConfiguration.id == 1
+            )
+        )
+        return system or 0, collection or 0
 
     async def persist(self, definition, *, actor):
         row = await self.session.scalar(

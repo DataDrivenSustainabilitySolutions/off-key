@@ -50,6 +50,7 @@ def _reconciler(*, retention_hours: int, docker_statuses: list[str]):
 class _FakeAsyncDocker:
     def __init__(self):
         self.client = SimpleNamespace(
+            api=SimpleNamespace(tasks=MagicMock(return_value=[])),
             services=SimpleNamespace(),
             containers=SimpleNamespace(),
         )
@@ -73,22 +74,27 @@ async def test_reconciliation_purges_old_terminal_rows_and_keeps_recent_rows():
     )
     reconciliation = _reconciler(
         retention_hours=24,
-        docker_statuses=["not_found", "not_found"],
+        docker_statuses=["not_found", "not_found", "not_found"],
     )
 
     session = AsyncMock()
     session.execute = AsyncMock(
         side_effect=[
             _query_result([old_service, recent_service]),
+            _query_result([old_service, recent_service]),
             MagicMock(rowcount=0),
             MagicMock(rowcount=1),
         ]
     )
+    session.get.side_effect = [old_service, recent_service, old_service, recent_service]
 
+    await reconciliation._reconcile_with_session(session)
+    assert old_service.desired_state == "deleted"
+    reconciliation._remove_workload_if_present.assert_not_awaited()
     await reconciliation._reconcile_with_session(session)
 
     reconciliation._remove_workload_if_present.assert_awaited_once_with("ctr-old")
-    assert session.execute.await_count == 3
+    assert session.execute.await_count == 4
 
 
 @pytest.mark.asyncio
@@ -101,6 +107,7 @@ async def test_reconciliation_revives_inactive_rows_when_docker_is_running():
 
     session = AsyncMock()
     session.execute = AsyncMock(return_value=_query_result([service]))
+    session.get.return_value = service
 
     await reconciliation._reconcile_with_session(session)
 
@@ -121,6 +128,7 @@ async def test_reconciliation_marks_active_terminal_rows_without_purging_recentl
 
     session = AsyncMock()
     session.execute = AsyncMock(return_value=_query_result([service]))
+    session.get.return_value = service
 
     await reconciliation._reconcile_with_session(session)
 
@@ -139,6 +147,7 @@ async def test_reconciliation_skips_retry_later_statuses_without_mutation():
     )
     session = AsyncMock()
     session.execute = AsyncMock(return_value=_query_result([service]))
+    session.get.return_value = service
 
     await reconciliation._reconcile_with_session(session)
 
@@ -203,6 +212,7 @@ async def test_reconciliation_keeps_running_rows_even_with_stale_heartbeat():
 
     session = AsyncMock()
     session.execute = AsyncMock(return_value=_query_result([service]))
+    session.get.return_value = service
 
     await reconciliation._reconcile_with_session(session)
 

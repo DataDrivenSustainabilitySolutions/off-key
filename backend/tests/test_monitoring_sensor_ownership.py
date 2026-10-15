@@ -14,6 +14,7 @@ def _query_result(active_services):
 
 
 def _service_with_session(session):
+    session.scalar.return_value = None
     service = object.__new__(RadarOrchestrationService)
     service.session = session
     service.model_registry = MagicMock()
@@ -127,6 +128,7 @@ async def test_unverified_or_starting_workload_keeps_sensor_claim(docker_status)
     session = AsyncMock()
     session.bind = SimpleNamespace(dialect=SimpleNamespace(name="sqlite"))
     monitor = SimpleNamespace(
+        id="existing-id",
         stop_requested_at=None,
         status=True,
         container_name="existing",
@@ -136,6 +138,7 @@ async def test_unverified_or_starting_workload_keeps_sensor_claim(docker_status)
     session.execute.return_value = _query_result([monitor])
     service = _service_with_session(session)
     service.workloads.get_status_and_labels.return_value = (docker_status, {})
+    session.get.return_value = monitor
 
     with pytest.raises(ValueError, match="one monitoring service"):
         await service._assert_topics_available(

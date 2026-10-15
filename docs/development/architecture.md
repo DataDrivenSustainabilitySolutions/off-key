@@ -71,6 +71,20 @@ See [Collection](../operations/system-collection.md) for revision transitions an
    the static-baseline or adaptive-stream lane.
 6. Runtime state and processing stages are surfaced through the Gateway.
 
+Reconciliation ends its database snapshot transaction before inspecting Docker
+with bounded concurrency. It applies observations in short row transactions after
+checking the workload generation again, preserving newer runtime heartbeats.
+Stopping scales a Swarm service to zero and waits for acknowledged task shutdown
+before releasing its input claim. Retiring task records are checked even if the
+service was externally removed. Unknown or orphaned tasks and Docker failures
+retain the claim for retry; lifecycle cleanup relies on an available Swarm
+manager with authoritative task records during node recovery.
+
+Collection changes persist stop intent and release catalogue locks while affected
+workloads stop. They recheck both catalogue and collection revisions before
+applying the prepared change. A concurrent edit rejects the stale change while
+completed monitor stops remain durable.
+
 ### 4. Evidence and anomaly flow
 
 1. RADAR consumes selected telemetry topics from EMQX.

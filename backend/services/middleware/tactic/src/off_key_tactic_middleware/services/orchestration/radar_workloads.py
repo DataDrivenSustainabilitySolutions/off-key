@@ -3,6 +3,7 @@
 import asyncio
 import time
 from collections.abc import Callable
+from contextlib import suppress
 from functools import lru_cache
 from typing import Any
 
@@ -40,6 +41,7 @@ def get_async_docker() -> AsyncDocker:
 def _parse_memory_string(memory_string: str) -> int:
     """Validate legacy callers using the shared Docker quantity parser."""
     return parse_memory_bytes(memory_string)
+
 
 class RadarWorkloadManager:
     """Create, inspect, and remove RADAR Docker workloads."""
@@ -384,18 +386,82 @@ class RadarWorkloadManager:
         )
 
     async def remove(self, workload_id: str | None) -> bool:
-        """Remove a workload, returning whether it still existed."""
+        """Confirm task termination before releasing a workload's sensor claim."""
         if not workload_id:
             return False
+        swarm_supported = True
         try:
-            await self.resolve_operation(
-                workload_id,
-                on_service=lambda service: service.remove(),
-                on_container=lambda container: container.remove(force=True),
+            service = await self.async_docker.run(
+                self.async_docker.client.services.get, workload_id
             )
+        except docker.errors.NotFound:
+            pass
+        except Exception as exc:
+            if not should_fallback_to_container(exc):
+                raise
+            swarm_supported = False
+        else:
+            await self._stop_swarm_tasks(service)
+            with suppress(docker.errors.NotFound):
+                await self.async_docker.run(service.remove)
+            return True
+
+        try:
+            container = await self.async_docker.run(
+                self.async_docker.client.containers.get, workload_id
+            )
+            await self.async_docker.run(container.remove, force=True)
             return True
         except docker.errors.NotFound:
+            if swarm_supported:
+                await self._wait_for_task_shutdown(
+                    lambda: self._remaining_service_tasks(workload_id)
+                )
             return False
+
+    async def _stop_swarm_tasks(self, service: Any) -> None:
+        """Keep the service inspectable until every task acknowledges shutdown."""
+        try:
+            await self.async_docker.run(service.scale, 0)
+            await self._wait_for_task_shutdown(
+                lambda: self.async_docker.run(service.tasks)
+            )
+        except docker.errors.NotFound:
+            await self._wait_for_task_shutdown(
+                lambda: self._remaining_service_tasks(service.id)
+            )
+
+    async def _remaining_service_tasks(self, service_id):
+        try:
+            return await self.async_docker.run(
+                self.async_docker.client.api.tasks, filters={"service": service_id}
+            )
+        except docker.errors.NotFound:
+            # Docker resolves service filters against existing services and can
+            # return404 while retiring task records still exist in the task list.
+            tasks = await self.async_docker.run(self.async_docker.client.api.tasks)
+            return [task for task in tasks if task.get("ServiceID") == service_id]
+
+    async def _wait_for_task_shutdown(self, query):
+        terminal = {"shutdown", "complete", "completed", "failed", "rejected", "remove"}
+        try:
+            async with asyncio.timeout(
+                get_tactic_settings().config.radar_stop_timeout_seconds
+            ):
+                while True:
+                    tasks = await query()
+                    if all(
+                        isinstance(task, dict)
+                        and isinstance(task.get("Status"), dict)
+                        and str(task["Status"].get("State", "")).lower() in terminal
+                        for task in tasks
+                    ):
+                        return
+                    await asyncio.sleep(0.1)
+        except TimeoutError:
+            raise RuntimeError(
+                "RADAR tasks have not stopped; the sensor claim is retained"
+            ) from None
 
     async def remove_after_failure(self, docker_workload: Any) -> None:
         """Best-effort cleanup after persistence or startup fails."""

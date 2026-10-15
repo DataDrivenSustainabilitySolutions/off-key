@@ -39,6 +39,13 @@ Throttling is disabled by default. Operators can configure a positive aggregate
 limit across all of a monitor's subscribed readings; excess observations are then
 counted and reported as lost monitoring coverage.
 
+Monitoring activity separates runtime heartbeats from valid input, inference and
+evidence persistence. A running detector becomes degraded if a required input is
+older than the configured sensor freshness budget, scoring stops, or evidence
+waits too long to commit. The service overview names missing or stale inputs and
+shows the last successful inference and evidence commit. Activity recovers when
+fresh inputs and scoring resume; historical coverage warnings remain visible.
+
 ### Strategy summary
 
 | Strategy | Best suited to | Runtime behaviour |

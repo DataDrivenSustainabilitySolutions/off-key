@@ -82,6 +82,19 @@ export interface MonitoringCoverage {
   last_gap_reason?: string | null;
 }
 
+export interface MonitoringActivity {
+  freshness_seconds: number;
+  last_input_at?: string | null;
+  last_processed_at?: string | null;
+  last_inference_at?: string | null;
+  last_persisted_at?: string | null;
+  missing_sensors: string[];
+  stale_sensors: string[];
+  inputs_stalled: boolean;
+  inference_stalled: boolean;
+  persistence_stalled: boolean;
+}
+
 export interface OperationalStatus {
   stage: OperationalStage;
   detail?: string | null;
@@ -93,6 +106,7 @@ export interface OperationalStatus {
   updated_at?: string | null;
   is_stale: boolean;
   coverage?: MonitoringCoverage;
+  activity?: MonitoringActivity;
 }
 
 export interface ActiveService {

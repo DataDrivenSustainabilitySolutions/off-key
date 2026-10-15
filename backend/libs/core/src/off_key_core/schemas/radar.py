@@ -42,6 +42,7 @@ __all__ = [
     "MonitoringStrategy",
     "PerformanceConfig",
     "PowerMartingaleTrackerConfig",
+    "RadarActivityStatus",
     "RadarCoverageStatus",
     "RadarOperationalProgress",
     "RadarOperationalStage",
@@ -85,6 +86,23 @@ class RadarOperationalProgress(BaseModel):
 
     current: int = Field(default=0, ge=0)
     target: int = Field(gt=0)
+
+
+class RadarActivityStatus(BaseModel):
+    """Current input, scoring and persistence activity, separate from heartbeat age."""
+
+    model_config = ConfigDict(extra="forbid", validate_assignment=True)
+
+    freshness_seconds: float = Field(gt=0, allow_inf_nan=False)
+    last_input_at: datetime | None = None
+    last_processed_at: datetime | None = None
+    last_inference_at: datetime | None = None
+    last_persisted_at: datetime | None = None
+    missing_sensors: list[str] = Field(default_factory=list)
+    stale_sensors: list[str] = Field(default_factory=list)
+    inputs_stalled: bool = False
+    inference_stalled: bool = False
+    persistence_stalled: bool = False
 
 
 class RadarCoverageStatus(BaseModel):
@@ -141,6 +159,7 @@ class RadarOperationalStatus(BaseModel):
     is_stale: bool = False
     coverage: RadarCoverageStatus = Field(default_factory=RadarCoverageStatus)
     recovery: RadarRecoveryStatus | None = None
+    activity: RadarActivityStatus | None = None
 
 
 class PerformanceConfig(BaseModel):

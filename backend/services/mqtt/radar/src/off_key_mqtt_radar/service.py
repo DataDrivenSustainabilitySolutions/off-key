@@ -77,7 +77,8 @@ class RadarService:
         # Extracted components
         self.checkpoint_manager = CheckpointManager()
         self.health_monitor = HealthMonitor(
-            health_check_interval=self.config.health_check_interval
+            health_check_interval=self.config.health_check_interval,
+            sensor_freshness_seconds=self.config.sensor_freshness_seconds,
         )
         self.message_processor: MessageProcessor | None = None
 

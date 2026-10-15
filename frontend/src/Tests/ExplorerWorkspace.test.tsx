@@ -102,6 +102,23 @@ function withServices(services: ActiveService[]) {
 }
 
 describe("service-centred monitoring workspace", () => {
+  it("identifies stale inputs separately from a current runtime heartbeat", async () => {
+    const monitor = service();
+    monitor.operational_status.activity = {
+      freshness_seconds: 30, last_input_at: "2026-10-11T10:00:00Z",
+      last_inference_at: "2026-10-11T09:59:00Z", stale_sensors: ["temperature"],
+      missing_sensors: [], inputs_stalled: true, inference_stalled: true,
+      persistence_stalled: false,
+    };
+    withServices([monitor]);
+    mount("/?service=service-one");
+    const details = await screen.findByRole("region", { name: "Monitoring service details" }, { timeout: 5000 });
+    expect(within(details).getByText("Inputs stale")).toBeTruthy();
+    expect(within(details).getByText("Stale inputs: Air temperature")).toBeTruthy();
+    expect(within(details).getByText("Last inference")).toBeTruthy();
+    expect(within(details).getByText("Last evidence saved")).toBeTruthy();
+  });
+
   it("reports missing monitoring coverage after traffic has resumed", async () => {
     const monitor = service();
     monitor.operational_status.coverage = {

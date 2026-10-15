@@ -16,6 +16,7 @@ from typing import Any
 from off_key_core.config.logs import logger
 from off_key_core.utils.timestamps import parse_utc_timestamp
 
+from .activity import ActivityTracker
 from .coverage import CoverageTracker
 from .feature_validation import TelemetryFeatureValidator
 from .memory import MemoryManager
@@ -78,6 +79,7 @@ class MessageProcessor:
         self.coverage = coverage
         self.state_cache = state_cache
         self.required_sensors = required_sensors or set()
+        self.activity = ActivityTracker(self.required_sensors)
         self.sensor_key_strategy = self._validate_sensor_key_strategy(
             sensor_key_strategy
         )
@@ -147,6 +149,7 @@ class MessageProcessor:
                 sensor_key_strategy=self.sensor_key_strategy,
                 payload=data,
             )
+            self.activity.record_input(sensor_type, message)
 
             # Step 4: Align features (for multi-sensor)
             aligned_features, alignment_context = self._align_features(
@@ -168,6 +171,7 @@ class MessageProcessor:
             )
             if (result.context or {}).get("fallback_reason"):
                 self._record_coverage_drop("detector_fallback")
+            self.activity.record_result(result)
 
             # Step 6: Update metrics
             self._record_metrics(start_time, result)
@@ -525,4 +529,5 @@ class MessageProcessor:
             "anomaly_rate": self.anomaly_count / max(self.message_count, 1),
             "error_rate": self.error_count / max(self.received_message_count, 1),
             "last_alignment_status": self.last_alignment_status,
+            "activity": self.activity.snapshot(),
         }

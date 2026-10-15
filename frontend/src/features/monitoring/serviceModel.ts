@@ -16,6 +16,9 @@ export function serviceState(service: ActiveService): ServiceState {
   if (!service.status || stage === "stopped") return { label: "Stopped", tone: "neutral", category: "stopped" };
   if (stage === "failed") return { label: "Failed", tone: "danger", category: "attention" };
   if (service.operational_status.is_stale) return { label: "Status stale", tone: "warning", category: "attention" };
+  if (service.operational_status.activity?.inputs_stalled) return { label: "Inputs stale", tone: "warning", category: "attention" };
+  if (service.operational_status.activity?.inference_stalled) return { label: "Inference stalled", tone: "warning", category: "attention" };
+  if (service.operational_status.activity?.persistence_stalled) return { label: "Persistence delayed", tone: "warning", category: "attention" };
   if (service.operational_status.coverage?.has_gaps) return { label: "Coverage gap", tone: "warning", category: "attention" };
   if (stage === "degraded") return { label: "Degraded", tone: "warning", category: "attention" };
   if (stage === "operational") return { label: "Monitoring", tone: "positive", category: "monitoring" };

@@ -147,6 +147,10 @@ class DatabaseWriter:
         # Batch processing
         self.write_queue: list[AnomalyResult] = []
         self.last_write_time = time.time()
+        self.last_persisted_at: datetime | None = None
+        # Entries remain owned during flush/retry, so a small in-flight batch
+        # cannot disappear from persistence-lag reporting.
+        self._pending_receipts: dict[int, deque[float]] = {}
 
         # Performance tracking
         self.total_written = 0
@@ -239,6 +243,9 @@ class DatabaseWriter:
             if self._shutdown_event.is_set():
                 raise RuntimeError("Database writer is stopped")
             self.write_queue.append(result)
+            self._pending_receipts.setdefault(id(result), deque()).append(
+                time.monotonic()
+            )
             queue_size = len(self.write_queue)
             should_flush = (
                 queue_size >= min(self.config.db_batch_size, self.config.max_queue_size)
@@ -308,6 +315,7 @@ class DatabaseWriter:
                 self.total_written += len(anomalies)
                 self.total_evidence_written += len(evidence)
                 self.last_write_time = time.time()
+                self._complete_results(pending, bool(anomalies or evidence))
             except BaseException:
                 await self._requeue_results(pending)
                 self.total_errors += 1
@@ -549,6 +557,9 @@ class DatabaseWriter:
             self.total_written += anomaly_count
             self.total_evidence_written += len(evidence_records)
             self.last_write_time = time.time()
+            self._complete_results(
+                persistence_candidates, bool(anomaly_records or evidence_records)
+            )
 
         except asyncio.CancelledError:
             await self._requeue_results(persistence_candidates)
@@ -592,11 +603,14 @@ class DatabaseWriter:
                         if self.managed_checkpoints
                         else self.projector.prepare(result)
                     )
+                else:
+                    self._release_pending([result])
             except (ValueError, TypeError, AttributeError, OverflowError):
                 self.total_errors += 1
                 self.total_rejected += 1
                 if self.managed_checkpoints:
                     raise
+                self._release_pending([result])
                 logger.exception(
                     "event=radar.db_result_rejected topic=%s timestamp=%s",
                     result.topic,
@@ -656,6 +670,9 @@ class DatabaseWriter:
                         self.total_written += len(anomaly_rows)
                         self.total_evidence_written += len(evidence_records)
                         self.last_write_time = time.time()
+                        self._complete_results(
+                            retry_batch, bool(anomaly_rows or evidence_records)
+                        )
                         logger.info(
                             "event=radar.db_retry_batch_written count=%s",
                             len(retry_batch),
@@ -685,6 +702,39 @@ class DatabaseWriter:
 
         return not batch_snapshot
 
+    def _complete_results(
+        self, results: list[AnomalyResult], has_records: bool
+    ) -> None:
+        if has_records:
+            self.last_persisted_at = datetime.now(UTC)
+        self._release_pending(results)
+
+    def _release_pending(self, results: list[AnomalyResult]) -> None:
+        """Release queue-age ownership after a result commits or is rejected."""
+        for result in results:
+            receipts = self._pending_receipts.get(id(result))
+            if receipts:
+                receipts.popleft()
+                if not receipts:
+                    del self._pending_receipts[id(result)]
+
+    def _persistence_activity(self) -> dict[str, Any]:
+        oldest = min(
+            (receipts[0] for receipts in self._pending_receipts.values()),
+            default=None,
+        )
+        return {
+            "last_persisted_at": self.last_persisted_at.isoformat()
+            if self.last_persisted_at
+            else None,
+            "oldest_pending_age_seconds": max(time.monotonic() - oldest, 0.0)
+            if oldest is not None
+            else None,
+            "persistence_timeout_seconds": max(
+                self.config.sensor_freshness_seconds, self.config.db_batch_timeout * 2
+            ),
+        }
+
     def get_performance_metrics(self) -> dict[str, Any]:
         """Get database writer performance metrics"""
         avg_write_time = 0.0
@@ -708,37 +758,53 @@ class DatabaseWriter:
             "throughput_per_second": throughput,
             "last_write_time": datetime.fromtimestamp(self.last_write_time).isoformat(),
             "write_enabled": self.config.db_write_enabled,
+            **self._persistence_activity(),
         }
 
     def get_health_status(self) -> dict[str, Any]:
         """Get database writer health status"""
+        activity = self._persistence_activity()
         if not self.config.db_write_enabled:
-            return {"status": "disabled", "reason": "write_disabled_in_config"}
+            return {
+                "status": "disabled",
+                "reason": "write_disabled_in_config",
+                **activity,
+            }
 
         error_rate = self.total_errors / max(self.total_written + self.total_errors, 1)
         queue_usage = (
             len(self.write_queue) + self._in_flight
         ) / self.config.max_queue_size
 
+        pending_age = activity["oldest_pending_age_seconds"]
+        if (
+            pending_age is not None
+            and pending_age > activity["persistence_timeout_seconds"]
+        ):
+            return {"status": "degraded", "reason": "persistence_stalled", **activity}
+
         if error_rate > 0.1:  # > 10% error rate
             return {
                 "status": "unhealthy",
                 "reason": "high_error_rate",
                 "error_rate": error_rate,
+                **activity,
             }
         if queue_usage > 0.8:  # Queue building up
             return {
                 "status": "degraded",
                 "reason": "queue_building_up",
                 "queue_usage": queue_usage,
+                **activity,
             }
         if not self._writer_task or self._writer_task.done():
-            return {"status": "unhealthy", "reason": "writer_task_stopped"}
+            return {"status": "unhealthy", "reason": "writer_task_stopped", **activity}
         return {
             "status": "healthy",
             "reason": "ok",
             "queue_size": len(self.write_queue) + self._in_flight,
             "error_rate": error_rate,
+            **activity,
         }
 
 

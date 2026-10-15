@@ -22,6 +22,20 @@ function fixture(count = 2) {
 }
 
 describe("monitoring workspace identity and scale", () => {
+  it.each([
+    ["inputs_stalled", "Inputs stale"],
+    ["inference_stalled", "Inference stalled"],
+    ["persistence_stalled", "Persistence delayed"],
+  ] as const)("shows %s even while runtime heartbeats are current", (field, label) => {
+    const service = monitor("one", "input");
+    service.operational_status.activity = {
+      freshness_seconds: 30, missing_sensors: [], stale_sensors: [],
+      inputs_stalled: false, inference_stalled: false, persistence_stalled: false,
+      [field]: true,
+    };
+    expect(serviceState(service)).toMatchObject({ label, category: "attention" });
+  });
+
   it("maps inputs using accepted topics when broker labels repeat and upstream paths differ", () => {
     const { document, runtime } = fixture();
     const services = [monitor("first", runtime.bindings!["reading-0"]!.accepted_topic), monitor("second", runtime.bindings!["reading-20"]!.accepted_topic)];

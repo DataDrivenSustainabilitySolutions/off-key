@@ -28,6 +28,24 @@ Use this page when starting, validating, or stopping monitoring workloads from t
 5. Start monitoring.
 6. Observe the service stage, monitoring evidence, and resulting anomalies.
 
+Coverage in the service overview reports known discarded observations and possible
+interruptions. RADAR currently consumes a best-effort MQTT stream without a
+durable replay cursor. Queue overflow, explicit throttling, invalid inputs and
+connection interruptions can leave gaps. New traffic does not repair those gaps:
+the monitor keeps its coverage warning even after it resumes processing. Removing
+and recreating the monitor starts a new calibration and coverage history.
+
+Throttling is disabled by default. Operators can configure a positive aggregate
+limit across all of a monitor's subscribed readings; excess observations are then
+counted and reported as lost monitoring coverage.
+
+Monitoring activity separates runtime heartbeats from valid input, inference and
+evidence persistence. A running detector becomes degraded if a required input is
+older than the configured sensor freshness budget, scoring stops, or evidence
+waits too long to commit. The service overview names missing or stale inputs and
+shows the last successful inference and evidence commit. Activity recovers when
+fresh inputs and scoring resume; historical coverage warnings remain visible.
+
 ### Strategy summary
 
 | Strategy | Best suited to | Runtime behaviour |
@@ -99,6 +117,8 @@ curl --fail http://localhost:8000/v1/anomalies/count
 - [Architecture](../development/architecture.md)
 - [Environment variables](../reference/environment-variables.md)
 - [Testing and debugging](../development/testing-debugging.md)
+- [RADAR recovery](../operations/radar-recovery.md)
+- [RADAR deployment capacity](../operations/radar-capacity.md)
 
 ## Telemetry persistence during outages
 
@@ -107,3 +127,23 @@ failures retain the active batch for retry and apply backpressure to ingestion.
 Shutdown attempts to drain the buffers within the configured deadline and logs
 unwritten records if it cannot. These buffers are in memory, not a durable spool;
 forced termination does not guarantee delivery.
+
+## Observation time and alignment
+
+RADAR uses a payload's `timestamp` as observation time, falling back to MQTT
+receipt time when it is absent. It rejects nonfinite times, observations older
+than 30 seconds, times more than 5 seconds ahead of the worker, and duplicate or
+regressing timestamps for the same reading. Rejected inputs are counted as
+coverage gaps and cannot refresh valid-input activity or advance the detector.
+Without a source timestamp or event identity, distinct deliveries cannot be
+deduplicated reliably.
+
+An aligned vector also requires fresh receipts and observation times within
+5 seconds of one another. Newer compatible readings unblock alignment; a blocked
+frame never advances the model. Set `performance_config.observation_max_age_seconds`,
+`observation_future_tolerance_seconds`, and `alignment_max_skew_seconds` in the
+monitor API configuration to match measured source delays and sampling periods.
+Standalone workers expose the corresponding `RADAR_*` environment settings.
+Keep source and worker clocks synchronized. These settings form part of the
+checkpoint compatibility signature; a changed alignment contract requires a new
+monitor baseline.

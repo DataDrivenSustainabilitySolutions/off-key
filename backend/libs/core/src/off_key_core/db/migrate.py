@@ -20,6 +20,7 @@ SYSTEM_TABLES = {
     "system_collection_configuration",
 }
 SESSION_TABLES = {"remembered_sessions"}
+CHECKPOINT_TABLES = {"radar_runtime_checkpoints"}
 
 
 def migration_files() -> dict[str, str]:
@@ -47,12 +48,34 @@ def adopted_versions(connection: Connection, migrations: dict[str, str]) -> list
     """Adopt only the verified pre-integration schema or a fresh current schema."""
     existing = set(inspect(connection).get_table_names())
     application_tables = set(Base.metadata.tables)
+    # Verified pre-ledger databases can predate scoped monitor alarms. Migration
+    # 007 adds these columns without changing their historical public IDs.
+    excluded_columns = {
+        name: {"service_id"}
+        for name in ("anomalies", "anomaly_identity")
+        if name in existing
+        and "service_id"
+        not in {column["name"] for column in inspect(connection).get_columns(name)}
+    }
+    if "services" in existing:
+        columns = {
+            column["name"] for column in inspect(connection).get_columns("services")
+        }
+        excluded_columns["services"] = {
+            "desired_state",
+            "lifecycle_version",
+            "config_fingerprint",
+            "collection_fingerprint",
+        } - columns
     if not existing.intersection(application_tables):
         if existing - {LEDGER}:
             raise ValueError("Cannot initialize a database containing unknown tables")
         return []
-    if application_tables - SYSTEM_TABLES - SESSION_TABLES <= existing:
-        validate_existing_schema(connection)
+    if (
+        application_tables - SYSTEM_TABLES - SESSION_TABLES - CHECKPOINT_TABLES
+        <= existing
+    ):
+        validate_existing_schema(connection, excluded_columns=excluded_columns)
         adopted = [
             "001_membership.sql",
             "002_monitor_stop_intent.sql",
@@ -64,12 +87,19 @@ def adopted_versions(connection: Connection, migrations: dict[str, str]) -> list
     baseline = [
         table
         for table in Base.metadata.sorted_tables
-        if table.name not in SYSTEM_TABLES | SESSION_TABLES | {"deployment_maintenance"}
+        if table.name
+        not in SYSTEM_TABLES
+        | SESSION_TABLES
+        | CHECKPOINT_TABLES
+        | {"deployment_maintenance"}
     ]
     if not {table.name for table in baseline} <= existing:
         raise ValueError("A reviewed baseline is required for this database")
     validate_existing_schema(
-        connection, tables=baseline, excluded_columns={"services": {"launch_config"}}
+        connection,
+        tables=baseline,
+        excluded_columns=excluded_columns
+        | {"services": excluded_columns.get("services", set()) | {"launch_config"}},
     )
     return ["001_membership.sql", "002_monitor_stop_intent.sql"]
 
@@ -128,10 +158,6 @@ def apply_migrations(
         bootstrap_schema(connection)
     for version, sql in migrations.items():
         if not status["fresh"] and version in status["pending"]:
-            if version == "005_generic_runtime.sql":
-                from .catalogue_upgrade import upgrade_saved_catalogue
-
-                upgrade_saved_catalogue(connection)
             connection.exec_driver_sql(sql)
         connection.execute(
             text(f"""
@@ -140,6 +166,14 @@ def apply_migrations(
         """),
             {"version": version, "checksum": migration_checksum(version, sql)},
         )
+    if not status["fresh"] and "005_generic_runtime.sql" in status["pending"]:
+        from .catalogue_upgrade import upgrade_saved_catalogue
+
+        # The frozen compatibility converter projects current runtime tables.
+        # Finish the independent additive DDL before conversion so a pre-ledger
+        # database need not already have columns introduced by later releases.
+        # DDL, data conversion and checksum records still commit atomically.
+        upgrade_saved_catalogue(connection)
     bootstrap_schema(connection)
     return {"applied": status["pending"], "fresh": status["fresh"]}
 

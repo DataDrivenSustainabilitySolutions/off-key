@@ -1,0 +1,141 @@
+name: RADAR production integration
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  merge_group:
+    types: [checks_requested]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: radar-production-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  radar:
+    name: RADAR production integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      TEST_RADAR_DOCKER: "1"
+      UV_PYTHON: "3.14"
+      UV_PYTHON_DOWNLOADS: never
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: "0.13.0"
+
+      - name: Install locked backend dependencies
+        run: uv sync --project backend --all-packages --all-groups --frozen
+
+      - name: Select the production database and current RADAR image
+        run: |
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          release = json.loads(Path("infra/ansible/inventories/prod/group_vars/all/release.yml").read_text())["release"]
+          with open(os.environ["GITHUB_ENV"], "a") as output:
+              output.write(f"TEST_RADAR_DATABASE_IMAGE={release['images']['postgres']}\n")
+              output.write(f"TEST_RADAR_SWARM_IMAGE=off-key-radar-integration:{os.environ['GITHUB_SHA']}\n")
+          PY
+
+      - name: Build the current production RADAR Dockerfile
+        run: |
+          docker pull "$TEST_RADAR_DATABASE_IMAGE"
+          docker pull eclipse-mosquitto:2.0
+          docker build --file backend/Dockerfile --tag "$TEST_RADAR_SWARM_IMAGE" \
+            --build-arg SERVICE_NAME=off-key-mqtt-radar \
+            --build-arg SERVICE_ROOT=services/mqtt/radar \
+            --build-arg GIT_COMMIT="$GITHUB_SHA" backend
+
+      - name: Start an isolated Swarm and disposable schema fixture
+        run: |
+          set -euo pipefail
+          docker swarm init > /dev/null
+          touch "$RUNNER_TEMP/radar-swarm-created"
+          database="radar-ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          docker run --detach --name "$database" --label off-key.ci=radar-production \
+            --publish 127.0.0.1::5432 --tmpfs /var/lib/postgresql/data:rw,size=768m \
+            --env POSTGRES_USER=radar_ci --env POSTGRES_DB=radar_ci \
+            --env POSTGRES_PASSWORD=disposable-radar-ci-password "$TEST_RADAR_DATABASE_IMAGE"
+          port="$(docker port "$database" 5432/tcp | awk -F: '{print $NF}')"
+          url="postgresql+asyncpg://radar_ci:disposable-radar-ci-password@127.0.0.1:${port}/radar_ci"
+          echo "TEST_SCHEMA_DATABASE_URL=$url" >> "$GITHUB_ENV"
+          export TEST_SCHEMA_DATABASE_URL="$url"
+          uv run --frozen --project backend python - <<'PY'
+          import os, time
+          from sqlalchemy import create_engine, text
+          from sqlalchemy.engine import make_url
+          from sqlalchemy.exc import OperationalError
+          engine = create_engine(make_url(os.environ["TEST_SCHEMA_DATABASE_URL"]).set(drivername="postgresql+psycopg2"), connect_args={"connect_timeout": 3})
+          try:
+              for attempt in range(60):
+                  try:
+                      with engine.connect() as connection:
+                          assert connection.scalar(text("SELECT 1")) == 1
+                      break
+                  except OperationalError:
+                      if attempt == 59:
+                          raise
+                      time.sleep(1)
+          finally:
+              engine.dispose()
+          PY
+
+      - name: Test real MQTT, durable recovery, lifecycle and Swarm replacement
+        timeout-minutes: 12
+        run: |
+          uv run --frozen --project backend python -m pytest -q --tb=short \
+            backend/tests/test_radar_mqtt_integration.py \
+            backend/tests/test_monitor_anomaly_identity_integration.py \
+            backend/tests/test_radar_runtime_checkpoints.py \
+            backend/tests/test_radar_checkpoint_ownership.py \
+            backend/tests/test_radar_lifecycle_integration.py \
+            backend/tests/test_radar_activity_integration.py \
+            backend/tests/test_radar_bounded_runtime.py \
+            backend/tests/test_radar_resource_budget.py \
+            backend/tests/test_radar_observation_integration.py \
+            backend/tests/test_radar_observation_recovery.py \
+            backend/tests/test_radar_swarm_integration.py
+
+      - name: Collect owned fixture diagnostics
+        if: failure()
+        run: |
+          docker service ls
+          for label in off-key.integration-owner off-key.review=radar-fixes off-key.ci=radar-production; do
+            for service in $(docker service ls --quiet --filter "label=$label"); do
+              docker service ps --no-trunc "$service" || true
+              docker service logs --tail 100 "$service" || true
+            done
+            for container in $(docker container ls --all --quiet --filter "label=$label"); do
+              docker logs --tail 100 "$container" || true
+            done
+          done
+
+      - name: Remove owned CI services, containers and networks
+        if: always()
+        timeout-minutes: 2
+        run: |
+          for label in off-key.integration-owner off-key.review=radar-fixes off-key.ci=radar-production; do
+            docker service ls --quiet --filter "label=$label" | xargs -r docker service rm || true
+            docker container ls --all --quiet --filter "label=$label" | xargs -r docker container rm --force || true
+          done
+          if [ -f "$RUNNER_TEMP/radar-swarm-created" ]; then
+            docker swarm leave --force || true
+          fi
+          docker network ls --quiet --filter label=off-key.integration-owner | xargs -r docker network rm || true

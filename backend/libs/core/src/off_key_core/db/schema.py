@@ -40,7 +40,9 @@ def validate_existing_schema(
         )
         primary_key = inspector.get_pk_constraint(table.name)
         compatible = compatible and primary_key["constrained_columns"] == [
-            column.name for column in table.primary_key.columns
+            column.name
+            for column in table.primary_key.columns
+            if column.name in expected
         ]
         constraint_names = {
             constraint["name"]
@@ -82,9 +84,12 @@ def bootstrap_schema(connection: Connection) -> None:
             CREATE OR REPLACE FUNCTION off_key_sync_anomaly_identity()
             RETURNS TRIGGER AS $$
             BEGIN
-                INSERT INTO anomaly_identity (charger_id, timestamp, telemetry_type)
-                VALUES (NEW.charger_id, NEW.timestamp, NEW.telemetry_type)
-                ON CONFLICT (charger_id, timestamp, telemetry_type) DO NOTHING;
+                INSERT INTO anomaly_identity
+                    (charger_id, timestamp, telemetry_type, service_id)
+                VALUES
+                    (NEW.charger_id, NEW.timestamp, NEW.telemetry_type, NEW.service_id)
+                ON CONFLICT (charger_id, timestamp, telemetry_type, service_id)
+                    DO NOTHING;
                 RETURN NEW;
             END;
             $$ LANGUAGE plpgsql;

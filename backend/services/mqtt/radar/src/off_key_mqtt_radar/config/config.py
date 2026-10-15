@@ -7,6 +7,10 @@ from pathlib import Path
 from typing import Any, Self
 
 from dotenv import load_dotenv
+from off_key_core.config.resource_budget import (
+    DEFAULT_RADAR_MEMORY_MB,
+    validate_ingress_budget,
+)
 from off_key_core.config.validation import validate_environment as _validate_environment
 from off_key_core.schemas.radar import (
     LegacyMonitoringConfig,
@@ -59,7 +63,7 @@ class AnomalyDetectionConfig(PerformanceConfig):
 
     monitoring: MonitoringConfig = Field(default_factory=StaticBaselineConfig)
     subscription_topics: list[str] = Field(default_factory=list)
-    memory_limit_mb: int = 1000
+    memory_limit_mb: int = Field(default=DEFAULT_RADAR_MEMORY_MB, ge=128, le=16384)
     checkpoint_interval: int = 10000
 
     # Batch processing
@@ -103,12 +107,21 @@ class MQTTRadarConfig(AnomalyDetectionConfig):
 
     # Performance
     worker_threads: int = 4
-    max_queue_size: int = Field(default=10000, gt=0)
+    max_queue_size: int = Field(default=256, gt=0, le=10000)
+    max_payload_bytes: int = Field(default=65536, gt=0, le=1048576)
 
     # Security
-    rate_limit_per_minute: int = 1000
+    # Zero accepts every observation until the bounded ingestion queue is full.
+    rate_limit_per_minute: int = Field(default=0, ge=0)
     max_feature_count: int = 100
     max_string_length: int = 1000
+
+    @model_validator(mode="after")
+    def validate_queued_payload_budget(self) -> "MQTTRadarConfig":
+        validate_ingress_budget(
+            self.max_queue_size, self.max_payload_bytes, self.memory_limit_mb
+        )
+        return self
 
     @field_validator("subscription_topics")
     @classmethod
@@ -140,6 +153,9 @@ class RadarSettings(BaseSettings):
     RADAR_SUBSCRIPTION_QOS: int = 0
     RADAR_SENSOR_KEY_STRATEGY: str = "full_hierarchy"
     RADAR_SENSOR_FRESHNESS_SECONDS: float = 30.0
+    RADAR_OBSERVATION_MAX_AGE_SECONDS: float = Field(default=30.0, gt=0.0)
+    RADAR_OBSERVATION_FUTURE_TOLERANCE_SECONDS: float = Field(default=5.0, ge=0.0)
+    RADAR_ALIGNMENT_MAX_SKEW_SECONDS: float = Field(default=5.0, ge=0.0)
 
     # Database
     RADAR_DB_WRITE_ENABLED: bool = True
@@ -157,13 +173,17 @@ class RadarSettings(BaseSettings):
     # Performance
     RADAR_BATCH_SIZE: int = 100
     RADAR_BATCH_TIMEOUT: float = 1.0
-    RADAR_MEMORY_LIMIT_MB: int = 1000
+    RADAR_MAX_QUEUE_SIZE: int = Field(default=256, gt=0, le=10000)
+    RADAR_MAX_PAYLOAD_BYTES: int = Field(default=65536, gt=0, le=1048576)
+    RADAR_MEMORY_LIMIT_MB: int = Field(
+        default=DEFAULT_RADAR_MEMORY_MB, ge=128, le=16384
+    )
     RADAR_CHECKPOINT_INTERVAL: int = 10000
 
     # Monitoring
     RADAR_HEALTH_CHECK_INTERVAL: float = 30.0
     RADAR_LOG_LEVEL: str = "INFO"
-    RADAR_RATE_LIMIT_PER_MINUTE: int = 1000
+    RADAR_RATE_LIMIT_PER_MINUTE: int = Field(default=0, ge=0)
 
     model_config = SettingsConfigDict(
         case_sensitive=True,
@@ -262,6 +282,9 @@ class RadarSettings(BaseSettings):
             subscription_qos=self.RADAR_SUBSCRIPTION_QOS,
             sensor_key_strategy=self.RADAR_SENSOR_KEY_STRATEGY,
             sensor_freshness_seconds=self.RADAR_SENSOR_FRESHNESS_SECONDS,
+            observation_max_age_seconds=self.RADAR_OBSERVATION_MAX_AGE_SECONDS,
+            observation_future_tolerance_seconds=self.RADAR_OBSERVATION_FUTURE_TOLERANCE_SECONDS,
+            alignment_max_skew_seconds=self.RADAR_ALIGNMENT_MAX_SKEW_SECONDS,
             db_write_enabled=self.RADAR_DB_WRITE_ENABLED,
             db_batch_size=self.RADAR_DB_BATCH_SIZE,
             db_batch_timeout=self.RADAR_DB_BATCH_TIMEOUT,
@@ -272,6 +295,8 @@ class RadarSettings(BaseSettings):
             monitoring=monitoring,
             batch_size=self.RADAR_BATCH_SIZE,
             batch_timeout=self.RADAR_BATCH_TIMEOUT,
+            max_queue_size=self.RADAR_MAX_QUEUE_SIZE,
+            max_payload_bytes=self.RADAR_MAX_PAYLOAD_BYTES,
             checkpoint_interval=self.RADAR_CHECKPOINT_INTERVAL,
         )
 

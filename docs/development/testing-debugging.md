@@ -22,6 +22,51 @@ uv run --project backend python -m pytest -q
 
 Expected result: lint exits with status `0`, and tests complete without failures.
 
+### RADAR production integration
+
+The [RADAR production integration workflow](../../.github/workflows/radar-production-integration.yml)
+runs on pull requests, main, merge queues and manual dispatch. It builds the
+current production `backend/Dockerfile`, uses Python 3.14 and frozen dependencies,
+and selects the TimescaleDB image pinned by the production release manifest.
+Its isolated Ubuntu runner initializes Swarm, runs real MQTT/database/task
+replacement regressions and cleans labelled fixtures within a 30 minute job.
+Production release selection requires a successful main-push run for the same
+commit, alongside the other release workflows.
+
+To reproduce on a dedicated local Docker engine, initialize Swarm and provide a
+disposable PostgreSQL server whose test role can create and drop databases. Set
+its host URL in `TEST_SCHEMA_DATABASE_URL`; tests create uniquely named databases.
+The workflow contains the server bootstrap and readiness commands. Then run:
+
+```bash
+uv sync --project backend --all-packages --all-groups --frozen --python 3.14
+export TEST_RADAR_DATABASE_IMAGE="$(python3 -c 'import json; print(json.load(open("infra/ansible/inventories/prod/group_vars/all/release.yml"))["release"]["images"]["postgres"])')"
+export TEST_RADAR_SWARM_IMAGE=off-key-radar-integration:local
+export TEST_RADAR_DOCKER=1
+docker pull eclipse-mosquitto:2.0
+docker build -f backend/Dockerfile -t "$TEST_RADAR_SWARM_IMAGE" \
+  --build-arg SERVICE_NAME=off-key-mqtt-radar \
+  --build-arg SERVICE_ROOT=services/mqtt/radar backend
+uv run --frozen --project backend python -m pytest -q --tb=short \
+  backend/tests/test_radar_mqtt_integration.py \
+  backend/tests/test_monitor_anomaly_identity_integration.py \
+  backend/tests/test_radar_runtime_checkpoints.py \
+  backend/tests/test_radar_checkpoint_ownership.py \
+  backend/tests/test_radar_lifecycle_integration.py \
+  backend/tests/test_radar_activity_integration.py \
+  backend/tests/test_radar_bounded_runtime.py \
+  backend/tests/test_radar_resource_budget.py \
+  backend/tests/test_radar_observation_integration.py \
+  backend/tests/test_radar_observation_recovery.py \
+  backend/tests/test_radar_swarm_integration.py
+```
+
+The two opt-in variables enable actual Docker lifecycle tests and current-image
+Swarm tests. These cover reconnect and ACL failures, scoped alarms, signed
+checkpoint recovery, overload, sensor silence, interrupted creation, concurrent
+heartbeats/catalogue changes, task shutdown, resource admission and observation
+time validation. Fixture teardown removes only resources owned by each run.
+
 ### Frontend
 
 ```bash

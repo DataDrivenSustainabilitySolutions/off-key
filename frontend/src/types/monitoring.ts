@@ -71,6 +71,30 @@ export interface OperationalProgress {
   target: number;
 }
 
+export interface MonitoringCoverage {
+  delivery: 'best_effort';
+  has_gaps: boolean;
+  received_message_count: number;
+  dropped_message_count: number;
+  dropped_by_reason: Record<string, number>;
+  possible_gap_count: number;
+  last_gap_at?: string | null;
+  last_gap_reason?: string | null;
+}
+
+export interface MonitoringActivity {
+  freshness_seconds: number;
+  last_input_at?: string | null;
+  last_processed_at?: string | null;
+  last_inference_at?: string | null;
+  last_persisted_at?: string | null;
+  missing_sensors: string[];
+  stale_sensors: string[];
+  inputs_stalled: boolean;
+  inference_stalled: boolean;
+  persistence_stalled: boolean;
+}
+
 export interface OperationalStatus {
   stage: OperationalStage;
   detail?: string | null;
@@ -81,6 +105,8 @@ export interface OperationalStatus {
   error?: string | null;
   updated_at?: string | null;
   is_stale: boolean;
+  coverage?: MonitoringCoverage;
+  activity?: MonitoringActivity;
 }
 
 export interface ActiveService {
@@ -100,6 +126,9 @@ export interface ActiveService {
 export interface MonitoringPerformanceConfig {
   sensor_key_strategy: 'full_hierarchy' | 'top_level' | 'leaf';
   sensor_freshness_seconds: number;
+  observation_max_age_seconds?: number;
+  observation_future_tolerance_seconds?: number;
+  alignment_max_skew_seconds?: number;
 }
 
 export type MartingaleBettingFunction =

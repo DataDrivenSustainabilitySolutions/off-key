@@ -25,6 +25,7 @@ def _service(
     stage: str = "stopped",
     updated_at=None,
     created_at=None,
+    desired_state=None,
 ):
     return SimpleNamespace(
         id=service_id,
@@ -32,6 +33,7 @@ def _service(
         container_id=f"ctr-{service_id}",
         container_name=f"radar-{service_id}",
         status=status,
+        desired_state=desired_state or ("running" if status else "stopped"),
         operational_stage=stage,
         operational_status={"stage": stage, "is_stale": False},
         operational_updated_at=updated_at,
@@ -50,6 +52,7 @@ def _reconciler(*, retention_hours: int, docker_statuses: list[str]):
 class _FakeAsyncDocker:
     def __init__(self):
         self.client = SimpleNamespace(
+            api=SimpleNamespace(tasks=MagicMock(return_value=[])),
             services=SimpleNamespace(),
             containers=SimpleNamespace(),
         )
@@ -73,7 +76,7 @@ async def test_reconciliation_purges_old_terminal_rows_and_keeps_recent_rows():
     )
     reconciliation = _reconciler(
         retention_hours=24,
-        docker_statuses=["not_found", "not_found"],
+        docker_statuses=[],
     )
 
     session = AsyncMock()
@@ -84,16 +87,19 @@ async def test_reconciliation_purges_old_terminal_rows_and_keeps_recent_rows():
             MagicMock(rowcount=1),
         ]
     )
+    session.get.side_effect = [old_service, recent_service]
 
     await reconciliation._reconcile_with_session(session)
-
-    reconciliation._remove_workload_if_present.assert_awaited_once_with("ctr-old")
+    assert [
+        call.args[0]
+        for call in reconciliation._remove_workload_if_present.await_args_list
+    ] == ["ctr-old", "ctr-recent"]
     assert session.execute.await_count == 3
 
 
 @pytest.mark.asyncio
 async def test_reconciliation_revives_inactive_rows_when_docker_is_running():
-    service = _service(service_id="live", status=False)
+    service = _service(service_id="live", status=False, desired_state="running")
     reconciliation = _reconciler(
         retention_hours=24,
         docker_statuses=["running"],
@@ -101,6 +107,7 @@ async def test_reconciliation_revives_inactive_rows_when_docker_is_running():
 
     session = AsyncMock()
     session.execute = AsyncMock(return_value=_query_result([service]))
+    session.get.return_value = service
 
     await reconciliation._reconcile_with_session(session)
 
@@ -112,19 +119,28 @@ async def test_reconciliation_revives_inactive_rows_when_docker_is_running():
 
 
 @pytest.mark.asyncio
-async def test_reconciliation_marks_active_terminal_rows_without_purging_recently():
-    service = _service(service_id="dead", status=True, stage="operational")
+@pytest.mark.parametrize("previous_status", [True, False])
+async def test_reconciliation_retains_desired_running_legacy_claims(previous_status):
+    service = _service(
+        service_id="dead",
+        status=previous_status,
+        desired_state="running",
+        stage="operational",
+        updated_at=datetime.now(UTC) - timedelta(days=7),
+    )
     reconciliation = _reconciler(
-        retention_hours=24,
+        retention_hours=0,
         docker_statuses=["not_found"],
     )
 
     session = AsyncMock()
     session.execute = AsyncMock(return_value=_query_result([service]))
+    session.get.return_value = service
 
     await reconciliation._reconcile_with_session(session)
 
-    assert service.status is False
+    assert service.status is True
+    assert service.desired_state == "running"
     assert service.operational_stage == "stopped"
     reconciliation._remove_workload_if_present.assert_not_awaited()
     session.execute.assert_awaited_once()
@@ -139,6 +155,7 @@ async def test_reconciliation_skips_retry_later_statuses_without_mutation():
     )
     session = AsyncMock()
     session.execute = AsyncMock(return_value=_query_result([service]))
+    session.get.return_value = service
 
     await reconciliation._reconcile_with_session(session)
 
@@ -203,6 +220,7 @@ async def test_reconciliation_keeps_running_rows_even_with_stale_heartbeat():
 
     session = AsyncMock()
     session.execute = AsyncMock(return_value=_query_result([service]))
+    session.get.return_value = service
 
     await reconciliation._reconcile_with_session(session)
 

@@ -8,7 +8,7 @@ from off_key_core.db.collection import lock_collection_configuration
 from off_key_core.db.collection_runtime import read_collection_runtime
 from off_key_core.db.maintenance import require_application_writes
 from off_key_core.db.models import Charger, CollectionBinding, MonitoringService
-from off_key_core.db.system import SystemCollectionConfiguration
+from off_key_core.db.system import SystemCollectionConfiguration, SystemConfiguration
 from off_key_core.schemas.collection_policy import CollectionPolicy
 from off_key_core.schemas.collection_rules import (
     CollectionRuleEdit,
@@ -232,7 +232,7 @@ class SystemCollectionService:
         snapshot = await SystemService(self.session).read()
         proposed, preview = await self.prepare(snapshot, change)
         await self._protect_monitors(
-            preview.affected_monitors, change.pause_affected_monitors
+            preview.affected_monitors, change.pause_affected_monitors, proposed
         )
         await self.persist(proposed, actor=actor)
         return await SystemService(self.session).save(
@@ -247,17 +247,46 @@ class SystemCollectionService:
         if runtime_fingerprint(runtime.catalog) != runtime_fingerprint(proposed):
             self._validate_access(proposed)
         affected = await self.affected(runtime.catalog, proposed)
-        await self._protect_monitors(affected, pause_monitors)
+        await self._protect_monitors(affected, pause_monitors, proposed)
         await self.persist(proposed, actor=actor)
         return proposed.document
 
-    async def _protect_monitors(self, affected, pause):
+    async def _protect_monitors(self, affected, pause, proposed):
         if affected and not pause:
             raise ConflictError(
                 "This change affects running monitors. "
                 "Pause them in Services before changing their inputs."
             )
+        if not affected:
+            return
+        before = await self._revision_guard()
         await CollectionMonitorService(self.session).pause_monitors(affected)
+        await lock_collection_configuration(self.session)
+        await require_application_writes(self.session)
+        if await self._revision_guard() != before:
+            raise ConflictError(
+                "The catalogue or collection changed while monitors stopped. "
+                "Reload before applying this change."
+            )
+        runtime = await read_collection_runtime(self.session)
+        stopped_ids = {item["id"] for item in affected}
+        current = await self.affected(runtime.catalog, proposed)
+        if any(item["id"] not in stopped_ids for item in current):
+            raise ConflictError(
+                "A new monitor started while inputs were changing. "
+                "Reload before applying this change."
+            )
+
+    async def _revision_guard(self):
+        system = await self.session.scalar(
+            select(SystemConfiguration.revision).where(SystemConfiguration.id == 1)
+        )
+        collection = await self.session.scalar(
+            select(SystemCollectionConfiguration.revision).where(
+                SystemCollectionConfiguration.id == 1
+            )
+        )
+        return system or 0, collection or 0
 
     async def persist(self, definition, *, actor):
         row = await self.session.scalar(

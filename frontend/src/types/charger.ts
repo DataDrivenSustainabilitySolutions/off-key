@@ -38,6 +38,8 @@ export interface TelemetryTypeData {
 export interface Anomaly {
   anomaly_id: string;
   charger_id: string;
+  // Historical and manually created records have no originating monitor.
+  service_id?: string | null;
   timestamp: string;
   telemetry_type: string;
   anomaly_type: string;

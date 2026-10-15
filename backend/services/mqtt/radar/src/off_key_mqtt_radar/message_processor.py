@@ -8,6 +8,7 @@ Handles MQTT message processing pipeline:
 - Result persistence
 """
 
+import asyncio
 import time
 from datetime import UTC, datetime
 from typing import Any
@@ -15,6 +16,8 @@ from typing import Any
 from off_key_core.config.logs import logger
 from off_key_core.utils.timestamps import parse_utc_timestamp
 
+from .activity import ActivityTracker
+from .coverage import CoverageTracker
 from .feature_validation import TelemetryFeatureValidator
 from .memory import MemoryManager
 from .models import AnomalyResult, MQTTMessage
@@ -56,6 +59,10 @@ class MessageProcessor:
         state_cache: SensorStateCache | None = None,
         required_sensors: set | None = None,
         sensor_key_strategy: str = "full_hierarchy",
+        coverage: CoverageTracker | None = None,
+        observation_max_age_seconds: float = 30.0,
+        observation_future_tolerance_seconds: float = 5.0,
+        sensor_freshness_seconds: float = 30.0,
     ):
         """
         Initialize message processor.
@@ -72,8 +79,16 @@ class MessageProcessor:
         self.detector = detector
         self.feature_validator = feature_validator
         self.memory_manager = memory_manager
+        self.coverage = coverage
         self.state_cache = state_cache
         self.required_sensors = required_sensors or set()
+        self.activity = ActivityTracker(self.required_sensors)
+        self._direct_state_cache = SensorStateCache(
+            set(),
+            max_sensor_age_seconds=sensor_freshness_seconds,
+            observation_max_age_seconds=observation_max_age_seconds,
+            observation_future_tolerance_seconds=observation_future_tolerance_seconds,
+        )
         self.sensor_key_strategy = self._validate_sensor_key_strategy(
             sensor_key_strategy
         )
@@ -84,6 +99,7 @@ class MessageProcessor:
         self.anomaly_count = 0
         self.error_count = 0
         self.last_alignment_status: str | None = None
+        self._async_processing_lock = asyncio.Lock()
 
         self._log_context = {"component": "message_processor"}
 
@@ -97,6 +113,18 @@ class MessageProcessor:
         return normalized
 
     async def process_message(self, message: MQTTMessage) -> AnomalyResult | None:
+        """Standalone async entry point; managed workers use their serial owner."""
+        async with self._async_processing_lock:
+            operation = asyncio.create_task(
+                asyncio.to_thread(self.process_message_sync, message)
+            )
+            try:
+                return await asyncio.shield(operation)
+            except asyncio.CancelledError:
+                await operation
+                raise
+
+    def process_message_sync(self, message: MQTTMessage) -> AnomalyResult | None:
         """
         Process an MQTT message through the detection pipeline.
 
@@ -112,12 +140,14 @@ class MessageProcessor:
             # Step 1: Parse payload
             data = self._parse_payload(message)
             if data is None:
+                self._record_coverage_drop("invalid_payload")
                 return None
             sample_timestamp = self._resolve_sample_timestamp(data, message)
 
             # Step 2: Validate and sanitize
             sanitized_data = self._sanitize_payload(data, message)
             if sanitized_data is None:
+                self._record_coverage_drop("invalid_features")
                 return None
             self.received_message_count += 1
 
@@ -135,8 +165,11 @@ class MessageProcessor:
                 sensor_type,
                 sanitized_data,
                 sample_timestamp=sample_timestamp,
+                received_monotonic=self._receipt_monotonic(message),
             )
             self.last_alignment_status = alignment_context.get("alignment_status")
+            if self.last_alignment_status != "observation_rejected":
+                self.activity.record_input(sensor_type, message)
             if aligned_features is None:
                 return None
 
@@ -147,6 +180,9 @@ class MessageProcessor:
                 charger_id,
                 alignment_context=alignment_context,
             )
+            if (result.context or {}).get("fallback_reason"):
+                self._record_coverage_drop("detector_fallback")
+            self.activity.record_result(result)
 
             # Step 6: Update metrics
             self._record_metrics(start_time, result)
@@ -163,6 +199,7 @@ class MessageProcessor:
                 str(e),
             )
             self.error_count += 1
+            self._record_coverage_drop("invalid_payload")
             return None
         except ValidationError as e:
             logger.debug(
@@ -171,6 +208,7 @@ class MessageProcessor:
                 str(e),
             )
             self.error_count += 1
+            self._record_coverage_drop("invalid_features")
             return None
         except Exception as e:
             logger.error(
@@ -181,7 +219,12 @@ class MessageProcessor:
                 extra=self._log_context,
             )
             self.error_count += 1
+            self._record_coverage_drop("processing_error")
             return None
+
+    def _record_coverage_drop(self, reason: str) -> None:
+        if self.coverage is not None:
+            self.coverage.record_drop(reason)
 
     def _parse_payload(self, message: MQTTMessage) -> dict[str, Any] | None:
         """Parse raw MQTT payload into JSON."""
@@ -229,32 +272,39 @@ class MessageProcessor:
         sensor_type: str | None,
         data: dict[str, float],
         sample_timestamp: float | None = None,
+        received_monotonic: float | None = None,
     ) -> tuple[dict[str, float] | None, dict[str, Any]]:
         """Align multi-sensor streams if required."""
         normalized_data = self._normalize_sensor_reading(sensor_type, data)
 
-        # Skip alignment if no cache or only single sensor subscribed
-        # Single-sensor mode: use normalized sensor-keyed feature.
-        if not self.state_cache or not self.required_sensors:
-            return normalized_data, self._direct_alignment_context(
-                sensor_type, sample_timestamp
-            )
-        if len(self.required_sensors) <= 1:
-            return normalized_data, self._direct_alignment_context(
-                sensor_type, sample_timestamp
-            )
-
-        if not (charger_id and sensor_type):
-            return normalized_data, self._direct_alignment_context(
-                sensor_type, sample_timestamp
-            )
-
-        alignment_update: AlignmentUpdate = self.state_cache.update_with_status(
-            charger_id,
-            sensor_type,
+        direct = (
+            not self.state_cache
+            or len(self.required_sensors) <= 1
+            or not (charger_id and sensor_type)
+        )
+        cache = self._direct_state_cache if direct else self.state_cache
+        receipt = (
+            {"received_monotonic": received_monotonic}
+            if received_monotonic is not None
+            else {}
+        )
+        alignment_update: AlignmentUpdate = cache.update_with_status(
+            charger_id or "",
+            sensor_type or "",
             normalized_data,
             sample_timestamp=sample_timestamp,
+            **receipt,
         )
+        if alignment_update.status == "observation_rejected":
+            self._record_coverage_drop(alignment_update.rejection_reason)
+            return None, {
+                "alignment_status": alignment_update.status,
+                "rejection_reason": alignment_update.rejection_reason,
+            }
+        if direct:
+            return normalized_data, self._direct_alignment_context(
+                sensor_type, alignment_update.sample_timestamp
+            )
         base_context: dict[str, Any] = {
             "alignment_status": alignment_update.status,
             "aligned_vector": bool(
@@ -326,6 +376,18 @@ class MessageProcessor:
             )
 
         return alignment_update.features, base_context
+
+    @staticmethod
+    def _receipt_monotonic(message: MQTTMessage) -> float | None:
+        if message.received_monotonic is not None:
+            return message.received_monotonic
+        if message.timestamp is None:
+            return None
+        received_at = message.timestamp
+        if received_at.tzinfo is None:
+            received_at = received_at.replace(tzinfo=UTC)
+        age = max((datetime.now(UTC) - received_at).total_seconds(), 0.0)
+        return time.monotonic() - age
 
     def _direct_alignment_context(
         self,
@@ -487,6 +549,27 @@ class MessageProcessor:
                 extra=self._log_context,
             )
 
+    def export_observation_watermarks(self) -> dict[str, dict[str, float]]:
+        """Persist accepted observation times without retaining partial vectors."""
+        watermarks: dict[str, dict[str, float]] = {}
+        for cache in (self._direct_state_cache, self.state_cache):
+            if cache is None:
+                continue
+            for entity, sensors in cache.export_watermarks().items():
+                target = watermarks.setdefault(entity, {})
+                for sensor, timestamp in sensors.items():
+                    target[sensor] = max(target.get(sensor, timestamp), timestamp)
+        return watermarks
+
+    def restore_observation_watermarks(
+        self,
+        payload: dict[str, dict[str, float]],
+    ) -> None:
+        """Restore rejection history while requiring new input for each vector."""
+        for cache in (self._direct_state_cache, self.state_cache):
+            if cache is not None:
+                cache.restore_watermarks(payload)
+
     def get_metrics(self) -> dict[str, Any]:
         """Get current processing metrics."""
         return {
@@ -497,4 +580,5 @@ class MessageProcessor:
             "anomaly_rate": self.anomaly_count / max(self.message_count, 1),
             "error_rate": self.error_count / max(self.received_message_count, 1),
             "last_alignment_status": self.last_alignment_status,
+            "activity": self.activity.snapshot(),
         }

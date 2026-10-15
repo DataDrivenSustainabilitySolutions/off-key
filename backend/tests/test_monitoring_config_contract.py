@@ -10,7 +10,10 @@ from off_key_api_gateway.api.v1 import monitors
 from off_key_api_gateway.facades.tactic import Tactic
 from off_key_mqtt_radar.config.config import RadarSettings
 from off_key_tactic_middleware.api.v1 import radar
-from off_key_tactic_middleware.config.config import TacticSettings
+from off_key_tactic_middleware.config.config import (
+    RadarContainerRuntimeSettings,
+    TacticSettings,
+)
 from off_key_tactic_middleware.services.orchestration import radar_environment
 
 
@@ -119,9 +122,14 @@ async def test_gateway_to_runtime_preserves_one_monitoring_config(
     monkeypatch.setattr(
         radar_environment,
         "get_radar_container_runtime_settings",
-        lambda: SimpleNamespace(
+        lambda: RadarContainerRuntimeSettings(
+            _env_file=None,
             ENVIRONMENT="development",
-            radar_database_url="postgresql+asyncpg://test:test@localhost/radar",
+            POSTGRES_USER="test",
+            POSTGRES_PASSWORD="test",
+            POSTGRES_HOST="localhost",
+            POSTGRES_DB="radar",
+            RADAR_CHECKPOINT_SECRET="monitoring-contract-test-key",
         ),
     )
     registry = MagicMock()

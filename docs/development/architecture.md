@@ -59,10 +59,31 @@ See [Collection](../operations/system-collection.md) for revision transitions an
 
 1. An operator selects sensors and a strategy in the frontend.
 2. The frontend calls Gateway monitor routes under `/v1/monitors`.
-3. TACTIC validates the request and claims the selected sensors.
-4. TACTIC creates, starts, inspects, or removes the RADAR workload through the Docker API proxy.
-5. The workload runs either the static-baseline or adaptive-stream lane.
+3. TACTIC validates the request, persists the desired workload generation and
+   claims its selected sensors before calling Docker. Pending and stopping
+   monitors retain their sensor claims until reconciliation confirms the change.
+4. TACTIC creates or adopts the deterministic `radar-<service-id>` workload.
+   Reconciliation resumes interrupted creation requests and removes delayed
+   creations whose intent was deleted, within the same database deployment scope.
+5. A managed workload checks its persisted desired state and lifecycle version
+   before starting its detector or subscribing. A delayed creation after stop or
+   deletion exits without beginning monitoring. The admitted workload runs either
+   the static-baseline or adaptive-stream lane.
 6. Runtime state and processing stages are surfaced through the Gateway.
+
+Reconciliation ends its database snapshot transaction before inspecting Docker
+with bounded concurrency. It applies observations in short row transactions after
+checking the workload generation again, preserving newer runtime heartbeats.
+Stopping scales a Swarm service to zero and waits for acknowledged task shutdown
+before releasing its input claim. Retiring task records are checked even if the
+service was externally removed. Unknown or orphaned tasks and Docker failures
+retain the claim for retry; lifecycle cleanup relies on an available Swarm
+manager with authoritative task records during node recovery.
+
+Collection changes persist stop intent and release catalogue locks while affected
+workloads stop. They recheck both catalogue and collection revisions before
+applying the prepared change. A concurrent edit rejects the stale change while
+completed monitor stops remain durable.
 
 ### 4. Evidence and anomaly flow
 

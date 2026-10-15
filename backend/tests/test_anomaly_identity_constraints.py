@@ -50,6 +50,7 @@ async def test_create_anomaly_returns_repository_identity_id():
     assert len(call_args) == 1
     assert call_args[0].charger_id == payload.charger_id
     assert call_args[0].value_type == "zscore"
+    assert call_args[0].service_id == ""
     session.commit.assert_awaited_once()
 
 
@@ -187,7 +188,8 @@ async def test_delete_anomaly_uses_identity_lookup_and_delete():
 
 
 @pytest.mark.asyncio
-async def test_list_anomalies_includes_value_type():
+@pytest.mark.parametrize("service_id", ["", "monitor-1"])
+async def test_list_anomalies_includes_value_type_and_monitor(service_id):
     session = AsyncMock()
     repository = MagicMock()
     timestamp = datetime.now(UTC)
@@ -199,6 +201,7 @@ async def test_list_anomalies_includes_value_type():
         anomaly_value=0.0025,
         value_type="tail_pvalue",
         sensor_set=["voltage"],
+        service_id=service_id,
     )
     repository.list_by_charger = AsyncMock(return_value=[("anomaly-1", anomaly)])
 
@@ -219,6 +222,7 @@ async def test_list_anomalies_includes_value_type():
             "anomaly_value": 0.0025,
             "value_type": "tail_pvalue",
             "sensor_set": ["voltage"],
+            "service_id": service_id or None,
         }
     ]
 
@@ -237,6 +241,7 @@ async def test_repository_add_reuses_trigger_created_identity():
         charger_id="charger-1",
         timestamp=datetime.now(UTC),
         telemetry_type="voltage",
+        service_id="monitor-1",
     )
 
     anomaly_id = await repository.add(anomaly)
@@ -264,10 +269,12 @@ async def test_repository_add_falls_back_when_identity_missing():
         charger_id="charger-1",
         timestamp=datetime.now(UTC),
         telemetry_type="voltage",
+        service_id="monitor-1",
     )
 
     anomaly_id = await repository.add(anomaly)
 
     assert anomaly_id == "generated-id"
     assert session.add.call_count == 2
+    assert session.add.call_args.args[0].service_id == "monitor-1"
     session.refresh.assert_awaited_once()

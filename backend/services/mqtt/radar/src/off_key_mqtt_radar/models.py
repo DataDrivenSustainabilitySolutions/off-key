@@ -145,6 +145,7 @@ class MQTTMessage:
     qos: int = 0
     retain: bool = False
     timestamp: datetime | None = None
+    received_monotonic: float | None = None
 
     _topic_extractor = TopicMetadataExtractor()
 

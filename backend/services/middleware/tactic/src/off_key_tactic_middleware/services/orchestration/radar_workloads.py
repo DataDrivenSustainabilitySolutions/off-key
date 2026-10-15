@@ -3,12 +3,14 @@
 import asyncio
 import time
 from collections.abc import Callable
+from contextlib import suppress
 from functools import lru_cache
 from typing import Any
 
 import docker
 from docker.types import Resources, RestartPolicy, SecretReference, ServiceMode
 from off_key_core.config.logs import logger
+from off_key_core.config.resource_budget import parse_memory_bytes
 
 from ...config.config import get_tactic_settings
 from ...facades.docker import (
@@ -17,22 +19,17 @@ from ...facades.docker import (
     should_fallback_to_container,
     with_workload_fallback,
 )
-from .radar_environment import build_radar_workload_labels
+from .radar_environment import (
+    build_radar_config_fingerprint,
+    build_radar_controller_identity,
+    build_radar_workload_labels,
+)
 
 MANAGED_BY_TACTIC_LABEL = "managed_by=tactic"
 RADAR_SERVICE_TYPE_LABEL = "service_type=radar"
 
 _SWARM_CACHE_TTL_SECONDS = 30.0
 _swarm_manager_cache: tuple[bool, float] | None = None
-_DEFAULT_MEMORY_BYTES = 536_870_912
-_MEMORY_SIZE_MULTIPLIERS = {
-    "k": 1024,
-    "m": 1024 * 1024,
-    "g": 1024 * 1024 * 1024,
-    "kb": 1024,
-    "mb": 1024 * 1024,
-    "gb": 1024 * 1024 * 1024,
-}
 
 
 @lru_cache(maxsize=1)
@@ -42,27 +39,8 @@ def get_async_docker() -> AsyncDocker:
 
 
 def _parse_memory_string(memory_string: str) -> int:
-    """Convert a Docker memory-size string to bytes."""
-    normalized = memory_string.lower().strip()
-    if not normalized:
-        return _DEFAULT_MEMORY_BYTES
-    if normalized.isdigit():
-        return int(normalized)
-
-    for suffix, multiplier in _MEMORY_SIZE_MULTIPLIERS.items():
-        if not normalized.endswith(suffix):
-            continue
-        number_part = normalized[: -len(suffix)].strip()
-        try:
-            return int(float(number_part) * multiplier)
-        except ValueError:
-            break
-
-    logger.warning(
-        "Invalid Docker memory limit %r; using the 512 MiB default",
-        memory_string,
-    )
-    return _DEFAULT_MEMORY_BYTES
+    """Validate legacy callers using the shared Docker quantity parser."""
+    return parse_memory_bytes(memory_string)
 
 
 class RadarWorkloadManager:
@@ -70,6 +48,78 @@ class RadarWorkloadManager:
 
     def __init__(self, async_docker: AsyncDocker):
         self.async_docker = async_docker
+
+    async def find(self, service_id: str) -> Any | None:
+        """Resolve the durable Docker name, including unknown create outcomes."""
+        name = f"radar-{service_id}"
+        try:
+            return await self.async_docker.run(
+                self.async_docker.client.services.get, name
+            )
+        except docker.errors.NotFound:
+            pass
+        except Exception as exc:
+            if not should_fallback_to_container(exc):
+                raise
+        try:
+            return await self.async_docker.run(
+                self.async_docker.client.containers.get, name
+            )
+        except docker.errors.NotFound:
+            return None
+
+    async def ensure(self, service_id: str, environment: dict[str, str]) -> Any:
+        """Idempotently create or adopt one workload for a persisted generation."""
+        workload = await self.find(service_id)
+        if workload is None:
+            try:
+                workload = await self.create(service_id, environment)
+            except docker.errors.APIError as exc:
+                if exc.status_code != 409:
+                    raise
+                # Another controller or a previously timed-out request won.
+                workload = await self.find(service_id)
+                if workload is None:
+                    raise
+        attrs = getattr(workload, "attrs", {}) or {}
+        labels = (
+            attrs.get("Spec", {}).get("Labels")
+            or attrs.get("Config", {}).get("Labels")
+            or {}
+        )
+        expected = {
+            "managed_by": "tactic",
+            "service_type": "radar",
+            "radar_service_id": service_id,
+            "radar_lifecycle_version": environment["RADAR_LIFECYCLE_VERSION"],
+            "radar_config_fingerprint": build_radar_config_fingerprint(environment),
+            "radar_controller_id": build_radar_controller_identity(
+                environment["RADAR_DATABASE_URL"]
+            ),
+        }
+        if any(labels.get(key) != value for key, value in expected.items()):
+            raise RuntimeError(
+                "Existing RADAR workload does not match its persisted intent"
+            )
+        return workload
+
+    async def remove_intent(self, service_id: str, workload_id: str | None) -> bool:
+        """Remove an attached worker and any unknown outcome at its durable name."""
+        removed = await self.remove(workload_id)
+        workload = await self.find(service_id)
+        if workload is not None:
+            attrs = getattr(workload, "attrs", {}) or {}
+            labels = (
+                attrs.get("Spec", {}).get("Labels")
+                or attrs.get("Config", {}).get("Labels")
+                or {}
+            )
+            if labels.get("radar_service_id") != service_id:
+                raise RuntimeError(
+                    "Refusing to remove a RADAR workload with a different owner"
+                )
+            removed = await self.remove(workload.id) or removed
+        return removed
 
     async def create(self, service_id: str, environment: dict[str, str]) -> Any:
         """Create a Swarm service when available, otherwise a container."""
@@ -120,6 +170,7 @@ class RadarWorkloadManager:
     ) -> Any:
         tactic_config = get_tactic_settings().config
         docker_config = tactic_config.docker
+        budget = docker_config.resource_budget
         service_kwargs: dict[str, Any] = {
             "name": f"radar-{service_id}",
             "labels": build_radar_workload_labels(
@@ -139,8 +190,10 @@ class RadarWorkloadManager:
                 *docker_config.additional_networks,
             ],
             "resources": Resources(
-                cpu_limit=int(float(docker_config.default_cpu_limit) * 1_000_000_000),
-                mem_limit=_parse_memory_string(docker_config.default_memory_limit),
+                cpu_limit=budget.cpu_limit_nanos,
+                mem_limit=budget.memory_limit_bytes,
+                cpu_reservation=budget.cpu_reservation_nanos,
+                mem_reservation=budget.memory_reservation_bytes,
             ),
         }
         if docker_config.default_constraints:
@@ -187,6 +240,7 @@ class RadarWorkloadManager:
     ) -> Any:
         tactic_config = get_tactic_settings().config
         docker_config = tactic_config.docker
+        budget = docker_config.resource_budget
         restart_policy: dict[str, Any] = {
             "Name": docker_config.default_restart_policy,
         }
@@ -211,8 +265,9 @@ class RadarWorkloadManager:
             detach=True,
             network=docker_config.default_network,
             restart_policy=restart_policy,
-            mem_limit=_parse_memory_string(docker_config.default_memory_limit),
-            nano_cpus=int(float(docker_config.default_cpu_limit) * 1_000_000_000),
+            mem_limit=budget.memory_limit_bytes,
+            mem_reservation=budget.memory_reservation_bytes,
+            nano_cpus=budget.cpu_limit_nanos,
         )
 
         # containers.run only attaches one network; connect the rest (e.g. the app
@@ -331,18 +386,82 @@ class RadarWorkloadManager:
         )
 
     async def remove(self, workload_id: str | None) -> bool:
-        """Remove a workload, returning whether it still existed."""
+        """Confirm task termination before releasing a workload's sensor claim."""
         if not workload_id:
             return False
+        swarm_supported = True
         try:
-            await self.resolve_operation(
-                workload_id,
-                on_service=lambda service: service.remove(),
-                on_container=lambda container: container.remove(force=True),
+            service = await self.async_docker.run(
+                self.async_docker.client.services.get, workload_id
             )
+        except docker.errors.NotFound:
+            pass
+        except Exception as exc:
+            if not should_fallback_to_container(exc):
+                raise
+            swarm_supported = False
+        else:
+            await self._stop_swarm_tasks(service)
+            with suppress(docker.errors.NotFound):
+                await self.async_docker.run(service.remove)
+            return True
+
+        try:
+            container = await self.async_docker.run(
+                self.async_docker.client.containers.get, workload_id
+            )
+            await self.async_docker.run(container.remove, force=True)
             return True
         except docker.errors.NotFound:
+            if swarm_supported:
+                await self._wait_for_task_shutdown(
+                    lambda: self._remaining_service_tasks(workload_id)
+                )
             return False
+
+    async def _stop_swarm_tasks(self, service: Any) -> None:
+        """Keep the service inspectable until every task acknowledges shutdown."""
+        try:
+            await self.async_docker.run(service.scale, 0)
+            await self._wait_for_task_shutdown(
+                lambda: self.async_docker.run(service.tasks)
+            )
+        except docker.errors.NotFound:
+            await self._wait_for_task_shutdown(
+                lambda: self._remaining_service_tasks(service.id)
+            )
+
+    async def _remaining_service_tasks(self, service_id):
+        try:
+            return await self.async_docker.run(
+                self.async_docker.client.api.tasks, filters={"service": service_id}
+            )
+        except docker.errors.NotFound:
+            # Docker resolves service filters against existing services and can
+            # return404 while retiring task records still exist in the task list.
+            tasks = await self.async_docker.run(self.async_docker.client.api.tasks)
+            return [task for task in tasks if task.get("ServiceID") == service_id]
+
+    async def _wait_for_task_shutdown(self, query):
+        terminal = {"shutdown", "complete", "completed", "failed", "rejected", "remove"}
+        try:
+            async with asyncio.timeout(
+                get_tactic_settings().config.radar_stop_timeout_seconds
+            ):
+                while True:
+                    tasks = await query()
+                    if all(
+                        isinstance(task, dict)
+                        and isinstance(task.get("Status"), dict)
+                        and str(task["Status"].get("State", "")).lower() in terminal
+                        for task in tasks
+                    ):
+                        return
+                    await asyncio.sleep(0.1)
+        except TimeoutError:
+            raise RuntimeError(
+                "RADAR tasks have not stopped; the sensor claim is retained"
+            ) from None
 
     async def remove_after_failure(self, docker_workload: Any) -> None:
         """Best-effort cleanup after persistence or startup fails."""
@@ -366,9 +485,11 @@ class RadarWorkloadManager:
     def _managed_label_filters() -> dict[str, list[str]]:
         return {"label": [MANAGED_BY_TACTIC_LABEL, RADAR_SERVICE_TYPE_LABEL]}
 
-    async def list_managed_ids(self) -> set[str]:
+    async def list_managed_ids(self, *, controller_id: str | None = None) -> set[str]:
         """List every managed RADAR service and container ID."""
         filters = self._managed_label_filters()
+        if controller_id is not None:
+            filters["label"].append(f"radar_controller_id={controller_id}")
         try:
             docker_services = await self.async_docker.run(
                 self.async_docker.client.services.list,

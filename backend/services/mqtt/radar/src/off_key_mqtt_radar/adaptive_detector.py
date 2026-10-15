@@ -59,8 +59,11 @@ class AdaptiveStreamDetectionService:
         self,
         config: AnomalyDetectionConfig,
         checkpoint: dict[str, Any] | None = None,
+        *,
+        automatic_checkpoints: bool = True,
     ) -> None:
         self.config = config
+        self.automatic_checkpoints = automatic_checkpoints
         adaptive_config = config.monitoring
         if not isinstance(adaptive_config, AdaptiveStreamConfig):
             raise ValueError("adaptive_stream_config is required")
@@ -101,7 +104,7 @@ class AdaptiveStreamDetectionService:
     def _restore(self, checkpoint: dict[str, Any]) -> None:
         self.state = AdaptiveStreamState(checkpoint["adaptive_state"])
         self.feature_keys = list(checkpoint["feature_keys"])
-        self.detector_config = self._detector_config(self.feature_keys)
+        self.detector_config = self._detector_config(self.feature_keys or None)
         self.detector_fingerprint = self.detector_config.fingerprint()
         self.model_capabilities = self.detector_config.capabilities().as_dict()
         if checkpoint.get("detector_fingerprint") != self.detector_fingerprint:
@@ -124,7 +127,9 @@ class AdaptiveStreamDetectionService:
         self.schema_mismatch_count = int(checkpoint.get("schema_mismatch_count", 0))
         self.last_checkpoint = self.processed_count
         self.training_error = checkpoint.get("training_error")
-        if self.pipeline is None or not self.feature_keys:
+        if self.pipeline is None or (
+            not self.feature_keys and self.processed_count != 0
+        ):
             raise ValueError("Adaptive checkpoint is missing pipeline state")
         if self.state == AdaptiveStreamState.OPERATIONAL and self.threshold is None:
             raise ValueError("Operational adaptive checkpoint has no threshold")
@@ -134,13 +139,25 @@ class AdaptiveStreamDetectionService:
         cls, checkpoint_path: str, config: AnomalyDetectionConfig
     ) -> "AdaptiveStreamDetectionService":
         checkpoint = CheckpointManager().load(checkpoint_path)
+        return cls.from_checkpoint_data(checkpoint, config)
+
+    @classmethod
+    def from_checkpoint_data(
+        cls,
+        checkpoint: dict[str, Any],
+        config: AnomalyDetectionConfig,
+        *,
+        automatic_checkpoints: bool = True,
+    ) -> "AdaptiveStreamDetectionService":
         if checkpoint.get("strategy") != "adaptive_stream":
             raise ValueError("Checkpoint strategy does not match adaptive_stream")
         if checkpoint.get("aberrant_version") != aberrant_version:
             raise ValueError("Checkpoint aberrant version is incompatible")
         if checkpoint.get("schema_signature") != cls._build_schema_signature(config):
             raise ValueError("Adaptive checkpoint configuration is incompatible")
-        return cls(config, checkpoint=checkpoint)
+        return cls(
+            config, checkpoint=checkpoint, automatic_checkpoints=automatic_checkpoints
+        )
 
     @staticmethod
     def _build_schema_signature(config: AnomalyDetectionConfig) -> str:
@@ -154,6 +171,12 @@ class AdaptiveStreamDetectionService:
             ),
             "subscription_topics": sorted(config.subscription_topics),
             "sensor_key_strategy": config.sensor_key_strategy,
+            "sensor_freshness_seconds": config.sensor_freshness_seconds,
+            "observation_max_age_seconds": config.observation_max_age_seconds,
+            "observation_future_tolerance_seconds": (
+                config.observation_future_tolerance_seconds
+            ),
+            "alignment_max_skew_seconds": config.alignment_max_skew_seconds,
             "aberrant_version": aberrant_version,
         }
         serialized = json.dumps(payload, sort_keys=True, separators=(",", ":"))
@@ -377,31 +400,36 @@ class AdaptiveStreamDetectionService:
             },
         )
 
+    def export_checkpoint(self) -> dict[str, Any]:
+        """Export state without I/O for the managed persistence barrier."""
+        return {
+            "strategy": "adaptive_stream",
+            "adaptive_state": self.state.value,
+            "feature_keys": self.feature_keys,
+            "pipeline": self.pipeline,
+            "detector_config": self.detector_config.as_dict(),
+            "detector_fingerprint": self.detector_fingerprint,
+            "severity_scale": self.severity_scale,
+            "calibration_scores": self.calibration_scores,
+            "threshold": self.threshold,
+            "processed_count": self.processed_count,
+            "warmup_count": self.warmup_count,
+            "calibration_count": self.calibration_count,
+            "operational_count": self.operational_count,
+            "anomaly_count": self.anomaly_count,
+            "schema_mismatch_count": self.schema_mismatch_count,
+            "training_error": self.training_error,
+            "schema_signature": self.schema_signature,
+            "aberrant_version": aberrant_version,
+        }
+
     def _checkpoint_model(self) -> None:
+        if not self.automatic_checkpoints:
+            return
         try:
             manager = CheckpointManager()
             manager.save(
-                {
-                    "strategy": "adaptive_stream",
-                    "adaptive_state": self.state.value,
-                    "feature_keys": self.feature_keys,
-                    "pipeline": self.pipeline,
-                    "detector_config": self.detector_config.as_dict(),
-                    "detector_fingerprint": self.detector_fingerprint,
-                    "severity_scale": self.severity_scale,
-                    "calibration_scores": self.calibration_scores,
-                    "threshold": self.threshold,
-                    "processed_count": self.processed_count,
-                    "warmup_count": self.warmup_count,
-                    "calibration_count": self.calibration_count,
-                    "operational_count": self.operational_count,
-                    "anomaly_count": self.anomaly_count,
-                    "schema_mismatch_count": self.schema_mismatch_count,
-                    "training_error": self.training_error,
-                    "schema_signature": self.schema_signature,
-                    "aberrant_version": aberrant_version,
-                    "service_id": manager.service_id,
-                },
+                {**self.export_checkpoint(), "service_id": manager.service_id},
                 processed_count=self.processed_count,
             )
             self.last_checkpoint = self.processed_count

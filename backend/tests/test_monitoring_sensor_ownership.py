@@ -14,6 +14,7 @@ def _query_result(active_services):
 
 
 def _service_with_session(session):
+    session.scalar.return_value = None
     service = object.__new__(RadarOrchestrationService)
     service.session = session
     service.model_registry = MagicMock()
@@ -94,7 +95,7 @@ async def test_sensor_claim_ignores_current_container_for_idempotent_start():
 
 
 @pytest.mark.asyncio
-async def test_sensor_claim_releases_missing_workload_before_overlap_check():
+async def test_sensor_claim_stays_reserved_until_reconciliation_confirms_stop():
     session = AsyncMock()
     session.bind = SimpleNamespace(dialect=SimpleNamespace(name="sqlite"))
     stale_service = SimpleNamespace(
@@ -111,13 +112,14 @@ async def test_sensor_claim_releases_missing_workload_before_overlap_check():
     service = _service_with_session(session)
     service.workloads.get_status_and_labels.return_value = ("not_found", {})
 
-    await service._assert_topics_available(
-        mqtt_topics=["telemetry/charger-1/L1"],
-        container_name="radar-replacement",
-    )
+    with pytest.raises(ValueError, match="overlaps active service"):
+        await service._assert_topics_available(
+            mqtt_topics=["telemetry/charger-1/L1"],
+            container_name="radar-replacement",
+        )
 
-    assert stale_service.status is False
-    session.flush.assert_awaited_once()
+    assert stale_service.status is True
+    service.workloads.get_status_and_labels.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -126,6 +128,7 @@ async def test_unverified_or_starting_workload_keeps_sensor_claim(docker_status)
     session = AsyncMock()
     session.bind = SimpleNamespace(dialect=SimpleNamespace(name="sqlite"))
     monitor = SimpleNamespace(
+        id="existing-id",
         stop_requested_at=None,
         status=True,
         container_name="existing",
@@ -135,6 +138,7 @@ async def test_unverified_or_starting_workload_keeps_sensor_claim(docker_status)
     session.execute.return_value = _query_result([monitor])
     service = _service_with_session(session)
     service.workloads.get_status_and_labels.return_value = (docker_status, {})
+    session.get.return_value = monitor
 
     with pytest.raises(ValueError, match="one monitoring service"):
         await service._assert_topics_available(

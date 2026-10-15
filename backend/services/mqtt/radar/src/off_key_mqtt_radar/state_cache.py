@@ -11,10 +11,14 @@ Includes TTL-based cleanup to prevent memory growth from stale entries.
 from __future__ import annotations
 
 import logging
+import math
 import time
 from dataclasses import dataclass, field
 from threading import Lock
 from typing import Literal
+
+from off_key_core.schemas.radar import PerformanceConfig
+from pydantic import FiniteFloat, TypeAdapter
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +28,7 @@ DEFAULT_TTL_SECONDS = 3600
 DEFAULT_MAX_SENSOR_AGE_SECONDS = 30.0
 # Default max chargers to prevent unbounded growth
 DEFAULT_MAX_CHARGERS = 10000
+DEFAULT_MAX_SENSOR_KEYS = 100
 
 
 def _extract_numeric_value(values: dict[str, float], sensor_type: str) -> float | None:
@@ -56,6 +61,7 @@ class _SensorReading:
     received_at: float
     event_timestamp: float
     sequence: int
+    received_monotonic: float | None
 
 
 class SensorStateCache:
@@ -70,6 +76,9 @@ class SensorStateCache:
         ttl_seconds: float = DEFAULT_TTL_SECONDS,
         max_sensor_age_seconds: float = DEFAULT_MAX_SENSOR_AGE_SECONDS,
         max_chargers: int = DEFAULT_MAX_CHARGERS,
+        observation_max_age_seconds: float = 30.0,
+        observation_future_tolerance_seconds: float = 5.0,
+        alignment_max_skew_seconds: float = 5.0,
     ):
         """
         Initialize the sensor state cache.
@@ -84,10 +93,23 @@ class SensorStateCache:
         self._lock = Lock()
         self.required_sensors = set(required_sensors)
         self.required_sensor_order = tuple(sorted(self.required_sensors))
+        self._max_sensor_keys = max(DEFAULT_MAX_SENSOR_KEYS, len(self.required_sensors))
         self.ttl_seconds = ttl_seconds
-        self.max_sensor_age_seconds = max(float(max_sensor_age_seconds), 0.1)
         self.max_chargers = max_chargers
+        policy = PerformanceConfig(
+            sensor_freshness_seconds=max_sensor_age_seconds,
+            observation_max_age_seconds=observation_max_age_seconds,
+            observation_future_tolerance_seconds=observation_future_tolerance_seconds,
+            alignment_max_skew_seconds=alignment_max_skew_seconds,
+        )
+        self.observation_max_age_seconds = policy.observation_max_age_seconds
+        self.max_sensor_age_seconds = policy.sensor_freshness_seconds
+        self.observation_future_tolerance_seconds = (
+            policy.observation_future_tolerance_seconds
+        )
+        self.alignment_max_skew_seconds = policy.alignment_max_skew_seconds
         self._readings_by_charger: dict[str, dict[str, _SensorReading]] = {}
+        self._watermarks: dict[str, dict[str, float]] = {}
         # Tracks last emitted sensor update sequence in strict-barrier mode.
         self._last_emitted_versions: dict[str, dict[str, int]] = {}
         self._next_update_seq = 0
@@ -103,6 +125,7 @@ class SensorStateCache:
         values: dict[str, float],
         *,
         sample_timestamp: float | None = None,
+        received_monotonic: float | None = None,
     ) -> AlignmentUpdate:
         """
         Update cache with a new sensor reading.
@@ -113,22 +136,41 @@ class SensorStateCache:
         Thread-safe: uses internal lock for concurrent access.
         """
         current_time = time.time()
+        event_timestamp = current_time if sample_timestamp is None else sample_timestamp
 
         with self._lock:
+            if received_monotonic is not None:
+                if not math.isfinite(received_monotonic):
+                    return AlignmentUpdate(
+                        status="observation_rejected",
+                        rejection_reason="receipt_nonfinite",
+                    )
+                if time.monotonic() - received_monotonic > self.max_sensor_age_seconds:
+                    return AlignmentUpdate(
+                        status="observation_rejected",
+                        rejection_reason="receipt_too_old",
+                    )
+            rejection = self._observation_rejection(
+                charger_id, sensor_type, event_timestamp, current_time
+            )
+            if rejection:
+                return AlignmentUpdate(
+                    status="observation_rejected", rejection_reason=rejection
+                )
             # Periodic cleanup
             if current_time - self._last_cleanup > self._cleanup_interval:
                 self._cleanup_stale_entries(current_time)
                 self._last_cleanup = current_time
 
             charger_cache = self._readings_by_charger.setdefault(charger_id, {})
+            self._watermarks.setdefault(charger_id, {})[sensor_type] = event_timestamp
             self._next_update_seq += 1
             charger_cache[sensor_type] = _SensorReading(
                 values=dict(values),
                 received_at=current_time,
-                event_timestamp=(
-                    current_time if sample_timestamp is None else sample_timestamp
-                ),
+                event_timestamp=event_timestamp,
                 sequence=self._next_update_seq,
+                received_monotonic=received_monotonic,
             )
 
             if not self.required_sensors:
@@ -150,6 +192,7 @@ class SensorStateCache:
                 charger_id,
                 charger_cache,
                 sensor_ages,
+                current_time,
             )
             if blocker is not None:
                 return blocker
@@ -192,6 +235,7 @@ class SensorStateCache:
         charger_id: str,
         charger_cache: dict[str, _SensorReading],
         sensor_ages: dict[str, float],
+        current_time: float,
     ) -> AlignmentUpdate | None:
         """Return the first condition preventing a strict-barrier emission."""
         missing_sensors = tuple(sorted(self.required_sensors - charger_cache.keys()))
@@ -207,6 +251,8 @@ class SensorStateCache:
                 sensor
                 for sensor, age in sensor_ages.items()
                 if age > self.max_sensor_age_seconds
+                or current_time - charger_cache[sensor].event_timestamp
+                > self.observation_max_age_seconds
             )
         )
         if stale_sensors:
@@ -214,6 +260,15 @@ class SensorStateCache:
                 status="stale_sensor_block",
                 stale_sensors=stale_sensors,
                 sensor_ages=sensor_ages,
+            )
+
+        timestamps = [
+            charger_cache[sensor].event_timestamp
+            for sensor in self.required_sensor_order
+        ]
+        if max(timestamps) - min(timestamps) > self.alignment_max_skew_seconds:
+            return AlignmentUpdate(
+                status="observation_skew_block", sensor_ages=sensor_ages
             )
 
         last_emitted = self._last_emitted_versions.setdefault(charger_id, {})
@@ -231,6 +286,34 @@ class SensorStateCache:
             pending_sensors=pending_sensors,
             sensor_ages=sensor_ages,
         )
+
+    def _observation_rejection(self, charger_id, sensor_type, timestamp, now):
+        if self.required_sensors and sensor_type not in self.required_sensors:
+            return "observation_unexpected_sensor"
+        if not math.isfinite(timestamp):
+            return "observation_nonfinite"
+        if now - timestamp > self.observation_max_age_seconds:
+            return "observation_too_old"
+        if timestamp - now > self.observation_future_tolerance_seconds:
+            return "observation_in_future"
+        previous = self._watermarks.get(charger_id, {}).get(sensor_type)
+        if previous is not None and timestamp <= previous:
+            return (
+                "observation_duplicate"
+                if timestamp == previous
+                else "observation_regression"
+            )
+        if (
+            charger_id not in self._watermarks
+            and len(self._watermarks) >= self.max_chargers
+        ):
+            return "observation_capacity"
+        if (
+            sensor_type not in self._watermarks.get(charger_id, {})
+            and len(self._watermarks.get(charger_id, {})) >= self._max_sensor_keys
+        ):
+            return "observation_capacity"
+        return None
 
     def _build_aligned_features(
         self,
@@ -263,7 +346,12 @@ class SensorStateCache:
             sensor_entry = charger_cache.get(sensor)
             if not sensor_entry:
                 continue
-            ages[sensor] = max(current_time - sensor_entry.received_at, 0.0)
+            age = (
+                current_time - sensor_entry.received_at
+                if sensor_entry.received_monotonic is None
+                else time.monotonic() - sensor_entry.received_monotonic
+            )
+            ages[sensor] = max(age, 0.0)
         return ages
 
     def _cleanup_stale_entries(self, current_time: float) -> None:
@@ -336,8 +424,32 @@ class SensorStateCache:
         )
 
     def clear(self) -> None:
-        """Clear all cached entries."""
+        """Clear partial frames while retaining observation replay protection."""
         with self._lock:
+            self._readings_by_charger.clear()
+            self._last_emitted_versions.clear()
+
+    def export_watermarks(self) -> dict[str, dict[str, float]]:
+        with self._lock:
+            return {key: dict(values) for key, values in self._watermarks.items()}
+
+    def restore_watermarks(self, payload: dict[str, dict[str, float]]) -> None:
+        watermarks = TypeAdapter(dict[str, dict[str, FiniteFloat]]).validate_python(
+            payload
+        )
+        with self._lock:
+            merged = {key: dict(values) for key, values in self._watermarks.items()}
+            for charger, sensors in watermarks.items():
+                current = merged.setdefault(charger, {})
+                for sensor, timestamp in sensors.items():
+                    current[sensor] = max(timestamp, current.get(sensor, timestamp))
+            if len(merged) > self.max_chargers or any(
+                len(values) > self._max_sensor_keys for values in merged.values()
+            ):
+                raise ValueError(
+                    "Observation watermark checkpoint exceeds cache capacity"
+                )
+            self._watermarks = merged
             self._readings_by_charger.clear()
             self._last_emitted_versions.clear()
 
@@ -347,6 +459,8 @@ AlignmentStatus = Literal[
     "stale_sensor_block",
     "waiting_for_all",
     "waiting_for_barrier",
+    "observation_rejected",
+    "observation_skew_block",
 ]
 
 
@@ -362,3 +476,4 @@ class AlignmentUpdate:
     sensor_ages: dict[str, float] = field(default_factory=dict)
     input_timestamps: dict[str, float] = field(default_factory=dict)
     sample_timestamp: float | None = None
+    rejection_reason: str | None = None

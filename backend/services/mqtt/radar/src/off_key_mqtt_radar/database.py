@@ -18,7 +18,10 @@ from contextlib import suppress
 from datetime import UTC, datetime
 from typing import Any
 
-from off_key_core.db.table_contracts import monitoring_evidence_table
+from off_key_core.db.table_contracts import (
+    monitoring_evidence_table,
+    radar_runtime_checkpoints_table,
+)
 from off_key_core.schemas.radar import RadarOperationalStatus
 from sqlalchemy import (
     JSON,
@@ -27,6 +30,7 @@ from sqlalchemy import (
     Float,
     Table,
     Text,
+    select,
     text,
 )
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -56,6 +60,7 @@ ANOMALY_TABLE = Table(
     Column("charger_id", Text, primary_key=True),
     Column("timestamp", TIMESTAMP(timezone=True), primary_key=True),
     Column("telemetry_type", Text, primary_key=True),
+    Column("service_id", Text, primary_key=True, server_default=text("''")),
     Column("anomaly_type", Text, nullable=False),
     Column("anomaly_value", Float, nullable=False),
     Column("value_type", Text, nullable=True),
@@ -73,8 +78,14 @@ ANOMALY_IDENTITY_TABLE = Table(
     Column("charger_id", Text, nullable=False),
     Column("timestamp", TIMESTAMP(timezone=True), nullable=False),
     Column("telemetry_type", Text, nullable=False),
+    Column("service_id", Text, nullable=False, server_default=text("''")),
 )
 MONITORING_EVIDENCE_TABLE = monitoring_evidence_table(_anomaly_metadata)
+RUNTIME_CHECKPOINT_TABLE = radar_runtime_checkpoints_table(_anomaly_metadata)
+
+
+class CheckpointOwnershipLost(RuntimeError):
+    """Another managed worker has advanced this service's durable snapshot."""
 
 
 def get_radar_async_session_factory():
@@ -122,8 +133,15 @@ class DatabaseWriter:
     - Metrics tracking
     """
 
-    def __init__(self, config: MQTTRadarConfig, session_factory=None):
+    def __init__(
+        self,
+        config: MQTTRadarConfig,
+        session_factory=None,
+        *,
+        managed_checkpoints: bool = False,
+    ):
         self.config = config
+        self.managed_checkpoints = managed_checkpoints
         self.projector = ResultProjector()
         self.total_rejected = 0
         # Session factory is created lazily to avoid requiring DB env vars
@@ -133,6 +151,10 @@ class DatabaseWriter:
         # Batch processing
         self.write_queue: list[AnomalyResult] = []
         self.last_write_time = time.time()
+        self.last_persisted_at: datetime | None = None
+        # Entries remain owned during flush/retry, so a small in-flight batch
+        # cannot disappear from persistence-lag reporting.
+        self._pending_receipts: dict[int, deque[float]] = {}
 
         # Performance tracking
         self.total_written = 0
@@ -147,6 +169,12 @@ class DatabaseWriter:
         self._queue_changed = asyncio.Condition()
         self._in_flight = 0
         self._flush_lock = asyncio.Lock()
+        self._checkpoint_service_id: str | None = None
+        self._checkpoint_signature: str | None = None
+        self._checkpoint_loaded = False
+        self._pending_checkpoint_signature: str | None = None
+        self._ownership_error: CheckpointOwnershipLost | None = None
+        self._checkpoint_token_lock = asyncio.Lock()
 
         logger.info("event=radar.db_writer_initialized")
 
@@ -213,6 +241,7 @@ class DatabaseWriter:
         """Queue a static inference result for evidence and optional alarm writing."""
         if not self.config.db_write_enabled:
             return
+        self.raise_if_fenced()
 
         async with self._queue_changed:
             await self._queue_changed.wait_for(
@@ -222,9 +251,13 @@ class DatabaseWriter:
                     < self.config.max_queue_size
                 )
             )
+            self.raise_if_fenced()
             if self._shutdown_event.is_set():
                 raise RuntimeError("Database writer is stopped")
             self.write_queue.append(result)
+            self._pending_receipts.setdefault(id(result), deque()).append(
+                time.monotonic()
+            )
             queue_size = len(self.write_queue)
             should_flush = (
                 queue_size >= min(self.config.db_batch_size, self.config.max_queue_size)
@@ -239,6 +272,157 @@ class DatabaseWriter:
         """Queue a result; retained as the public writer entry point."""
         await self.write_result(result)
 
+    async def load_checkpoint(self, service_id: str) -> dict[str, Any] | None:
+        """Require the migrated durable store before a managed worker subscribes."""
+        if self.session_factory is None:
+            self.session_factory = get_radar_async_session_factory()
+        async with self.session_factory() as session:
+            result = await session.execute(
+                select(RUNTIME_CHECKPOINT_TABLE).where(
+                    RUNTIME_CHECKPOINT_TABLE.c.service_id == service_id
+                )
+            )
+            row = result.mappings().one_or_none()
+            checkpoint = dict(row) if row is not None else None
+        if self.managed_checkpoints:
+            self.raise_if_fenced()
+            self._bind_checkpoint_service(service_id)
+            signature = checkpoint["signature"] if checkpoint is not None else None
+            if self._checkpoint_loaded and signature != self._checkpoint_signature:
+                raise self._lose_checkpoint_ownership()
+            self._checkpoint_signature = signature
+            self._checkpoint_loaded = True
+        return checkpoint
+
+    def raise_if_fenced(self) -> None:
+        """Make a detected overlap loss terminal before further model work."""
+        if self._ownership_error is not None:
+            raise self._ownership_error
+
+    def _bind_checkpoint_service(self, service_id: str) -> None:
+        if self._checkpoint_service_id not in (None, service_id):
+            raise ValueError(
+                "Database writer cannot change checkpoint service identity"
+            )
+        self._checkpoint_service_id = service_id
+
+    def _lose_checkpoint_ownership(self) -> CheckpointOwnershipLost:
+        if self._ownership_error is None:
+            self._ownership_error = CheckpointOwnershipLost(
+                "Managed checkpoint ownership was lost to another worker"
+            )
+            self._shutdown_event.set()
+            self._flush_event.set()
+        return self._ownership_error
+
+    async def _assert_checkpoint_ownership(
+        self, session: AsyncSession, *, lock: bool = True
+    ) -> None:
+        if not self.managed_checkpoints:
+            return
+        self.raise_if_fenced()
+        if self._checkpoint_signature is None:
+            raise self._lose_checkpoint_ownership()
+        statement = select(RUNTIME_CHECKPOINT_TABLE.c.signature).where(
+            RUNTIME_CHECKPOINT_TABLE.c.service_id == self._checkpoint_service_id
+        )
+        if lock:
+            statement = statement.with_for_update()
+        signature = await session.scalar(statement)
+        # The pending token avoids falsely fencing our own health heartbeat in
+        # the short interval between DB commit and publication of the new token.
+        accepted = {self._checkpoint_signature}
+        if not lock and self._pending_checkpoint_signature is not None:
+            accepted.add(self._pending_checkpoint_signature)
+        if signature not in accepted:
+            raise self._lose_checkpoint_ownership()
+
+    async def _replace_checkpoint(
+        self, session: AsyncSession, checkpoint: dict[str, Any]
+    ) -> None:
+        if self._checkpoint_signature is None:
+            statement = (
+                pg_insert(RUNTIME_CHECKPOINT_TABLE)
+                .values(checkpoint)
+                .on_conflict_do_nothing(index_elements=["service_id"])
+            )
+        else:
+            statement = (
+                RUNTIME_CHECKPOINT_TABLE.update()
+                .where(
+                    RUNTIME_CHECKPOINT_TABLE.c.service_id
+                    == self._checkpoint_service_id,
+                    RUNTIME_CHECKPOINT_TABLE.c.signature == self._checkpoint_signature,
+                )
+                .values(
+                    {
+                        name: value
+                        for name, value in checkpoint.items()
+                        if name != "service_id"
+                    }
+                )
+            )
+        stored_signature = await session.scalar(
+            statement.returning(RUNTIME_CHECKPOINT_TABLE.c.signature)
+        )
+        if stored_signature is None:
+            raise self._lose_checkpoint_ownership()
+
+    async def commit_checkpoint(self, checkpoint: dict[str, Any]) -> None:
+        """Commit frozen model state and all pending evidence in one transaction.
+
+        The MQTT consumer is the only producer while this barrier is awaited.
+        Earlier background batches have committed before this lock is acquired.
+        Any failed transaction retains its original results for retry.
+        """
+        if not self.config.db_write_enabled:
+            raise RuntimeError("Database checkpoint storage requires database writes")
+        if self.session_factory is None:
+            self.session_factory = get_radar_async_session_factory()
+        async with self._flush_lock:
+            self.raise_if_fenced()
+            self._bind_checkpoint_service(checkpoint["service_id"])
+            async with self._queue_changed:
+                pending = list(self.write_queue)
+                self.write_queue.clear()
+                self._in_flight = len(pending)
+            try:
+                prepared = [
+                    self._prepare_managed_result(result)
+                    for result in pending
+                    if result.should_persist
+                ]
+                anomalies = [row for item in prepared for row in item.anomalies]
+                identities = [row for item in prepared for row in item.identities]
+                evidence = [row for item in prepared for row in item.evidence]
+                async with self._checkpoint_token_lock:
+                    self._pending_checkpoint_signature = checkpoint["signature"]
+                async with self.session_factory() as session:
+                    # Claim the next token before writing outputs. The row lock
+                    # covers evidence too, so a replacement cannot overtake an
+                    # old transaction that is still committing a batch.
+                    await self._replace_checkpoint(session, checkpoint)
+                    await self._execute_upsert(session, anomalies, identities)
+                    await self._execute_evidence_upsert(session, evidence)
+                    await session.commit()
+                async with self._checkpoint_token_lock:
+                    self._checkpoint_signature = checkpoint["signature"]
+                    self._checkpoint_loaded = True
+                self.total_written += len(anomalies)
+                self.total_evidence_written += len(evidence)
+                self.last_write_time = time.time()
+                self._complete_results(pending, bool(anomalies or evidence))
+            except BaseException:
+                await self._requeue_results(pending)
+                self.total_errors += 1
+                raise
+            finally:
+                async with self._checkpoint_token_lock:
+                    self._pending_checkpoint_signature = None
+                async with self._queue_changed:
+                    self._in_flight = 0
+                    self._queue_changed.notify_all()
+
     async def write_service_metrics(self, metrics: dict[str, Any]):
         """Write service performance metrics"""
         if not self.config.db_write_enabled:
@@ -248,7 +432,11 @@ class DatabaseWriter:
             if self.session_factory is None:
                 self.session_factory = get_radar_async_session_factory()
 
-            async with self.session_factory() as session:
+            # Freeze the accepted old/pending token pair for this heartbeat.
+            # Checkpoint I/O does not hold this lock, so a blocked evidence
+            # transaction still permits an independent health commit.
+            async with self._checkpoint_token_lock, self.session_factory() as session:
+                await self._assert_checkpoint_ownership(session, lock=False)
                 service_metrics = ServiceMetrics(
                     timestamp=datetime.now(),
                     total_messages_processed=metrics.get("total_messages_processed", 0),
@@ -269,6 +457,11 @@ class DatabaseWriter:
                 )
                 await session.commit()
 
+        except CheckpointOwnershipLost:
+            self.total_errors += 1
+            async with self._queue_changed:
+                self._queue_changed.notify_all()
+            logger.error("event=radar.db_checkpoint_ownership_lost")
         except Exception as e:
             logger.error(
                 "event=radar.db_metrics_write_failed error=%s",
@@ -297,23 +490,40 @@ class DatabaseWriter:
             mode="json", exclude_none=True
         )
 
-        await session.execute(
+        signature_guard = ""
+        parameters = {
+            "stage": normalized.stage,
+            "status_payload": json.dumps(payload),
+            "updated_at": updated_at,
+            "service_id": service_id,
+        }
+        if self.managed_checkpoints:
+            signature_guard = """
+                AND EXISTS (
+                    SELECT 1 FROM radar_runtime_checkpoints
+                    WHERE service_id = :service_id
+                        AND signature IN (:signature, :pending_signature)
+                )
+            """
+            parameters.update(
+                signature=self._checkpoint_signature,
+                pending_signature=self._pending_checkpoint_signature,
+            )
+        result = await session.execute(
             text(
-                """
+                f"""
                 UPDATE services
                 SET operational_stage = :stage,
                     operational_status = CAST(:status_payload AS jsonb),
                     operational_updated_at = :updated_at
                 WHERE id = :service_id
+                {signature_guard}
                 """
             ),
-            {
-                "stage": normalized.stage,
-                "status_payload": json.dumps(payload),
-                "updated_at": updated_at,
-                "service_id": service_id,
-            },
+            parameters,
         )
+        if self.managed_checkpoints and result.rowcount != 1:
+            raise self._lose_checkpoint_ownership()
 
     async def _test_connection(self):
         """Test database connection"""
@@ -376,16 +586,16 @@ class DatabaseWriter:
             return
 
         # Use INSERT ... ON CONFLICT DO NOTHING for idempotency
-        # (composite PK: charger_id, timestamp, telemetry_type)
+        # Scope idempotency to one monitor, including simultaneous vector alarms.
         stmt = pg_insert(ANOMALY_TABLE).values(anomaly_records)
         stmt = stmt.on_conflict_do_nothing(
-            index_elements=["charger_id", "timestamp", "telemetry_type"]
+            index_elements=["charger_id", "timestamp", "telemetry_type", "service_id"]
         )
         await session.execute(stmt)
 
         identity_stmt = pg_insert(ANOMALY_IDENTITY_TABLE).values(identity_records)
         identity_stmt = identity_stmt.on_conflict_do_nothing(
-            index_elements=["charger_id", "timestamp", "telemetry_type"]
+            index_elements=["charger_id", "timestamp", "telemetry_type", "service_id"]
         )
         await session.execute(identity_stmt)
 
@@ -446,6 +656,7 @@ class DatabaseWriter:
         try:
             if anomaly_records or evidence_records:
                 async with self.session_factory() as session:
+                    await self._assert_checkpoint_ownership(session)
                     await self._execute_upsert(
                         session, anomaly_records, identity_records
                     )
@@ -471,9 +682,16 @@ class DatabaseWriter:
             self.total_written += anomaly_count
             self.total_evidence_written += len(evidence_records)
             self.last_write_time = time.time()
+            self._complete_results(
+                persistence_candidates, bool(anomaly_records or evidence_records)
+            )
 
         except asyncio.CancelledError:
             await self._requeue_results(persistence_candidates)
+            raise
+        except CheckpointOwnershipLost:
+            await self._requeue_results(persistence_candidates)
+            self.total_errors += 1
             raise
         except Exception as e:
             logger.error(
@@ -483,41 +701,55 @@ class DatabaseWriter:
                 exc_info=True,
             )
             self.total_errors += 1
+            await self._retry_or_requeue(persistence_candidates)
 
-            try:
-                retry_succeeded = await self._retry_failed_batch(
-                    batch_snapshot=persistence_candidates
-                )
-                if not retry_succeeded:
-                    await self._requeue_results(persistence_candidates)
-            except asyncio.CancelledError:
-                await self._requeue_results(persistence_candidates)
-                raise
-            except Exception as retry_exc:
-                await self._requeue_results(persistence_candidates)
-                self.total_errors += 1
-                logger.error(
-                    "event=radar.db_retry_unexpected_exception "
-                    "requeued_count=%s error=%s",
-                    len(batch_snapshot),
-                    str(retry_exc),
-                    exc_info=True,
-                )
+    async def _retry_or_requeue(self, results: list[AnomalyResult]) -> None:
+        try:
+            retry_succeeded = await self._retry_failed_batch(batch_snapshot=results)
+            if not retry_succeeded:
+                await self._requeue_results(results)
+        except (asyncio.CancelledError, CheckpointOwnershipLost):
+            await self._requeue_results(results)
+            raise
+        except Exception as retry_exc:
+            await self._requeue_results(results)
+            self.total_errors += 1
+            logger.error(
+                "event=radar.db_retry_unexpected_exception requeued_count=%s error=%s",
+                len(results),
+                str(retry_exc),
+                exc_info=True,
+            )
 
     def _prepare_results(self, results: list[AnomalyResult]) -> list[PreparedResult]:
         prepared = []
         for result in results:
             try:
                 if result.should_persist:
-                    prepared.append(self.projector.prepare(result))
+                    prepared.append(
+                        self._prepare_managed_result(result)
+                        if self.managed_checkpoints
+                        else self.projector.prepare(result)
+                    )
+                else:
+                    self._release_pending([result])
             except (ValueError, TypeError, AttributeError, OverflowError):
                 self.total_errors += 1
                 self.total_rejected += 1
+                if self.managed_checkpoints:
+                    raise
+                self._release_pending([result])
                 logger.exception(
                     "event=radar.db_result_rejected topic=%s timestamp=%s",
                     result.topic,
                     result.timestamp,
                 )
+        return prepared
+
+    def _prepare_managed_result(self, result: AnomalyResult) -> PreparedResult:
+        prepared = self.projector.prepare(result)
+        if not prepared.evidence:
+            raise ValueError("Managed inference result is missing valid evidence")
         return prepared
 
     async def _requeue_results(self, results: list[AnomalyResult]) -> None:
@@ -555,6 +787,7 @@ class DatabaseWriter:
                     await asyncio.sleep(retry_delay)
 
                     async with self.session_factory() as session:
+                        await self._assert_checkpoint_ownership(session)
                         await self._execute_upsert(
                             session,
                             anomaly_rows,
@@ -566,6 +799,9 @@ class DatabaseWriter:
                         self.total_written += len(anomaly_rows)
                         self.total_evidence_written += len(evidence_records)
                         self.last_write_time = time.time()
+                        self._complete_results(
+                            retry_batch, bool(anomaly_rows or evidence_records)
+                        )
                         logger.info(
                             "event=radar.db_retry_batch_written count=%s",
                             len(retry_batch),
@@ -573,6 +809,8 @@ class DatabaseWriter:
                         success = True
                         break  # Exit retry loop on success
 
+                except CheckpointOwnershipLost:
+                    raise
                 except Exception as e:
                     logger.error(
                         "event=radar.db_retry_attempt_failed attempt=%s error=%s",
@@ -594,6 +832,39 @@ class DatabaseWriter:
                 pending_index += len(retry_batch)
 
         return not batch_snapshot
+
+    def _complete_results(
+        self, results: list[AnomalyResult], has_records: bool
+    ) -> None:
+        if has_records:
+            self.last_persisted_at = datetime.now(UTC)
+        self._release_pending(results)
+
+    def _release_pending(self, results: list[AnomalyResult]) -> None:
+        """Release queue-age ownership after a result commits or is rejected."""
+        for result in results:
+            receipts = self._pending_receipts.get(id(result))
+            if receipts:
+                receipts.popleft()
+                if not receipts:
+                    del self._pending_receipts[id(result)]
+
+    def _persistence_activity(self) -> dict[str, Any]:
+        oldest = min(
+            (receipts[0] for receipts in self._pending_receipts.values()),
+            default=None,
+        )
+        return {
+            "last_persisted_at": self.last_persisted_at.isoformat()
+            if self.last_persisted_at
+            else None,
+            "oldest_pending_age_seconds": max(time.monotonic() - oldest, 0.0)
+            if oldest is not None
+            else None,
+            "persistence_timeout_seconds": max(
+                self.config.sensor_freshness_seconds, self.config.db_batch_timeout * 2
+            ),
+        }
 
     def get_performance_metrics(self) -> dict[str, Any]:
         """Get database writer performance metrics"""
@@ -618,37 +889,59 @@ class DatabaseWriter:
             "throughput_per_second": throughput,
             "last_write_time": datetime.fromtimestamp(self.last_write_time).isoformat(),
             "write_enabled": self.config.db_write_enabled,
+            **self._persistence_activity(),
         }
 
     def get_health_status(self) -> dict[str, Any]:
         """Get database writer health status"""
+        activity = self._persistence_activity()
+        if self._ownership_error is not None:
+            return {
+                "status": "unhealthy",
+                "reason": "checkpoint_ownership_lost",
+                **activity,
+            }
         if not self.config.db_write_enabled:
-            return {"status": "disabled", "reason": "write_disabled_in_config"}
+            return {
+                "status": "disabled",
+                "reason": "write_disabled_in_config",
+                **activity,
+            }
 
         error_rate = self.total_errors / max(self.total_written + self.total_errors, 1)
         queue_usage = (
             len(self.write_queue) + self._in_flight
         ) / self.config.max_queue_size
 
+        pending_age = activity["oldest_pending_age_seconds"]
+        if (
+            pending_age is not None
+            and pending_age > activity["persistence_timeout_seconds"]
+        ):
+            return {"status": "degraded", "reason": "persistence_stalled", **activity}
+
         if error_rate > 0.1:  # > 10% error rate
             return {
                 "status": "unhealthy",
                 "reason": "high_error_rate",
                 "error_rate": error_rate,
+                **activity,
             }
         if queue_usage > 0.8:  # Queue building up
             return {
                 "status": "degraded",
                 "reason": "queue_building_up",
                 "queue_usage": queue_usage,
+                **activity,
             }
         if not self._writer_task or self._writer_task.done():
-            return {"status": "unhealthy", "reason": "writer_task_stopped"}
+            return {"status": "unhealthy", "reason": "writer_task_stopped", **activity}
         return {
             "status": "healthy",
             "reason": "ok",
             "queue_size": len(self.write_queue) + self._in_flight,
             "error_rate": error_rate,
+            **activity,
         }
 
 

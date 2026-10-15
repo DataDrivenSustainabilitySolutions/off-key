@@ -11,6 +11,16 @@ from enum import StrEnum
 from functools import lru_cache
 
 from off_key_core.config.database import build_postgres_database_url
+from off_key_core.config.radar import DEVELOPMENT_CHECKPOINT_SECRET
+from off_key_core.config.resource_budget import (
+    DEFAULT_RADAR_MAX_ACTIVE_MONITORS,
+    DEFAULT_RADAR_MEMORY_MB,
+    MEBIBYTE,
+    RadarResourceBudget,
+    parse_cpu_nanos,
+    parse_memory_bytes,
+    validate_ingress_budget,
+)
 from off_key_core.config.validation import validate_environment as _validate_environment
 from pydantic import (
     BaseModel,
@@ -18,6 +28,7 @@ from pydantic import (
     Field,
     SecretStr,
     field_validator,
+    model_validator,
 )
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -50,9 +61,43 @@ class DockerConfig(BaseModel):
     # Resource Limits
     default_memory_limit: str = "512m"
     default_cpu_limit: str = "0.5"
+    default_memory_reservation: str | None = None
+    default_cpu_reservation: str | None = None
     default_constraints: list[str] = Field(default_factory=list)
 
     model_config = ConfigDict(extra="forbid", validate_assignment=True)
+
+    @field_validator("default_memory_limit", "default_memory_reservation")
+    @classmethod
+    def validate_memory_quantity(cls, value: str | None) -> str | None:
+        if value is not None:
+            parse_memory_bytes(value)
+        return value
+
+    @field_validator("default_cpu_limit", "default_cpu_reservation")
+    @classmethod
+    def validate_cpu_quantity(cls, value: str | None) -> str | None:
+        if value is not None:
+            parse_cpu_nanos(value)
+        return value
+
+    @property
+    def resource_budget(self) -> RadarResourceBudget:
+        return RadarResourceBudget(
+            memory_limit_bytes=parse_memory_bytes(self.default_memory_limit),
+            cpu_limit_nanos=parse_cpu_nanos(self.default_cpu_limit),
+            memory_reservation_bytes=parse_memory_bytes(
+                self.default_memory_reservation or self.default_memory_limit
+            ),
+            cpu_reservation_nanos=parse_cpu_nanos(
+                self.default_cpu_reservation or self.default_cpu_limit
+            ),
+        )
+
+    @model_validator(mode="after")
+    def validate_resource_budget(self) -> "DockerConfig":
+        _ = self.resource_budget
+        return self
 
     @property
     def base_url(self) -> str:
@@ -84,8 +129,10 @@ class RadarDefaultsConfig(BaseModel):
     # Default Performance Settings
     batch_size: int = Field(default=100, ge=1, le=10000)
     batch_timeout: float = Field(default=1.0, ge=0.1, le=3600.0)
-    memory_limit_mb: int = Field(default=1000, ge=128, le=16384)
+    memory_limit_mb: int = Field(default=DEFAULT_RADAR_MEMORY_MB, ge=128, le=16384)
     checkpoint_interval: int = Field(default=10000, ge=100, le=100000)
+    max_queue_size: int = Field(default=256, gt=0, le=10000)
+    max_payload_bytes: int = Field(default=65536, gt=0, le=1048576)
 
     # Default Database Settings
     db_write_enabled: bool = True
@@ -95,9 +142,16 @@ class RadarDefaultsConfig(BaseModel):
     # Default Health Settings
     health_check_interval: float = Field(default=30.0, ge=0.1, le=3600.0)
     log_level: str = "INFO"
-    rate_limit_per_minute: int = Field(default=1000, ge=1, le=100000)
+    rate_limit_per_minute: int = Field(default=0, ge=0, le=100000)
 
     model_config = ConfigDict(extra="forbid", validate_assignment=True)
+
+    @model_validator(mode="after")
+    def validate_queued_payload_budget(self) -> "RadarDefaultsConfig":
+        validate_ingress_budget(
+            self.max_queue_size, self.max_payload_bytes, self.memory_limit_mb
+        )
+        return self
 
     @field_validator("model_type")
     @classmethod
@@ -151,6 +205,12 @@ class TacticConfig(BaseModel):
         min_length=1,
     )
     radar_startup_grace_seconds: float = Field(default=5.0, ge=0.0, le=120.0)
+    radar_stop_timeout_seconds: float = Field(default=30.0, ge=1.0, le=300.0)
+    radar_max_active_monitors: int = Field(
+        default=DEFAULT_RADAR_MAX_ACTIVE_MONITORS,
+        ge=1,
+        le=10000,
+    )
 
     # Database Configuration
     database_url: str | None = None
@@ -174,6 +234,15 @@ class TacticConfig(BaseModel):
 
     model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
+    @model_validator(mode="after")
+    def validate_worker_resource_budget(self) -> "TacticConfig":
+        budget = self.docker.resource_budget
+        if self.radar_defaults.memory_limit_mb * MEBIBYTE >= budget.memory_limit_bytes:
+            raise ValueError(
+                "RADAR internal memory budget must be below its Docker hard limit"
+            )
+        return self
+
     @field_validator("log_level")
     @classmethod
     def validate_log_level(cls, v: str) -> str:
@@ -193,6 +262,15 @@ class TacticSettings(BaseSettings):
     """Environment-based settings for TACTIC service"""
 
     model_config = SettingsConfigDict(case_sensitive=True, extra="ignore")
+
+    @field_validator(
+        "TACTIC_DOCKER_DEFAULT_MEMORY_RESERVATION",
+        "TACTIC_DOCKER_DEFAULT_CPU_RESERVATION",
+        mode="before",
+    )
+    @classmethod
+    def normalize_optional_reservation(cls, value: str | None) -> str | None:
+        return None if value == "" else value
 
     # Service Configuration
     TACTIC_SERVICE_NAME: str = Field(default="tactic-middleware")
@@ -226,6 +304,8 @@ class TacticSettings(BaseSettings):
     TACTIC_DOCKER_DEFAULT_CPU_LIMIT: str = Field(
         default=DEFAULT_DOCKER_CONFIG.default_cpu_limit
     )
+    TACTIC_DOCKER_DEFAULT_MEMORY_RESERVATION: str | None = None
+    TACTIC_DOCKER_DEFAULT_CPU_RESERVATION: str | None = None
     TACTIC_RADAR_SECRET_SERVICE: str = ""
     TACTIC_DOCKER_DEFAULT_CONSTRAINTS: str = Field(default="node.role == worker")
 
@@ -268,6 +348,8 @@ class TacticSettings(BaseSettings):
     TACTIC_RADAR_DEFAULT_CHECKPOINT_INTERVAL: int = Field(
         default=DEFAULT_RADAR_DEFAULTS.checkpoint_interval
     )
+    TACTIC_RADAR_DEFAULT_MAX_QUEUE_SIZE: int = Field(default=256, gt=0, le=10000)
+    TACTIC_RADAR_DEFAULT_MAX_PAYLOAD_BYTES: int = Field(default=65536, gt=0, le=1048576)
     TACTIC_RADAR_DEFAULT_DB_WRITE_ENABLED: bool = Field(
         default=DEFAULT_RADAR_DEFAULTS.db_write_enabled
     )
@@ -290,6 +372,12 @@ class TacticSettings(BaseSettings):
         default="ghcr.io/datadrivensustainabilitysolutions/off-key-mqtt-radar:latest"
     )
     TACTIC_RADAR_STARTUP_GRACE_SECONDS: float = Field(default=5.0)
+    TACTIC_RADAR_STOP_TIMEOUT_SECONDS: float = Field(default=30.0, ge=1.0, le=300.0)
+    TACTIC_RADAR_MAX_ACTIVE_MONITORS: int = Field(
+        default=DEFAULT_RADAR_MAX_ACTIVE_MONITORS,
+        ge=1,
+        le=10000,
+    )
 
     # Database Configuration
     TACTIC_DATABASE_URL: str | None = Field(default=None)
@@ -370,6 +458,8 @@ class TacticSettings(BaseSettings):
             default_restart_max_attempts=self.TACTIC_DOCKER_DEFAULT_RESTART_MAX_ATTEMPTS,
             default_memory_limit=self.TACTIC_DOCKER_DEFAULT_MEMORY_LIMIT,
             default_cpu_limit=self.TACTIC_DOCKER_DEFAULT_CPU_LIMIT,
+            default_memory_reservation=self.TACTIC_DOCKER_DEFAULT_MEMORY_RESERVATION,
+            default_cpu_reservation=self.TACTIC_DOCKER_DEFAULT_CPU_RESERVATION,
             default_constraints=self._parse_default_constraints(),
         )
 
@@ -388,6 +478,8 @@ class TacticSettings(BaseSettings):
             batch_timeout=self.TACTIC_RADAR_DEFAULT_BATCH_TIMEOUT,
             memory_limit_mb=self.TACTIC_RADAR_DEFAULT_MEMORY_LIMIT_MB,
             checkpoint_interval=self.TACTIC_RADAR_DEFAULT_CHECKPOINT_INTERVAL,
+            max_queue_size=self.TACTIC_RADAR_DEFAULT_MAX_QUEUE_SIZE,
+            max_payload_bytes=self.TACTIC_RADAR_DEFAULT_MAX_PAYLOAD_BYTES,
             db_write_enabled=self.TACTIC_RADAR_DEFAULT_DB_WRITE_ENABLED,
             db_batch_size=self.TACTIC_RADAR_DEFAULT_DB_BATCH_SIZE,
             db_batch_timeout=self.TACTIC_RADAR_DEFAULT_DB_BATCH_TIMEOUT,
@@ -405,6 +497,8 @@ class TacticSettings(BaseSettings):
             radar_defaults=radar_defaults_config,
             radar_image=self.TACTIC_RADAR_IMAGE,
             radar_startup_grace_seconds=self.TACTIC_RADAR_STARTUP_GRACE_SECONDS,
+            radar_stop_timeout_seconds=self.TACTIC_RADAR_STOP_TIMEOUT_SECONDS,
+            radar_max_active_monitors=self.TACTIC_RADAR_MAX_ACTIVE_MONITORS,
             database_url=self.TACTIC_DATABASE_URL,
             log_level=self.TACTIC_LOG_LEVEL,
             reconciliation_enabled=self.TACTIC_RECONCILIATION_ENABLED,
@@ -431,6 +525,7 @@ class RadarContainerRuntimeSettings(BaseSettings):
     POSTGRES_PORT: int = Field(default=5432, ge=1, le=65535)
     POSTGRES_DB: str = "postgres"
     ENVIRONMENT: str = "development"
+    RADAR_CHECKPOINT_SECRET: SecretStr = SecretStr(DEVELOPMENT_CHECKPOINT_SECRET)
 
     @field_validator("ENVIRONMENT")
     @classmethod

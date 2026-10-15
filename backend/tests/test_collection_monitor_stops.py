@@ -11,6 +11,7 @@ from off_key_tactic_middleware.services import collection_monitors as collection
 from off_key_tactic_middleware.services.radar_status import derive_operational_status
 from off_key_tactic_middleware.services.reconciliation import (
     RadarStatusReconciliationService,
+    _ServiceSnapshot,
 )
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -88,7 +89,11 @@ async def test_partial_pause_survives_rollback_and_reconciliation_finishes(stops
     reconciler._remove_workload_if_present = AsyncMock(return_value=False)
     with sessions.begin() as session:
         pending = session.get(MonitoringService, "1")
-        await reconciler._reconcile_service(AsyncMock(), pending)
+        snapshot = _ServiceSnapshot.capture(pending)
+        observation = await reconciler._inspect(snapshot)
+        await reconciler._apply_observation(
+            AsyncMock(get=AsyncMock(return_value=pending)), snapshot, observation
+        )
     reconciler._get_docker_status.assert_not_awaited()
     reconciler._remove_workload_if_present.assert_awaited_once_with("ctr-1")
     with sessions() as session:

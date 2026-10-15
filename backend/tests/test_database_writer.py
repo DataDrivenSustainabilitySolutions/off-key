@@ -28,6 +28,7 @@ def db_config():
     config.db_batch_timeout = 5.0
     config.max_queue_size = 100
     config.db_write_enabled = True
+    config.sensor_freshness_seconds = 30.0
     return config
 
 

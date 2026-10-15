@@ -7,14 +7,21 @@ Monitors service health and provides metrics collection.
 import asyncio
 import time
 from collections import deque
+from collections.abc import Callable
 from contextlib import suppress
 from datetime import UTC, datetime
 from typing import Any
 
 from off_key_core.config.logging import get_logging_settings
 from off_key_core.config.logs import logger
-from off_key_core.schemas.radar import RadarOperationalStatus
+from off_key_core.schemas.radar import (
+    RadarActivityStatus,
+    RadarCoverageStatus,
+    RadarOperationalStatus,
+    RadarRecoveryStatus,
+)
 
+from .activity import evaluate_activity
 from .models import HealthStatus
 
 
@@ -33,6 +40,7 @@ class HealthMonitor:
         self,
         health_check_interval: float = 30.0,
         max_processing_times: int = 1000,
+        sensor_freshness_seconds: float = 30.0,
     ):
         """
         Initialize health monitor.
@@ -42,6 +50,7 @@ class HealthMonitor:
             max_processing_times: Max processing times to track
         """
         self.health_check_interval = health_check_interval
+        self.sensor_freshness_seconds = sensor_freshness_seconds
         self.processing_times: deque[float] = deque(maxlen=max_processing_times)
 
         # Service state
@@ -56,6 +65,7 @@ class HealthMonitor:
         self._detector = None
         self._memory_manager = None
         self._message_processor = None
+        self._recovery_status: Callable[[], dict[str, Any]] | None = None
 
         self._log_context = {"component": "health_monitor"}
         logging_settings = get_logging_settings()
@@ -69,6 +79,7 @@ class HealthMonitor:
         detector=None,
         memory_manager=None,
         message_processor=None,
+        recovery_status: Callable[[], dict[str, Any]] | None = None,
     ) -> None:
         """
         Set references to components for health checking.
@@ -85,6 +96,7 @@ class HealthMonitor:
         self._detector = detector
         self._memory_manager = memory_manager
         self._message_processor = message_processor
+        self._recovery_status = recovery_status
 
     async def start(self, shutdown_event: asyncio.Event) -> None:
         """
@@ -220,12 +232,22 @@ class HealthMonitor:
         components: dict[str, Any],
         processor_metrics: dict[str, Any],
         memory_usage: float,
+        activity: RadarActivityStatus | None = None,
     ) -> list[str]:
         """Reduce component and resource health into stable alert identifiers."""
         alerts: list[str] = []
         mqtt_health = components.get("mqtt_client")
-        if mqtt_health and mqtt_health.get("status") != "healthy":
+        if (
+            mqtt_health
+            and mqtt_health.get("status") != "healthy"
+            and mqtt_health.get("reason") != "coverage_gap"
+        ):
             alerts.append(f"mqtt_{mqtt_health.get('reason', 'unknown')}")
+        coverage = RadarCoverageStatus.model_validate(
+            (mqtt_health or {}).get("coverage", {})
+        )
+        if coverage.has_gaps:
+            alerts.append("monitoring_coverage_gap")
 
         database_health = components.get("database_writer")
         if database_health and database_health.get("status") not in {
@@ -245,6 +267,16 @@ class HealthMonitor:
             alerts.append("high_memory_usage")
         if processor_metrics.get("error_rate", 0) > 0.1:
             alerts.append("high_error_rate")
+        if activity is not None:
+            alerts.extend(
+                alert
+                for active, alert in (
+                    (activity.inputs_stalled, "stale_monitoring_inputs"),
+                    (activity.inference_stalled, "inference_stalled"),
+                    (activity.persistence_stalled, "persistence_stalled"),
+                )
+                if active
+            )
         return alerts
 
     def _uptime_seconds(self) -> float:
@@ -260,11 +292,17 @@ class HealthMonitor:
         processor_metrics: dict[str, Any],
         memory_usage: float,
         uptime: float,
+        activity: RadarActivityStatus | None = None,
     ) -> dict[str, Any]:
         """Build the health response metrics from one consistent snapshot."""
         message_count = int(processor_metrics.get("message_count", 0) or 0)
         processed_count = int(
             processor_metrics.get("processed_message_count", message_count) or 0
+        )
+        recovery = (
+            RadarRecoveryStatus.model_validate(self._recovery_status() or {})
+            if self._recovery_status
+            else None
         )
         metrics = {
             "uptime_seconds": uptime,
@@ -278,11 +316,19 @@ class HealthMonitor:
             "avg_processing_time_ms": self._calculate_avg_processing_time(),
             "throughput_per_second": self._calculate_throughput(processed_count),
             "memory_usage_mb": memory_usage,
+            "recovery": recovery.model_dump(mode="json", exclude_none=True)
+            if recovery
+            else None,
+            "activity": activity.model_dump(mode="json", exclude_none=True)
+            if activity
+            else None,
         }
         metrics["operational_status"] = self._build_operational_status(
             service_status=service_status,
             components=components,
             processor_metrics=processor_metrics,
+            recovery=recovery,
+            activity=activity,
         )
         return metrics
 
@@ -295,10 +341,27 @@ class HealthMonitor:
         memory_usage = (
             self._memory_manager.get_memory_usage() if self._memory_manager else 0.0
         )
+        detector_stats = (components.get("anomaly_detector") or {}).get(
+            "primary_service_stats", {}
+        ) or {}
+        inference_expected = (
+            detector_stats.get("strategy") == "static_baseline"
+            and detector_stats.get("state") == "ready"
+        ) or (
+            detector_stats.get("strategy") == "adaptive_stream"
+            and detector_stats.get("state") == "operational"
+        )
+        activity = evaluate_activity(
+            processor_metrics.get("activity"),
+            freshness_seconds=self.sensor_freshness_seconds,
+            inference_expected=inference_expected,
+            database_health=components.get("database_writer", {}) or {},
+        )
         active_alerts = self._collect_active_alerts(
             components,
             processor_metrics,
             memory_usage,
+            activity,
         )
 
         if self.start_time is None:
@@ -315,6 +378,7 @@ class HealthMonitor:
             processor_metrics=processor_metrics,
             memory_usage=memory_usage,
             uptime=uptime,
+            activity=activity,
         )
 
         return HealthStatus(
@@ -332,6 +396,8 @@ class HealthMonitor:
         service_status: str,
         components: dict[str, Any],
         processor_metrics: dict[str, Any],
+        recovery: RadarRecoveryStatus | None = None,
+        activity: RadarActivityStatus | None = None,
     ) -> dict[str, Any]:
         detector_health = components.get("anomaly_detector", {}) or {}
         detector_stats = detector_health.get("primary_service_stats", {}) or {}
@@ -340,6 +406,9 @@ class HealthMonitor:
             processor_metrics.get("processed_message_count", message_count) or 0
         )
         last_alignment_status = processor_metrics.get("last_alignment_status")
+        coverage = RadarCoverageStatus.model_validate(
+            (components.get("mqtt_client") or {}).get("coverage", {})
+        )
 
         stage = "waiting_for_data"
         detail = None
@@ -357,9 +426,6 @@ class HealthMonitor:
                 if detector_stats.get("strategy") == "adaptive_stream"
                 else "Static baseline training failed"
             )
-        elif service_status == "degraded" or detector_state == "degraded":
-            stage = "degraded"
-            detail = "RADAR runtime is degraded"
         elif processed_count <= 0:
             stage = "waiting_for_data"
             detail = (
@@ -375,6 +441,27 @@ class HealthMonitor:
         else:
             stage = "operational"
 
+        if stage != "failed":
+            if (
+                activity is not None
+                and stage == "operational"
+                and activity.last_inference_at is None
+            ):
+                stage = "waiting_for_data"
+                detail = "Waiting for first inference in this runtime"
+            activity_detail = self._activity_degradation_detail(activity)
+            if activity_detail is not None:
+                stage = "degraded"
+                detail = activity_detail
+            elif service_status == "degraded" or detector_state == "degraded":
+                stage = "degraded"
+                detail = (
+                    "Monitoring coverage has gaps; "
+                    "historical observations cannot be replayed"
+                    if coverage.has_gaps
+                    else "RADAR runtime is degraded"
+                )
+
         return RadarOperationalStatus(
             stage=stage,
             detail=detail,
@@ -385,7 +472,26 @@ class HealthMonitor:
             error=error,
             updated_at=datetime.now(UTC),
             is_stale=False,
+            coverage=coverage,
+            recovery=recovery,
+            activity=activity,
         ).model_dump(mode="json", exclude_none=True)
+
+    @staticmethod
+    def _activity_degradation_detail(
+        activity: RadarActivityStatus | None,
+    ) -> str | None:
+        if activity is None:
+            return None
+        if activity.inputs_stalled:
+            if activity.stale_sensors:
+                return "Stale monitored inputs: " + ", ".join(activity.stale_sensors)
+            return "Missing monitored inputs: " + ", ".join(activity.missing_sensors)
+        if activity.inference_stalled:
+            return "No successful inference within the configured freshness budget"
+        if activity.persistence_stalled:
+            return "Monitoring evidence has not been persisted within its time budget"
+        return None
 
     @staticmethod
     def _static_operational_stage(

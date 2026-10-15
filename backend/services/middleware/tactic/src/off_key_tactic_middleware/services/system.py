@@ -87,6 +87,14 @@ class SystemService:
         normalized = await SystemCollectionService(self.session).sync_structure(
             change.document, actor=actor, pause_monitors=change.pause_affected_monitors
         )
+        # Monitor stops may have ended the preparation transaction to wait on
+        # Docker. Re-read under the reacquired catalogue lock before applying.
+        row = await self.session.scalar(
+            select(SystemConfiguration)
+            .where(SystemConfiguration.id == 1)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
         document = normalized.model_dump(mode="json")
         if row is not None and row.document == document:
             return await self.read()

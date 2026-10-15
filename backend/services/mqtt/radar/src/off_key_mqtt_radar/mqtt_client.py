@@ -13,13 +13,16 @@ from collections import deque
 from collections.abc import Awaitable, Callable
 from contextlib import suppress
 from datetime import UTC, datetime
+from threading import Lock
 from typing import Any
 
+import janus
 import paho.mqtt.client as mqtt
 from off_key_core.config.logging import get_logging_settings
 from off_key_core.config.logs import logger
 
 from .config.config import MQTTRadarConfig
+from .coverage import CoverageTracker
 from .models import MQTTMessage
 
 
@@ -38,15 +41,17 @@ class RadarMQTTClient:
         self.config = config
         self.client: mqtt.Client | None = None
         self.message_handler: Callable[[MQTTMessage], Awaitable[None]] | None = None
+        self.coverage = CoverageTracker()
 
         # Connection state
         self.is_connected = False
         self.reconnect_attempts = 0
-        self.max_reconnect_attempts = 10
         self.reconnect_delay = 5.0  # seconds
 
         # Message processing
-        self.message_queue = asyncio.Queue(maxsize=config.max_queue_size)
+        self._message_bridge = janus.Queue(maxsize=config.max_queue_size)
+        self.message_queue = self._message_bridge.async_q
+        self._ingress_lock = Lock()
         self.message_count = 0
         self.error_count = 0
 
@@ -60,6 +65,9 @@ class RadarMQTTClient:
         # Event loop for async coordination
         self._loop: asyncio.AbstractEventLoop | None = None
         self._connection_result: asyncio.Future[None] | None = None
+        self._connection_timeout_seconds = 30.0
+        self._pending_subscriptions: dict[int, str] = {}
+        self._confirmed_subscriptions: set[str] = set()
         self._message_processor_task: asyncio.Task | None = None
         self._reconnect_task: asyncio.Task | None = None
         self._shutdown_event = asyncio.Event()
@@ -84,6 +92,9 @@ class RadarMQTTClient:
         """Start the MQTT client and message processing"""
         self._loop = asyncio.get_running_loop()
         self._shutdown_event.clear()
+        if self._message_bridge.closed:
+            self._message_bridge = janus.Queue(maxsize=self.config.max_queue_size)
+            self.message_queue = self._message_bridge.async_q
 
         # Start message processor
         self._message_processor_task = asyncio.create_task(self._message_processor())
@@ -92,7 +103,7 @@ class RadarMQTTClient:
             # Initial startup must be connected and subscribed before the service is
             # considered ready. Background reconnects are only for later failures.
             await self._connect()
-        except Exception:
+        except BaseException:
             await self.stop()
             raise
 
@@ -112,10 +123,7 @@ class RadarMQTTClient:
         self._reconnect_task = None
 
         # Disconnect from broker
-        if self.client:
-            self.client.loop_stop()
-            self.client.disconnect()
-            self.client = None
+        await self._close_client()
 
         # Cancel message processor
         if self._message_processor_task:
@@ -124,6 +132,11 @@ class RadarMQTTClient:
                 await self._message_processor_task
 
         self.is_connected = False
+        if not self._message_bridge.closed:
+            pending = self.message_queue.qsize()
+            if pending:
+                self.coverage.record_drop("shutdown_queue", pending)
+            await self._message_bridge.aclose()
         self._emit_drop_summary(force=True)
         logger.info("event=radar.mqtt_client_stopped")
 
@@ -133,6 +146,9 @@ class RadarMQTTClient:
 
     async def _connect(self):
         """Connect to MQTT broker with authentication and TLS support"""
+        # RADAR owns reconnection. Retire the previous client before replacing it;
+        # otherwise its network thread can reconnect and keep delivering messages.
+        await self._close_client()
         try:
             loop = asyncio.get_running_loop()
             self._loop = loop
@@ -144,7 +160,12 @@ class RadarMQTTClient:
             self.is_connected = False
 
             # Use TCP transport for simplicity (bridge handles WebSocket if needed)
-            self.client = mqtt.Client(client_id=client_id, transport="tcp")
+            self.client = mqtt.Client(
+                callback_api_version=mqtt.CallbackAPIVersion.VERSION2,
+                client_id=client_id,
+                transport="tcp",
+                reconnect_on_failure=False,
+            )
 
             # Configure TLS if required
             if self.config.use_tls:
@@ -159,6 +180,7 @@ class RadarMQTTClient:
             self.client.on_connect = self._on_connect
             self.client.on_disconnect = self._on_disconnect
             self.client.on_message = self._on_message
+            self.client.on_subscribe = self._on_subscribe
             self.client.on_log = self._on_log
 
             # Connect to broker
@@ -177,10 +199,12 @@ class RadarMQTTClient:
             # Paho invokes connection callbacks on its network thread. The callback
             # resolves this future on the asyncio thread without polling shared state.
             try:
-                await asyncio.wait_for(connection_result, timeout=30.0)
+                await asyncio.wait_for(
+                    connection_result, timeout=self._connection_timeout_seconds
+                )
             except TimeoutError as error:
                 raise RuntimeError(
-                    "Failed to connect to MQTT broker within timeout"
+                    "MQTT connection or required subscription acknowledgement timed out"
                 ) from error
             finally:
                 if self._connection_result is connection_result:
@@ -190,30 +214,38 @@ class RadarMQTTClient:
             self.connection_time = datetime.now()
             self.reconnect_attempts = 0
 
-        except Exception as e:
-            if self.client:
-                try:
-                    self.client.loop_stop()
-                    self.client.disconnect()
-                except Exception:
-                    logger.debug(
-                        "event=radar.mqtt_failed_client_cleanup_error",
-                        exc_info=True,
-                    )
-                finally:
-                    self.client = None
+        except BaseException as e:
+            await self._close_client()
             logger.error(
                 "event=radar.mqtt_connect_failed error=%s", str(e), exc_info=True
             )
             raise
 
+    async def _close_client(self) -> None:
+        """Fence retired callbacks before stopping the owned network thread."""
+        client, self.client = self.client, None
+        self.is_connected = False
+        self._pending_subscriptions.clear()
+        self._confirmed_subscriptions.clear()
+        if client is not None:
+            try:
+                client.disconnect()
+            finally:
+                await asyncio.to_thread(client.loop_stop)
+
     def _notify_connection_result(self, error: RuntimeError | None = None) -> None:
         """Resolve the active connection attempt on the asyncio event loop."""
         if not self._loop or self._loop.is_closed():
             return
-        self._loop.call_soon_threadsafe(self._complete_connection_attempt, error)
+        self._loop.call_soon_threadsafe(
+            self._complete_connection_attempt, self.client, error
+        )
 
-    def _complete_connection_attempt(self, error: RuntimeError | None) -> None:
+    def _complete_connection_attempt(
+        self, client: mqtt.Client | None, error: RuntimeError | None
+    ) -> None:
+        if client is not self.client:
+            return
         connection_result = self._connection_result
         if not connection_result or connection_result.done():
             return
@@ -222,20 +254,27 @@ class RadarMQTTClient:
         else:
             connection_result.set_result(None)
 
-    def _on_connect(self, client, userdata, flags, rc):
+    def _on_connect(self, client, userdata, flags, reason_code, properties=None):
         """MQTT connection callback"""
+        if client is not self.client or self._shutdown_event.is_set():
+            return
+        rc = getattr(reason_code, "value", reason_code)
         if rc == 0:
-            self.is_connected = True
+            self._pending_subscriptions.clear()
+            self._confirmed_subscriptions.clear()
             logger.info("event=radar.mqtt_connection_established")
 
             # Subscribe to configured topics
             for topic in self.config.subscription_topics:
                 try:
-                    result = client.subscribe(topic, self.config.subscription_qos)
+                    result, mid = client.subscribe(topic, self.config.subscription_qos)
+                    if result != mqtt.MQTT_ERR_SUCCESS:
+                        raise RuntimeError(f"SUBSCRIBE failed locally: {result}")
+                    self._pending_subscriptions[mid] = topic
                     logger.info(
-                        "event=radar.mqtt_subscribed topic=%s result=%s",
+                        "event=radar.mqtt_subscription_requested topic=%s mid=%s",
                         topic,
-                        result,
+                        mid,
                     )
                 except Exception as e:
                     logger.error(
@@ -244,7 +283,14 @@ class RadarMQTTClient:
                         str(e),
                         exc_info=True,
                     )
-            self._notify_connection_result()
+                    self._notify_connection_result(
+                        RuntimeError(f"Required MQTT subscription failed: {topic}: {e}")
+                    )
+                    return
+            if not self._pending_subscriptions:
+                self._notify_connection_result(
+                    RuntimeError("No required MQTT subscriptions configured")
+                )
 
         else:
             error_messages = {
@@ -260,8 +306,32 @@ class RadarMQTTClient:
             self.is_connected = False
             self._notify_connection_result(RuntimeError(error_msg))
 
-    def _on_disconnect(self, client, userdata, rc):
+    def _on_subscribe(self, client, userdata, mid, reason_codes, properties=None):
+        """Readiness requires every required topic to have a successful SUBACK."""
+        if client is not self.client or self._shutdown_event.is_set():
+            return
+        topic = self._pending_subscriptions.pop(mid, None)
+        if topic is None:
+            return
+        granted = [getattr(code, "value", code) for code in reason_codes]
+        if len(granted) != 1 or granted[0] not in (0, 1, 2):
+            self.is_connected = False
+            self._notify_connection_result(
+                RuntimeError(f"Required MQTT subscription rejected: {topic}: {granted}")
+            )
+            return
+        self._confirmed_subscriptions.add(topic)
+        if self._confirmed_subscriptions == set(self.config.subscription_topics):
+            self.is_connected = True
+            self._notify_connection_result()
+
+    def _on_disconnect(self, client, userdata, flags, reason_code, properties=None):
         """MQTT disconnection callback"""
+        if client is not self.client or self._shutdown_event.is_set():
+            return
+        rc = getattr(reason_code, "value", reason_code)
+        if self.is_connected:
+            self.coverage.record_possible_gap("mqtt_disconnect")
         self.is_connected = False
         self._notify_connection_result(
             RuntimeError("Disconnected before MQTT connection was established")
@@ -281,8 +351,14 @@ class RadarMQTTClient:
 
     def _on_message(self, client, userdata, msg):
         """MQTT message callback"""
-        if not self._loop:
+        if self._shutdown_event.is_set():
+            return
+        if not self._loop or self._loop.is_closed():
+            self.coverage.record_received()
+            self.coverage.record_drop("loop_unavailable")
             logger.debug("Asyncio loop not ready, dropping incoming MQTT message")
+            return
+        if client is not self.client:
             return
 
         message = MQTTMessage(
@@ -291,14 +367,25 @@ class RadarMQTTClient:
             qos=msg.qos,
             retain=msg.retain,
             timestamp=datetime.now(UTC),
+            received_monotonic=time.monotonic(),
         )
-
-        self._loop.call_soon_threadsafe(lambda: self._handle_incoming_message(message))
+        # Admission happens on Paho's thread before any event-loop notification.
+        # Janus bounds stored messages and wakes only waiting async consumers.
+        self._handle_incoming_message(message)
 
     def _handle_incoming_message(self, message: MQTTMessage):
-        """Handle MQTT message on the asyncio event loop thread"""
+        """Bound admission before crossing from the network thread to asyncio."""
+        with self._ingress_lock:
+            self._accept_incoming_message(message)
+
+    def _accept_incoming_message(self, message: MQTTMessage):
+        self.coverage.record_received()
         try:
-            current_time = time.time()
+            if len(message.payload) > self.config.max_payload_bytes:
+                self.coverage.record_drop("payload_too_large")
+                self.error_count += 1
+                return
+            current_time = time.monotonic()
 
             # Remove old entries (older than 1 minute)
             minute_ago = current_time - 60
@@ -306,20 +393,24 @@ class RadarMQTTClient:
                 self.rate_limiter.popleft()
 
             # Check rate limit BEFORE appending
-            if len(self.rate_limiter) >= self.config.rate_limit_per_minute:
+            limit = self.config.rate_limit_per_minute
+            if limit > 0 and len(self.rate_limiter) >= limit:
                 self._drop_counts["rate_limit"] += 1
+                self.coverage.record_drop("rate_limit")
                 self._emit_drop_summary()
                 return
 
             # Only append timestamp for accepted messages
-            self.rate_limiter.append(current_time)
+            if limit > 0:
+                self.rate_limiter.append(current_time)
 
             try:
-                self.message_queue.put_nowait(message)
+                self._message_bridge.sync_q.put_nowait(message)
                 self.message_count += 1
                 self.last_message_time = datetime.now()
-            except asyncio.QueueFull:
+            except janus.SyncQueueFull:
                 self._drop_counts["queue_full"] += 1
+                self.coverage.record_drop("queue_full")
                 self._emit_drop_summary()
                 self.error_count += 1
 
@@ -330,6 +421,7 @@ class RadarMQTTClient:
                 exc_info=True,
             )
             self.error_count += 1
+            self.coverage.record_drop("enqueue_error")
 
     def _on_log(self, client, userdata, level, buf):
         """MQTT log callback"""
@@ -363,13 +455,16 @@ class RadarMQTTClient:
                                 exc_info=True,
                             )
                             self.error_count += 1
+                            self.coverage.record_drop("handler_error")
                     else:
+                        self.coverage.record_drop("no_handler")
                         logger.debug(
                             "event=radar.mqtt_message_dropped_no_handler topic=%s",
                             message.topic,
                         )
 
                     self._emit_heartbeat()
+                    self.message_queue.task_done()
 
                 except TimeoutError:
                     self._emit_heartbeat()
@@ -408,23 +503,21 @@ class RadarMQTTClient:
         await asyncio.sleep(0)
 
     async def _reconnect_loop(self):
-        """Reconnect with bounded backoff after an established link drops."""
-        while (
-            not self._shutdown_event.is_set()
-            and not self.is_connected
-            and self.reconnect_attempts < self.max_reconnect_attempts
-        ):
+        """Keep one owner retrying through outages with bounded backoff."""
+        delay = min(self.reconnect_delay, 300.0)
+        while not self._shutdown_event.is_set() and not self.is_connected:
             self.reconnect_attempts += 1
-            delay = min(
-                self.reconnect_delay * (2 ** (self.reconnect_attempts - 1)), 300
-            )
 
             logger.info(
                 "event=radar.mqtt_reconnect_scheduled attempt=%s delay_s=%.1f",
                 self.reconnect_attempts,
                 delay,
             )
-            await asyncio.sleep(delay)
+            try:
+                await asyncio.wait_for(self._shutdown_event.wait(), timeout=delay)
+                return
+            except TimeoutError:
+                pass
 
             if self._shutdown_event.is_set():
                 return
@@ -437,12 +530,9 @@ class RadarMQTTClient:
                     self.reconnect_attempts,
                     exc,
                 )
-
-        if not self.is_connected and not self._shutdown_event.is_set():
-            logger.error(
-                "event=radar.mqtt_reconnect_exhausted attempts=%s",
-                self.reconnect_attempts,
-            )
+            # Doubling the already capped delay avoids unbounded exponentiation
+            # when a worker survives an extended broker outage.
+            delay = min(delay * 2, 300.0)
 
     def get_connection_info(self) -> dict[str, Any]:
         """Get connection information for monitoring"""
@@ -459,7 +549,8 @@ class RadarMQTTClient:
             "broker_host": self.config.broker_host,
             "broker_port": self.config.broker_port,
             "client_id": self.client._client_id if self.client else None,
-            "subscribed_topics": self.config.subscription_topics,
+            "subscribed_topics": sorted(self._confirmed_subscriptions),
+            "pending_subscriptions": sorted(self._pending_subscriptions.values()),
             "connection_time": (
                 self.connection_time.isoformat() if self.connection_time else None
             ),
@@ -473,22 +564,28 @@ class RadarMQTTClient:
                 "current_rate": len(self.rate_limiter),
                 "limit": self.config.rate_limit_per_minute,
             },
+            "coverage": self.coverage.snapshot().model_dump(mode="json"),
         }
 
     def get_health_status(self) -> dict[str, Any]:
         """Get health status information"""
+        coverage = self.coverage.snapshot().model_dump(mode="json")
         if not self.is_connected:
             return {
                 "status": "unhealthy",
                 "reason": "not_connected",
                 "reconnect_attempts": self.reconnect_attempts,
+                "coverage": coverage,
             }
 
         # Check message processing health
         queue_usage = self.message_queue.qsize() / self.config.max_queue_size
         error_rate = self.error_count / max(self.message_count, 1)
 
-        if queue_usage > 0.9:
+        if coverage["has_gaps"]:
+            status = "degraded"
+            reason = "coverage_gap"
+        elif queue_usage > 0.9:
             status = "degraded"
             reason = "queue_nearly_full"
         elif error_rate > 0.1:
@@ -504,6 +601,7 @@ class RadarMQTTClient:
             "queue_usage": queue_usage,
             "error_rate": error_rate,
             "connected": self.is_connected,
+            "coverage": coverage,
             "uptime_seconds": (
                 (datetime.now() - self.connection_time).total_seconds()
                 if self.connection_time

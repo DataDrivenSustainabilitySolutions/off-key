@@ -27,7 +27,7 @@ from .remembered_sessions import RememberedSession as RememberedSession
 from .system import SystemCollectionConfiguration as SystemCollectionConfiguration
 from .system import SystemConfiguration as SystemConfiguration
 from .system import SystemRevision as SystemRevision
-from .table_contracts import monitoring_evidence_table
+from .table_contracts import monitoring_evidence_table, radar_runtime_checkpoints_table
 
 
 class User(Base):
@@ -205,6 +205,17 @@ class MonitoringService(Base):
     operational_updated_at = Column(DateTime(timezone=True), nullable=True)
     stop_requested_at = Column(DateTime(timezone=True), nullable=True)
     launch_config = Column(JSON, nullable=True)
+    # Desired workload state outlives a controller request or Docker API timeout.
+    desired_state = Column(
+        Text, nullable=False, default="running", server_default="running"
+    )
+    lifecycle_version = Column(Integer, nullable=False, default=1, server_default="1")
+    config_fingerprint = Column(Text, nullable=True)
+    collection_fingerprint = Column(Text, nullable=True)
+
+
+class RadarRuntimeCheckpoint(Base):
+    __table__ = radar_runtime_checkpoints_table(Base.metadata)
 
 
 class DeploymentMaintenance(Base):
@@ -255,6 +266,9 @@ class Anomaly(Base):
     charger_id = Column(Text, nullable=False, index=True)
     timestamp = Column(TIMESTAMP(timezone=True), nullable=False, index=True)
     telemetry_type = Column(Text, nullable=False, index=True)
+    # Empty scope belongs to historical and manually created records. Monitor IDs
+    # stay in history after the monitor is deleted, so this is not a foreign key.
+    service_id = Column(Text, nullable=False, default="", server_default=text("''"))
     anomaly_type = Column(Text, nullable=False, index=True)
     anomaly_value = Column(Float, nullable=False, index=True)
     # 'tail_pvalue' for rows written by the tail-probability detector.
@@ -269,7 +283,7 @@ class Anomaly(Base):
 
     __table_args__ = (
         PrimaryKeyConstraint(
-            "charger_id", "timestamp", "telemetry_type", name="pk_anomaly"
+            "charger_id", "timestamp", "telemetry_type", "service_id", name="pk_anomaly"
         ),
         # Composite indexes for common query patterns
         Index("idx_anomaly_lookup", "charger_id", "timestamp", "telemetry_type"),
@@ -318,6 +332,7 @@ class AnomalyIdentity(Base):
     charger_id = Column(Text, nullable=False, index=True)
     timestamp = Column(TIMESTAMP(timezone=True), nullable=False, index=True)
     telemetry_type = Column(Text, nullable=False, index=True)
+    service_id = Column(Text, nullable=False, default="", server_default=text("''"))
     created = Column(DateTime(timezone=True), server_default=func.now(), index=True)
 
     __table_args__ = (
@@ -325,11 +340,17 @@ class AnomalyIdentity(Base):
             "charger_id",
             "timestamp",
             "telemetry_type",
+            "service_id",
             name="uq_anomaly_identity_target",
         ),
         ForeignKeyConstraint(
-            ["charger_id", "timestamp", "telemetry_type"],
-            ["anomalies.charger_id", "anomalies.timestamp", "anomalies.telemetry_type"],
+            ["charger_id", "timestamp", "telemetry_type", "service_id"],
+            [
+                "anomalies.charger_id",
+                "anomalies.timestamp",
+                "anomalies.telemetry_type",
+                "anomalies.service_id",
+            ],
             ondelete="CASCADE",
             name="fk_anomaly_identity_anomaly",
         ),

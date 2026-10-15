@@ -107,6 +107,8 @@ def mark_collection_monitor_stopped(service: MonitoringService) -> None:
         updated_at=datetime.now(UTC),
     )
     service.status = False
+    service.desired_state = "stopped"
+    service.lifecycle_version = (getattr(service, "lifecycle_version", None) or 1) + 1
     service.operational_stage = status.stage
     service.operational_updated_at = status.updated_at
     service.operational_status = status.model_dump(mode="json", exclude_none=True)

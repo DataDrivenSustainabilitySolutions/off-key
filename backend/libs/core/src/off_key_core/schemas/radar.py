@@ -42,9 +42,12 @@ __all__ = [
     "MonitoringStrategy",
     "PerformanceConfig",
     "PowerMartingaleTrackerConfig",
+    "RadarActivityStatus",
+    "RadarCoverageStatus",
     "RadarOperationalProgress",
     "RadarOperationalStage",
     "RadarOperationalStatus",
+    "RadarRecoveryStatus",
     "RadarServiceLabel",
     "RadarStartConfig",
     "SimpleJumperMartingaleTrackerConfig",
@@ -85,6 +88,61 @@ class RadarOperationalProgress(BaseModel):
     target: int = Field(gt=0)
 
 
+class RadarActivityStatus(BaseModel):
+    """Current input, scoring and persistence activity, separate from heartbeat age."""
+
+    model_config = ConfigDict(extra="forbid", validate_assignment=True)
+
+    freshness_seconds: float = Field(gt=0, allow_inf_nan=False)
+    last_input_at: datetime | None = None
+    last_processed_at: datetime | None = None
+    last_inference_at: datetime | None = None
+    last_persisted_at: datetime | None = None
+    missing_sensors: list[str] = Field(default_factory=list)
+    stale_sensors: list[str] = Field(default_factory=list)
+    inputs_stalled: bool = False
+    inference_stalled: bool = False
+    persistence_stalled: bool = False
+
+
+class RadarCoverageStatus(BaseModel):
+    """Known local losses in an MQTT stream without a durable replay cursor."""
+
+    model_config = ConfigDict(extra="forbid", validate_assignment=True)
+
+    delivery: Literal["best_effort"] = "best_effort"
+    has_gaps: bool = False
+    received_message_count: int = Field(default=0, ge=0)
+    dropped_message_count: int = Field(default=0, ge=0)
+    dropped_by_reason: dict[str, Annotated[int, Field(ge=0)]] = Field(
+        default_factory=dict
+    )
+    possible_gap_count: int = Field(default=0, ge=0)
+    last_gap_at: datetime | None = None
+    last_gap_reason: str | None = None
+
+    @model_validator(mode="after")
+    def retain_known_gaps(self) -> "RadarCoverageStatus":
+        if self.dropped_message_count or self.possible_gap_count:
+            object.__setattr__(self, "has_gaps", True)
+        return self
+
+
+class RadarRecoveryStatus(BaseModel):
+    """Persisted checkpoint progress, distinct from input replay guarantees."""
+
+    model_config = ConfigDict(extra="forbid", validate_assignment=True)
+
+    storage: Literal["file", "database"] = "file"
+    restored: bool = False
+    restored_processed_count: int | None = Field(default=None, ge=0)
+    restored_saved_at: datetime | None = None
+    saved_processed_count: int | None = Field(default=None, ge=0)
+    saved_at: datetime | None = None
+    maximum_normal_rollback_samples: int | None = Field(default=None, ge=0)
+    input_recovery: Literal["live_only_with_possible_gap"] | None = None
+
+
 class RadarOperationalStatus(BaseModel):
     """Current runtime stage reported by a RADAR workload."""
 
@@ -99,6 +157,9 @@ class RadarOperationalStatus(BaseModel):
     error: str | None = None
     updated_at: datetime | None = None
     is_stale: bool = False
+    coverage: RadarCoverageStatus = Field(default_factory=RadarCoverageStatus)
+    recovery: RadarRecoveryStatus | None = None
+    activity: RadarActivityStatus | None = None
 
 
 class PerformanceConfig(BaseModel):
@@ -107,7 +168,14 @@ class PerformanceConfig(BaseModel):
     model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
     sensor_key_strategy: str = "full_hierarchy"
-    sensor_freshness_seconds: float = Field(default=30.0, gt=0.0)
+    sensor_freshness_seconds: float = Field(default=30.0, gt=0.0, allow_inf_nan=False)
+    observation_max_age_seconds: float = Field(
+        default=30.0, gt=0.0, allow_inf_nan=False
+    )
+    observation_future_tolerance_seconds: float = Field(
+        default=5.0, ge=0.0, allow_inf_nan=False
+    )
+    alignment_max_skew_seconds: float = Field(default=5.0, ge=0.0, allow_inf_nan=False)
 
     @field_validator("sensor_key_strategy")
     @classmethod

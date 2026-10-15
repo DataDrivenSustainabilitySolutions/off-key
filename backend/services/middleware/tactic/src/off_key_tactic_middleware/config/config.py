@@ -95,7 +95,7 @@ class RadarDefaultsConfig(BaseModel):
     # Default Health Settings
     health_check_interval: float = Field(default=30.0, ge=0.1, le=3600.0)
     log_level: str = "INFO"
-    rate_limit_per_minute: int = Field(default=1000, ge=1, le=100000)
+    rate_limit_per_minute: int = Field(default=0, ge=0, le=100000)
 
     model_config = ConfigDict(extra="forbid", validate_assignment=True)
 

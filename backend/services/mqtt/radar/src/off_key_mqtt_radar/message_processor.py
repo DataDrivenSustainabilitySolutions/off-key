@@ -15,6 +15,7 @@ from typing import Any
 from off_key_core.config.logs import logger
 from off_key_core.utils.timestamps import parse_utc_timestamp
 
+from .coverage import CoverageTracker
 from .feature_validation import TelemetryFeatureValidator
 from .memory import MemoryManager
 from .models import AnomalyResult, MQTTMessage
@@ -56,6 +57,7 @@ class MessageProcessor:
         state_cache: SensorStateCache | None = None,
         required_sensors: set | None = None,
         sensor_key_strategy: str = "full_hierarchy",
+        coverage: CoverageTracker | None = None,
     ):
         """
         Initialize message processor.
@@ -72,6 +74,7 @@ class MessageProcessor:
         self.detector = detector
         self.feature_validator = feature_validator
         self.memory_manager = memory_manager
+        self.coverage = coverage
         self.state_cache = state_cache
         self.required_sensors = required_sensors or set()
         self.sensor_key_strategy = self._validate_sensor_key_strategy(
@@ -112,12 +115,14 @@ class MessageProcessor:
             # Step 1: Parse payload
             data = self._parse_payload(message)
             if data is None:
+                self._record_coverage_drop("invalid_payload")
                 return None
             sample_timestamp = self._resolve_sample_timestamp(data, message)
 
             # Step 2: Validate and sanitize
             sanitized_data = self._sanitize_payload(data, message)
             if sanitized_data is None:
+                self._record_coverage_drop("invalid_features")
                 return None
             self.received_message_count += 1
 
@@ -147,6 +152,8 @@ class MessageProcessor:
                 charger_id,
                 alignment_context=alignment_context,
             )
+            if (result.context or {}).get("fallback_reason"):
+                self._record_coverage_drop("detector_fallback")
 
             # Step 6: Update metrics
             self._record_metrics(start_time, result)
@@ -163,6 +170,7 @@ class MessageProcessor:
                 str(e),
             )
             self.error_count += 1
+            self._record_coverage_drop("invalid_payload")
             return None
         except ValidationError as e:
             logger.debug(
@@ -171,6 +179,7 @@ class MessageProcessor:
                 str(e),
             )
             self.error_count += 1
+            self._record_coverage_drop("invalid_features")
             return None
         except Exception as e:
             logger.error(
@@ -181,7 +190,12 @@ class MessageProcessor:
                 extra=self._log_context,
             )
             self.error_count += 1
+            self._record_coverage_drop("processing_error")
             return None
+
+    def _record_coverage_drop(self, reason: str) -> None:
+        if self.coverage is not None:
+            self.coverage.record_drop(reason)
 
     def _parse_payload(self, message: MQTTMessage) -> dict[str, Any] | None:
         """Parse raw MQTT payload into JSON."""

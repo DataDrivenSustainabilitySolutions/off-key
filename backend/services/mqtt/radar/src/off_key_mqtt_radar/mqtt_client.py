@@ -20,6 +20,7 @@ from off_key_core.config.logging import get_logging_settings
 from off_key_core.config.logs import logger
 
 from .config.config import MQTTRadarConfig
+from .coverage import CoverageTracker
 from .models import MQTTMessage
 
 
@@ -38,6 +39,7 @@ class RadarMQTTClient:
         self.config = config
         self.client: mqtt.Client | None = None
         self.message_handler: Callable[[MQTTMessage], Awaitable[None]] | None = None
+        self.coverage = CoverageTracker()
 
         # Connection state
         self.is_connected = False
@@ -317,6 +319,8 @@ class RadarMQTTClient:
         if client is not self.client or self._shutdown_event.is_set():
             return
         rc = getattr(reason_code, "value", reason_code)
+        if self.is_connected:
+            self.coverage.record_possible_gap("mqtt_disconnect")
         self.is_connected = False
         self._notify_connection_result(
             RuntimeError("Disconnected before MQTT connection was established")
@@ -337,6 +341,8 @@ class RadarMQTTClient:
     def _on_message(self, client, userdata, msg):
         """MQTT message callback"""
         if not self._loop:
+            self.coverage.record_received()
+            self.coverage.record_drop("loop_unavailable")
             logger.debug("Asyncio loop not ready, dropping incoming MQTT message")
             return
 
@@ -348,12 +354,19 @@ class RadarMQTTClient:
             timestamp=datetime.now(UTC),
         )
 
-        self._loop.call_soon_threadsafe(lambda: self._handle_incoming_message(message))
+        try:
+            self._loop.call_soon_threadsafe(
+                lambda: self._handle_incoming_message(message)
+            )
+        except RuntimeError:
+            self.coverage.record_received()
+            self.coverage.record_drop("loop_unavailable")
 
     def _handle_incoming_message(self, message: MQTTMessage):
         """Handle MQTT message on the asyncio event loop thread"""
+        self.coverage.record_received()
         try:
-            current_time = time.time()
+            current_time = time.monotonic()
 
             # Remove old entries (older than 1 minute)
             minute_ago = current_time - 60
@@ -361,13 +374,16 @@ class RadarMQTTClient:
                 self.rate_limiter.popleft()
 
             # Check rate limit BEFORE appending
-            if len(self.rate_limiter) >= self.config.rate_limit_per_minute:
+            limit = self.config.rate_limit_per_minute
+            if limit > 0 and len(self.rate_limiter) >= limit:
                 self._drop_counts["rate_limit"] += 1
+                self.coverage.record_drop("rate_limit")
                 self._emit_drop_summary()
                 return
 
             # Only append timestamp for accepted messages
-            self.rate_limiter.append(current_time)
+            if limit > 0:
+                self.rate_limiter.append(current_time)
 
             try:
                 self.message_queue.put_nowait(message)
@@ -375,6 +391,7 @@ class RadarMQTTClient:
                 self.last_message_time = datetime.now()
             except asyncio.QueueFull:
                 self._drop_counts["queue_full"] += 1
+                self.coverage.record_drop("queue_full")
                 self._emit_drop_summary()
                 self.error_count += 1
 
@@ -385,6 +402,7 @@ class RadarMQTTClient:
                 exc_info=True,
             )
             self.error_count += 1
+            self.coverage.record_drop("enqueue_error")
 
     def _on_log(self, client, userdata, level, buf):
         """MQTT log callback"""
@@ -418,7 +436,9 @@ class RadarMQTTClient:
                                 exc_info=True,
                             )
                             self.error_count += 1
+                            self.coverage.record_drop("handler_error")
                     else:
+                        self.coverage.record_drop("no_handler")
                         logger.debug(
                             "event=radar.mqtt_message_dropped_no_handler topic=%s",
                             message.topic,
@@ -529,22 +549,28 @@ class RadarMQTTClient:
                 "current_rate": len(self.rate_limiter),
                 "limit": self.config.rate_limit_per_minute,
             },
+            "coverage": self.coverage.snapshot().model_dump(mode="json"),
         }
 
     def get_health_status(self) -> dict[str, Any]:
         """Get health status information"""
+        coverage = self.coverage.snapshot().model_dump(mode="json")
         if not self.is_connected:
             return {
                 "status": "unhealthy",
                 "reason": "not_connected",
                 "reconnect_attempts": self.reconnect_attempts,
+                "coverage": coverage,
             }
 
         # Check message processing health
         queue_usage = self.message_queue.qsize() / self.config.max_queue_size
         error_rate = self.error_count / max(self.message_count, 1)
 
-        if queue_usage > 0.9:
+        if coverage["has_gaps"]:
+            status = "degraded"
+            reason = "coverage_gap"
+        elif queue_usage > 0.9:
             status = "degraded"
             reason = "queue_nearly_full"
         elif error_rate > 0.1:
@@ -560,6 +586,7 @@ class RadarMQTTClient:
             "queue_usage": queue_usage,
             "error_rate": error_rate,
             "connected": self.is_connected,
+            "coverage": coverage,
             "uptime_seconds": (
                 (datetime.now() - self.connection_time).total_seconds()
                 if self.connection_time

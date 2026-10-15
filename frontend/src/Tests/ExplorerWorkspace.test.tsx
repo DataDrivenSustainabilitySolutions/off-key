@@ -102,6 +102,23 @@ function withServices(services: ActiveService[]) {
 }
 
 describe("service-centred monitoring workspace", () => {
+  it("reports missing monitoring coverage after traffic has resumed", async () => {
+    const monitor = service();
+    monitor.operational_status.coverage = {
+      delivery: "best_effort", has_gaps: true, received_message_count: 1100,
+      dropped_message_count: 100, dropped_by_reason: { rate_limit: 100 },
+      possible_gap_count: 1, last_gap_at: "2026-10-11T10:00:00Z",
+      last_gap_reason: "rate_limit",
+    };
+    withServices([monitor]);
+    mount("/?service=service-one");
+    const details = await screen.findByRole("region", { name: "Monitoring service details" }, { timeout: 5000 });
+    expect(within(details).getByText("Coverage gap")).toBeTruthy();
+    expect(within(details).getByText("Delivery is best effort. Missing observations cannot be replayed.")).toBeTruthy();
+    expect(within(details).getByText("rate limit: 100")).toBeTruthy();
+    expect(within(details).getByRole("alert").textContent).toContain("Monitoring coverage has gaps");
+  });
+
   it("keeps the same catalogue DOM, search, scroll and source selection across all sections", async () => {
     withServices([service(), { ...service("other", "Other service"), mqtt_topics: ["unmapped/input"] }]);
     const { router } = mount();

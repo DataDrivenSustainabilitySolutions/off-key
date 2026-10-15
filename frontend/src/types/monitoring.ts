@@ -71,6 +71,17 @@ export interface OperationalProgress {
   target: number;
 }
 
+export interface MonitoringCoverage {
+  delivery: 'best_effort';
+  has_gaps: boolean;
+  received_message_count: number;
+  dropped_message_count: number;
+  dropped_by_reason: Record<string, number>;
+  possible_gap_count: number;
+  last_gap_at?: string | null;
+  last_gap_reason?: string | null;
+}
+
 export interface OperationalStatus {
   stage: OperationalStage;
   detail?: string | null;
@@ -81,6 +92,7 @@ export interface OperationalStatus {
   error?: string | null;
   updated_at?: string | null;
   is_stale: boolean;
+  coverage?: MonitoringCoverage;
 }
 
 export interface ActiveService {

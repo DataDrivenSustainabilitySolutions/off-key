@@ -81,11 +81,95 @@ async def test_repeated_socket_failures_keep_one_subscriber_and_stop_all_threads
             await asyncio.sleep(1.2)
             assert len(broker._subscriptions[topic]) == 1
             assert received == [b"0", b"1", b"2"]
+            assert client.coverage.snapshot().possible_gap_count == 3
+            assert client.get_health_status()["status"] == "degraded"
             clients.append(client.client)
             await client.stop()
             assert all(not item.is_connected() for item in clients)
             assert all(item._thread is None for item in clients)
         finally:
+            await client.stop()
+            await publisher.disconnect()
+
+
+@pytest.mark.parametrize("limit", [0, 1000])
+async def test_real_mqtt_burst_exposes_configured_throttling_and_persistent_loss(limit):
+    topic = "telemetry/coverage/value"
+    async with mqtt_broker() as (_, port):
+        client = RadarMQTTClient(
+            MQTTRadarConfig(
+                broker_host="127.0.0.1",
+                broker_port=port,
+                subscription_topics=[topic],
+                rate_limit_per_minute=limit,
+            )
+        )
+        received = []
+
+        async def receive(message):
+            received.append(message.payload)
+
+        client.set_message_handler(receive)
+        publisher = MQTTClient(client_id=f"coverage-publisher-{limit}")
+        try:
+            await client.start()
+            await publisher.connect(f"mqtt://127.0.0.1:{port}")
+            for _ in range(1100):
+                await publisher.publish(topic, b'{"value":42}', qos=1)
+            await wait_until(
+                lambda: client.coverage.snapshot().received_message_count == 1100
+            )
+            await wait_until(lambda: len(received) == (1000 if limit else 1100))
+            client._emit_drop_summary(force=True)
+            coverage = client.get_health_status()["coverage"]
+            assert coverage["dropped_message_count"] == (100 if limit else 0)
+            assert coverage["has_gaps"] is bool(limit)
+            assert client.get_health_status()["status"] == (
+                "degraded" if limit else "healthy"
+            )
+            if not limit:
+                assert not client.rate_limiter
+        finally:
+            await client.stop()
+            await publisher.disconnect()
+
+
+async def test_real_mqtt_queue_overflow_records_every_locally_discarded_message():
+    topic = "telemetry/overflow/value"
+    async with mqtt_broker() as (_, port):
+        client = RadarMQTTClient(
+            MQTTRadarConfig(
+                broker_host="127.0.0.1",
+                broker_port=port,
+                subscription_topics=[topic],
+                max_queue_size=2,
+            )
+        )
+        processing = asyncio.Event()
+        resume = asyncio.Event()
+
+        async def receive(message):
+            processing.set()
+            await resume.wait()
+
+        client.set_message_handler(receive)
+        publisher = MQTTClient(client_id="coverage-overflow-publisher")
+        try:
+            await client.start()
+            await publisher.connect(f"mqtt://127.0.0.1:{port}")
+            await publisher.publish(topic, b'{"value":42}', qos=1)
+            await processing.wait()
+            for _ in range(9):
+                await publisher.publish(topic, b'{"value":42}', qos=1)
+            await wait_until(
+                lambda: client.coverage.snapshot().received_message_count == 10
+            )
+            coverage = client.coverage.snapshot()
+            assert coverage.dropped_message_count == 7
+            assert coverage.dropped_by_reason == {"queue_full": 7}
+            assert client.get_health_status()["status"] == "degraded"
+        finally:
+            resume.set()
             await client.stop()
             await publisher.disconnect()
 

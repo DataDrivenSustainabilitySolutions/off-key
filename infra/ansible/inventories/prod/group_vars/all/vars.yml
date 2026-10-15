@@ -223,7 +223,7 @@ tactic_radar_default_db_batch_size:         "50"
 tactic_radar_default_db_batch_timeout:      "2.0"
 tactic_radar_default_health_check_interval: "30.0"
 tactic_radar_default_log_level:             WARNING
-tactic_radar_default_rate_limit_per_minute: "1000"
+tactic_radar_default_rate_limit_per_minute: "0"
 
 # ── Dev proxy (disabled in prod) ─────────────────────────────────────────────
 

@@ -106,7 +106,8 @@ class MQTTRadarConfig(AnomalyDetectionConfig):
     max_queue_size: int = Field(default=10000, gt=0)
 
     # Security
-    rate_limit_per_minute: int = 1000
+    # Zero accepts every observation until the bounded ingestion queue is full.
+    rate_limit_per_minute: int = Field(default=0, ge=0)
     max_feature_count: int = 100
     max_string_length: int = 1000
 
@@ -163,7 +164,7 @@ class RadarSettings(BaseSettings):
     # Monitoring
     RADAR_HEALTH_CHECK_INTERVAL: float = 30.0
     RADAR_LOG_LEVEL: str = "INFO"
-    RADAR_RATE_LIMIT_PER_MINUTE: int = 1000
+    RADAR_RATE_LIMIT_PER_MINUTE: int = Field(default=0, ge=0)
 
     model_config = SettingsConfigDict(
         case_sensitive=True,

@@ -7,13 +7,18 @@ Monitors service health and provides metrics collection.
 import asyncio
 import time
 from collections import deque
+from collections.abc import Callable
 from contextlib import suppress
 from datetime import UTC, datetime
 from typing import Any
 
 from off_key_core.config.logging import get_logging_settings
 from off_key_core.config.logs import logger
-from off_key_core.schemas.radar import RadarOperationalStatus
+from off_key_core.schemas.radar import (
+    RadarCoverageStatus,
+    RadarOperationalStatus,
+    RadarRecoveryStatus,
+)
 
 from .models import HealthStatus
 
@@ -56,6 +61,7 @@ class HealthMonitor:
         self._detector = None
         self._memory_manager = None
         self._message_processor = None
+        self._recovery_status: Callable[[], dict[str, Any]] | None = None
 
         self._log_context = {"component": "health_monitor"}
         logging_settings = get_logging_settings()
@@ -69,6 +75,7 @@ class HealthMonitor:
         detector=None,
         memory_manager=None,
         message_processor=None,
+        recovery_status: Callable[[], dict[str, Any]] | None = None,
     ) -> None:
         """
         Set references to components for health checking.
@@ -85,6 +92,7 @@ class HealthMonitor:
         self._detector = detector
         self._memory_manager = memory_manager
         self._message_processor = message_processor
+        self._recovery_status = recovery_status
 
     async def start(self, shutdown_event: asyncio.Event) -> None:
         """
@@ -224,8 +232,17 @@ class HealthMonitor:
         """Reduce component and resource health into stable alert identifiers."""
         alerts: list[str] = []
         mqtt_health = components.get("mqtt_client")
-        if mqtt_health and mqtt_health.get("status") != "healthy":
+        if (
+            mqtt_health
+            and mqtt_health.get("status") != "healthy"
+            and mqtt_health.get("reason") != "coverage_gap"
+        ):
             alerts.append(f"mqtt_{mqtt_health.get('reason', 'unknown')}")
+        coverage = RadarCoverageStatus.model_validate(
+            (mqtt_health or {}).get("coverage", {})
+        )
+        if coverage.has_gaps:
+            alerts.append("monitoring_coverage_gap")
 
         database_health = components.get("database_writer")
         if database_health and database_health.get("status") not in {
@@ -266,6 +283,11 @@ class HealthMonitor:
         processed_count = int(
             processor_metrics.get("processed_message_count", message_count) or 0
         )
+        recovery = (
+            RadarRecoveryStatus.model_validate(self._recovery_status() or {})
+            if self._recovery_status
+            else None
+        )
         metrics = {
             "uptime_seconds": uptime,
             "message_count": message_count,
@@ -278,11 +300,15 @@ class HealthMonitor:
             "avg_processing_time_ms": self._calculate_avg_processing_time(),
             "throughput_per_second": self._calculate_throughput(processed_count),
             "memory_usage_mb": memory_usage,
+            "recovery": recovery.model_dump(mode="json", exclude_none=True)
+            if recovery
+            else None,
         }
         metrics["operational_status"] = self._build_operational_status(
             service_status=service_status,
             components=components,
             processor_metrics=processor_metrics,
+            recovery=recovery,
         )
         return metrics
 
@@ -332,6 +358,7 @@ class HealthMonitor:
         service_status: str,
         components: dict[str, Any],
         processor_metrics: dict[str, Any],
+        recovery: RadarRecoveryStatus | None = None,
     ) -> dict[str, Any]:
         detector_health = components.get("anomaly_detector", {}) or {}
         detector_stats = detector_health.get("primary_service_stats", {}) or {}
@@ -340,6 +367,9 @@ class HealthMonitor:
             processor_metrics.get("processed_message_count", message_count) or 0
         )
         last_alignment_status = processor_metrics.get("last_alignment_status")
+        coverage = RadarCoverageStatus.model_validate(
+            (components.get("mqtt_client") or {}).get("coverage", {})
+        )
 
         stage = "waiting_for_data"
         detail = None
@@ -359,7 +389,12 @@ class HealthMonitor:
             )
         elif service_status == "degraded" or detector_state == "degraded":
             stage = "degraded"
-            detail = "RADAR runtime is degraded"
+            detail = (
+                "Monitoring coverage has gaps; "
+                "historical observations cannot be replayed"
+                if coverage.has_gaps
+                else "RADAR runtime is degraded"
+            )
         elif processed_count <= 0:
             stage = "waiting_for_data"
             detail = (
@@ -385,6 +420,8 @@ class HealthMonitor:
             error=error,
             updated_at=datetime.now(UTC),
             is_stale=False,
+            coverage=coverage,
+            recovery=recovery,
         ).model_dump(mode="json", exclude_none=True)
 
     @staticmethod

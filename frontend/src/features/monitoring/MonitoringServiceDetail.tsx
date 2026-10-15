@@ -29,6 +29,7 @@ export default function MonitoringServiceDetail({ service, inputs, document, his
   const state = serviceState(service);
   const name = serviceName(service, inputs);
   const progress = service.operational_status.progress;
+  const coverage = service.operational_status.coverage;
   const selectedInput = inputs.find(input => input.stream.id === params.get("stream")) ?? inputs[0];
   useEffect(() => {
     const controller = new AbortController();
@@ -74,6 +75,18 @@ export default function MonitoringServiceDetail({ service, inputs, document, his
             <div style={{ width: `${Math.min(100, Math.max(0, progress.current / Math.max(1, progress.target) * 100))}%` }} /></div></section>}
         {service.operational_status.error && <p className="ex-preview-error" role="alert">{service.operational_status.error}</p>}
         {service.operational_status.detail && <p className="ex-muted">{service.operational_status.detail}</p>}
+        <section className="mn-section"><h3>Coverage</h3>
+          <p className="ex-muted">Delivery is best effort. Missing observations cannot be replayed.</p>
+          {coverage ? <>
+            <dl className="mn-configuration"><div><dt>Received observations</dt><dd>{coverage.received_message_count.toLocaleString()}</dd></div>
+              <div><dt>Dropped observations</dt><dd>{coverage.dropped_message_count.toLocaleString()}</dd></div>
+              <div><dt>Possible interruptions</dt><dd>{coverage.possible_gap_count.toLocaleString()}</dd></div></dl>
+            {coverage.has_gaps && <p className="ex-preview-error" role="alert">Monitoring coverage has gaps.
+              {coverage.last_gap_at && <> Last gap: {formatServiceTime(coverage.last_gap_at)}.</>}</p>}
+            {Object.keys(coverage.dropped_by_reason).length > 0 && <ul>{Object.entries(coverage.dropped_by_reason).map(([reason, count]) =>
+              <li key={reason}>{reason.replace(/_/g, " ")}: {count.toLocaleString()}</li>)}</ul>}
+          </> : <p className="ex-muted">Coverage has not been reported by this workload.</p>}
+        </section>
         <section className={progress ? "mn-section" : undefined}><h3>Monitored readings</h3><ul className="mn-input-list">
           {inputs.map(input => <li key={input.stream.id}><span>{input.stream.label}<small>{input.path}{input.stream.unit ? ` · ${input.stream.unit}` : ""}</small></span>
             <button onClick={() => chooseTab("evidence", input.stream.id)}>Inspect</button></li>)}

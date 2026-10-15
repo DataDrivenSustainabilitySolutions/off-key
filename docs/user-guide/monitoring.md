@@ -28,6 +28,17 @@ Use this page when starting, validating, or stopping monitoring workloads from t
 5. Start monitoring.
 6. Observe the service stage, monitoring evidence, and resulting anomalies.
 
+Coverage in the service overview reports known discarded observations and possible
+interruptions. RADAR currently consumes a best-effort MQTT stream without a
+durable replay cursor. Queue overflow, explicit throttling, invalid inputs and
+connection interruptions can leave gaps. New traffic does not repair those gaps:
+the monitor keeps its coverage warning even after it resumes processing. Removing
+and recreating the monitor starts a new calibration and coverage history.
+
+Throttling is disabled by default. Operators can configure a positive aggregate
+limit across all of a monitor's subscribed readings; excess observations are then
+counted and reported as lost monitoring coverage.
+
 ### Strategy summary
 
 | Strategy | Best suited to | Runtime behaviour |

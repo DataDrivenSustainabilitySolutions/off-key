@@ -158,6 +158,7 @@ unknown errors remain eligible for retry.
 | `RADAR_MQTT_USE_AUTH` | `false` | MQTT authentication toggle |
 | `RADAR_SUBSCRIPTION_TOPICS` | `telemetry/#` | Accepted generic topics; managed monitors use selected concrete readings |
 | `RADAR_MONITORING_CONFIG` | Default static baseline | JSON strategy configuration containing `strategy`, model parameters, and training/calibration settings |
+| `RADAR_RATE_LIMIT_PER_MINUTE` | `0` | Aggregate observation limit across the monitor's topics; `0` disables throttling. Positive limits discard excess inputs and permanently flag the monitor's coverage as degraded. Managed workloads use `TACTIC_RADAR_DEFAULT_RATE_LIMIT_PER_MINUTE`, also defaulting to `0`. |
 
 TACTIC-managed workloads receive `RADAR_MONITORING_CONFIG` as their single
 monitoring configuration. Standalone RADAR still accepts the legacy

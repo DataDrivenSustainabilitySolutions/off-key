@@ -16,6 +16,7 @@ export function serviceState(service: ActiveService): ServiceState {
   if (!service.status || stage === "stopped") return { label: "Stopped", tone: "neutral", category: "stopped" };
   if (stage === "failed") return { label: "Failed", tone: "danger", category: "attention" };
   if (service.operational_status.is_stale) return { label: "Status stale", tone: "warning", category: "attention" };
+  if (service.operational_status.coverage?.has_gaps) return { label: "Coverage gap", tone: "warning", category: "attention" };
   if (stage === "degraded") return { label: "Degraded", tone: "warning", category: "attention" };
   if (stage === "operational") return { label: "Monitoring", tone: "positive", category: "monitoring" };
   const labels: Partial<Record<typeof stage, string>> = {

@@ -21,10 +21,10 @@ validated observation time as well as receipt time.
 - [x] 1. Fix reconnect ownership and client teardown; real MQTT regression.
 - [x] 2. Scope alarm identity by monitoring service; upgrade and real DB regression.
 - [ ] 3. Persist signed checkpoints across task/node replacement; real restart test.
-- [ ] 4. Make rate/overflow/restart coverage gaps explicit and remove unsuitable defaults.
+- [x] 4. Make rate/overflow/restart coverage gaps explicit and remove unsuitable defaults.
 - [ ] 5. Persist desired workload state before Docker mutation and recover interruption.
 - [ ] 6. Degrade health when required input or successful inference stops progressing.
-- [ ] 7. Require successful SUBACKs before readiness, including reconnects.
+- [x] 7. Require successful SUBACKs before readiness, including reconnects.
 - [ ] 8. Move external workload inspection outside database locks/transactions.
 - [ ] 9. Bound thread-to-loop ingestion and run detector work serially off the loop.
 - [ ] 10. Validate observation age, regression, duplicates and cross-sensor skew.
@@ -65,3 +65,16 @@ scope. Validation: 71 backend tests including real TimescaleDB writes, retry,
 independent deletion and legacy migration with/without a ledger; 18 frontend tests,
 TypeScript build and affected Ruff checks pass. Historical discarded alarms cannot
 be reconstructed automatically.
+
+Step 7: Broker acknowledgements gate readiness for every required topic. Paho's
+current callback API handles acknowledgement rejection, local subscription errors,
+timeouts and reconnects. Four real network regressions and 29 async boundary tests
+pass. Independent fixes are prepared in parallel and committed per finding.
+
+Step 4: Aggregate throttling is opt-in (zero disables it). Thread-safe cumulative
+coverage counters survive log suppression and checkpoints; known drops and possible
+disconnect/restart gaps stay visible after traffic resumes. The status API and UI
+show the live-only delivery contract. Validation: 99 backend tests including real
+1,100-message bursts, exact overflow and reconnect accounting; 48 frontend tests,
+TypeScript and Ruff pass. Recovery status contracts are included as preparation for
+the checkpoint fix.

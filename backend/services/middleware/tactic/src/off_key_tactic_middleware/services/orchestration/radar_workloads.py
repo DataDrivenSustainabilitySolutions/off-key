@@ -9,6 +9,7 @@ from typing import Any
 import docker
 from docker.types import Resources, RestartPolicy, SecretReference, ServiceMode
 from off_key_core.config.logs import logger
+from off_key_core.config.resource_budget import parse_memory_bytes
 
 from ...config.config import get_tactic_settings
 from ...facades.docker import (
@@ -28,15 +29,6 @@ RADAR_SERVICE_TYPE_LABEL = "service_type=radar"
 
 _SWARM_CACHE_TTL_SECONDS = 30.0
 _swarm_manager_cache: tuple[bool, float] | None = None
-_DEFAULT_MEMORY_BYTES = 536_870_912
-_MEMORY_SIZE_MULTIPLIERS = {
-    "k": 1024,
-    "m": 1024 * 1024,
-    "g": 1024 * 1024 * 1024,
-    "kb": 1024,
-    "mb": 1024 * 1024,
-    "gb": 1024 * 1024 * 1024,
-}
 
 
 @lru_cache(maxsize=1)
@@ -46,28 +38,8 @@ def get_async_docker() -> AsyncDocker:
 
 
 def _parse_memory_string(memory_string: str) -> int:
-    """Convert a Docker memory-size string to bytes."""
-    normalized = memory_string.lower().strip()
-    if not normalized:
-        return _DEFAULT_MEMORY_BYTES
-    if normalized.isdigit():
-        return int(normalized)
-
-    for suffix, multiplier in _MEMORY_SIZE_MULTIPLIERS.items():
-        if not normalized.endswith(suffix):
-            continue
-        number_part = normalized[: -len(suffix)].strip()
-        try:
-            return int(float(number_part) * multiplier)
-        except ValueError:
-            break
-
-    logger.warning(
-        "Invalid Docker memory limit %r; using the 512 MiB default",
-        memory_string,
-    )
-    return _DEFAULT_MEMORY_BYTES
-
+    """Validate legacy callers using the shared Docker quantity parser."""
+    return parse_memory_bytes(memory_string)
 
 class RadarWorkloadManager:
     """Create, inspect, and remove RADAR Docker workloads."""
@@ -196,6 +168,7 @@ class RadarWorkloadManager:
     ) -> Any:
         tactic_config = get_tactic_settings().config
         docker_config = tactic_config.docker
+        budget = docker_config.resource_budget
         service_kwargs: dict[str, Any] = {
             "name": f"radar-{service_id}",
             "labels": build_radar_workload_labels(
@@ -215,8 +188,10 @@ class RadarWorkloadManager:
                 *docker_config.additional_networks,
             ],
             "resources": Resources(
-                cpu_limit=int(float(docker_config.default_cpu_limit) * 1_000_000_000),
-                mem_limit=_parse_memory_string(docker_config.default_memory_limit),
+                cpu_limit=budget.cpu_limit_nanos,
+                mem_limit=budget.memory_limit_bytes,
+                cpu_reservation=budget.cpu_reservation_nanos,
+                mem_reservation=budget.memory_reservation_bytes,
             ),
         }
         if docker_config.default_constraints:
@@ -263,6 +238,7 @@ class RadarWorkloadManager:
     ) -> Any:
         tactic_config = get_tactic_settings().config
         docker_config = tactic_config.docker
+        budget = docker_config.resource_budget
         restart_policy: dict[str, Any] = {
             "Name": docker_config.default_restart_policy,
         }
@@ -287,8 +263,9 @@ class RadarWorkloadManager:
             detach=True,
             network=docker_config.default_network,
             restart_policy=restart_policy,
-            mem_limit=_parse_memory_string(docker_config.default_memory_limit),
-            nano_cpus=int(float(docker_config.default_cpu_limit) * 1_000_000_000),
+            mem_limit=budget.memory_limit_bytes,
+            mem_reservation=budget.memory_reservation_bytes,
+            nano_cpus=budget.cpu_limit_nanos,
         )
 
         # containers.run only attaches one network; connect the rest (e.g. the app

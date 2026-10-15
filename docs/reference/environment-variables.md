@@ -228,6 +228,9 @@ See [Deployment modes](../operations/deployment-modes.md) and [Collection](../op
 
 ## RADAR configuration files
 
+Managed worker resource budgets, queue bounds, reservations and the monitor count
+limit are described in [RADAR deployment capacity](../operations/radar-capacity.md).
+
 `RADAR_CONFIG_FILE` optionally selects a dotenv file loaded once, before RADAR
 settings and components are constructed. File values override environment values.
 Restart the workload after changing configuration; running services do not watch

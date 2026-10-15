@@ -23,12 +23,12 @@ validated observation time as well as receipt time.
 - [x] 3. Persist signed checkpoints across task/node replacement; real restart test.
 - [x] 4. Make rate/overflow/restart coverage gaps explicit and remove unsuitable defaults.
 - [x] 5. Persist desired workload state before Docker mutation and recover interruption.
-- [ ] 6. Degrade health when required input or successful inference stops progressing.
+- [x] 6. Degrade health when required input or successful inference stops progressing.
 - [x] 7. Require successful SUBACKs before readiness, including reconnects.
 - [ ] 8. Move external workload inspection outside database locks/transactions.
 - [x] 9. Bound thread-to-loop ingestion and run detector work serially off the loop.
 - [ ] 10. Validate observation age, regression, duplicates and cross-sensor skew.
-- [ ] Reconcile runtime resource budgets, documentation and deployment contracts.
+- [x] Reconcile runtime resource budgets, documentation and deployment contracts.
 - [ ] Run real MQTT/PostgreSQL/Swarm integration, affected root checks and review.
 - [ ] Push the branch and open/attach the PR.
 
@@ -112,3 +112,24 @@ real broker bursts; a 20,000-observation paused-loop burst holds eight queued
 messages/eight wakeups with an eight-entry queue; real detector serial ownership,
 34 processor/lifecycle regressions, and 16 checkpoint/runtime tests (real DB and
 replacement processes) pass.
+
+Resource budget follow-up: shared strict quantity parsing rejects malformed/zero
+Docker limits and reservations; worker soft memory defaults to384MiB below the
+512MiB hard limit. Swarm reserves configured CPU/memory (limits by default), and
+admission limits active/pending monitors under the sensor claim lock. Typed ingress
+bounds are forwarded by TACTIC and cannot consume the entire soft target as raw
+payload bytes. The database pool remains bounded at2 connections so a heartbeat
+can report an evidence transaction blocked in PostgreSQL. Capacity documentation
+requires profiling fitting/checkpoint peaks and does not infer model memory from
+arbitrary window parameters. Validation:90 affected tests pass, including real
+PostgreSQL concurrent admission and a real Swarm oversized CPU reservation retained
+as pending. Existing production-secret workload regression asserts both resource
+limits and reservations.
+
+Step 6: Thread-safe activity clocks distinguish valid input receipt, primary
+processing, actual inference and committed evidence. Health ages every required
+sensor even during silence, retains training progress, and exposes persistence
+backlog stalls independently of heartbeat timestamps. Validation: eight focused
+activity tests including a real MQTT/Aberrant pause/recovery and actual blocked
+PostgreSQL evidence commit with a concurrent health heartbeat; 34 frontend tests
+and TypeScript pass.

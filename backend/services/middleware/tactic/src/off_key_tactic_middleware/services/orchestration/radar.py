@@ -23,6 +23,7 @@ from off_key_core.utils.mqtt_topics import (
 from sqlalchemy import delete, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ...config.config import get_tactic_settings
 from ...models.registry import ModelRegistryService
 from ..radar_status import (
     TERMINAL_WORKLOAD_STATES,
@@ -176,6 +177,14 @@ class RadarOrchestrationService:
             )
 
         active_services = await self._reconcile_active_topic_claims()
+        limit = get_tactic_settings().config.radar_max_active_monitors
+        if len(active_services) >= limit and not any(
+            service.container_name == container_name for service in active_services
+        ):
+            raise ValueError(
+                f"RADAR capacity reached ({limit} active or pending monitors). "
+                "Stop a monitor or increase the operator capacity limit."
+            )
         for active_service in active_services:
             if active_service.container_name == container_name:
                 continue

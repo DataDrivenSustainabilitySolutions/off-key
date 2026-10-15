@@ -7,6 +7,10 @@ from pathlib import Path
 from typing import Any, Self
 
 from dotenv import load_dotenv
+from off_key_core.config.resource_budget import (
+    DEFAULT_RADAR_MEMORY_MB,
+    validate_ingress_budget,
+)
 from off_key_core.config.validation import validate_environment as _validate_environment
 from off_key_core.schemas.radar import (
     LegacyMonitoringConfig,
@@ -59,7 +63,7 @@ class AnomalyDetectionConfig(PerformanceConfig):
 
     monitoring: MonitoringConfig = Field(default_factory=StaticBaselineConfig)
     subscription_topics: list[str] = Field(default_factory=list)
-    memory_limit_mb: int = 1000
+    memory_limit_mb: int = Field(default=DEFAULT_RADAR_MEMORY_MB, ge=128, le=16384)
     checkpoint_interval: int = 10000
 
     # Batch processing
@@ -112,6 +116,13 @@ class MQTTRadarConfig(AnomalyDetectionConfig):
     max_feature_count: int = 100
     max_string_length: int = 1000
 
+    @model_validator(mode="after")
+    def validate_queued_payload_budget(self) -> "MQTTRadarConfig":
+        validate_ingress_budget(
+            self.max_queue_size, self.max_payload_bytes, self.memory_limit_mb
+        )
+        return self
+
     @field_validator("subscription_topics")
     @classmethod
     def validate_subscription_topics(cls, value: list[str]) -> list[str]:
@@ -161,7 +172,9 @@ class RadarSettings(BaseSettings):
     RADAR_BATCH_TIMEOUT: float = 1.0
     RADAR_MAX_QUEUE_SIZE: int = Field(default=256, gt=0, le=10000)
     RADAR_MAX_PAYLOAD_BYTES: int = Field(default=65536, gt=0, le=1048576)
-    RADAR_MEMORY_LIMIT_MB: int = 1000
+    RADAR_MEMORY_LIMIT_MB: int = Field(
+        default=DEFAULT_RADAR_MEMORY_MB, ge=128, le=16384
+    )
     RADAR_CHECKPOINT_INTERVAL: int = 10000
 
     # Monitoring

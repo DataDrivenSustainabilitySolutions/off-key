@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock
 import docker
 import pytest
 from off_key_core.schemas.radar import RadarStartConfig
+from off_key_tactic_middleware.config.config import DockerConfig
 from off_key_tactic_middleware.facades.docker import (
     get_workload_docker_status,
     should_fallback_to_container,
@@ -102,7 +103,7 @@ async def test_production_radar_copies_required_swarm_secret_references(monkeypa
     fake_docker.client.services.create = MagicMock(
         return_value=SimpleNamespace(id="svc-1")
     )
-    docker_defaults = SimpleNamespace(
+    docker_defaults = DockerConfig(
         default_network="off-key_emqx-network",
         additional_networks=[],
         default_restart_policy="on-failure",
@@ -127,6 +128,9 @@ async def test_production_radar_copies_required_swarm_secret_references(monkeypa
     fake_docker.client.services.get.assert_called_once_with("off-key_mqtt-radar")
     mounted = fake_docker.client.services.create.call_args.kwargs["secrets"]
     assert {secret["File"]["Name"] for secret in mounted} == set(required)
+    resources = fake_docker.client.services.create.call_args.kwargs["resources"]
+    assert resources["Limits"] == {"NanoCPUs": 500_000_000, "MemoryBytes": 536_870_912}
+    assert resources["Reservations"] == resources["Limits"]
 
 
 @pytest.mark.asyncio

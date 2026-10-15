@@ -206,6 +206,9 @@ tactic_docker_default_restart_policy: on-failure
 tactic_docker_default_restart_max_attempts: "3"
 tactic_docker_default_memory_limit: 512m
 tactic_docker_default_cpu_limit:    "0.5"
+tactic_docker_default_memory_reservation: 512m
+tactic_docker_default_cpu_reservation: "0.5"
+tactic_radar_max_active_monitors: "20"
 tactic_radar_default_mqtt_broker_host:      emqx-main
 tactic_radar_default_mqtt_broker_port:      "8883"
 tactic_radar_default_mqtt_use_tls:          "true"
@@ -216,7 +219,9 @@ tactic_radar_default_mqtt_qos:              "0"
 tactic_radar_default_model_type:            isolation_forest
 tactic_radar_default_batch_size:            "100"
 tactic_radar_default_batch_timeout:         "1.0"
-tactic_radar_default_memory_limit_mb:       "1000"
+tactic_radar_default_memory_limit_mb:       "384"
+tactic_radar_default_max_queue_size: "256"
+tactic_radar_default_max_payload_bytes: "65536"
 tactic_radar_default_checkpoint_interval:   "10000"
 tactic_radar_default_db_write_enabled:      "true"
 tactic_radar_default_db_batch_size:         "50"

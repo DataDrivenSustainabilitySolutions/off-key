@@ -121,6 +121,8 @@ def build_radar_environment(
         "RADAR_BATCH_TIMEOUT": str(defaults.batch_timeout),
         "RADAR_MEMORY_LIMIT_MB": str(defaults.memory_limit_mb),
         "RADAR_CHECKPOINT_INTERVAL": str(defaults.checkpoint_interval),
+        "RADAR_MAX_QUEUE_SIZE": str(defaults.max_queue_size),
+        "RADAR_MAX_PAYLOAD_BYTES": str(defaults.max_payload_bytes),
         "RADAR_SENSOR_KEY_STRATEGY": str(performance.sensor_key_strategy),
         "RADAR_SENSOR_FRESHNESS_SECONDS": str(performance.sensor_freshness_seconds),
         "RADAR_DB_WRITE_ENABLED": str(defaults.db_write_enabled).lower(),

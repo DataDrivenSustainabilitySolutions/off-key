@@ -192,7 +192,13 @@ class RadarStatusReconciliationService:
             await self._delete_service_row(session, service.id)
 
     def _apply_terminal(self, service: MonitoringService, docker_status: str) -> None:
-        if self._is_purge_due(service):
+        if getattr(service, "desired_state", "running") == "running":
+            # Legacy rows have no config fingerprint but their Swarm tasks can
+            # also restart. Desired intent owns the claim, including rows whose
+            # derived status was cleared by an older controller.
+            service.status = True
+            apply_terminal_operational_status(service, docker_status)
+        elif self._is_purge_due(service):
             # Hold the claim until a later unlocked inspection confirms shutdown.
             service.desired_state = "deleted"
             service.lifecycle_version = (
@@ -201,13 +207,6 @@ class RadarStatusReconciliationService:
             service.stop_requested_at = datetime.now(UTC)
             service.status = True
             return
-        if (
-            getattr(service, "config_fingerprint", None)
-            and service.desired_state == "running"
-        ):
-            # Failed task records can precede an ordinary Swarm replacement.
-            # Preserve the desired-running claim while showing the failed state.
-            apply_terminal_operational_status(service, docker_status)
         elif service.status:
             service.status = False
             apply_terminal_operational_status(service, docker_status)

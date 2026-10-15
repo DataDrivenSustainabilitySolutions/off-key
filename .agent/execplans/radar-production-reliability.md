@@ -179,3 +179,11 @@ evidence after fresh input. A dedicated CI workflow builds the image and runs th
 real production integration tests for PRs, main, merge queues and manual runs.
 Release pinning requires that workflow. All 15 release contract tests pass on
 Linux, including actual Ansible and Docker Unix-socket fixtures.
+
+Upgrade claim follow-up: Desired-running intent retains its sensor claim even for
+upgraded monitors without a configuration fingerprint, and takes precedence over
+terminal-row retention. A stale cleared status is repaired rather than purged.
+Validation: 36 affected tests pass on Linux with real PostgreSQL and Swarm,
+including an actual legacy task failure, rejected competing start and scheduled
+replacement. Test traffic uses a direct owned Docker network to avoid unrelated
+Docker Desktop host-port connection failures.

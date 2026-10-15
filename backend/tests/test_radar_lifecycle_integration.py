@@ -4,7 +4,7 @@ import asyncio
 import os
 import time
 from contextlib import suppress
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import docker
@@ -419,6 +419,86 @@ async def test_reconciliation_docker_latency_does_not_block_or_overwrite_heartbe
             current.desired_state == "stopped" and current.stop_requested_at is not None
         )
         assert current.operational_status == payload
+
+
+@pytest.mark.asyncio
+async def test_legacy_monitor_keeps_sensor_claim_through_real_swarm_replacement(
+    lifecycle_database, swarm_workloads, monkeypatch
+):
+    sessions = lifecycle_database
+    workloads, owned = swarm_workloads
+    service_id, workload = await pending_monitor(sessions, workloads, owned)
+    async with sessions() as session:
+        await RadarLifecycleController(session, workloads).complete_creation(service_id)
+    async with sessions.begin() as session:
+        await session.execute(
+            update(MonitoringService)
+            .where(MonitoringService.id == service_id)
+            .values(
+                config_fingerprint=None,
+                status=False,
+                operational_updated_at=datetime.now(UTC) - timedelta(days=7),
+            )
+        )
+    reconciler = RadarStatusReconciliationService.__new__(
+        RadarStatusReconciliationService
+    )
+    reconciler.async_docker = workloads.async_docker
+    reconciler.terminal_service_retention_hours = 0
+    async with asyncio.timeout(30):
+        while True:
+            tasks = await workloads.async_docker.run(workload.tasks)
+            running = [task for task in tasks if task["Status"]["State"] == "running"]
+            if running:
+                original_task = running[0]
+                break
+            await asyncio.sleep(0.1)
+    container = await workloads.async_docker.run(
+        workloads.async_docker.client.containers.get,
+        original_task["Status"]["ContainerStatus"]["ContainerID"],
+    )
+    await workloads.async_docker.run(container.kill)
+    async with asyncio.timeout(10):
+        while True:
+            if await reconciler._get_docker_status(workload.id) == "failed":
+                break
+            await asyncio.sleep(0.05)
+    async with sessions() as session:
+        await reconciler._reconcile_with_session(session)
+        current = await session.get(MonitoringService, service_id)
+        assert current.config_fingerprint is None
+        assert current.status and current.desired_state == "running"
+        assert current.operational_stage == "failed"
+    monkeypatch.setattr(
+        radar_module, "get_async_docker", lambda: workloads.async_docker
+    )
+    async with sessions() as session:
+        with pytest.raises(ValueError, match="overlaps active service"):
+            await radar_module.RadarOrchestrationService(
+                session, None
+            )._assert_topics_available(
+                mqtt_topics=["telemetry/entity/value"], container_name="replacement"
+            )
+    # Keep the failed task inspectable first, then ask the actual Swarm
+    # scheduler to replace it. Ordinary restarts can create a new pending task
+    # immediately, hiding the failed state before a deterministic probe.
+    await workloads.async_docker.run(
+        workload.update, restart_policy={"Condition": "on-failure"}, force_update=1
+    )
+    async with asyncio.timeout(45):
+        while True:
+            tasks = await workloads.async_docker.run(workload.tasks)
+            if any(
+                task["ID"] != original_task["ID"]
+                and task["Status"]["State"] == "running"
+                for task in tasks
+            ):
+                break
+            await asyncio.sleep(0.1)
+    async with sessions() as session:
+        await reconciler._reconcile_with_session(session)
+        current = await session.get(MonitoringService, service_id)
+        assert current.status and current.desired_state == "running"
 
 
 @pytest.mark.asyncio

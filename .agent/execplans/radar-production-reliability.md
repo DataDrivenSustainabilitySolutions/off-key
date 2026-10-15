@@ -19,7 +19,7 @@ validated observation time as well as receipt time.
 ## Sequential work
 
 - [x] 1. Fix reconnect ownership and client teardown; real MQTT regression.
-- [ ] 2. Scope alarm identity by monitoring service; upgrade and real DB regression.
+- [x] 2. Scope alarm identity by monitoring service; upgrade and real DB regression.
 - [ ] 3. Persist signed checkpoints across task/node replacement; real restart test.
 - [ ] 4. Make rate/overflow/restart coverage gaps explicit and remove unsuitable defaults.
 - [ ] 5. Persist desired workload state before Docker mutation and recover interruption.
@@ -56,3 +56,12 @@ client before replacement, rejects callbacks from retired clients and cleans up
 cancelled connections. A locked test-only aMQTT broker regression performs three
 actual socket failures and verifies one subscription, one delivery and no remaining
 network threads. Existing boundary tests now identify the actual disconnecting client.
+An independent review also caught initial-start cancellation cleanup; a real TCP
+connection withholding CONNACK now verifies cleanup of both network and consumer.
+
+Step 2: Added service-scoped alarm identity and migration 007, preserving historical
+public IDs and empty legacy/manual scope. API joins and chart attribution use the
+scope. Validation: 71 backend tests including real TimescaleDB writes, retry,
+independent deletion and legacy migration with/without a ledger; 18 frontend tests,
+TypeScript build and affected Ruff checks pass. Historical discarded alarms cannot
+be reconstructed automatically.

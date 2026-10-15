@@ -3,6 +3,7 @@
 import asyncio
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -136,6 +137,17 @@ def test_build_records_persists_multivariate_sensor_set():
     anomaly_records, _ = writer.projector._build_records([result])
 
     assert anomaly_records[0]["sensor_set"] == ["L1", "L2"]
+
+
+@pytest.mark.parametrize("service_id", [None, "monitor-1", "monitor-2"])
+def test_build_records_scopes_alarm_and_identity_to_monitor(monkeypatch, service_id):
+    monkeypatch.setattr(
+        "off_key_mqtt_radar.result_records.get_radar_checkpoint_settings",
+        lambda: SimpleNamespace(SERVICE_ID=service_id),
+    )
+    result = _build_result(aligned_vector=True, tail_pvalue=0.001, anomaly_score=0.01)
+    [anomaly], [identity] = ResultProjector()._build_records([result])
+    assert anomaly["service_id"] == identity["service_id"] == (service_id or "")
 
 
 def test_build_records_persists_univariate_sensor_set_from_topic():

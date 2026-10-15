@@ -47,12 +47,21 @@ def adopted_versions(connection: Connection, migrations: dict[str, str]) -> list
     """Adopt only the verified pre-integration schema or a fresh current schema."""
     existing = set(inspect(connection).get_table_names())
     application_tables = set(Base.metadata.tables)
+    # Verified pre-ledger databases can predate scoped monitor alarms. Migration
+    # 007 adds these columns without changing their historical public IDs.
+    excluded_columns = {
+        name: {"service_id"}
+        for name in ("anomalies", "anomaly_identity")
+        if name in existing
+        and "service_id"
+        not in {column["name"] for column in inspect(connection).get_columns(name)}
+    }
     if not existing.intersection(application_tables):
         if existing - {LEDGER}:
             raise ValueError("Cannot initialize a database containing unknown tables")
         return []
     if application_tables - SYSTEM_TABLES - SESSION_TABLES <= existing:
-        validate_existing_schema(connection)
+        validate_existing_schema(connection, excluded_columns=excluded_columns)
         adopted = [
             "001_membership.sql",
             "002_monitor_stop_intent.sql",
@@ -69,7 +78,9 @@ def adopted_versions(connection: Connection, migrations: dict[str, str]) -> list
     if not {table.name for table in baseline} <= existing:
         raise ValueError("A reviewed baseline is required for this database")
     validate_existing_schema(
-        connection, tables=baseline, excluded_columns={"services": {"launch_config"}}
+        connection,
+        tables=baseline,
+        excluded_columns=excluded_columns | {"services": {"launch_config"}},
     )
     return ["001_membership.sql", "002_monitor_stop_intent.sql"]
 

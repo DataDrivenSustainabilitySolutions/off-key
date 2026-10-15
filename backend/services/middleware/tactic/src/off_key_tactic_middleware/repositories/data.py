@@ -170,6 +170,7 @@ class AnomalyRepository:
                     Anomaly.charger_id == AnomalyIdentity.charger_id,
                     Anomaly.timestamp == AnomalyIdentity.timestamp,
                     Anomaly.telemetry_type == AnomalyIdentity.telemetry_type,
+                    Anomaly.service_id == AnomalyIdentity.service_id,
                 ),
             )
             .where(Anomaly.charger_id == charger_id)
@@ -195,6 +196,7 @@ class AnomalyRepository:
                 AnomalyIdentity.charger_id == anomaly.charger_id,
                 AnomalyIdentity.timestamp == anomaly.timestamp,
                 AnomalyIdentity.telemetry_type == anomaly.telemetry_type,
+                AnomalyIdentity.service_id == anomaly.service_id,
             )
         )
         anomaly_id = identity_result.scalar_one_or_none()
@@ -207,6 +209,7 @@ class AnomalyRepository:
             charger_id=anomaly.charger_id,
             timestamp=anomaly.timestamp,
             telemetry_type=anomaly.telemetry_type,
+            service_id=anomaly.service_id,
         )
         self._session.add(identity)
         await self._session.flush()
@@ -226,6 +229,7 @@ class AnomalyRepository:
                     Anomaly.charger_id == AnomalyIdentity.charger_id,
                     Anomaly.timestamp == AnomalyIdentity.timestamp,
                     Anomaly.telemetry_type == AnomalyIdentity.telemetry_type,
+                    Anomaly.service_id == AnomalyIdentity.service_id,
                 ),
             )
             .where(AnomalyIdentity.anomaly_id == anomaly_id)

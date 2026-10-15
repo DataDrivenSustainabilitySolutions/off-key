@@ -288,11 +288,13 @@ class ResultProjector:
         self,
         results: list[AnomalyResult],
     ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        service_id = get_radar_checkpoint_settings().SERVICE_ID or ""
         anomaly_records = [
             {
                 "charger_id": result.charger_id or "unknown",
                 "timestamp": result.timestamp,
                 "telemetry_type": self._derive_telemetry_type(result),
+                "service_id": service_id,
                 "anomaly_type": self._derive_anomaly_type(result),
                 "anomaly_value": self._derive_anomaly_value(result),
                 "value_type": (
@@ -315,6 +317,7 @@ class ResultProjector:
                 "charger_id": record["charger_id"],
                 "timestamp": record["timestamp"],
                 "telemetry_type": record["telemetry_type"],
+                "service_id": record["service_id"],
             }
             for record in anomaly_records
         ]

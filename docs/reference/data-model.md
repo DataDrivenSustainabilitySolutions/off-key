@@ -24,7 +24,7 @@ Use this page when mapping API behaviour to persisted entities and relationships
 | `off_key_schema_migrations` | `version` | Reviewed SQL migration checksums and application times |
 | `mqtt_topics` | `id` | Service-to-topic mappings |
 | `favorites` | `favorite_id` | User-to-charger favourite mappings |
-| `anomalies` | `(charger_id, timestamp, telemetry_type)` | Detected anomaly events and contributing sensor set |
+| `anomalies` | `(charger_id, timestamp, telemetry_type, service_id)` | Detected anomaly events and contributing sensor set |
 | `monitoring_evidence` | `(service_id, timestamp, sequence_number)` | Per-inference strategy evidence used by charts and alarms |
 | `anomaly_identity` | `anomaly_id` | Stable identifier mapped to an anomaly composite key |
 | `model_registry` | `id` | Active model definitions, import paths, schemas, and defaults |
@@ -34,7 +34,7 @@ Use this page when mapping API behaviour to persisted entities and relationships
 - `favorites.user_id → users.id`
 - `favorites.charger_id → chargers.charger_id`
 - `mqtt_topics.service_id → services.id`
-- `anomaly_identity.(charger_id, timestamp, telemetry_type) → anomalies` composite key
+- `anomaly_identity.(charger_id, timestamp, telemetry_type, service_id) → anomalies` composite key
 - `monitoring_evidence.service_id` identifies the monitoring service that produced the inference record.
 
 ## Time-series characteristics
@@ -49,6 +49,15 @@ Use this page when mapping API behaviour to persisted entities and relationships
 
 - Stores detector type, value, value semantics, and the exact contributing `sensor_set` when available.
 - `anomaly_identity` gives the UI a stable deletion identifier without changing the time-series primary key.
+- Monitor alarms carry their originating `service_id`, so independent monitors can
+  report multivariate alarms for the same entity and timestamp. Retrying one
+  monitor's result remains idempotent. The API returns this ID for exact chart
+  attribution; historical and manually created events return `null`.
+- Migration `007_monitor_anomaly_identity.sql` preserves existing public anomaly
+  IDs in an empty legacy scope. Historical alarms lost to earlier collisions
+  cannot be reconstructed automatically. Apply through the release migration
+  workflow with application writers stopped. Monitor IDs are retained after
+  monitor deletion, alongside their evidence and alarms.
 
 ### Monitoring evidence
 

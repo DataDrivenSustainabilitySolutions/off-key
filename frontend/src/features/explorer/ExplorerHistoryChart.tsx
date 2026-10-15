@@ -61,10 +61,11 @@ export function ExplorerHistoryChart({ stream, connection, snapshot, binding, se
     && (!(serviceId ?? service?.id) || item.service_id === (serviceId ?? service?.id))), [monitoring.evidence, service, telemetryType, serviceId]);
   const anomalies = useMemo(() => {
     if (!serviceId) return monitoring.anomalies;
-    // Legacy anomaly rows have no service ID. Only attach events corroborated by
-    // this service's alarm evidence when inspecting a particular monitor.
+    // Historical rows need evidence to recover their monitor association. New
+    // rows carry the exact ID, including when different monitors alarm together.
     const times = new Set(evidence.filter(item => item.alarm).flatMap(item => [Date.parse(item.timestamp), getEvidenceTimeForSensor(item, telemetryType)]));
-    return monitoring.anomalies.filter(item => times.has(Date.parse(item.timestamp)));
+    return monitoring.anomalies.filter(item => item.service_id
+      ? item.service_id === serviceId : times.has(Date.parse(item.timestamp)));
   }, [serviceId, monitoring.anomalies, evidence, telemetryType]);
   const operational = service?.operational_status.stage === "operational" && !service.operational_status.is_stale;
   const lastScoreTime = evidence.reduce<number | undefined>((latest, item) => {

@@ -181,6 +181,27 @@ describe("workspace chart navigation and monitoring", () => {
     expect(screen.getByRole("button", { name: "Full range" })).toBeTruthy();
   });
 
+  it("isolates simultaneous monitor alarms by their persisted service IDs", () => {
+    const timestamp = new Date(NOW).toISOString();
+    vi.mocked(useReadingMonitoring).mockReturnValue({
+      binding: { entityId: "entity-id", telemetryType: "temperature" },
+      error: "", services: [], evidence: [],
+      telemetry: [{ timestamp, value: 22 }],
+      anomalies: ["selected", "other"].map(service_id => ({
+        anomaly_id: `event-${service_id}`, service_id, charger_id: "entity-id",
+        telemetry_type: "temperature", timestamp,
+        anomaly_type: "ml_tailprob_univariate", anomaly_value: .01,
+        value_type: "tail_pvalue",
+      })),
+    });
+    render(<ExplorerHistoryChart stream={system.streams[0]!} connection={system.connections[0]} serviceId="selected" />);
+    const series = lastChartProps().option.series as Array<{ markPoint?: { data: unknown[] } }>;
+    expect(series[0]?.markPoint?.data).toHaveLength(1);
+    expect(series[0]?.markPoint?.data).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: "1 anomaly event" }),
+    ]));
+  });
+
   it("adds aligned monitoring scores, changing thresholds, and pending scores without moving the viewport", () => {
     const { props } = fixture();
     const service: ActiveService = {

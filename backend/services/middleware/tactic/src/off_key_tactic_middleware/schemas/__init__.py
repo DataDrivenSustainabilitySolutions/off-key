@@ -186,6 +186,7 @@ class AnomalyResponse(BaseModel):
     anomaly_value: float
     value_type: str | None = None
     sensor_set: list[str] | None = None
+    service_id: str | None = None
 
 
 class AnomalyCreateRequest(BaseModel):

@@ -45,6 +45,7 @@ class AnomalyService:
                 "anomaly_value": anomaly.anomaly_value,
                 "value_type": anomaly.value_type,
                 "sensor_set": anomaly.sensor_set,
+                "service_id": anomaly.service_id or None,
             }
             for anomaly_id, anomaly in rows
         ]
@@ -61,6 +62,7 @@ class AnomalyService:
             charger_id=payload.charger_id,
             timestamp=payload.timestamp,
             telemetry_type=payload.telemetry_type,
+            service_id="",
             anomaly_type=payload.anomaly_type,
             anomaly_value=payload.anomaly_value,
             value_type=resolved_value_type,

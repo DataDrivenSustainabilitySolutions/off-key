@@ -56,6 +56,7 @@ ANOMALY_TABLE = Table(
     Column("charger_id", Text, primary_key=True),
     Column("timestamp", TIMESTAMP(timezone=True), primary_key=True),
     Column("telemetry_type", Text, primary_key=True),
+    Column("service_id", Text, primary_key=True, server_default=text("''")),
     Column("anomaly_type", Text, nullable=False),
     Column("anomaly_value", Float, nullable=False),
     Column("value_type", Text, nullable=True),
@@ -73,6 +74,7 @@ ANOMALY_IDENTITY_TABLE = Table(
     Column("charger_id", Text, nullable=False),
     Column("timestamp", TIMESTAMP(timezone=True), nullable=False),
     Column("telemetry_type", Text, nullable=False),
+    Column("service_id", Text, nullable=False, server_default=text("''")),
 )
 MONITORING_EVIDENCE_TABLE = monitoring_evidence_table(_anomaly_metadata)
 
@@ -376,16 +378,16 @@ class DatabaseWriter:
             return
 
         # Use INSERT ... ON CONFLICT DO NOTHING for idempotency
-        # (composite PK: charger_id, timestamp, telemetry_type)
+        # Scope idempotency to one monitor, including simultaneous vector alarms.
         stmt = pg_insert(ANOMALY_TABLE).values(anomaly_records)
         stmt = stmt.on_conflict_do_nothing(
-            index_elements=["charger_id", "timestamp", "telemetry_type"]
+            index_elements=["charger_id", "timestamp", "telemetry_type", "service_id"]
         )
         await session.execute(stmt)
 
         identity_stmt = pg_insert(ANOMALY_IDENTITY_TABLE).values(identity_records)
         identity_stmt = identity_stmt.on_conflict_do_nothing(
-            index_elements=["charger_id", "timestamp", "telemetry_type"]
+            index_elements=["charger_id", "timestamp", "telemetry_type", "service_id"]
         )
         await session.execute(identity_stmt)
 

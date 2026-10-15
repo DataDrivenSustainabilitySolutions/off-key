@@ -17,6 +17,18 @@ make deploy-prod REVISION=<full-main-commit-sha>
 
 The root deploy command dispatches GitHub Actions. Direct Ansible commands under
 `infra/Makefile` remain available for controlled provisioning and recovery.
+
+The public page at `aberration.app` is the self-contained
+[`stack/landing.html.j2`](stack/landing.html.j2) template, served separately from
+the dashboard. Its system font, light/dark colour tokens, and controls mirror
+`frontend/src/App.css`; update both when the application palette changes.
+The page follows the visitor's system colour scheme using CSS and needs no
+scripts, external assets, or backend access. Dashboard links use the configured
+`frontend_base_url`; legacy account/API forwarding remains in Traefik.
+The monochrome mark and favicon come from [`../assets/brand/`](../assets/brand/);
+run `python assets/brand/export.py` from the repository root after editing the
+master SVG. The export preserves the page's surrounding design.
+
 Never commit inventories, vaults, passwords, credentials, tailnet identity or backups.
 The original private infrastructure repository remains the historical archive until
 an operator verifies the first integrated release and archives it.

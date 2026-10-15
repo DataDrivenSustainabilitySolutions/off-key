@@ -65,3 +65,17 @@ and the actual Jinja public template at 320/1280px under its production CSP with
 JavaScript disabled. There is no horizontal overflow, failed logo load, page
 error, or public-page CSP error. Screenshots were visually inspected and remain
 in ignored .tmp/brand-preview/images, separate from the existing UI gallery.
+
+## Integration with the landing-page refresh
+
+PR #302 merged the new public-page design while this logo PR was open. Merge
+main into this branch and preserve its layout, typography, palette, illustration,
+and copy. Replace only the slash and favicon, make its brand link open the
+configured dashboard, and use a black/white mark with a 44px minimum link target.
+Forced-colours mode follows the system link colour.
+
+The resolved real Jinja template passes Chrome checks at 320, 390, 760, 768,
+1024, and 1440px in both themes under the actual production CSP with JavaScript
+disabled. Keyboard focus, live theme changes, forced colours, unchanged contour
+illustration and three-step content, and all four dashboard links into the real
+local application pass. Asset consistency and whitespace checks pass.

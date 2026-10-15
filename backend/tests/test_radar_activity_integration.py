@@ -52,6 +52,11 @@ async def test_real_monitor_reports_stale_peer_and_total_silence_and_recovers(
         broker_port=port,
         subscription_topics=["telemetry/activity/a", "telemetry/activity/b"],
         db_write_enabled=False,
+        # This shared pytest process imports every monorepo/scientific package.
+        # Size its real RSS budget separately from the isolated worker budget
+        # asserted by the production-image Swarm test, so full GC on every input
+        # does not dominate the deliberately short freshness interval below.
+        memory_limit_mb=2048,
         sensor_freshness_seconds=0.3,
         health_check_interval=0.05,
         monitoring=AdaptiveStreamConfig(

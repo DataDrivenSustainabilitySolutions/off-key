@@ -29,7 +29,7 @@ validated observation time as well as receipt time.
 - [x] 9. Bound thread-to-loop ingestion and run detector work serially off the loop.
 - [x] 10. Validate observation age, regression, duplicates and cross-sensor skew.
 - [x] Reconcile runtime resource budgets, documentation and deployment contracts.
-- [ ] Run real MQTT/PostgreSQL/Swarm integration, affected root checks and review.
+- [x] Run real MQTT/PostgreSQL/Swarm integration, affected root checks and review.
 - [ ] Push the branch and open/attach the PR.
 
 ## Validation strategy
@@ -205,3 +205,16 @@ verifies receipt counts and every retained observation watermark before killing
 the task, without assuming one vector per published pair. The combined affected
 contract/migration/activity tests pass (29), and the final activity pacing probe
 passes independently. All configured repository pre-commit checks pass.
+
+Final validation: The full Linux/Python 3.14 backend suite passes 1,055 tests with
+15 explicit deployment opt-in skips in 191.85 seconds. All 609 frontend tests
+(52 files), ESLint and the TypeScript/Vite production build pass. All 15 Linux
+release tests and 36 real lifecycle/claim regressions pass. The official final
+RADAR image e795d2de (runtime revision 313fe55) passes actual Swarm SIGKILL and
+replacement in 79.76 seconds: authenticated snapshot covers 246 receipts and both
+latest sensor watermarks; two retained duplicates cannot advance the model;
+fresh input advances model count 123 to 133 and durable evidence 2 to 12. Both
+tasks use the exact image and enforce 512 MiB/0.5 CPU; sampled peak RSS is 278.74
+MiB for this profile. The shared full-test process measures about 445 MiB at the
+activity test, so that test explicitly budgets its host process separately from
+the isolated production worker. Every configured pre-commit check passes.

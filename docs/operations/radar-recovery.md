@@ -56,6 +56,21 @@ state and report a possible restart gap; their detector-only payloads do not
 preserve processor observation watermarks. Changing freshness, age, future-time
 tolerance or alignment-skew policy invalidates both managed and file snapshots.
 
+The signed snapshot signature also fences overlapping managed workers. An initial
+snapshot has one database winner, and each later checkpoint must replace the
+signature that its writer last loaded or committed. Evidence batches lock and
+check that same snapshot row until their transaction finishes. Once another
+worker commits a successor, a stale writer cannot commit further checkpoints or
+evidence. Ownership loss is terminal: pending results remain queued, new results
+are rejected, and the worker stops after observing the loss. This permits
+concurrent computation during replacement; it does not provide exclusive
+inference or replay missed input.
+
+Health writes check the signature without locking the snapshot row, allowing a
+heartbeat to report an evidence transaction blocked in PostgreSQL. During a
+simultaneous takeover, operational status remains a health projection based on
+the statement's database snapshot rather than a serializable ownership record.
+
 Managed workers serialize feature processing, inference, model health refresh and
 checkpoint encoding on one dedicated model thread. The event loop persists
 evidence and reports health from complete cached detector snapshots. A slow model

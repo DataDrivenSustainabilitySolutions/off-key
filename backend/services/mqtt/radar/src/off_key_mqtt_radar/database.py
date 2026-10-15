@@ -84,6 +84,10 @@ MONITORING_EVIDENCE_TABLE = monitoring_evidence_table(_anomaly_metadata)
 RUNTIME_CHECKPOINT_TABLE = radar_runtime_checkpoints_table(_anomaly_metadata)
 
 
+class CheckpointOwnershipLost(RuntimeError):
+    """Another managed worker has advanced this service's durable snapshot."""
+
+
 def get_radar_async_session_factory():
     """
     Get or create async session factory using RADAR_DATABASE_URL env var.
@@ -165,6 +169,12 @@ class DatabaseWriter:
         self._queue_changed = asyncio.Condition()
         self._in_flight = 0
         self._flush_lock = asyncio.Lock()
+        self._checkpoint_service_id: str | None = None
+        self._checkpoint_signature: str | None = None
+        self._checkpoint_loaded = False
+        self._pending_checkpoint_signature: str | None = None
+        self._ownership_error: CheckpointOwnershipLost | None = None
+        self._checkpoint_token_lock = asyncio.Lock()
 
         logger.info("event=radar.db_writer_initialized")
 
@@ -231,6 +241,7 @@ class DatabaseWriter:
         """Queue a static inference result for evidence and optional alarm writing."""
         if not self.config.db_write_enabled:
             return
+        self.raise_if_fenced()
 
         async with self._queue_changed:
             await self._queue_changed.wait_for(
@@ -240,6 +251,7 @@ class DatabaseWriter:
                     < self.config.max_queue_size
                 )
             )
+            self.raise_if_fenced()
             if self._shutdown_event.is_set():
                 raise RuntimeError("Database writer is stopped")
             self.write_queue.append(result)
@@ -271,7 +283,90 @@ class DatabaseWriter:
                 )
             )
             row = result.mappings().one_or_none()
-            return dict(row) if row is not None else None
+            checkpoint = dict(row) if row is not None else None
+        if self.managed_checkpoints:
+            self.raise_if_fenced()
+            self._bind_checkpoint_service(service_id)
+            signature = checkpoint["signature"] if checkpoint is not None else None
+            if self._checkpoint_loaded and signature != self._checkpoint_signature:
+                raise self._lose_checkpoint_ownership()
+            self._checkpoint_signature = signature
+            self._checkpoint_loaded = True
+        return checkpoint
+
+    def raise_if_fenced(self) -> None:
+        """Make a detected overlap loss terminal before further model work."""
+        if self._ownership_error is not None:
+            raise self._ownership_error
+
+    def _bind_checkpoint_service(self, service_id: str) -> None:
+        if self._checkpoint_service_id not in (None, service_id):
+            raise ValueError(
+                "Database writer cannot change checkpoint service identity"
+            )
+        self._checkpoint_service_id = service_id
+
+    def _lose_checkpoint_ownership(self) -> CheckpointOwnershipLost:
+        if self._ownership_error is None:
+            self._ownership_error = CheckpointOwnershipLost(
+                "Managed checkpoint ownership was lost to another worker"
+            )
+            self._shutdown_event.set()
+            self._flush_event.set()
+        return self._ownership_error
+
+    async def _assert_checkpoint_ownership(
+        self, session: AsyncSession, *, lock: bool = True
+    ) -> None:
+        if not self.managed_checkpoints:
+            return
+        self.raise_if_fenced()
+        if self._checkpoint_signature is None:
+            raise self._lose_checkpoint_ownership()
+        statement = select(RUNTIME_CHECKPOINT_TABLE.c.signature).where(
+            RUNTIME_CHECKPOINT_TABLE.c.service_id == self._checkpoint_service_id
+        )
+        if lock:
+            statement = statement.with_for_update()
+        signature = await session.scalar(statement)
+        # The pending token avoids falsely fencing our own health heartbeat in
+        # the short interval between DB commit and publication of the new token.
+        accepted = {self._checkpoint_signature}
+        if not lock and self._pending_checkpoint_signature is not None:
+            accepted.add(self._pending_checkpoint_signature)
+        if signature not in accepted:
+            raise self._lose_checkpoint_ownership()
+
+    async def _replace_checkpoint(
+        self, session: AsyncSession, checkpoint: dict[str, Any]
+    ) -> None:
+        if self._checkpoint_signature is None:
+            statement = (
+                pg_insert(RUNTIME_CHECKPOINT_TABLE)
+                .values(checkpoint)
+                .on_conflict_do_nothing(index_elements=["service_id"])
+            )
+        else:
+            statement = (
+                RUNTIME_CHECKPOINT_TABLE.update()
+                .where(
+                    RUNTIME_CHECKPOINT_TABLE.c.service_id
+                    == self._checkpoint_service_id,
+                    RUNTIME_CHECKPOINT_TABLE.c.signature == self._checkpoint_signature,
+                )
+                .values(
+                    {
+                        name: value
+                        for name, value in checkpoint.items()
+                        if name != "service_id"
+                    }
+                )
+            )
+        stored_signature = await session.scalar(
+            statement.returning(RUNTIME_CHECKPOINT_TABLE.c.signature)
+        )
+        if stored_signature is None:
+            raise self._lose_checkpoint_ownership()
 
     async def commit_checkpoint(self, checkpoint: dict[str, Any]) -> None:
         """Commit frozen model state and all pending evidence in one transaction.
@@ -285,6 +380,8 @@ class DatabaseWriter:
         if self.session_factory is None:
             self.session_factory = get_radar_async_session_factory()
         async with self._flush_lock:
+            self.raise_if_fenced()
+            self._bind_checkpoint_service(checkpoint["service_id"])
             async with self._queue_changed:
                 pending = list(self.write_queue)
                 self.write_queue.clear()
@@ -298,20 +395,19 @@ class DatabaseWriter:
                 anomalies = [row for item in prepared for row in item.anomalies]
                 identities = [row for item in prepared for row in item.identities]
                 evidence = [row for item in prepared for row in item.evidence]
+                async with self._checkpoint_token_lock:
+                    self._pending_checkpoint_signature = checkpoint["signature"]
                 async with self.session_factory() as session:
+                    # Claim the next token before writing outputs. The row lock
+                    # covers evidence too, so a replacement cannot overtake an
+                    # old transaction that is still committing a batch.
+                    await self._replace_checkpoint(session, checkpoint)
                     await self._execute_upsert(session, anomalies, identities)
                     await self._execute_evidence_upsert(session, evidence)
-                    statement = pg_insert(RUNTIME_CHECKPOINT_TABLE).values(checkpoint)
-                    statement = statement.on_conflict_do_update(
-                        index_elements=["service_id"],
-                        set_={
-                            name: getattr(statement.excluded, name)
-                            for name in checkpoint
-                            if name != "service_id"
-                        },
-                    )
-                    await session.execute(statement)
                     await session.commit()
+                async with self._checkpoint_token_lock:
+                    self._checkpoint_signature = checkpoint["signature"]
+                    self._checkpoint_loaded = True
                 self.total_written += len(anomalies)
                 self.total_evidence_written += len(evidence)
                 self.last_write_time = time.time()
@@ -321,6 +417,8 @@ class DatabaseWriter:
                 self.total_errors += 1
                 raise
             finally:
+                async with self._checkpoint_token_lock:
+                    self._pending_checkpoint_signature = None
                 async with self._queue_changed:
                     self._in_flight = 0
                     self._queue_changed.notify_all()
@@ -334,7 +432,11 @@ class DatabaseWriter:
             if self.session_factory is None:
                 self.session_factory = get_radar_async_session_factory()
 
-            async with self.session_factory() as session:
+            # Freeze the accepted old/pending token pair for this heartbeat.
+            # Checkpoint I/O does not hold this lock, so a blocked evidence
+            # transaction still permits an independent health commit.
+            async with self._checkpoint_token_lock, self.session_factory() as session:
+                await self._assert_checkpoint_ownership(session, lock=False)
                 service_metrics = ServiceMetrics(
                     timestamp=datetime.now(),
                     total_messages_processed=metrics.get("total_messages_processed", 0),
@@ -355,6 +457,11 @@ class DatabaseWriter:
                 )
                 await session.commit()
 
+        except CheckpointOwnershipLost:
+            self.total_errors += 1
+            async with self._queue_changed:
+                self._queue_changed.notify_all()
+            logger.error("event=radar.db_checkpoint_ownership_lost")
         except Exception as e:
             logger.error(
                 "event=radar.db_metrics_write_failed error=%s",
@@ -383,23 +490,40 @@ class DatabaseWriter:
             mode="json", exclude_none=True
         )
 
-        await session.execute(
+        signature_guard = ""
+        parameters = {
+            "stage": normalized.stage,
+            "status_payload": json.dumps(payload),
+            "updated_at": updated_at,
+            "service_id": service_id,
+        }
+        if self.managed_checkpoints:
+            signature_guard = """
+                AND EXISTS (
+                    SELECT 1 FROM radar_runtime_checkpoints
+                    WHERE service_id = :service_id
+                        AND signature IN (:signature, :pending_signature)
+                )
+            """
+            parameters.update(
+                signature=self._checkpoint_signature,
+                pending_signature=self._pending_checkpoint_signature,
+            )
+        result = await session.execute(
             text(
-                """
+                f"""
                 UPDATE services
                 SET operational_stage = :stage,
                     operational_status = CAST(:status_payload AS jsonb),
                     operational_updated_at = :updated_at
                 WHERE id = :service_id
+                {signature_guard}
                 """
             ),
-            {
-                "stage": normalized.stage,
-                "status_payload": json.dumps(payload),
-                "updated_at": updated_at,
-                "service_id": service_id,
-            },
+            parameters,
         )
+        if self.managed_checkpoints and result.rowcount != 1:
+            raise self._lose_checkpoint_ownership()
 
     async def _test_connection(self):
         """Test database connection"""
@@ -532,6 +656,7 @@ class DatabaseWriter:
         try:
             if anomaly_records or evidence_records:
                 async with self.session_factory() as session:
+                    await self._assert_checkpoint_ownership(session)
                     await self._execute_upsert(
                         session, anomaly_records, identity_records
                     )
@@ -564,6 +689,10 @@ class DatabaseWriter:
         except asyncio.CancelledError:
             await self._requeue_results(persistence_candidates)
             raise
+        except CheckpointOwnershipLost:
+            await self._requeue_results(persistence_candidates)
+            self.total_errors += 1
+            raise
         except Exception as e:
             logger.error(
                 "event=radar.db_batch_write_failed anomaly_count=%s error=%s",
@@ -572,26 +701,25 @@ class DatabaseWriter:
                 exc_info=True,
             )
             self.total_errors += 1
+            await self._retry_or_requeue(persistence_candidates)
 
-            try:
-                retry_succeeded = await self._retry_failed_batch(
-                    batch_snapshot=persistence_candidates
-                )
-                if not retry_succeeded:
-                    await self._requeue_results(persistence_candidates)
-            except asyncio.CancelledError:
-                await self._requeue_results(persistence_candidates)
-                raise
-            except Exception as retry_exc:
-                await self._requeue_results(persistence_candidates)
-                self.total_errors += 1
-                logger.error(
-                    "event=radar.db_retry_unexpected_exception "
-                    "requeued_count=%s error=%s",
-                    len(batch_snapshot),
-                    str(retry_exc),
-                    exc_info=True,
-                )
+    async def _retry_or_requeue(self, results: list[AnomalyResult]) -> None:
+        try:
+            retry_succeeded = await self._retry_failed_batch(batch_snapshot=results)
+            if not retry_succeeded:
+                await self._requeue_results(results)
+        except (asyncio.CancelledError, CheckpointOwnershipLost):
+            await self._requeue_results(results)
+            raise
+        except Exception as retry_exc:
+            await self._requeue_results(results)
+            self.total_errors += 1
+            logger.error(
+                "event=radar.db_retry_unexpected_exception requeued_count=%s error=%s",
+                len(results),
+                str(retry_exc),
+                exc_info=True,
+            )
 
     def _prepare_results(self, results: list[AnomalyResult]) -> list[PreparedResult]:
         prepared = []
@@ -659,6 +787,7 @@ class DatabaseWriter:
                     await asyncio.sleep(retry_delay)
 
                     async with self.session_factory() as session:
+                        await self._assert_checkpoint_ownership(session)
                         await self._execute_upsert(
                             session,
                             anomaly_rows,
@@ -680,6 +809,8 @@ class DatabaseWriter:
                         success = True
                         break  # Exit retry loop on success
 
+                except CheckpointOwnershipLost:
+                    raise
                 except Exception as e:
                     logger.error(
                         "event=radar.db_retry_attempt_failed attempt=%s error=%s",
@@ -764,6 +895,12 @@ class DatabaseWriter:
     def get_health_status(self) -> dict[str, Any]:
         """Get database writer health status"""
         activity = self._persistence_activity()
+        if self._ownership_error is not None:
+            return {
+                "status": "unhealthy",
+                "reason": "checkpoint_ownership_lost",
+                **activity,
+            }
         if not self.config.db_write_enabled:
             return {
                 "status": "disabled",

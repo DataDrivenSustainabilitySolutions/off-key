@@ -154,9 +154,19 @@ tests and 29 real MQTT/PostgreSQL/replacement-process recovery tests pass. The
 official RADAR image also passed an actual Swarm task replacement with retained
 input: two replayed readings were rejected without count/evidence advancement,
 then fresh input advanced both. A further old/new writer overlap probe reproduced
-a checkpoint overwrite race; ownership fencing is being completed separately.
+a checkpoint overwrite race; the separate ownership follow-up below closes it.
 
 Step 8 follow-up: Revalidation after unlocked workload retirement also recomputes
 affected monitors, rejecting a newly admitted monitor even when catalogue and
 collection revisions did not change. Both concurrent catalogue-save and new
 pending-monitor cases pass against actual PostgreSQL and Swarm.
+
+Checkpoint ownership follow-up: Each managed snapshot advances its last accepted
+signature with a compare-and-swap, before evidence writes. Background and retry
+batches hold that snapshot row until commit. A stale writer cannot overwrite a
+successor or resurrect a deleted snapshot; detected loss rejects new results,
+wakes blocked producers, retains pending work and terminates the worker. Health
+uses a nonlocking signature check to preserve visibility while evidence is
+blocked, with its statement-snapshot projection boundary documented. Validation:
+41 focused tests pass, including real PostgreSQL overlap/rollback/blocked-write
+tests, MQTT recovery and separate replacement processes.

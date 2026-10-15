@@ -117,6 +117,8 @@ curl --fail http://localhost:8000/v1/anomalies/count
 - [Architecture](../development/architecture.md)
 - [Environment variables](../reference/environment-variables.md)
 - [Testing and debugging](../development/testing-debugging.md)
+- [RADAR recovery](../operations/radar-recovery.md)
+- [RADAR deployment capacity](../operations/radar-capacity.md)
 
 ## Telemetry persistence during outages
 

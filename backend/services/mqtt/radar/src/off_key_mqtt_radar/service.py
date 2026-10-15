@@ -489,6 +489,8 @@ class RadarService:
         start_time = time.time()
 
         try:
+            if self.database_writer is not None:
+                self.database_writer.raise_if_fenced()
             # Delegate to message processor
             runtime = getattr(self, "_detector_runtime", None)
             result = (
@@ -518,6 +520,7 @@ class RadarService:
         codec = getattr(self, "_checkpoint_codec", None)
         if codec is None or not self._checkpoint_ready:
             return
+        self.database_writer.raise_if_fenced()
         runtime = getattr(self, "_detector_runtime", None)
         captured = (
             await runtime.call(self._freeze_checkpoint, force)

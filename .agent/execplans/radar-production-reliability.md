@@ -30,7 +30,7 @@ validated observation time as well as receipt time.
 - [x] 10. Validate observation age, regression, duplicates and cross-sensor skew.
 - [x] Reconcile runtime resource budgets, documentation and deployment contracts.
 - [x] Run real MQTT/PostgreSQL/Swarm integration, affected root checks and review.
-- [ ] Push the branch and open/attach the PR.
+- [x] Push the branch and open/attach the PR.
 
 ## Validation strategy
 
@@ -218,3 +218,8 @@ tasks use the exact image and enforce 512 MiB/0.5 CPU; sampled peak RSS is 278.7
 MiB for this profile. The shared full-test process measures about 445 MiB at the
 activity test, so that test explicitly budgets its host process separately from
 the isolated production worker. Every configured pre-commit check passes.
+
+Published: PR #305, "Fix RADAR monitoring reliability under production workloads",
+https://github.com/DataDrivenSustainabilitySolutions/off-key/pull/305. The branch
+is pushed and the PR is attached to this task. Owned integration services,
+containers and networks have been removed; unrelated local deployments remain.

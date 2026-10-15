@@ -751,35 +751,54 @@ class TestMQTTReconnectionLogic:
         """Test exponential backoff in reconnection attempts"""
         client = RadarMQTTClient(config)
         client.reconnect_delay = 0.01  # Speed up test
-        client.max_reconnect_attempts = 1
+        calls = 0
 
         # Mock _connect to not actually connect
         async def mock_connect():
-            # Simulate failed connection (just return without connecting)
-            pass
+            nonlocal calls
+            calls += 1
+            if calls == 3:
+                client.is_connected = True
 
         client._connect = mock_connect
 
         # Trigger reconnection
         await client._schedule_reconnect()
         if client._reconnect_task:
-            await client._reconnect_task
+            await asyncio.wait_for(client._reconnect_task, timeout=1)
 
-        # Should increment attempts
-        assert client.reconnect_attempts == 1
+        assert calls == 3
+        assert client.reconnect_attempts == 3
 
     @pytest.mark.asyncio
-    async def test_max_reconnection_attempts(self, config):
-        """Test that reconnection stops after max attempts"""
+    async def test_reconnection_has_no_attempt_cutoff_or_unbounded_exponent(
+        self, config
+    ):
+        """A long-lived retry counter cannot exhaust retries or overflow backoff."""
         client = RadarMQTTClient(config)
-        client.max_reconnect_attempts = 3
-        client.reconnect_attempts = 3
+        client.reconnect_delay = 0.001
+        client.reconnect_attempts = 100000
 
-        # Should not attempt reconnection
+        async def mock_connect():
+            client.is_connected = True
+
+        client._connect = mock_connect
+
         await client._schedule_reconnect()
+        await asyncio.wait_for(client._reconnect_task, timeout=1)
 
-        # Attempts should not increase
-        assert client.reconnect_attempts == 3
+        assert client.reconnect_attempts == 100001
+        assert client.is_connected
+
+    @pytest.mark.asyncio
+    async def test_shutdown_interrupts_capped_reconnect_backoff(self, config):
+        client = RadarMQTTClient(config)
+        client.reconnect_delay = 300
+        await client._schedule_reconnect()
+        client._shutdown_event.set()
+        await asyncio.wait_for(client._reconnect_task, timeout=1)
+        assert client.reconnect_attempts == 1
+        await client.stop()
 
     @pytest.mark.asyncio
     async def test_shutdown_cancels_reconnection(self, config):

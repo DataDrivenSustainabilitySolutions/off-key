@@ -46,7 +46,6 @@ class RadarMQTTClient:
         # Connection state
         self.is_connected = False
         self.reconnect_attempts = 0
-        self.max_reconnect_attempts = 10
         self.reconnect_delay = 5.0  # seconds
 
         # Message processing
@@ -504,23 +503,21 @@ class RadarMQTTClient:
         await asyncio.sleep(0)
 
     async def _reconnect_loop(self):
-        """Reconnect with bounded backoff after an established link drops."""
-        while (
-            not self._shutdown_event.is_set()
-            and not self.is_connected
-            and self.reconnect_attempts < self.max_reconnect_attempts
-        ):
+        """Keep one owner retrying through outages with bounded backoff."""
+        delay = min(self.reconnect_delay, 300.0)
+        while not self._shutdown_event.is_set() and not self.is_connected:
             self.reconnect_attempts += 1
-            delay = min(
-                self.reconnect_delay * (2 ** (self.reconnect_attempts - 1)), 300
-            )
 
             logger.info(
                 "event=radar.mqtt_reconnect_scheduled attempt=%s delay_s=%.1f",
                 self.reconnect_attempts,
                 delay,
             )
-            await asyncio.sleep(delay)
+            try:
+                await asyncio.wait_for(self._shutdown_event.wait(), timeout=delay)
+                return
+            except TimeoutError:
+                pass
 
             if self._shutdown_event.is_set():
                 return
@@ -533,12 +530,9 @@ class RadarMQTTClient:
                     self.reconnect_attempts,
                     exc,
                 )
-
-        if not self.is_connected and not self._shutdown_event.is_set():
-            logger.error(
-                "event=radar.mqtt_reconnect_exhausted attempts=%s",
-                self.reconnect_attempts,
-            )
+            # Doubling the already capped delay avoids unbounded exponentiation
+            # when a worker survives an extended broker outage.
+            delay = min(delay * 2, 300.0)
 
     def get_connection_info(self) -> dict[str, Any]:
         """Get connection information for monitoring"""

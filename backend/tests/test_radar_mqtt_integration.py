@@ -19,10 +19,10 @@ async def wait_until(predicate, deadline_seconds=10):
 
 
 @asynccontextmanager
-async def mqtt_broker(*, plugins=None):
+async def mqtt_broker(*, plugins=None, port=0):
     broker = Broker(
         {
-            "listeners": {"default": {"type": "tcp", "bind": "127.0.0.1:0"}},
+            "listeners": {"default": {"type": "tcp", "bind": f"127.0.0.1:{port}"}},
             "plugins": plugins
             or {
                 "amqtt.plugins.authentication.AnonymousAuthPlugin": {
@@ -90,6 +90,51 @@ async def test_repeated_socket_failures_keep_one_subscriber_and_stop_all_threads
         finally:
             await client.stop()
             await publisher.disconnect()
+
+
+async def test_real_broker_returns_after_more_than_ten_failed_reconnect_attempts():
+    topic = "telemetry/long-outage/value"
+    client = None
+    publisher = MQTTClient(client_id="long-outage-regression-publisher")
+    received = []
+
+    async def receive(message):
+        received.append(message.payload)
+
+    try:
+        async with mqtt_broker() as (initial_broker, port):
+            client = RadarMQTTClient(
+                MQTTRadarConfig(
+                    broker_host="127.0.0.1",
+                    broker_port=port,
+                    subscription_topics=[topic],
+                )
+            )
+            client.reconnect_delay = 0.000001
+            client.set_message_handler(receive)
+            await client.start()
+            client._connection_timeout_seconds = 0.2
+            # Refuse new sockets before closing established sessions. Otherwise
+            # this test's accelerated retries can race aMQTT's own shutdown.
+            listener = initial_broker._servers["default"].instance
+            listener.close()
+        await wait_until(lambda: client.reconnect_attempts > 10, deadline_seconds=30)
+        assert not client.is_connected
+        assert not client._reconnect_task.done()
+        client._connection_timeout_seconds = 3
+        async with mqtt_broker(port=port) as (replacement_broker, _):
+            await wait_until(lambda: client.is_connected, deadline_seconds=15)
+            await publisher.connect(f"mqtt://127.0.0.1:{port}")
+            await publisher.publish(topic, b'{"value":42}', qos=1)
+            await wait_until(lambda: received == [b'{"value":42}'])
+            assert client.reconnect_attempts == 0
+            assert len(replacement_broker._subscriptions[topic]) == 1
+            await client.stop()
+            await publisher.disconnect()
+    finally:
+        if client is not None:
+            await client.stop()
+        await publisher.disconnect()
 
 
 @pytest.mark.parametrize("limit", [0, 1000])

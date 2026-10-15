@@ -20,6 +20,12 @@ overridden. The public development key is rejected in production. Keep the
 configured key stable across worker replacements. Key rotation requires a
 reviewed recovery/recalibration procedure; changing it invalidates old snapshots.
 
+After an established MQTT connection drops, one reconnect owner retries until
+subscriptions recover or the worker shuts down. Backoff starts at five seconds
+and doubles to a maximum of five minutes, without an attempt cutoff. Every
+required subscription must receive a successful broker acknowledgement before
+the worker reports connected. Recovery retains the coverage gap from the outage.
+
 The worker checkpoints before subscribing, at detector phase changes, after
 `RADAR_CHECKPOINT_INTERVAL` aligned observations, within
 `RADAR_CHECKPOINT_MAX_INTERVAL_SECONDS` (30 seconds by default), and after

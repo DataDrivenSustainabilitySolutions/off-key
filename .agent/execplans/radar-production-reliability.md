@@ -187,3 +187,11 @@ Validation: 36 affected tests pass on Linux with real PostgreSQL and Swarm,
 including an actual legacy task failure, rejected competing start and scheduled
 replacement. Test traffic uses a direct owned Docker network to avoid unrelated
 Docker Desktop host-port connection failures.
+
+Long-outage reconnect follow-up: With Paho automatic reconnect disabled, the
+former ten-attempt cutoff could leave a live worker disconnected permanently.
+The single owner now retries until shutdown or acknowledged subscriptions, with
+an incrementally capped backoff and interruptible shutdown. Validation: 38 MQTT
+tests pass, including an actual broker returning only after more than ten failed
+attempts, one restored subscription/delivery, very large attempt counters and
+shutdown during a 300-second backoff.

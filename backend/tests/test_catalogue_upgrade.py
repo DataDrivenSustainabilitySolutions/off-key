@@ -85,7 +85,7 @@ def test_upgrade_converts_inputs_and_preserves_accounts_favourites_and_monitor_s
         connection.execute(
             text(
                 "DELETE FROM off_key_schema_migrations "
-                "WHERE version='005_generic_runtime.sql'"
+                "WHERE version >= '005_generic_runtime.sql'"
             )
         )
     with disposable_database.begin() as connection:
@@ -164,7 +164,7 @@ def test_upgrade_preserves_a_runtime_without_a_separate_saved_document(
         connection.execute(
             text(
                 "DELETE FROM off_key_schema_migrations "
-                "WHERE version='005_generic_runtime.sql'"
+                "WHERE version >= '005_generic_runtime.sql'"
             )
         )
         apply_migrations(connection)
@@ -202,7 +202,7 @@ def test_upgrade_monitor_topics_even_without_catalogue_configuration(
         connection.execute(
             text(
                 "DELETE FROM off_key_schema_migrations "
-                "WHERE version='005_generic_runtime.sql'"
+                "WHERE version >= '005_generic_runtime.sql'"
             )
         )
         apply_migrations(connection)

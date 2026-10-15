@@ -1,4 +1,12 @@
-# Predictive Maintenance Platform
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/brand/logo-white.svg">
+  <img src="assets/brand/logo-black.svg" width="64" height="64" alt="Aberration mark">
+</picture>
+
+# Aberration
+
+Predictive maintenance for connected systems. Vector sources and export
+instructions are in [Brand assets](assets/brand/README.md).
 
 ## Local configuration
 

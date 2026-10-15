@@ -1,9 +1,11 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import ForgotPassword from '../pages/ForgotPassword';
 import { afterAll, vi } from 'vitest';
 import { API_CONFIG, getApiUrl } from '@/lib/api-config';
 
 const fetchMock = vi.fn<typeof fetch>();
+const renderForgotPassword = () => render(<ForgotPassword />, { wrapper: MemoryRouter });
 vi.stubGlobal('fetch', fetchMock);
 
 afterAll(() => vi.unstubAllGlobals());
@@ -15,13 +17,13 @@ describe('ForgotPassword', () => {
     });
 
     test('zeigt Eingabefeld und Button', () => {
-        render(<ForgotPassword />);
+        renderForgotPassword();
         expect(screen.getByLabelText(/Email/i)).toBeDefined();
         expect(screen.getByRole('button', { name: /Reset Password/i })).toBeDefined();
     });
 
     test('erlaubt Eingabe in das E-Mail-Feld', () => {
-        render(<ForgotPassword />);
+        renderForgotPassword();
         const input = screen.getByLabelText(/Email/i);
         fireEvent.change(input, { target: { value: 'test@example.com' } });
         expect((input as HTMLInputElement).value).toBe('test@example.com');
@@ -33,7 +35,7 @@ describe('ForgotPassword', () => {
             { status: 200, headers: { 'Content-Type': 'application/json' } }
         ));
 
-        render(<ForgotPassword />);
+        renderForgotPassword();
         const input = screen.getByLabelText(/Email/i);
         const button = screen.getByRole('button', { name: /Reset Password/i });
 
@@ -57,7 +59,7 @@ describe('ForgotPassword', () => {
     test('zeigt Fehlermeldung bei fetch-Fehler', async () => {
         fetchMock.mockRejectedValueOnce(new Error('Failed'));
 
-        render(<ForgotPassword />);
+        renderForgotPassword();
         const input = screen.getByLabelText(/Email/i);
         const button = screen.getByRole('button', { name: /Reset Password/i });
 
@@ -75,7 +77,7 @@ describe('ForgotPassword', () => {
             { status: 400, headers: { 'Content-Type': 'application/json' } }
         ));
 
-        render(<ForgotPassword />);
+        renderForgotPassword();
         const input = screen.getByLabelText(/Email/i);
         const button = screen.getByRole('button', { name: /Reset Password/i });
 

@@ -261,8 +261,8 @@ describe("hierarchical explorer workspace", () => {
     expect(await screen.findByRole("region", { name: "Entity preview" })).toBeTruthy();
     expect(screen.getByText("Entity ID").nextElementSibling?.textContent).toBe("station");
     expect(screen.getByTestId("location").textContent).toBe("?entity=station");
-    fireEvent.click(screen.getByRole("button", { name: "Browse children of weather" }));
-    fireEvent.click(screen.getByRole("button", { name: "temperature, preview" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Browse children of weather" }));
+    fireEvent.click(await screen.findByRole("button", { name: "temperature, preview" }));
     expect(await screen.findByRole("region", { name: "Reading preview" })).toBeTruthy();
     expect(screen.queryByRole("region", { name: "Entity preview" })).toBeNull();
     expect(new URLSearchParams(screen.getByTestId("location").textContent ?? "").has("entity")).toBe(false);

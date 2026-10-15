@@ -99,7 +99,7 @@ const Login: React.FC = () => {
   };
 
   return (
-    <AuthLayout title="Login" showWordmark={false}>
+    <AuthLayout title="Login">
       <form onSubmit={handleLogin} className="space-y-4">
         {/* Email */}
         <div>

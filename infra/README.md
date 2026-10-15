@@ -25,6 +25,9 @@ the dashboard. Its system font, light/dark colour tokens, and controls mirror
 The page follows the visitor's system colour scheme using CSS and needs no
 scripts, external assets, or backend access. Dashboard links use the configured
 `frontend_base_url`; legacy account/API forwarding remains in Traefik.
+The monochrome mark and favicon come from [`../assets/brand/`](../assets/brand/);
+run `python assets/brand/export.py` from the repository root after editing the
+master SVG. The export preserves the page's surrounding design.
 
 Never commit inventories, vaults, passwords, credentials, tailnet identity or backups.
 The original private infrastructure repository remains the historical archive until

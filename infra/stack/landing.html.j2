@@ -9,7 +9,7 @@
   <meta name="description" content="Aberration turns streaming sensor data into evidence of change. Continuous anomaly detection for connected systems.">
   <title>Aberration — Evidence of change.</title>
   <link rel="canonical" href="https://{{ ingress_base_domain | e }}/">
-  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%233a7e72'/%3E%3Cpath d='M37 12h9L27 52h-9Z' fill='white'/%3E%3C/svg%3E">
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2064%2064%22%20width%3D%2264%22%20height%3D%2264%22%20role%3D%22img%22%3E%0A%20%20%3Ctitle%3EAberration%3C%2Ftitle%3E%0A%20%20%3Cstyle%3E%3Aroot%7Bcolor%3A%23000%7D%40media%28prefers-color-scheme%3Adark%29%7B%3Aroot%7Bcolor%3A%23fff%7D%7D%3C%2Fstyle%3E%0A%20%20%3Cpath%20id%3D%22mark%22%20fill%3D%22currentColor%22%20d%3D%22M10%2010H38V20H20V54H10ZM44%2010H54V54H26V44H44Z%22%2F%3E%0A%3C%2Fsvg%3E%0A">
   <style>
     /* Mirror the application tokens in frontend/src/App.css. Keep this page self-contained. */
     :root {
@@ -51,8 +51,9 @@
     .skip-link:focus { transform: translateY(0); }
     .site-header { border-bottom: 1px solid hsl(var(--border)); }
     .header-inner { display: flex; align-items: center; justify-content: space-between; gap: 24px; min-height: 76px; }
-    .wordmark { display: inline-flex; align-items: center; gap: 10px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 17px; font-weight: 600; letter-spacing: -.02em; }
-    .brand-mark { width: 30px; height: 30px; border: 1px solid hsl(var(--border)); border-radius: 7px; color: hsl(var(--primary)); }
+    .wordmark { display: inline-flex; align-items: center; gap: 10px; min-height: 44px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 17px; font-weight: 600; letter-spacing: -.02em; }
+    .brand-mark { display: block; width: 36px; height: 36px; flex-shrink: 0; color: #000; }
+    @media (prefers-color-scheme: dark) { .brand-mark { color: #fff; } }
     .header-link { display: inline-flex; align-items: center; gap: 8px; min-height: 40px; padding: 0 12px; border-radius: 6px; font-size: 13px; font-weight: 500; }
     .header-link:hover { background: hsl(var(--accent)); }
     .arrow { width: 16px; height: 16px; flex-shrink: 0; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
@@ -124,11 +125,11 @@
     }
     @media (max-width: 380px) {
       .wordmark { gap: 7px; font-size: 15px; }
-      .brand-mark { width: 26px; height: 26px; }
       .header-link { gap: 5px; font-size: 12px; }
       .hero-actions { gap: 8px 18px; }
     }
     @media (forced-colors: active) {
+      .brand-mark { color: LinkText; }
       .button, .step-number { border: 1px solid ButtonText; }
       .pattern-contours { stroke: CanvasText; }
       .pattern-change { stroke: LinkText; }
@@ -140,10 +141,10 @@
   <a class="skip-link" href="#main">Skip to content</a>
   <header class="site-header">
     <div class="container header-inner">
-      <div class="wordmark">
-        <svg class="brand-mark" viewBox="0 0 64 64" aria-hidden="true"><path d="M37 12h9L27 52h-9Z" fill="currentColor"/></svg>
+      <a class="wordmark" href="{{ frontend_base_url | e }}/" aria-label="Aberration home" title="Dashboard home">
+        <svg class="brand-mark" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><path fill="currentColor" d="M10 10H38V20H20V54H10ZM44 10H54V54H26V44H44Z"/></svg>
         <span>aberration</span>
-      </div>
+      </a>
       <nav aria-label="Main navigation">
         <a class="header-link" href="{{ frontend_base_url | e }}/">Dashboard<svg class="arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7M7 7h10v10"/></svg></a>
       </nav>

@@ -1,6 +1,7 @@
 """One serial owner for CPU work and immutable, non-blocking health snapshots."""
 
 import asyncio
+import logging
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
@@ -9,6 +10,7 @@ from typing import Any, TypeVar
 from .resilience import ResilientAnomalyDetector
 
 T = TypeVar("T")
+logger = logging.getLogger(__name__)
 
 
 class DetectorRuntime:
@@ -26,6 +28,7 @@ class DetectorRuntime:
         )
         self._submission_lock = asyncio.Lock()
         self._snapshot: dict[str, Any] = {}
+        self._health_error_count = 0
         self._closed = False
 
     async def call(self, operation: Callable[..., T], *args: Any) -> T:
@@ -47,7 +50,26 @@ class DetectorRuntime:
         try:
             return operation(*args)
         finally:
-            self._snapshot = deepcopy(self.detector.get_health_info())
+            # Diagnostics must never replace a completed inference result or its
+            # original exception: the service still owns evidence for that result.
+            self._refresh_snapshot()
+
+    def _refresh_snapshot(self) -> None:
+        try:
+            snapshot = deepcopy(self.detector.get_health_info())
+        except Exception as error:
+            self._health_error_count += 1
+            # The last snapshot is immutable. A shallow copy preserves its last
+            # coherent model statistics without repeating a failing deep copy.
+            snapshot = dict(self._snapshot)
+            if snapshot.get("state") != "failed":
+                snapshot["state"] = "degraded"
+            snapshot["health_snapshot_error"] = f"{type(error).__name__}: {error}"
+            logger.exception("event=radar.detector_health_snapshot_failed")
+        else:
+            snapshot["health_snapshot_error"] = None
+        snapshot["health_snapshot_error_count"] = self._health_error_count
+        self._snapshot = snapshot
 
     async def refresh(self) -> None:
         await self.call(lambda: None)

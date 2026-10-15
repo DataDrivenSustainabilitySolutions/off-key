@@ -4,6 +4,7 @@ import asyncio
 import threading
 from types import SimpleNamespace
 
+import pytest
 from off_key_core.schemas.radar import StaticBaselineConfig
 from off_key_mqtt_radar.config.config import MQTTRadarConfig
 from off_key_mqtt_radar.detector import StaticConformalDetectionService
@@ -97,5 +98,61 @@ async def test_model_owner_serializes_real_detector_work_and_keeps_loop_responsi
     finally:
         done.set()
         await ticker
+        await runtime.stop()
+        detector.shutdown()
+
+
+@pytest.mark.parametrize("failure_boundary", ["health", "copy"])
+async def test_diagnostic_failure_preserves_inference_and_original_exception(
+    monkeypatch, failure_boundary
+):
+    detector = StaticConformalDetectionService(
+        MQTTRadarConfig(), automatic_checkpoints=False
+    )
+    wrapped = ResilientAnomalyDetector(detector)
+    runtime = DetectorRuntime(wrapped)
+    try:
+        await runtime.refresh()
+        original_health = wrapped.get_health_info
+
+        class UncopyableDiagnostic:
+            def __deepcopy__(self, _memo):
+                raise RuntimeError("diagnostic refresh failed")
+
+        def broken_health():
+            if failure_boundary == "health":
+                raise RuntimeError("diagnostic refresh failed")
+            return original_health() | {"uncopyable": UncopyableDiagnostic()}
+
+        monkeypatch.setattr(wrapped, "get_health_info", broken_health)
+        result = await runtime.call(wrapped.process_with_resilience, {"x": 1.0})
+        assert result.context["static_conformal"]["phase"] == "collecting"
+        assert detector.processed_count == 1
+        health = runtime.get_health_info()
+        assert health["state"] == "degraded"
+        assert (
+            health["health_snapshot_error"] == "RuntimeError: diagnostic refresh failed"
+        )
+        assert health["health_snapshot_error_count"] == 1
+        assert health["primary_service_stats"]["processed_count"] == 0
+
+        original_error = ValueError("original operation failed")
+
+        def failed_operation():
+            raise original_error
+
+        with pytest.raises(ValueError) as captured:
+            await runtime.call(failed_operation)
+        assert captured.value is original_error
+        assert runtime.get_health_info()["health_snapshot_error_count"] == 2
+
+        monkeypatch.setattr(wrapped, "get_health_info", original_health)
+        await runtime.refresh()
+        health = runtime.get_health_info()
+        assert health["state"] == "healthy"
+        assert health["health_snapshot_error"] is None
+        assert health["health_snapshot_error_count"] == 2
+        assert health["primary_service_stats"]["processed_count"] == 1
+    finally:
         await runtime.stop()
         detector.shutdown()

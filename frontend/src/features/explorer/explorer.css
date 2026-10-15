@@ -31,7 +31,6 @@
 .ex-search:focus-within { border-color: var(--ex-accent); box-shadow: 0 0 0 2px color-mix(in srgb,var(--ex-accent) 12%,transparent); }
 .ex-search input:focus-visible { outline: none; }
 .ex-search input::placeholder { color: var(--ex-muted); }
-.ex-search kbd { white-space: nowrap; font: inherit; font-size: 10px; opacity: .7; }
 .ex-sidebar-section { display: flex; align-items: center; justify-content: space-between; padding: 0 18px 8px 23px; }
 .ex-sidebar-section > button { font-size: 11px; font-weight: 650; letter-spacing: .025em; color: var(--ex-muted); }
 .ex-sidebar-section > button.is-current { color: var(--ex-accent); }

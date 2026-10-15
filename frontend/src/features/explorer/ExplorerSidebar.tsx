@@ -41,14 +41,13 @@ export function ExplorerSidebar(props: Props) {
       {props.onDismiss && <button className="ex-icon-button" aria-label="Close explorer" onClick={props.onDismiss}><X size={18} /></button>}
     </div>
     <div className="ex-search"><Search size={15} aria-hidden="true" />
-      <input ref={search} type="search" aria-label="Search catalogue" placeholder="Search everything…" value={query}
+      <input ref={search} type="search" aria-label="Search catalogue" placeholder="Search catalogue" value={query}
         onChange={(event) => props.onQuery(event.target.value)} onKeyDown={(event) => {
           if (event.key === "ArrowDown") {
             event.preventDefault(); search.current?.closest("nav")?.querySelector<HTMLButtonElement>("[data-row]")?.focus();
           }
           if (event.key === "Escape" && query) { event.preventDefault(); event.stopPropagation(); props.onQuery(""); }
         }} />
-      {!query && <kbd aria-hidden="true">⌘ K</kbd>}
     </div>
     {!!props.favourites?.length && <section className="mn-sidebar-favourites" aria-label="Favourites"><span>Favourites</span>
       {props.favourites.map(item => <button key={`${item.kind}:${item.id}`} title={item.label} onClick={() => props.onFavourite?.(item.kind, item.id)}><Star size={13} /><span>{item.label}</span></button>)}

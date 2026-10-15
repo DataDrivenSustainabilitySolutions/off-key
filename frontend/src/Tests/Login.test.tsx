@@ -181,7 +181,7 @@ describe("Login", () => {
     fireEvent.change(screen.getByLabelText(/password/i, { selector: "input" }), {
       target: { value: "correctpass" },
     });
-    if (rememberMe) fireEvent.click(screen.getByLabelText("Stay logged in"));
+    if (rememberMe) fireEvent.click(screen.getByLabelText("Remember this device"));
     fireEvent.click(screen.getByRole("button", { name: /log in/i }));
 
     await waitFor(() => {

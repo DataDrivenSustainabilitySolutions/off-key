@@ -37,7 +37,7 @@ Use this page for account, charger, favourites, monitoring-service, and anomaly 
 3. Log in and receive a bearer token.
 4. The frontend API client attaches that token to subsequent requests.
 
-The **Remember me** choice determines whether the browser stores the session in local or session storage. In local development, invitation and password-reset messages are available in Mailpit at <http://localhost:8025>.
+The **Remember this device** choice determines whether the browser stores the session in local or session storage. In local development, invitation and password-reset messages are available in Mailpit at <http://localhost:8025>.
 
 Administrators manage invitations, roles, and access under **Account → Organization members**.
 Members can view the shared workspace and edit their own favorites. Administrators

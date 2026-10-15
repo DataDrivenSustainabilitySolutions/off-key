@@ -99,7 +99,7 @@ const Login: React.FC = () => {
   };
 
   return (
-    <AuthLayout title="Login">
+    <AuthLayout title="Login" showWordmark={false}>
       <form onSubmit={handleLogin} className="space-y-4">
         {/* Email */}
         <div>
@@ -170,7 +170,7 @@ const Login: React.FC = () => {
             aria-describedby="remember-hint"
             onChange={(e) => setRememberMe(e.target.checked)}
           />
-          <label htmlFor="remember">Stay logged in</label>
+          <label htmlFor="remember">Remember this device</label>
         </div>
         <p id="remember-hint" className="text-xs text-muted-foreground">Keep this browser signed in for up to 30 days.</p>
 

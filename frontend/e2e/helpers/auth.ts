@@ -31,7 +31,7 @@ export const loginWithEmail = async (
   ]);
 
   if (options.rememberMe) {
-    await page.getByLabel(/stay logged in/i).check();
+    await page.getByLabel(/remember this device/i).check();
   }
 
   const loginResponsePromise = page.waitForResponse(

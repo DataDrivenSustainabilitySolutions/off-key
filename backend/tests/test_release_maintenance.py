@@ -67,6 +67,7 @@ def test_migrations_adopt_verified_baseline_preserve_data_and_repeat(
             "005_generic_runtime.sql",
             "006_remembered_sessions.sql",
             "007_monitor_anomaly_identity.sql",
+            "008_radar_runtime_checkpoints.sql",
         ]
         assert apply_migrations(connection)["applied"] == [
             "003_deployment_maintenance.sql",
@@ -74,6 +75,7 @@ def test_migrations_adopt_verified_baseline_preserve_data_and_repeat(
             "005_generic_runtime.sql",
             "006_remembered_sessions.sql",
             "007_monitor_anomaly_identity.sql",
+            "008_radar_runtime_checkpoints.sql",
         ]
         assert (
             connection.scalar(text("SELECT count(*) FROM services WHERE id='old'")) == 1
@@ -146,12 +148,14 @@ def test_clean_break_preserves_configuration_and_history_and_runs_once(
             "005_generic_runtime.sql",
             "006_remembered_sessions.sql",
             "007_monitor_anomaly_identity.sql",
+            "008_radar_runtime_checkpoints.sql",
         ]
         assert apply_migrations(connection)["applied"] == [
             "004_system_catalogue.sql",
             "005_generic_runtime.sql",
             "006_remembered_sessions.sql",
             "007_monitor_anomaly_identity.sql",
+            "008_radar_runtime_checkpoints.sql",
         ]
         assert (
             connection.scalar(

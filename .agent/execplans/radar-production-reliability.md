@@ -20,7 +20,7 @@ validated observation time as well as receipt time.
 
 - [x] 1. Fix reconnect ownership and client teardown; real MQTT regression.
 - [x] 2. Scope alarm identity by monitoring service; upgrade and real DB regression.
-- [ ] 3. Persist signed checkpoints across task/node replacement; real restart test.
+- [x] 3. Persist signed checkpoints across task/node replacement; real restart test.
 - [x] 4. Make rate/overflow/restart coverage gaps explicit and remove unsuitable defaults.
 - [ ] 5. Persist desired workload state before Docker mutation and recover interruption.
 - [ ] 6. Degrade health when required input or successful inference stops progressing.
@@ -78,3 +78,16 @@ show the live-only delivery contract. Validation: 99 backend tests including rea
 1,100-message bursts, exact overflow and reconnect accounting; 48 frontend tests,
 TypeScript and Ruff pass. Recovery status contracts are included as preparation for
 the checkpoint fix.
+
+Step 3: Migration 008 adds a shared database checkpoint contract with cascading
+monitor ownership. Managed workers authenticate service/config/runtime-bound model
+bytes before deserialization, restore cumulative processor/coverage state, preserve
+and restart static fitting inputs, and checkpoint initial/phase/interval/final
+state. The writer atomically commits snapshots with pending evidence and retains
+failed batches. A hard crash has bounded checkpoint rollback and a visible live
+input gap; no replay/exactly-once guarantee is claimed. Production uses mounted
+secrets; local replacements share an explicit development-only key. Step 5 must
+persist monitor intent before worker startup because initial snapshots reference
+that monitor. Separate real Python replacement processes reproduce future static
+and adaptive scores after restoring the database snapshot; actual PostgreSQL
+rollback tests verify that evidence and checkpoint advancement cannot split.

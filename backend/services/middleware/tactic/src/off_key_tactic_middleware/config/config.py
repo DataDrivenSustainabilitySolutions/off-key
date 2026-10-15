@@ -11,6 +11,7 @@ from enum import StrEnum
 from functools import lru_cache
 
 from off_key_core.config.database import build_postgres_database_url
+from off_key_core.config.radar import DEVELOPMENT_CHECKPOINT_SECRET
 from off_key_core.config.validation import validate_environment as _validate_environment
 from pydantic import (
     BaseModel,
@@ -431,6 +432,7 @@ class RadarContainerRuntimeSettings(BaseSettings):
     POSTGRES_PORT: int = Field(default=5432, ge=1, le=65535)
     POSTGRES_DB: str = "postgres"
     ENVIRONMENT: str = "development"
+    RADAR_CHECKPOINT_SECRET: SecretStr = SecretStr(DEVELOPMENT_CHECKPOINT_SECRET)
 
     @field_validator("ENVIRONMENT")
     @classmethod

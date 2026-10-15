@@ -27,7 +27,7 @@ from .remembered_sessions import RememberedSession as RememberedSession
 from .system import SystemCollectionConfiguration as SystemCollectionConfiguration
 from .system import SystemConfiguration as SystemConfiguration
 from .system import SystemRevision as SystemRevision
-from .table_contracts import monitoring_evidence_table
+from .table_contracts import monitoring_evidence_table, radar_runtime_checkpoints_table
 
 
 class User(Base):
@@ -205,6 +205,10 @@ class MonitoringService(Base):
     operational_updated_at = Column(DateTime(timezone=True), nullable=True)
     stop_requested_at = Column(DateTime(timezone=True), nullable=True)
     launch_config = Column(JSON, nullable=True)
+
+
+class RadarRuntimeCheckpoint(Base):
+    __table__ = radar_runtime_checkpoints_table(Base.metadata)
 
 
 class DeploymentMaintenance(Base):

@@ -195,6 +195,7 @@ services:
       - "LOG_PII_DEBUG_UNMASK=${LOG_PII_DEBUG_UNMASK}"
       - TACTIC_DOCKER_DEFAULT_NETWORK=${COMPOSE_PROJECT_NAME:-off-key}_app-network
       - TACTIC_RADAR_IMAGE=${MQTT_RADAR_IMAGE:-off-key-mqtt-radar:latest}
+      - "RADAR_CHECKPOINT_SECRET=${RADAR_CHECKPOINT_SECRET:-off-key-development-checkpoints-change-before-production}"
     restart: always
     healthcheck:
       test:

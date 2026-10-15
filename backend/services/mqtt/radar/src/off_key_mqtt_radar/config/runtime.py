@@ -1,9 +1,11 @@
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 from off_key_core.config.database import build_postgres_database_url
+from off_key_core.config.radar import DEVELOPMENT_CHECKPOINT_SECRET
 from off_key_core.config.validation import validate_environment as _validate_environment
-from pydantic import SecretStr, field_validator, model_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -103,6 +105,9 @@ class RadarCheckpointSettings(BaseSettings):
     RADAR_CHECKPOINT_DIR: str = "checkpoints"
     SERVICE_ID: str = "default"
     RADAR_CHECKPOINT_SECRET: SecretStr = SecretStr("")
+    RADAR_CHECKPOINT_STORAGE: Literal["file", "database"] = "file"
+    RADAR_CHECKPOINT_TIMEOUT_SECONDS: float = Field(default=30.0, gt=0)
+    RADAR_CHECKPOINT_MAX_INTERVAL_SECONDS: float = Field(default=30.0, gt=0)
     ENVIRONMENT: str = "development"
 
     @field_validator("RADAR_CHECKPOINT_DIR", "SERVICE_ID")
@@ -121,7 +126,9 @@ class RadarCheckpointSettings(BaseSettings):
     @model_validator(mode="after")
     def validate_checkpoint_secret_for_environment(self) -> "RadarCheckpointSettings":
         secret = self.RADAR_CHECKPOINT_SECRET.get_secret_value().strip()
-        if self.ENVIRONMENT == "production" and not secret:
+        if self.ENVIRONMENT == "production" and (
+            not secret or secret == DEVELOPMENT_CHECKPOINT_SECRET
+        ):
             raise ValueError(
                 "RADAR_CHECKPOINT_SECRET must be set when ENVIRONMENT=production"
             )
@@ -130,6 +137,15 @@ class RadarCheckpointSettings(BaseSettings):
     @property
     def checkpoint_secret_bytes(self) -> bytes:
         return self.RADAR_CHECKPOINT_SECRET.get_secret_value().encode()
+
+    @property
+    def durable_checkpoint_secret_bytes(self) -> bytes:
+        secret = self.checkpoint_secret_bytes
+        if secret:
+            return secret
+        if self.ENVIRONMENT == "production":
+            raise ValueError("Managed checkpoints require RADAR_CHECKPOINT_SECRET")
+        return DEVELOPMENT_CHECKPOINT_SECRET.encode()
 
 
 class RadarRuntimeFileSettings(BaseSettings):

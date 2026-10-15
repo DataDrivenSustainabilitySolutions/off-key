@@ -17,6 +17,7 @@ from ...models.registry import ModelRegistryService
 _FINGERPRINT_EXCLUDED_KEYS = {
     "SERVICE_ID",
     "RADAR_DATABASE_URL",
+    "RADAR_CHECKPOINT_SECRET",
 }
 
 
@@ -79,6 +80,7 @@ def build_radar_environment(
             raise ValueError("Production MQTT connection settings cannot be overridden")
     environment = {
         "SERVICE_ID": service_id,
+        "RADAR_CHECKPOINT_STORAGE": "database",
         "ENVIRONMENT": runtime.ENVIRONMENT,
         "RADAR_MQTT_BROKER_HOST": mqtt_config.get("host", defaults.mqtt_broker_host),
         "RADAR_MQTT_BROKER_PORT": str(
@@ -112,8 +114,12 @@ def build_radar_environment(
     }
     if runtime.ENVIRONMENT == "production":
         environment["RADAR_MQTT_CA_FILE"] = "/run/secrets/EMQX_CA_CERT"
-    elif mqtt_config.get("api_key"):
-        environment["RADAR_MQTT_API_KEY"] = mqtt_config["api_key"]
+    else:
+        environment["RADAR_CHECKPOINT_SECRET"] = (
+            runtime.RADAR_CHECKPOINT_SECRET.get_secret_value()
+        )
+        if mqtt_config.get("api_key"):
+            environment["RADAR_MQTT_API_KEY"] = mqtt_config["api_key"]
 
     try:
         validated_params = model_registry.validate_model_params(

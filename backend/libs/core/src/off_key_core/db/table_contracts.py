@@ -1,12 +1,15 @@
 from sqlalchemy import (
     JSON,
+    BigInteger,
     Boolean,
     CheckConstraint,
     Column,
     DateTime,
     Float,
+    ForeignKey,
     Index,
     Integer,
+    LargeBinary,
     Text,
     text,
 )
@@ -14,6 +17,30 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.schema import MetaData, PrimaryKeyConstraint, Table
 from sqlalchemy.sql import func
 from sqlalchemy.types import TIMESTAMP
+
+
+def radar_runtime_checkpoints_table(metadata: MetaData) -> Table:
+    """One authenticated, bounded recovery snapshot per managed monitor."""
+    return Table(
+        "radar_runtime_checkpoints",
+        metadata,
+        Column(
+            "service_id",
+            Text,
+            ForeignKey(
+                "services.id", ondelete="CASCADE", name="fk_radar_checkpoint_service"
+            ),
+            primary_key=True,
+        ),
+        Column("format_version", Integer, nullable=False),
+        Column("configuration_fingerprint", Text, nullable=False),
+        Column("runtime_fingerprint", Text, nullable=False),
+        Column("processed_count", BigInteger, nullable=False),
+        Column("saved_at", TIMESTAMP(timezone=True), nullable=False),
+        Column("payload", LargeBinary, nullable=False),
+        Column("signature", Text, nullable=False),
+        CheckConstraint("processed_count >= 0", name="ck_radar_checkpoint_count"),
+    )
 
 
 def monitoring_evidence_table(metadata: MetaData) -> Table:

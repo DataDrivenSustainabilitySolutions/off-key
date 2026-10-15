@@ -59,8 +59,11 @@ class StaticConformalDetectionService:
         self,
         config: AnomalyDetectionConfig,
         checkpoint: dict[str, Any] | None = None,
+        *,
+        automatic_checkpoints: bool = True,
     ):
         self.config = config
+        self.automatic_checkpoints = automatic_checkpoints
         self.logger = logging.getLogger(__name__)
         self.schema_signature = self._build_schema_signature_from_config(config)
         if not isinstance(config.monitoring, StaticBaselineConfig):
@@ -128,11 +131,13 @@ class StaticConformalDetectionService:
         self.schema_mismatch_count = int(checkpoint.get("schema_mismatch_count", 0))
         self.training_error = checkpoint.get("training_error")
         if self.state == StaticConformalState.TRAINING:
-            # Training futures cannot be restored; restart collection rather than
-            # treating a half-trained checkpoint as ready.
-            self.state = StaticConformalState.COLLECTING
-            self.training_buffer = []
-            self.calibration_buffer = []
+            if (
+                len(self.training_buffer) < self.static_config.training_window_size
+                or len(self.calibration_buffer)
+                < self.static_config.calibration_window_size
+            ):
+                raise ValueError("Training checkpoint is missing fitting observations")
+            self._submit_training()
 
         if self.state == StaticConformalState.READY:
             missing_ready_state = []
@@ -161,6 +166,16 @@ class StaticConformalDetectionService:
         cls, checkpoint_path: str, config: AnomalyDetectionConfig
     ) -> "StaticConformalDetectionService":
         checkpoint = CheckpointManager().load(checkpoint_path)
+        return cls.from_checkpoint_data(checkpoint, config)
+
+    @classmethod
+    def from_checkpoint_data(
+        cls,
+        checkpoint: dict[str, Any],
+        config: AnomalyDetectionConfig,
+        *,
+        automatic_checkpoints: bool = True,
+    ) -> "StaticConformalDetectionService":
 
         saved_strategy = checkpoint.get("strategy")
         if saved_strategy != "static_baseline":
@@ -176,7 +191,9 @@ class StaticConformalDetectionService:
                 "configuration. Starting fresh is required."
             )
 
-        return cls(config, checkpoint=checkpoint)
+        return cls(
+            config, checkpoint=checkpoint, automatic_checkpoints=automatic_checkpoints
+        )
 
     @staticmethod
     def _build_schema_signature_from_config(config: AnomalyDetectionConfig) -> str:
@@ -302,17 +319,8 @@ class StaticConformalDetectionService:
         )
         calibration_collected = len(self.calibration_buffer)
         if calibration_collected >= self.static_config.calibration_window_size:
-            training_samples = list(self.training_buffer)
-            calibration_samples = list(self.calibration_buffer)
-            self.training_buffer = []
-            self.calibration_buffer = []
             self.state = StaticConformalState.TRAINING
-            self._training_future = self._training_executor.submit(
-                self._fit_static_baseline,
-                training_samples,
-                calibration_samples,
-                list(self.feature_keys),
-            )
+            self._submit_training()
             phase = "training_started"
         else:
             phase = "calibrating"
@@ -540,6 +548,14 @@ class StaticConformalDetectionService:
             **validate_static_model_params(model_type, params, include_defaults=False)
         )
 
+    def _submit_training(self) -> None:
+        self._training_future = self._training_executor.submit(
+            self._fit_static_baseline,
+            list(self.training_buffer),
+            list(self.calibration_buffer),
+            list(self.feature_keys),
+        )
+
     def _complete_training_if_ready(self) -> None:
         if self.state != StaticConformalState.TRAINING or self._training_future is None:
             return
@@ -552,6 +568,8 @@ class StaticConformalDetectionService:
                 self.alarm_controller,
             ) = self._training_future.result()
             self.state = StaticConformalState.READY
+            self.training_buffer = []
+            self.calibration_buffer = []
             self.training_error = None
             self._checkpoint_model()
             self.logger.info(
@@ -656,34 +674,41 @@ class StaticConformalDetectionService:
             context=context,
         )
 
+    def export_checkpoint(self) -> dict[str, Any]:
+        """Export state without performing I/O; the caller freezes model bytes."""
+        return {
+            "strategy": "static_baseline",
+            "static_state": self.state.value,
+            "training_buffer": self.training_buffer,
+            "calibration_buffer": self.calibration_buffer,
+            "feature_keys": self.feature_keys,
+            "conformal_detector": self.conformal_detector,
+            "alarm_controller": self.alarm_controller,
+            "processed_count": self.processed_count,
+            "anomaly_count": self.anomaly_count,
+            "discarded_during_training_count": self.discarded_during_training_count,
+            "schema_mismatch_count": self.schema_mismatch_count,
+            "training_error": self.training_error,
+            "schema_signature": self.schema_signature,
+        }
+
     def _checkpoint_model(self) -> None:
+        if not self.automatic_checkpoints:
+            return
         try:
             checkpoint_manager = CheckpointManager()
             service_id = checkpoint_manager.service_id
             checkpoint_data = {
-                "strategy": "static_baseline",
-                "static_state": self.state.value,
-                "training_buffer": self.training_buffer,
-                "calibration_buffer": self.calibration_buffer,
-                "feature_keys": self.feature_keys,
-                "conformal_detector": self.conformal_detector,
-                "alarm_controller": self.alarm_controller,
-                "processed_count": self.processed_count,
-                "anomaly_count": self.anomaly_count,
-                "discarded_during_training_count": (
-                    self.discarded_during_training_count
-                ),
-                "schema_mismatch_count": self.schema_mismatch_count,
-                "training_error": self.training_error,
+                **self.export_checkpoint(),
                 "config": self.config,
                 "service_id": service_id,
-                "schema_signature": self.schema_signature,
             }
 
             checkpoint_path = checkpoint_manager.save(
                 checkpoint_data,
                 processed_count=self.processed_count,
             )
+            self.last_checkpoint = self.processed_count
             self.logger.info(
                 "Static conformal checkpoint saved atomically: %s",
                 checkpoint_path,

@@ -20,6 +20,7 @@ SYSTEM_TABLES = {
     "system_collection_configuration",
 }
 SESSION_TABLES = {"remembered_sessions"}
+CHECKPOINT_TABLES = {"radar_runtime_checkpoints"}
 
 
 def migration_files() -> dict[str, str]:
@@ -60,7 +61,10 @@ def adopted_versions(connection: Connection, migrations: dict[str, str]) -> list
         if existing - {LEDGER}:
             raise ValueError("Cannot initialize a database containing unknown tables")
         return []
-    if application_tables - SYSTEM_TABLES - SESSION_TABLES <= existing:
+    if (
+        application_tables - SYSTEM_TABLES - SESSION_TABLES - CHECKPOINT_TABLES
+        <= existing
+    ):
         validate_existing_schema(connection, excluded_columns=excluded_columns)
         adopted = [
             "001_membership.sql",
@@ -73,7 +77,11 @@ def adopted_versions(connection: Connection, migrations: dict[str, str]) -> list
     baseline = [
         table
         for table in Base.metadata.sorted_tables
-        if table.name not in SYSTEM_TABLES | SESSION_TABLES | {"deployment_maintenance"}
+        if table.name
+        not in SYSTEM_TABLES
+        | SESSION_TABLES
+        | CHECKPOINT_TABLES
+        | {"deployment_maintenance"}
     ]
     if not {table.name for table in baseline} <= existing:
         raise ValueError("A reviewed baseline is required for this database")
@@ -139,10 +147,6 @@ def apply_migrations(
         bootstrap_schema(connection)
     for version, sql in migrations.items():
         if not status["fresh"] and version in status["pending"]:
-            if version == "005_generic_runtime.sql":
-                from .catalogue_upgrade import upgrade_saved_catalogue
-
-                upgrade_saved_catalogue(connection)
             connection.exec_driver_sql(sql)
         connection.execute(
             text(f"""
@@ -151,6 +155,14 @@ def apply_migrations(
         """),
             {"version": version, "checksum": migration_checksum(version, sql)},
         )
+    if not status["fresh"] and "005_generic_runtime.sql" in status["pending"]:
+        from .catalogue_upgrade import upgrade_saved_catalogue
+
+        # The frozen compatibility converter projects current runtime tables.
+        # Finish the independent additive DDL before conversion so a pre-ledger
+        # database need not already have columns introduced by later releases.
+        # DDL, data conversion and checksum records still commit atomically.
+        upgrade_saved_catalogue(connection)
     bootstrap_schema(connection)
     return {"applied": status["pending"], "fresh": status["fresh"]}
 

@@ -18,7 +18,10 @@ from contextlib import suppress
 from datetime import UTC, datetime
 from typing import Any
 
-from off_key_core.db.table_contracts import monitoring_evidence_table
+from off_key_core.db.table_contracts import (
+    monitoring_evidence_table,
+    radar_runtime_checkpoints_table,
+)
 from off_key_core.schemas.radar import RadarOperationalStatus
 from sqlalchemy import (
     JSON,
@@ -27,6 +30,7 @@ from sqlalchemy import (
     Float,
     Table,
     Text,
+    select,
     text,
 )
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -77,6 +81,7 @@ ANOMALY_IDENTITY_TABLE = Table(
     Column("service_id", Text, nullable=False, server_default=text("''")),
 )
 MONITORING_EVIDENCE_TABLE = monitoring_evidence_table(_anomaly_metadata)
+RUNTIME_CHECKPOINT_TABLE = radar_runtime_checkpoints_table(_anomaly_metadata)
 
 
 def get_radar_async_session_factory():
@@ -124,8 +129,15 @@ class DatabaseWriter:
     - Metrics tracking
     """
 
-    def __init__(self, config: MQTTRadarConfig, session_factory=None):
+    def __init__(
+        self,
+        config: MQTTRadarConfig,
+        session_factory=None,
+        *,
+        managed_checkpoints: bool = False,
+    ):
         self.config = config
+        self.managed_checkpoints = managed_checkpoints
         self.projector = ResultProjector()
         self.total_rejected = 0
         # Session factory is created lazily to avoid requiring DB env vars
@@ -240,6 +252,70 @@ class DatabaseWriter:
     async def write_anomaly(self, result: AnomalyResult):
         """Queue a result; retained as the public writer entry point."""
         await self.write_result(result)
+
+    async def load_checkpoint(self, service_id: str) -> dict[str, Any] | None:
+        """Require the migrated durable store before a managed worker subscribes."""
+        if self.session_factory is None:
+            self.session_factory = get_radar_async_session_factory()
+        async with self.session_factory() as session:
+            result = await session.execute(
+                select(RUNTIME_CHECKPOINT_TABLE).where(
+                    RUNTIME_CHECKPOINT_TABLE.c.service_id == service_id
+                )
+            )
+            row = result.mappings().one_or_none()
+            return dict(row) if row is not None else None
+
+    async def commit_checkpoint(self, checkpoint: dict[str, Any]) -> None:
+        """Commit frozen model state and all pending evidence in one transaction.
+
+        The MQTT consumer is the only producer while this barrier is awaited.
+        Earlier background batches have committed before this lock is acquired.
+        Any failed transaction retains its original results for retry.
+        """
+        if not self.config.db_write_enabled:
+            raise RuntimeError("Database checkpoint storage requires database writes")
+        if self.session_factory is None:
+            self.session_factory = get_radar_async_session_factory()
+        async with self._flush_lock:
+            async with self._queue_changed:
+                pending = list(self.write_queue)
+                self.write_queue.clear()
+                self._in_flight = len(pending)
+            try:
+                prepared = [
+                    self._prepare_managed_result(result)
+                    for result in pending
+                    if result.should_persist
+                ]
+                anomalies = [row for item in prepared for row in item.anomalies]
+                identities = [row for item in prepared for row in item.identities]
+                evidence = [row for item in prepared for row in item.evidence]
+                async with self.session_factory() as session:
+                    await self._execute_upsert(session, anomalies, identities)
+                    await self._execute_evidence_upsert(session, evidence)
+                    statement = pg_insert(RUNTIME_CHECKPOINT_TABLE).values(checkpoint)
+                    statement = statement.on_conflict_do_update(
+                        index_elements=["service_id"],
+                        set_={
+                            name: getattr(statement.excluded, name)
+                            for name in checkpoint
+                            if name != "service_id"
+                        },
+                    )
+                    await session.execute(statement)
+                    await session.commit()
+                self.total_written += len(anomalies)
+                self.total_evidence_written += len(evidence)
+                self.last_write_time = time.time()
+            except BaseException:
+                await self._requeue_results(pending)
+                self.total_errors += 1
+                raise
+            finally:
+                async with self._queue_changed:
+                    self._in_flight = 0
+                    self._queue_changed.notify_all()
 
     async def write_service_metrics(self, metrics: dict[str, Any]):
         """Write service performance metrics"""
@@ -511,15 +587,27 @@ class DatabaseWriter:
         for result in results:
             try:
                 if result.should_persist:
-                    prepared.append(self.projector.prepare(result))
+                    prepared.append(
+                        self._prepare_managed_result(result)
+                        if self.managed_checkpoints
+                        else self.projector.prepare(result)
+                    )
             except (ValueError, TypeError, AttributeError, OverflowError):
                 self.total_errors += 1
                 self.total_rejected += 1
+                if self.managed_checkpoints:
+                    raise
                 logger.exception(
                     "event=radar.db_result_rejected topic=%s timestamp=%s",
                     result.topic,
                     result.timestamp,
                 )
+        return prepared
+
+    def _prepare_managed_result(self, result: AnomalyResult) -> PreparedResult:
+        prepared = self.projector.prepare(result)
+        if not prepared.evidence:
+            raise ValueError("Managed inference result is missing valid evidence")
         return prepared
 
     async def _requeue_results(self, results: list[AnomalyResult]) -> None:

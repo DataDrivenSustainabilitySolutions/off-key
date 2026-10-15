@@ -1,6 +1,6 @@
 # Catalogue and collection
 
-**Data sources** opens a dedicated broker/topic/reading workspace. Select a broker or topic folder to inspect its recording scope; catalogue editing is available in its settings. Verified administrators can save
+**Sources** opens a dedicated broker/topic/reading workspace. Select a broker or topic folder to inspect its recording scope; catalogue editing is available in its settings. Verified administrators can save
 brokers, entities, concrete MQTT topics, payload fields and catalogue groups;
 members can inspect them. The installation-wide database is authoritative.
 Export/import uses only `aberration-system` schema version 1. Credentials, host

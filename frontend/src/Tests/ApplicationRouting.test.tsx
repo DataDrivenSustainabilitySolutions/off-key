@@ -14,15 +14,23 @@ vi.mock("react-router-dom", async (original) => ({
 vi.mock("@/auth/AuthContext", () => ({ useAuth: () => auth }));
 vi.mock("@/pages/MonitoringWorkspace", () => ({ default: () => <h1>Monitoring home</h1> }));
 vi.mock("@/pages/Login", () => ({ default: () => <h1>Sign in</h1> }));
-vi.mock("@/pages/SystemCatalogue", () => ({ default: () => <h1>Data sources</h1> }));
-vi.mock("@/pages/Anomalies", () => ({ default: () => <h1>Anomalies</h1> }));
+vi.mock("@/pages/SystemCatalogue", () => ({ default: () => <h1>Sources</h1> }));
+vi.mock("@/pages/Anomalies", () => ({ default: () => <h1>Reporting</h1> }));
 vi.mock("@/pages/Account", () => ({ default: () => <h1>Account</h1> }));
 vi.mock("@/pages/SystemStatus", () => ({ default: () => <h1>System status</h1> }));
 vi.mock("@/components/theme-provider", () => ({ useTheme: () => ({ resolvedTheme: "light", setTheme: vi.fn() }) }));
+vi.mock("@/lib/api-client", async original => {
+  const actual = await original<typeof import("@/lib/api-client")>();
+  const { createEmptySystem } = await import("@/features/catalogue/systemDocument");
+  return { ...actual, apiUtils: { ...actual.apiUtils, get: vi.fn(async () => ({
+    document: createEmptySystem(), revision: 0, can_edit: false, storage_origin: "saved", runtime: { mode: "configured_only", message: "" },
+  })) } };
+});
 
 let routes: RouteObject[];
 beforeAll(async () => {
   await import("@/App");
+  await import("@/components/ApplicationWorkspace");
   routes = captureRouter.mock.calls[0]![0];
 });
 beforeEach(() => {
@@ -59,9 +67,9 @@ describe("application home", () => {
     expect(screen.queryByRole("heading", { name: "Monitoring home" })).toBeNull();
   });
 
-  it("keeps old entity-directory links usable by taking them to Data sources", async () => {
+  it("keeps old entity-directory links usable by taking them to Sources", async () => {
     const router = visit("/entities");
-    expect(await screen.findByRole("heading", { name: "Data sources" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "Sources" })).toBeTruthy();
     expect(router.state.location.pathname).toBe("/sources");
   });
 
@@ -73,37 +81,41 @@ describe("application home", () => {
     expect(screen.getByRole("menuitem", { name: "System status" }).getAttribute("aria-current")).toBe("page");
   });
 
-  it("keeps the primary navigation on Anomalies and provides a way back to Monitoring", async () => {
+  it("keeps the primary navigation on Reporting and provides a way back to Monitoring", async () => {
     const router = visit("/anomalies");
-    await screen.findByRole("heading", { name: "Anomalies" });
+    await screen.findByRole("heading", { name: "Reporting" });
     const workspaces = within(screen.getByRole("group", { name: "Workspaces" }));
-    expect(workspaces.getAllByRole("link").map(link => link.textContent)).toEqual(["Monitoring", "Data sources", "Anomalies"]);
-    expect(workspaces.getByRole("link", { name: "Anomalies" }).getAttribute("aria-current")).toBe("page");
+    expect(workspaces.getAllByRole("link").map(link => link.textContent)).toEqual(["Monitoring", "Sources", "Reporting"]);
+    expect(workspaces.getByRole("link", { name: "Reporting" }).getAttribute("aria-current")).toBe("page");
     fireEvent.click(workspaces.getByRole("link", { name: "Monitoring" }));
     await screen.findByRole("heading", { name: "Monitoring home" });
     expect(router.state.location.pathname).toBe("/");
   });
 
-  it("can reopen the desktop navigation after hiding it", async () => {
+  it("keeps navbar navigation visible when the catalogue is hidden", async () => {
     visit("/anomalies");
-    await screen.findByRole("heading", { name: "Anomalies" });
-    fireEvent.click(screen.getByRole("button", { name: "Toggle workspace navigation" }));
-    expect(screen.queryByRole("group", { name: "Workspaces" })).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Toggle workspace navigation" }));
+    await screen.findByRole("heading", { name: "Reporting" });
+    fireEvent.click(screen.getByRole("button", { name: "Toggle catalogue" }));
+    expect(screen.queryByRole("navigation", { name: "System explorer" })).toBeNull();
     expect(screen.getByRole("group", { name: "Workspaces" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Toggle catalogue" }));
+    expect(screen.getByRole("navigation", { name: "System explorer" })).toBeTruthy();
   });
 
-  it("closes the mobile navigation after choosing a page and restores toggle focus", async () => {
+  it("keeps mobile section navigation in the navbar and uses the drawer for MQTT entities", async () => {
     vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() })));
     const router = visit("/account");
     await screen.findByRole("heading", { name: "Account" });
-    fireEvent.click(screen.getByRole("button", { name: "Toggle workspace navigation" }));
-    const dialog = await screen.findByRole("dialog", { name: "Workspace navigation" });
-    fireEvent.click(within(dialog).getByRole("link", { name: "Anomalies" }));
-    await screen.findByRole("heading", { name: "Anomalies" });
+    const trigger = screen.getByRole("button", { name: "Open catalogue" });
+    fireEvent.click(trigger);
+    const dialog = await screen.findByRole("dialog", { name: "MQTT catalogue" });
+    expect(within(dialog).queryByRole("link", { name: "Reporting" })).toBeNull();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Close explorer" }));
+    await waitFor(() => expect(document.activeElement).toBe(trigger));
+    fireEvent.click(screen.getByRole("link", { name: "Reporting" }));
+    await screen.findByRole("heading", { name: "Reporting" });
     expect(router.state.location.pathname).toBe("/anomalies");
     expect(screen.queryByRole("dialog")).toBeNull();
-    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("button", { name: "Toggle workspace navigation" })));
   });
 
   it("preserves the selected catalogue entity when opening the monitoring workspace", async () => {

@@ -1,7 +1,7 @@
 import { Suspense } from "react";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { createMemoryRouter, RouterProvider } from "react-router-dom";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createAppRoutes } from "../routes";
 
@@ -24,14 +24,20 @@ function renderRoute(path: string, routes = createAppRoutes()) {
   );
 }
 
+beforeAll(async () => {
+  await import("@/components/ApplicationWorkspace");
+});
+
 beforeEach(() => {
   auth.isAuthenticated = false;
+  vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() })));
 });
 
 afterEach(() => {
   cleanup();
   router.dispose();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 describe("application route recovery", () => {

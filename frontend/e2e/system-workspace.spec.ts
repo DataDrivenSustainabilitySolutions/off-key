@@ -3,10 +3,11 @@ import { expect, test } from "@playwright/test";
 import { connectAsync, type MqttClient } from "mqtt";
 import type { SystemSnapshot } from "../src/features/catalogue/systemTypes";
 import { addTestCharger, removeTestCharger } from "./helpers/collection";
+import { setAppearance } from "./helpers/appearance";
 
 test.setTimeout(300_000);
 
-test("records only an opted-in reading and restores its history in the mobile workspace", async ({ page, playwright }) => {
+test("records only an opted-in reading and restores its history in the mobile workspace", async ({ page, playwright }, testInfo) => {
   const entityId = randomUUID();
   const localId = `ui-${randomUUID()}`;
   const keys = ["temperature", "current", "voltage"];
@@ -20,16 +21,15 @@ test("records only an opted-in reading and restores its history in the mobile wo
     await page.goto("/");
     const workspaces = page.getByRole("group", { name: "Workspaces", exact: true });
     await expect(workspaces.getByRole("link", { name: "Monitoring", exact: true })).toHaveAttribute("aria-current", "page");
-    await expect(workspaces.getByRole("link", { name: "Data sources", exact: true })).toBeVisible();
-    await workspaces.getByRole("link", { name: "Anomalies", exact: true }).click();
-    await expect(page.getByRole("heading", { name: "Anomalies", exact: true })).toBeVisible();
-    await expect(workspaces.getByRole("link", { name: "Anomalies", exact: true })).toHaveAttribute("aria-current", "page");
+    await expect(workspaces.getByRole("link", { name: "Sources", exact: true })).toBeVisible();
+    await workspaces.getByRole("link", { name: "Reporting", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Reporting", exact: true })).toBeVisible();
+    await expect(workspaces.getByRole("link", { name: "Reporting", exact: true })).toHaveAttribute("aria-current", "page");
     await page.getByRole("button", { name: "Application menu", exact: true }).click();
     await expect(page.getByRole("menuitem", { name: "Monitoring", exact: true })).toHaveCount(0);
     await expect(page.getByRole("menuitem", { name: "Entities", exact: true })).toHaveCount(0);
     await page.keyboard.press("Escape");
     await page.setViewportSize({ width: 390, height: 844 });
-    await page.getByRole("button", { name: "Toggle workspace navigation", exact: true }).click();
     await workspaces.getByRole("link", { name: "Monitoring", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Monitoring", exact: true })).toBeVisible();
     await page.setViewportSize({ width: 1280, height: 720 });
@@ -48,16 +48,15 @@ test("records only an opted-in reading and restores its history in the mobile wo
     expect(initial.runtime.bindings?.[stream.id]?.policy.mode).toBe("off");
 
     await page.setViewportSize({ width: 390, height: 844 });
-    await page.getByRole("button", { name: "Open explorer", exact: true }).click();
-    await workspaces.getByRole("link", { name: "Data sources", exact: true }).click();
-    await expect(page.getByRole("heading", { name: "Data sources", exact: true })).toBeVisible();
+    await workspaces.getByRole("link", { name: "Sources", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Sources", exact: true })).toBeVisible();
     await expect(page.getByRole("dialog")).toHaveCount(0);
-    await page.getByRole("button", { name: "Toggle data sources explorer", exact: true }).click();
+    await page.getByRole("button", { name: "Open catalogue", exact: true }).click();
     await page.getByRole("button", { name: "Catalogue settings", exact: true }).click();
     await expect(page.getByRole("button", { name: "Import file", exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Export catalogue", exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Close settings", exact: true }).click();
-    await page.getByRole("button", { name: "Toggle data sources explorer", exact: true }).click();
+    await page.getByRole("button", { name: "Open catalogue", exact: true }).click();
     await page.getByRole("searchbox", { name: "Search catalogue", exact: true }).fill(`${entityId} temperature`);
     await page.getByRole("button", { name: "temperature, preview", exact: true }).click();
     const preview = page.getByRole("region", { name: "Reading preview", exact: true });
@@ -98,7 +97,7 @@ test("records only an opted-in reading and restores its history in the mobile wo
       const status = await response.json();
       return status.runtime.latest_readings[stream.id]?.value;
     }).toEqual(26);
-    await page.getByRole("button", { name: "Toggle data sources explorer", exact: true }).click();
+    await page.getByRole("button", { name: "Open catalogue", exact: true }).click();
     const receivingReading = page.getByRole("button", { name: "temperature, preview", exact: true });
     await expect(receivingReading.locator(".ex-reading-activity svg")).toHaveAttribute("fill", "currentColor", { timeout: 15_000 });
     await expect(receivingReading).toHaveAccessibleDescription("Receiving data (last 30 seconds)");
@@ -126,9 +125,8 @@ test("records only an opted-in reading and restores its history in the mobile wo
     await page.getByRole("textbox", { name: "Service name", exact: true }).fill("Workspace monitor");
     await page.getByLabel("Warm-up samples", { exact: true }).fill("2");
     await page.getByLabel("Calibration samples", { exact: true }).fill("2");
-    await page.getByRole("link", { name: "Configure in Data sources", exact: true }).click();
-    await expect(page.getByRole("heading", { name: "Data sources", exact: true })).toBeVisible();
-    await page.getByRole("button", { name: "Toggle data sources explorer", exact: true }).click();
+    await page.getByRole("link", { name: "Configure in Sources", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Sources", exact: true })).toBeVisible();
     await workspaces.getByRole("link", { name: "Monitoring", exact: true }).click();
     await expect(page.getByRole("textbox", { name: "Service name", exact: true })).toHaveValue("Workspace monitor");
     await expect(page.getByLabel("Warm-up samples", { exact: true })).toHaveValue("2");
@@ -147,6 +145,17 @@ test("records only an opted-in reading and restores its history in the mobile wo
     await page.getByRole("button", { name: "Add service to favourites", exact: true }).click();
     await page.reload();
     await expect(page.getByRole("button", { name: "Remove service from favourites", exact: true })).toBeVisible();
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    const catalogue = await page.getByRole("navigation", { name: "System explorer", exact: true }).elementHandle();
+    const source = new URL(page.url()).searchParams.get("source");
+    for (const section of ["Sources", "Reporting", "Monitoring"]) {
+      await workspaces.getByRole("link", { name: section, exact: true }).click();
+      await expect(page.getByRole("heading", { name: section, exact: true })).toBeVisible();
+      expect(await catalogue!.evaluate(element => element.isConnected)).toBe(true);
+      expect(new URL(page.url()).searchParams.get("source")).toBe(source);
+    }
+    await expect(page.getByRole("region", { name: "Monitoring service details", exact: true })).toBeVisible();
+    await catalogue!.dispose();
     await expect.poll(async () => {
       const response = await api.get("/api/v1/monitors/all?active_only=true&include_docker_status=true", { headers });
       const services = await response.json() as Array<{ id: string; display_name?: string; operational_status: { stage: string } }>;
@@ -165,6 +174,8 @@ test("records only an opted-in reading and restores its history in the mobile wo
     }).toBe(true);
     await page.getByRole("tab", { name: "Evidence", exact: true }).click();
     await expect(page.getByRole("button", { name: "Full range", exact: true })).toBeVisible();
+    await setAppearance(page, "Dark");
+    await page.screenshot({ path: testInfo.outputPath("monitoring-shared-workspace.png") });
     await page.getByRole("tab", { name: "Configuration", exact: true }).click();
     await page.getByRole("button", { name: "Stop and remove service", exact: true }).click();
     await page.getByRole("dialog", { name: "Stop and remove service?", exact: true }).getByRole("button", { name: "Remove service", exact: true }).click();

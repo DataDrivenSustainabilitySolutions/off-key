@@ -283,7 +283,8 @@ test.describe("Details telemetry ECharts", () => {
     expect(navbarBox).not.toBeNull();
     expect(primaryLinksBox).not.toBeNull();
     expect(navbarActionsBox).not.toBeNull();
-    expect(primaryLinksBox!.x + primaryLinksBox!.width).toBeLessThanOrEqual(navbarBox!.x);
+    expect(primaryLinksBox!.x).toBeGreaterThanOrEqual(navbarBox!.x);
+    expect(primaryLinksBox!.x + primaryLinksBox!.width).toBeLessThanOrEqual(navbarActionsBox!.x);
     expect(navbarActionsBox!.x).toBeGreaterThan(
       navbarBox!.x + navbarBox!.width / 2,
     );
@@ -417,6 +418,7 @@ test.describe("Details telemetry ECharts", () => {
     await expect(
       voltageCard.getByRole("button", { name: "Return to live" }),
     ).toBeVisible();
+    await currentCard.scrollIntoViewIfNeeded();
     await expect(
       currentCard.getByRole("button", { name: "Return to live" }),
     ).toBeHidden();
@@ -425,6 +427,7 @@ test.describe("Details telemetry ECharts", () => {
     await expect(
       page.getByRole("button", { name: "Unlink chart navigation" }),
     ).toHaveAttribute("aria-pressed", "true");
+    await currentCard.scrollIntoViewIfNeeded();
     await expect(
       currentCard.getByRole("button", { name: "Return to live" }),
     ).toBeVisible();
@@ -439,6 +442,7 @@ test.describe("Details telemetry ECharts", () => {
     await expect(
       voltageCard.getByRole("button", { name: "Return to live" }),
     ).toBeVisible();
+    await currentCard.scrollIntoViewIfNeeded();
     await expect(
       currentCard.getByRole("button", { name: "Return to live" }),
     ).toBeHidden();

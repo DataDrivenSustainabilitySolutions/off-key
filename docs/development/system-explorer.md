@@ -2,15 +2,17 @@
 
 The `feature/system-explorer` branch makes the monitoring workspace the signed-in application home at `/`. Login, the application wordmark, and the Monitoring navigation item lead here. Development and production builds include this lazy-loaded home. The former `/explorer` and `/spatial-lab` routes and the 3D experiment have been removed.
 
-Every authenticated page provides Monitoring, Data sources, and Anomalies in the upper-left navigation, with the current page marked. Functional pages use the same navigation as the explorer, including a mobile drawer and a way to reopen a hidden sidebar. The sticky header keeps a right-hand menu for Account, Settings, System status, and Logout. Settings opens an appearance dialog over the current workspace. Diagnostics live at `/system/status`; the former `/account/settings` link redirects there. Logout clears the session and returns to login immediately. Entity definitions are managed within Data sources; old `/entities` links redirect there. Entity and monitor details retain their functional workflows; accepted detector topics use the generic `telemetry/<entity>/<reading>` contract.
+All authenticated routes share one lazy-loaded `ApplicationWorkspace`. Its sticky navbar always shows Monitoring, Sources, and Reporting, with the current section marked; mobile uses a second header row so these links remain visible. The MQTT catalogue sidebar stays mounted across section changes. The right-hand menu contains Account, Settings, System status, and Logout. Settings opens an appearance dialog over the current workspace. Diagnostics live at `/system/status`; the former `/account/settings` link redirects there. Logout clears the session and returns to login immediately. Entity definitions are managed within Sources; old `/entities` links redirect there. Entity and monitor details retain their functional workflows; accepted detector topics use the generic `telemetry/<entity>/<reading>` contract.
 
 ## Navigation
 
-Enter a broker, entity, or topic branch to replace the current list. Back restores its scroll position and visible keyboard focus. The current heading opens an ancestor menu. Single-child MQTT paths fold into one row while preserving every original topic segment and the complete ancestry. Topics with both their own readings and subtopics show both. Several payload fields on one MQTT topic are separate reading leaves.
+The same hierarchy contains brokers, entities, MQTT topics and readings in every section. Select a row to change the main content; use its chevron or Right arrow to browse its children. Back/Left restores the previous list, scroll position and visible keyboard focus. The current heading opens an ancestor menu. Single-child MQTT paths fold into one row while preserving every original topic segment and the complete ancestry. Topics with both their own readings and subtopics show both. Several payload fields on one MQTT topic are separate reading leaves.
+
+The `source` query parameter identifies the selected catalogue node across sections; legacy broker/topic/reading/entity links still resolve. Browser back/forward restores that selection. Switching sections preserves catalogue search, browse location, row selection, width and scroll without remounting the sidebar or rereading the document. Live runtime updates continue. **All sources** clears the main-content scope while retaining the sidebar position; **Catalogue** also returns browsing to the root.
 
 Individual topic and reading rows use neutral circles rendered at 12 pixels, centered in the existing 16-pixel icon slot. A filled circle means a current preview or background recording subscription received a fresh message within the last 30 seconds. A hollow circle means it is waiting for fresh data or is not listening, distinguished by its hover text and accessible description. Retained values, old stored history, disconnected brokers and receipts outside the current preview scope do not indicate activity. Recording activity comes from bounded ingress receipt timestamps before sampling, so long recording intervals do not hide incoming traffic. Simulated preview activity is labeled explicitly. Indicators observe the existing runtime and preview subscriptions without changing collection policies or opening subscriptions for catalogue browsing.
 
-Search reaches closed branches by name, MQTT path, payload field, or ancestor context. Cmd/Ctrl+K opens and focuses search even with the sidebar closed; ArrowDown enters results. Up/Down and Home/End move within lists; Right opens and Left goes back. Selecting a reading reveals its canonical parent and opens its inspector. Browsing other branches leaves that preview in place. The default main view is the service list. Entering a catalogue branch filters it to monitors using that branch’s exact accepted inputs. Returning to Monitoring shows all services without resetting the sidebar position. Browsing while inspecting a reading or service preserves that inspection.
+Search reaches closed branches by name, stable ID, MQTT path, payload field, or ancestor context. Cmd/Ctrl+K opens and focuses search even with the sidebar closed; ArrowDown enters results. Up/Down and Home/End move within lists. Selecting a search result retains the search and its scroll position. Initial deep links reveal the selected source's branch. The default Monitoring view is the service list, scoped to the selected source's exact accepted inputs. Reading selections also show their preview; other source metadata is available with **Inspect source**. Browsing branches does not change the selected main-content scope.
 
 The mobile sidebar uses an accessible modal drawer, with focus containment, Escape/backdrop dismissal, and focus returned to its opening control. Reduced-motion preferences disable navigation transitions. Light and dark themes follow the existing application theme.
 
@@ -24,9 +26,9 @@ The overview uses one compact status request every 20 seconds while visible, ref
 
 `/?service=<stable-service-id>` restores a selected monitor; `tab` and `stream` select its detail tab and evidence input. Service names save quietly on Enter or blur through an administrator-only `/v1/monitors/<id>/label` PATCH and persist in the database’s launch metadata. Workload names, IDs and subscriptions remain stable. Restart capture preserves saved service names. Detail settings exclude connection credentials.
 
-Create service chooses a broker/entity, links to Data sources for recording configuration, then configures a static or adaptive detector using the acknowledged numeric input bindings. Starting remains disabled until collection is applied. A reading’s Configure monitoring link uses `/?create=monitoring&reading=<stable-reading-id>`; its input is preselected. Active ownership prevents a second service from claiming a reading. A successful launch opens the returned service ID.
+Create service chooses a broker/entity, links to Sources for recording configuration, then configures a static or adaptive detector using the acknowledged numeric input bindings. Starting remains disabled until collection is applied. A reading’s Configure monitoring link uses `/?create=monitoring&reading=<stable-reading-id>`; its input is preselected. Active ownership prevents a second service from claiming a reading. A successful launch opens the returned service ID.
 
-Stars save service and reading favourites per account **in this browser**, alongside sidebar width and navigation. Favourites appear as direct shortcuts in the sidebar; display-name edits do not break them. They do not alter catalogue structure or collection policy and are not included in catalogue export. Stored unresolved references are retained during temporary failures or loading. Personal grouping remains inactive.
+Stars save service and reading favourites per account **in this browser**, alongside sidebar width and navigation. Service favourites have their own filter in the Monitoring list; reading favourites remain MQTT source shortcuts in the shared sidebar. Display-name edits do not break them. They do not alter catalogue structure or collection policy and are not included in catalogue export. Stored unresolved references are retained during temporary failures or loading. Personal grouping remains inactive.
 
 Notification recipients remain deployment-managed. The existing anomaly email endpoint is preserved; this first version does not claim per-service subscriptions or a record of delivered alerts.
 
@@ -72,24 +74,26 @@ For an existing isolated local deployment, rebuild the frontend, API gateway, TA
 
 ## Shared interface
 
-`App.css` owns semantic colors, typography, spacing and component states. `WorkspaceNavigation` supplies the primary links in the explorer and the functional-page `ApplicationWorkspace`; `AppHeader` and `ApplicationMenu` share theme and account controls. `PageShell` sets content width and spacing. The explorer uses those tokens rather than a separate palette. Auth, forms, tables, menus, dialogs and empty/error/loading states use the same restrained surfaces. Quiet branding details remain part of the interface: authentication screens use the original repeating slash monogram behind the form, without animation or interaction layers over controls. Mobile controls have 44-pixel targets, including popover actions inside the explorer drawer. Broker and entity definitions display their actual catalogue metadata; user-provided labels and MQTT paths remain verbatim.
+`App.css` owns semantic colors, typography, spacing and component states. `ApplicationWorkspace` owns the header, catalogue sidebar/drawer, resize control and a Suspense boundary around routed main content. `CatalogueProvider` owns one `useSystemDocument`, navigation index, live preview instance, account-scoped preferences and history cache. Runtime-only updates retain the document/index identity. `WorkspaceNavigation` supplies the navbar links; `AppHeader` and `ApplicationMenu` share preferences and account controls. `PageShell` sets content width and spacing. The explorer uses those tokens rather than a separate palette. Auth, forms, tables, menus, dialogs and empty/error/loading states use the same restrained surfaces. Quiet branding details remain part of the interface: authentication screens use the original repeating slash monogram behind the form, without animation or interaction layers over controls. Mobile controls have 44-pixel targets, including popover actions inside the explorer drawer. Broker and entity definitions display their actual catalogue metadata; user-provided labels and MQTT paths remain verbatim.
 
-## Data sources
+## Sources
 
-`/sources` is a separate setup destination. Its hierarchy groups registered readings
-by broker and MQTT topic, across device assignments; entity metadata remains searchable.
-Monitoring, Data sources, and Anomalies have direct links above the catalogue search
-in both sidebars, with the current workspace marked. The same links remain available
-on Anomalies, detail, and account pages and in their mobile drawers. Catalogue settings
-supports adding entities and editing existing definitions, including entities with no
-readings, without a separate entity directory. Returning to Monitoring restores its previous inspection or the
-explicit service setup return path; unsaved recording changes still block leaving.
-Row selection opens the scope inspector in the main workspace; chevrons browse branches.
+`/sources` is a setup destination inside the shared layout. Entity selection shows
+its metadata and registered readings; individual readings lead to their recording
+configuration. Broker and topic policies retain their MQTT meaning across all
+entities on that broker, with that scope explained in the topic inspector.
+Catalogue settings supports adding entities and editing existing definitions,
+including entities with no readings, without a separate entity directory.
+Returning to Monitoring restores its previous inspection when the source matches,
+or the explicit service setup return path. Unsaved recording changes block section
+changes, broker changes and leaving a recording scope; cancellation preserves the
+draft and source selection. Structural catalogue editing stays disabled while a
+recording draft is dirty. Row selection changes the main content; chevrons browse.
 Recording controls live here, with inheritance, child exceptions, future-reading opt-in,
 preview counts, affected-monitor confirmation, and one Apply action. Members inspect
 without editing. Catalogue settings remain available without opening automatically.
 
-Catalogue settings is available in the Monitoring and Data sources workspaces.
+The catalogue settings dialog is owned by the shared layout in every section.
 It shows the current catalogue's actual counts, explains each creation action, and
 provides separate import and export rows and an existing-entity
 chooser. A selected JSON file is reviewed with its name and contents before explicit
@@ -97,7 +101,15 @@ replacement at the captured revision. Export remains available when editing is
 unavailable. The dialog follows both themes and reflows for narrow screens.
 
 Monitoring remains the default destination. Setup detours preserve the service draft
-and selected inputs in account-scoped memory. Returning through the left navigation restores the
+and selected inputs in account-scoped memory. Returning through the navbar restores the
 Monitoring URL, search, filters, sidebar positions, and chart inspection. The bounded
-history cache is shared between visible workspaces; unmounted views do not poll. Logout
+history cache and live-preview instance belong to the shared layout; unmounted charts stop polling. Logout
 or account changes clear this memory. Colours use the shared semantic theme tokens.
+
+## Reporting
+
+Reporting uses the same selected source to filter events and summary metrics by
+runtime entity/reading identities. Multivariate events match any participating
+selected reading. Legacy multivariate events without a recorded sensor set match
+only when the full runtime entity is selected. Missing sources produce an empty
+scope with a clear reset action, rather than showing unrelated events.

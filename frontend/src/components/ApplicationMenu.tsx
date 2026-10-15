@@ -5,6 +5,7 @@ import { useAuth } from "@/auth/AuthContext";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { SettingsDialog } from "@/features/settings/SettingsDialog";
+import { useOptionalCatalogue } from "@/features/workspace/catalogue-context";
 
 type Props = {
   trigger?: ReactElement;
@@ -15,6 +16,7 @@ export function ApplicationMenu({ trigger }: Props) {
   const { isAuthenticated, member, logout } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
+  const catalogue = useOptionalCatalogue();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const menuTrigger = useRef<HTMLButtonElement>(null);
   const openingSettings = useRef(false);
@@ -40,7 +42,7 @@ export function ApplicationMenu({ trigger }: Props) {
         }}>
         {member && <p className="app-menu-account" title={member.email}>{member.email}</p>}
         <DropdownMenuItem asChild className="app-menu-item">
-          <Link to="/account" aria-current={location.pathname === "/account" ? "page" : undefined}>
+          <Link to={catalogue?.sectionHref("/account") ?? "/account"} aria-current={location.pathname === "/account" ? "page" : undefined}>
             <UserCircle className="size-4" />Account
           </Link>
         </DropdownMenuItem>
@@ -49,7 +51,7 @@ export function ApplicationMenu({ trigger }: Props) {
           setSettingsOpen(true);
         }}><Settings2 className="size-4" />Settings</DropdownMenuItem>
         <DropdownMenuItem asChild className="app-menu-item">
-          <Link to="/system/status" aria-current={location.pathname === "/system/status" ? "page" : undefined}>
+          <Link to={catalogue?.sectionHref("/system/status") ?? "/system/status"} aria-current={location.pathname === "/system/status" ? "page" : undefined}>
             <Activity className="size-4" />System status
           </Link>
         </DropdownMenuItem>

@@ -1,8 +1,6 @@
-import { useEffect, useRef, type MouseEvent } from "react";
+import { useEffect, useRef } from "react";
 import * as Popover from "@radix-ui/react-popover";
 import { ArrowLeft, ChevronDown, Folder, Info, Layers, Search, Settings2, Star, X } from "lucide-react";
-import { useLocation } from "react-router-dom";
-import { WorkspaceNavigation } from "@/components/WorkspaceNavigation";
 import { ExplorerList, type ExplorerRow, type ListPosition } from "./ExplorerList";
 import { navigationTrail, type ExplorerNode, type NavigationIndex } from "./navigationIndex";
 import type { SystemGroup } from "../catalogue/systemTypes";
@@ -15,8 +13,7 @@ type Props = {
   onQuery: (value: string) => void; onScope: (key: string) => void;
   onBrowse?: (node: ExplorerNode) => void;
   onOpen: (node: ExplorerNode) => void; onBack: () => void; onInspect: () => void;
-  onSettings: () => void; onWorkspace?: () => void; onDismiss?: () => void;
-  monitoringHref?: string;
+  onSettings: () => void; onCatalogue?: () => void; onDismiss?: () => void;
   activity?: ReadingActivitySource;
   favourites?: Array<{ kind: "service" | "reading"; id: string; label: string }>;
   onFavourite?: (kind: "service" | "reading", id: string) => void;
@@ -24,18 +21,11 @@ type Props = {
 
 export function ExplorerSidebar(props: Props) {
   const { index, scopeKey, rows, title, catalogueGroups, query, selectedKey, positions } = props;
-  const { pathname } = useLocation();
   const resultsQuery = props.resultsQuery ?? query;
   const search = useRef<HTMLInputElement>(null);
   const trail = navigationTrail(index, scopeKey);
   const current = index.nodes.get(scopeKey);
   const owner = trail.slice(0, -1).reverse().find((ancestor) => ancestor.kind === "device" || ancestor.kind === "connection");
-  const monitoringHome = (event: MouseEvent<HTMLAnchorElement>) => {
-    if (pathname !== "/" || !props.onWorkspace || event.button !== 0
-      || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-    event.preventDefault();
-    props.onWorkspace();
-  };
   useEffect(() => {
     const shortcut = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
@@ -47,7 +37,7 @@ export function ExplorerSidebar(props: Props) {
   }, []);
   return <nav id="system-explorer" className="ex-sidebar" aria-label="System explorer">
     <div className="ex-sidebar-top">
-      <WorkspaceNavigation monitoringHref={props.monitoringHref} onMonitoringClick={monitoringHome} />
+      <span className="workspace-catalogue-label">MQTT catalogue</span>
       {props.onDismiss && <button className="ex-icon-button" aria-label="Close explorer" onClick={props.onDismiss}><X size={18} /></button>}
     </div>
     <div className="ex-search"><Search size={15} aria-hidden="true" />
@@ -64,7 +54,7 @@ export function ExplorerSidebar(props: Props) {
       {props.favourites.map(item => <button key={`${item.kind}:${item.id}`} title={item.label} onClick={() => props.onFavourite?.(item.kind, item.id)}><Star size={13} /><span>{item.label}</span></button>)}
     </section>}
     <div className="ex-sidebar-section">
-      <button onClick={() => props.onScope(index.rootKey)} className={scopeKey === index.rootKey && !query ? "is-current" : ""}>Catalogue</button>
+      <button onClick={() => props.onCatalogue ? props.onCatalogue() : props.onScope(index.rootKey)} className={scopeKey === index.rootKey && !query ? "is-current" : ""}>Catalogue</button>
       {catalogueGroups.length > 0 && <Popover.Root><Popover.Trigger asChild><button className="ex-group-trigger" aria-label="Browse catalogue groups"><Layers size={13} /><span>Catalogue groups</span></button></Popover.Trigger>
         <Popover.Portal><Popover.Content className="ex-popover ex-group-menu" side="bottom" align="end" sideOffset={8}>
           <strong>Catalogue groups</strong>{catalogueGroups.map((item) => <Popover.Close asChild key={item.id}>
@@ -90,7 +80,7 @@ export function ExplorerSidebar(props: Props) {
           : current?.kind === "root" ? `${index.counts.connections} ${index.counts.connections === 1 ? "broker" : "brokers"}${rows.some((row) => row.node.kind === "unassigned") ? " · unassigned entities" : ""}`
             : `${rows.length} ${rows.length === 1 ? "item" : "items"}${owner ? ` · ${owner.label}` : ""}`}</span>
       </div>
-      {current?.entityKind && !query && <button className="ex-icon-button" aria-label="Inspect current item" onClick={props.onInspect}><Info size={16} /></button>}
+      {current && current.kind !== "root" && !query && <button className="ex-icon-button" aria-label="Inspect current item" onClick={props.onInspect}><Info size={16} /></button>}
     </div>
     {props.loading ? <div className="ex-list-empty" role="status">Loading catalogue…</div>
       : <ExplorerList rows={rows} viewKey={resultsQuery.trim() ? `search:${resultsQuery}` : scopeKey} positions={positions}

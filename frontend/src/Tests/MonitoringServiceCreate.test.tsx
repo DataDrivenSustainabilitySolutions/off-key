@@ -60,7 +60,7 @@ describe("integrated monitor creation", () => {
 });
 
 
-it("restores the entire service draft after a Data sources detour", async () => {
+it("restores the entire service draft after a Sources detour", async () => {
   const router = createMemoryRouter([
     { path: "/", element: <MonitoringServiceCreate targets={[target]} services={[]} byStream={new Map()} initialTarget="room" initialReading="temperature" collectionReady draftKey="test-detour" onStarted={vi.fn()} onBack={vi.fn()} /> },
     { path: "/sources", element: <Link to="/?create=monitoring&reading=temperature">Return to service setup</Link> },
@@ -68,7 +68,7 @@ it("restores the entire service draft after a Data sources detour", async () => 
   render(<RouterProvider router={router} />);
   fireEvent.change(screen.getByRole("textbox", { name: "Service name" }), { target: { value: "Saved climate draft" } });
   fireEvent.change(await screen.findByLabelText("Warm-up samples"), { target: { value: "33" } });
-  fireEvent.click(screen.getByRole("link", { name: "Configure in Data sources" }));
+  fireEvent.click(screen.getByRole("link", { name: "Configure in Sources" }));
   fireEvent.click(await screen.findByRole("link", { name: "Return to service setup" }));
   await waitFor(() => expect((screen.getByRole("textbox", { name: "Service name" }) as HTMLInputElement).value).toBe("Saved climate draft"));
   expect((await screen.findByLabelText("Warm-up samples") as HTMLInputElement).value).toBe("33");

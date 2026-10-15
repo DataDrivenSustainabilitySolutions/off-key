@@ -51,6 +51,11 @@
 .ex-row { display: flex; width: 100%; padding: 13px 13px; gap: 10px; align-items: flex-start; text-align: left; border-radius: 7px; min-height: 69px; }
 .ex-row:hover { background: var(--ex-hover); }
 .ex-row.is-selected { background: var(--ex-active); }
+.ex-row-container { display: flex; align-items: stretch; min-width: 0; }
+.ex-row-container .ex-row { flex: 1; min-width: 0; }
+.ex-browse { flex-shrink: 0; min-width: 40px; display: flex; align-items: center; justify-content: center; border-radius: 7px; }
+.ex-browse:hover { background: var(--ex-hover); }
+@media (max-width: 760px) { .ex-browse { min-width: 44px; } }
 .ex-row-icon { color: var(--ex-muted); padding-top: 2px; flex-shrink: 0; }
 .ex-reading-activity { color: var(--ex-ink); }
 .ex-reading-activity svg { transform: scale(.75); transform-origin: center; }

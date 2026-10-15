@@ -62,7 +62,7 @@ export function MonitoringServiceCreate({ targets, services, initialTarget, init
       <div className="mn-field"><span>Inputs</span><MonitoringTargetPicker targets={targets} value={targetId} onChange={id => { setTargetId(id); }} /></div></div>
     {!targets.length && <p className="ex-muted">Add numeric readings to the catalogue to configure monitoring.</p>}
     {target && <>
-      <p className="ex-muted">{enabledInputs.length} recorded readings · <Link className="ex-collection-monitor" to={sourceHref(collectionIds, document, `${location.pathname}${location.search}`)}>Configure in Data sources</Link></p>
+      <p className="ex-muted">{enabledInputs.length} recorded readings · <Link className="ex-collection-monitor" to={sourceHref(collectionIds, document, `${location.pathname}${location.search}`)}>Configure in Sources</Link></p>
       {enabledInputs.length ? <>
         {!collectionReady && <p className="ex-muted">Waiting for collection to apply…</p>}
         <div className="mn-create-mode" aria-label="Monitoring strategy"><button aria-pressed={strategy === "adaptive_stream"} onClick={() => setStrategy("adaptive_stream")}>Adaptive stream</button>

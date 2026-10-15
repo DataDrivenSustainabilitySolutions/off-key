@@ -102,7 +102,7 @@ docker compose logs --tail 200 tactic-middleware
 ### Telemetry is not arriving
 
 1. Verify that the source publisher or simulator is active.
-2. Check the Data sources catalog, selected sensors, matching applied revisions and per-broker connection status.
+2. Check the Sources catalog, selected sensors, matching applied revisions and per-broker connection status.
 3. Check proxy health and readiness.
 4. Inspect proxy logs for parsing, authentication, or database-write errors.
 5. Query the Gateway telemetry endpoint.

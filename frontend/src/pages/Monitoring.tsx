@@ -111,7 +111,7 @@ function ChargerMonitoring({ chargerId, initialReading }: { chargerId: string; i
           title={`Monitoring · ${entityName ?? chargerId}`}
           actions={
             <Button variant="ghost" asChild>
-              <Link to="/sources">Data sources</Link>
+              <Link to="/sources">Sources</Link>
             </Button>
           }
         />

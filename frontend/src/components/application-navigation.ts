@@ -7,11 +7,11 @@ export type ApplicationNavItem = {
 };
 
 const monitoring: ApplicationNavItem = { href: "/", label: "Monitoring", icon: Home };
-const sources: ApplicationNavItem = { href: "/sources", label: "Data sources", icon: Database };
+const sources: ApplicationNavItem = { href: "/sources", label: "Sources", icon: Database };
 
 export const workspaceNavItems: ApplicationNavItem[] = [
   monitoring, sources,
-  { href: "/anomalies", label: "Anomalies", icon: AlertTriangle },
+  { href: "/anomalies", label: "Reporting", icon: AlertTriangle },
 ];
 
 export function isActiveApplicationPath(pathname: string, href: string) {

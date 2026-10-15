@@ -1,9 +1,11 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { createMemoryRouter, RouterProvider } from "react-router-dom";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { clearNavigationDrafts, rememberNavigation } from "@/lib/navigation-draft";
 import { SourcesWorkspace } from "@/features/catalogue/SourcesWorkspace";
-import { buildSourcesIndex, scopeForNode, scopeReadingIds } from "@/features/catalogue/collectionRules";
+import { ApplicationWorkspace } from "@/components/ApplicationWorkspace";
+import { recordingScopeReadingIds, scopeForNode, scopeReadingIds } from "@/features/catalogue/collectionRules";
+import { buildNavigationIndex } from "@/features/explorer/navigationIndex";
 import { createEmptySystem } from "@/features/catalogue/systemDocument";
 import { apiClient, apiUtils } from "@/lib/api-client";
 import type { SystemSnapshot } from "@/features/catalogue/systemTypes";
@@ -22,6 +24,10 @@ function fixture(): SystemSnapshot {
     bindings: Object.fromEntries(document.streams.map(stream => [stream.id, { entity_id: "entity", telemetry_key: stream.id, accepted_topic: `telemetry/entity/${stream.id}`, connection_id: "broker", policy: { mode: "off", interval_seconds: 10 } }])) } };
 }
 let saved: SystemSnapshot;
+beforeAll(async () => {
+  // Exercise inspector behaviour without timing the initial module transform.
+  await import("@/features/explorer/ExplorerPreview");
+});
 beforeEach(() => {
   localStorage.clear(); clearNavigationDrafts(); vi.clearAllMocks(); saved = fixture();
   vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() })));
@@ -36,13 +42,15 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); vi.useRealTimers(); vi.unstubAllGlobals(); });
 function mount(path = "/sources") {
-  const router = createMemoryRouter([{ path: "/sources", element: <SourcesWorkspace /> }, { path: "/", element: <h1>Monitoring home</h1> }], { initialEntries: [path] });
+  const router = createMemoryRouter([{ element: <ApplicationWorkspace />, children: [
+    { path: "/sources", element: <SourcesWorkspace /> }, { path: "/", element: <h1>Monitoring home</h1> },
+  ] }], { initialEntries: [path] });
   render(<RouterProvider router={router} />);
   return router;
 }
 
-describe("dedicated Data sources configuration", () => {
-  it("preserves another broker's activity through scoped polling and expires a superseded recording revision", async () => {
+describe("dedicated Sources configuration", () => {
+  it("polls the shared catalogue across brokers and expires a superseded recording revision", async () => {
     vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
     saved.document.connections.push({ ...saved.document.connections[0]!, id: "remote", label: "Remote broker" });
     saved.document.streams.push({ ...saved.document.streams[0]!, id: "remote-value", label: "Remote reading", connection_id: "remote" });
@@ -54,8 +62,10 @@ describe("dedicated Data sources configuration", () => {
     vi.mocked(apiUtils.post).mockImplementation(async endpoint => {
       expect(endpoint).toBe("/v1/system/collection/status");
       return { revision: saved.revision, runtime: { ...saved.runtime, collection_revision: collectionRevision,
-        bindings: { temperature: saved.runtime.bindings!.temperature, power: saved.runtime.bindings!.power },
-        ingress: { revision: collectionRevision, status: "applied", sources: {}, readings: {} } } };
+        bindings: saved.runtime.bindings,
+        ingress: { revision: collectionRevision, status: "applied",
+          sources: collectionRevision === 4 ? saved.runtime.ingress?.sources : {},
+          readings: collectionRevision === 4 ? saved.runtime.ingress?.readings : {} } } };
     });
     mount("/sources?broker=broker");
     await screen.findByLabelText("Recording policy");
@@ -63,7 +73,7 @@ describe("dedicated Data sources configuration", () => {
     const row = await screen.findByRole("button", { name: "Remote reading, preview" });
     expect(row.querySelector("svg")?.getAttribute("fill")).toBe("currentColor");
     await act(async () => { vi.advanceTimersByTime(5000); });
-    expect(apiUtils.post).toHaveBeenCalledWith("/v1/system/collection/status", { stream_ids: ["temperature", "power"] }, expect.anything());
+    expect(apiUtils.post).toHaveBeenCalledWith("/v1/system/collection/status", { stream_ids: ["temperature", "power", "remote-value"] }, expect.anything());
     expect(row.querySelector("svg")?.getAttribute("fill")).toBe("currentColor");
     collectionRevision = 5;
     await act(async () => { vi.advanceTimersByTime(5000); });
@@ -86,15 +96,15 @@ describe("dedicated Data sources configuration", () => {
   it("opens an overview without an automatic settings modal or MQTT connection", async () => {
     mount();
     await screen.findByRole("button", { name: "Workshop broker, open" });
-    expect(screen.getByRole("heading", { name: "Data sources" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Sources" })).toBeTruthy();
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(apiUtils.post).not.toHaveBeenCalled();
   });
 
-  it("returns through the left navigation to the previously inspected Monitoring URL", async () => {
+  it("returns through the navbar to the previously inspected Monitoring URL", async () => {
     rememberNavigation("monitoring:1:url", "/?service=retained-service&tab=evidence&stream=temperature");
     const router = mount();
-    await screen.findByRole("heading", { name: "Data sources" });
+    await screen.findByRole("heading", { name: "Sources" });
     const link = within(screen.getByRole("group", { name: "Workspaces" })).getByRole("link", { name: "Monitoring" });
     fireEvent.click(link);
     await waitFor(() => expect(router.state.location.search).toBe("?service=retained-service&tab=evidence&stream=temperature"));
@@ -104,17 +114,20 @@ describe("dedicated Data sources configuration", () => {
     rememberNavigation("monitoring:1:url", "/?service=another-monitor");
     const returnTo = "/?create=monitoring&reading=temperature";
     const router = mount(`/sources?broker=broker&returnTo=${encodeURIComponent(returnTo)}`);
-    await screen.findByRole("heading", { name: "Data sources" });
+    await screen.findByRole("heading", { name: "Sources" });
     const monitoring = within(screen.getByRole("group", { name: "Workspaces" })).getByRole("link", { name: "Monitoring" });
-    expect(monitoring.getAttribute("href")).toBe(returnTo);
+    const target = new URL(monitoring.getAttribute("href")!, "https://workspace.invalid");
+    expect(target.searchParams.get("create")).toBe("monitoring");
+    expect(target.searchParams.get("reading")).toBe("temperature");
+    expect(target.searchParams.has("source")).toBe(true);
     fireEvent.click(monitoring);
     await screen.findByRole("heading", { name: "Monitoring home" });
-    expect(router.state.location.search).toBe("?create=monitoring&reading=temperature");
+    expect(new URLSearchParams(router.state.location.search).get("reading")).toBe("temperature");
   });
 
-  it("opens an existing entity definition in Data sources without creating or saving anything", async () => {
+  it("opens an existing entity definition in Sources without creating or saving anything", async () => {
     mount();
-    await screen.findByRole("heading", { name: "Data sources" });
+    await screen.findByRole("heading", { name: "Sources" });
     fireEvent.click(screen.getByRole("button", { name: "Catalogue settings" }));
     const chooser = await screen.findByLabelText("Edit entity");
     fireEvent.change(chooser, { target: { value: "room" } });
@@ -129,7 +142,7 @@ describe("dedicated Data sources configuration", () => {
   it("keeps entity editing disabled for members without catalogue edit access", async () => {
     saved.can_edit = false;
     mount();
-    await screen.findByRole("heading", { name: "Data sources" });
+    await screen.findByRole("heading", { name: "Sources" });
     fireEvent.click(screen.getByRole("button", { name: "Catalogue settings" }));
     expect((await screen.findByLabelText("Edit entity")).hasAttribute("disabled")).toBe(true);
     expect(apiClient.put).not.toHaveBeenCalled();
@@ -228,16 +241,16 @@ describe("dedicated Data sources configuration", () => {
     expect(screen.queryByRole("button", { name: "Add broker" })).toBeNull();
   });
 
-  it("merges topic hierarchy across devices and distinguishes whole topics from fields", () => {
+  it("keeps entities in the shared hierarchy while topic recording rules cover the entire broker", () => {
     const document = fixture().document;
     document.devices.push({ id: "other", label: "Other station", kind: "sensor" });
     document.streams.push({ ...document.streams[0]!, id: "field", device_id: "other", payload_pointer: "/other" });
-    const index = buildSourcesIndex(document);
-    const branch = [...index.nodes.values()].find(node => node.topic === "building/floor1" && node.kind === "topic")!;
-    expect(scopeReadingIds(index, branch).sort()).toEqual(["field", "power", "temperature"]);
-    expect([...index.nodes.values()].some(node => node.kind === "device")).toBe(false);
-    const topic = [...index.nodes.values()].find(node => node.topic === "building/floor1/temperature" && node.kind === "topic")!;
-    expect(scopeForNode(topic)?.kind).toBe("topic");
-    expect(topic.children).toHaveLength(2);
+    const index = buildNavigationIndex(document);
+    const branch = [...index.nodes.values()].find(node => node.topic === "building/floor1" && node.kind === "topic" && node.deviceId === "room")!;
+    expect(scopeReadingIds(index, branch).sort()).toEqual(["power", "temperature"]);
+    expect(recordingScopeReadingIds(document, branch).sort()).toEqual(["field", "power", "temperature"]);
+    expect([...index.nodes.values()].some(node => node.kind === "device")).toBe(true);
+    const reading = index.nodes.get(index.objectKeys.get("field")![0]!)!;
+    expect(scopeForNode(reading)).toMatchObject({ kind: "reading", reading_id: "field" });
   });
 });

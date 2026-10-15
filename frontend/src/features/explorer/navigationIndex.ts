@@ -226,7 +226,7 @@ export function buildNavigationIndex(document: SystemDocument, options: { readin
     const ancestry = contextKey
       ? orderedNodes.get(contextKey)?.searchText ?? ""
       : node.parentKey ? orderedNodes.get(node.parentKey)?.searchText ?? "" : "";
-    node.searchText = [ancestry, node.label, node.topic ?? "", ...(bindingSearch.get(node.key) ?? [])].join(" ").toLocaleLowerCase();
+    node.searchText = [ancestry, node.label, node.objectId ?? "", node.deviceId ?? "", node.connectionId ?? "", node.topic ?? "", ...(bindingSearch.get(node.key) ?? [])].join(" ").toLocaleLowerCase();
     orderedNodes.set(node.key, node);
     for (let position = node.children.length - 1; position >= 0; position -= 1) {
       stack.push(nodes.get(node.children[position]!)!);

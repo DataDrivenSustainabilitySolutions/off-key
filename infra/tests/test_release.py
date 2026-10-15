@@ -32,6 +32,21 @@ release = load("pin_release")
 
 
 class ReleaseTests(unittest.TestCase):
+    def test_every_release_gate_completion_rechecks_production_deployment(self):
+        workflows = ROOT.parent / ".github/workflows"
+        deployment = yaml.load(
+            (workflows / "deploy-production.yml").read_text(), Loader=yaml.BaseLoader
+        )
+        trigger = deployment["on"]["workflow_run"]
+        self.assertIn("completed", trigger["types"])
+        self.assertIn("main", trigger["branches"])
+        for filename in release.REQUIRED_WORKFLOWS:
+            with self.subTest(workflow=filename):
+                gate = yaml.load(
+                    (workflows / filename).read_text(), Loader=yaml.BaseLoader
+                )
+                self.assertIn(gate["name"], trigger["workflows"])
+
     def test_required_workflows_run_on_every_main_push(self):
         for filename in release.REQUIRED_WORKFLOWS:
             with self.subTest(workflow=filename):

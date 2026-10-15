@@ -223,3 +223,12 @@ Published: PR #305, "Fix RADAR monitoring reliability under production workloads
 https://github.com/DataDrivenSustainabilitySolutions/off-key/pull/305. The branch
 is pushed and the PR is attached to this task. Owned integration services,
 containers and networks have been removed; unrelated local deployments remain.
+
+Merge follow-up: PR #304 (a6e940a) is incorporated before merging #305. Its mobile
+catalogue icon and removed landing caption have no conflicting RADAR changes;
+all 609 combined frontend tests, lint and production build pass. A final release
+integration check reproduced a missed deployment wake-up when RADAR CI finished
+last. Production now subscribes to every required release workflow completion;
+the cross-file regression fails before the fix and all 16 Linux release tests
+pass afterward. Check the combined PR head and watch both main-branch pipelines
+when completing the merge.

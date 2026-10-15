@@ -32,6 +32,11 @@ npm --prefix frontend run build
 
 Expected result: no lint errors, passing tests, and a successful production build.
 
+The member-management browser journeys read invitation links from the local mail
+sink. Set `MAILPIT_BASE_URL` to its reachable HTTP endpoint when using custom ports.
+The disposable production Swarm rehearsal publishes its SMTP fixture's API on
+port `8025` and supplies `MAILPIT_BASE_URL=http://127.0.0.1:8025` in `smoke.env`.
+
 ### Repository pre-commit gate
 
 ```bash

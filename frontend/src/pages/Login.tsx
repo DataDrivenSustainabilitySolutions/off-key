@@ -167,12 +167,10 @@ const Login: React.FC = () => {
             id="remember"
             className="accent-primary"
             checked={rememberMe}
-            aria-describedby="remember-hint"
             onChange={(e) => setRememberMe(e.target.checked)}
           />
           <label htmlFor="remember">Remember this device</label>
         </div>
-        <p id="remember-hint" className="text-xs text-muted-foreground">Keep this browser signed in for up to 30 days.</p>
 
         {/* Login Button */}
         <Button

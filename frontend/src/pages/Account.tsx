@@ -69,7 +69,7 @@ export default function AccountPage() {
     <>
       <PageShell>
         <PageHeader title="Account" />
-        <SectionPanel title="Your access" help="Members can view all organization data. Administrators manage access, collection, and monitoring.">
+        <SectionPanel title="Access control" help="Members can view organization data. Administrators also manage member access, collection, and monitoring.">
           <p className="break-words text-sm">{member?.email} · {isAdmin ? "Administrator" : "Member"}</p>
         </SectionPanel>
         {isAdmin && (

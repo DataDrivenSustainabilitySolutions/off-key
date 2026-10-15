@@ -37,10 +37,10 @@ it("shows member access without offering administrator controls", async () => {
   expect(screen.queryByRole("button", { name: "Send invitation" })).toBeNull();
   expect(getMembers).not.toHaveBeenCalled();
   expect(screen.getByRole("heading", { name: "Account" }).tagName).toBe("H1");
-  expect(screen.getByRole("heading", { name: "Your access" })).toBeTruthy();
+  expect(screen.getByRole("heading", { name: "Access control" })).toBeTruthy();
   expect(screen.queryByRole("button", { name: "Remove" })).toBeNull();
-  fireEvent.click(screen.getByRole("button", { name: "About Your access" }));
-  expect((await screen.findByRole("tooltip")).textContent).toContain("Members can view all organization data");
+  fireEvent.click(screen.getByRole("button", { name: "About Access control" }));
+  expect((await screen.findByRole("tooltip")).textContent).toContain("Members can view organization data");
 });
 
 it("invites colleagues and updates their role", async () => {

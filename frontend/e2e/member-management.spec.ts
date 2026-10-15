@@ -9,7 +9,7 @@ const mailpit = process.env.MAILPIT_BASE_URL ?? "http://localhost:8025";
 
 async function accountFixture(page: Page) {
   await page.goto("/account");
-  await expect(page.getByRole("heading", { name: "Your access", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Access control", exact: true })).toBeVisible();
   const token = await page.evaluate(() => localStorage.getItem("auth_token"));
   expect(token).toBeTruthy();
   const headers = { Authorization: `Bearer ${token}` };
@@ -134,7 +134,7 @@ test("removes a disabled invitation after confirmation and retains shared data",
     await expect(page.getByRole("list", { name: "Members", exact: true })).toBeFocused();
     await expect(page.getByRole("status")).toContainText("has been removed");
     await page.reload();
-    await expect(page.getByRole("heading", { name: "Your access", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Access control", exact: true })).toBeVisible();
     await expect(fixture.row).toHaveCount(0);
     const retained = await page.request.get("/api/v1/system", { headers: fixture.headers });
     expect(retained.ok()).toBe(true);
@@ -156,7 +156,7 @@ test("enforces current access during removal and keeps previous sessions invalid
     const oldHeaders = { Authorization: `Bearer ${oldToken}` };
     expect((await memberContext.cookies()).some(cookie => cookie.name === "off_key_remembered_session")).toBe(true);
     await memberPage.goto(new URL("/account", page.url()).href);
-    await expect(memberPage.getByRole("heading", { name: "Your access", exact: true })).toBeVisible();
+    await expect(memberPage.getByRole("heading", { name: "Access control", exact: true })).toBeVisible();
     await expect(memberPage.getByRole("heading", { name: "Members", exact: true })).toHaveCount(0);
     const forbidden = await memberPage.request.delete(new URL(`/api/v1/members/${initial.id}`, page.url()).href, { headers: oldHeaders });
     expect(forbidden.status()).toBe(403);

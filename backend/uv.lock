@@ -1262,6 +1262,15 @@ wheels = [
 ]
 
 [[package]]
+name = "janus"
+version = "2.0.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/d8/7f/69884b6618be4baf6ebcacc716ee8680a842428a19f403db6d1c0bb990aa/janus-2.0.0.tar.gz", hash = "sha256:0970f38e0e725400496c834a368a67ee551dc3b5ad0a257e132f5b46f2e77770", size = 22910, upload-time = "2024-12-13T12:59:08.622Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/68/34/65604740edcb20e1bda6a890348ed7d282e7dd23aa00401cbe36fd0edbd9/janus-2.0.0-py3-none-any.whl", hash = "sha256:7e6449d34eab04cd016befbd7d8c0d8acaaaab67cb59e076a69149f9031745f9", size = 12161, upload-time = "2024-12-13T12:59:06.106Z" },
+]
+
+[[package]]
 name = "jinja2"
 version = "3.1.6"
 source = { registry = "https://pypi.org/simple" }
@@ -1995,6 +2004,7 @@ source = { editable = "services/mqtt/radar" }
 dependencies = [
     { name = "aberrant", extra = ["faiss"] },
     { name = "asyncpg" },
+    { name = "janus" },
     { name = "nonconform", extra = ["pyod"] },
     { name = "numpy" },
     { name = "off-key-core" },
@@ -2009,10 +2019,11 @@ dependencies = [
 requires-dist = [
     { name = "aberrant", extras = ["faiss"], specifier = "==1.1.0" },
     { name = "asyncpg", specifier = ">=0.28.0" },
+    { name = "janus", specifier = ">=2,<3" },
     { name = "nonconform", extras = ["pyod"], specifier = ">=1.0.0,<2" },
     { name = "numpy", specifier = ">=1.24.0" },
     { name = "off-key-core", editable = "libs/core" },
-    { name = "paho-mqtt", specifier = ">=1.6.0" },
+    { name = "paho-mqtt", specifier = ">=2.1,<3" },
     { name = "psutil", specifier = ">=5.9.0" },
     { name = "pydantic-settings", specifier = ">=2.0.0" },
     { name = "python-dotenv", specifier = ">=1.0.0" },

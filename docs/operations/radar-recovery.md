@@ -39,3 +39,11 @@ sensor frames, and requires new sensor observations. Recovery metadata is includ
 in the worker health metrics and persisted operational status. These guarantees
 depend on the PostgreSQL deployment retaining its data; a node-local worker volume
 is not required.
+
+Managed workers serialize feature processing, inference, model health refresh and
+checkpoint encoding on one dedicated model thread. The event loop persists
+evidence and reports health from complete cached detector snapshots. A slow model
+cannot create concurrent inference or prevent the health loop from observing a
+stall. Cancellation waits for the active model operation before taking the final
+snapshot. The MQTT network thread admits messages into a bounded Janus queue,
+without scheduling one unbounded asyncio callback per incoming observation.

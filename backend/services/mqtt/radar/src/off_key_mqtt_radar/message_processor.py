@@ -8,6 +8,7 @@ Handles MQTT message processing pipeline:
 - Result persistence
 """
 
+import asyncio
 import time
 from datetime import UTC, datetime
 from typing import Any
@@ -87,6 +88,7 @@ class MessageProcessor:
         self.anomaly_count = 0
         self.error_count = 0
         self.last_alignment_status: str | None = None
+        self._async_processing_lock = asyncio.Lock()
 
         self._log_context = {"component": "message_processor"}
 
@@ -100,6 +102,18 @@ class MessageProcessor:
         return normalized
 
     async def process_message(self, message: MQTTMessage) -> AnomalyResult | None:
+        """Standalone async entry point; managed workers use their serial owner."""
+        async with self._async_processing_lock:
+            operation = asyncio.create_task(
+                asyncio.to_thread(self.process_message_sync, message)
+            )
+            try:
+                return await asyncio.shield(operation)
+            except asyncio.CancelledError:
+                await operation
+                raise
+
+    def process_message_sync(self, message: MQTTMessage) -> AnomalyResult | None:
         """
         Process an MQTT message through the detection pipeline.
 

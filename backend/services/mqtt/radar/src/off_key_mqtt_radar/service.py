@@ -26,6 +26,7 @@ from .config.config import AnomalyDetectionConfig, get_radar_settings
 from .config.runtime import get_radar_checkpoint_settings
 from .database import DatabaseWriter, ensure_radar_metrics_tables
 from .detector import StaticConformalDetectionService
+from .detector_runtime import DetectorRuntime
 from .feature_validation import TelemetryFeatureValidator
 from .health_monitor import HealthMonitor
 from .memory import MemoryManager
@@ -85,6 +86,7 @@ class RadarService:
         self.start_time: datetime | None = None
         self.shutdown_event = asyncio.Event()
         self._processing_lock = asyncio.Lock()
+        self._detector_runtime: DetectorRuntime | None = None
         self._checkpoint_task: asyncio.Task | None = None
         self._checkpoint_codec: RuntimeCheckpointCodec | None = None
         self._checkpoint_ready = False
@@ -146,6 +148,8 @@ class RadarService:
 
             # Initialize anomaly detection
             await self._setup_anomaly_detection()
+            self._detector_runtime = DetectorRuntime(self.detector)
+            await self._detector_runtime.refresh()
 
             # Initialize message processor
             self.message_processor = MessageProcessor(
@@ -164,14 +168,13 @@ class RadarService:
 
             # Initialize MQTT client
             await self._setup_mqtt_client()
-            if self._checkpoint_codec is not None:
-                self._checkpoint_task = asyncio.create_task(self._checkpoint_loop())
+            self._checkpoint_task = asyncio.create_task(self._checkpoint_loop())
 
             # Start health monitoring with component references
             self.health_monitor.set_components(
                 mqtt_client=self.mqtt_client,
                 database_writer=self.database_writer,
-                detector=self.detector,
+                detector=self._detector_runtime,
                 memory_manager=self.memory_manager,
                 message_processor=self.message_processor,
                 recovery_status=lambda: self.recovery_status,
@@ -194,7 +197,7 @@ class RadarService:
                 },
             )
 
-        except Exception as e:
+        except BaseException as e:
             logger.error(
                 "event=radar.start_failed error=%s",
                 str(e),
@@ -231,6 +234,7 @@ class RadarService:
 
         # Stop components in reverse order
         components = [
+            ("detector_runtime", getattr(self, "_detector_runtime", None)),
             ("detector", self.detector),
             ("database_writer", self.database_writer),
         ]
@@ -260,6 +264,7 @@ class RadarService:
         self.detector = None
         self.database_writer = None
         self.message_processor = None
+        self._detector_runtime = None
 
         # Cleanup checkpoint lock file using extracted manager
         self.checkpoint_manager.cleanup_lock()
@@ -460,7 +465,12 @@ class RadarService:
 
         try:
             # Delegate to message processor
-            result = await self.message_processor.process_message(message)
+            runtime = getattr(self, "_detector_runtime", None)
+            result = (
+                await runtime.call(self.message_processor.process_message_sync, message)
+                if runtime is not None
+                else await self.message_processor.process_message(message)
+            )
 
             if result:
                 # Record processing time in health monitor
@@ -483,6 +493,36 @@ class RadarService:
         codec = getattr(self, "_checkpoint_codec", None)
         if codec is None or not self._checkpoint_ready:
             return
+        runtime = getattr(self, "_detector_runtime", None)
+        captured = (
+            await runtime.call(self._freeze_checkpoint, force)
+            if runtime is not None
+            else self._freeze_checkpoint(force)
+        )
+        if captured is None:
+            return
+        checkpoint, processor, phase, gap = captured
+        async with asyncio.timeout(
+            get_radar_checkpoint_settings().RADAR_CHECKPOINT_TIMEOUT_SECONDS
+        ):
+            await self.database_writer.commit_checkpoint(checkpoint)
+        # All model operations are serialized under _processing_lock. The model
+        # executor is idle while this durable progress marker is published.
+        self.detector.primary_service.last_checkpoint = checkpoint["processed_count"]
+        self._checkpoint_phase = phase
+        self._checkpoint_gap = gap
+        self._checkpoint_saved_monotonic = time.monotonic()
+        self._checkpoint_received_count = processor.received_message_count
+        self.recovery_status.update(
+            saved_processed_count=checkpoint["processed_count"],
+            saved_at=checkpoint["saved_at"].isoformat(),
+            maximum_normal_rollback_samples=self.config.checkpoint_interval,
+            input_recovery="live_only_with_possible_gap",
+        )
+
+    def _freeze_checkpoint(self, force: bool):
+        """Run model refresh and byte serialization on the serial model owner."""
+        codec = self._checkpoint_codec
         primary = self.detector.primary_service
         refresh = getattr(primary, "refresh_background_state", None)
         if refresh is not None:
@@ -520,7 +560,7 @@ class RadarService:
             or gap != self._checkpoint_gap
             or phase != self._checkpoint_phase
         ):
-            return
+            return None
         processor = ProcessorCheckpoint.model_validate(
             {
                 name: getattr(self.message_processor, name)
@@ -534,21 +574,7 @@ class RadarService:
                 coverage=CoverageCheckpoint(data=coverage_state),
             )
         )
-        async with asyncio.timeout(
-            get_radar_checkpoint_settings().RADAR_CHECKPOINT_TIMEOUT_SECONDS
-        ):
-            await self.database_writer.commit_checkpoint(checkpoint)
-        primary.last_checkpoint = state["processed_count"]
-        self._checkpoint_phase = phase
-        self._checkpoint_gap = gap
-        self._checkpoint_saved_monotonic = time.monotonic()
-        self._checkpoint_received_count = processor.received_message_count
-        self.recovery_status.update(
-            saved_processed_count=state["processed_count"],
-            saved_at=checkpoint["saved_at"].isoformat(),
-            maximum_normal_rollback_samples=self.config.checkpoint_interval,
-            input_recovery="live_only_with_possible_gap",
-        )
+        return checkpoint, processor, phase, gap
 
     async def _checkpoint_loop(self) -> None:
         """Persist background fit transitions even when no new input arrives."""
@@ -556,7 +582,10 @@ class RadarService:
             while not self.shutdown_event.is_set():
                 await asyncio.sleep(min(self.config.health_check_interval, 5.0))
                 async with self._processing_lock:
-                    await self._checkpoint_if_due()
+                    if self._checkpoint_codec is not None:
+                        await self._checkpoint_if_due()
+                    elif self._detector_runtime is not None:
+                        await self._detector_runtime.refresh()
         except asyncio.CancelledError:
             raise
         except Exception as error:

@@ -13,8 +13,10 @@ from collections import deque
 from collections.abc import Awaitable, Callable
 from contextlib import suppress
 from datetime import UTC, datetime
+from threading import Lock
 from typing import Any
 
+import janus
 import paho.mqtt.client as mqtt
 from off_key_core.config.logging import get_logging_settings
 from off_key_core.config.logs import logger
@@ -48,7 +50,9 @@ class RadarMQTTClient:
         self.reconnect_delay = 5.0  # seconds
 
         # Message processing
-        self.message_queue = asyncio.Queue(maxsize=config.max_queue_size)
+        self._message_bridge = janus.Queue(maxsize=config.max_queue_size)
+        self.message_queue = self._message_bridge.async_q
+        self._ingress_lock = Lock()
         self.message_count = 0
         self.error_count = 0
 
@@ -89,6 +93,9 @@ class RadarMQTTClient:
         """Start the MQTT client and message processing"""
         self._loop = asyncio.get_running_loop()
         self._shutdown_event.clear()
+        if self._message_bridge.closed:
+            self._message_bridge = janus.Queue(maxsize=self.config.max_queue_size)
+            self.message_queue = self._message_bridge.async_q
 
         # Start message processor
         self._message_processor_task = asyncio.create_task(self._message_processor())
@@ -126,6 +133,11 @@ class RadarMQTTClient:
                 await self._message_processor_task
 
         self.is_connected = False
+        if not self._message_bridge.closed:
+            pending = self.message_queue.qsize()
+            if pending:
+                self.coverage.record_drop("shutdown_queue", pending)
+            await self._message_bridge.aclose()
         self._emit_drop_summary(force=True)
         logger.info("event=radar.mqtt_client_stopped")
 
@@ -340,10 +352,14 @@ class RadarMQTTClient:
 
     def _on_message(self, client, userdata, msg):
         """MQTT message callback"""
-        if not self._loop:
+        if self._shutdown_event.is_set():
+            return
+        if not self._loop or self._loop.is_closed():
             self.coverage.record_received()
             self.coverage.record_drop("loop_unavailable")
             logger.debug("Asyncio loop not ready, dropping incoming MQTT message")
+            return
+        if client is not self.client:
             return
 
         message = MQTTMessage(
@@ -352,20 +368,24 @@ class RadarMQTTClient:
             qos=msg.qos,
             retain=msg.retain,
             timestamp=datetime.now(UTC),
+            received_monotonic=time.monotonic(),
         )
-
-        try:
-            self._loop.call_soon_threadsafe(
-                lambda: self._handle_incoming_message(message)
-            )
-        except RuntimeError:
-            self.coverage.record_received()
-            self.coverage.record_drop("loop_unavailable")
+        # Admission happens on Paho's thread before any event-loop notification.
+        # Janus bounds stored messages and wakes only waiting async consumers.
+        self._handle_incoming_message(message)
 
     def _handle_incoming_message(self, message: MQTTMessage):
-        """Handle MQTT message on the asyncio event loop thread"""
+        """Bound admission before crossing from the network thread to asyncio."""
+        with self._ingress_lock:
+            self._accept_incoming_message(message)
+
+    def _accept_incoming_message(self, message: MQTTMessage):
         self.coverage.record_received()
         try:
+            if len(message.payload) > self.config.max_payload_bytes:
+                self.coverage.record_drop("payload_too_large")
+                self.error_count += 1
+                return
             current_time = time.monotonic()
 
             # Remove old entries (older than 1 minute)
@@ -386,10 +406,10 @@ class RadarMQTTClient:
                 self.rate_limiter.append(current_time)
 
             try:
-                self.message_queue.put_nowait(message)
+                self._message_bridge.sync_q.put_nowait(message)
                 self.message_count += 1
                 self.last_message_time = datetime.now()
-            except asyncio.QueueFull:
+            except janus.SyncQueueFull:
                 self._drop_counts["queue_full"] += 1
                 self.coverage.record_drop("queue_full")
                 self._emit_drop_summary()
@@ -445,6 +465,7 @@ class RadarMQTTClient:
                         )
 
                     self._emit_heartbeat()
+                    self.message_queue.task_done()
 
                 except TimeoutError:
                     self._emit_heartbeat()

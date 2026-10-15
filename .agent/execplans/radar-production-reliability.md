@@ -26,7 +26,7 @@ validated observation time as well as receipt time.
 - [ ] 6. Degrade health when required input or successful inference stops progressing.
 - [x] 7. Require successful SUBACKs before readiness, including reconnects.
 - [ ] 8. Move external workload inspection outside database locks/transactions.
-- [ ] 9. Bound thread-to-loop ingestion and run detector work serially off the loop.
+- [x] 9. Bound thread-to-loop ingestion and run detector work serially off the loop.
 - [ ] 10. Validate observation age, regression, duplicates and cross-sensor skew.
 - [ ] Reconcile runtime resource budgets, documentation and deployment contracts.
 - [ ] Run real MQTT/PostgreSQL/Swarm integration, affected root checks and review.
@@ -102,3 +102,13 @@ Validation: 88 lifecycle/upgrade tests including real TimescaleDB and Swarm, plu
 an isolated RADAR-only environment import test. Migration 009 is additive; the
 historical catalogue converter runs after additive DDL in the same transaction
 without changing its recorded checksum.
+
+Step 9: A bounded Janus bridge admits at most 256 messages of 64 KiB by default
+before asyncio notification; oversize/overflow/shutdown losses are counted. One
+dedicated model thread owns processing, health refresh and snapshot encoding;
+health reads complete cached snapshots without waiting for that thread. Shutdown
+waits for in-flight model/evidence work. Validation: 44 MQTT regressions including
+real broker bursts; a 20,000-observation paused-loop burst holds eight queued
+messages/eight wakeups with an eight-entry queue; real detector serial ownership,
+34 processor/lifecycle regressions, and 16 checkpoint/runtime tests (real DB and
+replacement processes) pass.

@@ -103,7 +103,8 @@ class MQTTRadarConfig(AnomalyDetectionConfig):
 
     # Performance
     worker_threads: int = 4
-    max_queue_size: int = Field(default=10000, gt=0)
+    max_queue_size: int = Field(default=256, gt=0, le=10000)
+    max_payload_bytes: int = Field(default=65536, gt=0, le=1048576)
 
     # Security
     # Zero accepts every observation until the bounded ingestion queue is full.
@@ -158,6 +159,8 @@ class RadarSettings(BaseSettings):
     # Performance
     RADAR_BATCH_SIZE: int = 100
     RADAR_BATCH_TIMEOUT: float = 1.0
+    RADAR_MAX_QUEUE_SIZE: int = Field(default=256, gt=0, le=10000)
+    RADAR_MAX_PAYLOAD_BYTES: int = Field(default=65536, gt=0, le=1048576)
     RADAR_MEMORY_LIMIT_MB: int = 1000
     RADAR_CHECKPOINT_INTERVAL: int = 10000
 
@@ -273,6 +276,8 @@ class RadarSettings(BaseSettings):
             monitoring=monitoring,
             batch_size=self.RADAR_BATCH_SIZE,
             batch_timeout=self.RADAR_BATCH_TIMEOUT,
+            max_queue_size=self.RADAR_MAX_QUEUE_SIZE,
+            max_payload_bytes=self.RADAR_MAX_PAYLOAD_BYTES,
             checkpoint_interval=self.RADAR_CHECKPOINT_INTERVAL,
         )
 

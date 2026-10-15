@@ -132,7 +132,7 @@ database backup on the database server, upgrades the schema, captures existing
 monitor settings, stops their old workers, deploys the exact images and restarts the
 monitors with fresh calibration. Original telemetry and evidence stay in the database.
 
-Watch the workflow result, then check the website, login, Data sources and monitor
+Watch the workflow result, then check the website, login, Sources and monitor
 status yourself. Quiet chargers may show waiting for data. On the manager,
 `/opt/stacks/off-key/release.json` must name this commit, and
 `release-maintenance.json` must be gone. The runtime database operation must be

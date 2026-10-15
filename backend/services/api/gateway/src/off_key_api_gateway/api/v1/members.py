@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException, Response
 from off_key_core.config.logs import logger
 from off_key_core.schemas.members import MemberInvitation, MemberProfile, MemberUpdate
 from off_key_core.utils.mail import send_invitation_email
@@ -64,3 +64,14 @@ async def update_member(
         authorization,
         change.model_dump(mode="json"),
     )
+
+
+@router.delete(
+    "/{user_id}",
+    status_code=204,
+    response_class=Response,
+    dependencies=[Depends(require_admin)],
+)
+async def remove_member(user_id: int, authorization: str = Header()):
+    await member_request("DELETE", f"/{user_id}", authorization)
+    return Response(status_code=204)

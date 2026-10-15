@@ -2,14 +2,11 @@
 
 import asyncio
 import hashlib
-import os
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
-from uuid import uuid4
 
 import pytest
-import pytest_asyncio
 from fastapi import FastAPI, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials
 from httpx import ASGITransport, AsyncClient
@@ -35,35 +32,10 @@ from off_key_tactic_middleware.services.remembered_sessions import (
     RememberedSessionService,
 )
 from sqlalchemy import select, text
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from .test_gateway_auth_token_types import _set_auth_env
 
 PASSWORD = "correct horse battery staple"
-
-
-@pytest_asyncio.fixture
-async def member_database():
-    url = os.getenv("TEST_SCHEMA_DATABASE_URL")
-    if not url:
-        pytest.skip("TEST_SCHEMA_DATABASE_URL must point to a disposable database")
-    schema = "members_" + uuid4().hex
-    admin = create_async_engine(url)
-    async with admin.begin() as connection:
-        await connection.execute(text(f"CREATE SCHEMA {schema}"))
-    engine = create_async_engine(
-        url, connect_args={"server_settings": {"search_path": schema}}
-    )
-    try:
-        async with engine.begin() as connection:
-            await connection.run_sync(User.__table__.create)
-            await connection.run_sync(RememberedSession.__table__.create)
-        yield engine, async_sessionmaker(engine, expire_on_commit=False)
-    finally:
-        await engine.dispose()
-        async with admin.begin() as connection:
-            await connection.execute(text(f"DROP SCHEMA {schema} CASCADE"))
-        await admin.dispose()
 
 
 async def bootstrap(sessions):
@@ -328,9 +300,7 @@ async def test_invitation_reset_and_immediate_session_revocation(
     )
     async with sessions() as session:
         assert (await current_member(credential, session)).id == claims["id"]
-        reset = await MemberService(session).request_password_reset(
-            "member@example.com"
-        )
+        reset = await MemberService(session).issue_reset_token("member@example.com")
         await MemberService(session).reset_password(reset["token"], PASSWORD)
         with pytest.raises(ValidationError):
             await MemberService(session).reset_password(reset["token"], PASSWORD)
@@ -361,8 +331,7 @@ async def test_invitation_reset_and_immediate_session_revocation(
             await current_member(credential, session)
         assert denied.value.status_code == 401
         assert (
-            await MemberService(session).request_password_reset("member@example.com")
-            is None
+            await MemberService(session).issue_reset_token("member@example.com") is None
         )
     with pytest.raises(AuthenticationError):
         await login()
@@ -402,7 +371,7 @@ async def test_expired_links_and_last_administrator_race(member_database):
         other_id = (
             await session.scalar(select(User).where(User.email == invitation["email"]))
         ).id
-        reset = await service.request_password_reset("other@example.com")
+        reset = await service.issue_reset_token("other@example.com")
         pending = await session.get(User, other_id)
         pending.reset_token_expires_at = datetime.now(UTC) - timedelta(seconds=1)
         await session.commit()
@@ -495,7 +464,7 @@ async def test_reset_between_actor_read_and_self_update_revokes_new_session(
             await original_lock(actor)
             async with sessions() as reset_session:
                 reset_service = MemberService(reset_session)
-                link = await reset_service.request_password_reset("admin@example.com")
+                link = await reset_service.issue_reset_token("admin@example.com")
                 await reset_service.reset_password(link["token"], PASSWORD)
                 reset_version = (
                     await reset_session.get(User, admin_id)

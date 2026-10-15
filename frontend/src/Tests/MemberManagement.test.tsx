@@ -1,13 +1,13 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 import Account from "@/pages/Account";
 import Registration from "@/pages/Registration";
 
-const { auth, getMembers, inviteMember, updateMember, post } = vi.hoisted(() => ({
+const { auth, getMembers, inviteMember, updateMember, removeMember, post } = vi.hoisted(() => ({
   auth: { isAdmin: true, member: { id: 1, email: "admin@example.com" } },
-  getMembers: vi.fn(), inviteMember: vi.fn(), updateMember: vi.fn(), post: vi.fn(),
+  getMembers: vi.fn(), inviteMember: vi.fn(), updateMember: vi.fn(), removeMember: vi.fn(), post: vi.fn(),
 }));
 
 vi.mock("@/auth/AuthContext", () => ({ useAuth: () => auth }));
@@ -16,7 +16,7 @@ vi.mock("@/components/AuthLayout", () => ({
   AuthLayout: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   AUTH_LINK_CLASS: "", AUTH_ERROR_CLASS: "", AUTH_SUBMIT_BUTTON_CLASS: "",
 }));
-vi.mock("@/lib/member-api", () => ({ getMembers, inviteMember, updateMember }));
+vi.mock("@/lib/member-api", () => ({ getMembers, inviteMember, updateMember, removeMember }));
 vi.mock("@/lib/api-client", () => ({ apiUtils: { post } }));
 
 const member = { id: 2, email: "member@example.com", role: "user", is_active: true, is_verified: true };
@@ -26,17 +26,21 @@ beforeEach(() => {
   getMembers.mockResolvedValue([{ ...member, id: 1, email: auth.member.email, role: "admin" }, member]);
   inviteMember.mockResolvedValue({ message: "Invitation sent." });
   updateMember.mockResolvedValue(member);
+  removeMember.mockResolvedValue(undefined);
   post.mockResolvedValue({ message: "Accepted" });
 });
-afterEach(cleanup);
+afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
 it("shows member access without offering administrator controls", async () => {
   auth.isAdmin = false;
   render(<MemoryRouter><Account /></MemoryRouter>);
   expect(screen.queryByRole("button", { name: "Send invitation" })).toBeNull();
   expect(getMembers).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole("button", { name: "About Account" }));
-  expect((await screen.findByRole("tooltip")).textContent).toContain("Members can view all organization data");
+  expect(screen.getByRole("heading", { name: "Account" }).tagName).toBe("H1");
+  expect(screen.getByRole("heading", { name: "Access control" })).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "Remove" })).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "About Access control" }));
+  expect((await screen.findByRole("tooltip")).textContent).toContain("Members can view organization data");
 });
 
 it("invites colleagues and updates their role", async () => {
@@ -49,6 +53,7 @@ it("invites colleagues and updates their role", async () => {
   fireEvent.change(screen.getByLabelText("Role for member@example.com"), { target: { value: "admin" } });
   await waitFor(() => expect(updateMember).toHaveBeenCalledWith(member, { role: "admin" }));
   expect((screen.getByLabelText("Role for admin@example.com") as HTMLSelectElement).disabled).toBe(true);
+  expect(screen.queryByRole("button", { name: "Remove" })).toBeNull();
 });
 
 it("disables a member after confirmation and reports API failures", async () => {
@@ -60,7 +65,59 @@ it("disables a member after confirmation and reports API failures", async () => 
   fireEvent.click(enabled!);
   await waitFor(() => expect(updateMember).toHaveBeenCalledWith(member, { is_active: false }));
   expect((await screen.findByRole("alert")).textContent).toContain("Keep at least one active administrator");
-  vi.restoreAllMocks();
+});
+
+it("offers removal only after disabling, and cancellation preserves the member", async () => {
+  getMembers.mockResolvedValue([{ ...member, is_active: false }]);
+  render(<MemoryRouter><Account /></MemoryRouter>);
+  const remove = await screen.findByRole("button", { name: "Remove" });
+  remove.focus();
+  fireEvent.click(remove);
+  const dialog = screen.getByRole("dialog", { name: "Remove member?" });
+  expect(dialog.textContent).toContain(member.email);
+  expect(dialog.textContent).toContain("new invitation");
+  expect(dialog.textContent).toContain("Shared catalogue data");
+  expect(document.activeElement).toBe(within(dialog).getByRole("button", { name: "Cancel" }));
+  fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  expect(removeMember).not.toHaveBeenCalled();
+  expect(screen.getByText(member.email)).toBeTruthy();
+  await waitFor(() => expect(document.activeElement).toBe(remove));
+});
+
+it("removes the disabled member only after the server succeeds and keeps the list focused", async () => {
+  getMembers.mockResolvedValue([{ ...member, is_active: false }]);
+  let complete!: () => void;
+  removeMember.mockReturnValue(new Promise<void>((resolve) => { complete = resolve; }));
+  render(<MemoryRouter><Account /></MemoryRouter>);
+  fireEvent.click(await screen.findByRole("button", { name: "Remove" }));
+  fireEvent.click(screen.getByRole("button", { name: "Remove member" }));
+  expect(removeMember).toHaveBeenCalledExactlyOnceWith(member.id);
+  const dialog = screen.getByRole("dialog");
+  expect((within(dialog).getByRole("button", { name: "Removing…" }) as HTMLButtonElement).disabled).toBe(true);
+  expect((within(dialog).getByRole("button", { name: "Cancel" }) as HTMLButtonElement).disabled).toBe(true);
+  expect(within(screen.getByRole("list", { name: "Members", hidden: true })).getByText(member.email)).toBeTruthy();
+  fireEvent.keyDown(dialog, { key: "Escape" });
+  expect(screen.getByRole("dialog")).toBeTruthy();
+  await act(async () => complete());
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  expect(screen.getByRole("status").textContent).toContain(`${member.email} has been removed`);
+  expect(within(screen.getByRole("list", { name: "Members" })).queryByText(member.email)).toBeNull();
+  await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("list", { name: "Members" })));
+});
+
+it("keeps failed removal visible and allows a retry", async () => {
+  getMembers.mockResolvedValue([{ ...member, is_active: false }]);
+  removeMember.mockRejectedValueOnce(new Error("Disable this member before removing them"));
+  render(<MemoryRouter><Account /></MemoryRouter>);
+  fireEvent.click(await screen.findByRole("button", { name: "Remove" }));
+  fireEvent.click(screen.getByRole("button", { name: "Remove member" }));
+  const dialog = screen.getByRole("dialog");
+  expect((await within(dialog).findByRole("alert")).textContent).toContain("Disable this member");
+  expect(within(screen.getByRole("list", { name: "Members", hidden: true })).getByText(member.email)).toBeTruthy();
+  fireEvent.click(within(dialog).getByRole("button", { name: "Remove member" }));
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  expect(removeMember).toHaveBeenCalledTimes(2);
 });
 
 it("requires an invitation link before offering account creation", () => {

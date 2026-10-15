@@ -9,9 +9,10 @@ import { formatServiceTime, serviceName, serviceState, strategyName, type Monito
 type Props = {
   draftKey?: string; services: ActiveService[]; index: MonitoringIndex; ready: boolean; error: string;
   favourites: Set<string>; onFavourite: (id: string) => void; onOpen: (id: string) => void; onRetry: () => void;
+  serviceHref?: (id: string) => string;
 };
 
-export function MonitoringServiceList({ draftKey, services, index, ready, error, favourites, onFavourite, onOpen, onRetry }: Props) {
+export function MonitoringServiceList({ draftKey, services, index, ready, error, favourites, onFavourite, onOpen, onRetry, serviceHref }: Props) {
   const [query, setQuery] = useNavigationDraft(draftKey && `${draftKey}:query`, "");
   const deferred = useDeferredValue(query);
   const [filter, setFilter] = useNavigationDraft(draftKey && `${draftKey}:filter`, "all");
@@ -52,7 +53,7 @@ export function MonitoringServiceList({ draftKey, services, index, ready, error,
             {virtual.getVirtualItems().map(item => {
               const row = shown[item.index]!; const service = row.service; const progress = service.operational_status.progress;
               return <div role="row" aria-rowindex={item.index + 2} className="mn-row mn-service-row" key={service.id} data-index={item.index} ref={virtual.measureElement} style={{ transform: `translateY(${item.start}px)` }}>
-                <div role="cell" className="mn-service-identity"><Link title={row.name} data-service-index={item.index} to={`/?service=${encodeURIComponent(service.id)}`} onKeyDown={event => {
+                <div role="cell" className="mn-service-identity"><Link title={row.name} data-service-index={item.index} to={serviceHref?.(service.id) ?? `/?service=${encodeURIComponent(service.id)}`} onKeyDown={event => {
                   if (event.metaKey || event.ctrlKey || event.altKey || !["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
                   event.preventDefault();
                   const next = event.key === "Home" ? 0 : event.key === "End" ? shown.length - 1 : Math.max(0, Math.min(shown.length - 1, item.index + (event.key === "ArrowDown" ? 1 : -1)));

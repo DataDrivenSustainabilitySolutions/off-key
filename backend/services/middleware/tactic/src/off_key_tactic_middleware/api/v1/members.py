@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Response
 from off_key_core.db.base import get_db_async
 from off_key_core.db.models import User
 from off_key_core.schemas.members import (
@@ -96,6 +96,19 @@ async def update_member(
         _raise_http_from_domain(exc)
 
 
+@router.delete("/{user_id}", status_code=204, response_class=Response)
+async def remove_member(
+    user_id: int,
+    actor: User = Depends(require_admin),
+    service: MemberService = Depends(member_service),
+):
+    try:
+        await service.remove(user_id, actor)
+        return Response(status_code=204)
+    except DomainError as exc:
+        _raise_http_from_domain(exc)
+
+
 @router.post("/accept-invitation")
 async def accept_invitation(
     invitation: AcceptInvitation,
@@ -113,7 +126,7 @@ async def request_password_reset(
     request: ForgotPasswordRequest,
     service: MemberService = Depends(member_service),
 ):
-    return await service.request_password_reset(str(request.email))
+    return await service.issue_reset_token(str(request.email))
 
 
 @router.post("/reset-password")

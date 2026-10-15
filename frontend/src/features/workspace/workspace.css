@@ -1,0 +1,40 @@
+.app-catalogue-shell { grid-template-rows: var(--app-header-height) minmax(0, 1fr); }
+.app-catalogue-shell > .app-header { grid-column: 1 / -1; grid-row: 1; gap: 28px; }
+.app-catalogue-sidebar { grid-column: 1; grid-row: 2; }
+.app-catalogue-main { grid-column: 2; grid-row: 2; }
+.app-catalogue-shell.ex-sidebar-hidden > .app-catalogue-main { grid-column: 1; }
+.app-primary-nav { min-width: 0; height: 100%; }
+.app-primary-nav .app-workspace-links { display: flex; align-items: stretch; height: 100%; gap: 4px; }
+.app-primary-nav .app-workspace-link { position: relative; justify-content: center; gap: 8px; min-height: 44px; padding: 10px 14px; border-radius: 0; font-size: 13px; white-space: nowrap; }
+.app-primary-nav .app-workspace-link[aria-current="page"] { box-shadow: none; background: transparent; }
+.app-primary-nav .app-workspace-link[aria-current="page"]::after { content: ""; position: absolute; left: 14px; right: 14px; bottom: 0; height: 2px; background: hsl(var(--primary)); }
+.app-primary-nav .app-workspace-link:hover { background: hsl(var(--accent)); }
+.app-primary-nav .app-workspace-link:focus-visible { outline-offset: -4px; border-radius: 6px; }
+.workspace-catalogue-label { flex: 1; padding: 7px 9px; font-weight: 550; font-size: 12px; color: var(--ex-muted); }
+.workspace-source-scope { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 22px 0; font-size: 12px; }
+.workspace-source-scope > span { min-width: 0; max-width: 100%; overflow-wrap: anywhere; font-weight: 500; }
+.workspace-source-scope button { display: inline-flex; align-items: center; gap: 7px; padding: 6px 10px; border: 1px solid var(--ex-line); border-radius: 6px; color: var(--ex-muted); }
+.workspace-source-scope button:hover { background: var(--ex-hover); }
+.workspace-loading { padding: 40px 48px; color: var(--ex-muted); }
+.app-catalogue-shell .mn-sidebar-favourites { margin: 0 18px 20px; display: grid; gap: 4px; }
+.app-catalogue-shell .mn-sidebar-favourites > span { padding: 0 5px 6px; font-size: 10px; color: var(--ex-muted); }
+.app-catalogue-shell .mn-sidebar-favourites button { display: flex; gap: 8px; align-items: center; padding: 7px; text-align: left; border-radius: 6px; font-size: 12px; }
+.app-catalogue-shell .mn-sidebar-favourites button:hover { background: var(--ex-hover); }
+.app-catalogue-shell .mn-sidebar-favourites button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+@media (max-width: 1050px) {
+  .app-catalogue-shell > .app-header { gap: 16px; }
+  .app-primary-nav .app-workspace-link { padding-right: 10px; padding-left: 10px; }
+}
+@media (max-width: 760px) {
+  .app-catalogue-shell { --app-header-height: 112px; grid-template-columns: minmax(0, 1fr); }
+  .app-catalogue-shell > .app-header { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: 64px 48px; gap: 0; padding: 0 12px; height: 112px; }
+  .app-catalogue-shell .app-header-leading { grid-column: 1; grid-row: 1; }
+  .app-catalogue-shell .app-header-actions { grid-column: 2; grid-row: 1; }
+  .app-catalogue-shell .app-primary-nav { grid-column: 1 / -1; grid-row: 2; margin: 0 -4px; }
+  .app-primary-nav .app-workspace-links { gap: 0; }
+  .app-primary-nav .app-workspace-link { flex: 1; gap: 6px; padding: 10px 6px; font-size: 12px; }
+  .app-catalogue-shell > .app-catalogue-main { grid-column: 1; }
+  .workspace-source-scope { margin: 18px 0; }
+  .workspace-loading { padding: 28px 20px; }
+}

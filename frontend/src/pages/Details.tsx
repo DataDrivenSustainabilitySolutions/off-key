@@ -350,7 +350,7 @@ const ChargerDetails: React.FC<{ chargerId: string }> = ({ chargerId }) => {
           actions={
             <>
               <Button variant="ghost" asChild>
-                <Link to="/sources">Data sources</Link>
+                <Link to="/sources">Sources</Link>
               </Button>
               <LiveTelemetryIndicator
                 hasRecentTelemetry={hasRecentTelemetry}

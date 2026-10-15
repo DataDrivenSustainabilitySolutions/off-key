@@ -96,7 +96,7 @@ email_username:  "resend"
 # ambibox uses pre-seeded tailscaled.state — no auth key needed.
 
 tailscale_ambibox_extra_args: "--accept-dns --advertise-tags=tag:iao --login-server=https://vpn.ambibox.de"
-# Broker endpoints and sensors are configured in the Data sources catalog.
+# Broker endpoints and sensors are configured in the Sources catalog.
 
 # Vendor tailnet hostname. ambibox_hostname_id is set per cluster/site in vault.yml.
 # Falls back to "DDSS-<env>" when ambibox_hostname_id is empty/unset.

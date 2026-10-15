@@ -368,8 +368,8 @@ describe("telemetry ECharts option", () => {
       id: "restarted-martingale:service-a",
       smooth: false,
       step: false,
-      showSymbol: true,
-      symbolSize: 3,
+      showSymbol: false,
+      symbol: "none",
       connectNulls: false,
       lineStyle: { width: 2.25, type: "solid" },
     });
@@ -377,6 +377,7 @@ describe("telemetry ECharts option", () => {
       { xAxis: Date.parse("2026-01-01T00:00:30Z"), yAxis: 100 },
       { xAxis: Date.parse(alignedTimestamp), yAxis: option.yAxis[1]?.max },
     ]]);
+    expect(option.series[1]?.markLine).toBeUndefined();
   });
 
   it("renders the adaptive score with a shaded alarm region on a linear pane", () => {
@@ -389,8 +390,8 @@ describe("telemetry ECharts option", () => {
     expect(option.series[1]).toMatchObject({
       id: "adaptive-score:adaptive-a",
       step: false,
-      showSymbol: true,
-      symbolSize: 3,
+      showSymbol: false,
+      symbol: "none",
       connectNulls: false,
       lineStyle: { width: 2.25, type: "solid" },
       data: [
@@ -406,6 +407,7 @@ describe("telemetry ECharts option", () => {
     expect(option.series[1]?.markArea).toMatchObject({
       silent: true, z: 0, itemStyle: { color: "rgba(220, 38, 38, 0.12)" },
     });
+    expect(option.series[1]?.markLine).toBeUndefined();
   });
 
   it("preserves changing threshold history and leaves missing or unevaluated cells unshaded", () => {
@@ -533,7 +535,7 @@ describe("telemetry ECharts option", () => {
     expect(model.secondarySeries[0]?.overflow[0]?.observation.threshold).toBeNull();
     const option = inspect(buildOption(model));
     expect(option.series[1]?.markArea?.data).toEqual([]);
-    expect(option.series[1]?.markLine?.data).toEqual([]);
+    expect(option.series[1]?.markLine).toBeUndefined();
     const tooltip = option.series[1]?.markPoint?.data[0]?.tooltip?.formatter?.();
     expect(tooltip).toContain("Beyond numeric range");
     expect(tooltip).toContain("Alarm threshold: unavailable");
@@ -668,7 +670,7 @@ describe("telemetry ECharts option", () => {
     ]);
   });
 
-  it("connects adjacent scored observations with subtle markers", () => {
+  it("connects adjacent scored observations with a clean line", () => {
     const firstTime = "2026-01-01T00:00:00Z";
     const secondTime = "2026-01-01T00:00:01Z";
     const thirdTime = "2026-01-01T00:00:02Z";
@@ -690,8 +692,8 @@ describe("telemetry ECharts option", () => {
 
     expect(scoreSeries).toMatchObject({
       step: false,
-      showSymbol: true,
-      symbolSize: 3,
+      showSymbol: false,
+      symbol: "none",
       connectNulls: false,
       lineStyle: { width: 2.25, type: "solid" },
       data: [

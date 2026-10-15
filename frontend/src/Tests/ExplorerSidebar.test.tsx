@@ -82,7 +82,7 @@ function sidebarOptions(document = system()) {
     catalogueGroups: document.groups, query: "", selectedKey: null,
     positions: new Map<string, ListPosition>(), loading: false,
     onQuery: vi.fn(), onScope: vi.fn(), onOpen: vi.fn(), onBack: vi.fn(), onInspect: vi.fn(),
-    onSettings: vi.fn(), onWorkspace: vi.fn(), onDismiss: vi.fn(),
+    onSettings: vi.fn(), onCatalogue: vi.fn(), onDismiss: vi.fn(),
   };
 }
 
@@ -161,24 +161,14 @@ describe("explorer sidebar and catalogue list", () => {
     vi.useRealTimers();
   });
 
-  it.each(["/", "/sources?broker=broker"])("links the primary workspaces and identifies the current one at %s", path => {
-    render(<ExplorerSidebar {...sidebarOptions()} />, path);
-    const workspaces = within(screen.getByRole("group", { name: "Workspaces" }));
-    const monitoring = workspaces.getByRole("link", { name: "Monitoring" });
-    const sources = workspaces.getByRole("link", { name: "Data sources" });
-    expect(workspaces.getByRole("link", { name: "Anomalies" }).getAttribute("href")).toBe("/anomalies");
-    expect(workspaces.queryByRole("link", { name: "Entities" })).toBeNull();
-    expect(monitoring.getAttribute("href")).toBe("/");
-    expect(sources.getAttribute("href")).toBe("/sources");
-    expect(monitoring.getAttribute("aria-current")).toBe(path === "/" ? "page" : null);
-    expect(sources.getAttribute("aria-current")).toBe(path === "/" ? null : "page");
-  });
-
-  it("preserves normal link behavior when opening Monitoring in another tab", () => {
-    const options = sidebarOptions();
-    render(<ExplorerSidebar {...options} />);
-    fireEvent.click(screen.getByRole("link", { name: "Monitoring" }), { ctrlKey: true });
-    expect(options.onWorkspace).not.toHaveBeenCalled();
+  it("keeps the sidebar for MQTT navigation and catalogue settings", () => {
+    render(<ExplorerSidebar {...sidebarOptions()} />);
+    expect(screen.getByText("MQTT catalogue")).toBeTruthy();
+    expect(screen.queryByRole("group", { name: "Workspaces" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Monitoring" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Sources" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Reporting" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Catalogue settings" })).toBeTruthy();
   });
 
   it("counts brokers independently of the unassigned entity branch", () => {
@@ -336,6 +326,9 @@ describe("explorer sidebar and catalogue list", () => {
   it("opens branches, exposes actual ancestors, and leaves workspace navigation explicit", () => {
     const options = sidebarOptions();
     const root = render(<ExplorerSidebar {...options} />);
+    expect(screen.queryByRole("button", { name: "Test catalogue" })).toBeNull();
+    expect(screen.getByText("1 broker")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Back to catalogue" }).getAttribute("title")).toBe("Back to catalogue");
     const broker = options.index.nodes.get(options.index.objectKeys.get("broker")![0]!)!;
     fireEvent.click(screen.getByRole("button", { name: "North laboratory, open" }));
     expect(options.onOpen).toHaveBeenCalledExactlyOnceWith(broker);
@@ -347,8 +340,8 @@ describe("explorer sidebar and catalogue list", () => {
     expect(screen.getByText("Current path")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "North laboratory" }));
     expect(options.onScope).toHaveBeenLastCalledWith(broker.key);
-    fireEvent.click(screen.getByRole("link", { name: "Monitoring" }));
-    expect(options.onWorkspace).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByRole("button", { name: "Back to catalogue" }));
+    expect(options.onCatalogue).toHaveBeenCalledOnce();
     fireEvent.click(screen.getByRole("button", { name: "Catalogue settings" }));
     expect(options.onSettings).toHaveBeenCalledOnce();
     fireEvent.click(screen.getByRole("button", { name: "Close explorer" }));
@@ -393,13 +386,13 @@ describe("explorer sidebar and catalogue list", () => {
     expect(options.onScope).not.toHaveBeenCalled();
   });
 
-  it("keeps catalogue groups navigable without exposing personal grouping", () => {
+  it("keeps collections navigable without exposing personal grouping", () => {
     const document = system();
     const original = structuredClone(document);
     const options = sidebarOptions(document);
     const save = vi.spyOn(apiClient, "put");
     const view = render(<ExplorerSidebar {...options} />);
-    fireEvent.click(screen.getByRole("button", { name: "Browse catalogue groups" }));
+    fireEvent.click(screen.getByRole("button", { name: "Browse collections" }));
     expect(screen.queryByText("Personal groups")).toBeNull();
     expect(screen.queryByRole("button", { name: "Manage personal groups" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: /Building A/ }));
@@ -408,7 +401,7 @@ describe("explorer sidebar and catalogue list", () => {
     expect(document).toEqual(original);
     expect(save).not.toHaveBeenCalled();
     view.rerender(<ExplorerSidebar {...options} catalogueGroups={[]} />);
-    expect(screen.queryByRole("button", { name: "Browse catalogue groups" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Browse collections" })).toBeNull();
   });
 
   it("keeps loading and empty navigation states accessible", () => {

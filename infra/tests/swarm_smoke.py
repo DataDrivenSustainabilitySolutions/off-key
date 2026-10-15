@@ -370,6 +370,7 @@ def prepare(directory):
         ("api", 8000, int(os.getenv("OFFKEY_REHEARSAL_API_PORT", "8000"))),
         ("tactic", 8001, 8001),
         ("emqx-main", 8883, 8883),
+        ("smtp-fixture", 8025, 8025),
     ):
         model["services"][service]["ports"] = [
             {"target": port, "published": published, "mode": "host"}
@@ -431,6 +432,7 @@ def prepare(directory):
     (directory / "smoke.env").write_text(
         f"E2E_BOOTSTRAP_URL={invitation}\nSUPERUSER_MAIL=admin@example.com\n"
         "MQTT_SOURCE_URL=mqtt://localhost:1884\nMQTT_INGRESS_URL=mqtts://localhost:8883\n"
+        "MAILPIT_BASE_URL=http://127.0.0.1:8025\n"
         "E2E_MQTT_CA_FILE=/smoke/ca.crt\nE2E_MQTT_USERNAME=offkey-radar\n"
         f"E2E_MQTT_PASSWORD={inputs['mqtt_radar_password']}\nPLAYWRIGHT_BASE_URL=http://localhost:5173\n"
     )

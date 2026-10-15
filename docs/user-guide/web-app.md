@@ -19,16 +19,38 @@ Use this page for account, charger, favourites, monitoring-service, and anomaly 
 | `/login` | Sign in | Public |
 | `/forgot-password` | Request a password reset | Public |
 | `/reset-password` | Set a new password with a reset token | Public |
-| `/` | Charger overview dashboard | Authenticated |
+| `/` | Monitoring services and selected-source evidence | Authenticated |
 | `/details/:chargerId` | Telemetry details for one charger | Authenticated |
 | `/monitoring/:chargerId` | Configure monitoring for one charger | Authenticated |
-| `/services` | Inspect and remove monitoring services | Authenticated |
-| `/?state=favorites` | Dashboard filtered to favourite chargers | Authenticated |
-| `/anomalies` | Review recent anomaly events | Authenticated |
+| `/services` | Legacy link to Monitoring | Authenticated |
+| `/sources` | Sources: configure brokers and recorded readings | Authenticated |
+| `/anomalies` | Reporting: review recent anomaly events | Authenticated |
 | `/account` | User profile and account actions | Authenticated |
+| `/system/status` | Live collection diagnostics, database size and retention status | Authenticated |
 
-!!! note
-    Existing `/favourites` bookmarks redirect to the dashboard's Favorites filter.
+## Workspace navigation
+
+**Monitoring**, **Sources**, and **Reporting** are always available in the navbar,
+including on mobile. The left sidebar contains one MQTT catalogue of brokers,
+entities, topics and readings. Selecting a row scopes the current section; its
+chevron browses the next level. Switching sections keeps the source selected and
+retains the catalogue's search, branch and scroll position.
+
+Monitoring shows services for the selected source and previews selected readings.
+Sources shows source metadata and recording configuration. Selecting an entity
+there lists its readings; choose one to configure recording. Reporting shows
+events involving the selected source. **All sources** clears this filter without
+moving the sidebar. The folder-and-hierarchy icon beside the sidebar count,
+**Back to catalogue**, returns to the root and clears the search and source filter.
+At the root it also scrolls the broker list to the top.
+
+**Collections** opens named sets of related brokers, entities and readings in the
+same sidebar. Collections are shared parts of the catalogue. Inside a branch,
+the heading still opens the current path so you can jump to an ancestor.
+
+The catalogue button beside the wordmark hides/reopens the desktop sidebar or
+opens the mobile drawer. The section links remain in the navbar. A selected source
+is included in the URL, so links and browser back/forward retain that context.
 
 ## Authentication workflow
 
@@ -37,58 +59,71 @@ Use this page for account, charger, favourites, monitoring-service, and anomaly 
 3. Log in and receive a bearer token.
 4. The frontend API client attaches that token to subsequent requests.
 
-The **Remember me** choice determines whether the browser stores the session in local or session storage. In local development, invitation and password-reset messages are available in Mailpit at <http://localhost:8025>.
+The **Remember this device** choice determines whether the browser stores the session in local or session storage. In local development, invitation and password-reset messages are available in Mailpit at <http://localhost:8025>.
 
-Administrators manage invitations, roles, and access under **Account → Organization members**.
+**Account → Access control** shows your signed-in email and role. Administrators manage
+invitations, roles, and access under **Account → Members**. Disable a member to revoke
+their access. Once disabled, **Remove** permanently deletes their account and personal
+favorites after confirmation. Shared catalogue data, monitoring services and reports
+are kept. A removed member needs a new invitation to return.
 Members can view the shared workspace and edit their own favorites. Administrators
 also manage data sources, monitors, and anomalies.
 
-## Charger and telemetry workflow
+## Settings and system status
 
-1. Open `/` to list chargers.
-2. Select a charger to open `/details/:chargerId`.
-3. Select the telemetry type and time range.
-4. Review the rendered charts and data.
+Open **Menu → Settings → Appearance** to choose **Light**, **Dark**, or
+**Follow system**. Changes apply immediately and are saved in this browser on
+this device. Follow system also responds to changes in the device's appearance.
+Settings opens over the current page, preserving your workspace and unsaved input.
+Close it with the close button or Escape to return to the page.
+
+Open **Menu → System status** for live collection diagnostics, database size and
+retention information. Collection status refreshes automatically every three
+seconds; **Refresh storage** requests updated database measurements. The former
+`/account/settings` diagnostic link redirects to `/system/status`.
+
+Account management remains under **Menu → Account**. Catalogue configuration is
+available from **Catalogue settings** at the bottom of the catalogue sidebar.
+
+## Readings and telemetry workflow
+
+1. Browse the MQTT catalogue or search for a reading.
+2. Select the reading in **Monitoring** to open its preview and recorded history.
+3. Use **Sources** to inspect or change its recording policy, then **Apply changes**.
+4. Open its monitoring service to review detector evidence and configuration.
+
+Existing entity detail links at `/details/:chargerId` show recorded readings with
+category and time-range controls.
 
 ## Data-source activity
 
-Open `/sources`, expand a broker and charger, and inspect the badge beside each
-measurement. **Recent data** confirms a live reading within three saved sampling
-intervals, with a minimum window of one minute. Original-rate sensors use one
-minute. **No recent data** shows an older live reading; **Retained snapshot** is
-cached MQTT data; **No data yet** means no observation has arrived. The receipt
-time appears beside observed measurements.
+Topic and reading circles in the catalogue show activity from a live preview or
+background recording. A filled circle means a fresh message arrived in the last
+30 seconds. A hollow circle means the source is waiting for fresh data or is not
+listening; hover or focus the row to see its description. Retained snapshots and
+stored history do not count as fresh traffic. Browsing alone starts no collection.
 
-Activity reflects saved settings. Measurements with collection off are not
-observed. Unsaved changes to a broker, charger binding, sensor topic, or value
-type show **Save to observe**. **Status unavailable** means live status could not
-be confirmed, including stale worker reports.
-
-Administrators can click **Listen** beside a saved broker to check its configured
-sensors for 20 seconds, including chargers whose collection is Off. Measurements
-that send valid live data are enabled and saved in one action. Existing rates are
-kept; newly enabled measurements use the catalog default, or a 10-second sampling
-interval when that default is Off. Retained snapshots alone do not enable
-collection. A quiet sensor may send less frequently than the check window; try
-again when chargers are sending data or enable it manually. Save or discard any
-existing draft before listening. Normal monitor-change confirmations still apply.
+Configure recording under **Sources**. Broker and topic policies can cover several
+readings; review the affected scope before applying changes. Including readings
+added later requires an explicit opt-in. Administrators can also use **Connect**
+to preview configured sources whose recording is off, and **Disconnect** to end
+that preview. Previewing does not enable background recording.
 
 ## Favourites workflow
 
-1. Add or remove a favourite from a charger view.
-2. Select **Favorites** under **Charger State** on the dashboard to see the current list. Search and card/table views work with this filter.
-3. Select a favourite to return to its charger details.
+1. Star a service in Monitoring or a reading in its preview.
+2. Select **Favourites** in the Monitoring service filters to show starred services.
+3. Starred readings appear as source shortcuts in the catalogue sidebar.
 
-Favourites are scoped to the signed-in user. Removing a favourite immediately
-removes it from the filtered list; if saving fails, it is restored.
+These service and reading favourites are saved per account in this browser.
 
 ## Services workflow
 
 Open `/services` to inspect monitoring services. The view refreshes service state and shows the strategy and processing stage reported by the backend. Removing a service also releases its claimed sensors.
 
-## Anomaly workflow
+## Reporting workflow
 
-1. Open `/anomalies`.
+1. Open **Reporting** at `/anomalies`.
 2. Review events grouped by charger.
 3. Follow an event to the corresponding charger details.
 4. Remove individual anomaly records when they are no longer required.
@@ -98,7 +133,7 @@ Open `/services` to inspect monitoring services. The view refreshes service stat
 | UI message pattern | Typical cause | Action |
 | --- | --- | --- |
 | Login failed or unauthorized | Invalid credentials, expired session, or unverified account | Verify the account and sign in again |
-| No chargers found | No telemetry has been ingested | Validate the source MQTT or simulator path |
+| No brokers configured yet | The catalogue has no brokers | Add a broker in Sources or import a catalogue |
 | Telemetry request failed | API or database latency/outage | Check API Gateway, TACTIC, and database health |
 | Monitoring start failed | Invalid configuration, unavailable topic, or orchestration failure | Retry with defaults and inspect TACTIC logs |
 

@@ -18,6 +18,7 @@ export const AUTH_SUBMIT_BUTTON_CLASS =
 
 interface AuthLayoutProps {
   title: string;
+  showWordmark?: boolean;
   children: ReactNode;
   contentClassName?: string;
   titleProps?: ComponentProps<"h1">;
@@ -25,6 +26,7 @@ interface AuthLayoutProps {
 
 export function AuthLayout({
   title,
+  showWordmark = true,
   children,
   contentClassName,
   titleProps,
@@ -35,9 +37,11 @@ export function AuthLayout({
     <AuthBackdrop contentClassName="max-w-sm">
       <Card className="w-full gap-6 border-border py-7 sm:py-8">
         <CardHeader>
-          <div className="mb-5 text-center font-mono text-[17px] font-semibold tracking-[-0.02em]">
-            <span>aberration</span>
-          </div>
+          {showWordmark && (
+            <div className="mb-5 text-center font-mono text-[17px] font-semibold tracking-[-0.02em]">
+              <span>aberration</span>
+            </div>
+          )}
           <h1
             data-slot="card-title"
             className={cn("text-center text-xl font-medium leading-7 tracking-[-0.02em]", titleClassName)}

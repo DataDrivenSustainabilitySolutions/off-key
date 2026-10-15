@@ -15,6 +15,7 @@ from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 import pytest
+import pytest_asyncio
 from sqlalchemy import create_engine
 from sqlalchemy.engine import make_url
 
@@ -131,6 +132,35 @@ def disposable_database():
         with admin.connect() as connection:
             connection.exec_driver_sql(f'DROP DATABASE "{name}" WITH (FORCE)')
         admin.dispose()
+
+
+@pytest_asyncio.fixture
+async def member_database():
+    """Isolate real account lifecycle tests in a disposable PostgreSQL schema."""
+    from off_key_core.db.models import RememberedSession, User
+    from sqlalchemy import text
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    url = os.getenv("TEST_SCHEMA_DATABASE_URL")
+    if not url:
+        pytest.skip("TEST_SCHEMA_DATABASE_URL must point to a disposable database")
+    schema = "members_" + uuid4().hex
+    admin = create_async_engine(url)
+    async with admin.begin() as connection:
+        await connection.execute(text(f"CREATE SCHEMA {schema}"))
+    engine = create_async_engine(
+        url, connect_args={"server_settings": {"search_path": schema}}
+    )
+    try:
+        async with engine.begin() as connection:
+            await connection.run_sync(User.__table__.create)
+            await connection.run_sync(RememberedSession.__table__.create)
+        yield engine, async_sessionmaker(engine, expire_on_commit=False)
+    finally:
+        await engine.dispose()
+        async with admin.begin() as connection:
+            await connection.execute(text(f"DROP SCHEMA {schema} CASCADE"))
+        await admin.dispose()
 
 
 @pytest.fixture

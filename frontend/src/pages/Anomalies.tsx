@@ -33,9 +33,14 @@ import {
 } from "@/lib/charger-api";
 import { getErrorMessage } from "@/lib/errors";
 import type { Anomaly } from "@/types/charger";
+import { useCatalogue } from "@/features/workspace/catalogue-context";
+import { SourceScope } from "@/features/workspace/SourceScope";
+import { filterSourceReports } from "@/features/workspace/reporting-scope";
+import { withCatalogueSource } from "@/features/workspace/catalogue-navigation";
 
 export default function AnomalyTable() {
   const { isAdmin } = useAuth();
+  const { streamIds, system, selected } = useCatalogue();
   const [data, setData] = useState<Anomaly[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -67,27 +72,28 @@ export default function AnomalyTable() {
     return () => window.clearTimeout(timeoutId);
   }, [fetchAllAnomalies]);
 
+  const scopedData = useMemo(() => filterSourceReports(data, streamIds, system.snapshot?.runtime), [data, streamIds, system.snapshot?.runtime]);
   const sortedData = useMemo(
     () =>
-      data
+      scopedData
         .slice()
         .sort(
           (left, right) =>
             new Date(right.timestamp).getTime() - new Date(left.timestamp).getTime()
         ),
-    [data]
+    [scopedData]
   );
 
   const affectedChargers = useMemo(
-    () => new Set(data.map((anomaly) => anomaly.charger_id)).size,
-    [data]
+    () => new Set(scopedData.map((anomaly) => anomaly.charger_id)).size,
+    [scopedData]
   );
 
   const probabilityValueCount = useMemo(
     () =>
-      data.filter((anomaly) => isProbabilityAnomalyValue(anomaly.value_type))
+      scopedData.filter((anomaly) => isProbabilityAnomalyValue(anomaly.value_type))
         .length,
-    [data]
+    [scopedData]
   );
 
   const handleDelete = async (anomaly: Anomaly) => {
@@ -112,7 +118,7 @@ export default function AnomalyTable() {
     <>
       <PageShell>
         <PageHeader
-          title="Anomalies"
+          title="Reporting"
           actions={
             <Button
               variant="outline"
@@ -125,11 +131,15 @@ export default function AnomalyTable() {
           }
         />
 
+        <SourceScope />
+        {system.error && <p role="alert">Catalogue status unavailable: {system.error}
+          <Button variant="ghost" onClick={() => void system.refresh()}>Retry catalogue</Button>
+        </p>}
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4">
           <MetricCard
             label="Anomalies"
-            value={data.length}
-            tone={data.length > 0 ? "warning" : "default"}
+            value={scopedData.length}
+            tone={scopedData.length > 0 ? "warning" : "default"}
           />
           <MetricCard
             label="Affected entities"
@@ -186,7 +196,7 @@ export default function AnomalyTable() {
                   >
                     <TableCell className="font-medium">
                       <Link
-                        to={`/details/${anomaly.charger_id}`}
+                        to={withCatalogueSource(`/details/${anomaly.charger_id}`, selected)}
                         className="text-foreground hover:underline"
                       >
                         {anomaly.charger_id}

@@ -211,11 +211,15 @@ describe("workspace chart navigation and monitoring", () => {
         expect.objectContaining({ value: [NOW - 10_000, 3], observation: expect.objectContaining({ threshold: 2.5, sequenceNumber: 2 }) }),
         { value: [NOW, null] },
       ],
-        markLine: expect.objectContaining({ data: expect.arrayContaining([
-          [{ coord: [NOW - 20_000, 2] }, { coord: [NOW - 15_000, 2] }],
-          [{ coord: [NOW - 15_000, 2.5] }, { coord: [NOW - 5_000, 2.5] }],
+        showSymbol: false, symbol: "none",
+        markArea: expect.objectContaining({ itemStyle: expect.objectContaining({ borderWidth: 0 }), data: expect.arrayContaining([
+          [{ xAxis: NOW - 20_000, yAxis: 2 }, { xAxis: NOW - 15_000, yAxis: expect.any(Number) }],
+          [{ xAxis: NOW - 15_000, yAxis: 2.5 }, { xAxis: NOW - 5_000, yAxis: expect.any(Number) }],
         ]) }) }),
       expect.objectContaining({ id: "pending-telemetry", data: [[NOW, 22]] }),
+    ]));
+    expect(lastChartProps().option.series).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: "adaptive-score:monitor", markLine: expect.anything() }),
     ]));
     expect(lastChartProps().option.dataZoom).toEqual(expect.arrayContaining([expect.objectContaining({ startValue: NOW - 15_000, endValue: NOW - 5_000 })]));
     expect(screen.getByText(/Threshold: 2.5/)).toBeTruthy();

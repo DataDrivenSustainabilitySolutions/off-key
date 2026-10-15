@@ -1,11 +1,11 @@
 import { lazy } from "react";
-import { createRoutesFromElements, Navigate, Outlet, Route } from "react-router-dom";
+import { createRoutesFromElements, Navigate, Route } from "react-router-dom";
 
 import { ProtectedRoute } from "@/auth/ProtectedRoute";
-import { ApplicationWorkspace } from "@/components/ApplicationWorkspace";
 import { RouteErrorBoundary, RouteErrorPage } from "@/components/RouteErrorPage";
 
 export function createAppRoutes() {
+  const ApplicationWorkspace = lazy(() => import("@/components/ApplicationWorkspace").then(module => ({ default: module.ApplicationWorkspace })));
   const Account = lazy(() => import("@/pages/Account"));
   const Anomalies = lazy(() => import("@/pages/Anomalies"));
   const Details = lazy(() => import("@/pages/Details"));
@@ -15,7 +15,7 @@ export function createAppRoutes() {
   const Monitoring = lazy(() => import("@/pages/Monitoring"));
   const Registration = lazy(() => import("@/pages/Registration"));
   const ResetPassword = lazy(() => import("@/pages/ResetPassword"));
-  const Settings = lazy(() => import("@/pages/Settings"));
+  const SystemStatus = lazy(() => import("@/pages/SystemStatus"));
   const Verification = lazy(() => import("@/pages/Verification"));
   const MonitoringWorkspace = lazy(() => import("@/pages/MonitoringWorkspace"));
 
@@ -30,19 +30,20 @@ export function createAppRoutes() {
       <Route
         element={
           <ProtectedRoute>
-            <Outlet />
+            <ApplicationWorkspace />
           </ProtectedRoute>
         }
       >
-        <Route path="/" element={<MonitoringWorkspace />} />
-        <Route path="/entities" element={<Navigate to="/sources" replace />} />
-        <Route path="/services" element={<Navigate to="/" replace />} />
-        <Route path="/sources" element={<DataSources />} />
-        <Route element={<ApplicationWorkspace />}>
+        <Route errorElement={<RouteErrorBoundary />}>
+          <Route path="/" element={<MonitoringWorkspace />} />
+          <Route path="/entities" element={<Navigate to="/sources" replace />} />
+          <Route path="/services" element={<Navigate to="/" replace />} />
+          <Route path="/sources" element={<DataSources />} />
           <Route path="/details/:chargerId" element={<Details />} />
           <Route path="/monitoring/:chargerId" element={<Monitoring />} />
           <Route path="/account" element={<Account />} />
-          <Route path="/account/settings" element={<Settings />} />
+          <Route path="/system/status" element={<SystemStatus />} />
+          <Route path="/account/settings" element={<Navigate to="/system/status" replace />} />
           <Route path="/anomalies" element={<Anomalies />} />
         </Route>
       </Route>

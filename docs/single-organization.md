@@ -6,10 +6,17 @@ member. Use separate installations and separate credentials for separate
 organizations; this release does not provide tenant isolation inside one database.
 
 Administrators manage sources, monitors, anomalies, and members. Members can read
-the shared workspace and maintain their own favorites. Account → Organization
-members supports email invitations, resending pending invitations, role changes,
-and disabling or enabling accounts. Disabling preserves the account and its data.
-The server prevents removing the last active, verified administrator.
+the shared workspace and maintain their own favorites. **Account → Your access**
+shows your email and role. **Account → Members** supports email invitations,
+resending pending invitations, role changes, and disabling or enabling accounts.
+Disabling preserves the account and its data and revokes access immediately.
+Once disabled, a member can be permanently removed after confirmation. Removal
+deletes the account, personal favorites and remembered sessions; shared catalogue
+data, telemetry, monitors, reports and audit attribution remain. A removed member
+needs a new invitation to return. Previous sessions and account links stay invalid
+after reinvitation. The server rejects removal of active accounts and prevents
+disabling the last active, verified administrator. Concurrent access changes and
+removal are serialized within the same membership transaction lock.
 
 ## Installation and upgrade
 

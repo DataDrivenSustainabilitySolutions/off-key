@@ -31,13 +31,13 @@
 .ex-search:focus-within { border-color: var(--ex-accent); box-shadow: 0 0 0 2px color-mix(in srgb,var(--ex-accent) 12%,transparent); }
 .ex-search input:focus-visible { outline: none; }
 .ex-search input::placeholder { color: var(--ex-muted); }
-.ex-search kbd { white-space: nowrap; font: inherit; font-size: 10px; opacity: .7; }
-.ex-sidebar-section { display: flex; align-items: center; justify-content: space-between; padding: 0 18px 8px 23px; }
-.ex-sidebar-section > button { font-size: 11px; font-weight: 650; letter-spacing: .025em; color: var(--ex-muted); }
-.ex-sidebar-section > button.is-current { color: var(--ex-accent); }
-.ex-group-trigger { display: flex; align-items: center; gap: 5px; padding: 5px; color: var(--ex-muted) !important; font-size: 10px !important; border-radius: 5px; }
+.ex-sidebar-section { display: flex; align-items: center; padding: 0 18px 0; }
+.ex-group-trigger { display: flex; align-items: center; gap: 5px; padding: 5px; color: var(--ex-muted) !important; font-size: 12px !important; border-radius: 5px; }
 .ex-group-trigger:hover { background: var(--ex-hover); }
 .ex-level-heading { min-height: 67px; display: flex; gap: 6px; align-items: center; padding: 10px 18px 12px; border-bottom: 1px solid var(--ex-line); }
+.ex-level-heading.is-root { min-height: 40px; padding-top: 0; padding-bottom: 8px; }
+.ex-level-heading.is-root .ex-level-title > span { margin-top: 0; }
+.ex-root-button { color: var(--ex-muted) !important; }
 .ex-level-title { min-width: 0; flex: 1; }
 .ex-level-title > span { display: block; margin: 3px 0 0 5px; font-size: 10px; color: var(--ex-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ex-level-title > strong { display: block; padding: 0 5px; font-weight: 550; }
@@ -51,6 +51,11 @@
 .ex-row { display: flex; width: 100%; padding: 13px 13px; gap: 10px; align-items: flex-start; text-align: left; border-radius: 7px; min-height: 69px; }
 .ex-row:hover { background: var(--ex-hover); }
 .ex-row.is-selected { background: var(--ex-active); }
+.ex-row-container { display: flex; align-items: stretch; min-width: 0; }
+.ex-row-container .ex-row { flex: 1; min-width: 0; }
+.ex-browse { flex-shrink: 0; min-width: 40px; display: flex; align-items: center; justify-content: center; border-radius: 7px; }
+.ex-browse:hover { background: var(--ex-hover); }
+@media (max-width: 760px) { .ex-browse { min-width: 44px; } }
 .ex-row-icon { color: var(--ex-muted); padding-top: 2px; flex-shrink: 0; }
 .ex-reading-activity { color: var(--ex-ink); }
 .ex-reading-activity svg { transform: scale(.75); transform-origin: center; }
@@ -75,7 +80,7 @@
 .ex-workspace-empty button { display: inline-flex; gap: 7px; align-items: center; color: var(--ex-accent); font-size: 12px; margin-top: 24px; }
 .ex-banner { margin: 22px 0 0; padding: 12px 15px; border: 1px solid var(--ex-line); border-radius: 7px; font-size: 12px; }
 .ex-banner a,.ex-banner button { margin-left: 12px; color: var(--ex-accent); display: inline-flex; gap: 3px; align-items: center; }
-.ex-error,.ex-settings-error { color: hsl(var(--destructive)); }
+.ex-error { color: hsl(var(--destructive)); }
 .ex-muted { color: var(--ex-muted); font-size: 12px; }
 .ex-notice { margin: 24px 0 0; display: flex; gap: 8px; align-items: center; color: var(--ex-muted); font-size: 12px; }
 .ex-shell .sp-system-live-controls { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 10px; max-width: 340px; }
@@ -99,8 +104,6 @@
 .ex-dialog > header h2 { font-size: 17px; font-weight: 550; margin: 0; }
 .ex-mobile-sidebar { position: fixed; left: 0; top: 0; bottom: 0; width: min(320px,calc(100vw - 32px)); z-index: 80; outline: none; animation: ex-slide 180ms ease-out; }
 .ex-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
-.ex-settings-entity { display: flex; gap: 10px; align-items: center; margin-top: 14px; font-size: 12px; }
-.ex-settings-entity select { flex: 1; min-width: 0; min-height: 44px; padding: 8px 10px; border: 1px solid var(--ex-line); border-radius: 6px; color: var(--ex-ink); background: var(--ex-bg); font: inherit; }
 .ex-shell .sp-inline-name,.ex-dialog .sp-inline-name { display: block; min-width: 0; }
 .ex-shell .sp-inline-name-trigger,.ex-dialog .sp-inline-name-trigger { display: inline-flex; max-width: 100%; text-align: left; gap: 7px; align-items: center; padding: 0; overflow-wrap: anywhere; }
 .ex-shell .sp-inline-name-trigger svg,.ex-dialog .sp-inline-name-trigger svg { flex-shrink: 0; opacity: 0; width: 12px; }
@@ -163,15 +166,6 @@
 .ex-preview-related ul { list-style: none; padding: 0; margin: 10px 0; }
 .ex-preview-related li { display: flex; justify-content: space-between; gap: 12px; padding: 7px 0; border-bottom: 1px solid var(--ex-line); font-size: 11px; overflow-wrap: anywhere; }
 .ex-preview-related small { color: var(--ex-muted); flex-shrink: 0; }
-.ex-settings-section { margin: 20px 0; border-top: 1px solid var(--ex-line); padding-top: 18px; }
-.ex-settings h3 { font-size: 13px; font-weight: 550; margin: 0 0 9px; }
-.ex-settings p { font-size: 13px; color: var(--ex-muted); overflow-wrap: anywhere; }
-.ex-settings-actions { display: flex; flex-wrap: wrap; gap: 8px; }
-.ex-settings-actions button,.ex-settings-import button,.ex-settings-primary { min-height: 36px; padding: 8px 12px !important; border: 1px solid var(--ex-line) !important; border-radius: 6px; font-size: 13px !important; }
-.ex-settings-actions button:hover { background: var(--ex-hover); }
-.ex-settings-primary { background: var(--ex-accent) !important; color: hsl(var(--primary-foreground)) !important; }
-.ex-settings-import { padding: 14px; border: 1px solid var(--ex-line); background: var(--ex-side); border-radius: 8px; }
-.ex-settings-import dl { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 12px; }
 .ex-dialog form.sp-system-editor { display: flex; flex-direction: column; gap: 24px; min-width: 0; margin: 0; }
 .ex-dialog .sp-system-editor-heading { display: flex; flex-direction: column; gap: 6px; }
 .ex-dialog .sp-system-editor h2 { margin: 0; font-size: 19px; font-weight: 500; line-height: 1.35; overflow-wrap: anywhere; }
@@ -226,7 +220,6 @@
   .ex-workspace-link,.ex-sidebar-section > button,.ex-ancestor-trigger,
   .ex-sidebar-footer button,.ex-popover button,.ex-preview-section-heading button,
   .ex-preview-section-heading select,
-  .ex-settings-actions button,.ex-settings-import button,.ex-settings-primary,
   .ex-dialog .sp-system-form-actions button,.ex-dialog .sp-system-remove button,
   .ex-shell .sp-live-toggle,.ex-workspace-empty button,.ex-banner button,
   .ex-dialog .sp-system-editor input,

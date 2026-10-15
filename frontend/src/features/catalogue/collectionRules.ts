@@ -1,25 +1,11 @@
 import type { CollectionPolicy } from "@/types/collection";
 import type { ExplorerNode, NavigationIndex } from "../explorer/navigationIndex";
-import { buildNavigationIndex } from "../explorer/navigationIndex";
 import type { SystemDocument, SystemRuntime } from "./systemTypes";
 
 import type { RuleScope } from "./collectionRuleTypes";
 export type { RuleScope, CollectionRule, RuleEdit, RuleChange, PolicyOrigin } from "./collectionRuleTypes";
 export const scopeKey = (scope: RuleScope) => JSON.stringify([scope.kind, scope.connection_id, scope.topic_prefix ?? null, scope.reading_id ?? null]);
 export const policyLabel = (policy?: CollectionPolicy) => !policy || policy.mode === "off" ? "Off" : policy.mode === "original" ? "Original rate" : `Sample · ${policy.interval_seconds}s`;
-
-export function buildSourcesIndex(document: SystemDocument) {
-  const index = buildNavigationIndex({ ...document, devices: [], streams: document.streams.map(stream => ({ ...stream, device_id: undefined })) }, { readingLeaves: true });
-  const devices = new Map(document.devices.map(device => [device.id, device]));
-  for (const stream of document.streams) {
-    const device = devices.get(stream.device_id ?? "");
-    for (const key of index.objectKeys.get(stream.id) ?? []) {
-      const node = index.nodes.get(key)!;
-      node.searchText += ` ${stream.id} ${device?.id ?? ""} ${device?.label ?? ""}`.toLocaleLowerCase();
-    }
-  }
-  return index;
-}
 
 export function scopeForNode(node?: ExplorerNode): RuleScope | undefined {
   if (!node?.connectionId) return;
@@ -39,6 +25,16 @@ export function scopeReadingIds(index: NavigationIndex, node: ExplorerNode): str
     pending.push(...next.children);
   }
   return [...result];
+}
+
+/** Recording rules operate on MQTT scopes, including every entity on that broker. */
+export function recordingScopeReadingIds(document: SystemDocument, node: ExplorerNode): string[] {
+  const scope = scopeForNode(node);
+  if (!scope) return [];
+  return document.streams.filter(stream => stream.connection_id === scope.connection_id
+    && (scope.kind === "broker" || scope.kind === "reading" && stream.id === scope.reading_id
+      || scope.kind === "topic" && (stream.topic === scope.topic_prefix || stream.topic.startsWith((scope.topic_prefix ?? "") + "/"))))
+    .map(stream => stream.id);
 }
 
 export function sourceHref(readingIds: string[], document?: SystemDocument, returnTo?: string) {

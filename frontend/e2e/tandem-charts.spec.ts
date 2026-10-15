@@ -1,6 +1,7 @@
 import { expect, test, type Locator, type Page, type Route } from "@playwright/test";
 
 import { zoomChart } from "./helpers/chart";
+import { setAppearance } from "./helpers/appearance";
 
 const CHARGER_ID = "e2e-tandem";
 const SENSOR = "systemVoltage";
@@ -385,8 +386,7 @@ test.describe("Tandem anomaly chart regression", () => {
     await expect(card.getByText("New data available")).toBeVisible();
     await expect(adaptiveDetector).toHaveValue(selected);
     await expect(card.getByRole("button", { name: "Return to live" })).toBeVisible();
-    await page.getByRole("button", { name: "Theme", exact: true }).click();
-    await page.getByRole("menuitemradio", { name: "Dark", exact: true }).click();
+    await setAppearance(page, "Dark");
     await expect(page.locator("html")).toHaveClass(/dark/u);
     await expect(adaptiveDetector).toHaveValue(selected);
     await expect(card.getByRole("button", { name: "Return to live" })).toBeVisible();

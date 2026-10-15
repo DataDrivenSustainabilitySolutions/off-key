@@ -90,6 +90,7 @@ async def test_members_can_read_and_favorite_only_for_themselves(gateway, monkey
         ).status_code == 200
         add.assert_awaited_once_with(user_id=17, charger_id="charger-1")
         for method, path in (
+            ("DELETE", "/members/19"),
             ("POST", "/monitors/start"),
             ("DELETE", "/monitors/example"),
             ("POST", "/anomalies"),
@@ -135,6 +136,7 @@ async def test_tactic_rejects_direct_business_requests_without_service_credentia
     ) as client:
         assert (await client.get("/health")).status_code == 200
         for method, path in (
+            ("DELETE", "/api/v1/members/19"),
             ("GET", "/api/v1/data/chargers"),
             ("POST", "/api/v1/data/users"),
             ("POST", "/api/v1/data/auth/login"),
@@ -148,6 +150,48 @@ async def test_tactic_rejects_direct_business_requests_without_service_credentia
                 )
             ).status_code == 401
     get_service_auth_settings.cache_clear()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", [204, 404, 409])
+async def test_admin_member_removal_forwards_identity_and_preserves_status(
+    gateway, monkeypatch, status
+):
+    from off_key_api_gateway.api.v1 import members
+
+    gateway.dependency_overrides[access.current_member] = lambda: PROFILE.model_copy(
+        update={"role": "admin"}
+    )
+    remote = AsyncMock(return_value="")
+    if status != 204:
+        remote.side_effect = TacticError("Cannot remove member", status=status)
+    monkeypatch.setattr(members.tactic, "_make_request", remote)
+    async with AsyncClient(
+        transport=ASGITransport(app=gateway), base_url="http://test"
+    ) as client:
+        response = await client.delete(
+            "/v1/members/19", headers={"Authorization": "Bearer administrator"}
+        )
+    assert response.status_code == status
+    if status == 204:
+        assert response.content == b""
+    remote.assert_awaited_once_with(
+        "DELETE",
+        "/api/v1/members/19",
+        json_data=None,
+        headers={"Authorization": "Bearer administrator"},
+    )
+
+
+@pytest.mark.asyncio
+async def test_anonymous_member_removal_cannot_reach_tactic(gateway, monkeypatch):
+    remote = AsyncMock()
+    monkeypatch.setattr(access.tactic, "_make_request", remote)
+    async with AsyncClient(
+        transport=ASGITransport(app=gateway), base_url="http://test"
+    ) as client:
+        assert (await client.delete("/v1/members/19")).status_code == 401
+    remote.assert_not_awaited()
 
 
 @pytest.mark.asyncio

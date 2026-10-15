@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
 import { zoomChart } from "./helpers/chart";
+import { setAppearance } from "./helpers/appearance";
 
 const CHARGER_ID = "e2e-echarts";
 const INITIAL_POINTS = [
@@ -282,7 +283,8 @@ test.describe("Details telemetry ECharts", () => {
     expect(navbarBox).not.toBeNull();
     expect(primaryLinksBox).not.toBeNull();
     expect(navbarActionsBox).not.toBeNull();
-    expect(primaryLinksBox!.x + primaryLinksBox!.width).toBeLessThanOrEqual(navbarBox!.x);
+    expect(primaryLinksBox!.x).toBeGreaterThanOrEqual(navbarBox!.x);
+    expect(primaryLinksBox!.x + primaryLinksBox!.width).toBeLessThanOrEqual(navbarActionsBox!.x);
     expect(navbarActionsBox!.x).toBeGreaterThan(
       navbarBox!.x + navbarBox!.width / 2,
     );
@@ -317,8 +319,7 @@ test.describe("Details telemetry ECharts", () => {
     );
     await expect(card.getByText(/Current System Voltage:/u)).toBeVisible();
     await expect(card.getByText(/Restarted e-process/u)).toBeVisible();
-    await page.getByRole("button", { name: "Theme", exact: true }).click();
-    await page.getByRole("menuitemradio", { name: "Dark", exact: true }).click();
+    await setAppearance(page, "Dark");
     await expect(page.locator("html")).toHaveClass(/dark/u);
 
     await page.setViewportSize({ width: 390, height: 844 });
@@ -417,6 +418,7 @@ test.describe("Details telemetry ECharts", () => {
     await expect(
       voltageCard.getByRole("button", { name: "Return to live" }),
     ).toBeVisible();
+    await currentCard.scrollIntoViewIfNeeded();
     await expect(
       currentCard.getByRole("button", { name: "Return to live" }),
     ).toBeHidden();
@@ -425,6 +427,7 @@ test.describe("Details telemetry ECharts", () => {
     await expect(
       page.getByRole("button", { name: "Unlink chart navigation" }),
     ).toHaveAttribute("aria-pressed", "true");
+    await currentCard.scrollIntoViewIfNeeded();
     await expect(
       currentCard.getByRole("button", { name: "Return to live" }),
     ).toBeVisible();
@@ -439,6 +442,7 @@ test.describe("Details telemetry ECharts", () => {
     await expect(
       voltageCard.getByRole("button", { name: "Return to live" }),
     ).toBeVisible();
+    await currentCard.scrollIntoViewIfNeeded();
     await expect(
       currentCard.getByRole("button", { name: "Return to live" }),
     ).toBeHidden();

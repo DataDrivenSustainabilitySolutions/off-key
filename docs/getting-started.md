@@ -82,7 +82,7 @@ curl http://localhost:8001/ready
 
 Run `docker compose exec -T tactic-middleware /app/bin/python -m off_key_tactic_middleware.bootstrap_admin`.
 Open the printed invitation URL, choose a password, and log in. The account uses
-`SUPERUSER_MAIL`. Invite colleagues from **Account → Organization members**.
+`SUPERUSER_MAIL`. Invite colleagues from **Account → Members**.
 See [Single-organization operation](single-organization.md) for upgrades and SMTP.
 
 ## 5. Prepare monitoring when needed

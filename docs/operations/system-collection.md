@@ -1,7 +1,7 @@
 # Catalogue and collection
 
-**Data sources** opens a dedicated broker/topic/reading workspace. Select a broker or topic folder to inspect its recording scope; catalogue editing is available in its settings. Verified administrators can save
-brokers, entities, concrete MQTT topics, payload fields and catalogue groups;
+**Sources** opens a dedicated broker/topic/reading workspace. Select a broker or topic folder to inspect its recording scope; catalogue editing is available in its settings. Verified administrators can save
+brokers, entities, concrete MQTT topics, payload fields and collections;
 members can inspect them. The installation-wide database is authoritative.
 Export/import uses only `aberration-system` schema version 1. Credentials, host
 allowlists, TLS requirements and private network routes stay with the operator.
@@ -115,9 +115,9 @@ provider. Catalogue exports contain no credentials.
 Internal publishing uses the configured EMQX TLS/authentication defaults and the
 private `SYSTEM_COLLECTION_MQTT_USERNAME`, `SYSTEM_COLLECTION_MQTT_API_KEY` and
 `SYSTEM_COLLECTION_MQTT_CA_FILE`. Production mounts its publisher credential and
-CA as TACTIC secrets. Settings reports ingress/collector revisions and diagnostics.
+CA as TACTIC secrets. System status reports ingress/collector revisions and diagnostics.
 
-Storage diagnostics remain under **Settings**. `TELEMETRY_RETENTION_DAYS` (1–365,
+Storage diagnostics are under **Menu → System status** at `/system/status`. `TELEMETRY_RETENTION_DAYS` (1–365,
 default 14) controls managed TimescaleDB retention for telemetry and monitoring
 evidence. DB sync reconciles those policies on startup without changing other
 jobs. Shortening retention makes old chunks eligible for scheduled cleanup; it

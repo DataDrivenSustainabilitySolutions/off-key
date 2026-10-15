@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from off_key_core.config.logs import logger
 from off_key_core.models import ADAPTIVE_MODEL_FAMILY, STATIC_MODEL_FAMILY
 from off_key_core.schemas.radar import RadarStartConfig
+from sqlalchemy.engine import make_url
 
 from ...config.config import (
     get_radar_container_runtime_settings,
@@ -17,6 +18,7 @@ from ...models.registry import ModelRegistryService
 _FINGERPRINT_EXCLUDED_KEYS = {
     "SERVICE_ID",
     "RADAR_DATABASE_URL",
+    "RADAR_LIFECYCLE_VERSION",
     "RADAR_CHECKPOINT_SECRET",
 }
 
@@ -36,6 +38,18 @@ def build_radar_config_fingerprint(environment: dict[str, str]) -> str:
     return hashlib.sha256(serialized.encode()).hexdigest()
 
 
+def build_radar_controller_identity(database_url: str) -> str:
+    """Scope automatic Docker reconciliation to one database deployment."""
+    url = make_url(database_url)
+    docker_config = get_tactic_settings().config.docker
+    networks = (
+        docker_config.default_network,
+        *sorted(docker_config.additional_networks),
+    )
+    target = (url.host, url.port or 5432, url.database, url.query.get("host"), networks)
+    return hashlib.sha256(json.dumps(target).encode()).hexdigest()
+
+
 def build_radar_workload_labels(
     environment: dict[str, str], radar_image: str
 ) -> dict[str, str]:
@@ -52,6 +66,11 @@ def build_radar_workload_labels(
         "radar_model_type": monitoring["model_type"],
         "radar_config_fingerprint": build_radar_config_fingerprint(environment),
         "radar_image": radar_image,
+        "radar_service_id": environment["SERVICE_ID"],
+        "radar_lifecycle_version": environment.get("RADAR_LIFECYCLE_VERSION", "1"),
+        "radar_controller_id": build_radar_controller_identity(
+            environment["RADAR_DATABASE_URL"]
+        ),
     }
 
 
@@ -59,7 +78,7 @@ def build_radar_environment(
     *,
     service_id: str,
     config: RadarStartConfig,
-    model_registry: ModelRegistryService,
+    model_registry: ModelRegistryService | None,
 ) -> dict[str, str]:
     """Compile validated service configuration into RADAR environment variables."""
     monitoring = config.monitoring
@@ -122,15 +141,19 @@ def build_radar_environment(
             environment["RADAR_MQTT_API_KEY"] = mqtt_config["api_key"]
 
     try:
-        validated_params = model_registry.validate_model_params(
-            monitoring.model_type,
-            monitoring.model_params,
-            category="model",
-            family=(
-                ADAPTIVE_MODEL_FAMILY
-                if monitoring.strategy == "adaptive_stream"
-                else STATIC_MODEL_FAMILY
-            ),
+        validated_params = (
+            model_registry.validate_model_params(
+                monitoring.model_type,
+                monitoring.model_params,
+                category="model",
+                family=(
+                    ADAPTIVE_MODEL_FAMILY
+                    if monitoring.strategy == "adaptive_stream"
+                    else STATIC_MODEL_FAMILY
+                ),
+            )
+            if model_registry is not None
+            else monitoring.model_params
         )
     except ValueError as exc:
         logger.error("Invalid model parameters for %s: %s", monitoring.model_type, exc)

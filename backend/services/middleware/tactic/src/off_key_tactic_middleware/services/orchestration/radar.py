@@ -33,6 +33,7 @@ from .radar_environment import (
     build_radar_config_fingerprint,
     build_radar_environment,
 )
+from .radar_lifecycle import RadarLifecycleController
 from .radar_workloads import RadarWorkloadManager, get_async_docker
 
 
@@ -59,7 +60,6 @@ class RadarOrchestrationService:
         """Claim catalog sensors and launch the validated RADAR configuration."""
         mqtt_topics = config.mqtt_topics
         container_name = config.container_name
-        strategy = config.monitoring.strategy
         await lock_collection_configuration(self.session)
         await require_application_writes(
             self.session, deployment_revision=deployment_revision
@@ -104,62 +104,62 @@ class RadarOrchestrationService:
         existing_service = result.scalars().first()
 
         if existing_service:
+            if (
+                getattr(existing_service, "config_fingerprint", None)
+                and existing_service.status
+            ):
+                return await self._resume_managed_service(
+                    existing_service, config_fingerprint
+                )
             resolved_service = await self._resolve_existing_service_request(
                 existing_service=existing_service,
                 container_name=container_name,
                 mqtt_topics=mqtt_topics,
-                strategy=strategy,
+                strategy=config.monitoring.strategy,
                 model_type=config.monitoring.model_type,
                 config_fingerprint=config_fingerprint,
             )
             if resolved_service:
                 return resolved_service
 
-        # Create the RADAR workload (Swarm service when available, otherwise container)
-        docker_workload: Any = None
-        try:
-            docker_workload = await self.workloads.create(db_service_id, env_vars)
-            await self.workloads.validate_started(docker_workload)
-
-            # Create monitoring service record
-            service_record = MonitoringService(
-                id=db_service_id,
-                container_id=docker_workload.id,
-                container_name=container_name,
-                mqtt_topic=mqtt_topics,
-                created_at=datetime.now(),
-                status=True,
-                operational_stage="starting",
-                operational_status=RadarOperationalStatus(stage="starting").model_dump(
-                    mode="json", exclude_none=True
-                ),
-                operational_updated_at=None,
-                launch_config=config.model_dump(mode="json")
+        # Commit desired state and its sensor claim before any external mutation.
+        # Even cancellation or a lost Docker reply now leaves a recoverable owner.
+        env_vars["RADAR_LIFECYCLE_VERSION"] = "1"
+        service_record = MonitoringService(
+            id=db_service_id,
+            container_id=None,
+            container_name=container_name,
+            mqtt_topic=mqtt_topics,
+            created_at=datetime.now(),
+            status=True,
+            desired_state="running",
+            lifecycle_version=1,
+            config_fingerprint=config_fingerprint,
+            collection_fingerprint=env_vars["RADAR_COLLECTION_FINGERPRINT"],
+            operational_stage="starting",
+            operational_status=RadarOperationalStatus(stage="starting").model_dump(
+                mode="json", exclude_none=True
+            ),
+            operational_updated_at=None,
+            launch_config=config.model_dump(mode="json")
+            | {
+                "monitoring": json.loads(env_vars["RADAR_MONITORING_CONFIG"]),
+                "mqtt_config": config.mqtt_config
                 | {
-                    "monitoring": json.loads(env_vars["RADAR_MONITORING_CONFIG"]),
-                    "mqtt_config": config.mqtt_config
-                    | {
-                        "qos": int(env_vars["RADAR_SUBSCRIPTION_QOS"]),
-                        "client_id_prefix": env_vars["RADAR_MQTT_CLIENT_ID_PREFIX"],
-                    },
+                    "qos": int(env_vars["RADAR_SUBSCRIPTION_QOS"]),
+                    "client_id_prefix": env_vars["RADAR_MQTT_CLIENT_ID_PREFIX"],
                 },
-            )
-
-            # Add to database
+            },
+        )
+        try:
             self.session.add(service_record)
             await self.session.commit()
-
-            logger.info(f"RADAR workload created with ID: {docker_workload.id}")
-            logger.info(f"RADAR service added to database with ID: {service_record.id}")
-
-            return service_record
-
-        except Exception as e:
+        except BaseException:
             await self.session.rollback()
-            if docker_workload is not None:
-                await self.workloads.remove_after_failure(docker_workload)
-            logger.error(f"Failed to create RADAR service: {e}")
             raise
+        return await RadarLifecycleController(
+            self.session, self.workloads
+        ).complete_creation(db_service_id)
 
     async def _assert_topics_available(
         self, *, mqtt_topics: list[str], container_name: str
@@ -194,25 +194,21 @@ class RadarOrchestrationService:
         result = await self.session.execute(
             select(MonitoringService).where(MonitoringService.status.is_(True))
         )
-        claimants: list[MonitoringService] = []
-        reconciled = False
-        for service in result.scalars().all():
-            if service.stop_requested_at is not None:
-                claimants.append(service)
-                continue
-            docker_status, _ = await self.workloads.get_status_and_labels(
-                getattr(service, "container_id", "") or ""
-            )
-            if docker_status in TERMINAL_WORKLOAD_STATES:
-                service.status = False
-                apply_terminal_operational_status(service, docker_status)
-                reconciled = True
-                continue
-            claimants.append(service)
+        return list(result.scalars().all())
 
-        if reconciled:
-            await self.session.flush()
-        return claimants
+    async def _resume_managed_service(self, service, config_fingerprint):
+        if service.desired_state != "running" or service.stop_requested_at is not None:
+            raise ValueError(f"RADAR service '{service.container_name}' is stopping")
+        if service.config_fingerprint != config_fingerprint:
+            raise ValueError(
+                f"RADAR service name '{service.container_name}' already belongs "
+                "to a running service with a different RADAR configuration."
+            )
+        service_id = service.id
+        await self.session.commit()
+        return await RadarLifecycleController(
+            self.session, self.workloads
+        ).complete_creation(service_id)
 
     async def _resolve_existing_service_request(
         self,
@@ -351,7 +347,19 @@ class RadarOrchestrationService:
 
     async def _delete_service(self, service: MonitoringService) -> bool:
         try:
-            removed_workload = await self.workloads.remove(service.container_id)
+            service.desired_state = "deleted"
+            service.lifecycle_version = (
+                getattr(service, "lifecycle_version", None) or 1
+            ) + 1
+            service.stop_requested_at = datetime.now()
+            service_id, workload_id = service.id, service.container_id
+            await self.session.commit()
+            if getattr(service, "config_fingerprint", None):
+                removed_workload = await self.workloads.remove_intent(
+                    service_id, workload_id
+                )
+            else:
+                removed_workload = await self.workloads.remove(workload_id)
             deleted_rows = await self._delete_service_rows_by_ids([service.id])
             await self.session.commit()
             logger.info(

@@ -17,7 +17,11 @@ from ...facades.docker import (
     should_fallback_to_container,
     with_workload_fallback,
 )
-from .radar_environment import build_radar_workload_labels
+from .radar_environment import (
+    build_radar_config_fingerprint,
+    build_radar_controller_identity,
+    build_radar_workload_labels,
+)
 
 MANAGED_BY_TACTIC_LABEL = "managed_by=tactic"
 RADAR_SERVICE_TYPE_LABEL = "service_type=radar"
@@ -70,6 +74,78 @@ class RadarWorkloadManager:
 
     def __init__(self, async_docker: AsyncDocker):
         self.async_docker = async_docker
+
+    async def find(self, service_id: str) -> Any | None:
+        """Resolve the durable Docker name, including unknown create outcomes."""
+        name = f"radar-{service_id}"
+        try:
+            return await self.async_docker.run(
+                self.async_docker.client.services.get, name
+            )
+        except docker.errors.NotFound:
+            pass
+        except Exception as exc:
+            if not should_fallback_to_container(exc):
+                raise
+        try:
+            return await self.async_docker.run(
+                self.async_docker.client.containers.get, name
+            )
+        except docker.errors.NotFound:
+            return None
+
+    async def ensure(self, service_id: str, environment: dict[str, str]) -> Any:
+        """Idempotently create or adopt one workload for a persisted generation."""
+        workload = await self.find(service_id)
+        if workload is None:
+            try:
+                workload = await self.create(service_id, environment)
+            except docker.errors.APIError as exc:
+                if exc.status_code != 409:
+                    raise
+                # Another controller or a previously timed-out request won.
+                workload = await self.find(service_id)
+                if workload is None:
+                    raise
+        attrs = getattr(workload, "attrs", {}) or {}
+        labels = (
+            attrs.get("Spec", {}).get("Labels")
+            or attrs.get("Config", {}).get("Labels")
+            or {}
+        )
+        expected = {
+            "managed_by": "tactic",
+            "service_type": "radar",
+            "radar_service_id": service_id,
+            "radar_lifecycle_version": environment["RADAR_LIFECYCLE_VERSION"],
+            "radar_config_fingerprint": build_radar_config_fingerprint(environment),
+            "radar_controller_id": build_radar_controller_identity(
+                environment["RADAR_DATABASE_URL"]
+            ),
+        }
+        if any(labels.get(key) != value for key, value in expected.items()):
+            raise RuntimeError(
+                "Existing RADAR workload does not match its persisted intent"
+            )
+        return workload
+
+    async def remove_intent(self, service_id: str, workload_id: str | None) -> bool:
+        """Remove an attached worker and any unknown outcome at its durable name."""
+        removed = await self.remove(workload_id)
+        workload = await self.find(service_id)
+        if workload is not None:
+            attrs = getattr(workload, "attrs", {}) or {}
+            labels = (
+                attrs.get("Spec", {}).get("Labels")
+                or attrs.get("Config", {}).get("Labels")
+                or {}
+            )
+            if labels.get("radar_service_id") != service_id:
+                raise RuntimeError(
+                    "Refusing to remove a RADAR workload with a different owner"
+                )
+            removed = await self.remove(workload.id) or removed
+        return removed
 
     async def create(self, service_id: str, environment: dict[str, str]) -> Any:
         """Create a Swarm service when available, otherwise a container."""
@@ -366,9 +442,11 @@ class RadarWorkloadManager:
     def _managed_label_filters() -> dict[str, list[str]]:
         return {"label": [MANAGED_BY_TACTIC_LABEL, RADAR_SERVICE_TYPE_LABEL]}
 
-    async def list_managed_ids(self) -> set[str]:
+    async def list_managed_ids(self, *, controller_id: str | None = None) -> set[str]:
         """List every managed RADAR service and container ID."""
         filters = self._managed_label_filters()
+        if controller_id is not None:
+            filters["label"].append(f"radar_controller_id={controller_id}")
         try:
             docker_services = await self.async_docker.run(
                 self.async_docker.client.services.list,

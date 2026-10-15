@@ -637,7 +637,8 @@ async def test_stop_radar_service_deletes_db_row_after_removing_workload(
     assert await service.stop_radar_service(container_name="radar-static") is True
     workload.remove.assert_called_once_with(force=True)
     assert session.execute.await_count == 3
-    session.commit.assert_awaited_once()
+    assert session.commit.await_count == 2
+    assert db_row.desired_state == "deleted"
     session.rollback.assert_not_awaited()
 
 
@@ -677,7 +678,7 @@ async def test_stop_radar_service_deletes_db_row_when_workload_is_missing(
 
     assert await service.stop_radar_service(container_name="radar-static") is True
     assert session.execute.await_count == 3
-    session.commit.assert_awaited_once()
+    assert session.commit.await_count == 2
     session.rollback.assert_not_awaited()
 
 
@@ -717,7 +718,7 @@ async def test_stop_radar_service_deletes_db_row_by_container_id(monkeypatch):
     assert await service.stop_radar_service(container_id="ctr-1") is True
     workload.remove.assert_called_once_with(force=True)
     assert session.execute.await_count == 3
-    session.commit.assert_awaited_once()
+    assert session.commit.await_count == 2
     session.rollback.assert_not_awaited()
 
 
@@ -941,7 +942,7 @@ async def test_delete_radar_service_removes_running_workload_and_db_rows(monkeyp
     assert await service.delete_radar_service("svc-1") is True
     workload.remove.assert_called_once_with(force=True)
     assert session.execute.await_count == 3
-    session.commit.assert_awaited_once()
+    assert session.commit.await_count == 2
     session.rollback.assert_not_awaited()
 
 
@@ -1004,7 +1005,9 @@ async def test_delete_radar_service_leaves_db_row_when_workload_remove_fails(
     assert await service.delete_radar_service("svc-1") is False
     workload.remove.assert_called_once_with(force=True)
     session.execute.assert_awaited_once()
-    session.commit.assert_not_awaited()
+    session.commit.assert_awaited_once()
+    assert db_row.desired_state == "deleted"
+    assert db_row.stop_requested_at is not None
     session.rollback.assert_awaited_once()
 
 
@@ -1137,7 +1140,7 @@ async def test_startup_validation_raises_with_logs_when_container_exits(
     ],
     indirect=True,
 )
-async def test_create_radar_service_removes_workload_when_db_commit_fails(
+async def test_create_radar_service_never_launches_before_intent_commit(
     monkeypatch,
     selected_collection,
 ):
@@ -1190,7 +1193,8 @@ async def test_create_radar_service_removes_workload_when_db_commit_fails(
         )
 
     session.rollback.assert_awaited_once()
-    service.workloads.remove_after_failure.assert_awaited_once_with(workload)
+    service.workloads.create.assert_not_awaited()
+    service.workloads.remove_after_failure.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -1256,6 +1260,15 @@ async def test_existing_active_service_with_missing_workload_is_recreated(
         return_value=SimpleNamespace(id="new-workload")
     )
     service.workloads.validate_started = AsyncMock()
+
+    async def attach_pending(_controller, _service_id):
+        pending = session.add.call_args.args[0]
+        pending.container_id = "new-workload"
+        return pending
+
+    monkeypatch.setattr(
+        radar_module.RadarLifecycleController, "complete_creation", attach_pending
+    )
 
     created = await service.create_radar_service(
         RadarStartConfig(

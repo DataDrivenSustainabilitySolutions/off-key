@@ -59,9 +59,16 @@ See [Collection](../operations/system-collection.md) for revision transitions an
 
 1. An operator selects sensors and a strategy in the frontend.
 2. The frontend calls Gateway monitor routes under `/v1/monitors`.
-3. TACTIC validates the request and claims the selected sensors.
-4. TACTIC creates, starts, inspects, or removes the RADAR workload through the Docker API proxy.
-5. The workload runs either the static-baseline or adaptive-stream lane.
+3. TACTIC validates the request, persists the desired workload generation and
+   claims its selected sensors before calling Docker. Pending and stopping
+   monitors retain their sensor claims until reconciliation confirms the change.
+4. TACTIC creates or adopts the deterministic `radar-<service-id>` workload.
+   Reconciliation resumes interrupted creation requests and removes delayed
+   creations whose intent was deleted, within the same database deployment scope.
+5. A managed workload checks its persisted desired state and lifecycle version
+   before starting its detector or subscribing. A delayed creation after stop or
+   deletion exits without beginning monitoring. The admitted workload runs either
+   the static-baseline or adaptive-stream lane.
 6. Runtime state and processing stages are surfaced through the Gateway.
 
 ### 4. Evidence and anomaly flow

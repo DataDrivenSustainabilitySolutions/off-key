@@ -68,6 +68,7 @@ def test_migrations_adopt_verified_baseline_preserve_data_and_repeat(
             "006_remembered_sessions.sql",
             "007_monitor_anomaly_identity.sql",
             "008_radar_runtime_checkpoints.sql",
+            "009_radar_lifecycle_intent.sql",
         ]
         assert apply_migrations(connection)["applied"] == [
             "003_deployment_maintenance.sql",
@@ -76,6 +77,7 @@ def test_migrations_adopt_verified_baseline_preserve_data_and_repeat(
             "006_remembered_sessions.sql",
             "007_monitor_anomaly_identity.sql",
             "008_radar_runtime_checkpoints.sql",
+            "009_radar_lifecycle_intent.sql",
         ]
         assert (
             connection.scalar(text("SELECT count(*) FROM services WHERE id='old'")) == 1
@@ -149,6 +151,7 @@ def test_clean_break_preserves_configuration_and_history_and_runs_once(
             "006_remembered_sessions.sql",
             "007_monitor_anomaly_identity.sql",
             "008_radar_runtime_checkpoints.sql",
+            "009_radar_lifecycle_intent.sql",
         ]
         assert apply_migrations(connection)["applied"] == [
             "004_system_catalogue.sql",
@@ -156,6 +159,7 @@ def test_clean_break_preserves_configuration_and_history_and_runs_once(
             "006_remembered_sessions.sql",
             "007_monitor_anomaly_identity.sql",
             "008_radar_runtime_checkpoints.sql",
+            "009_radar_lifecycle_intent.sql",
         ]
         assert (
             connection.scalar(
@@ -312,6 +316,7 @@ async def test_monitor_cutover_blocks_writes_preserves_intent_and_resumes_once(
 
     workloads.remove = remove
     workloads.create = create
+    workloads.ensure = create
     workloads.validate_started = AsyncMock()
     workloads.remove_after_failure = AsyncMock()
     workloads.get_status_and_labels = AsyncMock(return_value=("running", {}))

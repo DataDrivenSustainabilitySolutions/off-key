@@ -20,6 +20,7 @@ from datetime import datetime
 from off_key_core.config.logs import logger
 
 from .adaptive_detector import AdaptiveStreamDetectionService
+from .admission import require_monitor_admission
 from .checkpoint_manager import CheckpointManager
 from .config.config import AnomalyDetectionConfig, get_radar_settings
 from .config.runtime import get_radar_checkpoint_settings
@@ -127,6 +128,7 @@ class RadarService:
         self.shutdown_event.clear()
 
         try:
+            await require_monitor_admission()
             runtime = get_radar_checkpoint_settings()
             if runtime.RADAR_CHECKPOINT_STORAGE == "database":
                 if not self.config.db_write_enabled:

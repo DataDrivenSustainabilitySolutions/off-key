@@ -40,7 +40,10 @@ class CollectionMonitorService:
                     )
                     if monitor is None or monitor.stop_requested_at is None:
                         continue
-                    await workloads.remove(monitor.container_id)
+                    if monitor.config_fingerprint:
+                        await workloads.remove_intent(monitor.id, monitor.container_id)
+                    else:
+                        await workloads.remove(monitor.container_id)
                     mark_collection_monitor_stopped(monitor)
             except Exception as exc:
                 raise InfrastructureError(

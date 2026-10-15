@@ -205,6 +205,13 @@ class MonitoringService(Base):
     operational_updated_at = Column(DateTime(timezone=True), nullable=True)
     stop_requested_at = Column(DateTime(timezone=True), nullable=True)
     launch_config = Column(JSON, nullable=True)
+    # Desired workload state outlives a controller request or Docker API timeout.
+    desired_state = Column(
+        Text, nullable=False, default="running", server_default="running"
+    )
+    lifecycle_version = Column(Integer, nullable=False, default=1, server_default="1")
+    config_fingerprint = Column(Text, nullable=True)
+    collection_fingerprint = Column(Text, nullable=True)
 
 
 class RadarRuntimeCheckpoint(Base):

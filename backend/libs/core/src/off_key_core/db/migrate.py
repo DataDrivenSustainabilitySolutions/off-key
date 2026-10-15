@@ -57,6 +57,16 @@ def adopted_versions(connection: Connection, migrations: dict[str, str]) -> list
         and "service_id"
         not in {column["name"] for column in inspect(connection).get_columns(name)}
     }
+    if "services" in existing:
+        columns = {
+            column["name"] for column in inspect(connection).get_columns("services")
+        }
+        excluded_columns["services"] = {
+            "desired_state",
+            "lifecycle_version",
+            "config_fingerprint",
+            "collection_fingerprint",
+        } - columns
     if not existing.intersection(application_tables):
         if existing - {LEDGER}:
             raise ValueError("Cannot initialize a database containing unknown tables")
@@ -88,7 +98,8 @@ def adopted_versions(connection: Connection, migrations: dict[str, str]) -> list
     validate_existing_schema(
         connection,
         tables=baseline,
-        excluded_columns=excluded_columns | {"services": {"launch_config"}},
+        excluded_columns=excluded_columns
+        | {"services": excluded_columns.get("services", set()) | {"launch_config"}},
     )
     return ["001_membership.sql", "002_monitor_stop_intent.sql"]
 

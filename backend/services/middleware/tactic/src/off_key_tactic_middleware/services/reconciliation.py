@@ -24,6 +24,8 @@ from ..facades.docker import (
     get_workload_docker_status,
     with_workload_fallback,
 )
+from .orchestration.radar_lifecycle import RadarLifecycleController
+from .orchestration.radar_workloads import RadarWorkloadManager
 from .radar_status import (
     TERMINAL_WORKLOAD_STATES,
     UNVERIFIED_WORKLOAD_STATES,
@@ -127,6 +129,11 @@ class RadarStatusReconciliationService:
         session_factory = get_async_session_local()
         async with session_factory() as session:
             try:
+                lifecycle = RadarLifecycleController(
+                    session, RadarWorkloadManager(self.async_docker)
+                )
+                await lifecycle.remove_orphans()
+                await lifecycle.recover_pending()
                 await self._reconcile_with_session(session)
                 await session.commit()
             except Exception:
@@ -164,9 +171,26 @@ class RadarStatusReconciliationService:
     ) -> _ReconciliationOutcome:
         """Apply the state transition for one persisted RADAR service."""
         if service.stop_requested_at is not None:
-            await self._remove_workload_if_present(service.container_id)
+            if getattr(service, "config_fingerprint", None):
+                await RadarWorkloadManager(self.async_docker).remove_intent(
+                    service.id, service.container_id
+                )
+            else:
+                await self._remove_workload_if_present(service.container_id)
+            if getattr(service, "desired_state", None) == "deleted":
+                deleted = await self._delete_service_row(session, service.id)
+                return _ReconciliationOutcome(deleted_rows=deleted)
             mark_collection_monitor_stopped(service)
             return _ReconciliationOutcome(updated=True)
+
+        if (
+            getattr(service, "config_fingerprint", None)
+            and service.container_id is None
+            and service.desired_state == "running"
+        ):
+            # An interrupted creation remains an active input claim until the
+            # controller attaches or explicitly stops its durable generation.
+            return _ReconciliationOutcome()
 
         docker_status = await self._get_docker_status(service.container_id)
         docker_state = (docker_status or "").strip().lower()

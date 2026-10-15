@@ -22,7 +22,7 @@ validated observation time as well as receipt time.
 - [x] 2. Scope alarm identity by monitoring service; upgrade and real DB regression.
 - [x] 3. Persist signed checkpoints across task/node replacement; real restart test.
 - [x] 4. Make rate/overflow/restart coverage gaps explicit and remove unsuitable defaults.
-- [ ] 5. Persist desired workload state before Docker mutation and recover interruption.
+- [x] 5. Persist desired workload state before Docker mutation and recover interruption.
 - [ ] 6. Degrade health when required input or successful inference stops progressing.
 - [x] 7. Require successful SUBACKs before readiness, including reconnects.
 - [ ] 8. Move external workload inspection outside database locks/transactions.
@@ -91,3 +91,14 @@ persist monitor intent before worker startup because initial snapshots reference
 that monitor. Separate real Python replacement processes reproduce future static
 and adaptive scores after restoring the database snapshot; actual PostgreSQL
 rollback tests verify that evidence and checkpoint advancement cannot split.
+
+Step 5: Durable versioned desired state commits before external workload creation.
+Controllers adopt deterministic names only after verifying deployment, service,
+generation and configuration labels. Delayed workers check database admission
+before initializing detection or subscribing; stop/delete intent fences old
+generations. Pending failures remain visible and keep their input claim. Automatic
+orphan cleanup is restricted to the database and Docker network namespace.
+Validation: 88 lifecycle/upgrade tests including real TimescaleDB and Swarm, plus
+an isolated RADAR-only environment import test. Migration 009 is additive; the
+historical catalogue converter runs after additive DDL in the same transaction
+without changing its recorded checksum.

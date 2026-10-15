@@ -66,6 +66,20 @@ Use this page when mapping API behaviour to persisted entities and relationships
 - E-process and restarted-martingale fields preserve tracker evidence where the selected strategy produces it.
 - `tracker_results` holds additional tracker-specific results.
 
+### Monitoring workload intent
+
+- `services.desired_state` records whether the controller wants a worker running,
+  stopped, or deleted. `lifecycle_version` fences delayed workload starts.
+- The row and sensor claim commit before Docker creation. `container_id` can be
+  empty during a recoverable pending creation; `launch_config`,
+  `config_fingerprint` and `collection_fingerprint` identify its validated inputs.
+- Reconciliation adopts matching workloads by deterministic name and verifies
+  service, configuration and generation labels. Ambiguous Docker outcomes retain
+  the row and claim; stop or delete persists intent before removing the worker.
+- Migration `009_radar_lifecycle_intent.sql` preserves attached workers and marks
+  already inactive services as stopped. Older attached workers without saved
+  configuration remain observable and removable; they are not auto-created.
+
 ## Model registry
 
 `model_registry` is the database-backed source for model discovery:

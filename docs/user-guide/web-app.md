@@ -26,6 +26,7 @@ Use this page for account, charger, favourites, monitoring-service, and anomaly 
 | `/?state=favorites` | Dashboard filtered to favourite chargers | Authenticated |
 | `/anomalies` | Review recent anomaly events | Authenticated |
 | `/account` | User profile and account actions | Authenticated |
+| `/system/status` | Live collection diagnostics, database size and retention status | Authenticated |
 
 !!! note
     Existing `/favourites` bookmarks redirect to the dashboard's Favorites filter.
@@ -42,6 +43,22 @@ The **Remember this device** choice determines whether the browser stores the se
 Administrators manage invitations, roles, and access under **Account → Organization members**.
 Members can view the shared workspace and edit their own favorites. Administrators
 also manage data sources, monitors, and anomalies.
+
+## Settings and system status
+
+Open **Menu → Settings → Appearance** to choose **Light**, **Dark**, or
+**Follow system**. Changes apply immediately and are saved in this browser on
+this device. Follow system also responds to changes in the device's appearance.
+Settings opens over the current page, preserving your workspace and unsaved input.
+Close it with the close button or Escape to return to the page.
+
+Open **Menu → System status** for live collection diagnostics, database size and
+retention information. Collection status refreshes automatically every three
+seconds; **Refresh storage** requests updated database measurements. The former
+`/account/settings` diagnostic link redirects to `/system/status`.
+
+Account management remains under **Menu → Account**. Catalogue configuration is
+available from **Catalogue settings** at the bottom of the catalogue sidebar.
 
 ## Charger and telemetry workflow
 

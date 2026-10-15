@@ -15,7 +15,7 @@ export function createAppRoutes() {
   const Monitoring = lazy(() => import("@/pages/Monitoring"));
   const Registration = lazy(() => import("@/pages/Registration"));
   const ResetPassword = lazy(() => import("@/pages/ResetPassword"));
-  const Settings = lazy(() => import("@/pages/Settings"));
+  const SystemStatus = lazy(() => import("@/pages/SystemStatus"));
   const Verification = lazy(() => import("@/pages/Verification"));
   const MonitoringWorkspace = lazy(() => import("@/pages/MonitoringWorkspace"));
 
@@ -42,7 +42,8 @@ export function createAppRoutes() {
           <Route path="/details/:chargerId" element={<Details />} />
           <Route path="/monitoring/:chargerId" element={<Monitoring />} />
           <Route path="/account" element={<Account />} />
-          <Route path="/account/settings" element={<Settings />} />
+          <Route path="/system/status" element={<SystemStatus />} />
+          <Route path="/account/settings" element={<Navigate to="/system/status" replace />} />
           <Route path="/anomalies" element={<Anomalies />} />
         </Route>
       </Route>

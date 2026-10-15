@@ -47,7 +47,7 @@ export function CollectionHealth() {
   return (
     <SectionPanel
       title="Collection diagnostics"
-      help="Live status for the saved data source configuration."
+      help="Live status for the saved data source configuration. Refreshes automatically every three seconds."
     >
       {error && (
         <p role="alert" className="mb-3 text-sm text-destructive">

@@ -10,9 +10,9 @@ import { Button } from "@/components/ui/button";
 import { apiUtils } from "@/lib/api-client";
 import { getErrorMessage } from "@/lib/errors";
 import type { StorageStatus } from "@/types/collection";
-import { CollectionHealth } from "./settings/CollectionHealth";
+import { CollectionHealth } from "./system-status/CollectionHealth";
 
-export default function Settings() {
+export default function SystemStatus() {
   const [status, setStatus] = useState<StorageStatus | null>(null);
   const [error, setError] = useState("");
   const [request, setRequest] = useState(0);
@@ -40,7 +40,7 @@ export default function Settings() {
   return (
     <>
       <PageShell>
-        <PageHeader title="Settings" />
+        <PageHeader title="System status" eyebrow="Live collection and storage diagnostics" />
         <CollectionHealth />
         <SectionPanel
           title="Storage and retention"

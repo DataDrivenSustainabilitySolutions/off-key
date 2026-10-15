@@ -17,6 +17,7 @@ vi.mock("@/pages/Login", () => ({ default: () => <h1>Sign in</h1> }));
 vi.mock("@/pages/SystemCatalogue", () => ({ default: () => <h1>Data sources</h1> }));
 vi.mock("@/pages/Anomalies", () => ({ default: () => <h1>Anomalies</h1> }));
 vi.mock("@/pages/Account", () => ({ default: () => <h1>Account</h1> }));
+vi.mock("@/pages/SystemStatus", () => ({ default: () => <h1>System status</h1> }));
 vi.mock("@/components/theme-provider", () => ({ useTheme: () => ({ resolvedTheme: "light", setTheme: vi.fn() }) }));
 
 let routes: RouteObject[];
@@ -43,7 +44,7 @@ describe("application home", () => {
     expect(router.state.location.pathname).toBe("/");
   });
 
-  it.each(["/", "/entities", "/anomalies"])("requires sign-in from %s", async (path) => {
+  it.each(["/", "/entities", "/anomalies", "/system/status", "/account/settings"])("requires sign-in from %s", async (path) => {
     auth.isAuthenticated = false;
     const router = visit(path);
     expect(await screen.findByRole("heading", { name: "Sign in" })).toBeTruthy();
@@ -62,6 +63,14 @@ describe("application home", () => {
     const router = visit("/entities");
     expect(await screen.findByRole("heading", { name: "Data sources" })).toBeTruthy();
     expect(router.state.location.pathname).toBe("/sources");
+  });
+
+  it.each(["/system/status", "/account/settings"])("opens diagnostics from %s", async (path) => {
+    const router = visit(path);
+    expect(await screen.findByRole("heading", { name: "System status" })).toBeTruthy();
+    expect(router.state.location.pathname).toBe("/system/status");
+    fireEvent.keyDown(screen.getByRole("button", { name: "Application menu" }), { key: "Enter" });
+    expect(screen.getByRole("menuitem", { name: "System status" }).getAttribute("aria-current")).toBe("page");
   });
 
   it("keeps the primary navigation on Anomalies and provides a way back to Monitoring", async () => {

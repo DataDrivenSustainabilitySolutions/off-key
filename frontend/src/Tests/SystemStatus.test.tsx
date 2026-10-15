@@ -2,7 +2,7 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import Settings from "../pages/Settings";
+import SystemStatus from "../pages/SystemStatus";
 import type { StorageStatus } from "../types/collection";
 
 const api = vi.hoisted(() => ({ get: vi.fn() }));
@@ -27,16 +27,16 @@ beforeEach(() => {
     : Promise.resolve({ revision: 0, collection: {}, ingress: {} }));
 });
 
-describe("storage and retention", () => {
-  it.each([true, false])("loads storage settings (administrator: %s)", async (isAdmin) => {
+describe("system status, storage and retention", () => {
+  it.each([true, false])("loads operational status (administrator: %s)", async (isAdmin) => {
     auth.isAdmin = isAdmin;
     render(
-      <MemoryRouter initialEntries={["/account/settings"]}>
-        <Settings />
+      <MemoryRouter initialEntries={["/system/status"]}>
+        <SystemStatus />
       </MemoryRouter>,
     );
-    expect(screen.getByRole("heading", { name: "Settings", level: 1 })).toBeTruthy();
-    expect(await screen.findByText("1.5 GB")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "System status", level: 1 })).toBeTruthy();
+    expect(await screen.findByText(/^1[.,]5 GB$/)).toBeTruthy();
     expect(screen.getByText("30 days")).toBeTruthy();
     expect(screen.getByText("7 days")).toBeTruthy();
     expect(api.get).toHaveBeenCalledWith("/v1/system/storage");
@@ -54,7 +54,7 @@ describe("storage and retention", () => {
         { table: "monitoring_evidence", retention_days: null, scheduled: false },
       ],
     });
-    render(<MemoryRouter><Settings /></MemoryRouter>);
+    render(<MemoryRouter><SystemStatus /></MemoryRouter>);
     expect(await screen.findByText("Cleanup paused")).toBeTruthy();
     const evidence = screen.getByText("Monitoring evidence retention").parentElement!;
     expect(within(evidence).getByText("Not configured")).toBeTruthy();
@@ -63,11 +63,11 @@ describe("storage and retention", () => {
 
   it("reports failures and refreshes measurements on request", async () => {
     getStorage.mockRejectedValueOnce(new Error("Database unavailable"));
-    render(<MemoryRouter><Settings /></MemoryRouter>);
+    render(<MemoryRouter><SystemStatus /></MemoryRouter>);
     expect((await screen.findByRole("alert")).textContent).toContain("Storage information unavailable");
     expect(screen.queryByText("0 MB")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Refresh storage" }));
-    expect(await screen.findByText("1.5 GB")).toBeTruthy();
+    expect(await screen.findByText(/^1[.,]5 GB$/)).toBeTruthy();
     getStorage.mockResolvedValue({ ...status, database_size_bytes: 500000000 });
     fireEvent.click(screen.getByRole("button", { name: "Refresh storage" }));
     expect(await screen.findByText("500 MB")).toBeTruthy();

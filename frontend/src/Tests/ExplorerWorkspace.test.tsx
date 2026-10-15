@@ -348,10 +348,10 @@ describe("hierarchical explorer workspace", () => {
     mount(); await loaded();
     expect(screen.queryByText("Favorites")).toBeNull();
     expect(screen.getByRole("button", { name: "Building broker, open" }).querySelector<HTMLElement>(".ex-row-icon")?.style.color).toBe("");
-    fireEvent.click(screen.getByRole("button", { name: "Browse catalogue groups" }));
+    fireEvent.click(screen.getByRole("button", { name: "Browse collections" }));
     expect(screen.queryByText("Personal groups")).toBeNull();
     expect(screen.queryByRole("button", { name: "Manage personal groups" })).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Show catalogue group Roof" }));
+    fireEvent.click(screen.getByRole("button", { name: "Show collection Roof" }));
     expect(screen.getByRole("button", { name: "Air temperature, preview" })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Air temperature, preview" }));
     const preview = await screen.findByRole("region", { name: "Reading preview" });
@@ -492,7 +492,10 @@ describe("hierarchical explorer workspace", () => {
     fireEvent.click(screen.getByRole("button", { name: "Close settings" }));
     expect(await screen.findByRole("button", { name: "Building broker, open" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "temperature, preview" })).toBeNull();
-    expect(screen.getAllByText("Imported building").length).toBeGreaterThan(0);
+    expect(screen.queryByRole("button", { name: "Imported building" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Catalogue settings" }));
+    const settings = await screen.findByRole("dialog", { name: "Catalogue settings" });
+    expect(within(settings).getByText("Imported building")).toBeTruthy();
   });
 
   it("keeps a conflicted import unsaved and rejects retry against its obsolete baseline", async () => {

@@ -24,13 +24,13 @@ const catalogueSummary = (document: SystemDocument, includeGroups = false) => [
   itemCount(document.connections.length, "broker"),
   itemCount(document.devices.length, "entity"),
   itemCount(document.streams.length, "reading"),
-  ...(includeGroups ? [itemCount(document.groups.length, "catalogue group")] : []),
+  ...(includeGroups ? [itemCount(document.groups.length, "collection")] : []),
 ].join(" · ");
 const creationActions = [
   { kind: "connection", label: "Add broker", description: "Connect an MQTT server", icon: Server },
   { kind: "device", label: "Add entity", description: "Describe a device or asset", icon: Box },
   { kind: "stream", label: "Add reading", description: "Register a value from a topic", icon: Radio },
-  { kind: "group", label: "Add catalogue group", description: "Organise related sources", icon: Layers },
+  { kind: "group", label: "Add collection", description: "Organise related sources", icon: Layers },
 ] as const;
 
 export function ExplorerSettings({

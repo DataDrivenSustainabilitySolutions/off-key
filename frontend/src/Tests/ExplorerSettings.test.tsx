@@ -41,7 +41,7 @@ describe("explorer settings catalogue files", () => {
     await waitForPreview();
     expect(screen.getByText("Roof observations")).not.toBeNull();
     expect(screen.getByText("system.json")).not.toBeNull();
-    expect(screen.getByText("1 broker · 1 entity · 1 reading · 0 catalogue groups")).not.toBeNull();
+    expect(screen.getByText("1 broker · 1 entity · 1 reading · 0 collections")).not.toBeNull();
     expect(props.onImport).not.toHaveBeenCalled();
     rerender(<ExplorerSettings {...props} revision={9} />);
     fireEvent.click(preview());
@@ -131,7 +131,7 @@ describe("explorer settings catalogue files", () => {
     fireEvent.click(screen.getByRole("button", { name: "Add broker" }));
     fireEvent.click(screen.getByRole("button", { name: "Add entity" }));
     fireEvent.click(screen.getByRole("button", { name: "Add reading" }));
-    fireEvent.click(screen.getByRole("button", { name: "Add catalogue group" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add collection" }));
     expect(props.onCreate.mock.calls).toEqual([["connection"], ["device"], ["stream"], ["group"]]);
     rerender(<ExplorerSettings {...props} canEdit={false} />);
     expect(screen.getByRole("button", { name: "Add broker" }).matches(":disabled")).toBe(true);

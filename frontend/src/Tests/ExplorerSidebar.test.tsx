@@ -326,6 +326,9 @@ describe("explorer sidebar and catalogue list", () => {
   it("opens branches, exposes actual ancestors, and leaves workspace navigation explicit", () => {
     const options = sidebarOptions();
     const root = render(<ExplorerSidebar {...options} />);
+    expect(screen.queryByRole("button", { name: "Test catalogue" })).toBeNull();
+    expect(screen.getByText("1 broker")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Back to catalogue" }).getAttribute("title")).toBe("Back to catalogue");
     const broker = options.index.nodes.get(options.index.objectKeys.get("broker")![0]!)!;
     fireEvent.click(screen.getByRole("button", { name: "North laboratory, open" }));
     expect(options.onOpen).toHaveBeenCalledExactlyOnceWith(broker);
@@ -337,7 +340,7 @@ describe("explorer sidebar and catalogue list", () => {
     expect(screen.getByText("Current path")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "North laboratory" }));
     expect(options.onScope).toHaveBeenLastCalledWith(broker.key);
-    fireEvent.click(screen.getByRole("button", { name: "Catalogue" }));
+    fireEvent.click(screen.getByRole("button", { name: "Back to catalogue" }));
     expect(options.onCatalogue).toHaveBeenCalledOnce();
     fireEvent.click(screen.getByRole("button", { name: "Catalogue settings" }));
     expect(options.onSettings).toHaveBeenCalledOnce();
@@ -383,13 +386,13 @@ describe("explorer sidebar and catalogue list", () => {
     expect(options.onScope).not.toHaveBeenCalled();
   });
 
-  it("keeps catalogue groups navigable without exposing personal grouping", () => {
+  it("keeps collections navigable without exposing personal grouping", () => {
     const document = system();
     const original = structuredClone(document);
     const options = sidebarOptions(document);
     const save = vi.spyOn(apiClient, "put");
     const view = render(<ExplorerSidebar {...options} />);
-    fireEvent.click(screen.getByRole("button", { name: "Browse catalogue groups" }));
+    fireEvent.click(screen.getByRole("button", { name: "Browse collections" }));
     expect(screen.queryByText("Personal groups")).toBeNull();
     expect(screen.queryByRole("button", { name: "Manage personal groups" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: /Building A/ }));
@@ -398,7 +401,7 @@ describe("explorer sidebar and catalogue list", () => {
     expect(document).toEqual(original);
     expect(save).not.toHaveBeenCalled();
     view.rerender(<ExplorerSidebar {...options} catalogueGroups={[]} />);
-    expect(screen.queryByRole("button", { name: "Browse catalogue groups" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Browse collections" })).toBeNull();
   });
 
   it("keeps loading and empty navigation states accessible", () => {

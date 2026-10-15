@@ -40,7 +40,13 @@ Monitoring shows services for the selected source and previews selected readings
 Sources shows source metadata and recording configuration. Selecting an entity
 there lists its readings; choose one to configure recording. Reporting shows
 events involving the selected source. **All sources** clears this filter without
-moving the sidebar. **Catalogue** also returns the sidebar to its root.
+moving the sidebar. The folder-and-hierarchy icon beside the sidebar count,
+**Back to catalogue**, returns to the root and clears the search and source filter.
+At the root it also scrolls the broker list to the top.
+
+**Collections** opens named sets of related brokers, entities and readings in the
+same sidebar. Collections are shared parts of the catalogue. Inside a branch,
+the heading still opens the current path so you can jump to an ancestor.
 
 The catalogue button beside the wordmark hides/reopens the desktop sidebar or
 opens the mobile drawer. The section links remain in the navbar. A selected source

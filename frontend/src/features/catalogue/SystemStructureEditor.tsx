@@ -38,7 +38,7 @@ const noun = {
   connection: "connection",
   device: "device",
   stream: "stream",
-  group: "group",
+  group: "collection",
 };
 
 function initialEntity(
@@ -468,7 +468,7 @@ export function SystemStructureEditor({
             <label>
               Colour
               <input
-                aria-label="Group colour"
+                aria-label="Collection colour"
                 type="color"
                 value={group.color ?? "#397f74"}
                 onChange={(event) => update({ color: event.target.value })}
@@ -477,7 +477,7 @@ export function SystemStructureEditor({
             <label>
               Find members
               <input
-                aria-label="Find group members"
+                aria-label="Find collection members"
                 placeholder="Search connections, devices, streams…"
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
@@ -486,7 +486,7 @@ export function SystemStructureEditor({
             <div className="sp-system-members">
               <p className="sp-system-count">
                 {group.member_ids.length} members · selecting an object moves it
-                into this group.
+                into this collection.
               </p>
               <div className="sp-system-member-picker">
                 {matches.slice(0, 60).map((item) => (
@@ -542,7 +542,7 @@ export function SystemStructureEditor({
                 {dependencies.length > 1
                   ? ` and ${dependencies.length - 1} dependent objects`
                   : ""}{" "}
-                from the saved definition? Related group memberships will also
+                from the saved definition? Related collection memberships will also
                 be removed.
               </p>
               <Button

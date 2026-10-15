@@ -113,3 +113,31 @@ Temporary catalogue fixtures, report records, preview leases and the monitoring
 worker are cleaned up by their real APIs. The isolated frontend remains running
 at `http://127.0.0.1:5174`; other deployment state and prior uncommitted work are
 preserved. No new dependencies or backend contracts were required.
+
+## Follow-up: collection navigation and root action
+
+Replace the repeated Catalogue/Catalogue groups/Saved system navigation with a
+Collections dropdown, the existing small context count and a FolderRoot button
+labelled Back to catalogue. Hide the stored catalogue name at the root; retain
+branch names and their ancestor menu. Keep existing saved groups and their
+membership counts, and use Collection consistently in settings and the editor.
+The explicit root action clears search and main selection and starts the broker
+list at the top, including when already at the root. Ordinary navigation retains
+its existing scroll restoration. No database or export schema changes are needed.
+
+Validation uses the existing behaviour suites and the real isolated Docker
+application. A new browser journey creates 31 brokers and a collection, saves a
+collection through the actual editor, returns from collection/branch/search views,
+checks root scrolling and keyboard operation, and captures desktop themes and a
+320px mobile drawer. Temporary IDs are removed by the API after the journey.
+
+The follow-up passes all 600 frontend tests and nine real browser journeys for
+settings, catalogue editing, collections, persistent navigation and monitoring.
+The import regression now checks the saved catalogue name in Catalogue settings,
+where it remains available, rather than expecting the removed sidebar heading.
+Lint, the production build and strict documentation build also pass. Desktop
+light/dark and mobile screenshots were visually inspected; the root control keeps
+a 44-pixel touch target on mobile. The fixtures and monitoring workload are cleaned
+up after validation. Screenshots are saved as `catalogue-collections-light.png`,
+`catalogue-collections-dark.png` and `catalogue-collections-mobile.png` in the chat's
+visualization directory.

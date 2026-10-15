@@ -34,19 +34,100 @@ async function createFixture(page: Page, count = 40) {
   snapshot.document.streams.push(...streams);
   const response = await page.request.put("/api/v1/system", { headers, data: { expected_revision: snapshot.revision, document: snapshot.document } });
   expect(response.ok(), await response.text()).toBe(true);
-  return { broker, north, south, streams, headers, read,
+  const ownedIds = new Set([broker, north, south, ...streams.map(stream => stream.id)]);
+  return { broker, north, south, streams, headers, read, ownedIds,
     snapshot: await response.json() as SystemSnapshot,
     cleanup: async () => {
       const current = await read();
-      const ids = new Set([broker, north, south, ...streams.map(stream => stream.id)]);
-      current.document.streams = current.document.streams.filter(stream => !ids.has(stream.id));
-      current.document.devices = current.document.devices.filter(device => !ids.has(device.id));
-      current.document.connections = current.document.connections.filter(connection => !ids.has(connection.id));
+      current.document.groups = current.document.groups.filter(group => !ownedIds.has(group.id));
+      current.document.streams = current.document.streams.filter(stream => !ownedIds.has(stream.id));
+      current.document.devices = current.document.devices.filter(device => !ownedIds.has(device.id));
+      current.document.connections = current.document.connections.filter(connection => !ownedIds.has(connection.id));
       const saved = await page.request.put("/api/v1/system", { headers, data: { expected_revision: current.revision, document: current.document } });
       expect(saved.ok(), await saved.text()).toBe(true);
     },
   };
 }
+
+test("returns to the catalogue root from collections, branches and search with a compact count", async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  const fixture = await createFixture(page, 1);
+  try {
+    const snapshot = await fixture.read();
+    const extraBrokers = Array.from({ length: 30 }, (_, index) => ({ ...snapshot.document.connections.find(item => item.id === fixture.broker)!,
+      id: fixture.broker + "-extra-" + index, label: "Root navigation broker " + String(index + 1).padStart(2, "0") }));
+    const collection = { id: fixture.broker + "-collection", label: "North site", member_ids: [fixture.broker, fixture.north, fixture.streams[0]!.id] };
+    for (const id of [collection.id, ...extraBrokers.map(broker => broker.id)]) fixture.ownedIds.add(id);
+    snapshot.document.connections.push(...extraBrokers);
+    snapshot.document.groups.push(collection);
+    const saved = await page.request.put("/api/v1/system", { headers: fixture.headers, data: { expected_revision: snapshot.revision, document: snapshot.document } });
+    expect(saved.ok(), await saved.text()).toBe(true);
+    await page.reload();
+    const sidebar = page.getByRole("navigation", { name: "System explorer", exact: true });
+    const root = sidebar.getByRole("button", { name: "Back to catalogue", exact: true });
+    const collections = sidebar.getByRole("button", { name: "Browse collections", exact: true });
+    const search = sidebar.getByRole("searchbox", { name: "Search catalogue", exact: true });
+    const brokerCount = snapshot.document.connections.length + " brokers";
+    await expect(sidebar.getByText(brokerCount, { exact: true })).toBeVisible();
+    await expect(sidebar.getByRole("button", { name: snapshot.document.label, exact: true })).toHaveCount(0);
+    await expect(root).toHaveAttribute("title", "Back to catalogue");
+    await page.getByRole("button", { name: "Catalogue settings", exact: true }).click();
+    await page.getByRole("button", { name: "Add collection", exact: true }).click();
+    const collectionName = "Collection check " + fixture.broker.slice(-8);
+    await page.getByRole("textbox", { name: "collection name", exact: true }).fill(collectionName);
+    await expect(page.getByRole("textbox", { name: "Find collection members", exact: true })).toBeVisible();
+    const collectionSaved = page.waitForResponse(response => response.request().method() === "PUT" && new URL(response.url()).pathname === "/api/v1/system");
+    await page.getByRole("button", { name: "Save changes", exact: true }).click();
+    const created = await collectionSaved;
+    expect(created.ok(), await created.text()).toBe(true);
+    const createdId = (await created.json() as SystemSnapshot).document.groups.find(group => group.label === collectionName)?.id;
+    expect(createdId).toBeTruthy();
+    fixture.ownedIds.add(createdId!);
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    const viewport = sidebar.getByRole("list", { name: "Catalogue items", exact: true }).locator("..");
+    await viewport.evaluate(element => { element.scrollTop = 1400; });
+    expect(await viewport.evaluate(element => element.scrollTop)).toBeGreaterThan(0);
+    await root.click();
+    await expect.poll(() => viewport.evaluate(element => element.scrollTop)).toBe(0);
+    await collections.click();
+    const choose = page.getByRole("button", { name: "Show collection North site", exact: true });
+    await expect(choose.locator("small")).toHaveText("3");
+    await choose.click();
+    await expect(sidebar.getByText("3 items", { exact: true })).toBeVisible();
+    await sidebar.getByRole("button", { name: "North room " + fixture.north.slice(-8) + ", open", exact: true }).click();
+    expect(new URL(page.url()).searchParams.get("source")).toBeTruthy();
+    await root.click();
+    await expect(sidebar.getByText(brokerCount, { exact: true })).toBeVisible();
+    expect(new URL(page.url()).searchParams.has("source")).toBe(false);
+    await sidebar.getByRole("button", { name: "Browse children of Navigation broker " + fixture.broker.slice(-8), exact: true }).click();
+    await expect(sidebar.getByRole("button", { name: "Back one level", exact: true })).toBeVisible();
+    await root.click();
+    await expect(sidebar.getByRole("button", { name: "Back one level", exact: true })).toHaveCount(0);
+    await search.fill("Root navigation broker 30");
+    await expect(sidebar.getByText("1 match", { exact: true })).toBeVisible();
+    await root.click();
+    await expect(search).toHaveValue("");
+    await expect(sidebar.getByText(brokerCount, { exact: true })).toBeVisible();
+    for (const appearance of ["Light", "Dark"] as const) {
+      await setAppearance(page, appearance);
+      await sidebar.screenshot({ path: testInfo.outputPath("catalogue-root-" + appearance.toLowerCase() + ".png"), animations: "disabled" });
+    }
+    await page.setViewportSize({ width: 320, height: 844 });
+    await page.getByRole("button", { name: "Open catalogue", exact: true }).click();
+    await expect(root).toBeInViewport();
+    const buttonBox = await root.boundingBox();
+    expect(buttonBox!.width).toBeGreaterThanOrEqual(44);
+    expect(buttonBox!.height).toBeGreaterThanOrEqual(44);
+    await collections.click();
+    await page.getByRole("button", { name: "Show collection North site", exact: true }).click();
+    await root.focus();
+    await root.press("Enter");
+    await expect(sidebar.getByText(brokerCount, { exact: true })).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.screenshot({ path: testInfo.outputPath("catalogue-root-mobile.png"), animations: "disabled" });
+  } finally { await fixture.cleanup(); }
+});
 
 test("keeps the catalogue DOM, selection, search and scroll while navigating and protects recording drafts", async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 1440, height: 1000 });

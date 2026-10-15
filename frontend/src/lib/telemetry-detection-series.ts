@@ -26,25 +26,14 @@ export const buildDetectionSeriesOption = (
     data: series.data,
     smooth: false,
     step: false,
-    showSymbol: true,
-    symbolSize: 3,
+    showSymbol: false,
+    symbol: "none",
     connectNulls: false,
     lineStyle: { color: colors.primary, width: 2.25, type: "solid" },
     itemStyle: { color: colors.primary },
     emphasis: { disabled: true },
     animation: false,
     markArea,
-    markLine: {
-      silent: true,
-      symbol: ["none", "none"],
-      label: { show: false },
-      lineStyle: { color: colors.alarmBoundary ?? "#dc2626", width: 1, type: "dashed" },
-      data: series.thresholdRegions.flatMap(({ startMs, endMs, threshold }) => {
-        const start = Math.max(startMs, domain?.[0] ?? startMs);
-        const end = Math.min(endMs, domain?.[1] ?? endMs);
-        return end > start ? [[{ coord: [start, threshold] }, { coord: [end, threshold] }]] : [];
-      }),
-    },
     markPoint: {
       symbol: "triangle",
       symbolSize: 9,

@@ -27,6 +27,7 @@ REQUIRED_WORKFLOWS = (
     "deployment-smoke.yml",
     "docker-publish.yml",
     "collection-integration.yml",
+    "radar-production-integration.yml",
     "infra-validation.yml",
 )
 

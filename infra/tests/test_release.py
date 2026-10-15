@@ -32,6 +32,18 @@ release = load("pin_release")
 
 
 class ReleaseTests(unittest.TestCase):
+    def test_required_workflows_run_on_every_main_push(self):
+        for filename in release.REQUIRED_WORKFLOWS:
+            with self.subTest(workflow=filename):
+                workflow = yaml.load(
+                    (ROOT.parent / ".github/workflows" / filename).read_text(),
+                    Loader=yaml.BaseLoader,
+                )
+                push = workflow["on"]["push"]
+                self.assertIn("main", push["branches"])
+                self.assertNotIn("paths", push)
+                self.assertNotIn("paths-ignore", push)
+
     def test_latest_release_requires_all_workflows_and_uses_main_commit_order(self):
         newest, eligible, older = (letter * 40 for letter in "abc")
         responses = [[{"sha": sha} for sha in (newest, eligible, older)]]

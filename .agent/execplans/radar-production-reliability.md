@@ -170,3 +170,12 @@ uses a nonlocking signature check to preserve visibility while evidence is
 blocked, with its statement-snapshot projection boundary documented. Validation:
 41 focused tests pass, including real PostgreSQL overlap/rollback/blocked-write
 tests, MQTT recovery and separate replacement processes.
+
+Deployment regression follow-up: The official Dockerfile is exercised by an
+opt-in Swarm replacement test with a real Mosquitto broker and TimescaleDB.
+It asserts the exact current image, enforced CPU/memory limits, restored model
+and observation watermarks, unchanged counts on retained replay, and new durable
+evidence after fresh input. A dedicated CI workflow builds the image and runs the
+real production integration tests for PRs, main, merge queues and manual runs.
+Release pinning requires that workflow. All 15 release contract tests pass on
+Linux, including actual Ansible and Docker Unix-socket fixtures.

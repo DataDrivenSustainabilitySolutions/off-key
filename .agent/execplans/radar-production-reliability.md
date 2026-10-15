@@ -155,3 +155,8 @@ official RADAR image also passed an actual Swarm task replacement with retained
 input: two replayed readings were rejected without count/evidence advancement,
 then fresh input advanced both. A further old/new writer overlap probe reproduced
 a checkpoint overwrite race; ownership fencing is being completed separately.
+
+Step 8 follow-up: Revalidation after unlocked workload retirement also recomputes
+affected monitors, rejecting a newly admitted monitor even when catalogue and
+collection revisions did not change. Both concurrent catalogue-save and new
+pending-monitor cases pass against actual PostgreSQL and Swarm.

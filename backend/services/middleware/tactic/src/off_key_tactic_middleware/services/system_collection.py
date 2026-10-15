@@ -232,7 +232,7 @@ class SystemCollectionService:
         snapshot = await SystemService(self.session).read()
         proposed, preview = await self.prepare(snapshot, change)
         await self._protect_monitors(
-            preview.affected_monitors, change.pause_affected_monitors
+            preview.affected_monitors, change.pause_affected_monitors, proposed
         )
         await self.persist(proposed, actor=actor)
         return await SystemService(self.session).save(
@@ -247,11 +247,11 @@ class SystemCollectionService:
         if runtime_fingerprint(runtime.catalog) != runtime_fingerprint(proposed):
             self._validate_access(proposed)
         affected = await self.affected(runtime.catalog, proposed)
-        await self._protect_monitors(affected, pause_monitors)
+        await self._protect_monitors(affected, pause_monitors, proposed)
         await self.persist(proposed, actor=actor)
         return proposed.document
 
-    async def _protect_monitors(self, affected, pause):
+    async def _protect_monitors(self, affected, pause, proposed):
         if affected and not pause:
             raise ConflictError(
                 "This change affects running monitors. "
@@ -266,6 +266,14 @@ class SystemCollectionService:
         if await self._revision_guard() != before:
             raise ConflictError(
                 "The catalogue or collection changed while monitors stopped. "
+                "Reload before applying this change."
+            )
+        runtime = await read_collection_runtime(self.session)
+        stopped_ids = {item["id"] for item in affected}
+        current = await self.affected(runtime.catalog, proposed)
+        if any(item["id"] not in stopped_ids for item in current):
+            raise ConflictError(
+                "A new monitor started while inputs were changing. "
                 "Reload before applying this change."
             )
 

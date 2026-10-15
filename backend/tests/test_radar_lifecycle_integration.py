@@ -504,10 +504,12 @@ async def test_externally_removed_service_retains_claim_while_real_tasks_retire(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("concurrent_change", ["catalogue", "monitor"])
 async def test_collection_edit_revalidates_revision_after_unlocked_real_docker_stop(
     lifecycle_database,
     swarm_workloads,
     monkeypatch,
+    concurrent_change,
 ):
     from .test_system_configuration import document
 
@@ -520,19 +522,28 @@ async def test_collection_edit_revalidates_revision_after_unlocked_real_docker_s
         collection_monitors, "get_async_docker", lambda: workloads.async_docker
     )
     monkeypatch.setattr(
+        radar_module, "get_async_docker", lambda: workloads.async_docker
+    )
+    monkeypatch.setattr(
         system_collection,
         "get_system_live_settings",
         lambda: SystemLiveSettings(SYSTEM_LIVE_ALLOWED_HOSTS=["localhost"]),
     )
     async with sessions() as session:
+        initial = document()
+        initial.streams.append(
+            initial.streams[0].model_copy(
+                update={"id": "humidity", "payload_pointer": "/humidity"}
+            )
+        )
         saved = await SystemService(session).save(
-            SystemChange(expected_revision=0, document=document()), actor="review"
+            SystemChange(expected_revision=0, document=initial), actor="review"
         )
         saved = await SystemCollectionService(session).apply(
             SystemCollectionChange(
                 expected_revision=saved.revision,
                 expected_collection_revision=saved.runtime.collection_revision,
-                stream_ids=["temperature-1"],
+                stream_ids=["temperature-1", "humidity"],
                 policy=CollectionPolicy(mode="original"),
             ),
             actor="review",
@@ -561,7 +572,8 @@ async def test_collection_edit_revalidates_revision_after_unlocked_real_docker_s
 
     workloads.async_docker.run = delayed_docker
     edit = saved.document.model_copy(deep=True)
-    edit.streams[0].payload_pointer = "/changed"
+    for stream in edit.streams:
+        stream.payload_pointer = "/changed"
 
     async def change_inputs():
         async with sessions() as session:
@@ -585,20 +597,46 @@ async def test_collection_edit_revalidates_revision_after_unlocked_real_docker_s
     try:
         async with asyncio.timeout(2), sessions() as session:
             latest = await SystemService(session).read()
-            renamed = latest.document.model_copy(deep=True)
-            renamed.label = "Concurrent save"
-            await SystemService(session).save(
-                SystemChange(expected_revision=latest.revision, document=renamed),
-                actor="second",
-            )
+            if concurrent_change == "catalogue":
+                renamed = latest.document.model_copy(deep=True)
+                renamed.label = "Concurrent save"
+                await SystemService(session).save(
+                    SystemChange(expected_revision=latest.revision, document=renamed),
+                    actor="second",
+                )
+            else:
+                await lock_collection_configuration(session)
+                topic = latest.runtime.bindings["humidity"]["accepted_topic"]
+                await radar_module.RadarOrchestrationService(
+                    session, None
+                )._assert_topics_available(
+                    mqtt_topics=[topic], container_name="new-pending"
+                )
+                session.add(
+                    MonitoringService(
+                        id="new-pending",
+                        container_name="new-pending",
+                        mqtt_topic=[topic],
+                        status=True,
+                        desired_state="running",
+                    )
+                )
             await session.commit()
     finally:
         release.set()
-    with pytest.raises(ConflictError, match="changed while monitors stopped"):
+    expected = (
+        "changed while monitors stopped"
+        if concurrent_change == "catalogue"
+        else "new monitor started"
+    )
+    with pytest.raises(ConflictError, match=expected):
         await task
     async with sessions() as session:
         latest = await SystemService(session).read()
         monitor = await session.get(MonitoringService, service_id)
-        assert latest.document.label == "Concurrent save"
+        if concurrent_change == "catalogue":
+            assert latest.document.label == "Concurrent save"
+        else:
+            assert (await session.get(MonitoringService, "new-pending")).status
         assert latest.document.streams[0].payload_pointer != "/changed"
         assert not monitor.status and monitor.desired_state == "stopped"

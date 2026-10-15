@@ -1,6 +1,7 @@
 import { isRouteErrorResponse, Link, useRouteError } from "react-router-dom";
 
 import { Button } from "@/components/ui/button";
+import { BrandHome } from "@/components/BrandHome";
 
 export function RouteErrorPage({ notFound = false }: { notFound?: boolean }) {
   return (
@@ -9,7 +10,7 @@ export function RouteErrorPage({ notFound = false }: { notFound?: boolean }) {
       className="flex min-h-dvh items-center justify-center bg-background px-6 py-12 text-foreground"
     >
       <div className="w-full max-w-md space-y-6">
-        <p className="text-sm font-semibold">aberration</p>
+        <BrandHome />
         <div className="space-y-3">
           <p className="text-sm text-muted-foreground">
             {notFound ? "404" : "Page unavailable"}

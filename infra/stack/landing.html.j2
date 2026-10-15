@@ -7,7 +7,7 @@
   <meta name="description" content="Aberration turns streaming sensor data into evidence of change. Continuous anomaly detection for connected systems.">
   <title>Aberration — Evidence of change.</title>
   <link rel="canonical" href="https://{{ ingress_base_domain | e }}/">
-  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%23090909'/%3E%3Cpath d='M37 12h9L27 52h-9Z' fill='%23f2f2f2'/%3E%3C/svg%3E">
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2064%2064%22%20width%3D%2264%22%20height%3D%2264%22%20role%3D%22img%22%3E%0A%20%20%3Ctitle%3EAberration%3C%2Ftitle%3E%0A%20%20%3Cstyle%3E%3Aroot%7Bcolor%3A%23000%7D%40media%28prefers-color-scheme%3Adark%29%7B%3Aroot%7Bcolor%3A%23fff%7D%7D%3C%2Fstyle%3E%0A%20%20%3Cpath%20id%3D%22mark%22%20fill%3D%22currentColor%22%20d%3D%22M10%2010H38V20H20V54H10ZM44%2010H54V54H26V44H44Z%22%2F%3E%0A%3C%2Fsvg%3E%0A">
   <style>
     :root {
       color-scheme: dark;
@@ -28,7 +28,8 @@
     .skip-link:focus { top: 1rem; z-index: 1; }
     header { display: flex; align-items: center; justify-content: space-between; gap: 2rem; min-height: 108px; border-bottom: 1px solid var(--line); }
     .wordmark { display: flex; align-items: center; gap: .85rem; font-size: 1.35rem; font-weight: bold; letter-spacing: -.06em; }
-    .mark { font-size: 1.5rem; font-weight: normal; letter-spacing: -.16em; margin-right: .2rem; }
+    .brand-mark { display: block; width: 36px; height: 36px; flex-shrink: 0; color: #fff; }
+    a.wordmark { min-height: 44px; text-decoration: none; }
     .nav-link { font-size: .875rem; text-decoration: none; padding: .75rem 0; }
     .nav-link:hover { text-decoration: underline; }
     .arrow { display: inline-block; margin-left: .8em; }
@@ -91,7 +92,7 @@
   <a class="skip-link" href="#main">Skip to content</a>
   <div class="page">
     <header>
-      <div class="wordmark"><span class="mark" aria-hidden="true">[ / ]</span>aberration</div>
+      <a class="wordmark" href="{{ frontend_base_url | e }}/" aria-label="Aberration home" title="Dashboard home"><svg class="brand-mark" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><path fill="currentColor" d="M10 10H38V20H20V54H10ZM44 10H54V54H26V44H44Z"/></svg><span>aberration</span></a>
       <nav aria-label="Main navigation">
         <a class="nav-link" href="{{ frontend_base_url | e }}/">Dashboard<span class="arrow" aria-hidden="true">↗</span></a>
       </nav>

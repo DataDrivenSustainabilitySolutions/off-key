@@ -48,7 +48,7 @@ At the root it also scrolls the broker list to the top.
 same sidebar. Collections are shared parts of the catalogue. Inside a branch,
 the heading still opens the current path so you can jump to an ancestor.
 
-The catalogue button beside the wordmark hides/reopens the desktop sidebar or
+The logo returns to dashboard home. The catalogue button beside it hides/reopens the desktop sidebar or
 opens the mobile drawer. The section links remain in the navbar. A selected source
 is included in the URL, so links and browser back/forward retain that context.
 

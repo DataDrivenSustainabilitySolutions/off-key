@@ -164,16 +164,6 @@
     overflow: hidden;
   }
 
-  .app-brand {
-    color: inherit;
-    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-    font-size: 17px;
-    font-weight: 600;
-    letter-spacing: -0.02em;
-    text-decoration: none;
-    white-space: nowrap;
-  }
-
   .app-header-links, .app-header-actions {
     display: flex;
     align-items: center;

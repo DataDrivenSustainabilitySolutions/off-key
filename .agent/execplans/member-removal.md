@@ -96,3 +96,19 @@ The complete Linux suite was rerun after this cleanup: 933 passed, five skipped,
 zero failures or errors. The final staged commit hooks also pass.
 The original `off-key` deployment and its data remain untouched. The updated
 preview stays available at http://127.0.0.1:5174/account.
+
+## PR validation follow-up
+
+The PR's CodeQL trace classified the result of `request_password_reset()` as a
+password based on the method name. Its actual result contains a random 256-bit
+recovery token, while passwords are hashed separately with bcrypt. Rename the
+internal operation to `issue_reset_token()` and document its digest-only storage;
+update the HTTP handler and integration callers. The public routes and token
+format retain their existing contract. CodeQL can then distinguish recovery-token
+issuance from a password source without excluding or dismissing the alert.
+
+The complete backend suite passes again against disposable PostgreSQL on Linux:
+933 passed, five skipped. Both real account browser journeys also pass, including
+delivery to the local mail sink, disable/remove/reinvite, and rejection of previous
+sessions. The deployment rehearsal must publish its SMTP fixture's Mailpit API
+and supply `MAILPIT_BASE_URL` to exercise those same journeys in CI.

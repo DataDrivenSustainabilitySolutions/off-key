@@ -300,9 +300,7 @@ async def test_invitation_reset_and_immediate_session_revocation(
     )
     async with sessions() as session:
         assert (await current_member(credential, session)).id == claims["id"]
-        reset = await MemberService(session).request_password_reset(
-            "member@example.com"
-        )
+        reset = await MemberService(session).issue_reset_token("member@example.com")
         await MemberService(session).reset_password(reset["token"], PASSWORD)
         with pytest.raises(ValidationError):
             await MemberService(session).reset_password(reset["token"], PASSWORD)
@@ -333,8 +331,7 @@ async def test_invitation_reset_and_immediate_session_revocation(
             await current_member(credential, session)
         assert denied.value.status_code == 401
         assert (
-            await MemberService(session).request_password_reset("member@example.com")
-            is None
+            await MemberService(session).issue_reset_token("member@example.com") is None
         )
     with pytest.raises(AuthenticationError):
         await login()
@@ -374,7 +371,7 @@ async def test_expired_links_and_last_administrator_race(member_database):
         other_id = (
             await session.scalar(select(User).where(User.email == invitation["email"]))
         ).id
-        reset = await service.request_password_reset("other@example.com")
+        reset = await service.issue_reset_token("other@example.com")
         pending = await session.get(User, other_id)
         pending.reset_token_expires_at = datetime.now(UTC) - timedelta(seconds=1)
         await session.commit()
@@ -467,7 +464,7 @@ async def test_reset_between_actor_read_and_self_update_revokes_new_session(
             await original_lock(actor)
             async with sessions() as reset_session:
                 reset_service = MemberService(reset_session)
-                link = await reset_service.request_password_reset("admin@example.com")
+                link = await reset_service.issue_reset_token("admin@example.com")
                 await reset_service.reset_password(link["token"], PASSWORD)
                 reset_version = (
                     await reset_session.get(User, admin_id)

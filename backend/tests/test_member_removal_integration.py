@@ -86,7 +86,7 @@ async def test_disabled_member_removal_cleans_personal_data_and_allows_fresh_inv
         user_id = target.id
         old_token = access_token(target)
         remembered = await RememberedSessionService(session).create(target)
-        reset = await service.request_password_reset(target.email) if verified else None
+        reset = await service.issue_reset_token(target.email) if verified else None
         session.add(Charger(charger_id="shared-reading"))
         await session.flush()
         session.add_all(

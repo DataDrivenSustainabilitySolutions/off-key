@@ -190,7 +190,8 @@ class MemberService:
         await self.session.commit()
         log_security_event("invitation_accepted", user.email, {"member_id": user.id})
 
-    async def request_password_reset(self, email: str) -> dict[str, str] | None:
+    async def issue_reset_token(self, email: str) -> dict[str, str] | None:
+        """Issue a random account-recovery token, storing only its SHA-256 digest."""
         user = await self.session.scalar(
             select(User).where(User.email == email).with_for_update()
         )

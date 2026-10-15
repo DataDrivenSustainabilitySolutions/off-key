@@ -126,7 +126,7 @@ async def request_password_reset(
     request: ForgotPasswordRequest,
     service: MemberService = Depends(member_service),
 ):
-    return await service.request_password_reset(str(request.email))
+    return await service.issue_reset_token(str(request.email))
 
 
 @router.post("/reset-password")

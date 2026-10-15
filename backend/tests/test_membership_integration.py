@@ -2,14 +2,11 @@
 
 import asyncio
 import hashlib
-import os
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
-from uuid import uuid4
 
 import pytest
-import pytest_asyncio
 from fastapi import FastAPI, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials
 from httpx import ASGITransport, AsyncClient
@@ -35,35 +32,10 @@ from off_key_tactic_middleware.services.remembered_sessions import (
     RememberedSessionService,
 )
 from sqlalchemy import select, text
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from .test_gateway_auth_token_types import _set_auth_env
 
 PASSWORD = "correct horse battery staple"
-
-
-@pytest_asyncio.fixture
-async def member_database():
-    url = os.getenv("TEST_SCHEMA_DATABASE_URL")
-    if not url:
-        pytest.skip("TEST_SCHEMA_DATABASE_URL must point to a disposable database")
-    schema = "members_" + uuid4().hex
-    admin = create_async_engine(url)
-    async with admin.begin() as connection:
-        await connection.execute(text(f"CREATE SCHEMA {schema}"))
-    engine = create_async_engine(
-        url, connect_args={"server_settings": {"search_path": schema}}
-    )
-    try:
-        async with engine.begin() as connection:
-            await connection.run_sync(User.__table__.create)
-            await connection.run_sync(RememberedSession.__table__.create)
-        yield engine, async_sessionmaker(engine, expire_on_commit=False)
-    finally:
-        await engine.dispose()
-        async with admin.begin() as connection:
-            await connection.execute(text(f"DROP SCHEMA {schema} CASCADE"))
-        await admin.dispose()
 
 
 async def bootstrap(sessions):

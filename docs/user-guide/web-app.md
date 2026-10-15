@@ -61,7 +61,11 @@ is included in the URL, so links and browser back/forward retain that context.
 
 The **Remember this device** choice determines whether the browser stores the session in local or session storage. In local development, invitation and password-reset messages are available in Mailpit at <http://localhost:8025>.
 
-Administrators manage invitations, roles, and access under **Account → Organization members**.
+**Account → Your access** shows your signed-in email and role. Administrators manage
+invitations, roles, and access under **Account → Members**. Disable a member to revoke
+their access. Once disabled, **Remove** permanently deletes their account and personal
+favorites after confirmation. Shared catalogue data, monitoring services and reports
+are kept. A removed member needs a new invitation to return.
 Members can view the shared workspace and edit their own favorites. Administrators
 also manage data sources, monitors, and anomalies.
 

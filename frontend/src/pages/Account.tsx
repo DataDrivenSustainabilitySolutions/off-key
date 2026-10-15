@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@/auth/AuthContext";
 import { PageHeader, PageShell, SectionPanel } from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { RemoveMemberDialog } from "@/features/account/RemoveMemberDialog";
 import { getErrorMessage } from "@/lib/errors";
 import { getMembers, inviteMember, updateMember, type Member } from "@/lib/member-api";
 
@@ -15,6 +16,9 @@ export default function AccountPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [removalTarget, setRemovalTarget] = useState<Member | null>(null);
+  const removeTrigger = useRef<HTMLButtonElement | null>(null);
+  const memberList = useRef<HTMLUListElement>(null);
   const reload = async () => setMembers(await getMembers());
 
   useEffect(() => {
@@ -65,11 +69,11 @@ export default function AccountPage() {
     <>
       <PageShell>
         <PageHeader title="Account" />
-        <SectionPanel title="Account" help="Members can view all organization data. Administrators manage access, collection, and monitoring.">
+        <SectionPanel title="Your access" help="Members can view all organization data. Administrators manage access, collection, and monitoring.">
           <p className="break-words text-sm">{member?.email} · {isAdmin ? "Administrator" : "Member"}</p>
         </SectionPanel>
         {isAdmin && (
-          <SectionPanel title="Members" help="Keep at least one active administrator. Disabling access revokes sessions immediately.">
+          <SectionPanel title="Members" help="Keep at least one active administrator. Disabling access revokes sessions immediately. Disabled members can be permanently removed; shared organization data is kept.">
             <form className="mb-6 flex flex-wrap items-end gap-3" onSubmit={(event) => { event.preventDefault(); void invite(email, role); }}>
               <div className="grid min-w-0 flex-1 gap-2 sm:flex-none">
                 <Label htmlFor="member-email">Email</Label>
@@ -86,7 +90,7 @@ export default function AccountPage() {
             </form>
             {error && <p role="alert" className="mb-4 text-sm text-destructive">{error}</p>}
             {notice && <p role="status" className="mb-4 text-sm">{notice}</p>}
-            <ul className="divide-y">
+            <ul ref={memberList} aria-label="Members" tabIndex={-1} className="divide-y">
               {members.map((target) => (
                 <li key={target.id} className="flex flex-wrap items-center justify-between gap-3 py-4">
                   <div className="min-w-0">
@@ -103,6 +107,12 @@ export default function AccountPage() {
                       if (target.is_active && !window.confirm(`Disable access for ${target.email}? Their sessions will stop working immediately.`)) return;
                       void change(target, { is_active: !target.is_active });
                     }}>{target.is_active ? "Disable" : "Enable"}</Button>
+                    {!target.is_active && <Button variant="outline" className="text-destructive hover:text-destructive" disabled={busy || target.id === member?.id} onClick={(event) => {
+                      removeTrigger.current = event.currentTarget;
+                      setError("");
+                      setNotice("");
+                      setRemovalTarget(target);
+                    }}>Remove</Button>}
                   </div>
                 </li>
               ))}
@@ -110,6 +120,18 @@ export default function AccountPage() {
           </SectionPanel>
         )}
       </PageShell>
+      {removalTarget && <RemoveMemberDialog member={removalTarget}
+        onClose={() => setRemovalTarget(null)}
+        onRemoved={() => {
+          setMembers((current) => current.filter((entry) => entry.id !== removalTarget.id));
+          setNotice(`${removalTarget.email} has been removed.`);
+          setRemovalTarget(null);
+        }}
+        onCloseAutoFocus={(event) => {
+          event.preventDefault();
+          if (removeTrigger.current?.isConnected) removeTrigger.current.focus();
+          else memberList.current?.focus();
+        }} />}
     </>
   );
 }

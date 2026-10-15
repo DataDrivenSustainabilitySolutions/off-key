@@ -62,6 +62,7 @@ Content-Type: application/json
 | `GET` | `/members` | List organization members | Administrator |
 | `POST` | `/members/invitations` | Invite or resend; body `email`, `role` | Administrator |
 | `PUT` | `/members/{user_id}` | Set `role` and `is_active` | Administrator |
+| `DELETE` | `/members/{user_id}` | Permanently remove a disabled member and personal favorites/sessions; 204 on success, 409 if active, 404 if missing | Administrator |
 
 Roles are `admin` and `user` (member). Account and token lifecycle details are in
 [Single-organization operation](../single-organization.md).

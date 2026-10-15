@@ -6,10 +6,10 @@ from datetime import UTC, datetime, timedelta
 
 import bcrypt
 from off_key_core.config.logs import log_security_event
-from off_key_core.db.models import User
+from off_key_core.db.models import Favorite, User
 from off_key_core.schemas.members import MemberInvitation, MemberUpdate
 from off_key_core.utils.enum import RoleEnum
-from sqlalchemy import func, select, text
+from sqlalchemy import delete, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..domain import AuthenticationError, ConflictError, NotFoundError, ValidationError
@@ -147,6 +147,21 @@ class MemberService:
             {"member_id": user.id, "role": user.role.value, "active": user.is_active},
         )
         return user
+
+    async def remove(self, user_id: int, actor: User) -> None:
+        await self._lock_membership(actor)
+        user = await self.session.get(
+            User, user_id, with_for_update=True, populate_existing=True
+        )
+        if user is None:
+            raise NotFoundError("Member not found")
+        if user.is_active:
+            raise ConflictError("Disable this member before removing them")
+        await self.session.execute(delete(Favorite).where(Favorite.user_id == user_id))
+        # Remembered sessions are removed by their cascading foreign key.
+        await self.session.delete(user)
+        await self.session.commit()
+        log_security_event("member_removed", actor.email, {"member_id": user_id})
 
     async def accept_invitation(self, token: str, password: str) -> None:
         await self._lock_membership()

@@ -1,13 +1,6 @@
 import { apiUtils } from "./api-client";
-
-export interface Member {
-  id: number;
-  email: string;
-  role: "admin" | "user";
-  is_active: boolean;
-  is_verified: boolean;
-  created_at: string;
-}
+import type { Member } from "./member-types";
+export type { Member } from "./member-types";
 
 export const getCurrentMember = () => apiUtils.get<Member>("/v1/members/me", { redirectOnUnauthorized: false });
 export const getMembers = () => apiUtils.get<Member[]>("/v1/members");
@@ -19,3 +12,6 @@ export const updateMember = (member: Member, changes: Partial<Pick<Member, "role
     is_active: member.is_active,
     ...changes,
   });
+
+export const removeMember = (memberId: number) =>
+  apiUtils.delete<void>(`/v1/members/${memberId}`);

@@ -81,3 +81,10 @@ async def test_service_falls_back_to_older_valid_checkpoint(monkeypatch):
     assert attempts == ["newest.pkl", "older.pkl"]
     manager.cleanup_lock.assert_called_once()
     assert service.detector.primary_service is restored
+    assert service._checkpoint_restored is True
+    assert service.recovery_status == {
+        "storage": "file",
+        "restored": True,
+        "restored_processed_count": 42,
+        "input_recovery": "live_only_with_possible_gap",
+    }

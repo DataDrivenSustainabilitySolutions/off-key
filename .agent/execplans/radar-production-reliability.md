@@ -27,7 +27,7 @@ validated observation time as well as receipt time.
 - [x] 7. Require successful SUBACKs before readiness, including reconnects.
 - [x] 8. Move external workload inspection outside database locks/transactions.
 - [x] 9. Bound thread-to-loop ingestion and run detector work serially off the loop.
-- [ ] 10. Validate observation age, regression, duplicates and cross-sensor skew.
+- [x] 10. Validate observation age, regression, duplicates and cross-sensor skew.
 - [x] Reconcile runtime resource budgets, documentation and deployment contracts.
 - [ ] Run real MQTT/PostgreSQL/Swarm integration, affected root checks and review.
 - [ ] Push the branch and open/attach the PR.
@@ -142,3 +142,16 @@ Sensor claims remain held until actual Swarm tasks stop, including tasks left
 running after external service deletion. Validation: 136 affected unit/SQLite
 tests and four real PostgreSQL/Swarm scenarios cover heartbeat concurrency,
 delayed termination, residual tasks and concurrent catalogue edits.
+
+Step 10: Observation age, future tolerance, strict per-reading timestamp progress
+and cross-sensor skew are validated before advancing the model or input-health
+clocks. Receipt freshness includes time spent in the bounded ingress queue.
+Managed signed checkpoints retain observation watermarks and discard incomplete
+vectors on restore, so retained MQTT input cannot replay already checkpointed
+observations. File snapshots bind the same policy but retain their documented
+detector-only recovery boundary. Validation: 51 affected unit/alignment/config
+tests and 29 real MQTT/PostgreSQL/replacement-process recovery tests pass. The
+official RADAR image also passed an actual Swarm task replacement with retained
+input: two replayed readings were rejected without count/evidence advancement,
+then fresh input advanced both. A further old/new writer overlap probe reproduced
+a checkpoint overwrite race; ownership fencing is being completed separately.

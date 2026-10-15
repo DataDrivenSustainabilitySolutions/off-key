@@ -161,6 +161,9 @@ unknown errors remain eligible for retry.
 | `RADAR_RATE_LIMIT_PER_MINUTE` | `0` | Aggregate observation limit across the monitor's topics; `0` disables throttling. Positive limits discard excess inputs and permanently flag the monitor's coverage as degraded. Managed workloads use `TACTIC_RADAR_DEFAULT_RATE_LIMIT_PER_MINUTE`, also defaulting to `0`. |
 | `RADAR_MAX_QUEUE_SIZE` | `256` | Maximum admitted messages waiting for the serial processor, bounded before the network thread schedules asyncio work. |
 | `RADAR_MAX_PAYLOAD_BYTES` | `65536` | Maximum admitted payload size. Larger observations are discarded and counted as coverage gaps. The default queue holds at most 16 MiB of payload bytes plus object overhead. Enforce broker packet limits as well: the MQTT library receives a packet before admission. |
+| `RADAR_OBSERVATION_MAX_AGE_SECONDS` | `30` | Maximum observation age at processing/emission, independently of when its MQTT packet arrived. |
+| `RADAR_OBSERVATION_FUTURE_TOLERANCE_SECONDS` | `5` | Maximum permitted observation time ahead of the worker clock. |
+| `RADAR_ALIGNMENT_MAX_SKEW_SECONDS` | `5` | Maximum time spread between observations in one aligned vector. |
 
 TACTIC-managed workloads receive `RADAR_MONITORING_CONFIG` as their single
 monitoring configuration. Standalone RADAR still accepts the legacy

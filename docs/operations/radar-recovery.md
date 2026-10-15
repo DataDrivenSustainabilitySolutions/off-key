@@ -40,6 +40,22 @@ in the worker health metrics and persisted operational status. These guarantees
 depend on the PostgreSQL deployment retaining its data; a node-local worker volume
 is not required.
 
+Managed snapshots also retain the highest accepted observation timestamp for each
+reading. Replacement workers restore these watermarks while clearing partial
+feature vectors. Retained or replayed observations already covered by the snapshot
+cannot advance the restored detector; each required reading must produce a newer
+observation. Watermarks share the snapshot's rollback boundary, so they do not
+provide exactly-once processing after a hard crash. Receipt clocks are local to
+the current worker and include time spent waiting in its ingress queue.
+
+A managed snapshot with processed observations but no observation history fails
+startup. This revision is unreleased and does not accept an older payload that
+would reopen the replay boundary. An initial snapshot before the first
+observation may have empty history. Standalone file checkpoints restore detector
+state and report a possible restart gap; their detector-only payloads do not
+preserve processor observation watermarks. Changing freshness, age, future-time
+tolerance or alignment-skew policy invalidates both managed and file snapshots.
+
 Managed workers serialize feature processing, inference, model health refresh and
 checkpoint encoding on one dedicated model thread. The event loop persists
 evidence and reports health from complete cached detector snapshots. A slow model

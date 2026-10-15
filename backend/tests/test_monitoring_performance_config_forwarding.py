@@ -58,6 +58,9 @@ async def test_gateway_start_monitor_forwards_static_performance_config():
         performance_config=GatewayPerformanceConfig(
             sensor_key_strategy="leaf",
             sensor_freshness_seconds=25.0,
+            observation_max_age_seconds=45.0,
+            observation_future_tolerance_seconds=2.0,
+            alignment_max_skew_seconds=3.0,
         ),
     )
     expected = {
@@ -83,6 +86,9 @@ async def test_gateway_start_monitor_forwards_static_performance_config():
     assert forwarded["performance_config"] == {
         "sensor_key_strategy": "leaf",
         "sensor_freshness_seconds": 25.0,
+        "observation_max_age_seconds": 45.0,
+        "observation_future_tolerance_seconds": 2.0,
+        "alignment_max_skew_seconds": 3.0,
     }
     assert forwarded["monitoring"]["martingale_config"] == {
         "trackers": [

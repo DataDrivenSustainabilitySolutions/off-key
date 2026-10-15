@@ -168,7 +168,14 @@ class PerformanceConfig(BaseModel):
     model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
     sensor_key_strategy: str = "full_hierarchy"
-    sensor_freshness_seconds: float = Field(default=30.0, gt=0.0)
+    sensor_freshness_seconds: float = Field(default=30.0, gt=0.0, allow_inf_nan=False)
+    observation_max_age_seconds: float = Field(
+        default=30.0, gt=0.0, allow_inf_nan=False
+    )
+    observation_future_tolerance_seconds: float = Field(
+        default=5.0, ge=0.0, allow_inf_nan=False
+    )
+    alignment_max_skew_seconds: float = Field(default=5.0, ge=0.0, allow_inf_nan=False)
 
     @field_validator("sensor_key_strategy")
     @classmethod

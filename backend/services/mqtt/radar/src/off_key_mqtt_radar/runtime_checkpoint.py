@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 from importlib.metadata import version
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, FiniteFloat
 
 from .config.config import AnomalyDetectionConfig
 
@@ -40,6 +40,9 @@ class RuntimeCheckpoint(BaseModel):
     detector: dict[str, Any]
     processor: ProcessorCheckpoint = Field(default_factory=ProcessorCheckpoint)
     coverage: CoverageCheckpoint = Field(default_factory=CoverageCheckpoint)
+    observation_watermarks: dict[str, dict[str, FiniteFloat]] = Field(
+        default_factory=dict
+    )
 
 
 class CheckpointHeader(BaseModel):
@@ -73,6 +76,11 @@ class RuntimeCheckpointCodec:
             "subscription_topics": sorted(config.subscription_topics),
             "sensor_key_strategy": config.sensor_key_strategy,
             "sensor_freshness_seconds": config.sensor_freshness_seconds,
+            "observation_max_age_seconds": config.observation_max_age_seconds,
+            "observation_future_tolerance_seconds": (
+                config.observation_future_tolerance_seconds
+            ),
+            "alignment_max_skew_seconds": config.alignment_max_skew_seconds,
         }
         self.configuration_fingerprint = self._fingerprint(configuration)
         runtime = {

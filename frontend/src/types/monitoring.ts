@@ -126,6 +126,9 @@ export interface ActiveService {
 export interface MonitoringPerformanceConfig {
   sensor_key_strategy: 'full_hierarchy' | 'top_level' | 'leaf';
   sensor_freshness_seconds: number;
+  observation_max_age_seconds?: number;
+  observation_future_tolerance_seconds?: number;
+  alignment_max_skew_seconds?: number;
 }
 
 export type MartingaleBettingFunction =

@@ -1,6 +1,8 @@
 """Tests for RADAR MessageProcessor feature normalization and alignment."""
 
-from datetime import UTC, datetime
+import json
+import time
+from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock
 
 import pytest
@@ -29,17 +31,18 @@ def _build_processor(
 
 def test_align_features_normalizes_single_sensor_value_key():
     processor = _build_processor(required_sensors=set(), state_cache=None)
+    timestamp = datetime.now(UTC).timestamp()
 
     features, alignment = processor._align_features(
         charger_id="charger-1",
         sensor_type="voltage",
         data={"value": 230.5, "quality": 1.0},
-        sample_timestamp=1_800_000_000.0,
+        sample_timestamp=timestamp,
     )
 
     assert features == {"voltage": 230.5}
     assert alignment["alignment_status"] == "direct_pass_through"
-    assert alignment["input_timestamps"] == {"voltage": 1_800_000_000.0}
+    assert alignment["input_timestamps"] == {"voltage": timestamp}
 
 
 def test_align_features_uses_sensor_key_when_present():
@@ -53,6 +56,26 @@ def test_align_features_uses_sensor_key_when_present():
 
     assert features == {"current": 18.2}
     assert alignment["aligned_vector"] is False
+
+
+def test_single_sensor_rejects_queue_delay_using_its_configured_receipt_budget():
+    processor = MessageProcessor(
+        detector=MagicMock(),
+        feature_validator=MagicMock(),
+        memory_manager=MagicMock(),
+        required_sensors={"x"},
+        sensor_freshness_seconds=0.01,
+        observation_max_age_seconds=30,
+    )
+    features, context = processor._align_features(
+        "entity",
+        "x",
+        {"value": 1},
+        sample_timestamp=time.time(),
+        received_monotonic=time.monotonic() - 0.02,
+    )
+    assert features is None
+    assert context["rejection_reason"] == "receipt_too_old"
 
 
 def test_align_features_normalizes_before_state_cache_update():
@@ -294,11 +317,13 @@ async def test_process_message_aligns_evidence_to_payload_event_timestamp():
         feature_validator=feature_validator,
         memory_manager=memory_manager,
     )
-    event_time = datetime(2026, 7, 29, 10, 15, 30, tzinfo=UTC)
+    event_time = datetime.now(UTC) - timedelta(seconds=5)
     message = MQTTMessage(
         topic="telemetry/1/voltage",
-        payload=(b'{"value": 230.0, "timestamp": "2026-07-29T10:15:30Z"}'),
-        timestamp=datetime(2026, 7, 29, 10, 15, 35, tzinfo=UTC),
+        payload=json.dumps(
+            {"value": 230.0, "timestamp": event_time.isoformat()}
+        ).encode(),
+        timestamp=datetime.now(UTC),
     )
 
     result = await processor.process_message(message)

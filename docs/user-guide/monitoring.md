@@ -125,3 +125,23 @@ failures retain the active batch for retry and apply backpressure to ingestion.
 Shutdown attempts to drain the buffers within the configured deadline and logs
 unwritten records if it cannot. These buffers are in memory, not a durable spool;
 forced termination does not guarantee delivery.
+
+## Observation time and alignment
+
+RADAR uses a payload's `timestamp` as observation time, falling back to MQTT
+receipt time when it is absent. It rejects nonfinite times, observations older
+than 30 seconds, times more than 5 seconds ahead of the worker, and duplicate or
+regressing timestamps for the same reading. Rejected inputs are counted as
+coverage gaps and cannot refresh valid-input activity or advance the detector.
+Without a source timestamp or event identity, distinct deliveries cannot be
+deduplicated reliably.
+
+An aligned vector also requires fresh receipts and observation times within
+5 seconds of one another. Newer compatible readings unblock alignment; a blocked
+frame never advances the model. Set `performance_config.observation_max_age_seconds`,
+`observation_future_tolerance_seconds`, and `alignment_max_skew_seconds` in the
+monitor API configuration to match measured source delays and sampling periods.
+Standalone workers expose the corresponding `RADAR_*` environment settings.
+Keep source and worker clocks synchronized. These settings form part of the
+checkpoint compatibility signature; a changed alignment contract requires a new
+monitor baseline.

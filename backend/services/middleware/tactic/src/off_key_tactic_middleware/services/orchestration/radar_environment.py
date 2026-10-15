@@ -125,6 +125,13 @@ def build_radar_environment(
         "RADAR_MAX_PAYLOAD_BYTES": str(defaults.max_payload_bytes),
         "RADAR_SENSOR_KEY_STRATEGY": str(performance.sensor_key_strategy),
         "RADAR_SENSOR_FRESHNESS_SECONDS": str(performance.sensor_freshness_seconds),
+        "RADAR_OBSERVATION_MAX_AGE_SECONDS": str(
+            performance.observation_max_age_seconds
+        ),
+        "RADAR_OBSERVATION_FUTURE_TOLERANCE_SECONDS": str(
+            performance.observation_future_tolerance_seconds
+        ),
+        "RADAR_ALIGNMENT_MAX_SKEW_SECONDS": str(performance.alignment_max_skew_seconds),
         "RADAR_DB_WRITE_ENABLED": str(defaults.db_write_enabled).lower(),
         "RADAR_DB_BATCH_SIZE": str(defaults.db_batch_size),
         "RADAR_DB_BATCH_TIMEOUT": str(defaults.db_batch_timeout),

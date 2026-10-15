@@ -60,6 +60,9 @@ class MessageProcessor:
         required_sensors: set | None = None,
         sensor_key_strategy: str = "full_hierarchy",
         coverage: CoverageTracker | None = None,
+        observation_max_age_seconds: float = 30.0,
+        observation_future_tolerance_seconds: float = 5.0,
+        sensor_freshness_seconds: float = 30.0,
     ):
         """
         Initialize message processor.
@@ -80,6 +83,12 @@ class MessageProcessor:
         self.state_cache = state_cache
         self.required_sensors = required_sensors or set()
         self.activity = ActivityTracker(self.required_sensors)
+        self._direct_state_cache = SensorStateCache(
+            set(),
+            max_sensor_age_seconds=sensor_freshness_seconds,
+            observation_max_age_seconds=observation_max_age_seconds,
+            observation_future_tolerance_seconds=observation_future_tolerance_seconds,
+        )
         self.sensor_key_strategy = self._validate_sensor_key_strategy(
             sensor_key_strategy
         )
@@ -149,7 +158,6 @@ class MessageProcessor:
                 sensor_key_strategy=self.sensor_key_strategy,
                 payload=data,
             )
-            self.activity.record_input(sensor_type, message)
 
             # Step 4: Align features (for multi-sensor)
             aligned_features, alignment_context = self._align_features(
@@ -157,8 +165,11 @@ class MessageProcessor:
                 sensor_type,
                 sanitized_data,
                 sample_timestamp=sample_timestamp,
+                received_monotonic=self._receipt_monotonic(message),
             )
             self.last_alignment_status = alignment_context.get("alignment_status")
+            if self.last_alignment_status != "observation_rejected":
+                self.activity.record_input(sensor_type, message)
             if aligned_features is None:
                 return None
 
@@ -261,32 +272,39 @@ class MessageProcessor:
         sensor_type: str | None,
         data: dict[str, float],
         sample_timestamp: float | None = None,
+        received_monotonic: float | None = None,
     ) -> tuple[dict[str, float] | None, dict[str, Any]]:
         """Align multi-sensor streams if required."""
         normalized_data = self._normalize_sensor_reading(sensor_type, data)
 
-        # Skip alignment if no cache or only single sensor subscribed
-        # Single-sensor mode: use normalized sensor-keyed feature.
-        if not self.state_cache or not self.required_sensors:
-            return normalized_data, self._direct_alignment_context(
-                sensor_type, sample_timestamp
-            )
-        if len(self.required_sensors) <= 1:
-            return normalized_data, self._direct_alignment_context(
-                sensor_type, sample_timestamp
-            )
-
-        if not (charger_id and sensor_type):
-            return normalized_data, self._direct_alignment_context(
-                sensor_type, sample_timestamp
-            )
-
-        alignment_update: AlignmentUpdate = self.state_cache.update_with_status(
-            charger_id,
-            sensor_type,
+        direct = (
+            not self.state_cache
+            or len(self.required_sensors) <= 1
+            or not (charger_id and sensor_type)
+        )
+        cache = self._direct_state_cache if direct else self.state_cache
+        receipt = (
+            {"received_monotonic": received_monotonic}
+            if received_monotonic is not None
+            else {}
+        )
+        alignment_update: AlignmentUpdate = cache.update_with_status(
+            charger_id or "",
+            sensor_type or "",
             normalized_data,
             sample_timestamp=sample_timestamp,
+            **receipt,
         )
+        if alignment_update.status == "observation_rejected":
+            self._record_coverage_drop(alignment_update.rejection_reason)
+            return None, {
+                "alignment_status": alignment_update.status,
+                "rejection_reason": alignment_update.rejection_reason,
+            }
+        if direct:
+            return normalized_data, self._direct_alignment_context(
+                sensor_type, alignment_update.sample_timestamp
+            )
         base_context: dict[str, Any] = {
             "alignment_status": alignment_update.status,
             "aligned_vector": bool(
@@ -358,6 +376,18 @@ class MessageProcessor:
             )
 
         return alignment_update.features, base_context
+
+    @staticmethod
+    def _receipt_monotonic(message: MQTTMessage) -> float | None:
+        if message.received_monotonic is not None:
+            return message.received_monotonic
+        if message.timestamp is None:
+            return None
+        received_at = message.timestamp
+        if received_at.tzinfo is None:
+            received_at = received_at.replace(tzinfo=UTC)
+        age = max((datetime.now(UTC) - received_at).total_seconds(), 0.0)
+        return time.monotonic() - age
 
     def _direct_alignment_context(
         self,
@@ -518,6 +548,27 @@ class MessageProcessor:
                 freed,
                 extra=self._log_context,
             )
+
+    def export_observation_watermarks(self) -> dict[str, dict[str, float]]:
+        """Persist accepted observation times without retaining partial vectors."""
+        watermarks: dict[str, dict[str, float]] = {}
+        for cache in (self._direct_state_cache, self.state_cache):
+            if cache is None:
+                continue
+            for entity, sensors in cache.export_watermarks().items():
+                target = watermarks.setdefault(entity, {})
+                for sensor, timestamp in sensors.items():
+                    target[sensor] = max(target.get(sensor, timestamp), timestamp)
+        return watermarks
+
+    def restore_observation_watermarks(
+        self,
+        payload: dict[str, dict[str, float]],
+    ) -> None:
+        """Restore rejection history while requiring new input for each vector."""
+        for cache in (self._direct_state_cache, self.state_cache):
+            if cache is not None:
+                cache.restore_watermarks(payload)
 
     def get_metrics(self) -> dict[str, Any]:
         """Get current processing metrics."""

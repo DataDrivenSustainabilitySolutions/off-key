@@ -97,6 +97,7 @@ class RadarService:
         self._checkpoint_gap: tuple | None = None
         self._restored_processor: ProcessorCheckpoint | None = None
         self._restored_coverage: dict = {}
+        self._restored_observation_watermarks: dict[str, dict[str, float]] = {}
         self._checkpoint_restored = False
         self._fatal_error: Exception | None = None
         self.recovery_status: dict = {"storage": "file", "restored": False}
@@ -113,6 +114,9 @@ class RadarService:
             SensorStateCache(
                 self.required_sensors,
                 max_sensor_age_seconds=self.config.sensor_freshness_seconds,
+                observation_max_age_seconds=self.config.observation_max_age_seconds,
+                observation_future_tolerance_seconds=self.config.observation_future_tolerance_seconds,
+                alignment_max_skew_seconds=self.config.alignment_max_skew_seconds,
             )
             if self.required_sensors
             else None
@@ -160,10 +164,16 @@ class RadarService:
                 state_cache=self.state_cache,
                 required_sensors=self.required_sensors,
                 sensor_key_strategy=self.config.sensor_key_strategy,
+                observation_max_age_seconds=self.config.observation_max_age_seconds,
+                sensor_freshness_seconds=self.config.sensor_freshness_seconds,
+                observation_future_tolerance_seconds=self.config.observation_future_tolerance_seconds,
             )
             if self._restored_processor is not None:
                 for name, value in self._restored_processor.model_dump().items():
                     setattr(self.message_processor, name, value)
+            self.message_processor.restore_observation_watermarks(
+                self._restored_observation_watermarks
+            )
 
             await self._checkpoint_if_due(force=True)
 
@@ -327,6 +337,12 @@ class RadarService:
             }
             if record is not None:
                 snapshot = codec.decode(record)
+                if record["processed_count"] > 0 and not any(
+                    snapshot.observation_watermarks.values()
+                ):
+                    raise ValueError(
+                        "Managed checkpoint is missing observation replay history"
+                    )
                 primary_service = service_cls.from_checkpoint_data(
                     snapshot.detector,
                     anomaly_config,
@@ -334,6 +350,7 @@ class RadarService:
                 )
                 self._restored_processor = snapshot.processor
                 self._restored_coverage = snapshot.coverage.data
+                self._restored_observation_watermarks = snapshot.observation_watermarks
                 self._checkpoint_restored = True
                 self.recovery_status.update(
                     restored_processed_count=record["processed_count"],
@@ -358,6 +375,13 @@ class RadarService:
                 primary_service = service_cls.from_checkpoint(
                     checkpoint_path, anomaly_config
                 )
+                self._checkpoint_restored = True
+                self.recovery_status = {
+                    "storage": "file",
+                    "restored": True,
+                    "restored_processed_count": primary_service.processed_count,
+                    "input_recovery": "live_only_with_possible_gap",
+                }
                 logger.info(
                     "Successfully restored from checkpoint",
                     extra={
@@ -573,6 +597,7 @@ class RadarService:
                 detector=state,
                 processor=processor,
                 coverage=CoverageCheckpoint(data=coverage_state),
+                observation_watermarks=self.message_processor.export_observation_watermarks(),
             )
         )
         return checkpoint, processor, phase, gap

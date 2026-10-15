@@ -18,6 +18,9 @@ def _build_radar_config(subscription_topics):
         subscription_topics=subscription_topics,
         sensor_key_strategy="full_hierarchy",
         sensor_freshness_seconds=30.0,
+        observation_max_age_seconds=30.0,
+        observation_future_tolerance_seconds=5.0,
+        alignment_max_skew_seconds=5.0,
     )
 
 

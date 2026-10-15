@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import time
 from datetime import UTC, datetime
 from types import SimpleNamespace
 
@@ -85,20 +86,23 @@ async def test_real_monitor_reports_stale_peer_and_total_silence_and_recovers(
     try:
         await monitor.start()
         await publisher.connect(f"mqtt://127.0.0.1:{port}")
-        for index in range(12):
+        # Keep supplying fresh observations through cold model initialization.
+        # A burst followed by silence can correctly expire in the ingress queue
+        # under this test's deliberately short 300 ms freshness policy.
+        deadline = time.monotonic() + 30
+        index = 0
+        while operational()["stage"] != "operational":
+            assert time.monotonic() < deadline, operational()
+            expected_processed = monitor.message_processor.message_count + 1
             for sensor in ("a", "b"):
                 await publish(sensor, index % 5 + 1)
-        await _wait_until(
-            lambda: operational()["activity"].get("last_inference_at") is not None
-        )
-        for sensor in ("a", "b"):
-            await publish(sensor, 3)
-        await _wait_until(
-            lambda: (
-                monitor.message_processor.activity.snapshot()["processed_count"] >= 13
+            await _wait_until(
+                lambda expected=expected_processed: (
+                    monitor.message_processor.message_count >= expected
+                )
             )
-        )
-        await _wait_until(lambda: operational()["stage"] == "operational")
+            index += 1
+        assert operational()["activity"]["last_inference_at"] is not None
         previous_inference = operational()["activity"]["last_inference_at"]
         await asyncio.sleep(0.35)
         received = monitor.message_processor.received_message_count

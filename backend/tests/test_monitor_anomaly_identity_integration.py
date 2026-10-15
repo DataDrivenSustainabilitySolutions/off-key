@@ -140,7 +140,7 @@ def test_monitor_identity_migration_preserves_historical_public_ids(
             connection.execute(
                 text(
                     "DELETE FROM off_key_schema_migrations "
-                    "WHERE version = '007_monitor_anomaly_identity.sql'"
+                    "WHERE version >= '007_monitor_anomaly_identity.sql'"
                 )
             )
         else:

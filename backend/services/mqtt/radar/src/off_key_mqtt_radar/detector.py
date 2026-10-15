@@ -176,7 +176,6 @@ class StaticConformalDetectionService:
         *,
         automatic_checkpoints: bool = True,
     ) -> "StaticConformalDetectionService":
-
         saved_strategy = checkpoint.get("strategy")
         if saved_strategy != "static_baseline":
             raise ValueError(

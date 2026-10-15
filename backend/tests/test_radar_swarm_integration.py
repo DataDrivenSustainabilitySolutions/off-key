@@ -26,6 +26,71 @@ pytestmark = pytest.mark.skipif(
     reason="Requires an explicitly built current RADAR image and local Swarm",
 )
 
+_CHECKPOINT_PROBE = """
+import asyncio
+import json
+import os
+import time
+
+from off_key_mqtt_radar.config.config import get_radar_settings
+from off_key_mqtt_radar.config.runtime import get_radar_checkpoint_settings
+from off_key_mqtt_radar.runtime_checkpoint import RuntimeCheckpointCodec
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import create_async_engine
+
+
+async def main():
+    runtime = get_radar_checkpoint_settings()
+    codec = RuntimeCheckpointCodec(
+        runtime.SERVICE_ID,
+        get_radar_settings().config,
+        runtime.durable_checkpoint_secret_bytes,
+    )
+    expected = json.loads(os.environ["EXPECTED_CHECKPOINT_WATERMARKS"])
+    receipts = int(os.environ["EXPECTED_CHECKPOINT_RECEIPTS"])
+    engine = create_async_engine(os.environ["RADAR_DATABASE_URL"], pool_size=1)
+    try:
+        deadline = time.monotonic() + 60
+        while time.monotonic() < deadline:
+            async with engine.connect() as connection:
+                record = (
+                    await connection.execute(
+                        text(
+                            "SELECT * FROM radar_runtime_checkpoints "
+                            "WHERE service_id=:id"
+                        ),
+                        {"id": runtime.SERVICE_ID},
+                    )
+                ).mappings().one_or_none()
+            if record is not None:
+                snapshot = codec.decode(dict(record))
+                watermarks = snapshot.observation_watermarks.get("swarm-test", {})
+                if (
+                    snapshot.processor.received_message_count >= receipts
+                    and all(
+                        watermarks.get(key) == value
+                        for key, value in expected.items()
+                    )
+                ):
+                    print(json.dumps({
+                        "processed_count": record["processed_count"],
+                        "received_message_count": (
+                            snapshot.processor.received_message_count
+                        ),
+                        "observation_watermarks": watermarks,
+                    }), flush=True)
+                    return
+            await asyncio.sleep(0.2)
+        raise AssertionError(
+            "Checkpoint did not cover every accepted receipt and watermark"
+        )
+    finally:
+        await engine.dispose()
+
+
+asyncio.run(main())
+"""
+
 
 def wait_for(probe, *, timeout=90):
     deadline = time.monotonic() + timeout
@@ -266,6 +331,7 @@ def test_current_image_restores_in_replacement_swarm_task(swarm_runtime):
     try:
         wait_for(lambda: status().get("updated_at"), timeout=120)
         index = 0
+        latest_watermarks = {}
         learning_deadline = time.monotonic() + 120
         while index < 65 or not evidence_count():
             assert time.monotonic() < learning_deadline, (
@@ -279,12 +345,39 @@ def test_current_image_restores_in_replacement_swarm_task(swarm_runtime):
                 publisher.publish(
                     topic, json.dumps(payload), qos=1, retain=True
                 ).wait_for_publish(5)
+                latest_watermarks[topic.rsplit("/", 1)[-1]] = datetime.fromisoformat(
+                    payload["timestamp"]
+                ).timestamp()
             time.sleep(0.08)
             index += 1
-        before = wait_for(
-            lambda: checkpoint_count() if checkpoint_count() >= index else 0
+        # Cross-topic delivery may coalesce readings under strict-barrier
+        # alignment. Drain actual receipts and verify the signed runtime state
+        # contains the latest retained observation from every stream.
+        drained = wait_for(
+            lambda: status() if status().get("message_count", 0) >= index * 2 else None
         )
-        assert before == index
+        probe = client.containers.run(
+            expected_image_id,
+            name=owner + "-checkpoint-probe",
+            command=["/app/bin/python", "-c", _CHECKPOINT_PROBE],
+            environment=environment
+            | {
+                "EXPECTED_CHECKPOINT_RECEIPTS": str(drained["message_count"]),
+                "EXPECTED_CHECKPOINT_WATERMARKS": json.dumps(latest_watermarks),
+            },
+            network=network.id,
+            labels=labels,
+            mem_limit="512m",
+            detach=True,
+        )
+        resources.append(probe)
+        probe_result = probe.wait(timeout=120)
+        probe_logs = probe.logs().decode(errors="replace")
+        assert probe_result["StatusCode"] == 0, probe_logs
+        verified_checkpoint = json.loads(probe_logs.splitlines()[-1])
+        before = verified_checkpoint["processed_count"]
+        wait_for(lambda: status().get("processed_message_count") == before)
+        assert checkpoint_count() == before
         before_evidence = evidence_count()
         assert before_evidence > 0
         running = wait_for(
@@ -375,6 +468,12 @@ def test_current_image_restores_in_replacement_swarm_task(swarm_runtime):
                     "replacement_image_id": replacement_image_id,
                     "old_task_id": running["ID"],
                     "saved_count_before_failure": before,
+                    "checkpoint_receipts_before_failure": verified_checkpoint[
+                        "received_message_count"
+                    ],
+                    "checkpoint_watermarks_before_failure": verified_checkpoint[
+                        "observation_watermarks"
+                    ],
                     "checkpoint_count_after_recovery": checkpoint_count(),
                     "evidence_before_failure": before_evidence,
                     "evidence_after_recovery": evidence_count(),

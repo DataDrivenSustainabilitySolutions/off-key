@@ -195,3 +195,13 @@ an incrementally capped backoff and interruptible shutdown. Validation: 38 MQTT
 tests pass, including an actual broker returning only after more than ten failed
 attempts, one restored subscription/delivery, very large attempt counters and
 shutdown during a 300-second backoff.
+
+Final regression refinements: Migration 007 upgrade fixtures remove the whole
+later ledger suffix to preserve the migration-prefix invariant. The launch
+contract uses actual typed runtime settings. The short-freshness activity test
+paces completed model work through cold startup before exercising silence. The
+Swarm probe decodes signed checkpoints inside the exact production runtime and
+verifies receipt counts and every retained observation watermark before killing
+the task, without assuming one vector per published pair. The combined affected
+contract/migration/activity tests pass (29), and the final activity pacing probe
+passes independently. All configured repository pre-commit checks pass.

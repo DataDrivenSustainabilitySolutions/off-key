@@ -118,9 +118,13 @@ class TestMQTTAsyncEventHandling:
         """The Paho callback resolves the connection attempt without polling."""
         paho_client = MagicMock()
         paho_client.subscribe.return_value = (0, 1)
-        paho_client.loop_start.side_effect = lambda: paho_client.on_connect(
-            paho_client, None, None, 0
-        )
+
+        def acknowledge_subscription():
+            paho_client.on_connect(paho_client, None, None, 0, None)
+            assert client.is_connected is False
+            paho_client.on_subscribe(paho_client, None, 1, [0], None)
+
+        paho_client.loop_start.side_effect = acknowledge_subscription
         client = RadarMQTTClient(config)
 
         with patch(
@@ -153,6 +157,24 @@ class TestMQTTAsyncEventHandling:
 
         assert client.is_connected is False
         assert client._connection_result is None
+        assert client.client is None
+
+    @pytest.mark.asyncio
+    async def test_local_subscribe_failure_never_marks_ready(self, config):
+        paho_client = MagicMock()
+        paho_client.subscribe.return_value = (4, None)
+        paho_client.loop_start.side_effect = lambda: paho_client.on_connect(
+            paho_client, None, None, 0, None
+        )
+        client = RadarMQTTClient(config)
+        with (
+            patch(
+                "off_key_mqtt_radar.mqtt_client.mqtt.Client", return_value=paho_client
+            ),
+            pytest.raises(RuntimeError, match="SUBSCRIBE failed locally"),
+        ):
+            await client._connect()
+        assert not client.is_connected
         assert client.client is None
 
     @pytest.mark.asyncio
@@ -629,7 +651,7 @@ class TestMQTTAsyncEventHandling:
         await mqtt_client.start()
 
         # Simulate disconnection
-        mqtt_client._on_disconnect(mqtt_client.client, None, 1)
+        mqtt_client._on_disconnect(mqtt_client.client, None, None, 1, None)
 
         # Should update connection state
         assert not mqtt_client.is_connected

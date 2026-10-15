@@ -44,7 +44,10 @@ async def test_repeated_socket_failures_keep_one_subscriber_and_stop_all_threads
     async with mqtt_broker() as (broker, port):
         client = RadarMQTTClient(
             MQTTRadarConfig(
-                broker_host="127.0.0.1", broker_port=port, subscription_topics=[topic]
+                broker_host="127.0.0.1",
+                broker_port=port,
+                subscription_topics=[topic],
+                rate_limit_per_minute=1000,
             )
         )
         client.reconnect_delay = 0.02
@@ -64,9 +67,11 @@ async def test_repeated_socket_failures_keep_one_subscriber_and_stop_all_threads
                 clients.append(previous)
                 previous.socket().shutdown(socket.SHUT_RDWR)
                 await wait_until(
-                    lambda previous=previous: client.client is not None
-                    and client.client is not previous
-                    and client.is_connected
+                    lambda previous=previous: (
+                        client.client is not None
+                        and client.client is not previous
+                        and client.is_connected
+                    )
                 )
                 await wait_until(lambda previous=previous: previous._thread is None)
                 await wait_until(lambda: len(broker._subscriptions.get(topic, [])) == 1)
@@ -112,6 +117,80 @@ async def test_cancelled_initial_connection_stops_processor_and_network_thread()
                 await startup
             assert client._shutdown_event.is_set()
             assert client._message_processor_task.done()
+            assert client.client is None
+            assert network_client._thread is None
+        finally:
+            await client.stop()
+
+
+async def test_real_broker_acl_rejection_fails_required_subscription_readiness():
+    plugins = {
+        "amqtt.plugins.authentication.AnonymousAuthPlugin": {"allow_anonymous": True},
+        "amqtt.plugins.topic_checking.TopicAccessControlListPlugin": {
+            "acl": {"anonymous": ["telemetry/acl/allowed"]}
+        },
+    }
+    async with mqtt_broker(plugins=plugins) as (_, port):
+        client = RadarMQTTClient(
+            MQTTRadarConfig(
+                broker_host="127.0.0.1",
+                broker_port=port,
+                subscription_topics=["telemetry/acl/allowed", "telemetry/acl/denied"],
+            )
+        )
+        try:
+            with pytest.raises(RuntimeError, match="subscription rejected"):
+                await client.start()
+            assert not client.is_connected
+            assert client.client is None
+            assert client.get_health_status()["status"] == "unhealthy"
+        finally:
+            await client.stop()
+
+
+async def test_missing_suback_times_out_and_cleans_up_actual_socket():
+    subscribed = asyncio.Event()
+
+    async def read_packet(reader):
+        header = await reader.readexactly(1)
+        size, multiplier = 0, 1
+        while True:
+            digit = (await reader.readexactly(1))[0]
+            size += (digit & 127) * multiplier
+            if not digit & 128:
+                break
+            multiplier *= 128
+        return header, await reader.readexactly(size)
+
+    async def withhold_suback(reader, writer):
+        try:
+            await read_packet(reader)
+            writer.write(b"\x20\x02\x00\x00")  # Real MQTT 3.1.1 CONNACK.
+            await writer.drain()
+            await read_packet(reader)
+            subscribed.set()
+            await reader.read()
+        finally:
+            writer.close()
+            await writer.wait_closed()
+
+    server = await asyncio.start_server(withhold_suback, "127.0.0.1", 0)
+    async with server:
+        client = RadarMQTTClient(
+            MQTTRadarConfig(
+                broker_host="127.0.0.1",
+                broker_port=server.sockets[0].getsockname()[1],
+            )
+        )
+        client._connection_timeout_seconds = 0.3
+        startup = asyncio.create_task(client.start())
+        try:
+            async with asyncio.timeout(5):
+                await subscribed.wait()
+            network_client = client.client
+            assert not client.is_connected
+            with pytest.raises(RuntimeError, match="acknowledgement timed out"):
+                await startup
             assert client.client is None
             assert network_client._thread is None
         finally:

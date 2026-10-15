@@ -60,6 +60,9 @@ class RadarMQTTClient:
         # Event loop for async coordination
         self._loop: asyncio.AbstractEventLoop | None = None
         self._connection_result: asyncio.Future[None] | None = None
+        self._connection_timeout_seconds = 30.0
+        self._pending_subscriptions: dict[int, str] = {}
+        self._confirmed_subscriptions: set[str] = set()
         self._message_processor_task: asyncio.Task | None = None
         self._reconnect_task: asyncio.Task | None = None
         self._shutdown_event = asyncio.Event()
@@ -145,7 +148,10 @@ class RadarMQTTClient:
 
             # Use TCP transport for simplicity (bridge handles WebSocket if needed)
             self.client = mqtt.Client(
-                client_id=client_id, transport="tcp", reconnect_on_failure=False
+                callback_api_version=mqtt.CallbackAPIVersion.VERSION2,
+                client_id=client_id,
+                transport="tcp",
+                reconnect_on_failure=False,
             )
 
             # Configure TLS if required
@@ -161,6 +167,7 @@ class RadarMQTTClient:
             self.client.on_connect = self._on_connect
             self.client.on_disconnect = self._on_disconnect
             self.client.on_message = self._on_message
+            self.client.on_subscribe = self._on_subscribe
             self.client.on_log = self._on_log
 
             # Connect to broker
@@ -179,10 +186,12 @@ class RadarMQTTClient:
             # Paho invokes connection callbacks on its network thread. The callback
             # resolves this future on the asyncio thread without polling shared state.
             try:
-                await asyncio.wait_for(connection_result, timeout=30.0)
+                await asyncio.wait_for(
+                    connection_result, timeout=self._connection_timeout_seconds
+                )
             except TimeoutError as error:
                 raise RuntimeError(
-                    "Failed to connect to MQTT broker within timeout"
+                    "MQTT connection or required subscription acknowledgement timed out"
                 ) from error
             finally:
                 if self._connection_result is connection_result:
@@ -203,6 +212,8 @@ class RadarMQTTClient:
         """Fence retired callbacks before stopping the owned network thread."""
         client, self.client = self.client, None
         self.is_connected = False
+        self._pending_subscriptions.clear()
+        self._confirmed_subscriptions.clear()
         if client is not None:
             try:
                 client.disconnect()
@@ -230,22 +241,27 @@ class RadarMQTTClient:
         else:
             connection_result.set_result(None)
 
-    def _on_connect(self, client, userdata, flags, rc):
+    def _on_connect(self, client, userdata, flags, reason_code, properties=None):
         """MQTT connection callback"""
         if client is not self.client or self._shutdown_event.is_set():
             return
+        rc = getattr(reason_code, "value", reason_code)
         if rc == 0:
-            self.is_connected = True
+            self._pending_subscriptions.clear()
+            self._confirmed_subscriptions.clear()
             logger.info("event=radar.mqtt_connection_established")
 
             # Subscribe to configured topics
             for topic in self.config.subscription_topics:
                 try:
-                    result = client.subscribe(topic, self.config.subscription_qos)
+                    result, mid = client.subscribe(topic, self.config.subscription_qos)
+                    if result != mqtt.MQTT_ERR_SUCCESS:
+                        raise RuntimeError(f"SUBSCRIBE failed locally: {result}")
+                    self._pending_subscriptions[mid] = topic
                     logger.info(
-                        "event=radar.mqtt_subscribed topic=%s result=%s",
+                        "event=radar.mqtt_subscription_requested topic=%s mid=%s",
                         topic,
-                        result,
+                        mid,
                     )
                 except Exception as e:
                     logger.error(
@@ -254,7 +270,14 @@ class RadarMQTTClient:
                         str(e),
                         exc_info=True,
                     )
-            self._notify_connection_result()
+                    self._notify_connection_result(
+                        RuntimeError(f"Required MQTT subscription failed: {topic}: {e}")
+                    )
+                    return
+            if not self._pending_subscriptions:
+                self._notify_connection_result(
+                    RuntimeError("No required MQTT subscriptions configured")
+                )
 
         else:
             error_messages = {
@@ -270,10 +293,30 @@ class RadarMQTTClient:
             self.is_connected = False
             self._notify_connection_result(RuntimeError(error_msg))
 
-    def _on_disconnect(self, client, userdata, rc):
+    def _on_subscribe(self, client, userdata, mid, reason_codes, properties=None):
+        """Readiness requires every required topic to have a successful SUBACK."""
+        if client is not self.client or self._shutdown_event.is_set():
+            return
+        topic = self._pending_subscriptions.pop(mid, None)
+        if topic is None:
+            return
+        granted = [getattr(code, "value", code) for code in reason_codes]
+        if len(granted) != 1 or granted[0] not in (0, 1, 2):
+            self.is_connected = False
+            self._notify_connection_result(
+                RuntimeError(f"Required MQTT subscription rejected: {topic}: {granted}")
+            )
+            return
+        self._confirmed_subscriptions.add(topic)
+        if self._confirmed_subscriptions == set(self.config.subscription_topics):
+            self.is_connected = True
+            self._notify_connection_result()
+
+    def _on_disconnect(self, client, userdata, flags, reason_code, properties=None):
         """MQTT disconnection callback"""
         if client is not self.client or self._shutdown_event.is_set():
             return
+        rc = getattr(reason_code, "value", reason_code)
         self.is_connected = False
         self._notify_connection_result(
             RuntimeError("Disconnected before MQTT connection was established")
@@ -471,7 +514,8 @@ class RadarMQTTClient:
             "broker_host": self.config.broker_host,
             "broker_port": self.config.broker_port,
             "client_id": self.client._client_id if self.client else None,
-            "subscribed_topics": self.config.subscription_topics,
+            "subscribed_topics": sorted(self._confirmed_subscriptions),
+            "pending_subscriptions": sorted(self._pending_subscriptions.values()),
             "connection_time": (
                 self.connection_time.isoformat() if self.connection_time else None
             ),

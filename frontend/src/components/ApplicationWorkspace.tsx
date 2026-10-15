@@ -1,6 +1,6 @@
 import { Suspense, useEffect, useRef, useState, useSyncExternalStore, type CSSProperties } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
-import { Menu, PanelLeft } from "lucide-react";
+import { PanelLeft } from "lucide-react";
 import { Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "@/auth/AuthContext";
 import { AppHeader } from "./AppHeader";
@@ -47,7 +47,7 @@ function WorkspaceFrame() {
       <button ref={toggle} className="app-icon-button" aria-label={mobile ? "Open catalogue" : "Toggle catalogue"}
         aria-expanded={mobile ? mobileOpen : preferences.sidebarOpen} aria-controls="system-explorer" onClick={() => mobile ? setMobileOpen(true)
           : setPreferences(previous => ({ ...previous, sidebarOpen: !previous.sidebarOpen }))}>
-        {mobile ? <Menu size={19} /> : <PanelLeft size={19} />}
+        <PanelLeft size={19} />
       </button>
     </>} navigation={<WorkspaceNavigation hrefs={Object.fromEntries(["/", "/sources", "/anomalies"].map(path => [path, sectionHref(path)]))} />} />
     {!mobile && preferences.sidebarOpen && <aside className="ex-sidebar-dock app-catalogue-sidebar"><WorkspaceCatalogue />

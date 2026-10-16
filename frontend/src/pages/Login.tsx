@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -31,6 +31,8 @@ const Login: React.FC = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const submitInFlight = useRef(false);
   const [message, setMessage] = useState("");
   const [emailError, setEmailError] = useState<string | undefined>();
   const [passwordError, setPasswordError] = useState<string | undefined>();
@@ -44,6 +46,7 @@ const Login: React.FC = () => {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submitInFlight.current) return;
 
     // Clear previous errors
     setEmailError(undefined);
@@ -64,6 +67,8 @@ const Login: React.FC = () => {
       return;
     }
 
+    submitInFlight.current = true;
+    setIsSubmitting(true);
     try {
       await waitForLogout();
       // Sanitize inputs before sending
@@ -95,6 +100,9 @@ const Login: React.FC = () => {
         error,
       });
       setMessage("An error occurred");
+    } finally {
+      submitInFlight.current = false;
+      setIsSubmitting(false);
     }
   };
 
@@ -176,8 +184,10 @@ const Login: React.FC = () => {
         <Button
           type="submit"
           className={AUTH_SUBMIT_BUTTON_CLASS}
+          disabled={isSubmitting}
+          aria-busy={isSubmitting}
         >
-          Log in
+          {isSubmitting ? "Logging in…" : "Log in"}
         </Button>
 
         {/* Fehlermeldung oder Erfolgsnachricht */}

@@ -85,6 +85,10 @@ The login form uses the selected single-line Aberration wordmark, exported from
 the selected appearance through `currentColor`; the redundant Login heading is
 visually hidden while remaining available to screen readers.
 
+The authentication background repeats the same paired-r mark through a CSS
+mask, exported as `frontend/public/brand/auth-pattern.svg` from the logo master.
+It follows the page foreground colour in light and dark modes.
+
 ## Updating distributed assets
 
 The frontend, documentation, and self-contained public page have independent

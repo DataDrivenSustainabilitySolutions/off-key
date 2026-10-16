@@ -57,26 +57,15 @@
     .header-link { display: inline-flex; align-items: center; gap: 8px; min-height: 40px; padding: 0 12px; border-radius: 6px; font-size: 13px; font-weight: 500; }
     .header-link:hover { background: hsl(var(--accent)); }
     .arrow { width: 16px; height: 16px; flex-shrink: 0; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
-    .hero { display: grid; grid-template-columns: 1fr 1.05fr; gap: 80px; align-items: center; padding-block: 96px 88px; }
-    .eyebrow { display: flex; align-items: center; gap: 8px; margin: 0 0 26px; color: hsl(var(--primary)); font-size: 13px; font-weight: 500; }
-    .dot { display: inline-block; width: 6px; height: 6px; flex-shrink: 0; border-radius: 50%; background: currentColor; }
+    .hero { padding-block: 88px 80px; text-align: center; }
     h1 { margin: 0; font-size: clamp(56px, 5.8vw, 80px); line-height: 1.06; letter-spacing: -.055em; font-weight: 550; }
     h1 span { display: block; color: hsl(var(--primary)); }
-    .description { max-width: 430px; margin: 26px 0 30px; color: hsl(var(--muted-foreground)); font-size: 17px; line-height: 1.75; }
-    .hero-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 12px 24px; }
+    .description { max-width: 500px; margin: 26px auto 30px; color: hsl(var(--muted-foreground)); font-size: 17px; line-height: 1.75; }
+    .hero-actions { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 12px 24px; }
     .button { display: inline-flex; align-items: center; justify-content: center; gap: 20px; min-height: 44px; padding: 10px 18px; border-radius: 6px; background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); font-size: 13px; font-weight: 500; }
     .button:hover { background: hsl(var(--primary) / .9); }
     .text-link { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; font-size: 13px; color: hsl(var(--muted-foreground)); }
     .text-link:hover { color: hsl(var(--foreground)); }
-    .hero-note { margin: 24px 0 0; color: hsl(var(--muted-foreground)); font-size: 12px; }
-    .pattern-figure { min-width: 0; margin: 0; }
-    .pattern-art { display: block; width: 100%; height: auto; }
-    .pattern-field { fill: hsl(var(--primary) / .035); }
-    .pattern-contours { fill: none; stroke: hsl(var(--muted-foreground) / .28); stroke-width: 1; }
-    .pattern-art path { vector-effect: non-scaling-stroke; }
-    .pattern-change { fill: none; stroke: hsl(var(--primary)); stroke-width: 1.8; stroke-linecap: round; }
-    .pattern-halo { fill: hsl(var(--primary) / .1); }
-    .pattern-point { fill: hsl(var(--primary)); }
     .approach { padding-block: 56px 60px; border-block: 1px solid hsl(var(--border)); background: hsl(var(--muted)); scroll-margin-top: 24px; }
     .section-heading { display: flex; justify-content: space-between; align-items: baseline; gap: 32px; margin-bottom: 38px; }
     h2 { margin: 0; font-size: 28px; line-height: 1.3; font-weight: 550; letter-spacing: -.035em; }
@@ -90,11 +79,24 @@
     .closing h2 { font-size: 23px; }
     .closing p { margin: 8px 0 0; color: hsl(var(--muted-foreground)); }
     .site-footer { border-top: 1px solid hsl(var(--border)); }
-    .footer-inner { display: flex; justify-content: space-between; gap: 24px; padding-block: 24px; color: hsl(var(--muted-foreground)); font-size: 12px; }
-    .footer-inner p { margin: 0; }
+    .footer-inner { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px 24px; padding-block: 16px; color: hsl(var(--muted-foreground)); font-size: 12px; }
+    .footer-brand { margin: 0; color: hsl(var(--foreground)); font-weight: 500; }
+    .footer-links { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 24px; }
+    .footer-links a { display: inline-flex; align-items: center; min-height: 44px; }
+    .footer-links a:hover, .legal-close:hover { color: hsl(var(--primary)); text-decoration: underline; text-underline-offset: 4px; }
+    .legal-panel { display: none; padding-block: 32px 40px; border-top: 1px solid hsl(var(--border)); overflow-wrap: anywhere; scroll-margin-top: 24px; }
+    .legal-panel:target { display: block; }
+    .legal-heading { display: flex; align-items: center; justify-content: space-between; gap: 24px; max-width: 760px; }
+    .legal-heading h2 { font-size: 23px; }
+    .legal-close { display: inline-flex; align-items: center; min-height: 44px; color: hsl(var(--muted-foreground)); font-size: 12px; }
+    .legal-template { max-width: 760px; margin: 12px 0 24px; color: hsl(var(--muted-foreground)); font-size: 13px; }
+    .legal-details { display: grid; grid-template-columns: minmax(140px, 1fr) 3fr; gap: 16px 32px; max-width: 760px; margin: 0; font-size: 13px; line-height: 1.7; }
+    .legal-details dt { font-weight: 500; }
+    .legal-details dd { min-width: 0; margin: 0; color: hsl(var(--muted-foreground)); }
+    .legal-panel:focus-visible { outline: 2px solid hsl(var(--primary)); outline-offset: 4px; }
     @media (max-width: 1050px) {
       .container { width: calc(100% - 56px); }
-      .hero { gap: 40px; padding-block: 72px; }
+      .hero { padding-block: 72px; }
       h1 { font-size: 62px; }
       .description { font-size: 16px; }
       .steps { gap: 28px; }
@@ -104,12 +106,9 @@
       .container { width: calc(100% - 40px); }
       .header-inner { min-height: 64px; gap: 12px; }
       .header-link { min-height: 44px; padding-inline: 8px; }
-      .hero { grid-template-columns: minmax(0, 1fr); gap: 40px; padding-block: 52px; }
+      .hero { padding-block: 52px; }
       h1 { font-size: clamp(52px, 10vw, 72px); }
-      .eyebrow { margin-bottom: 20px; }
       .description { max-width: 480px; margin-block: 22px 26px; }
-      .hero-note { margin-top: 18px; }
-      .pattern-figure { width: 100%; max-width: 560px; }
       .approach { padding-block: 40px; }
       .section-heading { flex-direction: column; gap: 12px; margin-bottom: 32px; }
       .section-heading > p { max-width: 480px; }
@@ -119,7 +118,9 @@
       h3 { margin-top: 12px; }
       .steps p { max-width: 480px; }
       .closing { align-items: flex-start; flex-direction: column; gap: 24px; padding-block: 40px; }
-      .footer-inner { flex-wrap: wrap; gap: 8px 24px; font-size: 11px; }
+      .footer-inner { align-items: flex-start; flex-direction: column; gap: 4px; padding-block: 20px; }
+      .legal-details { grid-template-columns: 1fr; gap: 4px; }
+      .legal-details dd + dt { margin-top: 16px; }
     }
     @media (max-width: 380px) {
       .wordmark { gap: 7px; font-size: 15px; }
@@ -129,9 +130,6 @@
     @media (forced-colors: active) {
       .brand-mark { color: LinkText; }
       .button, .step-number { border: 1px solid ButtonText; }
-      .pattern-contours { stroke: CanvasText; }
-      .pattern-change { stroke: LinkText; }
-      .pattern-point { fill: LinkText; }
     }
   </style>
 </head>
@@ -151,40 +149,13 @@
   <main id="main">
     <section class="container hero" aria-labelledby="headline">
       <div>
-        <p class="eyebrow"><span class="dot" aria-hidden="true"></span>Continuous anomaly detection</p>
         <h1 id="headline">Evidence <span>of change.</span></h1>
         <p class="description">Every system has a rhythm. Aberration follows the relationships in your sensor data and brings the moments of change into view.</p>
         <div class="hero-actions">
           <a class="button" href="{{ frontend_base_url | e }}/">Open dashboard<svg class="arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></a>
           <a class="text-link" href="#approach">How it works<svg class="arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14m-6-6 6 6 6-6"/></svg></a>
         </div>
-        <p class="hero-note">Streaming data. Statistical evidence. A clearer picture.</p>
       </div>
-      <figure class="pattern-figure">
-        <svg class="pattern-art" viewBox="0 0 560 470" role="img" aria-labelledby="pattern-title" aria-describedby="pattern-description">
-          <title id="pattern-title">A new shape emerging from a familiar pattern</title>
-          <desc id="pattern-description">Fine nested contours form a flowing, organic shape. A teal line departs from their shared rhythm and opens into a new direction.</desc>
-          <defs>
-            <path id="contour" d="M85 322C33 255 58 147 165 115C252 90 293 161 380 128C474 92 534 149 506 237C479 327 369 355 278 386C193 416 124 378 85 322Z"/>
-          </defs>
-          <use class="pattern-field" href="#contour"/>
-          <g class="pattern-contours">
-            <use href="#contour"/>
-            <use href="#contour" transform="translate(280 250) scale(.91) translate(-280 -250)"/>
-            <use href="#contour" transform="translate(280 250) scale(.82) translate(-280 -250)"/>
-            <use href="#contour" transform="translate(280 250) scale(.73) translate(-280 -250)"/>
-            <use href="#contour" transform="translate(280 250) scale(.64) translate(-280 -250)"/>
-            <use href="#contour" transform="translate(280 250) scale(.55) translate(-280 -250)"/>
-            <use href="#contour" transform="translate(280 250) scale(.46) translate(-280 -250)"/>
-            <use href="#contour" transform="translate(280 250) scale(.37) translate(-280 -250)"/>
-            <use href="#contour" transform="translate(280 250) scale(.28) translate(-280 -250)"/>
-            <use href="#contour" transform="translate(280 250) scale(.19) translate(-280 -250)"/>
-          </g>
-          <path class="pattern-change" d="M173 296C129 245 147 192 216 178C284 165 302 217 348 187C391 157 416 93 461 113C510 136 460 218 407 257C364 287 320 302 276 324C232 346 193 327 173 296Z"/>
-          <circle class="pattern-halo" cx="461" cy="113" r="12"/>
-          <circle class="pattern-point" cx="461" cy="113" r="3.5"/>
-        </svg>
-      </figure>
     </section>
     <section class="approach" id="approach" aria-labelledby="approach-heading">
       <div class="container">
@@ -219,11 +190,55 @@
       <a class="button" href="{{ frontend_base_url | e }}/">Open dashboard<svg class="arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></a>
     </section>
   </main>
-  <footer class="site-footer">
+  <footer class="site-footer" id="site-footer" tabindex="-1">
     <div class="container footer-inner">
-      <p>aberration <span aria-hidden="true">/</span> Anomaly detection for connected systems.</p>
-      <p>Built around evidence.</p>
+      <p class="footer-brand">© Aberration</p>
+      <nav class="footer-links" aria-label="Legal information">
+        <a href="#impressum">Impressum</a>
+        <a href="#privacy">Privacy</a>
+        <a href="#contact">Contact</a>
+      </nav>
     </div>
+    <section class="container legal-panel" id="impressum" aria-labelledby="impressum-heading" tabindex="-1">
+      <div class="legal-heading">
+        <h2 id="impressum-heading">Impressum</h2>
+        <a class="legal-close" href="#site-footer">Close</a>
+      </div>
+      <p class="legal-template">Template — replace the bracketed fields with the operator’s verified details before publication.</p>
+      <dl class="legal-details">
+        <dt>Operator</dt><dd>[Full legal name / organisation]</dd>
+        <dt>Address</dt><dd>[Street and number]<br>[Postcode, city, country]</dd>
+        <dt>Contact</dt><dd>[Email address]<br>[Telephone number]</dd>
+        <dt>Representation &amp; registration</dt><dd>[Representative, register and registration number, where applicable]</dd>
+        <dt>Tax information</dt><dd>[VAT ID / tax information, where applicable]</dd>
+      </dl>
+    </section>
+    <section class="container legal-panel" id="privacy" aria-labelledby="privacy-heading" tabindex="-1">
+      <div class="legal-heading">
+        <h2 id="privacy-heading">Privacy</h2>
+        <a class="legal-close" href="#site-footer">Close</a>
+      </div>
+      <p class="legal-template">Template — replace the bracketed fields with an accurate description of this website and the dashboard before publication.</p>
+      <dl class="legal-details">
+        <dt>Responsible party</dt><dd>[Name and contact details of the data controller]</dd>
+        <dt>Data &amp; purposes</dt><dd>[Describe personal data collected, purposes and legal bases]</dd>
+        <dt>Providers &amp; transfers</dt><dd>[List hosting and service providers and any data transfers]</dd>
+        <dt>Storage &amp; cookies</dt><dd>[Describe retention, cookies and local storage]</dd>
+        <dt>Your choices &amp; rights</dt><dd>[Explain how to exercise data rights and whom to contact]</dd>
+      </dl>
+    </section>
+    <section class="container legal-panel" id="contact" aria-labelledby="contact-heading" tabindex="-1">
+      <div class="legal-heading">
+        <h2 id="contact-heading">Contact</h2>
+        <a class="legal-close" href="#site-footer">Close</a>
+      </div>
+      <p class="legal-template">Template — replace the bracketed fields with the contact details you want to publish.</p>
+      <dl class="legal-details">
+        <dt>Email</dt><dd>[Contact email address]</dd>
+        <dt>Telephone</dt><dd>[Contact telephone number]</dd>
+        <dt>Post</dt><dd>[Organisation / contact person]<br>[Street and number]<br>[Postcode, city, country]</dd>
+      </dl>
+    </section>
   </footer>
 </body>
 </html>

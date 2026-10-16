@@ -29,6 +29,11 @@ The monochrome mark and favicon come from [`../assets/brand/`](../assets/brand/)
 run `python assets/brand/export.py` from the repository root after editing the
 master SVG. The export preserves the page's surrounding design.
 
+The footer opens self-contained Impressum, Privacy, and Contact sections using
+fragment links. Their bracketed fields are intentional templates; replace them
+with verified operator, privacy, and contact information before publication.
+The sections and close links work without JavaScript or additional routes.
+
 Never commit inventories, vaults, passwords, credentials, tailnet identity or backups.
 The original private infrastructure repository remains the historical archive until
 an operator verifies the first integrated release and archives it.

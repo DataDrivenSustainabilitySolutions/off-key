@@ -1,4 +1,4 @@
-"""Export the shared vector mark into independent application build contexts."""
+"""Export the shared vector mark and selected wordmark into application contexts."""
 
 import argparse
 import re
@@ -12,6 +12,7 @@ BRAND = ROOT / "assets/brand"
 
 def exports() -> dict[Path, str]:
     source = (BRAND / "logo.svg").read_text(encoding="utf-8")
+    wordmark = (BRAND / "wordmark.svg").read_text(encoding="utf-8")
     path = ElementTree.fromstring(source).find("{http://www.w3.org/2000/svg}path")
     if path is None:
         raise ValueError("The vector master must contain its mark path")
@@ -26,11 +27,21 @@ def exports() -> dict[Path, str]:
     icon = source.replace(' id="mark"', "").replace(
         ' role="img"', ' aria-hidden="true" focusable="false"'
     )
+    pattern = (
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">\n'
+        '  <rect x=".5" y=".5" width="103" height="103" fill="none" '
+        'stroke="#fff" stroke-opacity=".8"/>\n'
+        '  <svg x="22" y="22" width="60" height="60" viewBox="0 0 64 64">\n'
+        f'    <path fill="#fff" fill-opacity=".7" d="{geometry}"/>\n'
+        "  </svg>\n</svg>\n"
+    )
     output = {
         BRAND / "logo-black.svg": black,
         BRAND / "logo-white.svg": white,
         BRAND / "favicon.svg": adaptive,
         ROOT / "frontend/public/brand/logo.svg": source,
+        ROOT / "frontend/public/brand/wordmark.svg": wordmark,
+        ROOT / "frontend/public/brand/auth-pattern.svg": pattern,
         ROOT / "frontend/public/brand/favicon.svg": adaptive,
         ROOT / "frontend/public/favicon.svg": adaptive,
         ROOT / "docs/assets/brand/logo.svg": adaptive,

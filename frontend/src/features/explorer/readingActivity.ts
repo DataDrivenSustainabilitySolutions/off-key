@@ -21,7 +21,7 @@ function recent(value: string | number | null | undefined, now: number) {
 }
 
 /** Activity comes from current subscriptions and fresh receipts, independently of sampling. */
-export function readingActivity(node: ExplorerNode, source: ReadingActivitySource | undefined, status: LiveStatus | undefined, now: number) {
+export function readingActivity(node: Pick<ExplorerNode, "streamIds" | "connectionId">, source: ReadingActivitySource | undefined, status: LiveStatus | undefined, now: number) {
   const runtime = source?.runtime;
   const persistentReady = runtime?.mode === "collection" && runtime.collection?.status === "applied"
     && runtime.ingress?.status === "applied" && runtime.ingress.revision === runtime.collection_revision;

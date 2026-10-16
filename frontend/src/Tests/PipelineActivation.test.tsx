@@ -13,10 +13,12 @@ import { normalizeDefinition } from "@/features/pipelines/contracts";
 import { ApiRequestError } from "@/lib/api-client";
 import { createEmptySystem } from "@/features/catalogue/systemDocument";
 import { clearNavigationDrafts } from "@/lib/navigation-draft";
+import { SystemLiveTelemetry } from "@/features/catalogue/systemLiveTelemetry";
 
 vi.mock("@/auth/AuthContext", () => ({ useAuth: () => ({ userId: 1 }) }));
+const catalogue = { document: { ...createEmptySystem(), streams: [] }, system: { snapshot: null }, telemetry: new SystemLiveTelemetry(), liveStreamIds: [] };
 vi.mock("@/features/workspace/catalogue-context", () => ({
-  useCatalogue: () => ({ document: { ...createEmptySystem(), streams: [] } }),
+  useCatalogue: () => catalogue,
 }));
 vi.mock("@/features/pipelines/api", () => ({
   pipelinesApi: { activate: vi.fn(), activation: vi.fn(), cancel: vi.fn() },

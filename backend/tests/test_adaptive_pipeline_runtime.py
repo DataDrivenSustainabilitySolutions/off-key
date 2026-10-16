@@ -216,6 +216,7 @@ def test_real_pca_readiness_reports_progress_and_model_dependency_chain():
     service = AdaptivePipelineDetectionService(_config(), automatic_checkpoints=False)
     initial = service.get_pipeline_state()["nodes"]
     assert initial["pca"]["readiness_observed"] == 0
+    assert initial["pca"]["readiness_required"] == 3
     assert initial["pca"]["blocked_by"] == ["scaled"]
     assert not initial["pca"]["ready"]
     assert initial["joined"]["blocked_by"] == ["pca"]

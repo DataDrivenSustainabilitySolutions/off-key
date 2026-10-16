@@ -16,11 +16,12 @@ type Props = {
   onBrowse?: (node: ExplorerNode) => void;
   activity?: ReadingActivitySource;
   emptyMessage?: string;
+  emptyAction?: { label: string; onClick: () => void };
 };
 
 const subscribeNothing = () => () => {};
 const noStatus = () => undefined;
-export function ExplorerList({ rows, viewKey, positions, selectedKey, onOpen, onBack, onBrowse, activity, emptyMessage = "No items here." }: Props) {
+export function ExplorerList({ rows, viewKey, positions, selectedKey, onOpen, onBack, onBrowse, activity, emptyMessage = "No items here.", emptyAction }: Props) {
   const scroll = useRef<HTMLDivElement>(null);
   const activityId = useId();
   const [now, setNow] = useState(() => Date.now());
@@ -117,6 +118,8 @@ export function ExplorerList({ rows, viewKey, positions, selectedKey, onOpen, on
         </li>;
       })}
     </ul>
-    {!rows.length && <div className="ex-list-empty">{emptyMessage}</div>}
+    {!rows.length && <div className="ex-list-empty"><p>{emptyMessage}</p>
+      {emptyAction && <button type="button" className="ex-empty-action" onClick={emptyAction.onClick}>{emptyAction.label}</button>}
+    </div>}
   </div>;
 }

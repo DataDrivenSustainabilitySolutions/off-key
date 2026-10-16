@@ -69,7 +69,7 @@ export function ExplorerWorkspace() {
           {liveStreamIds.length > 0 && <SystemLiveControls telemetry={telemetry} canStart={system.canEdit} canView={!!system.snapshot} disabled={system.saving} />}
         </>}
         {system.canEdit && !creating && !pipelineView && <button className="mn-primary" disabled={system.saving || !system.document || !monitoring.ready} onClick={createService}>
-          <Plus size={15} />Create service
+          <Plus size={15} />Create
         </button>}
       </div>
     </div>

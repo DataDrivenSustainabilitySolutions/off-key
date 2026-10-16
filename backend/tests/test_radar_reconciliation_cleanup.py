@@ -42,8 +42,10 @@ def _service(
 
 
 def _reconciler(*, retention_hours: int, docker_statuses: list[str]):
-    service = RadarStatusReconciliationService.__new__(RadarStatusReconciliationService)
-    service.terminal_service_retention_hours = retention_hours
+    service = RadarStatusReconciliationService(
+        terminal_service_retention_hours=retention_hours,
+        async_docker=_FakeAsyncDocker(),
+    )
     service._get_docker_status = AsyncMock(side_effect=docker_statuses)
     service._remove_workload_if_present = AsyncMock(return_value=False)
     return service
@@ -174,10 +176,7 @@ async def test_reconcile_workload_removal_falls_back_to_container_on_swarm_error
     )
     fake_docker.client.containers.get = MagicMock(return_value=service_container)
 
-    reconciler = RadarStatusReconciliationService.__new__(
-        RadarStatusReconciliationService
-    )
-    reconciler.async_docker = fake_docker
+    reconciler = RadarStatusReconciliationService(async_docker=fake_docker)
 
     assert await reconciler._remove_workload_if_present("ctr-1") is True
     fake_docker.client.services.get.assert_called_once_with("ctr-1")
@@ -195,10 +194,7 @@ async def test_reconcile_workload_removal_returns_false_when_missing_everywhere(
         side_effect=docker.errors.NotFound("missing")
     )
 
-    reconciler = RadarStatusReconciliationService.__new__(
-        RadarStatusReconciliationService
-    )
-    reconciler.async_docker = fake_docker
+    reconciler = RadarStatusReconciliationService(async_docker=fake_docker)
 
     assert await reconciler._remove_workload_if_present("ctr-1") is False
     fake_docker.client.services.get.assert_called_once_with("ctr-1")
@@ -261,10 +257,9 @@ def test_is_purge_due_returns_true_when_reference_time_missing_and_retention_is_
         operational_updated_at=None,
         created_at=None,
     )
-    reconciler = RadarStatusReconciliationService.__new__(
-        RadarStatusReconciliationService
+    reconciler = RadarStatusReconciliationService(
+        terminal_service_retention_hours=0, async_docker=_FakeAsyncDocker()
     )
-    reconciler.terminal_service_retention_hours = 0
     assert reconciler._is_purge_due(service) is True
 
 
@@ -275,10 +270,9 @@ def test_is_purge_due_returns_false_when_reference_time_missing_and_retention_no
         operational_updated_at=None,
         created_at=None,
     )
-    reconciler = RadarStatusReconciliationService.__new__(
-        RadarStatusReconciliationService
+    reconciler = RadarStatusReconciliationService(
+        terminal_service_retention_hours=24, async_docker=_FakeAsyncDocker()
     )
-    reconciler.terminal_service_retention_hours = 24
     assert reconciler._is_purge_due(service) is False
 
 

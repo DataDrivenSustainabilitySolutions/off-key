@@ -5,6 +5,10 @@ use aligned stacked and single-line layouts with separate t and i. Their
 [SVG sources and saved previews](experiments/README.md) preserve the original
 lettering and integrate the mark as rr.
 
+The [merged-ti Aberratio study](experiments/ti-body.html) is retained separately
+with the same specimen format. It is an archived naming/design alternative;
+the current product wordmarks keep the full Aberration name and separate t/i.
+
 The master is [logo.svg](logo.svg): the approved paired angular forms, drawn on a
 64 × 64 viewBox. It has a transparent background and one editable vector path.
 Keep its geometry, proportions, and internal spacing unchanged.

@@ -24,9 +24,27 @@ The referenced .agent/PLANS.md is absent; this file records the plan directly.
 
 - [x] Inspect repository state, source assets, preview pages, and commit hooks.
 - [x] Normalize the current Aberration presentation and save its previews.
-- [ ] Validate and commit the current product wordmarks.
-- [ ] Normalize and preserve the merged-ti Aberratio presentation.
-- [ ] Validate and commit the retained alternative and earlier studies.
+- [x] Validate and commit the current product wordmarks (d19b41d).
+- [x] Normalize and preserve the merged-ti Aberratio presentation.
+- [x] Validate the retained alternative and prepare its separate scoped commit.
+
+## Results
+
+Both selected sheets share one stylesheet and save desktop/mobile PNGs under
+assets/brand/experiments/previews. The current comparison contains only the
+original lowercase Aberration stack and single line. The alternative presents
+the merged, body-matched ti first and preserves its earlier compound below.
+
+Real Chrome checks pass for source consistency, both colour treatments, image
+loading, keyboard focus, downloads, and 320/390/768/1280px layouts. Pixel sampling
+across the lower stems confirms b and the flush-stem ti are both 44 units wide;
+the earlier compound is 34 units. All 18 original SVG files match their initial
+SHA-256 hashes. Local HTML references, brand exports, script syntax, whitespace,
+and preview file-size checks pass. The current product commit's repository hooks
+also pass.
+
+The two commits are restricted to brand assets and this plan. Existing pipeline
+and deployment edits are excluded.
 
 ## Validation
 

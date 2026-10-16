@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 468 92" width="936" height="184" role="img" aria-labelledby="title desc">
+  <title id="title">Aberration — wordmark with paired b and ti</title>
+  <desc id="desc">The full Aberration name with a compact ti ligature matching the b in width and height. The a, e, and original rr outlines are unchanged.</desc>
+  <g id="wordmark" fill="currentColor" transform="translate(16 16)">
+    <path id="letter-a-first" fill-rule="evenodd" transform="translate(0 16)" d="M0 0H44V44H0V17H34V10H0ZM10 27V34H34V27Z"/>
+    <path id="letter-b" fill-rule="evenodd" transform="translate(56 0)" d="M0 0H10V16H44V60H0ZM10 26V50H34V26Z"/>
+    <path id="letter-e" fill-rule="evenodd" transform="translate(112 16)" d="M0 0H44V27H10V34H44V44H0ZM10 10V17H34V10Z"/>
+    <path id="letter-rr" transform="translate(158 6)" d="M10 10H38V20H20V54H10ZM44 10H54V54H26V44H44Z"/>
+    <path id="letter-a" fill-rule="evenodd" transform="translate(224 16)" d="M0 0H44V44H0V17H34V10H0ZM10 27V34H34V27Z"/>
+    <path id="letter-ti" transform="translate(280 0)" d="M10 0H20V16H44V60H34V26H20V50H28V60H10V26H0V16H10ZM34 0H44V10H34Z"/>
+    <path id="letter-o" fill-rule="evenodd" transform="translate(336 16)" d="M0 0H44V44H0ZM10 10V34H34V10Z"/>
+    <path id="letter-n" transform="translate(392 16)" d="M0 0H44V44H34V10H10V44H0Z"/>
+  </g>
+</svg>

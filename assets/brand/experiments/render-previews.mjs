@@ -11,6 +11,7 @@ const sourceRoot = fileURLToPath(new URL('./', import.meta.url));
 const output = path.join(sourceRoot, 'previews');
 const sheets = [
   { page: 'index.html', name: 'comparison', brand: 'aberration', stems: ['stacked-wordmark', 'inline-wordmark'] },
+  { page: 'ti-body.html', name: 'ti-body', brand: 'aberratio', stems: ['aberratio-flush-ti', 'aberratio-open'] },
 ];
 
 async function validateSources() {
@@ -22,6 +23,11 @@ async function validateSources() {
     assert.equal(white, black.replace('fill="currentColor"', 'fill="#fff"'), `${stem}: white export`);
     assert.ok(black.includes(`d="${mark}"`), `${stem}: exact original mark`);
     assert.doesNotMatch(black, /<(?:text|image|use|script|mask)\b/, `${stem}: standalone vector outlines`);
+    if (['stacked-wordmark', 'inline-wordmark'].includes(stem)) {
+      assert.match(black, /id="letter-t"/, `${stem}: separate t`);
+      assert.match(black, /id="letter-i"/, `${stem}: separate i`);
+      assert.doesNotMatch(black, /id="letter-ti"/, `${stem}: original lettering`);
+    } else assert.match(black, /id="letter-ti"/, `${stem}: retained merged ti`);
   }
 }
 
@@ -89,6 +95,42 @@ async function renderSheet(browser, base, sheet) {
   } finally { await page.close(); }
 }
 
+async function validateBodyWidths(browser, base) {
+  const page = await browser.newPage();
+  let reference;
+  try {
+    for (const [stem, expectedWidth] of [['aberratio-open', 34], ['aberratio-flush-ti', 44]]) {
+      await page.goto(`${base}/experiments/${stem}.svg`);
+      const outlines = await page.locator('path').evaluateAll(paths => Object.fromEntries(paths.map(path => [path.id, [path.getAttribute('d'), path.getAttribute('transform')]])));
+      if (reference) {
+        for (const [id, outline] of Object.entries(outlines)) if (id !== 'letter-ti') assert.deepEqual(outline, reference[id], `${stem}: unchanged ${id}`);
+      } else reference = outlines;
+      const body = await page.evaluate(async () => {
+        const measure = async id => {
+          const element = document.getElementById(id);
+          const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="44" height="60"><path d="${element.getAttribute('d')}"/></svg>`;
+          const image = new Image();
+          image.src = `data:image/svg+xml,${encodeURIComponent(svg)}`;
+          await image.decode();
+          const canvas = document.createElementNS('http://www.w3.org/1999/xhtml', 'canvas');
+          canvas.width = 44; canvas.height = 60;
+          const context = canvas.getContext('2d');
+          context.drawImage(image, 0, 0);
+          return Array.from({ length: 24 }, (_, offset) => {
+            const pixels = context.getImageData(0, offset + 26, 44, 1).data;
+            const ink = Array.from({ length: 44 }, (_, x) => x).filter(x => pixels[x * 4 + 3] > 128);
+            return ink.at(-1) - ink[0] + 1;
+          });
+        };
+        return { b: await measure('letter-b'), ti: await measure('letter-ti') };
+      });
+      assert.ok(body.b.every(width => width === 44), `${stem}: b lower body`);
+      assert.ok(body.ti.every(width => width === expectedWidth), `${stem}: ti lower body`);
+    }
+    console.log('aberratio: actual lower-body ink is 44 units for b and the flush-stem ti; the retained earlier compound is 34 units.');
+  } finally { await page.close(); }
+}
+
 await validateSources();
 await mkdir(output, { recursive: true });
 const server = previewServer();
@@ -98,6 +140,7 @@ try {
   browser = await chromium.launch({ channel: 'chrome', headless: true });
   const base = `http://127.0.0.1:${server.address().port}`;
   for (const sheet of sheets) await renderSheet(browser, base, sheet);
+  await validateBodyWidths(browser, base);
 } finally {
   if (browser) await browser.close();
   server.closeAllConnections();

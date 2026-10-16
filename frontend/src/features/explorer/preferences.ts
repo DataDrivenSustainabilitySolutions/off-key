@@ -13,6 +13,7 @@ export interface ExplorerPreferences {
   scopeKey: string;
   sidebarOpen: boolean;
   sidebarWidth?: number;
+  onlineOnly?: boolean;
   favourites?: Array<{ kind: "service" | "reading"; id: string }>;
 }
 
@@ -104,6 +105,7 @@ function validatedPreferences(value: unknown): ExplorerPreferences | undefined {
     groups,
     scopeKey: value.scopeKey,
     sidebarOpen: value.sidebarOpen,
+    ...(typeof value.onlineOnly === "boolean" ? { onlineOnly: value.onlineOnly } : {}),
     ...(typeof value.sidebarWidth === "number" && Number.isFinite(value.sidebarWidth)
       ? { sidebarWidth: constrainSidebarWidth(value.sidebarWidth) } : {}),
     ...(Array.isArray(value.favourites) && value.favourites.length <= 256 ? {

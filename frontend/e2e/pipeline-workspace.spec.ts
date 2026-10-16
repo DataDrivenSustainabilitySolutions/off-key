@@ -9,6 +9,8 @@ import {
 } from "./helpers/collection";
 import { ingressOptions } from "./helpers/mqtt";
 import { loginWithEmail } from "./helpers/auth";
+import { publishPipelineSamples as publishSamples } from "./helpers/pipelineSamples";
+import type { OperationalStatus } from "../src/types/monitoring";
 import type {
   PipelineActivationView,
   PipelineCatalog,
@@ -101,30 +103,6 @@ async function buildBranchedGraph(
   await expect(
     page.getByRole("button", { name: "Arrange", exact: true }),
   ).toBeEnabled();
-}
-
-async function publishSamples(
-  client: MqttClient,
-  topics: Record<string, string>,
-  count: number,
-) {
-  for (let index = 0; index < count; index++) {
-    for (const [at, name] of ["voltage", "current", "temperature"].entries()) {
-      const value =
-        name === "temperature"
-          ? 20 + index / 100
-          : (at + 1) * 10 + Math.sin(index / (at + 2));
-      await client.publishAsync(
-        topics[name]!,
-        JSON.stringify({
-          payload: JSON.stringify(value),
-          received_at: Date.now(),
-          upstream_retained: false,
-        }),
-        { qos: 1 },
-      );
-    }
-  }
 }
 
 test.describe("visual pipeline real infrastructure", () => {
@@ -359,19 +337,37 @@ test.describe("visual pipeline real infrastructure", () => {
           expect(result.ok(), await result.text()).toBeTruthy();
           return result.json() as Promise<PipelineWorkspace>;
         };
+        const readHealth = async () => {
+          const state = await readState();
+          const status = state.services.find((item) => item.id === serviceId)
+            ?.operational_status as OperationalStatus | undefined;
+          return {
+            stage: status?.stage,
+            hasGaps: status?.coverage?.has_gaps,
+            duplicateObservations:
+              status?.coverage?.dropped_by_reason.observation_duplicate ?? 0,
+            detail: status?.detail,
+            droppedByReason: status?.coverage?.dropped_by_reason,
+          };
+        };
         await expect
           .poll(
             async () => {
               await publishSamples(publisher!, topics, 3);
-              const state = await readState();
-              return (
-                state.services.find((item) => item.id === serviceId)
-                  ?.operational_status as { stage: string } | undefined
-              )?.stage;
+              return readHealth();
             },
-            { timeout: 120_000, intervals: [2_000, 3_000] },
+            {
+              timeout: 120_000,
+              intervals: [2_000, 3_000],
+              message:
+                "Monitor must be operational with complete coverage and zero duplicate observations",
+            },
           )
-          .toBe("operational");
+          .toMatchObject({
+            stage: "operational",
+            hasGaps: false,
+            duplicateObservations: 0,
+          });
         await publishSamples(publisher, topics, 10);
         await expect
           .poll(
@@ -553,15 +549,20 @@ test.describe("visual pipeline real infrastructure", () => {
             .poll(
               async () => {
                 await publishSamples(publisher!, topics, 3);
-                return (
-                  (await readState()).services.find(
-                    (item) => item.id === serviceId,
-                  )?.operational_status as { stage: string } | undefined
-                )?.stage;
+                return readHealth();
               },
-              { timeout: 120_000, intervals: [2_000, 3_000] },
+              {
+                timeout: 120_000,
+                intervals: [2_000, 3_000],
+                message:
+                  "Monitor must be operational with complete coverage and zero duplicate observations",
+              },
             )
-            .toBe("operational");
+            .toMatchObject({
+              stage: "operational",
+              hasGaps: false,
+              duplicateObservations: 0,
+            });
           const successor = (await readState())
             .pipeline_state as unknown as PipelineState;
           expect(successor.run_id).not.toBe(predecessorRun);

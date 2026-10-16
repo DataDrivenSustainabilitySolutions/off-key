@@ -2,7 +2,7 @@ import { useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalSto
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Box, ChevronRight, Circle, Cpu, Folder } from "lucide-react";
 import type { ExplorerNode } from "./navigationIndex";
-import { readingActivity, type ReadingActivitySource } from "./readingActivity";
+import { isReadingLeaf, readingActivity, type ReadingActivitySource } from "./readingActivity";
 
 export type ExplorerRow = { node: ExplorerNode; label: string; detail?: string; color?: string };
 export type ListPosition = { offset: number; focused?: string };
@@ -15,14 +15,12 @@ type Props = {
   onBack: () => void;
   onBrowse?: (node: ExplorerNode) => void;
   activity?: ReadingActivitySource;
+  emptyMessage?: string;
 };
 
 const subscribeNothing = () => () => {};
 const noStatus = () => undefined;
-const readingLeaf = (node: ExplorerNode) => !node.children.length && node.streamIds.length > 0
-  && (node.kind === "reading" || node.kind === "topic");
-
-export function ExplorerList({ rows, viewKey, positions, selectedKey, onOpen, onBack, onBrowse, activity }: Props) {
+export function ExplorerList({ rows, viewKey, positions, selectedKey, onOpen, onBack, onBrowse, activity, emptyMessage = "No items here." }: Props) {
   const scroll = useRef<HTMLDivElement>(null);
   const activityId = useId();
   const [now, setNow] = useState(() => Date.now());
@@ -36,7 +34,7 @@ export function ExplorerList({ rows, viewKey, positions, selectedKey, onOpen, on
     getItemKey: (index) => rows[index]!.node.key,
   });
   const items = virtualizer.getVirtualItems();
-  const hasIndicators = !!activity && items.some(item => readingLeaf(rows[item.index]!.node));
+  const hasIndicators = !!activity && items.some(item => isReadingLeaf(rows[item.index]!.node));
   useEffect(() => {
     if (!hasIndicators) return;
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
@@ -96,7 +94,7 @@ export function ExplorerList({ rows, viewKey, positions, selectedKey, onOpen, on
         const row = rows[item.index]!;
         const node = row.node;
         const Icon = node.kind === "connection" ? Box : node.kind === "device" ? Cpu : Folder;
-        const indicator = readingLeaf(node) ? readingActivity(node, activity, liveStatus, now) : undefined;
+        const indicator = isReadingLeaf(node) ? readingActivity(node, activity, liveStatus, now) : undefined;
         const descriptionId = `${activityId}-${item.index}`;
         return <li key={item.key} data-index={item.index} ref={virtualizer.measureElement}
           style={{ position: "absolute", width: "100%", transform: `translateY(${item.start}px)` }}>
@@ -119,6 +117,6 @@ export function ExplorerList({ rows, viewKey, positions, selectedKey, onOpen, on
         </li>;
       })}
     </ul>
-    {!rows.length && <div className="ex-list-empty">No items here.</div>}
+    {!rows.length && <div className="ex-list-empty">{emptyMessage}</div>}
   </div>;
 }

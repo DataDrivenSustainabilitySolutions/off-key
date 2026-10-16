@@ -102,6 +102,39 @@ function withServices(services: ActiveService[]) {
 }
 
 describe("service-centred monitoring workspace", () => {
+  it("filters online topics without changing selection or search and restores hidden readings when disabled", async () => {
+    const current = snapshot();
+    current.runtime.mode = "collection";
+    current.runtime.bindings!.temperature!.policy = { mode: "sample", interval_seconds: 3600 };
+    current.runtime.ingress = { revision: 1, status: "applied", sources: { broker: { state: "connected" } },
+      readings: { temperature: { fresh_received_at: new Date().toISOString() } } };
+    vi.mocked(apiUtils.get).mockImplementation(async endpoint => endpoint === "/v1/system" ? current
+      : endpoint.startsWith("/v1/monitors/workspace") ? { services: [], authoring_enabled: false } : []);
+    mount("/?reading=humidity");
+    await loaded();
+    const sidebar = within(screen.getByRole("navigation", { name: "System explorer" }));
+    await sidebar.findByRole("button", { name: "humidity, preview" });
+    const location = screen.getByTestId("location").textContent;
+    const toggle = sidebar.getByRole("button", { name: "Online topics only" });
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute("aria-pressed")).toBe("true");
+    expect(sidebar.getByRole("button", { name: "temperature, preview" })).toBeTruthy();
+    expect(sidebar.queryByRole("button", { name: "humidity, preview" })).toBeNull();
+    expect(sidebar.getByText("1 online reading")).toBeTruthy();
+    expect(screen.getByTestId("location").textContent).toBe(location);
+    await waitFor(() => expect(loadExplorerPreferences(1).onlineOnly).toBe(true));
+    const search = sidebar.getByRole("searchbox", { name: "Search catalogue" });
+    fireEvent.change(search, { target: { value: "Relative humidity" } });
+    await sidebar.findByText("No online topics here.");
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute("aria-pressed")).toBe("false");
+    expect((search as HTMLInputElement).value).toBe("Relative humidity");
+    expect(await sidebar.findByRole("button", { name: "Relative humidity, preview" })).toBeTruthy();
+    expect(screen.getByTestId("location").textContent).toBe(location);
+    expect(apiClient.put).not.toHaveBeenCalled();
+    expect(apiUtils.post).not.toHaveBeenCalledWith("/v1/system/live/leases", expect.anything(), expect.anything());
+  });
+
   it("identifies stale inputs separately from a current runtime heartbeat", async () => {
     const monitor = service();
     monitor.operational_status.activity = {
@@ -326,7 +359,7 @@ describe("hierarchical explorer workspace", () => {
     }
     expect(workspaces.getByRole("link", { name: "Monitoring" }).getAttribute("aria-current")).toBe("page");
     fireEvent.keyDown(screen.getByRole("button", { name: "Application menu" }), { key: "Enter" });
-    for (const [label, path] of [["Account", "/account"], ["System status", "/system/status"]]) {
+    for (const [label, path] of [["Account", "/account"], ["Status", "/system/status"]]) {
       expect(screen.getByRole("menuitem", { name: label }).getAttribute("href")).toBe(path);
     }
     expect(screen.getByRole("menuitem", { name: "Settings" }).getAttribute("aria-haspopup")).toBe("dialog");

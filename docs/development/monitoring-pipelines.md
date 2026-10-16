@@ -220,6 +220,11 @@ is not an eligible production release. Changes to those contracts require review
 of the rollback reference. CI retains nonsecret source/image identities and the
 asserted graph invariants as its compatible-binary-rollback artifact.
 
+The [production rollback rehearsal](https://github.com/DataDrivenSustainabilitySolutions/off-key/actions/runs/38897782186)
+passed both integration tests with zero skips in 625.685 seconds on 2026-10-16.
+Its retained artifact records all three cutovers and verifies the deployed image
+digests and graph invariants; the following browser phase is a separate gate.
+
 Ship schema/runtime compatibility with `TACTIC_PIPELINE_AUTHORING_ENABLED=false`.
 Enable authoring only after numerical, real infrastructure, lifecycle, browser and
 resource gates pass. Disabling authoring blocks new designs and activations while

@@ -362,8 +362,12 @@ def assert_graph_restored(client, entity, saved, workers, release):
     assert [item["id"] for item in view["history"]] == list(reversed(saved.run_ids))
     for ancestor in view["history"]:
         assert ancestor["revision_id"] == saved.revision["id"]
+        retained = get_json(client, f"/v1/monitors/{ancestor['service_id']}/pipeline")[
+            "run"
+        ]
+        assert retained["id"] == ancestor["id"]
         assert (
-            ancestor["execution"]["bindings"]
+            retained["execution"]["bindings"]
             == saved.initial_run["execution"]["bindings"]
         )
     assert (

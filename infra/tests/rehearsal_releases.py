@@ -12,7 +12,7 @@ from pathlib import Path
 
 from support import run
 
-COMPATIBLE_REVISION = "8dc76b0646a3365325a880340201d14febf97a0e"
+COMPATIBLE_REVISION = "9e6ca17cca0578906126f45074cc426f80ef79ac"
 REGISTRY = "offkey-smoke-registry"
 BUILDS = {
     "api": ("off-key-api-gateway", "services/api/gateway"),

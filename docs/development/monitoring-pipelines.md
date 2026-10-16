@@ -258,9 +258,10 @@ pipeline-compatible build, then returns to the current build. Each cutover check
 the actual application and worker image digests, fresh graph scoring, bindings,
 layout, retained run history and single-worker ownership with authoring disabled.
 The test-only reference is immutable commit
-`8dc76b0646a3365325a880340201d14febf97a0e`; its migration ledger, numerical catalog
-and backend lock must match the current source before it can build. This fixture
-is not an eligible production release. Changes to those contracts require review
+`9e6ca17cca0578906126f45074cc426f80ef79ac`, which includes parameter-sensitive
+readiness constraints and bounded inspection APIs. Its migration ledger, numerical
+catalog and backend lock must match the current source before it can build. This
+fixture is not an eligible production release. Changes to those contracts require review
 of the rollback reference. CI retains nonsecret source/image identities and the
 asserted graph invariants as its compatible-binary-rollback artifact.
 

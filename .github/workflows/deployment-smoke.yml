@@ -94,7 +94,7 @@ jobs:
       - name: Check out the immutable pipeline-compatible rollback reference
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: 8dc76b0646a3365325a880340201d14febf97a0e
+          ref: 9e6ca17cca0578906126f45074cc426f80ef79ac
           path: .tmp/compatible-release-source
           fetch-depth: 1
           persist-credentials: false

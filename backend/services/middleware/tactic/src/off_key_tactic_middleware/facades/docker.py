@@ -7,7 +7,7 @@ import docker
 from docker import DockerClient
 from off_key_core.config.logs import log_performance, logger
 
-from ..config.config import get_tactic_settings
+from ..config.config import DockerConfig, get_tactic_settings
 
 _SWARM_FALLBACK_INDICATORS = (
     "cannot be used with services",
@@ -31,11 +31,19 @@ def _extract_latest_workload_state(
 
 
 class AsyncDocker:
-    def __init__(self, docker_config=None):
+    def __init__(
+        self,
+        docker_config: DockerConfig | None = None,
+        *,
+        client: DockerClient | None = None,
+    ) -> None:
+        """Own the supplied client or create one from validated configuration."""
         config = docker_config or get_tactic_settings().config.docker
 
         try:
-            self.client = DockerClient(base_url=config.base_url)
+            self.client = (
+                client if client is not None else DockerClient(base_url=config.base_url)
+            )
             self.semaphore = asyncio.Semaphore(config.max_concurrent_calls)
             self.config = config
             logger.info(

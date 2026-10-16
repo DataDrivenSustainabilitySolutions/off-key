@@ -113,8 +113,10 @@ administrator policy while adding these required checks after they have appeared
 - `frontend`
 - `deployment-smoke`
 - `collection (5.8.7)` and `collection (6.3.1)`
+- `RADAR production integration` (from GitHub Actions)
 - `infrastructure`
-- the existing Docker Validate checks (select their exact displayed names)
+- `docker-validate / docker-validate`
+- `CodeQL`
 
 Docker Publish runs after a main push, so it is a release gate rather than a PR
 merge check. Even an administrator merge cannot bypass the deployment workflow's
@@ -122,9 +124,9 @@ same-commit success checks. Do not require Deploy Production as a pre-merge chec
 
 ## 7. Merge, then do the first controlled release
 
-After the PR is green and reviewed, merge it. Wait for **all five** main workflows:
-CI, Deployment Smoke, MQTT Collection Integration, Infrastructure Validation and
-Docker Publish. Under **Actions → Deploy Production → Run workflow**, select
+After the PR is green and reviewed, merge it. Wait for **all six** main release workflows:
+CI, Deployment Smoke, MQTT Collection Integration, RADAR production integration,
+Infrastructure Validation and Docker Publish. Under **Actions → Deploy Production → Run workflow**, select
 **main**, paste its complete 40-character commit SHA, and check **bootstrap**.
 
 Choose a quiet maintenance window. The robot stops old writers, validates a private

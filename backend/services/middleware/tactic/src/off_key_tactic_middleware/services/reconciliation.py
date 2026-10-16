@@ -64,11 +64,16 @@ class RadarStatusReconciliationService:
     """Snapshot, inspect with bounded concurrency, then apply short transitions."""
 
     def __init__(
-        self, interval_seconds: int = 60, terminal_service_retention_hours: int = 24
+        self,
+        interval_seconds: int = 60,
+        terminal_service_retention_hours: int = 24,
+        *,
+        async_docker: AsyncDocker | None = None,
     ) -> None:
+        """Own the supplied or default Docker facade and close it when stopped."""
         self.interval_seconds = interval_seconds
         self.terminal_service_retention_hours = terminal_service_retention_hours
-        self.async_docker = AsyncDocker()
+        self.async_docker = async_docker if async_docker is not None else AsyncDocker()
         self._task: asyncio.Task[None] | None = None
         self._stop_event = asyncio.Event()
 

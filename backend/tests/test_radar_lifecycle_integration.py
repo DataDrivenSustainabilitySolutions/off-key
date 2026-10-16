@@ -3,7 +3,7 @@
 import asyncio
 import os
 import time
-from contextlib import suppress
+from contextlib import asynccontextmanager, suppress
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
@@ -69,10 +69,7 @@ async def swarm_workloads():
         pytest.skip("Requires the disposable Docker engine to be a Swarm manager")
     # Use the production facade with an explicitly injected real local engine.
     # This bypasses only the deployed TCP proxy address, not Docker operations.
-    facade = AsyncDocker.__new__(AsyncDocker)
-    facade.client = client
-    facade.config = DockerConfig()
-    facade.semaphore = asyncio.Semaphore(5)
+    facade = AsyncDocker(DockerConfig(), client=client)
     workloads = RadarWorkloadManager(facade)
     owned = []
     try:
@@ -81,10 +78,12 @@ async def swarm_workloads():
         for service in owned:
             with suppress(docker.errors.NotFound):
                 await facade.run(service.remove)
-        client.close()
+        facade.close()
 
 
-async def pending_monitor(sessions, workloads, owned, *, command=None):
+async def pending_monitor(
+    sessions, workloads, owned, *, command=None, constraints=None
+):
     service_id = str(uuid4())
     config = RadarStartConfig(
         container_name="review-" + service_id, mqtt_topics=["telemetry/entity/value"]
@@ -119,12 +118,65 @@ async def pending_monitor(sessions, workloads, owned, *, command=None):
         "eclipse-mosquitto:2.0",
         name="radar-" + service_id,
         command=command or ["/bin/sh", "-c", "sleep 120"],
+        constraints=constraints,
         labels=labels,
         env=environment,
         restart_policy={"Condition": "none"},
     )
     owned.append(workload)
     return service_id, workload
+
+
+async def wait_for_workload_state(workloads, workload, expected):
+    state = None
+    try:
+        async with asyncio.timeout(30):
+            while True:
+                state, _ = await workloads.get_status_and_labels(workload.id)
+                if state == expected:
+                    return
+                await asyncio.sleep(0.05)
+    except TimeoutError:
+        pytest.fail(
+            f"Swarm service {workload.id}: expected {expected!r}, last state {state!r}",
+            pytrace=False,
+        )
+
+
+async def running_monitor(sessions, workloads, owned, *, command=None):
+    service_id, workload = await pending_monitor(
+        sessions, workloads, owned, command=command
+    )
+    async with sessions() as session:
+        await RadarLifecycleController(session, workloads).complete_creation(service_id)
+    await wait_for_workload_state(workloads, workload, "running")
+    return service_id, workload
+
+
+@asynccontextmanager
+async def paused_reconciliation(reconciler, sessions, monkeypatch):
+    """Hold an actual Docker observation until the concurrent write commits."""
+    entered, release = asyncio.Event(), asyncio.Event()
+    observations = {}
+    probe = reconciler._get_docker_status
+
+    async def delayed_probe(workload_id):
+        observation = await probe(workload_id)
+        observations[workload_id] = observation
+        entered.set()
+        await release.wait()
+        return observation
+
+    with monkeypatch.context() as patch:
+        patch.setattr(reconciler, "_get_docker_status", delayed_probe)
+        async with sessions() as session:
+            task = asyncio.create_task(reconciler._reconcile_with_session(session))
+            try:
+                await asyncio.wait_for(entered.wait(), 10)
+                yield observations
+            finally:
+                release.set()
+                await asyncio.wait_for(task, 10)
 
 
 @pytest.mark.asyncio
@@ -335,90 +387,156 @@ def test_lifecycle_migration_adopts_existing_attached_and_stopped_rows(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("workload_state", ["pending", "running", "failed"])
 async def test_reconciliation_docker_latency_does_not_block_or_overwrite_heartbeat(
     lifecycle_database,
     swarm_workloads,
+    monkeypatch,
+    workload_state,
 ):
     sessions = lifecycle_database
     workloads, owned = swarm_workloads
-    service_id, _ = await pending_monitor(sessions, workloads, owned)
+    constraints = (
+        [f"node.labels.offkey_readiness_{uuid4().hex} == allowed"]
+        if workload_state == "pending"
+        else None
+    )
+    service_id, workload = await pending_monitor(
+        sessions, workloads, owned, constraints=constraints
+    )
     async with sessions() as session:
         await RadarLifecycleController(session, workloads).complete_creation(service_id)
+    if workload_state == "failed":
+        await wait_for_workload_state(workloads, workload, "running")
+        tasks = await workloads.async_docker.run(workload.tasks)
+        running_task = next(
+            task for task in tasks if task["Status"]["State"] == "running"
+        )
+        container = await workloads.async_docker.run(
+            workloads.async_docker.client.containers.get,
+            running_task["Status"]["ContainerStatus"]["ContainerID"],
+        )
+        await workloads.async_docker.run(container.kill)
+    await wait_for_workload_state(workloads, workload, workload_state)
+    reconciler = RadarStatusReconciliationService(async_docker=workloads.async_docker)
+    payload = {
+        "stage": "operational",
+        "processed_message_count": 123,
+        "is_stale": False,
+    }
+    async with paused_reconciliation(reconciler, sessions, monkeypatch) as observations:
+        assert observations == {workload.id: workload_state}
+        heartbeat = datetime.now(UTC)
+        async with asyncio.timeout(2), sessions.begin() as writer:
+            await writer.execute(
+                update(MonitoringService)
+                .where(MonitoringService.id == service_id)
+                .values(
+                    operational_stage="operational",
+                    operational_status=payload,
+                    operational_updated_at=heartbeat,
+                )
+            )
+    async with sessions() as session:
+        current = await session.get(MonitoringService, service_id)
+        assert current.status, observations
+        assert current.operational_stage == "operational"
+        assert current.operational_status == payload
+        assert current.operational_updated_at == heartbeat
+
+
+@pytest.mark.asyncio
+async def test_reconciliation_revives_inactive_monitor_only_after_real_swarm_readiness(
+    lifecycle_database, swarm_workloads
+):
+    sessions = lifecycle_database
+    workloads, owned = swarm_workloads
+    service_id, workload = await pending_monitor(
+        sessions,
+        workloads,
+        owned,
+        constraints=[f"node.labels.offkey_readiness_{uuid4().hex} == allowed"],
+    )
+    async with sessions() as session:
+        await RadarLifecycleController(session, workloads).complete_creation(service_id)
+    await wait_for_workload_state(workloads, workload, "pending")
+    heartbeat = datetime.now(UTC)
+    payload = {"stage": "failed", "detail": "Previous task failed"}
     async with sessions.begin() as session:
         await session.execute(
             update(MonitoringService)
             .where(MonitoringService.id == service_id)
-            .values(status=False, operational_stage="failed")
+            .values(
+                status=False,
+                operational_stage="failed",
+                operational_status=payload,
+                operational_updated_at=heartbeat,
+            )
         )
-    reconciler = RadarStatusReconciliationService.__new__(
-        RadarStatusReconciliationService
-    )
-    reconciler.async_docker = workloads.async_docker
-    reconciler.terminal_service_retention_hours = 24
-    entered, release = asyncio.Event(), asyncio.Event()
-    probe = reconciler._get_docker_status
-
-    async def delayed_probe(workload_id):
-        entered.set()
-        await release.wait()
-        return await probe(workload_id)
-
-    reconciler._get_docker_status = delayed_probe
+    reconciler = RadarStatusReconciliationService(async_docker=workloads.async_docker)
     async with sessions() as session:
-        task = asyncio.create_task(reconciler._reconcile_with_session(session))
-        await asyncio.wait_for(entered.wait(), 10)
-        heartbeat = datetime.now(UTC)
-        payload = {
-            "stage": "operational",
-            "processed_message_count": 123,
-            "is_stale": False,
-        }
-        try:
-            async with asyncio.timeout(2), sessions.begin() as writer:
-                await writer.execute(
-                    update(MonitoringService)
-                    .where(MonitoringService.id == service_id)
-                    .values(
-                        operational_stage="operational",
-                        operational_status=payload,
-                        operational_updated_at=heartbeat,
-                    )
-                )
-        finally:
-            release.set()
-        await task
-    async with sessions() as session:
+        await reconciler._reconcile_with_session(session)
         current = await session.get(MonitoringService, service_id)
-        assert current.status
+        assert current.status is False
+        assert current.desired_state == "running"
+        assert current.operational_stage == "failed"
         assert current.operational_status == payload
         assert current.operational_updated_at == heartbeat
-    # A concurrent stop changes the generation while the next Docker read is
-    # pending. Its old running observation must not revive or overwrite intent.
-    entered.clear()
-    release.clear()
+
+    await workloads.async_docker.run(workload.update, constraints=[])
+    await wait_for_workload_state(workloads, workload, "running")
     async with sessions() as session:
-        task = asyncio.create_task(reconciler._reconcile_with_session(session))
-        await asyncio.wait_for(entered.wait(), 10)
-        try:
-            async with sessions.begin() as writer:
-                await writer.execute(
-                    update(MonitoringService)
-                    .where(MonitoringService.id == service_id)
-                    .values(
-                        desired_state="stopped",
-                        lifecycle_version=MonitoringService.lifecycle_version + 1,
-                        stop_requested_at=datetime.now(UTC),
-                    )
+        await reconciler._reconcile_with_session(session)
+        current = await session.get(MonitoringService, service_id)
+        assert current.status and current.desired_state == "running"
+        assert current.operational_stage == "starting"
+        assert current.operational_status["is_stale"] is True
+        assert current.operational_updated_at is None
+
+
+@pytest.mark.asyncio
+async def test_stale_running_observation_cannot_revive_newer_stop_generation(
+    lifecycle_database, swarm_workloads, monkeypatch
+):
+    sessions = lifecycle_database
+    workloads, owned = swarm_workloads
+    service_id, workload = await running_monitor(sessions, workloads, owned)
+    heartbeat = datetime.now(UTC)
+    payload = {"stage": "failed", "detail": "Previous task failed"}
+    async with sessions.begin() as session:
+        await session.execute(
+            update(MonitoringService)
+            .where(MonitoringService.id == service_id)
+            .values(
+                status=False,
+                operational_stage="failed",
+                operational_status=payload,
+                operational_updated_at=heartbeat,
+            )
+        )
+    reconciler = RadarStatusReconciliationService(async_docker=workloads.async_docker)
+    async with paused_reconciliation(reconciler, sessions, monkeypatch) as observations:
+        assert observations == {workload.id: "running"}
+        stop_requested_at = datetime.now(UTC)
+        async with asyncio.timeout(2), sessions.begin() as writer:
+            await writer.execute(
+                update(MonitoringService)
+                .where(MonitoringService.id == service_id)
+                .values(
+                    desired_state="stopped",
+                    lifecycle_version=MonitoringService.lifecycle_version + 1,
+                    stop_requested_at=stop_requested_at,
                 )
-        finally:
-            release.set()
-        await task
+            )
     async with sessions() as session:
         current = await session.get(MonitoringService, service_id)
-        assert (
-            current.desired_state == "stopped" and current.stop_requested_at is not None
-        )
+        assert current.desired_state == "stopped"
+        assert current.lifecycle_version == 2
+        assert current.stop_requested_at == stop_requested_at
+        assert current.status is False
+        assert current.operational_stage == "failed"
         assert current.operational_status == payload
+        assert current.operational_updated_at == heartbeat
 
 
 @pytest.mark.asyncio
@@ -440,11 +558,9 @@ async def test_legacy_monitor_keeps_sensor_claim_through_real_swarm_replacement(
                 operational_updated_at=datetime.now(UTC) - timedelta(days=7),
             )
         )
-    reconciler = RadarStatusReconciliationService.__new__(
-        RadarStatusReconciliationService
+    reconciler = RadarStatusReconciliationService(
+        terminal_service_retention_hours=0, async_docker=workloads.async_docker
     )
-    reconciler.async_docker = workloads.async_docker
-    reconciler.terminal_service_retention_hours = 0
     async with asyncio.timeout(30):
         while True:
             tasks = await workloads.async_docker.run(workload.tasks)
@@ -509,7 +625,7 @@ async def test_delete_holds_claim_until_real_swarm_task_stops_without_database_l
 ):
     sessions = lifecycle_database
     workloads, owned = swarm_workloads
-    service_id, workload = await pending_monitor(
+    service_id, workload = await running_monitor(
         sessions,
         workloads,
         owned,
@@ -519,8 +635,6 @@ async def test_delete_holds_claim_until_real_swarm_task_stops_without_database_l
             'trap "sleep 2; exit 0" TERM; while true; do sleep 0.1; done',
         ],
     )
-    async with sessions() as session:
-        await RadarLifecycleController(session, workloads).complete_creation(service_id)
     monkeypatch.setattr(
         radar_module, "get_async_docker", lambda: workloads.async_docker
     )
@@ -553,7 +667,7 @@ async def test_externally_removed_service_retains_claim_while_real_tasks_retire(
 ):
     sessions = lifecycle_database
     workloads, owned = swarm_workloads
-    service_id, workload = await pending_monitor(
+    service_id, workload = await running_monitor(
         sessions,
         workloads,
         owned,
@@ -563,8 +677,6 @@ async def test_externally_removed_service_retains_claim_while_real_tasks_retire(
             'trap "sleep 2; exit 0" TERM; while true; do sleep 0.1; done',
         ],
     )
-    async with sessions() as session:
-        await RadarLifecycleController(session, workloads).complete_creation(service_id)
     await workloads.async_docker.run(workload.remove)
     remaining = await workloads._remaining_service_tasks(workload.id)
     assert any(task["Status"]["State"] == "running" for task in remaining)

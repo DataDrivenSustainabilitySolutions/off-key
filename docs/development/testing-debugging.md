@@ -33,6 +33,11 @@ replacement regressions and cleans labelled fixtures within a 30 minute job.
 Production release selection requires a successful main-push run for the same
 commit, alongside the other release workflows.
 
+Main also requires this check before merging, bound to GitHub Actions. The dedicated
+job requires a nonempty JUnit report with zero skipped cases. Missing integration
+prerequisites therefore fail that job; the general backend suite still supports
+optional integration skips for local development.
+
 To reproduce on a dedicated local Docker engine, initialize Swarm and provide a
 disposable PostgreSQL server whose test role can create and drop databases. Set
 its host URL in `TEST_SCHEMA_DATABASE_URL`; tests create uniquely named databases.
@@ -76,6 +81,9 @@ npm --prefix frontend run build
 ```
 
 Expected result: no lint errors, passing tests, and a successful production build.
+
+CI browser journeys retain one retry for diagnostic evidence. Any test that passes
+only on retry is classified as flaky and fails CI.
 
 The member-management browser journeys read invitation links from the local mail
 sink. Set `MAILPIT_BASE_URL` to its reachable HTTP endpoint when using custom ports.

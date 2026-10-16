@@ -259,6 +259,34 @@ describe("explorer sidebar and catalogue list", () => {
     expect(screen.getAllByRole("button").length).toBeLessThanOrEqual(18);
   });
 
+  it.each([0, 1])("keeps explicit toolbar focus during deferred branch restoration after %i frames", (elapsedFrames) => {
+    const frames = new Map<number, FrameRequestCallback>();
+    let nextFrame = 0;
+    vi.spyOn(globalThis, "requestAnimationFrame").mockImplementation((callback) => {
+      frames.set(++nextFrame, callback);
+      return nextFrame;
+    });
+    vi.spyOn(globalThis, "cancelAnimationFrame").mockImplementation((handle) => { frames.delete(handle); });
+    const advanceFrame = () => act(() => {
+      const pending = [...frames.values()];
+      frames.clear();
+      pending.forEach((callback) => callback(performance.now()));
+    });
+    const options = listOptions();
+    const content = (viewKey: string) => <><button>Back to catalogue</button><ExplorerList {...options} viewKey={viewKey} /></>;
+    const view = render(content(options.viewKey));
+    act(() => screen.getByRole("button", { name: "value0, preview" }).focus());
+
+    view.rerender(content("catalogue:north"));
+    for (let frame = 0; frame < elapsedFrames; frame++) advanceFrame();
+    const toolbar = screen.getByRole("button", { name: "Back to catalogue" });
+    act(() => toolbar.focus());
+    advanceFrame();
+    advanceFrame();
+
+    expect(document.activeElement).toBe(toolbar);
+  });
+
   it("reveals a late search result in its canonical branch instead of restoring an unrelated saved viewport", async () => {
     const options = listOptions(system(4000));
     const late = options.rows[3999]!;

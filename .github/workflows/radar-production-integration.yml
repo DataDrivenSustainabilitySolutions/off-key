@@ -100,7 +100,8 @@ jobs:
       - name: Test real MQTT, durable recovery, lifecycle and Swarm replacement
         timeout-minutes: 12
         run: |
-          uv run --frozen --project backend python -m pytest -q --tb=short \
+          uv run --frozen --project backend python -m pytest -q --tb=short -ra \
+            --junitxml="$RUNNER_TEMP/radar-results.xml" \
             backend/tests/test_radar_mqtt_integration.py \
             backend/tests/test_monitor_anomaly_identity_integration.py \
             backend/tests/test_radar_runtime_checkpoints.py \
@@ -112,6 +113,22 @@ jobs:
             backend/tests/test_radar_observation_integration.py \
             backend/tests/test_radar_observation_recovery.py \
             backend/tests/test_radar_swarm_integration.py
+
+      - name: Require executed integration coverage without skips
+        run: |
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+
+          cases = ET.parse(Path(os.environ["RUNNER_TEMP"]) / "radar-results.xml").findall(".//testcase")
+          if not cases:
+              raise SystemExit("RADAR integration executed no tests")
+          skipped = [case.get("name") for case in cases if case.find("skipped") is not None]
+          if skipped:
+              raise SystemExit("Skipped required RADAR integration tests: " + ", ".join(skipped))
+          print(f"Verified {len(cases)} RADAR integration tests with zero skips")
+          PY
 
       - name: Collect owned fixture diagnostics
         if: failure()

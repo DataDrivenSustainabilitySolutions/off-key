@@ -49,12 +49,15 @@ export function ExplorerList({ rows, viewKey, positions, selectedKey, onOpen, on
       const revealIndex = reveal ? rows.findIndex((row) => row.node.key === selectedKey) : -1;
       previousKey.current = viewKey;
       const saved = positions.get(viewKey);
+      const focusOrigin = document.activeElement;
       let focusFrame = 0;
       const frame = requestAnimationFrame(() => {
         if (revealIndex >= 0) virtualizer.scrollToIndex(revealIndex, { align: "auto" });
         else virtualizer.scrollToOffset(saved?.offset ?? 0);
         if (viewKey.startsWith("search:")) return;
         focusFrame = requestAnimationFrame(() => {
+          // A later focus choice takes precedence over deferred restoration.
+          if (document.activeElement !== focusOrigin && document.activeElement !== document.body) return;
           const focusedIndex = revealIndex >= 0 ? revealIndex : rows.findIndex((row) => row.node.key === saved?.focused);
           const offset = scroll.current?.scrollTop ?? saved?.offset ?? 0;
           const visible = virtualizer.getVirtualItems().filter((item) => item.start + item.size > offset

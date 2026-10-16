@@ -108,6 +108,9 @@ readings and the paths leading to them. It also filters search, collections and 
 favourites, updates as traffic starts or becomes stale, and remembers your choice in
 this browser. Turn it off to show the full catalogue again. Filtering keeps the
 current source selected and does not start a connection or change recording.
+An empty filtered list shows **No active topics** with an underlined **Show all
+topics** action beneath it. This turns off the online filter and keeps your
+current folder, search and source selection.
 
 Configure recording under **Sources**. Broker and topic policies can cover several
 readings; review the affected scope before applying changes. Including readings

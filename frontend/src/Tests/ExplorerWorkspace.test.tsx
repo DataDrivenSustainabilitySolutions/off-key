@@ -125,8 +125,8 @@ describe("service-centred monitoring workspace", () => {
     await waitFor(() => expect(loadExplorerPreferences(1).onlineOnly).toBe(true));
     const search = sidebar.getByRole("searchbox", { name: "Search catalogue" });
     fireEvent.change(search, { target: { value: "Relative humidity" } });
-    await sidebar.findByText("No online topics here.");
-    fireEvent.click(toggle);
+    await sidebar.findByText("No active topics");
+    fireEvent.click(sidebar.getByRole("button", { name: "Show all topics" }));
     expect(toggle.getAttribute("aria-pressed")).toBe("false");
     expect((search as HTMLInputElement).value).toBe("Relative humidity");
     expect(await sidebar.findByRole("button", { name: "Relative humidity, preview" })).toBeTruthy();

@@ -320,7 +320,15 @@ test("filters online topics and their paths as real MQTT traffic starts and expi
     await expect(quiet).toBeVisible();
     await toggle.click();
     clearInterval(publishTimer); publishTimer = undefined;
-    await expect(sidebar.getByText("No online topics here.", { exact: true })).toBeVisible({ timeout: 40_000 });
+    await expect(sidebar.getByText("No active topics", { exact: true })).toBeVisible({ timeout: 40_000 });
+    const showAll = sidebar.getByRole("button", { name: "Show all topics", exact: true });
+    await expect(showAll).toHaveCSS("text-decoration-line", "underline");
+    await sidebar.locator(".ex-list-empty").screenshot({ path: testInfo.outputPath("no-active-topics.png") });
+    await showAll.focus(); await showAll.press("Enter");
+    await expect(toggle).toHaveAttribute("aria-pressed", "false");
+    await expect(sidebar.getByText("3 items", { exact: true })).toBeVisible();
+    await toggle.click();
+    await expect(sidebar.getByText("No active topics", { exact: true })).toBeVisible();
     await publisher.publishAsync(fixture.streams[0]!.topic, "24", { qos: 1 });
     await expect(active.locator("svg")).toHaveAttribute("fill", "currentColor");
     await page.setViewportSize({ width: 320, height: 844 });

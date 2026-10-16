@@ -108,7 +108,8 @@ export function ExplorerSidebar(props: Props) {
     {props.loading ? <div className="ex-list-empty" role="status">Loading catalogue…</div>
       : <ExplorerList rows={rows} viewKey={viewKey} positions={positions}
         selectedKey={selectedKey} onOpen={props.onOpen} onBack={props.onBack} onBrowse={props.onBrowse} activity={props.activity}
-        emptyMessage={onlineOnly ? "No online topics here." : undefined} />}
+        emptyMessage={onlineOnly ? "No active topics" : undefined}
+        emptyAction={onlineOnly && props.onOnlineOnlyChange ? { label: "Show all topics", onClick: () => props.onOnlineOnlyChange?.(false) } : undefined} />}
     {query && rows.length === 100 && <p className="ex-search-hint">Refine your search to see more matches.</p>}
     <div className="ex-sidebar-footer"><button onClick={props.onSettings}><Settings2 size={15} /><span>Catalogue settings</span></button>
       <span>{readingCount.toLocaleString()} {onlineOnly ? "online " : ""}{readingCount === 1 ? "reading" : "readings"}</span>

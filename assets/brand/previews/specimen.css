@@ -56,8 +56,6 @@ a:focus-visible { outline: 2px solid currentColor; outline-offset: 4px; }
 .note { min-width: 0; padding: 22px; background: var(--paper); }
 .note h3 { margin: 0 0 10px; font-size: 13px; font-weight: 500; }
 .note p { margin: 0; font-size: 12px; line-height: 1.6; color: var(--muted); }
-.note svg { display: block; width: 120px; max-width: 100%; height: auto; margin: 0 auto 12px; }
-.note--glyph { padding: 18px 12px; text-align: center; }
 .proofs { display: flex; align-items: center; flex-wrap: wrap; gap: 28px; padding: 24px; background: var(--reverse); color: #b6b6b0; }
 .proof { display: grid; gap: 14px; min-width: 0; }
 .proof img { display: block; width: var(--proof-width); max-width: 100%; height: auto; }
@@ -71,10 +69,8 @@ a:focus-visible { outline: 2px solid currentColor; outline-offset: 4px; }
   h1 { font-size: 29px; }
   .samples { grid-template-columns: minmax(0, 1fr); gap: 12px; }
   .artboard { min-height: 220px; padding: 24px; }
-  .notes { gap: 8px; }
-  .notes:not(.notes--glyphs) { grid-template-columns: minmax(0, 1fr); }
+  .notes { gap: 8px; grid-template-columns: minmax(0, 1fr); }
   .note { padding: 16px 12px; }
-  .note--glyph { padding: 14px 4px; }
   .note h3 { font-size: 12px; }
   .note p { font-size: 11px; }
   .proofs { gap: 24px; }

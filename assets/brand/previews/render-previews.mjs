@@ -7,23 +7,22 @@ import { fileURLToPath } from 'node:url';
 import { chromium } from '../../../frontend/node_modules/@playwright/test/index.mjs';
 
 const brandRoot = fileURLToPath(new URL('../', import.meta.url));
-const sourceRoot = fileURLToPath(new URL('./', import.meta.url));
-const output = path.join(sourceRoot, 'previews');
+const output = fileURLToPath(new URL('./', import.meta.url));
 const sheets = [
-  { page: 'index.html', name: 'comparison', brand: 'aberration', stems: ['stacked-wordmark', 'inline-wordmark'] },
-  { page: 'ti-body.html', name: 'ti-body', brand: 'aberratio', stems: ['aberratio-flush-ti'] },
+  { page: 'aberration.html', name: 'comparison', brand: 'aberration', stems: ['wordmark-stacked', 'wordmark'] },
+  { page: 'aberratio.html', name: 'ti-body', brand: 'aberratio', stems: ['wordmark-aberratio'] },
 ];
 
 async function validateSources() {
   const master = await readFile(path.join(brandRoot, 'logo.svg'), 'utf8');
   const mark = master.match(/<path\b[^>]*\bd="([^"]+)"/)[1];
   for (const stem of new Set(sheets.flatMap(sheet => sheet.stems))) {
-    const black = await readFile(path.join(sourceRoot, `${stem}.svg`), 'utf8');
-    const white = await readFile(path.join(sourceRoot, `${stem}-white.svg`), 'utf8');
+    const black = await readFile(path.join(brandRoot, `${stem}.svg`), 'utf8');
+    const white = await readFile(path.join(brandRoot, `${stem}-white.svg`), 'utf8');
     assert.equal(white, black.replace('fill="currentColor"', 'fill="#fff"'), `${stem}: white export`);
     assert.ok(black.includes(`d="${mark}"`), `${stem}: exact original mark`);
     assert.doesNotMatch(black, /<(?:text|image|use|script|mask)\b/, `${stem}: standalone vector outlines`);
-    if (['stacked-wordmark', 'inline-wordmark'].includes(stem)) {
+    if (['wordmark-stacked', 'wordmark'].includes(stem)) {
       assert.match(black, /id="letter-t"/, `${stem}: separate t`);
       assert.match(black, /id="letter-i"/, `${stem}: separate i`);
       assert.doesNotMatch(black, /id="letter-ti"/, `${stem}: original lettering`);
@@ -54,7 +53,7 @@ async function loadSheet(page, url, sheet) {
   assert.equal(await page.locator('link[rel="stylesheet"]').getAttribute('href'), 'specimen.css');
   assert.equal(await page.locator('.sample img').count(), sheet.stems.length * 2);
   assert.equal(await page.locator('.sample img').evaluateAll(images => images.every(image => image.alt && image.naturalWidth > 0)), true);
-  assert.deepEqual(await page.locator('.sample img').evaluateAll(images => images.map(image => image.getAttribute('src'))), sheet.stems.flatMap(stem => [`${stem}.svg`, `${stem}-white.svg`]));
+  assert.deepEqual(await page.locator('.sample img').evaluateAll(images => images.map(image => image.getAttribute('src'))), sheet.stems.flatMap(stem => [`../${stem}.svg`, `../${stem}-white.svg`]));
   assert.equal(await page.locator('.artboard').first().evaluate(element => getComputedStyle(element).backgroundColor), 'rgb(250, 250, 247)');
   assert.equal(await page.locator('.artboard--reverse').first().evaluate(element => getComputedStyle(element).backgroundColor), 'rgb(22, 22, 22)');
 }
@@ -64,7 +63,7 @@ async function renderSheet(browser, base, sheet) {
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
   page.on('response', response => { if (!response.ok()) errors.push(`${response.status()} ${response.url()}`); });
-  const url = `${base}/experiments/${sheet.page}`;
+  const url = `${base}/previews/${sheet.page}`;
   try {
     await loadSheet(page, url, sheet);
     await page.screenshot({ path: path.join(output, `${sheet.name}-desktop.png`), fullPage: true });
@@ -98,7 +97,7 @@ async function renderSheet(browser, base, sheet) {
 async function validateBodyWidths(browser, base) {
   const page = await browser.newPage();
   try {
-    await page.goto(`${base}/experiments/aberratio-flush-ti.svg`);
+    await page.goto(`${base}/wordmark-aberratio.svg`);
     const body = await page.evaluate(async () => {
       const measure = async id => {
         const element = document.getElementById(id);

@@ -1,58 +1,59 @@
-# Preserve the selected wordmark directions
+# Publish the selected wordmark library
 
 ## Objective
 
-Keep Aberration as the product name and preserve both wordmark directions in
-scoped repository commits. The current direction is the original lowercase
-aligned stack and single line, with separate t and i. The retained Aberratio
-direction uses the merged, flush-stem ti whose lower body matches b.
+Keep Aberration as the product name. Preserve its original lowercase aligned
+stack and single line, with separate t and i, plus the retained Aberratio
+alternative with the merged, flush-stem ti whose lower body matches b.
+
+Promote these selected SVGs beside the main logo and favicon in assets/brand,
+retain their desktop/mobile PNG presentations, and remove the rejected designs
+from the current checkout. Earlier designs remain in Git history.
 
 The referenced .agent/PLANS.md is absent; this file records the plan directly.
 
 ## Approach
 
-- Preserve the SVG geometry and existing studies. Remove the capital-A variant
-  from the current comparison only.
-- Give the two selected presentation sheets one shared stylesheet and the same
-  light/dark specimen layout. Keep their previews beside the SVG sources in the
-  repository rather than only in ignored temporary output.
-- Document the current product selection and the retained alternative.
-- Commit the current Aberration set first, then the alternative and earlier
-  experiments. Stage exact paths, excluding concurrent pipeline work.
+- Move the six selected SVGs into assets/brand with consistent wordmark names.
+  Preserve the source bytes, including all letter outlines and spacing.
+- Keep the two selected HTML specimen sheets, their shared stylesheet, renderer,
+  and four presentation PNGs together under assets/brand/previews.
+- Remove rejected capital-A, spacing, ascender, paired-letter, and earlier-ti
+  sources and their obsolete comparison pages, as requested by the user.
+- Consolidate the usage notes and asset links in assets/brand/README.md.
+- Validate the final structure in real Chrome, then commit and update the
+  existing branding PR without changing the shared pipeline checkout.
 
 ## Progress
 
-- [x] Inspect repository state, source assets, preview pages, and commit hooks.
-- [x] Normalize the current Aberration presentation and save its previews.
-- [x] Validate and commit the current product wordmarks (d19b41d).
-- [x] Normalize and preserve the merged-ti Aberratio presentation.
-- [x] Validate the retained alternative and prepare its separate scoped commit.
-
-## Results
-
-Both selected sheets share one stylesheet and save desktop/mobile PNGs under
-assets/brand/experiments/previews. The current comparison contains only the
-original lowercase Aberration stack and single line. The alternative presents
-only the merged, body-matched ti in black and white. The earlier compound and
-b/ti construction plots are excluded from this presentation. The earlier
-compound's SVG sources remain archived.
-
-Real Chrome checks pass for source consistency, both colour treatments, image
-loading, keyboard focus, downloads, and 320/390/768/1280px layouts. Pixel sampling
-across the lower stems confirms b and the flush-stem ti are both 44 units wide.
-All 18 original SVG files match their initial
-SHA-256 hashes. Local HTML references, brand exports, script syntax, whitespace,
-and preview file-size checks pass. The current product commit's repository hooks
-also pass.
-
-The branding commits are restricted to brand assets and this plan. Existing
-pipeline and deployment edits are excluded.
+- [x] Preserve the original Aberration direction and merged-ti Aberratio option.
+- [x] Normalize both selected sheets and omit earlier compounds and detail plots.
+- [x] Isolate the branding commits on codex/aberration-wordmarks and open PR #311.
+- [x] Promote selected SVGs, retain presentation sources/PNGs, and remove rejects.
+- [x] Verify all new paths, unchanged SVG bytes, previews, and brand exports.
+- [x] Prepare the scoped cleanup commit and updated description for PR #311.
 
 ## Validation
 
-Check all original SVG hashes, black/white pairing, and the exact original rr
-path. Use real Chrome to render the two sheets, verify mobile and desktop layout,
-image loads, keyboard links and downloads, and inspect the saved screenshots.
-Measure the alternative's lower-body ink to confirm b and ti both span 44 units.
-Run the existing brand export check and whitespace checks. Before each commit,
-confirm the staged path list contains only this branding work.
+Compare all six promoted SVGs and the four existing standalone logo/favicon
+sources against their pre-move SHA-256 hashes. Check black/white pairing and the
+exact original rr path. Use real Chrome to render both sheets, verify image
+loads, keyboard links, downloads, and 320/390/768/1280px layouts. Measure the
+alternative's lower-body ink to confirm b and ti both span 44 units. Inspect the
+saved screenshots, resolve local asset links, and run the existing brand export
+and whitespace checks. Confirm the commit contains only brand assets and this
+plan, and that no rejected designs remain in the current asset tree.
+
+## Results
+
+All six selected SVGs and the four standalone logo/favicon sources match their
+pre-move SHA-256 hashes. Only the selected SVGs remain in assets/brand, and the
+rejected files and obsolete comparison pages are removed. The four desktop/mobile
+PNG presentations and their HTML/CSS sources are retained under previews.
+
+Real Chrome checks pass for both pages at 320, 390, 768, and 1280 pixels, including
+image loading, keyboard focus, and all six SVG downloads. Pixel measurements
+confirm both b and the retained ti have 44-unit lower bodies. All four rendered
+PNGs were visually inspected. Local asset links, script syntax, brand exports,
+and staged whitespace checks pass. The final changes are limited to brand assets
+and this plan on the dedicated branding branch for PR #311.

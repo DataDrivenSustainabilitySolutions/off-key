@@ -136,7 +136,7 @@ PR #306 at `f1f4624` passed all 20 checks, including 102 RADAR integration tests
 3. [x] Set Playwright's CI flaky-test policy to fail while retaining the existing
    diagnostic retry. Demonstrate the policy with an isolated retry-only test using
    the real runner, then run the existing production browser journeys in CI.
-4. [ ] Add `RADAR production integration`, bound to GitHub Actions, to main's
+4. [x] Add `RADAR production integration`, bound to GitHub Actions, to main's
    required checks. Save the prior state and verify every existing required check,
    app binding and strictness setting survives the update.
 
@@ -165,3 +165,16 @@ retry exits zero before the change and one afterward, classified as flaky in bot
 runs. A clean case still exits zero. These policy probes use no application data,
 auth state or browser session; the final native smoke job remains responsible for
 the real production browser journeys.
+
+Step 4: main's required-status-check policy now includes `RADAR production
+integration` bound to the verified `github-actions` app (15368). Read-back
+verification confirms the nine prior required checks and their exact app bindings
+are preserved, strict/up-to-date enforcement remains enabled, and RADAR is the sole
+added requirement. Before/after policy snapshots are retained in the local review
+cache. The change uses the specific required-status-check endpoint.
+
+The two labeled containers and dedicated network for targeted validation have
+been removed after ownership checks; no owned Swarm workloads remain. The isolated
+Playwright policy probe and its artifacts are preserved under the review cache.
+All four targeted implementation steps are complete. Final revision CI, including
+the new zero-skip guard and strict browser policy, is recorded on PR #306.

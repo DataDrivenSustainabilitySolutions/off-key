@@ -129,7 +129,7 @@ PR #306 at `f1f4624` passed all 20 checks, including 102 RADAR integration tests
    unchanged while scheduling is blocked, then verify revival after scheduling.
    Prove the regression rejects a deliberately broadened readiness condition in
    the disposable runner, restoring runtime source afterward.
-2. [ ] Require nonempty JUnit results with zero skips in the dedicated RADAR job.
+2. [x] Require nonempty JUnit results with zero skips in the dedicated RADAR job.
    Exercise acceptance with real integration results and rejection with actual
    pytest skip/collection-only results. Keep the general backend suite's optional
    integration skips intact; avoid fixed expected test counts or new dependencies.
@@ -152,3 +152,9 @@ replacement fails at `assert current.status is False` (7.34 seconds). Both runti
 and test source are restored in the disposable runner. The complete affected
 lifecycle/reconciliation suites then pass: 32 tests, zero skips, in 113.82 seconds.
 Applicable repository hooks pass.
+
+Step 2: the dedicated workflow now emits JUnit and accepts only a nonempty report
+without skipped cases. The exact inline guard accepts the real 32-test report and
+rejects both an actual skipped integration invocation and a collection-only
+invocation, even though those pytest processes exit successfully. YAML and all
+applicable hooks pass. No new dependency or fixed expected test count is used.

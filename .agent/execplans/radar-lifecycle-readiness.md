@@ -133,7 +133,7 @@ PR #306 at `f1f4624` passed all 20 checks, including 102 RADAR integration tests
    Exercise acceptance with real integration results and rejection with actual
    pytest skip/collection-only results. Keep the general backend suite's optional
    integration skips intact; avoid fixed expected test counts or new dependencies.
-3. [ ] Set Playwright's CI flaky-test policy to fail while retaining the existing
+3. [x] Set Playwright's CI flaky-test policy to fail while retaining the existing
    diagnostic retry. Demonstrate the policy with an isolated retry-only test using
    the real runner, then run the existing production browser journeys in CI.
 4. [ ] Add `RADAR production integration`, bound to GitHub Actions, to main's
@@ -158,3 +158,10 @@ without skipped cases. The exact inline guard accepts the real 32-test report an
 rejects both an actual skipped integration invocation and a collection-only
 invocation, even though those pytest processes exit successfully. YAML and all
 applicable hooks pass. No new dependency or fixed expected test count is used.
+
+Step 3: Playwright's existing CI configuration now sets `failOnFlakyTests` while
+retaining one retry. An isolated real-runner case that fails first and passes on
+retry exits zero before the change and one afterward, classified as flaky in both
+runs. A clean case still exits zero. These policy probes use no application data,
+auth state or browser session; the final native smoke job remains responsible for
+the real production browser journeys.

@@ -1,4 +1,4 @@
-"""Export the shared vector mark into independent application build contexts."""
+"""Export the shared vector mark and selected wordmark into application contexts."""
 
 import argparse
 import re
@@ -12,6 +12,7 @@ BRAND = ROOT / "assets/brand"
 
 def exports() -> dict[Path, str]:
     source = (BRAND / "logo.svg").read_text(encoding="utf-8")
+    wordmark = (BRAND / "wordmark.svg").read_text(encoding="utf-8")
     path = ElementTree.fromstring(source).find("{http://www.w3.org/2000/svg}path")
     if path is None:
         raise ValueError("The vector master must contain its mark path")
@@ -31,6 +32,7 @@ def exports() -> dict[Path, str]:
         BRAND / "logo-white.svg": white,
         BRAND / "favicon.svg": adaptive,
         ROOT / "frontend/public/brand/logo.svg": source,
+        ROOT / "frontend/public/brand/wordmark.svg": wordmark,
         ROOT / "frontend/public/brand/favicon.svg": adaptive,
         ROOT / "frontend/public/favicon.svg": adaptive,
         ROOT / "docs/assets/brand/logo.svg": adaptive,

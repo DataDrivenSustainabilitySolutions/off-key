@@ -80,6 +80,11 @@ The master includes 10 units of clear space on every side. Use the full viewBox
 and preserve its aspect ratio. A 36px SVG in a 44px button gives the app header a
 quiet mark without making its target difficult to activate.
 
+The login form uses the selected single-line Aberration wordmark, exported from
+`wordmark.svg` to `frontend/public/brand/wordmark.svg`. It follows
+the selected appearance through `currentColor`; the redundant Login heading is
+visually hidden while remaining available to screen readers.
+
 ## Updating distributed assets
 
 The frontend, documentation, and self-contained public page have independent

@@ -22,6 +22,8 @@ interface AuthLayoutProps {
   children: ReactNode;
   contentClassName?: string;
   titleProps?: ComponentProps<"h1">;
+  brandVariant?: ComponentProps<typeof BrandHome>["variant"];
+  hideTitle?: boolean;
 }
 
 export function AuthLayout({
@@ -29,17 +31,19 @@ export function AuthLayout({
   children,
   contentClassName,
   titleProps,
+  brandVariant,
+  hideTitle = false,
 }: AuthLayoutProps) {
   const { className: titleClassName, ...restTitleProps } = titleProps ?? {};
 
   return (
     <AuthBackdrop contentClassName="max-w-sm">
       <Card className="w-full gap-6 border-border py-7 sm:py-8">
-        <CardHeader>
-          <div className="mb-4 flex justify-center"><BrandHome /></div>
+        <CardHeader className={hideTitle ? "gap-0" : undefined}>
+          <div className={cn("flex justify-center", !hideTitle && "mb-4")}><BrandHome variant={brandVariant} /></div>
           <h1
             data-slot="card-title"
-            className={cn("text-center text-xl font-medium leading-7 tracking-[-0.02em]", titleClassName)}
+            className={cn(hideTitle ? "sr-only" : "text-center text-xl font-medium leading-7 tracking-[-0.02em]", titleClassName)}
             {...restTitleProps}
           >
             {title}

@@ -177,6 +177,8 @@
 
   .dark .brand-home { color: #fff; }
   .brand-mark { display: block; width: 36px; height: 36px; flex-shrink: 0; }
+  .brand-home-wordmark { width: 240px; max-width: 100%; height: auto; min-height: 44px; }
+  .brand-wordmark { display: block; width: 100%; height: auto; }
   .brand-home:hover { background: hsl(var(--accent)); }
   .brand-home:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px; }
 

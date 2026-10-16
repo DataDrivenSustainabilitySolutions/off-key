@@ -118,3 +118,25 @@ visually reviewed. Changes are on the local `codex/landing-page-footer` branch
 in the existing isolated landing-page worktree. The requested production release
 uses the repository's required pull-request checks, tested main commit, and
 verified production deployment workflow.
+
+
+## Follow-up: preserve the isoline illustration (2026-10-16)
+
+Restore the original abstract SVG and its responsive two-column hero placement.
+The user clarified that the diagram should stay; the previous removal treated
+the copied SVG marker as a request to remove the illustration itself. Keep the
+visible eyebrow and streaming-data strapline removed, and preserve the legal
+footer templates, current brand, dashboard links and routing.
+
+- [x] Restore the exact original SVG, theme styles and forced-colour support.
+- [x] Verify real responsive browser rendering, footer navigation and dashboard
+      forwarding under the production CSP.
+- [x] Inspect the restored desktop/mobile artwork and the scoped diff.
+
+Real Chrome passed the same twelve viewport/theme combinations with the original
+SVG visible and all contours present. Legal sections, native focus/closing,
+fragments, keyboard navigation and all four links to the actual local dashboard
+and React login passed. The visible copy remains absent. Production rendering,
+CSP, palette parity, brand exports and patch formatting pass; desktop and mobile
+screenshots were inspected. Publication requires green PR and main release gates
+and verification of the restored diagram on the live origin.

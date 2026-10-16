@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { act, render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 import type { Mock } from "vitest";
@@ -129,6 +129,41 @@ describe("Login", () => {
     fireEvent.click(screen.getByRole("button", { name: /log in/i }));
     expect(screen.getByText("Please enter a valid email address")).toBeTruthy();
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it.each(["response", "network"])("blocks duplicate submissions and allows retry after a %s failure", async failure => {
+    let complete!: (response: Response) => void;
+    let fail!: (error: Error) => void;
+    fetchMock.mockReturnValueOnce(new Promise<Response>((resolve, reject) => { complete = resolve; fail = reject; }));
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ detail: "Retry rejected" }), {
+      status: 401, headers: { "Content-Type": "application/json" },
+    }));
+    renderLogin();
+    fireEvent.change(screen.getByLabelText("Email"), { target: { value: "test@example.com" } });
+    fireEvent.change(screen.getByLabelText("Password", { selector: "input" }), { target: { value: "wrongpass" } });
+    const form = screen.getByRole("button", { name: "Log in" }).closest("form")!;
+    fireEvent.submit(form);
+    fireEvent.submit(form);
+    const pending = screen.getByRole("button", { name: "Logging in…" }) as HTMLButtonElement;
+    expect(pending.disabled).toBe(true);
+    expect(pending.getAttribute("aria-busy")).toBe("true");
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
+    fireEvent.submit(form);
+    expect(fetchMock).toHaveBeenCalledOnce();
+    await act(async () => {
+      if (failure === "network") fail(new Error("Network unavailable"));
+      else complete(new Response(JSON.stringify({ detail: "Invalid credentials" }), {
+        status: 401, headers: { "Content-Type": "application/json" },
+      }));
+    });
+    expect(screen.getByText(failure === "network" ? "An error occurred" : "Invalid credentials")).toBeTruthy();
+    const ready = screen.getByRole("button", { name: "Log in" }) as HTMLButtonElement;
+    expect(ready.disabled).toBe(false);
+    expect(ready.getAttribute("aria-busy")).toBe("false");
+    fireEvent.submit(form);
+    await screen.findByText("Retry rejected");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect((screen.getByRole("button", { name: "Log in" }) as HTMLButtonElement).disabled).toBe(false);
   });
 
   it("shows an error message for invalid credentials", async () => {

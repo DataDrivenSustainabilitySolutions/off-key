@@ -81,6 +81,18 @@ describe("explorer preference persistence", () => {
     expect(loadExplorerPreferences("bob")).toEqual(preferences());
   });
 
+  it.each([true, false])("persists the online topic filter (%s) for its account", onlineOnly => {
+    const saved = { ...preferences(), onlineOnly };
+    expect(saveExplorerPreferences("alice", saved)).toBe(true);
+    expect(loadExplorerPreferences("alice")).toEqual(saved);
+    expect(loadExplorerPreferences("bob").onlineOnly).toBeUndefined();
+  });
+
+  it("ignores a malformed online topic preference and retains existing navigation", () => {
+    localStorage.setItem(key(), JSON.stringify({ ...preferences(), onlineOnly: "true" }));
+    expect(loadExplorerPreferences("alice")).toEqual(preferences());
+  });
+
   it.each([[20, 240], [900, 480], [333.4, 333]])("bounds stored sidebar widths without losing the rest of the preferences", (width, expected) => {
     localStorage.setItem(key(), JSON.stringify({ ...preferences(), sidebarWidth: width }));
     expect(loadExplorerPreferences("alice")).toEqual({ ...preferences(), sidebarWidth: expected });

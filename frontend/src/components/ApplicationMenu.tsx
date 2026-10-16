@@ -52,7 +52,7 @@ export function ApplicationMenu({ trigger }: Props) {
         }}><Settings2 className="size-4" />Settings</DropdownMenuItem>
         <DropdownMenuItem asChild className="app-menu-item">
           <Link to={catalogue?.sectionHref("/system/status") ?? "/system/status"} aria-current={location.pathname === "/system/status" ? "page" : undefined}>
-            <Activity className="size-4" />System status
+            <Activity className="size-4" />Status
           </Link>
         </DropdownMenuItem>
         <div role="separator" className="app-menu-separator" />

@@ -103,6 +103,15 @@ background recording. A filled circle means a fresh message arrived in the last
 listening; hover or focus the row to see its description. Retained snapshots and
 stored history do not count as fresh traffic. Browsing alone starts no collection.
 
+The **Online topics only** filter icon beside **Back to catalogue** keeps filled-circle
+readings and the paths leading to them. It also filters search, collections and reading
+favourites, updates as traffic starts or becomes stale, and remembers your choice in
+this browser. Turn it off to show the full catalogue again. Filtering keeps the
+current source selected and does not start a connection or change recording.
+An empty filtered list shows **No active topics** with an underlined **Show all
+topics** action beneath it. This turns off the online filter and keeps your
+current folder, search and source selection.
+
 Configure recording under **Sources**. Broker and topic policies can cover several
 readings; review the affected scope before applying changes. Including readings
 added later requires an explicit opt-in. Administrators can also use **Connect**

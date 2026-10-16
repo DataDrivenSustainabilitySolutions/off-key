@@ -29,10 +29,10 @@ describe("shared application menu", () => {
 
   it.each(["/", "/sources", "/anomalies", "/details/entity-one"])("offers shared preferences and system status at %s", (path) => {
     mount(path);
-    expect(screen.getAllByRole("menuitem").map(item => item.textContent)).toEqual(["Account", "Settings", "System status", "Logout"]);
+    expect(screen.getAllByRole("menuitem").map(item => item.textContent)).toEqual(["Account", "Settings", "Status", "Logout"]);
   });
 
-  it.each([["/account", "Account"], ["/system/status", "System status"]])("marks the current page at %s", (path, label) => {
+  it.each([["/account", "Account"], ["/system/status", "Status"]])("marks the current page at %s", (path, label) => {
     mount(path);
     expect(screen.getByRole("menuitem", { name: label }).getAttribute("aria-current")).toBe("page");
   });
@@ -46,7 +46,7 @@ describe("shared application menu", () => {
 
   it("links directly to system diagnostics", async () => {
     mount();
-    fireEvent.click(screen.getByRole("menuitem", { name: "System status" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Status" }));
     expect(await screen.findByText("/system/status")).toBeTruthy();
   });
 

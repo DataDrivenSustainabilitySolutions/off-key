@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import * as Popover from "@radix-ui/react-popover";
-import { ArrowLeft, ChevronDown, Folder, FolderRoot, Info, Search, Settings2, Star, X } from "lucide-react";
+import { ArrowLeft, ChevronDown, Folder, FolderRoot, Info, ListFilter, Search, Settings2, Star, X } from "lucide-react";
 import { ExplorerList, type ExplorerRow, type ListPosition } from "./ExplorerList";
 import { navigationTrail, type ExplorerNode, type NavigationIndex } from "./navigationIndex";
 import type { SystemGroup } from "../catalogue/systemTypes";
@@ -15,6 +15,9 @@ type Props = {
   onOpen: (node: ExplorerNode) => void; onBack: () => void; onInspect: () => void;
   onSettings: () => void; onCatalogue?: () => void; onDismiss?: () => void;
   activity?: ReadingActivitySource;
+  onlineOnly?: boolean;
+  onOnlineOnlyChange?: (value: boolean) => void;
+  readingCount?: number;
   favourites?: Array<{ kind: "service" | "reading"; id: string; label: string }>;
   onFavourite?: (kind: "service" | "reading", id: string) => void;
 };
@@ -26,6 +29,11 @@ export function ExplorerSidebar(props: Props) {
   const trail = navigationTrail(index, scopeKey);
   const current = index.nodes.get(scopeKey);
   const atRoot = scopeKey === index.rootKey && !query;
+  const onlineOnly = props.onlineOnly ?? false;
+  const readingCount = props.readingCount ?? index.counts.readings;
+  const brokers = rows.filter(row => row.node.kind === "connection").length;
+  const viewKey = resultsQuery.trim() ? `search:${JSON.stringify([resultsQuery, onlineOnly])}`
+    : `${scopeKey.startsWith("catalogue:") ? "catalogue" : "scope"}:${JSON.stringify([scopeKey, onlineOnly])}`;
   const owner = trail.slice(0, -1).reverse().find((ancestor) => ancestor.kind === "device" || ancestor.kind === "connection");
   useEffect(() => {
     const shortcut = (event: KeyboardEvent) => {
@@ -37,7 +45,7 @@ export function ExplorerSidebar(props: Props) {
     return () => window.removeEventListener("keydown", shortcut);
   }, []);
   const returnToRoot = () => {
-    positions.delete(index.rootKey);
+    positions.delete(`scope:${JSON.stringify([index.rootKey, onlineOnly])}`);
     if (atRoot && !resultsQuery.trim()) {
       search.current?.closest("nav")?.querySelector<HTMLDivElement>(".ex-list-scroll")?.scrollTo({ top: 0 });
     }
@@ -85,20 +93,26 @@ export function ExplorerSidebar(props: Props) {
           </Popover.Content></Popover.Portal>
         </Popover.Root>}
         <span title={owner?.label}>{query ? `${rows.length === 100 ? "First " : ""}${rows.length} ${rows.length === 1 ? "match" : "matches"}`
-          : current?.kind === "root" ? `${index.counts.connections} ${index.counts.connections === 1 ? "broker" : "brokers"}${rows.some((row) => row.node.kind === "unassigned") ? " · unassigned entities" : ""}`
+          : current?.kind === "root" ? `${brokers} ${brokers === 1 ? "broker" : "brokers"}${rows.some((row) => row.node.kind === "unassigned") ? " · unassigned entities" : ""}`
             : `${rows.length} ${rows.length === 1 ? "item" : "items"}${owner ? ` · ${owner.label}` : ""}`}</span>
       </div>
       {current && current.kind !== "root" && !query && <button className="ex-icon-button" aria-label="Inspect current item" onClick={props.onInspect}><Info size={16} /></button>}
+      {props.onOnlineOnlyChange && <button type="button" className="ex-icon-button ex-online-filter" aria-label="Online topics only"
+        title="Online topics only · receiving data in the last 30 seconds" aria-pressed={onlineOnly} onClick={() => props.onOnlineOnlyChange?.(!onlineOnly)}>
+        <ListFilter size={16} aria-hidden="true" />
+      </button>}
       <button type="button" className="ex-icon-button ex-root-button" aria-label="Back to catalogue" title="Back to catalogue" onClick={returnToRoot}>
         <FolderRoot size={16} aria-hidden="true" />
       </button>
     </div>
     {props.loading ? <div className="ex-list-empty" role="status">Loading catalogue…</div>
-      : <ExplorerList rows={rows} viewKey={resultsQuery.trim() ? `search:${resultsQuery}` : scopeKey} positions={positions}
-        selectedKey={selectedKey} onOpen={props.onOpen} onBack={props.onBack} onBrowse={props.onBrowse} activity={props.activity} />}
+      : <ExplorerList rows={rows} viewKey={viewKey} positions={positions}
+        selectedKey={selectedKey} onOpen={props.onOpen} onBack={props.onBack} onBrowse={props.onBrowse} activity={props.activity}
+        emptyMessage={onlineOnly ? "No active topics" : undefined}
+        emptyAction={onlineOnly && props.onOnlineOnlyChange ? { label: "Show all topics", onClick: () => props.onOnlineOnlyChange?.(false) } : undefined} />}
     {query && rows.length === 100 && <p className="ex-search-hint">Refine your search to see more matches.</p>}
     <div className="ex-sidebar-footer"><button onClick={props.onSettings}><Settings2 size={15} /><span>Catalogue settings</span></button>
-      <span>{index.counts.readings.toLocaleString()} {index.counts.readings === 1 ? "reading" : "readings"}</span>
+      <span>{readingCount.toLocaleString()} {onlineOnly ? "online " : ""}{readingCount === 1 ? "reading" : "readings"}</span>
     </div>
   </nav>;
 }

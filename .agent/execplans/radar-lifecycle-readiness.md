@@ -178,3 +178,7 @@ been removed after ownership checks; no owned Swarm workloads remain. The isolat
 Playwright policy probe and its artifacts are preserved under the review cache.
 All four targeted implementation steps are complete. Final revision CI, including
 the new zero-skip guard and strict browser policy, is recorded on PR #306.
+
+The operational GitHub setup and developer testing guides now document the exact
+required check names, all six main release workflows, zero-skip integration policy
+and strict flaky-browser policy.

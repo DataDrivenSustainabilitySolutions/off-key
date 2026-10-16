@@ -244,6 +244,102 @@ test("keeps the catalogue DOM, selection, search and scroll while navigating and
   }
 });
 
+test("filters online topics and their paths as real MQTT traffic starts and expires", async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  const fixture = await createFixture(page, 2);
+  const run = fixture.broker.slice(-8);
+  let publisher: MqttClient | undefined;
+  let publishTimer: ReturnType<typeof setInterval> | undefined;
+  try {
+    const current = await fixture.read();
+    const collection = { id: fixture.broker + "-online", label: "Online check " + run, member_ids: fixture.streams.map(stream => stream.id) };
+    fixture.ownedIds.add(collection.id);
+    current.document.groups.push(collection);
+    const saved = await page.request.put("/api/v1/system", { headers: fixture.headers,
+      data: { expected_revision: current.revision, document: current.document } });
+    expect(saved.ok(), await saved.text()).toBe(true);
+    const configured = await saved.json() as SystemSnapshot;
+    const applied = await page.request.put("/api/v1/system/collection", { headers: fixture.headers, data: {
+      expected_revision: configured.revision, expected_collection_revision: configured.runtime.collection_revision,
+      stream_ids: fixture.streams.slice(0, 2).map(stream => stream.id), policy: { mode: "sample", interval_seconds: 3600 },
+    } });
+    expect(applied.ok(), await applied.text()).toBe(true);
+    await expect.poll(async () => (await fixture.read()).runtime.ingress?.sources?.[fixture.broker]?.state,
+      { timeout: 120_000 }).toBe("connected");
+    publisher = await connectAsync(process.env.MQTT_SOURCE_URL ?? "mqtt://127.0.0.1:1884");
+    const publish = () => publisher!.publish(fixture.streams[0]!.topic, "23", { qos: 1 });
+    publish(); publishTimer = setInterval(publish, 500);
+    let previewStarts = 0, configurationWrites = 0;
+    page.on("request", request => {
+      const path = new URL(request.url()).pathname;
+      if (request.method() === "POST" && path === "/api/v1/system/live/leases") previewStarts++;
+      if (request.method() === "PUT" && path.startsWith("/api/v1/system")) configurationWrites++;
+    });
+    await page.reload();
+    const sidebar = page.getByRole("navigation", { name: "System explorer", exact: true });
+    const search = sidebar.getByRole("searchbox", { name: "Search catalogue", exact: true });
+    const toggle = sidebar.getByRole("button", { name: "Online topics only", exact: true });
+    const root = sidebar.getByRole("button", { name: "Back to catalogue", exact: true });
+    const active = sidebar.getByRole("button", { name: "North value 01, preview", exact: true });
+    const quiet = sidebar.getByRole("button", { name: "North value 02, preview", exact: true });
+    await search.fill(run);
+    await expect(active.locator("svg")).toHaveAttribute("fill", "currentColor");
+    await quiet.click();
+    const selection = page.url();
+    await toggle.click();
+    await expect(toggle).toHaveAttribute("aria-pressed", "true");
+    await expect(quiet).toHaveCount(0);
+    await expect(sidebar.getByRole("button", { name: "South room " + run + ", open", exact: true })).toHaveCount(0);
+    await expect(page).toHaveURL(selection);
+    await expect(search).toHaveValue(run);
+    await root.click();
+    await expect(toggle).toHaveAttribute("aria-pressed", "true");
+    await sidebar.getByRole("button", { name: "Browse children of Navigation broker " + run, exact: true }).click();
+    await expect(sidebar.getByRole("button", { name: "North room " + run + ", open", exact: true })).toBeVisible();
+    await expect(sidebar.getByRole("button", { name: "South room " + run + ", open", exact: true })).toHaveCount(0);
+    await sidebar.getByRole("button", { name: "Browse children of North room " + run, exact: true }).click();
+    await expect(sidebar.getByRole("button", { name: "navigation/" + run + "/north/reading-01, preview", exact: true })).toBeVisible();
+    await page.getByRole("navigation", { name: "Primary navigation", exact: true }).getByRole("link", { name: "Sources", exact: true }).click();
+    await expect(toggle).toHaveAttribute("aria-pressed", "true");
+    await expect.poll(() => page.evaluate(() => {
+      const entry = Object.entries(localStorage).find(([key]) => key.startsWith("aberration:explorer:v1:"));
+      return entry ? (JSON.parse(entry[1]) as { onlineOnly?: boolean }).onlineOnly : false;
+    })).toBe(true);
+    await page.reload();
+    await expect(toggle).toHaveAttribute("aria-pressed", "true");
+    await sidebar.getByRole("button", { name: "Browse collections", exact: true }).click();
+    await page.getByRole("button", { name: "Show collection " + collection.label, exact: true }).click();
+    await expect(sidebar.getByText("1 item", { exact: true })).toBeVisible();
+    await expect(active).toBeVisible();
+    for (const appearance of ["Light", "Dark"] as const) {
+      await setAppearance(page, appearance);
+      await sidebar.screenshot({ path: testInfo.outputPath("online-topics-" + appearance.toLowerCase() + ".png"), animations: "disabled" });
+    }
+    await toggle.click();
+    await expect(sidebar.getByText("3 items", { exact: true })).toBeVisible();
+    await expect(quiet).toBeVisible();
+    await toggle.click();
+    clearInterval(publishTimer); publishTimer = undefined;
+    await expect(sidebar.getByText("No online topics here.", { exact: true })).toBeVisible({ timeout: 40_000 });
+    await publisher.publishAsync(fixture.streams[0]!.topic, "24", { qos: 1 });
+    await expect(active.locator("svg")).toHaveAttribute("fill", "currentColor");
+    await page.setViewportSize({ width: 320, height: 844 });
+    await page.getByRole("button", { name: "Open catalogue", exact: true }).click();
+    await expect(toggle).toHaveAttribute("aria-pressed", "true");
+    await expect(toggle).toBeInViewport();
+    const box = await toggle.boundingBox();
+    expect(box!.width).toBeGreaterThanOrEqual(44); expect(box!.height).toBeGreaterThanOrEqual(44);
+    await expect(root).toBeInViewport();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.screenshot({ path: testInfo.outputPath("online-topics-mobile.png"), animations: "disabled" });
+    expect(previewStarts).toBe(0); expect(configurationWrites).toBe(0);
+  } finally {
+    clearInterval(publishTimer);
+    await publisher?.endAsync();
+    await fixture.cleanup();
+  }
+});
+
 test("filters real recorded reports by entity and reading across the shared navbar", async ({ page }) => {
   const fixture = await createFixture(page, 2);
   const anomalies: string[] = [];

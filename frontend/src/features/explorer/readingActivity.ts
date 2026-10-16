@@ -10,6 +10,9 @@ export type ReadingActivitySource = {
   runtime?: SystemRuntime;
 };
 
+export const isReadingLeaf = (node: ExplorerNode) => !node.children.length && node.streamIds.length > 0
+  && (node.kind === "reading" || node.kind === "topic");
+
 function recent(value: string | number | null | undefined, now: number) {
   const time = typeof value === "string" ? Date.parse(value) : value;
   if (time == null || !Number.isFinite(time)) return false;

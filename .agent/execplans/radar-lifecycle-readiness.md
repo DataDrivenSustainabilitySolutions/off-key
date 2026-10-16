@@ -85,3 +85,34 @@ integration job, together with all production integration tests. The other local
 skips require the separate collection/deployment/Compose harnesses that CI runs.
 Only the two labeled containers and one dedicated bridge created for this
 investigation were removed; existing deployments and the Swarm manager remain.
+
+## Deployment-smoke focus regression
+
+PR #306's first head passed all 102 native Linux RADAR production integration
+tests, including exact-image replacement. Deployment smoke instead failed the
+existing mobile catalogue-root keyboard journey on both attempts. Its trace and
+failure snapshot show Enter selecting a row and dismissing the drawer after the
+test explicitly focused the root button.
+
+ExplorerList restores branch focus after two animation frames without checking
+whether another control has since received focus. A deterministic regression
+using the real TanStack virtualizer reproduces the theft when toolbar focus moves
+before either frame. Both cases fail before the change. Deferred restoration now
+yields to a newer focus choice; the 19 list/sidebar tests pass, including the
+existing saved-focus, viewport and selected-search-result coverage. The browser
+journey and its expectations remain unchanged.
+
+- [x] Reproduce the focus race before editing runtime behavior.
+- [x] Preserve explicit focus with a small guard in the existing restoration path.
+- [x] Complete frontend tests, lint, production build and repository hooks:
+  611 tests across 52 files, ESLint, TypeScript/Vite and all applicable hooks pass.
+- [x] Prepare the focus fix as a separate commit on the corrective PR, keeping
+  the existing browser journey and its assertions intact.
+
+After publication, verify the full native Linux deployment-smoke journey on the
+updated PR revision. The PR's live checks and validation summary are the final
+record of this result.
+
+This PR smoke rehearsal is a disposable production-like deployment. It does not
+establish that the main revision has reached the production environment; the
+existing post-merge watch continues until an eligible main deployment is verified.

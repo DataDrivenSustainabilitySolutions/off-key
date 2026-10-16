@@ -1,7 +1,8 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApplicationMenu } from "@/components/ApplicationMenu";
+import { BrandHome } from "@/components/BrandHome";
 import { ThemeProvider } from "@/components/theme-provider";
 
 const auth = vi.hoisted(() => ({ isAuthenticated: true, member: null, logout: vi.fn() }));
@@ -14,7 +15,7 @@ function Location() {
   return <p>{location.pathname + location.search}</p>;
 }
 function mount(path = "/") {
-  render(<ThemeProvider defaultTheme="light"><MemoryRouter initialEntries={[path]}><ApplicationMenu /><Location /></MemoryRouter></ThemeProvider>);
+  render(<ThemeProvider defaultTheme="light"><MemoryRouter initialEntries={[path]}><BrandHome /><ApplicationMenu /><Location /></MemoryRouter></ThemeProvider>);
   fireEvent.keyDown(screen.getByRole("button", { name: "Application menu" }), { key: "Enter" });
 }
 
@@ -68,6 +69,23 @@ describe("shared application menu", () => {
     expect(screen.getByText(path)).toBeTruthy();
   });
 
+  it("preserves a newer focus choice while preferences finishes closing", async () => {
+    mount("/sources");
+    fireEvent.click(screen.getByRole("menuitem", { name: "Settings" }));
+    const dialog = await screen.findByRole("dialog", { name: "Settings" });
+    vi.useFakeTimers();
+    try {
+      fireEvent.click(within(dialog).getByRole("button", { name: "Close settings" }));
+      const home = screen.getByRole("link", { name: "Aberration home" });
+      home.focus();
+      expect(document.activeElement).toBe(home);
+      await act(async () => { await vi.runOnlyPendingTimersAsync(); });
+      expect(document.activeElement).toBe(home);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("closes preferences with Escape and reopens the saved choice", async () => {
     mount();
     fireEvent.click(screen.getByRole("menuitem", { name: "Settings" }));
@@ -76,6 +94,7 @@ describe("shared application menu", () => {
     expect(localStorage.getItem("vite-ui-theme")).toBe("system");
     fireEvent.keyDown(dialog, { key: "Escape" });
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("button", { name: "Application menu" })));
     fireEvent.keyDown(screen.getByRole("button", { name: "Application menu" }), { key: "Enter" });
     fireEvent.click(screen.getByRole("menuitem", { name: "Settings" }));
     const reopened = await screen.findByRole("dialog", { name: "Settings" });

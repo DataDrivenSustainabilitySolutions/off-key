@@ -64,7 +64,8 @@ export function ApplicationMenu({ trigger }: Props) {
     </DropdownMenu>
     <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} onCloseAutoFocus={event => {
       event.preventDefault();
-      menuTrigger.current?.focus();
+      // Radix defers this callback; preserve a newer focus choice after close.
+      if (document.activeElement === document.body) menuTrigger.current?.focus();
     }} />
   </>;
 }

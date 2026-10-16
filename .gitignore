@@ -53,6 +53,7 @@ tailscale-ambibox/data/
 /infra/stack/state/prod/ambibox-development-system.json
 
 # Local tool state
+/.agent/execplans/
 /.agents/
 /.claude/
 /.codex/

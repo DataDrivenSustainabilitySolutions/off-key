@@ -1,5 +1,64 @@
 # Aberration brand assets
 
+**Aberration is the product name.** The selected lowercase wordmarks integrate
+an exact copy of the paired-r mark. The current identity keeps the original
+aligned stack and single line, with separate t and i. Aberratio is retained as
+an alternative with the merged ti whose lower body matches b.
+
+## Wordmark SVGs
+
+The selected SVGs live here beside the standalone logo and favicon. Each layout
+has a black / inline `currentColor` source and an explicit white export.
+
+| Identity and layout | Black / currentColor | White |
+| --- | --- | --- |
+| Aberration / Single line | [wordmark.svg](wordmark.svg) | [wordmark-white.svg](wordmark-white.svg) |
+| Aberration / Aligned stack | [wordmark-stacked.svg](wordmark-stacked.svg) | [wordmark-stacked-white.svg](wordmark-stacked-white.svg) |
+| Aberratio / Same-width merged ti | [wordmark-aberratio.svg](wordmark-aberratio.svg) | [wordmark-aberratio-white.svg](wordmark-aberratio-white.svg) |
+
+## Presentation previews
+
+Both specimen sheets share their layout, typography, palette, light/dark
+panels, and small-size proofs. Their PNGs render the actual SVG sources.
+
+| Identity | Live specimen | Desktop PNG | Mobile PNG |
+| --- | --- | --- | --- |
+| Aberration | [aberration.html](previews/aberration.html) | [comparison-desktop.png](previews/comparison-desktop.png) | [comparison-mobile.png](previews/comparison-mobile.png) |
+| Aberratio | [aberratio.html](previews/aberratio.html) | [ti-body-desktop.png](previews/ti-body-desktop.png) | [ti-body-mobile.png](previews/ti-body-mobile.png) |
+
+Rejected designs and their comparison pages have been removed from the current
+asset set. They remain recoverable in Git history.
+
+After installing the frontend's locked dependencies, regenerate the previews:
+
+```console
+node assets/brand/previews/render-previews.mjs
+```
+
+The renderer checks SVG sources, desktop/mobile layouts, image loading,
+keyboard focus, and black/white downloads. It also measures actual lower-body
+ink across b and ti to confirm their matching 44-unit widths.
+
+## Wordmark geometry and use
+
+Each letter is a filled vector outline with square corners and 10-unit strokes.
+The lowercase bodies and the paired-r mark are 44 units high. In the current
+Aberration lettering, b is 68 units high; the aligned stack has two
+218-unit-wide lines, and the single-line ink measures 446 by 68 units. These
+wordmarks include 16 units of clear space in their viewBox.
+
+The Aberratio alternative uses a flush t stem with no left crossbar overhang.
+Its b and merged ti have 44-unit-wide lower bodies and 6-unit openings.
+
+The `letter-rr` path is copied exactly from [logo.svg](logo.svg), with translation
+only. All SVGs use transparent counters and backgrounds with no font dependency.
+Preserve their viewBox and aspect ratio. For inline embedding, set `color` on the
+black/currentColor source; for an image on a dark background, use the white SVG.
+Recommended minimum display widths are 160px for the stack and 240px for either
+single-line wordmark. Use the standalone mark in smaller placements.
+
+## Standalone mark and favicon
+
 The master is [logo.svg](logo.svg): the approved paired angular forms, drawn on a
 64 × 64 viewBox. It has a transparent background and one editable vector path.
 Keep its geometry, proportions, and internal spacing unchanged.

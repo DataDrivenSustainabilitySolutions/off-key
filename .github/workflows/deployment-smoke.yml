@@ -21,7 +21,7 @@ jobs:
   deployment-smoke:
     name: deployment-smoke
     runs-on: ubuntu-24.04
-    timeout-minutes: 75
+    timeout-minutes: 100
     env:
       ANSIBLE_CONFIG: ${{ github.workspace }}/infra/ansible/ansible.cfg
 
@@ -91,8 +91,20 @@ jobs:
             --workdir /work --env-file "$OFFKEY_REHEARSAL_DIR/smoke.env" --env CI=true \
             "mcr.microsoft.com/playwright:v${playwright_version}-noble" npm run test:e2e
 
-      - name: Verify adaptive monitoring, real backup restoration and repeated deployment
-        timeout-minutes: 15
+      - name: Check out the immutable pipeline-compatible rollback reference
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: 8dc76b0646a3365325a880340201d14febf97a0e
+          path: .tmp/compatible-release-source
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Build the reviewed compatible binary rollback reference
+        timeout-minutes: 25
+        run: uv run --frozen --project infra python infra/tests/swarm_smoke.py prepare-rollback --directory "$OFFKEY_REHEARSAL_DIR" --reference-repository "$GITHUB_WORKSPACE/.tmp/compatible-release-source"
+
+      - name: Verify adaptive monitoring, backup restoration and compatible binary rollback
+        timeout-minutes: 25
         env:
           RUN_ADAPTIVE_E2E: "1"
           OFFKEY_DEPLOYMENT_REHEARSAL: "1"
@@ -112,7 +124,14 @@ jobs:
           export E2E_MQTT_USERNAME=offkey-radar
           E2E_MQTT_PASSWORD="$(python3 -c 'import json, os; from pathlib import Path; print(json.loads((Path(os.environ["OFFKEY_REHEARSAL_DIR"])/"inputs.json").read_text())["mqtt_radar_password"])')"
           export E2E_MQTT_PASSWORD
-          uv run --project backend python -m pytest backend/tests/test_adaptive_lane_e2e.py backend/tests/test_deployment_rehearsal.py -q --tb=short
+          uv run --frozen --project backend python -m pytest backend/tests/test_adaptive_lane_e2e.py backend/tests/test_deployment_rehearsal.py -q --tb=short --junitxml="$OFFKEY_REHEARSAL_DIR/deployment-results.xml"
+          python3 - <<'PY'
+          import os, xml.etree.ElementTree as ET
+          from pathlib import Path
+          cases = ET.parse(Path(os.environ["OFFKEY_REHEARSAL_DIR"]) / "deployment-results.xml").findall(".//testcase")
+          if len(cases) != 2 or any(case.find("skipped") is not None for case in cases):
+              raise SystemExit("Both real deployment rehearsal tests must execute without skips")
+          PY
 
       - name: Verify visual pipelines against the production frontend and worker
         timeout-minutes: 15
@@ -138,6 +157,18 @@ jobs:
           if-no-files-found: error
           overwrite: true
           retention-days: 90
+
+      - name: Save compatible binary rollback evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: compatible-binary-rollback
+          path: |
+            ${{ env.OFFKEY_REHEARSAL_DIR }}/binary-rollback-evidence.json
+            ${{ env.OFFKEY_REHEARSAL_DIR }}/compatible-release.json
+            ${{ env.OFFKEY_REHEARSAL_DIR }}/deployment-results.xml
+          if-no-files-found: ignore
+          retention-days: 30
 
       - name: Collect rehearsal diagnostics
         if: failure()

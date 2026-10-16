@@ -1,0 +1,244 @@
+{
+  "environment": {
+    "python": "3.14.8 (main, Oct  6 2026, 02:01:53) [GCC 12.2.0]",
+    "platform": "Linux-6.18.54.1-microsoft-standard-WSL2-x86_64-with-glibc2.36",
+    "aberrant": "1.3.0",
+    "cpu_model": "AMD Ryzen 5 7530U with Radeon Graphics",
+    "logical_cpus_visible": 12,
+    "cgroup_cpu_max": "100000 100000",
+    "cgroup_memory_max_bytes": "1073741824",
+    "thread_controls": {
+      "OPENBLAS_NUM_THREADS": "1",
+      "OMP_NUM_THREADS": "1",
+      "MKL_NUM_THREADS": "1",
+      "NUMEXPR_NUM_THREADS": "1"
+    }
+  },
+  "settings": {
+    "samples": 100,
+    "repeats": 3,
+    "warmup": 512,
+    "bounds_samples": 2000,
+    "seed": 42,
+    "timing_only": false
+  },
+  "timing_scope": "Numeric score/learn and bounded diagnostics; excludes I/O",
+  "workloads": {
+    "representative": {
+      "nodes": 9,
+      "edges": 9,
+      "input_features": 8,
+      "fingerprint": "8ea1b0b8a78e0488a8fbe056d92b902f2ff58e8b6ab82d58c4b255b14625f378",
+      "detector": {
+        "id": "model",
+        "kind": "detector",
+        "component": "detector:aberrant_online_isolation_forest",
+        "contract_version": 1,
+        "params": {
+          "branching_factor": 2,
+          "max_leaf_samples": 16,
+          "metric": "axisparallel",
+          "n_jobs": 1,
+          "num_trees": 100,
+          "seed": 42,
+          "subsample": 1.0,
+          "tree_type": "adaptive",
+          "window_size": 512
+        },
+        "label": null
+      },
+      "feature_components": [
+        {
+          "id": "selected",
+          "kind": "transform",
+          "component": "features.select",
+          "contract_version": 1,
+          "params": {
+            "features": [
+              "f0",
+              "f1",
+              "f2",
+              "f3",
+              "f4",
+              "f5"
+            ]
+          },
+          "label": null
+        },
+        {
+          "id": "scale",
+          "kind": "transform",
+          "component": "adaptive.standard_scaler",
+          "contract_version": 1,
+          "params": {
+            "with_std": true
+          },
+          "label": null
+        },
+        {
+          "id": "projection",
+          "kind": "transform",
+          "component": "adaptive.uncentered_pca",
+          "contract_version": 1,
+          "params": {
+            "n_components": 3,
+            "n0": 16,
+            "tol": 1e-07,
+            "forgetting_factor": null
+          },
+          "label": null
+        },
+        {
+          "id": "raw",
+          "kind": "transform",
+          "component": "features.select",
+          "contract_version": 1,
+          "params": {
+            "features": [
+              "f6",
+              "f7"
+            ]
+          },
+          "label": null
+        },
+        {
+          "id": "merged",
+          "kind": "merge",
+          "component": "features.merge",
+          "contract_version": 1,
+          "params": {},
+          "label": null
+        }
+      ],
+      "comparison_method": "Paired states, alternating 10-observation chunks",
+      "cpu_overhead_percent": -9.095677278217396,
+      "cpu_ns_per_observation_disabled": 50587091.42,
+      "cpu_ns_per_observation_enabled": 45985852.84,
+      "wall_overhead_percent": -9.186027752121396,
+      "wall_ns_per_observation_disabled": 50657540.73,
+      "wall_ns_per_observation_enabled": 46004124.98,
+      "timings": {
+        "disabled": [
+          {
+            "wall_ns": 18699542920,
+            "cpu_ns": 18234747472
+          },
+          {
+            "wall_ns": 5065754073,
+            "cpu_ns": 5058709142
+          },
+          {
+            "wall_ns": 4279334925,
+            "cpu_ns": 4276342746
+          }
+        ],
+        "enabled": [
+          {
+            "wall_ns": 17410334250,
+            "cpu_ns": 17123062194
+          },
+          {
+            "wall_ns": 4600412498,
+            "cpu_ns": 4598585284
+          },
+          {
+            "wall_ns": 3928384734,
+            "cpu_ns": 3927926766
+          }
+        ]
+      },
+      "equal_scores_and_alarms": true
+    },
+    "light": {
+      "nodes": 5,
+      "edges": 4,
+      "input_features": 1,
+      "fingerprint": "5f5aecb3bb11e56a33e86add6a06d1988df17b864052545ef6702cc7c84ecb65",
+      "detector": {
+        "id": "model",
+        "kind": "detector",
+        "component": "detector:aberrant_moving_average",
+        "contract_version": 1,
+        "params": {
+          "window_size": 128
+        },
+        "label": null
+      },
+      "feature_components": [
+        {
+          "id": "scale",
+          "kind": "transform",
+          "component": "adaptive.standard_scaler",
+          "contract_version": 1,
+          "params": {
+            "with_std": true
+          },
+          "label": null
+        }
+      ],
+      "comparison_method": "Paired states, alternating 10-observation chunks",
+      "cpu_overhead_percent": 68.01873832031657,
+      "cpu_ns_per_observation_disabled": 162119.12,
+      "cpu_ns_per_observation_enabled": 272390.5,
+      "wall_overhead_percent": 67.80089219733102,
+      "wall_ns_per_observation_disabled": 162654.6,
+      "wall_ns_per_observation_enabled": 272935.87,
+      "timings": {
+        "disabled": [
+          {
+            "wall_ns": 16264670,
+            "cpu_ns": 16211912
+          },
+          {
+            "wall_ns": 16265460,
+            "cpu_ns": 16175671
+          },
+          {
+            "wall_ns": 18318360,
+            "cpu_ns": 18252621
+          }
+        ],
+        "enabled": [
+          {
+            "wall_ns": 27293587,
+            "cpu_ns": 27239050
+          },
+          {
+            "wall_ns": 25172711,
+            "cpu_ns": 25120673
+          },
+          {
+            "wall_ns": 33182622,
+            "cpu_ns": 32313220
+          }
+        ]
+      },
+      "equal_scores_and_alarms": true
+    }
+  },
+  "bounds": {
+    "maximum_edges": {
+      "observations": 4000,
+      "node_count": 64,
+      "maximum_snapshot_bytes": 47450,
+      "snapshot_budget_bytes": 131072,
+      "late_diagnostic_growth_bytes": 0,
+      "retained_diagnostic_bytes": 132024,
+      "retention_measurement": "Collector-owned Python objects, counted once",
+      "node_keys_stable": true,
+      "maximum_preview_values": 8
+    },
+    "maximum_width": {
+      "observations": 4000,
+      "node_count": 64,
+      "maximum_snapshot_bytes": 77941,
+      "snapshot_budget_bytes": 131072,
+      "late_diagnostic_growth_bytes": 0,
+      "retained_diagnostic_bytes": 145803,
+      "retention_measurement": "Collector-owned Python objects, counted once",
+      "node_keys_stable": true,
+      "maximum_preview_values": 8
+    }
+  },
+  "representative_target_met": true
+}

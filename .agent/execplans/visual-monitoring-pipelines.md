@@ -45,7 +45,7 @@ this file is the living execution plan following the existing repository convent
   saved/bound/preflighted/replaced pipeline with actual diagnostics.
 - [ ] Gate 3: durable claims, lifecycle cancellation/reconciliation, deployment
   arbitration, recovery/fatal shutdown and migration/rollback verification.
-- [ ] Gate 4: shared library and complete React Flow editor, templates, bindings,
+- [x] Gate 4: shared library and complete React Flow editor, templates, bindings,
   inspector, keyboard/mobile navigation and coordinated live polling.
 - [ ] Real MQTT/PostgreSQL/Swarm/browser verification, performance/bounds checks,
   full repository gates and independent final reviews.
@@ -198,3 +198,45 @@ waiting dependencies. Text bounds cover both UTF-8 and escaped JSON; combined
 Explicit 4 GiB preflight budgets are validated using that budget throughout.
 Final full browser, updated production integration and the extended graph
 backup/restore/redeployment rehearsal remain the release gates for this head.
+
+2026-10-16 final implementation head 112b032: full CI passed 647 frontend tests
+in 60 files, lint and production build. Python 3.12 and 3.14 each passed 1,062
+backend tests, with environment-gated infrastructure cases delegated to their
+dedicated jobs; generated wire/catalog drift checks and all hooks passed. Native
+Linux production RADAR integration passed 187 tests with zero skips. Docker,
+MQTT compatibility, documentation, infrastructure and CodeQL checks passed.
+
+All three latest-image local browser journeys passed in 5.6 minutes, including
+adaptive replacement/history, static fitting, Sources navigation, diagnostic
+readiness, keyboard/mobile/dark mode and actual concurrent-draft save-as-copy.
+The final 64-node/100-feature fixture recorded 93.7 ms worst interaction,
+303,060 bytes retained heap growth and a 521,820-byte selected-node report.
+Tracked runtime, browser and scoped cgroup-memory evidence is under
+`docs/development/evidence/monitoring-pipelines-*.json`.
+
+Final sustained numeric probes completed 4,000 observations per maximum fixture,
+with zero collector growth over the final 2,000. The representative median target
+passed with identical scores/alarms; the developer guide records raw timings,
+host variability and the larger relative cost for a cheap detector.
+
+The production restore/three-deployment graph rehearsal passed (2 real tests,
+650.52 s), preserving immutable bindings, layout, lineage and fresh operational
+samples while authoring returned to false. The following browser CI invocation
+failed before test execution because Playwright cleared its output-directory
+login-state file. The pipeline project now starts with empty inline state and
+signs in independently; a real journey passed with an intentionally absent auth
+file, which remained absent, and no setup dependency ran.
+An acceptance audit also identified that same-release restore is not proof of
+software binary rollback; a real compatible-reference/current round trip is being
+added before Gate 3 can close. Main advanced to 8e005c1 (landing illustration)
+and was merged cleanly; monitoring code is unaffected by that main change.
+
+The revised software rollback gate builds the actual immutable compatible source
+8dc76b0646a3365325a880340201d14febf97a0e with the production Dockerfiles. It checks
+matching SQL/catalog/dependency contracts before building, then uses the existing
+three cutovers for current backup restoration, older compatible binaries, and
+current binaries again. Every phase must preserve live graph processing and
+history while actual deployed image digests match the selected manifest. This is
+a test-only compatibility reference, not an eligible production release. Local
+guard tests, real archived-source compatibility and a real Docker ownership check
+passed; the complete new binary rollback CI gate is pending.

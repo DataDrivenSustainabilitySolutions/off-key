@@ -11,9 +11,16 @@ import os
 import subprocess
 import sys
 import time
-from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
+from rehearsal_releases import (
+    build_local_images,
+    compatible_release,
+    record_cutover,
+    release_model,
+    selected_release,
+    stop_registry,
+)
 from support import ROOT, render, run
 
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -22,15 +29,6 @@ from pin_release import APPLICATION_IMAGES, pin
 
 PROJECT = ROOT.parent
 STACK = "offkey-smoke"
-REGISTRY = "offkey-smoke-registry"
-BUILDS = {
-    "api": ("off-key-api-gateway", "services/api/gateway"),
-    "tactic": ("off-key-tactic-middleware", "services/middleware/tactic"),
-    "mqtt_proxy": ("off-key-mqtt-proxy", "services/mqtt/proxy"),
-    "mqtt_radar": ("off-key-mqtt-radar", "services/mqtt/radar"),
-    "db_sync": ("off-key-db-sync", "services/db/sync"),
-    "frontend": ("off-key-frontend", None),
-}
 
 
 def wait(probe, description, timeout=300):
@@ -131,59 +129,7 @@ def images(release, revision):
             )
         return
 
-    run(
-        "docker",
-        "run",
-        "-d",
-        "--name",
-        REGISTRY,
-        "-p",
-        "127.0.0.1:5010:5000",
-        "registry:3",
-    )
-
-    def build(item):
-        name, (service, source) = item
-        reference = f"localhost:5010/{service}:smoke"
-        args = [
-            "docker",
-            "build",
-            "--label",
-            f"org.opencontainers.image.revision={revision}",
-            "-t",
-            reference,
-        ]
-        if source is None:
-            args += ["--target", "production", str(PROJECT / "frontend")]
-        else:
-            args += [
-                "--build-arg",
-                f"SERVICE_NAME={service}",
-                "--build-arg",
-                f"SERVICE_ROOT={source}",
-                str(PROJECT / "backend"),
-            ]
-        print(f"Building production {name}", flush=True)
-        run(*args, timeout=900)
-        run("docker", "push", reference, timeout=300)
-        references = json.loads(
-            run(
-                "docker",
-                "image",
-                "inspect",
-                reference,
-                "--format",
-                "{{json .RepoDigests}}",
-            ).stdout
-        )
-        return name, next(
-            value
-            for value in references
-            if value.startswith(reference.split(":smoke")[0] + "@")
-        )
-
-    with ThreadPoolExecutor(max_workers=3) as pool:
-        release["images"].update(pool.map(build, BUILDS.items()))
+    build_local_images(release, revision, PROJECT)
 
 
 def prepare(directory):
@@ -440,9 +386,17 @@ def prepare(directory):
     print("Production Swarm is ready for the existing E2E suite", flush=True)
 
 
-def redeploy(directory, restore):
+def redeploy(directory, restore, target="current"):
     model_path = directory / "stack/deployment-model.json"
-    model = json.loads((directory / "stack/base-deployment-model.json").read_text())
+    release = selected_release(directory, target)
+    inputs_path = directory / "inputs.json"
+    inputs = json.loads(inputs_path.read_text())
+    inputs["release"] = release
+    inputs_path.write_text(json.dumps(inputs))
+    model = release_model(
+        json.loads((directory / "stack/base-deployment-model.json").read_text()),
+        release,
+    )
     if restore:
         model["services"]["postgres"].pop("volumes", None)
     model_path.write_text(json.dumps(model))
@@ -454,7 +408,11 @@ def redeploy(directory, restore):
     )
     ready(directory)
     deploy(directory, "verify", persist_postgres=not restore)
-    print("Production deployment and verification completed", flush=True)
+    record_cutover(directory, release, target, restore, STACK)
+    print(
+        f"Production deployment and verification completed: {release['application_revision']}",
+        flush=True,
+    )
 
 
 def cleanup(directory):
@@ -503,7 +461,7 @@ def cleanup(directory):
             "rehearsal volume removal",
             timeout=90,
         )
-    run("docker", "rm", "-f", REGISTRY, check=False)
+    stop_registry()
     node = json.loads((directory / "node.json").read_text())
     for label in ("backend", "frontend"):
         if label in node["Spec"].get("Labels", {}):
@@ -528,15 +486,23 @@ def cleanup(directory):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=("prepare", "redeploy", "cleanup"))
+    parser.add_argument(
+        "action", choices=("prepare", "prepare-rollback", "redeploy", "cleanup")
+    )
     parser.add_argument("--directory", type=Path, required=True)
     parser.add_argument("--restore", action="store_true")
+    parser.add_argument("--reference-repository", type=Path)
+    parser.add_argument(
+        "--release", choices=("current", "compatible"), default="current"
+    )
     args = parser.parse_args()
     args.directory = args.directory.resolve()
     args.directory.mkdir(parents=True, exist_ok=True, mode=0o700)
     if args.action == "prepare":
         prepare(args.directory)
+    elif args.action == "prepare-rollback":
+        compatible_release(args.directory, PROJECT, args.reference_repository)
     elif args.action == "redeploy":
-        redeploy(args.directory, args.restore)
+        redeploy(args.directory, args.restore, args.release)
     else:
         cleanup(args.directory)

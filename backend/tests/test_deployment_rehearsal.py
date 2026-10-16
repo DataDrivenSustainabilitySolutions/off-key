@@ -266,7 +266,7 @@ def create_saved_graph(client, entity):
     )
 
 
-def assert_one_graph_workload(saved):
+def assert_one_graph_workload(saved, expected_image):
     identifiers = subprocess.run(
         [
             "docker",
@@ -304,6 +304,21 @@ def assert_one_graph_workload(saved):
         if json.loads(encoded).get("radar_service_id") in saved.service_ids
     ]
     assert len(matches) == 1, "Retired graph workers survived deployment"
+    actual_image = subprocess.run(
+        [
+            "docker",
+            "service",
+            "inspect",
+            "--format",
+            "{{.Spec.TaskTemplate.ContainerSpec.Image}}",
+            matches[0],
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    ).stdout.strip()
+    assert actual_image.split("@")[-1] == expected_image.split("@")[-1]
     states = subprocess.run(
         [
             "docker",
@@ -323,7 +338,7 @@ def assert_one_graph_workload(saved):
     assert [state.split()[0] for state in states] == ["Running"]
 
 
-def assert_graph_restored(client, entity, saved, workers):
+def assert_graph_restored(client, entity, saved, workers, release):
     assert not get_json(client, "/v1/monitors/pipelines/catalog")["authoring_enabled"]
     matches = [item for item in workers if item["display_name"] == saved.display_name]
     assert len(matches) == 1
@@ -361,10 +376,10 @@ def assert_graph_restored(client, entity, saved, workers):
         )
         == saved.revision
     )
-    assert_one_graph_workload(saved)
+    assert_one_graph_workload(saved, release["images"]["mqtt_radar"])
 
 
-def test_redeploy_restores_saved_state_and_resumes_one_monitor():
+def test_redeploy_restores_state_rolls_back_compatible_binaries_and_resumes_once():
     directory = Path(os.environ["OFFKEY_REHEARSAL_DIR"])
     root = Path(__file__).resolve().parents[2]
     headers = {"Authorization": f"Bearer {os.environ['E2E_AUTH_TOKEN']}"}
@@ -401,8 +416,32 @@ def test_redeploy_restores_saved_state_and_resumes_one_monitor():
             )
             started.raise_for_status()
             _wait_until_service_accepts_data(client, started.json()["service_id"])
-            verified = json.loads((directory / "stack/release.json").read_text())
-            for restore in (True, False, False):
+            current_release = json.loads(
+                (directory / "production-release.json").read_text()
+            )["release"]
+            compatible = json.loads(
+                (directory / "compatible-release.json").read_text()
+            )["release"]
+            assert (
+                compatible["application_revision"]
+                != current_release["application_revision"]
+            )
+            for name in (
+                "api",
+                "tactic",
+                "mqtt_proxy",
+                "mqtt_radar",
+                "db_sync",
+                "frontend",
+            ):
+                assert compatible["images"][name] != current_release["images"][name]
+            # Restore B's data, run older pipeline-compatible A, then return to B.
+            # The rollback keeps the live schema/data; no pre-feature image is used.
+            for restore, target, expected in (
+                (True, "current", current_release),
+                (False, "compatible", compatible),
+                (False, "current", current_release),
+            ):
                 command = [
                     "uv",
                     "run",
@@ -414,6 +453,8 @@ def test_redeploy_restores_saved_state_and_resumes_one_monitor():
                     "redeploy",
                     "--directory",
                     str(directory),
+                    "--release",
+                    target,
                 ]
                 if restore:
                     command.append("--restore")
@@ -448,12 +489,30 @@ def test_redeploy_restores_saved_state_and_resumes_one_monitor():
                 assert len(workers) == 1
                 assert workers[0]["display_name"] == "Saved monitoring service"
                 _wait_until_service_accepts_data(client, workers[0]["id"])
-                assert_graph_restored(client, graph_entity, graph, monitors.json())
+                assert_graph_restored(
+                    client, graph_entity, graph, monitors.json(), expected
+                )
                 record = json.loads((directory / "stack/release.json").read_text())
                 assert (
-                    record["application_revision"] == verified["application_revision"]
+                    record["application_revision"] == expected["application_revision"]
                 )
                 assert not (directory / "stack/release-maintenance.json").exists()
+                evidence_path = directory / "binary-rollback-evidence.json"
+                evidence = json.loads(evidence_path.read_text())
+                evidence["cutovers"][-1]["graph"] = {
+                    "revision_id": graph.revision["id"],
+                    "run_id": graph.run_ids[-1],
+                    "history_run_ids": graph.run_ids,
+                    "binding_fingerprint": graph.initial_run["execution"][
+                        "fingerprint"
+                    ],
+                    "layout_preserved": True,
+                    "binding_metadata_preserved": True,
+                    "coherent_score_observed": True,
+                    "one_owned_worker": True,
+                    "authoring_enabled": False,
+                }
+                evidence_path.write_text(json.dumps(evidence, indent=2))
             assert list((directory / "backups/postgres").glob("*/*.dump"))
             publish.single(topic, "24.5", hostname="localhost", port=1884, qos=1)
             wait_for_measurement(client, entity, 24.5)

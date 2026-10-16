@@ -100,12 +100,13 @@ no additional inference, MQTT subscription or Docker inspection. At most one
 observation envelope is sampled per second and retained, with eight input/output
 values per node. Unexecuted nodes carry a reason and never reuse previous values.
 The serialized snapshot is capped at 128 KiB, with status and counters taking
-priority over previews. Static fitting appears as a batch summary. Adaptive nodes also report committed
-update counts, observed/required history in the component's own units, and their
-immediate blocking prerequisites. A zero required count means no quantified
+priority over previews. Static fitting appears as a batch summary. Adaptive nodes
+also report committed update counts, observed/required history in the component's
+own units, and their immediate blocking prerequisites. A zero required count means no quantified
 minimum was supplied; the ready flag remains authoritative. Committed counts
 include restored history, while collector call counts can restart after recovery.
-Readiness reasons and errors retain at most 128 and 256 UTF-8 bytes respectively.
+Readiness reasons and errors retain at most 128 and 256 UTF-8 bytes respectively,
+with the same ceilings applied after JSON escaping.
 
 The ownership-fenced heartbeat publishes diagnostics every five seconds during
 healthy operation. One member-scoped workspace request returns service summaries
@@ -150,8 +151,9 @@ Python 3.14.8 and Aberrant 1.3.0. Docker limited the process to one CPU
 `OPENBLAS_NUM_THREADS`, `OMP_NUM_THREADS`, `MKL_NUM_THREADS` and
 `NUMEXPR_NUM_THREADS` were all `1`. Each of three trials used 512 warm-up
 observations, 32 calibration score/learn calls and 100 timed observations. The
-collector used its normal one-second sampling interval. The report records
-hardware, thread controls, cgroup bounds, parameters and raw trial timings.
+collector used its normal one-second sampling interval, including committed-update
+and readiness metadata. The report records hardware, thread controls, cgroup
+bounds, parameters and raw trial timings.
 
 The representative graph has eight inputs and nine nodes: six selected features
 pass through online standard scaling and three-component uncentered PCA, two
@@ -162,37 +164,61 @@ input, standard scaling and a moving-average detector with a 128-value window.
 
 | Workload | CPU without observation | CPU with observation | CPU change | Wall change |
 | --- | ---: | ---: | ---: | ---: |
-| Representative forest | 145.788 ms/observation | 144.020 ms/observation | -1.21% | +1.81% |
-| Cheap moving average | 0.516 ms/observation | 0.792 ms/observation | +53.36% | +74.86% |
+| Representative forest | 50.587 ms/observation | 45.986 ms/observation | -9.10% | -9.19% |
+| Cheap moving average | 0.162 ms/observation | 0.272 ms/observation | +68.02% | +67.80% |
 
-These are medians of aggregate trial timings. The small negative CPU difference
-is measurement noise, with no claimed numerical speed improvement. The <=10%
-overhead target applies to this documented representative workload. Cheap
-detectors can have much larger relative overhead; the measured absolute CPU
-increase there was 0.276 ms/observation. Absolute throughput varies with host
-load, and these measurements are not an end-to-end throughput guarantee.
+These are medians of aggregate trial timings. All three paired representative
+trials measured lower CPU time with observation: no positive cost was measurable
+at this probe's precision. Those negative differences reflect residual host
+variation, with no claimed numerical speed improvement. Individual trials without
+observation ranged from 42.763 to 182.347 ms/observation, so this provides scoped
+acceptance evidence rather than a precise overhead estimate. The <=10% target
+applies to this documented representative workload. Cheap detectors can have much
+larger relative overhead; their measured absolute CPU increase was 0.110
+ms/observation. Absolute throughput varies with host load, and these measurements
+are not an end-to-end throughput guarantee.
 
-Two separate maximum-size fixtures ran 2,000 scored/learned observations each
+Two separate maximum-size fixtures ran 4,000 scored/learned observations each
 after warm-up. One has 64 nodes, 128 edges and 100 source features with shared
 branches and reconvergence; the other carries all 100 features through a 64-node,
 63-edge chain. Every observation was captured for this retention probe, a
 stronger allocation load than normal sampling. Both retain stable node keys,
 eight preview values per side and one observation envelope.
 
-| Maximum fixture | Largest serialized snapshot | Retained collector objects | Growth over final 1,000 observations |
+| Maximum fixture | Largest serialized snapshot | Retained collector objects | Growth over final 2,000 observations |
 | --- | ---: | ---: | ---: |
-| Reconvergent graph | 39,840 bytes | 114,034 bytes | 8 bytes |
-| Full-width chain | 71,985 bytes | 127,813 bytes | 232 bytes |
+| Reconvergent graph | 47,450 bytes | 132,024 bytes | 0 bytes |
+| Full-width chain | 77,941 bytes | 145,803 bytes | 0 bytes |
 
 Retained sizes count collector-owned reachable Python objects once, excluding
 the numerical models and allocator overhead. Snapshots stay below 131,072 bytes.
-Separate maximum-node tests bound every error message to 256 UTF-8 bytes and
-verify the status envelope with multibyte exceptions. The fixture tests also
-verify one learning update per eligible node and exact observation-on/off score
+The [memory capture](evidence/monitoring-pipelines-memory.json), sampled during the
+final fixture, recorded a cumulative whole-container cgroup `memory.peak` of
+147,513,344 bytes (140.68 MiB), including all workloads up to that point; this is
+not a per-fixture measurement. Separate maximum-node tests combine
+100-character IDs, 128 dependency links, multibyte/control-character readiness
+reasons and errors, bounding both UTF-8 and JSON-escaped text. The fixture tests
+also verify one learning update per eligible node and exact observation-on/off score
 equivalence. Timing-only reruns use `--timing-only`; a full run also repeats the
 sustained bounds probes.
 
+The [runtime evidence](evidence/monitoring-pipelines-runtime.json) preserves the
+raw trials, component parameters, environment and retention results. Separate
+[browser evidence](evidence/monitoring-pipelines-browser.json) records editor
+rendering checks.
+
 ## Rollout
+
+The production rehearsal restores the current release's backup, runs an older
+pipeline-compatible build, then returns to the current build. Each cutover checks
+the actual application and worker image digests, fresh graph scoring, bindings,
+layout, retained run history and single-worker ownership with authoring disabled.
+The test-only reference is immutable commit
+`8dc76b0646a3365325a880340201d14febf97a0e`; its migration ledger, numerical catalog
+and backend lock must match the current source before it can build. This fixture
+is not an eligible production release. Changes to those contracts require review
+of the rollback reference. CI retains nonsecret source/image identities and the
+asserted graph invariants as its compatible-binary-rollback artifact.
 
 Ship schema/runtime compatibility with `TACTIC_PIPELINE_AUTHORING_ENABLED=false`.
 Enable authoring only after numerical, real infrastructure, lifecycle, browser and

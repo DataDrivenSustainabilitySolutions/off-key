@@ -55,8 +55,12 @@ export default defineConfig({
     {
       name: "pipeline-workspace",
       testMatch: /pipeline-workspace\.spec\.ts/,
-      use: { ...chromiumUse, storageState: authStateFile, actionTimeout: 30_000 },
-      dependencies: ["auth-setup"],
+      // Every journey signs in afresh; a previous invocation's output is disposable.
+      use: {
+        ...chromiumUse,
+        storageState: { cookies: [], origins: [] },
+        actionTimeout: 30_000,
+      },
     },
     {
       name: "system-workspace",

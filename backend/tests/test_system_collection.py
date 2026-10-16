@@ -9,7 +9,11 @@ from off_key_core.db.models import (
     Charger,
     CollectionBinding,
     CollectionConfiguration,
+    MonitoringPipeline,
     MonitoringService,
+    PipelineActivation,
+    PipelineRevision,
+    PipelineRun,
 )
 from off_key_core.db.system import (
     SystemCollectionConfiguration,
@@ -55,6 +59,10 @@ def session(tmp_path, monkeypatch):
         Charger,
         CollectionBinding,
         MonitoringService,
+        MonitoringPipeline,
+        PipelineRevision,
+        PipelineRun,
+        PipelineActivation,
     ):
         table = model.__table__.to_metadata(metadata)
         for column in table.columns:

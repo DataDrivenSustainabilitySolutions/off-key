@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 
 from off_key_core.config.logs import logger
 from off_key_core.models import ADAPTIVE_MODEL_FAMILY, STATIC_MODEL_FAMILY
-from off_key_core.schemas.radar import RadarStartConfig
+from off_key_core.schemas.radar import RadarMqttOverrides, RadarStartConfig
 from sqlalchemy.engine import make_url
 
 from ...config.config import (
@@ -82,7 +82,9 @@ def build_radar_environment(
 ) -> dict[str, str]:
     """Compile validated service configuration into RADAR environment variables."""
     monitoring = config.monitoring
-    mqtt_config = config.mqtt_config
+    mqtt_config = RadarMqttOverrides.model_validate(
+        config.mqtt_config or {}
+    ).model_dump()
     performance = config.performance_config
     defaults = get_tactic_settings().config.radar_defaults
     runtime = get_radar_container_runtime_settings()
@@ -170,6 +172,10 @@ def build_radar_environment(
 
     monitoring = monitoring.model_copy(update={"model_params": validated_params})
     environment["RADAR_MONITORING_CONFIG"] = monitoring.model_dump_json()
+    if config.pipeline is not None:
+        environment["RADAR_PIPELINE_CONFIG"] = config.pipeline.model_dump_json()
+    if config.runtime_image is not None:
+        environment["RADAR_RUNTIME_IMAGE"] = config.runtime_image
     logger.info(
         "Model params validated for %s: %s", monitoring.model_type, validated_params
     )

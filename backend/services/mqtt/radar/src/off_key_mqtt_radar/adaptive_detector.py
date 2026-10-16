@@ -190,7 +190,10 @@ class AdaptiveStreamDetectionService:
         if capabilities.higher_is_more_anomalous is not True:
             raise ValueError("RADAR requires higher scores to mean more anomalous")
         warmup = capabilities.warmup
-        if warmup.unit != WarmupUnit.EVENTS or warmup.minimum is None:
+        if (
+            warmup.unit not in {WarmupUnit.EVENTS, WarmupUnit.RETAINED_VALUES}
+            or warmup.minimum is None
+        ):
             raise ValueError("RADAR requires a known warm-up in aligned observations")
         minimum = warmup.minimum
         for step in self.adaptive_config.preprocessing_steps:
@@ -275,7 +278,7 @@ class AdaptiveStreamDetectionService:
         charger_id: str | None,
         started: float,
     ) -> AnomalyResult:
-        self.pipeline.learn_one(data)
+        self._learn(data)
         self.warmup_count += 1
         self.processed_count += 1
         if self.warmup_count >= self.adaptive_config.training_window_size:
@@ -290,7 +293,7 @@ class AdaptiveStreamDetectionService:
         started: float,
     ) -> AnomalyResult:
         score = self._score(data)
-        self.pipeline.learn_one(data)
+        self._learn(data)
         self.calibration_scores.append(score)
         self.calibration_count += 1
         self.processed_count += 1
@@ -323,7 +326,7 @@ class AdaptiveStreamDetectionService:
             raise RuntimeError("Adaptive threshold is not initialized")
         score = self._score(data)
         is_anomaly = score > self.threshold
-        self.pipeline.learn_one(data)
+        self._learn(data)
         self.operational_count += 1
         self.processed_count += 1
         if is_anomaly:
@@ -346,6 +349,10 @@ class AdaptiveStreamDetectionService:
         if not math.isfinite(score):
             raise ValueError("Aberrant returned a non-finite anomaly score")
         return score
+
+    def _learn(self, data: dict[str, float]) -> None:
+        """One learning hook shared by legacy and graph monitoring lifecycles."""
+        self.pipeline.learn_one(data)
 
     def _result(
         self,

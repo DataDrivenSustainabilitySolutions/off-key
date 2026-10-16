@@ -1,0 +1,350 @@
+import type { PipelineCatalog, PipelineValidation } from "./contracts";
+import { ParameterFields, type FieldDescriptor } from "./ParameterFields";
+import {
+  connectNodes,
+  moveMergeInput,
+  nodeOptionLabel,
+  removeNode,
+  type GraphDocument,
+} from "./model";
+
+type Props = {
+  document: GraphDocument;
+  catalog: PipelineCatalog;
+  selected?: string;
+  validation?: PipelineValidation;
+  readOnly?: boolean;
+  onSelect: (id: string) => void;
+  onChange: (document: GraphDocument) => void;
+};
+
+export function PipelineInspector({
+  document,
+  catalog,
+  selected,
+  validation,
+  readOnly,
+  onSelect,
+  onChange,
+}: Props) {
+  const node = document.definition.nodes.find((item) => item.id === selected);
+  const component = catalog.components.find(
+    (item) => item.id === node?.component,
+  );
+  const incoming = document.definition.edges
+    .filter((edge) => edge.target === selected)
+    .sort((left, right) => left.order - right.order);
+  const inputs = [
+    ...new Set(
+      incoming.flatMap(
+        (edge) =>
+          validation?.features[edge.source]?.map((feature) => feature.name) ??
+          [],
+      ),
+    ),
+  ];
+  const directSource = incoming.some(
+    (edge) =>
+      document.definition.nodes.find((item) => item.id === edge.source)
+        ?.kind === "source",
+  );
+  const features = inputs.length
+    ? inputs
+    : directSource
+      ? document.definition.input_slots.map((slot) => slot.id)
+      : [];
+  const featureLabels = Object.fromEntries(
+    document.definition.input_slots.map((slot) => [
+      slot.id,
+      slot.label === slot.id ? slot.id : `${slot.label} · ${slot.id}`,
+    ]),
+  );
+  return (
+    <aside className="pl-inspector" aria-label="Component inspector">
+      <label className="pl-field">
+        <span>Selected component</span>
+        <select
+          value={selected ?? ""}
+          onChange={(event) => onSelect(event.target.value)}
+        >
+          <option value="">Choose component</option>
+          {document.definition.nodes.map((item) => (
+            <option key={item.id} value={item.id}>
+              {nodeOptionLabel(item, document, catalog.components)}
+            </option>
+          ))}
+        </select>
+      </label>
+      {node ? (
+        <>
+          <h3>{component?.label ?? node.component}</h3>
+          {component?.description && (
+            <p className="pl-help">{component.description}</p>
+          )}
+          {node.kind === "detector" && (
+            <label className="pl-field">
+              <span>Detector model</span>
+              <select
+                aria-label="Detector model"
+                value={node.component}
+                disabled={readOnly}
+                onChange={(event) => {
+                  const replacement = catalog.components.find(
+                    (item) => item.id === event.target.value,
+                  );
+                  if (!replacement) return;
+                  const params = Object.fromEntries(
+                    replacement.fields
+                      .filter((field) => field.default !== undefined)
+                      .map((field) => [field.name, field.default!]),
+                  );
+                  onChange({
+                    ...document,
+                    definition: {
+                      ...document.definition,
+                      nodes: document.definition.nodes.map((item) =>
+                        item.id === node.id
+                          ? {
+                              ...item,
+                              component: replacement.id,
+                              contract_version:
+                                replacement.contract_version ?? 1,
+                              params,
+                            }
+                          : item,
+                      ),
+                    },
+                  });
+                }}
+              >
+                {catalog.components
+                  .filter(
+                    (item) =>
+                      item.kind === "detector" &&
+                      item.strategies.includes(document.definition.strategy),
+                  )
+                  .map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.label}
+                    </option>
+                  ))}
+              </select>
+              <small className="pl-help">
+                Changing the model resets its parameters to catalog defaults.
+                Connections are retained.
+              </small>
+            </label>
+          )}
+          <label className="pl-field">
+            <span>Node title</span>
+            <input
+              maxLength={120}
+              value={document.layout.nodes[node.id]?.label ?? ""}
+              placeholder={component?.label ?? node.component}
+              disabled={readOnly}
+              onChange={(event) =>
+                onChange({
+                  ...document,
+                  layout: {
+                    ...document.layout,
+                    nodes: {
+                      ...document.layout.nodes,
+                      [node.id]: {
+                        x: 0,
+                        y: 0,
+                        ...document.layout.nodes[node.id],
+                        label: event.target.value,
+                      },
+                    },
+                  },
+                })
+              }
+            />
+          </label>
+          {component && (
+            <ParameterFields
+              fields={component.fields as FieldDescriptor[]}
+              values={node.params}
+              features={features}
+              featureLabels={featureLabels}
+              prefix={node.id}
+              readOnly={readOnly}
+              onChange={(params) =>
+                onChange({
+                  ...document,
+                  definition: {
+                    ...document.definition,
+                    nodes: document.definition.nodes.map((item) =>
+                      item.id === node.id ? { ...item, params } : item,
+                    ),
+                  },
+                })
+              }
+            />
+          )}
+          <h4>
+            Incoming connections{node.kind === "merge" ? " · output order" : ""}
+          </h4>
+          <ol className="pl-connections">
+            {incoming.map((edge, index) => (
+              <li key={edge.source}>
+                <span>
+                  {nodeOptionLabel(
+                    document.definition.nodes.find(
+                      (item) => item.id === edge.source,
+                    ),
+                    document,
+                    catalog.components,
+                  )}
+                </span>
+                {!readOnly && (
+                  <div>
+                    {node.kind === "merge" && (
+                      <>
+                        <button
+                          type="button"
+                          disabled={index === 0}
+                          aria-label={`Move input ${index + 1} earlier`}
+                          onClick={() =>
+                            onChange({
+                              ...document,
+                              definition: moveMergeInput(
+                                document.definition,
+                                node.id,
+                                index,
+                                -1,
+                              ),
+                            })
+                          }
+                        >
+                          ↑
+                        </button>
+                        <button
+                          type="button"
+                          disabled={index === incoming.length - 1}
+                          aria-label={`Move input ${index + 1} later`}
+                          onClick={() =>
+                            onChange({
+                              ...document,
+                              definition: moveMergeInput(
+                                document.definition,
+                                node.id,
+                                index,
+                                1,
+                              ),
+                            })
+                          }
+                        >
+                          ↓
+                        </button>
+                      </>
+                    )}
+                    <button
+                      type="button"
+                      aria-label={`Disconnect ${edge.source} from ${node.id}`}
+                      onClick={() =>
+                        onChange({
+                          ...document,
+                          definition: {
+                            ...document.definition,
+                            edges: document.definition.edges.filter(
+                              (item) => item !== edge,
+                            ),
+                          },
+                        })
+                      }
+                    >
+                      ×
+                    </button>
+                  </div>
+                )}
+              </li>
+            ))}
+          </ol>
+          {!incoming.length && (
+            <p className="pl-help">
+              {node.kind === "source"
+                ? "Aligned catalogue readings enter here."
+                : "No input connected."}
+            </p>
+          )}
+          {!readOnly &&
+            node.kind !== "source" &&
+            (node.kind === "merge" || !incoming.length) && (
+              <label className="pl-field">
+                <span>Connect input from</span>
+                <select
+                  value=""
+                  onChange={(event) => {
+                    onChange({
+                      ...document,
+                      definition: connectNodes(
+                        document.definition,
+                        event.target.value,
+                        node.id,
+                      ),
+                    });
+                  }}
+                >
+                  <option value="">Choose upstream component</option>
+                  {document.definition.nodes
+                    .filter(
+                      (item) =>
+                        item.id !== node.id &&
+                        item.kind !== "output" &&
+                        !incoming.some((edge) => edge.source === item.id),
+                    )
+                    .map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {nodeOptionLabel(item, document, catalog.components)}
+                      </option>
+                    ))}
+                </select>
+              </label>
+            )}
+          {validation?.features[node.id] && (
+            <>
+              <h4>Output features</h4>
+              <ul className="pl-lineage">
+                {validation.features[node.id]?.map((feature) => (
+                  <li key={feature.name}>
+                    <strong>
+                      {featureLabels[feature.name] ?? feature.name}
+                    </strong>
+                    <small>
+                      From{" "}
+                      {feature.slots
+                        .map((slot) => featureLabels[slot] ?? slot)
+                        .join(", ")}
+                    </small>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+          {validation?.issues
+            .filter((issue) => issue.node_id === node.id)
+            .map((issue, index) => (
+              <p key={index} className="pl-error" role="alert">
+                {issue.message}
+              </p>
+            ))}
+          {!readOnly && (
+            <button
+              type="button"
+              className="pl-danger"
+              onClick={() => onChange(removeNode(document, node.id))}
+            >
+              Remove component
+            </button>
+          )}
+        </>
+      ) : (
+        <p className="pl-help">
+          Select a component on the canvas or from the list. Connections and
+          parameters determine execution; visual position does not.
+        </p>
+      )}
+    </aside>
+  );
+}

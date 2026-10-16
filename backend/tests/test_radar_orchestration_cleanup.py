@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import docker
 import pytest
+from off_key_core.db import collection_runtime
 from off_key_core.schemas.radar import RadarStartConfig
 from off_key_tactic_middleware.config.config import DockerConfig
 from off_key_tactic_middleware.facades.docker import (
@@ -40,6 +41,8 @@ class _FakeAsyncDocker:
 def collection_lock(monkeypatch):
     # Docker lifecycle tests use mock sessions; real locking has separate coverage.
     monkeypatch.setattr(radar_module, "lock_collection_configuration", AsyncMock())
+    monkeypatch.setattr(radar_module, "pending_activations", AsyncMock(return_value=[]))
+    monkeypatch.setattr(radar_module, "lock_execution_records", AsyncMock())
 
 
 @pytest.fixture
@@ -47,6 +50,7 @@ def selected_collection(monkeypatch, request):
     stream = SimpleNamespace(
         accepted_topic=getattr(request, "param", "telemetry/charger-1/sine"),
         sensor=SimpleNamespace(value_type="number"),
+        value_type="number",
         signature=("source", "charger-1", "sine", "sample", 10),
     )
     snapshot = SimpleNamespace(
@@ -56,7 +60,7 @@ def selected_collection(monkeypatch, request):
     )
     monkeypatch.setattr(radar_module, "lock_collection_configuration", AsyncMock())
     monkeypatch.setattr(
-        radar_module, "read_collection_runtime", AsyncMock(return_value=snapshot)
+        collection_runtime, "read_collection_runtime", AsyncMock(return_value=snapshot)
     )
     return stream
 
@@ -168,7 +172,12 @@ async def test_teardown_managed_radar_workloads_removes_workloads_and_clears_db(
     session = AsyncMock()
     session.scalar.return_value = None
     session.execute = AsyncMock(
-        side_effect=[service_id_result, MagicMock(rowcount=0), MagicMock(rowcount=1)]
+        side_effect=[
+            service_id_result,
+            MagicMock(rowcount=0),
+            MagicMock(rowcount=0),
+            MagicMock(rowcount=1),
+        ]
     )
     session.commit = AsyncMock()
     session.rollback = AsyncMock()
@@ -181,8 +190,9 @@ async def test_teardown_managed_radar_workloads_removes_workloads_and_clears_db(
     assert summary["db_rows_deleted"] == 1
     statements = [call.args[0] for call in session.execute.await_args_list]
     assert "WHERE services.container_id IN" in str(statements[0])
-    assert "DELETE FROM mqtt_topics" in str(statements[1])
-    assert "DELETE FROM services" in str(statements[2])
+    assert "UPDATE monitoring_pipeline_runs" in str(statements[1])
+    assert "DELETE FROM mqtt_topics" in str(statements[2])
+    assert "DELETE FROM services" in str(statements[3])
     session.commit.assert_awaited_once()
     session.rollback.assert_not_awaited()
 
@@ -257,7 +267,12 @@ async def test_teardown_managed_radar_workloads_cleans_up_successes_on_partial_f
     session = AsyncMock()
     session.scalar.return_value = None
     session.execute = AsyncMock(
-        side_effect=[service_id_result, MagicMock(rowcount=0), MagicMock(rowcount=1)]
+        side_effect=[
+            service_id_result,
+            MagicMock(rowcount=0),
+            MagicMock(rowcount=0),
+            MagicMock(rowcount=1),
+        ]
     )
     session.commit = AsyncMock()
     session.rollback = AsyncMock()
@@ -586,7 +601,12 @@ async def test_teardown_managed_radar_workloads_handles_non_swarm_docker(
     session = AsyncMock()
     session.scalar.return_value = None
     session.execute = AsyncMock(
-        side_effect=[service_id_result, MagicMock(rowcount=0), MagicMock(rowcount=1)]
+        side_effect=[
+            service_id_result,
+            MagicMock(rowcount=0),
+            MagicMock(rowcount=0),
+            MagicMock(rowcount=1),
+        ]
     )
     session.commit = AsyncMock()
     session.rollback = AsyncMock()
@@ -611,6 +631,7 @@ async def test_stop_radar_service_deletes_db_row_after_removing_workload(
     fake_docker = _FakeAsyncDocker()
     db_row = SimpleNamespace(
         stop_requested_at=None,
+        desired_state="running",
         id="svc-1",
         container_id="ctr-1",
         container_name="radar-static",
@@ -633,7 +654,12 @@ async def test_stop_radar_service_deletes_db_row_after_removing_workload(
     session.scalar.return_value = None
     service_delete_result = MagicMock(rowcount=1)
     session.execute = AsyncMock(
-        side_effect=[query_result, MagicMock(rowcount=0), service_delete_result]
+        side_effect=[
+            query_result,
+            MagicMock(rowcount=0),
+            MagicMock(rowcount=0),
+            service_delete_result,
+        ]
     )
     session.commit = AsyncMock()
     session.rollback = AsyncMock()
@@ -642,7 +668,7 @@ async def test_stop_radar_service_deletes_db_row_after_removing_workload(
 
     assert await service.stop_radar_service(container_name="radar-static") is True
     workload.remove.assert_called_once_with(force=True)
-    assert session.execute.await_count == 3
+    assert session.execute.await_count == 4
     assert session.commit.await_count == 2
     assert db_row.desired_state == "deleted"
     session.rollback.assert_not_awaited()
@@ -655,6 +681,7 @@ async def test_stop_radar_service_deletes_db_row_when_workload_is_missing(
     fake_docker = _FakeAsyncDocker()
     db_row = SimpleNamespace(
         stop_requested_at=None,
+        desired_state="running",
         id="svc-1",
         container_id="missing-ctr",
         container_name="radar-static",
@@ -676,7 +703,12 @@ async def test_stop_radar_service_deletes_db_row_when_workload_is_missing(
     session.scalar.return_value = None
     service_delete_result = MagicMock(rowcount=1)
     session.execute = AsyncMock(
-        side_effect=[query_result, MagicMock(rowcount=0), service_delete_result]
+        side_effect=[
+            query_result,
+            MagicMock(rowcount=0),
+            MagicMock(rowcount=0),
+            service_delete_result,
+        ]
     )
     session.commit = AsyncMock()
     session.rollback = AsyncMock()
@@ -684,7 +716,7 @@ async def test_stop_radar_service_deletes_db_row_when_workload_is_missing(
     service = RadarOrchestrationService(session=session, model_registry=MagicMock())
 
     assert await service.stop_radar_service(container_name="radar-static") is True
-    assert session.execute.await_count == 3
+    assert session.execute.await_count == 4
     assert session.commit.await_count == 2
     session.rollback.assert_not_awaited()
 
@@ -694,6 +726,7 @@ async def test_stop_radar_service_deletes_db_row_by_container_id(monkeypatch):
     fake_docker = _FakeAsyncDocker()
     db_row = SimpleNamespace(
         stop_requested_at=None,
+        desired_state="running",
         id="svc-1",
         container_id="ctr-1",
         container_name="radar-static",
@@ -716,7 +749,12 @@ async def test_stop_radar_service_deletes_db_row_by_container_id(monkeypatch):
     session.scalar.return_value = None
     service_delete_result = MagicMock(rowcount=1)
     session.execute = AsyncMock(
-        side_effect=[query_result, MagicMock(rowcount=0), service_delete_result]
+        side_effect=[
+            query_result,
+            MagicMock(rowcount=0),
+            MagicMock(rowcount=0),
+            service_delete_result,
+        ]
     )
     session.commit = AsyncMock()
     session.rollback = AsyncMock()
@@ -725,7 +763,7 @@ async def test_stop_radar_service_deletes_db_row_by_container_id(monkeypatch):
 
     assert await service.stop_radar_service(container_id="ctr-1") is True
     workload.remove.assert_called_once_with(force=True)
-    assert session.execute.await_count == 3
+    assert session.execute.await_count == 4
     assert session.commit.await_count == 2
     session.rollback.assert_not_awaited()
 
@@ -822,6 +860,7 @@ async def test_get_radar_service_resolves_by_container_id(monkeypatch):
     fake_docker = _FakeAsyncDocker()
     db_row = SimpleNamespace(
         stop_requested_at=None,
+        desired_state="running",
         id="svc-1",
         container_id="ctr-1",
         container_name="radar-static",
@@ -876,6 +915,7 @@ async def test_get_radar_service_resolves_by_container_name(monkeypatch):
     fake_docker = _FakeAsyncDocker()
     db_row = SimpleNamespace(
         stop_requested_at=None,
+        desired_state="running",
         id="svc-2",
         container_id="ctr-2",
         container_name="radar-static-name",
@@ -922,6 +962,7 @@ async def test_delete_radar_service_removes_running_workload_and_db_rows(monkeyp
     fake_docker = _FakeAsyncDocker()
     db_row = SimpleNamespace(
         stop_requested_at=None,
+        desired_state="running",
         id="svc-1",
         container_id="ctr-1",
         container_name="radar-static",
@@ -943,7 +984,12 @@ async def test_delete_radar_service_removes_running_workload_and_db_rows(monkeyp
     session.get.return_value = db_row
     session.scalar.return_value = None
     session.execute = AsyncMock(
-        side_effect=[query_result, MagicMock(rowcount=0), MagicMock(rowcount=1)]
+        side_effect=[
+            query_result,
+            MagicMock(rowcount=0),
+            MagicMock(rowcount=0),
+            MagicMock(rowcount=1),
+        ]
     )
     session.commit = AsyncMock()
     session.rollback = AsyncMock()
@@ -952,7 +998,7 @@ async def test_delete_radar_service_removes_running_workload_and_db_rows(monkeyp
 
     assert await service.delete_radar_service("svc-1") is True
     workload.remove.assert_called_once_with(force=True)
-    assert session.execute.await_count == 3
+    assert session.execute.await_count == 4
     assert session.commit.await_count == 2
     session.rollback.assert_not_awaited()
 
@@ -988,6 +1034,7 @@ async def test_delete_radar_service_leaves_db_row_when_workload_remove_fails(
     fake_docker = _FakeAsyncDocker()
     db_row = SimpleNamespace(
         stop_requested_at=None,
+        desired_state="running",
         id="svc-1",
         container_id="ctr-1",
         container_name="radar-static",
@@ -1219,6 +1266,7 @@ async def test_existing_active_service_with_missing_workload_is_recreated(
 
     db_row = SimpleNamespace(
         stop_requested_at=None,
+        desired_state="running",
         id="old-svc",
         container_id="missing-workload",
         container_name="radar-stale",
@@ -1240,6 +1288,7 @@ async def test_existing_active_service_with_missing_workload_is_recreated(
         side_effect=[
             ownership_result,
             query_result,
+            MagicMock(rowcount=0),
             MagicMock(rowcount=0),
             MagicMock(rowcount=1),
             ownership_result,
@@ -1309,6 +1358,7 @@ async def test_existing_active_service_rejects_config_fingerprint_mismatch(
 
     db_row = SimpleNamespace(
         stop_requested_at=None,
+        desired_state="running",
         id="svc-existing",
         container_id="workload-1",
         container_name="radar-existing",

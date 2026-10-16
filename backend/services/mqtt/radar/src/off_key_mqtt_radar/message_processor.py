@@ -18,6 +18,7 @@ from off_key_core.utils.timestamps import parse_utc_timestamp
 
 from .activity import ActivityTracker
 from .coverage import CoverageTracker
+from .execution_errors import FatalExecutionError, ObservationRejected
 from .feature_validation import TelemetryFeatureValidator
 from .memory import MemoryManager
 from .models import AnomalyResult, MQTTMessage
@@ -192,23 +193,26 @@ class MessageProcessor:
 
             return result
 
-        except InvalidPayloadError as e:
-            logger.debug(
-                "event=radar.message_invalid_payload topic=%s error=%s",
-                message.topic,
-                str(e),
-            )
+        except FatalExecutionError:
             self.error_count += 1
-            self._record_coverage_drop("invalid_payload")
+            self._record_coverage_drop("fatal_pipeline_execution")
+            raise
+        except ObservationRejected:
+            self.error_count += 1
+            self._record_coverage_drop("pipeline_observation_rejected")
             return None
-        except ValidationError as e:
+        except (InvalidPayloadError, ValidationError) as e:
             logger.debug(
                 "event=radar.message_validation_failed topic=%s error=%s",
                 message.topic,
                 str(e),
             )
             self.error_count += 1
-            self._record_coverage_drop("invalid_features")
+            self._record_coverage_drop(
+                "invalid_payload"
+                if isinstance(e, InvalidPayloadError)
+                else "invalid_features"
+            )
             return None
         except Exception as e:
             logger.error(
@@ -459,6 +463,14 @@ class MessageProcessor:
             canonical_dt = datetime.fromtimestamp(float(sample_timestamp), tz=UTC)
             result.timestamp = canonical_dt
             result.context["canonical_sample_timestamp"] = canonical_dt.isoformat()
+        metadata = getattr(
+            self.detector.primary_service, "attach_observation_metadata", None
+        )
+        if callable(metadata):
+            try:
+                metadata(result.timestamp, input_timestamps or {})
+            except Exception:
+                logger.exception("event=radar.pipeline_diagnostic_metadata_failed")
         self.message_count += 1
         if result.is_anomaly:
             self.anomaly_count += 1

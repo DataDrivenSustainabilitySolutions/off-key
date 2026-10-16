@@ -213,8 +213,21 @@ class SystemCollectionService:
         changed = self._changed_inputs(before, after)
         if not changed:
             return []
+        from off_key_core.db.pipeline_claims import (
+            monitor_claim_condition,
+            pending_activations,
+        )
+
+        if any(
+            changed.intersection(item.claim_topics)
+            for item in await pending_activations(self.session)
+        ):
+            raise ConflictError(
+                "A pending pipeline activation reserves these inputs. "
+                "Finish or cancel it before changing their collection."
+            )
         monitors = await self.session.scalars(
-            select(MonitoringService).where(MonitoringService.status.is_(True))
+            select(MonitoringService).where(monitor_claim_condition())
         )
         return [
             {"id": item.id, "name": item.container_name}

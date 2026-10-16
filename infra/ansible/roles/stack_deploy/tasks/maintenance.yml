@@ -70,6 +70,11 @@
       set_fact:
         release_monitor_phase: "{{ release_job_output.phase }}"
 
+- name: Reserve maintenance before quiescing application writers
+  include_tasks: monitor_job.yml
+  vars:
+    monitor_action: reserve
+
 - name: Record the release before any application writer is stopped
   copy:
     dest: "{{ stack_dir }}/release-maintenance.json"

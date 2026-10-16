@@ -49,7 +49,7 @@ def generate_catalog() -> dict:
             engine["required"] = ["id", "params"]
             available = available and engine_spec.available
         capabilities = spec.capabilities(defaults).as_dict()
-        if capabilities["warmup"]["unit"] != "events":
+        if capabilities["warmup"]["unit"] not in {"events", "retained_values"}:
             raise ValueError(f"RADAR does not support {catalog_id}'s warm-up unit")
         if capabilities["higher_is_more_anomalous"] is not True or not spec.declarative:
             raise ValueError(

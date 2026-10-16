@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 const isCI = Boolean(env.CI);
 const chromiumChannel =
   env.PLAYWRIGHT_CHROMIUM_CHANNEL === "chrome" ? "chrome" : undefined;
-const authStateFile = fileURLToPath(
+const authStateFile = env.PLAYWRIGHT_AUTH_STATE_FILE ?? fileURLToPath(
   new URL("./test-results/.auth/user.json", import.meta.url)
 );
 const chromiumUse = {
@@ -45,11 +45,17 @@ export default defineConfig({
     },
     {
       name: "chromium",
-      testIgnore: [/.*\.setup\.ts/, /system-workspace\.spec\.ts/],
+      testIgnore: [/.*\.setup\.ts/, /system-workspace\.spec\.ts/, /pipeline-workspace\.spec\.ts/],
       use: {
         ...chromiumUse,
         storageState: authStateFile,
       },
+      dependencies: ["auth-setup"],
+    },
+    {
+      name: "pipeline-workspace",
+      testMatch: /pipeline-workspace\.spec\.ts/,
+      use: { ...chromiumUse, storageState: authStateFile, actionTimeout: 30_000 },
       dependencies: ["auth-setup"],
     },
     {

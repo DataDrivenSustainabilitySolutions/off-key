@@ -17,6 +17,7 @@ nav = [
   { "Development" = [
     { "Setup" = "development/setup.md" },
     { "Architecture" = "development/architecture.md" },
+    { "Monitoring pipelines" = "development/monitoring-pipelines.md" },
     { "Testing and debugging" = "development/testing-debugging.md" },
     { "Contributing and CI" = "development/contributing-ci.md" },
   ] },

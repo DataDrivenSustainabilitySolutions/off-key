@@ -83,7 +83,7 @@ beforeEach(() => {
   auth.userId = 1; auth.isAuthenticated = true;
   localStorage.clear(); clearNavigationDrafts();
   vi.clearAllMocks();
-  vi.mocked(apiUtils.get).mockImplementation(async endpoint => endpoint === "/v1/system" ? snapshot() : []);
+  vi.mocked(apiUtils.get).mockImplementation(async endpoint => endpoint === "/v1/system" ? snapshot() : endpoint.startsWith("/v1/monitors/workspace") ? { services: [], authoring_enabled: false } : []);
   vi.mocked(apiClient.put).mockImplementation(async (_endpoint, payload) => ({ data: snapshot((payload as { document: SystemDocument }).document, 8) }));
   vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() })));
   vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => window.setTimeout(callback, 0));
@@ -98,7 +98,7 @@ const service = (id = "service-one", name = "Room climate"): ActiveService => ({
   operational_status: { stage: "operational", is_stale: false, message_count: 120, processed_message_count: 118, updated_at: "2026-10-11T10:00:00Z" } });
 function withServices(services: ActiveService[]) {
   vi.mocked(apiUtils.get).mockImplementation(async endpoint => endpoint === "/v1/system" ? snapshot()
-    : endpoint.startsWith("/v1/monitors/all") ? [...services] : endpoint.startsWith("/v1/monitors?") ? { configuration: { monitoring: {}, performance_config: {} } } : []);
+    : endpoint.startsWith("/v1/monitors/workspace") ? { services: [...services], authoring_enabled: false } : endpoint.startsWith("/v1/monitors?") ? { configuration: { monitoring: {}, performance_config: {} } } : []);
 }
 
 describe("service-centred monitoring workspace", () => {
@@ -188,6 +188,7 @@ describe("service-centred monitoring workspace", () => {
     saved.runtime.collection!.status = "applying";
     saved.runtime.bindings!.temperature!.policy = { mode: "sample", interval_seconds: 10 };
     vi.mocked(apiUtils.get).mockImplementation(async endpoint => endpoint === "/v1/system" ? saved
+      : endpoint.startsWith("/v1/monitors/workspace") ? { services: [], authoring_enabled: false }
       : endpoint === "/v1/monitors/models" ? { aberrant_online_isolation_forest: { strategy: "adaptive_stream", parameters: { properties: {} } } } : []);
     vi.mocked(apiUtils.post).mockResolvedValue({ revision: saved.revision, runtime: { ...saved.runtime, collection: { revision: 1, status: "applied" } } });
     vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
@@ -206,7 +207,7 @@ describe("service-centred monitoring workspace", () => {
     const saved = snapshot();
     saved.runtime.bindings!.temperature!.policy = { mode: "sample", interval_seconds: 10 };
     saved.runtime.ingress = { sources: { broker: { state: "connected" } } };
-    vi.mocked(apiUtils.get).mockImplementation(async endpoint => endpoint === "/v1/system" ? saved : []);
+    vi.mocked(apiUtils.get).mockImplementation(async endpoint => endpoint === "/v1/system" ? saved : endpoint.startsWith("/v1/monitors/workspace") ? { services: [], authoring_enabled: false } : []);
     mount();
     const preview = await selectTemperature();
     expect(within(preview).getByRole("status").textContent).toContain("Recording");
@@ -342,7 +343,7 @@ describe("hierarchical explorer workspace", () => {
     expect(screen.queryByRole("region", { name: "Reading preview" })).toBeNull();
     expect(screen.getByRole("button", { name: "humidity, preview" })).toBeTruthy();
     expect(vi.mocked(apiUtils.get).mock.calls.filter(([path]) => path === "/v1/system")).toHaveLength(1);
-    expect(apiUtils.get).toHaveBeenCalledWith("/v1/monitors/all?active_only=false", expect.objectContaining({ redirectOnUnauthorized: false }));
+    expect(apiUtils.get).toHaveBeenCalledWith("/v1/monitors/workspace", expect.objectContaining({ redirectOnUnauthorized: false }));
     expect(apiClient.put).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "temperature, preview" }));
     expect(await screen.findByRole("region", { name: "Reading preview" })).toBeTruthy();
@@ -420,7 +421,7 @@ describe("hierarchical explorer workspace", () => {
     expect(screen.queryByRole("button", { name: "Building broker, open" })).toBeNull();
     expect(await screen.findByRole("heading", { name: "No monitoring services" })).toBeTruthy();
     auth.userId = 2;
-    vi.mocked(apiUtils.get).mockImplementation(async endpoint => endpoint === "/v1/system" ? snapshot({ ...fixture(), label: "Other account" }) : []);
+    vi.mocked(apiUtils.get).mockImplementation(async endpoint => endpoint === "/v1/system" ? snapshot({ ...fixture(), label: "Other account" }) : endpoint.startsWith("/v1/monitors/workspace") ? { services: [], authoring_enabled: false } : []);
     second.rerender(<RouterProvider router={makeRouter()} />);
     expect(await screen.findByRole("button", { name: "Building broker, open" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "temperature, preview" })).toBeNull();
@@ -443,7 +444,7 @@ describe("hierarchical explorer workspace", () => {
   });
 
   it("lets read-only users inspect signals while disabling structural mutation", async () => {
-    vi.mocked(apiUtils.get).mockImplementation(async endpoint => endpoint === "/v1/system" ? snapshot(fixture(), 7, false) : []);
+    vi.mocked(apiUtils.get).mockImplementation(async endpoint => endpoint === "/v1/system" ? snapshot(fixture(), 7, false) : endpoint.startsWith("/v1/monitors/workspace") ? { services: [], authoring_enabled: false } : []);
     mount();
     const preview = await selectTemperature();
     expect((within(preview).getByRole("button", { name: "Rename reading" }) as HTMLButtonElement).disabled).toBe(true);

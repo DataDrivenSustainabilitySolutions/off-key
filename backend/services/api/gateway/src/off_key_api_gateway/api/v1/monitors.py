@@ -12,8 +12,10 @@ from pydantic import BaseModel, Field
 from ...facades.tactic import TacticError, tactic
 from ..errors import raise_tactic_http_error
 from ..rate_limiter import limiter
+from .pipelines import router as pipeline_router
 
 router = APIRouter()
+router.include_router(pipeline_router)
 
 shared_limit_fetch = limiter.shared_limit("60/minute", scope="services")
 shared_limit_execute = limiter.shared_limit("20/minute", scope="services")

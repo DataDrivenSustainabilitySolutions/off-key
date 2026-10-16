@@ -21,7 +21,7 @@ jobs:
   deployment-smoke:
     name: deployment-smoke
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 75
     env:
       ANSIBLE_CONFIG: ${{ github.workspace }}/infra/ansible/ansible.cfg
 
@@ -109,6 +109,21 @@ jobs:
           E2E_MQTT_PASSWORD="$(python3 -c 'import json, os; from pathlib import Path; print(json.loads((Path(os.environ["OFFKEY_REHEARSAL_DIR"])/"inputs.json").read_text())["mqtt_radar_password"])')"
           export E2E_MQTT_PASSWORD
           uv run --project backend python -m pytest backend/tests/test_adaptive_lane_e2e.py backend/tests/test_deployment_rehearsal.py -q --tb=short
+
+      - name: Verify visual pipelines against the production frontend and worker
+        timeout-minutes: 15
+        run: |
+          set -euo pipefail
+          trap 'docker service update --detach=false --env-add TACTIC_PIPELINE_AUTHORING_ENABLED=false offkey-smoke_tactic > /dev/null' EXIT
+          docker service update --detach=false --env-add TACTIC_PIPELINE_AUTHORING_ENABLED=true offkey-smoke_tactic > /dev/null
+          curl --fail --retry 30 --retry-all-errors --retry-delay 2 http://localhost:8000/ready > /dev/null
+          playwright_version="$(node -p "require('./frontend/node_modules/@playwright/test/package.json').version")"
+          docker run --rm --network host --ipc host \
+            --volume "${PWD}/frontend:/work" \
+            --volume "$OFFKEY_REHEARSAL_DIR:/smoke:ro" \
+            --workdir /work --env-file "$OFFKEY_REHEARSAL_DIR/smoke.env" --env CI=true \
+            "mcr.microsoft.com/playwright:v${playwright_version}-noble" \
+            npm run test:e2e -- --project=pipeline-workspace --no-deps
 
       - name: Save the exact production images that passed the rehearsal
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'

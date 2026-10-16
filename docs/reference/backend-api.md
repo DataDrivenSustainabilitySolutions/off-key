@@ -144,6 +144,27 @@ TACTIC.
 
 Use `/monitors/models` as the source for valid model names and parameter schemas.
 
+Visual monitoring interfaces use the same authenticated `/v1/monitors` prefix:
+
+| Family | Paths | Purpose |
+| --- | --- | --- |
+| Catalog | `/pipelines/catalog` | Generated components, bounded field descriptors and templates |
+| Library | `/pipelines`, `/pipelines/{id}`, `/pipelines/{id}/draft` | Inspect designs; administrators create, rename, archive and save with `expected_version` |
+| Revisions | `/pipelines/{id}/revisions`, `/pipelines/{id}/revisions/{revision_id}` | Publish and inspect immutable executable revisions |
+| Activations | `/pipeline-activations`, `/pipeline-activations/{id}` | Idempotent start/replacement, progress and cancellation |
+| Bound run | `/{service_id}/pipeline`, `/{service_id}/pipeline-layout` | Immutable execution and retained history; separately versioned layout |
+| Workspace | `/workspace?selected_service_id=...` | One member-scoped request for summaries and the selected bounded diagnostic snapshot |
+
+Use publication and activation for graph starts. The legacy `/start` endpoint
+remains compatible with existing callers; direct public graph launches are rejected
+so they cannot bypass preflight, durable input reservations or run history.
+Draft/layout conflicts return HTTP 409. Publishing does not activate a revision.
+Run views survive deletion of the live service and expose retained input metadata,
+terminal errors and compiler feature lineage. Feature metadata above 512 KiB is
+omitted with a `metadata_budget` notice. Internal MQTT overrides and runtime image
+pins are rejected by public monitor creation.
+See [pipeline architecture and rollout](../development/monitoring-pipelines.md).
+
 ### Favourites and anomalies
 
 | Method | Path | Purpose | Key inputs |

@@ -175,9 +175,11 @@ class RadarWorkloadManager:
             "name": f"radar-{service_id}",
             "labels": build_radar_workload_labels(
                 environment=environment,
-                radar_image=tactic_config.radar_image,
+                radar_image=environment.get(
+                    "RADAR_RUNTIME_IMAGE", tactic_config.radar_image
+                ),
             ),
-            "image": tactic_config.radar_image,
+            "image": environment.get("RADAR_RUNTIME_IMAGE", tactic_config.radar_image),
             "env": environment,
             "command": ["/app/bin/python", "-m", "off_key_mqtt_radar"],
             "mode": ServiceMode("replicated", replicas=1),
@@ -257,9 +259,11 @@ class RadarWorkloadManager:
             name=f"radar-{service_id}",
             labels=build_radar_workload_labels(
                 environment=environment,
-                radar_image=tactic_config.radar_image,
+                radar_image=environment.get(
+                    "RADAR_RUNTIME_IMAGE", tactic_config.radar_image
+                ),
             ),
-            image=tactic_config.radar_image,
+            image=environment.get("RADAR_RUNTIME_IMAGE", tactic_config.radar_image),
             environment=environment,
             command=["/app/bin/python", "-m", "off_key_mqtt_radar"],
             detach=True,

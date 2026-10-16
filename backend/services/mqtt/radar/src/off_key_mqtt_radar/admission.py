@@ -26,8 +26,11 @@ async def require_monitor_admission(*, settings=None, session_factory=None) -> N
         row = (
             await session.execute(
                 text(
-                    "SELECT desired_state, lifecycle_version, stop_requested_at "
-                    "FROM services WHERE id = :service_id"
+                    "SELECT desired_state, lifecycle_version, stop_requested_at, "
+                    "EXISTS (SELECT 1 FROM monitoring_pipeline_runs r "
+                    "WHERE r.service_id = services.id "
+                    "AND (r.status = 'failed' OR r.ended_at IS NOT NULL)) "
+                    "AS execution_failed FROM services WHERE id = :service_id"
                 ),
                 {"service_id": settings.SERVICE_ID},
             )
@@ -37,5 +40,6 @@ async def require_monitor_admission(*, settings=None, session_factory=None) -> N
         or row.desired_state != "running"
         or row.lifecycle_version != settings.RADAR_LIFECYCLE_VERSION
         or row.stop_requested_at is not None
+        or row.execution_failed
     ):
         raise RuntimeError("RADAR workload no longer owns a running monitor intent")

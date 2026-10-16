@@ -84,3 +84,36 @@ cannot create concurrent inference or prevent the health loop from observing a
 stall. Cancellation waits for the active model operation before taking the final
 snapshot. The MQTT network thread admits messages into a bounded Janus queue,
 without scheduling one unbounded asyncio callback per incoming observation.
+
+## Graph failures and revision rollback
+
+Graph runs bind checkpoints to executable semantics, resolved readings and exact
+runtime versions. Cosmetic layout changes do not invalidate numerical recovery.
+Returning to an earlier published revision creates a fresh run and calibration;
+it does not restore a checkpoint from a different bound revision.
+
+A fatal uncertain update quarantines the worker immediately. It performs no more
+graph calls and exports no checkpoint, including during shutdown. The managed
+worker persists failed-run status under the existing signed-snapshot ownership
+lock before exiting. If this write times out, it remains quarantined and retries
+until the database returns or an explicit stop terminates it. A committed failed
+run fences admission of that execution generation. Its last signed snapshot stays
+intact and its failed-node diagnostics and coverage remain inspectable.
+
+The failure write checks signed-checkpoint ownership and the exact run/service
+identity. Every activated successor has a new service and run identity. A fatal
+update discovered while its own run is stopping may still be recorded as that
+run's terminal failure; it cannot fail the successor. Delayed task admission also
+checks durable lifecycle intent and rejects terminal run generations.
+
+A host/process loss before the failure record commits is indistinguishable from
+an ordinary crash. Existing recovery can restore only the last authenticated
+committed snapshot and reports the possible coverage gap. It never restores the
+uncommitted, damaged in-memory graph. Operators requiring a fresh run can activate
+the same revision again rather than recovering the previous run.
+
+Ship pipeline-compatible runtime/schema support before enabling authoring. Turning
+authoring off does not disable existing graph execution, inspection or stopping.
+Software rollback requires a pipeline-compatible binary or the reviewed database
+restore procedure. Pre-feature binaries cannot read the newer migration ledger or
+graph launch contracts.

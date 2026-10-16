@@ -4,7 +4,9 @@ from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
+import docker
 import pytest
+from off_key_core.db import collection_runtime
 from off_key_core.db.collection import lock_collection_configuration
 from off_key_core.db.maintenance import (
     DeploymentInProgressError,
@@ -21,6 +23,7 @@ from off_key_core.db.models import (
     DeploymentMaintenance,
     MonitoringEvidence,
     MonitoringService,
+    PipelineRun,
     Telemetry,
 )
 from off_key_core.schemas.radar import RadarStartConfig
@@ -31,7 +34,7 @@ from off_key_tactic_middleware.services.orchestration.radar import (
     RadarOrchestrationService,
 )
 from off_key_tactic_middleware.services.system_ingress import SYSTEM_INGRESS_LOCK
-from sqlalchemy import insert, inspect, text
+from sqlalchemy import insert, inspect, select, text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 
@@ -53,6 +56,13 @@ def test_migrations_adopt_verified_baseline_preserve_data_and_repeat(
         connection.execute(text("DROP TABLE off_key_schema_migrations"))
         connection.execute(text("DROP TABLE deployment_maintenance"))
         connection.execute(text("DROP TABLE remembered_sessions"))
+        for table in (
+            "monitoring_pipeline_activations",
+            "monitoring_pipeline_runs",
+            "monitoring_pipeline_revisions",
+            "monitoring_pipelines",
+        ):
+            connection.execute(text(f"DROP TABLE {table}"))
         connection.execute(text("ALTER TABLE services DROP COLUMN launch_config"))
         for table in (
             "system_configuration",
@@ -69,6 +79,7 @@ def test_migrations_adopt_verified_baseline_preserve_data_and_repeat(
             "007_monitor_anomaly_identity.sql",
             "008_radar_runtime_checkpoints.sql",
             "009_radar_lifecycle_intent.sql",
+            "010_monitoring_pipelines.sql",
         ]
         assert apply_migrations(connection)["applied"] == [
             "003_deployment_maintenance.sql",
@@ -78,6 +89,7 @@ def test_migrations_adopt_verified_baseline_preserve_data_and_repeat(
             "007_monitor_anomaly_identity.sql",
             "008_radar_runtime_checkpoints.sql",
             "009_radar_lifecycle_intent.sql",
+            "010_monitoring_pipelines.sql",
         ]
         assert (
             connection.scalar(text("SELECT count(*) FROM services WHERE id='old'")) == 1
@@ -136,6 +148,13 @@ def test_clean_break_preserves_configuration_and_history_and_runs_once(
         ):
             connection.execute(text(f"DROP TABLE {table}"))
         if ledger:
+            for table in (
+                "monitoring_pipeline_activations",
+                "monitoring_pipeline_runs",
+                "monitoring_pipeline_revisions",
+                "monitoring_pipelines",
+            ):
+                connection.execute(text(f"DROP TABLE {table}"))
             connection.execute(
                 text(
                     "DELETE FROM off_key_schema_migrations "
@@ -143,6 +162,13 @@ def test_clean_break_preserves_configuration_and_history_and_runs_once(
                 )
             )
         else:
+            for table in (
+                "monitoring_pipeline_activations",
+                "monitoring_pipeline_runs",
+                "monitoring_pipeline_revisions",
+                "monitoring_pipelines",
+            ):
+                connection.execute(text(f"DROP TABLE {table}"))
             connection.execute(text("DROP TABLE off_key_schema_migrations"))
     with disposable_database.begin() as connection:
         assert migration_status(connection)["pending"] == [
@@ -152,6 +178,7 @@ def test_clean_break_preserves_configuration_and_history_and_runs_once(
             "007_monitor_anomaly_identity.sql",
             "008_radar_runtime_checkpoints.sql",
             "009_radar_lifecycle_intent.sql",
+            "010_monitoring_pipelines.sql",
         ]
         assert apply_migrations(connection)["applied"] == [
             "004_system_catalogue.sql",
@@ -160,6 +187,7 @@ def test_clean_break_preserves_configuration_and_history_and_runs_once(
             "007_monitor_anomaly_identity.sql",
             "008_radar_runtime_checkpoints.sql",
             "009_radar_lifecycle_intent.sql",
+            "010_monitoring_pipelines.sql",
         ]
         assert (
             connection.scalar(
@@ -328,13 +356,14 @@ async def test_monitor_cutover_blocks_writes_preserves_intent_and_resumes_once(
                 SimpleNamespace(
                     accepted_topic=config.mqtt_topics[0],
                     sensor=SimpleNamespace(value_type="number"),
+                    value_type="number",
                     signature=("fixture",),
                 )
             ],
         ),
     )
     monkeypatch.setattr(
-        radar, "read_collection_runtime", AsyncMock(return_value=snapshot)
+        collection_runtime, "read_collection_runtime", AsyncMock(return_value=snapshot)
     )
     monkeypatch.setattr(radar, "get_async_docker", Docker)
     registry = MagicMock()
@@ -423,9 +452,90 @@ async def test_monitor_cutover_blocks_writes_preserves_intent_and_resumes_once(
 
 
 @pytest.mark.asyncio
-async def test_task_removal_requires_actual_shutdown(monkeypatch):
-    import docker
+async def test_fresh_release_reservation_precedes_schema_bootstrap(disposable_database):
+    engine = create_async_engine(
+        disposable_database.url.set(drivername="postgresql+asyncpg")
+    )
+    try:
+        async with AsyncSession(engine) as session:
+            assert (await deployment.reserve(session, "a" * 40))[
+                "phase"
+            ] == "uninitialized"
+            assert await session.scalar(text("SELECT to_regclass('services')")) is None
+            assert (
+                await session.scalar(
+                    text("SELECT to_regclass('deployment_maintenance')")
+                )
+                is None
+            )
+    finally:
+        await engine.dispose()
 
+
+@pytest.mark.asyncio
+async def test_release_retains_pending_monitor_claim_until_confirmed_removal(
+    disposable_database,
+):
+    with disposable_database.begin() as connection:
+        apply_migrations(connection)
+    engine = create_async_engine(
+        disposable_database.url.set(drivername="postgresql+asyncpg")
+    )
+    config = RadarStartConfig(
+        container_name="pending",
+        mqtt_topics=["telemetry/charger-1/sine"],
+    )
+    workloads = SimpleNamespace(
+        remove_intent=AsyncMock(
+            side_effect=[RuntimeError("Docker unavailable"), False]
+        ),
+        async_docker=SimpleNamespace(),
+    )
+    try:
+        async with AsyncSession(engine, expire_on_commit=False) as session:
+            session.add(
+                MonitoringService(
+                    id="pending-id",
+                    container_id=None,
+                    container_name=config.container_name,
+                    status=True,
+                    desired_state="running",
+                    config_fingerprint="known-configuration",
+                    lifecycle_version=1,
+                    mqtt_topic=config.mqtt_topics,
+                    launch_config=config.model_dump(mode="json"),
+                )
+            )
+            await session.commit()
+            orchestration = RadarOrchestrationService(
+                session, None, workloads=workloads
+            )
+            with pytest.raises(ValueError, match="could not stop"):
+                await deployment.begin(session, orchestration, "a" * 40)
+            await session.rollback()
+            retained = await session.get(MonitoringService, "pending-id")
+            assert retained.desired_state == "deleted"
+            assert retained.status
+            assert retained.lifecycle_version == 2
+            operation = await session.get(DeploymentMaintenance, 1)
+            assert operation.phase == "preparing"
+            assert operation.monitors[0]["stopped"] is False
+            assert (await deployment.begin(session, orchestration, "a" * 40))[
+                "phase"
+            ] == "stopped"
+            assert await session.get(MonitoringService, "pending-id") is None
+            history = await session.scalar(
+                select(PipelineRun).where(PipelineRun.service_id == "pending-id")
+            )
+            assert history.status == "stopped"
+            assert history.ended_at is not None
+            assert workloads.remove_intent.await_count == 2
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_task_removal_requires_actual_shutdown(monkeypatch):
     monkeypatch.setattr(deployment.asyncio, "sleep", AsyncMock())
     service = SimpleNamespace(attrs={"Spec": {"Mode": {"Replicated": {"Replicas": 0}}}})
     get = MagicMock(return_value=service)

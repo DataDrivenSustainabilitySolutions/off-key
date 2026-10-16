@@ -396,6 +396,16 @@ def test_checkpoint_migration_adopts_existing_database_without_path_table_change
 ):
     with disposable_database.begin() as connection:
         apply_migrations(connection)
+        # Recreate the pre-checkpoint schema under review, including absence of
+        # pipeline tables introduced by a later release. Keeping those tables
+        # while erasing their ledger would simulate a corrupt migration history.
+        for table in (
+            "monitoring_pipeline_activations",
+            "monitoring_pipeline_runs",
+            "monitoring_pipeline_revisions",
+            "monitoring_pipelines",
+        ):
+            connection.execute(text(f"DROP TABLE {table}"))
         connection.execute(text("DROP TABLE radar_runtime_checkpoints"))
         connection.execute(
             text("CREATE TABLE radar_model_checkpoints (checkpoint_path text)")

@@ -55,7 +55,7 @@ fresh inputs and scoring resume; historical coverage warnings remain visible.
 
 ## Adaptive model selection
 
-Adaptive monitoring uses Aberrant 1.1.0. Models are grouped by the library's
+Adaptive monitoring uses Aberrant 1.3.0. Models are grouped by the library's
 algorithm family and filtered by the number of features after preprocessing.
 The original 24 numeric detectors remain available; scalar and multivariate
 rolling matrix profiles add detection of unusual sequences across one or multiple
@@ -83,6 +83,45 @@ KNN exposes its FAISS window and warm-up as nested similarity-engine settings.
 Existing saved model IDs and the legacy flat KNN parameters are translated on
 input. Legacy histogram `max_bins` becomes `max_depth`; conflicting old and new
 parameter values are rejected.
+
+## Visual pipeline designs
+
+When pipeline authoring is enabled, open **Pipelines** in the shared catalogue
+workspace. Start from the static or adaptive template, add components from the
+searchable toolbox, and connect their typed ports. **Arrange** lays out the graph
+explicitly; manual arrangement is preserved. The node list and connection menus
+provide the same editing operations on a keyboard or narrow screen.
+
+Select input slots by stable identity. Bind every slot to a distinct enabled
+numeric reading on one entity during activation review. Labels are cosmetic;
+expected units require an exact match, and unknown units remain unknown. Suggested
+bindings must be reviewed. Use selection to split features into branches, renaming
+to avoid collisions, and ordered merge connections to join them again. **Node
+title** changes presentation; the **Rename features** component changes execution.
+
+**Save draft** saves shared work without changing a running monitor. **Publish
+revision** validates and creates an immutable executable revision. **Start revision**
+or **Review replacement** reviews bindings, executable changes, predecessor and
+fresh training/calibration before activation. An existing draft is never silently
+overwritten when editing a running revision. Concurrent saves offer reload or
+save as copy. **Activate replacement** confirms the reviewed handoff.
+
+A running monitor always displays its bound immutable revision. Its arrangement
+can be saved independently. The live inspector shows one coherent sampled
+observation, separates score and post-learning passes, and marks nodes that did
+not execute. Snapshot age is visible; fresh diagnostics do not imply persisted
+evidence is current. Static training appears as a batch summary.
+
+Static preprocessing fits only the training window and stays frozen. Adaptive
+preprocessing initializes before downstream learning; its warm-up counter counts
+successful detector updates. PCA has separate centered batch and uncentered
+incremental implementations. Changing online preprocessing does not transform
+historical geometry already retained by the detector.
+
+Replacement reserves both sets of inputs during preflight and handoff. A failed
+preflight leaves the predecessor running. After retirement, cancellation or failure
+does not silently revive it. Reusing an earlier revision starts a fresh run.
+History remains inspectable after a service is removed.
 
 ## Stop and cleanup workflow
 

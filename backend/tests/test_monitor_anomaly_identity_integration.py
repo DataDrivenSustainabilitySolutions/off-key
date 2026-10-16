@@ -14,6 +14,8 @@ from off_key_tactic_middleware.services.data.anomalies import AnomalyService
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from tests.support.schema_baselines import remove_pipeline_schema
+
 
 @pytest.mark.asyncio
 async def test_independent_monitor_alarms_survive_retries_and_independent_deletion(
@@ -136,6 +138,7 @@ def test_monitor_identity_migration_preserves_historical_public_ids(
                 'ml_conformal_static_multivariate', 0.001);
             UPDATE anomaly_identity SET anomaly_id = 'preserved-public-id';
         """)
+        remove_pipeline_schema(connection)
         if ledger:
             connection.execute(
                 text(

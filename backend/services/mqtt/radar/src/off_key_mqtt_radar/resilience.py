@@ -9,6 +9,7 @@ from typing import Any, Protocol
 
 import numpy as np
 
+from .execution_errors import FatalExecutionError, ObservationRejected
 from .models import AnomalyResult
 
 
@@ -84,6 +85,10 @@ class ResilientAnomalyDetector:
             result = self.primary_service.process_data_point(data, topic, charger_id)
             self._record_success()
             return result
+        except (FatalExecutionError, ObservationRejected):
+            # Neither lost coverage nor uncertain learned state is an inference
+            # result. The ingestion supervisor owns these explicit outcomes.
+            raise
         except Exception as error:
             self._record_error(error)
             return self._fallback_processing(data, topic, charger_id, str(error))

@@ -11,7 +11,7 @@ const sourceRoot = fileURLToPath(new URL('./', import.meta.url));
 const output = path.join(sourceRoot, 'previews');
 const sheets = [
   { page: 'index.html', name: 'comparison', brand: 'aberration', stems: ['stacked-wordmark', 'inline-wordmark'] },
-  { page: 'ti-body.html', name: 'ti-body', brand: 'aberratio', stems: ['aberratio-flush-ti', 'aberratio-open'] },
+  { page: 'ti-body.html', name: 'ti-body', brand: 'aberratio', stems: ['aberratio-flush-ti'] },
 ];
 
 async function validateSources() {
@@ -52,7 +52,7 @@ async function loadSheet(page, url, sheet) {
   await page.evaluate(() => document.fonts.ready);
   assert.equal(await page.locator('main').getAttribute('data-sheet'), sheet.brand);
   assert.equal(await page.locator('link[rel="stylesheet"]').getAttribute('href'), 'specimen.css');
-  assert.equal(await page.locator('.sample img').count(), 4);
+  assert.equal(await page.locator('.sample img').count(), sheet.stems.length * 2);
   assert.equal(await page.locator('.sample img').evaluateAll(images => images.every(image => image.alt && image.naturalWidth > 0)), true);
   assert.deepEqual(await page.locator('.sample img').evaluateAll(images => images.map(image => image.getAttribute('src'))), sheet.stems.flatMap(stem => [`${stem}.svg`, `${stem}-white.svg`]));
   assert.equal(await page.locator('.artboard').first().evaluate(element => getComputedStyle(element).backgroundColor), 'rgb(250, 250, 247)');
@@ -97,37 +97,30 @@ async function renderSheet(browser, base, sheet) {
 
 async function validateBodyWidths(browser, base) {
   const page = await browser.newPage();
-  let reference;
   try {
-    for (const [stem, expectedWidth] of [['aberratio-open', 34], ['aberratio-flush-ti', 44]]) {
-      await page.goto(`${base}/experiments/${stem}.svg`);
-      const outlines = await page.locator('path').evaluateAll(paths => Object.fromEntries(paths.map(path => [path.id, [path.getAttribute('d'), path.getAttribute('transform')]])));
-      if (reference) {
-        for (const [id, outline] of Object.entries(outlines)) if (id !== 'letter-ti') assert.deepEqual(outline, reference[id], `${stem}: unchanged ${id}`);
-      } else reference = outlines;
-      const body = await page.evaluate(async () => {
-        const measure = async id => {
-          const element = document.getElementById(id);
-          const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="44" height="60"><path d="${element.getAttribute('d')}"/></svg>`;
-          const image = new Image();
-          image.src = `data:image/svg+xml,${encodeURIComponent(svg)}`;
-          await image.decode();
-          const canvas = document.createElementNS('http://www.w3.org/1999/xhtml', 'canvas');
-          canvas.width = 44; canvas.height = 60;
-          const context = canvas.getContext('2d');
-          context.drawImage(image, 0, 0);
-          return Array.from({ length: 24 }, (_, offset) => {
-            const pixels = context.getImageData(0, offset + 26, 44, 1).data;
-            const ink = Array.from({ length: 44 }, (_, x) => x).filter(x => pixels[x * 4 + 3] > 128);
-            return ink.at(-1) - ink[0] + 1;
-          });
-        };
-        return { b: await measure('letter-b'), ti: await measure('letter-ti') };
-      });
-      assert.ok(body.b.every(width => width === 44), `${stem}: b lower body`);
-      assert.ok(body.ti.every(width => width === expectedWidth), `${stem}: ti lower body`);
-    }
-    console.log('aberratio: actual lower-body ink is 44 units for b and the flush-stem ti; the retained earlier compound is 34 units.');
+    await page.goto(`${base}/experiments/aberratio-flush-ti.svg`);
+    const body = await page.evaluate(async () => {
+      const measure = async id => {
+        const element = document.getElementById(id);
+        const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="44" height="60"><path d="${element.getAttribute('d')}"/></svg>`;
+        const image = new Image();
+        image.src = `data:image/svg+xml,${encodeURIComponent(svg)}`;
+        await image.decode();
+        const canvas = document.createElementNS('http://www.w3.org/1999/xhtml', 'canvas');
+        canvas.width = 44; canvas.height = 60;
+        const context = canvas.getContext('2d');
+        context.drawImage(image, 0, 0);
+        return Array.from({ length: 24 }, (_, offset) => {
+          const pixels = context.getImageData(0, offset + 26, 44, 1).data;
+          const ink = Array.from({ length: 44 }, (_, x) => x).filter(x => pixels[x * 4 + 3] > 128);
+          return ink.at(-1) - ink[0] + 1;
+        });
+      };
+      return { b: await measure('letter-b'), ti: await measure('letter-ti') };
+    });
+    assert.ok(body.b.every(width => width === 44), 'aberratio: b lower body');
+    assert.ok(body.ti.every(width => width === 44), 'aberratio: merged ti lower body');
+    console.log('aberratio: actual lower-body ink is 44 units for both b and the merged ti.');
   } finally { await page.close(); }
 }
 

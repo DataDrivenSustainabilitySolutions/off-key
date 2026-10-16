@@ -33,18 +33,20 @@ The referenced .agent/PLANS.md is absent; this file records the plan directly.
 Both selected sheets share one stylesheet and save desktop/mobile PNGs under
 assets/brand/experiments/previews. The current comparison contains only the
 original lowercase Aberration stack and single line. The alternative presents
-the merged, body-matched ti first and preserves its earlier compound below.
+only the merged, body-matched ti in black and white. The earlier compound and
+b/ti construction plots are excluded from this presentation. The earlier
+compound's SVG sources remain archived.
 
 Real Chrome checks pass for source consistency, both colour treatments, image
 loading, keyboard focus, downloads, and 320/390/768/1280px layouts. Pixel sampling
-across the lower stems confirms b and the flush-stem ti are both 44 units wide;
-the earlier compound is 34 units. All 18 original SVG files match their initial
+across the lower stems confirms b and the flush-stem ti are both 44 units wide.
+All 18 original SVG files match their initial
 SHA-256 hashes. Local HTML references, brand exports, script syntax, whitespace,
 and preview file-size checks pass. The current product commit's repository hooks
 also pass.
 
-The two commits are restricted to brand assets and this plan. Existing pipeline
-and deployment edits are excluded.
+The branding commits are restricted to brand assets and this plan. Existing
+pipeline and deployment edits are excluded.
 
 ## Validation
 

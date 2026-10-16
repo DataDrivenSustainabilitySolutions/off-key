@@ -24,17 +24,15 @@ as an alternative. This is a retained experiment; the product name remains
 | Aberratio study | Black / inline currentColor | White |
 | --- | --- | --- |
 | Body-matched merged ti | [aberratio-flush-ti.svg](aberratio-flush-ti.svg) | [aberratio-flush-ti-white.svg](aberratio-flush-ti-white.svg) |
-| Earlier merged compound | [aberratio-open.svg](aberratio-open.svg) | [aberratio-open-white.svg](aberratio-open-white.svg) |
 
 Saved previews: [desktop](previews/ti-body-desktop.png) and
 [mobile](previews/ti-body-mobile.png). Both pages use the same specimen layout,
 typography, palette, light/dark panels, and small-size proofs.
 
 The flush t stem removes the short left crossbar overhang. The lower bodies of
-b and ti each span 44 units, with 10-unit strokes and 6-unit openings. The earlier
-compound spans 44 units overall but only 34 below its crossbar; it is preserved
-for comparison. Only ti changes between these two wordmarks. The mark sits at
-the centre of the seven-cell Aberratio composition.
+b and ti each span 44 units, with 10-unit strokes and 6-unit openings. The sheet
+shows only this same-width compound, in black and white, plus its small-size
+proof. The mark sits at the centre of the seven-cell Aberratio composition.
 
 ## Earlier studies
 
@@ -49,6 +47,7 @@ product selection:
 | Aberration, shorter ascenders | [SVG](inline-wordmark-short-ascenders.svg) | [SVG](inline-wordmark-short-ascenders-white.svg) |
 | Aberratio, paired closed b | [SVG](aberratio-paired.svg) | [SVG](aberratio-paired-white.svg) |
 | Aberration, earlier paired ti | [SVG](aberration-paired.svg) | [SVG](aberration-paired-white.svg) |
+| Aberratio, earlier merged compound | [SVG](aberratio-open.svg) | [SVG](aberratio-open-white.svg) |
 
 The [spacing comparison](refinements.html) and [paired-letter comparison](pairing.html)
 retain their original study layouts. New design iterations should be saved

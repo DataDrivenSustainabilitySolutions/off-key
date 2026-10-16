@@ -116,3 +116,39 @@ record of this result.
 This PR smoke rehearsal is a disposable production-like deployment. It does not
 establish that the main revision has reached the production environment; the
 existing post-merge watch continues until an eligible main deployment is verified.
+
+## Targeted production-validation improvements
+
+The user approved implementing the four review recommendations on 2026-10-16.
+Keep each change independently reviewable and validate it before proceeding.
+PR #306 at `f1f4624` passed all 20 checks, including 102 RADAR integration tests,
+31 browser journeys and both monitoring/backup/restore/redeployment checks.
+
+1. [x] Replace running-only revival coverage with one real pending-to-running
+   Swarm transition. Assert the inactive row and its operational evidence remain
+   unchanged while scheduling is blocked, then verify revival after scheduling.
+   Prove the regression rejects a deliberately broadened readiness condition in
+   the disposable runner, restoring runtime source afterward.
+2. [ ] Require nonempty JUnit results with zero skips in the dedicated RADAR job.
+   Exercise acceptance with real integration results and rejection with actual
+   pytest skip/collection-only results. Keep the general backend suite's optional
+   integration skips intact; avoid fixed expected test counts or new dependencies.
+3. [ ] Set Playwright's CI flaky-test policy to fail while retaining the existing
+   diagnostic retry. Demonstrate the policy with an isolated retry-only test using
+   the real runner, then run the existing production browser journeys in CI.
+4. [ ] Add `RADAR production integration`, bound to GitHub Actions, to main's
+   required checks. Save the prior state and verify every existing required check,
+   app binding and strictness setting survives the update.
+
+Commit the three repository changes separately, push once to PR #306 and wait for
+the final revision's complete required checks. Record final live CI evidence on
+the PR, clean up only fixtures created for this work, and preserve production
+deployment as a separate post-merge verification.
+
+Step 1: the replacement passes against real PostgreSQL/Swarm on Linux Python
+3.14.8 (11.02 seconds). With only the readiness condition broadened to accept
+pending tasks, the old running-only test still passes (7.85 seconds) and the
+replacement fails at `assert current.status is False` (7.34 seconds). Both runtime
+and test source are restored in the disposable runner. The complete affected
+lifecycle/reconciliation suites then pass: 32 tests, zero skips, in 113.82 seconds.
+Applicable repository hooks pass.

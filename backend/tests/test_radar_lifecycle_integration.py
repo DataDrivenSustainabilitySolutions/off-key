@@ -446,19 +446,45 @@ async def test_reconciliation_docker_latency_does_not_block_or_overwrite_heartbe
 
 
 @pytest.mark.asyncio
-async def test_reconciliation_revives_inactive_monitor_after_real_swarm_readiness(
+async def test_reconciliation_revives_inactive_monitor_only_after_real_swarm_readiness(
     lifecycle_database, swarm_workloads
 ):
     sessions = lifecycle_database
     workloads, owned = swarm_workloads
-    service_id, _ = await running_monitor(sessions, workloads, owned)
+    service_id, workload = await pending_monitor(
+        sessions,
+        workloads,
+        owned,
+        constraints=[f"node.labels.offkey_readiness_{uuid4().hex} == allowed"],
+    )
+    async with sessions() as session:
+        await RadarLifecycleController(session, workloads).complete_creation(service_id)
+    await wait_for_workload_state(workloads, workload, "pending")
+    heartbeat = datetime.now(UTC)
+    payload = {"stage": "failed", "detail": "Previous task failed"}
     async with sessions.begin() as session:
         await session.execute(
             update(MonitoringService)
             .where(MonitoringService.id == service_id)
-            .values(status=False, operational_stage="failed")
+            .values(
+                status=False,
+                operational_stage="failed",
+                operational_status=payload,
+                operational_updated_at=heartbeat,
+            )
         )
     reconciler = RadarStatusReconciliationService(async_docker=workloads.async_docker)
+    async with sessions() as session:
+        await reconciler._reconcile_with_session(session)
+        current = await session.get(MonitoringService, service_id)
+        assert current.status is False
+        assert current.desired_state == "running"
+        assert current.operational_stage == "failed"
+        assert current.operational_status == payload
+        assert current.operational_updated_at == heartbeat
+
+    await workloads.async_docker.run(workload.update, constraints=[])
+    await wait_for_workload_state(workloads, workload, "running")
     async with sessions() as session:
         await reconciler._reconcile_with_session(session)
         current = await session.get(MonitoringService, service_id)

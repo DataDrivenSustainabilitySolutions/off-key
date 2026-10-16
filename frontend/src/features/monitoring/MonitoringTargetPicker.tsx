@@ -1,22 +1,37 @@
-import { useDeferredValue, useMemo, useRef, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import * as Popover from "@radix-ui/react-popover";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { ChevronDown, Search } from "lucide-react";
+import { readingActivity } from "../explorer/readingActivity";
+import { useCatalogue } from "../workspace/catalogue-context";
 import type { MonitoringTarget } from "./serviceModel";
 
+const subscribeNothing = () => () => {};
+
 export function MonitoringTargetPicker({ targets, value, onChange }: { targets: MonitoringTarget[]; value?: string; onChange: (id: string) => void }) {
+  const { system, telemetry, liveStreamIds } = useCatalogue();
   const [open, setOpen] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
   const [query, setQuery] = useState("");
   const deferred = useDeferredValue(query);
   const [focus, setFocus] = useState(-1);
   const scroll = useRef<HTMLDivElement>(null);
+  const liveStatus = useSyncExternalStore(open ? telemetry.subscribeUpdates : subscribeNothing, telemetry.getStatus);
+  const activity = useMemo(() => ({ telemetry, liveStreamIds, runtime: system.snapshot?.runtime }), [telemetry, liveStreamIds, system.snapshot?.runtime]);
+  useEffect(() => {
+    if (!open) return;
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [open]);
   const searchRows = useMemo(() => targets.map(target => ({ target, search: `${target.label} ${target.inputs.map(input => input.stream.label).join(" ")}`.toLocaleLowerCase() })), [targets]);
-  const filtered = useMemo(() => searchRows.filter(row => row.search.includes(deferred.toLocaleLowerCase())).map(row => row.target), [searchRows, deferred]);
+  const filtered = useMemo(() => searchRows.filter(row => row.search.includes(deferred.toLocaleLowerCase())
+    && row.target.inputs.some(input => readingActivity({ streamIds: [input.stream.id], connectionId: input.stream.connection_id }, activity, liveStatus, now).receiving))
+    .map(row => row.target), [searchRows, deferred, activity, liveStatus, now]);
   // Keep this imperative viewport adapter outside React Compiler memoization.
   // eslint-disable-next-line react-hooks/incompatible-library
   const virtual = useVirtualizer({ count: filtered.length, getScrollElement: () => scroll.current, estimateSize: () => 60, overscan: 5, getItemKey: index => filtered[index]!.id });
   const choose = (id: string) => { onChange(id); setOpen(false); };
-  return <Popover.Root open={open} onOpenChange={next => { setOpen(next); if (next) { setQuery(""); setFocus(-1); } }}>
+  return <Popover.Root open={open} onOpenChange={next => { setOpen(next); if (next) { setNow(Date.now()); setQuery(""); setFocus(-1); } }}>
     <Popover.Trigger className="mn-target-trigger" aria-label="Choose monitoring inputs"><span>{targets.find(target => target.id === value)?.label ?? "Choose a broker or entity"}</span><ChevronDown size={14} /></Popover.Trigger>
     <Popover.Portal><Popover.Content className="ex-popover mn-target-popover" align="start" sideOffset={6} aria-label="Choose monitoring inputs">
       <label className="mn-target-search"><Search size={15} aria-hidden="true" /><input type="search" aria-label="Find broker or entity" placeholder="Search inputs…" value={query}
@@ -33,7 +48,7 @@ export function MonitoringTargetPicker({ targets, value, onChange }: { targets: 
               ref={virtual.measureElement} onMouseEnter={() => setFocus(row.index)} onClick={() => choose(target.id)} style={{ transform: `translateY(${row.start}px)` }}>
               <span title={target.label}>{target.label}</span><small>{target.inputs.length} {target.inputs.length === 1 ? "reading" : "readings"}</small>
             </button>; })}
-        </div>{!filtered.length && <p className="ex-muted">No matching inputs.</p>}
+        </div>{!filtered.length && <p className="ex-muted">{deferred ? "No matching inputs receiving data." : "No inputs receiving data."}</p>}
       </div>
     </Popover.Content></Popover.Portal>
   </Popover.Root>;

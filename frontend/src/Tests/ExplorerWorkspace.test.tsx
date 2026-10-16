@@ -102,6 +102,59 @@ function withServices(services: ActiveService[]) {
 }
 
 describe("service-centred monitoring workspace", () => {
+  it("offers only receiving entities in the input picker, including the exact broker and entity labels", async () => {
+    const current = snapshot();
+    current.document.devices.push({ id: "quiet", label: "Quiet charger", kind: "charger", connection_id: "broker" });
+    current.document.streams.push({ id: "quiet-reading", label: "Quiet voltage", connection_id: "broker", device_id: "quiet", topic: "quiet/voltage", value_type: "number", category: "Test" });
+    current.runtime.mode = "collection";
+    current.runtime.bindings!.temperature!.policy = { mode: "sample", interval_seconds: 3600 };
+    current.runtime.bindings!["quiet-reading"] = { entity_id: "quiet-input", connection_id: "broker", telemetry_key: "voltage", accepted_topic: "telemetry/quiet/voltage", policy: { mode: "original", interval_seconds: 10 } };
+    current.runtime.ingress = { revision: 1, status: "applied", sources: { broker: { state: "connected" } },
+      readings: { temperature: { fresh_received_at: new Date().toISOString() } } };
+    current.runtime.latest_readings = { "quiet-reading": { value: 230, received_at: new Date().toISOString(), is_snapshot: true } };
+    vi.mocked(apiUtils.get).mockImplementation(async endpoint => endpoint === "/v1/system" ? current : []);
+    mount();
+    fireEvent.click(await screen.findByRole("button", { name: /^Create$/ }));
+    const picker = await screen.findByRole("button", { name: "Choose monitoring inputs" });
+    fireEvent.click(picker);
+    const choices = within(await screen.findByRole("dialog", { name: "Choose monitoring inputs" }));
+    expect(choices.getByRole("button", { name: /Building broker \/ Room station/ })).toBeTruthy();
+    expect(choices.queryByRole("button", { name: /Quiet charger/ })).toBeNull();
+    const search = choices.getByRole("searchbox", { name: "Find broker or entity" });
+    fireEvent.change(search, { target: { value: "Quiet charger" } });
+    expect(await choices.findByText("No matching inputs receiving data.")).toBeTruthy();
+    fireEvent.change(search, { target: { value: "Air temperature" } });
+    await choices.findByRole("button", { name: /Building broker \/ Room station/ });
+    fireEvent.keyDown(search, { key: "ArrowDown" });
+    fireEvent.keyDown(search, { key: "Enter" });
+    expect(picker.textContent).toContain("Building broker / Room station");
+    expect(screen.queryByRole("dialog", { name: "Choose monitoring inputs" })).toBeNull();
+    expect(apiClient.put).not.toHaveBeenCalled();
+    expect(apiUtils.post).not.toHaveBeenCalled();
+  });
+
+  it("refreshes and expires input choices while open without clearing the selected entity", async () => {
+    vi.useFakeTimers({ toFake: ["Date", "setInterval", "clearInterval"] });
+    const current = snapshot();
+    current.runtime.mode = "collection";
+    current.runtime.bindings!.temperature!.policy = { mode: "sample", interval_seconds: 3600 };
+    current.runtime.ingress = { revision: 1, status: "applied", sources: { broker: { state: "connected" } }, readings: {} };
+    vi.mocked(apiUtils.get).mockImplementation(async endpoint => endpoint === "/v1/system" ? current : []);
+    mount("/?create=monitoring&reading=temperature");
+    const picker = await screen.findByRole("button", { name: "Choose monitoring inputs" });
+    fireEvent.click(picker);
+    const choices = within(await screen.findByRole("dialog", { name: "Choose monitoring inputs" }));
+    expect(choices.getByText("No inputs receiving data.")).toBeTruthy();
+    vi.mocked(apiUtils.post).mockResolvedValue({ revision: current.revision, runtime: { ...current.runtime,
+      ingress: { ...current.runtime.ingress, readings: { temperature: { fresh_received_at: new Date().toISOString() } } } } });
+    await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+    expect(choices.getByRole("button", { name: /Building broker \/ Room station/ })).toBeTruthy();
+    await act(async () => { await vi.advanceTimersByTimeAsync(25_000); });
+    expect(choices.getByText("No inputs receiving data.")).toBeTruthy();
+    expect(picker.textContent).toContain("Building broker / Room station");
+    expect(apiClient.put).not.toHaveBeenCalled();
+  });
+
   it("filters online topics without changing selection or search and restores hidden readings when disabled", async () => {
     const current = snapshot();
     current.runtime.mode = "collection";

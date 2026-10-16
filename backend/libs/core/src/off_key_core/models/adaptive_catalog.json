@@ -1,5 +1,5 @@
 {
-  "aberrant_version": "1.1.0",
+  "aberrant_version": "1.3.0",
   "models": {
     "aberrant_asd_isolation_forest": {
       "algorithm_family": "isolation_forest",
@@ -512,7 +512,8 @@
         "lambda_": 1.0,
         "n_estimators": 100,
         "seed": null,
-        "subspace_size": 256
+        "subspace_size": 256,
+        "window_size": null
       },
       "import_path": "aberrant.model.iforest.MondrianIsolationForest",
       "name": "Aberrant MondrianIsolationForest",
@@ -546,6 +547,19 @@
             "maximum": 1000000,
             "minimum": 1,
             "type": "integer"
+          },
+          "window_size": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "maximum": 1000000,
+            "minimum": 1
           }
         },
         "type": "object"
@@ -766,8 +780,8 @@
         "score_kind": "non_negative",
         "state": "bounded",
         "warmup": {
-          "minimum": 1,
-          "unit": "events"
+          "minimum": 2,
+          "unit": "retained_values"
         }
       },
       "default_parameters": {
@@ -818,7 +832,7 @@
         "state": "bounded",
         "warmup": {
           "minimum": 1,
-          "unit": "events"
+          "unit": "retained_values"
         }
       },
       "default_parameters": {
@@ -1807,6 +1821,10 @@
       "parameters": {
         "additionalProperties": false,
         "properties": {
+          "clip": {
+            "default": false,
+            "type": "boolean"
+          },
           "feature_range": {
             "default": [
               0,
@@ -1825,6 +1843,22 @@
             "type": "array"
           }
         },
+        "type": "object"
+      }
+    },
+    "passthrough": {
+      "available": true,
+      "declarative": true,
+      "dependencies": [],
+      "display_name": "Passthrough",
+      "family": "composition",
+      "id": "passthrough",
+      "import_path": "aberrant.transform.preprocessing.Passthrough",
+      "kind": "transformer",
+      "optional_extra": null,
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {},
         "type": "object"
       }
     },
@@ -1872,6 +1906,87 @@
         },
         "required": [
           "n_components"
+        ],
+        "type": "object"
+      }
+    },
+    "rename": {
+      "available": true,
+      "declarative": true,
+      "dependencies": [],
+      "display_name": "Rename",
+      "family": "composition",
+      "id": "rename",
+      "import_path": "aberrant.transform.preprocessing.Rename",
+      "kind": "transformer",
+      "optional_extra": null,
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "mapping": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          }
+        },
+        "required": [
+          "mapping"
+        ],
+        "type": "object"
+      }
+    },
+    "rolling_robust_scaler": {
+      "available": true,
+      "declarative": true,
+      "dependencies": [],
+      "display_name": "RollingRobustScaler",
+      "family": "preprocessing",
+      "id": "rolling_robust_scaler",
+      "import_path": "aberrant.transform.preprocessing.RollingRobustScaler",
+      "kind": "transformer",
+      "optional_extra": null,
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "fallback_scale": {
+            "default": 1.0,
+            "type": "number"
+          },
+          "min_samples": {
+            "default": 1,
+            "type": "integer"
+          },
+          "window_size": {
+            "default": 256,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      }
+    },
+    "select": {
+      "available": true,
+      "declarative": true,
+      "dependencies": [],
+      "display_name": "Select",
+      "family": "composition",
+      "id": "select",
+      "import_path": "aberrant.transform.preprocessing.Select",
+      "kind": "transformer",
+      "optional_extra": null,
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "features": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "features"
         ],
         "type": "object"
       }

@@ -1,5 +1,7 @@
 """The sole, domain-neutral admission runtime."""
 
+import hashlib
+import json
 from dataclasses import dataclass
 
 from sqlalchemy import select
@@ -37,3 +39,25 @@ async def read_collection_runtime(session):
         ingress=row.ingress_status,
         collection=row.collection_status,
     )
+
+
+async def monitoring_collection_fingerprint(session, topics: list[str]) -> str:
+    """Validate selected aligned inputs without touching Docker or ML runtimes."""
+    collection = await read_collection_runtime(session)
+    streams = {
+        stream.accepted_topic: stream
+        for stream in collection.catalog.streams(selected_only=True)
+        if stream.value_type == "number"
+    }
+    if any(topic not in streams for topic in topics):
+        raise ValueError(
+            "Monitoring requires selected numeric sensors from the catalog"
+        )
+    if (
+        collection.collection.get("revision") != collection.revision
+        or collection.collection.get("status") != "applied"
+    ):
+        raise ValueError("Wait until the collection configuration is applied")
+    return hashlib.sha256(
+        json.dumps([streams[topic].signature for topic in sorted(topics)]).encode()
+    ).hexdigest()

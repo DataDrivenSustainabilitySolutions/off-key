@@ -21,6 +21,12 @@ SYSTEM_TABLES = {
 }
 SESSION_TABLES = {"remembered_sessions"}
 CHECKPOINT_TABLES = {"radar_runtime_checkpoints"}
+PIPELINE_TABLES = {
+    "monitoring_pipelines",
+    "monitoring_pipeline_revisions",
+    "monitoring_pipeline_runs",
+    "monitoring_pipeline_activations",
+}
 
 
 def migration_files() -> dict[str, str]:
@@ -72,7 +78,11 @@ def adopted_versions(connection: Connection, migrations: dict[str, str]) -> list
             raise ValueError("Cannot initialize a database containing unknown tables")
         return []
     if (
-        application_tables - SYSTEM_TABLES - SESSION_TABLES - CHECKPOINT_TABLES
+        application_tables
+        - SYSTEM_TABLES
+        - SESSION_TABLES
+        - CHECKPOINT_TABLES
+        - PIPELINE_TABLES
         <= existing
     ):
         validate_existing_schema(connection, excluded_columns=excluded_columns)
@@ -91,6 +101,7 @@ def adopted_versions(connection: Connection, migrations: dict[str, str]) -> list
         not in SYSTEM_TABLES
         | SESSION_TABLES
         | CHECKPOINT_TABLES
+        | PIPELINE_TABLES
         | {"deployment_maintenance"}
     ]
     if not {table.name for table in baseline} <= existing:

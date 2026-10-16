@@ -23,6 +23,18 @@ from sqlalchemy.dialects.postgresql import JSONB
 
 from ..utils.enum import RoleEnum
 from .base import Base
+from .pipelines import (
+    MonitoringPipeline as MonitoringPipeline,
+)
+from .pipelines import (
+    PipelineActivation as PipelineActivation,
+)
+from .pipelines import (
+    PipelineRevision as PipelineRevision,
+)
+from .pipelines import (
+    PipelineRun as PipelineRun,
+)
 from .remembered_sessions import RememberedSession as RememberedSession
 from .system import SystemCollectionConfiguration as SystemCollectionConfiguration
 from .system import SystemConfiguration as SystemConfiguration

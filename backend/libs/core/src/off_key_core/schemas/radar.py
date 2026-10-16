@@ -11,6 +11,7 @@ from pydantic import (
     Field,
     TypeAdapter,
     field_validator,
+    model_serializer,
     model_validator,
 )
 
@@ -27,6 +28,8 @@ from off_key_core.utils.mqtt_topics import (
     derive_monitoring_sensor_keys,
     normalize_static_monitoring_topics,
 )
+
+from .pipelines import PipelineExecutionConfig
 
 __all__ = [
     "AdaptivePreprocessingStep",
@@ -160,6 +163,7 @@ class RadarOperationalStatus(BaseModel):
     coverage: RadarCoverageStatus = Field(default_factory=RadarCoverageStatus)
     recovery: RadarRecoveryStatus | None = None
     activity: RadarActivityStatus | None = None
+    pipeline_state: dict[str, Any] | None = None
 
 
 class PerformanceConfig(BaseModel):
@@ -701,10 +705,29 @@ class RadarServiceLabel(BaseModel):
     _name = field_validator("display_name")(validate_service_name)
 
 
+class RadarMqttOverrides(BaseModel):
+    """Trusted saved launch options; public monitor creation uses server defaults."""
+
+    model_config = ConfigDict(extra="forbid")
+    host: str | None = Field(default=None, min_length=1, max_length=253)
+    port: int | None = Field(default=None, ge=1, le=65535)
+    use_tls: bool | None = None
+    use_auth: bool | None = None
+    username: str | None = Field(default=None, max_length=256)
+    api_key: str | None = Field(default=None, max_length=4096)
+    qos: Literal[0, 1, 2] | None = None
+    client_id_prefix: str | None = Field(default=None, min_length=1, max_length=128)
+
+    @model_serializer(mode="wrap")
+    def serialize_overrides(self, handler):
+        return {key: value for key, value in handler(self).items() if value is not None}
+
+
 class RadarStartConfig(BaseModel):
     """One validated launch contract, from the HTTP boundary to orchestration."""
 
     model_config = ConfigDict(extra="forbid")
+    launch_version: Literal[1, 2] = 1
 
     container_name: str = Field(min_length=1)
     display_name: str | None = Field(
@@ -713,7 +736,11 @@ class RadarStartConfig(BaseModel):
     mqtt_topics: list[str]
     monitoring: MonitoringConfig = Field(default_factory=StaticBaselineConfig)
     performance_config: PerformanceConfig = Field(default_factory=PerformanceConfig)
-    mqtt_config: dict[str, Any] = Field(default_factory=dict)
+    mqtt_config: RadarMqttOverrides = Field(default_factory=RadarMqttOverrides)
+    pipeline: PipelineExecutionConfig | None = None
+    runtime_image: str | None = Field(
+        default=None, max_length=512, pattern=r"^(?:[^\s]+@)?sha256:[a-f0-9]{64}$"
+    )
 
     @field_validator("display_name")
     @classmethod
@@ -754,7 +781,51 @@ class RadarStartConfig(BaseModel):
 
     @model_validator(mode="after")
     def validate_feature_schema(self) -> "RadarStartConfig":
-        if isinstance(self.monitoring, AdaptiveStreamConfig):
+        version = 2 if self.pipeline is not None else 1
+        if "launch_version" in self.model_fields_set and self.launch_version != version:
+            raise ValueError(
+                "Launch version must match legacy or pipeline configuration"
+            )
+        self.launch_version = version
+        if self.pipeline is not None:
+            from off_key_core.models.pipelines import (
+                derive_monitoring_config,
+                execution_fingerprint,
+            )
+
+            derived = derive_monitoring_config(self.pipeline.definition)
+            if "monitoring" in self.model_fields_set and self.monitoring != derived:
+                raise ValueError(
+                    "Monitoring configuration must equal "
+                    "the executable pipeline definition"
+                )
+            self.monitoring = derived
+            bindings = self.pipeline.bindings
+            if set(self.mqtt_topics) != {
+                binding.accepted_topic for binding in bindings
+            }:
+                raise ValueError(
+                    "Pipeline bindings must exactly match subscription topics"
+                )
+            keys = derive_monitoring_sensor_keys(
+                self.mqtt_topics,
+                sensor_key_strategy=self.performance_config.sensor_key_strategy,
+            )
+            keys_by_topic = dict(zip(self.mqtt_topics, keys, strict=True))
+            if any(
+                binding.input_key != keys_by_topic[binding.accepted_topic]
+                for binding in bindings
+            ):
+                raise ValueError(
+                    "Bound input keys must match the alignment feature schema"
+                )
+            if self.pipeline.fingerprint != execution_fingerprint(
+                self.pipeline.definition, bindings
+            ):
+                raise ValueError(
+                    "Pipeline execution fingerprint does not match its bound definition"
+                )
+        elif isinstance(self.monitoring, AdaptiveStreamConfig):
             keys = derive_monitoring_sensor_keys(
                 self.mqtt_topics,
                 sensor_key_strategy=self.performance_config.sensor_key_strategy,

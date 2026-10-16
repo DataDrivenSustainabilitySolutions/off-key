@@ -108,7 +108,7 @@ async def test_http_reports_are_bounded_and_member_can_inspect_selected_run(
             )
             users = [
                 User(
-                    email=f"report-{role}@example.test",
+                    email=f"report-{role}@example.com",
                     hashed_password="fixture-only",
                     role=role,
                     is_active=True,
@@ -185,6 +185,25 @@ async def test_http_reports_are_bounded_and_member_can_inspect_selected_run(
             report = response.json()["validation"]
             assert report["features"] == {}
             assert "selected_node" in {issue["code"] for issue in report["issues"]}
+            response = await client.get(
+                f"/api/v1/monitors/{service_id}/pipeline-metadata",
+                params={"selected_node_id": selected},
+                headers={"Authorization": f"Bearer {member_token}"},
+            )
+            assert response.status_code == 200, response.text[:1000]
+            focused = response.json()
+            assert focused["definition"] is None and focused["definition_omitted"]
+            assert "history" not in focused and "run" not in focused
+            assert len(focused["features"][selected]) == 100
+            assert len(focused["features"]) <= 2
+            assert len(response.content) <= MAX_PIPELINE_REPORT_BYTES
+            response = await client.get(
+                f"/api/v1/monitors/pipelines/{design.id}/revisions/{revision.id}/metadata",
+                params={"selected_node_id": selected},
+                headers={"Authorization": f"Bearer {member_token}"},
+            )
+            assert response.status_code == 200, response.text[:1000]
+            assert response.json()["features"] == focused["features"]
             response = await client.post(
                 f"/api/v1/monitors/pipelines/{design.id}/validate",
                 headers={"Authorization": f"Bearer {member_token}"},

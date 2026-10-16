@@ -1,4 +1,6 @@
-"""Typed graph routes sharing one authenticated member polling budget."""
+"""Typed member routes with independent polling, compiler and mutation budgets."""
+
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, Request
 from off_key_core.schemas.members import MemberProfile
@@ -8,9 +10,15 @@ from off_key_core.schemas.pipelines import (
     PipelineCatalog,
     PipelineCreate,
     PipelineDraftSave,
+    PipelineHistoryPage,
+    PipelineHistoryQuery,
     PipelineLayout,
+    PipelineListPage,
+    PipelineListQuery,
     PipelineMetadataChange,
     PipelinePublish,
+    PipelineRevisionPage,
+    PipelineRevisionQuery,
     PipelineRevisionView,
     PipelineServiceView,
     PipelineValidateRequest,
@@ -41,6 +49,9 @@ read_limit = limiter.shared_limit(
 )
 write_limit = limiter.shared_limit(
     "30/minute", scope="pipeline-writes", key_func=member_key
+)
+compile_limit = limiter.shared_limit(
+    "120/minute", scope="pipeline-validation", key_func=member_key
 )
 
 
@@ -76,10 +87,14 @@ async def pipeline_catalog(request: Request):
     return await forward(request, "GET", "/pipelines/catalog")
 
 
-@router.get("/pipelines", response_model=list[PipelineView])
+@router.get("/pipelines", response_model=PipelineListPage)
 @read_limit
-async def list_pipelines(request: Request):
-    return await forward(request, "GET", "/pipelines")
+async def list_pipelines(
+    request: Request, query: Annotated[PipelineListQuery, Query()]
+):
+    return await forward(
+        request, "GET", "/pipelines", params=query.model_dump(exclude_none=True)
+    )
 
 
 @router.post("/pipelines", response_model=PipelineView, status_code=201)
@@ -115,7 +130,7 @@ async def save_draft(request: Request, pipeline_id: str, change: PipelineDraftSa
 @router.post(
     "/pipelines/{pipeline_id}/validate", response_model=PipelineValidationReport
 )
-@write_limit
+@compile_limit
 async def validate_pipeline(
     request: Request, pipeline_id: str, change: PipelineValidateRequest
 ):
@@ -124,13 +139,18 @@ async def validate_pipeline(
     )
 
 
-@router.get(
-    "/pipelines/{pipeline_id}/revisions", response_model=list[PipelineRevisionView]
-)
+@router.get("/pipelines/{pipeline_id}/revisions", response_model=PipelineRevisionPage)
 @read_limit
-async def list_revisions(request: Request, pipeline_id: str):
+async def list_revisions(
+    request: Request,
+    pipeline_id: str,
+    query: Annotated[PipelineRevisionQuery, Query()],
+):
     return await forward(
-        request, "GET", f"/pipelines/{_path_segment(pipeline_id)}/revisions"
+        request,
+        "GET",
+        f"/pipelines/{_path_segment(pipeline_id)}/revisions",
+        params=query.model_dump(exclude_none=True),
     )
 
 
@@ -156,6 +176,25 @@ async def get_revision(request: Request, pipeline_id: str, revision_id: str):
         request,
         "GET",
         f"/pipelines/{_path_segment(pipeline_id)}/revisions/{_path_segment(revision_id)}",
+    )
+
+
+@router.get(
+    "/pipelines/{pipeline_id}/revisions/{revision_id}/metadata",
+    response_model=PipelineValidationReport,
+)
+@compile_limit
+async def revision_metadata(
+    request: Request,
+    pipeline_id: str,
+    revision_id: str,
+    selected_node_id: str = Query(min_length=1, max_length=100),
+):
+    return await forward(
+        request,
+        "GET",
+        f"/pipelines/{_path_segment(pipeline_id)}/revisions/{_path_segment(revision_id)}/metadata",
+        params={"selected_node_id": selected_node_id},
     )
 
 
@@ -199,6 +238,36 @@ async def service_pipeline(
         "GET",
         f"/{_path_segment(service_id)}/pipeline",
         params={"selected_node_id": selected_node_id} if selected_node_id else None,
+    )
+
+
+@router.get("/{service_id}/pipeline-history", response_model=PipelineHistoryPage)
+@read_limit
+async def service_history(
+    request: Request,
+    service_id: str,
+    query: Annotated[PipelineHistoryQuery, Query()],
+):
+    return await forward(
+        request,
+        "GET",
+        f"/{_path_segment(service_id)}/pipeline-history",
+        params=query.model_dump(exclude_none=True),
+    )
+
+
+@router.get("/{service_id}/pipeline-metadata", response_model=PipelineValidationReport)
+@compile_limit
+async def service_metadata(
+    request: Request,
+    service_id: str,
+    selected_node_id: str = Query(min_length=1, max_length=100),
+):
+    return await forward(
+        request,
+        "GET",
+        f"/{_path_segment(service_id)}/pipeline-metadata",
+        params={"selected_node_id": selected_node_id},
     )
 
 

@@ -61,13 +61,17 @@ def _budget_notice(report):
 
 
 def bounded_validation_report(
-    result: PipelineValidation, selected_node_id: str | None = None
+    result: PipelineValidation,
+    selected_node_id: str | None = None,
+    *,
+    include_definition: bool = True,
 ) -> PipelineValidationReport:
     issues, truncated = _bounded_issues(result.issues)
     report = PipelineValidationReport(
         valid=result.valid,
         issues=issues,
-        definition=result.definition,
+        definition=result.definition if include_definition else None,
+        definition_omitted=not include_definition,
         order=result.order,
         features=result.features,
         fingerprint=result.fingerprint,
@@ -85,7 +89,9 @@ def bounded_validation_report(
     if not _fits(report.definition, _DEFINITION_BUDGET):
         report.definition = None
         report.definition_omitted = True
-    if _fits(report) and not (truncated or report.definition_omitted):
+    if _fits(report) and not (
+        truncated or (include_definition and report.definition_omitted)
+    ):
         return report
     _budget_notice(report)
     if _fits(report):
@@ -98,6 +104,23 @@ def bounded_validation_report(
     if _fits(report):
         return report
     return _selected_tables(report, result, selected_node_id)
+
+
+def focused_validation_report(result: PipelineValidation, selected_node_id: str):
+    """Inspect one immutable node and its parents without repeating its graph."""
+    priority = _priority_nodes(result, selected_node_id)
+    focused = result.model_copy(
+        update={
+            "features": {
+                key: result.features[key] for key in priority if key in result.features
+            }
+        }
+    )
+    report = bounded_validation_report(
+        focused, selected_node_id, include_definition=False
+    )
+    report.features_complete &= len(focused.features) == len(result.features)
+    return report
 
 
 def _selected_tables(report, result, selected):

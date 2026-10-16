@@ -8,11 +8,13 @@ export function useGraphMetadata(
   definition: PipelineDefinition,
   enabled: boolean,
   selectedNodeId?: string,
+  revisionId?: string,
 ) {
   const [snapshot, setSnapshot] = useState<{
     definition: PipelineDefinition;
     validation: PipelineValidation;
     selectedNodeId: string | undefined;
+    revisionId: string | undefined;
   }>();
   useEffect(() => {
     if (!enabled) return;
@@ -23,14 +25,26 @@ export function useGraphMetadata(
       if (document.hidden) return;
       timer = window.setTimeout(async () => {
         try {
-          const validation = await pipelinesApi.validate(
-            id,
-            definition,
-            controller.signal,
-            selectedNodeId,
-          );
+          let validation: PipelineValidation;
+          if (revisionId) {
+            if (!selectedNodeId) return;
+            validation = await pipelinesApi.revisionMetadata(
+              id,
+              revisionId,
+              definition,
+              selectedNodeId,
+              controller.signal,
+            );
+          } else {
+            validation = await pipelinesApi.validate(
+              id,
+              definition,
+              controller.signal,
+              selectedNodeId,
+            );
+          }
           if (!controller.signal.aborted)
-            setSnapshot({ definition, validation, selectedNodeId });
+            setSnapshot({ definition, validation, selectedNodeId, revisionId });
         } catch {
           /* Explicit Validate reports transport and compiler failures. */
         }
@@ -43,9 +57,10 @@ export function useGraphMetadata(
       clearTimeout(timer);
       document.removeEventListener("visibilitychange", schedule);
     };
-  }, [id, definition, enabled, selectedNodeId]);
+  }, [id, definition, enabled, selectedNodeId, revisionId]);
   return snapshot?.definition === definition &&
-    snapshot.selectedNodeId === selectedNodeId
+    snapshot.selectedNodeId === selectedNodeId &&
+    snapshot.revisionId === revisionId
     ? snapshot.validation
     : undefined;
 }

@@ -1,0 +1,92 @@
+.pl-diagnostics {
+  border: 1px solid hsl(var(--border));
+  border-radius: 10px;
+  padding: 18px;
+  margin: 18px 0;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.pl-diagnostics h3 {
+  font-size: 14px;
+  margin: 0 0 10px;
+}
+
+.pl-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px 20px;
+  margin: 15px 0;
+}
+
+.pl-metrics > div {
+  min-width: 0;
+}
+
+.pl-metrics dt {
+  font-size: 10px;
+  color: hsl(var(--muted-foreground));
+  overflow-wrap: anywhere;
+}
+
+.pl-metrics dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.pl-switch {
+  display: flex;
+  gap: 4px;
+  margin: 12px 0;
+}
+
+.pl-switch button[aria-pressed="true"] {
+  background: hsl(var(--muted));
+  border-color: hsl(var(--primary));
+}
+
+.pl-sample {
+  display: inline-flex;
+  flex-direction: column;
+  vertical-align: top;
+  width: calc(50% - 8px);
+  margin: 8px 8px 8px 0;
+  padding: 10px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 6px;
+  gap: 6px;
+}
+
+.pl-sample > strong {
+  font-size: 10px;
+  color: hsl(var(--muted-foreground));
+}
+
+.pl-sample dl {
+  margin: 0;
+}
+
+.pl-sample dl > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.pl-sample dt {
+  overflow-wrap: anywhere;
+}
+
+.pl-sample dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.pl-history ul {
+  padding-left: 16px;
+  line-height: 2;
+}
+
+.pl-history a {
+  text-decoration: underline;
+}

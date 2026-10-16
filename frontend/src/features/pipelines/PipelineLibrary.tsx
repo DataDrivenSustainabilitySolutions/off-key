@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { ArrowLeft, CopyPlus, Search } from "lucide-react";
 import { getErrorMessage } from "@/lib/errors";
-import type { PipelineCatalog, PipelineView } from "./contracts";
+import type { PipelineCatalog } from "./contracts";
+import type { PipelineListPage } from "@/types/pipelines.generated";
 import type { MonitoringTarget } from "../monitoring/serviceModel";
 import { MonitoringTargetPicker } from "../monitoring/MonitoringTargetPicker";
 import { pipelinesApi } from "./api";
@@ -27,7 +28,12 @@ export function PipelineLibrary({
   onOpen,
   onBack,
 }: Props) {
-  const [pipelines, setPipelines] = useState<PipelineView[]>();
+  const [result, setResult] = useState<{
+    query: string;
+    archived: boolean;
+    page: PipelineListPage;
+  }>();
+  const [loadingMore, setLoadingMore] = useState(false);
   const [query, setQuery] = useState("");
   const [error, setError] = useState("");
   const [retry, setRetry] = useState(0);
@@ -43,14 +49,50 @@ export function PipelineLibrary({
   const [busy, setBusy] = useState(false);
   const [showCreate, setShowCreate] = useState(!!creating);
   const [archived, setArchived] = useState(false);
+  const page =
+    result?.query === query && result.archived === archived
+      ? result.page
+      : undefined;
   const target = targets.find((item) => item.id === targetId);
   useEffect(() => {
     const controller = new AbortController();
-    void pipelinesApi.list(controller.signal).then(setPipelines, (reason) => {
-      if (!controller.signal.aborted) setError(getErrorMessage(reason));
-    });
-    return () => controller.abort();
-  }, [retry]);
+    const timer = window.setTimeout(() => {
+      void pipelinesApi.list({ query, archived }, controller.signal).then(
+        (next) => {
+          if (!controller.signal.aborted) {
+            setResult({ query, archived, page: next });
+            setError("");
+          }
+        },
+        (reason) => {
+          if (!controller.signal.aborted) setError(getErrorMessage(reason));
+        },
+      );
+    }, query ? 300 : 0);
+    return () => {
+      controller.abort();
+      clearTimeout(timer);
+    };
+  }, [retry, query, archived]);
+  const loadMore = async () => {
+    if (!page || page.next_offset == null || loadingMore) return;
+    setLoadingMore(true);
+    setError("");
+    try {
+      const next = await pipelinesApi.list({
+        query, archived, offset: page.next_offset,
+      });
+      setResult((current) =>
+        current?.page === page
+          ? { query, archived, page: { ...next, items: [...page.items, ...next.items] } }
+          : current,
+      );
+    } catch (reason) {
+      setError(getErrorMessage(reason));
+    } finally {
+      setLoadingMore(false);
+    }
+  };
   const create = async () => {
     const template = catalog.templates.find((item) => item.id === templateId);
     if (!template || !name.trim() || busy) return;
@@ -86,13 +128,7 @@ export function PipelineLibrary({
       setBusy(false);
     }
   };
-  const filtered = pipelines?.filter(
-    (item) =>
-      item.archived === archived &&
-      `${item.name} ${item.description}`
-        .toLocaleLowerCase()
-        .includes(query.toLocaleLowerCase()),
-  );
+  const pipelines = page?.items;
   return (
     <section className="pl-library" aria-label="Pipeline library">
       <button type="button" className="mn-back" onClick={onBack}>
@@ -233,7 +269,7 @@ export function PipelineLibrary({
       </div>
       {!pipelines ? (
         <p role="status">Loading designs…</p>
-      ) : !filtered?.length ? (
+      ) : !pipelines.length ? (
         <p className="pl-empty">
           {query
             ? "No matching pipelines."
@@ -243,7 +279,7 @@ export function PipelineLibrary({
         </p>
       ) : (
         <ul className="pl-library-list">
-          {filtered.map((pipeline) => (
+          {pipelines.map((pipeline) => (
             <li key={pipeline.id}>
               <button type="button" onClick={() => onOpen(pipeline.id)}>
                 <strong>{pipeline.name}</strong>
@@ -251,16 +287,21 @@ export function PipelineLibrary({
                   {pipeline.description || "Reusable monitoring design"}
                 </span>
                 <small>
-                  {pipeline.draft.strategy === "adaptive_stream"
+                  {pipeline.strategy === "adaptive_stream"
                     ? "Adaptive stream"
                     : "Static baseline"}{" "}
-                  · {pipeline.revisions.length} published{" "}
-                  {pipeline.revisions.length === 1 ? "revision" : "revisions"}
+                  · {pipeline.revision_count} published{" "}
+                  {pipeline.revision_count === 1 ? "revision" : "revisions"}
                 </small>
               </button>
             </li>
           ))}
         </ul>
+      )}
+      {page?.next_offset != null && (
+        <button disabled={loadingMore} onClick={() => void loadMore()}>
+          Load more pipelines
+        </button>
       )}
     </section>
   );

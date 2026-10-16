@@ -11,7 +11,7 @@ from off_key_core.db.collection_runtime import monitoring_collection_fingerprint
 from off_key_core.db.maintenance import require_application_writes
 from off_key_core.db.models import MonitoringService, MqttTopic
 from off_key_core.db.pipeline_claims import monitor_claim_condition, pending_activations
-from off_key_core.db.pipeline_locks import lock_execution_records
+from off_key_core.db.pipeline_locks import complete_stopped_runs, lock_execution_records
 from off_key_core.schemas.radar import (
     RadarOperationalStatus,
     RadarStartConfig,
@@ -480,16 +480,7 @@ class RadarOrchestrationService:
     async def _delete_service_rows_by_ids(self, service_ids: list[str]) -> int:
         if not service_ids:
             return 0
-        from off_key_core.db.models import PipelineRun
-        from sqlalchemy import update
-
-        await self.session.execute(
-            update(PipelineRun)
-            .where(
-                PipelineRun.service_id.in_(service_ids), PipelineRun.ended_at.is_(None)
-            )
-            .values(status="stopped", ended_at=datetime.now(UTC))
-        )
+        await complete_stopped_runs(self.session, service_ids)
 
         await self.session.execute(
             delete(MqttTopic).where(MqttTopic.service_id.in_(service_ids))

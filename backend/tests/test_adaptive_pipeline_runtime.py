@@ -24,7 +24,13 @@ from off_key_mqtt_radar.pipelines.diagnostics import DiagnosticLimits
 from off_key_mqtt_radar.pipelines.plan import ExecutionPlan
 
 
-def _config(*, model="aberrant_moving_covariance", branched=True, clipped=False):
+def _config(
+    *,
+    model="aberrant_moving_covariance",
+    branched=True,
+    clipped=False,
+    model_params=None,
+):
     slots = ["a", "b", "temperature"] if branched else ["a"]
     nodes = [{"id": "input", "kind": "source", "component": "source.aligned"}]
     edges = []
@@ -84,6 +90,8 @@ def _config(*, model="aberrant_moving_covariance", branched=True, clipped=False)
         if model == "aberrant_half_space_trees"
         else {"window_size": 5}
     )
+    if model_params is not None:
+        params = model_params
     nodes.extend(
         [
             {
@@ -145,6 +153,32 @@ def _point(index):
         "reading_b": float(index**2),
         "reading_temperature": 20.0 + index,
     }
+
+
+@pytest.mark.parametrize(
+    ("model", "params", "required"),
+    [
+        ("aberrant_moving_geometric_average", {"window_size": 2}, 2),
+        (
+            "aberrant_moving_geometric_average",
+            {"window_size": 3, "absoluteValues": True},
+            3,
+        ),
+        ("aberrant_moving_harmonic_average", {"window_size": 1}, 1),
+    ],
+)
+def test_smallest_admissible_retained_windows_reach_real_runtime_readiness(
+    model, params, required
+):
+    config = _config(model=model, branched=False, model_params=params)
+    service = AdaptivePipelineDetectionService(config, automatic_checkpoints=False)
+    for index in range(1, 12):
+        result = service.process_data_point({"reading_a": float(index)})
+    state = service.get_pipeline_state()["nodes"]["model"]
+    assert state["readiness_required"] == required
+    assert state["ready"]
+    assert service.state == AdaptiveStreamState.OPERATIONAL
+    assert result.should_persist
 
 
 def test_branched_monitor_matches_standalone_numeric_reference():

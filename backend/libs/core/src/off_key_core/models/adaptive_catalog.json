@@ -792,6 +792,27 @@
       "name": "Aberrant MovingGeometricAverage",
       "parameter_schema": {
         "additionalProperties": false,
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "absoluteValues": {
+                  "const": true
+                }
+              },
+              "required": [
+                "absoluteValues"
+              ]
+            },
+            "then": {
+              "properties": {
+                "window_size": {
+                  "minimum": 3
+                }
+              }
+            }
+          }
+        ],
         "properties": {
           "absoluteValues": {
             "default": false,
@@ -800,7 +821,7 @@
           "window_size": {
             "default": 100,
             "maximum": 1000000,
-            "minimum": 1,
+            "minimum": 2,
             "type": "integer"
           }
         },

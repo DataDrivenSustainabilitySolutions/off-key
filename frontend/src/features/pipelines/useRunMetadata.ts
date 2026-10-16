@@ -1,10 +1,14 @@
 import { useEffect, useState } from "react";
 import { getErrorMessage } from "@/lib/errors";
 import { pipelinesApi } from "./api";
-import type { PipelineValidation } from "./contracts";
+import type { PipelineDefinition, PipelineValidation } from "./contracts";
 
 /** Focused metadata never replaces an immutable graph or an unsaved arrangement. */
-export function useRunMetadata(serviceId: string, selectedNodeId?: string) {
+export function useRunMetadata(
+  serviceId: string,
+  selectedNodeId?: string,
+  definition?: PipelineDefinition,
+) {
   const [attempt, setAttempt] = useState(0);
   const [snapshot, setSnapshot] = useState<{
     serviceId: string;
@@ -13,20 +17,21 @@ export function useRunMetadata(serviceId: string, selectedNodeId?: string) {
     error?: string;
   }>();
   useEffect(() => {
-    if (!selectedNodeId) return;
+    if (!selectedNodeId || !definition) return;
     const controller = new AbortController();
     const timer = window.setTimeout(async () => {
       try {
-        const view = await pipelinesApi.service(
+        const validation = await pipelinesApi.runMetadata(
           serviceId,
-          controller.signal,
+          definition,
           selectedNodeId,
+          controller.signal,
         );
         if (!controller.signal.aborted)
           setSnapshot({
             serviceId,
             selectedNodeId,
-            validation: view.validation,
+            validation,
           });
       } catch (reason) {
         if (!controller.signal.aborted)
@@ -41,7 +46,7 @@ export function useRunMetadata(serviceId: string, selectedNodeId?: string) {
       controller.abort();
       clearTimeout(timer);
     };
-  }, [serviceId, selectedNodeId, attempt]);
+  }, [serviceId, selectedNodeId, definition, attempt]);
   const current =
     snapshot?.serviceId === serviceId &&
     snapshot.selectedNodeId === selectedNodeId

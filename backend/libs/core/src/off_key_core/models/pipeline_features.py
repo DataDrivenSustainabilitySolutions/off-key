@@ -130,19 +130,3 @@ def adaptive_input_errors(
             )
         )
     return errors
-
-
-def adaptive_readiness_errors(node: PipelineNode) -> list[tuple[str, str]]:
-    retained_models = {
-        "detector:aberrant_moving_geometric_average",
-        "detector:aberrant_moving_harmonic_average",
-    }
-    if node.component in retained_models and node.params.get("window_size", 100) < 2:
-        return [
-            (
-                "readiness",
-                "This detector needs at least two retained values; "
-                "window_size must be at least 2",
-            )
-        ]
-    return []

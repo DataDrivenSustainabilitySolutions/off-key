@@ -2,7 +2,6 @@ import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   normalizeDefinition,
-  normalizeLayout,
   normalizeValidation,
 } from "@/features/pipelines/contracts";
 import { pipelinesApi } from "@/features/pipelines/api";
@@ -10,7 +9,7 @@ import { useGraphMetadata } from "@/features/pipelines/useGraphMetadata";
 import { useRunMetadata } from "@/features/pipelines/useRunMetadata";
 
 vi.mock("@/features/pipelines/api", () => ({
-  pipelinesApi: { validate: vi.fn(), service: vi.fn() },
+  pipelinesApi: { validate: vi.fn(), runMetadata: vi.fn() },
 }));
 const definition = normalizeDefinition({
   strategy: "adaptive_stream",
@@ -78,34 +77,26 @@ describe("bounded focused pipeline metadata", () => {
   it("keeps read-only metadata scoped to its run and inspected component", async () => {
     vi.useFakeTimers();
     let finishFirst!: (
-      value: Awaited<ReturnType<typeof pipelinesApi.service>>,
+      value: ReturnType<typeof report>,
     ) => void;
-    const view = (selected: string) => ({
-      run: null,
-      history: [],
-      definition,
-      layout: normalizeLayout(),
-      legacy: true,
-      validation: report(selected),
-    });
-    vi.mocked(pipelinesApi.service)
+    vi.mocked(pipelinesApi.runMetadata)
       .mockImplementationOnce(
         () =>
           new Promise((resolve) => {
             finishFirst = resolve;
           }),
       )
-      .mockResolvedValue(view("second"));
+      .mockResolvedValue(report("second"));
     const hook = renderHook(
-      ({ selected }) => useRunMetadata("service", selected),
+      ({ selected }) => useRunMetadata("service", selected, definition),
       { initialProps: { selected: "first" } },
     );
     await act(() => vi.advanceTimersByTimeAsync(200));
     hook.rerender({ selected: "second" });
-    await act(async () => finishFirst(view("first")));
+    await act(async () => finishFirst(report("first")));
     expect(hook.result.current.validation).toBeUndefined();
     await act(() => vi.advanceTimersByTimeAsync(200));
-    expect(vi.mocked(pipelinesApi.service).mock.calls[1]?.[2]).toBe("second");
+    expect(vi.mocked(pipelinesApi.runMetadata).mock.calls[1]?.[2]).toBe("second");
     expect(hook.result.current.validation?.selected_node_id).toBe("second");
   });
 });

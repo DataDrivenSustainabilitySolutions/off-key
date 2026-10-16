@@ -18,7 +18,6 @@ from .pipeline_digest import digest
 from .pipeline_features import (
     Columns,
     adaptive_input_errors,
-    adaptive_readiness_errors,
     node_features,
 )
 from .pipeline_parameters import normalized_parameters
@@ -36,19 +35,37 @@ class _Compilation:
     outgoing: dict[str, list[str]] = field(default_factory=lambda: defaultdict(list))
     order: list[str] = field(default_factory=list)
     features: dict[str, Columns] = field(default_factory=dict)
+    unresolved: set[str] = field(default_factory=set)
 
-    def error(self, code: str, message: str, node_id: str | None = None) -> None:
+    def error(
+        self,
+        code: str,
+        message: str,
+        node_id: str | None = None,
+        *,
+        blocks_features: bool = True,
+    ) -> None:
         self.issues.append(PipelineIssue(code=code, message=message, node_id=node_id))
+        if node_id is not None and blocks_features:
+            self.unresolved.add(node_id)
 
 
 def _validate_identity(compilation: _Compilation) -> None:
     definition = compilation.definition
     if len(compilation.nodes) != len(definition.nodes):
         compilation.error("duplicate_node", "Node IDs must be unique")
+        seen = set()
+        for node in definition.nodes:
+            if node.id in seen:
+                compilation.unresolved.add(node.id)
+            seen.add(node.id)
     slots = [slot.id for slot in definition.input_slots]
     if not slots or len(slots) != len(set(slots)):
         compilation.error(
             "input_slots", "Declare distinct input slots before publishing"
+        )
+        compilation.unresolved.update(
+            node.id for node in definition.nodes if node.kind == "source"
         )
     for kind in ("source", "detector", "policy", "output"):
         if sum(node.kind == kind for node in definition.nodes) != 1:
@@ -89,7 +106,9 @@ def _index_connections(compilation: _Compilation) -> None:
     seen: set[tuple[str, str]] = set()
     for edge in compilation.definition.edges:
         if edge.source not in compilation.nodes or edge.target not in compilation.nodes:
-            compilation.error("connection", "Connection references a missing node")
+            compilation.error(
+                "connection", "Connection references a missing node", edge.target
+            )
             continue
         key = (edge.source, edge.target)
         if key in seen:
@@ -125,7 +144,10 @@ def _validate_node_connections(compilation: _Compilation, node: PipelineNode) ->
         )
     if node.kind != "output" and not compilation.outgoing[node.id]:
         compilation.error(
-            "disconnected", "Every node must reach the evidence output", node.id
+            "disconnected",
+            "Every node must reach the evidence output",
+            node.id,
+            blocks_features=False,
         )
     if node.kind == "output" and compilation.outgoing[node.id]:
         compilation.error(
@@ -153,36 +175,31 @@ def _topological_order(compilation: _Compilation) -> None:
 
 
 def _propagate_features(compilation: _Compilation) -> None:
-    if compilation.issues:
-        return
     for identifier in compilation.order:
+        edges = sorted(compilation.incoming[identifier], key=lambda item: item.order)
+        if identifier in compilation.unresolved or any(
+            edge.source not in compilation.features for edge in edges
+        ):
+            continue
         node = compilation.nodes[identifier]
-        branches = [
-            compilation.features[edge.source]
-            for edge in sorted(
-                compilation.incoming[identifier], key=lambda item: item.order
-            )
-        ]
+        branches = [compilation.features[edge.source] for edge in edges]
         try:
             compilation.features[identifier] = node_features(
                 compilation.definition, node, branches
             )
         except (ValueError, KeyError) as exc:
             compilation.error("feature_schema", str(exc), identifier)
-            return
 
 
 def _validate_model(compilation: _Compilation) -> None:
-    if compilation.issues or compilation.definition.strategy != "adaptive_stream":
+    if compilation.definition.strategy != "adaptive_stream":
         return
-    detector = next(
-        node for node in compilation.definition.nodes if node.kind == "detector"
-    )
-    errors = adaptive_input_errors(
-        detector, compilation.features[detector.id]
-    ) + adaptive_readiness_errors(detector)
-    for code, message in errors:
-        compilation.error(code, message, detector.id)
+    for detector in compilation.definition.nodes:
+        if detector.kind != "detector" or detector.id not in compilation.features:
+            continue
+        errors = adaptive_input_errors(detector, compilation.features[detector.id])
+        for code, message in errors:
+            compilation.error(code, message, detector.id)
 
 
 def _definition_fingerprint(definition: PipelineDefinition) -> str:

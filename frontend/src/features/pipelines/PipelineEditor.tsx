@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ArrowLeft,
   Check,
@@ -29,6 +29,13 @@ import { PipelineActivation } from "./PipelineActivation";
 import { addComponent, executableChanges, type GraphDocument } from "./model";
 import { pipelinesApi } from "./api";
 import { useGraphMetadata } from "./useGraphMetadata";
+import { usePipelineRevisions } from "./usePipelineRevisions";
+import {
+  acknowledgeSave,
+  isSessionDirty,
+  openSession,
+  type EditorSession as Session,
+} from "./editorSession";
 
 type Props = {
   id: string;
@@ -86,14 +93,6 @@ export default function PipelineEditor(props: Props) {
   return <EditorSession key={pipeline.id} {...props} initial={pipeline} />;
 }
 
-type Session = {
-  base: PipelineView;
-  document: GraphDocument;
-  name: string;
-  description: string;
-  activationRevisionId?: string;
-};
-
 function EditorSession({
   initial,
   ...props
@@ -101,14 +100,13 @@ function EditorSession({
   const { userId } = useAuth();
   const [session, setSession] = useNavigationDraft<Session>(
     `pipeline:${userId}:${initial.id}`,
-    () => ({
-      base: initial,
-      document: { definition: initial.draft, layout: initial.layout },
-      name: initial.name,
-      description: initial.description,
-    }),
+    () => openSession(initial),
   );
   const [selected, setSelected] = useState<string>();
+  const currentSession = useRef(session);
+  useEffect(() => {
+    currentSession.current = session;
+  }, [session]);
   const [validation, setValidation] = useState<PipelineValidation>();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -133,7 +131,8 @@ function EditorSession({
     "graph" | "components" | "inspector"
   >("graph");
   const base = session.base;
-  const revision = base.revisions.find((item) => item.id === props.revisionId);
+  const revisions = usePipelineRevisions(base, props.revisionId);
+  const revision = revisions.revision;
   const document = revision
     ? { definition: revision.definition, layout: session.document.layout }
     : session.document;
@@ -143,14 +142,11 @@ function EditorSession({
   const metadata = useGraphMetadata(
     base.id,
     document.definition,
-    !readOnly,
+    !readOnly || !!revision,
     selected,
+    revision?.id,
   );
-  const dirty =
-    JSON.stringify(session.document) !==
-      JSON.stringify({ definition: base.draft, layout: base.layout }) ||
-    session.name !== base.name ||
-    session.description !== base.description;
+  const dirty = isSessionDirty(session);
   useEffect(() => {
     if (!dirty) return;
     const beforeUnload = (event: BeforeUnloadEvent) => {
@@ -176,28 +172,15 @@ function EditorSession({
       setConflict(true);
   };
   const save = async (): Promise<PipelineView> => {
-    let saved = await pipelinesApi.save(base.id, {
+    const submitted = session;
+    const saved = await pipelinesApi.save(base.id, {
       expected_version: base.version,
-      definition: session.document.definition,
-      layout: session.document.layout,
+      definition: submitted.document.definition,
+      layout: submitted.document.layout,
+      name: submitted.name.trim(),
+      description: submitted.description,
     });
-    setSession((previous) => ({ ...previous, base: saved }));
-    if (
-      session.name.trim() !== saved.name ||
-      session.description !== saved.description
-    )
-      saved = await pipelinesApi.metadata(base.id, {
-        expected_version: saved.version,
-        name: session.name.trim(),
-        description: session.description,
-        archived: saved.archived,
-      });
-    setSession({
-      base: saved,
-      document: { definition: saved.draft, layout: saved.layout },
-      name: saved.name,
-      description: saved.description,
-    });
+    setSession((current) => acknowledgeSave(current, submitted, saved));
     setConflict(false);
     setNotice("Draft saved.");
     return saved;
@@ -267,9 +250,16 @@ function EditorSession({
   if (props.revisionId && !revision)
     return (
       <section aria-label="Pipeline editor">
-        <p className="pl-error" role="alert">
-          Published revision not found. The shared draft has not been changed.
-        </p>
+        {revisions.error ? (
+          <p className="pl-error" role="alert">
+            Published revision could not load. {revisions.error}
+          </p>
+        ) : (
+          <p role="status">Loading published revision…</p>
+        )}
+        {revisions.error && (
+          <button onClick={revisions.retry}>Retry revision</button>
+        )}
         <button onClick={() => props.onRevision(undefined)}>Open draft</button>
       </section>
     );
@@ -314,13 +304,18 @@ function EditorSession({
               }}
             >
               <option value="draft">Draft</option>
-              {base.revisions.map((item) => (
+              {revisions.summaries.map((item) => (
                 <option key={item.id} value={item.id}>
                   Revision {item.number}
                 </option>
               ))}
             </select>
           </label>
+          {revisions.before && (
+            <button disabled={revisions.busy} onClick={() => void revisions.loadOlder()}>
+              Load older revisions
+            </button>
+          )}
           {!readOnly && (
             <>
               <button
@@ -399,6 +394,7 @@ function EditorSession({
           {error}
         </p>
       )}
+      {revisions.error && <p className="pl-error" role="alert">{revisions.error}</p>}
       {notice && (
         <p className="pl-notice" role="status">
           {notice}
@@ -535,15 +531,19 @@ function EditorSession({
               type="button"
               disabled={busy}
               onClick={() =>
-                void action(async () =>
-                  commit({
-                    ...document,
-                    layout: await arrangeGraph(
-                      document.definition,
-                      document.layout,
-                    ),
-                  }),
-                )
+                void action(async () => {
+                  const layout = await arrangeGraph(
+                    document.definition,
+                    document.layout,
+                  );
+                  if (currentSession.current.document !== document) {
+                    setNotice(
+                      "The graph changed while arranging. Arrange again to use the latest edits.",
+                    );
+                    return;
+                  }
+                  commit({ ...document, layout });
+                })
               }
             >
               <LayoutGrid size={15} />

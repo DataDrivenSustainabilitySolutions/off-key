@@ -32,7 +32,7 @@ export type PipelineView = Omit<
 > & {
   draft: PipelineDefinition;
   layout: PipelineLayout;
-  revisions: PipelineRevisionView[];
+  revisions: Wire.PipelineRevisionSummary[];
 };
 export type PipelineValidation = Omit<
   Wire.PipelineValidationReport,
@@ -100,7 +100,7 @@ export function normalizeView(view: Wire.PipelineView): PipelineView {
     ...view,
     draft: normalizeDefinition(view.draft),
     layout: normalizeLayout(view.layout),
-    revisions: (view.revisions ?? []).map(normalizeRevision),
+    revisions: view.revisions ?? [],
   };
 }
 export function normalizeCatalog(

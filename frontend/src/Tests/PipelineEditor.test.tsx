@@ -29,6 +29,9 @@ vi.mock("@/features/pipelines/api", () => ({
     validate: vi.fn(),
     publish: vi.fn(),
     create: vi.fn(),
+    revision: vi.fn(),
+    revisions: vi.fn(),
+    revisionMetadata: vi.fn(),
   },
 }));
 
@@ -104,7 +107,6 @@ const pipeline = () =>
         id: "revision",
         pipeline_id: "design",
         number: 1,
-        definition,
         fingerprint: "hash",
         catalog_id: "catalog",
         created_at: "2026-10-16T12:00:00Z",
@@ -129,13 +131,136 @@ const props = () => ({
 });
 
 beforeEach(() => {
-  vi.clearAllMocks();
+  vi.resetAllMocks();
   clearNavigationDrafts();
   vi.mocked(pipelinesApi.get).mockResolvedValue(pipeline());
+  vi.mocked(pipelinesApi.revision).mockImplementation(async (_id, revisionId) => {
+    if (revisionId !== "revision") throw new ApiRequestError("Published revision not found", 404);
+    return { ...pipeline().revisions[0]!, definition };
+  });
 });
 afterEach(cleanup);
 
 describe("saved graphical pipeline editor", () => {
+  it("retains newer draft edits while publishing the validated snapshot", async () => {
+    let validate!: (
+      value: Awaited<ReturnType<typeof pipelinesApi.validate>>,
+    ) => void;
+    vi.mocked(pipelinesApi.validate).mockImplementation(
+      () => new Promise((resolve) => { validate = resolve; }),
+    );
+    vi.mocked(pipelinesApi.save).mockImplementation(async (_id, request) => ({
+      ...pipeline(),
+      version: 2,
+      draft: normalizeDefinition(request.definition),
+      layout: normalizeLayout(request.layout),
+      name: request.name!,
+      description: request.description!,
+    }));
+    const published = {
+      ...pipeline().revisions[0]!, definition, id: "published", number: 2,
+    };
+    vi.mocked(pipelinesApi.publish).mockResolvedValue(published);
+    const callbacks = props();
+    render(<PipelineEditor {...callbacks} />);
+    fireEvent.change(
+      await screen.findByRole("combobox", { name: "Selected component" }),
+      { target: { value: "input" } },
+    );
+    const title = screen.getByRole("textbox", {
+      name: "Node title",
+    }) as HTMLInputElement;
+    fireEvent.change(title, { target: { value: "Validated snapshot" } });
+    fireEvent.click(screen.getByRole("button", { name: "Publish revision" }));
+    fireEvent.change(title, { target: { value: "Still editing" } });
+    const acknowledged = pipeline();
+    acknowledged.layout = normalizeLayout({
+      nodes: { input: { x: 0, y: 0, label: "Validated snapshot" } },
+    });
+    vi.mocked(pipelinesApi.get).mockResolvedValue({
+      ...acknowledged, version: 3, revisions: [published],
+    });
+    validate({ valid: true, definition, features: {}, issues: [] });
+    await waitFor(() =>
+      expect(callbacks.onRevision).toHaveBeenCalledWith("published"),
+    );
+    expect(title.value).toBe("Still editing");
+    expect(screen.getByText("Unsaved draft changes", { exact: false })).toBeTruthy();
+    expect(pipelinesApi.publish).toHaveBeenCalledWith("design", {
+      expected_version: 2,
+    });
+    expect(pipelinesApi.metadata).not.toHaveBeenCalled();
+  });
+
+  it("loads an immutable revision outside the first summary page", async () => {
+    vi.mocked(pipelinesApi.get).mockResolvedValue({
+      ...pipeline(), revisions: [],
+    });
+    vi.mocked(pipelinesApi.revision).mockResolvedValue({
+      ...pipeline().revisions[0]!, definition, id: "older", number: 24,
+    });
+    render(<PipelineEditor {...props()} revisionId="older" />);
+    await screen.findByText("Immutable revision 24", { exact: false });
+    expect(pipelinesApi.revision).toHaveBeenCalledWith(
+      "design", "older", expect.any(AbortSignal),
+    );
+    expect(screen.queryByRole("button", { name: "Save draft" })).toBeNull();
+    expect(
+      (screen.getByRole("combobox", { name: "Design version" }) as HTMLSelectElement).value,
+    ).toBe("older");
+  });
+
+  it("acknowledges an atomic save without discarding later edits", async () => {
+    let finishSave: (() => void) | undefined;
+    vi.mocked(pipelinesApi.save).mockImplementation(
+      (_id, request) => new Promise((resolve) => {
+        finishSave = () => resolve(normalizeView({
+          ...pipeline(),
+          version: 2,
+          draft: request.definition,
+          layout: request.layout!,
+          name: request.name!,
+          description: request.description!,
+        }));
+      }),
+    );
+    render(<PipelineEditor {...props()} />);
+    fireEvent.change(
+      await screen.findByRole("combobox", { name: "Selected component" }),
+      { target: { value: "input" } },
+    );
+    const title = screen.getByRole("textbox", {
+      name: "Node title",
+    }) as HTMLInputElement;
+    const name = screen.getByRole("textbox", {
+      name: "Pipeline name",
+    }) as HTMLInputElement;
+    fireEvent.change(title, { target: { value: "Submitted title" } });
+    fireEvent.change(name, { target: { value: "Submitted name" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save draft" }));
+    await waitFor(() => expect(finishSave).toBeTypeOf("function"));
+    fireEvent.change(title, { target: { value: "New unsaved title" } });
+    fireEvent.change(name, { target: { value: "New unsaved name" } });
+    finishSave!();
+    await screen.findByText("Draft saved.");
+    expect(title.value).toBe("New unsaved title");
+    expect(name.value).toBe("New unsaved name");
+    expect(screen.getByText("Unsaved draft changes", { exact: false })).toBeTruthy();
+    expect(pipelinesApi.metadata).not.toHaveBeenCalled();
+    expect(pipelinesApi.save).toHaveBeenCalledWith("design", expect.objectContaining({
+      expected_version: 1, name: "Submitted name", description: "",
+    }));
+    fireEvent.click(screen.getByRole("button", { name: "Save draft" }));
+    await waitFor(() => expect(pipelinesApi.save).toHaveBeenLastCalledWith("design", expect.objectContaining({
+      expected_version: 2, name: "New unsaved name",
+    })));
+    finishSave!();
+    await waitFor(() =>
+      expect(screen.queryByText("Unsaved draft changes", { exact: false })).toBeNull(),
+    );
+    expect(title.value).toBe("New unsaved title");
+  });
+
   it("keeps immutable revision controls read only", async () => {
     render(<PipelineEditor {...props()} revisionId="revision" />);
     await screen.findByText("Immutable revision 1", { exact: false });

@@ -6,8 +6,13 @@ import type {
   PipelineCreate,
   PipelineDefinition,
   PipelineDraftSave,
+  PipelineHistoryPage,
+  PipelineLayout,
+  PipelineListPage,
+  PipelineListQuery,
   PipelineMetadataChange,
   PipelinePublish,
+  PipelineRevisionPage,
   PipelineRevisionView,
   PipelineServiceView,
   PipelineValidationReport,
@@ -21,10 +26,10 @@ import {
   normalizeValidation,
   normalizeView,
 } from "./contracts";
-import type { PipelineLayout } from "@/types/pipelines.generated";
 
 const base = "/v1/monitors/pipelines";
 const item = (id: string) => `${base}/${encodeURIComponent(id)}`;
+const monitor = (id: string) => `/v1/monitors/${encodeURIComponent(id)}`;
 export const pipelinesApi = {
   catalog: (signal?: AbortSignal) =>
     apiUtils
@@ -33,10 +38,12 @@ export const pipelinesApi = {
         redirectOnUnauthorized: false,
       })
       .then(normalizeCatalog),
-  list: (signal?: AbortSignal) =>
-    apiUtils
-      .get<PipelineView[]>(base, { signal, redirectOnUnauthorized: false })
-      .then((items) => items.map(normalizeView)),
+  list: (query: PipelineListQuery = {}, signal?: AbortSignal) =>
+    apiUtils.get<PipelineListPage>(base, {
+      signal,
+      redirectOnUnauthorized: false,
+      params: query,
+    }),
   get: (id: string, signal?: AbortSignal) =>
     apiUtils
       .get<PipelineView>(item(id), { signal, redirectOnUnauthorized: false })
@@ -66,10 +73,40 @@ export const pipelinesApi = {
     apiUtils
       .post<PipelineRevisionView>(`${item(id)}/revisions`, request)
       .then(normalizeRevision),
+  revisions: (id: string, before?: number, signal?: AbortSignal) =>
+    apiUtils.get<PipelineRevisionPage>(`${item(id)}/revisions`, {
+      signal,
+      params: { before },
+      redirectOnUnauthorized: false,
+    }),
+  revision: (id: string, revisionId: string, signal?: AbortSignal) =>
+    apiUtils
+      .get<PipelineRevisionView>(
+        `${item(id)}/revisions/${encodeURIComponent(revisionId)}`,
+        { signal, redirectOnUnauthorized: false },
+      )
+      .then(normalizeRevision),
+  revisionMetadata: (
+    id: string,
+    revisionId: string,
+    definition: PipelineDefinition,
+    selectedNodeId: string,
+    signal?: AbortSignal,
+  ) =>
+    apiUtils
+      .get<PipelineValidationReport>(
+        `${item(id)}/revisions/${encodeURIComponent(revisionId)}/metadata`,
+        {
+          signal,
+          params: { selected_node_id: selectedNodeId },
+          redirectOnUnauthorized: false,
+        },
+      )
+      .then((report) => normalizeValidation(report, definition)),
   service: (id: string, signal?: AbortSignal, selectedNodeId?: string) =>
     apiUtils
       .get<PipelineServiceView>(
-        `/v1/monitors/${encodeURIComponent(id)}/pipeline`,
+        `${monitor(id)}/pipeline`,
         {
           signal,
           redirectOnUnauthorized: false,
@@ -79,10 +116,28 @@ export const pipelinesApi = {
         },
       )
       .then(normalizeService),
+  history: (serviceId: string, signal?: AbortSignal) =>
+    apiUtils.get<PipelineHistoryPage>(`${monitor(serviceId)}/pipeline-history`, {
+      signal,
+      redirectOnUnauthorized: false,
+    }),
+  runMetadata: (
+    serviceId: string,
+    definition: PipelineDefinition,
+    selectedNodeId: string,
+    signal?: AbortSignal,
+  ) =>
+    apiUtils
+      .get<PipelineValidationReport>(`${monitor(serviceId)}/pipeline-metadata`, {
+        signal,
+        params: { selected_node_id: selectedNodeId },
+        redirectOnUnauthorized: false,
+      })
+      .then((report) => normalizeValidation(report, definition)),
   saveLayout: (id: string, layout: PipelineLayout) =>
     apiUtils
       .put<PipelineLayout>(
-        `/v1/monitors/${encodeURIComponent(id)}/pipeline-layout`,
+        `${monitor(id)}/pipeline-layout`,
         layout,
       )
       .then(normalizeLayout),

@@ -289,6 +289,8 @@ class PipelineDraftSave(PipelineModel):
     expected_version: int = Field(ge=1)
     definition: PipelineDefinition
     layout: PipelineLayout = Field(default_factory=PipelineLayout)
+    name: str | None = Field(default=None, min_length=1, max_length=120)
+    description: str | None = Field(default=None, max_length=2000)
 
 
 class PipelinePublish(PipelineModel):
@@ -307,14 +309,55 @@ class PipelineMetadataChange(PipelineModel):
     archived: bool = False
 
 
-class PipelineRevisionView(PipelineModel):
+class PipelineRevisionSummary(PipelineModel):
     id: str
     pipeline_id: str
     number: int
-    definition: PipelineDefinition
     fingerprint: str
     catalog_id: str
     created_at: datetime
+
+
+class PipelineRevisionView(PipelineRevisionSummary):
+    definition: PipelineDefinition
+
+
+class PipelineRevisionPage(PipelineModel):
+    items: list[PipelineRevisionSummary] = Field(max_length=100)
+    next_before: int | None = None
+
+
+class PipelineListQuery(PipelineModel):
+    limit: int = Field(default=25, ge=1, le=100)
+    offset: int = Field(default=0, ge=0)
+    query: str = Field(default="", max_length=120)
+    archived: bool = False
+
+
+class PipelineRevisionQuery(PipelineModel):
+    limit: int = Field(default=25, ge=1, le=100)
+    before: int | None = Field(default=None, ge=1)
+
+
+class PipelineHistoryQuery(PipelineModel):
+    limit: int = Field(default=25, ge=1, le=100)
+
+
+class PipelineSummary(PipelineModel):
+    id: str
+    name: str
+    description: str
+    archived: bool
+    version: int
+    strategy: PipelineStrategy
+    revision_count: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class PipelineListPage(PipelineModel):
+    items: list[PipelineSummary] = Field(max_length=100)
+    next_offset: int | None = None
 
 
 class PipelineView(PipelineModel):
@@ -325,7 +368,10 @@ class PipelineView(PipelineModel):
     version: int
     draft: PipelineDefinition
     layout: PipelineLayout
-    revisions: list[PipelineRevisionView] = Field(default_factory=list)
+    revisions: list[PipelineRevisionSummary] = Field(
+        default_factory=list, max_length=100
+    )
+    revision_next_before: int | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -387,22 +433,32 @@ class PipelineBindingMetadata(PipelineModel):
     readings: list[PipelineReadingMetadata]
 
 
-class PipelineRunView(PipelineModel):
+class PipelineRunSummary(PipelineModel):
     id: str
     service_id: str
     revision_id: str | None
     predecessor_run_id: str | None
-    execution: PipelineExecutionConfig | None
     status: str
     created_at: datetime
     ended_at: datetime | None
-    binding_metadata: PipelineBindingMetadata | None = None
     error: str | None = None
+
+
+class PipelineRunView(PipelineRunSummary):
+    pipeline_id: str | None = None
+    execution: PipelineExecutionConfig | None
+    binding_metadata: PipelineBindingMetadata | None = None
+
+
+class PipelineHistoryPage(PipelineModel):
+    items: list[PipelineRunSummary] = Field(max_length=100)
+    next_service_id: str | None = None
 
 
 class PipelineServiceView(PipelineModel):
     run: PipelineRunView | None
-    history: list[PipelineRunView]
+    history: list[PipelineRunSummary] = Field(max_length=100)
+    history_next_service_id: str | None = None
     definition: PipelineDefinition
     layout: PipelineLayout
     legacy: bool = False

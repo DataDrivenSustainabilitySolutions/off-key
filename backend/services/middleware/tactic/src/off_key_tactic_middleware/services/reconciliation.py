@@ -10,7 +10,7 @@ from off_key_core.config.logs import logger
 from off_key_core.db.base import get_async_session_local
 from off_key_core.db.collection import lock_collection_configuration
 from off_key_core.db.models import MonitoringService, MqttTopic, PipelineRun
-from off_key_core.db.pipeline_locks import lock_execution_records
+from off_key_core.db.pipeline_locks import complete_stopped_runs, lock_execution_records
 from off_key_core.schemas.radar import RadarOperationalStatus
 from sqlalchemy import delete, select, update
 from sqlalchemy.exc import SQLAlchemyError
@@ -215,13 +215,7 @@ class RadarStatusReconciliationService:
             await self._delete_service_row(session, service.id)
         elif service.stop_requested_at is not None or service.status:
             mark_collection_monitor_stopped(service)
-            await session.execute(
-                update(PipelineRun)
-                .where(
-                    PipelineRun.service_id == service.id, PipelineRun.ended_at.is_(None)
-                )
-                .values(status="stopped", ended_at=datetime.now(UTC))
-            )
+            await complete_stopped_runs(session, [service.id])
         elif self._is_purge_due(service):
             await self._delete_service_row(session, service.id)
 
@@ -261,11 +255,7 @@ class RadarStatusReconciliationService:
 
     @staticmethod
     async def _delete_service_row(session: AsyncSession, service_id: str) -> int:
-        await session.execute(
-            update(PipelineRun)
-            .where(PipelineRun.service_id == service_id, PipelineRun.ended_at.is_(None))
-            .values(status="stopped", ended_at=datetime.now(UTC))
-        )
+        await complete_stopped_runs(session, [service_id])
         await session.execute(
             delete(MqttTopic).where(MqttTopic.service_id == service_id)
         )

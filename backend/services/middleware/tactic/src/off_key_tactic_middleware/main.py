@@ -257,7 +257,7 @@ async def lifespan(app: FastAPI):
 
         await _start_reconciliation(app, config)
         from .services.orchestration.radar_workloads import RadarWorkloadManager
-        from .services.pipelines.activation import PipelineActivationSupervisor
+        from .services.pipelines.supervisor import PipelineActivationSupervisor
 
         app.state.pipeline_activation_supervisor = PipelineActivationSupervisor(
             app.state.model_registry, RadarWorkloadManager(app.state.docker_client)

@@ -138,6 +138,8 @@ export type PipelineDraftSave = {
   expected_version: number;
   definition: PipelineDefinition;
   layout?: PipelineLayout;
+  name?: string | null;
+  description?: string | null;
 };
 
 export type PipelineEdge = {
@@ -155,6 +157,15 @@ export type PipelineExecutionConfig = {
   fingerprint: string;
 };
 
+export type PipelineHistoryPage = {
+  items: Array<PipelineRunSummary>;
+  next_service_id?: string | null;
+};
+
+export type PipelineHistoryQuery = {
+  limit?: number;
+};
+
 export type PipelineIssue = {
   code: string;
   message: string;
@@ -166,6 +177,18 @@ export type PipelineLayout = {
   version?: number;
   nodes?: Record<string, CanvasPosition>;
   viewport?: CanvasViewport | null;
+};
+
+export type PipelineListPage = {
+  items: Array<PipelineSummary>;
+  next_offset?: number | null;
+};
+
+export type PipelineListQuery = {
+  limit?: number;
+  offset?: number;
+  query?: string;
+  archived?: boolean;
 };
 
 export type PipelineMetadataChange = {
@@ -204,14 +227,44 @@ export type PipelineReadingMetadata = {
   collection_policy: CollectionPolicy;
 };
 
+export type PipelineRevisionPage = {
+  items: Array<PipelineRevisionSummary>;
+  next_before?: number | null;
+};
+
+export type PipelineRevisionQuery = {
+  limit?: number;
+  before?: number | null;
+};
+
+export type PipelineRevisionSummary = {
+  id: string;
+  pipeline_id: string;
+  number: number;
+  fingerprint: string;
+  catalog_id: string;
+  created_at: string;
+};
+
 export type PipelineRevisionView = {
   id: string;
   pipeline_id: string;
   number: number;
-  definition: PipelineDefinition;
   fingerprint: string;
   catalog_id: string;
   created_at: string;
+  definition: PipelineDefinition;
+};
+
+export type PipelineRunSummary = {
+  id: string;
+  service_id: string;
+  revision_id: string | null;
+  predecessor_run_id: string | null;
+  status: string;
+  created_at: string;
+  ended_at: string | null;
+  error?: string | null;
 };
 
 export type PipelineRunView = {
@@ -219,17 +272,19 @@ export type PipelineRunView = {
   service_id: string;
   revision_id: string | null;
   predecessor_run_id: string | null;
-  execution: PipelineExecutionConfig | null;
   status: string;
   created_at: string;
   ended_at: string | null;
-  binding_metadata?: PipelineBindingMetadata | null;
   error?: string | null;
+  pipeline_id?: string | null;
+  execution: PipelineExecutionConfig | null;
+  binding_metadata?: PipelineBindingMetadata | null;
 };
 
 export type PipelineServiceView = {
   run: PipelineRunView | null;
-  history: Array<PipelineRunView>;
+  history: Array<PipelineRunSummary>;
+  history_next_service_id?: string | null;
   definition: PipelineDefinition;
   layout: PipelineLayout;
   legacy?: boolean;
@@ -241,6 +296,18 @@ export type PipelineSettings = {
   calibration_window_size?: number;
   seed?: number | null;
   conformal_strategy?: "split";
+};
+
+export type PipelineSummary = {
+  id: string;
+  name: string;
+  description: string;
+  archived: boolean;
+  version: number;
+  strategy: "static_baseline" | "adaptive_stream";
+  revision_count: number;
+  created_at: string;
+  updated_at: string;
 };
 
 export type PipelineTemplate = {
@@ -286,7 +353,8 @@ export type PipelineView = {
   version: number;
   draft: PipelineDefinition;
   layout: PipelineLayout;
-  revisions?: Array<PipelineRevisionView>;
+  revisions?: Array<PipelineRevisionSummary>;
+  revision_next_before?: number | null;
   created_at: string;
   updated_at: string;
 };

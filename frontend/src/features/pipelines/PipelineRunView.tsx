@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import { getErrorMessage } from "@/lib/errors";
 import type {
   PipelineCatalog,
@@ -14,6 +14,7 @@ import { PipelineDiagnostics, type PipelineState } from "./PipelineDiagnostics";
 import { executableChanges, nodeOptionLabel } from "./model";
 import { arrangeGraph } from "./layout";
 import { useRunMetadata } from "./useRunMetadata";
+import { PipelineRunHistory } from "./PipelineRunHistory";
 import "./pipelines.css";
 
 export default function PipelineRunView({
@@ -33,7 +34,7 @@ export default function PipelineRunView({
   const [view, setView] = useState<PipelineServiceView>();
   const [catalog, setCatalog] = useState<PipelineCatalog>();
   const [selected, setSelected] = useState<string>();
-  const metadata = useRunMetadata(serviceId, selected);
+  const metadata = useRunMetadata(serviceId, selected, view?.definition);
   const [error, setError] = useState("");
   const [retry, setRetry] = useState(0);
   const [editing, setEditing] = useState(false);
@@ -74,13 +75,10 @@ export default function PipelineRunView({
     setBusy(true);
     setError("");
     try {
-      const designs = await pipelinesApi.list();
       setDesign(
-        designs.find((item) =>
-          item.revisions.some(
-            (revision) => revision.id === view?.run?.revision_id,
-          ),
-        ),
+        view?.run?.pipeline_id
+          ? await pipelinesApi.get(view.run.pipeline_id)
+          : undefined,
       );
       setEditing(true);
     } catch (reason) {
@@ -145,7 +143,8 @@ export default function PipelineRunView({
                   onClick={async () => {
                     setBusy(true);
                     try {
-                      setLayout(await arrangeGraph(view.definition, layout));
+                      const arranged = await arrangeGraph(view.definition, layout);
+                      setLayout((current) => current === layout ? arranged : current);
                     } catch (reason) {
                       setError(getErrorMessage(reason));
                     } finally {
@@ -255,7 +254,7 @@ export default function PipelineRunView({
               components={catalog.components}
               selected={selected}
               readOnly
-              layoutEditable={arranging}
+              layoutEditable={arranging && !busy}
               states={
                 state && state.run_id === view.run?.id
                   ? Object.fromEntries(
@@ -314,21 +313,13 @@ export default function PipelineRunView({
             )}
             onSelect={setSelected}
           />
-          <details className="pl-history">
-            <summary>Linked monitoring history ({view.history.length})</summary>
-            <ul>
-              {view.history.map((run) => (
-                <li key={run.id}>
-                  <Link
-                    to={`/?service=${encodeURIComponent(run.service_id)}&tab=pipeline`}
-                  >
-                    {run.id}
-                  </Link>{" "}
-                  · {run.status} · {run.created_at}
-                </li>
-              ))}
-            </ul>
-          </details>
+          <PipelineRunHistory
+            key={serviceId}
+            initial={{
+              items: view.history,
+              next_service_id: view.history_next_service_id,
+            }}
+          />
         </>
       )}
     </section>

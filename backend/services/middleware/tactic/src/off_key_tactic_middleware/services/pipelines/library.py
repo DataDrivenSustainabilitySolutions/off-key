@@ -11,7 +11,10 @@ from off_key_core.db.models import (
     PipelineRevision,
     PipelineRun,
 )
-from off_key_core.models.pipeline_reports import bounded_validation_report
+from off_key_core.models.pipeline_reports import (
+    bounded_validation_report,
+    focused_validation_report,
+)
 from off_key_core.models.pipelines import (
     compile_pipeline,
     pipeline_catalog_id,
@@ -21,9 +24,12 @@ from off_key_core.schemas.pipelines import (
     PipelineCreate,
     PipelineDefinition,
     PipelineDraftSave,
+    PipelineHistoryQuery,
     PipelineLayout,
+    PipelineListQuery,
     PipelineMetadataChange,
     PipelinePublish,
+    PipelineRevisionQuery,
     PipelineRevisionView,
     PipelineRunView,
     PipelineServiceView,
@@ -34,6 +40,7 @@ from sqlalchemy import select
 
 from ...config.config import get_tactic_settings
 from ...domain import ConflictError, NotFoundError, ValidationError
+from .queries import list_designs, list_revisions, run_history
 
 
 def require_authoring() -> None:
@@ -47,9 +54,14 @@ def revision_view(revision) -> PipelineRevisionView:
     )
 
 
-def run_view(run) -> PipelineRunView:
+def run_view(run, pipeline_id=None) -> PipelineRunView:
     return PipelineRunView.model_validate(
-        {key: getattr(run, key) for key in PipelineRunView.model_fields}
+        {
+            key: getattr(run, key)
+            for key in PipelineRunView.model_fields
+            if key != "pipeline_id"
+        }
+        | {"pipeline_id": pipeline_id}
     )
 
 
@@ -57,17 +69,8 @@ class PipelineLibrary:
     def __init__(self, session):
         self.session = session
 
-    async def list(self):
-        rows = list(
-            (
-                await self.session.scalars(
-                    select(MonitoringPipeline).order_by(
-                        MonitoringPipeline.updated_at.desc()
-                    )
-                )
-            ).all()
-        )
-        return [await self._view(row) for row in rows]
+    async def list(self, query: PipelineListQuery | None = None):
+        return await list_designs(self.session, query or PipelineListQuery())
 
     async def get(self, identifier: str):
         return await self._view(await self._row(identifier))
@@ -81,11 +84,7 @@ class PipelineLibrary:
         return row
 
     async def _view(self, row):
-        revisions = await self.session.scalars(
-            select(PipelineRevision)
-            .where(PipelineRevision.pipeline_id == row.id)
-            .order_by(PipelineRevision.number.desc())
-        )
+        revisions = await list_revisions(self.session, row.id, PipelineRevisionQuery())
         return PipelineView(
             id=row.id,
             name=row.name,
@@ -94,7 +93,8 @@ class PipelineLibrary:
             version=row.version,
             draft=row.draft,
             layout=row.layout,
-            revisions=[revision_view(item) for item in revisions],
+            revisions=revisions.items,
+            revision_next_before=revisions.next_before,
             created_at=row.created_at,
             updated_at=row.updated_at,
         )
@@ -133,6 +133,12 @@ class PipelineLibrary:
         await self._write()
         row = await self._row(identifier, lock=True)
         self._version(row, change.expected_version)
+        if change.name is not None:
+            if not change.name.strip():
+                raise ValidationError("Pipeline name must not be empty")
+            row.name = change.name.strip()
+        if change.description is not None:
+            row.description = change.description
         row.draft = change.definition.model_dump(mode="json")
         row.layout = change.layout.model_dump(mode="json")
         row.version += 1
@@ -193,8 +199,13 @@ class PipelineLibrary:
             validate_pipeline(definition), selected_node_id
         )
 
-    async def revisions(self, identifier: str):
-        return (await self.get(identifier)).revisions
+    async def revisions(
+        self, identifier: str, query: PipelineRevisionQuery | None = None
+    ):
+        await self._row(identifier)
+        return await list_revisions(
+            self.session, identifier, query or PipelineRevisionQuery()
+        )
 
     async def revision(self, identifier: str, revision_id: str):
         revision = await self.session.get(PipelineRevision, revision_id)
@@ -202,7 +213,7 @@ class PipelineLibrary:
             raise NotFoundError("Pipeline revision not found")
         return revision_view(revision)
 
-    async def service(self, service_id: str, selected_node_id=None):
+    async def _service_source(self, service_id):
         run = await self.session.scalar(
             select(PipelineRun).where(PipelineRun.service_id == service_id)
         )
@@ -215,29 +226,54 @@ class PipelineLibrary:
             definition = PipelineDefinition.model_validate(execution["definition"])
         else:
             definition = legacy_definition(config or {})
+        return run, definition, execution
+
+    async def service(self, service_id: str, selected_node_id=None):
+        run, definition, execution = await self._service_source(service_id)
         validation = bounded_validation_report(
             validate_pipeline(definition), selected_node_id
         )
-        history = []
-        cursor = run
-        visited = set()
-        while cursor is not None and cursor.id not in visited:
-            visited.add(cursor.id)
-            history.append(run_view(cursor))
-            cursor = (
-                await self.session.get(PipelineRun, cursor.predecessor_run_id)
-                if cursor.predecessor_run_id
-                else None
+        history = await run_history(self.session, service_id, PipelineHistoryQuery())
+        pipeline_id = (
+            await self.session.scalar(
+                select(PipelineRevision.pipeline_id).where(
+                    PipelineRevision.id == run.revision_id
+                )
             )
+            if run and run.revision_id
+            else None
+        )
         return PipelineServiceView(
-            run=run_view(run) if run else None,
-            history=history,
+            run=run_view(run, pipeline_id) if run else None,
+            history=history.items,
+            history_next_service_id=history.next_service_id,
             definition=definition,
             layout=PipelineLayout.model_validate(run.layout or {})
             if run
             else PipelineLayout(),
             legacy=execution is None,
             validation=validation,
+        )
+
+    async def history(self, service_id, query: PipelineHistoryQuery):
+        page = await run_history(self.session, service_id, query)
+        if (
+            not page.items
+            and await self.session.get(MonitoringService, service_id) is None
+        ):
+            raise NotFoundError("Monitoring service not found")
+        return page
+
+    async def service_metadata(self, service_id, selected_node_id):
+        _, definition, _ = await self._service_source(service_id)
+        return focused_validation_report(
+            validate_pipeline(definition), selected_node_id
+        )
+
+    async def revision_metadata(self, pipeline_id, revision_id, selected_node_id):
+        revision = await self.revision(pipeline_id, revision_id)
+        return focused_validation_report(
+            validate_pipeline(revision.definition), selected_node_id
         )
 
     async def layout(self, service_id: str, layout: PipelineLayout):

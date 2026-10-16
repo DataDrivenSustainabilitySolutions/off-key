@@ -1,6 +1,8 @@
 """Consistent execution lock order shared by terminal lifecycle transitions."""
 
-from sqlalchemy import select
+from datetime import UTC, datetime
+
+from sqlalchemy import case, select, update
 
 from .models import PipelineRun, RadarRuntimeCheckpoint
 
@@ -25,4 +27,25 @@ async def lock_execution_records(session, service_ids: list[str]) -> None:
         .where(PipelineRun.service_id.in_(identifiers))
         .order_by(PipelineRun.id)
         .with_for_update()
+    )
+
+
+async def complete_stopped_runs(session, service_ids: list[str]) -> None:
+    """End stopped executions without replacing a recorded terminal outcome.
+
+    Callers first acquire ``lock_execution_records``, then validate their locked
+    service lifecycle intent. This update belongs to that same transaction.
+    """
+    if not service_ids:
+        return
+    await session.execute(
+        update(PipelineRun)
+        .where(PipelineRun.service_id.in_(service_ids), PipelineRun.ended_at.is_(None))
+        .values(
+            status=case(
+                (PipelineRun.status.in_(["failed", "cancelled"]), PipelineRun.status),
+                else_="stopped",
+            ),
+            ended_at=datetime.now(UTC),
+        )
     )

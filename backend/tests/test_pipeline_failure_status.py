@@ -1,11 +1,11 @@
 """Actual signed-state writers serialize fatal status with stale heartbeats."""
 
 import asyncio
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 import pytest_asyncio
-from off_key_core.db.models import MonitoringService, PipelineRun
+from off_key_core.db.models import MonitoringService, PipelineActivation, PipelineRun
 from off_key_core.schemas.pipelines import (
     PipelineActivationRequest,
     PipelineExecutionConfig,
@@ -97,6 +97,46 @@ def healthy_metrics():
             "pipeline_state": {"nodes": {"detector": {"state": "ready"}}},
         },
     }
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("timely", [True, False])
+async def test_startup_uses_first_database_receipt_even_when_controller_is_delayed(
+    signed_graph_writer, timely
+):
+    writer, sessions, activation, _, _ = signed_graph_writer
+    if timely:
+        await writer.write_service_metrics(healthy_metrics())
+    async with sessions.begin() as session:
+        service = await session.get(MonitoringService, activation.service_id)
+        row = await session.get(PipelineActivation, activation.id)
+        row.phase = "awaiting_heartbeat"
+        first = service.operational_status.get("first_heartbeat_at")
+        row.heartbeat_deadline = (
+            datetime.fromisoformat(first) + timedelta(milliseconds=1)
+            if timely
+            else datetime.now(UTC) - timedelta(seconds=1)
+        )
+    await asyncio.sleep(0.02)
+    metrics = healthy_metrics()
+    # A sender cannot forge an earlier database receipt.
+    metrics["operational_status"]["first_heartbeat_at"] = "2000-01-01T00:00:00Z"
+    await writer.write_service_metrics(metrics)
+    async with sessions() as session:
+        service = await session.get(MonitoringService, activation.service_id)
+        row = await session.get(PipelineActivation, activation.id)
+        assert service.operational_updated_at > row.heartbeat_deadline
+        if timely:
+            assert service.operational_status["first_heartbeat_at"] == first
+        else:
+            assert (
+                datetime.fromisoformat(service.operational_status["first_heartbeat_at"])
+                > row.heartbeat_deadline
+            )
+        controller = PipelineActivations(session)
+        await controller.advance(activation.id)
+        result = await controller.get(activation.id)
+        assert result.phase == ("succeeded" if timely else "cancelling")
 
 
 async def assert_failure_retained(writer, sessions, activation, snapshot):

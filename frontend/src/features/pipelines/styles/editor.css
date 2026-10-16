@@ -1,0 +1,137 @@
+.pl-canvas-toolbar {
+  justify-content: space-between;
+  margin: 14px 0 10px;
+  min-height: 32px;
+}
+
+.pl-mobile-switch {
+  display: none;
+}
+
+.pl-design-settings,
+.pl-metadata,
+.pl-archive,
+.pl-history {
+  border: 1px solid hsl(var(--border));
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin: 12px 0;
+  font-size: 12px;
+}
+
+.pl-design-settings summary,
+.pl-metadata summary,
+.pl-archive summary,
+.pl-history summary {
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.pl-settings-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.pl-slot {
+  display: grid;
+  grid-template-columns: 110px minmax(100px, 1fr) minmax(90px, 160px) auto;
+  gap: 10px;
+  align-items: center;
+  border-bottom: 1px solid hsl(var(--border));
+  padding: 8px 0;
+}
+
+.pl-slot code {
+  font-size: 10px;
+  overflow-wrap: anywhere;
+}
+
+.pl-slot .pl-field {
+  margin: 0;
+}
+
+.pl-slots {
+  margin: 15px 0;
+}
+
+.pl-archive {
+  margin-top: 24px;
+}
+
+.pl-archive button {
+  color: #dc2626;
+}
+
+.pl-error,
+.pl-warning,
+.pl-notice,
+.pl-conflict,
+.pl-validation {
+  padding: 12px 16px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 8px;
+  margin: 12px 0;
+  font-size: 12px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.pl-error {
+  color: #dc2626;
+  background: color-mix(in srgb, #ef4444 5%, hsl(var(--background)));
+  border-color: color-mix(in srgb, #ef4444 25%, hsl(var(--border)));
+}
+
+.pl-error button {
+  margin-left: 8px;
+}
+
+.pl-warning {
+  color: #a16207;
+  background: color-mix(in srgb, #f59e0b 7%, hsl(var(--background)));
+  border-color: color-mix(in srgb, #f59e0b 30%, hsl(var(--border)));
+}
+
+.dark .pl-warning {
+  color: #fcd34d;
+}
+
+.pl-notice {
+  color: #15803d;
+  background: color-mix(in srgb, #22c55e 5%, hsl(var(--background)));
+}
+
+.dark .pl-notice {
+  color: #86efac;
+}
+
+.pl-conflict {
+  background: hsl(var(--muted));
+}
+
+.pl-conflict h3,
+.pl-validation h3 {
+  font-size: 13px;
+  margin: 0 0 6px;
+}
+
+.pl-conflict button {
+  margin-right: 8px;
+}
+
+.pl-validation ul {
+  margin: 8px 0;
+  padding-left: 16px;
+}
+
+.pl-validation button {
+  border: 0;
+  background: none;
+  text-align: left;
+  color: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  padding: 3px 0;
+}

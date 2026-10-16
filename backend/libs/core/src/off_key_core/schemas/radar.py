@@ -159,6 +159,8 @@ class RadarOperationalStatus(BaseModel):
     last_alignment_status: str | None = None
     error: str | None = None
     updated_at: datetime | None = None
+    # Database receipt time survives replacement of the latest runtime report.
+    first_heartbeat_at: datetime | None = None
     is_stale: bool = False
     coverage: RadarCoverageStatus = Field(default_factory=RadarCoverageStatus)
     recovery: RadarRecoveryStatus | None = None

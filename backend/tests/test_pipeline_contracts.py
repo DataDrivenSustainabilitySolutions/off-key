@@ -253,14 +253,63 @@ def test_transformed_unit_interval_model_requires_explicit_clipping():
 
 
 @pytest.mark.parametrize(
-    "model", ["moving_geometric_average", "moving_harmonic_average"]
+    ("params", "minimum"),
+    [({"window_size": 1}, 2), ({"window_size": 2, "absoluteValues": True}, 3)],
 )
-def test_impossible_retained_readiness_is_rejected(model):
+def test_impossible_retained_readiness_is_rejected(params, minimum):
     graph = template()
     detector = next(node for node in graph.nodes if node.kind == "detector")
-    detector.component = f"detector:aberrant_{model}"
-    detector.params = {"window_size": 1}
-    assert "at least two retained values" in compile_error(graph)
+    detector.component = "detector:aberrant_moving_geometric_average"
+    detector.params = params
+    assert f"minimum of {minimum}" in compile_error(graph)
+
+
+def test_partial_inference_preserves_valid_upstream_and_independent_branches():
+    graph = branched()
+    next(node for node in graph.nodes if node.id == "scaled_inputs").params = {
+        "features": []
+    }
+    result = validate_pipeline(graph)
+    assert not result.valid and result.fingerprint is None
+    assert [feature.name for feature in result.features["input"]] == [
+        "voltage",
+        "current",
+        "temperature",
+    ]
+    assert [feature.name for feature in result.features["raw"]] == ["temperature"]
+    assert {"scaled_inputs", "scaler", "projection", "merge", "detector"}.isdisjoint(
+        result.features
+    )
+    # An unrelated disconnected node must not erase a complete path's metadata.
+    data = branched().model_dump(mode="json")
+    data["nodes"].append(
+        {
+            "id": "unused",
+            "kind": "transform",
+            "component": "features.select",
+            "params": {"features": []},
+        }
+    )
+    result = validate_pipeline(PipelineDefinition.model_validate(data))
+    assert not result.valid
+    assert [feature.name for feature in result.features["detector"]] == [
+        "projection.component_1",
+        "temperature",
+    ]
+
+
+def test_incomplete_selection_after_projection_exposes_its_canonical_inputs():
+    graph = branched()
+    raw = next(node for node in graph.nodes if node.id == "raw")
+    raw.params = {"features": []}
+    graph.edges = [edge for edge in graph.edges if edge.target != "raw"]
+    graph.edges.append(type(graph.edges[0])(source="projection", target="raw"))
+    result = validate_pipeline(graph)
+    assert not result.valid
+    assert [feature.name for feature in result.features["projection"]] == [
+        "projection.component_1"
+    ]
+    assert "raw" not in result.features
 
 
 @pytest.mark.parametrize(

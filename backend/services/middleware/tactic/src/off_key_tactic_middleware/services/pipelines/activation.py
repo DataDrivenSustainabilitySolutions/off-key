@@ -1,14 +1,11 @@
 """Durable, retryable replacement with source claims surviving remote uncertainty."""
 
-import asyncio
 import hashlib
 import json
-from contextlib import suppress
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 from off_key_core.config.logs import logger
-from off_key_core.db.base import get_async_session_local
 from off_key_core.db.collection import lock_collection_configuration
 from off_key_core.db.collection_runtime import (
     monitoring_collection_fingerprint,
@@ -43,7 +40,11 @@ from off_key_core.schemas.pipelines import (
     PipelineExecutionConfig,
     PipelineReadingMetadata,
 )
-from off_key_core.schemas.radar import PerformanceConfig, RadarStartConfig
+from off_key_core.schemas.radar import (
+    PerformanceConfig,
+    RadarOperationalStatus,
+    RadarStartConfig,
+)
 from off_key_core.utils.mqtt_topics import (
     derive_monitoring_sensor_keys,
     mqtt_topic_filters_overlap,
@@ -56,7 +57,6 @@ from ..orchestration.radar import RadarOrchestrationService
 from ..orchestration.radar_workloads import RadarWorkloadManager, get_async_docker
 from .library import require_authoring
 from .preflight import PipelinePreflight, PreflightRejected
-from .preflight_cleanup import PreflightOrphans
 
 
 def activation_view(row):
@@ -207,14 +207,21 @@ class PipelineActivations:
         design = await self.session.get(MonitoringPipeline, revision.pipeline_id)
         if design.archived:
             raise ConflictError("Restore the archived design before activation")
-        if revision.catalog_id != pipeline_catalog_id():
-            raise ConflictError(
-                "Component catalogue changed; publish a validated revision"
+        try:
+            compiled = compile_pipeline(
+                PipelineDefinition.model_validate(revision.definition)
             )
-        definition = compile_pipeline(
-            PipelineDefinition.model_validate(revision.definition)
-        ).definition
-        return revision, design, definition
+        except ValueError as exc:
+            raise ConflictError(
+                "Published component contracts are no longer supported; "
+                "publish a validated revision"
+            ) from exc
+        if compiled.fingerprint != revision.fingerprint:
+            raise ConflictError(
+                "Published executable normalization changed; "
+                "publish a validated revision"
+            )
+        return revision, design, compiled.definition
 
     async def _predecessor(self, request):
         predecessor = (
@@ -593,6 +600,27 @@ class PipelineActivations:
             with_for_update=True,
             populate_existing=True,
         )
+        now = datetime.now(UTC)
+        first_heartbeat = (
+            (
+                RadarOperationalStatus.model_validate(
+                    service.operational_status or {}
+                ).first_heartbeat_at
+                or service.operational_updated_at
+            )
+            if service
+            else None
+        )
+        healthy = (
+            service is not None
+            and service.operational_updated_at is not None
+            and (now - service.operational_updated_at).total_seconds() <= 30
+            and first_heartbeat is not None
+            and (
+                row.heartbeat_deadline is None
+                or first_heartbeat <= row.heartbeat_deadline
+            )
+        )
         if (
             service is None
             or run.ended_at is not None
@@ -605,24 +633,17 @@ class PipelineActivations:
             row.error = "Successor reported a failed runtime"
             row.cancel_requested = True
             row.phase = "cancelling"
-        elif (
-            row.heartbeat_deadline is not None
-            and datetime.now(UTC) >= row.heartbeat_deadline
-        ):
+        elif healthy:
+            row.phase = "succeeded"
+            row.error = None
+            run.status = "running"
+        elif row.heartbeat_deadline is not None and now >= row.heartbeat_deadline:
             row.error = (
                 "Successor did not report a healthy heartbeat "
                 "before its startup deadline"
             )
             row.cancel_requested = True
             row.phase = "cancelling"
-        elif (
-            service.operational_updated_at
-            and (datetime.now(UTC) - service.operational_updated_at).total_seconds()
-            <= 30
-        ):
-            row.phase = "succeeded"
-            row.error = None
-            run.status = "running"
         await self.session.commit()
 
     async def _cancel(self, row, token):
@@ -663,38 +684,3 @@ class PipelineActivations:
         row = await self._owned_row(row.id, token, "cancelling")
         row.phase = "failed" if row.error else "cancelled"
         await self.session.commit()
-
-
-class PipelineActivationSupervisor:
-    def __init__(self, registry, workloads):
-        self.registry = registry
-        self.workloads = workloads
-        self.task = None
-
-    async def start(self):
-        self.task = asyncio.create_task(self._loop(), name="pipeline-activations")
-
-    async def stop(self):
-        if self.task:
-            self.task.cancel()
-            with suppress(asyncio.CancelledError):
-                await self.task
-
-    async def _loop(self):
-        while True:
-            try:
-                async with get_async_session_local()() as session:
-                    await PreflightOrphans(session, self.workloads).sweep()
-                    identifiers = [
-                        item.id for item in await pending_activations(session)
-                    ]
-                for identifier in identifiers:
-                    async with get_async_session_local()() as session:
-                        await PipelineActivations(
-                            session, self.registry, self.workloads
-                        ).advance(identifier)
-            except asyncio.CancelledError:
-                raise
-            except Exception:
-                logger.exception("Pipeline activation reconciliation deferred")
-            await asyncio.sleep(1)

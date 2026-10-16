@@ -1,0 +1,123 @@
+.pl-create {
+  padding: 20px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 10px;
+  background: hsl(var(--muted));
+  max-width: 720px;
+  margin: 20px 0;
+}
+
+.pl-create h3 {
+  margin: 0 0 14px;
+  font-size: 15px;
+}
+
+.pl-template-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  border: 0;
+  padding: 0;
+  margin: 20px 0;
+}
+
+.pl-template-grid legend {
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+
+.pl-template {
+  position: relative;
+  display: grid;
+  grid-template-columns: 15px 1fr;
+  gap: 6px 8px;
+  padding: 16px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 8px;
+  background: hsl(var(--background));
+  cursor: pointer;
+}
+
+.pl-template.is-selected {
+  border-color: hsl(var(--primary));
+  box-shadow: 0 0 0 1px hsl(var(--primary));
+}
+
+.pl-template input {
+  margin-top: 3px;
+}
+
+.pl-template strong {
+  font-size: 13px;
+}
+
+.pl-template span {
+  grid-column: 2;
+  font-size: 11px;
+  color: hsl(var(--muted-foreground));
+  line-height: 1.5;
+}
+
+.pl-library-tools {
+  justify-content: space-between;
+  margin: 24px 0 12px;
+}
+
+.pl-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 360px;
+  flex: 1;
+  color: hsl(var(--muted-foreground));
+}
+
+.pl-library-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 12px;
+}
+
+.pl-library .pl-library-list button {
+  width: 100%;
+  height: 100%;
+  align-items: flex-start;
+  flex-direction: column;
+  justify-content: flex-start;
+  padding: 18px;
+  text-align: left;
+  border-radius: 10px;
+  transition: border-color 0.15s;
+}
+
+.pl-library-list button:hover {
+  border-color: hsl(var(--primary));
+}
+
+.pl-library-list strong {
+  font-size: 14px;
+}
+
+.pl-library-list span {
+  font-size: 12px;
+  color: hsl(var(--muted-foreground));
+  line-height: 1.6;
+}
+
+.pl-library-list small {
+  font-size: 10px;
+  margin-top: 10px;
+  color: hsl(var(--muted-foreground));
+}
+
+.pl-empty {
+  padding: 40px 16px;
+  text-align: center;
+  color: hsl(var(--muted-foreground));
+  border: 1px dashed hsl(var(--border));
+  border-radius: 10px;
+  font-size: 13px;
+}

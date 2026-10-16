@@ -9,6 +9,7 @@ from copy import deepcopy
 from datetime import UTC, datetime
 from typing import Any
 
+from aberrant.compose import GraphNode
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -133,10 +134,25 @@ class PipelineDiagnostics:
             self.errors += 1
 
     def readiness(self, states, graph=None) -> None:
+        intrinsic = (
+            {
+                node.id: getattr(node.transformer, "readiness", None)
+                for node in graph.nodes
+                if isinstance(node, GraphNode)
+            }
+            if graph is not None
+            else {}
+        )
         for item in states:
             metrics = self.nodes.get(item.node_id)
             if metrics is not None:
-                self._readiness(metrics, item.updates, item.readiness, item.blocked_by)
+                self._readiness(
+                    metrics,
+                    item.updates,
+                    item.readiness,
+                    item.blocked_by,
+                    progress=intrinsic.get(item.node_id) if item.blocked_by else None,
+                )
         if graph is not None:
             # Aberrant's node_states covers feature nodes. Its public graph
             # readiness and model_updates describe the terminal learner.
@@ -150,8 +166,13 @@ class PipelineDiagnostics:
                 self.nodes[self.model_id], graph.model_updates, graph.readiness, blocked
             )
 
-    def _readiness(self, metrics, updates, readiness, blocked) -> None:
+    def _readiness(
+        self, metrics, updates, readiness, blocked, *, progress=None
+    ) -> None:
         blockers = list(dict.fromkeys(key for key in blocked if key in self.nodes))
+        # Waiting for an upstream node does not erase this component's own
+        # warm-up requirement. Execution readiness still comes from the graph.
+        progress = progress or readiness
         metrics.update(
             ready=readiness.ready,
             state=(
@@ -162,8 +183,8 @@ class PipelineDiagnostics:
                 else "initializing"
             ),
             learned_updates=updates,
-            readiness_observed=readiness.observed,
-            readiness_required=readiness.required,
+            readiness_observed=progress.observed,
+            readiness_required=progress.required,
             readiness_reason=self._bounded_text(readiness.reason, maximum_bytes=128),
             blocked_by=blockers,
         )

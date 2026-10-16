@@ -214,6 +214,8 @@ class TacticConfig(BaseModel):
     pipeline_authoring_enabled: bool = False
     pipeline_preflight_timeout_seconds: float = Field(default=90.0, ge=5.0, le=300.0)
     pipeline_heartbeat_timeout_seconds: float = Field(default=120.0, ge=10.0, le=600.0)
+    pipeline_max_concurrent_preflights: int = Field(default=2, ge=1, le=32)
+    pipeline_max_concurrent_transitions: int = Field(default=8, ge=1, le=64)
 
     # Database Configuration
     database_url: str | None = None
@@ -388,6 +390,8 @@ class TacticSettings(BaseSettings):
     TACTIC_PIPELINE_HEARTBEAT_TIMEOUT_SECONDS: float = Field(
         default=120.0, ge=10.0, le=600.0
     )
+    TACTIC_PIPELINE_MAX_CONCURRENT_PREFLIGHTS: int = Field(default=2, ge=1, le=32)
+    TACTIC_PIPELINE_MAX_CONCURRENT_TRANSITIONS: int = Field(default=8, ge=1, le=64)
 
     # Database Configuration
     TACTIC_DATABASE_URL: str | None = Field(default=None)
@@ -512,6 +516,8 @@ class TacticSettings(BaseSettings):
             pipeline_authoring_enabled=self.TACTIC_PIPELINE_AUTHORING_ENABLED,
             pipeline_preflight_timeout_seconds=self.TACTIC_PIPELINE_PREFLIGHT_TIMEOUT_SECONDS,
             pipeline_heartbeat_timeout_seconds=self.TACTIC_PIPELINE_HEARTBEAT_TIMEOUT_SECONDS,
+            pipeline_max_concurrent_preflights=self.TACTIC_PIPELINE_MAX_CONCURRENT_PREFLIGHTS,
+            pipeline_max_concurrent_transitions=self.TACTIC_PIPELINE_MAX_CONCURRENT_TRANSITIONS,
             database_url=self.TACTIC_DATABASE_URL,
             log_level=self.TACTIC_LOG_LEVEL,
             reconciliation_enabled=self.TACTIC_RECONCILIATION_ENABLED,

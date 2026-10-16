@@ -3,9 +3,9 @@
 from datetime import UTC, datetime
 
 from off_key_core.db.base import get_async_session_local
-from off_key_core.db.models import MonitoringService, PipelineRun
+from off_key_core.db.models import MonitoringService
 from off_key_core.db.pipeline_claims import monitor_claim_condition
-from off_key_core.db.pipeline_locks import lock_execution_records
+from off_key_core.db.pipeline_locks import complete_stopped_runs, lock_execution_records
 from sqlalchemy import update
 
 from ..domain import InfrastructureError
@@ -75,14 +75,7 @@ class CollectionMonitorService:
                         and monitor.desired_state == "stopped"
                     ):
                         mark_collection_monitor_stopped(monitor)
-                        await session.execute(
-                            update(PipelineRun)
-                            .where(
-                                PipelineRun.service_id == monitor_id,
-                                PipelineRun.ended_at.is_(None),
-                            )
-                            .values(status="stopped", ended_at=datetime.now(UTC))
-                        )
+                        await complete_stopped_runs(session, [monitor_id])
             except Exception as exc:
                 raise InfrastructureError(
                     "The catalog was not applied. Monitor stops are saved and will "

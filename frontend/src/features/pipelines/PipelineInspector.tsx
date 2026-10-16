@@ -1,5 +1,5 @@
 import type { PipelineCatalog, PipelineValidation } from "./contracts";
-import { ParameterFields, type FieldDescriptor } from "./ParameterFields";
+import { ParameterFields } from "./ParameterFields";
 import {
   connectNodes,
   moveMergeInput,
@@ -34,7 +34,7 @@ export function PipelineInspector({
   const incoming = document.definition.edges
     .filter((edge) => edge.target === selected)
     .sort((left, right) => left.order - right.order);
-  const inputs = [
+  const features = [
     ...new Set(
       incoming.flatMap(
         (edge) =>
@@ -43,16 +43,6 @@ export function PipelineInspector({
       ),
     ),
   ];
-  const directSource = incoming.some(
-    (edge) =>
-      document.definition.nodes.find((item) => item.id === edge.source)
-        ?.kind === "source",
-  );
-  const features = inputs.length
-    ? inputs
-    : directSource
-      ? document.definition.input_slots.map((slot) => slot.id)
-      : [];
   const featureLabels = Object.fromEntries(
     document.definition.input_slots.map((slot) => [
       slot.id,
@@ -163,7 +153,7 @@ export function PipelineInspector({
           </label>
           {component && (
             <ParameterFields
-              fields={component.fields as FieldDescriptor[]}
+              fields={component.fields}
               values={node.params}
               features={features}
               featureLabels={featureLabels}

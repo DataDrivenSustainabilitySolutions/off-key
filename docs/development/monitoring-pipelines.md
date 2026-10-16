@@ -8,6 +8,10 @@ also provides bounded field descriptors. An unsupported parameter schema fails
 catalog generation instead of falling back to a JSON editor.
 
 Each design has an optimistic-concurrency draft and immutable published revisions.
+A draft save commits its definition, layout, name and description under one
+expected version. The editor acknowledges the submitted snapshot while retaining
+edits made during the request as unsaved work. Publishing freezes that submitted
+snapshot; later local edits remain in the draft session.
 A run retains its executable definition, resolved input bindings, initial layout,
 service identity and predecessor independently of the live service record. Layout
 updates have their own version and do not change numerical compatibility.
@@ -21,6 +25,9 @@ Each component carries its implementation identity and contract version. Launch
 version 1 represents legacy linear monitors; version 2 carries a bound graph.
 Internal image pins and typed MQTT launch overrides are accepted only by trusted
 activation/release paths, never public monitor creation.
+Published revisions retain the catalog hash as provenance. Activation recompiles
+the saved component contracts and requires the saved executable fingerprint to
+match. Unrelated catalog descriptions or components do not invalidate a revision.
 
 ## Numerical ownership
 
@@ -36,6 +43,11 @@ readiness. Detector warm-up counts successful terminal updates. Calibration star
 at the next scoring opportunity after both that target and actual readiness are
 satisfied. Calibration and monitoring score before learning. Retained-value
 readiness can wait for suitable data without retaining an unbounded input buffer.
+Generated constructor schemas also encode retained-window capacity constraints
+from the pinned runtime's parameter-sensitive capabilities. For example, geometric
+averages require two retained values, or three with `absoluteValues=true`, while
+harmonic averages permit a one-value window. Catalog generation verifies these
+rules without introducing numerical imports into the control plane.
 
 Static graphs fit each preprocessing component on training observations only.
 They freeze before transforming calibration data, fitting conformal calibration,
@@ -50,6 +62,10 @@ branches from the same aligned observation. Name collisions fail validation;
 projection features are scoped by their node ID. Selection uses stable slot IDs,
 while resolved reading topics remain the evidence identity. Expected units must
 match exactly; the application performs no implicit conversion.
+Incomplete drafts still expose every knowable feature schema. An invalid node
+blocks inference for its dependent paths while independent branches and valid
+upstream outputs remain available to the inspector. Executable compilation still
+requires the entire graph to validate.
 
 ## Activation and recovery
 
@@ -65,6 +81,15 @@ allocation costs; it does not prove data-dependent fitting or predict every mode
 allocation. Preflight has separate workload identity, bounded concurrency and
 timeout, and cleanup ownership. A fresh nonfailed heartbeat confirms activation;
 warm-up remains a run stage.
+Activation supervision uses separate bounded capacity for preflight, remote
+transitions and database checks, each with independent sessions and durable
+leases. Orphan cleanup runs separately. Configure constructor capacity with
+`TACTIC_PIPELINE_MAX_CONCURRENT_PREFLIGHTS` (default 2); remote transitions and
+checks each use `TACTIC_PIPELINE_MAX_CONCURRENT_TRANSITIONS` (default 8). Oldest
+updated operations are considered first. The database records the first healthy
+heartbeat receipt, preserving timely startup evidence across later heartbeats
+and delayed controller checks. A first heartbeat received after the deadline
+cannot establish successful startup.
 
 Remote uncertainty retains reservations until shutdown is confirmed. Cancellation
 before retirement preserves the predecessor. Cancellation after retirement creates
@@ -80,6 +105,9 @@ Terminal lifecycle transactions lock checkpoint, run and service records in that
 order, including service deletion's checkpoint cascade. Heartbeat acceptance and
 fatal-run recording serialize their run/service updates so a stale healthy
 heartbeat cannot overwrite a committed fatal state.
+Collection stops, deletion and reconciliation share `complete_stopped_runs`
+beside the lock helper. It retains failed/cancelled outcomes, error details and
+the first terminal timestamp across repeated cleanup.
 
 Deployment reserves maintenance before quiescing writers. It refuses a pending
 activation, and active maintenance prevents creation and handoff in both HTTP and
@@ -134,6 +162,22 @@ explicit issue and no stale metadata. Invalid oversized definition echoes can be
 omitted separately, and individual errors are bounded to 1 KiB of UTF-8 text.
 The compiler rejects normalized definitions above 96 KiB before publication;
 bindings must still fit the complete execution budget at activation.
+
+Library lists return summaries with server-side search, archive filtering and
+pagination (`limit`, `offset`; default 25, maximum 100). Design details include
+at most 25 revision summaries. Revision pages use `before` revision numbers;
+individual immutable definitions load on selection. Run history pages contain
+summaries and a `next_service_id` continuation, resolved in one depth-bounded
+recursive query per page. History never repeats executable definitions or binding
+snapshots. A selected run includes its design ID so opening its draft needs no
+library scan. `/pipeline-metadata` and immutable revision `/metadata` requests
+return only the selected node's and its parents' compiler tables, without run
+history or another definition echo. These member-readable inspections remain
+available with authoring disabled.
+
+The gateway assigns compilation and automatic metadata inspection a separate
+member-scoped budget of 120 requests per minute. They cannot consume the
+30-per-minute mutation budget or the 120-per-minute workspace polling budget.
 
 ## Performance evidence
 

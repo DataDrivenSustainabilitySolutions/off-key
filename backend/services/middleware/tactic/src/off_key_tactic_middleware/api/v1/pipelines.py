@@ -1,5 +1,7 @@
 """Member-authenticated monitoring design, activation and workspace endpoints."""
 
+from typing import Annotated
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from off_key_core.db.base import get_db_async
 from off_key_core.db.models import MonitoringService
@@ -10,9 +12,15 @@ from off_key_core.schemas.pipelines import (
     PipelineCatalog,
     PipelineCreate,
     PipelineDraftSave,
+    PipelineHistoryPage,
+    PipelineHistoryQuery,
     PipelineLayout,
+    PipelineListPage,
+    PipelineListQuery,
     PipelineMetadataChange,
     PipelinePublish,
+    PipelineRevisionPage,
+    PipelineRevisionQuery,
     PipelineRevisionView,
     PipelineServiceView,
     PipelineValidateRequest,
@@ -47,9 +55,12 @@ async def catalog():
     return pipeline_catalog(get_tactic_settings().config.pipeline_authoring_enabled)
 
 
-@router.get("/pipelines", response_model=list[PipelineView])
-async def list_pipelines(session: AsyncSession = Depends(get_db_async)):
-    return await invoke(PipelineLibrary(session).list())
+@router.get("/pipelines", response_model=PipelineListPage)
+async def list_pipelines(
+    query: Annotated[PipelineListQuery, Query()],
+    session: AsyncSession = Depends(get_db_async),
+):
+    return await invoke(PipelineLibrary(session).list(query))
 
 
 @router.post(
@@ -112,13 +123,13 @@ async def validate_draft(
     )
 
 
-@router.get(
-    "/pipelines/{pipeline_id}/revisions", response_model=list[PipelineRevisionView]
-)
+@router.get("/pipelines/{pipeline_id}/revisions", response_model=PipelineRevisionPage)
 async def list_revisions(
-    pipeline_id: str, session: AsyncSession = Depends(get_db_async)
+    pipeline_id: str,
+    query: Annotated[PipelineRevisionQuery, Query()],
+    session: AsyncSession = Depends(get_db_async),
 ):
-    return await invoke(PipelineLibrary(session).revisions(pipeline_id))
+    return await invoke(PipelineLibrary(session).revisions(pipeline_id, query))
 
 
 @router.post(
@@ -143,6 +154,23 @@ async def get_revision(
     pipeline_id: str, revision_id: str, session: AsyncSession = Depends(get_db_async)
 ):
     return await invoke(PipelineLibrary(session).revision(pipeline_id, revision_id))
+
+
+@router.get(
+    "/pipelines/{pipeline_id}/revisions/{revision_id}/metadata",
+    response_model=PipelineValidationReport,
+)
+async def revision_metadata(
+    pipeline_id: str,
+    revision_id: str,
+    selected_node_id: str = Query(min_length=1, max_length=100),
+    session: AsyncSession = Depends(get_db_async),
+):
+    return await invoke(
+        PipelineLibrary(session).revision_metadata(
+            pipeline_id, revision_id, selected_node_id
+        )
+    )
 
 
 @router.post(
@@ -206,6 +234,26 @@ async def service_pipeline(
     session: AsyncSession = Depends(get_db_async),
 ):
     return await invoke(PipelineLibrary(session).service(service_id, selected_node_id))
+
+
+@router.get("/{service_id}/pipeline-history", response_model=PipelineHistoryPage)
+async def service_history(
+    service_id: str,
+    query: Annotated[PipelineHistoryQuery, Query()],
+    session: AsyncSession = Depends(get_db_async),
+):
+    return await invoke(PipelineLibrary(session).history(service_id, query))
+
+
+@router.get("/{service_id}/pipeline-metadata", response_model=PipelineValidationReport)
+async def service_metadata(
+    service_id: str,
+    selected_node_id: str = Query(min_length=1, max_length=100),
+    session: AsyncSession = Depends(get_db_async),
+):
+    return await invoke(
+        PipelineLibrary(session).service_metadata(service_id, selected_node_id)
+    )
 
 
 @router.get("/{service_id}/pipeline-state")

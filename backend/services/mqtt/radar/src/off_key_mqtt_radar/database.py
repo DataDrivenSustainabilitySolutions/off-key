@@ -40,6 +40,7 @@ from sqlalchemy.schema import MetaData
 
 from .config.config import MQTTRadarConfig
 from .config.runtime import get_radar_checkpoint_settings, get_radar_database_settings
+from .database_status import HEARTBEAT_UPDATE
 from .models import AnomalyResult, ServiceMetrics
 from .result_records import PreparedResult, ResultProjector
 
@@ -541,47 +542,26 @@ class DatabaseWriter:
         updated_at = normalized.updated_at or datetime.now(UTC)
         if updated_at.tzinfo is None:
             updated_at = updated_at.replace(tzinfo=UTC)
-        payload = normalized.model_copy(update={"updated_at": updated_at}).model_dump(
-            mode="json", exclude_none=True
-        )
+        payload = normalized.model_copy(
+            update={"updated_at": updated_at, "first_heartbeat_at": None}
+        ).model_dump(mode="json", exclude_none=True)
 
-        signature_guard = ""
         parameters = {
             "stage": normalized.stage,
             "status_payload": json.dumps(payload),
             "updated_at": updated_at,
             "service_id": service_id,
+            "managed": self.managed_checkpoints,
+            "signature": self._checkpoint_signature,
+            "pending_signature": self._pending_checkpoint_signature,
         }
-        if self.managed_checkpoints:
-            if (
-                self.config.pipeline is not None
-                and not await self._can_publish_pipeline_status(session, service_id)
-            ):
-                return
-            signature_guard = """
-                AND EXISTS (
-                    SELECT 1 FROM radar_runtime_checkpoints
-                    WHERE service_id = :service_id
-                        AND signature IN (:signature, :pending_signature)
-                )
-            """
-            parameters.update(
-                signature=self._checkpoint_signature,
-                pending_signature=self._pending_checkpoint_signature,
-            )
-        result = await session.execute(
-            text(
-                f"""
-                UPDATE services
-                SET operational_stage = :stage,
-                    operational_status = CAST(:status_payload AS jsonb),
-                    operational_updated_at = :updated_at
-                WHERE id = :service_id
-                {signature_guard}
-                """
-            ),
-            parameters,
-        )
+        if (
+            self.managed_checkpoints
+            and self.config.pipeline is not None
+            and not await self._can_publish_pipeline_status(session, service_id)
+        ):
+            return
+        result = await session.execute(HEARTBEAT_UPDATE, parameters)
         if self.managed_checkpoints and result.rowcount != 1:
             raise self._lose_checkpoint_ownership()
 

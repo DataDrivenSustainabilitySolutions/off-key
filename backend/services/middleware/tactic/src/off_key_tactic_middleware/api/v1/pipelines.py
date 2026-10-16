@@ -16,7 +16,7 @@ from off_key_core.schemas.pipelines import (
     PipelineRevisionView,
     PipelineServiceView,
     PipelineValidateRequest,
-    PipelineValidation,
+    PipelineValidationReport,
     PipelineView,
     PipelineWorkspace,
 )
@@ -97,7 +97,7 @@ async def save_draft(
 
 @router.post(
     "/pipelines/{pipeline_id}/validate",
-    response_model=PipelineValidation,
+    response_model=PipelineValidationReport,
     dependencies=[Depends(require_admin)],
 )
 async def validate_draft(
@@ -106,7 +106,9 @@ async def validate_draft(
     session: AsyncSession = Depends(get_db_async),
 ):
     return await invoke(
-        PipelineLibrary(session).validate(pipeline_id, change.definition)
+        PipelineLibrary(session).validate(
+            pipeline_id, change.definition, change.selected_node_id
+        )
     )
 
 
@@ -199,9 +201,11 @@ async def monitoring_workspace(
 
 @router.get("/{service_id}/pipeline", response_model=PipelineServiceView)
 async def service_pipeline(
-    service_id: str, session: AsyncSession = Depends(get_db_async)
+    service_id: str,
+    selected_node_id: str | None = Query(default=None, min_length=1, max_length=100),
+    session: AsyncSession = Depends(get_db_async),
 ):
-    return await invoke(PipelineLibrary(session).service(service_id))
+    return await invoke(PipelineLibrary(session).service(service_id, selected_node_id))
 
 
 @router.get("/{service_id}/pipeline-state")

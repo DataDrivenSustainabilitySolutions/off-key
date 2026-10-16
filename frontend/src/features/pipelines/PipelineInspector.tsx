@@ -304,7 +304,19 @@ export function PipelineInspector({
             )}
           {validation?.features[node.id] && (
             <>
-              <h4>Output features</h4>
+              <h4>
+                {component?.output_type === "features" ||
+                ["source", "transform", "merge"].includes(node.kind)
+                  ? "Output features"
+                  : "Contributing feature lineage"}
+              </h4>
+              {validation.provenance_complete === false && (
+                <p className="pl-help">
+                  Some source provenance is omitted to keep this inspection
+                  bounded. Feature names and order remain complete for this
+                  component.
+                </p>
+              )}
               <ul className="pl-lineage">
                 {validation.features[node.id]?.map((feature) => (
                   <li key={feature.name}>
@@ -312,10 +324,18 @@ export function PipelineInspector({
                       {featureLabels[feature.name] ?? feature.name}
                     </strong>
                     <small>
-                      From{" "}
-                      {feature.slots
-                        .map((slot) => featureLabels[slot] ?? slot)
-                        .join(", ")}
+                      {feature.slots.length ? (
+                        <>
+                          From{" "}
+                          {feature.slots
+                            .map((slot) => featureLabels[slot] ?? slot)
+                            .join(", ")}
+                        </>
+                      ) : validation.provenance_complete === false ? (
+                        "Source provenance omitted"
+                      ) : (
+                        "Source provenance unavailable"
+                      )}
                     </small>
                   </li>
                 ))}

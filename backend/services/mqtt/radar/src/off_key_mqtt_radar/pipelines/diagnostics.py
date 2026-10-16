@@ -32,6 +32,14 @@ class PipelineDiagnostics:
         self.model_id = next(
             node.id for node in execution.definition.nodes if node.kind == "detector"
         )
+        self.source_id = next(
+            node.id for node in execution.definition.nodes if node.kind == "source"
+        )
+        self.model_input = next(
+            edge.source
+            for edge in execution.definition.edges
+            if edge.target == self.model_id
+        )
         self.nodes = {
             node.id: dict(
                 state="waiting",
@@ -40,6 +48,11 @@ class PipelineDiagnostics:
                 learn_time_ns=0,
                 score_time_ns=0,
                 ready=False,
+                learned_updates=None,
+                readiness_observed=None,
+                readiness_required=None,
+                readiness_reason=None,
+                blocked_by=[],
             )
             for node in execution.definition.nodes
         }
@@ -114,29 +127,52 @@ class PipelineDiagnostics:
                     "state": state,
                 }
                 if reason is not None:
-                    preview["reason"] = reason
+                    preview["reason"] = self._bounded_text(reason)
                 self._pending["passes"][self._pass][node_id] = preview
         except Exception:
             self.errors += 1
 
-    def readiness(self, states) -> None:
+    def readiness(self, states, graph=None) -> None:
         for item in states:
             metrics = self.nodes.get(item.node_id)
             if metrics is not None:
-                metrics["ready"] = item.readiness.ready
-                metrics["state"] = "ready" if item.readiness.ready else "initializing"
-                if item.blocked_by:
-                    metrics["state"] = "waiting_for_dependency"
+                self._readiness(metrics, item.updates, item.readiness, item.blocked_by)
+        if graph is not None:
+            # Aberrant's node_states covers feature nodes. Its public graph
+            # readiness and model_updates describe the terminal learner.
+            blocked = (
+                (self.model_input,)
+                if self.model_input != self.source_id
+                and not self.nodes[self.model_input]["ready"]
+                else ()
+            )
+            self._readiness(
+                self.nodes[self.model_id], graph.model_updates, graph.readiness, blocked
+            )
+
+    def _readiness(self, metrics, updates, readiness, blocked) -> None:
+        blockers = list(dict.fromkeys(key for key in blocked if key in self.nodes))
+        metrics.update(
+            ready=readiness.ready,
+            state=(
+                "waiting_for_dependency"
+                if blockers
+                else "ready"
+                if readiness.ready
+                else "initializing"
+            ),
+            learned_updates=updates,
+            readiness_observed=readiness.observed,
+            readiness_required=readiness.required,
+            readiness_reason=self._bounded_text(readiness.reason, maximum_bytes=128),
+            blocked_by=blockers,
+        )
 
     def fail(self, node_id: str, error: Exception) -> None:
         self.phase = "failed"
         metrics = self.nodes.get(node_id)
         if metrics is not None:
-            bounded_error = (
-                str(error)
-                .encode("utf-8", errors="replace")[: self.limits.maximum_error_bytes]
-                .decode("utf-8", errors="ignore")
-            )
+            bounded_error = self._bounded_text(str(error))
             metrics.update(state="failed", ready=False, error=bounded_error)
 
     def finish(self) -> None:
@@ -211,3 +247,25 @@ class PipelineDiagnostics:
             }
         result = float(value)
         return result if math.isfinite(result) else None
+
+    def _bounded_text(
+        self, value: str | None, *, maximum_bytes: int = 256
+    ) -> str | None:
+        if value is None:
+            return None
+        limit = min(self.limits.maximum_error_bytes, maximum_bytes)
+        bounded = value.encode("utf-8", errors="replace")[:limit].decode(
+            "utf-8", errors="ignore"
+        )
+        # JSON escaping can expand a Unicode/control character beyond its UTF-8
+        # size. Bound both representations so status-only snapshots remain small.
+        if len(json.dumps(bounded)) - 2 <= limit:
+            return bounded
+        low, high = 0, len(bounded)
+        while low < high:
+            middle = (low + high + 1) // 2
+            if len(json.dumps(bounded[:middle])) - 2 <= limit:
+                low = middle
+            else:
+                high = middle - 1
+        return bounded[:low]

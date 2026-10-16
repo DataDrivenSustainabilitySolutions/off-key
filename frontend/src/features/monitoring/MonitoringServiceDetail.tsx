@@ -76,7 +76,7 @@ export default function MonitoringServiceDetail({ service, inputs, document, his
         chooseTab(tabs[next]!.id); window.document.getElementById(`monitor-tab-${tabs[next]!.id}`)?.focus();
       }}>{item.label}</button>)}</div>
     <div className="mn-detail-panel" role="tabpanel" id={`monitor-panel-${tab}`} aria-labelledby={`monitor-tab-${tab}`}>
-      {tab === "pipeline" && <Suspense fallback={<p role="status">Opening pipeline…</p>}><PipelineRun serviceId={service.id} displayName={service.display_name ?? service.container_name} canEdit={canEdit} state={pipelineState} /></Suspense>}
+      {tab === "pipeline" && <Suspense fallback={<p role="status">Opening pipeline…</p>}><PipelineRun key={service.id} serviceId={service.id} displayName={service.display_name ?? service.container_name} canEdit={canEdit} state={pipelineState} /></Suspense>}
       {tab === "overview" && <>
         {progress && <section><h3>{state.label}</h3><p className="ex-muted">{progress.current.toLocaleString()} / {progress.target.toLocaleString()} samples</p>
           <div className="mn-progress" role="progressbar" aria-label="Monitoring preparation" aria-valuemin={0} aria-valuemax={progress.target} aria-valuenow={Math.min(progress.current, progress.target)}>

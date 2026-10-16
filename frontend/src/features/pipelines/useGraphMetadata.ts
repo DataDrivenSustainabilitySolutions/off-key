@@ -7,10 +7,12 @@ export function useGraphMetadata(
   id: string,
   definition: PipelineDefinition,
   enabled: boolean,
+  selectedNodeId?: string,
 ) {
   const [snapshot, setSnapshot] = useState<{
     definition: PipelineDefinition;
     validation: PipelineValidation;
+    selectedNodeId: string | undefined;
   }>();
   useEffect(() => {
     if (!enabled) return;
@@ -25,9 +27,10 @@ export function useGraphMetadata(
             id,
             definition,
             controller.signal,
+            selectedNodeId,
           );
           if (!controller.signal.aborted)
-            setSnapshot({ definition, validation });
+            setSnapshot({ definition, validation, selectedNodeId });
         } catch {
           /* Explicit Validate reports transport and compiler failures. */
         }
@@ -40,6 +43,9 @@ export function useGraphMetadata(
       clearTimeout(timer);
       document.removeEventListener("visibilitychange", schedule);
     };
-  }, [id, definition, enabled]);
-  return snapshot?.definition === definition ? snapshot.validation : undefined;
+  }, [id, definition, enabled, selectedNodeId]);
+  return snapshot?.definition === definition &&
+    snapshot.selectedNodeId === selectedNodeId
+    ? snapshot.validation
+    : undefined;
 }

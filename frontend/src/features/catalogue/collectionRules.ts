@@ -58,5 +58,6 @@ export function originLabel(runtime: SystemRuntime | undefined, id: string, docu
 export function safeServiceReturn(value: string | null) {
   if (!value?.startsWith("/?")) return "/";
   const url = new URL(value, "https://local.invalid");
-  return url.pathname === "/" && url.searchParams.get("create") === "monitoring" ? value : "/";
+  const setup = url.searchParams.get("create") === "monitoring" || !!url.searchParams.get("pipeline");
+  return url.origin === "https://local.invalid" && url.pathname === "/" && setup ? value : "/";
 }

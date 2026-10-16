@@ -10,7 +10,7 @@ import type {
   PipelinePublish,
   PipelineRevisionView,
   PipelineServiceView,
-  PipelineValidation,
+  PipelineValidationReport,
   PipelineView,
 } from "@/types/pipelines.generated";
 import {
@@ -53,23 +53,30 @@ export const pipelinesApi = {
     id: string,
     definition: PipelineDefinition,
     signal?: AbortSignal,
+    selectedNodeId?: string,
   ) =>
     apiUtils
-      .post<PipelineValidation>(
+      .post<PipelineValidationReport>(
         `${item(id)}/validate`,
-        { definition },
+        { definition, selected_node_id: selectedNodeId },
         { signal },
       )
-      .then(normalizeValidation),
+      .then((report) => normalizeValidation(report, definition)),
   publish: (id: string, request: PipelinePublish) =>
     apiUtils
       .post<PipelineRevisionView>(`${item(id)}/revisions`, request)
       .then(normalizeRevision),
-  service: (id: string, signal?: AbortSignal) =>
+  service: (id: string, signal?: AbortSignal, selectedNodeId?: string) =>
     apiUtils
       .get<PipelineServiceView>(
         `/v1/monitors/${encodeURIComponent(id)}/pipeline`,
-        { signal, redirectOnUnauthorized: false },
+        {
+          signal,
+          redirectOnUnauthorized: false,
+          params: selectedNodeId
+            ? { selected_node_id: selectedNodeId }
+            : undefined,
+        },
       )
       .then(normalizeService),
   saveLayout: (id: string, layout: PipelineLayout) =>

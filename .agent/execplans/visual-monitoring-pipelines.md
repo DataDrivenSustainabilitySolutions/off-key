@@ -40,8 +40,8 @@ this file is the living execution plan following the existing repository convent
 - [x] Isolate the upstream Aberrant changes in an ignored local clone.
 - [x] Gate 1: upstream composition, readiness, transactions, feature operations,
   observations, standalone tests/docs and compatible release preparation.
-- [ ] Shared contracts/compiler/catalog/schema generation; persistence and APIs.
-- [ ] Gate 2: real adaptive/static graph execution and a minimal end-to-end
+- [x] Shared contracts/compiler/catalog/schema generation; persistence and APIs.
+- [x] Gate 2: real adaptive/static graph execution and a minimal end-to-end
   saved/bound/preflighted/replaced pipeline with actual diagnostics.
 - [ ] Gate 3: durable claims, lifecycle cancellation/reconciliation, deployment
   arbitration, recovery/fatal shutdown and migration/rollback verification.
@@ -49,7 +49,7 @@ this file is the living execution plan following the existing repository convent
   inspector, keyboard/mobile navigation and coordinated live polling.
 - [ ] Real MQTT/PostgreSQL/Swarm/browser verification, performance/bounds checks,
   full repository gates and independent final reviews.
-- [ ] Publish compatible Aberrant dependency, lock/check OFF-KEY manifests and
+- [x] Publish compatible Aberrant dependency, lock/check OFF-KEY manifests and
   catalog, document rollout/rollback, and prepare reviewable upstream/OFF-KEY PRs.
 
 ## Validation
@@ -137,3 +137,64 @@ All new authoring remains disabled by default. Existing graph runs, inspection,
 stopping and release recovery remain available with authoring disabled. No claim
 of release completion is made until the remaining full repository, production
 integration, performance and deployment rehearsal gates pass.
+
+2026-10-16 final review: OFF-KEY main advanced during parallel work to 6638fdf
+(settings focus and landing-page/legal updates). Both changes are incorporated
+into codex/visual-monitoring-pipelines. The feature review is PR 309; unrelated
+local brand exploration files remain outside the commits.
+
+The official production Dockerfile builds with the published Aberrant 1.3.0 wheel
+and its catalog check passes. The final official-image Swarm scenario passed in
+194.42 s with zero skips, including delayed preflight cleanup. A foreign workload
+name collision regression also passed without deleting the foreign job. Twenty-
+three real PostgreSQL lifecycle/release/claims cases passed; 92 affected legacy
+cleanup/collection/ownership tests passed. A separate 13-case signed-writer suite
+proves both late-heartbeat/fatal orderings retain failed-node diagnostics while
+health publication still works during blocked checkpoint I/O.
+
+Production frontend adaptive activation and explicit revision replacement passed
+against that official image. Static background fitting reached operational state
+with continuous observations. The complete frontend suite passed 636 tests in
+58 files. Sixty-four-node browser interaction stayed below 155 ms in the recorded
+run, with approximately 668 KiB retained heap growth after collection. Browser
+fixtures now wait for an actual sampled score pass and refresh real login per
+journey; the Sources activation-review detour is receiving its final correction.
+
+Controlled paired numeric measurement passed the representative target: +1.81%
+median wall overhead, CPU difference within noise, identical scores and alarms.
+The cheap-model fixture has a larger percentage cost (0.276 ms absolute CPU),
+which is recorded explicitly in the developer guide. The complete backend,
+production Linux integration, deployment rehearsal and final CI remain pending.
+
+2026-10-16 release validation: the first complete OFF-KEY CI run passed Python
+3.12/3.14 backend checks and hooks, frontend checks, all production Docker builds,
+documentation, both MQTT collection versions and infrastructure validation.
+Native Linux RADAR production integration executed 167 tests with zero skips.
+The existing backup/restore and repeated-deployment rehearsal also passed. Its
+new visual browser step exposed an incorrect gateway `/ready` URL; the gateway
+uses `/health`, and that workflow correction is included in the final pass.
+
+Final validation moved to an attached managed worktree at
+`C:/Users/heol/.codex/worktrees/visual-pipelines-validation/off-key` because another
+task is actively editing and committing brand work in the original checkout.
+Only feature changes were transferred, with SHA-256 comparison; unrelated brand
+work remains outside this feature branch.
+
+Maximum-size review added bounded external compiler reports without changing the
+canonical graph. Valid selected-node and parent feature choices remain complete;
+large provenance, invalid definition echoes and errors have explicit omission
+indicators. Real Linux/PostgreSQL/authenticated HTTP coverage passed 11 tests
+with zero skips, and canonical compiler checks passed 23 tests. The real browser
+fixture now uses 64 nodes, 100 features and 64-character IDs: its selected report
+is 521,820 bytes, worst recorded interaction 145.7 ms, and retained heap growth
+314,832 bytes after collection. Keyboard, mobile/dark and real concurrent-draft
+conflict journeys passed in this fixture.
+
+Adaptive PCA admission now accounts for Python array/list storage, transactional
+lists, initialization matrices, reduced SVD temporaries and retained state.
+Readiness diagnostics expose actual update counts, required/observed progress and
+waiting dependencies. Text bounds cover both UTF-8 and escaped JSON; combined
+64-node/128-edge fatal envelopes pass Unicode and control-character regressions.
+Explicit 4 GiB preflight budgets are validated using that budget throughout.
+Final full browser, updated production integration and the extended graph
+backup/restore/redeployment rehearsal remain the release gates for this head.

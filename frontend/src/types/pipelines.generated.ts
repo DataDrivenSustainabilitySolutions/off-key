@@ -233,7 +233,7 @@ export type PipelineServiceView = {
   definition: PipelineDefinition;
   layout: PipelineLayout;
   legacy?: boolean;
-  validation?: PipelineValidation | null;
+  validation?: PipelineValidationReport | null;
 };
 
 export type PipelineSettings = {
@@ -252,6 +252,7 @@ export type PipelineTemplate = {
 
 export type PipelineValidateRequest = {
   definition: PipelineDefinition;
+  selected_node_id?: string | null;
 };
 
 export type PipelineValidation = {
@@ -261,6 +262,20 @@ export type PipelineValidation = {
   order?: Array<string>;
   features?: Record<string, Array<FeatureDescription>>;
   fingerprint?: string | null;
+};
+
+export type PipelineValidationReport = {
+  valid: boolean;
+  issues?: Array<PipelineIssue>;
+  definition: PipelineDefinition | null;
+  order?: Array<string>;
+  features?: Record<string, Array<FeatureDescription>>;
+  fingerprint?: string | null;
+  selected_node_id?: string | null;
+  features_complete?: boolean;
+  provenance_complete?: boolean;
+  definition_omitted?: boolean;
+  issues_truncated?: boolean;
 };
 
 export type PipelineView = {

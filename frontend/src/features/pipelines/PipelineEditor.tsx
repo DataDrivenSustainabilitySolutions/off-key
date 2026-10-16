@@ -91,6 +91,7 @@ type Session = {
   document: GraphDocument;
   name: string;
   description: string;
+  activationRevisionId?: string;
 };
 
 function EditorSession({
@@ -115,7 +116,17 @@ function EditorSession({
   const [conflict, setConflict] = useState(
     initial.version !== session.base.version,
   );
-  const [showActivation, setShowActivation] = useState(!!props.activationId);
+  const [showActivation, setShowActivation] = useState(
+    !!props.activationId ||
+      (!!props.revisionId && session.activationRevisionId === props.revisionId),
+  );
+  const review = (open: boolean) => {
+    setShowActivation(open);
+    setSession((current) => ({
+      ...current,
+      activationRevisionId: open ? props.revisionId : undefined,
+    }));
+  };
   const [undo, setUndo] = useState<GraphDocument[]>([]);
   const [redo, setRedo] = useState<GraphDocument[]>([]);
   const [mobilePanel, setMobilePanel] = useState<
@@ -129,7 +140,12 @@ function EditorSession({
   const canWrite =
     props.canEdit && props.catalog.authoring_enabled && !base.archived;
   const readOnly = !canWrite || !!props.revisionId;
-  const metadata = useGraphMetadata(base.id, document.definition, !readOnly);
+  const metadata = useGraphMetadata(
+    base.id,
+    document.definition,
+    !readOnly,
+    selected,
+  );
   const dirty =
     JSON.stringify(session.document) !==
       JSON.stringify({ definition: base.draft, layout: base.layout }) ||
@@ -203,6 +219,8 @@ function EditorSession({
       const result = await pipelinesApi.validate(
         base.id,
         session.document.definition,
+        undefined,
+        selected,
       );
       setValidation(result);
       if (!result.valid) {
@@ -292,7 +310,7 @@ function EditorSession({
                     : event.target.value,
                 );
                 setValidation(undefined);
-                setShowActivation(false);
+                review(false);
               }}
             >
               <option value="draft">Draft</option>
@@ -325,6 +343,8 @@ function EditorSession({
                     const result = await pipelinesApi.validate(
                       base.id,
                       document.definition,
+                      undefined,
+                      selected,
                     );
                     setValidation(result);
                     setNotice(
@@ -353,7 +373,7 @@ function EditorSession({
               type="button"
               className="mn-primary"
               disabled={!!props.activationBlocked && !props.activationId}
-              onClick={() => setShowActivation((value) => !value)}
+              onClick={() => review(!showActivation)}
             >
               {props.replaceService ? "Review replacement" : "Start revision"}
             </button>
@@ -559,7 +579,7 @@ function EditorSession({
           document={document}
           catalog={props.catalog}
           selected={selected}
-          validation={validation ?? metadata}
+          validation={metadata ?? validation}
           readOnly={readOnly}
           onSelect={select}
           onChange={commit}
@@ -570,6 +590,12 @@ function EditorSession({
           <h3>
             {validation.valid ? "Valid processing graph" : "Validation errors"}
           </h3>
+          {validation.issues_truncated && (
+            <p className="pl-help">
+              Additional validation messages were omitted to keep this report
+              bounded. Resolve the listed issues, then validate again.
+            </p>
+          )}
           {validation.issues.length > 0 && (
             <ul>
               {validation.issues.map((issue, index) => (
@@ -617,7 +643,7 @@ function EditorSession({
             initialReading={props.initialReading}
             defaultName={base.name}
             collectionReady={props.collectionReady}
-            onClose={() => setShowActivation(false)}
+            onClose={() => review(false)}
             onComplete={props.onStarted}
             operationId={props.activationId}
             onOperation={props.onOperation}

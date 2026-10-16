@@ -160,9 +160,17 @@ remains compatible with existing callers; direct public graph launches are rejec
 so they cannot bypass preflight, durable input reservations or run history.
 Draft/layout conflicts return HTTP 409. Publishing does not activate a revision.
 Run views survive deletion of the live service and expose retained input metadata,
-terminal errors and compiler feature lineage. Feature metadata above 512 KiB is
-omitted with a `metadata_budget` notice. Internal MQTT overrides and runtime image
-pins are rejected by public monitor creation.
+terminal errors and compiler feature lineage. POST
+`/pipelines/{id}/validate` accepts `{definition, selected_node_id?}`; GET
+`/{service_id}/pipeline` accepts the same optional `selected_node_id` query for
+member inspection even when authoring is disabled. Each compiler report is
+bounded to 512 KiB, omitting provenance and then whole unselected node tables
+with a `metadata_budget` notice. Complete ordered names for the selected node
+and its immediate parents remain available; inspect `features_complete` and
+`provenance_complete` before interpreting missing metadata. Invalid oversized
+definition echoes use `definition: null` and `definition_omitted: true`; bounded
+errors expose `issues_truncated`. Internal MQTT overrides and runtime image pins
+are rejected by public monitor creation.
 See [pipeline architecture and rollout](../development/monitoring-pipelines.md).
 
 ### Favourites and anomalies

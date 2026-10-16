@@ -4,6 +4,7 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 
 from ..schemas.pipelines import (
+    MAX_PIPELINE_EXECUTION_BYTES,
     PipelineComponent,
     PipelineDefinition,
     PipelineEdge,
@@ -11,6 +12,7 @@ from ..schemas.pipelines import (
     PipelineNode,
     PipelineValidation,
 )
+from ..utils.json_budget import fits_json_budget
 from .pipeline_catalog import pipeline_components
 from .pipeline_digest import digest
 from .pipeline_features import (
@@ -213,6 +215,11 @@ def validate_pipeline(definition: PipelineDefinition) -> PipelineValidation:
     _topological_order(compilation)
     _propagate_features(compilation)
     _validate_model(compilation)
+    if not fits_json_budget(normalized, MAX_PIPELINE_EXECUTION_BYTES):
+        compilation.error(
+            "configuration_budget",
+            "Normalized definition exceeds the 96KiB execution configuration budget",
+        )
     if (
         normalized.strategy == "static_baseline"
         and normalized.settings.training_window_size < 20

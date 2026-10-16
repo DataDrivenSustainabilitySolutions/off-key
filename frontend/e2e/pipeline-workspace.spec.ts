@@ -8,11 +8,13 @@ import {
   removeTestCharger,
 } from "./helpers/collection";
 import { ingressOptions } from "./helpers/mqtt";
+import { loginWithEmail } from "./helpers/auth";
 import type {
   PipelineActivationView,
   PipelineCatalog,
   PipelineView,
   PipelineWorkspace,
+  PipelineValidationReport,
 } from "../src/types/pipelines.generated";
 import type { PipelineState } from "../src/features/pipelines/diagnostics";
 
@@ -25,6 +27,8 @@ const connect = (page: Page, source: string) =>
 const add = async (page: Page, name: string) => {
   await page.getByRole("button", { name: `Add ${name}`, exact: true }).click();
 };
+const processingId = (number: number) =>
+  `processing_${String(number).padStart(2, "0")}_${"p".repeat(50)}`;
 
 async function buildBranchedGraph(
   page: Page,
@@ -125,6 +129,48 @@ async function publishSamples(
 
 test.describe("visual pipeline real infrastructure", () => {
   test.setTimeout(600_000);
+  test.beforeEach(async ({ page }) => {
+    await page.goto("/");
+    await page.evaluate(() => {
+      localStorage.removeItem("auth_token");
+      localStorage.removeItem("token_storage_type");
+      sessionStorage.removeItem("auth_token");
+    });
+    await page.context().clearCookies();
+    await page.goto("/login");
+    await loginWithEmail(
+      page,
+      process.env.SUPERUSER_MAIL ?? "admin@example.com",
+      { rememberMe: true },
+    );
+    const token = await page.evaluate(() => localStorage.getItem("auth_token"));
+    expect(token).toBeTruthy();
+    await expect
+      .poll(
+        async () => {
+          try {
+            const response = await page.request.get(
+              "/api/v1/monitors/pipelines/catalog",
+              {
+                headers: { Authorization: `Bearer ${token}` },
+                timeout: 5_000,
+              },
+            );
+            if (!response.ok()) return `HTTP ${response.status()}`;
+            const catalog = (await response.json()) as PipelineCatalog;
+            return catalog.authoring_enabled ? "enabled" : "disabled";
+          } catch {
+            return "unavailable";
+          }
+        },
+        {
+          timeout: 30_000,
+          intervals: [500, 1_000, 2_000],
+          message: "Pipeline authoring catalog is ready after service startup",
+        },
+      )
+      .toBe("enabled");
+  });
   for (const strategy of ["adaptive_stream", "static_baseline"] as const)
     test(`builds, runs and inspects a branched ${strategy} pipeline`, async ({
       page,
@@ -241,6 +287,37 @@ test.describe("visual pipeline real infrastructure", () => {
         await page
           .getByRole("checkbox", { name: /I reviewed the input bindings/ })
           .check();
+        await page
+          .getByRole("link", {
+            name: "Configure collection in Sources",
+            exact: true,
+          })
+          .click();
+        await expect(
+          page.getByRole("main", { name: "Sources workspace", exact: true }),
+        ).toBeVisible();
+        await page
+          .getByRole("link", { name: "Return to service setup", exact: true })
+          .click();
+        await expect(
+          page.getByRole("region", {
+            name: "Review pipeline activation",
+            exact: true,
+          }),
+        ).toBeVisible();
+        for (const name of ["voltage", "current", "temperature"])
+          await expect(
+            page.getByRole("combobox", {
+              name: `${name} · unit unspecified`,
+              exact: true,
+            }),
+          ).toHaveValue(`${deviceId}:${name}`);
+        await expect(
+          page.getByRole("checkbox", { name: /I reviewed the input bindings/ }),
+        ).not.toBeChecked();
+        await page
+          .getByRole("checkbox", { name: /I reviewed the input bindings/ })
+          .check();
         const activationResponse = page.waitForResponse(
           (response) =>
             response.url().endsWith("/v1/monitors/pipeline-activations") &&
@@ -297,10 +374,18 @@ test.describe("visual pipeline real infrastructure", () => {
           .toBe("operational");
         await publishSamples(publisher, topics, 10);
         await expect
-          .poll(async () => (await readState()).pipeline_state?.observation, {
-            timeout: 30_000,
-            intervals: [1_000],
-          })
+          .poll(
+            async () => {
+              await publishSamples(publisher!, topics, 3);
+              const state = (await readState())
+                .pipeline_state as unknown as PipelineState;
+              return state?.observation?.passes.score.features_select_2?.output;
+            },
+            {
+              timeout: 30_000,
+              intervals: [1_000],
+            },
+          )
           .toBeTruthy();
         const runtime = (await readState())
           .pipeline_state as unknown as PipelineState;
@@ -325,6 +410,32 @@ test.describe("visual pipeline real infrastructure", () => {
             exact: true,
           }),
         ).toContainText("Sampled observation", { timeout: 30_000 });
+        if (strategy === "adaptive_stream") {
+          expect(runtime.adaptive_learning?.model_updates).toBeGreaterThan(0);
+          expect(
+            runtime.nodes.features_select_2?.learned_updates,
+          ).toBeGreaterThan(0);
+          await expect(
+            page.getByRole("region", {
+              name: "Adaptive learning progress",
+              exact: true,
+            }),
+          ).toContainText("Total detector updates");
+          await expect(
+            page.getByRole("region", {
+              name: "Live component diagnostics",
+              exact: true,
+            }),
+          ).toContainText("Successful learning updates");
+        } else {
+          expect(runtime.batch_training?.frozen).toBe(true);
+          await expect(
+            page.getByRole("region", {
+              name: "Static fitting progress",
+              exact: true,
+            }),
+          ).toContainText("Fitted baseline frozen");
+        }
         await page
           .getByRole("button", { name: "Adjust arrangement", exact: true })
           .click();
@@ -580,11 +691,15 @@ test.describe("visual pipeline real infrastructure", () => {
         (item) => item.definition.strategy === "adaptive_stream",
       )!;
       const definition = structuredClone(template.definition);
+      definition.input_slots = Array.from({ length: 100 }, (_item, index) => ({
+        id: `slot_${String(index).padStart(3, "0")}_${"x".repeat(55)}`,
+        label: `Input ${index + 1}`,
+      }));
       const chain = Array.from({ length: 60 }, (_item, index) => ({
-        id: `processing_${index + 1}`,
+        id: processingId(index + 1),
         kind: "transform" as const,
-        component: "features.passthrough",
-        params: {},
+        component: "adaptive.random_projection",
+        params: { n_components: 100 },
       }));
       definition.nodes!.push(...chain);
       definition.edges = definition.edges!.filter(
@@ -605,7 +720,11 @@ test.describe("visual pipeline real infrastructure", () => {
             nodes: Object.fromEntries(
               definition.nodes!.map((node, index) => [
                 node.id,
-                { x: (index % 8) * 250, y: Math.floor(index / 8) * 150 },
+                {
+                  x: (index % 8) * 250,
+                  y: Math.floor(index / 8) * 150,
+                  label: `Step ${index + 1}`,
+                },
               ]),
             ),
           },
@@ -614,6 +733,45 @@ test.describe("visual pipeline real infrastructure", () => {
       expect(createdResponse.ok(), await createdResponse.text()).toBeTruthy();
       const created = (await createdResponse.json()) as PipelineView;
       pipelineId = created.id;
+      const focusedResponse = await api.post(
+        `/api/v1/monitors/pipelines/${pipelineId}/validate`,
+        { headers, data: { definition, selected_node_id: processingId(59) } },
+      );
+      expect(focusedResponse.ok(), await focusedResponse.text()).toBeTruthy();
+      const reportBytes = (await focusedResponse.body()).byteLength;
+      expect(reportBytes).toBeLessThanOrEqual(512 * 1024);
+      const report = (await focusedResponse.json()) as PipelineValidationReport;
+      expect(report.valid).toBe(true);
+      expect(report.selected_node_id).toBe(processingId(59));
+      expect(report.provenance_complete).toBe(false);
+      const outputNames = report.features![processingId(59)]!.map(
+        (feature) => feature.name,
+      );
+      expect(outputNames).toHaveLength(100);
+      definition.nodes = definition.nodes!.map((node) =>
+        node.id === processingId(60)
+          ? {
+              ...node,
+              component: "features.select",
+              params: { features: outputNames },
+            }
+          : node,
+      );
+      const selectedDefinition = await api.put(
+        `/api/v1/monitors/pipelines/${pipelineId}/draft`,
+        {
+          headers,
+          data: {
+            expected_version: created.version,
+            definition,
+            layout: created.layout,
+          },
+        },
+      );
+      expect(
+        selectedDefinition.ok(),
+        await selectedDefinition.text(),
+      ).toBeTruthy();
       await page.setViewportSize({ width: 1600, height: 1100 });
       await page.goto(`/?pipeline=${pipelineId}`);
       await expect(selected(page)).toBeVisible();
@@ -623,7 +781,9 @@ test.describe("visual pipeline real infrastructure", () => {
       await expect(
         page.getByRole("textbox", { name: "Node title", exact: true }),
       ).toBeVisible();
-      await page.locator('.react-flow__node[data-id="processing_60"]').focus();
+      await page
+        .locator(`.react-flow__node[data-id="${processingId(60)}"]`)
+        .focus();
       await page.keyboard.press("Delete");
       await expect(page.locator(".react-flow__node")).toHaveCount(63);
       await page
@@ -633,32 +793,53 @@ test.describe("visual pipeline real infrastructure", () => {
       await expect(
         page.getByRole("heading", { name: "Output features", exact: true }),
       ).toBeVisible();
+      await expect(
+        page.locator('.pl-inspector input[type="checkbox"]'),
+      ).toHaveCount(100);
+      await expect(
+        page.getByRole("checkbox", { name: outputNames[99]!, exact: true }),
+      ).toBeChecked();
+      await expect(page.locator(".pl-lineage > li")).toHaveCount(100);
+      await expect(
+        page.getByText(/Some source provenance is omitted/),
+      ).toBeVisible();
       const profiler = await page.context().newCDPSession(page);
       await profiler.send("HeapProfiler.collectGarbage");
       const heapBefore = await profiler.send("Runtime.getHeapUsage");
-      const interactions = await page.evaluate(async () => {
-        const selector = document.querySelector<HTMLSelectElement>(
-          '[aria-label="Component inspector"] select',
-        )!;
-        const durations: number[] = [];
-        for (let index = 0; index < 40; index++) {
-          const start = performance.now();
-          selector.value = `processing_${index + 1}`;
-          selector.dispatchEvent(new Event("change", { bubbles: true }));
-          await new Promise<void>((done) =>
-            requestAnimationFrame(() => done()),
-          );
-          durations.push(performance.now() - start);
-        }
-        return {
-          maximumInteractionMs: Math.max(...durations),
-          nodeCount: document.querySelectorAll(".react-flow__node").length,
-        };
-      });
+      const interactions = await page.evaluate(
+        async (identifiers) => {
+          const selector = document.querySelector<HTMLSelectElement>(
+            '[aria-label="Component inspector"] select',
+          )!;
+          const durations: number[] = [];
+          for (let index = 0; index < 40; index++) {
+            const start = performance.now();
+            selector.value = identifiers[index]!;
+            selector.dispatchEvent(new Event("change", { bubbles: true }));
+            await new Promise<void>((done) =>
+              requestAnimationFrame(() => done()),
+            );
+            durations.push(performance.now() - start);
+          }
+          return {
+            maximumInteractionMs: Math.max(...durations),
+            nodeCount: document.querySelectorAll(".react-flow__node").length,
+          };
+        },
+        chain.slice(0, 40).map((node) => node.id),
+      );
+      await expect(page.locator(".pl-lineage > li").first()).toContainText(
+        processingId(40),
+      );
+      await expect(page.locator(".pl-lineage > li")).toHaveCount(100);
       await profiler.send("HeapProfiler.collectGarbage");
       const heapAfter = await profiler.send("Runtime.getHeapUsage");
       const metrics = {
         ...interactions,
+        featureCount: 100,
+        inputSlotIdLength: 64,
+        nodeIdLength: 64,
+        focusedReportBytes: reportBytes,
         retainedHeapGrowthBytes: heapAfter.usedSize - heapBefore.usedSize,
       };
       await profiler.detach();
@@ -689,7 +870,10 @@ test.describe("visual pipeline real infrastructure", () => {
       await page
         .getByRole("button", { name: "inspector", exact: true })
         .click();
-      await selected(page).selectOption("processing_60");
+      await selected(page).selectOption(processingId(60));
+      await expect(
+        page.locator('.pl-inspector input[type="checkbox"]'),
+      ).toHaveCount(100);
       await page
         .getByRole("textbox", { name: "Node title", exact: true })
         .fill("Keyboard and mobile inspection");
@@ -752,7 +936,7 @@ test.describe("visual pipeline real infrastructure", () => {
       );
       expect(copyResponse.ok(), await copyResponse.text()).toBeTruthy();
       const copy = (await copyResponse.json()) as PipelineView;
-      expect(copy.layout.nodes?.processing_60?.label).toBe(
+      expect(copy.layout.nodes?.[processingId(60)]?.label).toBe(
         "Preserved conflicted edit",
       );
       expect(copy.draft.nodes).toHaveLength(64);

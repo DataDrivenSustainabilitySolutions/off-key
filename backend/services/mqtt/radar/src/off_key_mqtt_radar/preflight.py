@@ -50,10 +50,15 @@ def preflight(execution: PipelineExecutionConfig, *, memory_limit_mb=None) -> di
         raise ValueError(
             "Bound executable fingerprint does not match its definition and bindings"
         )
-    config = AnomalyDetectionConfig(pipeline=execution)
-    resources = estimate_resources(
-        plan, memory_limit_mb or PreflightSettings().RADAR_MEMORY_LIMIT_MB
+    settings = (
+        PreflightSettings()
+        if memory_limit_mb is None
+        else PreflightSettings(RADAR_MEMORY_LIMIT_MB=memory_limit_mb)
     )
+    config = AnomalyDetectionConfig(
+        pipeline=execution, memory_limit_mb=settings.RADAR_MEMORY_LIMIT_MB
+    )
+    resources = estimate_resources(plan, config.memory_limit_mb)
     readiness = []
     capabilities = None
     if execution.definition.strategy == "adaptive_stream":

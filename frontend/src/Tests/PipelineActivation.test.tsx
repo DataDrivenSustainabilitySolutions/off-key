@@ -12,6 +12,7 @@ import { pipelinesApi } from "@/features/pipelines/api";
 import { normalizeDefinition } from "@/features/pipelines/contracts";
 import { ApiRequestError } from "@/lib/api-client";
 import { createEmptySystem } from "@/features/catalogue/systemDocument";
+import { clearNavigationDrafts } from "@/lib/navigation-draft";
 
 vi.mock("@/auth/AuthContext", () => ({ useAuth: () => ({ userId: 1 }) }));
 vi.mock("@/features/workspace/catalogue-context", () => ({
@@ -81,6 +82,7 @@ const operation = {
 beforeEach(() => {
   vi.clearAllMocks();
   sessionStorage.clear();
+  clearNavigationDrafts();
 });
 afterEach(cleanup);
 const mount = (input = props()) =>
@@ -102,6 +104,38 @@ async function submit() {
 }
 
 describe("activation request recovery", () => {
+  it("preserves tentative bindings and name across a source detour and requires renewed confirmation", () => {
+    const first = mount();
+    fireEvent.change(screen.getByRole("textbox", { name: "Service name" }), {
+      target: { value: "Preserved monitor name" },
+    });
+    fireEvent.change(
+      screen.getByRole("combobox", { name: "Temperature · unit unspecified" }),
+      { target: { value: "reading" } },
+    );
+    fireEvent.click(screen.getByRole("checkbox", { name: /I reviewed/ }));
+    first.unmount();
+    mount();
+    expect(
+      (
+        screen.getByRole("textbox", {
+          name: "Service name",
+        }) as HTMLInputElement
+      ).value,
+    ).toBe("Preserved monitor name");
+    expect(
+      (
+        screen.getByRole("combobox", {
+          name: "Temperature · unit unspecified",
+        }) as HTMLSelectElement
+      ).value,
+    ).toBe("reading");
+    expect(
+      (screen.getByRole("checkbox", { name: /I reviewed/ }) as HTMLInputElement)
+        .checked,
+    ).toBe(false);
+    expect(pipelinesApi.activate).not.toHaveBeenCalled();
+  });
   it("freezes an uncertain payload and retries its original idempotency key", async () => {
     vi.mocked(pipelinesApi.activate)
       .mockRejectedValueOnce(new ApiRequestError("Network error"))

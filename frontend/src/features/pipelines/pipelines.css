@@ -161,6 +161,7 @@
   line-height: 1.6;
   margin: 8px 0;
   font-weight: 400;
+  overflow-wrap: anywhere;
 }
 
 .pl-check input {
@@ -548,6 +549,7 @@
 
 .pl-feature-order li {
   margin: 6px 0;
+  overflow-wrap: anywhere;
 }
 
 .pl-feature-order button {
@@ -938,6 +940,7 @@
   }
   .pl-header .pl-actions > .pl-field {
     flex: 1;
+    min-width: 110px;
   }
   .pl-editor-grid,
   .pl-editor-grid--readonly {

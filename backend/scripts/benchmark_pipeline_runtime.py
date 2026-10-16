@@ -271,7 +271,7 @@ class StreamRunner:
             diagnostic.record(self.plan.compiled.source_id, data, data)
         self.graph.learn_one(data)
         if diagnostic:
-            diagnostic.readiness(self.graph.node_states)
+            diagnostic.readiness(self.graph.node_states, self.graph)
             diagnostic.finish()
         return score, alarm
 

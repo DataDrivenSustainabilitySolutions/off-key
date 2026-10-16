@@ -1,10 +1,11 @@
 """Versioned monitoring designs; safe to import in the control plane."""
 
-import json
 from datetime import datetime
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from off_key_core.utils.json_budget import fits_json_budget
 
 from .collection_policy import CollectionPolicy
 
@@ -112,13 +113,7 @@ class PipelineExecutionConfig(PipelineModel):
             for slot in self.definition.input_slots
         ):
             raise ValueError("Bound reading units must exactly match declared units")
-        encoded = json.dumps(
-            self.model_dump(mode="json"),
-            separators=(",", ":"),
-            ensure_ascii=True,
-            allow_nan=False,
-        ).encode()
-        if len(encoded) > MAX_PIPELINE_EXECUTION_BYTES:
+        if not fits_json_budget(self, MAX_PIPELINE_EXECUTION_BYTES):
             raise ValueError(
                 "Bound pipeline exceeds the 96 KiB executable configuration budget"
             )
@@ -210,6 +205,22 @@ class PipelineValidation(PipelineModel):
         )
 
 
+class PipelineValidationReport(PipelineModel):
+    """Bounded presentation of a compilation; executable definitions stay canonical."""
+
+    valid: bool
+    issues: list[PipelineIssue] = Field(default_factory=list)
+    definition: PipelineDefinition | None
+    order: list[str] = Field(default_factory=list)
+    features: dict[str, list[FeatureDescription]] = Field(default_factory=dict)
+    fingerprint: str | None = None
+    selected_node_id: str | None = None
+    features_complete: bool = True
+    provenance_complete: bool = True
+    definition_omitted: bool = False
+    issues_truncated: bool = False
+
+
 class ComponentField(PipelineModel):
     name: str
     label: str
@@ -286,6 +297,7 @@ class PipelinePublish(PipelineModel):
 
 class PipelineValidateRequest(PipelineModel):
     definition: PipelineDefinition
+    selected_node_id: str | None = Field(default=None, min_length=1, max_length=100)
 
 
 class PipelineMetadataChange(PipelineModel):
@@ -394,7 +406,7 @@ class PipelineServiceView(PipelineModel):
     definition: PipelineDefinition
     layout: PipelineLayout
     legacy: bool = False
-    validation: PipelineValidation | None = None
+    validation: PipelineValidationReport | None = None
 
 
 class PipelineWorkspace(PipelineModel):

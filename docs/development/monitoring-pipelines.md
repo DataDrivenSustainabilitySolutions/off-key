@@ -100,7 +100,12 @@ no additional inference, MQTT subscription or Docker inspection. At most one
 observation envelope is sampled per second and retained, with eight input/output
 values per node. Unexecuted nodes carry a reason and never reuse previous values.
 The serialized snapshot is capped at 128 KiB, with status and counters taking
-priority over previews. Static fitting appears as a batch summary.
+priority over previews. Static fitting appears as a batch summary. Adaptive nodes also report committed
+update counts, observed/required history in the component's own units, and their
+immediate blocking prerequisites. A zero required count means no quantified
+minimum was supplied; the ready flag remains authoritative. Committed counts
+include restored history, while collector call counts can restart after recovery.
+Readiness reasons and errors retain at most 128 and 256 UTF-8 bytes respectively.
 
 The ownership-fenced heartbeat publishes diagnostics every five seconds during
 healthy operation. One member-scoped workspace request returns service summaries
@@ -111,9 +116,23 @@ V1 admits at most 64 executable nodes, 128 connections and 100 features at any
 intermediate boundary. Bound executable configuration has a 96 KiB serialized
 budget to stay below the worker environment transport limit. Known allocation
 admission and existing worker CPU/memory hard limits apply independently.
-Read-only run views include compiler feature metadata when its serialized size
-fits 512 KiB. Larger lineage expansions return an explicit `metadata_budget`
-notice and omit feature metadata; the immutable graph remains inspectable.
+Adaptive PCA admission includes each initialization row's NumPy array header,
+the old and new pointer lists retained during a learning transaction, the dense
+initialization matrix and reduced SVD outputs. These costs use the target
+worker's Python/NumPy object sizes; per-projection peaks are summed conservatively.
+The estimate also covers explicit online update matrices. Detector state, native
+linear algebra workspaces and other process allocations remain additional costs,
+so passing admission does not promise that every workload fits the hard limit.
+External validation reports, including read-only run metadata, have a 512 KiB
+serialized budget. Large reports omit provenance first, then whole node tables,
+with an explicit `metadata_budget` notice and `features_complete` /
+`provenance_complete` flags. A `selected_node_id` on draft validation or the run
+query preserves complete ordered feature names for that node and its immediate
+parents; feature choices are never truncated. Unknown selections return an
+explicit issue and no stale metadata. Invalid oversized definition echoes can be
+omitted separately, and individual errors are bounded to 1 KiB of UTF-8 text.
+The compiler rejects normalized definitions above 96 KiB before publication;
+bindings must still fit the complete execution budget at activation.
 
 ## Performance evidence
 

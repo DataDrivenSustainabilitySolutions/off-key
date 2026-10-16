@@ -1,6 +1,5 @@
 """Versioned pipeline library and non-mutating service projections."""
 
-import json
 from datetime import UTC, datetime
 from uuid import uuid4
 
@@ -12,6 +11,7 @@ from off_key_core.db.models import (
     PipelineRevision,
     PipelineRun,
 )
+from off_key_core.models.pipeline_reports import bounded_validation_report
 from off_key_core.models.pipelines import (
     compile_pipeline,
     pipeline_catalog_id,
@@ -21,7 +21,6 @@ from off_key_core.schemas.pipelines import (
     PipelineCreate,
     PipelineDefinition,
     PipelineDraftSave,
-    PipelineIssue,
     PipelineLayout,
     PipelineMetadataChange,
     PipelinePublish,
@@ -30,6 +29,7 @@ from off_key_core.schemas.pipelines import (
     PipelineServiceView,
     PipelineView,
 )
+from off_key_core.utils.json_budget import bounded_utf8_text
 from sqlalchemy import select
 
 from ...config.config import get_tactic_settings
@@ -165,7 +165,7 @@ class PipelineLibrary:
         try:
             compiled = compile_pipeline(PipelineDefinition.model_validate(row.draft))
         except ValueError as exc:
-            raise ValidationError(str(exc)) from exc
+            raise ValidationError(bounded_utf8_text(str(exc), 4096)) from exc
         prior = await self.session.scalar(
             select(PipelineRevision)
             .where(PipelineRevision.pipeline_id == identifier)
@@ -187,9 +187,11 @@ class PipelineLibrary:
         await self.session.commit()
         return revision_view(revision)
 
-    async def validate(self, identifier: str, definition):
+    async def validate(self, identifier: str, definition, selected_node_id=None):
         await self._row(identifier)
-        return validate_pipeline(definition)
+        return bounded_validation_report(
+            validate_pipeline(definition), selected_node_id
+        )
 
     async def revisions(self, identifier: str):
         return (await self.get(identifier)).revisions
@@ -200,7 +202,7 @@ class PipelineLibrary:
             raise NotFoundError("Pipeline revision not found")
         return revision_view(revision)
 
-    async def service(self, service_id: str):
+    async def service(self, service_id: str, selected_node_id=None):
         run = await self.session.scalar(
             select(PipelineRun).where(PipelineRun.service_id == service_id)
         )
@@ -213,29 +215,9 @@ class PipelineLibrary:
             definition = PipelineDefinition.model_validate(execution["definition"])
         else:
             definition = legacy_definition(config or {})
-        validation = validate_pipeline(definition)
-        metadata_bytes = 0
-        for chunk in json.JSONEncoder(separators=(",", ":")).iterencode(
-            validation.model_dump(mode="json")
-        ):
-            metadata_bytes += len(chunk.encode("utf-8"))
-            if metadata_bytes > 524288:
-                break
-        if metadata_bytes > 524288:
-            validation = validation.model_copy(
-                update={
-                    "features": {},
-                    "issues": [
-                        *validation.issues,
-                        PipelineIssue(
-                            code="metadata_budget",
-                            message=(
-                                "Feature lineage exceeds the 512KiB response budget"
-                            ),
-                        ),
-                    ],
-                }
-            )
+        validation = bounded_validation_report(
+            validate_pipeline(definition), selected_node_id
+        )
         history = []
         cursor = run
         visited = set()

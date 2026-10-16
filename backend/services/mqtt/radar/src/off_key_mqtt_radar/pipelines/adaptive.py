@@ -36,7 +36,9 @@ class AdaptivePipelineDetectionService(AdaptiveStreamDetectionService):
             config, checkpoint, automatic_checkpoints=automatic_checkpoints
         )
         self._raw_unit_interval_slots = self._unit_interval_slots()
-        self._diagnose(self.diagnostics.readiness, self.pipeline.node_states)
+        self._diagnose(
+            self.diagnostics.readiness, self.pipeline.node_states, self.pipeline
+        )
 
     @staticmethod
     def _build_schema_signature(config):
@@ -141,7 +143,9 @@ class AdaptivePipelineDetectionService(AdaptiveStreamDetectionService):
             self.diagnostics.record, self.plan.compiled.source_id, data, data
         )
         super()._learn(data)
-        self._diagnose(self.diagnostics.readiness, self.pipeline.node_states)
+        self._diagnose(
+            self.diagnostics.readiness, self.pipeline.node_states, self.pipeline
+        )
 
     def _observe(self, event):
         if event.node_id == "$model" and event.phase == "score":

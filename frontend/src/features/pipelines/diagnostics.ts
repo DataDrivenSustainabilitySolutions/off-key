@@ -21,6 +21,11 @@ export type PipelineState = {
       score_time_ns: number;
       ready: boolean;
       error?: string;
+      learned_updates?: number;
+      readiness_observed?: number | null;
+      readiness_required?: number | null;
+      readiness_reason?: string | null;
+      blocked_by?: string[];
     }
   >;
   observation?: {
@@ -32,6 +37,20 @@ export type PipelineState = {
       score: Record<string, NodePass>;
       learn: Record<string, NodePass>;
     };
+  };
+  adaptive_learning?: {
+    state: string;
+    model_updates: number;
+    warmup_updates: number;
+    warmup_required: number;
+    ready: boolean;
+    reason: string | null;
+  };
+  batch_training?: {
+    state: string;
+    training_samples: number;
+    calibration_samples: number;
+    frozen: boolean;
   };
   truncated: boolean;
   diagnostic_errors: number;

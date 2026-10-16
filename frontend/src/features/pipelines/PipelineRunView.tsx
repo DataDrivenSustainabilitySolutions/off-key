@@ -11,8 +11,9 @@ import { pipelinesApi } from "./api";
 import PipelineCanvas from "./PipelineCanvas";
 import { PipelineInspector } from "./PipelineInspector";
 import { PipelineDiagnostics, type PipelineState } from "./PipelineDiagnostics";
-import { executableChanges } from "./model";
+import { executableChanges, nodeOptionLabel } from "./model";
 import { arrangeGraph } from "./layout";
+import { useRunMetadata } from "./useRunMetadata";
 import "./pipelines.css";
 
 export default function PipelineRunView({
@@ -32,6 +33,7 @@ export default function PipelineRunView({
   const [view, setView] = useState<PipelineServiceView>();
   const [catalog, setCatalog] = useState<PipelineCatalog>();
   const [selected, setSelected] = useState<string>();
+  const metadata = useRunMetadata(serviceId, selected);
   const [error, setError] = useState("");
   const [retry, setRetry] = useState(0);
   const [editing, setEditing] = useState(false);
@@ -274,13 +276,21 @@ export default function PipelineRunView({
               document={{ definition: view.definition, layout: view.layout }}
               catalog={catalog}
               selected={selected}
-              validation={view.validation ?? undefined}
+              validation={metadata.validation ?? view.validation ?? undefined}
               readOnly
               onSelect={setSelected}
               onChange={() => {}}
             />
           </div>
-          {view.validation?.issues
+          {metadata.error && (
+            <p role="status" className="pl-warning">
+              Component metadata could not refresh. {metadata.error}
+              <button type="button" onClick={metadata.retry}>
+                Retry component metadata
+              </button>
+            </p>
+          )}
+          {(metadata.validation ?? view.validation)?.issues
             .filter((issue) => issue.code === "metadata_budget")
             .map((issue) => (
               <p key={issue.code} className="pl-help">
@@ -292,6 +302,17 @@ export default function PipelineRunView({
             state={state}
             selected={selected}
             expectedRunId={view.run?.id}
+            nodeLabels={Object.fromEntries(
+              view.definition.nodes.map((node) => [
+                node.id,
+                nodeOptionLabel(
+                  node,
+                  { definition: view.definition, layout: view.layout },
+                  catalog.components,
+                ),
+              ]),
+            )}
+            onSelect={setSelected}
           />
           <details className="pl-history">
             <summary>Linked monitoring history ({view.history.length})</summary>

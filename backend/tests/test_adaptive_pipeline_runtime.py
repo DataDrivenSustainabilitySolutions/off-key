@@ -178,6 +178,42 @@ def test_branched_monitor_matches_standalone_numeric_reference():
     assert set(result.processed_features) == {"pca.component_1", "temperature"}
 
 
+def test_real_pca_readiness_reports_progress_and_model_dependency_chain():
+    service = AdaptivePipelineDetectionService(_config(), automatic_checkpoints=False)
+    initial = service.get_pipeline_state()["nodes"]
+    assert initial["pca"]["readiness_observed"] == 0
+    assert initial["pca"]["blocked_by"] == ["scaled"]
+    assert not initial["pca"]["ready"]
+    assert initial["joined"]["blocked_by"] == ["pca"]
+    assert initial["model"]["blocked_by"] == ["joined"]
+    assert initial["model"]["learned_updates"] == 0
+    service.process_data_point(_point(1))
+    first = service.get_pipeline_state()["nodes"]
+    assert first["pca"]["learned_updates"] == first["pca"]["learn_count"] == 1
+    assert first["pca"]["readiness_observed"] == 1
+    assert first["pca"]["readiness_required"] == 3
+    assert first["pca"]["state"] == "initializing"
+    assert first["model"]["state"] == "waiting_for_dependency"
+    assert first["model"]["readiness_reason"] == "Waiting for feature graph"
+    for index in (2, 3):
+        service.process_data_point(_point(index))
+    projected = service.get_pipeline_state()["nodes"]
+    assert projected["pca"]["ready"]
+    assert projected["pca"]["readiness_observed"] == 3
+    assert projected["model"]["blocked_by"] == []
+    assert projected["model"]["learned_updates"] == 1
+    assert not projected["model"]["ready"]
+    service.process_data_point(_point(4))
+    ready = service.get_pipeline_state()["nodes"]
+    assert ready["model"]["state"] == "ready"
+    assert ready["model"]["ready"]
+    assert ready["model"]["learned_updates"] == ready["model"]["learn_count"] == 2
+    assert ready["model"]["readiness_observed"] >= ready["model"]["readiness_required"]
+    # Snapshots stay detached while the live committed counts continue advancing.
+    assert first["pca"]["readiness_observed"] == 1
+    assert first["model"]["blocked_by"] == ["joined"]
+
+
 @pytest.mark.parametrize("processed", [2, 5, 7])
 def test_graph_checkpoints_restore_every_learning_phase(processed):
     config = _config()

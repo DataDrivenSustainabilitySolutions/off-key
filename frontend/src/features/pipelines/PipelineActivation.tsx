@@ -3,6 +3,7 @@ import { Link, useLocation } from "react-router-dom";
 import { getErrorMessage } from "@/lib/errors";
 import { ApiRequestError } from "@/lib/api-client";
 import { useAuth } from "@/auth/AuthContext";
+import { useNavigationDraft } from "@/lib/navigation-draft";
 import type { ActiveService } from "@/types/monitoring";
 import type { PipelineActivationView } from "@/types/pipelines.generated";
 import type { MonitoringTarget } from "../monitoring/serviceModel";
@@ -36,6 +37,11 @@ type Props = {
 };
 
 const terminal = new Set(["succeeded", "failed", "cancelled"]);
+type ReviewDraft = {
+  targetId: string | undefined;
+  bindings: Record<string, string>;
+  name: string;
+};
 
 export function PipelineActivation({
   revision,
@@ -61,27 +67,38 @@ export function PipelineActivation({
   const [pending, setPending] = useState(() =>
     readActivationRequest(requestKey),
   );
-  const [targetId, setTargetId] = useState(
-    initialTarget ??
-      targets.find((target) =>
-        target.inputs.some(
-          (input) =>
-            input.stream.id ===
-            (initialReading ??
-              Object.values(pending?.bindings ?? previousBindings ?? {})[0]),
+  const [review, setReview] = useNavigationDraft<ReviewDraft>(
+    `${requestKey}:review:${initialTarget ?? initialReading ?? "library"}`,
+    () => ({
+      targetId:
+        initialTarget ??
+        targets.find((target) =>
+          target.inputs.some(
+            (input) =>
+              input.stream.id ===
+              (initialReading ??
+                Object.values(pending?.bindings ?? previousBindings ?? {})[0]),
+          ),
+        )?.id,
+      bindings:
+        pending?.bindings ??
+        previousBindings ??
+        (initialReading && revision.definition.input_slots[0]
+          ? { [revision.definition.input_slots[0].id]: initialReading }
+          : {}),
+      name:
+        pending?.display_name ?? replaceService?.display_name ?? defaultName,
+    }),
+  );
+  const targetId = pending
+    ? targets.find((target) =>
+        target.inputs.some((input) =>
+          Object.values(pending.bindings).includes(input.stream.id),
         ),
-      )?.id,
-  );
-  const [bindings, setBindings] = useState<Record<string, string>>(
-    pending?.bindings ??
-      previousBindings ??
-      (initialReading && revision.definition.input_slots[0]
-        ? { [revision.definition.input_slots[0].id]: initialReading }
-        : {}),
-  );
-  const [name, setName] = useState(
-    pending?.display_name ?? replaceService?.display_name ?? defaultName,
-  );
+      )?.id
+    : review.targetId;
+  const bindings = pending?.bindings ?? review.bindings;
+  const name = pending?.display_name ?? review.name;
   const [confirmed, setConfirmed] = useState(!!pending);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -280,7 +297,10 @@ export function PipelineActivation({
                 required
                 value={name}
                 onChange={(event) => {
-                  setName(event.target.value);
+                  setReview((current) => ({
+                    ...current,
+                    name: event.target.value,
+                  }));
                   key.current = null;
                 }}
               />
@@ -291,8 +311,11 @@ export function PipelineActivation({
                 targets={targets}
                 value={targetId}
                 onChange={(id) => {
-                  setTargetId(id);
-                  setBindings({});
+                  setReview((current) => ({
+                    ...current,
+                    targetId: id,
+                    bindings: {},
+                  }));
                   setConfirmed(false);
                   key.current = null;
                 }}
@@ -309,9 +332,12 @@ export function PipelineActivation({
                 <select
                   value={bindings[slot.id] ?? ""}
                   onChange={(event) => {
-                    setBindings((current) => ({
+                    setReview((current) => ({
                       ...current,
-                      [slot.id]: event.target.value,
+                      bindings: {
+                        ...current.bindings,
+                        [slot.id]: event.target.value,
+                      },
                     }));
                     setConfirmed(false);
                     key.current = null;

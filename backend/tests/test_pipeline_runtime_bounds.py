@@ -3,6 +3,7 @@
 import json
 
 import pytest
+from aberrant.compose import NodeState, Readiness
 from backend.scripts.benchmark_pipeline_runtime import (
     StreamRunner,
     build_workload,
@@ -51,7 +52,7 @@ def test_sustained_boundary_graph_keeps_previews_and_retained_storage_bounded(wo
     assert result["late_diagnostic_growth_bytes"] < 64 * 1024
 
 
-@pytest.mark.parametrize("character", ["💥", "é"])
+@pytest.mark.parametrize("character", ["💥", "é", "\x00"])
 def test_multibyte_errors_keep_all_maximum_node_statuses_within_snapshot_budget(
     character,
 ):
@@ -65,5 +66,52 @@ def test_multibyte_errors_keep_all_maximum_node_statuses_within_snapshot_budget(
         len(node["error"].encode("utf-8")) <= 256
         and node["state"] == "failed"
         and not node["ready"]
+        for node in snapshot["nodes"].values()
+    )
+
+
+@pytest.mark.parametrize("character", ["💥", "é", "\x00"])
+def test_readiness_reasons_and_dependencies_stay_bounded_at_graph_limits(character):
+    execution = build_workload("maximum_edges", trees=2)
+    # Exercise the schema's maximum identifier lengths as well as maximum edge
+    # count. This is a detached diagnostic serialization probe, without inference.
+    identifiers = {
+        node.id: node.id + "x" * (100 - len(node.id))
+        for node in execution.definition.nodes
+    }
+    for node in execution.definition.nodes:
+        node.id = identifiers[node.id]
+    for edge in execution.definition.edges:
+        edge.source, edge.target = identifiers[edge.source], identifiers[edge.target]
+    diagnostics = PipelineDiagnostics(execution)
+    parents = {
+        node.id: tuple(
+            edge.source for edge in execution.definition.edges if edge.target == node.id
+        )
+        for node in execution.definition.nodes
+    }
+    diagnostics.readiness(
+        [
+            NodeState(
+                node.id,
+                123,
+                Readiness(False, 123, 100_000, character * 10_000),
+                parents[node.id],
+            )
+            for node in execution.definition.nodes
+        ]
+    )
+    snapshot = diagnostics.snapshot()
+    assert len(json.dumps(snapshot, allow_nan=False).encode()) <= 128 * 1024
+    assert sum(len(node["blocked_by"]) for node in snapshot["nodes"].values()) == 128
+    for identifier in diagnostics.nodes:
+        diagnostics.fail(identifier, RuntimeError(character * 10_000))
+    snapshot = diagnostics.snapshot()
+    assert len(json.dumps(snapshot, allow_nan=False).encode()) <= 128 * 1024
+    assert all(
+        len(node["readiness_reason"].encode("utf-8")) <= 128
+        and node["readiness_observed"] == 123
+        and node["readiness_required"] == 100_000
+        and node["learned_updates"] == 123
         for node in snapshot["nodes"].values()
     )

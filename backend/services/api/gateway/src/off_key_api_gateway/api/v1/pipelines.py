@@ -1,6 +1,6 @@
 """Typed graph routes sharing one authenticated member polling budget."""
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Query, Request
 from off_key_core.schemas.members import MemberProfile
 from off_key_core.schemas.pipelines import (
     PipelineActivationRequest,
@@ -14,7 +14,7 @@ from off_key_core.schemas.pipelines import (
     PipelineRevisionView,
     PipelineServiceView,
     PipelineValidateRequest,
-    PipelineValidation,
+    PipelineValidationReport,
     PipelineView,
     PipelineWorkspace,
 )
@@ -112,7 +112,9 @@ async def save_draft(request: Request, pipeline_id: str, change: PipelineDraftSa
     )
 
 
-@router.post("/pipelines/{pipeline_id}/validate", response_model=PipelineValidation)
+@router.post(
+    "/pipelines/{pipeline_id}/validate", response_model=PipelineValidationReport
+)
 @write_limit
 async def validate_pipeline(
     request: Request, pipeline_id: str, change: PipelineValidateRequest
@@ -187,8 +189,17 @@ async def cancel_activation(request: Request, activation_id: str):
 
 @router.get("/{service_id}/pipeline", response_model=PipelineServiceView)
 @read_limit
-async def service_pipeline(request: Request, service_id: str):
-    return await forward(request, "GET", f"/{_path_segment(service_id)}/pipeline")
+async def service_pipeline(
+    request: Request,
+    service_id: str,
+    selected_node_id: str | None = Query(default=None, min_length=1, max_length=100),
+):
+    return await forward(
+        request,
+        "GET",
+        f"/{_path_segment(service_id)}/pipeline",
+        params={"selected_node_id": selected_node_id} if selected_node_id else None,
+    )
 
 
 @router.get("/{service_id}/pipeline-state")

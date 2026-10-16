@@ -94,7 +94,7 @@ export function ExplorerWorkspace() {
           document={document} historyCache={history} canEdit={system.canEdit} favourite={favourites.has(selectedService.id)}
           pipelineState={monitoring.pipelineState as unknown as PipelineState | undefined} onFavourite={() => toggleFavourite("service", selectedService.id)} onRename={name => monitoring.rename(selectedService.id, name)} onBack={closeView}
           onDeleted={async () => { monitoring.remove(selectedService.id); closeView(); await monitoring.reload(); }} />
-      </Suspense> : monitoring.ready && params.get("tab") === "pipeline" ? <Suspense fallback={<p role="status">Opening retained run…</p>}><RetainedPipeline serviceId={requestedService} canEdit={system.canEdit} replaceable={false} /></Suspense>
+      </Suspense> : monitoring.ready && params.get("tab") === "pipeline" ? <Suspense fallback={<p role="status">Opening retained run…</p>}><RetainedPipeline key={requestedService} serviceId={requestedService} canEdit={system.canEdit} replaceable={false} /></Suspense>
       : <div className="mn-empty"><p>{monitoring.error || (!monitoring.ready ? "Loading service…" : "Service not found.")}</p>
         <button onClick={closeView}>Monitoring</button>{monitoring.error && <button onClick={() => void monitoring.reload()}>Retry</button>}
       </div> : <>

@@ -35,12 +35,12 @@ export type PipelineView = Omit<
   revisions: PipelineRevisionView[];
 };
 export type PipelineValidation = Omit<
-  Wire.PipelineValidation,
+  Wire.PipelineValidationReport,
   "definition" | "features" | "issues"
 > & {
   definition: PipelineDefinition;
-  features: NonNullable<Wire.PipelineValidation["features"]>;
-  issues: NonNullable<Wire.PipelineValidation["issues"]>;
+  features: NonNullable<Wire.PipelineValidationReport["features"]>;
+  issues: NonNullable<Wire.PipelineValidationReport["issues"]>;
 };
 export type PipelineCatalog = Omit<
   Wire.PipelineCatalog,
@@ -120,11 +120,12 @@ export function normalizeCatalog(
   };
 }
 export function normalizeValidation(
-  validation: Wire.PipelineValidation,
+  validation: Wire.PipelineValidationReport,
+  fallback: Wire.PipelineDefinition,
 ): PipelineValidation {
   return {
     ...validation,
-    definition: normalizeDefinition(validation.definition),
+    definition: normalizeDefinition(validation.definition ?? fallback),
     features: validation.features ?? {},
     issues: validation.issues ?? [],
   };
@@ -136,6 +137,8 @@ export function normalizeService(
     ...view,
     definition: normalizeDefinition(view.definition),
     layout: normalizeLayout(view.layout),
-    validation: view.validation ? normalizeValidation(view.validation) : null,
+    validation: view.validation
+      ? normalizeValidation(view.validation, view.definition)
+      : null,
   };
 }

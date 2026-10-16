@@ -88,3 +88,33 @@ The implementation is published for review in
 [PR #302](https://github.com/DataDrivenSustainabilitySolutions/off-key/pull/302)
 from `codex/landing-page-refresh`, based directly on `main`. Publication uses the
 isolated managed `landing-page-refresh` worktree. Production has not been deployed.
+
+## Follow-up: simplify the hero and add a useful footer (2026-10-16)
+
+Remove the visible anomaly-detection eyebrow, the streaming-data strapline, and
+the abstract hero SVG. Centre the remaining introduction and actions so there
+is no empty illustration column. Preserve the current exported brand mark and
+all configured dashboard links.
+
+Replace the marketing footer with Impressum, Privacy, and Contact navigation.
+Each fragment link reveals an accessible in-page section and a close link
+returns to the footer. The sections contain clearly identified bracketed
+templates for real operator and policy details, without invented identities or
+claims about data handling. Keep the page independent and JavaScript-free.
+
+- [x] Rework the hero and add footer navigation and template sections.
+- [x] Verify responsive layout, keyboard operation, direct fragment navigation,
+      closing, light/dark/forced-colour output, and dashboard forwarding.
+- [x] Review screenshots and the final scoped diff.
+
+Validation passed at 320, 390, 760, 768, 1024 and 1440px in both light and dark
+themes, including all three legal sections, native keyboard focus/closing,
+direct fragment reloads and browser back/forward navigation. All four dashboard
+links navigate to the real local application, and a normal browser reaches its
+React login page. The page works with JavaScript disabled under the production
+CSP. No routes or backend services changed. The brand-export consistency check
+and `git diff --check` pass. Desktop/mobile and forced-colour screenshots were
+visually reviewed. Changes are on the local `codex/landing-page-footer` branch
+in the existing isolated landing-page worktree. The requested production release
+uses the repository's required pull-request checks, tested main commit, and
+verified production deployment workflow.

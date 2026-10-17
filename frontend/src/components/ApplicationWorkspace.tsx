@@ -27,6 +27,7 @@ function WorkspaceFrame() {
   const mobile = useSyncExternalStore(subscribeMobile, isMobile, () => false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const toggle = useRef<HTMLButtonElement>(null);
+  const mobileDrawer = useRef<HTMLDivElement>(null);
   const main = useRef<HTMLDivElement>(null);
   useEffect(() => { if (main.current) main.current.scrollTop = 0; }, [pathname]);
   useEffect(() => {
@@ -59,7 +60,9 @@ function WorkspaceFrame() {
       </div>
     </div>
     <Dialog.Root open={mobile && mobileOpen} onOpenChange={setMobileOpen}><Dialog.Portal><Dialog.Overlay className="ex-dialog-overlay app-catalogue-mobile-overlay" />
-      <Dialog.Content className="ex-mobile-sidebar app-catalogue-mobile-sidebar" onCloseAutoFocus={event => { event.preventDefault(); setMobileOpen(false); if (!dialog) toggle.current?.focus(); }}>
+      <Dialog.Content ref={mobileDrawer} className="ex-mobile-sidebar app-catalogue-mobile-sidebar"
+        onOpenAutoFocus={event => { event.preventDefault(); mobileDrawer.current?.focus(); }}
+        onCloseAutoFocus={event => { event.preventDefault(); setMobileOpen(false); if (!dialog) toggle.current?.focus(); }}>
         <Dialog.Title className="ex-sr-only">MQTT catalogue</Dialog.Title>
         <Dialog.Description className="ex-sr-only">Browse brokers, entities, topics and readings for the current section.</Dialog.Description>
         <WorkspaceCatalogue onDismiss={() => setMobileOpen(false)} />

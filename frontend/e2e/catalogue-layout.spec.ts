@@ -98,7 +98,7 @@ test("mobile drawers leave the header and content geometry intact and restore ke
     await show.click();
     const drawer = page.getByRole("dialog", { name: "MQTT catalogue", exact: true });
     const close = drawer.getByRole("button", { name: "Hide catalogue", exact: true });
-    await expect(drawer).toBeVisible();
+    await expect(drawer).toBeFocused();
     expect((await bounds(drawer)).y).toBe(initialHeader.y + initialHeader.height);
     expect(await bounds(main)).toEqual(initialMain);
     expect(await bounds(header)).toEqual(initialHeader);

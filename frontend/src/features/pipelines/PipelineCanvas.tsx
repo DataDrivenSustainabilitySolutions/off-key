@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type DragEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import {
   Background,
   Controls,
@@ -27,6 +27,8 @@ type Props = {
   states?: Record<string, string>;
   mode?: "design" | "run";
   issues?: PipelineValidation["issues"];
+  /** Increment after an explicit arrangement; data refreshes preserve the camera. */
+  fitRequest?: number;
   onSelect: (id: string) => void;
   onChange: (document: GraphDocument, recordHistory?: boolean) => void;
   onAdd: (componentId: string, position?: { x: number; y: number }) => void;
@@ -42,6 +44,7 @@ export default function PipelineCanvas({
   states,
   mode = "design",
   issues,
+  fitRequest = 0,
   onSelect,
   onChange,
   onAdd,
@@ -50,6 +53,9 @@ export default function PipelineCanvas({
   const { resolvedTheme } = useTheme();
   const [feedback, setFeedback] = useState("");
   const [flow, setFlow] = useState<ReactFlowInstance<CanvasNode>>();
+  useEffect(() => {
+    if (fitRequest) void flow?.fitView({ padding: 0.2 });
+  }, [fitRequest, flow]);
   const [selectedEdges, setSelectedEdges] = useState<string[]>([]);
   const moving = useRef(false);
   const graph = useMemo(

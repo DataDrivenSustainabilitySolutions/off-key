@@ -10,7 +10,7 @@ import {
 import { ingressOptions } from "./helpers/mqtt";
 import { loginPipelineWorkspace } from "./helpers/pipelines";
 import {
-  fitPipelineOverview,
+  expectPipelineOverview,
   locatePipelineSelection,
 } from "./helpers/pipelineNavigation";
 import { publishPipelineSamples as publishSamples } from "./helpers/pipelineSamples";
@@ -401,6 +401,13 @@ test.describe("visual pipeline real infrastructure", () => {
         await page
           .getByRole("button", { name: "Arrange automatically", exact: true })
           .click();
+        await expectPipelineOverview(page);
+        const camera = page
+          .getByLabel("Pipeline graph", { exact: true })
+          .locator(".react-flow__viewport");
+        const transform = await camera.evaluate(
+          (element) => getComputedStyle(element).transform,
+        );
         await page
           .getByRole("button", { name: "Save arrangement", exact: true })
           .click();
@@ -409,6 +416,11 @@ test.describe("visual pipeline real infrastructure", () => {
           ((await readState()).pipeline_state as unknown as PipelineState)
             .run_id,
         ).toBe(beforeLayout);
+        await expect(
+          page.getByRole("button", { name: "Adjust arrangement", exact: true }),
+        ).toBeVisible();
+        await expect(camera).toHaveCSS("transform", transform);
+        await expectPipelineOverview(page);
         await page.screenshot({
           path: testInfo.outputPath(`${strategy}-live-pipeline.png`),
           fullPage: true,
@@ -832,7 +844,7 @@ test.describe("visual pipeline real infrastructure", () => {
             ),
         )
         .toBeGreaterThan(15000);
-      await fitPipelineOverview(page);
+      await expectPipelineOverview(page);
       await page.screenshot({
         path: testInfo.outputPath("maximum-graph-overview.png"),
         fullPage: true,

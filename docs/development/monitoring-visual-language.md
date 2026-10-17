@@ -20,6 +20,7 @@ observation envelopes already have separate owners. Keep those boundaries.
 | Role colors, wire meaning and runtime text lacked a shared grammar. | Drafts and runs share one presentation adapter, labeled directional wires, data-type colors and line patterns, and a legend. Sockets are anchored to their labeled port row. Configuration issues and sampled execution state have separate badges. |
 | “Keep raw” implied that a passthrough could recover original readings after a transform. | The operation is named “Pass through.” Raw bypass follows an explicit branch from aligned inputs; passthrough preserves its incoming representation. |
 | The zoom floor prevented a long maximum-sized chain from fitting in the canvas. | “Fit entire graph” supports the bounded V1 graph size, while “Locate selected component” restores a readable detail view. Browser checks verify both after automatic arrangement. |
+| Explicit automatic arrangement could leave a running graph outside the current camera. | Arrangement requests one fit after the accepted layout update. Saving, manual moves and diagnostic polling preserve the camera. Both live strategies verify visible bounds and camera stability through saving. |
 
 Unknown component contracts retain their topology for explanation, display
 unavailable data types and prevent new connections. The editor must never invent

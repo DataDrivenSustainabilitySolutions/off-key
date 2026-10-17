@@ -40,7 +40,11 @@ export default function PipelineRunView({
   const [editing, setEditing] = useState(false);
   const [design, setDesign] = useState<PipelineView>();
   const [busy, setBusy] = useState(false);
-  const [layout, setLayout] = useState<PipelineLayout>();
+  const [arrangement, setArrangement] = useState<{
+    layout?: PipelineLayout;
+    fitRequest: number;
+  }>({ fitRequest: 0 });
+  const { layout, fitRequest } = arrangement;
   const [arranging, setArranging] = useState(false);
   useEffect(() => {
     const controller = new AbortController();
@@ -51,7 +55,7 @@ export default function PipelineRunView({
       ([next, available]) => {
         if (!controller.signal.aborted) {
           setView(next);
-          setLayout(next.layout);
+          setArrangement({ layout: next.layout, fitRequest: 0 });
           setCatalog(available);
           setError("");
         }
@@ -143,8 +147,18 @@ export default function PipelineRunView({
                   onClick={async () => {
                     setBusy(true);
                     try {
-                      const arranged = await arrangeGraph(view.definition, layout);
-                      setLayout((current) => current === layout ? arranged : current);
+                      const arranged = await arrangeGraph(
+                        view.definition,
+                        layout,
+                      );
+                      setArrangement((current) =>
+                        current.layout === layout
+                          ? {
+                              layout: arranged,
+                              fitRequest: current.fitRequest + 1,
+                            }
+                          : current,
+                      );
                     } catch (reason) {
                       setError(getErrorMessage(reason));
                     } finally {
@@ -164,7 +178,10 @@ export default function PipelineRunView({
                         serviceId,
                         layout,
                       );
-                      setLayout(saved);
+                      setArrangement((current) => ({
+                        ...current,
+                        layout: saved,
+                      }));
                       setView({ ...view, layout: saved });
                       setArranging(false);
                       setError("");
@@ -181,7 +198,10 @@ export default function PipelineRunView({
                   type="button"
                   disabled={busy}
                   onClick={() => {
-                    setLayout(view.layout);
+                    setArrangement((current) => ({
+                      layout: view.layout,
+                      fitRequest: current.fitRequest + 1,
+                    }));
                     setArranging(false);
                   }}
                 >
@@ -253,6 +273,7 @@ export default function PipelineRunView({
               }}
               components={catalog.components}
               mode="run"
+              fitRequest={fitRequest}
               issues={(metadata.validation ?? view.validation)?.issues}
               selected={selected}
               readOnly
@@ -269,7 +290,11 @@ export default function PipelineRunView({
               }
               onSelect={setSelected}
               onChange={(document) => {
-                if (arranging) setLayout(document.layout);
+                if (arranging)
+                  setArrangement((current) => ({
+                    ...current,
+                    layout: document.layout,
+                  }));
               }}
               onAdd={() => {}}
             />

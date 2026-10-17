@@ -1,10 +1,7 @@
 import { expect, type Page } from "@playwright/test";
 
-export async function fitPipelineOverview(page: Page) {
+export async function expectPipelineOverview(page: Page) {
   const graph = page.getByLabel("Pipeline graph", { exact: true });
-  await graph
-    .getByRole("button", { name: "Fit entire graph", exact: true })
-    .click();
   await expect
     .poll(() =>
       graph.locator(".react-flow__viewport").evaluate((viewport) => {
@@ -25,6 +22,14 @@ export async function fitPipelineOverview(page: Page) {
       }),
     )
     .toBe(true);
+}
+
+export async function fitPipelineOverview(page: Page) {
+  await page
+    .getByLabel("Pipeline graph", { exact: true })
+    .getByRole("button", { name: "Fit entire graph", exact: true })
+    .click();
+  await expectPipelineOverview(page);
 }
 
 export async function locatePipelineSelection(page: Page) {

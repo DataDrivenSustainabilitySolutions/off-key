@@ -103,6 +103,7 @@ function EditorSession({
     () => openSession(initial),
   );
   const [selected, setSelected] = useState<string>();
+  const [fitRequest, setFitRequest] = useState(0);
   const currentSession = useRef(session);
   useEffect(() => {
     currentSession.current = session;
@@ -312,7 +313,10 @@ function EditorSession({
             </select>
           </label>
           {revisions.before && (
-            <button disabled={revisions.busy} onClick={() => void revisions.loadOlder()}>
+            <button
+              disabled={revisions.busy}
+              onClick={() => void revisions.loadOlder()}
+            >
               Load older revisions
             </button>
           )}
@@ -394,7 +398,11 @@ function EditorSession({
           {error}
         </p>
       )}
-      {revisions.error && <p className="pl-error" role="alert">{revisions.error}</p>}
+      {revisions.error && (
+        <p className="pl-error" role="alert">
+          {revisions.error}
+        </p>
+      )}
       {notice && (
         <p className="pl-notice" role="status">
           {notice}
@@ -543,6 +551,7 @@ function EditorSession({
                     return;
                   }
                   commit({ ...document, layout });
+                  setFitRequest((value) => value + 1);
                 })
               }
             >
@@ -566,6 +575,7 @@ function EditorSession({
           document={document}
           components={props.catalog.components}
           issues={(metadata ?? validation)?.issues}
+          fitRequest={fitRequest}
           selected={selected}
           readOnly={readOnly}
           onSelect={select}

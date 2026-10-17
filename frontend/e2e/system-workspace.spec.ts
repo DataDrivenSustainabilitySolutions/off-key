@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { expect, test } from "@playwright/test";
 import { connectAsync, type MqttClient } from "mqtt";
 import type { SystemSnapshot } from "../src/features/catalogue/systemTypes";
-import { addTestCharger, removeTestCharger } from "./helpers/collection";
+import { addTestCharger, removeTestCharger, waitForCollectionReady } from "./helpers/collection";
 import { setAppearance } from "./helpers/appearance";
 
 test.setTimeout(300_000);
@@ -85,6 +85,7 @@ test("records only an opted-in reading and restores its history in the mobile wo
     expect(binding.telemetry_key).toMatch(/^reading-[a-f0-9]{64}$/);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await expect(page.getByRole("button", { name: "Connect", exact: true })).toHaveCount(0);
+    await waitForCollectionReady(api, token!, applied, stream.connection_id);
     publisher = await connectAsync(process.env.MQTT_SOURCE_URL ?? "mqtt://127.0.0.1:1884", { clientId: `ui-${entityId}` });
     for (const key of keys) await publisher.publishAsync(`tests/${localId}/${key}`, "25", { qos: 1 });
     await expect.poll(async () => {

@@ -7,6 +7,24 @@ const stableKey = (kind: string, identity: string) => `${kind}-${createHash("sha
 export const fixtureEntityId = (deviceId: string) => stableKey("entity", deviceId);
 export const fixtureReadingKey = (deviceId: string, key: string) => stableKey("reading", `${deviceId}:${key.replaceAll("/", ":")}`);
 
+/** Configuration application and upstream SUBACK are separate readiness boundaries. */
+export const waitForCollectionReady = async (
+  api: APIRequestContext, token: string, expected: SystemSnapshot, connectionId?: string,
+): Promise<void> => {
+  const revision = expected.runtime.collection_revision;
+  expect(revision).toBeDefined();
+  await expect.poll(async () => {
+    const response = await api.get("/api/v1/system", { headers: { Authorization: `Bearer ${token}` } });
+    expect(response.ok(), await response.text()).toBeTruthy();
+    const latest = await response.json() as SystemSnapshot;
+    return latest.runtime.collection_revision === revision
+      && latest.runtime.collection?.revision === revision
+      && latest.runtime.collection?.status === "applied"
+      && (!connectionId || latest.runtime.ingress?.revision === revision
+        && latest.runtime.ingress?.sources?.[connectionId]?.state === "connected");
+  }, { timeout: 120_000, intervals: [1000] }).toBe(true);
+};
+
 /** Create domain-neutral fixtures through the same public opt-in workflow as users. */
 export const addTestCharger = async (
   api: APIRequestContext, token: string, deviceId: string, localId: string,
@@ -40,13 +58,7 @@ export const addTestCharger = async (
     expect(applied.ok(), await applied.text()).toBeTruthy();
     current = await applied.json() as SystemSnapshot;
   }
-  await expect.poll(async () => {
-    const result = await api.get("/api/v1/system", { headers });
-    const latest = await result.json() as SystemSnapshot;
-    return latest.runtime.collection?.revision === current.runtime.collection_revision
-      && latest.runtime.collection?.status === "applied"
-      && (policy.mode === "off" || latest.runtime.ingress?.sources?.[connection!.id]?.state === "connected");
-  }, { timeout: 120_000, intervals: [1000] }).toBe(true);
+  await waitForCollectionReady(api, token, current, policy.mode === "off" ? undefined : connection.id);
   const status = await api.get("/api/v1/system/health", { headers });
   expect(status.ok(), await status.text()).toBeTruthy();
   // Envelope tests need the current generation; upstream tests publish through real brokers.

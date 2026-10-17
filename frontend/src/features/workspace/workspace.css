@@ -29,6 +29,8 @@
 .catalogue-edge-toggle:hover .catalogue-edge-face,.catalogue-edge-toggle:focus-visible .catalogue-edge-face {
   color: var(--ex-ink); background: var(--ex-hover); border-color: var(--ex-muted);
 }
+/* Unmount a blurred hint immediately so its closing layer cannot consume Escape in the drawer. */
+.catalogue-toggle-tooltip[data-state="closed"] { animation: none; }
 .catalogue-drawer-toggle { left: calc(100% - 22px); }
 .app-catalogue-mobile-overlay,.app-catalogue-mobile-sidebar { top: 112px; }
 .app-catalogue-mobile-sidebar { width: min(320px, calc(100vw - 44px)); }

@@ -103,8 +103,9 @@ test("mobile drawers leave the header and content geometry intact and restore ke
     expect(await bounds(main)).toEqual(initialMain);
     expect(await bounds(header)).toEqual(initialHeader);
     const closeBounds = await bounds(close);
-    expect(closeBounds.width).toBeGreaterThanOrEqual(44);
-    expect(closeBounds.height).toBeGreaterThanOrEqual(44);
+    // Drawer translation can introduce subpixel rounding in bounding boxes.
+    expect(closeBounds.width).toBeCloseTo(44, 2);
+    expect(closeBounds.height).toBeCloseTo(44, 2);
     expect(closeBounds.x + closeBounds.width).toBeLessThanOrEqual(width);
     await close.focus();
     await page.keyboard.press("Tab");

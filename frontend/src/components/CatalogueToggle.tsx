@@ -20,6 +20,6 @@ export function CatalogueToggle({ open, onClick, ref, className, hidden }: Props
         <span className="catalogue-edge-face"><ChevronLeft size={14} aria-hidden="true" /></span>
       </button>
     </TooltipTrigger>
-    <TooltipContent side="right" sideOffset={8} className="z-[90]">{label}</TooltipContent>
+    <TooltipContent side="right" sideOffset={8} className="catalogue-toggle-tooltip z-[90]">{label}</TooltipContent>
   </Tooltip>;
 }

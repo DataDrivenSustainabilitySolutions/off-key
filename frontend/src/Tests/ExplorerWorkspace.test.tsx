@@ -77,6 +77,7 @@ function fileFor(document: SystemDocument) {
 
 beforeAll(async () => {
   await import("@/features/explorer/ExplorerPreview");
+  await import("@/features/pipelines/PipelineWorkspace");
 });
 
 beforeEach(() => {
@@ -102,6 +103,24 @@ function withServices(services: ActiveService[]) {
 }
 
 describe("service-centred monitoring workspace", () => {
+  it("waits for the catalogue before initializing a visual creation draft", async () => {
+    let acceptSystem!: (value: SystemSnapshot) => void;
+    let acceptWorkspace!: (value: { services: ActiveService[]; authoring_enabled: boolean }) => void;
+    const systemPending = new Promise<SystemSnapshot>((resolve) => { acceptSystem = resolve; });
+    const workspacePending = new Promise<{ services: ActiveService[]; authoring_enabled: boolean }>((resolve) => { acceptWorkspace = resolve; });
+    const catalogPending = new Promise<never>(() => {});
+    vi.mocked(apiUtils.get).mockImplementation(async endpoint => endpoint === "/v1/system" ? systemPending
+      : endpoint.startsWith("/v1/monitors/workspace") ? workspacePending
+      : endpoint === "/v1/monitors/pipelines/catalog" ? catalogPending : []);
+    mount("/?create=monitoring&target=room-input");
+    await screen.findByText("Opening monitoring setup…", { exact: true });
+    await act(async () => { acceptWorkspace({ services: [], authoring_enabled: true }); });
+    expect(screen.getByText("Opening monitoring setup…", { exact: true })).toBeTruthy();
+    expect(apiUtils.get).not.toHaveBeenCalledWith("/v1/monitors/pipelines/catalog", expect.anything());
+    await act(async () => { acceptSystem(snapshot()); });
+    await waitFor(() => expect(apiUtils.get).toHaveBeenCalledWith("/v1/monitors/pipelines/catalog", expect.anything()));
+  });
+
   it("offers only receiving entities in the input picker, including the exact broker and entity labels", async () => {
     const current = snapshot();
     current.document.devices.push({ id: "quiet", label: "Quiet charger", kind: "charger", connection_id: "broker" });

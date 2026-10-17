@@ -95,10 +95,10 @@ describe("application home", () => {
   it("keeps navbar navigation visible when the catalogue is hidden", async () => {
     visit("/anomalies");
     await screen.findByRole("heading", { name: "Reporting" });
-    fireEvent.click(screen.getByRole("button", { name: "Toggle catalogue" }));
+    fireEvent.click(screen.getByRole("button", { name: "Hide catalogue" }));
     expect(screen.queryByRole("navigation", { name: "System explorer" })).toBeNull();
     expect(screen.getByRole("group", { name: "Workspaces" })).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Toggle catalogue" }));
+    fireEvent.click(screen.getByRole("button", { name: "Show catalogue" }));
     expect(screen.getByRole("navigation", { name: "System explorer" })).toBeTruthy();
   });
 
@@ -106,11 +106,11 @@ describe("application home", () => {
     vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() })));
     const router = visit("/account");
     await screen.findByRole("heading", { name: "Account" });
-    const trigger = screen.getByRole("button", { name: "Open catalogue" });
+    const trigger = screen.getByRole("button", { name: "Show catalogue" });
     fireEvent.click(trigger);
     const dialog = await screen.findByRole("dialog", { name: "MQTT catalogue" });
     expect(within(dialog).queryByRole("link", { name: "Reporting" })).toBeNull();
-    fireEvent.click(within(dialog).getByRole("button", { name: "Close explorer" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Hide catalogue" }));
     await waitFor(() => expect(document.activeElement).toBe(trigger));
     fireEvent.click(screen.getByRole("link", { name: "Reporting" }));
     await screen.findByRole("heading", { name: "Reporting" });

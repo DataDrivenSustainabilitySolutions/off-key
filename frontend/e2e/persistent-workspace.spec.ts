@@ -114,7 +114,7 @@ test("returns to the catalogue root from collections, branches and search with a
       await sidebar.screenshot({ path: testInfo.outputPath("catalogue-root-" + appearance.toLowerCase() + ".png"), animations: "disabled" });
     }
     await page.setViewportSize({ width: 320, height: 844 });
-    await page.getByRole("button", { name: "Open catalogue", exact: true }).click();
+    await page.getByRole("button", { name: "Show catalogue", exact: true }).click();
     await expect(root).toBeInViewport();
     const buttonBox = await root.boundingBox();
     expect(buttonBox!.width).toBeGreaterThanOrEqual(44);
@@ -208,9 +208,9 @@ test("keeps the catalogue DOM, selection, search and scroll while navigating and
     await navigation.getByRole("link", { name: "Monitoring", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Monitoring", exact: true })).toBeVisible();
     await unchanged();
-    await page.getByRole("button", { name: "Toggle catalogue", exact: true }).click();
+    await page.getByRole("button", { name: "Hide catalogue", exact: true }).click();
     await expect(navigation.getByRole("link", { name: "Sources", exact: true })).toBeVisible();
-    await page.getByRole("button", { name: "Toggle catalogue", exact: true }).click();
+    await page.getByRole("button", { name: "Show catalogue", exact: true }).click();
     for (const appearance of ["Light", "Dark"] as const) {
       await setAppearance(page, appearance);
       await page.screenshot({ path: testInfo.outputPath("workspace-" + appearance.toLowerCase() + ".png") });
@@ -224,11 +224,11 @@ test("keeps the catalogue DOM, selection, search and scroll while navigating and
       expect(new URL(page.url()).searchParams.get("source")).toBe(source);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     }
-    await page.getByRole("button", { name: "Open catalogue", exact: true }).click();
+    await page.getByRole("button", { name: "Show catalogue", exact: true }).click();
     await expect(search).toHaveValue("North value");
     await expect(selected).toHaveAttribute("aria-current", "true");
-    await page.getByRole("button", { name: "Close explorer", exact: true }).click();
-    await expect(page.getByRole("button", { name: "Open catalogue", exact: true })).toBeFocused();
+    await page.getByRole("button", { name: "Hide catalogue", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Show catalogue", exact: true })).toBeFocused();
     await page.screenshot({ path: testInfo.outputPath("workspace-mobile.png") });
     expect(catalogueReads).toBe(readsBeforeNavigation);
     await expect(page.locator(".ex-preview-value strong")).toHaveText("42");
@@ -332,7 +332,7 @@ test("filters online topics and their paths as real MQTT traffic starts and expi
     await publisher.publishAsync(fixture.streams[0]!.topic, "24", { qos: 1 });
     await expect(active.locator("svg")).toHaveAttribute("fill", "currentColor");
     await page.setViewportSize({ width: 320, height: 844 });
-    await page.getByRole("button", { name: "Open catalogue", exact: true }).click();
+    await page.getByRole("button", { name: "Show catalogue", exact: true }).click();
     await expect(toggle).toHaveAttribute("aria-pressed", "true");
     await expect(toggle).toBeInViewport();
     const box = await toggle.boundingBox();

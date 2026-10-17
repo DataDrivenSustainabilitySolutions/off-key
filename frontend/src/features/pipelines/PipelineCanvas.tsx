@@ -18,6 +18,7 @@ import { PipelineLegend } from "./PipelineLegend";
 import "@xyflow/react/dist/style.css";
 
 const nodeTypes = { component: PipelineNodeCard };
+const overviewOptions = { padding: 0.2 };
 type Props = {
   document: GraphDocument;
   components: PipelineComponent[];
@@ -54,7 +55,7 @@ export default function PipelineCanvas({
   const [feedback, setFeedback] = useState("");
   const [flow, setFlow] = useState<ReactFlowInstance<CanvasNode>>();
   useEffect(() => {
-    if (fitRequest) void flow?.fitView({ padding: 0.2 });
+    if (fitRequest) void flow?.fitView(overviewOptions);
   }, [fitRequest, flow]);
   const [selectedEdges, setSelectedEdges] = useState<string[]>([]);
   const moving = useRef(false);
@@ -107,7 +108,7 @@ export default function PipelineCanvas({
           onInit={setFlow}
           colorMode={resolvedTheme}
           fitView
-          fitViewOptions={{ padding: 0.2 }}
+          fitViewOptions={overviewOptions}
           minZoom={0.01}
           maxZoom={2}
           nodesDraggable={layoutEditable || !readOnly}

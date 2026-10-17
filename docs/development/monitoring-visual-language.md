@@ -17,7 +17,7 @@ observation envelopes already have separate owners. Keep those boundaries.
 | Canvas and keyboard connections accepted incompatible data kinds until validation. | Both use one authoring guard over the generated catalog's types, occupied inputs, cycles and resource limits. The backend compiler remains authoritative. |
 | Custom titles could hide the underlying operation. | Every card retains its operation name beneath its title. Roles have icons and text; ports have explicit input/output labels. |
 | Edge identity used array positions. Sparse merge order values produced misleading input numbers. | Renderer identity uses the stable endpoint pair. Displayed input ranks use executable order, independent of storage order. Adding an input preserves relative order and assigns bounded contiguous ordinals. |
-| Role colors, wire meaning and runtime text lacked a shared grammar. | Drafts and runs share one presentation adapter, labeled directional wires, data-type colors and line patterns, and a legend. Configuration issues and sampled execution state have separate badges. |
+| Role colors, wire meaning and runtime text lacked a shared grammar. | Drafts and runs share one presentation adapter, labeled directional wires, data-type colors and line patterns, and a legend. Sockets are anchored to their labeled port row. Configuration issues and sampled execution state have separate badges. |
 | “Keep raw” implied that a passthrough could recover original readings after a transform. | The operation is named “Pass through.” Raw bypass follows an explicit branch from aligned inputs; passthrough preserves its incoming representation. |
 
 Unknown component contracts retain their topology for explanation, display

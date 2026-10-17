@@ -58,16 +58,6 @@ export function PipelineNodeCard({
       className={`pl-node${selected ? " is-selected" : ""}`}
       data-kind={data.kind}
     >
-      {data.inputPort && (
-        <Handle
-          id="input"
-          type="target"
-          position={Position.Left}
-          isConnectable={isConnectable && data.available}
-          className={`pl-data--${data.inputType ?? "unknown"}`}
-          title={`Input: ${data.inputType ? dataKinds[data.inputType].label : "Unavailable type"}`}
-        />
-      )}
       <span className="pl-node-kind">
         <Icon size={12} aria-hidden="true" />
         {nodeKinds[data.kind]}
@@ -77,6 +67,16 @@ export function PipelineNodeCard({
         {subtitle}
       </small>
       <div className="pl-node-ports">
+        {data.inputPort && (
+          <Handle
+            id="input"
+            type="target"
+            position={Position.Left}
+            isConnectable={isConnectable && data.available}
+            className={`pl-data--${data.inputType ?? "unknown"}`}
+            title={`Input: ${data.inputType ? dataKinds[data.inputType].label : "Unavailable type"}`}
+          />
+        )}
         {data.inputPort ? (
           <span className={`pl-port pl-data--${data.inputType ?? "unknown"}`}>
             In · {data.inputType ? dataKinds[data.inputType].label : "Unknown"}
@@ -92,6 +92,16 @@ export function PipelineNodeCard({
         ) : data.kind === "output" && data.available ? (
           <span className="pl-port">Stores evidence</span>
         ) : null}
+        {data.outputPort && (
+          <Handle
+            id="output"
+            type="source"
+            position={Position.Right}
+            isConnectable={isConnectable && data.available}
+            className={`pl-data--${data.outputType ?? "unknown"}`}
+            title={`Output: ${data.outputType ? dataKinds[data.outputType].label : "Unavailable type"}`}
+          />
+        )}
       </div>
       <div className="pl-node-status">
         {!data.available && (
@@ -119,16 +129,6 @@ export function PipelineNodeCard({
           </span>
         )}
       </div>
-      {data.outputPort && (
-        <Handle
-          id="output"
-          type="source"
-          position={Position.Right}
-          isConnectable={isConnectable && data.available}
-          className={`pl-data--${data.outputType ?? "unknown"}`}
-          title={`Output: ${data.outputType ? dataKinds[data.outputType].label : "Unavailable type"}`}
-        />
-      )}
     </div>
   );
 }

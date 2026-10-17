@@ -155,6 +155,15 @@ for (const strategy of ["static_baseline", "adaptive_stream"] as const) {
             ),
         )
         .toBeGreaterThanOrEqual(0.8);
+      const ports = node("raw").locator(".pl-node-ports");
+      for (const handle of ["input", "output"]) {
+        const socket = node("raw").locator(`[data-handleid="${handle}"]`);
+        const row = (await ports.boundingBox())!;
+        const bounds = (await socket.boundingBox())!;
+        expect(
+          Math.abs(bounds.y + bounds.height / 2 - row.y - row.height / 2),
+        ).toBeLessThan(3);
+      }
       await page.screenshot({
         path: testInfo.outputPath(`visual-language-${strategy}-light.png`),
         fullPage: true,

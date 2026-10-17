@@ -16,11 +16,11 @@ export const dataKinds: Record<DataKind, { label: string; dash?: string }> = {
 };
 
 export const nodeKinds: Record<PipelineNode["kind"], string> = {
-  source: "Aligned inputs",
+  source: "Input",
   transform: "Transform",
-  merge: "Feature merge",
+  merge: "Combine",
   detector: "Detector",
-  policy: "Alarm policy",
+  policy: "Decision policy",
   output: "Evidence output",
 };
 

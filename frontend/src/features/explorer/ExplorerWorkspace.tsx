@@ -79,7 +79,9 @@ export function ExplorerWorkspace() {
       : pipelineView ? <Suspense fallback={<p className="ex-muted" role="status">Opening pipelines…</p>}><Pipelines services={monitoring.services} index={monitoringIndex} canEdit={system.canEdit}
         initialTarget={params.get("target") ?? (requestedReading ? system.snapshot?.runtime.bindings?.[requestedReading]?.entity_id : undefined)} initialReading={requestedReading ?? undefined}
         onBack={closeView} onStarted={async id => { await monitoring.reload(); openService(id); }} /></Suspense>
-      : creating ? <Suspense fallback={<p className="ex-muted" role="status">Opening setup…</p>}>
+      : creating && isAuthenticated && !monitoring.ready ? <p className="ex-muted" role={monitoring.error ? "alert" : "status"}>
+        {monitoring.error || "Opening monitoring setup…"}{monitoring.error && <button onClick={() => void monitoring.reload()}>Retry</button>}
+      </p> : creating ? <Suspense fallback={<p className="ex-muted" role="status">Opening setup…</p>}>
         {system.canEdit ? <ServiceCreate key={`${params.get("target") ?? (requestedReading ? system.snapshot?.runtime.bindings?.[requestedReading]?.entity_id : "")}:${requestedReading ?? ""}`}
           targets={monitoringIndex.targets} services={monitoring.services}
           initialTarget={params.get("target") ?? (requestedReading ? system.snapshot?.runtime.bindings?.[requestedReading]?.entity_id : undefined)}

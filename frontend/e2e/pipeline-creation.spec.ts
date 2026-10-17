@@ -12,7 +12,9 @@ test("opens the workbench directly and safely edits copies of published and draf
   const ids = new Set<string>();
   const unique = randomUUID();
   let release!: () => void;
+  let releaseWorkspace!: () => void;
   const held = new Promise<void>((resolve) => { release = resolve; });
+  const workspaceHeld = new Promise<void>((resolve) => { releaseWorkspace = resolve; });
   const createPath = "/api/v1/monitors/pipelines";
   const routePattern = `**${createPath}`;
   const theme = async (name: "Light" | "Dark") => {
@@ -54,9 +56,21 @@ test("opens the workbench directly and safely edits copies of published and draf
     page.on("request", (request) => {
       if (request.method() === "POST" && new URL(request.url()).pathname === createPath) createRequests++;
     });
-    await page.getByRole("button", { name: "Create", exact: true }).click();
+    // A direct URL reload waits for real server capabilities, rather than
+    // briefly offering legacy creation while the workspace response is delayed.
+    await page.route("**/api/v1/monitors/workspace*", async (route) => {
+      const response = await route.fetch();
+      expect(response.ok(), await response.text()).toBe(true);
+      await workspaceHeld;
+      await route.fulfill({ response });
+    });
+    await page.goto("/?create=monitoring");
+    await expect(page.getByText("Opening monitoring setup…", { exact: true })).toBeVisible();
+    await expect(page.getByRole("region", { name: "Create monitoring service", exact: true })).toHaveCount(0);
+    releaseWorkspace();
     const workbench = page.getByRole("region", { name: "Monitoring workbench", exact: true });
     await expect(workbench.getByLabel("Pipeline graph", { exact: true })).toBeVisible();
+    await page.unroute("**/api/v1/monitors/workspace*");
     const name = workbench.getByRole("textbox", { name: "Service name", exact: true });
     await expect(name).toHaveAttribute("placeholder", "e.g. Machine health");
     await expect(workbench.getByRole("button", { name: "Choose monitoring inputs", exact: true })).toHaveText("Select an entity");
@@ -146,7 +160,9 @@ test("opens the workbench directly and safely edits copies of published and draf
     expect(await unchanged.json()).toEqual(sourceDraft);
   } finally {
     release();
+    releaseWorkspace();
     await page.unroute(routePattern);
+    await page.unroute("**/api/v1/monitors/workspace*");
     for (const id of ids) {
       const response = await page.request.get(`${createPath}/${id}`, { headers });
       expect(response.ok(), await response.text()).toBe(true);

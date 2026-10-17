@@ -17,7 +17,7 @@ observation envelopes already have separate owners. Keep those boundaries.
 | Canvas and keyboard connections accepted incompatible data kinds until validation. | Both use one authoring guard over the generated catalog's types, occupied inputs, cycles and resource limits. The backend compiler remains authoritative. |
 | Custom titles could hide the underlying operation. | Every card retains its operation name beneath its title. Roles have icons and text; ports have explicit input/output labels. |
 | Edge identity used array positions. Sparse merge order values produced misleading input numbers. | Renderer identity uses the stable endpoint pair. Inspector order and accessible connection ranks use executable order, independent of storage order. Adding an input preserves relative order and assigns bounded contiguous ordinals. |
-| Role colors, wire meaning and runtime text lacked a shared grammar. | Drafts and runs share one presentation adapter, directional wires, data-type colors and line patterns. Sockets are anchored to their labeled port row. Configuration issues and sampled execution state have separate badges. |
+| Role colors, wire meaning and runtime text lacked a shared grammar. | Drafts and runs share one presentation adapter, solid directional wires and data-type colors. Sockets are anchored to their labeled port row. Configuration issues and sampled execution state have separate badges. |
 | Repeating data types on cards and every connection interrupted the flow. | Data types appear at component ports. Wires carry no visible text, and the canvas has no separate legend. Merge ordering and feature details remain in the inspector; accessible wire descriptions retain the type and rank. |
 | “Keep raw” implied that a passthrough could recover original readings after a transform. | The operation is named “Pass through.” Raw bypass follows an explicit branch from aligned inputs; passthrough preserves its incoming representation. |
 | The zoom floor prevented a long maximum-sized chain from fitting in the canvas. | “Fit entire graph” supports the bounded V1 graph size, while “Locate selected component” restores a readable detail view. Browser checks verify both after automatic arrangement. |
@@ -33,7 +33,7 @@ feature semantics for an unavailable component.
 | --- | --- | --- |
 | Component role | Input, transform, combine, detector, decision policy or evidence output | Stable card structure with a role icon and text |
 | Operation | The catalog implementation and contract selected for that node | Operation name remains visible when a user supplies a custom title |
-| Data kind | What crosses a boundary | Named input/output ports; wire color and line pattern |
+| Data kind | What crosses a boundary | Named input/output ports and wire color; all links share a solid line and arrow style |
 | Connection | A directed dependency between operations | Left-to-right ports and an arrow; placement never changes execution |
 | Ordered feature merge | Column concatenation for one aligned observation | Inspector ordering and accessible incoming ranks |
 | Configuration issue | A problem with the current design | Issue badge linked by selection to inspector details |
@@ -47,7 +47,8 @@ is the policy result. Evidence is persisted by the terminal output in V1, rather
 than exposed as a further routable port. Feature provenance shown for a model
 describes its contributing inputs, not the shape of its score output.
 
-Port labels and line patterns make meaning available without color. Runtime state
+Port labels make meaning available without color. Every connection uses the same
+solid line, width and arrow style; data kinds change only its color. Runtime state
 uses its own labeled badge, so an invalid draft, an initializing model and a
 failed execution do not become the same red node. Wires do not animate imaginary
 messages. A sampled badge cannot establish current liveness; snapshot age,

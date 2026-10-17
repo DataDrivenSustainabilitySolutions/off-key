@@ -7,12 +7,12 @@ import type {
 export type DataKind = NonNullable<PipelineComponent["output_type"]>;
 
 /** Presentation vocabulary; executable types still come from the shared catalog. */
-export const dataKinds: Record<DataKind, { label: string; dash?: string }> = {
+export const dataKinds: Record<DataKind, { label: string }> = {
   features: { label: "Features" },
-  scores: { label: "Scores", dash: "8 4" },
-  p_values: { label: "P-values", dash: "3 3" },
-  decisions: { label: "Decisions", dash: "1 4" },
-  evidence: { label: "Evidence", dash: "8 3 2 3" },
+  scores: { label: "Scores" },
+  p_values: { label: "P-values" },
+  decisions: { label: "Decisions" },
+  evidence: { label: "Evidence" },
 };
 
 export const nodeKinds: Record<PipelineNode["kind"], string> = {

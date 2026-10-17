@@ -124,8 +124,9 @@ directly. Drag components from the left toolbox onto the canvas and connect thei
 typed ports. The right inspector switches between **Service settings** (name,
 entity, input slots and learning settings) and **Component settings**. On narrow
 screens, the panel buttons expose the same tools.
-Component ports describe their data types. Connections are directional links
-without text labels; merge ordering and feature details appear in the inspector.
+Component ports describe their data types. Connections are solid directional links
+without text labels; their color matches the ports. Merge ordering and feature
+details appear in the inspector.
 The canvas has no separate legend.
 
 The optional **Templates** menu loads a static or adaptive starting flow, or a

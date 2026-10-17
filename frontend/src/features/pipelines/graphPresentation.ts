@@ -71,7 +71,6 @@ export function presentGraph(
       style: {
         strokeWidth: 2,
         stroke: color,
-        strokeDasharray: kind ? dataKinds[kind].dash : "2 4",
       },
       markerEnd: { type: MarkerType.ArrowClosed, color },
       ariaLabel: `${source?.ariaLabel ?? edge.source} to ${target?.ariaLabel ?? edge.target}: ${type}${suffix}`,

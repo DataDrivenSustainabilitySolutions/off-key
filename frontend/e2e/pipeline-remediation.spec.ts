@@ -1,11 +1,10 @@
 import { randomUUID } from "node:crypto";
 import { expect, test } from "@playwright/test";
 import type { PipelineCatalog, PipelineView } from "../src/types/pipelines.generated";
-import { loginWithEmail } from "./helpers/auth";
+import { loginPipelineWorkspace } from "./helpers/pipelines";
 
 test("preserves edits made after a real atomic draft save was submitted", async ({ page }) => {
-  await page.goto("/login");
-  await loginWithEmail(page, process.env.SUPERUSER_MAIL ?? "admin@example.com", { rememberMe: true });
+  await loginPipelineWorkspace(page);
   const token = await page.evaluate(() => localStorage.getItem("auth_token"));
   expect(token).toBeTruthy();
   const headers = { Authorization: `Bearer ${token}` };

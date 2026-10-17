@@ -43,8 +43,11 @@ def pipeline_components() -> list[PipelineComponent]:
         (
             "features.passthrough",
             "transform",
-            "Keep raw",
-            "Preserve incoming feature values.",
+            "Pass through",
+            (
+                "Preserve incoming values and names. "
+                "Connect directly to aligned inputs to retain raw readings."
+            ),
             BOTH,
         ),
         (

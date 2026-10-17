@@ -252,6 +252,8 @@ export default function PipelineRunView({
                 layout: layout ?? view.layout,
               }}
               components={catalog.components}
+              mode="run"
+              issues={(metadata.validation ?? view.validation)?.issues}
               selected={selected}
               readOnly
               layoutEditable={arranging && !busy}

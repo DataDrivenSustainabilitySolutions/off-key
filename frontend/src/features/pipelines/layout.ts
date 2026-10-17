@@ -1,5 +1,7 @@
 import type { PipelineDefinition, PipelineLayout } from "./contracts";
 
+import { NODE_SIZE } from "./semantics";
+
 export async function arrangeGraph(
   definition: PipelineDefinition,
   layout: PipelineLayout,
@@ -16,8 +18,7 @@ export async function arrangeGraph(
     },
     children: definition.nodes.map((node) => ({
       id: node.id,
-      width: 190,
-      height: 96,
+      ...NODE_SIZE,
     })),
     edges: definition.edges.map((edge, index) => ({
       id: `edge-${index}`,

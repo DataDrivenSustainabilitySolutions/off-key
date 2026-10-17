@@ -8,7 +8,7 @@ import {
   removeTestCharger,
 } from "./helpers/collection";
 import { ingressOptions } from "./helpers/mqtt";
-import { loginWithEmail } from "./helpers/auth";
+import { loginPipelineWorkspace } from "./helpers/pipelines";
 import { publishPipelineSamples as publishSamples } from "./helpers/pipelineSamples";
 import type { OperationalStatus } from "../src/types/monitoring";
 import type {
@@ -107,48 +107,7 @@ async function buildBranchedGraph(
 
 test.describe("visual pipeline real infrastructure", () => {
   test.setTimeout(600_000);
-  test.beforeEach(async ({ page }) => {
-    await page.goto("/");
-    await page.evaluate(() => {
-      localStorage.removeItem("auth_token");
-      localStorage.removeItem("token_storage_type");
-      sessionStorage.removeItem("auth_token");
-    });
-    await page.context().clearCookies();
-    await page.goto("/login");
-    await loginWithEmail(
-      page,
-      process.env.SUPERUSER_MAIL ?? "admin@example.com",
-      { rememberMe: true },
-    );
-    const token = await page.evaluate(() => localStorage.getItem("auth_token"));
-    expect(token).toBeTruthy();
-    await expect
-      .poll(
-        async () => {
-          try {
-            const response = await page.request.get(
-              "/api/v1/monitors/pipelines/catalog",
-              {
-                headers: { Authorization: `Bearer ${token}` },
-                timeout: 5_000,
-              },
-            );
-            if (!response.ok()) return `HTTP ${response.status()}`;
-            const catalog = (await response.json()) as PipelineCatalog;
-            return catalog.authoring_enabled ? "enabled" : "disabled";
-          } catch {
-            return "unavailable";
-          }
-        },
-        {
-          timeout: 30_000,
-          intervals: [500, 1_000, 2_000],
-          message: "Pipeline authoring catalog is ready after service startup",
-        },
-      )
-      .toBe("enabled");
-  });
+  test.beforeEach(async ({ page }) => loginPipelineWorkspace(page));
   for (const strategy of ["adaptive_stream", "static_baseline"] as const)
     test(`builds, runs and inspects a branched ${strategy} pipeline`, async ({
       page,

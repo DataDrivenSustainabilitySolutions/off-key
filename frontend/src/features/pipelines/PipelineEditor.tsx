@@ -565,6 +565,7 @@ function EditorSession({
         <PipelineCanvas
           document={document}
           components={props.catalog.components}
+          issues={(metadata ?? validation)?.issues}
           selected={selected}
           readOnly={readOnly}
           onSelect={select}

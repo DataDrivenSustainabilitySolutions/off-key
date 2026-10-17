@@ -73,7 +73,11 @@
     display: block;
     min-height: 400px;
   }
-  .pl-canvas-wrap,
+  .pl-canvas-wrap {
+    min-height: 420px;
+    height: auto;
+  }
+  .pl-flow-surface,
   .pl-canvas-wrap .react-flow {
     min-height: 420px;
     height: 420px;

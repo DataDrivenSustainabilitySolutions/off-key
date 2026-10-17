@@ -32,18 +32,29 @@ const definition = () =>
     ],
   });
 
+const components: PipelineComponent[] = definition().nodes.map((node) => ({
+  id: node.component,
+  kind: node.kind,
+  label: node.component,
+  description: "",
+  strategies: ["adaptive_stream"],
+  fields: [],
+  input_type: node.kind === "source" ? null : "features",
+  output_type: node.kind === "detector" ? "scores" : "features",
+}));
+
 describe("visual pipeline documents", () => {
   it("permits branching, prevents cycles and leaves occupied single inputs unchanged", () => {
     const graph = definition();
     expect(
-      connectNodes(graph, "source", "merge")
+      connectNodes(graph, "source", "merge", components)
         .edges.filter((edge) => edge.target === "merge")
         .map((edge) => edge.order),
-    ).toEqual([0, 3, 4]);
-    expect(connectNodes(graph, "model", "scale")).toBe(graph);
-    expect(connectNodes(graph, "model", "merge")).toBe(graph);
-    expect(connectNodes(graph, "source", "scale")).toBe(graph);
-    expect(connectNodes(graph, "raw", "source")).toBe(graph);
+    ).toEqual([0, 1, 2]);
+    expect(connectNodes(graph, "model", "scale", components)).toBe(graph);
+    expect(connectNodes(graph, "model", "merge", components)).toBe(graph);
+    expect(connectNodes(graph, "source", "scale", components)).toBe(graph);
+    expect(connectNodes(graph, "raw", "source", components)).toBe(graph);
   });
 
   it("reorders merge inputs semantically while presentation never changes a definition", () => {

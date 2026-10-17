@@ -1,5 +1,9 @@
 # Visual monitoring pipelines
 
+The [visual-language review](monitoring-visual-language.md) defines the shared
+node, port, connection and state grammar, its current V1 execution profile, and
+the boundaries an extension must preserve.
+
 The shared Pydantic definition is the public and persisted execution contract.
 The control plane compiles topology, feature order, lineage, parameter defaults
 and compatibility without importing numerical packages. Browser wire types are

@@ -1,5 +1,7 @@
 import { useState } from "react";
 import type { PipelineCatalog, PipelineDefinition } from "./contracts";
+import { canAddComponent } from "./model";
+import { nodeKinds } from "./semantics";
 
 export function PipelineToolbox({
   catalog,
@@ -49,11 +51,7 @@ export function PipelineToolbox({
         ] as const
       ).map((kind) => (
         <section key={kind}>
-          <h4>
-            {kind === "transform"
-              ? "Feature processing"
-              : `${kind[0]!.toUpperCase()}${kind.slice(1)}`}
-          </h4>
+          <h4>{nodeKinds[kind]}</h4>
           {components
             .filter((component) => component.kind === kind)
             .map((component) => (
@@ -63,12 +61,7 @@ export function PipelineToolbox({
                 className="pl-toolbox-item"
                 title={component.description}
                 aria-label={`Add ${component.label}`}
-                draggable={
-                  definition.nodes.length < 64 &&
-                  (kind === "transform" ||
-                    kind === "merge" ||
-                    !definition.nodes.some((node) => node.kind === kind))
-                }
+                draggable={canAddComponent(definition, component)}
                 onDragStart={(event) => {
                   event.dataTransfer.setData(
                     "application/off-key-component",
@@ -76,12 +69,7 @@ export function PipelineToolbox({
                   );
                   event.dataTransfer.effectAllowed = "copy";
                 }}
-                disabled={
-                  definition.nodes.length >= 64 ||
-                  (kind !== "transform" &&
-                    kind !== "merge" &&
-                    definition.nodes.some((node) => node.kind === kind))
-                }
+                disabled={!canAddComponent(definition, component)}
                 onClick={() => onAdd(component.id)}
               >
                 <span>{component.label}</span>

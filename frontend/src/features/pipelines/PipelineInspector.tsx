@@ -1,12 +1,15 @@
+import { useId } from "react";
 import type { PipelineCatalog, PipelineValidation } from "./contracts";
 import { ParameterFields } from "./ParameterFields";
 import {
   connectNodes,
+  connectionIssue,
   moveMergeInput,
   nodeOptionLabel,
   removeNode,
   type GraphDocument,
 } from "./model";
+import { componentFor, dataKinds, inputKind, outputKind } from "./semantics";
 
 type Props = {
   document: GraphDocument;
@@ -27,10 +30,9 @@ export function PipelineInspector({
   onSelect,
   onChange,
 }: Props) {
+  const connectionHelpId = useId();
   const node = document.definition.nodes.find((item) => item.id === selected);
-  const component = catalog.components.find(
-    (item) => item.id === node?.component,
-  );
+  const component = componentFor(node, catalog.components);
   const incoming = document.definition.edges
     .filter((edge) => edge.target === selected)
     .sort((left, right) => left.order - right.order);
@@ -43,6 +45,19 @@ export function PipelineInspector({
       ),
     ),
   ];
+  const input = inputKind(component);
+  const output = node ? outputKind(node, component) : undefined;
+  const candidates = node
+    ? document.definition.nodes.filter(
+        (item) =>
+          !connectionIssue(
+            document.definition,
+            item.id,
+            node.id,
+            catalog.components,
+          ),
+      )
+    : [];
   const featureLabels = Object.fromEntries(
     document.definition.input_slots.map((slot) => [
       slot.id,
@@ -70,6 +85,12 @@ export function PipelineInspector({
           <h3>{component?.label ?? node.component}</h3>
           {component?.description && (
             <p className="pl-help">{component.description}</p>
+          )}
+          {component && (
+            <p className="pl-help pl-inspector-signature">
+              {input ? `${dataKinds[input].label} → ` : ""}
+              {output ? dataKinds[output].label : "Stored evidence and alarms"}
+            </p>
           )}
           {node.kind === "detector" && (
             <label className="pl-field">
@@ -175,10 +196,17 @@ export function PipelineInspector({
           <h4>
             Incoming connections{node.kind === "merge" ? " · output order" : ""}
           </h4>
+          {node.kind === "merge" && (
+            <p className="pl-help">
+              Combine feature columns from the same aligned observation, in the
+              order below.
+            </p>
+          )}
           <ol className="pl-connections">
             {incoming.map((edge, index) => (
               <li key={edge.source}>
                 <span>
+                  {node.kind === "merge" && <small>Input {index + 1} · </small>}
                   {nodeOptionLabel(
                     document.definition.nodes.find(
                       (item) => item.id === edge.source,
@@ -264,6 +292,8 @@ export function PipelineInspector({
               <label className="pl-field">
                 <span>Connect input from</span>
                 <select
+                  aria-label="Connect input from"
+                  aria-describedby={connectionHelpId}
                   value=""
                   onChange={(event) => {
                     onChange({
@@ -272,24 +302,23 @@ export function PipelineInspector({
                         document.definition,
                         event.target.value,
                         node.id,
+                        catalog.components,
                       ),
                     });
                   }}
                 >
                   <option value="">Choose upstream component</option>
-                  {document.definition.nodes
-                    .filter(
-                      (item) =>
-                        item.id !== node.id &&
-                        item.kind !== "output" &&
-                        !incoming.some((edge) => edge.source === item.id),
-                    )
-                    .map((item) => (
-                      <option key={item.id} value={item.id}>
-                        {nodeOptionLabel(item, document, catalog.components)}
-                      </option>
-                    ))}
+                  {candidates.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {nodeOptionLabel(item, document, catalog.components)}
+                    </option>
+                  ))}
                 </select>
+                <small className="pl-help" id={connectionHelpId}>
+                  {candidates.length
+                    ? "Only compatible, cycle-free connections are listed."
+                    : "No compatible upstream output is available. Add a component or disconnect an occupied input."}
+                </small>
               </label>
             )}
           {validation?.features[node.id] && (

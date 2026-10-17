@@ -77,7 +77,7 @@ this device. Follow system also responds to changes in the device's appearance.
 Settings opens over the current page, preserving your workspace and unsaved input.
 Close it with the close button or Escape to return to the page.
 
-Open **Menu → System status** for live collection diagnostics, database size and
+Open **Menu → Status** for live collection diagnostics, database size and
 retention information. Collection status refreshes automatically every three
 seconds; **Refresh storage** requests updated database measurements. The former
 `/account/settings` diagnostic link redirects to `/system/status`.
@@ -127,6 +127,9 @@ that preview. Previewing does not enable background recording.
 These service and reading favourites are saved per account in this browser.
 
 ## Services workflow
+
+The [visual monitoring guide](monitoring.md#visual-monitoring-pipelines) explains
+the shared pipeline library, typed graph, binding review and live inspection.
 
 Open `/services` to inspect monitoring services. The view refreshes service state and shows the strategy and processing stage reported by the backend. Removing a service also releases its claimed sensors.
 

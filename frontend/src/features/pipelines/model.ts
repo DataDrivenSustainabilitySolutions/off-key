@@ -5,6 +5,7 @@ import type {
   PipelineNode,
   PipelineComponent,
 } from "./contracts";
+import { componentFor, dataKinds, inputKind, outputKind } from "./semantics";
 
 export type GraphDocument = {
   definition: PipelineDefinition;
@@ -50,14 +51,7 @@ export function addComponent(
   document: GraphDocument,
   component: PipelineComponent,
 ): GraphDocument {
-  if (
-    document.definition.nodes.length >= 64 ||
-    !component.strategies.includes(document.definition.strategy) ||
-    (component.kind !== "transform" &&
-      component.kind !== "merge" &&
-      document.definition.nodes.some((node) => node.kind === component.kind))
-  )
-    return document;
+  if (!canAddComponent(document.definition, component)) return document;
   const id = nextNodeId(document.definition.nodes, component.id);
   const instance =
     document.definition.nodes.filter((node) => node.component === component.id)
@@ -95,6 +89,19 @@ export function addComponent(
   };
 }
 
+/** Current V1 execution profile, shared by drag/drop and the component palette. */
+export function canAddComponent(
+  definition: PipelineDefinition,
+  component: PipelineComponent,
+) {
+  return (
+    definition.nodes.length < 64 &&
+    component.strategies.includes(definition.strategy) &&
+    (["transform", "merge"].includes(component.kind) ||
+      !definition.nodes.some((node) => node.kind === component.kind))
+  );
+}
+
 export function removeNode(document: GraphDocument, id: string): GraphDocument {
   const positions = { ...document.layout.nodes };
   delete positions[id];
@@ -110,27 +117,47 @@ export function removeNode(document: GraphDocument, id: string): GraphDocument {
   };
 }
 
-export function connectNodes(
+/** Authoring guard shared by the canvas and keyboard/menu connection editor.
+ * The backend compiler remains authoritative for publication and activation.
+ */
+export function connectionIssue(
   definition: PipelineDefinition,
   source: string,
   target: string,
-): PipelineDefinition {
+  components: PipelineComponent[],
+): string | undefined {
+  const from = definition.nodes.find((node) => node.id === source);
+  const to = definition.nodes.find((node) => node.id === target);
+  if (!from || !to) return "Choose two existing components.";
+  if (source === target) return "A component cannot connect to itself.";
   if (
-    source === target ||
     definition.edges.some(
       (edge) => edge.source === source && edge.target === target,
     )
   )
-    return definition;
-  const node = definition.nodes.find((item) => item.id === target);
-  if (!node || !definition.nodes.some((item) => item.id === source))
-    return definition;
-  if (node.kind === "source") return definition;
+    return "This connection is already present.";
+  if (definition.edges.length >= 128)
+    return "The design has reached its 128-connection limit.";
+  const fromComponent = componentFor(from, components);
+  const toComponent = componentFor(to, components);
   if (
-    node.kind !== "merge" &&
+    !fromComponent ||
+    !toComponent ||
+    !fromComponent.strategies.includes(definition.strategy) ||
+    !toComponent.strategies.includes(definition.strategy)
+  )
+    return "Compatible component metadata is required before connecting these nodes.";
+  const output = outputKind(from, fromComponent);
+  const input = inputKind(toComponent);
+  if (!output) return "Evidence output is terminal.";
+  if (!input) return "Aligned inputs have no incoming port.";
+  if (output !== input)
+    return `Cannot connect ${dataKinds[output].label} to ${dataKinds[input].label}.`;
+  if (
+    to.kind !== "merge" &&
     definition.edges.some((edge) => edge.target === target)
   )
-    return definition;
+    return "This input is occupied. Disconnect it before choosing a replacement.";
   const reachable = new Set([target]);
   for (let changed = true; changed; ) {
     changed = false;
@@ -140,17 +167,27 @@ export function connectNodes(
         changed = true;
       }
   }
-  if (reachable.has(source)) return definition;
-  const order =
-    Math.max(
-      -1,
-      ...definition.edges
-        .filter((edge) => edge.target === target)
-        .map((edge) => edge.order),
-    ) + 1;
+  if (reachable.has(source)) return "This connection would create a cycle.";
+}
+
+export function connectNodes(
+  definition: PipelineDefinition,
+  source: string,
+  target: string,
+  components: PipelineComponent[],
+): PipelineDefinition {
+  if (connectionIssue(definition, source, target, components))
+    return definition;
+  const incoming = definition.edges
+    .filter((edge) => edge.target === target)
+    .sort((left, right) => left.order - right.order);
   return {
     ...definition,
-    edges: [...definition.edges, { source, target, order }],
+    edges: [
+      ...definition.edges.filter((edge) => edge.target !== target),
+      ...incoming.map((edge, order) => ({ ...edge, order })),
+      { source, target, order: incoming.length },
+    ],
   };
 }
 

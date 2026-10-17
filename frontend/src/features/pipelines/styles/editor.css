@@ -67,6 +67,14 @@
   margin: 0;
 }
 
+.pl-inspector .pl-slot {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 6px;
+}
+
+.pl-inspector .pl-slot > button { justify-self: start; }
+.pl-inspector .pl-settings-grid { grid-template-columns: minmax(0, 1fr); gap: 0; }
+
 .pl-slots {
   margin: 15px 0;
 }

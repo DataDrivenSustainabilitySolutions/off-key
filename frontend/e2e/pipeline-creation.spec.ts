@@ -103,6 +103,10 @@ test("opens the workbench directly and safely edits copies of published and draf
     await expect(workbench.getByRole("textbox", { name: "Label for voltage", exact: true })).toHaveValue("Voltage");
     await expect(workbench.getByRole("textbox", { name: "Unit for heat", exact: true })).toHaveValue("°C");
     await expect(workbench.getByRole("textbox", { name: "Label for unpublished_only", exact: true })).toHaveCount(0);
+    const inspector = workbench.getByRole("complementary", { name: "Monitoring inspector", exact: true });
+    const widths = await inspector.evaluate((element) => ({ scroll: element.scrollWidth, visible: element.clientWidth }));
+    expect(widths.scroll, "Expanded service settings must fit the inspector width").toBeLessThanOrEqual(widths.visible + 1);
+    await page.screenshot({ path: testInfo.outputPath("creation-service-settings.png") });
     await workbench.getByText("Input slots and learning settings", { exact: true }).click();
     expect(createRequests).toBe(0);
 

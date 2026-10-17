@@ -41,6 +41,11 @@
   font-size: 14px;
 }
 
+.pl-library-list :is(strong, span, small) {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
 .pl-library-list span {
   font-size: 12px;
   color: hsl(var(--muted-foreground));

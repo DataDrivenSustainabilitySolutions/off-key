@@ -1,20 +1,19 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import {
-  Background,
   Controls,
   ControlButton,
   ReactFlow,
   applyNodeChanges,
   type ReactFlowInstance,
 } from "@xyflow/react";
-import { LocateFixed } from "lucide-react";
+import { LocateFixed, Magnet } from "lucide-react";
 import { useTheme } from "@/components/theme-provider";
 import type { PipelineComponent, PipelineValidation } from "./contracts";
 import { connectNodes, connectionIssue, type GraphDocument } from "./model";
-import { edgeId } from "./semantics";
+import { edgeId, SNAP_GRID } from "./semantics";
 import { presentGraph } from "./graphPresentation";
 import { PipelineNodeCard, type CanvasNode } from "./PipelineNodeCard";
-import { PipelineLegend } from "./PipelineLegend";
+import { PipelineGrid } from "./PipelineGrid";
 import "@xyflow/react/dist/style.css";
 
 const nodeTypes = { component: PipelineNodeCard };
@@ -26,7 +25,6 @@ type Props = {
   readOnly?: boolean;
   layoutEditable?: boolean;
   states?: Record<string, string>;
-  mode?: "design" | "run";
   issues?: PipelineValidation["issues"];
   /** Increment after an explicit arrangement; data refreshes preserve the camera. */
   fitRequest?: number;
@@ -43,7 +41,6 @@ export default function PipelineCanvas({
   readOnly,
   layoutEditable,
   states,
-  mode = "design",
   issues,
   fitRequest = 0,
   onSelect,
@@ -53,6 +50,7 @@ export default function PipelineCanvas({
 }: Props) {
   const { resolvedTheme } = useTheme();
   const [feedback, setFeedback] = useState("");
+  const [snapToGrid, setSnapToGrid] = useState(true);
   const [flow, setFlow] = useState<ReactFlowInstance<CanvasNode>>();
   useEffect(() => {
     if (fitRequest) void flow?.fitView(overviewOptions);
@@ -82,7 +80,10 @@ export default function PipelineCanvas({
     if (!readOnly)
       onAdd(
         event.dataTransfer.getData("application/off-key-component"),
-        flow?.screenToFlowPosition({ x: event.clientX, y: event.clientY }),
+        flow?.screenToFlowPosition(
+          { x: event.clientX, y: event.clientY },
+          { snapToGrid, snapGrid: SNAP_GRID },
+        ),
       );
   };
   return (
@@ -95,11 +96,6 @@ export default function PipelineCanvas({
       }}
       onDrop={drop}
     >
-      <PipelineLegend
-        kinds={graph.kinds}
-        running={mode === "run"}
-        hasRuntimeState={!!states}
-      />
       <div className="pl-flow-surface">
         <ReactFlow<CanvasNode>
           nodes={nodes}
@@ -111,6 +107,8 @@ export default function PipelineCanvas({
           fitViewOptions={overviewOptions}
           minZoom={0.01}
           maxZoom={2}
+          snapToGrid={snapToGrid}
+          snapGrid={SNAP_GRID}
           nodesDraggable={layoutEditable || !readOnly}
           nodesConnectable={!readOnly}
           isValidConnection={(connection) =>
@@ -227,8 +225,16 @@ export default function PipelineCanvas({
               "Press Enter to select a component. Use the inspector to edit parameters and connections.",
           }}
         >
-          <Background gap={20} />
+          <PipelineGrid />
           <Controls showInteractive={false}>
+            {(layoutEditable || !readOnly) && <ControlButton
+              aria-label="Snap to grid"
+              aria-pressed={snapToGrid}
+              title={`Snap to grid: ${snapToGrid ? "on" : "off"}`}
+              onClick={() => setSnapToGrid((value) => !value)}
+            >
+              <Magnet size={16} />
+            </ControlButton>}
             <ControlButton
               aria-label="Locate selected component"
               title="Locate selected component"

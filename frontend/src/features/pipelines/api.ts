@@ -57,14 +57,14 @@ export const pipelinesApi = {
   metadata: (id: string, request: PipelineMetadataChange) =>
     apiUtils.patch<PipelineView>(item(id), request).then(normalizeView),
   validate: (
-    id: string,
+    id: string | undefined,
     definition: PipelineDefinition,
     signal?: AbortSignal,
     selectedNodeId?: string,
   ) =>
     apiUtils
       .post<PipelineValidationReport>(
-        `${item(id)}/validate`,
+        id ? `${item(id)}/validate` : `${base}/validate`,
         { definition, selected_node_id: selectedNodeId },
         { signal },
       )

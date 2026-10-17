@@ -115,24 +115,24 @@ describe("monitoring graph visual language", () => {
       issueCount: 1,
     });
     expect(graph.edges.find((edge) => edge.source === "model")).toMatchObject({
-      label: "Scores",
+      ariaLabel: expect.stringMatching(/: Scores$/),
       sourceHandle: "output",
       targetHandle: "input",
       markerEnd: expect.any(Object),
     });
-    expect(graph.kinds).toEqual(["features", "scores", "decisions"]);
+    expect(graph.edges.every((edge) => edge.label === undefined)).toBe(true);
     expect(
       graph.nodes.find((node) => node.id === "output")?.data,
     ).toMatchObject({ inputType: "decisions", outputPort: false });
     expect(document).toEqual(before);
   });
 
-  it("keeps connection identity through insertion/deletion and shows actual merge rank for sparse saved orders", () => {
+  it("keeps connection identity and accessible merge ranks through insertion/deletion of sparse saved orders", () => {
     const document = fixture();
     const graph = presentGraph(document, components);
     const key = edgeId({ source: "right", target: "merge" });
-    expect(graph.edges.find((edge) => edge.id === key)?.label).toBe(
-      "Features · input 2",
+    expect(graph.edges.find((edge) => edge.id === key)?.ariaLabel).toMatch(
+      /: Features · input 2$/,
     );
     const changed = {
       ...document,
@@ -145,8 +145,8 @@ describe("monitoring graph visual language", () => {
     };
     expect(
       presentGraph(changed, components).edges.find((edge) => edge.id === key)
-        ?.label,
-    ).toBe("Features · input 1");
+        ?.ariaLabel,
+    ).toMatch(/: Features · input 1$/);
     expect(edgeId({ source: "a-b", target: "c" })).not.toBe(
       edgeId({ source: "a", target: "b-c" }),
     );
@@ -200,8 +200,8 @@ describe("monitoring graph visual language", () => {
       inputPort: true,
       outputPort: true,
     });
-    expect(graph.edges.find((edge) => edge.source === "left")?.label).toBe(
-      "Unavailable type · input 1",
+    expect(graph.edges.find((edge) => edge.source === "left")?.ariaLabel).toMatch(
+      /: Unavailable type · input 1$/,
     );
   });
 
@@ -252,9 +252,11 @@ describe("monitoring graph visual language", () => {
           : component.input_type,
     }));
     const graph = presentGraph(document, staticComponents);
-    expect(graph.edges.find((edge) => edge.source === "model")?.label).toBe(
-      "P-values",
+    expect(graph.nodes.find((node) => node.id === "model")?.data.outputType).toBe(
+      "p_values",
     );
-    expect(graph.kinds).toEqual(["features", "p_values", "decisions"]);
+    expect(graph.edges.find((edge) => edge.source === "model")?.ariaLabel).toMatch(
+      /: P-values$/,
+    );
   });
 });

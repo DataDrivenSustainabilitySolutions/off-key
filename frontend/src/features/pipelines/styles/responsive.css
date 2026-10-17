@@ -99,9 +99,7 @@
     min-height: 400px;
     border-top: 0;
   }
-  .pl-template-grid {
-    grid-template-columns: 1fr;
-  }
+  .pl-starting-points { grid-template-columns: 1fr; }
   .pl-slot {
     grid-template-columns: 1fr 1fr;
   }
@@ -115,7 +113,6 @@
     grid-template-columns: 1fr;
     gap: 0;
   }
-  .pl-create,
   .pl-activation {
     padding: 14px;
   }

@@ -49,7 +49,7 @@ test("offers only entities with fresh MQTT data and retains their exact broker c
     const picker = page.getByRole("button", { name: "Choose monitoring inputs", exact: true });
     await picker.click();
     const choices = page.getByRole("dialog", { name: "Choose monitoring inputs", exact: true });
-    await choices.getByRole("searchbox", { name: "Find broker or entity", exact: true }).fill(runId);
+    await choices.getByRole("searchbox", { name: "Search entities", exact: true }).fill(runId);
     const activeChoice = choices.getByRole("button").filter({ hasText: `${broker.label} / Entity ${activeId}` });
     const quietChoice = choices.getByRole("button").filter({ hasText: `${broker.label} / Entity ${quietId}` });
     await expect(activeChoice).toBeVisible();
@@ -62,7 +62,7 @@ test("offers only entities with fresh MQTT data and retains their exact broker c
     await quietChoice.click();
     await expect(picker).toHaveText(`${broker.label} / Entity ${quietId}`);
     await picker.click();
-    await choices.getByRole("searchbox", { name: "Find broker or entity", exact: true }).fill(runId);
+    await choices.getByRole("searchbox", { name: "Search entities", exact: true }).fill(runId);
     await expect(choices.getByText("No matching inputs receiving data.", { exact: true })).toBeVisible({ timeout: 40_000 });
     await expect(picker).toHaveText(`${broker.label} / Entity ${quietId}`);
   } finally {

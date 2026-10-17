@@ -264,6 +264,9 @@ def prepare(directory):
         access_token_expire_minutes="120",
         log_level="INFO",
         tactic_log_level="INFO",
+        # Cutovers must recover existing graph runs with authoring disabled.
+        # The workflow enables authoring separately for creation/browser tests.
+        tactic_pipeline_authoring_enabled=False,
         tactic_docker_default_network=f"{STACK}_emqx-network",
         tactic_docker_additional_networks=f"{STACK}_app-network",
     )

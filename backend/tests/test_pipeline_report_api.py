@@ -143,6 +143,23 @@ async def test_http_reports_are_bounded_and_member_can_inspect_selected_run(
             assert response.status_code == 200, response.text[:1000]
             assert len(response.content) <= MAX_PIPELINE_REPORT_BYTES
             assert len(response.json()["features"][selected]) == 100
+            response = await client.post(
+                "/api/v1/monitors/pipelines/validate",
+                headers={"Authorization": f"Bearer {admin_token}"},
+                json={
+                    "definition": maximum_definition().model_dump(mode="json"),
+                    "selected_node_id": selected,
+                },
+            )
+            assert response.status_code == 200, response.text[:1000]
+            assert len(response.content) <= MAX_PIPELINE_REPORT_BYTES
+            assert len(response.json()["features"][selected]) == 100
+            response = await client.post(
+                "/api/v1/monitors/pipelines/validate",
+                headers={"Authorization": f"Bearer {member_token}"},
+                json={"definition": maximum_definition().model_dump(mode="json")},
+            )
+            assert response.status_code == 403, response.text[:1000]
             invalid = maximum_definition().model_dump(mode="json")
             invalid["nodes"][0]["params"] = {"😺" * 100_000: "unknown"}
             response = await client.post(

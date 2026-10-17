@@ -7,12 +7,12 @@ import type {
 export type DataKind = NonNullable<PipelineComponent["output_type"]>;
 
 /** Presentation vocabulary; executable types still come from the shared catalog. */
-export const dataKinds: Record<DataKind, { label: string; dash?: string }> = {
+export const dataKinds: Record<DataKind, { label: string }> = {
   features: { label: "Features" },
-  scores: { label: "Scores", dash: "8 4" },
-  p_values: { label: "P-values", dash: "3 3" },
-  decisions: { label: "Decisions", dash: "1 4" },
-  evidence: { label: "Evidence", dash: "8 3 2 3" },
+  scores: { label: "Scores" },
+  p_values: { label: "P-values" },
+  decisions: { label: "Decisions" },
+  evidence: { label: "Evidence" },
 };
 
 export const nodeKinds: Record<PipelineNode["kind"], string> = {
@@ -25,6 +25,8 @@ export const nodeKinds: Record<PipelineNode["kind"], string> = {
 };
 
 export const NODE_SIZE = { width: 224, height: 144 };
+export const GRID_STEP = 16;
+export const SNAP_GRID: [number, number] = [GRID_STEP, GRID_STEP];
 
 /** V1 permits one connection per node pair; array position is never identity. */
 export const edgeId = (edge: Pick<PipelineEdge, "source" | "target">) =>

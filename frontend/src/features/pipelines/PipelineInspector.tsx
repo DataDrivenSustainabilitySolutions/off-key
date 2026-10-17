@@ -1,4 +1,4 @@
-import { useId } from "react";
+import { useId, type ReactNode } from "react";
 import type { PipelineCatalog, PipelineValidation } from "./contracts";
 import { ParameterFields } from "./ParameterFields";
 import {
@@ -17,6 +17,8 @@ type Props = {
   selected?: string;
   validation?: PipelineValidation;
   readOnly?: boolean;
+  header?: ReactNode;
+  content?: ReactNode;
   onSelect: (id: string) => void;
   onChange: (document: GraphDocument) => void;
 };
@@ -27,6 +29,8 @@ export function PipelineInspector({
   selected,
   validation,
   readOnly,
+  header,
+  content,
   onSelect,
   onChange,
 }: Props) {
@@ -65,7 +69,9 @@ export function PipelineInspector({
     ]),
   );
   return (
-    <aside className="pl-inspector" aria-label="Component inspector">
+    <aside className="pl-inspector" aria-label={header ? "Monitoring inspector" : "Component inspector"}>
+      {header}
+      {content ?? <>
       <label className="pl-field">
         <span>Selected component</span>
         <select
@@ -384,6 +390,7 @@ export function PipelineInspector({
           parameters determine execution; visual position does not.
         </p>
       )}
+      </>}
     </aside>
   );
 }

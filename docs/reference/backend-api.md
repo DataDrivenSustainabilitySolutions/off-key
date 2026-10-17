@@ -150,6 +150,7 @@ Visual monitoring interfaces use the same authenticated `/v1/monitors` prefix:
 | --- | --- | --- |
 | Catalog | `/pipelines/catalog` | Generated components, bounded field descriptors and templates |
 | Library | `/pipelines`, `/pipelines/{id}`, `/pipelines/{id}/draft` | Inspect designs; administrators create, rename, archive and save with `expected_version` |
+| Validation | `/pipelines/validate`, `/pipelines/{id}/validate` | Administrators infer bounded feature metadata and validate unsaved or saved graphs without changing library state |
 | Revisions | `/pipelines/{id}/revisions`, `/pipelines/{id}/revisions/{revision_id}` | Publish and inspect immutable executable revisions |
 | Activations | `/pipeline-activations`, `/pipeline-activations/{id}` | Idempotent start/replacement, progress and cancellation |
 | Bound run | `/{service_id}/pipeline`, `/{service_id}/pipeline-layout` | Immutable execution and retained history; separately versioned layout |

@@ -28,7 +28,7 @@ from off_key_core.db.maintenance import DeploymentInProgressError
 from starlette.middleware.gzip import GZipMiddleware
 
 from .api.service_auth import require_gateway
-from .api.v1 import data_services, members, models, radar, system
+from .api.v1 import data_services, members, models, pipelines, radar, system
 from .api.v1.admin_models import router as admin_models_router
 from .config.collection import get_ambibox_settings
 from .config.config import RadarWorkloadLifecycle, TacticConfig, get_tactic_settings
@@ -186,7 +186,11 @@ async def _shutdown_system_live(app: FastAPI) -> None:
 async def _shutdown_services(app: FastAPI, config: TacticConfig) -> None:
     """Best-effort shutdown for every service initialized during startup."""
     await _shutdown_system_live(app)
-    for attribute in ("system_ingress", "reconciliation_service"):
+    for attribute in (
+        "pipeline_activation_supervisor",
+        "system_ingress",
+        "reconciliation_service",
+    ):
         service = getattr(app.state, attribute, None)
         if service is not None:
             try:
@@ -252,6 +256,13 @@ async def lifespan(app: FastAPI):
             )
 
         await _start_reconciliation(app, config)
+        from .services.orchestration.radar_workloads import RadarWorkloadManager
+        from .services.pipelines.supervisor import PipelineActivationSupervisor
+
+        app.state.pipeline_activation_supervisor = PipelineActivationSupervisor(
+            app.state.model_registry, RadarWorkloadManager(app.state.docker_client)
+        )
+        await app.state.pipeline_activation_supervisor.start()
         operator_access = AmbiboxLiveAccess(get_ambibox_settings())
         app.state.system_live = SystemLiveService(
             get_system_live_settings(),
@@ -311,6 +322,7 @@ def create_app() -> FastAPI:
         data_services.router, prefix="/api/v1/data", tags=["data-services"]
     )
     business.include_router(models.router, prefix="/api/v1", tags=["models"])
+    business.include_router(pipelines.router, prefix="/api/v1", tags=["pipelines"])
     business.include_router(system.router, prefix="/api/v1")
     business.include_router(admin_models_router, prefix="/api/v1", tags=["admin"])
 

@@ -1,0 +1,9 @@
+{
+  "maximumInteractionMs": 93.69999998807907,
+  "nodeCount": 64,
+  "featureCount": 100,
+  "inputSlotIdLength": 64,
+  "nodeIdLength": 64,
+  "focusedReportBytes": 521820,
+  "retainedHeapGrowthBytes": 303060
+}

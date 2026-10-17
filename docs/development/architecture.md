@@ -10,6 +10,9 @@ Use this page to understand how services depend on one another, how data flows e
 
 The platform runs as a Docker-based service mesh:
 
+Visual monitor designs, numerical compilation, activation claims and recovery
+contracts are described in [Monitoring pipelines](monitoring-pipelines.md).
+
 - `frontend` (React): user-facing UI.
 - `api-gateway` (FastAPI): external API facade under `/v1`.
 - `tactic-middleware` (FastAPI): data adapter and RADAR orchestration.

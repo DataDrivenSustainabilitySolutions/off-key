@@ -8,6 +8,9 @@ from off_key_tactic_middleware.services.orchestration.radar import (
 
 
 def _query_result(active_services):
+    for index, service in enumerate(active_services):
+        if not hasattr(service, "id"):
+            service.id = f"existing-{index}"
     result = MagicMock()
     result.scalars.return_value.all.return_value = active_services
     return result
@@ -15,6 +18,8 @@ def _query_result(active_services):
 
 def _service_with_session(session):
     session.scalar.return_value = None
+    session.scalars.return_value = MagicMock()
+    session.scalars.return_value.all.return_value = []
     service = object.__new__(RadarOrchestrationService)
     service.session = session
     service.model_registry = MagicMock()

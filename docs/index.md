@@ -23,6 +23,7 @@ Use this page as the entry point to choose the right runbook for your role.
 
 - [Developer setup](development/setup.md): supported local toolchain, run modes, and debug workflows.
 - [Architecture overview](development/architecture.md): service interplay, data flows, dependencies, and failure paths.
+- [Monitoring pipelines](development/monitoring-pipelines.md): graph contracts, numerical ownership, activation, bounded inspection and rollout.
 - [Backend API guide](reference/backend-api.md): endpoint contracts, examples, and errors.
 - [Data model](reference/data-model.md): core entities and relationships.
 - [Testing and debugging](development/testing-debugging.md): test commands, health checks, and triage playbooks.

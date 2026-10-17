@@ -8,9 +8,11 @@ from datetime import UTC, datetime, timedelta
 import docker
 from off_key_core.config.logs import logger
 from off_key_core.db.base import get_async_session_local
-from off_key_core.db.models import MonitoringService, MqttTopic
+from off_key_core.db.collection import lock_collection_configuration
+from off_key_core.db.models import MonitoringService, MqttTopic, PipelineRun
+from off_key_core.db.pipeline_locks import complete_stopped_runs, lock_execution_records
 from off_key_core.schemas.radar import RadarOperationalStatus
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -108,6 +110,24 @@ class RadarStatusReconciliationService:
 
     async def _reconcile(self) -> None:
         async with get_async_session_local()() as session:
+            await lock_collection_configuration(session)
+            failed_ids = select(PipelineRun.service_id).where(
+                PipelineRun.status == "failed"
+            )
+            await session.execute(
+                update(MonitoringService)
+                .where(
+                    MonitoringService.id.in_(failed_ids),
+                    MonitoringService.desired_state == "running",
+                    MonitoringService.stop_requested_at.is_(None),
+                )
+                .values(
+                    desired_state="stopped",
+                    stop_requested_at=datetime.now(UTC),
+                    lifecycle_version=MonitoringService.lifecycle_version + 1,
+                )
+            )
+            await session.commit()
             lifecycle = RadarLifecycleController(
                 session, RadarWorkloadManager(self.async_docker)
             )
@@ -166,6 +186,8 @@ class RadarStatusReconciliationService:
     async def _apply_observation(
         self, session: AsyncSession, snapshot: _ServiceSnapshot, observation: str
     ) -> None:
+        if observation == "stop_confirmed":
+            await lock_execution_records(session, [snapshot.id])
         service = await session.get(
             MonitoringService, snapshot.id, with_for_update=True, populate_existing=True
         )
@@ -193,6 +215,7 @@ class RadarStatusReconciliationService:
             await self._delete_service_row(session, service.id)
         elif service.stop_requested_at is not None or service.status:
             mark_collection_monitor_stopped(service)
+            await complete_stopped_runs(session, [service.id])
         elif self._is_purge_due(service):
             await self._delete_service_row(session, service.id)
 
@@ -232,6 +255,7 @@ class RadarStatusReconciliationService:
 
     @staticmethod
     async def _delete_service_row(session: AsyncSession, service_id: str) -> int:
+        await complete_stopped_runs(session, [service_id])
         await session.execute(
             delete(MqttTopic).where(MqttTopic.service_id == service_id)
         )

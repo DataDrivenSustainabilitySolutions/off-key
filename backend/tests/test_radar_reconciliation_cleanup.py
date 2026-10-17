@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import docker
 import pytest
+from off_key_tactic_middleware.services import reconciliation as reconciliation_module
 from off_key_tactic_middleware.services.radar_status import (
     apply_terminal_operational_status,
 )
@@ -63,6 +64,12 @@ class _FakeAsyncDocker:
         return func(*args, **kwargs)
 
 
+@pytest.fixture(autouse=True)
+def execution_locks(monkeypatch):
+    # These tests isolate Docker reconciliation with explicit mock DB boundaries.
+    monkeypatch.setattr(reconciliation_module, "lock_execution_records", AsyncMock())
+
+
 @pytest.mark.asyncio
 async def test_reconciliation_purges_old_terminal_rows_and_keeps_recent_rows():
     now = datetime.now(UTC)
@@ -86,6 +93,7 @@ async def test_reconciliation_purges_old_terminal_rows_and_keeps_recent_rows():
         side_effect=[
             _query_result([old_service, recent_service]),
             MagicMock(rowcount=0),
+            MagicMock(rowcount=0),
             MagicMock(rowcount=1),
         ]
     )
@@ -96,7 +104,7 @@ async def test_reconciliation_purges_old_terminal_rows_and_keeps_recent_rows():
         call.args[0]
         for call in reconciliation._remove_workload_if_present.await_args_list
     ] == ["ctr-old", "ctr-recent"]
-    assert session.execute.await_count == 3
+    assert session.execute.await_count == 4
 
 
 @pytest.mark.asyncio

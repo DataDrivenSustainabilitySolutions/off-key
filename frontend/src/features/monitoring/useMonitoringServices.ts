@@ -3,12 +3,14 @@ import { apiUtils } from "@/lib/api-client";
 import { API_CONFIG } from "@/lib/api-config";
 import { getErrorMessage } from "@/lib/errors";
 import type { ActiveService } from "@/types/monitoring";
+import type { PipelineWorkspace } from "@/types/pipelines.generated";
 
 /** One status request for the workspace, no per-service Docker calls or telemetry subscriptions. */
-export function useMonitoringServices(enabled: boolean, refreshInterval = 20_000) {
+export function useMonitoringServices(enabled: boolean, refreshInterval = 20_000, selectedServiceId?: string) {
   const [services, setServices] = useState<ActiveService[]>([]);
   const [ready, setReady] = useState(false);
   const [error, setError] = useState("");
+  const [workspace, setWorkspace] = useState<PipelineWorkspace>();
   const active = useRef(false);
   const request = useRef<AbortController | undefined>(undefined);
   const reload = useCallback(async () => {
@@ -16,14 +18,15 @@ export function useMonitoringServices(enabled: boolean, refreshInterval = 20_000
     request.current?.abort();
     const controller = new AbortController(); request.current = controller;
     try {
-      const next = await apiUtils.get<ActiveService[]>(`${API_CONFIG.ENDPOINTS.MONITORING.LIST}?active_only=false`,
+      const query = selectedServiceId ? `?selected_service_id=${encodeURIComponent(selectedServiceId)}` : "";
+      const next = await apiUtils.get<PipelineWorkspace>(`/v1/monitors/workspace${query}`,
         { signal: controller.signal, redirectOnUnauthorized: false });
-      if (!Array.isArray(next)) throw new Error("The monitoring service list could not be read.");
-      if (!controller.signal.aborted) { setServices(next); setReady(true); setError(""); }
+      if (!Array.isArray(next.services)) throw new Error("The monitoring service list could not be read.");
+      if (!controller.signal.aborted) { setServices(next.services as unknown as ActiveService[]); setWorkspace(next); setReady(true); setError(""); }
     } catch (reason) {
       if (!controller.signal.aborted) setError(getErrorMessage(reason));
     }
-  }, []);
+  }, [selectedServiceId]);
   useEffect(() => {
     if (!enabled) return;
     active.current = true;
@@ -43,5 +46,5 @@ export function useMonitoringServices(enabled: boolean, refreshInterval = 20_000
     request.current?.abort();
     setServices(previous => previous.filter(service => service.id !== id));
   }, []);
-  return { services, ready, error, reload, rename, remove };
+  return { services, ready, error, reload, rename, remove, authoringEnabled: workspace?.authoring_enabled ?? false, pipelineState: workspace?.selected_service_id === selectedServiceId ? workspace?.pipeline_state : undefined };
 }

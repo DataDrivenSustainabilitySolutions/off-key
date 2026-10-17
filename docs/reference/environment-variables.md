@@ -145,6 +145,9 @@ unknown errors remain eligible for retry.
 | `TACTIC_RADAR_DEFAULT_MQTT_USE_TLS` | `false` | Managed RADAR TLS default |
 | `TACTIC_RADAR_DEFAULT_MQTT_USE_AUTH` | `false` | Managed RADAR authentication default |
 | `TACTIC_RADAR_WORKLOAD_LIFECYCLE` | `ephemeral` | `ephemeral` or `persistent` |
+| `TACTIC_PIPELINE_AUTHORING_ENABLED` | `false` | Enables new visual designs, publication and activations. Existing graph execution, inspection, stopping and release recovery remain available when disabled. |
+| `TACTIC_PIPELINE_PREFLIGHT_TIMEOUT_SECONDS` | `90` | Constructor preflight deadline, 5–300 seconds. Jobs have no broker/database credentials or subscriptions. |
+| `TACTIC_PIPELINE_HEARTBEAT_TIMEOUT_SECONDS` | `120` | Successor heartbeat deadline after creation, 10–600 seconds. |
 | `TACTIC_SERVICE_HOST` | `tactic-middleware` | Internal service-discovery host |
 | `TACTIC_SERVICE_PORT` | `8000` | Internal service-discovery port |
 
@@ -158,6 +161,8 @@ unknown errors remain eligible for retry.
 | `RADAR_MQTT_USE_AUTH` | `false` | MQTT authentication toggle |
 | `RADAR_SUBSCRIPTION_TOPICS` | `telemetry/#` | Accepted generic topics; managed monitors use selected concrete readings |
 | `RADAR_MONITORING_CONFIG` | Default static baseline | JSON strategy configuration containing `strategy`, model parameters, and training/calibration settings |
+| `RADAR_PIPELINE_CONFIG` | Unset | Version-1 canonical bound execution JSON, emitted by activation. If monitoring JSON is also supplied, it must match the graph-derived strategy settings. Limited to 96 KiB serialized. |
+| `RADAR_FATAL_PERSIST_RETRY_SECONDS` | `5` | Retry interval while a quarantined managed graph waits to persist its failed-run admission fence. Must be greater than zero and at most 30 seconds. No further graph calls or checkpoint exports occur. |
 | `RADAR_RATE_LIMIT_PER_MINUTE` | `0` | Aggregate observation limit across the monitor's topics; `0` disables throttling. Positive limits discard excess inputs and permanently flag the monitor's coverage as degraded. Managed workloads use `TACTIC_RADAR_DEFAULT_RATE_LIMIT_PER_MINUTE`, also defaulting to `0`. |
 | `RADAR_MAX_QUEUE_SIZE` | `256` | Maximum admitted messages waiting for the serial processor, bounded before the network thread schedules asyncio work. |
 | `RADAR_MAX_PAYLOAD_BYTES` | `65536` | Maximum admitted payload size. Larger observations are discarded and counted as coverage gaps. The default queue holds at most 16 MiB of payload bytes plus object overhead. Enforce broker packet limits as well: the MQTT library receives a packet before admission. |

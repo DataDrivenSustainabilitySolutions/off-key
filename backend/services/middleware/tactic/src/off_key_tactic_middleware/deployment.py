@@ -9,15 +9,24 @@ from datetime import UTC, datetime
 import docker
 from off_key_core.db.base import get_async_session_local
 from off_key_core.db.collection import lock_collection_configuration
-from off_key_core.db.models import DeploymentMaintenance, MonitoringService
+from off_key_core.db.models import DeploymentMaintenance, MonitoringService, PipelineRun
+from off_key_core.db.pipeline_claims import (
+    monitor_claim_condition,
+    require_no_pipeline_activation,
+)
 from off_key_core.schemas.radar import RadarStartConfig
-from sqlalchemy import select
+from sqlalchemy import select, text
 
 from .models.registry import ModelRegistryService
 from .services.orchestration.radar import RadarOrchestrationService
 from .services.orchestration.radar_workloads import (
     RadarWorkloadManager,
     get_async_docker,
+)
+from .services.pipelines.release import (
+    normalize_saved_launch,
+    prepare_release_monitors,
+    record_release_run,
 )
 
 TERMINAL_TASKS = {"shutdown", "complete", "failed", "rejected", "remove"}
@@ -26,7 +35,7 @@ TERMINAL_TASKS = {"shutdown", "complete", "failed", "rejected", "remove"}
 def captured_configuration(name: str, environment: list[str]) -> dict:
     """One-time capture of pre-integration workers, excluding runtime credentials."""
     values = dict(value.split("=", 1) for value in environment if "=" in value)
-    config = RadarStartConfig.model_validate(
+    config = normalize_saved_launch(
         {
             "container_name": name,
             "mqtt_topics": values["RADAR_SUBSCRIPTION_TOPICS"].split(","),
@@ -49,10 +58,10 @@ def captured_configuration(name: str, environment: list[str]) -> dict:
 async def capture_existing(session, workloads: RadarWorkloadManager) -> dict:
     await lock_collection_configuration(session)
     operation = await session.get(DeploymentMaintenance, 1)
-    if operation is not None and operation.phase != "complete":
+    if operation is not None and operation.phase not in {"complete", "quiescing"}:
         raise ValueError("Finish the pending deployment before capturing configuration")
     services = await session.scalars(
-        select(MonitoringService).where(MonitoringService.status.is_(True))
+        select(MonitoringService).where(monitor_claim_condition())
     )
     count = 0
     for service in services:
@@ -78,15 +87,17 @@ async def capture_existing(session, workloads: RadarWorkloadManager) -> dict:
 
 async def prepare_operation(session, workloads, revision: str):
     await lock_collection_configuration(session)
+    await require_no_pipeline_activation(session)
     operation = await session.get(DeploymentMaintenance, 1)
     if operation is not None and operation.phase != "complete":
         if operation.revision != revision:
             raise ValueError("A different release requires recovery before deploying")
-        await session.commit()
-        return operation
+        if operation.phase != "quiescing":
+            await session.commit()
+            return operation
     snapshots = []
     services = await session.scalars(
-        select(MonitoringService).where(MonitoringService.status.is_(True))
+        select(MonitoringService).where(monitor_claim_condition())
     )
     for service in services:
         restart = service.stop_requested_at is None
@@ -97,9 +108,7 @@ async def prepare_operation(session, workloads, revision: str):
             raise ValueError(
                 "Capture existing active monitor configuration before cutover"
             )
-        config = (
-            RadarStartConfig.model_validate(service.launch_config) if restart else None
-        )
+        config = normalize_saved_launch(service.launch_config) if restart else None
         snapshots.append(
             {
                 "previous_id": service.id,
@@ -109,6 +118,7 @@ async def prepare_operation(session, workloads, revision: str):
                 if config is not None
                 else None,
                 "replacement_id": None,
+                "previous_config": service.launch_config,
             }
         )
     if operation is None:
@@ -120,6 +130,64 @@ async def prepare_operation(session, workloads, revision: str):
     operation.updated_at = datetime.now(UTC)
     await session.commit()
     return operation
+
+
+async def reserve(session, revision: str) -> dict:
+    """Gate mutations before deployment quiesces writers or applies migration 010."""
+    await lock_collection_configuration(session)
+    if (
+        await session.scalar(text("SELECT to_regclass('deployment_maintenance')"))
+        is None
+    ):
+        if await session.scalar(text("SELECT to_regclass('services')")) is not None:
+            raise ValueError(
+                "Initialize the deployment maintenance schema before reserving "
+                "an existing database"
+            )
+        # A fresh cluster has no application intent or writers to arbitrate.
+        # The infrastructure applies migrations before begin creates its gate.
+        await session.commit()
+        return {"phase": "uninitialized"}
+    if (
+        await session.scalar(
+            text("SELECT to_regclass('monitoring_pipeline_activations')")
+        )
+        is not None
+    ):
+        await require_no_pipeline_activation(session)
+    operation = await session.get(DeploymentMaintenance, 1)
+    if operation is not None and operation.phase != "complete":
+        if operation.revision != revision:
+            raise ValueError("A different release requires recovery before deploying")
+        await session.commit()
+        return {"phase": operation.phase}
+    if operation is None:
+        operation = DeploymentMaintenance(
+            id=1,
+            revision=revision,
+            phase="quiescing",
+            monitors=[],
+            updated_at=datetime.now(UTC),
+        )
+        session.add(operation)
+    services = await session.scalars(
+        select(MonitoringService).where(monitor_claim_condition())
+    )
+    operation.monitors = [
+        {
+            "previous_id": service.id,
+            "workload_id": service.container_id,
+            "config": service.launch_config,
+            "stopped": False,
+            "replacement_id": None,
+        }
+        for service in services
+    ]
+    operation.revision = revision
+    operation.phase = "quiescing"
+    operation.updated_at = datetime.now(UTC)
+    await session.commit()
+    return {"phase": operation.phase}
 
 
 async def wait_stopped(workloads, workload_id: str, *, attempts: int = 120):
@@ -150,26 +218,42 @@ async def begin(session, orchestration, revision: str) -> dict:
     operation = await prepare_operation(session, orchestration.workloads, revision)
     if operation.phase != "preparing":
         return {"phase": operation.phase, "monitors": len(operation.monitors)}
+    await prepare_release_monitors(session, operation, orchestration.workloads)
     snapshots = list(operation.monitors)
     for index, monitor in enumerate(snapshots):
         if not monitor["stopped"]:
-            workload = await orchestration.workloads.async_docker.run(
-                orchestration.workloads.async_docker.client.services.get,
-                monitor["workload_id"],
-            )
-            await orchestration.workloads.async_docker.run(workload.scale, 0)
-            await wait_stopped(orchestration.workloads, monitor["workload_id"])
+            await stop_release_monitor(session, orchestration, monitor, revision)
             snapshots[index] = monitor | {"stopped": True}
             operation.monitors = list(snapshots)
             operation.updated_at = datetime.now(UTC)
             await session.commit()
-        await orchestration.stop_radar_service(
-            container_id=monitor["workload_id"], deployment_revision=revision
-        )
     operation.phase = "stopped"
     operation.updated_at = datetime.now(UTC)
     await session.commit()
     return {"phase": operation.phase, "monitors": len(operation.monitors)}
+
+
+async def stop_release_monitor(session, orchestration, monitor, revision):
+    """Retire attached or pending intent, preserving the claim on uncertainty."""
+    workload_id = monitor["workload_id"]
+    if workload_id:
+        try:
+            workload = await orchestration.workloads.async_docker.run(
+                orchestration.workloads.async_docker.client.services.get, workload_id
+            )
+        except docker.errors.NotFound:
+            # A missing service may still have retiring task records.
+            await orchestration.workloads.remove(workload_id)
+        else:
+            await orchestration.workloads.async_docker.run(workload.scale, 0)
+            await wait_stopped(orchestration.workloads, workload_id)
+    service = await session.get(MonitoringService, monitor["previous_id"])
+    if service is not None and not await orchestration.stop_radar_service(
+        container_name=service.container_name, deployment_revision=revision
+    ):
+        raise ValueError(
+            "A retiring monitor could not stop; deployment remains blocked"
+        )
 
 
 async def resume(session, orchestration, revision: str) -> dict:
@@ -184,10 +268,13 @@ async def resume(session, orchestration, revision: str) -> dict:
     for index, monitor in enumerate(snapshots):
         if monitor["config"] is None:
             continue
+        arguments = {"deployment_revision": revision}
+        if monitor.get("replacement_service_id"):
+            arguments["execution_service_id"] = monitor["replacement_service_id"]
         service = await orchestration.create_radar_service(
-            RadarStartConfig.model_validate(monitor["config"]),
-            deployment_revision=revision,
+            RadarStartConfig.model_validate(monitor["config"]), **arguments
         )
+        await record_release_run(session, monitor, service)
         snapshots[index] = monitor | {"replacement_id": service.id}
         operation.monitors = list(snapshots)
         operation.updated_at = datetime.now(UTC)
@@ -200,7 +287,7 @@ async def resume(session, orchestration, revision: str) -> dict:
     }
 
 
-async def verify_restarted(session, revision: str) -> dict:
+async def verify_restarted(session, revision: str, *, lock: bool = False) -> dict:
     operation = await session.get(DeploymentMaintenance, 1)
     if operation is None or operation.revision != revision:
         raise ValueError("No matching deployment maintenance operation")
@@ -209,9 +296,25 @@ async def verify_restarted(session, revision: str) -> dict:
     for monitor in operation.monitors:
         if monitor["config"] is None:
             continue
-        service = await session.get(MonitoringService, monitor["replacement_id"])
+        statement = (
+            select(PipelineRun)
+            .where(PipelineRun.service_id == monitor["replacement_id"])
+            .execution_options(populate_existing=True)
+        )
+        if lock:
+            statement = statement.with_for_update()
+        run = await session.scalar(statement)
+        service = await session.get(
+            MonitoringService,
+            monitor["replacement_id"],
+            with_for_update=lock,
+            populate_existing=True,
+        )
         if (
-            service is None
+            run is None
+            or run.ended_at is not None
+            or run.status == "failed"
+            or service is None
             or not service.status
             or service.operational_updated_at is None
             or (datetime.now(UTC) - service.operational_updated_at).total_seconds()
@@ -226,8 +329,18 @@ async def verify_restarted(session, revision: str) -> dict:
 
 async def finish(session, revision: str) -> dict:
     await lock_collection_configuration(session)
-    await verify_restarted(session, revision)
+    await verify_restarted(session, revision, lock=True)
     operation = await session.get(DeploymentMaintenance, 1)
+    for monitor in operation.monitors:
+        if monitor.get("replacement_id"):
+            run = await session.scalar(
+                select(PipelineRun)
+                .where(PipelineRun.service_id == monitor["replacement_id"])
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            )
+            if run is not None and run.ended_at is None:
+                run.status = "running"
     operation.phase = "complete"
     operation.updated_at = datetime.now(UTC)
     await session.commit()
@@ -240,6 +353,8 @@ async def run(action: str, revision: str) -> dict:
         workloads = RadarWorkloadManager(get_async_docker())
         if action == "capture":
             return await capture_existing(session, workloads)
+        if action == "reserve":
+            return await reserve(session, revision)
         if action == "verify":
             for attempt in range(60):
                 try:
@@ -270,7 +385,8 @@ async def run(action: str, revision: str) -> dict:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "action", choices=["capture", "begin", "resume", "verify", "finish", "status"]
+        "action",
+        choices=["capture", "reserve", "begin", "resume", "verify", "finish", "status"],
     )
     parser.add_argument("revision")
     args = parser.parse_args()

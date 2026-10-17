@@ -4,7 +4,11 @@ from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from off_key_core.db.models import MonitoringService
+from off_key_core.db.models import (
+    MonitoringService,
+    PipelineRun,
+    RadarRuntimeCheckpoint,
+)
 from off_key_core.schemas.radar import RadarOperationalStatus
 from off_key_tactic_middleware.domain import InfrastructureError
 from off_key_tactic_middleware.services import collection_monitors as collection
@@ -21,6 +25,8 @@ from sqlalchemy.orm import sessionmaker
 def stops(monkeypatch, tmp_path):
     engine = create_engine(f"sqlite:///{tmp_path / 'stops.db'}")
     MonitoringService.__table__.create(engine)
+    PipelineRun.__table__.create(engine)
+    RadarRuntimeCheckpoint.__table__.create(engine)
     sessions = sessionmaker(engine, expire_on_commit=False)
     with sessions.begin() as session:
         session.add_all(

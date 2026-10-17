@@ -108,6 +108,7 @@ class RadarCheckpointSettings(BaseSettings):
     RADAR_CHECKPOINT_STORAGE: Literal["file", "database"] = "file"
     RADAR_CHECKPOINT_TIMEOUT_SECONDS: float = Field(default=30.0, gt=0)
     RADAR_CHECKPOINT_MAX_INTERVAL_SECONDS: float = Field(default=30.0, gt=0)
+    RADAR_FATAL_PERSIST_RETRY_SECONDS: float = Field(default=5.0, gt=0, le=30)
     ENVIRONMENT: str = "development"
 
     @field_validator("RADAR_CHECKPOINT_DIR", "SERVICE_ID")

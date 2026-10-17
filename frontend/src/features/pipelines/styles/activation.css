@@ -1,0 +1,36 @@
+.pl-activation {
+  border: 1px solid hsl(var(--primary));
+  border-radius: 10px;
+  padding: 20px;
+  margin: 24px 0;
+  background: hsl(var(--background));
+  max-width: 760px;
+}
+
+.pl-activation .pl-field {
+  max-width: 520px;
+}
+
+.pl-activation h4 {
+  font-size: 12px;
+  margin: 18px 0 5px;
+}
+
+.pl-activation ul {
+  font-size: 12px;
+  padding-left: 18px;
+}
+
+.pl-activation > a {
+  font-size: 12px;
+  text-decoration: underline;
+}
+
+.pl-activation > p {
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.pl-activation .pl-actions {
+  margin-top: 16px;
+}

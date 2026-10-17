@@ -1,0 +1,6 @@
+{
+  "captured_at_utc": "2026-10-16T11:36:44.1048696Z",
+  "cgroup_memory_peak_bytes": 147513344,
+  "scope": "Whole benchmark container since creation, sampled while the final full-width retention fixture was still active; includes both timing workloads and completed reconvergent retention, not a per-fixture measurement",
+  "memory_limit_bytes": 1073741824
+}

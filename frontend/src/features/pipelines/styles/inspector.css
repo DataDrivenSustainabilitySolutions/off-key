@@ -1,0 +1,164 @@
+.pl-toolbox {
+  padding: 14px;
+  border-right: 1px solid hsl(var(--border));
+  max-height: 700px;
+  overflow: auto;
+  scrollbar-width: thin;
+}
+
+.pl-toolbox h3 {
+  font-size: 13px;
+  margin: 0 0 12px;
+}
+
+.pl-toolbox h4 {
+  font-size: 10px;
+  color: hsl(var(--muted-foreground));
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin: 18px 0 8px;
+}
+
+.pl-toolbox .pl-help {
+  font-size: 10px;
+}
+
+.pl-toolbox .pl-toolbox-item {
+  width: 100%;
+  text-align: left;
+  justify-content: space-between;
+  margin: 4px 0;
+  font-size: 11px;
+  padding: 8px;
+  background: hsl(var(--background));
+}
+
+.pl-toolbox-item span {
+  min-width: 0;
+}
+
+.pl-toolbox-item small {
+  font-size: 9px;
+  color: hsl(var(--muted-foreground));
+}
+
+.pl-inspector {
+  border-left: 1px solid hsl(var(--border));
+  padding: 16px;
+  max-height: 700px;
+  overflow: auto;
+  scrollbar-width: thin;
+  min-width: 0;
+}
+
+.pl-inspector h3 {
+  font-size: 14px;
+  margin: 16px 0 6px;
+}
+
+.pl-inspector h4 {
+  font-size: 11px;
+  margin: 20px 0 8px;
+}
+
+.pl-inspector > .pl-field:first-child {
+  margin-top: 0;
+}
+
+.pl-inspector fieldset {
+  border: 1px solid hsl(var(--border));
+  padding: 10px;
+  border-radius: 6px;
+}
+
+.pl-repeat-item {
+  padding: 8px 0;
+  border-bottom: 1px solid hsl(var(--border));
+}
+
+.pl-repeat-item:last-child {
+  border-bottom: 0;
+}
+
+.pl-number-list {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.pl-number-list > div {
+  display: flex;
+  gap: 2px;
+  flex: 1;
+  min-width: 70px;
+}
+
+.pl-number-list input {
+  max-width: 110px;
+}
+
+.pl-number-list button {
+  padding: 3px 6px;
+}
+
+.pl-feature-order {
+  padding-left: 20px;
+  font-size: 11px;
+}
+
+.pl-feature-order li {
+  margin: 6px 0;
+  overflow-wrap: anywhere;
+}
+
+.pl-feature-order button {
+  float: right;
+  padding: 1px 7px;
+}
+
+.pl-connections {
+  padding-left: 16px;
+  font-size: 11px;
+}
+
+.pl-connections li {
+  margin: 8px 0;
+}
+
+.pl-connections li > span {
+  overflow-wrap: anywhere;
+}
+
+.pl-connections li > div {
+  display: inline-flex;
+  gap: 3px;
+  float: right;
+}
+
+.pl-connections button {
+  padding: 1px 5px;
+}
+
+.pl-lineage {
+  list-style: none;
+  padding: 0;
+  font-size: 11px;
+}
+
+.pl-lineage li {
+  padding: 6px 0;
+  border-bottom: 1px solid hsl(var(--border));
+  display: flex;
+  flex-direction: column;
+  overflow-wrap: anywhere;
+}
+
+.pl-lineage small {
+  color: hsl(var(--muted-foreground));
+  margin-top: 2px;
+}
+
+.pl-inspector .pl-danger {
+  margin-top: 22px;
+  color: #dc2626;
+}

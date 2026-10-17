@@ -21,7 +21,7 @@ from off_key_tactic_middleware.api.v1.models import ModelInfo
 
 
 def test_generated_catalog_matches_pinned_runtime():
-    assert ABERRANT_VERSION == __version__ == "1.1.0"
+    assert ABERRANT_VERSION == __version__ == "1.3.0"
     assert generate_catalog() == CATALOG
 
 

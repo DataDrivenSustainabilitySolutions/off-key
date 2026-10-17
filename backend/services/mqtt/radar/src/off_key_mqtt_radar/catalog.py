@@ -7,6 +7,7 @@ pin or RADAR policy. CI and container builds use ``--check`` to detect drift.
 import argparse
 import json
 from importlib.resources import files
+from itertools import product
 
 from aberrant import __version__
 from aberrant.catalog import (
@@ -15,6 +16,50 @@ from aberrant.catalog import (
     get_similarity_engine_spec,
 )
 from off_key_core.models.adaptive import MODEL_DEFAULTS, MODEL_IDS, PARAMETER_LIMITS
+
+
+def constrain_retained_readiness(schema, spec, defaults):
+    """Export finite parameter-dependent runtime warm-up rules as JSON Schema.
+
+    Control-plane validation consumes the generated constructor contract, so it
+    never needs to import the numerical runtime or duplicate detector names.
+    """
+    if spec.capabilities(defaults).warmup.unit.value != "retained_values":
+        return
+    properties = schema["properties"]
+    if "window_size" not in properties:
+        raise ValueError(f"No retained-window capacity contract for {spec.id}")
+    domains = {
+        name: [False, True] if field.get("type") == "boolean" else field["enum"]
+        for name, field in properties.items()
+        if field.get("type") == "boolean" or "enum" in field
+    }
+    requirements = []
+    for values in product(*domains.values()):
+        params = dict(zip(domains, values, strict=True))
+        warmup = spec.capabilities(defaults | params).warmup
+        if warmup.unit.value != "retained_values":
+            raise ValueError(
+                f"Parameter-dependent warm-up units unsupported: {spec.id}"
+            )
+        requirements.append((params, warmup.minimum))
+    minimum = min(count for _, count in requirements)
+    properties["window_size"]["minimum"] = max(
+        properties["window_size"].get("minimum", 1), minimum
+    )
+    for params, count in requirements:
+        if count > minimum:
+            schema.setdefault("allOf", []).append(
+                {
+                    "if": {
+                        "properties": {
+                            name: {"const": value} for name, value in params.items()
+                        },
+                        "required": list(params),
+                    },
+                    "then": {"properties": {"window_size": {"minimum": count}}},
+                }
+            )
 
 
 def generate_catalog() -> dict:
@@ -49,7 +94,8 @@ def generate_catalog() -> dict:
             engine["required"] = ["id", "params"]
             available = available and engine_spec.available
         capabilities = spec.capabilities(defaults).as_dict()
-        if capabilities["warmup"]["unit"] != "events":
+        constrain_retained_readiness(schema, spec, defaults)
+        if capabilities["warmup"]["unit"] not in {"events", "retained_values"}:
             raise ValueError(f"RADAR does not support {catalog_id}'s warm-up unit")
         if capabilities["higher_is_more_anomalous"] is not True or not spec.declarative:
             raise ValueError(

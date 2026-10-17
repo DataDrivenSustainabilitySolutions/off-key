@@ -82,6 +82,9 @@ class RuntimeCheckpointCodec:
             ),
             "alignment_max_skew_seconds": config.alignment_max_skew_seconds,
         }
+        if config.pipeline is not None:
+            # Presentation metadata is deliberately absent from compatibility.
+            configuration["pipeline_fingerprint"] = config.pipeline.fingerprint
         self.configuration_fingerprint = self._fingerprint(configuration)
         runtime = {
             "checkpoint_format": 1,

@@ -45,6 +45,11 @@ jobs:
       - name: Test backend
         run: uv run --project backend python -m pytest -q
 
+      - name: Check generated monitoring contracts and catalog
+        run: |
+          uv run --project backend python backend/scripts/generate_pipeline_types.py --check
+          uv run --project backend python -m off_key_mqtt_radar.catalog --check
+
       - name: Run pre-commit
         run: uv run --project backend pre-commit run --all-files --show-diff-on-failure
 

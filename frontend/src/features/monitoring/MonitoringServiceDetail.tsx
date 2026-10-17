@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { useSearchParams } from "react-router-dom";
 import { ArrowLeft, Star, X } from "lucide-react";
@@ -11,13 +11,17 @@ import { ExplorerHistoryChart } from "../explorer/ExplorerHistoryChart";
 import type { ReadingHistoryCache } from "../explorer/readingHistoryCache";
 import type { SystemDocument } from "../catalogue/systemTypes";
 import { formatServiceTime, serviceName, serviceState, strategyName, type MonitoringInput } from "./serviceModel";
+import type { PipelineState } from "../pipelines/PipelineDiagnostics";
+
+const PipelineRun = lazy(() => import("../pipelines/PipelineRunView"));
 
 type Configuration = { monitoring: Record<string, JsonValue>; performance_config: Record<string, JsonValue> };
 type Props = { service: ActiveService; inputs: MonitoringInput[]; document: SystemDocument; historyCache?: ReadingHistoryCache; canEdit: boolean; favourite: boolean;
+  pipelineState?: PipelineState;
   onFavourite: () => void; onRename: (name: string) => Promise<void>; onBack: () => void; onDeleted: () => Promise<void> };
-const tabs = [{ id: "overview", label: "Overview" }, { id: "evidence", label: "Evidence" }, { id: "configuration", label: "Configuration" }];
+const tabs = [{ id: "overview", label: "Overview" }, { id: "evidence", label: "Evidence" }, { id: "pipeline", label: "Pipeline" }, { id: "configuration", label: "Configuration" }];
 
-export default function MonitoringServiceDetail({ service, inputs, document, historyCache, canEdit, favourite, onFavourite, onRename, onBack, onDeleted }: Props) {
+export default function MonitoringServiceDetail({ service, inputs, document, historyCache, canEdit, favourite, pipelineState, onFavourite, onRename, onBack, onDeleted }: Props) {
   const [params, setParams] = useSearchParams();
   const tab = tabs.some(item => item.id === params.get("tab")) ? params.get("tab")! : "overview";
   const [configuration, setConfiguration] = useState<Configuration>();
@@ -72,6 +76,7 @@ export default function MonitoringServiceDetail({ service, inputs, document, his
         chooseTab(tabs[next]!.id); window.document.getElementById(`monitor-tab-${tabs[next]!.id}`)?.focus();
       }}>{item.label}</button>)}</div>
     <div className="mn-detail-panel" role="tabpanel" id={`monitor-panel-${tab}`} aria-labelledby={`monitor-tab-${tab}`}>
+      {tab === "pipeline" && <Suspense fallback={<p role="status">Opening pipeline…</p>}><PipelineRun key={service.id} serviceId={service.id} displayName={service.display_name ?? service.container_name} canEdit={canEdit} state={pipelineState} /></Suspense>}
       {tab === "overview" && <>
         {progress && <section><h3>{state.label}</h3><p className="ex-muted">{progress.current.toLocaleString()} / {progress.target.toLocaleString()} samples</p>
           <div className="mn-progress" role="progressbar" aria-label="Monitoring preparation" aria-valuemin={0} aria-valuemax={progress.target} aria-valuenow={Math.min(progress.current, progress.target)}>

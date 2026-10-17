@@ -13,9 +13,9 @@ import type { ActiveService } from "@/types/monitoring";
 import type { MonitoringStrategy } from "@/types/monitoring";
 import { useAuth } from "@/auth/AuthContext";
 import { Activity, Database } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
-import { Link, useParams, useSearchParams } from "react-router-dom";
+import { Link, Navigate, useParams, useSearchParams } from "react-router-dom";
 import { useSystemDocument } from "@/features/catalogue/useSystemDocument";
 import { Button } from "@/components/ui/button";
 
@@ -25,11 +25,26 @@ import { MonitoringDataPanels } from "./monitoring/MonitoringDataPanels";
 import { LaneCard } from "./monitoring/MonitoringUi";
 import { StaticMonitoringSetup } from "./monitoring/StaticMonitoringSetup";
 import { useMonitoringData } from "./monitoring/useMonitoringData";
+import type { PipelineWorkspace } from "@/types/pipelines.generated";
+import { useOptionalCatalogue } from "@/features/workspace/catalogue-context";
 
 function Monitoring() {
   const { chargerId = "" } = useParams<{ chargerId: string }>();
   const [params] = useSearchParams();
   const initialReading = params.get("reading") ?? undefined;
+  const catalogue = useOptionalCatalogue();
+  const [graphAuthoring, setGraphAuthoring] = useState(false);
+  useEffect(() => {
+    const controller = new AbortController();
+    void apiUtils.get<PipelineWorkspace>("/v1/monitors/workspace", { signal: controller.signal, redirectOnUnauthorized: false })
+      .then(snapshot => { if (!controller.signal.aborted) setGraphAuthoring(snapshot.authoring_enabled); }, () => {});
+    return () => controller.abort();
+  }, []);
+  if (graphAuthoring) {
+    const readingId = Object.entries(catalogue?.system.snapshot?.runtime.bindings ?? {}).find(([id, binding]) => binding.entity_id === chargerId && (id === initialReading || binding.telemetry_key === initialReading))?.[0] ?? initialReading;
+    if (initialReading && catalogue?.system.status === "loading") return <p role="status">Resolving monitoring inputs…</p>;
+    return <Navigate replace to={`/?create=monitoring&target=${encodeURIComponent(chargerId)}${readingId ? `&reading=${encodeURIComponent(readingId)}` : ""}`} />;
+  }
   return <ChargerMonitoring key={`${chargerId}:${initialReading ?? ""}`} chargerId={chargerId} initialReading={initialReading} />;
 }
 

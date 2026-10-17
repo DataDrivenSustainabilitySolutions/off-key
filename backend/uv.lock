@@ -24,7 +24,7 @@ members = [
 
 [[package]]
 name = "aberrant"
-version = "1.1.0"
+version = "1.3.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "filelock" },
@@ -32,9 +32,9 @@ dependencies = [
     { name = "scipy" },
     { name = "tqdm" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/fd/13/5c9f3dfcaa5e2b258fc139e277594f26283ba87fadb3e147aa5e8cd4b615/aberrant-1.1.0.tar.gz", hash = "sha256:98380244f0574368f88a2425e0c70b4c87f6226b8265e36a40263fbe01368fd7", size = 1542071, upload-time = "2026-09-25T18:13:58.678Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/57/f7/41deb6e1e7eb05d9623a7f684baa1d1fbb193275014c29ec24640ab3d169/aberrant-1.3.0.tar.gz", hash = "sha256:477edc4a8de8a6eb125c272dad940e080d0f8f03f8ac67b029953110aa3b2281", size = 1625504, upload-time = "2026-10-16T10:18:06.688Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/7b/90/f18f7e8d7cfed923869987bd5b5e6d4a49c224de752a5b29a636dbd0fbc7/aberrant-1.1.0-py3-none-any.whl", hash = "sha256:0571fb9a48b56663562ab5e6d0c186a570afa40c04cbb38dcfb0aeaf09a9b9eb", size = 181214, upload-time = "2026-09-25T18:13:55.095Z" },
+    { url = "https://files.pythonhosted.org/packages/5a/89/063ce189b239988f0b07627a13967cde6be18d29399c704f2ab35f6b05fe/aberrant-1.3.0-py3-none-any.whl", hash = "sha256:cadd908461cbfd2c977b29352c0ee9fbe895d13e16d52e71ff8345d668d1a9b8", size = 211864, upload-time = "2026-10-16T10:18:05.104Z" },
 ]
 
 [package.optional-dependencies]
@@ -2017,7 +2017,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "aberrant", extras = ["faiss"], specifier = "==1.1.0" },
+    { name = "aberrant", extras = ["faiss"], specifier = "==1.3.0" },
     { name = "asyncpg", specifier = ">=0.28.0" },
     { name = "janus", specifier = ">=2,<3" },
     { name = "nonconform", extras = ["pyod"], specifier = ">=1.0.0,<2" },

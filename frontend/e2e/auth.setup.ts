@@ -6,7 +6,7 @@ import { expect, test as setup } from "@playwright/test";
 
 import { loginWithEmail, acceptInvitationAndLogin } from "./helpers/auth";
 
-const AUTH_STATE_FILE = fileURLToPath(
+const AUTH_STATE_FILE = process.env.PLAYWRIGHT_AUTH_STATE_FILE ?? fileURLToPath(
   new URL("../test-results/.auth/user.json", import.meta.url),
 );
 

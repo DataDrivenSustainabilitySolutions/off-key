@@ -40,6 +40,7 @@ from sqlalchemy.schema import MetaData
 
 from .config.config import MQTTRadarConfig
 from .config.runtime import get_radar_checkpoint_settings, get_radar_database_settings
+from .database_status import HEARTBEAT_UPDATE
 from .models import AnomalyResult, ServiceMetrics
 from .result_records import PreparedResult, ResultProjector
 
@@ -294,6 +295,61 @@ class DatabaseWriter:
             self._checkpoint_loaded = True
         return checkpoint
 
+    async def fail_pipeline_run(
+        self,
+        error: str,
+        *,
+        diagnostics: dict | None = None,
+        coverage: dict | None = None,
+    ) -> None:
+        """Fence a failed generation while preserving its last signed snapshot.
+
+        The checkpoint ownership lock prevents an old worker from failing a
+        successor. History has no service foreign key and survives later purge.
+        """
+        execution = self.config.pipeline
+        if execution is None:
+            return
+        if self.session_factory is None:
+            self.session_factory = get_radar_async_session_factory()
+        status = {
+            "stage": "failed",
+            "error": error[:4000],
+            "detail": "Execution stopped; the last valid snapshot was retained",
+            "updated_at": datetime.now(UTC).isoformat(),
+        }
+        try:
+            status.update(pipeline_state=diagnostics, coverage=coverage)
+            payload = json.dumps(status, allow_nan=False)
+        except (ValueError, TypeError):
+            payload = json.dumps({"stage": "failed", "error": error[:4000]})
+        async with self._flush_lock, self.session_factory() as session:
+            await self._assert_checkpoint_ownership(session)
+            updated = await session.execute(
+                text(
+                    "UPDATE monitoring_pipeline_runs SET status = 'failed', "
+                    "error = :error, ended_at = now() "
+                    "WHERE id = :run_id AND service_id = :service_id"
+                ),
+                {
+                    "error": error[:4000],
+                    "run_id": execution.run_id,
+                    "service_id": self._checkpoint_service_id,
+                },
+            )
+            if updated.rowcount != 1:
+                raise self._lose_checkpoint_ownership()
+            await session.execute(
+                text(
+                    "UPDATE services SET operational_stage = 'failed', "
+                    "operational_status = CAST(:status AS jsonb), "
+                    "operational_updated_at = now() "
+                    "WHERE id = :service_id"
+                ),
+                {"status": payload, "service_id": self._checkpoint_service_id},
+            )
+            await session.commit()
+
     def raise_if_fenced(self) -> None:
         """Make a detected overlap loss terminal before further model work."""
         if self._ownership_error is not None:
@@ -486,44 +542,50 @@ class DatabaseWriter:
         updated_at = normalized.updated_at or datetime.now(UTC)
         if updated_at.tzinfo is None:
             updated_at = updated_at.replace(tzinfo=UTC)
-        payload = normalized.model_copy(update={"updated_at": updated_at}).model_dump(
-            mode="json", exclude_none=True
-        )
+        payload = normalized.model_copy(
+            update={"updated_at": updated_at, "first_heartbeat_at": None}
+        ).model_dump(mode="json", exclude_none=True)
 
-        signature_guard = ""
         parameters = {
             "stage": normalized.stage,
             "status_payload": json.dumps(payload),
             "updated_at": updated_at,
             "service_id": service_id,
+            "managed": self.managed_checkpoints,
+            "signature": self._checkpoint_signature,
+            "pending_signature": self._pending_checkpoint_signature,
         }
-        if self.managed_checkpoints:
-            signature_guard = """
-                AND EXISTS (
-                    SELECT 1 FROM radar_runtime_checkpoints
-                    WHERE service_id = :service_id
-                        AND signature IN (:signature, :pending_signature)
-                )
-            """
-            parameters.update(
-                signature=self._checkpoint_signature,
-                pending_signature=self._pending_checkpoint_signature,
-            )
-        result = await session.execute(
-            text(
-                f"""
-                UPDATE services
-                SET operational_stage = :stage,
-                    operational_status = CAST(:status_payload AS jsonb),
-                    operational_updated_at = :updated_at
-                WHERE id = :service_id
-                {signature_guard}
-                """
-            ),
-            parameters,
-        )
+        if (
+            self.managed_checkpoints
+            and self.config.pipeline is not None
+            and not await self._can_publish_pipeline_status(session, service_id)
+        ):
+            return
+        result = await session.execute(HEARTBEAT_UPDATE, parameters)
         if self.managed_checkpoints and result.rowcount != 1:
             raise self._lose_checkpoint_ownership()
+
+    async def _can_publish_pipeline_status(self, session, service_id):
+        # Serialize with fatal status publication before reading its Run. This
+        # fresh statement observes any fatal transaction committed while waiting
+        # for Service. A fatal writer still waiting for Service publishes last.
+        # Never request a Run/checkpoint lock while owning Service. NO KEY UPDATE
+        # also remains compatible with evidence/checkpoint foreign-key reads.
+        service = await session.scalar(
+            text("SELECT id FROM services WHERE id = :service_id FOR NO KEY UPDATE"),
+            {"service_id": service_id},
+        )
+        if service is None:
+            raise self._lose_checkpoint_ownership()
+        terminal = await session.scalar(
+            text(
+                "SELECT EXISTS (SELECT 1 FROM monitoring_pipeline_runs "
+                "WHERE service_id = :service_id "
+                "AND (ended_at IS NOT NULL OR status = 'failed'))"
+            ),
+            {"service_id": service_id},
+        )
+        return not terminal
 
     async def _test_connection(self):
         """Test database connection"""

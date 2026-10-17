@@ -167,11 +167,18 @@ async def test_managed_replacement_rejects_retained_replay_without_partial_frame
             retain=True,
         )
         if len(sensors) > 1:
+            # Retained QoS deliveries can still be queued after subscription.
+            # Wait for this fresh reading's watermark, not an exact aggregate
+            # receipt count that another retained delivery can advance past.
             await wait_for(
                 lambda: (
-                    replacement.message_processor.received_message_count == before + 1
+                    replacement.message_processor.export_observation_watermarks()
+                    .get("entity", {})
+                    .get(sensors[0])
+                    == datetime.fromisoformat(timestamp).timestamp()
                 )
             )
+            assert replacement.message_processor.received_message_count >= before + 1
             assert replacement.detector.primary_service.processed_count == 7
             for topic in topics[1:]:
                 await publisher.publish(

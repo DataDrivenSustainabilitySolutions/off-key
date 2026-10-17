@@ -24,9 +24,14 @@ from .admission import require_monitor_admission
 from .checkpoint_manager import CheckpointManager
 from .config.config import AnomalyDetectionConfig, get_radar_settings
 from .config.runtime import get_radar_checkpoint_settings
-from .database import DatabaseWriter, ensure_radar_metrics_tables
+from .database import (
+    CheckpointOwnershipLost,
+    DatabaseWriter,
+    ensure_radar_metrics_tables,
+)
 from .detector import StaticConformalDetectionService
 from .detector_runtime import DetectorRuntime
+from .execution_errors import FatalExecutionError
 from .feature_validation import TelemetryFeatureValidator
 from .health_monitor import HealthMonitor
 from .memory import MemoryManager
@@ -300,7 +305,9 @@ class RadarService:
                     await component.stop()
                 except Exception:
                     logger.exception("event=radar.component_stop_failed")
-        if getattr(self, "_checkpoint_ready", False):
+        if getattr(self, "_checkpoint_ready", False) and not isinstance(
+            self._fatal_error, FatalExecutionError
+        ):
             try:
                 async with self._processing_lock:
                     await self._checkpoint_if_due(force=True)
@@ -320,13 +327,7 @@ class RadarService:
         anomaly_config = AnomalyDetectionConfig.model_validate(
             self.config.model_dump(include=set(AnomalyDetectionConfig.model_fields))
         )
-        strategy = anomaly_config.monitoring.strategy
-
-        service_cls = (
-            AdaptiveStreamDetectionService
-            if strategy == "adaptive_stream"
-            else StaticConformalDetectionService
-        )
+        service_cls = self._detector_service_class(anomaly_config)
         primary_service = None
         codec = getattr(self, "_checkpoint_codec", None)
         if codec is not None:
@@ -508,6 +509,8 @@ class RadarService:
                     await self.database_writer.write_result(result)
             await self._checkpoint_if_due()
 
+        except FatalExecutionError as error:
+            await self._fail_execution(error)
         except Exception as e:
             logger.error(
                 f"Error processing message from {message.topic}: {e}", exc_info=True
@@ -516,9 +519,80 @@ class RadarService:
                 self._fatal_error = e
                 self.shutdown_event.set()
 
+    async def _fail_execution(self, error: FatalExecutionError) -> None:
+        """Quarantine uncertain state before any asynchronous cleanup or I/O."""
+        self._fatal_error = error
+        self._checkpoint_ready = False
+        self.recovery_status["execution_failed"] = True
+        logger.error("event=radar.execution_state_uncertain error=%s", error)
+        if (
+            self.database_writer is not None
+            and self.database_writer.managed_checkpoints
+        ):
+            diagnostics = None
+            coverage = None
+            try:
+                runtime = getattr(self, "_detector_runtime", None)
+                if runtime is not None:
+                    diagnostics = (
+                        runtime.get_health_info()
+                        .get("primary_service_stats", {})
+                        .get("pipeline_state")
+                    )
+                tracker = getattr(self.mqtt_client, "coverage", None)
+                if tracker is not None:
+                    coverage = tracker.snapshot().model_dump(mode="json")
+            except Exception:
+                logger.exception("event=radar.final_failure_diagnostics_failed")
+            await self._persist_execution_failure(error, diagnostics, coverage)
+        self.shutdown_event.set()
+
+    async def _persist_execution_failure(self, error, diagnostics, coverage):
+        # A transient outage must not turn a known fatal execution into an
+        # ordinary Swarm restart before its durable admission fence is stored.
+        # Explicit operator shutdown can still terminate this quarantined worker.
+        settings = get_radar_checkpoint_settings()
+        while not self.shutdown_event.is_set():
+            try:
+                async with asyncio.timeout(settings.RADAR_CHECKPOINT_TIMEOUT_SECONDS):
+                    await self.database_writer.fail_pipeline_run(
+                        str(error), diagnostics=diagnostics, coverage=coverage
+                    )
+                return
+            except CheckpointOwnershipLost:
+                return  # A successor already owns the signed-state generation.
+            except Exception:
+                logger.exception("event=radar.execution_failure_persistence_retry")
+            with suppress(TimeoutError):
+                await asyncio.wait_for(
+                    self.shutdown_event.wait(),
+                    settings.RADAR_FATAL_PERSIST_RETRY_SECONDS,
+                )
+
+    @staticmethod
+    def _detector_service_class(config):
+        if config.pipeline is not None:
+            from .pipelines.adaptive import AdaptivePipelineDetectionService
+            from .pipelines.static import StaticPipelineDetectionService
+
+            return (
+                AdaptivePipelineDetectionService
+                if config.monitoring.strategy == "adaptive_stream"
+                else StaticPipelineDetectionService
+            )
+        return (
+            AdaptiveStreamDetectionService
+            if config.monitoring.strategy == "adaptive_stream"
+            else StaticConformalDetectionService
+        )
+
     async def _checkpoint_if_due(self, *, force: bool = False) -> None:
         codec = getattr(self, "_checkpoint_codec", None)
-        if codec is None or not self._checkpoint_ready:
+        if (
+            codec is None
+            or not self._checkpoint_ready
+            or isinstance(self._fatal_error, FatalExecutionError)
+        ):
             return
         self.database_writer.raise_if_fenced()
         runtime = getattr(self, "_detector_runtime", None)
@@ -617,6 +691,8 @@ class RadarService:
                         await self._detector_runtime.refresh()
         except asyncio.CancelledError:
             raise
+        except FatalExecutionError as error:
+            await self._fail_execution(error)
         except Exception as error:
             self._fatal_error = error
             self.shutdown_event.set()

@@ -397,7 +397,7 @@ class StaticConformalDetectionService:
         p_value = self._compute_p_value(vector)
         if self.alarm_controller is None:
             self.alarm_controller = self._create_alarm_controller()
-        alarm_context = self.alarm_controller.update(p_value)
+        alarm_context = self._update_alarm_policy(p_value)
         is_anomaly = bool(alarm_context["alarm_fired"])
         if is_anomaly:
             self.anomaly_count += 1
@@ -446,6 +446,12 @@ class StaticConformalDetectionService:
             )
         return result
 
+    def _update_alarm_policy(self, p_value: float) -> dict[str, Any]:
+        """Apply the configured alarm policy once for this inference."""
+        if self.alarm_controller is None:
+            raise RuntimeError("Static alarm policy has not been initialized")
+        return self.alarm_controller.update(p_value)
+
     def _process_failed(
         self,
         data: dict[str, float],
@@ -489,9 +495,6 @@ class StaticConformalDetectionService:
         calibration_samples: list[dict[str, float]],
         feature_keys: list[str],
     ) -> tuple[Any, Any]:
-        from nonconform import ConformalDetector, Split
-
-        detector = self._create_pyod_detector()
         training_matrix = np.asarray(
             [
                 [float(sample[key]) for key in feature_keys]
@@ -506,6 +509,13 @@ class StaticConformalDetectionService:
             ],
             dtype=float,
         )
+        return self._fit_static_matrices(training_matrix, calibration_matrix)
+
+    def _fit_static_matrices(self, training_matrix, calibration_matrix):
+        """Fit and calibrate with an already materialized numerical schema."""
+        from nonconform import ConformalDetector, Split
+
+        detector = self._create_pyod_detector()
         detector.fit(training_matrix)
         conformal_detector = ConformalDetector(
             detector=detector,

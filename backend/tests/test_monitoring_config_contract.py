@@ -109,11 +109,15 @@ async def test_gateway_to_runtime_preserves_one_monitoring_config(
     await facade.start_radar_service(config)
     payload = facade._make_request.await_args.kwargs["json_data"]
     assert set(payload) == {
+        "launch_version",
         "container_name",
         "mqtt_topics",
         "monitoring",
         "performance_config",
+        "pipeline",
+        "runtime_image",
     }
+    assert payload["launch_version"] == 1
     tactic_config = radar.RadarConfig.model_validate(payload)
 
     monkeypatch.setattr(

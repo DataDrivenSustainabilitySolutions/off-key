@@ -2,11 +2,13 @@
 
 import asyncio
 import logging
+import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
 from typing import Any, TypeVar
 
+from .execution_errors import FatalExecutionError
 from .resilience import ResilientAnomalyDetector
 
 T = TypeVar("T")
@@ -29,6 +31,8 @@ class DetectorRuntime:
         self._submission_lock = asyncio.Lock()
         self._snapshot: dict[str, Any] = {}
         self._health_error_count = 0
+        self._pipeline_snapshot: dict[str, Any] | None = None
+        self._pipeline_snapshot_at = float("-inf")
         self._closed = False
 
     async def call(self, operation: Callable[..., T], *args: Any) -> T:
@@ -49,6 +53,11 @@ class DetectorRuntime:
     def _execute(self, operation: Callable[..., T], args: tuple[Any, ...]) -> T:
         try:
             return operation(*args)
+        except FatalExecutionError:
+            # The worker may stop immediately; its final failure envelope must
+            # not be hidden by the normal diagnostic sampling throttle.
+            self._pipeline_snapshot_at = float("-inf")
+            raise
         finally:
             # Diagnostics must never replace a completed inference result or its
             # original exception: the service still owns evidence for that result.
@@ -70,12 +79,29 @@ class DetectorRuntime:
             snapshot["health_snapshot_error"] = None
         snapshot["health_snapshot_error_count"] = self._health_error_count
         self._snapshot = snapshot
+        # The serial owner publishes one detached diagnostic envelope, at most
+        # once per second. Per-observation evidence keeps its small model info.
+        primary = self.detector.primary_service
+        diagnostic_reader = getattr(primary, "get_pipeline_state", None)
+        now = time.monotonic()
+        if callable(diagnostic_reader) and now - self._pipeline_snapshot_at >= 1.0:
+            try:
+                self._pipeline_snapshot = diagnostic_reader()
+                self._pipeline_snapshot_at = now
+            except Exception:
+                self._health_error_count += 1
+                logger.exception("event=radar.pipeline_diagnostic_snapshot_failed")
 
     async def refresh(self) -> None:
         await self.call(lambda: None)
 
     def get_health_info(self) -> dict[str, Any]:
-        return deepcopy(self._snapshot)
+        snapshot = deepcopy(self._snapshot)
+        if self._pipeline_snapshot is not None:
+            snapshot.setdefault("primary_service_stats", {})["pipeline_state"] = (
+                deepcopy(self._pipeline_snapshot)
+            )
+        return snapshot
 
     async def stop(self) -> None:
         async with self._submission_lock:

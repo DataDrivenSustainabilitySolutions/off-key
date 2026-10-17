@@ -53,9 +53,42 @@ fresh inputs and scoring resume; historical coverage warnings remain visible.
 | Static baseline | Signals with a representative training/calibration period | Trains and calibrates first, then scores later observations; exposes conformal and martingale evidence |
 | Adaptive stream | Signals whose behaviour should be learned continuously | Warms up, scores each observation before learning it, and adapts its preprocessing/detector state |
 
+## Visual monitoring pipelines
+
+When visual pipeline authoring is enabled, the Monitoring workspace provides a
+shared pipeline library. Administrators create designs from a static or adaptive
+template, arrange and configure their components, then save a draft. Publishing
+creates a revision. Activation separately reviews input bindings and any service
+being replaced. Members can inspect published designs and running services.
+
+Read a graph from left to right. Each card shows its role, title, underlying
+operation and input/output data types. Renaming a card helps explain its purpose;
+the operation name remains visible. Connections have arrows, labels and line
+patterns for features, scores, P-values and decisions. Scores are model-specific;
+the static strategy's P-values come from conformal calibration.
+
+Use **Selected component** to navigate a larger graph, then **Locate selected
+component** to bring its card into a readable view. Fit view returns to the full
+graph. The inspector provides the same connection editing on keyboards and narrow
+screens. It lists compatible, cycle-free upstream choices. **Arrange** changes
+positions while preserving processing order.
+
+To keep features raw, branch from **Aligned inputs** and select the required
+features. **Pass through** preserves the values at its input. **Merge features**
+combines columns from the same aligned observation in the explicit input order;
+rename colliding feature names before combining branches.
+
+Configuration issues appear on the affected cards. A running revision shows
+separate sampled runtime badges; check snapshot age, readiness and coverage in
+its diagnostics. In an adaptive graph, preprocessing initialization and detector
+warm-up are separate. Warm-up counts successful detector learning updates.
+
+Editing a running service opens a reusable draft. Saving or publishing that draft
+leaves the running revision active until an explicit activation replaces it.
+
 ## Adaptive model selection
 
-Adaptive monitoring uses Aberrant 1.1.0. Models are grouped by the library's
+Adaptive monitoring uses Aberrant 1.3.0. Models are grouped by the library's
 algorithm family and filtered by the number of features after preprocessing.
 The original 24 numeric detectors remain available; scalar and multivariate
 rolling matrix profiles add detection of unusual sequences across one or multiple
@@ -83,6 +116,45 @@ KNN exposes its FAISS window and warm-up as nested similarity-engine settings.
 Existing saved model IDs and the legacy flat KNN parameters are translated on
 input. Legacy histogram `max_bins` becomes `max_depth`; conflicting old and new
 parameter values are rejected.
+
+## Visual pipeline designs
+
+When pipeline authoring is enabled, open **Pipelines** in the shared catalogue
+workspace. Start from the static or adaptive template, add components from the
+searchable toolbox, and connect their typed ports. **Arrange** lays out the graph
+explicitly; manual arrangement is preserved. The node list and connection menus
+provide the same editing operations on a keyboard or narrow screen.
+
+Select input slots by stable identity. Bind every slot to a distinct enabled
+numeric reading on one entity during activation review. Labels are cosmetic;
+expected units require an exact match, and unknown units remain unknown. Suggested
+bindings must be reviewed. Use selection to split features into branches, renaming
+to avoid collisions, and ordered merge connections to join them again. **Node
+title** changes presentation; the **Rename features** component changes execution.
+
+**Save draft** saves shared work without changing a running monitor. **Publish
+revision** validates and creates an immutable executable revision. **Start revision**
+or **Review replacement** reviews bindings, executable changes, predecessor and
+fresh training/calibration before activation. An existing draft is never silently
+overwritten when editing a running revision. Concurrent saves offer reload or
+save as copy. **Activate replacement** confirms the reviewed handoff.
+
+A running monitor always displays its bound immutable revision. Its arrangement
+can be saved independently. The live inspector shows one coherent sampled
+observation, separates score and post-learning passes, and marks nodes that did
+not execute. Snapshot age is visible; fresh diagnostics do not imply persisted
+evidence is current. Static training appears as a batch summary.
+
+Static preprocessing fits only the training window and stays frozen. Adaptive
+preprocessing initializes before downstream learning; its warm-up counter counts
+successful detector updates. PCA has separate centered batch and uncentered
+incremental implementations. Changing online preprocessing does not transform
+historical geometry already retained by the detector.
+
+Replacement reserves both sets of inputs during preflight and handoff. A failed
+preflight leaves the predecessor running. After retirement, cancellation or failure
+does not silently revive it. Reusing an earlier revision starts a fresh run.
+History remains inspectable after a service is removed.
 
 ## Stop and cleanup workflow
 

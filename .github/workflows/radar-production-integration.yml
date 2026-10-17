@@ -19,7 +19,7 @@ jobs:
   radar:
     name: RADAR production integration
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     env:
       TEST_RADAR_DOCKER: "1"
       UV_PYTHON: "3.14"
@@ -76,6 +76,7 @@ jobs:
           port="$(docker port "$database" 5432/tcp | awk -F: '{print $NF}')"
           url="postgresql+asyncpg://radar_ci:disposable-radar-ci-password@127.0.0.1:${port}/radar_ci"
           echo "TEST_SCHEMA_DATABASE_URL=$url" >> "$GITHUB_ENV"
+          echo "TEST_PIPELINE_DATABASE_CONTAINER=$database" >> "$GITHUB_ENV"
           export TEST_SCHEMA_DATABASE_URL="$url"
           uv run --frozen --project backend python - <<'PY'
           import os, time
@@ -98,7 +99,7 @@ jobs:
           PY
 
       - name: Test real MQTT, durable recovery, lifecycle and Swarm replacement
-        timeout-minutes: 12
+        timeout-minutes: 25
         run: |
           uv run --frozen --project backend python -m pytest -q --tb=short -ra \
             --junitxml="$RUNNER_TEMP/radar-results.xml" \
@@ -112,7 +113,17 @@ jobs:
             backend/tests/test_radar_resource_budget.py \
             backend/tests/test_radar_observation_integration.py \
             backend/tests/test_radar_observation_recovery.py \
-            backend/tests/test_radar_swarm_integration.py
+            backend/tests/test_radar_swarm_integration.py \
+            backend/tests/test_pipeline_contracts.py \
+            backend/tests/test_pipeline_report_bounds.py \
+            backend/tests/test_pipeline_report_api.py \
+            backend/tests/test_static_pipeline_runtime.py \
+            backend/tests/test_adaptive_pipeline_runtime.py \
+            backend/tests/test_pipeline_runtime_bounds.py \
+            backend/tests/test_pipeline_processing_integration.py \
+            backend/tests/test_pipeline_failure_status.py \
+            backend/tests/test_monitoring_pipelines_integration.py \
+            backend/tests/test_pipeline_activation_swarm.py
 
       - name: Require executed integration coverage without skips
         run: |

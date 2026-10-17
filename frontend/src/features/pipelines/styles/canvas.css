@@ -1,0 +1,252 @@
+.pl-editor-grid {
+  display: grid;
+  grid-template-columns: 190px minmax(260px, 1fr) 270px;
+  min-height: 520px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 10px;
+  overflow: hidden;
+  background: hsl(var(--background));
+}
+
+.pl-editor-grid--readonly {
+  grid-template-columns: minmax(260px, 1fr) 270px;
+}
+
+.pl-canvas-wrap {
+  --pl-features: #0f766e;
+  --pl-scores: #6d28d9;
+  --pl-p_values: #6d28d9;
+  --pl-decisions: #b45309;
+  --pl-evidence: #475569;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  min-width: 0;
+  min-height: 520px;
+  background: color-mix(in srgb, hsl(var(--muted)) 45%, hsl(var(--background)));
+}
+
+.pl-flow-surface {
+  position: relative;
+  flex: 1;
+  min-height: 520px;
+}
+.pl-canvas-wrap .react-flow {
+  min-height: 520px;
+}
+.dark .pl-canvas-wrap {
+  --pl-features: #5eead4;
+  --pl-scores: #c4b5fd;
+  --pl-p_values: #c4b5fd;
+  --pl-decisions: #fcd34d;
+  --pl-evidence: #cbd5e1;
+}
+.pl-data--features {
+  color: var(--pl-features);
+  --pl-data-color: var(--pl-features);
+}
+.pl-data--scores {
+  color: var(--pl-scores);
+  --pl-data-color: var(--pl-scores);
+}
+.pl-data--p_values {
+  color: var(--pl-p_values);
+  --pl-data-color: var(--pl-p_values);
+}
+.pl-data--decisions {
+  color: var(--pl-decisions);
+  --pl-data-color: var(--pl-decisions);
+}
+.pl-data--evidence {
+  color: var(--pl-evidence);
+  --pl-data-color: var(--pl-evidence);
+}
+.pl-graph-guide {
+  padding: 10px 12px;
+  background: hsl(var(--background));
+  border-bottom: 1px solid hsl(var(--border));
+  font-size: 10px;
+}
+.pl-graph-direction,
+.pl-graph-guide ul {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+}
+.pl-graph-direction span,
+.pl-graph-guide p {
+  color: hsl(var(--muted-foreground));
+}
+.pl-graph-guide ul {
+  list-style: none;
+  padding: 0;
+  margin: 6px 0;
+}
+.pl-graph-guide li {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.pl-graph-guide p {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.pl-canvas-wrap .react-flow__controls {
+  box-shadow: none;
+  border: 1px solid hsl(var(--border));
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.pl-canvas-wrap .react-flow__controls-button {
+  background: hsl(var(--background));
+  border-color: hsl(var(--border));
+  color: hsl(var(--foreground));
+}
+
+.pl-canvas-wrap .react-flow__controls-button svg {
+  fill: currentColor;
+}
+
+.pl-canvas-wrap .react-flow__attribution {
+  background: hsl(var(--background));
+  color: hsl(var(--muted-foreground));
+}
+
+.pl-canvas-wrap .react-flow__attribution a {
+  color: inherit;
+}
+
+.pl-canvas-wrap .react-flow__edge-textbg {
+  fill: hsl(var(--background));
+}
+
+.pl-canvas-wrap .react-flow__edge-text {
+  fill: hsl(var(--muted-foreground));
+  font-size: 10px;
+}
+
+.pl-node {
+  --pl-node-padding-x: 12px;
+  display: grid;
+  grid-template-rows: 14px 34px 14px 22px 18px;
+  align-content: center;
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  padding: 10px var(--pl-node-padding-x);
+  gap: 3px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 8px;
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  box-shadow: 0 2px 6px #00000008;
+}
+.pl-node.is-selected {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 3px;
+}
+.pl-node-kind {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: hsl(var(--muted-foreground));
+}
+.pl-node strong {
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 17px;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.pl-node-operation {
+  font-size: 10px;
+  line-height: 14px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: hsl(var(--muted-foreground));
+}
+.pl-node-ports,
+.pl-node-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-width: 0;
+  gap: 5px;
+}
+/* Sockets belong to their labeled row, which reaches the card frame. */
+.pl-node-ports {
+  position: relative;
+  margin-inline: calc(-1 * var(--pl-node-padding-x));
+  padding-inline: var(--pl-node-padding-x);
+}
+.pl-port {
+  font-size: 10px;
+  white-space: nowrap;
+}
+.pl-node-status {
+  justify-content: flex-start;
+  font-size: 9px;
+}
+.pl-node-status > span {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.pl-node-status svg {
+  flex-shrink: 0;
+}
+.pl-node-issue,
+.pl-node-sample--waiting {
+  color: #92400e;
+}
+.pl-node-sample--ready {
+  color: #15803d;
+}
+.pl-node-sample--failed {
+  color: #b91c1c;
+}
+.pl-node-sample--neutral {
+  color: hsl(var(--muted-foreground));
+}
+.dark .pl-node-issue,
+.dark .pl-node-sample--waiting {
+  color: #fcd34d;
+}
+.dark .pl-node-sample--ready {
+  color: #86efac;
+}
+.dark .pl-node-sample--failed {
+  color: #fca5a5;
+}
+.pl-node .react-flow__handle {
+  background: var(--pl-data-color, hsl(var(--muted-foreground)));
+  border: 2px solid hsl(var(--background));
+  width: 10px;
+  height: 10px;
+}
+
+.pl-canvas-feedback {
+  position: absolute;
+  bottom: 10px;
+  left: 45px;
+  right: 10px;
+  padding: 10px;
+  background: hsl(var(--background));
+  border: 1px solid hsl(var(--border));
+  border-radius: 8px;
+  font-size: 11px;
+}

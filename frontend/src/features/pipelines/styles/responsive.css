@@ -1,0 +1,172 @@
+@media (max-width: 1250px) {
+  .pl-editor-grid {
+    grid-template-columns: 160px minmax(220px, 1fr) 230px;
+  }
+  .pl-editor-grid--readonly {
+    grid-template-columns: minmax(220px, 1fr) 240px;
+  }
+  .pl-inspector {
+    padding: 12px;
+  }
+  .pl-toolbox {
+    padding: 10px;
+  }
+  .pl-actions {
+    gap: 5px;
+  }
+  .pl-actions button {
+    padding: 6px 8px;
+  }
+}
+
+@media (max-width: 1000px) {
+  .pl-editor-grid {
+    grid-template-columns: minmax(220px, 1fr) 250px;
+  }
+  .pl-toolbox {
+    display: none;
+  }
+  .pl-editor-grid:not(.pl-editor-grid--readonly) {
+    position: relative;
+  }
+  .pl-mobile-switch {
+    display: flex;
+    gap: 4px;
+  }
+  .pl-mobile-switch button {
+    text-transform: capitalize;
+  }
+  .pl-mobile-switch button[aria-pressed="true"] {
+    border-color: hsl(var(--primary));
+    background: hsl(var(--muted));
+  }
+  .pl-mobile--components .pl-editor-grid {
+    display: block;
+  }
+  .pl-mobile--components .pl-toolbox {
+    display: block;
+    max-height: none;
+    border: 0;
+  }
+  .pl-mobile--components .pl-canvas-wrap,
+  .pl-mobile--components .pl-inspector {
+    display: none;
+  }
+  .pl-mobile--components .pl-toolbox-item {
+    max-width: 400px;
+  }
+}
+
+@media (max-width: 680px) {
+  .pl-header {
+    gap: 10px;
+  }
+  .pl-header .pl-actions {
+    width: 100%;
+  }
+  .pl-header .pl-actions > .pl-field {
+    flex: 1;
+    min-width: 110px;
+  }
+  .pl-editor-grid,
+  .pl-editor-grid--readonly {
+    display: block;
+    min-height: 400px;
+  }
+  .pl-canvas-wrap {
+    min-height: 420px;
+    height: auto;
+  }
+  .pl-flow-surface,
+  .pl-canvas-wrap .react-flow {
+    min-height: 420px;
+    height: 420px;
+  }
+  .pl-editor-grid > .pl-inspector {
+    border-left: 0;
+    border-top: 1px solid hsl(var(--border));
+    max-height: none;
+  }
+  .pl-editor-grid:not(.pl-editor-grid--readonly) > .pl-inspector {
+    display: none;
+  }
+  .pl-mobile--inspector .pl-editor-grid > .pl-canvas-wrap,
+  .pl-mobile--inspector .pl-editor-grid > .pl-toolbox {
+    display: none;
+  }
+  .pl-mobile--inspector .pl-editor-grid > .pl-inspector {
+    display: block;
+    min-height: 400px;
+    border-top: 0;
+  }
+  .pl-template-grid {
+    grid-template-columns: 1fr;
+  }
+  .pl-slot {
+    grid-template-columns: 1fr 1fr;
+  }
+  .pl-slot > code {
+    grid-column: 1 / -1;
+  }
+  .pl-slot > button {
+    justify-self: start;
+  }
+  .pl-settings-grid {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+  .pl-create,
+  .pl-activation {
+    padding: 14px;
+  }
+  .pl-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .pl-sample {
+    width: 100%;
+    margin-right: 0;
+  }
+  .pl-library-tools {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .pl-search {
+    max-width: none;
+  }
+  .pl-header h2 {
+    font-size: 20px;
+  }
+  .pl-canvas-toolbar {
+    gap: 10px;
+  }
+}
+
+.ex-shell .pl-toolbox .pl-toolbox-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 6px;
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  cursor: grab;
+}
+
+.pl-activation-fields {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.pl-toolbox .pl-toolbox-item small {
+  margin-left: 8px;
+  flex-shrink: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pl-library-list button {
+    transition: none;
+  }
+}

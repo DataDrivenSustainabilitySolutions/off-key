@@ -171,6 +171,24 @@ class Tactic:
             except json.JSONDecodeError:
                 return text
 
+    async def pipeline_request(
+        self,
+        method: str,
+        path: str,
+        *,
+        authorization: str,
+        body: dict | None = None,
+        params: dict | None = None,
+    ):
+        """Forward monitoring graph operations with current member credentials."""
+        return await self._make_request(
+            method,
+            f"/api/v1/monitors{path}",
+            json_data=body,
+            params=params,
+            headers={"Authorization": authorization},
+        )
+
     async def start_radar_service(self, config: RadarStartConfig) -> dict[str, Any]:
         """Forward the canonical launch configuration to TACTIC."""
         return await self._make_request(

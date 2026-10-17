@@ -475,6 +475,7 @@ class HealthMonitor:
             coverage=coverage,
             recovery=recovery,
             activity=activity,
+            pipeline_state=detector_stats.get("pipeline_state"),
         ).model_dump(mode="json", exclude_none=True)
 
     @staticmethod

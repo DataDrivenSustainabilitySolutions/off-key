@@ -46,6 +46,8 @@ from off_key_tactic_middleware.services.system_collection import SystemCollectio
 from sqlalchemy import delete, text, update
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from tests.support.schema_baselines import remove_pipeline_schema
+
 
 @pytest_asyncio.fixture
 async def lifecycle_database(disposable_database):
@@ -364,11 +366,12 @@ def test_lifecycle_migration_adopts_existing_attached_and_stopped_rows(
             ALTER TABLE services DROP COLUMN collection_fingerprint;
         """)
         )
+        remove_pipeline_schema(connection)
         if ledger:
             connection.execute(
                 text(
                     "DELETE FROM off_key_schema_migrations "
-                    "WHERE version = '009_radar_lifecycle_intent.sql'"
+                    "WHERE version >= '009_radar_lifecycle_intent.sql'"
                 )
             )
         else:

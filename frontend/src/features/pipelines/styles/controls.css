@@ -1,0 +1,174 @@
+.pl-library,
+.pl-editor,
+.pl-run {
+  --pl-surface: hsl(var(--background));
+  --pl-border: hsl(var(--border));
+  color: hsl(var(--foreground));
+  min-width: 0;
+}
+
+.pl-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 20px;
+  margin: 12px 0 18px;
+  flex-wrap: wrap;
+}
+
+.pl-header h2,
+.pl-header h3 {
+  margin: 0 0 6px;
+}
+
+.pl-header h2 {
+  font-size: 22px;
+  letter-spacing: -0.04em;
+}
+
+.pl-header h3 {
+  font-size: 16px;
+}
+
+.pl-help {
+  font-size: 12px;
+  line-height: 1.6;
+  color: hsl(var(--muted-foreground));
+  margin: 6px 0 12px;
+  overflow-wrap: anywhere;
+}
+
+.pl-help svg {
+  display: inline;
+  vertical-align: middle;
+  margin-right: 4px;
+}
+
+.pl-actions,
+.pl-library-tools,
+.pl-canvas-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.pl-actions button,
+.pl-canvas-toolbar button,
+.pl-conflict button,
+.pl-create button,
+.pl-archive button,
+.pl-inspector button,
+.pl-activation button,
+.pl-diagnostics button,
+.pl-run button,
+.pl-design-settings button,
+.pl-library button {
+  font-size: 12px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 7px;
+  padding: 7px 10px;
+  background: hsl(var(--background));
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: inherit;
+}
+
+.pl-actions button.mn-primary,
+.pl-library button.mn-primary {
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+  border-color: hsl(var(--primary));
+}
+
+.pl-library button:disabled,
+.pl-editor button:disabled,
+.pl-run button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.pl-library button:focus-visible,
+.pl-editor button:focus-visible,
+.pl-run button:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 3px;
+}
+
+.pl-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  margin: 10px 0;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.pl-field input:not([type="checkbox"]),
+.pl-field select,
+.pl-field textarea,
+.pl-search input,
+.pl-toolbox > input,
+.pl-number-list input {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid hsl(var(--border));
+  border-radius: 6px;
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  padding: 8px 10px;
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.pl-field textarea {
+  min-height: 70px;
+  resize: vertical;
+}
+
+.pl-field select {
+  max-width: 100%;
+}
+
+.pl-field input:focus,
+.pl-field textarea:focus,
+.pl-field select:focus {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 1px;
+}
+
+.pl-field--check {
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.pl-field legend {
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.pl-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 12px;
+  line-height: 1.6;
+  margin: 8px 0;
+  font-weight: 400;
+  overflow-wrap: anywhere;
+}
+
+.pl-check input {
+  margin-top: 3px;
+  flex: 0 0 auto;
+}
+
+.pl-check > span {
+  min-width: 0;
+}

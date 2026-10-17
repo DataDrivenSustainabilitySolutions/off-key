@@ -4,6 +4,8 @@ from datetime import UTC, datetime
 
 from off_key_core.db.base import get_async_session_local
 from off_key_core.db.models import MonitoringService
+from off_key_core.db.pipeline_claims import monitor_claim_condition
+from off_key_core.db.pipeline_locks import complete_stopped_runs, lock_execution_records
 from sqlalchemy import update
 
 from ..domain import InfrastructureError
@@ -27,7 +29,7 @@ class CollectionMonitorService:
                 update(MonitoringService)
                 .where(
                     MonitoringService.id.in_(ids),
-                    MonitoringService.status.is_(True),
+                    monitor_claim_condition(),
                     MonitoringService.desired_state != "deleted",
                 )
                 .values(
@@ -61,6 +63,7 @@ class CollectionMonitorService:
                 else:
                     await workloads.remove(workload_id)
                 async with sessions.begin() as session:
+                    await lock_execution_records(session, [monitor_id])
                     monitor = await session.get(
                         MonitoringService, monitor_id, with_for_update=True
                     )
@@ -72,6 +75,7 @@ class CollectionMonitorService:
                         and monitor.desired_state == "stopped"
                     ):
                         mark_collection_monitor_stopped(monitor)
+                        await complete_stopped_runs(session, [monitor_id])
             except Exception as exc:
                 raise InfrastructureError(
                     "The catalog was not applied. Monitor stops are saved and will "

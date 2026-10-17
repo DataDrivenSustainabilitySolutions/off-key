@@ -129,7 +129,8 @@ test("mobile drawers leave the header and content geometry intact and restore ke
     await expect(drawer).toHaveCount(0);
     await expect(show).toBeFocused();
     await show.click();
-    await page.mouse.click(width - 4, initialHeader.y + initialHeader.height + 80);
+    await expect(drawer).toBeFocused();
+    await page.locator(".app-catalogue-mobile-overlay").click({ position: { x: width - 4, y: 80 } });
     await expect(drawer).toHaveCount(0);
     await expect(show).toBeFocused();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);

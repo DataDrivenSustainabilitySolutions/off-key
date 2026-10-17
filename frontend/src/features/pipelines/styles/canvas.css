@@ -65,38 +65,6 @@
   color: var(--pl-evidence);
   --pl-data-color: var(--pl-evidence);
 }
-.pl-graph-guide {
-  padding: 10px 12px;
-  background: hsl(var(--background));
-  border-bottom: 1px solid hsl(var(--border));
-  font-size: 10px;
-}
-.pl-graph-direction,
-.pl-graph-guide ul {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px 14px;
-}
-.pl-graph-direction span,
-.pl-graph-guide p {
-  color: hsl(var(--muted-foreground));
-}
-.pl-graph-guide ul {
-  list-style: none;
-  padding: 0;
-  margin: 6px 0;
-}
-.pl-graph-guide li {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-}
-.pl-graph-guide p {
-  margin: 0;
-  line-height: 1.5;
-}
-
 .pl-canvas-wrap .react-flow__controls {
   box-shadow: none;
   border: 1px solid hsl(var(--border));

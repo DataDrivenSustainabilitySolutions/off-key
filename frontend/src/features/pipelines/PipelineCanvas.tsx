@@ -13,7 +13,6 @@ import { connectNodes, connectionIssue, type GraphDocument } from "./model";
 import { edgeId, SNAP_GRID } from "./semantics";
 import { presentGraph } from "./graphPresentation";
 import { PipelineNodeCard, type CanvasNode } from "./PipelineNodeCard";
-import { PipelineLegend } from "./PipelineLegend";
 import { PipelineGrid } from "./PipelineGrid";
 import "@xyflow/react/dist/style.css";
 
@@ -26,7 +25,6 @@ type Props = {
   readOnly?: boolean;
   layoutEditable?: boolean;
   states?: Record<string, string>;
-  mode?: "design" | "run";
   issues?: PipelineValidation["issues"];
   /** Increment after an explicit arrangement; data refreshes preserve the camera. */
   fitRequest?: number;
@@ -43,7 +41,6 @@ export default function PipelineCanvas({
   readOnly,
   layoutEditable,
   states,
-  mode = "design",
   issues,
   fitRequest = 0,
   onSelect,
@@ -99,11 +96,6 @@ export default function PipelineCanvas({
       }}
       onDrop={drop}
     >
-      <PipelineLegend
-        kinds={graph.kinds}
-        running={mode === "run"}
-        hasRuntimeState={!!states}
-      />
       <div className="pl-flow-surface">
         <ReactFlow<CanvasNode>
           nodes={nodes}

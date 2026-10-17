@@ -9,7 +9,6 @@ import {
   inputKind,
   NODE_SIZE,
   outputKind,
-  type DataKind,
 } from "./semantics";
 
 /** Project the canonical definition into the renderer. Never normalize or mutate execution here. */
@@ -79,13 +78,5 @@ export function presentGraph(
       ariaLabel: `${source?.ariaLabel ?? edge.source} to ${target?.ariaLabel ?? edge.target}: ${type}${suffix}`,
     };
   });
-  const active = new Set(
-    nodes.flatMap((node) =>
-      node.data.outputType ? [node.data.outputType] : [],
-    ),
-  );
-  const kinds = (Object.keys(dataKinds) as DataKind[]).filter((kind) =>
-    active.has(kind),
-  );
-  return { nodes, edges, kinds };
+  return { nodes, edges };
 }

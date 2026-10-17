@@ -19,6 +19,7 @@ observation envelopes already have separate owners. Keep those boundaries.
 | Edge identity used array positions. Sparse merge order values produced misleading input numbers. | Renderer identity uses the stable endpoint pair. Displayed input ranks use executable order, independent of storage order. Adding an input preserves relative order and assigns bounded contiguous ordinals. |
 | Role colors, wire meaning and runtime text lacked a shared grammar. | Drafts and runs share one presentation adapter, labeled directional wires, data-type colors and line patterns, and a legend. Sockets are anchored to their labeled port row. Configuration issues and sampled execution state have separate badges. |
 | “Keep raw” implied that a passthrough could recover original readings after a transform. | The operation is named “Pass through.” Raw bypass follows an explicit branch from aligned inputs; passthrough preserves its incoming representation. |
+| The zoom floor prevented a long maximum-sized chain from fitting in the canvas. | “Fit entire graph” supports the bounded V1 graph size, while “Locate selected component” restores a readable detail view. Browser checks verify both after automatic arrangement. |
 
 Unknown component contracts retain their topology for explanation, display
 unavailable data types and prevent new connections. The editor must never invent
@@ -50,8 +51,8 @@ failed execution do not become the same red node. Wires do not animate imaginary
 messages. A sampled badge cannot establish current liveness; snapshot age,
 coverage and persistence freshness remain explicit in the existing diagnostics.
 Component selection and **Locate selected component** provide a readable detail
-view of a larger graph; fit view restores its overview. Keyboard and narrow-screen
-navigation use the same component identities and inspector.
+view of a larger graph; **Fit entire graph** restores its overview. Keyboard and
+narrow-screen navigation use the same component identities and inspector.
 
 ## Boundaries that keep this extensible
 

@@ -9,6 +9,10 @@ import {
 } from "./helpers/collection";
 import { ingressOptions } from "./helpers/mqtt";
 import { loginPipelineWorkspace } from "./helpers/pipelines";
+import {
+  fitPipelineOverview,
+  locatePipelineSelection,
+} from "./helpers/pipelineNavigation";
 import { publishPipelineSamples as publishSamples } from "./helpers/pipelineSamples";
 import type { OperationalStatus } from "../src/types/monitoring";
 import type {
@@ -812,6 +816,28 @@ test.describe("visual pipeline real infrastructure", () => {
       expect(metrics.nodeCount).toBe(64);
       expect(metrics.maximumInteractionMs).toBeLessThan(500);
       expect(metrics.retainedHeapGrowthBytes).toBeLessThan(32 * 1024 * 1024);
+      const graph = page.getByLabel("Pipeline graph", { exact: true });
+      const arrange = page.getByRole("button", {
+        name: "Arrange",
+        exact: true,
+      });
+      await arrange.click();
+      await expect(arrange).toBeEnabled();
+      await expect
+        .poll(() =>
+          graph
+            .locator('.react-flow__node[data-id="output"]')
+            .evaluate(
+              (element) => new DOMMatrix(getComputedStyle(element).transform).e,
+            ),
+        )
+        .toBeGreaterThan(15000);
+      await fitPipelineOverview(page);
+      await page.screenshot({
+        path: testInfo.outputPath("maximum-graph-overview.png"),
+        fullPage: true,
+      });
+      await locatePipelineSelection(page);
       await page
         .getByRole("button", { name: "Application menu", exact: true })
         .click();

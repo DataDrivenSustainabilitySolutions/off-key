@@ -158,6 +158,8 @@ jobs:
             frontend/test-results/**/*-live-pipeline.png
             frontend/test-results/**/maximum-graph-dark.png
             frontend/test-results/**/maximum-graph-mobile.png
+            frontend/test-results/**/maximum-graph-overview.png
+            frontend/test-results/**/maximum-graph-metrics.json
           if-no-files-found: ignore
           retention-days: 14
 

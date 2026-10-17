@@ -6,6 +6,10 @@ import type {
   PipelineView,
 } from "../src/types/pipelines.generated";
 import { loginPipelineWorkspace } from "./helpers/pipelines";
+import {
+  fitPipelineOverview,
+  locatePipelineSelection,
+} from "./helpers/pipelineNavigation";
 
 test.beforeEach(async ({ page }) => loginPipelineWorkspace(page));
 
@@ -143,18 +147,7 @@ for (const strategy of ["static_baseline", "adaptive_stream"] as const) {
         }),
       ).toBeVisible();
       await selector.selectOption("raw");
-      await graph
-        .getByRole("button", { name: "Locate selected component", exact: true })
-        .click();
-      await expect
-        .poll(() =>
-          graph
-            .locator(".react-flow__viewport")
-            .evaluate(
-              (element) => new DOMMatrix(getComputedStyle(element).transform).a,
-            ),
-        )
-        .toBeGreaterThanOrEqual(0.8);
+      await locatePipelineSelection(page);
       const ports = node("raw").locator(".pl-node-ports");
       for (const handle of ["input", "output"]) {
         const socket = node("raw").locator(`[data-handleid="${handle}"]`);
@@ -187,6 +180,7 @@ for (const strategy of ["static_baseline", "adaptive_stream"] as const) {
       await page
         .getByRole("button", { name: "Close settings", exact: true })
         .click();
+      await fitPipelineOverview(page);
       await page.screenshot({
         path: testInfo.outputPath(`visual-language-${strategy}-dark.png`),
         fullPage: true,

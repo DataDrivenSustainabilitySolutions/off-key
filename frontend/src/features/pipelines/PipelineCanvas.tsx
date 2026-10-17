@@ -102,7 +102,7 @@ export default function PipelineCanvas({
           colorMode={resolvedTheme}
           fitView
           fitViewOptions={{ padding: 0.2 }}
-          minZoom={0.2}
+          minZoom={0.01}
           maxZoom={2}
           nodesDraggable={layoutEditable || !readOnly}
           nodesConnectable={!readOnly}
@@ -215,6 +215,7 @@ export default function PipelineCanvas({
           }}
           deleteKeyCode={readOnly ? null : ["Backspace", "Delete"]}
           ariaLabelConfig={{
+            "controls.fitView.ariaLabel": "Fit entire graph",
             "node.a11yDescription.default":
               "Press Enter to select a component. Use the inspector to edit parameters and connections.",
           }}

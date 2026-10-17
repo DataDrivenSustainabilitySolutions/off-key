@@ -50,6 +50,7 @@ test("opens the workbench directly and safely edits copies of published and draf
     expect(savedResponse.ok(), await savedResponse.text()).toBe(true);
     const sourceDraft = await savedResponse.json() as PipelineView;
 
+    await page.setViewportSize({ width: 1600, height: 1100 });
     await page.goto("/");
     await expect(page.getByRole("heading", { name: "Monitoring", exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Pipelines", exact: true })).toHaveCount(0);
@@ -77,7 +78,6 @@ test("opens the workbench directly and safely edits copies of published and draf
     await expect(workbench.getByRole("button", { name: "Choose monitoring inputs", exact: true })).toHaveText("Select an entity");
     const copyName = `Machine health ${unique.slice(0, 8)}`;
     await name.fill(copyName);
-    await page.setViewportSize({ width: 1600, height: 1100 });
     await theme("Light");
     await page.screenshot({ path: testInfo.outputPath("creation-workbench.png") });
     await workbench.getByRole("button", { name: "Templates", exact: true }).click();
@@ -95,9 +95,10 @@ test("opens the workbench directly and safely edits copies of published and draf
       await templates.getByRole("button", { name: `Use ${design.name}`, exact: true }).click();
     };
     await load(unpublished);
-    await expect(workbench.getByText(/Loaded Draft template.*Saved draft · version 1/)).toBeVisible();
+    await expect(page.getByRole("status").filter({ hasText: /Loaded Draft template.*Saved draft · version 1/ })).toBeVisible();
     await load(source);
-    await expect(workbench.getByText(/Loaded Published template.*Revision 1/)).toBeVisible();
+    const loaded = page.getByRole("status").filter({ hasText: /Loaded Published template.*Revision 1/ });
+    await expect(loaded).toBeVisible();
     await expect(name).toHaveValue(copyName);
     await workbench.getByText("Input slots and learning settings", { exact: true }).click();
     await expect(workbench.getByRole("textbox", { name: "Label for voltage", exact: true })).toHaveValue("Voltage");
@@ -106,6 +107,7 @@ test("opens the workbench directly and safely edits copies of published and draf
     const inspector = workbench.getByRole("complementary", { name: "Monitoring inspector", exact: true });
     const widths = await inspector.evaluate((element) => ({ scroll: element.scrollWidth, visible: element.clientWidth }));
     expect(widths.scroll, "Expanded service settings must fit the inspector width").toBeLessThanOrEqual(widths.visible + 1);
+    await expect(loaded).toBeHidden();
     await page.screenshot({ path: testInfo.outputPath("creation-service-settings.png") });
     await workbench.getByText("Input slots and learning settings", { exact: true }).click();
     expect(createRequests).toBe(0);

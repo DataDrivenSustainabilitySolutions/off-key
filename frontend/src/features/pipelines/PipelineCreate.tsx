@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowLeft, Check, LayoutGrid, Redo2, Save, Undo2 } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
+import toast from "react-hot-toast";
 import { useAuth } from "@/auth/AuthContext";
 import { getErrorMessage } from "@/lib/errors";
 import { rememberNavigation, useNavigationDraft } from "@/lib/navigation-draft";
@@ -69,7 +70,6 @@ export function PipelineCreate({
   const [arranging, setArranging] = useState(false);
   const [validating, setValidating] = useState(false);
   const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
   const [selected, setSelected] = useState<string>();
   const [inspectorPanel, setInspectorPanel] = useState<"service" | "component">("service");
   const [fitRequest, setFitRequest] = useState(0);
@@ -97,7 +97,6 @@ export function PipelineCreate({
     setDraft((previous) => ({ ...previous, document,
       startingId: previous.document.definition === document.definition ? previous.startingId : undefined }));
     setValidation(undefined);
-    setNotice("");
   };
   const select = (id: string) => { setSelected(id); setInspectorPanel("component"); setMobilePanel("inspector"); };
   const add = (id: string, position?: { x: number; y: number }) => {
@@ -115,7 +114,7 @@ export function PipelineCreate({
     setDraft((previous) => ({ ...previous, name: previous.name || `${name.slice(0, 113)} (copy)`, description }));
     setSelected(undefined);
     setFitRequest((value) => value + 1);
-    setNotice(`Loaded ${name} · ${version}. You are editing a separate design.`);
+    toast.success(`Loaded ${name} · ${version}. You are editing a separate design.`, { id: "pipeline-create-feedback" });
   };
   const save = async () => {
     if (!canAuthor || pending.current) return;
@@ -155,7 +154,7 @@ export function PipelineCreate({
     try {
       const submitted = draft.document;
       const layout = await arrangeGraph(submitted.definition, submitted.layout);
-      if (current.current.document !== submitted) { setNotice("The graph changed while arranging. Arrange again to use the latest edits."); return; }
+      if (current.current.document !== submitted) { toast("The graph changed while arranging. Arrange again to use the latest edits.", { id: "pipeline-create-feedback" }); return; }
       commit({ ...submitted, layout });
       setFitRequest((value) => value + 1);
     } catch (reason) { setError(getErrorMessage(reason)); }
@@ -174,7 +173,7 @@ export function PipelineCreate({
             commit(startingDocument(catalog, id, target, initialReading));
             setDraft((previous) => ({ ...previous, startingId: id }));
             setSelected(undefined); setFitRequest((value) => value + 1);
-            setNotice(`Loaded ${template.name}. Undo restores your previous flow.`);
+            toast.success(`Loaded ${template.name}.`, { id: "pipeline-create-feedback" });
           }} />
         <button type="button" disabled={busy || validating} onClick={() => void validate()}><Check size={15} />Validate</button>
         <button type="button" className="mn-primary" disabled={busy || validating} onClick={() => void save()}><Save size={15} />Save draft</button>
@@ -183,18 +182,17 @@ export function PipelineCreate({
     {!canAuthor ? <p className="pl-warning" role="status">{canEdit ? "Design authoring is disabled for this deployment."
       : "An administrator can create monitoring services."}</p> : <>
       {error && <p className="pl-error" role="alert">{error}</p>}
-      {notice && <p className="pl-notice" role="status">{notice}</p>}
       <div className="pl-canvas-toolbar">
         <div className="pl-mobile-switch" aria-label="Workbench panel">{(["graph", "components", "inspector"] as const).map((panel) =>
           <button type="button" key={panel} aria-pressed={mobilePanel === panel} onClick={() => setMobilePanel(panel)}>{panel}</button>)}</div>
         <div className="pl-actions">
           <button type="button" disabled={!undo.length} aria-label="Undo graph change" onClick={() => {
             const next = undo[undo.length - 1]!; setRedo((previous) => [...previous, draft.document]);
-            setUndo((previous) => previous.slice(0, -1)); setDraft((previous) => ({ ...previous, document: next, startingId: undefined })); setValidation(undefined); setNotice("");
+            setUndo((previous) => previous.slice(0, -1)); setDraft((previous) => ({ ...previous, document: next, startingId: undefined })); setValidation(undefined);
           }}><Undo2 size={15} />Undo</button>
           <button type="button" disabled={!redo.length} aria-label="Redo graph change" onClick={() => {
             const next = redo[redo.length - 1]!; setUndo((previous) => [...previous, draft.document]);
-            setRedo((previous) => previous.slice(0, -1)); setDraft((previous) => ({ ...previous, document: next, startingId: undefined })); setValidation(undefined); setNotice("");
+            setRedo((previous) => previous.slice(0, -1)); setDraft((previous) => ({ ...previous, document: next, startingId: undefined })); setValidation(undefined);
           }}><Redo2 size={15} />Redo</button>
           <button type="button" disabled={arranging} onClick={() => void arrange()}><LayoutGrid size={15} />Arrange</button>
         </div>

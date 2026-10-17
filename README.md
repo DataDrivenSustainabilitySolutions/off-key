@@ -153,6 +153,12 @@ docker compose --profile mqtt-sim up -d --build
 
 ### Catalogue and collection
 
+The catalogue opens and closes from the small handle on its upper edge. Desktop
+collapse restores the full content width while preserving search, navigation and
+the saved panel width. On mobile the catalogue overlays the page below the header;
+its edge handle, Escape or the backdrop closes it and restores focus. Ctrl/Cmd+K
+opens the catalogue and focuses search in either layout.
+
 Open **Sources** as a verified administrator to edit or import the generic
 `aberration-system` catalogue: MQTT brokers, entities, topics, payload fields and
 catalogue groups. Collection is explicitly opt-in; new readings start Off.

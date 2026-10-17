@@ -372,7 +372,7 @@ describe("explorer sidebar and catalogue list", () => {
     expect(options.onCatalogue).toHaveBeenCalledOnce();
     fireEvent.click(screen.getByRole("button", { name: "Catalogue settings" }));
     expect(options.onSettings).toHaveBeenCalledOnce();
-    fireEvent.click(screen.getByRole("button", { name: "Close explorer" }));
+    fireEvent.click(screen.getByRole("button", { name: "Hide catalogue" }));
     expect(options.onDismiss).toHaveBeenCalledOnce();
   });
 

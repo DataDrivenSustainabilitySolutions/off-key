@@ -369,9 +369,9 @@ describe("hierarchical explorer workspace", () => {
     await screen.findByRole("button", { name: "temperature, preview" });
     const edge = screen.getByRole("separator", { name: "Resize explorer sidebar" });
     expect(edge.getAttribute("aria-valuenow")).toBe("352");
-    fireEvent.click(screen.getByRole("button", { name: "Toggle catalogue" }));
+    fireEvent.click(screen.getByRole("button", { name: "Hide catalogue" }));
     expect(screen.queryByRole("separator")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Toggle catalogue" }));
+    fireEvent.click(screen.getByRole("button", { name: "Show catalogue" }));
     fireEvent.doubleClick(screen.getByRole("separator", { name: "Resize explorer sidebar" }));
     await waitFor(() => expect(loadExplorerPreferences(1).sidebarWidth).toBe(288));
   });
@@ -544,7 +544,7 @@ describe("hierarchical explorer workspace", () => {
     mount();
     expect(screen.queryByRole("separator")).toBeNull();
     expect(screen.queryByRole("navigation", { name: "System explorer" })).toBeNull();
-    const trigger = screen.getByRole("button", { name: "Open catalogue" });
+    const trigger = screen.getByRole("button", { name: "Show catalogue" });
     fireEvent.click(trigger);
     await enterReadings();
     expect(screen.getByRole("dialog", { name: "MQTT catalogue" })).toBeTruthy();
@@ -555,7 +555,7 @@ describe("hierarchical explorer workspace", () => {
     fireEvent.click(trigger);
     expect(await screen.findByRole("button", { name: "humidity, preview" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "temperature, preview" }).getAttribute("aria-current")).toBe("true");
-    fireEvent.click(screen.getByRole("button", { name: "Close explorer" }));
+    fireEvent.click(screen.getByRole("button", { name: "Hide catalogue" }));
     await waitFor(() => expect(document.activeElement).toBe(trigger));
   });
 
@@ -583,7 +583,7 @@ describe("hierarchical explorer workspace", () => {
 
   it("opens and focuses global search when the desktop explorer is hidden", async () => {
     mount(); await loaded();
-    fireEvent.click(screen.getByRole("button", { name: "Toggle catalogue" }));
+    fireEvent.click(screen.getByRole("button", { name: "Hide catalogue" }));
     expect(screen.queryByRole("navigation", { name: "System explorer" })).toBeNull();
     fireEvent.keyDown(window, { key: "k", ctrlKey: true });
     const search = await screen.findByRole("searchbox", { name: "Search catalogue" });

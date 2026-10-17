@@ -99,7 +99,7 @@ export function PipelineCreate({
     setValidation(undefined);
     setNotice("");
   };
-  const select = (id: string) => { setSelected(id); setMobilePanel("inspector"); };
+  const select = (id: string) => { setSelected(id); setInspectorPanel("component"); setMobilePanel("inspector"); };
   const add = (id: string, position?: { x: number; y: number }) => {
     const component = catalog.components.find((item) => item.id === id);
     if (!component) return;

@@ -51,6 +51,7 @@ test("opens the workbench directly and safely edits copies of published and draf
     const sourceDraft = await savedResponse.json() as PipelineView;
 
     await page.goto("/");
+    await expect(page.getByRole("heading", { name: "Monitoring", exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Pipelines", exact: true })).toHaveCount(0);
     let createRequests = 0;
     page.on("request", (request) => {

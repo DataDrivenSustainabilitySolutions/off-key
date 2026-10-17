@@ -119,10 +119,27 @@ parameter values are rejected.
 
 ## Visual pipeline designs
 
-When pipeline authoring is enabled, open **Pipelines** in the shared catalogue
-workspace. Start from the static or adaptive template, add components from the
-searchable toolbox, and connect their typed ports. **Arrange** lays out the graph
-explicitly; manual arrangement is preserved. The node list and connection menus
+When visual authoring is enabled, **Create** opens the monitoring workbench
+directly. Drag components from the left toolbox onto the canvas and connect their
+typed ports. The right inspector switches between **Service settings** (name,
+entity, input slots and learning settings) and **Component settings**. On narrow
+screens, the panel buttons expose the same tools.
+Types and direction appear on component ports and connections; the canvas has
+no separate legend.
+
+The optional **Templates** menu loads a static or adaptive starting flow, or a
+saved design. A published design loads its latest immutable revision; an
+unpublished design loads its saved draft. Changes apply to your own copy, and
+**Undo** restores the previous flow. **Manage saved designs** in that menu opens
+the shared library; returning preserves your workbench. Opening Create and loading
+templates save nothing until **Save draft**. If the operator has disabled visual
+authoring, Create continues to use the form-based setup.
+
+The canvas has a subtle blueprint grid. Dropped and moved components snap to it
+by default. Use the magnet button (**Snap to grid**) for free placement; the grid
+texture stays visible. Changing this setting preserves existing arrangements.
+**Arrange** lays out the graph explicitly; manual arrangement is preserved.
+The node list and connection menus
 provide the same editing operations on a keyboard or narrow screen.
 
 Select input slots by stable identity. Bind every slot to a distinct enabled

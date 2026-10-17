@@ -25,6 +25,8 @@ export const nodeKinds: Record<PipelineNode["kind"], string> = {
 };
 
 export const NODE_SIZE = { width: 224, height: 144 };
+export const GRID_STEP = 16;
+export const SNAP_GRID: [number, number] = [GRID_STEP, GRID_STEP];
 
 /** V1 permits one connection per node pair; array position is never identity. */
 export const edgeId = (edge: Pick<PipelineEdge, "source" | "target">) =>

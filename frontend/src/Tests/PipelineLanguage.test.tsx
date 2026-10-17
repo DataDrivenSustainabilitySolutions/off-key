@@ -120,7 +120,6 @@ describe("monitoring graph visual language", () => {
       targetHandle: "input",
       markerEnd: expect.any(Object),
     });
-    expect(graph.kinds).toEqual(["features", "scores", "decisions"]);
     expect(
       graph.nodes.find((node) => node.id === "output")?.data,
     ).toMatchObject({ inputType: "decisions", outputPort: false });
@@ -255,6 +254,5 @@ describe("monitoring graph visual language", () => {
     expect(graph.edges.find((edge) => edge.source === "model")?.label).toBe(
       "P-values",
     );
-    expect(graph.kinds).toEqual(["features", "p_values", "decisions"]);
   });
 });

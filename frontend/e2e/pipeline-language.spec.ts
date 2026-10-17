@@ -89,18 +89,15 @@ for (const strategy of ["static_baseline", "adaptive_stream"] as const) {
         graph.locator(`.react-flow__node[data-id="${id}"]`);
       await expect(
         graph.getByLabel("Graph language", { exact: true }),
-      ).toBeVisible();
+      ).toHaveCount(0);
       await expect(node("raw")).toContainText("Raw reference");
       await expect(node("raw")).toContainText("Pass through");
-      const types = graph.getByRole("list", {
-        name: "Connection data types",
-        exact: true,
-      });
-      await expect(types).toContainText(
-        strategy === "static_baseline" ? "P-values" : "Scores",
+      await expect(node("raw").locator(".pl-node-ports")).toContainText("In · Features");
+      await expect(node("raw").locator(".pl-node-ports")).toContainText("Out · Features");
+      await expect(node("detector").locator(".pl-node-ports")).toContainText(
+        strategy === "static_baseline" ? "Out · P-values" : "Out · Scores",
       );
-      await expect(types).toContainText("Features");
-      await expect(types).toContainText("Decisions");
+      await expect(node("policy").locator(".pl-node-ports")).toContainText("Out · Decisions");
       await expect(
         graph.getByTestId(`rf__edge-${JSON.stringify(["renamed", "merge"])}`),
       ).toHaveCount(1);

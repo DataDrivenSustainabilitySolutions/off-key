@@ -272,7 +272,6 @@ export default function PipelineRunView({
                 layout: layout ?? view.layout,
               }}
               components={catalog.components}
-              mode="run"
               fitRequest={fitRequest}
               issues={(metadata.validation ?? view.validation)?.issues}
               selected={selected}

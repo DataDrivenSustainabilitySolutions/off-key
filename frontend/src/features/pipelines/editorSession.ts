@@ -1,13 +1,14 @@
 import type { PipelineView } from "./contracts";
 import type { GraphDocument } from "./model";
 
-export type EditorSession = {
-  base: PipelineView;
+export type EditorDraft = {
   document: GraphDocument;
   name: string;
   description: string;
   activationRevisionId?: string;
 };
+
+export type EditorSession = EditorDraft & { base: PipelineView };
 
 export function openSession(base: PipelineView): EditorSession {
   return {
@@ -20,8 +21,8 @@ export function openSession(base: PipelineView): EditorSession {
 
 /** A response acknowledges its submitted snapshot, never subsequent edits. */
 export function acknowledgeSave(
-  current: EditorSession,
-  submitted: EditorSession,
+  current: EditorDraft,
+  submitted: EditorDraft,
   saved: PipelineView,
 ): EditorSession {
   return {

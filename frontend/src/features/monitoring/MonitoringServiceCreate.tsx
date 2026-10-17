@@ -58,7 +58,8 @@ export function MonitoringServiceCreate({ targets, services, initialTarget, init
   return <section className="mn-create" aria-label="Create monitoring service">
     <button className="mn-back" onClick={onBack}><ArrowLeft size={14} />Monitoring</button>
     <div className="mn-detail-header"><div><h2>Create service</h2></div></div>
-    <div className="mn-create-fields"><label className="mn-field">Name<input aria-label="Service name" maxLength={120} placeholder={displayName} value={name} onChange={event => setName(event.target.value)} /></label>
+    <p className="ex-muted">Visual flow editing is disabled for this deployment.</p>
+    <div className="mn-create-fields"><label className="mn-field">Name<input aria-label="Service name" maxLength={120} placeholder="e.g. Machine health" value={name} onChange={event => setName(event.target.value)} /></label>
       <div className="mn-field"><span>Inputs</span><MonitoringTargetPicker targets={targets} value={targetId} onChange={id => { setTargetId(id); }} /></div></div>
     {!targets.length && <p className="ex-muted">Add numeric readings to the catalogue to configure monitoring.</p>}
     {target && <>

@@ -45,7 +45,7 @@ export default defineConfig({
     },
     {
       name: "chromium",
-      testIgnore: [/.*\.setup\.ts/, /system-workspace\.spec\.ts/, /pipeline-(workspace|remediation|language)\.spec\.ts/],
+      testIgnore: [/.*\.setup\.ts/, /system-workspace\.spec\.ts/, /pipeline-(workspace|remediation|language|creation)\.spec\.ts/],
       use: {
         ...chromiumUse,
         storageState: authStateFile,
@@ -54,7 +54,7 @@ export default defineConfig({
     },
     {
       name: "pipeline-workspace",
-      testMatch: /pipeline-(workspace|remediation|language)\.spec\.ts/,
+      testMatch: /pipeline-(workspace|remediation|language|creation)\.spec\.ts/,
       // Every journey signs in afresh; a previous invocation's output is disposable.
       use: {
         ...chromiumUse,

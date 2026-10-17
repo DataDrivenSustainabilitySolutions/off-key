@@ -103,6 +103,12 @@ async def create_pipeline(request: Request, change: PipelineCreate):
     return await forward(request, "POST", "/pipelines", change)
 
 
+@router.post("/pipelines/validate", response_model=PipelineValidationReport)
+@compile_limit
+async def validate_unsaved_design(request: Request, change: PipelineValidateRequest):
+    return await forward(request, "POST", "/pipelines/validate", change)
+
+
 @router.get("/pipelines/{pipeline_id}", response_model=PipelineView)
 @read_limit
 async def get_pipeline(request: Request, pipeline_id: str):

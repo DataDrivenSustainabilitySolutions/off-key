@@ -8,6 +8,21 @@
   display: none;
 }
 
+.pl-inspector-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 14px;
+}
+.pl-inspector .pl-inspector-tabs button {
+  flex: 1;
+  font-size: 11px;
+  padding: 8px 6px;
+}
+.pl-inspector-tabs button[aria-pressed="true"] {
+  border-color: hsl(var(--primary));
+  background: hsl(var(--muted));
+}
+
 .pl-design-settings,
 .pl-metadata,
 .pl-archive,
@@ -51,6 +66,14 @@
 .pl-slot .pl-field {
   margin: 0;
 }
+
+.pl-inspector .pl-slot {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 6px;
+}
+
+.pl-inspector .pl-slot > button { justify-self: start; }
+.pl-inspector .pl-settings-grid { grid-template-columns: minmax(0, 1fr); gap: 0; }
 
 .pl-slots {
   margin: 15px 0;

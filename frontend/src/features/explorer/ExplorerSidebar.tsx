@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import * as Popover from "@radix-ui/react-popover";
-import { ArrowLeft, ChevronDown, Folder, FolderRoot, Info, ListFilter, Search, Settings2, Star, X } from "lucide-react";
+import { ArrowLeft, ChevronDown, Folder, FolderRoot, Info, ListFilter, Search, Settings2, Star } from "lucide-react";
+import { CatalogueToggle } from "@/components/CatalogueToggle";
 import { ExplorerList, type ExplorerRow, type ListPosition } from "./ExplorerList";
 import { navigationTrail, type ExplorerNode, type NavigationIndex } from "./navigationIndex";
 import type { SystemGroup } from "../catalogue/systemTypes";
@@ -55,7 +56,7 @@ export function ExplorerSidebar(props: Props) {
   return <nav id="system-explorer" className="ex-sidebar" aria-label="System explorer">
     <div className="ex-sidebar-top">
       <span className="workspace-catalogue-label">MQTT catalogue</span>
-      {props.onDismiss && <button className="ex-icon-button" aria-label="Close explorer" onClick={props.onDismiss}><X size={18} /></button>}
+      {props.onDismiss && <CatalogueToggle open className="catalogue-drawer-toggle" onClick={props.onDismiss} />}
     </div>
     <div className="ex-search"><Search size={15} aria-hidden="true" />
       <input ref={search} type="search" aria-label="Search catalogue" placeholder="Search catalogue" value={query}

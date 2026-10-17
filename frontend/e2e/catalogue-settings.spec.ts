@@ -106,7 +106,7 @@ test("saves a source from settings and supports both themes and mobile entry poi
     for (const path of ["/sources", "/"]) {
       await page.setViewportSize({ width: 320, height: 844 });
       await page.goto(path);
-      await page.getByRole("button", { name: "Open catalogue", exact: true }).click();
+      await page.getByRole("button", { name: "Show catalogue", exact: true }).click();
       await page.getByRole("button", { name: "Catalogue settings", exact: true }).click();
       const dialog = page.getByRole("dialog", { name: "Catalogue settings", exact: true });
       await expect(dialog.getByRole("heading", { name: "Manage sources", exact: true })).toBeVisible();

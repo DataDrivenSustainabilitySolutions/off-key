@@ -51,12 +51,12 @@ test("records only an opted-in reading and restores its history in the mobile wo
     await workspaces.getByRole("link", { name: "Sources", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Sources", exact: true })).toBeVisible();
     await expect(page.getByRole("dialog")).toHaveCount(0);
-    await page.getByRole("button", { name: "Open catalogue", exact: true }).click();
+    await page.getByRole("button", { name: "Show catalogue", exact: true }).click();
     await page.getByRole("button", { name: "Catalogue settings", exact: true }).click();
     await expect(page.getByRole("button", { name: "Import file", exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Export catalogue", exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Close settings", exact: true }).click();
-    await page.getByRole("button", { name: "Open catalogue", exact: true }).click();
+    await page.getByRole("button", { name: "Show catalogue", exact: true }).click();
     await page.getByRole("searchbox", { name: "Search catalogue", exact: true }).fill(`${entityId} temperature`);
     await page.getByRole("button", { name: "temperature, preview", exact: true }).click();
     const preview = page.getByRole("region", { name: "Reading preview", exact: true });
@@ -97,11 +97,11 @@ test("records only an opted-in reading and restores its history in the mobile wo
       const status = await response.json();
       return status.runtime.latest_readings[stream.id]?.value;
     }).toEqual(26);
-    await page.getByRole("button", { name: "Open catalogue", exact: true }).click();
+    await page.getByRole("button", { name: "Show catalogue", exact: true }).click();
     const receivingReading = page.getByRole("button", { name: "temperature, preview", exact: true });
     await expect(receivingReading.locator(".ex-reading-activity svg")).toHaveAttribute("fill", "currentColor", { timeout: 15_000 });
     await expect(receivingReading).toHaveAccessibleDescription("Receiving data (last 30 seconds)");
-    await page.getByRole("button", { name: "Close explorer", exact: true }).click();
+    await page.getByRole("button", { name: "Hide catalogue", exact: true }).click();
 
     // Background collection continues after the page has been left.
     await page.goto("/account");

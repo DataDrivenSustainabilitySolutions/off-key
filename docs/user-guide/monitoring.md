@@ -133,8 +133,11 @@ the shared library; returning preserves your workbench. Opening Create and loadi
 templates save nothing until **Save draft**. If the operator has disabled visual
 authoring, Create continues to use the form-based setup.
 
-**Arrange** lays out the graph
-explicitly; manual arrangement is preserved. The node list and connection menus
+The canvas has a subtle blueprint grid. Dropped and moved components snap to it
+by default. Use the magnet button (**Snap to grid**) for free placement; the grid
+texture stays visible. Changing this setting preserves existing arrangements.
+**Arrange** lays out the graph explicitly; manual arrangement is preserved.
+The node list and connection menus
 provide the same editing operations on a keyboard or narrow screen.
 
 Select input slots by stable identity. Bind every slot to a distinct enabled

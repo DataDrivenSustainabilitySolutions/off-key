@@ -50,6 +50,13 @@ The first save carries edits made during a pending response into the persisted
 editor session, just as later saves do. Template management is reached from the
 Templates menu; existing library and revision deep links remain supported.
 
+The shared canvas uses a 16-unit snapping grid, fine blueprint lines and stronger
+cross markers in both themes. Visible lines become coarser at distant zoom levels
+while remaining aligned with the underlying snap positions. The magnet control
+switches drop, drag and keyboard positioning between snapping and free movement.
+This is a presentation preference: toggling it never rewrites saved positions or
+execution semantics. Existing layouts move only through explicit user actions.
+
 ## Numerical ownership
 
 Aberrant 1.3 supplies the standalone `aberrant.compose.GraphPipeline` numerical

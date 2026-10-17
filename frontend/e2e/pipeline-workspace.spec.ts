@@ -14,6 +14,7 @@ import {
   locatePipelineSelection,
 } from "./helpers/pipelineNavigation";
 import { publishPipelineSamples as publishSamples } from "./helpers/pipelineSamples";
+import { dropPipelineComponent } from "./helpers/pipelineGrid";
 import type { OperationalStatus } from "../src/types/monitoring";
 import type {
   PipelineActivationView,
@@ -41,18 +42,7 @@ async function buildBranchedGraph(
   adaptive: boolean,
   slots: Record<string, string>,
 ) {
-  const canvas = page.getByLabel("Pipeline graph", { exact: true });
-  const bounds = (await canvas.boundingBox())!;
-  await page
-    .getByRole("button", { name: "Add Select features", exact: true })
-    .dragTo(canvas, { targetPosition: { x: 160, y: 120 } });
-  const dropped = page.locator(
-    '.react-flow__node[data-id="features_select_1"]',
-  );
-  await expect(dropped).toBeVisible();
-  const position = (await dropped.boundingBox())!;
-  expect(Math.abs(position.x - bounds.x - 160)).toBeLessThan(3);
-  expect(Math.abs(position.y - bounds.y - 120)).toBeLessThan(3);
+  await dropPipelineComponent(page, "Select features", "features_select_1");
   await connect(page, "input");
   await page
     .getByRole("checkbox", { name: `voltage · ${slots.voltage!}`, exact: true })

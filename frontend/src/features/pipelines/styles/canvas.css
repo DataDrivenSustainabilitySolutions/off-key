@@ -98,15 +98,6 @@
   color: inherit;
 }
 
-.pl-canvas-wrap .react-flow__edge-textbg {
-  fill: hsl(var(--background));
-}
-
-.pl-canvas-wrap .react-flow__edge-text {
-  fill: hsl(var(--muted-foreground));
-  font-size: 10px;
-}
-
 .pl-node {
   --pl-node-padding-x: 12px;
   display: grid;

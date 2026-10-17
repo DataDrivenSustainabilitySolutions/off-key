@@ -67,7 +67,6 @@ export function presentGraph(
       target: edge.target,
       sourceHandle: "output",
       targetHandle: "input",
-      label: type + suffix,
       className: `pl-data--${kind ?? "unknown"}`,
       style: {
         strokeWidth: 2,

@@ -98,12 +98,13 @@ for (const strategy of ["static_baseline", "adaptive_stream"] as const) {
         strategy === "static_baseline" ? "Out · P-values" : "Out · Scores",
       );
       await expect(node("policy").locator(".pl-node-ports")).toContainText("Out · Decisions");
-      await expect(
-        graph.getByTestId(`rf__edge-${JSON.stringify(["renamed", "merge"])}`),
-      ).toHaveCount(1);
-      await expect(
-        graph.getByText("Features · input 2", { exact: true }),
-      ).toBeVisible();
+      const mergeLink = graph.getByTestId(
+        `rf__edge-${JSON.stringify(["renamed", "merge"])}`,
+      );
+      await expect(mergeLink).toHaveCount(1);
+      await expect(mergeLink).toHaveAttribute("aria-label", /: Features · input 2$/);
+      await expect(graph.locator(".react-flow__edge-text")).toHaveCount(0);
+      await expect(graph.locator(".react-flow__edge path.react-flow__edge-path")).toHaveCount(definition.edges.length);
       await selector.selectOption("merge");
       await expect(
         editor.getByText(
@@ -111,16 +112,11 @@ for (const strategy of ["static_baseline", "adaptive_stream"] as const) {
           { exact: true },
         ),
       ).toBeVisible();
-      // Remove the first branch: stored order127 becomes visible input1, not input128.
+      // Removing the first branch updates its accessible rank, regardless of storage order.
       await editor
         .getByRole("button", { name: "Disconnect raw from merge", exact: true })
         .click();
-      await expect(
-        graph.getByText("Features · input 1", { exact: true }),
-      ).toBeVisible();
-      await expect(
-        graph.getByText("Features · input 128", { exact: true }),
-      ).toHaveCount(0);
+      await expect(mergeLink).toHaveAttribute("aria-label", /: Features · input 1$/);
       const upstream = editor.getByRole("combobox", {
         name: "Connect input from",
         exact: true,

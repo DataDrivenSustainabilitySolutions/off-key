@@ -20,10 +20,8 @@ import type {
   PipelineValidation,
   PipelineView,
 } from "./contracts";
-import PipelineCanvas from "./PipelineCanvas";
 import { arrangeGraph } from "./layout";
-import { PipelineInspector } from "./PipelineInspector";
-import { PipelineToolbox } from "./PipelineToolbox";
+import { PipelineWorkbench } from "./PipelineWorkbench";
 import { PipelineDesignSettings } from "./PipelineDesignSettings";
 import { PipelineActivation } from "./PipelineActivation";
 import { addComponent, executableChanges, type GraphDocument } from "./model";
@@ -53,6 +51,7 @@ type Props = {
   predecessor?: PipelineServiceView;
   activationBlocked?: string;
   onBack: () => void;
+  backLabel?: string;
   onOpen: (id: string) => void;
   onRevision: (id?: string) => void;
   onOperation: (id: string) => void;
@@ -76,7 +75,7 @@ export default function PipelineEditor(props: Props) {
     return (
       <section aria-label="Pipeline editor">
         <button className="mn-back" onClick={props.onBack}>
-          Pipeline library
+          {props.backLabel ?? "Saved designs"}
         </button>
         {error ? (
           <p className="pl-error" role="alert">
@@ -271,7 +270,7 @@ function EditorSession({
     >
       <button type="button" className="mn-back" onClick={props.onBack}>
         <ArrowLeft size={14} />
-        Pipeline library
+        {props.backLabel ?? "Saved designs"}
       </button>
       <div className="pl-header">
         <div>
@@ -561,41 +560,21 @@ function EditorSession({
           </div>
         )}
       </div>
-      <div
-        className={`pl-editor-grid${readOnly ? " pl-editor-grid--readonly" : ""}`}
-      >
-        {!readOnly && (
-          <PipelineToolbox
-            catalog={props.catalog}
-            definition={document.definition}
-            onAdd={add}
-          />
-        )}
-        <PipelineCanvas
-          document={document}
-          components={props.catalog.components}
-          issues={(metadata ?? validation)?.issues}
-          fitRequest={fitRequest}
-          selected={selected}
-          readOnly={readOnly}
-          onSelect={select}
-          onChange={commit}
-          onAdd={add}
-          onBeginMove={() => {
-            setUndo((previous) => [...previous.slice(-39), document]);
-            setRedo([]);
-          }}
-        />
-        <PipelineInspector
-          document={document}
-          catalog={props.catalog}
-          selected={selected}
-          validation={metadata ?? validation}
-          readOnly={readOnly}
-          onSelect={select}
-          onChange={commit}
-        />
-      </div>
+      <PipelineWorkbench
+        catalog={props.catalog}
+        document={document}
+        validation={metadata ?? validation}
+        fitRequest={fitRequest}
+        selected={selected}
+        readOnly={readOnly}
+        onSelect={select}
+        onChange={commit}
+        onAdd={add}
+        onBeginMove={() => {
+          setUndo((previous) => [...previous.slice(-39), document]);
+          setRedo([]);
+        }}
+      />
       {validation && (
         <section className="pl-validation" aria-label="Graph validation">
           <h3>

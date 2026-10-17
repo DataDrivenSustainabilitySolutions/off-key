@@ -7,6 +7,7 @@ import { useCatalogue } from "../workspace/catalogue-context";
 import { pipelinesApi } from "./api";
 import type { PipelineCatalog, PipelineServiceView } from "./contracts";
 import { PipelineLibrary } from "./PipelineLibrary";
+import { PipelineCreate } from "./PipelineCreate";
 import PipelineEditor from "./PipelineEditor";
 import "./pipelines.css";
 
@@ -36,6 +37,9 @@ export default function PipelineWorkspace({
   const [error, setError] = useState("");
   const [retry, setRetry] = useState(0);
   const id = params.get("pipeline");
+  const creating = params.get("create") === "monitoring";
+  const contextReading = !initialTarget || index.targets.find((target) => target.id === initialTarget)
+    ?.inputs.some((input) => input.stream.id === initialReading) ? initialReading : undefined;
   const replacementId = params.get("replace");
   const replacement = services.find((service) => service.id === replacementId);
   useEffect(() => {
@@ -61,18 +65,25 @@ export default function PipelineWorkspace({
       });
     return () => controller.abort();
   }, [replacementId]);
-  const open = (pipelineId: string) => {
+  const open = (pipelineId: string, targetId?: string) => {
     const next = new URLSearchParams(params);
     next.set("pipeline", pipelineId);
-    next.delete("create");
+    if (params.get("view") === "pipelines") next.delete("create");
+    if (targetId) next.set("target", targetId);
     next.delete("revision");
     next.delete("activation");
     next.delete("view");
     setParams(next);
   };
+  const create = () => {
+    const next = new URLSearchParams(params);
+    ["pipeline", "revision", "activation", "view", "replace"].forEach((key) => next.delete(key));
+    next.set("create", "monitoring");
+    setParams(next);
+  };
   const library = () => {
     const next = new URLSearchParams(params);
-    ["pipeline", "revision", "activation", "create", "replace"].forEach((key) =>
+    ["pipeline", "revision", "activation", "replace"].forEach((key) =>
       next.delete(key),
     );
     next.set("view", "pipelines");
@@ -96,24 +107,21 @@ export default function PipelineWorkspace({
         )}
       </section>
     );
-  if (!id)
+  if (!id && params.get("view") === "pipelines")
     return (
       <PipelineLibrary
         catalog={catalog}
         canEdit={canEdit}
-        creating={params.get("create") === "monitoring"}
-        targets={index.targets}
-        initialTarget={initialTarget}
-        initialReading={initialReading}
+        onCreate={create}
         onOpen={open}
-        onBack={onBack}
+        onBack={creating ? create : onBack}
       />
     );
+  if (!id) return <PipelineCreate catalog={catalog} canEdit={canEdit} targets={index.targets}
+    initialTarget={initialTarget} initialReading={contextReading} onCreated={open}
+    onManage={library} onBack={onBack} />;
   return (
     <>
-      <p className="pl-help">
-        Shared pipeline library · designs are reusable across sources.
-      </p>
       {error && (
         <p role="alert" className="pl-error">
           {error}
@@ -148,7 +156,7 @@ export default function PipelineWorkspace({
             ? predecessor?.run?.execution?.bindings[0]?.entity_id
             : undefined)
         }
-        initialReading={initialReading}
+        initialReading={contextReading}
         collectionReady={
           system.snapshot?.runtime.collection?.status === "applied"
         }
@@ -161,7 +169,8 @@ export default function PipelineWorkspace({
             ? "Select an available predecessor or explicitly choose a new service before activation."
             : undefined
         }
-        onBack={library}
+        onBack={creating ? onBack : library}
+        backLabel={creating ? "Monitoring" : "Saved designs"}
         onOpen={open}
         onRevision={(revision) => {
           const next = new URLSearchParams(params);

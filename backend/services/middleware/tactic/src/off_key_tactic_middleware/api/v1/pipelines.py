@@ -5,7 +5,8 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query
 from off_key_core.db.base import get_db_async
 from off_key_core.db.models import MonitoringService
-from off_key_core.models.pipelines import pipeline_catalog
+from off_key_core.models.pipeline_reports import bounded_validation_report
+from off_key_core.models.pipelines import pipeline_catalog, validate_pipeline
 from off_key_core.schemas.pipelines import (
     PipelineActivationRequest,
     PipelineActivationView,
@@ -73,6 +74,18 @@ async def create_pipeline(
     change: PipelineCreate, session: AsyncSession = Depends(get_db_async)
 ):
     return await invoke(PipelineLibrary(session).create(change))
+
+
+@router.post(
+    "/pipelines/validate",
+    response_model=PipelineValidationReport,
+    dependencies=[Depends(require_admin)],
+)
+async def validate_unsaved_design(change: PipelineValidateRequest):
+    """Infer an unsaved workbench's features without creating a library record."""
+    return bounded_validation_report(
+        validate_pipeline(change.definition), change.selected_node_id
+    )
 
 
 @router.get("/pipelines/{pipeline_id}", response_model=PipelineView)

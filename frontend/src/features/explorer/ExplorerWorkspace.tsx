@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo } from "react";
-import { GitBranch, Info, Plus } from "lucide-react";
+import { Info, Plus } from "lucide-react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/auth/AuthContext";
 import { rememberNavigation } from "@/lib/navigation-draft";
@@ -63,7 +63,6 @@ export function ExplorerWorkspace() {
   return <main className="ex-main-content" aria-label="Monitoring workspace">
     <div className="ex-workspace-heading"><h1>Monitoring</h1>
       <div className="ex-workspace-actions">
-        {!pipelineView && <button onClick={() => changeView({ view: "pipelines" })}><GitBranch size={15} />Pipelines</button>}
         {selected && !creating && !requestedService && <><Link className="ex-collection-action" to={sectionHref("/sources")}>Configure in Sources</Link>
           {!preview && <button onClick={() => changeView({ inspect: "source" })}><Info size={15} />Inspect source</button>}
           {liveStreamIds.length > 0 && <SystemLiveControls telemetry={telemetry} canStart={system.canEdit} canView={!!system.snapshot} disabled={system.saving} />}

@@ -33,6 +33,23 @@ Published revisions retain the catalog hash as provenance. Activation recompiles
 the saved component contracts and requires the saved executable fingerprint to
 match. Unrelated catalog descriptions or components do not invalidate a revision.
 
+## Creation workbench
+
+`?create=monitoring` opens the same toolbox, canvas and component inspector used
+by saved designs when visual authoring is enabled. Creation keeps an account-
+scoped local navigation draft until the user saves. The optional Templates
+popover preloads a built-in graph or the latest published revision of a saved
+design (its labelled saved draft when unpublished); saving creates a new design.
+Preloading preserves stable slot identities, order and expected units. Entity
+selection supplies bindings rather than rewriting a saved template's schema.
+
+Unsaved graphs infer feature metadata with `POST /v1/monitors/pipelines/validate`,
+using the same typed, bounded compiler report, administrator authorization and
+gateway compilation rate budget as saved drafts. This endpoint creates no rows.
+The first save carries edits made during a pending response into the persisted
+editor session, just as later saves do. Template management is reached from the
+Templates menu; existing library and revision deep links remain supported.
+
 ## Numerical ownership
 
 Aberrant 1.3 supplies the standalone `aberrant.compose.GraphPipeline` numerical
@@ -274,9 +291,11 @@ passed both integration tests with zero skips in 625.685 seconds on 2026-10-16.
 Its retained artifact records all three cutovers and verifies the deployed image
 digests and graph invariants; the following browser phase is a separate gate.
 
-Ship schema/runtime compatibility with `TACTIC_PIPELINE_AUTHORING_ENABLED=false`.
-Enable authoring only after numerical, real infrastructure, lifecycle, browser and
-resource gates pass. Disabling authoring blocks new designs and activations while
+The initial compatibility release shipped with authoring off. The visual
+workbench is now enabled by default with `TACTIC_PIPELINE_AUTHORING_ENABLED=true`;
+numerical, real infrastructure, lifecycle, browser and resource gates must pass
+before release. An explicit operator override to `false` is preserved. Disabling
+authoring blocks new designs and activations while
 existing graph runs, inspection, stopping and release recovery remain supported.
 
 The software rollback floor is a pipeline-compatible release. Older binaries

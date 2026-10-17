@@ -121,7 +121,7 @@ describe("service-centred monitoring workspace", () => {
     const choices = within(await screen.findByRole("dialog", { name: "Choose monitoring inputs" }));
     expect(choices.getByRole("button", { name: /Building broker \/ Room station/ })).toBeTruthy();
     expect(choices.queryByRole("button", { name: /Quiet charger/ })).toBeNull();
-    const search = choices.getByRole("searchbox", { name: "Find broker or entity" });
+    const search = choices.getByRole("searchbox", { name: "Search entities" });
     fireEvent.change(search, { target: { value: "Quiet charger" } });
     expect(await choices.findByText("No matching inputs receiving data.")).toBeTruthy();
     fireEvent.change(search, { target: { value: "Air temperature" } });

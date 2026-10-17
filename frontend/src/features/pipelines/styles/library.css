@@ -1,63 +1,3 @@
-.pl-create {
-  padding: 20px;
-  border: 1px solid hsl(var(--border));
-  border-radius: 10px;
-  background: hsl(var(--muted));
-  max-width: 720px;
-  margin: 20px 0;
-}
-
-.pl-create h3 {
-  margin: 0 0 14px;
-  font-size: 15px;
-}
-
-.pl-template-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-  border: 0;
-  padding: 0;
-  margin: 20px 0;
-}
-
-.pl-template-grid legend {
-  font-size: 12px;
-  margin-bottom: 8px;
-}
-
-.pl-template {
-  position: relative;
-  display: grid;
-  grid-template-columns: 15px 1fr;
-  gap: 6px 8px;
-  padding: 16px;
-  border: 1px solid hsl(var(--border));
-  border-radius: 8px;
-  background: hsl(var(--background));
-  cursor: pointer;
-}
-
-.pl-template.is-selected {
-  border-color: hsl(var(--primary));
-  box-shadow: 0 0 0 1px hsl(var(--primary));
-}
-
-.pl-template input {
-  margin-top: 3px;
-}
-
-.pl-template strong {
-  font-size: 13px;
-}
-
-.pl-template span {
-  grid-column: 2;
-  font-size: 11px;
-  color: hsl(var(--muted-foreground));
-  line-height: 1.5;
-}
-
 .pl-library-tools {
   justify-content: space-between;
   margin: 24px 0 12px;
@@ -81,7 +21,7 @@
   gap: 12px;
 }
 
-.pl-library .pl-library-list button {
+.pl-library-list button {
   width: 100%;
   height: 100%;
   align-items: flex-start;
@@ -121,3 +61,36 @@
   border-radius: 10px;
   font-size: 13px;
 }
+
+.pl-template-popover {
+  z-index: 70;
+  width: min(660px, calc(100vw - 32px));
+  max-height: min(680px, calc(100dvh - 40px));
+  overflow: auto;
+  padding: 20px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 12px;
+  background: hsl(var(--background));
+  box-shadow: 0 12px 36px hsl(var(--foreground) / 0.14);
+}
+
+.pl-template-popover .pl-header { margin: 0 0 12px; }
+.pl-template-popover .pl-library-list { grid-template-columns: 1fr; }
+.pl-template-popover .pl-library-tools { margin-top: 12px; }
+.pl-template-popover .pl-library-list button { padding: 12px; }
+.pl-template-popover .pl-library-list small { margin-top: 2px; }
+.pl-library .pl-manage-designs { border: 0; padding-left: 0; margin-top: 16px; color: hsl(var(--muted-foreground)); }
+
+.pl-starting-points {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 16px 0 20px;
+}
+.pl-library .pl-starting-points button {
+  flex-direction: column;
+  align-items: flex-start;
+  text-align: left;
+  padding: 14px;
+}
+.pl-starting-points span { font-size: 11px; color: hsl(var(--muted-foreground)); }

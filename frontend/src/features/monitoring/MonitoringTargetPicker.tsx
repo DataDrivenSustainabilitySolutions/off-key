@@ -8,7 +8,7 @@ import type { MonitoringTarget } from "./serviceModel";
 
 const subscribeNothing = () => () => {};
 
-export function MonitoringTargetPicker({ targets, value, onChange }: { targets: MonitoringTarget[]; value?: string; onChange: (id: string) => void }) {
+export function MonitoringTargetPicker({ targets, value, disabled, onChange }: { targets: MonitoringTarget[]; value?: string; disabled?: boolean; onChange: (id: string) => void }) {
   const { system, telemetry, liveStreamIds } = useCatalogue();
   const [open, setOpen] = useState(false);
   const [now, setNow] = useState(() => Date.now());
@@ -32,9 +32,9 @@ export function MonitoringTargetPicker({ targets, value, onChange }: { targets: 
   const virtual = useVirtualizer({ count: filtered.length, getScrollElement: () => scroll.current, estimateSize: () => 60, overscan: 5, getItemKey: index => filtered[index]!.id });
   const choose = (id: string) => { onChange(id); setOpen(false); };
   return <Popover.Root open={open} onOpenChange={next => { setOpen(next); if (next) { setNow(Date.now()); setQuery(""); setFocus(-1); } }}>
-    <Popover.Trigger className="mn-target-trigger" aria-label="Choose monitoring inputs"><span>{targets.find(target => target.id === value)?.label ?? "Choose a broker or entity"}</span><ChevronDown size={14} /></Popover.Trigger>
+    <Popover.Trigger className="mn-target-trigger" disabled={disabled} aria-label="Choose monitoring inputs"><span>{targets.find(target => target.id === value)?.label ?? "Select an entity"}</span><ChevronDown size={14} /></Popover.Trigger>
     <Popover.Portal><Popover.Content className="ex-popover mn-target-popover" align="start" sideOffset={6} aria-label="Choose monitoring inputs">
-      <label className="mn-target-search"><Search size={15} aria-hidden="true" /><input type="search" aria-label="Find broker or entity" placeholder="Search inputs…" value={query}
+      <label className="mn-target-search"><Search size={15} aria-hidden="true" /><input type="search" aria-label="Search entities" placeholder="Search entities…" value={query}
         onChange={event => { setQuery(event.target.value); setFocus(-1); scroll.current?.scrollTo?.(0, 0); }} onKeyDown={event => {
           if ((event.key === "ArrowDown" || event.key === "ArrowUp") && filtered.length) {
             event.preventDefault(); const next = Math.max(0, Math.min(filtered.length - 1, focus + (event.key === "ArrowDown" ? 1 : -1)));

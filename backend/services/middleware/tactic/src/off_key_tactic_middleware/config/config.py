@@ -211,7 +211,7 @@ class TacticConfig(BaseModel):
         ge=1,
         le=10000,
     )
-    pipeline_authoring_enabled: bool = False
+    pipeline_authoring_enabled: bool = True
     pipeline_preflight_timeout_seconds: float = Field(default=90.0, ge=5.0, le=300.0)
     pipeline_heartbeat_timeout_seconds: float = Field(default=120.0, ge=10.0, le=600.0)
     pipeline_max_concurrent_preflights: int = Field(default=2, ge=1, le=32)
@@ -383,7 +383,7 @@ class TacticSettings(BaseSettings):
         ge=1,
         le=10000,
     )
-    TACTIC_PIPELINE_AUTHORING_ENABLED: bool = False
+    TACTIC_PIPELINE_AUTHORING_ENABLED: bool = True
     TACTIC_PIPELINE_PREFLIGHT_TIMEOUT_SECONDS: float = Field(
         default=90.0, ge=5.0, le=300.0
     )

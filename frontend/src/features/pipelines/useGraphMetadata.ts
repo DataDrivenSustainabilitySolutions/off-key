@@ -4,7 +4,7 @@ import { pipelinesApi } from "./api";
 
 /** Inferred names come from the canonical compiler; diagnostics remain an explicit action. */
 export function useGraphMetadata(
-  id: string,
+  id: string | undefined,
   definition: PipelineDefinition,
   enabled: boolean,
   selectedNodeId?: string,
@@ -26,7 +26,7 @@ export function useGraphMetadata(
       timer = window.setTimeout(async () => {
         try {
           let validation: PipelineValidation;
-          if (revisionId) {
+          if (revisionId && id) {
             if (!selectedNodeId) return;
             validation = await pipelinesApi.revisionMetadata(
               id,

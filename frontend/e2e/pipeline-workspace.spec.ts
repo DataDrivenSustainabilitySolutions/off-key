@@ -85,6 +85,8 @@ async function buildBranchedGraph(
     })
     .click();
   await connect(page, "features_merge_1");
+  const serviceSettings = page.getByRole("button", { name: "Service settings", exact: true });
+  if (await serviceSettings.count()) await serviceSettings.click();
   await page
     .getByText("Input slots and learning settings", { exact: true })
     .click();
@@ -159,25 +161,22 @@ test.describe("visual pipeline real infrastructure", () => {
         await page.setViewportSize({ width: 1600, height: 1100 });
         await page.goto(`/?create=monitoring&target=${entityId}`);
         await expect(
-          page.getByRole("region", { name: "Pipeline library", exact: true }),
+          page.getByRole("region", { name: "Monitoring workbench", exact: true }),
         ).toBeVisible();
         await page
-          .getByRole("textbox", { name: "Pipeline name", exact: true })
+          .getByRole("textbox", { name: "Service name", exact: true })
           .fill(`Branched ${strategy} ${deviceId}`);
-        await page
-          .getByRole("radio", {
-            name:
-              strategy === "adaptive_stream"
-                ? /Adaptive stream/
-                : /Static baseline/,
-          })
-          .check();
-        await page
-          .getByRole("button", { name: "Create draft", exact: true })
-          .click();
-        await expect(
-          page.getByRole("region", { name: "Pipeline editor", exact: true }),
-        ).toBeVisible();
+        if (strategy === "static_baseline") {
+          await page.getByRole("button", { name: "Templates", exact: true }).click();
+          await page.getByRole("button", { name: "Use Static baseline", exact: true }).click();
+        }
+        await page.getByText("Input slots and learning settings", { exact: true }).click();
+        const slots = Object.fromEntries(await page.getByRole("textbox", { name: /^Label for / }).evaluateAll((inputs) =>
+          inputs.map((input) => [(input as HTMLInputElement).value, input.getAttribute("aria-label")!.slice("Label for ".length)])));
+        await page.getByText("Input slots and learning settings", { exact: true }).click();
+        await buildBranchedGraph(page, strategy === "adaptive_stream", slots);
+        await page.getByRole("button", { name: "Save draft", exact: true }).click();
+        await expect(page.getByRole("region", { name: "Pipeline editor", exact: true })).toBeVisible();
         pipelineId = new URL(page.url()).searchParams.get("pipeline")!;
         const createdResponse = await api.get(
           `/api/v1/monitors/pipelines/${pipelineId}`,
@@ -185,16 +184,7 @@ test.describe("visual pipeline real infrastructure", () => {
         );
         expect(createdResponse.ok(), await createdResponse.text()).toBeTruthy();
         const created = (await createdResponse.json()) as PipelineView;
-        const slots = Object.fromEntries(
-          created.draft.input_slots!.map((slot) => [slot.label, slot.id]),
-        );
-        await buildBranchedGraph(page, strategy === "adaptive_stream", slots);
-        await page
-          .getByRole("button", { name: "Save draft", exact: true })
-          .click();
-        await expect(
-          page.getByText("Draft saved.", { exact: true }),
-        ).toBeVisible();
+        expect(created.draft.input_slots!.map((slot) => [slot.label, slot.id])).toEqual(Object.entries(slots));
         await page.reload();
         await expect(
           page.getByRole("combobox", {

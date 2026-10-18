@@ -8,6 +8,7 @@ import {
   edgeId,
   inputKind,
   NODE_SIZE,
+  nodePosition,
   outputKind,
 } from "./semantics";
 
@@ -25,7 +26,7 @@ export function presentGraph(
     return {
       id: node.id,
       type: "component",
-      position: document.layout.nodes[node.id] ?? { x: index * 270, y: 100 },
+      position: nodePosition(document.layout, node.id, index),
       style: NODE_SIZE,
       ariaLabel: nodeOptionLabel(node, document, components),
       data: {

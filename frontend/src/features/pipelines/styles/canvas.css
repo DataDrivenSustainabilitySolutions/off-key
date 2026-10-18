@@ -252,12 +252,13 @@
 
 .pl-canvas-feedback {
   position: absolute;
-  bottom: 10px;
-  left: 45px;
-  right: 10px;
+  bottom: 64px;
+  left: 12px;
+  right: 12px;
   padding: 10px;
   background: hsl(var(--background));
   border: 1px solid hsl(var(--border));
   border-radius: 8px;
-  font-size: 11px;
+  font-size: 12px;
+  pointer-events: none;
 }

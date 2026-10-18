@@ -7,6 +7,7 @@ import type {
 } from "../src/types/pipelines.generated";
 import { loginPipelineWorkspace } from "./helpers/pipelines";
 import { dropPipelineComponent } from "./helpers/pipelineGrid";
+import { expectClearPipelineRouting } from "./helpers/pipelineRouting";
 import {
   fitPipelineOverview,
   locatePipelineSelection,
@@ -100,6 +101,7 @@ for (const strategy of ["static_baseline", "adaptive_stream"] as const) {
       const node = (id: string) =>
         graph.locator(`.react-flow__node[data-id="${id}"]`);
       await expectReadablePipeline(page);
+      await expectClearPipelineRouting(page);
       await expect(editor.getByRole("complementary")).toHaveCount(0);
       await expect(editor.getByRole("searchbox", { name: "Search components" })).toHaveCount(0);
       await expect(node("input")).toBeInViewport();
@@ -253,6 +255,7 @@ for (const strategy of ["static_baseline", "adaptive_stream"] as const) {
         path: testInfo.outputPath(`visual-language-${strategy}-dark.png`),
         fullPage: true,
       });
+      await expectClearPipelineRouting(page);
       await page.setViewportSize({ width: 390, height: 844 });
       await editor.getByRole("button", { name: "Close settings", exact: true }).click();
       await graph.getByRole("button", { name: "Readable size", exact: true }).click();

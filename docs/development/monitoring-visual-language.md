@@ -23,6 +23,7 @@ observation envelopes already have separate owners. Keep those boundaries.
 | The zoom floor prevented a long maximum-sized chain from fitting in the canvas. | “Fit entire graph” supports the bounded V1 graph size, while “Locate selected component” restores a readable detail view. Browser checks verify both after automatic arrangement. |
 | Automatic fitting made laptop and phone labels too small. | Opening and arranging use a readable working scale. Larger graphs start near the input or selected component; the explicit overview control still fits the whole graph. Saving, manual moves and diagnostic polling preserve the camera. |
 | Permanent component and settings sidebars crowded the canvas. | A searchable Add component popover supports clicking and dragging. One collapsible inspector opens on selection; service settings use the same space. Mobile uses the same controls with an overlay inspector. |
+| Curved connections could pass through boxes after manual moves. | Completed connections use orthogonal segments with small rounded corners, routed around all boxes. Moving an unrelated box also recalculates affected geometry. |
 
 Unknown component contracts retain their topology for explanation, display
 unavailable data types and prevent new connections. The editor must never invent
@@ -35,7 +36,7 @@ feature semantics for an unavailable component.
 | Component role | Input, transform, combine, detector, decision policy or evidence output | Role text, a tinted surface and a colored top border; feature processing is teal, detectors violet, policies amber and evidence slate |
 | Operation | The catalog implementation and contract selected for that node | Operation name remains visible when a user supplies a custom title |
 | Data kind | What crosses a boundary | Matching dot and wire colors: features teal, scores violet, P-values blue and decisions amber; all links share a solid line and arrow style |
-| Connection | A directed dependency between operations | Left-to-right ports and an arrow; placement never changes execution |
+| Connection | A directed dependency between operations | Left-to-right ports, orthogonal segments and an arrow; placement never changes execution |
 | Ordered feature merge | Column concatenation for one aligned observation | Inspector ordering and accessible incoming ranks |
 | Configuration issue | A problem with the current design | Issue badge linked by selection to inspector details |
 | Sampled execution state | What the latest detached runtime report says about a component | A separate labeled state badge, with snapshot age and progress in diagnostics |
@@ -66,6 +67,19 @@ Node titles are 16px at the default working scale. Descriptions live in componen
 settings. The percentage control returns an overview or manually zoomed canvas
 to readable size. Panels start closed; closing settings restores canvas width
 without discarding edits or moving nodes.
+
+`routing.ts` adapts the pinned MIT React Flow Smart Edge library to the shared
+card geometry. It checks returned paths against every box and preserves port
+entry/exit directions. Clear aligned connections stay straight; other routes
+use 90-degree bends with 5px corner rounding and 8px box clearance. The canvas
+memoizes geometry independently of selection and runtime diagnostics. Routing
+allocations are bounded for sparse saved coordinates. Bends remain derived
+presentation data and are never saved in the executable definition or layout.
+Measured node dimensions remain renderer state across data projections so
+React Flow retains port bounds during connection hints and live refreshes.
+If overlapping boxes physically block a port, dashed end stubs and a short
+spacing hint keep the connection identifiable; moving the boxes apart restores
+its complete route. The draft remains available for inspection and editing.
 
 Keep the main canvas readable as a continuous process: a component explains its
 operation, a port explains its contract, and a link shows the dependency. Do not

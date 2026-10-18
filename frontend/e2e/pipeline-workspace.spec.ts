@@ -17,6 +17,7 @@ import {
 } from "./helpers/pipelineNavigation";
 import { publishPipelineSamples as publishSamples } from "./helpers/pipelineSamples";
 import { dropPipelineComponent } from "./helpers/pipelineGrid";
+import { expectClearPipelineRouting } from "./helpers/pipelineRouting";
 import type { OperationalStatus } from "../src/types/monitoring";
 import type {
   PipelineActivationView,
@@ -407,6 +408,7 @@ test.describe("visual pipeline real infrastructure", () => {
         ).toBeVisible();
         await expect(camera).toHaveCSS("transform", transform);
         await expectReadablePipeline(page);
+        await expectClearPipelineRouting(page);
         await page.screenshot({
           path: testInfo.outputPath(`${strategy}-live-pipeline.png`),
           fullPage: true,
@@ -740,6 +742,7 @@ test.describe("visual pipeline real infrastructure", () => {
       await page.goto(`/?pipeline=${pipelineId}`);
       await openPipelineSettings(page, "Component");
       await expect(selected(page)).toBeVisible();
+      await expectClearPipelineRouting(page);
       await selected(page).focus();
       await page.keyboard.press("End");
       await page.keyboard.press("Enter");
@@ -835,6 +838,7 @@ test.describe("visual pipeline real infrastructure", () => {
         .toBeGreaterThan(15000);
       await expectReadablePipeline(page);
       await fitPipelineOverview(page);
+      await expectClearPipelineRouting(page);
       await page.screenshot({
         path: testInfo.outputPath("maximum-graph-overview.png"),
         fullPage: true,

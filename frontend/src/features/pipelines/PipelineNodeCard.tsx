@@ -12,11 +12,35 @@ export type CanvasData = {
   outputPort: boolean;
   inputType?: DataKind | null;
   outputType?: DataKind;
+  /** Undefined at rest, null for a valid target, otherwise the rejection reason. */
+  inputIssue?: string | null;
+  outputIssue?: string | null;
   state?: string;
   issueCount: number;
   [key: string]: unknown;
 };
 export type CanvasNode = Node<CanvasData, "component">;
+
+function ConnectionDot({ direction, kind, connectable, issue }: {
+  direction: "input" | "output";
+  kind?: DataKind | null;
+  connectable: boolean;
+  issue?: string | null;
+}) {
+  const label = `${direction === "input" ? "Input" : "Output"}: ${kind ? dataKinds[kind].label : "Unavailable type"}`;
+  return <Handle
+    id={direction}
+    type={direction === "input" ? "target" : "source"}
+    position={direction === "input" ? Position.Left : Position.Right}
+    isConnectable={connectable}
+    isConnectableStart={connectable}
+    isConnectableEnd={connectable && !issue}
+    className={`pl-data--${kind ?? "unknown"}${issue === null ? " is-compatible" : issue ? " is-incompatible" : ""}`}
+    title={issue ? `${label}. ${issue}` : label}
+    role="img"
+    aria-label={label}
+  />;
+}
 
 export function PipelineNodeCard({
   data,
@@ -34,6 +58,10 @@ export function PipelineNodeCard({
     <div
       className={`pl-node${selected ? " is-selected" : ""}`}
       data-kind={data.kind}
+      onClick={(event) => {
+        // A dot tap connects; only the card body opens component settings.
+        if ((event.target as Element).closest(".react-flow__handle")) event.stopPropagation();
+      }}
     >
       <span className="pl-node-kind">
         {nodeKinds[data.kind]}
@@ -46,43 +74,10 @@ export function PipelineNodeCard({
           </small>
         )}
       </div>
-      <div className="pl-node-ports">
-        {data.inputPort && (
-          <Handle
-            id="input"
-            type="target"
-            position={Position.Left}
-            isConnectable={isConnectable && data.available}
-            className={`pl-data--${data.inputType ?? "unknown"}`}
-            title={`Input: ${data.inputType ? dataKinds[data.inputType].label : "Unavailable type"}`}
-          />
-        )}
-        {data.inputPort ? (
-          <span className={`pl-port pl-data--${data.inputType ?? "unknown"}`}>
-            In · {data.inputType ? dataKinds[data.inputType].label : "Unknown"}
-          </span>
-        ) : (
-          <span />
-        )}
-        {data.outputPort ? (
-          <span className={`pl-port pl-data--${data.outputType ?? "unknown"}`}>
-            Out ·{" "}
-            {data.outputType ? dataKinds[data.outputType].label : "Unknown"}
-          </span>
-        ) : data.kind === "output" && data.available ? (
-          <span className="pl-port">Stores evidence</span>
-        ) : null}
-        {data.outputPort && (
-          <Handle
-            id="output"
-            type="source"
-            position={Position.Right}
-            isConnectable={isConnectable && data.available}
-            className={`pl-data--${data.outputType ?? "unknown"}`}
-            title={`Output: ${data.outputType ? dataKinds[data.outputType].label : "Unavailable type"}`}
-          />
-        )}
-      </div>
+      {data.inputPort && <ConnectionDot direction="input" kind={data.inputType}
+        connectable={isConnectable && data.available} issue={data.inputIssue} />}
+      {data.outputPort && <ConnectionDot direction="output" kind={data.outputType}
+        connectable={isConnectable && data.available} issue={data.outputIssue} />}
       <div className="pl-node-status">
         {!data.available && (
           <span className="pl-node-issue">

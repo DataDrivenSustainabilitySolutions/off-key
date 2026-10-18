@@ -20,7 +20,7 @@
 .pl-canvas-wrap {
   --pl-features: #0f766e;
   --pl-scores: #6d28d9;
-  --pl-p_values: #6d28d9;
+  --pl-p_values: #1d4ed8;
   --pl-decisions: #b45309;
   --pl-evidence: #475569;
   --pl-grid-line: hsl(205 45% 50% / 0.14);
@@ -44,7 +44,7 @@
 .dark .pl-canvas-wrap {
   --pl-features: #5eead4;
   --pl-scores: #c4b5fd;
-  --pl-p_values: #c4b5fd;
+  --pl-p_values: #93c5fd;
   --pl-decisions: #fcd34d;
   --pl-evidence: #cbd5e1;
   --pl-grid-line: hsl(200 45% 70% / 0.12);
@@ -121,7 +121,7 @@
   --pl-node-accent: var(--pl-features);
   --pl-node-padding-x: 12px;
   display: grid;
-  grid-template-rows: 16px minmax(0, 1fr) 20px 16px;
+  grid-template-rows: 16px minmax(0, 1fr) 16px;
   align-content: center;
   box-sizing: border-box;
   width: 100%;
@@ -178,26 +178,12 @@
   text-overflow: ellipsis;
   color: hsl(var(--muted-foreground));
 }
-.pl-node-ports,
 .pl-node-status {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   min-width: 0;
   gap: 5px;
-}
-/* Sockets belong to their labeled row, which reaches the card frame. */
-.pl-node-ports {
-  position: relative;
-  margin-inline: calc(-1 * var(--pl-node-padding-x));
-  padding-inline: var(--pl-node-padding-x);
-}
-.pl-port {
-  font-size: 12px;
-  white-space: nowrap;
-}
-.pl-node-status {
-  justify-content: flex-start;
   font-size: 11px;
 }
 .pl-node-status > span {
@@ -236,10 +222,32 @@
   color: #fca5a5;
 }
 .pl-node .react-flow__handle {
-  background: var(--pl-data-color, hsl(var(--muted-foreground)));
+  background: transparent;
+  border: 0;
+  width: 28px;
+  height: 28px;
+  pointer-events: all;
+}
+/* A generous hit area surrounds each dot without crowding the card. */
+.pl-node .react-flow__handle::after {
+  content: "";
+  position: absolute;
+  inset: 6px;
   border: 2px solid hsl(var(--background));
-  width: 10px;
-  height: 10px;
+  border-radius: 50%;
+  background: var(--pl-data-color, hsl(var(--muted-foreground)));
+  pointer-events: none;
+}
+.pl-node .react-flow__handle.is-compatible::after,
+.pl-node .react-flow__handle.connectingfrom::after {
+  outline: 2px solid var(--pl-data-color);
+  outline-offset: 3px;
+}
+.pl-node .react-flow__handle.is-incompatible::after {
+  opacity: 0.25;
+}
+.pl-node .react-flow__handle.is-incompatible {
+  cursor: not-allowed;
 }
 
 .pl-canvas-feedback {

@@ -4,6 +4,8 @@ import {
   ControlButton,
   ReactFlow,
   applyNodeChanges,
+  type OnConnectStartParams,
+  type OnConnectEnd,
   type ReactFlowInstance,
 } from "@xyflow/react";
 import { LocateFixed, Magnet } from "lucide-react";
@@ -53,6 +55,7 @@ export default function PipelineCanvas({
   const [snapToGrid, setSnapToGrid] = useState(true);
   const [flow, setFlow] = useState<ReactFlowInstance<CanvasNode>>();
   const [zoom, setZoom] = useState(1);
+  const [connecting, setConnecting] = useState<OnConnectStartParams>();
   const surface = useRef<HTMLDivElement>(null);
   const lastFit = useRef<number | undefined>(undefined);
   useEffect(() => {
@@ -68,9 +71,33 @@ export default function PipelineCanvas({
   );
   const nodes = useMemo(
     () =>
-      graph.nodes.map((node) => ({ ...node, selected: node.id === selected })),
-    [graph.nodes, selected],
+      graph.nodes.map((node) => ({
+        ...node,
+        selected: node.id === selected,
+        data: {
+          ...node.data,
+          inputIssue: connecting?.nodeId && connecting.handleType === "source"
+            ? connectionIssue(document.definition, connecting.nodeId, node.id, components) ?? null
+            : undefined,
+          outputIssue: connecting?.nodeId && connecting.handleType === "target"
+            ? connectionIssue(document.definition, node.id, connecting.nodeId, components) ?? null
+            : undefined,
+        },
+      })),
+    [graph.nodes, selected, connecting, document.definition, components],
   );
+  const connectingNode = graph.nodes.find((node) => node.id === connecting?.nodeId);
+  const connectingType = connecting?.handleType === "source"
+    ? connectingNode?.data.outputType : connectingNode?.data.inputType;
+  const endConnection: OnConnectEnd = (_event, connection) => {
+    setConnecting(undefined);
+    if (connection.isValid === false && connection.fromNode && connection.toNode) {
+      const [source, target] = connection.fromHandle?.type === "source"
+        ? [connection.fromNode.id, connection.toNode.id]
+        : [connection.toNode.id, connection.fromNode.id];
+      setFeedback(connectionIssue(document.definition, source, target, components) ?? "");
+    }
+  };
   const edges = useMemo(
     () =>
       graph.edges.map((edge) => ({
@@ -115,6 +142,11 @@ export default function PipelineCanvas({
           snapGrid={SNAP_GRID}
           nodesDraggable={layoutEditable || !readOnly}
           nodesConnectable={!readOnly}
+          onConnectStart={(_event, start) => { setFeedback(""); setConnecting(start); }}
+          onConnectEnd={endConnection}
+          onClickConnectStart={(_event, start) => { setFeedback(""); setConnecting(start); }}
+          onClickConnectEnd={endConnection}
+          connectionLineStyle={{ stroke: connectingType ? `var(--pl-${connectingType})` : undefined, strokeWidth: 2 }}
           isValidConnection={(connection) =>
             !readOnly &&
             !connectionIssue(

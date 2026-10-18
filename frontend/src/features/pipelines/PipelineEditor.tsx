@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ArrowLeft,
   Check,
@@ -17,16 +17,15 @@ import type { MonitoringTarget } from "../monitoring/serviceModel";
 import type {
   PipelineCatalog,
   PipelineServiceView,
-  PipelineValidation,
   PipelineView,
 } from "./contracts";
-import { arrangeGraph } from "./layout";
-import { PipelineWorkbench } from "./PipelineWorkbench";
+import { PipelineWorkbench, type InspectorPanel } from "./PipelineWorkbench";
 import { PipelineDesignSettings } from "./PipelineDesignSettings";
 import { PipelineActivation } from "./PipelineActivation";
-import { addComponent, executableChanges, type GraphDocument } from "./model";
+import { executableChanges } from "./model";
 import { pipelinesApi } from "./api";
 import { useGraphMetadata } from "./useGraphMetadata";
+import { useGraphEditor, useUnsavedChanges } from "./useGraphEditor";
 import { usePipelineRevisions } from "./usePipelineRevisions";
 import {
   acknowledgeSave,
@@ -101,13 +100,6 @@ function EditorSession({
     `pipeline:${userId}:${initial.id}`,
     () => openSession(initial),
   );
-  const [selected, setSelected] = useState<string>();
-  const [fitRequest, setFitRequest] = useState(0);
-  const currentSession = useRef(session);
-  useEffect(() => {
-    currentSession.current = session;
-  }, [session]);
-  const [validation, setValidation] = useState<PipelineValidation>();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -125,11 +117,7 @@ function EditorSession({
       activationRevisionId: open ? props.revisionId : undefined,
     }));
   };
-  const [undo, setUndo] = useState<GraphDocument[]>([]);
-  const [redo, setRedo] = useState<GraphDocument[]>([]);
-  const [mobilePanel, setMobilePanel] = useState<
-    "graph" | "components" | "inspector"
-  >("graph");
+  const [inspectorPanel, setInspectorPanel] = useState<InspectorPanel>(null);
   const base = session.base;
   const revisions = usePipelineRevisions(base, props.revisionId);
   const revision = revisions.revision;
@@ -139,6 +127,18 @@ function EditorSession({
   const canWrite =
     props.canEdit && props.catalog.authoring_enabled && !base.archived;
   const readOnly = !canWrite || !!props.revisionId;
+  const graph = useGraphEditor({
+    document,
+    components: props.catalog.components,
+    readOnly,
+    historyKey: `pipeline:${userId}:${initial.id}:history`,
+    onChange: (document) => {
+      setNotice("");
+      setSession((previous) => ({ ...previous, document }));
+    },
+    onSelect: () => setInspectorPanel("component"),
+  });
+  const { selected, fitRequest, validation, setValidation, commit, select, add } = graph;
   const metadata = useGraphMetadata(
     base.id,
     document.definition,
@@ -147,25 +147,7 @@ function EditorSession({
     revision?.id,
   );
   const dirty = isSessionDirty(session);
-  useEffect(() => {
-    if (!dirty) return;
-    const beforeUnload = (event: BeforeUnloadEvent) => {
-      event.preventDefault();
-      event.returnValue = "";
-    };
-    window.addEventListener("beforeunload", beforeUnload);
-    return () => window.removeEventListener("beforeunload", beforeUnload);
-  }, [dirty]);
-  const commit = (next: GraphDocument, recordHistory = true) => {
-    if (recordHistory) {
-      setUndo((previous) => [...previous.slice(-39), session.document]);
-      setRedo([]);
-    }
-    if (next.definition !== session.document.definition)
-      setValidation(undefined);
-    setNotice("");
-    setSession((previous) => ({ ...previous, document: next }));
-  };
+  useUnsavedChanges(dirty);
   const report = (reason: unknown) => {
     setError(getErrorMessage(reason));
     if (reason instanceof ApiRequestError && reason.status === 409)
@@ -221,25 +203,6 @@ function EditorSession({
         `Revision ${published.number} published. Existing runs keep their current revision.`,
       );
     });
-  const add = (id: string, position?: { x: number; y: number }) => {
-    const component = props.catalog.components.find((item) => item.id === id);
-    if (!component || readOnly) return;
-    const next = addComponent(document, component);
-    if (next === document) return;
-    const added = next.definition.nodes[next.definition.nodes.length - 1]!;
-    if (position)
-      next.layout.nodes[added.id] = {
-        ...next.layout.nodes[added.id],
-        ...position,
-      };
-    commit(next);
-    setSelected(added.id);
-    setMobilePanel("inspector");
-  };
-  const select = (id: string) => {
-    setSelected(id);
-    setMobilePanel("inspector");
-  };
   const changes = revision
     ? executableChanges(
         revision.definition,
@@ -265,7 +228,7 @@ function EditorSession({
     );
   return (
     <section
-      className={`pl-editor pl-mobile--${mobilePanel}`}
+      className="pl-editor"
       aria-label="Pipeline editor"
     >
       <button type="button" className="mn-back" onClick={props.onBack}>
@@ -338,13 +301,10 @@ function EditorSession({
                 disabled={busy}
                 onClick={() =>
                   void action(async () => {
-                    const result = await pipelinesApi.validate(
-                      base.id,
-                      document.definition,
-                      undefined,
-                      selected,
+                    const result = await graph.validate((definition, selected) =>
+                      pipelinesApi.validate(base.id, definition, undefined, selected),
                     );
-                    setValidation(result);
+                    if (!result) return;
                     setNotice(
                       result.valid
                         ? "Graph is valid."
@@ -427,8 +387,7 @@ function EditorSession({
                   description: latest.description,
                 });
                 setConflict(false);
-                setUndo([]);
-                setRedo([]);
+                graph.resetHistory();
               })
             }
           >
@@ -453,9 +412,22 @@ function EditorSession({
           </button>
         </section>
       )}
+      <PipelineWorkbench
+        catalog={props.catalog}
+        document={document}
+        validation={metadata ?? validation}
+        fitRequest={fitRequest}
+        selected={selected}
+        readOnly={readOnly}
+        onSelect={select}
+        onChange={commit}
+        onAdd={add}
+        onBeginMove={graph.beginMove}
+        inspectorPanel={inspectorPanel}
+        onInspectorPanelChange={setInspectorPanel}
+        settings={<>
       {!readOnly && (
-        <details className="pl-metadata">
-          <summary>Name and description</summary>
+        <div className="pl-metadata">
           <label className="pl-field">
             <span>Pipeline name</span>
             <input
@@ -482,98 +454,50 @@ function EditorSession({
               }
             />
           </label>
-        </details>
+        </div>
       )}
       <PipelineDesignSettings
         document={document}
         readOnly={readOnly}
         onChange={commit}
       />
-      <div className="pl-canvas-toolbar">
-        <div className="pl-mobile-switch" aria-label="Editor panel">
-          {(["graph", "components", "inspector"] as const).map((panel) => (
+        </>}
+        actions={!readOnly && <>
             <button
               type="button"
-              key={panel}
-              aria-pressed={mobilePanel === panel}
-              onClick={() => setMobilePanel(panel)}
-            >
-              {panel}
-            </button>
-          ))}
-        </div>
-        {!readOnly && (
-          <div className="pl-actions">
-            <button
-              type="button"
-              disabled={!undo.length}
+              disabled={!graph.canUndo}
               aria-label="Undo graph change"
-              onClick={() => {
-                const next = undo[undo.length - 1]!;
-                setRedo((previous) => [...previous, document]);
-                setUndo((previous) => previous.slice(0, -1));
-                setSession((previous) => ({ ...previous, document: next }));
-                setValidation(undefined);
-              }}
+              title="Undo"
+              onClick={graph.undo}
             >
               <Undo2 size={15} />
-              Undo
             </button>
             <button
               type="button"
-              disabled={!redo.length}
+              disabled={!graph.canRedo}
               aria-label="Redo graph change"
-              onClick={() => {
-                const next = redo[redo.length - 1]!;
-                setUndo((previous) => [...previous, document]);
-                setRedo((previous) => previous.slice(0, -1));
-                setSession((previous) => ({ ...previous, document: next }));
-                setValidation(undefined);
-              }}
+              title="Redo"
+              onClick={graph.redo}
             >
               <Redo2 size={15} />
-              Redo
             </button>
             <button
               type="button"
               disabled={busy}
               onClick={() =>
                 void action(async () => {
-                  const layout = await arrangeGraph(
-                    document.definition,
-                    document.layout,
-                  );
-                  if (currentSession.current.document !== document) {
+                  if (!(await graph.arrange())) {
                     setNotice(
                       "The graph changed while arranging. Arrange again to use the latest edits.",
                     );
-                    return;
                   }
-                  commit({ ...document, layout });
-                  setFitRequest((value) => value + 1);
                 })
               }
             >
               <LayoutGrid size={15} />
               Arrange
             </button>
-          </div>
-        )}
-      </div>
-      <PipelineWorkbench
-        catalog={props.catalog}
-        document={document}
-        validation={metadata ?? validation}
-        fitRequest={fitRequest}
-        selected={selected}
-        readOnly={readOnly}
-        onSelect={select}
-        onChange={commit}
-        onAdd={add}
-        onBeginMove={() => {
-          setUndo((previous) => [...previous.slice(-39), document]);
-          setRedo([]);
-        }}
+        </>}
       />
       {validation && (
         <section className="pl-validation" aria-label="Graph validation">

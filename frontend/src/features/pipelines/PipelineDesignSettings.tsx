@@ -15,9 +15,7 @@ export function PipelineDesignSettings({
     <details className="pl-design-settings">
       <summary>Input slots and learning settings</summary>
       <p className="pl-help">
-        Slots are stable identifiers used by feature selection. Display labels
-        can describe their intended meaning. A declared unit requires an exact
-        match when binding.
+        Units must match the bound readings.
       </p>
       <div className="pl-slots">
         {definition.input_slots.map((slot) => (

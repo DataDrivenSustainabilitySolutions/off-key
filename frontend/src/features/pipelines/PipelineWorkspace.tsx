@@ -117,7 +117,7 @@ export default function PipelineWorkspace({
         onBack={creating ? create : onBack}
       />
     );
-  if (!id) return <PipelineCreate catalog={catalog} canEdit={canEdit} targets={index.targets}
+  if (!id) return <PipelineCreate key={`${initialTarget ?? ""}:${contextReading ?? ""}`} catalog={catalog} canEdit={canEdit} targets={index.targets}
     initialTarget={initialTarget} initialReading={contextReading} onCreated={open}
     onManage={library} onBack={onBack} />;
   return (

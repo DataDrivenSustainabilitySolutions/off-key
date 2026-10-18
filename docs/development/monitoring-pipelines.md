@@ -46,9 +46,18 @@ selection supplies bindings rather than rewriting a saved template's schema.
 Unsaved graphs infer feature metadata with `POST /v1/monitors/pipelines/validate`,
 using the same typed, bounded compiler report, administrator authorization and
 gateway compilation rate budget as saved drafts. This endpoint creates no rows.
-The first save carries edits made during a pending response into the persisted
-editor session, just as later saves do. Template management is reached from the
-Templates menu; existing library and revision deep links remain supported.
+Creation and saved drafts use one graph-editing controller for bounded history,
+component insertion, arrangement and validation. Creation retains its initial
+baseline independently of history and template provenance, so unload protection
+still recognizes unnamed layout edits after a library or Sources detour.
+
+The account-scoped creation session owns the first save, including its submitted
+snapshot and eventual acknowledgement. Leaving for Sources keeps that operation
+alive. Returning while it is pending joins the same operation; returning after it
+completes opens the resulting saved design. Completion never navigates a detached
+screen, and edits made while saving enter the persisted editor as unsaved changes,
+just as later saves do. Template management is reached from the Templates menu;
+existing library and revision deep links remain supported.
 
 The shared canvas uses a 16-unit snapping grid, fine blueprint lines and stronger
 cross markers in both themes. Visible lines become coarser at distant zoom levels
@@ -56,6 +65,13 @@ while remaining aligned with the underlying snap positions. The magnet control
 switches drop, drag and keyboard positioning between snapping and free movement.
 This is a presentation preference: toggling it never rewrites saved positions or
 execution semantics. Existing layouts move only through explicit user actions.
+
+Creation, saved designs and running graphs share a canvas-first workbench. Add
+component opens a searchable drag-and-drop menu; service and component settings
+share one collapsible inspector. Both panels start closed. Mobile overlays the
+inspector instead of narrowing the graph. Cards use larger titles, stage colors
+and typed ports; descriptions appear in component settings. Opening and arranging
+retain readable text size, while Fit entire graph explicitly requests an overview.
 
 ## Numerical ownership
 

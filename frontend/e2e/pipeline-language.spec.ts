@@ -6,12 +6,25 @@ import type {
   PipelineView,
 } from "../src/types/pipelines.generated";
 import { loginPipelineWorkspace } from "./helpers/pipelines";
+import { dropPipelineComponent } from "./helpers/pipelineGrid";
+import { expectClearPipelineRouting } from "./helpers/pipelineRouting";
 import {
   fitPipelineOverview,
   locatePipelineSelection,
+  openPipelineSettings,
+  expectReadablePipeline,
 } from "./helpers/pipelineNavigation";
 
 test.beforeEach(async ({ page }) => loginPipelineWorkspace(page));
+
+test("drags from the compact component menu without covering the drop area", async ({ page }) => {
+  test.setTimeout(30_000);
+  await page.setViewportSize({ width: 1366, height: 900 });
+  await page.goto("/?create=monitoring");
+  await dropPipelineComponent(page, "Pass through", "features_passthrough_1");
+  await expect(page.getByRole("textbox", { name: "Node title", exact: true })).toHaveAttribute("placeholder", "Pass through");
+  await expect(page.getByRole("combobox", { name: "Selected component", exact: true })).toHaveValue("features_passthrough_1");
+});
 
 for (const strategy of ["static_baseline", "adaptive_stream"] as const) {
   test(`uses a consistent typed visual language for ${strategy}`, async ({
@@ -72,7 +85,7 @@ for (const strategy of ["static_baseline", "adaptive_stream"] as const) {
     const design = (await created.json()) as PipelineView;
     const endpoint = `/api/v1/monitors/pipelines/${design.id}`;
     try {
-      await page.setViewportSize({ width: 1600, height: 1000 });
+      await page.setViewportSize({ width: 1366, height: 900 });
       await page.goto(
         `/?view=pipelines&pipeline=${encodeURIComponent(design.id)}`,
       );
@@ -87,17 +100,44 @@ for (const strategy of ["static_baseline", "adaptive_stream"] as const) {
       });
       const node = (id: string) =>
         graph.locator(`.react-flow__node[data-id="${id}"]`);
+      await expectReadablePipeline(page);
+      await expectClearPipelineRouting(page);
+      await expect(editor.getByRole("complementary")).toHaveCount(0);
+      await expect(editor.getByRole("searchbox", { name: "Search components" })).toHaveCount(0);
+      await expect(node("input")).toBeInViewport();
+      await expect(node("input").locator(".pl-node-operation")).toHaveCount(0);
+      const canvasWidth = (await graph.boundingBox())!.width;
+      const addComponent = editor.getByRole("button", { name: "Add component", exact: true });
+      await addComponent.click();
+      const search = page.getByRole("searchbox", { name: "Search components", exact: true });
+      await search.fill("Pass through");
+      await expect(page.getByRole("button", { name: "Add Pass through", exact: true })).toBeVisible();
+      await search.press("Escape");
+      await expect(addComponent).toBeFocused();
+      await page.screenshot({ path: testInfo.outputPath(`readable-${strategy}-laptop.png`), fullPage: true });
+      await node("input").click();
+      await expect(editor.getByRole("button", { name: "Component settings", exact: true })).toHaveAttribute("aria-expanded", "true");
+      await expect.poll(async () => (await graph.boundingBox())!.width).toBeLessThan(canvasWidth - 250);
+      await editor.getByRole("button", { name: "Close settings", exact: true }).click();
+      await expect.poll(async () => (await graph.boundingBox())!.width).toBe(canvasWidth);
+      await openPipelineSettings(editor, "Component");
       await expect(
         graph.getByLabel("Graph language", { exact: true }),
       ).toHaveCount(0);
       await expect(node("raw")).toContainText("Raw reference");
       await expect(node("raw")).toContainText("Pass through");
-      await expect(node("raw").locator(".pl-node-ports")).toContainText("In · Features");
-      await expect(node("raw").locator(".pl-node-ports")).toContainText("Out · Features");
-      await expect(node("detector").locator(".pl-node-ports")).toContainText(
-        strategy === "static_baseline" ? "Out · P-values" : "Out · Scores",
-      );
-      await expect(node("policy").locator(".pl-node-ports")).toContainText("Out · Decisions");
+      await expect(graph.locator(".pl-node-ports, .pl-port")).toHaveCount(0);
+      await expect(node("raw").getByRole("img", { name: "Input: Features", exact: true })).toHaveAttribute("title", "Input: Features");
+      await expect(node("raw").getByRole("img", { name: "Output: Features", exact: true })).toHaveAttribute("title", "Output: Features");
+      await expect(node("detector").getByRole("img", {
+        name: strategy === "static_baseline" ? "Output: P-values" : "Output: Scores", exact: true,
+      })).toBeAttached();
+      await expect(node("policy").getByRole("img", { name: "Output: Decisions", exact: true })).toBeAttached();
+      const typeColors = await graph.evaluate((element) => {
+        const css = getComputedStyle(element);
+        return ["features", "scores", "p_values", "decisions"].map((kind) => css.getPropertyValue(`--pl-${kind}`).trim());
+      });
+      expect(new Set(typeColors).size).toBe(4);
       const mergeLink = graph.getByTestId(
         `rf__edge-${JSON.stringify(["renamed", "merge"])}`,
       );
@@ -129,6 +169,40 @@ for (const strategy of ["static_baseline", "adaptive_stream"] as const) {
       expect(candidates).toContain("raw");
       expect(candidates).not.toContain("detector");
       expect(candidates).not.toContain("policy");
+      await editor.getByRole("button", { name: "Close settings", exact: true }).click();
+      await fitPipelineOverview(page);
+      const dot = (id: string, direction: "input" | "output") => node(id).locator(`[data-handleid="${direction}"]`);
+      const beginWire = async (id: string, direction: "input" | "output") => {
+        const box = (await dot(id, direction).boundingBox())!;
+        await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+        await page.mouse.down();
+        await page.mouse.move(box.x + box.width / 2 + 10, box.y + box.height / 2 + 10, { steps: 3 });
+      };
+      const endWire = async (id: string, direction: "input" | "output") => {
+        const box = (await dot(id, direction).boundingBox())!;
+        await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 8 });
+        await page.mouse.up();
+      };
+      // Mismatching colors cannot connect, and occupied inputs stay unavailable.
+      const wireCount = await graph.locator(".react-flow__edge").count();
+      await beginWire("detector", "output");
+      await expect(dot("merge", "input")).toHaveClass(/is-incompatible/);
+      await expect(dot("merge", "input")).toHaveAttribute("title", /Cannot connect (P-values|Scores) to Features/);
+      await endWire("merge", "input");
+      await expect(graph.locator(".react-flow__edge")).toHaveCount(wireCount);
+      const reverse = strategy === "adaptive_stream";
+      await beginWire(reverse ? "merge" : "raw", reverse ? "input" : "output");
+      await expect(dot(reverse ? "raw" : "merge", reverse ? "output" : "input")).toHaveClass(/is-compatible/);
+      if (!reverse) {
+        await expect(dot("detector", "input")).toHaveClass(/is-incompatible/);
+        await expect(dot("detector", "input")).toHaveAttribute("title", /input is occupied/);
+      }
+      await endWire(reverse ? "raw" : "merge", reverse ? "output" : "input");
+      await expect(graph.locator(".react-flow__edge")).toHaveCount(wireCount + 1);
+      await expect(graph.locator(".is-compatible, .is-incompatible")).toHaveCount(0);
+      await openPipelineSettings(editor, "Component");
+      await editor.getByRole("button", { name: "Disconnect raw from merge", exact: true }).click();
+      // The inspector remains an equivalent keyboard authoring route.
       await upstream.selectOption("raw");
       await editor
         .getByRole("button", { name: "Validate", exact: true })
@@ -141,14 +215,14 @@ for (const strategy of ["static_baseline", "adaptive_stream"] as const) {
       ).toBeVisible();
       await selector.selectOption("raw");
       await locatePipelineSelection(page);
-      const ports = node("raw").locator(".pl-node-ports");
       for (const handle of ["input", "output"]) {
         const socket = node("raw").locator(`[data-handleid="${handle}"]`);
-        const row = (await ports.boundingBox())!;
+        const card = (await node("raw").boundingBox())!;
         const bounds = (await socket.boundingBox())!;
         expect(
-          Math.abs(bounds.y + bounds.height / 2 - row.y - row.height / 2),
+          Math.abs(bounds.y + bounds.height / 2 - card.y - card.height / 2),
         ).toBeLessThan(3);
+        expect(bounds.width).toBeGreaterThanOrEqual(27);
       }
       await page.screenshot({
         path: testInfo.outputPath(`visual-language-${strategy}-light.png`),
@@ -161,6 +235,7 @@ for (const strategy of ["static_baseline", "adaptive_stream"] as const) {
         editor.getByText("Draft saved.", { exact: true }),
       ).toBeVisible();
       await page.reload();
+      await openPipelineSettings(editor, "Component");
       await expect(node("raw")).toContainText("Raw reference");
       await expect(node("raw")).toContainText("Pass through");
       await page
@@ -174,14 +249,19 @@ for (const strategy of ["static_baseline", "adaptive_stream"] as const) {
         .getByRole("button", { name: "Close settings", exact: true })
         .click();
       await fitPipelineOverview(page);
+      await graph.getByRole("button", { name: "Readable size", exact: true }).click();
+      await expectReadablePipeline(page);
       await page.screenshot({
         path: testInfo.outputPath(`visual-language-${strategy}-dark.png`),
         fullPage: true,
       });
+      await expectClearPipelineRouting(page);
       await page.setViewportSize({ width: 390, height: 844 });
-      await editor
-        .getByRole("button", { name: "inspector", exact: true })
-        .click();
+      await editor.getByRole("button", { name: "Close settings", exact: true }).click();
+      await graph.getByRole("button", { name: "Readable size", exact: true }).click();
+      await expectReadablePipeline(page);
+      await page.screenshot({ path: testInfo.outputPath(`readable-${strategy}-mobile-canvas.png`), fullPage: true });
+      await openPipelineSettings(editor, "Component");
       await selector.selectOption("raw");
       await expect(
         editor.getByRole("textbox", { name: "Node title", exact: true }),
@@ -212,3 +292,35 @@ for (const strategy of ["static_baseline", "adaptive_stream"] as const) {
     }
   });
 }
+
+test.describe("touch connection dots", () => {
+  test.use({ hasTouch: true });
+
+  test("connects in two taps on a phone without opening settings", async ({ page }, testInfo) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto("/?create=monitoring");
+    const graph = page.getByLabel("Pipeline graph", { exact: true });
+    await openPipelineSettings(page, "Component");
+    await page.getByRole("combobox", { name: "Selected component", exact: true }).selectOption("detector");
+    await page.getByRole("button", { name: "Disconnect input from detector", exact: true }).click();
+    await page.getByRole("button", { name: "Close settings", exact: true }).click();
+    await expect(graph.getByRole("button", { name: "Readable size", exact: true })).toHaveText("100%");
+    const tapDot = async (id: string, direction: string) => {
+      const dot = graph.locator(`.react-flow__node[data-id="${id}"] [data-handleid="${direction}"]`);
+      await expect(dot).toBeInViewport();
+      const box = (await dot.boundingBox())!;
+      await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
+    };
+    await tapDot("input", "output");
+    const input = graph.locator('.react-flow__node[data-id="detector"] [data-handleid="input"]');
+    await expect(input).toHaveClass(/is-compatible/);
+    await expect(page.getByRole("complementary")).toHaveCount(0);
+    await page.screenshot({ path: testInfo.outputPath("phone-matching-dots.png"), fullPage: true });
+    await tapDot("detector", "input");
+    await expect(graph.getByTestId(`rf__edge-${JSON.stringify(["input", "detector"])}`)).toHaveCount(1);
+    await expect(graph.locator(".is-compatible, .is-incompatible")).toHaveCount(0);
+    await expect(page.getByRole("complementary")).toHaveCount(0);
+    await page.getByRole("button", { name: "Validate", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Valid processing graph", exact: true })).toBeVisible();
+  });
+});

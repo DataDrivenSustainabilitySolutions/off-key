@@ -10,11 +10,14 @@ import {
 import { ingressOptions } from "./helpers/mqtt";
 import { loginPipelineWorkspace } from "./helpers/pipelines";
 import {
-  expectPipelineOverview,
+  expectReadablePipeline,
+  fitPipelineOverview,
+  openPipelineSettings,
   locatePipelineSelection,
 } from "./helpers/pipelineNavigation";
 import { publishPipelineSamples as publishSamples } from "./helpers/pipelineSamples";
 import { dropPipelineComponent } from "./helpers/pipelineGrid";
+import { expectClearPipelineRouting } from "./helpers/pipelineRouting";
 import type { OperationalStatus } from "../src/types/monitoring";
 import type {
   PipelineActivationView,
@@ -32,6 +35,7 @@ const connect = (page: Page, source: string) =>
     .getByRole("combobox", { name: "Connect input from", exact: true })
     .selectOption(source);
 const add = async (page: Page, name: string) => {
+  await page.getByRole("button", { name: "Add component", exact: true }).click();
   await page.getByRole("button", { name: `Add ${name}`, exact: true }).click();
 };
 const processingId = (number: number) =>
@@ -153,6 +157,7 @@ test.describe("visual pipeline real infrastructure", () => {
         await expect(
           page.getByRole("region", { name: "Monitoring workbench", exact: true }),
         ).toBeVisible();
+        await openPipelineSettings(page, "Service");
         await page
           .getByRole("textbox", { name: "Service name", exact: true })
           .fill(`Branched ${strategy} ${deviceId}`);
@@ -176,6 +181,7 @@ test.describe("visual pipeline real infrastructure", () => {
         const created = (await createdResponse.json()) as PipelineView;
         expect(created.draft.input_slots!.map((slot) => [slot.label, slot.id])).toEqual(Object.entries(slots));
         await page.reload();
+        await openPipelineSettings(page, "Component");
         await expect(
           page.getByRole("combobox", {
             name: "Selected component",
@@ -342,6 +348,7 @@ test.describe("visual pipeline real infrastructure", () => {
         await expect(
           page.getByRole("region", { name: "Running pipeline", exact: true }),
         ).toBeVisible();
+        await openPipelineSettings(page, "Component");
         await selected(page).selectOption("features_select_2");
         await expect(
           page.getByRole("region", {
@@ -381,7 +388,7 @@ test.describe("visual pipeline real infrastructure", () => {
         await page
           .getByRole("button", { name: "Arrange automatically", exact: true })
           .click();
-        await expectPipelineOverview(page);
+        await expectReadablePipeline(page);
         const camera = page
           .getByLabel("Pipeline graph", { exact: true })
           .locator(".react-flow__viewport");
@@ -400,12 +407,14 @@ test.describe("visual pipeline real infrastructure", () => {
           page.getByRole("button", { name: "Adjust arrangement", exact: true }),
         ).toBeVisible();
         await expect(camera).toHaveCSS("transform", transform);
-        await expectPipelineOverview(page);
+        await expectReadablePipeline(page);
+        await expectClearPipelineRouting(page);
         await page.screenshot({
           path: testInfo.outputPath(`${strategy}-live-pipeline.png`),
           fullPage: true,
         });
         await page.setViewportSize({ width: 390, height: 844 });
+        await openPipelineSettings(page, "Component");
         await expect(
           page.getByRole("combobox", {
             name: "Selected component",
@@ -434,6 +443,7 @@ test.describe("visual pipeline real infrastructure", () => {
           await expect(
             page.getByRole("region", { name: "Pipeline editor", exact: true }),
           ).toBeVisible();
+          await openPipelineSettings(page, "Service");
           await page
             .getByText("Input slots and learning settings", { exact: true })
             .click();
@@ -730,7 +740,9 @@ test.describe("visual pipeline real infrastructure", () => {
       ).toBeTruthy();
       await page.setViewportSize({ width: 1600, height: 1100 });
       await page.goto(`/?pipeline=${pipelineId}`);
+      await openPipelineSettings(page, "Component");
       await expect(selected(page)).toBeVisible();
+      await expectClearPipelineRouting(page);
       await selected(page).focus();
       await page.keyboard.press("End");
       await page.keyboard.press("Enter");
@@ -765,7 +777,7 @@ test.describe("visual pipeline real infrastructure", () => {
       const interactions = await page.evaluate(
         async (identifiers) => {
           const selector = document.querySelector<HTMLSelectElement>(
-            '[aria-label="Component inspector"] select',
+            '.pl-inspector select',
           )!;
           const durations: number[] = [];
           for (let index = 0; index < 40; index++) {
@@ -824,7 +836,9 @@ test.describe("visual pipeline real infrastructure", () => {
             ),
         )
         .toBeGreaterThan(15000);
-      await expectPipelineOverview(page);
+      await expectReadablePipeline(page);
+      await fitPipelineOverview(page);
+      await expectClearPipelineRouting(page);
       await page.screenshot({
         path: testInfo.outputPath("maximum-graph-overview.png"),
         fullPage: true,
@@ -845,9 +859,7 @@ test.describe("visual pipeline real infrastructure", () => {
         fullPage: true,
       });
       await page.setViewportSize({ width: 390, height: 844 });
-      await page
-        .getByRole("button", { name: "inspector", exact: true })
-        .click();
+      await openPipelineSettings(page, "Component");
       await selected(page).selectOption(processingId(60));
       await expect(
         page.locator('.pl-inspector input[type="checkbox"]'),

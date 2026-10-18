@@ -8,8 +8,7 @@ import type {
 } from "./contracts";
 import type { PipelineLayout } from "./contracts";
 import { pipelinesApi } from "./api";
-import PipelineCanvas from "./PipelineCanvas";
-import { PipelineInspector } from "./PipelineInspector";
+import { PipelineWorkbench, type InspectorPanel } from "./PipelineWorkbench";
 import { PipelineDiagnostics, type PipelineState } from "./PipelineDiagnostics";
 import { executableChanges, nodeOptionLabel } from "./model";
 import { arrangeGraph } from "./layout";
@@ -34,6 +33,8 @@ export default function PipelineRunView({
   const [view, setView] = useState<PipelineServiceView>();
   const [catalog, setCatalog] = useState<PipelineCatalog>();
   const [selected, setSelected] = useState<string>();
+  const [inspectorPanel, setInspectorPanel] = useState<InspectorPanel>(null);
+  const select = (id: string) => { setSelected(id); setInspectorPanel("component"); };
   const metadata = useRunMetadata(serviceId, selected, view?.definition);
   const [error, setError] = useState("");
   const [retry, setRetry] = useState(0);
@@ -265,15 +266,14 @@ export default function PipelineRunView({
               </button>
             </section>
           )}
-          <div className="pl-editor-grid pl-editor-grid--readonly">
-            <PipelineCanvas
+            <PipelineWorkbench
               document={{
                 definition: view.definition,
                 layout: layout ?? view.layout,
               }}
-              components={catalog.components}
+              catalog={catalog}
+              validation={metadata.validation ?? view.validation ?? undefined}
               fitRequest={fitRequest}
-              issues={(metadata.validation ?? view.validation)?.issues}
               selected={selected}
               readOnly
               layoutEditable={arranging && !busy}
@@ -287,7 +287,9 @@ export default function PipelineRunView({
                     )
                   : undefined
               }
-              onSelect={setSelected}
+              onSelect={select}
+              inspectorPanel={inspectorPanel}
+              onInspectorPanelChange={setInspectorPanel}
               onChange={(document) => {
                 if (arranging)
                   setArrangement((current) => ({
@@ -297,16 +299,6 @@ export default function PipelineRunView({
               }}
               onAdd={() => {}}
             />
-            <PipelineInspector
-              document={{ definition: view.definition, layout: view.layout }}
-              catalog={catalog}
-              selected={selected}
-              validation={metadata.validation ?? view.validation ?? undefined}
-              readOnly
-              onSelect={setSelected}
-              onChange={() => {}}
-            />
-          </div>
           {metadata.error && (
             <p role="status" className="pl-warning">
               Component metadata could not refresh. {metadata.error}
@@ -337,7 +329,7 @@ export default function PipelineRunView({
                 ),
               ]),
             )}
-            onSelect={setSelected}
+            onSelect={select}
           />
           <PipelineRunHistory
             key={serviceId}

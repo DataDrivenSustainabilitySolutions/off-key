@@ -40,14 +40,14 @@ export function acknowledgeSave(
   };
 }
 
-export function isSessionDirty(session: EditorSession): boolean {
+export function isDraftDirty(current: EditorDraft, baseline: EditorDraft): boolean {
   return (
-    JSON.stringify(session.document) !==
-      JSON.stringify({
-        definition: session.base.draft,
-        layout: session.base.layout,
-      }) ||
-    session.name !== session.base.name ||
-    session.description !== session.base.description
+    JSON.stringify(current.document) !== JSON.stringify(baseline.document) ||
+    current.name !== baseline.name ||
+    current.description !== baseline.description
   );
+}
+
+export function isSessionDirty(session: EditorSession): boolean {
+  return isDraftDirty(session, openSession(session.base));
 }

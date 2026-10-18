@@ -2,6 +2,7 @@ import type {
   PipelineComponent,
   PipelineEdge,
   PipelineNode,
+  PipelineLayout,
 } from "./contracts";
 
 export type DataKind = NonNullable<PipelineComponent["output_type"]>;
@@ -27,6 +28,11 @@ export const nodeKinds: Record<PipelineNode["kind"], string> = {
 export const NODE_SIZE = { width: 224, height: 144 };
 export const GRID_STEP = 16;
 export const SNAP_GRID: [number, number] = [GRID_STEP, GRID_STEP];
+
+export function nodePosition(layout: PipelineLayout, id: string, index: number) {
+  const position = layout.nodes[id];
+  return position ? { x: position.x, y: position.y } : { x: index * 270, y: 100 };
+}
 
 /** V1 permits one connection per node pair; array position is never identity. */
 export const edgeId = (edge: Pick<PipelineEdge, "source" | "target">) =>

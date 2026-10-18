@@ -58,7 +58,6 @@ export function PipelineTemplateMenu({
       <div className="pl-header"><h3>Start from a template</h3>
         <Popover.Close disabled={busy} aria-label="Close templates"><X size={15} /></Popover.Close>
       </div>
-      <p className="pl-help">Load a starting flow or a saved design, then edit your own copy. Undo restores the previous flow.</p>
       <div className="pl-starting-points" aria-label="Starting flows">
         {catalog.templates.map((template) => <button key={template.id} type="button" disabled={busy}
           aria-label={`Use ${template.name}`} onClick={() => { onBuiltIn(template.id); setOpen(false); }}>
@@ -67,7 +66,6 @@ export function PipelineTemplateMenu({
         </button>)}
       </div>
       <h4>Saved designs</h4>
-      <p className="pl-help">Published designs use their latest revision. Unpublished designs use their saved draft.</p>
       <PipelineDesignBrowser selecting disabled={busy} onSelect={(id) => void load(id)} />
       {busy && <p role="status">Loading template…</p>}
       {error && <p className="pl-error" role="alert">{error}</p>}

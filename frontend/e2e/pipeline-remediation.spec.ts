@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { expect, test } from "@playwright/test";
 import type { PipelineCatalog, PipelineView } from "../src/types/pipelines.generated";
 import { loginPipelineWorkspace } from "./helpers/pipelines";
+import { openPipelineSettings } from "./helpers/pipelineNavigation";
 
 test("preserves edits made after a real atomic draft save was submitted", async ({ page }) => {
   await loginPipelineWorkspace(page);
@@ -33,19 +34,24 @@ test("preserves edits made after a real atomic draft save was submitted", async 
   try {
     await page.goto(`/?view=pipelines&pipeline=${encodeURIComponent(design.id)}`);
     const editor = page.getByRole("region", { name: "Pipeline editor", exact: true });
+    await openPipelineSettings(editor, "Component");
     await editor.getByRole("combobox", { name: "Selected component", exact: true }).selectOption("input");
     const title = editor.getByRole("textbox", { name: "Node title", exact: true });
     await title.fill("Submitted title");
-    await editor.getByText("Name and description", { exact: true }).click();
+    await openPipelineSettings(editor, "Service");
     const name = editor.getByRole("textbox", { name: "Pipeline name", exact: true });
     await name.fill("Submitted name");
     await editor.getByRole("button", { name: "Save draft", exact: true }).click();
     await saving;
+    await openPipelineSettings(editor, "Component");
     await title.fill("New unsaved title");
+    await openPipelineSettings(editor, "Service");
     await name.fill("New unsaved name");
     release();
     await expect(editor.getByText("Draft saved.", { exact: true })).toBeVisible();
+    await openPipelineSettings(editor, "Component");
     await expect(title).toHaveValue("New unsaved title");
+    await openPipelineSettings(editor, "Service");
     await expect(name).toHaveValue("New unsaved name");
     await expect(editor.getByText("Unsaved draft changes", { exact: false })).toBeVisible();
     const saved = await page.request.get(endpoint, { headers });
@@ -57,6 +63,7 @@ test("preserves edits made after a real atomic draft save was submitted", async 
     await editor.getByRole("button", { name: "Save draft", exact: true }).click();
     await expect(editor.getByText("Saved draft", { exact: false })).toBeVisible();
     await page.reload();
+    await openPipelineSettings(editor, "Component");
     await editor.getByRole("combobox", { name: "Selected component", exact: true }).selectOption("input");
     await expect(title).toHaveValue("New unsaved title");
     await expect(editor.getByRole("heading", { name: "New unsaved name", exact: true })).toBeVisible();

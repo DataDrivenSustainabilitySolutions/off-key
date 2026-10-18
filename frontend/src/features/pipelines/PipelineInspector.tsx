@@ -385,10 +385,7 @@ export function PipelineInspector({
           )}
         </>
       ) : (
-        <p className="pl-help">
-          Select a component on the canvas or from the list. Connections and
-          parameters determine execution; visual position does not.
-        </p>
+        <p className="pl-help">Select a component.</p>
       )}
       </>}
     </aside>

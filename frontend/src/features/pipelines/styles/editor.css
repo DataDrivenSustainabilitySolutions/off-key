@@ -4,21 +4,7 @@
   min-height: 32px;
 }
 
-.pl-mobile-switch {
-  display: none;
-}
-
-.pl-inspector-tabs {
-  display: flex;
-  gap: 4px;
-  margin-bottom: 14px;
-}
-.pl-inspector .pl-inspector-tabs button {
-  flex: 1;
-  font-size: 11px;
-  padding: 8px 6px;
-}
-.pl-inspector-tabs button[aria-pressed="true"] {
+.pl-canvas-toolbar button[aria-expanded="true"] {
   border-color: hsl(var(--primary));
   background: hsl(var(--muted));
 }

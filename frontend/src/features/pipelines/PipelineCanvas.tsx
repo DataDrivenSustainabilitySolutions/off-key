@@ -14,10 +14,10 @@ import { edgeId, SNAP_GRID } from "./semantics";
 import { presentGraph } from "./graphPresentation";
 import { PipelineNodeCard, type CanvasNode } from "./PipelineNodeCard";
 import { PipelineGrid } from "./PipelineGrid";
+import { fitReadableView } from "./viewport";
 import "@xyflow/react/dist/style.css";
 
 const nodeTypes = { component: PipelineNodeCard };
-const overviewOptions = { padding: 0.2 };
 type Props = {
   document: GraphDocument;
   components: PipelineComponent[];
@@ -52,9 +52,14 @@ export default function PipelineCanvas({
   const [feedback, setFeedback] = useState("");
   const [snapToGrid, setSnapToGrid] = useState(true);
   const [flow, setFlow] = useState<ReactFlowInstance<CanvasNode>>();
+  const [zoom, setZoom] = useState(1);
+  const surface = useRef<HTMLDivElement>(null);
+  const lastFit = useRef<number | undefined>(undefined);
   useEffect(() => {
-    if (fitRequest) void flow?.fitView(overviewOptions);
-  }, [fitRequest, flow]);
+    if (!flow || !surface.current || lastFit.current === fitRequest) return;
+    lastFit.current = fitRequest;
+    void fitReadableView(flow, surface.current, selected);
+  }, [fitRequest, flow, selected]);
   const [selectedEdges, setSelectedEdges] = useState<string[]>([]);
   const moving = useRef(false);
   const graph = useMemo(
@@ -96,17 +101,16 @@ export default function PipelineCanvas({
       }}
       onDrop={drop}
     >
-      <div className="pl-flow-surface">
+      <div className="pl-flow-surface" ref={surface}>
         <ReactFlow<CanvasNode>
           nodes={nodes}
           edges={edges}
           nodeTypes={nodeTypes}
           onInit={setFlow}
           colorMode={resolvedTheme}
-          fitView
-          fitViewOptions={overviewOptions}
           minZoom={0.01}
           maxZoom={2}
+          onMoveEnd={(_event, viewport) => setZoom(viewport.zoom)}
           snapToGrid={snapToGrid}
           snapGrid={SNAP_GRID}
           nodesDraggable={layoutEditable || !readOnly}
@@ -226,7 +230,15 @@ export default function PipelineCanvas({
           }}
         >
           <PipelineGrid />
-          <Controls showInteractive={false}>
+          <Controls showInteractive={false} orientation="horizontal" fitViewOptions={{ padding: 0.15 }}>
+            <ControlButton
+              className="pl-canvas-scale"
+              aria-label="Readable size"
+              title="Return to readable size"
+              onClick={() => { if (flow && surface.current) void fitReadableView(flow, surface.current, selected); }}
+            >
+              {Math.round(zoom * 100)}%
+            </ControlButton>
             {(layoutEditable || !readOnly) && <ControlButton
               aria-label="Snap to grid"
               aria-pressed={snapToGrid}
@@ -243,7 +255,7 @@ export default function PipelineCanvas({
                 if (selected)
                   void flow?.fitView({
                     nodes: [{ id: selected }],
-                    minZoom: 0.8,
+                    minZoom: 1,
                     maxZoom: 1,
                     padding: 0.5,
                   });

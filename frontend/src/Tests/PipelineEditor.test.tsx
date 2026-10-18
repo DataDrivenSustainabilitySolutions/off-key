@@ -141,8 +141,31 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
+async function openSettings(panel: "Service" | "Component") {
+  const button = await screen.findByRole("button", { name: `${panel} settings` });
+  if (button.getAttribute("aria-expanded") !== "true") fireEvent.click(button);
+}
+async function selectComponent(id: string) {
+  await openSettings("Component");
+  fireEvent.change(screen.getByRole("combobox", { name: "Selected component" }), {
+    target: { value: id },
+  });
+}
+async function nodeTitle() {
+  await openSettings("Component");
+  return screen.getByRole("textbox", { name: "Node title" }) as HTMLInputElement;
+}
+async function pipelineName() {
+  await openSettings("Service");
+  return screen.getByRole("textbox", { name: "Pipeline name" }) as HTMLInputElement;
+}
+async function calibrationField() {
+  await openSettings("Service");
+  return screen.getByRole("spinbutton", { name: "Calibration observations" }) as HTMLInputElement;
+}
+
 describe("saved graphical pipeline editor", () => {
-  it("retains newer draft edits while publishing the validated snapshot", async () => {
+  it.each(["layout", "definition"] as const)("retains newer %s edits while publishing the validated snapshot", async (edit) => {
     let validate!: (
       value: Awaited<ReturnType<typeof pipelinesApi.validate>>,
     ) => void;
@@ -157,34 +180,41 @@ describe("saved graphical pipeline editor", () => {
       name: request.name!,
       description: request.description!,
     }));
+    const submittedDefinition = edit === "definition"
+      ? normalizeDefinition({ ...definition, settings: { ...definition.settings, calibration_window_size: 200 } })
+      : definition;
     const published = {
-      ...pipeline().revisions[0]!, definition, id: "published", number: 2,
+      ...pipeline().revisions[0]!, definition: submittedDefinition, id: "published", number: 2,
     };
     vi.mocked(pipelinesApi.publish).mockResolvedValue(published);
     const callbacks = props();
     render(<PipelineEditor {...callbacks} />);
-    fireEvent.change(
-      await screen.findByRole("combobox", { name: "Selected component" }),
-      { target: { value: "input" } },
-    );
-    const title = screen.getByRole("textbox", {
-      name: "Node title",
-    }) as HTMLInputElement;
+    await selectComponent("input");
+    const title = await nodeTitle();
     fireEvent.change(title, { target: { value: "Validated snapshot" } });
+    if (edit === "definition") fireEvent.change(await calibrationField(), { target: { value: "200" } });
     fireEvent.click(screen.getByRole("button", { name: "Publish revision" }));
-    fireEvent.change(title, { target: { value: "Still editing" } });
+    fireEvent.change(await nodeTitle(), { target: { value: "Still editing" } });
+    if (edit === "definition") fireEvent.change(await calibrationField(), { target: { value: "300" } });
     const acknowledged = pipeline();
+    acknowledged.draft = submittedDefinition;
     acknowledged.layout = normalizeLayout({
       nodes: { input: { x: 0, y: 0, label: "Validated snapshot" } },
     });
     vi.mocked(pipelinesApi.get).mockResolvedValue({
       ...acknowledged, version: 3, revisions: [published],
     });
-    validate({ valid: true, definition, features: {}, issues: [] });
+    validate({ valid: true, definition: submittedDefinition, features: {}, issues: [] });
     await waitFor(() =>
       expect(callbacks.onRevision).toHaveBeenCalledWith("published"),
     );
-    expect(title.value).toBe("Still editing");
+    expect((await nodeTitle()).value).toBe("Still editing");
+    if (edit === "definition") {
+      expect((await calibrationField()).value).toBe("300");
+      expect(pipelinesApi.save).toHaveBeenCalledWith("design", expect.objectContaining({
+        definition: submittedDefinition,
+      }));
+    }
     expect(screen.getByText("Unsaved draft changes", { exact: false })).toBeTruthy();
     expect(pipelinesApi.publish).toHaveBeenCalledWith("design", {
       expected_version: 2,
@@ -225,26 +255,17 @@ describe("saved graphical pipeline editor", () => {
       }),
     );
     render(<PipelineEditor {...props()} />);
-    fireEvent.change(
-      await screen.findByRole("combobox", { name: "Selected component" }),
-      { target: { value: "input" } },
-    );
-    const title = screen.getByRole("textbox", {
-      name: "Node title",
-    }) as HTMLInputElement;
-    const name = screen.getByRole("textbox", {
-      name: "Pipeline name",
-    }) as HTMLInputElement;
-    fireEvent.change(title, { target: { value: "Submitted title" } });
-    fireEvent.change(name, { target: { value: "Submitted name" } });
+    await selectComponent("input");
+    fireEvent.change(await nodeTitle(), { target: { value: "Submitted title" } });
+    fireEvent.change(await pipelineName(), { target: { value: "Submitted name" } });
     fireEvent.click(screen.getByRole("button", { name: "Save draft" }));
     await waitFor(() => expect(finishSave).toBeTypeOf("function"));
-    fireEvent.change(title, { target: { value: "New unsaved title" } });
-    fireEvent.change(name, { target: { value: "New unsaved name" } });
+    fireEvent.change(await nodeTitle(), { target: { value: "New unsaved title" } });
+    fireEvent.change(await pipelineName(), { target: { value: "New unsaved name" } });
     finishSave!();
     await screen.findByText("Draft saved.");
-    expect(title.value).toBe("New unsaved title");
-    expect(name.value).toBe("New unsaved name");
+    expect((await nodeTitle()).value).toBe("New unsaved title");
+    expect((await pipelineName()).value).toBe("New unsaved name");
     expect(screen.getByText("Unsaved draft changes", { exact: false })).toBeTruthy();
     expect(pipelinesApi.metadata).not.toHaveBeenCalled();
     expect(pipelinesApi.save).toHaveBeenCalledWith("design", expect.objectContaining({
@@ -258,7 +279,7 @@ describe("saved graphical pipeline editor", () => {
     await waitFor(() =>
       expect(screen.queryByText("Unsaved draft changes", { exact: false })).toBeNull(),
     );
-    expect(title.value).toBe("New unsaved title");
+    expect((await nodeTitle()).value).toBe("New unsaved title");
   });
 
   it("keeps immutable revision controls read only", async () => {
@@ -269,10 +290,7 @@ describe("saved graphical pipeline editor", () => {
       screen.queryByRole("button", { name: "Publish revision" }),
     ).toBeNull();
     expect(screen.getByRole("button", { name: "Start revision" })).toBeTruthy();
-    fireEvent.change(
-      screen.getByRole("combobox", { name: "Selected component" }),
-      { target: { value: "input" } },
-    );
+    await selectComponent("input");
     expect(
       (screen.getByRole("textbox", { name: "Node title" }) as HTMLInputElement)
         .disabled,
@@ -289,10 +307,7 @@ describe("saved graphical pipeline editor", () => {
     });
     const callbacks = props();
     render(<PipelineEditor {...callbacks} />);
-    fireEvent.change(
-      await screen.findByRole("combobox", { name: "Selected component" }),
-      { target: { value: "input" } },
-    );
+    await selectComponent("input");
     fireEvent.change(screen.getByRole("textbox", { name: "Node title" }), {
       target: { value: "My source label" },
     });
@@ -353,19 +368,13 @@ describe("saved graphical pipeline editor", () => {
   it("retains an unsaved draft across a setup detour", async () => {
     const callbacks = props();
     const first = render(<PipelineEditor {...callbacks} />);
-    fireEvent.change(
-      await screen.findByRole("combobox", { name: "Selected component" }),
-      { target: { value: "input" } },
-    );
+    await selectComponent("input");
     fireEvent.change(screen.getByRole("textbox", { name: "Node title" }), {
       target: { value: "Saved during navigation" },
     });
     first.unmount();
     render(<PipelineEditor {...callbacks} />);
-    fireEvent.change(
-      await screen.findByRole("combobox", { name: "Selected component" }),
-      { target: { value: "input" } },
-    );
+    await selectComponent("input");
     expect(
       (screen.getByRole("textbox", { name: "Node title" }) as HTMLInputElement)
         .value,
@@ -403,10 +412,7 @@ describe("saved graphical pipeline editor", () => {
       }),
     );
     render(<PipelineEditor {...props()} catalog={nextCatalog} />);
-    fireEvent.change(
-      await screen.findByRole("combobox", { name: "Selected component" }),
-      { target: { value: "detector" } },
-    );
+    await selectComponent("detector");
     fireEvent.change(screen.getByRole("combobox", { name: "Detector model" }), {
       target: { value: "detector:another" },
     });
@@ -482,10 +488,7 @@ describe("saved graphical pipeline editor", () => {
     render(
       <PipelineEditor {...props()} catalog={{ ...catalog, components }} />,
     );
-    fireEvent.change(
-      await screen.findByRole("combobox", { name: "Selected component" }),
-      { target: { value: "selection" } },
-    );
+    await selectComponent("selection");
     expect(
       screen.queryByRole("checkbox", { name: "Value · value" }),
     ).toBeNull();

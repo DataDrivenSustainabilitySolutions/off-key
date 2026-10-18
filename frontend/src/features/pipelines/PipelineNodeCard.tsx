@@ -1,15 +1,5 @@
 import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
-import {
-  Bell,
-  BrainCircuit,
-  CheckCircle2,
-  Clock3,
-  Database,
-  GitMerge,
-  RadioReceiver,
-  SlidersHorizontal,
-  TriangleAlert,
-} from "lucide-react";
+import { CheckCircle2, Clock3, TriangleAlert } from "lucide-react";
 import type { PipelineNode } from "./contracts";
 import { dataKinds, nodeKinds, sampledState, type DataKind } from "./semantics";
 
@@ -17,7 +7,6 @@ export type CanvasData = {
   label: string;
   kind: PipelineNode["kind"];
   operation: string;
-  description: string;
   available: boolean;
   inputPort: boolean;
   outputPort: boolean;
@@ -29,21 +18,11 @@ export type CanvasData = {
 };
 export type CanvasNode = Node<CanvasData, "component">;
 
-const roleIcons = {
-  source: RadioReceiver,
-  transform: SlidersHorizontal,
-  merge: GitMerge,
-  detector: BrainCircuit,
-  policy: Bell,
-  output: Database,
-};
-
 export function PipelineNodeCard({
   data,
   selected,
   isConnectable,
 }: NodeProps<CanvasNode>) {
-  const Icon = roleIcons[data.kind];
   const status = data.state ? sampledState(data.state) : undefined;
   const StatusIcon =
     status?.tone === "failed"
@@ -51,21 +30,22 @@ export function PipelineNodeCard({
       : status?.tone === "ready"
         ? CheckCircle2
         : Clock3;
-  const subtitle =
-    data.label !== data.operation ? data.operation : data.description;
   return (
     <div
       className={`pl-node${selected ? " is-selected" : ""}`}
       data-kind={data.kind}
     >
       <span className="pl-node-kind">
-        <Icon size={12} aria-hidden="true" />
         {nodeKinds[data.kind]}
       </span>
-      <strong title={data.label}>{data.label}</strong>
-      <small className="pl-node-operation" title={subtitle}>
-        {subtitle}
-      </small>
+      <div className="pl-node-title">
+        <strong title={data.label}>{data.label}</strong>
+        {data.label !== data.operation && (
+          <small className="pl-node-operation" title={data.operation}>
+            {data.operation}
+          </small>
+        )}
+      </div>
       <div className="pl-node-ports">
         {data.inputPort && (
           <Handle

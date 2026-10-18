@@ -1,4 +1,18 @@
-import { expect, type Page } from "@playwright/test";
+import { expect, type Locator, type Page } from "@playwright/test";
+
+export async function openPipelineSettings(scope: Page | Locator, panel: "Service" | "Component") {
+  const button = scope.getByRole("button", { name: `${panel} settings`, exact: true });
+  if (await button.getAttribute("aria-expanded") !== "true") await button.click();
+}
+
+export async function expectReadablePipeline(page: Page) {
+  const graph = page.getByLabel("Pipeline graph", { exact: true });
+  await expect.poll(() => graph.locator(".react-flow__viewport").evaluate((element) =>
+    new DOMMatrix(getComputedStyle(element).transform).a,
+  )).toBe(1);
+  await expect(graph.locator(".pl-node-kind svg")).toHaveCount(0);
+  await expect(graph.locator(".pl-node strong").first()).toHaveCSS("font-size", "16px");
+}
 
 export async function expectPipelineOverview(page: Page) {
   const graph = page.getByLabel("Pipeline graph", { exact: true });

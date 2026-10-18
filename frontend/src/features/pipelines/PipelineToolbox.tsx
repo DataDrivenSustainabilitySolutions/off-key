@@ -7,22 +7,25 @@ export function PipelineToolbox({
   catalog,
   definition,
   onAdd,
+  onDragStart,
+  onDragEnd,
 }: {
   catalog: PipelineCatalog;
   definition: PipelineDefinition;
   onAdd: (componentId: string) => void;
+  onDragStart?: () => void;
+  onDragEnd?: () => void;
 }) {
   const [query, setQuery] = useState("");
   const components = catalog.components.filter(
     (component) =>
-      component.strategies.includes(definition.strategy) &&
+      canAddComponent(definition, component) &&
       `${component.label} ${component.description}`
         .toLocaleLowerCase()
         .includes(query.toLocaleLowerCase()),
   );
   return (
     <aside className="pl-toolbox" aria-label="Pipeline toolbox">
-      <h3>Components</h3>
       <input
         type="search"
         aria-label="Search components"
@@ -30,16 +33,7 @@ export function PipelineToolbox({
         value={query}
         onChange={(event) => setQuery(event.target.value)}
       />
-      <p className="pl-help">
-        Drag onto the canvas or choose Add. Connect components using the
-        inspector or their handles.
-      </p>
-      <p className="pl-help" role="status">
-        {definition.nodes.length} of 64 components
-        {definition.nodes.length >= 64
-          ? " · remove a component before adding another."
-          : "."}
-      </p>
+      <p className="pl-toolbox-count" role="status">{definition.nodes.length} / 64</p>
       {(
         [
           "source",
@@ -49,7 +43,7 @@ export function PipelineToolbox({
           "policy",
           "output",
         ] as const
-      ).map((kind) => (
+      ).filter((kind) => components.some((component) => component.kind === kind)).map((kind) => (
         <section key={kind}>
           <h4>{nodeKinds[kind]}</h4>
           {components
@@ -61,23 +55,25 @@ export function PipelineToolbox({
                 className="pl-toolbox-item"
                 title={component.description}
                 aria-label={`Add ${component.label}`}
-                draggable={canAddComponent(definition, component)}
+                draggable
                 onDragStart={(event) => {
                   event.dataTransfer.setData(
                     "application/off-key-component",
                     component.id,
                   );
                   event.dataTransfer.effectAllowed = "copy";
+                  onDragStart?.();
                 }}
-                disabled={!canAddComponent(definition, component)}
+                onDragEnd={onDragEnd}
                 onClick={() => onAdd(component.id)}
               >
                 <span>{component.label}</span>
-                <small>Add</small>
               </button>
             ))}
         </section>
       ))}
+      {!components.length && <p className="pl-help">{definition.nodes.length >= 64
+        ? "Component limit reached." : "No matching components."}</p>}
     </aside>
   );
 }

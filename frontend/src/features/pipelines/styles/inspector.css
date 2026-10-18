@@ -1,18 +1,51 @@
 .pl-toolbox {
-  padding: 14px;
-  border-right: 1px solid hsl(var(--border));
-  max-height: 700px;
-  overflow: auto;
-  scrollbar-width: thin;
+  padding: 0;
 }
-
-.pl-toolbox h3 {
-  font-size: 13px;
-  margin: 0 0 12px;
+.pl-component-menu {
+  width: min(320px, calc(100vw - 24px));
+  max-height: min(600px, var(--radix-popover-content-available-height));
+  overflow: auto;
+  padding: 14px;
+  background: hsl(var(--background));
+  border: 1px solid hsl(var(--border));
+  border-radius: 10px;
+  box-shadow: 0 10px 30px #0002;
+  z-index: 50;
+}
+.pl-component-menu-heading,
+.pl-inspector-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+/* Include the popover's positioning wrapper when exposing the drop surface. */
+.pl-component-portal.is-dragging {
+  opacity: 0;
+  pointer-events: none;
+}
+.pl-component-menu-heading h3,
+.pl-inspector .pl-inspector-heading h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+.pl-component-menu-heading button,
+.pl-inspector-heading button {
+  min-width: 32px;
+  min-height: 32px;
+  padding: 6px;
+}
+.pl-toolbox-count {
+  font-size: 12px;
+  color: hsl(var(--muted-foreground));
+  margin: 8px 0 0;
+  text-align: right;
 }
 
 .pl-toolbox h4 {
-  font-size: 10px;
+  font-size: 11px;
   color: hsl(var(--muted-foreground));
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -28,8 +61,8 @@
   text-align: left;
   justify-content: space-between;
   margin: 4px 0;
-  font-size: 11px;
-  padding: 8px;
+  font-size: 13px;
+  padding: 10px;
   background: hsl(var(--background));
 }
 
@@ -49,10 +82,18 @@
   overflow: auto;
   scrollbar-width: thin;
   min-width: 0;
+  height: 100%;
+}
+.pl-inspector .pl-help,
+.pl-inspector .pl-field {
+  font-size: 13px;
+}
+.pl-inspector .pl-field :is(input, select, textarea) {
+  font-size: 14px;
 }
 
 .pl-inspector h3 {
-  font-size: 14px;
+  font-size: 16px;
   margin: 16px 0 6px;
 }
 

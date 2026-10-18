@@ -32,8 +32,6 @@ export function presentGraph(
         label: nodeLabel(node, components, document.layout),
         kind: node.kind,
         operation: component?.label ?? node.component,
-        description:
-          component?.description ?? "Component metadata is unavailable.",
         available: !!component,
         inputPort: component ? !!input : node.kind !== "source",
         outputPort: component ? !!output : node.kind !== "output",

@@ -198,14 +198,42 @@ async def test_preflight_cancellation_preserves_a_foreign_name_collision(
     image = await PipelinePreflight(workloads).resolve_image()
     # This fixture owns the synthetic foreign job and removes it explicitly.
     # Application cancellation must not remove it just because the name matches.
+    labels = {
+        "managed_by": "foreign-fixture",
+        "off-key.integration-owner": f"foreign-preflight-{activation.id}",
+    }
     foreign = await workloads.async_docker.run(
         workloads.async_docker.client.services.create,
         image=image,
         name=f"radar-preflight-{activation.id}",
-        command=["/app/bin/python", "-c", "import time; time.sleep(60)"],
-        labels={"managed_by": "foreign-fixture"},
+        # Python is PID 1 here, so explicitly handle SIGTERM rather than making
+        # cleanup depend on Swarm's forced-kill deadline and task-start timing.
+        command=[
+            "/app/bin/python",
+            "-c",
+            "import signal, sys, time; "
+            "signal.signal(signal.SIGTERM, lambda *_: sys.exit(0)); "
+            "print('foreign-preflight-ready', flush=True); time.sleep(120)",
+        ],
+        restart_policy=docker.types.RestartPolicy(condition="none"),
+        labels=labels,
+        container_labels=labels,
     )
     try:
+        async with asyncio.timeout(30):
+            while True:
+                tasks = await workloads.async_docker.run(foreign.tasks)
+                running = [
+                    task for task in tasks if task["Status"]["State"] == "running"
+                ]
+                if running and b"foreign-preflight-ready" in (
+                    await workloads.async_docker.run(
+                        lambda: b"".join(foreign.logs(stdout=True, stderr=True))
+                    )
+                ):
+                    foreign_task_id = running[0]["ID"]
+                    break
+                await asyncio.sleep(0.05)
         async with sessions() as session:
             controller = PipelineActivations(session, workloads=workloads)
             await controller.cancel(activation.id)
@@ -213,7 +241,14 @@ async def test_preflight_cancellation_preserves_a_foreign_name_collision(
             progress = await controller.get(activation.id)
             assert progress.phase == "cancelling"
             assert "different owner" in progress.error
-        assert workloads.async_docker.client.services.get(foreign.id)
+        retained = await workloads.async_docker.run(
+            workloads.async_docker.client.services.get, foreign.id
+        )
+        assert retained.attrs["Spec"]["Mode"]["Replicated"]["Replicas"] == 1
+        assert any(
+            task["ID"] == foreign_task_id and task["Status"]["State"] == "running"
+            for task in await workloads.async_docker.run(foreign.tasks)
+        )
     finally:
         await workloads.remove(foreign.id)
     await drive_activation(sessions, workloads, activation.id, until="failed")

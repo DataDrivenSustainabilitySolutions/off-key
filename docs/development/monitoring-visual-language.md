@@ -15,13 +15,14 @@ observation envelopes already have separate owners. Keep those boundaries.
 | Finding | Correction |
 | --- | --- |
 | Canvas and keyboard connections accepted incompatible data kinds until validation. | Both use one authoring guard over the generated catalog's types, occupied inputs, cycles and resource limits. The backend compiler remains authoritative. |
-| Custom titles could hide the underlying operation. | Every card retains its operation name beneath its title. Roles have icons and text; ports have explicit input/output labels. |
+| Custom titles could hide the underlying operation. | A custom title retains the operation name beneath it. Roles use text and a subtle stage color; ports retain explicit input/output labels. |
 | Edge identity used array positions. Sparse merge order values produced misleading input numbers. | Renderer identity uses the stable endpoint pair. Inspector order and accessible connection ranks use executable order, independent of storage order. Adding an input preserves relative order and assigns bounded contiguous ordinals. |
 | Role colors, wire meaning and runtime text lacked a shared grammar. | Drafts and runs share one presentation adapter, solid directional wires and data-type colors. Sockets are anchored to their labeled port row. Configuration issues and sampled execution state have separate badges. |
 | Repeating data types on cards and every connection interrupted the flow. | Data types appear at component ports. Wires carry no visible text, and the canvas has no separate legend. Merge ordering and feature details remain in the inspector; accessible wire descriptions retain the type and rank. |
 | “Keep raw” implied that a passthrough could recover original readings after a transform. | The operation is named “Pass through.” Raw bypass follows an explicit branch from aligned inputs; passthrough preserves its incoming representation. |
 | The zoom floor prevented a long maximum-sized chain from fitting in the canvas. | “Fit entire graph” supports the bounded V1 graph size, while “Locate selected component” restores a readable detail view. Browser checks verify both after automatic arrangement. |
-| Explicit automatic arrangement could leave a running graph outside the current camera. | Arrangement requests one fit after the accepted layout update. Saving, manual moves and diagnostic polling preserve the camera. Both live strategies verify visible bounds and camera stability through saving. |
+| Automatic fitting made laptop and phone labels too small. | Opening and arranging use a readable working scale. Larger graphs start near the input or selected component; the explicit overview control still fits the whole graph. Saving, manual moves and diagnostic polling preserve the camera. |
+| Permanent component and settings sidebars crowded the canvas. | A searchable Add component popover supports clicking and dragging. One collapsible inspector opens on selection; service settings use the same space. Mobile uses the same controls with an overlay inspector. |
 
 Unknown component contracts retain their topology for explanation, display
 unavailable data types and prevent new connections. The editor must never invent
@@ -31,7 +32,7 @@ feature semantics for an unavailable component.
 
 | Concept | Meaning | Visual treatment |
 | --- | --- | --- |
-| Component role | Input, transform, combine, detector, decision policy or evidence output | Stable card structure with a role icon and text |
+| Component role | Input, transform, combine, detector, decision policy or evidence output | Role text, a tinted surface and a colored top border; feature processing is teal, detectors violet, policies amber and evidence slate |
 | Operation | The catalog implementation and contract selected for that node | Operation name remains visible when a user supplies a custom title |
 | Data kind | What crosses a boundary | Named input/output ports and wire color; all links share a solid line and arrow style |
 | Connection | A directed dependency between operations | Left-to-right ports and an arrow; placement never changes execution |
@@ -56,6 +57,10 @@ coverage and persistence freshness remain explicit in the existing diagnostics.
 Component selection and **Locate selected component** provide a readable detail
 view of a larger graph; **Fit entire graph** restores its overview. Keyboard and
 narrow-screen navigation use the same component identities and inspector.
+Node titles are 16px at the default working scale. Descriptions live in component
+settings. The percentage control returns an overview or manually zoomed canvas
+to readable size. Panels start closed; closing settings restores canvas width
+without discarding edits or moving nodes.
 
 Keep the main canvas readable as a continuous process: a component explains its
 operation, a port explains its contract, and a link shows the dependency. Do not

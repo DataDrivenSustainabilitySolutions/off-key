@@ -1,7 +1,166 @@
 import { randomUUID } from "node:crypto";
 import { expect, test } from "@playwright/test";
 import type { PipelineCatalog, PipelineRevisionView, PipelineView } from "../src/types/pipelines.generated";
+import { addTestCharger, fixtureEntityId, removeTestCharger } from "./helpers/collection";
 import { loginPipelineWorkspace } from "./helpers/pipelines";
+import { openPipelineSettings } from "./helpers/pipelineNavigation";
+
+test("keeps an unnamed built-in layout dirty and undoable across saved-design browsing", async ({ page }) => {
+  await loginPipelineWorkspace(page);
+  await page.setViewportSize({ width: 1600, height: 1100 });
+  await page.goto("/?create=monitoring");
+  const workbench = page.getByRole("region", { name: "Monitoring workbench", exact: true });
+  await openPipelineSettings(workbench, "Service");
+  const name = workbench.getByRole("textbox", { name: "Service name", exact: true });
+  const input = workbench.getByLabel("Pipeline graph", { exact: true }).locator('.react-flow__node[data-id="input"]');
+  const position = () => input.evaluate((element) => {
+    const transform = new DOMMatrix(getComputedStyle(element).transform);
+    return { x: transform.e, y: transform.f };
+  });
+  await expect(input).toBeVisible();
+  await expect(name).toHaveValue("");
+  const original = await position();
+  await input.focus();
+  await input.press("Enter");
+  await expect(input).toHaveClass(/selected/);
+  await input.press("ArrowRight");
+  await expect.poll(async () => (await position()).x).toBeGreaterThan(original.x);
+  const moved = await position();
+  await workbench.getByRole("button", { name: "Templates", exact: true }).click();
+  await page.getByRole("dialog", { name: "Monitoring templates", exact: true })
+    .getByRole("button", { name: "Manage saved designs", exact: true }).click();
+  const library = page.getByRole("region", { name: "Saved designs", exact: true });
+  await expect(library).toBeVisible();
+  await library.getByRole("button", { name: "Back", exact: true }).click();
+  await openPipelineSettings(workbench, "Service");
+  await expect(input).toBeVisible();
+  await expect(name).toHaveValue("");
+  await expect.poll(position).toEqual(moved);
+  const undo = workbench.getByRole("button", { name: "Undo graph change", exact: true });
+  await expect(undo).toBeEnabled();
+
+  const unloading = page.waitForEvent("dialog");
+  // A dismissed unload has no load event for Playwright's reload waiter.
+  const reload = page.evaluate(() => window.location.reload());
+  const dialog = await unloading;
+  expect(dialog.type()).toBe("beforeunload");
+  await dialog.dismiss();
+  await reload;
+    await expect(workbench).toBeVisible();
+  await expect(name).toHaveValue("");
+  await expect.poll(position).toEqual(moved);
+  await undo.click();
+  await expect.poll(position).toEqual(original);
+});
+
+for (const acknowledgement of ["after returning", "while in Sources"] as const) {
+  test(`recovers the first real save acknowledged ${acknowledgement} without creating a duplicate`, async ({ page }) => {
+    await loginPipelineWorkspace(page);
+    await page.setViewportSize({ width: 1600, height: 1100 });
+    const token = (await page.evaluate(() => localStorage.getItem("auth_token")))!;
+    const headers = { Authorization: `Bearer ${token}` };
+    const deviceId = randomUUID();
+    const createPath = "/api/v1/monitors/pipelines";
+    const routePattern = `**${createPath}`;
+    const createdIds = new Set<string>();
+    let created: PipelineView | undefined;
+    let createRequests = 0;
+    let release!: () => void;
+    let submitted!: () => void;
+    const held = new Promise<void>((resolve) => { release = resolve; });
+    const saving = new Promise<void>((resolve) => { submitted = resolve; });
+    page.on("request", (request) => {
+      if (request.method() === "POST" && new URL(request.url()).pathname === createPath) createRequests++;
+    });
+    try {
+      // Recording is off: this navigation/save contract needs a real entity,
+      // not telemetry or a running monitor.
+      await addTestCharger(page.request, token, deviceId, deviceId, ["voltage"], { mode: "off", interval_seconds: 10 });
+      await page.goto(`/?create=monitoring&target=${fixtureEntityId(deviceId)}`);
+      const workbench = page.getByRole("region", { name: "Monitoring workbench", exact: true });
+      await openPipelineSettings(workbench, "Service");
+      await workbench.getByRole("textbox", { name: "Service name", exact: true }).fill(`Creation recovery ${deviceId}`);
+      await workbench.getByRole("button", { name: "Component settings", exact: true }).click();
+      await workbench.getByRole("combobox", { name: "Selected component", exact: true }).selectOption("input");
+      const title = workbench.getByRole("textbox", { name: "Node title", exact: true });
+      await title.fill("Submitted title");
+      await page.route(routePattern, async (route) => {
+        if (route.request().method() !== "POST") { await route.continue(); return; }
+        // Commit to the real database before holding only its acknowledgement.
+        const response = await route.fetch();
+        expect(response.ok(), await response.text()).toBe(true);
+        created = await response.json() as PipelineView;
+        createdIds.add(created.id);
+        submitted();
+        await held;
+        await route.fulfill({ response });
+      });
+      await workbench.getByRole("button", { name: "Save draft", exact: true }).click();
+      await saving;
+      await title.fill("Edited after submission");
+      await workbench.getByRole("button", { name: "Service settings", exact: true }).click();
+      await workbench.getByRole("link", { name: "Configure readings in Sources", exact: true }).click();
+      const sources = page.getByRole("main", { name: "Sources workspace", exact: true });
+      await expect(sources).toBeVisible();
+      const returnToSetup = sources.getByRole("link", { name: "Return to service setup", exact: true });
+      const delivered = page.waitForResponse((response) =>
+        response.request().method() === "POST" && new URL(response.url()).pathname === createPath);
+      if (acknowledgement === "after returning") {
+        await returnToSetup.click();
+        await expect(workbench).toBeVisible();
+        await expect(workbench.getByRole("button", { name: "Save draft", exact: true })).toBeDisabled();
+        await workbench.getByRole("button", { name: "Component settings", exact: true }).click();
+        await workbench.getByRole("combobox", { name: "Selected component", exact: true }).selectOption("input");
+        await expect(title).toHaveValue("Edited after submission");
+        await title.fill("Edited after returning");
+      }
+      release();
+      const acknowledged = await delivered;
+      expect(acknowledged.ok()).toBe(true);
+      await acknowledged.finished();
+      const committed = await page.request.get(`${createPath}/${created!.id}`, { headers });
+      expect(committed.ok(), await committed.text()).toBe(true);
+      const saved = await committed.json() as PipelineView;
+      expect(saved.layout.nodes?.input?.label).toBe("Submitted title");
+      if (acknowledgement === "while in Sources") {
+        await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
+        await expect(sources).toBeVisible();
+        await expect(page).toHaveURL(/\/sources\?/);
+        await returnToSetup.click();
+      }
+      const editor = page.getByRole("region", { name: "Pipeline editor", exact: true });
+      await expect(editor.getByRole("heading", { name: saved.name, exact: true })).toBeVisible();
+      expect(new URL(page.url()).searchParams.get("pipeline")).toBe(saved.id);
+      await page.unroute(routePattern);
+      expect(createRequests).toBe(1);
+      await openPipelineSettings(editor, "Component");
+      await editor.getByRole("combobox", { name: "Selected component", exact: true }).selectOption("input");
+      const finalTitle = acknowledgement === "after returning" ? "Edited after returning" : "Edited after submission";
+      await expect(editor.getByRole("textbox", { name: "Node title", exact: true })).toHaveValue(finalTitle);
+      await expect(editor.getByText("Unsaved draft changes", { exact: false })).toBeVisible();
+      await editor.getByRole("button", { name: "Save draft", exact: true }).click();
+      await expect(editor.getByText("Draft saved.", { exact: true })).toBeVisible();
+      expect(createRequests).toBe(1);
+      await page.reload();
+      await openPipelineSettings(editor, "Component");
+      await editor.getByRole("combobox", { name: "Selected component", exact: true }).selectOption("input");
+      await expect(editor.getByRole("textbox", { name: "Node title", exact: true })).toHaveValue(finalTitle);
+      expect(new URL(page.url()).searchParams.get("pipeline")).toBe(saved.id);
+    } finally {
+      release();
+      await page.unrouteAll({ behavior: "wait" });
+      for (const id of createdIds) {
+        const response = await page.request.get(`${createPath}/${id}`, { headers });
+        expect(response.ok(), await response.text()).toBe(true);
+        const design = await response.json() as PipelineView;
+        const archived = await page.request.patch(`${createPath}/${id}`, { headers,
+          data: { expected_version: design.version, name: design.name, description: design.description, archived: true } });
+        expect(archived.ok(), await archived.text()).toBe(true);
+      }
+      await removeTestCharger(page.request, token, deviceId);
+    }
+  });
+}
 
 test("opens the workbench directly and safely edits copies of published and draft templates", async ({ page }, testInfo) => {
   test.setTimeout(180_000);
@@ -73,6 +232,9 @@ test("opens the workbench directly and safely edits copies of published and draf
     const workbench = page.getByRole("region", { name: "Monitoring workbench", exact: true });
     await expect(workbench.getByLabel("Pipeline graph", { exact: true })).toBeVisible();
     await page.unroute("**/api/v1/monitors/workspace*");
+    await theme("Light");
+    await page.screenshot({ path: testInfo.outputPath("creation-canvas.png"), fullPage: true });
+    await openPipelineSettings(workbench, "Service");
     const name = workbench.getByRole("textbox", { name: "Service name", exact: true });
     await expect(name).toHaveAttribute("placeholder", "e.g. Machine health");
     await expect(workbench.getByRole("button", { name: "Choose monitoring inputs", exact: true })).toHaveText("Select an entity");
@@ -86,6 +248,7 @@ test("opens the workbench directly and safely edits copies of published and draf
     const library = page.getByRole("region", { name: "Saved designs", exact: true });
     await expect(library).toBeVisible();
     await library.getByRole("button", { name: "Back", exact: true }).click();
+    await openPipelineSettings(workbench, "Service");
     await expect(name).toHaveValue(copyName);
     expect(createRequests).toBe(0);
 
@@ -115,9 +278,13 @@ test("opens the workbench directly and safely edits copies of published and draf
     await theme("Dark");
     await page.screenshot({ path: testInfo.outputPath("creation-workbench-dark.png") });
     await page.setViewportSize({ width: 390, height: 844 });
-    await workbench.getByRole("button", { name: "inspector", exact: true }).click();
+    await openPipelineSettings(workbench, "Service");
     await expect(name).toBeVisible();
     await page.screenshot({ path: testInfo.outputPath("creation-workbench-mobile.png") });
+    await workbench.getByRole("button", { name: "Close settings", exact: true }).click();
+    await workbench.getByRole("button", { name: "Readable size", exact: true }).click();
+    await page.screenshot({ path: testInfo.outputPath("creation-canvas-mobile.png"), fullPage: true });
+    await openPipelineSettings(workbench, "Service");
     await workbench.getByRole("button", { name: "Templates", exact: true }).click();
     await expect(templates).toBeVisible();
     await page.screenshot({ path: testInfo.outputPath("creation-templates-mobile.png") });
@@ -155,7 +322,8 @@ test("opens the workbench directly and safely edits copies of published and draf
     const copy = await copyResponse.json() as PipelineView;
     expect(copy.draft).toEqual(revision.definition);
     expect(copy.layout.nodes?.input?.label).toBe("Submitted inputs");
-    await editor.getByRole("combobox", { name: "Selected component", exact: true }).selectOption("input");
+    await openPipelineSettings(editor, "Component");
+      await editor.getByRole("combobox", { name: "Selected component", exact: true }).selectOption("input");
     await expect(editor.getByRole("textbox", { name: "Node title", exact: true })).toHaveValue("Edits made while saving");
     await expect(editor.getByText("Unsaved draft changes", { exact: false })).toBeVisible();
     await editor.getByRole("button", { name: "Save draft", exact: true }).click();

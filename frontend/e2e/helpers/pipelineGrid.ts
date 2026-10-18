@@ -1,7 +1,11 @@
 import { expect, type Page } from "@playwright/test";
+import { openPipelineSettings } from "./pipelineNavigation";
 
 /** Verify actual screen/graph geometry, including zoom, before building branches. */
 export async function dropPipelineComponent(page: Page, component: string, nodeId: string) {
+  const close = page.getByRole("button", { name: "Close settings", exact: true });
+  if (await close.count()) await close.click();
+  await page.getByRole("button", { name: "Add component", exact: true }).click();
   const canvas = page.getByLabel("Pipeline graph", { exact: true });
   const snap = canvas.getByRole("button", { name: "Snap to grid", exact: true });
   await expect(snap).toHaveAttribute("aria-pressed", "true");
@@ -20,8 +24,17 @@ export async function dropPipelineComponent(page: Page, component: string, nodeI
       element.setAttribute("data-observed-drop", JSON.stringify({ x: pointer.clientX, y: pointer.clientY }));
     }, { once: true, capture: true });
   });
-  await page.getByRole("button", { name: `Add ${component}`, exact: true })
-    .dragTo(canvas, { targetPosition: target });
+  const source = page.getByRole("button", { name: `Add ${component}`, exact: true });
+  await source.scrollIntoViewIfNeeded();
+  const item = (await source.boundingBox())!;
+  await page.mouse.move(item.x + item.width / 2, item.y + item.height / 2);
+  await page.mouse.down();
+  // Start the native drag before moving into the area covered by the popover.
+  // The menu becomes transparent to pointer events once a component is picked up.
+  await page.mouse.move(item.x + item.width / 2 + 12, item.y + item.height / 2 + 12, { steps: 3 });
+  await expect(page.locator(".pl-component-portal")).toHaveCSS("opacity", "0");
+  await page.mouse.move(bounds.x + target.x, bounds.y + target.y, { steps: 5 });
+  await page.mouse.up();
   const observed = await canvas.getAttribute("data-observed-drop");
   expect(observed, "The canvas must receive a real drop event").not.toBeNull();
   const pointer = JSON.parse(observed!) as { x: number; y: number };
@@ -32,6 +45,7 @@ export async function dropPipelineComponent(page: Page, component: string, nodeI
     y: Math.round((pointer.y - frame.y) / frame.zoom / 16) * 16,
   };
   const node = canvas.locator(`.react-flow__node[data-id="${nodeId}"]`);
+  await page.getByRole("button", { name: "Close settings", exact: true }).click();
   await expect(node).toBeVisible();
   const dropped = (await node.boundingBox())!;
   expect(Math.abs(dropped.x - frame.x - expected.x * frame.zoom)).toBeLessThan(3);
@@ -77,4 +91,5 @@ export async function dropPipelineComponent(page: Page, component: string, nodeI
     return Math.max(Math.abs(current.x - Math.round(current.x / 16) * 16),
       Math.abs(current.y - Math.round(current.y / 16) * 16));
   }).toBeLessThan(0.01);
+  await openPipelineSettings(page, "Component");
 }

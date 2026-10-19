@@ -127,33 +127,6 @@ export function freePosition(document: GraphDocument, anchor?: string) {
   return { x, y };
 }
 
-/** Wire a new component after the anchor and, when it fits, into the anchor's single outgoing link. */
-export function insertAfter(
-  definition: PipelineDefinition,
-  anchor: string,
-  added: string,
-  components: PipelineComponent[],
-): PipelineDefinition {
-  if (connectionIssue(definition, anchor, added, components)) return definition;
-  const outgoing = definition.edges.filter((edge) => edge.source === anchor);
-  const downstream = outgoing.length === 1 ? outgoing[0]! : undefined;
-  if (downstream) {
-    const target = definition.nodes.find((node) => node.id === downstream.target);
-    const detached = {
-      ...definition,
-      edges: definition.edges.filter((edge) => edge !== downstream),
-    };
-    const rewired = connectNodes(detached, anchor, added, components);
-    if (
-      target?.kind !== "merge" &&
-      rewired !== detached &&
-      !connectionIssue(rewired, added, downstream.target, components)
-    )
-      return connectNodes(rewired, added, downstream.target, components);
-  }
-  return connectNodes(definition, anchor, added, components);
-}
-
 /** Current V1 execution profile, shared by drag/drop and the component palette. */
 export function canAddComponent(
   definition: PipelineDefinition,

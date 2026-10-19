@@ -140,7 +140,7 @@ authoring, Create continues to use the form-based setup.
 Choosing readings under **Inputs** rewrites the input slots to match that
 entity's enabled readings; if you change the slots afterwards, a notice offers to
 match them again. **Add component** places the new component beside the selected
-one and wires it into that component's outgoing link when the types allow it.
+one without changing any connections; connect it in **Component settings**.
 Components a design can contain only once (input, detector, decision policy and
 output) stay listed with a shortcut that selects the existing one; change the
 detector model in its **Component settings**, where the model list can be

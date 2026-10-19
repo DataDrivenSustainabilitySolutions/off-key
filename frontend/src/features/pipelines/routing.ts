@@ -71,13 +71,15 @@ export function routeConnections(
   const gridRatio = Math.max(8, Math.ceil(Math.sqrt(width * height / MAX_GRID_CELLS)));
   const gridSizes = gridRatio === 8 && width * height / 16 <= MAX_GRID_CELLS ? [8, 4] : [gridRatio];
   const routes = new Map<string, ConnectionRoute>();
+  const moving = partial ? boxes.filter((box) => partial.changed.has(box.id)) : [];
   for (const edge of edges) {
     const sourceBox = byId.get(edge.source);
     const targetBox = byId.get(edge.target);
     if (!sourceBox || !targetBox) continue;
     const settled = partial && !partial.changed.has(edge.source) && !partial.changed.has(edge.target)
       ? partial.previous.get(edgeId(edge)) : undefined;
-    if (settled) {
+    // A moving card can land on an unrelated link, which then has to reroute as well.
+    if (settled && !settled.blocked && clearPath(settled.points, moving, edge)) {
       routes.set(edgeId(edge), settled);
       continue;
     }

@@ -22,4 +22,3 @@ export function targetSlots(
 export const sameSlots = (left: PipelineDefinition["input_slots"], right: PipelineDefinition["input_slots"]) =>
   left.length === right.length && left.every((slot, index) =>
     slot.label === right[index]!.label && (slot.unit ?? null) === (right[index]!.unit ?? null));
-

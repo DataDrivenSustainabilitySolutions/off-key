@@ -6,7 +6,7 @@ import type {
   PipelineValidation,
 } from "./contracts";
 import { arrangeGraph } from "./layout";
-import { addComponent, insertAfter, type GraphDocument } from "./model";
+import { addComponent, type GraphDocument } from "./model";
 
 type GraphHistory = { undo: GraphDocument[]; redo: GraphDocument[] };
 type Options = {
@@ -100,14 +100,11 @@ export function useGraphEditor({
     if (readOnly) return;
     const component = components.find((item) => item.id === id);
     if (!component) return;
+    // A palette click places the card beside the selected component; connections stay explicit.
     const placed = addComponent(current.current, component, position, present);
     if (placed === current.current) return;
     const added = placed.definition.nodes[placed.definition.nodes.length - 1]!;
-    // A palette click continues the flow from the selected component; a drop stays where it landed.
-    const next = present && !position
-      ? { ...placed, definition: insertAfter(placed.definition, present, added.id, components) }
-      : placed;
-    commit(next);
+    commit(placed);
     select(added.id);
     setReveal((previous) => ({ id: added.id, request: (previous?.request ?? 0) + 1 }));
   };

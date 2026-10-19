@@ -174,8 +174,8 @@ export default function PipelineCanvas({
   const drop = (event: DragEvent) => {
     event.preventDefault();
     if (readOnly || !flow) return;
-    // Center the card under the pointer rather than hanging it from its corner.
-    const center = flow.screenToFlowPosition({ x: event.clientX, y: event.clientY });
+    // Center the card under the exact pointer, then snap only its corner to the grid.
+    const center = flow.screenToFlowPosition({ x: event.clientX, y: event.clientY }, { snapToGrid: false });
     const position = { x: center.x - NODE_SIZE.width / 2, y: center.y - NODE_SIZE.height / 2 };
     onAdd(
       event.dataTransfer.getData("application/off-key-component"),

@@ -8,9 +8,7 @@ import {
 import { createCreationSession, type CreationDraft } from "@/features/pipelines/creationSession";
 import {
   addBlocker,
-  addComponent,
   freePosition,
-  insertAfter,
   type GraphDocument,
 } from "@/features/pipelines/model";
 import { PipelineDesignSettings } from "@/features/pipelines/PipelineDesignSettings";
@@ -68,15 +66,6 @@ describe("component placement", () => {
     expect(freePosition(document).x).toBeGreaterThan(288);
   });
 
-  it("inserts a component into the anchor's only outgoing connection", () => {
-    const added = addComponent(pipeline(), passthrough);
-    const definition = insertAfter(added.definition, "input", "features_passthrough_1", components);
-    expect(definition.edges.map(({ source, target }) => `${source}>${target}`).sort()).toEqual([
-      "features_passthrough_1>detector",
-      "input>features_passthrough_1",
-    ]);
-  });
-
   it("explains why a component cannot be added instead of hiding it", () => {
     const definition = pipeline().definition;
     expect(addBlocker(definition, components.find((item) => item.id === "detector:a")!))
@@ -128,14 +117,15 @@ describe("graph editing", () => {
     expect(result.current.selected).toBeUndefined();
   });
 
-  it("continues the flow from the selected component and asks the canvas to reveal it", () => {
+  it("places a new component beside the selected one and asks the canvas to reveal it", () => {
     const { result } = renderHook(() => useEditor());
     act(() => result.current.select("input"));
     act(() => result.current.add("features.passthrough"));
     expect(result.current.selected).toBe("features_passthrough_1");
     expect(result.current.reveal?.id).toBe("features_passthrough_1");
-    expect(result.current.document.definition.edges.some((edge) =>
-      edge.source === "features_passthrough_1" && edge.target === "detector")).toBe(true);
+    expect(result.current.document.layout.nodes.features_passthrough_1?.x).toBeGreaterThan(0);
+    // Connections stay explicit: a palette click never rewires the graph.
+    expect(result.current.document.definition.edges).toEqual(pipeline().definition.edges);
   });
 
   it("undoes with Ctrl+Z outside text fields only", async () => {
@@ -218,5 +208,20 @@ describe("drag routing", () => {
       { previous: settled, changed: new Set(["d"]) });
     expect(moved.get(JSON.stringify(["a", "b"]))).toBe(settled.get(JSON.stringify(["a", "b"])));
     expect(moved.get(JSON.stringify(["c", "d"]))).not.toBe(settled.get(JSON.stringify(["c", "d"])));
+  });
+
+  it("reroutes an unrelated link when the moving component lands on it", () => {
+    const boxes = [
+      { id: "a", x: 0, y: 0, ...NODE_SIZE }, { id: "b", x: 800, y: 0, ...NODE_SIZE },
+      { id: "obstacle", x: 400, y: 400, ...NODE_SIZE },
+    ];
+    const edges = [{ source: "a", target: "b" }];
+    const key = JSON.stringify(["a", "b"]);
+    const settled = routeConnections(boxes, edges);
+    const moved = routeConnections(boxes.map((box) => box.id === "obstacle" ? { ...box, y: 0 } : box), edges,
+      { previous: settled, changed: new Set(["obstacle"]) });
+    expect(moved.get(key)).not.toBe(settled.get(key));
+    expect(moved.get(key)?.blocked).toBe(false);
+    expect(moved.get(key)?.points.some((point) => point.y !== NODE_SIZE.height / 2)).toBe(true);
   });
 });

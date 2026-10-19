@@ -1,4 +1,57 @@
+import { useId, useState } from "react";
 import type { GraphDocument } from "./model";
+import type { HistoryMode } from "./useGraphEditor";
+
+/** Keeps the typed text while it is incomplete; only valid numbers reach the design. */
+function NumberSetting({
+  label, value, min, max, placeholder, nullable, disabled, onChange,
+}: {
+  label: string;
+  value: number | null | undefined;
+  min?: number;
+  max?: number;
+  placeholder?: string;
+  nullable?: boolean;
+  disabled: boolean;
+  onChange: (value: number | null) => void;
+}) {
+  const errorId = useId();
+  const [text, setText] = useState<string>();
+  const shown = text ?? (value == null ? "" : String(value));
+  const parsed = shown.trim() === "" ? null : Number(shown);
+  const error = parsed === null
+    ? nullable ? "" : "Enter a number."
+    : !Number.isInteger(parsed) ? "Enter a whole number."
+      : min !== undefined && parsed < min ? `Use at least ${min.toLocaleString()}.`
+        : max !== undefined && parsed > max ? `Use at most ${max.toLocaleString()}.` : "";
+  return (
+    <label className="pl-field">
+      <span>{label}</span>
+      <input
+        type="number"
+        inputMode="numeric"
+        step={1}
+        min={min}
+        max={max}
+        value={shown}
+        placeholder={placeholder}
+        disabled={disabled}
+        aria-invalid={!!error}
+        aria-describedby={error ? errorId : undefined}
+        onChange={(event) => {
+          const next = event.target.value;
+          setText(next);
+          const number = next.trim() === "" ? null : Number(next);
+          if (number === null ? nullable : Number.isInteger(number)
+            && (min === undefined || number >= min) && (max === undefined || number <= max))
+            onChange(number);
+        }}
+        onBlur={() => setText(undefined)}
+      />
+      {error && <small className="pl-field-error" id={errorId}>{error} The last valid value is kept.</small>}
+    </label>
+  );
+}
 
 export function PipelineDesignSettings({
   document,
@@ -7,10 +60,15 @@ export function PipelineDesignSettings({
 }: {
   document: GraphDocument;
   readOnly: boolean;
-  onChange: (document: GraphDocument) => void;
+  onChange: (document: GraphDocument, history?: HistoryMode) => void;
 }) {
   const definition = document.definition;
   const settings = definition.settings;
+  const setting = (change: Partial<typeof settings>, field: string) =>
+    onChange({
+      ...document,
+      definition: { ...definition, settings: { ...settings, ...change } },
+    }, `setting:${field}`);
   return (
     <details className="pl-design-settings">
       <summary>Input slots and learning settings</summary>
@@ -39,7 +97,7 @@ export function PipelineDesignSettings({
                           : item,
                       ),
                     },
-                  })
+                  }, `slot-label:${slot.id}`)
                 }
               />
             </label>
@@ -62,7 +120,7 @@ export function PipelineDesignSettings({
                           : item,
                       ),
                     },
-                  })
+                  }, `slot-unit:${slot.id}`)
                 }
               />
             </label>
@@ -116,78 +174,32 @@ export function PipelineDesignSettings({
         </button>
       )}
       <div className="pl-settings-grid">
-        <label className="pl-field">
-          <span>
-            {definition.strategy === "adaptive_stream"
-              ? "Detector learning updates before calibration"
-              : "Training observations"}
-          </span>
-          <input
-            type="number"
-            min={2}
-            max={1_000_000}
-            value={settings.training_window_size}
-            disabled={readOnly}
-            onChange={(event) =>
-              onChange({
-                ...document,
-                definition: {
-                  ...definition,
-                  settings: {
-                    ...settings,
-                    training_window_size: Number(event.target.value),
-                  },
-                },
-              })
-            }
-          />
-        </label>
-        <label className="pl-field">
-          <span>Calibration observations</span>
-          <input
-            type="number"
-            min={1}
-            max={1_000_000}
-            value={settings.calibration_window_size}
-            disabled={readOnly}
-            onChange={(event) =>
-              onChange({
-                ...document,
-                definition: {
-                  ...definition,
-                  settings: {
-                    ...settings,
-                    calibration_window_size: Number(event.target.value),
-                  },
-                },
-              })
-            }
-          />
-        </label>
-        <label className="pl-field">
-          <span>Default random seed</span>
-          <input
-            type="number"
-            value={settings.seed ?? ""}
-            placeholder="Random"
-            disabled={readOnly}
-            onChange={(event) =>
-              onChange({
-                ...document,
-                definition: {
-                  ...definition,
-                  settings: {
-                    ...settings,
-                    seed:
-                      event.target.value === ""
-                        ? null
-                        : Number(event.target.value),
-                  },
-                },
-              })
-            }
-          />
-        </label>
+        <NumberSetting
+          label={definition.strategy === "adaptive_stream"
+            ? "Detector learning updates before calibration"
+            : "Training observations"}
+          min={2}
+          max={1_000_000}
+          value={settings.training_window_size}
+          disabled={readOnly}
+          onChange={(value) => setting({ training_window_size: value ?? settings.training_window_size }, "training")}
+        />
+        <NumberSetting
+          label="Calibration observations"
+          min={1}
+          max={1_000_000}
+          value={settings.calibration_window_size}
+          disabled={readOnly}
+          onChange={(value) => setting({ calibration_window_size: value ?? settings.calibration_window_size }, "calibration")}
+        />
+        <NumberSetting
+          label="Default random seed"
+          nullable
+          placeholder="Random"
+          value={settings.seed}
+          disabled={readOnly}
+          onChange={(value) => setting({ seed: value }, "seed")}
+        />
       </div>
       {definition.strategy === "adaptive_stream" && (
         <p className="pl-help">

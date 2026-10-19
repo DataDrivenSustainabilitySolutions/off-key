@@ -5,7 +5,15 @@ import type {
   PipelineNode,
   PipelineComponent,
 } from "./contracts";
-import { componentFor, dataKinds, inputKind, outputKind } from "./semantics";
+import {
+  componentFor,
+  dataKinds,
+  GRID_STEP,
+  inputKind,
+  NODE_SIZE,
+  nodePosition,
+  outputKind,
+} from "./semantics";
 
 export type GraphDocument = {
   definition: PipelineDefinition;
@@ -50,6 +58,8 @@ export function nextNodeId(nodes: PipelineNode[], component: string): string {
 export function addComponent(
   document: GraphDocument,
   component: PipelineComponent,
+  position?: { x: number; y: number },
+  anchor?: string,
 ): GraphDocument {
   if (!canAddComponent(document.definition, component)) return document;
   const id = nextNodeId(document.definition.nodes, component.id);
@@ -80,8 +90,7 @@ export function addComponent(
       nodes: {
         ...document.layout.nodes,
         [id]: {
-          x: 200 + document.definition.nodes.length * 25,
-          y: 100 + document.definition.nodes.length * 30,
+          ...(position ?? freePosition(document, anchor)),
           ...(instance > 1 ? { label: `${component.label} ${instance}` } : {}),
         },
       },
@@ -89,17 +98,82 @@ export function addComponent(
   };
 }
 
+const PLACEMENT_GAP = { x: 64, y: 32 };
+const snap = (value: number) => Math.round(value / GRID_STEP) * GRID_STEP;
+
+/** Place to the right of the anchor (or the rightmost component) without covering another box. */
+export function freePosition(document: GraphDocument, anchor?: string) {
+  const boxes = document.definition.nodes.map((node, index) =>
+    nodePosition(document.layout, node.id, index),
+  );
+  if (!boxes.length) return { x: 0, y: 0 };
+  const anchorIndex = document.definition.nodes.findIndex((node) => node.id === anchor);
+  const from =
+    anchorIndex >= 0
+      ? boxes[anchorIndex]!
+      : boxes.reduce((right, box) => (box.x > right.x ? box : right));
+  const x = snap(from.x + NODE_SIZE.width + PLACEMENT_GAP.x);
+  let y = snap(from.y);
+  const overlaps = (top: number) =>
+    boxes.some(
+      (box) =>
+        box.x < x + NODE_SIZE.width + PLACEMENT_GAP.x / 2 &&
+        x < box.x + NODE_SIZE.width + PLACEMENT_GAP.x / 2 &&
+        box.y < top + NODE_SIZE.height + PLACEMENT_GAP.y / 2 &&
+        top < box.y + NODE_SIZE.height + PLACEMENT_GAP.y / 2,
+    );
+  for (let attempt = 0; attempt < 64 && overlaps(y); attempt++)
+    y = snap(y + NODE_SIZE.height + PLACEMENT_GAP.y);
+  return { x, y };
+}
+
+/** Wire a new component after the anchor and, when it fits, into the anchor's single outgoing link. */
+export function insertAfter(
+  definition: PipelineDefinition,
+  anchor: string,
+  added: string,
+  components: PipelineComponent[],
+): PipelineDefinition {
+  if (connectionIssue(definition, anchor, added, components)) return definition;
+  const outgoing = definition.edges.filter((edge) => edge.source === anchor);
+  const downstream = outgoing.length === 1 ? outgoing[0]! : undefined;
+  if (downstream) {
+    const target = definition.nodes.find((node) => node.id === downstream.target);
+    const detached = {
+      ...definition,
+      edges: definition.edges.filter((edge) => edge !== downstream),
+    };
+    const rewired = connectNodes(detached, anchor, added, components);
+    if (
+      target?.kind !== "merge" &&
+      rewired !== detached &&
+      !connectionIssue(rewired, added, downstream.target, components)
+    )
+      return connectNodes(rewired, added, downstream.target, components);
+  }
+  return connectNodes(definition, anchor, added, components);
+}
+
 /** Current V1 execution profile, shared by drag/drop and the component palette. */
 export function canAddComponent(
   definition: PipelineDefinition,
   component: PipelineComponent,
 ) {
-  return (
-    definition.nodes.length < 64 &&
-    component.strategies.includes(definition.strategy) &&
-    (["transform", "merge"].includes(component.kind) ||
-      !definition.nodes.some((node) => node.kind === component.kind))
-  );
+  return !addBlocker(definition, component);
+}
+
+export function addBlocker(
+  definition: PipelineDefinition,
+  component: PipelineComponent,
+): string | undefined {
+  if (!component.strategies.includes(definition.strategy))
+    return "Not available for this strategy.";
+  if (definition.nodes.length >= 64) return "The design has reached its 64-component limit.";
+  if (
+    !["transform", "merge"].includes(component.kind) &&
+    definition.nodes.some((node) => node.kind === component.kind)
+  )
+    return "A design has one of these.";
 }
 
 export function removeNode(document: GraphDocument, id: string): GraphDocument {

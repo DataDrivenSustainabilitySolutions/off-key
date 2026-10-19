@@ -137,6 +137,20 @@ the shared library; returning preserves your workbench. Opening Create and loadi
 templates save nothing until **Save draft**. If the operator has disabled visual
 authoring, Create continues to use the form-based setup.
 
+Choosing readings under **Inputs** rewrites the input slots to match that
+entity's enabled readings; if you change the slots afterwards, a notice offers to
+match them again. **Add component** places the new component beside the selected
+one and wires it into that component's outgoing link when the types allow it.
+Components a design can contain only once (input, detector, decision policy and
+output) stay listed with a shortcut that selects the existing one; change the
+detector model in its **Component settings**, where the model list can be
+filtered. Click empty canvas or press Escape to release a selection before using
+Delete. Undo and redo also work with Ctrl/Cmd+Z and Shift+Ctrl/Cmd+Z outside text
+fields; typing in one field counts as a single step. The validation button next to
+the panel buttons shows the current issue count and lists the issues; selecting
+one opens that component. An unsaved creation design survives a reload of the
+same browser tab, and **Start over** discards it.
+
 The canvas has a subtle blueprint grid. Dropped and moved components snap to it
 by default. Use the magnet button (**Snap to grid**) for free placement; the grid
 texture stays visible. Changing this setting preserves existing arrangements.

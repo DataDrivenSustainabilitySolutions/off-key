@@ -17,9 +17,10 @@ import { edgeId, NODE_SIZE, nodePosition, SNAP_GRID } from "./semantics";
 import { presentGraph } from "./graphPresentation";
 import { PipelineNodeCard, type CanvasNode } from "./PipelineNodeCard";
 import { PipelineGrid } from "./PipelineGrid";
-import { fitReadableView } from "./viewport";
+import { fitReadableView, revealNode } from "./viewport";
+import type { HistoryMode, PlacementRequest } from "./useGraphEditor";
 import { PipelineEdge } from "./PipelineEdge";
-import { routeConnections } from "./routing";
+import { routeConnections, type ConnectionRoute } from "./routing";
 import "@xyflow/react/dist/style.css";
 
 const nodeTypes = { component: PipelineNodeCard };
@@ -34,8 +35,10 @@ type Props = {
   issues?: PipelineValidation["issues"];
   /** Increment after an explicit arrangement; data refreshes preserve the camera. */
   fitRequest?: number;
-  onSelect: (id: string) => void;
-  onChange: (document: GraphDocument, recordHistory?: boolean) => void;
+  /** Pan just enough to show a newly placed component. */
+  reveal?: PlacementRequest;
+  onSelect: (id?: string) => void;
+  onChange: (document: GraphDocument, history?: HistoryMode) => void;
   onAdd: (componentId: string, position?: { x: number; y: number }) => void;
   onBeginMove?: () => void;
 };
@@ -49,6 +52,7 @@ export default function PipelineCanvas({
   states,
   issues,
   fitRequest = 0,
+  reveal,
   onSelect,
   onChange,
   onAdd,
@@ -67,9 +71,54 @@ export default function PipelineCanvas({
     lastFit.current = fitRequest;
     void fitReadableView(flow, surface.current, selected);
   }, [fitRequest, flow, selected]);
+  const lastReveal = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    if (!flow || !surface.current || !reveal || lastReveal.current === reveal.request) return;
+    lastReveal.current = reveal.request;
+    const frame = requestAnimationFrame(() => {
+      if (surface.current) void revealNode(flow, surface.current, reveal.id);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [flow, reveal]);
+  // The settings panel narrows the canvas; keep the component being edited in view.
+  const selectedRef = useRef(selected);
+  useEffect(() => { selectedRef.current = selected; }, [selected]);
+  useEffect(() => {
+    const element = surface.current;
+    if (!flow || !element || typeof ResizeObserver === "undefined") return;
+    let previous = element.getBoundingClientRect().width;
+    const observer = new ResizeObserver(() => {
+      const width = element.getBoundingClientRect().width;
+      if (width === previous) return;
+      previous = width;
+      if (selectedRef.current) void revealNode(flow, element, selectedRef.current);
+    });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [flow]);
   const [selectedEdges, setSelectedEdges] = useState<string[]>([]);
+  // Escape releases the selection so Delete cannot remove a component the user moved away from.
+  // An open settings panel or popover consumes the first Escape itself.
+  const release = useRef(() => {});
+  useEffect(() => {
+    release.current = () => {
+      onSelect(undefined);
+      setSelectedEdges([]);
+    };
+  });
+  useEffect(() => {
+    if (!selected) return;
+    const keydown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      if (event.target instanceof Element && event.target.closest("input, textarea, select, [role='dialog']")) return;
+      release.current();
+    };
+    window.addEventListener("keydown", keydown);
+    return () => window.removeEventListener("keydown", keydown);
+  }, [selected]);
   const [measurements, setMeasurements] = useState<Record<string, { width: number; height: number }>>({});
   const moving = useRef(false);
+  const [dragged, setDragged] = useState<{ previous: Map<string, ConnectionRoute>; changed: Set<string> }>();
   const graph = useMemo(
     () => presentGraph(document, components, states, issues),
     [document, components, states, issues],
@@ -77,8 +126,9 @@ export default function PipelineCanvas({
   const routingBoxes = useMemo(() => document.definition.nodes.map((node, index) => ({
     id: node.id, ...nodePosition(document.layout, node.id, index), ...NODE_SIZE,
   })), [document.definition.nodes, document.layout]);
-  const routes = useMemo(() => routeConnections(routingBoxes, document.definition.edges),
-    [routingBoxes, document.definition.edges]);
+  // While dragging, reroute only the links of the moving components; drop reroutes everything.
+  const routes = useMemo(() => routeConnections(routingBoxes, document.definition.edges, dragged),
+    [routingBoxes, document.definition.edges, dragged]);
   const blocked = [...routes.values()].some((route) => route.blocked);
   const nodes = useMemo(
     () =>
@@ -123,14 +173,16 @@ export default function PipelineCanvas({
   );
   const drop = (event: DragEvent) => {
     event.preventDefault();
-    if (!readOnly)
-      onAdd(
-        event.dataTransfer.getData("application/off-key-component"),
-        flow?.screenToFlowPosition(
-          { x: event.clientX, y: event.clientY },
-          { snapToGrid, snapGrid: SNAP_GRID },
-        ),
-      );
+    if (readOnly || !flow) return;
+    // Center the card under the pointer rather than hanging it from its corner.
+    const center = flow.screenToFlowPosition({ x: event.clientX, y: event.clientY });
+    const position = { x: center.x - NODE_SIZE.width / 2, y: center.y - NODE_SIZE.height / 2 };
+    onAdd(
+      event.dataTransfer.getData("application/off-key-component"),
+      snapToGrid
+        ? { x: Math.round(position.x / SNAP_GRID[0]) * SNAP_GRID[0], y: Math.round(position.y / SNAP_GRID[1]) * SNAP_GRID[1] }
+        : position,
+    );
   };
   return (
     <div
@@ -174,12 +226,18 @@ export default function PipelineCanvas({
           }
           elementsSelectable
           onNodeClick={(_event, node) => onSelect(node.id)}
-          onNodeDragStart={() => {
+          onPaneClick={() => {
+            onSelect(undefined);
+            setSelectedEdges([]);
+          }}
+          onNodeDragStart={(_event, _node, moved) => {
             moving.current = true;
+            setDragged({ previous: routes, changed: new Set(moved.map((node) => node.id)) });
             onBeginMove?.();
           }}
           onNodeDragStop={() => {
             moving.current = false;
+            setDragged(undefined);
           }}
           onNodesChange={(changes) => {
             // Retain renderer measurements when domain data or connection hints change.

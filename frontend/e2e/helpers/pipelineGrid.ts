@@ -40,9 +40,13 @@ export async function dropPipelineComponent(page: Page, component: string, nodeI
   const pointer = JSON.parse(observed!) as { x: number; y: number };
   expect(Math.abs(pointer.x - bounds.x - target.x)).toBeLessThan(1);
   expect(Math.abs(pointer.y - bounds.y - target.y)).toBeLessThan(1);
+  // The card is centred under the pointer, then its corner snaps to the grid.
+  const card = await canvas.locator(".react-flow__node").first().evaluate((element) => ({
+    width: (element as HTMLElement).offsetWidth, height: (element as HTMLElement).offsetHeight,
+  }));
   const expected = {
-    x: Math.round((pointer.x - frame.x) / frame.zoom / 16) * 16,
-    y: Math.round((pointer.y - frame.y) / frame.zoom / 16) * 16,
+    x: Math.round(((pointer.x - frame.x) / frame.zoom - card.width / 2) / 16) * 16,
+    y: Math.round(((pointer.y - frame.y) / frame.zoom - card.height / 2) / 16) * 16,
   };
   const node = canvas.locator(`.react-flow__node[data-id="${nodeId}"]`);
   await page.getByRole("button", { name: "Close settings", exact: true }).click();

@@ -55,7 +55,12 @@ function compact(points: XYPosition[]) {
 }
 
 /** Derived canvas geometry only: bends never become saved or executable state. */
-export function routeConnections(boxes: RoutingBox[], edges: Connection[]) {
+export function routeConnections(
+  boxes: RoutingBox[],
+  edges: Connection[],
+  /** During a drag, reuse settled routes of links that do not touch a moving component. */
+  partial?: { previous: Map<string, ConnectionRoute>; changed: Set<string> },
+) {
   const byId = new Map(boxes.map((box) => [box.id, box]));
   const nodes: Node[] = boxes.map(({ id, x, y, width, height }) => ({
     id, position: { x, y }, measured: { width, height }, data: {},
@@ -66,10 +71,18 @@ export function routeConnections(boxes: RoutingBox[], edges: Connection[]) {
   const gridRatio = Math.max(8, Math.ceil(Math.sqrt(width * height / MAX_GRID_CELLS)));
   const gridSizes = gridRatio === 8 && width * height / 16 <= MAX_GRID_CELLS ? [8, 4] : [gridRatio];
   const routes = new Map<string, ConnectionRoute>();
+  const moving = partial ? boxes.filter((box) => partial.changed.has(box.id)) : [];
   for (const edge of edges) {
     const sourceBox = byId.get(edge.source);
     const targetBox = byId.get(edge.target);
     if (!sourceBox || !targetBox) continue;
+    const settled = partial && !partial.changed.has(edge.source) && !partial.changed.has(edge.target)
+      ? partial.previous.get(edgeId(edge)) : undefined;
+    // A moving card can land on an unrelated link, which then has to reroute as well.
+    if (settled && !settled.blocked && clearPath(settled.points, moving, edge)) {
+      routes.set(edgeId(edge), settled);
+      continue;
+    }
     const source = { x: sourceBox.x + sourceBox.width, y: sourceBox.y + sourceBox.height / 2 };
     const target = { x: targetBox.x, y: targetBox.y + targetBox.height / 2 };
     const direct = [source, target];

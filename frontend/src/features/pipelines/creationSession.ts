@@ -1,9 +1,9 @@
 import { useSyncExternalStore, type SetStateAction } from "react";
 import { getErrorMessage } from "@/lib/errors";
-import { navigationDraft } from "@/lib/navigation-draft";
+import { navigationDraft, readStoredDraft, storeDraft } from "@/lib/navigation-draft";
 import { pipelinesApi } from "./api";
 import type { PipelineView } from "./contracts";
-import { acknowledgeSave, type EditorDraft } from "./editorSession";
+import { acknowledgeSave, isDraftDirty, type EditorDraft } from "./editorSession";
 
 export type CreationDraft = EditorDraft & {
   targetId?: string;
@@ -22,16 +22,31 @@ type CreationSnapshot = {
   save: CreationSave;
 };
 
+function storedDraft(value: unknown): CreationDraft | undefined {
+  if (!value || typeof value !== "object") return;
+  const draft = value as Partial<CreationDraft>;
+  const definition = draft.document?.definition;
+  if (typeof draft.name !== "string" || typeof draft.description !== "string"
+    || !Array.isArray(definition?.nodes) || !Array.isArray(definition?.edges)
+    || !Array.isArray(definition?.input_slots) || typeof draft.document?.layout?.nodes !== "object")
+    return;
+  return draft as CreationDraft;
+}
+
 /** The first save outlives the screen, just like the draft it acknowledges. */
-export function createCreationSession(initial: CreationDraft) {
+export function createCreationSession(initial: CreationDraft, storageKey?: string) {
+  const restored = storageKey ? storedDraft(readStoredDraft(storageKey)) : undefined;
   let snapshot: CreationSnapshot = {
-    draft: initial,
+    draft: restored ?? initial,
     baseline: initial,
     save: { status: "idle" },
   };
   const listeners = new Set<() => void>();
   const update = (next: CreationSnapshot) => {
     snapshot = next;
+    if (storageKey)
+      storeDraft(storageKey, next.save.status === "saved" || !isDraftDirty(next.draft, next.baseline)
+        ? undefined : next.draft);
     listeners.forEach((listener) => listener());
   };
   return {
@@ -39,6 +54,13 @@ export function createCreationSession(initial: CreationDraft) {
     subscribe: (listener: () => void) => {
       listeners.add(listener);
       return () => { listeners.delete(listener); };
+    },
+    /** True when the draft came back from a reload rather than this visit. */
+    restored: !!restored,
+    /** Drop every unsaved change and start again from the given draft. */
+    discard: (next: CreationDraft) => {
+      if (snapshot.save.status === "saving") return;
+      update({ draft: next, baseline: next, save: { status: "idle" } });
     },
     setDraft: (next: SetStateAction<CreationDraft>) => {
       const draft = typeof next === "function" ? next(snapshot.draft) : next;
@@ -76,7 +98,7 @@ export function createCreationSession(initial: CreationDraft) {
 }
 
 export function useCreationSession(key: string, initial: () => CreationDraft) {
-  const session = navigationDraft(key, () => createCreationSession(initial()));
+  const session = navigationDraft(key, () => createCreationSession(initial(), key));
   const snapshot = useSyncExternalStore(session.subscribe, session.getSnapshot);
   return { ...snapshot, session };
 }

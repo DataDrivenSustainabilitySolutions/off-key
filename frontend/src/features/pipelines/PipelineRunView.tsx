@@ -34,7 +34,7 @@ export default function PipelineRunView({
   const [catalog, setCatalog] = useState<PipelineCatalog>();
   const [selected, setSelected] = useState<string>();
   const [inspectorPanel, setInspectorPanel] = useState<InspectorPanel>(null);
-  const select = (id: string) => { setSelected(id); setInspectorPanel("component"); };
+  const select = (id?: string) => { setSelected(id || undefined); if (id) setInspectorPanel("component"); };
   const metadata = useRunMetadata(serviceId, selected, view?.definition);
   const [error, setError] = useState("");
   const [retry, setRetry] = useState(0);

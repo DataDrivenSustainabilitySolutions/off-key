@@ -5,6 +5,7 @@ import { getErrorMessage } from "@/lib/errors";
 import type { PipelineCatalog } from "./contracts";
 import type { GraphDocument } from "./model";
 import { pipelinesApi } from "./api";
+import { arrangeGraph } from "./layout";
 import { PipelineDesignBrowser } from "./PipelineDesignBrowser";
 
 export function PipelineTemplateMenu({
@@ -37,7 +38,14 @@ export function PipelineTemplateMenu({
       );
       const revision = latest ? await pipelinesApi.revision(id, latest.id, controller.signal) : undefined;
       if (controller.signal.aborted) return;
-      onLoad({ definition: revision?.definition ?? design.draft, layout: design.layout },
+      const definition = revision?.definition ?? design.draft;
+      // The saved layout belongs to the current draft; a revision may have other components.
+      const placed = definition.nodes.every((node) => design.layout.nodes[node.id]);
+      const layout = placed
+        ? { ...design.layout, nodes: Object.fromEntries(definition.nodes.map((node) => [node.id, design.layout.nodes[node.id]!])) }
+        : await arrangeGraph(definition, design.layout);
+      if (controller.signal.aborted) return;
+      onLoad({ definition, layout },
         design.name, design.description, revision ? `Revision ${revision.number}` : `Saved draft · version ${design.version}`);
       setOpen(false);
     } catch (reason) {

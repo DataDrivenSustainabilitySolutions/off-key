@@ -1,4 +1,4 @@
-import { useId, type ReactNode } from "react";
+import { useId, useState, type ReactNode } from "react";
 import type { PipelineCatalog, PipelineValidation } from "./contracts";
 import { ParameterFields } from "./ParameterFields";
 import {
@@ -9,7 +9,8 @@ import {
   removeNode,
   type GraphDocument,
 } from "./model";
-import { componentFor, dataKinds, inputKind, outputKind } from "./semantics";
+import { componentFor, dataKinds, inputKind, nodePosition, outputKind } from "./semantics";
+import type { HistoryMode } from "./useGraphEditor";
 
 type Props = {
   document: GraphDocument;
@@ -19,8 +20,8 @@ type Props = {
   readOnly?: boolean;
   header?: ReactNode;
   content?: ReactNode;
-  onSelect: (id: string) => void;
-  onChange: (document: GraphDocument) => void;
+  onSelect: (id?: string) => void;
+  onChange: (document: GraphDocument, history?: HistoryMode) => void;
 };
 
 export function PipelineInspector({
@@ -35,6 +36,7 @@ export function PipelineInspector({
   onChange,
 }: Props) {
   const connectionHelpId = useId();
+  const [modelQuery, setModelQuery] = useState("");
   const node = document.definition.nodes.find((item) => item.id === selected);
   const component = componentFor(node, catalog.components);
   const incoming = document.definition.edges
@@ -76,7 +78,7 @@ export function PipelineInspector({
         <span>Selected component</span>
         <select
           value={selected ?? ""}
-          onChange={(event) => onSelect(event.target.value)}
+          onChange={(event) => onSelect(event.target.value || undefined)}
         >
           <option value="">Choose component</option>
           {document.definition.nodes.map((item) => (
@@ -98,60 +100,79 @@ export function PipelineInspector({
               {output ? dataKinds[output].label : "Stored evidence and alarms"}
             </p>
           )}
-          {node.kind === "detector" && (
-            <label className="pl-field">
-              <span>Detector model</span>
-              <select
-                aria-label="Detector model"
-                value={node.component}
-                disabled={readOnly}
-                onChange={(event) => {
-                  const replacement = catalog.components.find(
-                    (item) => item.id === event.target.value,
-                  );
-                  if (!replacement) return;
-                  const params = Object.fromEntries(
-                    replacement.fields
-                      .filter((field) => field.default !== undefined)
-                      .map((field) => [field.name, field.default!]),
-                  );
-                  onChange({
-                    ...document,
-                    definition: {
-                      ...document.definition,
-                      nodes: document.definition.nodes.map((item) =>
-                        item.id === node.id
-                          ? {
-                              ...item,
-                              component: replacement.id,
-                              contract_version:
-                                replacement.contract_version ?? 1,
-                              params,
-                            }
-                          : item,
-                      ),
-                    },
-                  });
-                }}
-              >
-                {catalog.components
-                  .filter(
-                    (item) =>
-                      item.kind === "detector" &&
-                      item.strategies.includes(document.definition.strategy),
-                  )
-                  .map((item) => (
+          {node.kind === "detector" && (() => {
+            const query = modelQuery.trim().toLocaleLowerCase();
+            const models = catalog.components
+              .filter(
+                (item) =>
+                  item.kind === "detector" &&
+                  item.strategies.includes(document.definition.strategy) &&
+                  (item.id === node.component ||
+                    `${item.label} ${item.description}`.toLocaleLowerCase().includes(query)),
+              )
+              .sort((left, right) => left.label.localeCompare(right.label));
+            return (
+              <div className="pl-field">
+                <label htmlFor={`${node.id}-detector-model`}>Detector model</label>
+                {!readOnly && (
+                  <input
+                    type="search"
+                    aria-label="Filter detector models"
+                    placeholder="Filter models…"
+                    value={modelQuery}
+                    onChange={(event) => setModelQuery(event.target.value)}
+                  />
+                )}
+                <select
+                  id={`${node.id}-detector-model`}
+                  aria-label="Detector model"
+                  value={node.component}
+                  disabled={readOnly}
+                  onChange={(event) => {
+                    const replacement = catalog.components.find(
+                      (item) => item.id === event.target.value,
+                    );
+                    if (!replacement) return;
+                    const params = Object.fromEntries(
+                      replacement.fields
+                        .filter((field) => field.default !== undefined)
+                        .map((field) => [field.name, field.default!]),
+                    );
+                    onChange({
+                      ...document,
+                      definition: {
+                        ...document.definition,
+                        nodes: document.definition.nodes.map((item) =>
+                          item.id === node.id
+                            ? {
+                                ...item,
+                                component: replacement.id,
+                                contract_version:
+                                  replacement.contract_version ?? 1,
+                                params,
+                              }
+                            : item,
+                        ),
+                      },
+                    });
+                  }}
+                >
+                  {models.map((item) => (
                     <option key={item.id} value={item.id}>
                       {item.label}
                     </option>
                   ))}
-              </select>
-              <small className="pl-help">
-                Changing the model resets its parameters to catalog defaults.
-                Connections are retained.
-              </small>
-            </label>
-          )}
+                </select>
+                <small className="pl-help">
+                  {query && models.length <= 1
+                    ? "No other model matches this filter. "
+                    : ""}
+                  Changing the model resets its parameters to catalog defaults.
+                  Connections are retained.
+                </small>
+              </div>
+            );
+          })()}
           <label className="pl-field">
             <span>Node title</span>
             <input
@@ -167,14 +188,17 @@ export function PipelineInspector({
                     nodes: {
                       ...document.layout.nodes,
                       [node.id]: {
-                        x: 0,
-                        y: 0,
+                        ...nodePosition(
+                          document.layout,
+                          node.id,
+                          document.definition.nodes.indexOf(node),
+                        ),
                         ...document.layout.nodes[node.id],
                         label: event.target.value,
                       },
                     },
                   },
-                })
+                }, `title:${node.id}`)
               }
             />
           </label>
@@ -186,7 +210,11 @@ export function PipelineInspector({
               featureLabels={featureLabels}
               prefix={node.id}
               readOnly={readOnly}
-              onChange={(params) =>
+              onChange={(params) => {
+                const changed = Object.keys(params)
+                  .filter((key) => params[key] !== node.params[key])
+                  .sort()
+                  .join(",");
                 onChange({
                   ...document,
                   definition: {
@@ -195,8 +223,8 @@ export function PipelineInspector({
                       item.id === node.id ? { ...item, params } : item,
                     ),
                   },
-                })
-              }
+                }, `param:${node.id}:${changed}`);
+              }}
             />
           )}
           <h4>

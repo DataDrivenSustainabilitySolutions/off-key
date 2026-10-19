@@ -2,7 +2,7 @@
 
 import json
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from cryptography import x509
 from cryptography.hazmat.primitives import serialization
@@ -16,7 +16,7 @@ def main() -> None:
         material["server_key"].encode(), password=None
     )
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     if ca.not_valid_before_utc > now or ca.not_valid_after_utc <= now + timedelta(
         days=30
     ):

@@ -50,13 +50,12 @@ if len(credentials) != 1:
 username, password = credentials.pop()
 if not username or not password or password == "******":
     raise SystemExit("Existing AmbiBox credentials are unavailable")
-destination = tempfile.NamedTemporaryFile(
+with tempfile.NamedTemporaryFile(
     mode="w", prefix="offkey-ambibox-", delete=False
-)
-try:
-    with destination:
+) as destination:
+    try:
         json.dump({"mqtt_username": username, "mqtt_password": password}, destination)
-except BaseException:
-    os.unlink(destination.name)
-    raise
+    except BaseException:
+        os.unlink(destination.name)
+        raise
 print(destination.name)

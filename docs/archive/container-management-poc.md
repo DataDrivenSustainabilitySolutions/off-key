@@ -84,10 +84,9 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 
 limiter = Limiter(
-    key_func=get_remote_address,
-    default_limits=["100/hour"],
-    storage_uri="memory://"
+    key_func=get_remote_address, default_limits=["100/hour"], storage_uri="memory://"
 )
+
 
 # Per-endpoint rate limits
 @limiter.limit("10/minute")
@@ -104,6 +103,7 @@ async def create_service():
 ```python
 # Example semaphore usage
 docker_semaphore = asyncio.Semaphore(10)  # Max 10 concurrent Docker operations
+
 
 async def docker_operation():
     async with docker_semaphore:

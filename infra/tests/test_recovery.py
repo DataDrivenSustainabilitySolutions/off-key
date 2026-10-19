@@ -14,7 +14,6 @@ from pathlib import Path
 from unittest.mock import patch
 
 import yaml
-
 from support import ROOT, ansible, run
 
 spec = importlib.util.spec_from_file_location(

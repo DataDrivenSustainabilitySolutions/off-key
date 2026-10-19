@@ -79,7 +79,7 @@ from off_key.core.logs import log_security_event
 log_security_event(
     event_type="failed_login",
     user_id="user@example.com",
-    details={"ip": "192.168.1.1", "attempts": 3}
+    details={"ip": "192.168.1.1", "attempts": 3},
 )
 ```
 

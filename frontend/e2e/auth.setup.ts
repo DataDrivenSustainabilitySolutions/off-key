@@ -42,9 +42,15 @@ setup(
       sessionAuthToken: sessionStorage.getItem("auth_token"),
     }));
 
-    expect(persistentState.localAuthToken).toBeTruthy();
-    expect(persistentState.storageType).toBe("localStorage");
+    // The bearer token stays in page memory; only the HttpOnly cookie persists.
+    expect(persistentState.localAuthToken).toBeNull();
+    expect(persistentState.storageType).toBe("remembered");
     expect(persistentState.sessionAuthToken).toBeNull();
+    expect(
+      (await page.context().cookies()).some(
+        (cookie) => cookie.name === "off_key_remembered_session" && cookie.httpOnly,
+      ),
+    ).toBe(true);
 
     await mkdir(dirname(AUTH_STATE_FILE), { recursive: true });
     await page.context().storageState({ path: AUTH_STATE_FILE });

@@ -1,6 +1,14 @@
 import hashlib
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    HTTPException,
+    Request,
+    Response,
+    status,
+)
 from fastapi.responses import JSONResponse
 from off_key_core.config.logs import log_security_event, logger, redact_email
 from off_key_core.schemas.members import AcceptInvitation, PasswordReset
@@ -17,10 +25,13 @@ from off_key_core.utils.mail import send_password_reset_email
 from ...facades.tactic import TacticError, tactic
 from ...services.auth import create_jwt
 from ..errors import raise_tactic_http_error
-from ..rate_limiter import limiter
+from ..rate_limiter import client_ip, limiter
 
 router = APIRouter()
 REMEMBERED_SESSION_COOKIE = "off_key_remembered_session"
+# One budget per client address across every credential endpoint, so a single
+# source cannot spray guesses over many accounts or tokens.
+auth_client_limit = limiter.shared_limit("30/minute", scope="auth-client")
 
 
 def access_token_response(authenticated_user: dict) -> dict:
@@ -50,6 +61,21 @@ def secure_session_cookie(request: Request) -> bool:
         request.url.scheme == "http"
         and request.url.hostname in {"localhost", "127.0.0.1", "::1"}
     )
+
+
+def set_session_cookie(
+    request: Request, response: Response, token: str, max_age: int
+) -> None:
+    response.set_cookie(
+        REMEMBERED_SESSION_COOKIE,
+        token,
+        max_age=max_age,
+        path="/",
+        secure=secure_session_cookie(request),
+        httponly=True,
+        samesite="lax",
+    )
+    response.headers["Cache-Control"] = "no-store"
 
 
 def clear_session_cookie(request: Request, response: Response) -> None:
@@ -89,14 +115,15 @@ async def revoke_remembered_cookie(request: Request) -> None:
 
 
 def login_attempt(request: Request, user: UserLogin) -> UserLogin:
-    request.state.auth_identity = str(user.email).casefold()
+    # Pairing the account with the client keeps others from locking it out.
+    request.state.auth_identity = f"{client_ip(request)}|{user.email}"
     return user
 
 
 def reset_email_attempt(
     request: Request, user: ForgotPasswordRequest
 ) -> ForgotPasswordRequest:
-    request.state.auth_identity = str(user.email).casefold()
+    request.state.auth_identity = f"{client_ip(request)}|{user.email}"
     return user
 
 
@@ -126,6 +153,7 @@ async def register():
 
 @router.post("/accept-invitation")
 @limiter.limit("10/minute", key_func=auth_limit_key)
+@auth_client_limit
 async def accept_invitation(
     request: Request, invitation: AcceptInvitation = Depends(invitation_attempt)
 ):
@@ -141,6 +169,7 @@ async def accept_invitation(
 
 @router.post("/login")
 @limiter.limit("10/minute", key_func=auth_limit_key)
+@auth_client_limit
 async def login(
     request: Request, response: Response, user: UserLogin = Depends(login_attempt)
 ):
@@ -167,16 +196,9 @@ async def login(
                 "/api/v1/members/sessions",
                 headers={"Authorization": f"Bearer {result['access_token']}"},
             )
-            response.set_cookie(
-                REMEMBERED_SESSION_COOKIE,
-                session["token"],
-                max_age=REMEMBERED_SESSION_SECONDS,
-                path="/",
-                secure=secure_session_cookie(request),
-                httponly=True,
-                samesite="lax",
+            set_session_cookie(
+                request, response, session["token"], REMEMBERED_SESSION_SECONDS
             )
-            response.headers["Cache-Control"] = "no-store"
         else:
             clear_session_cookie(request, response)
     except TacticError as exc:
@@ -203,6 +225,9 @@ async def refresh_session(request: Request, response: Response):
                 "POST", "/api/v1/members/sessions/refresh", json_data={"token": token}
             )
             response.headers["Cache-Control"] = "no-store"
+            if user.get("token"):
+                # Rotation keeps the original deadline; the old secret is spent.
+                set_session_cookie(request, response, user["token"], user["expires_in"])
             return access_token_response(user)
         except TacticError as exc:
             if exc.status != 401:
@@ -234,10 +259,21 @@ async def verify_email():
     )
 
 
+async def deliver_password_reset(email: str, token: str) -> None:
+    try:
+        await send_password_reset_email(email, token)
+    except Exception:
+        # Preserve the same response for unknown accounts and mail failures.
+        logger.error("event=password_reset_delivery_failed")
+
+
 @router.post("/forgot-password")
 @limiter.limit("5/minute", key_func=auth_limit_key)
+@auth_client_limit
 async def forgot_password(
-    request: Request, user: ForgotPasswordRequest = Depends(reset_email_attempt)
+    request: Request,
+    background: BackgroundTasks,
+    user: ForgotPasswordRequest = Depends(reset_email_attempt),
 ):
     try:
         result = await tactic._make_request(
@@ -248,11 +284,8 @@ async def forgot_password(
     except TacticError as exc:
         raise_tactic_http_error(exc)
     if result:
-        try:
-            await send_password_reset_email(result["email"], result["token"])
-        except Exception:
-            # Preserve the same response for unknown accounts and mail failures.
-            logger.error("event=password_reset_delivery_failed")
+        # Deliver after responding so mail latency does not reveal the account.
+        background.add_task(deliver_password_reset, result["email"], result["token"])
     return {
         "message": "If the email is registered, a password reset link has been sent."
     }
@@ -260,6 +293,7 @@ async def forgot_password(
 
 @router.post("/reset-password")
 @limiter.limit("10/minute", key_func=auth_limit_key)
+@auth_client_limit
 async def reset_password(
     request: Request, reset: PasswordReset = Depends(reset_attempt)
 ):

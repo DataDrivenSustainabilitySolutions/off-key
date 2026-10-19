@@ -4,6 +4,7 @@ import type { PipelineCatalog, PipelineRevisionView, PipelineView } from "../src
 import { addTestCharger, fixtureEntityId, removeTestCharger } from "./helpers/collection";
 import { loginPipelineWorkspace } from "./helpers/pipelines";
 import { openPipelineSettings } from "./helpers/pipelineNavigation";
+import { accessToken } from "./helpers/auth";
 
 test("keeps an unnamed built-in layout dirty and undoable across saved-design browsing", async ({ page }) => {
   await loginPipelineWorkspace(page);
@@ -57,7 +58,7 @@ for (const acknowledgement of ["after returning", "while in Sources"] as const) 
   test(`recovers the first real save acknowledged ${acknowledgement} without creating a duplicate`, async ({ page }) => {
     await loginPipelineWorkspace(page);
     await page.setViewportSize({ width: 1600, height: 1100 });
-    const token = (await page.evaluate(() => localStorage.getItem("auth_token")))!;
+    const token = (await accessToken(page))!;
     const headers = { Authorization: `Bearer ${token}` };
     const deviceId = randomUUID();
     const createPath = "/api/v1/monitors/pipelines";
@@ -165,7 +166,7 @@ for (const acknowledgement of ["after returning", "while in Sources"] as const) 
 test("opens the workbench directly and safely edits copies of published and draft templates", async ({ page }, testInfo) => {
   test.setTimeout(180_000);
   await loginPipelineWorkspace(page);
-  const token = await page.evaluate(() => localStorage.getItem("auth_token"));
+  const token = await accessToken(page);
   expect(token).toBeTruthy();
   const headers = { Authorization: `Bearer ${token}` };
   const ids = new Set<string>();

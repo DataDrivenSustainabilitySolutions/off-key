@@ -319,3 +319,38 @@ def test_apply_terminal_operational_status_marks_error_only_for_failed_state():
     assert failed_service.operational_status["error"] == "Docker workload is failed"
     assert stopped_service.operational_stage == "stopped"
     assert "error" not in stopped_service.operational_status
+
+
+@pytest.mark.asyncio
+async def test_one_failing_row_does_not_block_the_rest_of_the_pass():
+    broken = _service(service_id="broken", status=False, desired_state="running")
+    healthy = _service(service_id="healthy", status=False, desired_state="running")
+    reconciliation = _reconciler(
+        retention_hours=24, docker_statuses=["running", "running"]
+    )
+    session = AsyncMock()
+    session.execute = AsyncMock(return_value=_query_result([broken, healthy]))
+    session.get.side_effect = [RuntimeError("constraint failed"), healthy]
+
+    await reconciliation._reconcile_with_session(session)
+
+    assert healthy.status is True
+    session.rollback.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_lost_database_connection_still_aborts_the_pass():
+    from sqlalchemy.exc import OperationalError
+
+    first = _service(service_id="first", status=False, desired_state="running")
+    second = _service(service_id="second", status=False, desired_state="running")
+    reconciliation = _reconciler(
+        retention_hours=24, docker_statuses=["running", "running"]
+    )
+    session = AsyncMock()
+    session.execute = AsyncMock(return_value=_query_result([first, second]))
+    session.get.side_effect = [OperationalError("SELECT", {}, Exception()), second]
+
+    with pytest.raises(OperationalError):
+        await reconciliation._reconcile_with_session(session)
+    assert second.status is False

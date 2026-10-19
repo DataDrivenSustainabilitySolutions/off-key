@@ -13,6 +13,7 @@ from off_key_core.db.models import (
     Telemetry,
     User,
 )
+from off_key_core.schemas.user import normalize_email
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.engine import Row
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -111,7 +112,9 @@ class UserRepository:
         self._session = session
 
     async def get_by_email(self, *, email: str) -> User | None:
-        result = await self._session.execute(select(User).where(User.email == email))
+        result = await self._session.execute(
+            select(User).where(User.email == normalize_email(email))
+        )
         return result.scalars().first()
 
     async def add(self, user: User) -> User:

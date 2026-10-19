@@ -3,10 +3,11 @@ import { expect, test } from "@playwright/test";
 import type { PipelineCatalog, PipelineView } from "../src/types/pipelines.generated";
 import { loginPipelineWorkspace } from "./helpers/pipelines";
 import { openPipelineSettings } from "./helpers/pipelineNavigation";
+import { accessToken } from "./helpers/auth";
 
 test("preserves edits made after a real atomic draft save was submitted", async ({ page }) => {
   await loginPipelineWorkspace(page);
-  const token = await page.evaluate(() => localStorage.getItem("auth_token"));
+  const token = await accessToken(page);
   expect(token).toBeTruthy();
   const headers = { Authorization: `Bearer ${token}` };
   const catalogResponse = await page.request.get("/api/v1/monitors/pipelines/catalog", { headers });

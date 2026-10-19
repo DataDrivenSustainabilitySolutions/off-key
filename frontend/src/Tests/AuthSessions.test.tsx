@@ -44,6 +44,46 @@ const StatefulWorkspace = () => {
 const renderWorkspace = () => render(<AuthProvider><MemoryRouter><ProtectedRoute><StatefulWorkspace /></ProtectedRoute></MemoryRouter></AuthProvider>);
 
 describe("remembered session recovery", () => {
+  it("never writes a remembered access token to browser storage", () => {
+    const saved = token();
+    tokenManager.setToken(saved, true);
+    expect(tokenManager.getToken()).toBe(saved);
+    expect(Object.values(localStorage)).not.toContain(saved);
+    expect(Object.values(sessionStorage)).not.toContain(saved);
+  });
+
+  it("restores a remembered session in a new tab from the cookie", async () => {
+    tokenManager.setToken(token(), true);
+    // A newly opened tab shares the storage marker but not the in-memory token.
+    const restored = token(3600, "restored");
+    tokenManager.removeToken();
+    localStorage.setItem("token_storage_type", "remembered");
+    fetchMock.mockResolvedValueOnce(response(restored));
+    renderSession();
+    expect(screen.getByText("Authentication is loading...")).toBeTruthy();
+    expect(await screen.findByText(member.email)).toBeTruthy();
+    expect(tokenManager.getToken()).toBe(restored);
+  });
+
+  it("signs a new tab out when its remembered cookie was revoked", async () => {
+    localStorage.setItem("token_storage_type", "remembered");
+    fetchMock.mockResolvedValueOnce(new Response("Revoked", { status: 401 }));
+    render(<AuthProvider><Consumer /></AuthProvider>);
+    await waitFor(() => expect(tokenManager.isRemembered()).toBe(false));
+    expect(screen.getByText("signed out")).toBeTruthy();
+  });
+
+  it("offers retry when a new tab cannot reach the session service", async () => {
+    localStorage.setItem("token_storage_type", "remembered");
+    fetchMock.mockRejectedValueOnce(new TypeError("Offline"));
+    renderSession();
+    expect(await screen.findByRole("alert")).toBeTruthy();
+    expect(tokenManager.isRemembered()).toBe(true);
+    fetchMock.mockResolvedValueOnce(response(token(3600, "recovered")));
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(await screen.findByText(member.email)).toBeTruthy();
+  });
+
   it("renews an expired saved token before rendering protected content", async () => {
     const renewed = token(3600, "renewed");
     tokenManager.setToken(token(-1), true);

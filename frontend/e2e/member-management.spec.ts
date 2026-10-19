@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { expect, test, type Page } from "@playwright/test";
 import type { Member } from "../src/lib/member-types";
-import { loginWithEmail } from "./helpers/auth";
+import { loginWithEmail, accessToken } from "./helpers/auth";
 import { setAppearance } from "./helpers/appearance";
 
 const PASSWORD = "PlaywrightPass123!";
@@ -10,7 +10,7 @@ const mailpit = process.env.MAILPIT_BASE_URL ?? "http://localhost:8025";
 async function accountFixture(page: Page) {
   await page.goto("/account");
   await expect(page.getByRole("heading", { name: "Access control", exact: true })).toBeVisible();
-  const token = await page.evaluate(() => localStorage.getItem("auth_token"));
+  const token = await accessToken(page);
   expect(token).toBeTruthy();
   const headers = { Authorization: `Bearer ${token}` };
   const email = `member-removal-${randomUUID().slice(0, 12)}@example.com`;
@@ -152,7 +152,7 @@ test("enforces current access during removal and keeps previous sessions invalid
     const initial = await fixture.invite();
     const firstLink = await invitationLink(page, fixture.email);
     await acceptInvitation(memberPage, firstLink, fixture.email);
-    const oldToken = await memberPage.evaluate(() => localStorage.getItem("auth_token"));
+    const oldToken = await accessToken(memberPage);
     const oldHeaders = { Authorization: `Bearer ${oldToken}` };
     expect((await memberContext.cookies()).some(cookie => cookie.name === "off_key_remembered_session")).toBe(true);
     await memberPage.goto(new URL("/account", page.url()).href);

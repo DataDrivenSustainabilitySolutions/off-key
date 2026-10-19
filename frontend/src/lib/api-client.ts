@@ -60,7 +60,8 @@ const createApiClient = (): AxiosInstance => {
     async (config: InternalAxiosRequestConfig) => {
       let token = tokenManager.getToken();
       const previousToken = token;
-      if (token && tokenManager.isTokenExpired(token) && tokenManager.isRemembered()) {
+      // Remembered tokens live in memory, so a fresh tab restores one first.
+      if ((!token || tokenManager.isTokenExpired(token)) && tokenManager.isRemembered()) {
         token = await refreshSession();
       }
       assertSameMember(previousToken, token);

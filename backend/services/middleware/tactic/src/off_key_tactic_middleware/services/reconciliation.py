@@ -13,7 +13,7 @@ from off_key_core.db.models import MonitoringService, MqttTopic, PipelineRun
 from off_key_core.db.pipeline_locks import complete_stopped_runs, lock_execution_records
 from off_key_core.schemas.radar import RadarOperationalStatus
 from sqlalchemy import delete, select, update
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import InterfaceError, OperationalError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..config.config import get_tactic_settings
@@ -163,9 +163,17 @@ class RadarStatusReconciliationService:
             try:
                 await self._apply_observation(session, snapshot, observation)
                 await session.commit()
-            except Exception:
+            except (OperationalError, InterfaceError):
+                # A lost database connection fails every later row too; let the
+                # loop back off and retry the whole pass.
                 await session.rollback()
                 raise
+            except Exception:
+                # One bad row must not hold back stops and purges for the rest.
+                await session.rollback()
+                logger.exception(
+                    "RADAR reconciliation deferred service_id=%s", snapshot.id
+                )
 
     async def _inspect(self, snapshot: _ServiceSnapshot) -> str:
         if (

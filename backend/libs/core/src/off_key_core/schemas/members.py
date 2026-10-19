@@ -1,9 +1,10 @@
 from datetime import datetime
 from typing import Annotated
 
-from pydantic import AfterValidator, BaseModel, ConfigDict, EmailStr, Field
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field
 
 from ..utils.enum import RoleEnum
+from .user import NormalizedEmail
 
 
 def validate_new_password(value: str) -> str:
@@ -30,7 +31,7 @@ class MemberProfile(BaseModel):
 class MemberInvitation(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    email: EmailStr
+    email: NormalizedEmail
     role: RoleEnum = RoleEnum.user
 
 

@@ -44,6 +44,7 @@ from .table_contracts import monitoring_evidence_table, radar_runtime_checkpoint
 
 class User(Base):
     __tablename__ = "users"
+    __table_args__ = (Index("uq_users_email_lower", text("lower(email)"), unique=True),)
 
     id = Column(Integer, primary_key=True, index=True)
     email = Column(Text, unique=True, index=True, nullable=False)

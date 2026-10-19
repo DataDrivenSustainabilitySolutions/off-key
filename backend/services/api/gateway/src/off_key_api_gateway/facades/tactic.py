@@ -121,7 +121,7 @@ class Tactic:
                     return parsed_body
 
             except aiohttp.ClientError as e:
-                if attempt <= self._max_retries:
+                if attempt <= self._max_retries and self._is_retryable(method, e):
                     backoff = 0.2 * attempt
                     logger.warning(
                         f"TACTIC client error (attempt {attempt}/{self._max_retries}): "
@@ -138,6 +138,16 @@ class Tactic:
             except Exception as e:
                 logger.error(f"TACTIC request error: {method} {url} - {e!s}")
                 raise TacticError(f"TACTIC request error: {e!s}") from e
+
+    @staticmethod
+    def _is_retryable(method: str, error: aiohttp.ClientError) -> bool:
+        # A failed connect never reached TACTIC. Any later failure may have run
+        # the operation already, so only reads are safe to repeat.
+        return isinstance(error, aiohttp.ClientConnectorError) or method.upper() in {
+            "GET",
+            "HEAD",
+            "OPTIONS",
+        }
 
     def _normalize_query_params(self, params: dict | None) -> dict | None:
         """

@@ -208,3 +208,13 @@ def test_env(monkeypatch):
     monkeypatch.setenv("RADAR_CHECKPOINT_DIR", "/tmp/test_checkpoints")
     monkeypatch.setenv("RADAR_CHECKPOINT_SECRET", "test-secret-key")
     return monkeypatch
+
+
+@pytest.fixture(autouse=True)
+def _isolate_gateway_member_cache():
+    """Mocked membership answers must not leak between tests via the cache."""
+    from off_key_api_gateway.api.access import clear_member_cache
+
+    clear_member_cache()
+    yield
+    clear_member_cache()

@@ -3,6 +3,7 @@
 import bcrypt
 from off_key_core.config.logs import logger
 from off_key_core.db.models import User
+from off_key_core.schemas.user import normalize_email
 from off_key_core.utils.enum import RoleEnum
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,6 +17,9 @@ from ...domain import (
 from ...repositories import UserRepository
 from ...schemas import UserCreateRequest
 
+# Matches the work factor of hashes created by bcrypt.gensalt().
+_DUMMY_HASH = bcrypt.hashpw(b"off-key-timing-equalizer", bcrypt.gensalt()).decode()
+
 
 class UserService:
     """Application-level user/account use cases."""
@@ -26,19 +30,19 @@ class UserService:
 
     async def authenticate(self, *, email: str, password: str) -> dict[str, object]:
         user = await self._repository.get_by_email(email=email)
-        if user is None:
-            raise AuthenticationError("Invalid credentials")
-
-        hashed_password = user.hashed_password or ""
+        hashed_password = (user.hashed_password or "") if user else ""
+        # Unknown and not-yet-activated accounts still pay the full bcrypt cost,
+        # so response time does not reveal which emails are registered.
+        has_hash = hashed_password.startswith("$2")
         try:
             credentials_valid = bcrypt.checkpw(
                 password.encode("utf-8"),
-                hashed_password.encode("utf-8"),
+                (hashed_password if has_hash else _DUMMY_HASH).encode("utf-8"),
             )
         except ValueError:
             credentials_valid = False
 
-        if not credentials_valid:
+        if user is None or not has_hash or not credentials_valid:
             raise AuthenticationError("Invalid credentials")
 
         if not user.is_active:
@@ -85,7 +89,7 @@ class UserService:
                 raise ValidationError(f"Invalid role: {role}") from exc
 
         user = User(
-            email=payload.email,
+            email=normalize_email(payload.email),
             hashed_password=payload.hashed_password,
             verification_token=payload.verification_token,
             role=role,

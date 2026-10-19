@@ -4,6 +4,7 @@ import { connectAsync, type MqttClient } from "mqtt";
 import type { SystemSnapshot } from "../src/features/catalogue/systemTypes";
 import { addTestCharger, removeTestCharger, waitForCollectionReady } from "./helpers/collection";
 import { setAppearance } from "./helpers/appearance";
+import { accessToken } from "./helpers/auth";
 
 test.setTimeout(300_000);
 
@@ -33,7 +34,7 @@ test("records only an opted-in reading and restores its history in the mobile wo
     await workspaces.getByRole("link", { name: "Monitoring", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Monitoring", exact: true })).toBeVisible();
     await page.setViewportSize({ width: 1280, height: 720 });
-    token = await page.evaluate(() => localStorage.getItem("auth_token"));
+    token = await accessToken(page);
     expect(token).toBeTruthy();
     const headers = { Authorization: `Bearer ${token}` };
     // Start from a generic catalogue with every fixture reading Off.

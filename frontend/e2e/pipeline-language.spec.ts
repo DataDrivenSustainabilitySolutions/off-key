@@ -14,6 +14,7 @@ import {
   openPipelineSettings,
   expectReadablePipeline,
 } from "./helpers/pipelineNavigation";
+import { accessToken } from "./helpers/auth";
 
 test.beforeEach(async ({ page }) => loginPipelineWorkspace(page));
 
@@ -30,7 +31,7 @@ for (const strategy of ["static_baseline", "adaptive_stream"] as const) {
   test(`uses a consistent typed visual language for ${strategy}`, async ({
     page,
   }, testInfo) => {
-    const token = await page.evaluate(() => localStorage.getItem("auth_token"));
+    const token = await accessToken(page);
     const headers = { Authorization: `Bearer ${token}` };
     const response = await page.request.get(
       "/api/v1/monitors/pipelines/catalog",

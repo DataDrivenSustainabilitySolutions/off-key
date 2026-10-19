@@ -80,6 +80,8 @@ def test_migrations_adopt_verified_baseline_preserve_data_and_repeat(
             "008_radar_runtime_checkpoints.sql",
             "009_radar_lifecycle_intent.sql",
             "010_monitoring_pipelines.sql",
+            "011_case_insensitive_emails.sql",
+            "012_remembered_session_rotation.sql",
         ]
         assert apply_migrations(connection)["applied"] == [
             "003_deployment_maintenance.sql",
@@ -90,6 +92,8 @@ def test_migrations_adopt_verified_baseline_preserve_data_and_repeat(
             "008_radar_runtime_checkpoints.sql",
             "009_radar_lifecycle_intent.sql",
             "010_monitoring_pipelines.sql",
+            "011_case_insensitive_emails.sql",
+            "012_remembered_session_rotation.sql",
         ]
         assert (
             connection.scalar(text("SELECT count(*) FROM services WHERE id='old'")) == 1
@@ -179,6 +183,8 @@ def test_clean_break_preserves_configuration_and_history_and_runs_once(
             "008_radar_runtime_checkpoints.sql",
             "009_radar_lifecycle_intent.sql",
             "010_monitoring_pipelines.sql",
+            "011_case_insensitive_emails.sql",
+            "012_remembered_session_rotation.sql",
         ]
         assert apply_migrations(connection)["applied"] == [
             "004_system_catalogue.sql",
@@ -188,6 +194,8 @@ def test_clean_break_preserves_configuration_and_history_and_runs_once(
             "008_radar_runtime_checkpoints.sql",
             "009_radar_lifecycle_intent.sql",
             "010_monitoring_pipelines.sql",
+            "011_case_insensitive_emails.sql",
+            "012_remembered_session_rotation.sql",
         ]
         assert (
             connection.scalar(

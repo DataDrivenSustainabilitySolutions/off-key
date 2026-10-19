@@ -204,15 +204,20 @@ Swarm secrets were not considered for this first deployment, but adopting them s
    ```python
    import os
 
-   ca_cert_path = '/run/secrets/docker_ca.pem'
-   client_cert_path = '/run/secrets/docker_client_cert.pem'
-   client_key_path = '/run/secrets/docker_client_key.pem'
+   ca_cert_path = "/run/secrets/docker_ca.pem"
+   client_cert_path = "/run/secrets/docker_client_cert.pem"
+   client_key_path = "/run/secrets/docker_client_key.pem"
 
    # Assuming you're using docker-py, you can load the certificates like this:
    import docker
+
    client = docker.DockerClient(
-      base_url='unix://var/run/docker.sock',
-      tls={'ca_cert': ca_cert_path, 'client_cert': client_cert_path, 'client_key': client_key_path}
+       base_url="unix://var/run/docker.sock",
+       tls={
+           "ca_cert": ca_cert_path,
+           "client_cert": client_cert_path,
+           "client_key": client_key_path,
+       },
    )
    ```
 

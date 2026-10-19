@@ -29,6 +29,7 @@ from .base_client import ChargerAPIClient
 from .your_provider_config import YourProviderConfig
 from ...core.logs import logger
 
+
 class YourProviderClient:
     """Client for YourProvider API - implements ChargerAPIClient protocol"""
 
@@ -41,7 +42,9 @@ class YourProviderClient:
         # Implement your API call logic here
         response = await self.client.get(
             f"{self.config.base_url}/devices",
-            headers={"Authorization": f"Bearer {self.config.api_key.get_secret_value()}"}
+            headers={
+                "Authorization": f"Bearer {self.config.api_key.get_secret_value()}"
+            },
         )
         return response.json()
 
@@ -49,7 +52,9 @@ class YourProviderClient:
         """Get device information for a specific charger"""
         response = await self.client.get(
             f"{self.config.base_url}/devices/{charger_id}/info",
-            headers={"Authorization": f"Bearer {self.config.api_key.get_secret_value()}"}
+            headers={
+                "Authorization": f"Bearer {self.config.api_key.get_secret_value()}"
+            },
         )
         return response.json()
 
@@ -63,8 +68,10 @@ class YourProviderClient:
 
         response = await self.client.get(
             f"{self.config.base_url}/devices/{charger_id}/telemetry",
-            headers={"Authorization": f"Bearer {self.config.api_key.get_secret_value()}"},
-            params=params
+            headers={
+                "Authorization": f"Bearer {self.config.api_key.get_secret_value()}"
+            },
+            params=params,
         )
         return response.json()
 ```
@@ -77,6 +84,7 @@ Define a pure data configuration class:
 # backend/src/off_key/core/client/your_provider_config.py
 
 from pydantic import BaseModel, SecretStr
+
 
 class YourProviderConfig(BaseModel):
     """Configuration for YourProvider API client"""
@@ -100,15 +108,17 @@ Add your provider to the central dependency resolver:
 ```python
 # backend/src/off_key/core/dependencies.py
 
+
 @lru_cache()
 def get_charger_api_client() -> ChargerAPIClient:
     """Dependency provider for charger API client"""
-    provider = getattr(settings, 'CHARGER_API_PROVIDER', 'pionix')
+    provider = getattr(settings, "CHARGER_API_PROVIDER", "pionix")
 
     if provider == "pionix":
         return PionixClient(config=settings.pionix_config)
     elif provider == "yourprovider":  # Add your provider here
         from .client.your_provider_client import YourProviderClient
+
         return YourProviderClient(config=settings.your_provider_config)
     else:
         raise ValueError(
@@ -123,6 +133,7 @@ Add configuration support to the main settings class:
 
 ```python
 # backend/src/off_key/core/config.py
+
 
 class Settings(BaseSettings):
     # Existing settings...
@@ -140,7 +151,7 @@ class Settings(BaseSettings):
         return YourProviderConfig(
             api_key=self.YOUR_PROVIDER_API_KEY,
             user_agent=self.YOUR_PROVIDER_USER_AGENT,
-            base_url=self.YOUR_PROVIDER_BASE_URL
+            base_url=self.YOUR_PROVIDER_BASE_URL,
         )
 ```
 
@@ -169,16 +180,16 @@ from unittest.mock import Mock, AsyncMock
 from off_key.core.client.your_provider_client import YourProviderClient
 from off_key.core.client.your_provider_config import YourProviderConfig
 
+
 @pytest.fixture
 def client_config():
-    return YourProviderConfig(
-        api_key="test_key",
-        user_agent="test_agent"
-    )
+    return YourProviderConfig(api_key="test_key", user_agent="test_agent")
+
 
 @pytest.fixture
 def client(client_config):
     return YourProviderClient(client_config)
+
 
 @pytest.mark.asyncio
 async def test_get_chargers(client):
@@ -200,6 +211,7 @@ Test with dependency injection:
 
 ```python
 # tests/test_integration.py
+
 
 @pytest.mark.asyncio
 async def test_service_with_your_provider():
@@ -250,7 +262,7 @@ Enable debug logging to trace dependency resolution:
 
 ```python
 # Set in environment
-LOG_LEVEL=DEBUG
+LOG_LEVEL = DEBUG
 
 # Check startup logs for:
 # "Initialized API client: YourProviderClient"

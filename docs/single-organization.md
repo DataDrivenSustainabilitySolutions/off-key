@@ -93,10 +93,20 @@ trusted: scoping credentials is not isolation against a compromised database or
 orchestrator. Per-service database roles, external secret rotation, SSO, and
 multiple organizations are separate work.
 
-Authentication endpoints have per-process limits keyed by the target account or
-single-use token. Users behind a proxy do not share one quota, and arbitrary
-forwarded headers do not change the limit. Run one API replica with the existing
-deployment; adding replicas requires shared rate-limit storage or ingress limits.
+Rate limits are keyed by the client address. The gateway reads it from
+`X-Forwarded-For` only when the connecting peer is in `TRUSTED_PROXY_CIDRS`
+(loopback and private ranges by default), taking the nearest untrusted hop, so a
+client cannot choose its own bucket. Traefik trusts the same private ranges so the
+address cloudflared forwards survives. Sign-in and password-reset requests are
+limited per client and account, so nobody can lock another person out, plus a
+shared per-client budget across all credential endpoints; invitation and reset
+tokens are limited per token. Run one API replica with the existing deployment;
+adding replicas requires shared rate-limit storage or ingress limits.
+
+Emails are matched case-insensitively and stored lowercase. "Remember me" keeps
+the access token in page memory only; each tab restores it from the HttpOnly
+cookie. The first refresh after a secret is a day old replaces it, and presenting
+a replaced secret after a short grace period ends that sign-in everywhere.
 
 ## Validation
 

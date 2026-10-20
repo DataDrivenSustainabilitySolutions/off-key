@@ -8,6 +8,7 @@ import bcrypt
 from off_key_core.config.logs import log_security_event
 from off_key_core.db.models import Favorite, User
 from off_key_core.schemas.members import MemberInvitation, MemberUpdate
+from off_key_core.schemas.user import normalize_email
 from off_key_core.utils.enum import RoleEnum
 from sqlalchemy import delete, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -50,6 +51,7 @@ class MemberService:
         self, email: str, *, resend: bool = False
     ) -> dict[str, str]:
         """Initialize an empty installation without changing existing access."""
+        email = normalize_email(email)
         await self._lock_membership()
         if await self._admin_count():
             return {"status": "configured"}
@@ -193,7 +195,7 @@ class MemberService:
     async def issue_reset_token(self, email: str) -> dict[str, str] | None:
         """Issue a random account-recovery token, storing only its SHA-256 digest."""
         user = await self.session.scalar(
-            select(User).where(User.email == email).with_for_update()
+            select(User).where(User.email == normalize_email(email)).with_for_update()
         )
         if user is None or not user.is_active or not user.is_verified:
             return None

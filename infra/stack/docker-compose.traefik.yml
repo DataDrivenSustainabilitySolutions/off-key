@@ -24,6 +24,8 @@ services:
       - "--providers.file.filename=/etc/traefik/dynamic.yml"
       - "--providers.file.watch=true"
       - "--entryPoints.web.address=:80"
+      # Keep the client address cloudflared forwards; only overlay peers can set it.
+      - "--entryPoints.web.forwardedHeaders.trustedIPs=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
       - "--ping=true"
       - "--api.dashboard=true"   # exposes api@internal; the traefik. router gates it behind oauth2
       - "--accesslog=true"

@@ -3,6 +3,7 @@ import { expect, test } from "@playwright/test";
 import { connectAsync, type MqttClient } from "mqtt";
 
 import { addTestCharger, removeTestCharger, fixtureEntityId, fixtureReadingKey } from "./helpers/collection";
+import { accessToken } from "./helpers/auth";
 
 const telemetry = [
   ["voltageAc3", 233.3],
@@ -30,7 +31,7 @@ test.describe("device topic ingress", () => {
 
     try {
       await page.goto("/");
-      authToken = await page.evaluate(() => localStorage.getItem("auth_token"));
+      authToken = await accessToken(page);
       expect(authToken).toBeTruthy();
       const headers = { Authorization: `Bearer ${authToken}` };
       await addTestCharger(

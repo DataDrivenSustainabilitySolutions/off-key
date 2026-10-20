@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { expect, test } from "@playwright/test";
 
 import { addTestCharger, removeTestCharger, fixtureEntityId, fixtureReadingKey } from "./helpers/collection";
+import { accessToken } from "./helpers/auth";
 
 test.describe("monitoring lifecycle smoke", () => {
   test.setTimeout(300_000);
@@ -23,7 +24,7 @@ test.describe("monitoring lifecycle smoke", () => {
 
     try {
       await page.goto(`/monitoring/${chargerId}`);
-      authToken = await page.evaluate(() => localStorage.getItem("auth_token"));
+      authToken = await accessToken(page);
       expect(authToken).toBeTruthy();
       await addTestCharger(cleanupRequest, authToken!, deviceId, deviceId, [
         "L1",

@@ -225,8 +225,10 @@ describe("Login", () => {
     expect(mockNavigate).toHaveBeenCalledWith("/");
     expect(fetchMock.mock.calls[0]?.[1]?.credentials).toBe("include");
     expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)).remember_me).toBe(rememberMe);
-    expect(localStorage.getItem("auth_token")).toBe(rememberMe ? mockToken : null);
+    // Remembered access tokens stay in memory; only the HttpOnly cookie persists.
+    expect(localStorage.getItem("auth_token")).toBeNull();
     expect(sessionStorage.getItem("auth_token")).toBe(rememberMe ? null : mockToken);
+    expect(tokenManager.isRemembered()).toBe(rememberMe);
   });
 
   it("accepts a valid login response even when the token has no user id claim", async () => {

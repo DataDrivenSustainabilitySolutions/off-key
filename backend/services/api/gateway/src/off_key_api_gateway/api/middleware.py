@@ -14,6 +14,8 @@ from off_key_core.config.logs import (
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp
 
+from .rate_limiter import client_ip as forwarded_client_ip
+
 
 class LoggingMiddleware(BaseHTTPMiddleware):
     """Middleware for request/response logging and correlation ID tracking."""
@@ -84,7 +86,7 @@ class SecurityLoggingMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         # Log potential security events
-        client_ip = redact_ip_address(request.client.host if request.client else None)
+        client_ip = redact_ip_address(forwarded_client_ip(request))
         path = request.url.path
         user_agent = request.headers.get("user-agent", "unknown")
         safe_user_agent = (

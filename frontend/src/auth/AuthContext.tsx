@@ -21,6 +21,8 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const getStoredToken = () => tokenManager.getToken();
 const noServerToken = () => null;
+const isRememberedSession = () => tokenManager.isRemembered();
+const notRemembered = () => false;
 
 type ProfileState = {
   token: string;
@@ -45,6 +47,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   const [profile, setProfile] = useState<ProfileState | null>(null);
   const [loginIdentity, setLoginIdentity] = useState<{ token: string; id: number | null } | null>(null);
   const [attempt, retryAuthentication] = useReducer((value: number) => value + 1, 0);
+  const [restoreFailure, setRestoreFailure] = useState<number | null>(null);
+  // Remembered access tokens are kept in memory; a new tab restores one from the cookie.
+  const remembered = useSyncExternalStore(subscribeToSession, isRememberedSession, notRemembered);
+  const restoring = !token && remembered;
+
+  useEffect(() => {
+    if (!restoring) return;
+    let cancelled = false;
+    refreshSession().catch((error: { status?: number }) => {
+      if (!cancelled && error.status !== 401) setRestoreFailure(attempt);
+    });
+    return () => { cancelled = true; };
+  }, [restoring, attempt]);
 
   useEffect(() => {
     if (!token) return;
@@ -135,8 +150,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   const resolved = profile?.token === token && profile.attempt === attempt ? profile : null;
   const expired = !!token && tokenManager.isTokenExpired(token);
   const member = !expired ? resolved?.member ?? reusableMember(profile, token) : null;
-  const authError = member ? null : resolved?.error ?? null;
-  const isLoading = !!token && !member && (resolved === null || (expired && tokenManager.isRemembered() && !authError));
+  const restoreError = restoring && restoreFailure === attempt
+    ? "We couldn’t renew your session. Your saved login is still available." : null;
+  const authError = member ? null : resolved?.error ?? restoreError;
+  const isLoading = (restoring && !restoreError)
+    || (!!token && !member && (resolved === null || (expired && tokenManager.isRemembered() && !authError)));
   const isAuthenticated = !!token && !expired;
   const isAdmin = member?.role === "admin";
   const userId = token ? getUserIdFromToken(token) ?? (loginIdentity?.token === token ? loginIdentity.id : null) : null;

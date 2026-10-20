@@ -27,6 +27,7 @@ import type {
   PipelineValidationReport,
 } from "../src/types/pipelines.generated";
 import type { PipelineState } from "../src/features/pipelines/diagnostics";
+import { accessToken } from "./helpers/auth";
 
 const selected = (page: Page) =>
   page.getByRole("combobox", { name: "Selected component", exact: true });
@@ -123,9 +124,7 @@ test.describe("visual pipeline real infrastructure", () => {
       let pipelineId: string | undefined;
       let publisher: MqttClient | undefined;
       await page.goto("/");
-      const token = await page.evaluate(() =>
-        localStorage.getItem("auth_token"),
-      );
+      const token = await accessToken(page);
       expect(token).toBeTruthy();
       const headers = { Authorization: `Bearer ${token}` };
       const api = await playwright.request.newContext({
@@ -639,7 +638,7 @@ test.describe("visual pipeline real infrastructure", () => {
     playwright,
   }, testInfo) => {
     await page.goto("/");
-    const token = await page.evaluate(() => localStorage.getItem("auth_token"));
+    const token = await accessToken(page);
     const headers = { Authorization: `Bearer ${token}` };
     const api = await playwright.request.newContext({
       baseURL: process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:5173",

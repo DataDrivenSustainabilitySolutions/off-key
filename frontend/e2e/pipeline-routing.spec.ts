@@ -4,11 +4,12 @@ import type { PipelineCatalog, PipelineView } from "../src/types/pipelines.gener
 import { loginPipelineWorkspace } from "./helpers/pipelines";
 import { fitPipelineOverview } from "./helpers/pipelineNavigation";
 import { expectClearPipelineRouting, pipelineRoutingSnapshot } from "./helpers/pipelineRouting";
+import { accessToken } from "./helpers/auth";
 
 test("reroutes around moved components during native dragging and after reload", async ({ page }, testInfo) => {
   await loginPipelineWorkspace(page);
   await page.setViewportSize({ width: 1600, height: 1100 });
-  const token = await page.evaluate(() => localStorage.getItem("auth_token"));
+  const token = await accessToken(page);
   const headers = { Authorization: `Bearer ${token}` };
   const response = await page.request.get("/api/v1/monitors/pipelines/catalog", { headers });
   expect(response.ok()).toBe(true);

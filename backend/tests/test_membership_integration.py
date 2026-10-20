@@ -67,21 +67,91 @@ async def test_remembered_sessions_store_hashes_expire_and_revoke_individually(
         assert stored.token_hash != first["token"]
         assert first["expires_in"] == 30 * 24 * 60 * 60
         expiry = stored.expires_at
+        # Fresh secrets are reused; rotation starts once one is a day old.
+        assert "token" not in await service.refresh(first["token"])
+        stored.issued_at = datetime.now(UTC) - timedelta(days=2)
+        await session.commit()
         claims = await service.refresh(first["token"])
+        rotated = claims.pop("token")
+        assert claims.pop("expires_in") <= 30 * 24 * 60 * 60
         assert claims == {"id": user_id, "email": user.email, "session_version": 1}
-        assert stored.expires_at == expiry
-        await service.revoke(first["token"])
-        await service.revoke(first["token"])
+        replacement = await session.get(
+            RememberedSession, hashlib.sha256(rotated.encode()).hexdigest()
+        )
+        assert replacement.expires_at == expiry
+        assert replacement.family_id == stored.family_id
+        await service.revoke(rotated)
+        await service.revoke(rotated)
         with pytest.raises(AuthenticationError):
             await service.refresh(first["token"])
-        assert (await service.refresh(second["token"]))["id"] == user_id
+        with pytest.raises(AuthenticationError):
+            await service.refresh(rotated)
         stored = await session.get(
             RememberedSession, hashlib.sha256(second["token"].encode()).hexdigest()
         )
+        stored.issued_at = datetime.now(UTC) - timedelta(days=2)
+        await session.commit()
+        second_rotated = (await service.refresh(second["token"]))["token"]
+        stored = await session.get(
+            RememberedSession, hashlib.sha256(second_rotated.encode()).hexdigest()
+        )
+        second["token"] = second_rotated
         stored.expires_at = datetime.now(UTC) - timedelta(seconds=1)
         await session.commit()
         with pytest.raises(AuthenticationError):
             await service.refresh(second["token"])
+
+
+@pytest.mark.asyncio
+async def test_remembered_session_reuse_after_rotation_ends_the_sign_in(
+    member_database,
+):
+    _, sessions = member_database
+    user_id = await bootstrap(sessions)
+    async with sessions() as session:
+        service = RememberedSessionService(session)
+        user = await session.get(User, user_id)
+        original = (await service.create(user))["token"]
+        spent = await session.get(
+            RememberedSession, hashlib.sha256(original.encode()).hexdigest()
+        )
+        spent.issued_at = datetime.now(UTC) - timedelta(days=2)
+        await session.commit()
+        rotated = (await service.refresh(original))["token"]
+        # A tab refreshing concurrently with the old cookie is still served.
+        concurrent = await service.refresh(original)
+        assert concurrent["id"] == user_id and "token" not in concurrent
+        spent.replaced_at = datetime.now(UTC) - timedelta(minutes=5)
+        await session.commit()
+        with pytest.raises(AuthenticationError):
+            await service.refresh(original)
+        # Replaying a copied secret revokes the legitimate replacement as well.
+        with pytest.raises(AuthenticationError):
+            await service.refresh(rotated)
+
+
+@pytest.mark.asyncio
+async def test_member_emails_are_case_insensitive(member_database):
+    _, sessions = member_database
+    await bootstrap(sessions)
+    async with sessions() as session:
+        service = MemberService(session)
+        admin = await session.scalar(
+            select(User).where(User.email == "admin@example.com")
+        )
+        invitation = await service.invite(
+            MemberInvitation(email="Alice@Example.com"), admin
+        )
+        assert invitation["email"] == "alice@example.com"
+        await service.accept_invitation(invitation["token"], PASSWORD)
+        with pytest.raises(ConflictError):
+            await service.invite(MemberInvitation(email="ALICE@example.com"), admin)
+        users = UserService(session, UserRepository(session))
+        signed_in = await users.authenticate(
+            email="ALICE@EXAMPLE.COM", password=PASSWORD
+        )
+        assert signed_in["email"] == "alice@example.com"
+        assert await service.issue_reset_token("Alice@example.com") is not None
 
 
 @pytest.mark.asyncio

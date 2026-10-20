@@ -65,3 +65,18 @@ export const acceptInvitationAndLogin = async (page: Page, email: string): Promi
   await loginWithEmail(page, email);
   return email;
 };
+
+/** Remembered access tokens live only in page memory; mint one from the session cookie. */
+export const accessToken = async (page: Page): Promise<string | null> =>
+  page.evaluate(async () => {
+    const unchecked = sessionStorage.getItem("auth_token");
+    if (unchecked) return unchecked;
+    const response = await fetch("/api/v1/auth/refresh", {
+      method: "POST",
+      credentials: "include",
+      headers: { "X-Off-Key-Session": "1" },
+    });
+    if (!response.ok) return null;
+    const body = (await response.json()) as { access_token?: unknown };
+    return typeof body.access_token === "string" ? body.access_token : null;
+  });

@@ -1,6 +1,6 @@
 import { expect, type Page } from "@playwright/test";
 import type { PipelineCatalog } from "../../src/types/pipelines.generated";
-import { loginWithEmail } from "./auth";
+import { loginWithEmail, accessToken } from "./auth";
 
 /** Each independent production invocation starts from real authentication. */
 export async function loginPipelineWorkspace(page: Page) {
@@ -8,6 +8,7 @@ export async function loginPipelineWorkspace(page: Page) {
   await page.evaluate(() => {
     localStorage.removeItem("auth_token");
     localStorage.removeItem("token_storage_type");
+    localStorage.removeItem("session_member");
     sessionStorage.removeItem("auth_token");
   });
   await page.context().clearCookies();
@@ -17,7 +18,7 @@ export async function loginPipelineWorkspace(page: Page) {
     process.env.SUPERUSER_MAIL ?? "admin@example.com",
     { rememberMe: true },
   );
-  const token = await page.evaluate(() => localStorage.getItem("auth_token"));
+  const token = await accessToken(page);
   expect(token).toBeTruthy();
   await expect
     .poll(

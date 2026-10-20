@@ -3,6 +3,7 @@ import { expect, test } from "@playwright/test";
 import { connectAsync, type MqttClient } from "mqtt";
 import type { SystemSnapshot } from "../src/features/catalogue/systemTypes";
 import { addTestCharger } from "./helpers/collection";
+import { accessToken } from "./helpers/auth";
 
 test("offers only entities with fresh MQTT data and retains their exact broker context", async ({ page, playwright }, testInfo) => {
   const runId = randomUUID();
@@ -18,7 +19,7 @@ test("offers only entities with fresh MQTT data and retains their exact broker c
     await expect(page.getByRole("heading", { name: "Monitoring", exact: true })).toBeVisible();
     const create = page.getByRole("button", { name: "Create", exact: true });
     await expect(create).toBeEnabled();
-    token = await page.evaluate(() => localStorage.getItem("auth_token"));
+    token = await accessToken(page);
     expect(token).toBeTruthy();
     const headers = { Authorization: `Bearer ${token}` };
     const readSystem = async (): Promise<SystemSnapshot> => {

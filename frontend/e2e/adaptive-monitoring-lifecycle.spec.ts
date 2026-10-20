@@ -5,6 +5,7 @@ import { ingressOptions } from "./helpers/mqtt";
 
 import { addTestCharger, removeTestCharger, fixtureEntityId, fixtureReadingKey } from "./helpers/collection";
 import { zoomChart } from "./helpers/chart";
+import { accessToken } from "./helpers/auth";
 
 const publish = async (
   client: MqttClient,
@@ -82,7 +83,7 @@ test.describe("adaptive monitoring production lifecycle", () => {
       );
       publisher = activePublisher;
       await page.goto(`/monitoring/${chargerId}`);
-      authToken = await page.evaluate(() => localStorage.getItem("auth_token"));
+      authToken = await accessToken(page);
       expect(authToken).toBeTruthy();
       // Inject broker envelopes for precise delayed timestamps; the separate
       // ingress spec exercises actual scalar messages through EMQX sources.

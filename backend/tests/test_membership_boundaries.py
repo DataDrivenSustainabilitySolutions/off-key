@@ -304,10 +304,8 @@ async def test_path_identifiers_cannot_escape_service_authenticated_urls(
     get_service_auth_settings.cache_clear()
 
 
-@pytest.mark.asyncio
-async def test_auth_limits_are_independent_behind_proxy_and_ignore_forwarded_spoofing(
-    gateway, monkeypatch
-):
+@pytest.fixture
+def failing_login(gateway, monkeypatch):
     from slowapi.middleware import SlowAPIMiddleware
 
     gateway.add_middleware(SlowAPIMiddleware)
@@ -316,28 +314,88 @@ async def test_auth_limits_are_independent_behind_proxy_and_ignore_forwarded_spo
         "authenticate_user",
         AsyncMock(side_effect=TacticError("Invalid credentials", status=401)),
     )
+    return gateway
+
+
+def _login(email=PROFILE.email):
+    return {"email": email, "password": "wrong"}
+
+
+@pytest.mark.asyncio
+async def test_direct_clients_cannot_spoof_forwarded_addresses(failing_login):
     async with AsyncClient(
-        transport=ASGITransport(app=gateway, client=("10.0.1.7", 80)),
+        transport=ASGITransport(app=failing_login, client=("203.0.113.5", 80)),
         base_url="http://test",
     ) as client:
         for number in range(10):
             response = await client.post(
                 "/v1/auth/login",
-                json={"email": PROFILE.email, "password": "wrong"},
+                json=_login(),
                 headers={"X-Forwarded-For": f"198.51.100.{number}"},
             )
             assert response.status_code == 401
         assert (
             await client.post(
                 "/v1/auth/login",
-                json={"email": PROFILE.email, "password": "wrong"},
+                json=_login(),
                 headers={"X-Forwarded-For": "203.0.113.9"},
+            )
+        ).status_code == 429
+
+
+@pytest.mark.asyncio
+async def test_attackers_behind_the_proxy_cannot_lock_out_another_client(
+    failing_login,
+):
+    async with AsyncClient(
+        transport=ASGITransport(app=failing_login, client=("10.0.1.7", 80)),
+        base_url="http://test",
+    ) as client:
+        # A client-supplied left-most entry is ignored; Traefik appends the peer.
+        attacker = {"X-Forwarded-For": "198.51.100.1, 203.0.113.66"}
+        for _ in range(10):
+            response = await client.post(
+                "/v1/auth/login", json=_login(), headers=attacker
+            )
+            assert response.status_code == 401
+        assert (
+            await client.post("/v1/auth/login", json=_login(), headers=attacker)
+        ).status_code == 429
+        assert (
+            await client.post(
+                "/v1/auth/login",
+                json=_login(),
+                headers={"X-Forwarded-For": "198.51.100.1, 203.0.113.77"},
+            )
+        ).status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_one_client_cannot_spray_guesses_across_accounts(failing_login):
+    async with AsyncClient(
+        transport=ASGITransport(app=failing_login, client=("10.0.1.7", 80)),
+        base_url="http://test",
+    ) as client:
+        sprayer = {"X-Forwarded-For": "203.0.113.66"}
+        for number in range(30):
+            response = await client.post(
+                "/v1/auth/login",
+                json=_login(f"member{number}@example.com"),
+                headers=sprayer,
+            )
+            assert response.status_code == 401
+        assert (
+            await client.post(
+                "/v1/auth/login",
+                json=_login("another@example.com"),
+                headers=sprayer,
             )
         ).status_code == 429
         assert (
             await client.post(
                 "/v1/auth/login",
-                json={"email": "colleague@example.com", "password": "wrong"},
+                json=_login("another@example.com"),
+                headers={"X-Forwarded-For": "203.0.113.77"},
             )
         ).status_code == 401
 

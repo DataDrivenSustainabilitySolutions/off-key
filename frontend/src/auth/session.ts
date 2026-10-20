@@ -1,10 +1,34 @@
-import { isTokenExpired } from './token';
+import { getUserIdFromToken, isTokenExpired } from './token';
 import { API_CONFIG, getApiUrl } from '@/lib/api-config';
 
 const TOKEN_KEY = 'auth_token';
 const STORAGE_TYPE_KEY = 'token_storage_type';
+const REMEMBERED = 'remembered';
+// Non-secret marker that tells other tabs a different member signed in.
+const MEMBER_KEY = 'session_member';
 const SESSION_CHANGED = 'off-key-session-changed';
 let generation = 0;
+// Remembered sessions keep the bearer token in memory only; each tab restores
+// it from the HttpOnly cookie, so injected scripts cannot lift it from storage.
+let rememberedToken: string | null = null;
+
+const readStorageType = (): string | null => {
+  try {
+    return localStorage.getItem(STORAGE_TYPE_KEY);
+  } catch {
+    return null;
+  }
+};
+
+// Releases before this one persisted remembered tokens in localStorage.
+try {
+  if (readStorageType() === 'localStorage') {
+    localStorage.removeItem(TOKEN_KEY);
+    localStorage.setItem(STORAGE_TYPE_KEY, REMEMBERED);
+  }
+} catch {
+  // Storage can be unavailable; the in-memory session still works.
+}
 let renewal: Promise<string | null> | null = null;
 let logoutRequest: Promise<void> | null = null;
 
@@ -18,27 +42,31 @@ export class SessionRequestError extends Error {
 export const tokenManager = {
   getToken(): string | null {
     return this.isRemembered()
-      ? localStorage.getItem(TOKEN_KEY)
+      ? rememberedToken
       : sessionStorage.getItem(TOKEN_KEY);
   },
 
   isRemembered(): boolean {
-    return localStorage.getItem(STORAGE_TYPE_KEY) === 'localStorage';
+    return readStorageType() === REMEMBERED;
   },
 
   setToken(token: string, rememberMe = false): void {
     localStorage.removeItem(TOKEN_KEY);
     sessionStorage.removeItem(TOKEN_KEY);
-    (rememberMe ? localStorage : sessionStorage).setItem(TOKEN_KEY, token);
-    localStorage.setItem(STORAGE_TYPE_KEY, rememberMe ? 'localStorage' : 'sessionStorage');
+    rememberedToken = rememberMe ? token : null;
+    if (!rememberMe) sessionStorage.setItem(TOKEN_KEY, token);
+    localStorage.setItem(STORAGE_TYPE_KEY, rememberMe ? REMEMBERED : 'sessionStorage');
+    localStorage.setItem(MEMBER_KEY, String(getUserIdFromToken(token) ?? ''));
     generation += 1;
     window.dispatchEvent(new Event(SESSION_CHANGED));
   },
 
   removeToken(): void {
+    rememberedToken = null;
     localStorage.removeItem(TOKEN_KEY);
     sessionStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(STORAGE_TYPE_KEY);
+    localStorage.removeItem(MEMBER_KEY);
     generation += 1;
     window.dispatchEvent(new Event(SESSION_CHANGED));
   },
@@ -48,7 +76,12 @@ export const tokenManager = {
 
 export const subscribeToSession = (onChange: () => void): (() => void) => {
   const onStorage = (event: StorageEvent) => {
-    if (event.key === null || event.key === TOKEN_KEY || event.key === STORAGE_TYPE_KEY) onChange();
+    if (event.key === null || event.key === TOKEN_KEY || event.key === STORAGE_TYPE_KEY || event.key === MEMBER_KEY) {
+      // Another tab signed out or switched accounts; drop this tab's copy so
+      // it restores the current member from the shared cookie.
+      if (!tokenManager.isRemembered() || event.key === MEMBER_KEY || event.key === null) rememberedToken = null;
+      onChange();
+    }
   };
   window.addEventListener(SESSION_CHANGED, onChange);
   window.addEventListener('storage', onStorage);

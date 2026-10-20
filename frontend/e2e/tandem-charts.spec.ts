@@ -132,8 +132,9 @@ const installMockApi = async (
 
   await page.addInitScript((preferredTheme) => {
     const payload = btoa(JSON.stringify({ sub: "1", user_id: 1, exp: 4_102_444_800 }));
-    localStorage.setItem("auth_token", `e2e.${payload}.signature`);
-    localStorage.setItem("token_storage_type", "localStorage");
+    // An unchecked session keeps its token in sessionStorage, so no refresh is mocked.
+    sessionStorage.setItem("auth_token", `e2e.${payload}.signature`);
+    localStorage.setItem("token_storage_type", "sessionStorage");
     localStorage.setItem("vite-ui-theme", preferredTheme);
   }, theme);
 

@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { expect, test, type Locator } from "@playwright/test";
 import type { SystemSnapshot } from "../src/features/catalogue/systemTypes";
 import { setAppearance } from "./helpers/appearance";
+import { accessToken } from "./helpers/auth";
 
 async function expectDialogFits(dialog: Locator) {
   expect(await dialog.evaluate(element => {
@@ -18,7 +19,7 @@ test("reviews a real catalogue export before replacement", async ({ page }) => {
   const dialog = page.getByRole("dialog", { name: "Catalogue settings", exact: true });
   await expect(dialog.getByRole("heading", { name: "Manage sources", exact: true })).toBeVisible();
   await expect(dialog.getByRole("heading", { name: "Import & export", exact: true })).toBeVisible();
-  const token = await page.evaluate(() => localStorage.getItem("auth_token"));
+  const token = await accessToken(page);
   const headers = { Authorization: `Bearer ${token}` };
   const beforeResponse = await page.request.get("/api/v1/system", { headers });
   expect(beforeResponse.ok(), await beforeResponse.text()).toBeTruthy();
@@ -57,7 +58,7 @@ test("saves a source from settings and supports both themes and mobile entry poi
   await page.setViewportSize({ width: 1280, height: 1000 });
   await page.goto("/sources");
   await page.getByRole("button", { name: "Catalogue settings", exact: true }).click();
-  const token = await page.evaluate(() => localStorage.getItem("auth_token"));
+  const token = await accessToken(page);
   const headers = { Authorization: `Bearer ${token}` };
   const name = `Settings check ${randomUUID().slice(0, 8)}`;
   let createdId: string | undefined;

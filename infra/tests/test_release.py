@@ -8,7 +8,7 @@ import tempfile
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from copy import deepcopy
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from io import StringIO
 from pathlib import Path
 from types import SimpleNamespace
@@ -545,17 +545,17 @@ class ReleaseTests(unittest.TestCase):
             ingress={},
         )
         self.assertEqual(
-            application.check_collection(snapshot, datetime.now(timezone.utc)),
+            application.check_collection(snapshot, datetime.now(UTC)),
             {"revision": 0, "selected_sensors": 0},
         )
         snapshot.revision = 1
         with self.assertRaisesRegex(ValueError, "not applied"):
-            application.check_collection(snapshot, datetime.now(timezone.utc))
+            application.check_collection(snapshot, datetime.now(UTC))
 
     def test_generic_readiness_checks_the_active_workers_and_selected_subscriptions(
         self,
     ):
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         selected = [
             SimpleNamespace(source_id="broker"),
             SimpleNamespace(source_id="broker"),

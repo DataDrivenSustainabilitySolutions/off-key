@@ -118,6 +118,7 @@ function EditorSession({
     }));
   };
   const [inspectorPanel, setInspectorPanel] = useState<InspectorPanel>(null);
+  const [issuesRequest, setIssuesRequest] = useState(0);
   const base = session.base;
   const revisions = usePipelineRevisions(base, props.revisionId);
   const revision = revisions.revision;
@@ -189,6 +190,7 @@ function EditorSession({
       );
       setValidation(result);
       if (!result.valid) {
+        setIssuesRequest((value) => value + 1);
         setError("Resolve graph validation errors before publishing.");
         return;
       }
@@ -305,6 +307,7 @@ function EditorSession({
                       pipelinesApi.validate(base.id, definition, undefined, selected),
                     );
                     if (!result) return;
+                    setIssuesRequest((value) => value + 1);
                     setNotice(
                       result.valid
                         ? "Graph is valid."
@@ -417,8 +420,12 @@ function EditorSession({
         document={document}
         validation={metadata ?? validation}
         fitRequest={fitRequest}
+        reveal={graph.reveal}
         selected={selected}
         readOnly={readOnly}
+        onUndo={graph.undo}
+        onRedo={graph.redo}
+        issuesRequest={issuesRequest}
         onSelect={select}
         onChange={commit}
         onAdd={add}
@@ -467,7 +474,7 @@ function EditorSession({
               type="button"
               disabled={!graph.canUndo}
               aria-label="Undo graph change"
-              title="Undo"
+              title="Undo (Ctrl+Z)"
               onClick={graph.undo}
             >
               <Undo2 size={15} />
@@ -476,7 +483,7 @@ function EditorSession({
               type="button"
               disabled={!graph.canRedo}
               aria-label="Redo graph change"
-              title="Redo"
+              title="Redo (Ctrl+Shift+Z)"
               onClick={graph.redo}
             >
               <Redo2 size={15} />
@@ -499,33 +506,6 @@ function EditorSession({
             </button>
         </>}
       />
-      {validation && (
-        <section className="pl-validation" aria-label="Graph validation">
-          <h3>
-            {validation.valid ? "Valid processing graph" : "Validation errors"}
-          </h3>
-          {validation.issues_truncated && (
-            <p className="pl-help">
-              Additional validation messages were omitted to keep this report
-              bounded. Resolve the listed issues, then validate again.
-            </p>
-          )}
-          {validation.issues.length > 0 && (
-            <ul>
-              {validation.issues.map((issue, index) => (
-                <li key={index}>
-                  <button
-                    type="button"
-                    onClick={() => issue.node_id && select(issue.node_id)}
-                  >
-                    {issue.message}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-      )}
       {revision && changes.length > 0 && (
         <p className="pl-help">
           <GitBranch size={14} /> The current draft differs from this published

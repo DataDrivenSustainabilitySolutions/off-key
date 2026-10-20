@@ -1,7 +1,8 @@
 .pl-toolbox {
   padding: 0;
 }
-.pl-component-menu {
+.pl-component-menu,
+.pl-issue-popover {
   width: min(320px, calc(100vw - 24px));
   max-height: min(600px, var(--radix-popover-content-available-height));
   overflow: auto;
@@ -78,7 +79,7 @@
 .pl-inspector {
   border-left: 1px solid hsl(var(--border));
   padding: 16px;
-  max-height: 700px;
+  max-height: 100%;
   overflow: auto;
   scrollbar-width: thin;
   min-width: 0;
@@ -202,4 +203,54 @@
 .pl-inspector .pl-danger {
   margin-top: 22px;
   color: #dc2626;
+}
+
+.pl-issue-popover {
+  width: min(360px, calc(100vw - 24px));
+  font-size: 13px;
+}
+.pl-issue-popover ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 6px;
+}
+.pl-issue-popover li > :is(button, span) {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 8px 10px;
+  border-radius: 6px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.pl-issue-popover li > span {
+  border: 1px dashed hsl(var(--border));
+}
+.pl-issue-status.has-issues {
+  color: #b45309;
+  border-color: color-mix(in srgb, #f59e0b 45%, hsl(var(--border)));
+}
+.dark .pl-issue-status.has-issues {
+  color: #fcd34d;
+}
+.pl-toolbox-item:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.pl-toolbox-existing .pl-help {
+  margin: 0 0 6px;
+}
+.pl-field-error {
+  display: block;
+  margin-top: 4px;
+  color: #dc2626;
+  font-size: 12px;
+}
+.pl-field :is(input, select, textarea)[aria-invalid="true"] {
+  border-color: #dc2626;
+}
+.pl-issue-status.is-checking {
+  opacity: 0.6;
 }

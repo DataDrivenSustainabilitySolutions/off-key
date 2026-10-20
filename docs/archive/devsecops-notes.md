@@ -208,23 +208,19 @@ PASSWORD = "<portainer-password>"
 
 # Authenticate to Portainer to get a JWT token
 resp = requests.post(
-    f"{PORTAINER_HOST}/auth",
-    json={"Username": USERNAME, "Password": PASSWORD}
+    f"{PORTAINER_HOST}/auth", json={"Username": USERNAME, "Password": PASSWORD}
 )
 token = resp.json()["jwt"]
 
 # Prepare headers for authenticated requests
-headers = {
-    "Authorization": f"Bearer {token}",
-    "Content-Type": "application/json"
-}
+headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
 
 # Example: Deploy a stack from a compose file
 stack_payload = {
     "Name": "alice-monitoring",
     "StackFileContent": open("docker-compose.yml").read(),
     "Env": [],
-    "Prune": True
+    "Prune": True,
 }
 
 # Deploy to endpoint 1 (e.g. Docker Swarm cluster)
@@ -232,7 +228,7 @@ response = requests.post(
     f"{PORTAINER_HOST}/stacks",
     headers=headers,
     params={"type": 1, "method": "string", "endpointId": 1},
-    json=stack_payload
+    json=stack_payload,
 )
 
 if response.ok:

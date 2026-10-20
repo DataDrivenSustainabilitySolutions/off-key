@@ -170,7 +170,7 @@ export default function PipelineWorkspace({
             : undefined
         }
         onBack={creating ? onBack : library}
-        backLabel={creating ? "Monitoring" : "Saved designs"}
+        backLabel={creating ? "All services" : "Saved designs"}
         onOpen={open}
         onRevision={(revision) => {
           const next = new URLSearchParams(params);

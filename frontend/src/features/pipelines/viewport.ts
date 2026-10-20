@@ -22,3 +22,29 @@ export async function fitReadableView(
     zoom: 1,
   });
 }
+
+/** Pan, without zooming, until a component is fully inside the visible canvas. */
+export async function revealNode(
+  flow: ReactFlowInstance<CanvasNode>,
+  surface: HTMLElement,
+  id: string,
+  margin = 32,
+) {
+  const node = flow.getNode(id);
+  if (!node) return;
+  const bounds = flow.getNodesBounds([node]);
+  const { x, y, zoom } = flow.getViewport();
+  const { width, height } = surface.getBoundingClientRect();
+  if (!width || !height) return;
+  const left = bounds.x * zoom + x;
+  const top = bounds.y * zoom + y;
+  const right = left + bounds.width * zoom;
+  const bottom = top + bounds.height * zoom;
+  const shift = (start: number, end: number, size: number) =>
+    end - start + margin * 2 > size
+      ? size / 2 - (start + end) / 2
+      : start < margin ? margin - start : end > size - margin ? size - margin - end : 0;
+  const dx = shift(left, right, width);
+  const dy = shift(top, bottom, height);
+  if (dx || dy) await flow.setViewport({ x: x + dx, y: y + dy, zoom }, { duration: 200 });
+}

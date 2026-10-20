@@ -208,8 +208,9 @@ for (const strategy of ["static_baseline", "adaptive_stream"] as const) {
       await editor
         .getByRole("button", { name: "Validate", exact: true })
         .click();
+      // The validation result opens in a popover outside the editor region.
       await expect(
-        editor.getByRole("heading", {
+        page.getByRole("heading", {
           name: "Valid processing graph",
           exact: true,
         }),

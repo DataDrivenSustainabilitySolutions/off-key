@@ -3,7 +3,7 @@
 import asyncio
 import json
 import os
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from urllib.request import urlopen
 
 
@@ -65,7 +65,7 @@ async def main():
             snapshot = await read_collection_runtime(session)
         result = check_collection(
             snapshot,
-            datetime.now(timezone.utc),
+            datetime.now(UTC),
             os.environ.get("SYSTEM_COLLECTION_ENABLED", "true").lower() == "true",
         )
         print(json.dumps(result))

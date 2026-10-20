@@ -38,12 +38,27 @@
     min-height: 420px;
     height: 420px;
   }
+  /* A bottom sheet leaves the top of the graph visible while editing. */
+  .pl-editor-grid,
+  .pl-editor-grid--settings {
+    height: auto;
+  }
   .pl-settings-panel {
     position: absolute;
-    inset: 0 0 0 auto;
-    width: min(320px, 100%);
+    inset: auto 0 0 0;
+    max-height: 58%;
     z-index: 6;
-    box-shadow: -8px 0 24px #0002;
+    border-top: 1px solid hsl(var(--border));
+    border-radius: 12px 12px 0 0;
+    box-shadow: 0 -8px 24px #0002;
+    overflow: hidden;
+  }
+  .pl-settings-panel .pl-inspector {
+    border-left: 0;
+  }
+  .pl-component-menu,
+  .pl-issue-popover {
+    max-height: min(55dvh, var(--radix-popover-content-available-height));
   }
   .pl-settings-panel .pl-inspector {
     max-height: 100%;

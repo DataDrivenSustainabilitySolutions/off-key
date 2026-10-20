@@ -1,6 +1,6 @@
 """Revocable browser sessions; only hashes of their opaque secrets are stored."""
 
-from sqlalchemy import Column, DateTime, ForeignKey, Integer, Text
+from sqlalchemy import Column, DateTime, ForeignKey, Integer, Text, func
 
 from .base import Base
 
@@ -17,4 +17,7 @@ class RememberedSession(Base):
     )
     session_version = Column(Integer, nullable=False)
     expires_at = Column(DateTime(timezone=True), nullable=False, index=True)
+    issued_at = Column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
     replaced_at = Column(DateTime(timezone=True), nullable=True)

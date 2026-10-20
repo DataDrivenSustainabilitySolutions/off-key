@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock
 
 import aiohttp
 import pytest
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from httpx import ASGITransport, AsyncClient
 from off_key_api_gateway.api import access
 from off_key_api_gateway.api.rate_limiter import client_ip
@@ -58,9 +58,7 @@ def facade(monkeypatch):
 
     monkeypatch.setenv("INTERNAL_API_SECRET", "test-private-api-credential-123456789")
     get_service_auth_settings.cache_clear()
-    monkeypatch.setattr(
-        "off_key_api_gateway.facades.tactic.asyncio.sleep", AsyncMock()
-    )
+    monkeypatch.setattr("off_key_api_gateway.facades.tactic.asyncio.sleep", AsyncMock())
     client = Tactic.__new__(Tactic)
     client.base_url = "http://tactic"
     client._max_retries = 2
@@ -169,9 +167,7 @@ def test_login_emails_are_normalized():
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("stored", [None, "!"])
-async def test_unknown_and_pending_accounts_pay_the_bcrypt_cost(
-    monkeypatch, stored
-):
+async def test_unknown_and_pending_accounts_pay_the_bcrypt_cost(monkeypatch, stored):
     checks = []
     real = users_module.bcrypt.checkpw
 
@@ -207,6 +203,6 @@ async def test_member_lookups_are_cached_briefly_and_failures_are_not(monkeypatc
     access.clear_member_cache()
     remote.side_effect = TacticError("Revoked", status=401)
     for _ in range(2):
-        with pytest.raises(Exception):
+        with pytest.raises(HTTPException):
             await access.current_member("Bearer revoked")
     assert remote.await_count == 3

@@ -105,8 +105,8 @@ adding replicas requires shared rate-limit storage or ingress limits.
 
 Emails are matched case-insensitively and stored lowercase. "Remember me" keeps
 the access token in page memory only; each tab restores it from the HttpOnly
-cookie, and every refresh replaces the cookie's secret. Presenting a replaced
-secret after a short grace period ends that sign-in everywhere.
+cookie. The first refresh after a secret is a day old replaces it, and presenting
+a replaced secret after a short grace period ends that sign-in everywhere.
 
 ## Validation
 

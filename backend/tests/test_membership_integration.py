@@ -67,6 +67,10 @@ async def test_remembered_sessions_store_hashes_expire_and_revoke_individually(
         assert stored.token_hash != first["token"]
         assert first["expires_in"] == 30 * 24 * 60 * 60
         expiry = stored.expires_at
+        # Fresh secrets are reused; rotation starts once one is a day old.
+        assert "token" not in await service.refresh(first["token"])
+        stored.issued_at = datetime.now(UTC) - timedelta(days=2)
+        await session.commit()
         claims = await service.refresh(first["token"])
         rotated = claims.pop("token")
         assert claims.pop("expires_in") <= 30 * 24 * 60 * 60
@@ -82,6 +86,11 @@ async def test_remembered_sessions_store_hashes_expire_and_revoke_individually(
             await service.refresh(first["token"])
         with pytest.raises(AuthenticationError):
             await service.refresh(rotated)
+        stored = await session.get(
+            RememberedSession, hashlib.sha256(second["token"].encode()).hexdigest()
+        )
+        stored.issued_at = datetime.now(UTC) - timedelta(days=2)
+        await session.commit()
         second_rotated = (await service.refresh(second["token"]))["token"]
         stored = await session.get(
             RememberedSession, hashlib.sha256(second_rotated.encode()).hexdigest()
@@ -103,13 +112,15 @@ async def test_remembered_session_reuse_after_rotation_ends_the_sign_in(
         service = RememberedSessionService(session)
         user = await session.get(User, user_id)
         original = (await service.create(user))["token"]
+        spent = await session.get(
+            RememberedSession, hashlib.sha256(original.encode()).hexdigest()
+        )
+        spent.issued_at = datetime.now(UTC) - timedelta(days=2)
+        await session.commit()
         rotated = (await service.refresh(original))["token"]
         # A tab refreshing concurrently with the old cookie is still served.
         concurrent = await service.refresh(original)
         assert concurrent["id"] == user_id and "token" not in concurrent
-        spent = await session.get(
-            RememberedSession, hashlib.sha256(original.encode()).hexdigest()
-        )
         spent.replaced_at = datetime.now(UTC) - timedelta(minutes=5)
         await session.commit()
         with pytest.raises(AuthenticationError):

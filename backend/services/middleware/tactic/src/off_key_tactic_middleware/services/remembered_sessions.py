@@ -14,6 +14,14 @@ from ..domain import AuthenticationError
 
 # Tabs that refresh together with the same cookie must not sign each other out.
 ROTATION_GRACE = timedelta(seconds=30)
+# A secret is replaced on the first refresh after this age, so a copied cookie
+# stays usable for at most about a day before its reuse is detected. Rotating
+# less often than every refresh keeps restored browser profiles working.
+ROTATION_INTERVAL = timedelta(days=1)
+
+
+def _utc(value: datetime) -> datetime:
+    return value if value.tzinfo else value.replace(tzinfo=UTC)
 
 
 def _digest(token: str) -> str:
@@ -24,7 +32,14 @@ class RememberedSessionService:
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    def _issue(self, user: User, *, family_id: str | None, expires_at: datetime) -> str:
+    def _issue(
+        self,
+        user: User,
+        *,
+        family_id: str | None,
+        expires_at: datetime,
+        issued_at: datetime,
+    ) -> str:
         token = secrets.token_urlsafe(32)
         token_hash = _digest(token)
         self.session.add(
@@ -34,6 +49,7 @@ class RememberedSessionService:
                 user_id=user.id,
                 session_version=user.session_version,
                 expires_at=expires_at,
+                issued_at=issued_at,
             )
         )
         return token
@@ -47,12 +63,13 @@ class RememberedSessionService:
             user,
             family_id=None,
             expires_at=now + timedelta(seconds=REMEMBERED_SESSION_SECONDS),
+            issued_at=now,
         )
         await self.session.commit()
         return {"token": token, "expires_in": REMEMBERED_SESSION_SECONDS}
 
     async def refresh(self, token: str) -> dict:
-        """Exchange a remembered secret for a new one within the same lifetime.
+        """Exchange a day-old remembered secret for a new one in the same lifetime.
 
         Presenting a secret that was replaced outside the grace window means it
         was copied, so the whole sign-in is revoked.
@@ -98,14 +115,18 @@ class RememberedSessionService:
                 "remembered_session_reuse", user.email, {"member_id": user.id}
             )
             raise AuthenticationError("This remembered session is no longer valid")
+        if now - _utc(remembered.issued_at) < ROTATION_INTERVAL:
+            await self.session.commit()
+            return identity
         remembered.replaced_at = now
         replacement = self._issue(
-            user, family_id=remembered.family_id, expires_at=remembered.expires_at
+            user,
+            family_id=remembered.family_id,
+            expires_at=remembered.expires_at,
+            issued_at=now,
         )
         await self.session.commit()
-        expires_at = remembered.expires_at
-        if expires_at.tzinfo is None:
-            expires_at = expires_at.replace(tzinfo=UTC)
+        expires_at = _utc(remembered.expires_at)
         return {
             **identity,
             "token": replacement,

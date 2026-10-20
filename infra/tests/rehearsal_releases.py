@@ -6,6 +6,7 @@ It is not an eligible production release and proves no pre-feature compatibility
 
 import json
 import tarfile
+import tomllib
 from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
 from pathlib import Path
@@ -14,6 +15,8 @@ from support import run
 
 COMPATIBLE_REVISION = "97ccabfda62c97e8643eda0f4f64d369c6bdd5f2"
 REGISTRY = "offkey-smoke-registry"
+# Detector numerics; other locked packages may differ as in a real rollback.
+NUMERICAL_LIBRARIES = ("aberrant",)
 BUILDS = {
     "api": ("off-key-api-gateway", "services/api/gateway"),
     "tactic": ("off-key-tactic-middleware", "services/middleware/tactic"),
@@ -114,7 +117,7 @@ def build_local_images(release, revision, project):
 
 
 def compatible_release(directory, project, reference_repository=None):
-    """Build actual older source; refuse unnoticed schema/dependency changes."""
+    """Build actual older source; refuse unnoticed schema/numerical changes."""
     current = json.loads((directory / "production-release.json").read_text())["release"]
     if current["application_revision"] == COMPATIBLE_REVISION:
         raise ValueError("Binary rollback requires two different source revisions")
@@ -167,7 +170,6 @@ def archive_compatible_source(directory, reference_repository):
 def validate_compatible_source(source, project):
     """A binary rollback never bypasses a changed migration or numeric contract."""
     compatibility = [
-        Path("backend/uv.lock"),
         Path("backend/libs/core/src/off_key_core/models/adaptive_catalog.json"),
     ]
     migrations = Path("backend/libs/core/src/off_key_core/db/migrations")
@@ -185,6 +187,24 @@ def validate_compatible_source(source, project):
             raise ValueError(
                 f"Review a new compatible rollback reference: {path} differs"
             )
+    lock = Path("backend/uv.lock")
+    if locked_numerical_libraries(source / lock) != locked_numerical_libraries(
+        project / lock
+    ):
+        raise ValueError(
+            "Review a new compatible rollback reference: locked Aberrant differs"
+        )
+
+
+def locked_numerical_libraries(lock):
+    locked = sorted(
+        (package["name"], package.get("version"))
+        for package in tomllib.loads(lock.read_text()).get("package", [])
+        if package["name"] in NUMERICAL_LIBRARIES
+    )
+    if {name for name, _ in locked} != set(NUMERICAL_LIBRARIES):
+        raise ValueError(f"{lock} does not lock the reviewed numerical libraries")
+    return locked
 
 
 def selected_release(directory, target):

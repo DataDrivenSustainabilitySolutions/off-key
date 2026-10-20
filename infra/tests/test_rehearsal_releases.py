@@ -113,10 +113,16 @@ class RehearsalReleaseTests(unittest.TestCase):
         self,
     ):
         paths = [
-            "backend/uv.lock",
             "backend/libs/core/src/off_key_core/models/adaptive_catalog.json",
             "backend/libs/core/src/off_key_core/db/migrations/010_monitoring_pipelines.sql",
         ]
+
+        def lock(aberrant, fastapi):
+            return "".join(
+                f'[[package]]\nname = "{name}"\nversion = "{version}"\n\n'
+                for name, version in (("aberrant", aberrant), ("fastapi", fastapi))
+            )
+
         with tempfile.TemporaryDirectory() as temporary:
             source, current = Path(temporary) / "older", Path(temporary) / "current"
             for root in (source, current):
@@ -124,6 +130,7 @@ class RehearsalReleaseTests(unittest.TestCase):
                     path = root / name
                     path.parent.mkdir(parents=True, exist_ok=True)
                     path.write_text("reviewed contract")
+                (root / "backend/uv.lock").write_text(lock("1.3.0", "0.143.0"))
             validate_compatible_source(source, current)
             for name in paths:
                 path = current / name
@@ -131,6 +138,17 @@ class RehearsalReleaseTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "Review a new compatible"):
                     validate_compatible_source(source, current)
                 path.write_text("reviewed contract")
+            # Unrelated dependency bumps no longer require a new reference.
+            locked = current / "backend/uv.lock"
+            locked.write_text(lock("1.3.0", "0.143.2"))
+            validate_compatible_source(source, current)
+            locked.write_text(lock("1.4.0", "0.143.2"))
+            with self.assertRaisesRegex(ValueError, "locked Aberrant differs"):
+                validate_compatible_source(source, current)
+            locked.write_text('[[package]]\nname = "fastapi"\nversion = "1"\n')
+            with self.assertRaisesRegex(ValueError, "reviewed numerical libraries"):
+                validate_compatible_source(source, current)
+            locked.write_text(lock("1.3.0", "0.143.0"))
             (
                 current
                 / "backend/libs/core/src/off_key_core/db/migrations/011_future.sql"

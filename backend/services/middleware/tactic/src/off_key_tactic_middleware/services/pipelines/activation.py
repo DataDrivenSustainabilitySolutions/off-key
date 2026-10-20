@@ -35,6 +35,7 @@ from off_key_core.schemas.pipelines import (
     BoundInput,
     PipelineActivationRequest,
     PipelineActivationView,
+    PipelineApplyRequest,
     PipelineBindingMetadata,
     PipelineDefinition,
     PipelineExecutionConfig,
@@ -113,6 +114,13 @@ class PipelineActivations:
         return row
 
     async def submit(self, request: PipelineActivationRequest):
+        return await self._submit(request)
+
+    async def apply(self, request: PipelineApplyRequest):
+        """Atomically snapshot, bind and reserve a directly configured service."""
+        return await self._submit(request)
+
+    async def _submit(self, request: PipelineActivationRequest | PipelineApplyRequest):
         require_authoring()
         await lock_collection_configuration(self.session)
         await require_application_writes(self.session)
@@ -132,7 +140,11 @@ class PipelineActivations:
                     "Idempotency key already identifies a different activation"
                 )
             return activation_view(existing)
-        revision, design, definition = await self._published_design(request)
+        revision, design, definition = (
+            await self._snapshot(request)
+            if isinstance(request, PipelineApplyRequest)
+            else await self._published_design(request)
+        )
         predecessor = await self._predecessor(request)
         performance, topics, bindings, snapshot = await self._bindings(
             request, definition
@@ -199,6 +211,40 @@ class PipelineActivations:
         self.session.add(row)
         await self.session.commit()
         return activation_view(row)
+
+    async def _snapshot(self, request: PipelineApplyRequest):
+        try:
+            compiled = compile_pipeline(request.definition)
+        except ValueError as exc:
+            raise ValidationError(str(exc)[:4096]) from exc
+        now = datetime.now(UTC)
+        definition = compiled.definition.model_dump(mode="json")
+        design = MonitoringPipeline(
+            id=str(uuid4()),
+            name=request.display_name,
+            description="",
+            archived=False,
+            is_template=False,
+            version=1,
+            draft=definition,
+            layout=request.layout.model_dump(mode="json"),
+            created_at=now,
+            updated_at=now,
+        )
+        self.session.add(design)
+        await self.session.flush()
+        revision = PipelineRevision(
+            id=str(uuid4()),
+            pipeline_id=design.id,
+            number=1,
+            definition=definition,
+            fingerprint=compiled.fingerprint,
+            catalog_id=pipeline_catalog_id(),
+            created_at=now,
+        )
+        self.session.add(revision)
+        await self.session.flush()
+        return revision, design, compiled.definition
 
     async def _published_design(self, request):
         revision = await self.session.get(PipelineRevision, request.revision_id)

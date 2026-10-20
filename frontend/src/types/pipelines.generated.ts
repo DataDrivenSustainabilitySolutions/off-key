@@ -87,6 +87,15 @@ export type PipelineActivationView = {
   updated_at: string;
 };
 
+export type PipelineApplyRequest = {
+  definition: PipelineDefinition;
+  layout?: PipelineLayout;
+  bindings: Record<string, string>;
+  display_name: string;
+  idempotency_key: string;
+  replace_service_id?: string | null;
+};
+
 export type PipelineBindingMetadata = {
   schema_version?: 1;
   system_schema_version?: 1;
@@ -350,6 +359,7 @@ export type PipelineView = {
   name: string;
   description: string;
   archived: boolean;
+  is_template?: boolean;
   version: number;
   draft: PipelineDefinition;
   layout: PipelineLayout;

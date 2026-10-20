@@ -90,6 +90,7 @@ class PipelineLibrary:
             name=row.name,
             description=row.description,
             archived=row.archived,
+            is_template=row.is_template,
             version=row.version,
             draft=row.draft,
             layout=row.layout,

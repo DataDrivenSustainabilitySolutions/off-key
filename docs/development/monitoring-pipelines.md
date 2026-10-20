@@ -304,10 +304,13 @@ layout, retained run history and single-worker ownership with authoring disabled
 The test-only reference is immutable commit
 `97ccabfda62c97e8643eda0f4f64d369c6bdd5f2`, which includes parameter-sensitive
 readiness constraints and bounded inspection APIs. Its migration ledger, numerical
-catalog and backend lock must match the current source before it can build. This
-fixture is not an eligible production release. Changes to those contracts require review
-of the rollback reference. CI retains nonsecret source/image identities and the
-asserted graph invariants as its compatible-binary-rollback artifact.
+catalog and locked Aberrant version must match the current source before it can
+build. Other locked dependencies may differ, as they would in a real rollback:
+each release calibrates its own run, and detector checkpoints refuse a changed
+runtime. This fixture is not an eligible production release. Changes to those
+contracts require review of the rollback reference. CI retains nonsecret
+source/image identities and the asserted graph invariants as its
+compatible-binary-rollback artifact.
 
 The [production rollback rehearsal](https://github.com/DataDrivenSustainabilitySolutions/off-key/actions/runs/38897782186)
 passed both integration tests with zero skips in 625.685 seconds on 2026-10-16.

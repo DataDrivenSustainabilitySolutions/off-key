@@ -33,7 +33,7 @@ export default function PipelineWorkspace({
   const { system } = useCatalogue();
   const [params, setParams] = useSearchParams();
   const [catalog, setCatalog] = useState<PipelineCatalog>();
-  const [predecessor, setPredecessor] = useState<PipelineServiceView>();
+  const [source, setSource] = useState<{ id: string; view: PipelineServiceView }>();
   const [error, setError] = useState("");
   const [retry, setRetry] = useState(0);
   const id = params.get("pipeline");
@@ -41,6 +41,8 @@ export default function PipelineWorkspace({
   const contextReading = !initialTarget || index.targets.find((target) => target.id === initialTarget)
     ?.inputs.some((input) => input.stream.id === initialReading) ? initialReading : undefined;
   const replacementId = params.get("replace");
+  const sourceId = replacementId ?? params.get("from");
+  const predecessor = source?.id === sourceId ? source.view : undefined;
   const replacement = services.find((service) => service.id === replacementId);
   useEffect(() => {
     const controller = new AbortController();
@@ -56,15 +58,15 @@ export default function PipelineWorkspace({
     return () => controller.abort();
   }, [retry]);
   useEffect(() => {
-    if (!replacementId) return;
+    if (!sourceId) return;
     const controller = new AbortController();
     void pipelinesApi
-      .service(replacementId, controller.signal)
-      .then(setPredecessor, (reason) => {
+      .service(sourceId, controller.signal)
+      .then((view) => { if (!controller.signal.aborted) setSource({ id: sourceId, view }); }, (reason) => {
         if (!controller.signal.aborted) setError(getErrorMessage(reason));
       });
     return () => controller.abort();
-  }, [replacementId]);
+  }, [sourceId, retry]);
   const open = (pipelineId: string, targetId?: string) => {
     const next = new URLSearchParams(params);
     next.set("pipeline", pipelineId);
@@ -77,7 +79,7 @@ export default function PipelineWorkspace({
   };
   const create = () => {
     const next = new URLSearchParams(params);
-    ["pipeline", "revision", "activation", "view", "replace"].forEach((key) => next.delete(key));
+    ["pipeline", "revision", "activation", "view", "replace", "from"].forEach((key) => next.delete(key));
     next.set("create", "monitoring");
     setParams(next);
   };
@@ -117,9 +119,16 @@ export default function PipelineWorkspace({
         onBack={creating ? create : onBack}
       />
     );
-  if (!id) return <PipelineCreate key={`${initialTarget ?? ""}:${contextReading ?? ""}`} catalog={catalog} canEdit={canEdit} targets={index.targets}
-    initialTarget={initialTarget} initialReading={contextReading} onCreated={open}
-    onManage={library} onBack={onBack} />;
+  if (!id && sourceId && !predecessor && !error) return <p role="status">Loading service configuration…</p>;
+  if (!id) return <>
+    {error && <p role="alert" className="pl-error">{error}<button onClick={() => setRetry((value) => value + 1)}>Retry</button></p>}
+    <PipelineCreate key={`${initialTarget ?? ""}:${contextReading ?? ""}:${sourceId ?? ""}`} catalog={catalog} canEdit={canEdit} targets={index.targets}
+    services={services} byStream={index.byStream} collectionReady={system.snapshot?.runtime.collection?.status === "applied"}
+    initialDocument={sourceId ? predecessor && { definition: predecessor.definition, layout: predecessor.layout } : undefined}
+    replaceService={replacement} predecessor={sourceId ? predecessor : undefined}
+    activationBlocked={sourceId && (!predecessor || replacementId && !replacement) ? "This service configuration is unavailable. Return to Monitoring and choose an available service." : undefined}
+    initialTarget={initialTarget} initialReading={contextReading} onStarted={onStarted} onManage={library} onBack={onBack} />
+  </>;
   return (
     <>
       {error && (
@@ -170,8 +179,7 @@ export default function PipelineWorkspace({
             : undefined
         }
         onBack={creating ? onBack : library}
-        backLabel={creating ? "All services" : "Saved designs"}
-        onOpen={open}
+        onManage={library}
         onRevision={(revision) => {
           const next = new URLSearchParams(params);
           if (revision) next.set("revision", revision);

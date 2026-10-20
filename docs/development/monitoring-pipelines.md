@@ -35,29 +35,48 @@ match. Unrelated catalog descriptions or components do not invalidate a revision
 
 ## Creation workbench
 
-`?create=monitoring` opens the same toolbox, canvas and component inspector used
-by saved designs when visual authoring is enabled. Creation keeps an account-
-scoped local navigation draft until the user saves. The optional Templates
-popover preloads a built-in graph or the latest published revision of a saved
-design (its labelled saved draft when unpublished); saving creates a new design.
-Preloading preserves stable slot identities, order and expected units. Entity
-selection supplies bindings rather than rewriting a saved template's schema.
+`?create=monitoring` opens one setup page with the service name, entity,
+reading bindings and processing graph. Its main actions are **Load template**,
+**Save template** and **Apply monitoring**. Users do not save drafts or publish
+revisions to start a service. Learning settings and component parameters stay in
+the graph inspector. Entity selection includes configured entities even when
+there is no recent traffic; collection and reading ownership still gate Apply.
+
+Load template reads the latest saved definition and layout, independently of any
+historical published revisions. Loading never changes the source template.
+Template names and descriptions are separate from the service name. A template
+can be saved without choosing readings or starting monitoring. Subsequent saves
+use its expected version; a concurrent edit preserves the local work and offers
+Save as new template. Applied service snapshots do not appear in this library.
+Migration 013 adds `monitoring_pipelines.is_template`, preserving all existing
+designs as templates.
+
+**Apply monitoring** validates the graph and sends a typed
+`POST /v1/monitors/pipelines/apply` request with its definition, layout, bindings,
+service name and idempotency key. One server transaction creates the immutable
+execution snapshot, resolves bindings and reserves the existing durable activation.
+The normal preflight, source claims, capacity checks, worker heartbeat and
+replacement controller are reused. Retrying the same request returns the same
+operation. The browser retains uncertain requests across navigation and reload;
+fields stay fixed until the start finishes or cancellation is acknowledged.
+An explicit rejection permits corrections; a failed operation offers Return to setup.
+
+Edit service opens its actual running definition, layout and bindings directly.
+Apply changes clearly explains interruption and fresh learning, then uses the same
+preflight and durable replacement path. Loading a template or editing settings
+does not affect the existing service until Apply. History remains immutable.
+Older library, revision and in-flight activation links remain supported.
 
 Unsaved graphs infer feature metadata with `POST /v1/monitors/pipelines/validate`,
 using the same typed, bounded compiler report, administrator authorization and
-gateway compilation rate budget as saved drafts. This endpoint creates no rows.
-Creation and saved drafts use one graph-editing controller for bounded history,
-component insertion, arrangement and validation. Creation retains its initial
-baseline independently of history and template provenance, so unload protection
-still recognizes unnamed layout edits after a library or Sources detour.
-
-The account-scoped creation session owns the first save, including its submitted
-snapshot and eventual acknowledgement. Leaving for Sources keeps that operation
-alive. Returning while it is pending joins the same operation; returning after it
-completes opens the resulting saved design. Completion never navigates a detached
-screen, and edits made while saving enter the persisted editor as unsaved changes,
-just as later saves do. Template management is reached from the Templates menu;
-existing library and revision deep links remain supported.
+gateway compilation rate budget as saved templates. This endpoint creates no rows.
+Creation and templates share the same graph controller and account-scoped setup
+session for bounded history, component insertion, arrangement and validation.
+Template saves acknowledge only their submitted snapshot and preserve later edits.
+Leaving for Sources keeps a save alive without navigating the detached screen.
+Returning joins that operation and restores the setup. A remembered login restored
+after reload retains the same member's drafts; logout and account changes clear
+them, and late responses cannot repopulate cleared state.
 
 The shared canvas uses a 16-unit snapping grid, fine blueprint lines and stronger
 cross markers in both themes. Visible lines become coarser at distant zoom levels
@@ -302,8 +321,9 @@ pipeline-compatible build, then returns to the current build. Each cutover check
 the actual application and worker image digests, fresh graph scoring, bindings,
 layout, retained run history and single-worker ownership with authoring disabled.
 The test-only reference is immutable commit
-`1777f71822d1485a21980eae8c6940dbbff8f7fe`, which includes parameter-sensitive
-readiness constraints and bounded inspection APIs. Its migration ledger, numerical
+`fb58d1b2d0f4f838c613405c74b98fec7eadc896`, which includes the direct-apply
+backend and migration 013, as well as parameter-sensitive readiness constraints
+and bounded inspection APIs. Its migration ledger, numerical
 catalog and locked Aberrant version must match the current source before it can
 build. Other locked dependencies may differ, as they would in a real rollback:
 each release calibrates its own run, and detector checkpoints refuse a changed

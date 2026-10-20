@@ -12,6 +12,7 @@ type Props = Omit<ComponentProps<typeof PipelineCanvas>, "components" | "issues"
   catalog: PipelineCatalog;
   validation?: ComponentProps<typeof PipelineInspector>["validation"];
   settings?: ReactNode;
+  settingsTitle?: string;
   actions?: ReactNode;
   inspectorPanel?: InspectorPanel;
   onInspectorPanelChange?: (panel: InspectorPanel) => void;
@@ -24,7 +25,7 @@ type Props = Omit<ComponentProps<typeof PipelineCanvas>, "components" | "issues"
 
 /** One canvas-first workspace for creation, saved designs and running graphs. */
 export function PipelineWorkbench({
-  catalog, validation, settings, actions, inspectorPanel, onInspectorPanelChange,
+  catalog, validation, settings, settingsTitle = "Service settings", actions, inspectorPanel, onInspectorPanelChange,
   onUndo, onRedo, issuesRequest = 0, ...props
 }: Props) {
   useUndoShortcuts(!props.readOnly && !!onUndo && !!onRedo, () => onUndo?.(), () => onRedo?.());
@@ -135,9 +136,9 @@ export function PipelineWorkbench({
             </li>)}</ul> : <p className="pl-help">The compiler accepts this graph.</p>}
           </Popover.Content></Popover.Portal>
         </Popover.Root>}
-        {settings && <button type="button" ref={serviceButton} aria-label="Service settings"
+        {settings && <button type="button" ref={serviceButton} aria-label={settingsTitle}
           aria-expanded={panel === "service"} aria-controls={panelId}
-          onClick={() => panel === "service" ? close() : setPanel("service")}>Service</button>}
+          onClick={() => panel === "service" ? close() : setPanel("service")}>{settingsTitle === "Service settings" ? "Service" : "Learning"}</button>}
         <button type="button" ref={componentButton} aria-label="Component settings"
           aria-expanded={panel === "component"} aria-controls={panelId}
           onClick={() => panel === "component" ? close() : setPanel("component")}>Component</button>
@@ -154,7 +155,7 @@ export function PipelineWorkbench({
         <PipelineInspector document={props.document} catalog={catalog} selected={props.selected}
           validation={validation} readOnly={props.readOnly} onSelect={select} onChange={props.onChange}
           header={<div className="pl-inspector-heading">
-            <h3 ref={heading} tabIndex={-1}>{panel === "service" ? "Service settings" : "Component settings"}</h3>
+            <h3 ref={heading} tabIndex={-1}>{panel === "service" ? settingsTitle : "Component settings"}</h3>
             <button type="button" onClick={close} aria-label="Close settings" title="Collapse settings">
               <X size={16} aria-hidden="true" />
             </button>

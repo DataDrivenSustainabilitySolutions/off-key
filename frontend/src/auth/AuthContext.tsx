@@ -159,10 +159,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   const isAdmin = member?.role === "admin";
   const userId = token ? getUserIdFromToken(token) ?? (loginIdentity?.token === token ? loginIdentity.id : null) : null;
 
-  useEffect(() => subscribeToSession(() => {
-    const nextToken = tokenManager.getToken();
-    if (!nextToken || getUserIdFromToken(nextToken) !== userId) clearNavigationDrafts();
-  }), [userId]);
+  useEffect(() => {
+    // A remembered login restores its in-memory token after reload. Compare
+    // against the saved member marker so this is not mistaken for an account switch.
+    const previousUserId = userId ?? tokenManager.getMemberId();
+    return subscribeToSession(() => {
+      const nextToken = tokenManager.getToken();
+      if (!nextToken || previousUserId !== null && getUserIdFromToken(nextToken) !== previousUserId)
+        clearNavigationDrafts();
+    });
+  }, [userId]);
 
   return (
     <AuthContext.Provider

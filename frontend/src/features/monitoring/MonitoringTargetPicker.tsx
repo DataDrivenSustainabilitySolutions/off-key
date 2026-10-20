@@ -8,7 +8,7 @@ import type { MonitoringTarget } from "./serviceModel";
 
 const subscribeNothing = () => () => {};
 
-export function MonitoringTargetPicker({ targets, value, disabled, onChange }: { targets: MonitoringTarget[]; value?: string; disabled?: boolean; onChange: (id: string) => void }) {
+export function MonitoringTargetPicker({ targets, value, disabled, onChange, receivingOnly = true }: { targets: MonitoringTarget[]; value?: string; disabled?: boolean; onChange: (id: string) => void; receivingOnly?: boolean }) {
   const { system, telemetry, liveStreamIds } = useCatalogue();
   const [open, setOpen] = useState(false);
   const [now, setNow] = useState(() => Date.now());
@@ -25,8 +25,8 @@ export function MonitoringTargetPicker({ targets, value, disabled, onChange }: {
   }, [open]);
   const searchRows = useMemo(() => targets.map(target => ({ target, search: `${target.label} ${target.inputs.map(input => input.stream.label).join(" ")}`.toLocaleLowerCase() })), [targets]);
   const filtered = useMemo(() => searchRows.filter(row => row.search.includes(deferred.toLocaleLowerCase())
-    && row.target.inputs.some(input => readingActivity({ streamIds: [input.stream.id], connectionId: input.stream.connection_id }, activity, liveStatus, now).receiving))
-    .map(row => row.target), [searchRows, deferred, activity, liveStatus, now]);
+    && (!receivingOnly || row.target.inputs.some(input => readingActivity({ streamIds: [input.stream.id], connectionId: input.stream.connection_id }, activity, liveStatus, now).receiving)))
+    .map(row => row.target), [searchRows, deferred, activity, liveStatus, now, receivingOnly]);
   // Keep this imperative viewport adapter outside React Compiler memoization.
   // eslint-disable-next-line react-hooks/incompatible-library
   const virtual = useVirtualizer({ count: filtered.length, getScrollElement: () => scroll.current, estimateSize: () => 60, overscan: 5, getItemKey: index => filtered[index]!.id });
@@ -48,7 +48,9 @@ export function MonitoringTargetPicker({ targets, value, disabled, onChange }: {
               ref={virtual.measureElement} onMouseEnter={() => setFocus(row.index)} onClick={() => choose(target.id)} style={{ transform: `translateY(${row.start}px)` }}>
               <span title={target.label}>{target.label}</span><small>{target.inputs.length} {target.inputs.length === 1 ? "reading" : "readings"}</small>
             </button>; })}
-        </div>{!filtered.length && <p className="ex-muted">{deferred ? "No matching inputs receiving data." : "No inputs receiving data."}</p>}
+        </div>{!filtered.length && <p className="ex-muted">{receivingOnly
+          ? deferred ? "No matching inputs receiving data." : "No inputs receiving data."
+          : deferred ? "No matching entities." : "Add numeric readings in Sources to get started."}</p>}
       </div>
     </Popover.Content></Popover.Portal>
   </Popover.Root>;

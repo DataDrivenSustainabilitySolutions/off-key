@@ -6,6 +6,9 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { MemoryRouter } from "react-router-dom";
+import { SystemLiveTelemetry } from "@/features/catalogue/systemLiveTelemetry";
+import type { MonitoringTarget } from "@/features/monitoring/serviceModel";
 import PipelineEditor from "@/features/pipelines/PipelineEditor";
 import {
   normalizeCatalog,
@@ -31,7 +34,7 @@ vi.mock("@/features/pipelines/api", () => ({
     create: vi.fn(),
     revision: vi.fn(),
     revisions: vi.fn(),
-    revisionMetadata: vi.fn(),
+    revisionMetadata: vi.fn(), apply: vi.fn(), activation: vi.fn(), cancel: vi.fn(), list: vi.fn(),
   },
 }));
 
@@ -119,385 +122,112 @@ const props = () => ({
   id: "design",
   catalog,
   canEdit: true,
-  targets: [],
+  targets: [target],
+  initialTarget: "room",
   services: [],
   byStream: new Map<string, Set<string>>(),
   collectionReady: true,
   onBack: vi.fn(),
-  onOpen: vi.fn(),
+  onManage: vi.fn(),
   onRevision: vi.fn(),
   onOperation: vi.fn(),
   onStarted: vi.fn(),
 });
 
+
+const target: MonitoringTarget = { id: "room", label: "Room", inputs: [
+  { path: "Room", stream: { id: "current", label: "Current", unit: "A", category: "Electrical", value_type: "number", topic: "fixture/current", connection_id: "broker" },
+    binding: { entity_id: "room", telemetry_key: "current", accepted_topic: "telemetry/room/current", policy: { mode: "original", interval_seconds: 10 } } },
+] };
+const telemetry = new SystemLiveTelemetry();
+vi.mock("@/features/workspace/catalogue-context", () => ({ useCatalogue: () => ({ system: { snapshot: null }, document: undefined, telemetry, liveStreamIds: [] }) }));
 beforeEach(() => {
-  vi.resetAllMocks();
-  clearNavigationDrafts();
+  vi.resetAllMocks(); clearNavigationDrafts();
   vi.mocked(pipelinesApi.get).mockResolvedValue(pipeline());
-  vi.mocked(pipelinesApi.revision).mockImplementation(async (_id, revisionId) => {
-    if (revisionId !== "revision") throw new ApiRequestError("Published revision not found", 404);
+  vi.mocked(pipelinesApi.validate).mockImplementation(async (_id, definition) => ({ valid: true, definition: normalizeDefinition(definition), issues: [], features: {}, provenance_complete: true }));
+  vi.mocked(pipelinesApi.list).mockResolvedValue({ items: [], next_offset: null });
+  vi.mocked(pipelinesApi.revision).mockImplementation(async (_id, id) => {
+    if (id !== "revision") throw new ApiRequestError("Published revision not found", 404);
     return { ...pipeline().revisions[0]!, definition };
   });
+  vi.mocked(pipelinesApi.apply).mockResolvedValue({ id: "activation", phase: "requested", service_id: "service", run_id: "run", predecessor_service_id: null, error: null, created_at: "2026-10-20T10:00:00Z", updated_at: "2026-10-20T10:00:00Z" });
+  vi.mocked(pipelinesApi.activation).mockResolvedValue({ id: "activation", phase: "requested", service_id: "service", run_id: "run", predecessor_service_id: null, error: null, created_at: "2026-10-20T10:00:00Z", updated_at: "2026-10-20T10:00:00Z" });
+  vi.mocked(pipelinesApi.save).mockImplementation(async (_id, body) => ({ ...pipeline(), name: body.name!, description: body.description!, version: 2, draft: normalizeDefinition(body.definition), layout: normalizeLayout(body.layout) }));
 });
 afterEach(cleanup);
-
-async function openSettings(panel: "Service" | "Component") {
-  const button = await screen.findByRole("button", { name: `${panel} settings` });
-  if (button.getAttribute("aria-expanded") !== "true") fireEvent.click(button);
+function mount(overrides: Partial<ReturnType<typeof props>> = {}) {
+  const callbacks = { ...props(), ...overrides };
+  const result = render(<MemoryRouter><PipelineEditor {...callbacks} /></MemoryRouter>);
+  return { ...result, callbacks };
 }
-async function selectComponent(id: string) {
-  await openSettings("Component");
-  fireEvent.change(screen.getByRole("combobox", { name: "Selected component" }), {
-    target: { value: id },
-  });
-}
-async function nodeTitle() {
-  await openSettings("Component");
-  return screen.getByRole("textbox", { name: "Node title" }) as HTMLInputElement;
-}
-async function pipelineName() {
-  await openSettings("Service");
-  return screen.getByRole("textbox", { name: "Pipeline name" }) as HTMLInputElement;
-}
-async function calibrationField() {
-  await openSettings("Service");
-  return screen.getByRole("spinbutton", { name: "Calibration observations" }) as HTMLInputElement;
-}
+async function settings() { fireEvent.click(await screen.findByRole("button", { name: "Learning settings" })); }
+async function saveDialog() { fireEvent.click(await screen.findByRole("button", { name: "Save template" })); return screen.findByRole("dialog"); }
 
-describe("saved graphical pipeline editor", () => {
-  it.each(["layout", "definition"] as const)("retains newer %s edits while publishing the validated snapshot", async (edit) => {
-    let validate!: (
-      value: Awaited<ReturnType<typeof pipelinesApi.validate>>,
-    ) => void;
-    vi.mocked(pipelinesApi.validate).mockImplementation(
-      () => new Promise((resolve) => { validate = resolve; }),
-    );
-    vi.mocked(pipelinesApi.save).mockImplementation(async (_id, request) => ({
-      ...pipeline(),
-      version: 2,
-      draft: normalizeDefinition(request.definition),
-      layout: normalizeLayout(request.layout),
-      name: request.name!,
-      description: request.description!,
-    }));
-    const submittedDefinition = edit === "definition"
-      ? normalizeDefinition({ ...definition, settings: { ...definition.settings, calibration_window_size: 200 } })
-      : definition;
-    const published = {
-      ...pipeline().revisions[0]!, definition: submittedDefinition, id: "published", number: 2,
-    };
-    vi.mocked(pipelinesApi.publish).mockResolvedValue(published);
-    const callbacks = props();
-    render(<PipelineEditor {...callbacks} />);
-    await selectComponent("input");
-    const title = await nodeTitle();
-    fireEvent.change(title, { target: { value: "Validated snapshot" } });
-    if (edit === "definition") fireEvent.change(await calibrationField(), { target: { value: "200" } });
-    fireEvent.click(screen.getByRole("button", { name: "Publish revision" }));
-    fireEvent.change(await nodeTitle(), { target: { value: "Still editing" } });
-    if (edit === "definition") fireEvent.change(await calibrationField(), { target: { value: "300" } });
-    const acknowledged = pipeline();
-    acknowledged.draft = submittedDefinition;
-    acknowledged.layout = normalizeLayout({
-      nodes: { input: { x: 0, y: 0, label: "Validated snapshot" } },
-    });
-    vi.mocked(pipelinesApi.get).mockResolvedValue({
-      ...acknowledged, version: 3, revisions: [published],
-    });
-    validate({ valid: true, definition: submittedDefinition, features: {}, issues: [] });
-    await waitFor(() =>
-      expect(callbacks.onRevision).toHaveBeenCalledWith("published"),
-    );
-    expect((await nodeTitle()).value).toBe("Still editing");
-    if (edit === "definition") {
-      expect((await calibrationField()).value).toBe("300");
-      expect(pipelinesApi.save).toHaveBeenCalledWith("design", expect.objectContaining({
-        definition: submittedDefinition,
-      }));
-    }
-    expect(screen.getByText("Unsaved draft changes", { exact: false })).toBeTruthy();
-    expect(pipelinesApi.publish).toHaveBeenCalledWith("design", {
-      expected_version: 2,
-    });
-    expect(pipelinesApi.metadata).not.toHaveBeenCalled();
+describe("simple monitoring setup", () => {
+  it("shows service details and applies the edited graph without saving or publishing a template", async () => {
+    mount();
+    const name = await screen.findByRole("textbox", { name: "Service name" });
+    fireEvent.change(name, { target: { value: "Room health" } });
+    expect((screen.getByRole("combobox", { name: "Reading for Value" }) as HTMLSelectElement).value).toBe("current");
+    expect(screen.queryByRole("button", { name: /Publish revision|Save draft|Start revision/ })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Apply monitoring" }));
+    await waitFor(() => expect(pipelinesApi.apply).toHaveBeenCalled());
+    expect(vi.mocked(pipelinesApi.apply).mock.calls[0]![0]).toEqual(expect.objectContaining({ display_name: "Room health", definition, bindings: { value: "current" } }));
+    expect(pipelinesApi.save).not.toHaveBeenCalled(); expect(pipelinesApi.publish).not.toHaveBeenCalled();
+    expect((screen.getByRole("textbox", { name: "Service name" }) as HTMLInputElement).disabled).toBe(true);
   });
-
-  it("loads an immutable revision outside the first summary page", async () => {
-    vi.mocked(pipelinesApi.get).mockResolvedValue({
-      ...pipeline(), revisions: [],
-    });
-    vi.mocked(pipelinesApi.revision).mockResolvedValue({
-      ...pipeline().revisions[0]!, definition, id: "older", number: 24,
-    });
-    render(<PipelineEditor {...props()} revisionId="older" />);
-    await screen.findByText("Immutable revision 24", { exact: false });
-    expect(pipelinesApi.revision).toHaveBeenCalledWith(
-      "design", "older", expect.any(AbortSignal),
-    );
-    expect(screen.queryByRole("button", { name: "Save draft" })).toBeNull();
-    expect(
-      (screen.getByRole("combobox", { name: "Design version" }) as HTMLSelectElement).value,
-    ).toBe("older");
+  it("focuses the missing name and retains the edited graph", async () => {
+    mount();
+    fireEvent.change(await screen.findByRole("textbox", { name: "Service name" }), { target: { value: "  " } });
+    fireEvent.click(screen.getByRole("button", { name: "Apply monitoring" }));
+    expect(screen.getByText("Enter a service name.")).toBeTruthy();
+    expect(document.activeElement).toBe(screen.getByRole("textbox", { name: "Service name" }));
+    expect(pipelinesApi.apply).not.toHaveBeenCalled();
   });
-
-  it("acknowledges an atomic save without discarding later edits", async () => {
-    let finishSave: (() => void) | undefined;
-    vi.mocked(pipelinesApi.save).mockImplementation(
-      (_id, request) => new Promise((resolve) => {
-        finishSave = () => resolve(normalizeView({
-          ...pipeline(),
-          version: 2,
-          draft: request.definition,
-          layout: request.layout!,
-          name: request.name!,
-          description: request.description!,
-        }));
-      }),
-    );
-    render(<PipelineEditor {...props()} />);
-    await selectComponent("input");
-    fireEvent.change(await nodeTitle(), { target: { value: "Submitted title" } });
-    fireEvent.change(await pipelineName(), { target: { value: "Submitted name" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save draft" }));
-    await waitFor(() => expect(finishSave).toBeTypeOf("function"));
-    fireEvent.change(await nodeTitle(), { target: { value: "New unsaved title" } });
-    fireEvent.change(await pipelineName(), { target: { value: "New unsaved name" } });
-    finishSave!();
-    await screen.findByText("Draft saved.");
-    expect((await nodeTitle()).value).toBe("New unsaved title");
-    expect((await pipelineName()).value).toBe("New unsaved name");
-    expect(screen.getByText("Unsaved draft changes", { exact: false })).toBeTruthy();
-    expect(pipelinesApi.metadata).not.toHaveBeenCalled();
-    expect(pipelinesApi.save).toHaveBeenCalledWith("design", expect.objectContaining({
-      expected_version: 1, name: "Submitted name", description: "",
-    }));
-    fireEvent.click(screen.getByRole("button", { name: "Save draft" }));
-    await waitFor(() => expect(pipelinesApi.save).toHaveBeenLastCalledWith("design", expect.objectContaining({
-      expected_version: 2, name: "New unsaved name",
-    })));
-    finishSave!();
-    await waitFor(() =>
-      expect(screen.queryByText("Unsaved draft changes", { exact: false })).toBeNull(),
-    );
-    expect((await nodeTitle()).value).toBe("New unsaved title");
+  it("blocks an invalid processing graph before reserving a start", async () => {
+    vi.mocked(pipelinesApi.validate).mockImplementation(async (_id, definition) => ({ valid: false, definition: normalizeDefinition(definition), issues: [{ code: "disconnected", message: "Connect the detector" }], features: {}, provenance_complete: true }));
+    mount(); fireEvent.click(await screen.findByRole("button", { name: "Apply monitoring" }));
+    await screen.findByText("Resolve the highlighted processing issues before applying.");
+    expect(pipelinesApi.apply).not.toHaveBeenCalled();
   });
-
-  it("keeps immutable revision controls read only", async () => {
-    render(<PipelineEditor {...props()} revisionId="revision" />);
-    await screen.findByText("Immutable revision 1", { exact: false });
-    expect(screen.queryByRole("button", { name: "Save draft" })).toBeNull();
-    expect(
-      screen.queryByRole("button", { name: "Publish revision" }),
-    ).toBeNull();
-    expect(screen.getByRole("button", { name: "Start revision" })).toBeTruthy();
-    await selectComponent("input");
-    expect(
-      (screen.getByRole("textbox", { name: "Node title" }) as HTMLInputElement)
-        .disabled,
-    ).toBe(true);
+  it("waits for collection before applying", async () => {
+    mount({ collectionReady: false }); fireEvent.click(await screen.findByRole("button", { name: "Apply monitoring" }));
+    expect(screen.getByText(/Enable collection in Sources/)).toBeTruthy(); expect(pipelinesApi.apply).not.toHaveBeenCalled();
   });
-
-  it("preserves the local draft after a concurrency conflict and saves a separate copy", async () => {
-    vi.mocked(pipelinesApi.save).mockRejectedValue(
-      new ApiRequestError("The shared draft changed", 409),
-    );
-    vi.mocked(pipelinesApi.create).mockResolvedValue({
-      ...pipeline(),
-      id: "copy",
-    });
-    const callbacks = props();
-    render(<PipelineEditor {...callbacks} />);
-    await selectComponent("input");
-    fireEvent.change(screen.getByRole("textbox", { name: "Node title" }), {
-      target: { value: "My source label" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Save draft" }));
-    await screen.findByRole("region", { name: "Draft conflict" });
-    expect(
-      (screen.getByRole("textbox", { name: "Node title" }) as HTMLInputElement)
-        .value,
-    ).toBe("My source label");
-    fireEvent.click(
-      screen.getByRole("button", { name: "Save as a new design" }),
-    );
-    await waitFor(() => expect(callbacks.onOpen).toHaveBeenCalledWith("copy"));
-    expect(pipelinesApi.create).toHaveBeenCalledWith(
-      expect.objectContaining({
-        name: "Room pipeline (copy)",
-        layout: expect.objectContaining({
-          nodes: expect.objectContaining({
-            input: expect.objectContaining({ label: "My source label" }),
-          }),
-        }),
-      }),
-    );
+  it("saves a template under an independent name without starting a service", async () => {
+    mount(); await saveDialog();
+    fireEvent.change(screen.getByRole("textbox", { name: "Template name" }), { target: { value: "Reusable health" } });
+    fireEvent.click(screen.getByRole("button", { name: "Update template" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(pipelinesApi.save).toHaveBeenCalledWith("design", expect.objectContaining({ name: "Reusable health", expected_version: 1 }));
+    expect((screen.getByRole("textbox", { name: "Service name" }) as HTMLInputElement).value).toBe("Room pipeline");
+    expect(pipelinesApi.apply).not.toHaveBeenCalled(); expect(pipelinesApi.publish).not.toHaveBeenCalled();
   });
-
-  it("publishes only after real validation accepts the draft", async () => {
-    vi.mocked(pipelinesApi.validate).mockResolvedValue({
-      valid: false,
-      definition,
-      issues: [
-        {
-          code: "input_count",
-          message: "Connect all inputs",
-          node_id: "detector",
-        },
-      ],
-      features: {},
-    });
-    render(<PipelineEditor {...props()} />);
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Publish revision" }),
-    );
-    await screen.findByText(
-      "Resolve graph validation errors before publishing.",
-    );
-    expect(pipelinesApi.publish).not.toHaveBeenCalled();
-    expect(pipelinesApi.save).not.toHaveBeenCalled();
+  it("preserves a concurrent template conflict and allows saving a separate copy", async () => {
+    vi.mocked(pipelinesApi.save).mockRejectedValueOnce(new ApiRequestError("The template changed", 409));
+    vi.mocked(pipelinesApi.create).mockResolvedValue({ ...pipeline(), id: "copy" });
+    mount(); await saveDialog(); fireEvent.click(screen.getByRole("button", { name: "Update template" }));
+    await screen.findByText("The template changed");
+    expect((screen.getByRole("button", { name: "Update template" }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Save as new template" }));
+    await waitFor(() => expect(pipelinesApi.create).toHaveBeenCalledOnce());
+    expect(pipelinesApi.apply).not.toHaveBeenCalled();
   });
-
-  it("does not expose an editable draft for an unknown revision link", async () => {
-    render(<PipelineEditor {...props()} revisionId="missing" />);
+  it("retains unsaved names and learning settings across navigation", async () => {
+    const first = mount(); fireEvent.change(await screen.findByRole("textbox", { name: "Service name" }), { target: { value: "Unsaved service" } });
+    await settings(); fireEvent.change(screen.getByRole("spinbutton", { name: "Calibration observations" }), { target: { value: "123" } });
+    first.unmount(); mount();
+    expect((await screen.findByRole("textbox", { name: "Service name" }) as HTMLInputElement).value).toBe("Unsaved service");
+    await settings(); expect((screen.getByRole("spinbutton", { name: "Calibration observations" }) as HTMLInputElement).value).toBe("123");
+  });
+  it("fails closed when a historical revision cannot load", async () => {
+    render(<MemoryRouter><PipelineEditor {...props()} revisionId="missing" /></MemoryRouter>);
     await screen.findByText(/Published revision not found/);
-    expect(
-      screen.queryByRole("button", { name: "Publish revision" }),
-    ).toBeNull();
+    expect(screen.queryByRole("button", { name: "Apply monitoring" })).toBeNull();
   });
-
-  it("retains an unsaved draft across a setup detour", async () => {
-    const callbacks = props();
-    const first = render(<PipelineEditor {...callbacks} />);
-    await selectComponent("input");
-    fireEvent.change(screen.getByRole("textbox", { name: "Node title" }), {
-      target: { value: "Saved during navigation" },
-    });
-    first.unmount();
-    render(<PipelineEditor {...callbacks} />);
-    await selectComponent("input");
-    expect(
-      (screen.getByRole("textbox", { name: "Node title" }) as HTMLInputElement)
-        .value,
-    ).toBe("Saved during navigation");
-    expect(pipelinesApi.save).not.toHaveBeenCalled();
-  });
-
-  it("changes detectors using catalog defaults while retaining connections", async () => {
-    const nextCatalog = {
-      ...catalog,
-      components: [
-        ...catalog.components,
-        {
-          ...catalog.components[1]!,
-          id: "detector:another",
-          label: "Another detector",
-          fields: [
-            {
-              name: "window_size",
-              label: "Window size",
-              type: "integer" as const,
-              default: 20,
-            },
-          ],
-        },
-      ],
-    };
-    const initial = pipeline();
-    vi.mocked(pipelinesApi.save).mockImplementation(async (_id, request) =>
-      normalizeView({
-        ...initial,
-        version: 2,
-        draft: request.definition,
-        layout: request.layout ?? initial.layout,
-      }),
-    );
-    render(<PipelineEditor {...props()} catalog={nextCatalog} />);
-    await selectComponent("detector");
-    fireEvent.change(screen.getByRole("combobox", { name: "Detector model" }), {
-      target: { value: "detector:another" },
-    });
-    expect(
-      (
-        screen.getByRole("spinbutton", {
-          name: "Window size",
-        }) as HTMLInputElement
-      ).value,
-    ).toBe("20");
-    fireEvent.click(screen.getByRole("button", { name: "Save draft" }));
-    await screen.findByText("Draft saved.");
-    expect(
-      vi.mocked(pipelinesApi.save).mock.calls[0]?.[1].definition.edges,
-    ).toEqual(initial.draft.edges);
-    expect(
-      vi
-        .mocked(pipelinesApi.save)
-        .mock.calls[0]?.[1].definition.nodes?.find(
-          (node) => node.id === "detector",
-        ),
-    ).toMatchObject({
-      component: "detector:another",
-      params: { window_size: 20 },
-    });
-  });
-
-  it("offers canonical upstream feature names after projection instead of raw slot guesses", async () => {
-    const draft = normalizeDefinition({
-      ...definition,
-      nodes: [
-        ...definition.nodes,
-        {
-          id: "projection",
-          kind: "transform",
-          component: "adaptive.uncentered_pca",
-          params: {},
-        },
-        {
-          id: "selection",
-          kind: "transform",
-          component: "features.select",
-          params: { features: [] },
-        },
-      ],
-      edges: [
-        { source: "input", target: "projection" },
-        { source: "projection", target: "selection" },
-        { source: "selection", target: "detector" },
-        ...definition.edges.filter((edge) => edge.source !== "input"),
-      ],
-    });
-    vi.mocked(pipelinesApi.get).mockResolvedValue({ ...pipeline(), draft });
-    vi.mocked(pipelinesApi.validate).mockResolvedValue({
-      valid: false,
-      definition: draft,
-      issues: [],
-      features: {
-        projection: [{ name: "projection_component_1", slots: ["value"] }],
-      },
-    });
-    const components = [
-      ...catalog.components,
-      {
-        ...catalog.components[0]!,
-        id: "features.select",
-        kind: "transform" as const,
-        fields: [
-          { name: "features", label: "Features", type: "features" as const },
-        ],
-      },
-    ];
-    render(
-      <PipelineEditor {...props()} catalog={{ ...catalog, components }} />,
-    );
-    await selectComponent("selection");
-    expect(
-      screen.queryByRole("checkbox", { name: "Value · value" }),
-    ).toBeNull();
-    expect(
-      await screen.findByRole(
-        "checkbox",
-        { name: "projection_component_1" },
-        { timeout: 2500 },
-      ),
-    ).toBeTruthy();
+  it("does not offer authoring when the operator disabled it", async () => {
+    mount({ catalog: { ...catalog, authoring_enabled: false } });
+    await screen.findByText("Monitoring configuration is disabled for this deployment.");
+    expect(screen.queryByRole("button", { name: "Apply monitoring" })).toBeNull();
   });
 });

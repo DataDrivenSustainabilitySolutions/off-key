@@ -2,6 +2,7 @@ import { apiUtils } from "@/lib/api-client";
 import type {
   PipelineActivationRequest,
   PipelineActivationView,
+  PipelineApplyRequest,
   PipelineCatalog,
   PipelineCreate,
   PipelineDefinition,
@@ -31,6 +32,8 @@ const base = "/v1/monitors/pipelines";
 const item = (id: string) => `${base}/${encodeURIComponent(id)}`;
 const monitor = (id: string) => `/v1/monitors/${encodeURIComponent(id)}`;
 export const pipelinesApi = {
+  apply: (request: PipelineApplyRequest) =>
+    apiUtils.post<PipelineActivationView>(`${base}/apply`, request),
   catalog: (signal?: AbortSignal) =>
     apiUtils
       .get<PipelineCatalog>(`${base}/catalog`, {

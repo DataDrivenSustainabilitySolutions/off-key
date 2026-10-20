@@ -1,0 +1,54 @@
+.pl-setup-header { align-items: center; margin-bottom: 20px; }
+.pl-setup-header .pl-help { margin-bottom: 0; max-width: 58ch; }
+.pl-setup-actions { gap: 8px; }
+.pl-setup-actions button { min-height: 38px; padding: 9px 13px; }
+.pl-setup-card { padding: 20px; border: 1px solid hsl(var(--border)); border-radius: 12px; background: hsl(var(--card)); }
+.pl-setup-fields { display: grid; grid-template-columns: minmax(160px, 1fr) minmax(160px, 1fr) minmax(150px, .8fr); gap: 16px 24px; }
+.pl-setup-fields > .pl-field { margin: 0; }
+.pl-setup-fields input, .pl-setup-fields .mn-target-trigger { min-height: 42px; }
+.pl-strategy-summary { display: flex; flex-direction: column; gap: 6px; font-size: 12px; padding-left: 24px; border-left: 1px solid hsl(var(--border)); }
+.pl-strategy-summary > span, .pl-strategy-summary small { color: hsl(var(--muted-foreground)); }
+.pl-strategy-summary strong { font-size: 14px; font-weight: 500; }
+.pl-input-bindings { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr)); gap: 12px 20px; margin-top: 20px; padding-top: 16px; border-top: 1px solid hsl(var(--border)); }
+.pl-input-bindings .pl-field { margin: 0; }
+.pl-input-bindings .pl-field > span { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.pl-input-bindings small { color: hsl(var(--muted-foreground)); font-weight: 400; }
+.pl-setup-card-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 16px; flex-wrap: wrap; }
+.pl-setup-card-footer .pl-help { margin: 0; }
+.pl-setup-card-footer a { font-size: 12px; color: hsl(var(--primary)); text-underline-offset: 3px; }
+.pl-setup .pl-canvas-toolbar { padding: 4px 0; margin-top: 18px; }
+.pl-apply-status { padding: 18px 20px; margin-bottom: 16px; border: 1px solid hsl(var(--border)); border-radius: 12px; background: hsl(var(--muted)); }
+.pl-apply-status-heading { display: flex; align-items: flex-start; gap: 12px; }
+.pl-apply-status-heading svg { flex-shrink: 0; margin-top: 2px; }
+.pl-apply-status h3 { font-size: 14px; margin: 0; }
+.pl-apply-status p { font-size: 12px; line-height: 1.6; margin: 6px 0; }
+.pl-apply-status--error { border-color: color-mix(in srgb, #ef4444 35%, hsl(var(--border))); }
+.pl-apply-status .pl-actions { margin-top: 12px; }
+.pl-spin { animation: pl-spin 1s linear infinite; }
+@keyframes pl-spin { to { transform: rotate(360deg); } }
+.pl-dialog-overlay { position: fixed; inset: 0; z-index: 80; background: #0007; }
+.pl-template-dialog { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 81; width: min(480px, calc(100vw - 32px)); max-height: calc(100dvh - 40px); overflow: auto; padding: 24px; border: 1px solid hsl(var(--border)); border-radius: 14px; background: hsl(var(--background)); box-shadow: 0 20px 64px #0003; }
+.pl-template-dialog .pl-field { margin: 20px 0; }
+.pl-template-dialog .pl-field small { font-weight: 400; color: hsl(var(--muted-foreground)); }
+.pl-template-dialog-footer { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; margin-top: 24px; padding-top: 16px; border-top: 1px solid hsl(var(--border)); }
+.pl-template-popover h4 { font-size: 12px; margin: 24px 0 0; }
+.pl-template-popover .pl-starting-points button { gap: 8px; border-radius: 10px; padding: 18px; }
+.pl-template-popover .pl-starting-points span { line-height: 1.5; }
+.pl-component-menu { width: min(380px, calc(100vw - 24px)); padding: 18px; }
+.pl-component-menu .pl-toolbox > input { min-height: 40px; }
+.pl-component-menu .pl-toolbox h4 { margin: 22px 0 10px; }
+.pl-component-menu .pl-toolbox .pl-toolbox-item { min-height: 40px; padding: 10px 12px; border-radius: 8px; }
+@media (max-width: 1050px) {
+  .pl-setup-fields { grid-template-columns: 1fr 1fr; }
+  .pl-strategy-summary { grid-column: 1 / -1; border: 0; padding: 0; flex-direction: row; align-items: baseline; flex-wrap: wrap; gap: 6px 12px; }
+}
+@media (max-width: 680px) {
+  .pl-setup-header { margin-top: 16px; gap: 16px; }
+  .pl-setup-card { padding: 16px; }
+  .pl-setup-fields { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+  .pl-setup-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .pl-setup-actions > button.mn-primary { grid-column: 1 / -1; min-height: 44px; }
+  .pl-setup input, .pl-setup select, .pl-template-dialog input, .pl-template-dialog textarea { font-size: 16px; }
+  .pl-setup .pl-canvas-toolbar { gap: 12px; }
+}
+@media (prefers-reduced-motion: reduce) { .pl-spin { animation: none; } }

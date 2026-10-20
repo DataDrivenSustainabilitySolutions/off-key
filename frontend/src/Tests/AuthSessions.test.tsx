@@ -7,6 +7,7 @@ import { AuthProvider, useAuth } from "@/auth/AuthContext";
 import { ProtectedRoute } from "@/auth/ProtectedRoute";
 import { endSession, refreshSession, tokenManager, waitForLogout } from "@/auth/session";
 import { apiClient, apiUtils, ApiRequestError } from "@/lib/api-client";
+import { readStoredDraft, storeDraft } from "@/lib/navigation-draft";
 
 const { getCurrentMember } = vi.hoisted(() => ({ getCurrentMember: vi.fn() }));
 vi.mock("@/lib/member-api", () => ({ getCurrentMember }));
@@ -44,6 +45,25 @@ const StatefulWorkspace = () => {
 const renderWorkspace = () => render(<AuthProvider><MemoryRouter><ProtectedRoute><StatefulWorkspace /></ProtectedRoute></MemoryRouter></AuthProvider>);
 
 describe("remembered session recovery", () => {
+  it("preserves this member's setup drafts when a remembered login is restored", async () => {
+    localStorage.setItem("token_storage_type", "remembered");
+    localStorage.setItem("session_member", "42");
+    storeDraft("pipeline-setup:42", { name: "Unfinished monitoring" });
+    fetchMock.mockResolvedValueOnce(response(token(3600, "restored")));
+    renderSession();
+    await screen.findByText(member.email);
+    expect(readStoredDraft("pipeline-setup:42")).toEqual({ name: "Unfinished monitoring" });
+  });
+
+  it("clears setup drafts when the signed-in account changes", async () => {
+    tokenManager.setToken(token(), true);
+    renderSession();
+    await screen.findByText(member.email);
+    storeDraft("pipeline-setup:42", { name: "Private setup" });
+    await act(async () => { tokenManager.setToken(token(3600, "other", 43), true); });
+    expect(readStoredDraft("pipeline-setup:42")).toBeUndefined();
+  });
+
   it("never writes a remembered access token to browser storage", () => {
     const saved = token();
     tokenManager.setToken(saved, true);

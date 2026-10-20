@@ -46,6 +46,7 @@ from off_key_core.schemas.radar import (
     RadarOperationalStatus,
     RadarStartConfig,
 )
+from off_key_core.utils.json_budget import bounded_utf8_text
 from off_key_core.utils.mqtt_topics import (
     derive_monitoring_sensor_keys,
     mqtt_topic_filters_overlap,
@@ -216,7 +217,7 @@ class PipelineActivations:
         try:
             compiled = compile_pipeline(request.definition)
         except ValueError as exc:
-            raise ValidationError(str(exc)[:4096]) from exc
+            raise ValidationError(bounded_utf8_text(str(exc), 4096)) from exc
         now = datetime.now(UTC)
         definition = compiled.definition.model_dump(mode="json")
         design = MonitoringPipeline(

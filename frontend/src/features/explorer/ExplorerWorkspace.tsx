@@ -26,7 +26,7 @@ export function ExplorerWorkspace() {
   const { system, document, index, selected, selectionMissing, streamIds, liveStreamIds, telemetry, history,
     preferences, toggleFavourite, openEditor, selectSource, sectionHref } = useCatalogue();
   const requestedService = params.get("service");
-  const requestedReading = params.get("reading") ?? (selected?.entityKind === "stream" ? selected.objectId : undefined);
+  const requestedReading = params.get("reading") ?? undefined;
   const creating = params.get("create") === "monitoring";
   const monitoring = useMonitoringServices(isAuthenticated, requestedService ? 5_000 : 20_000, requestedService ?? params.get("replace") ?? undefined);
   const pipelineView = !!params.get("pipeline") || params.get("view") === "pipelines" || creating && monitoring.authoringEnabled;
@@ -46,7 +46,7 @@ export function ExplorerWorkspace() {
 
   const changeView = (view?: Record<string, string | undefined>) => {
     const next = new URLSearchParams(params);
-    ["entity", "reading", "broker", "topic", "service", "create", "target", "tab", "stream", "inspect", "pipeline", "view", "revision", "activation", "replace"].forEach(key => next.delete(key));
+    ["entity", "reading", "broker", "topic", "service", "create", "target", "tab", "stream", "inspect", "pipeline", "view", "revision", "activation", "replace", "from"].forEach(key => next.delete(key));
     if (selected) next.set("source", selected.key);
     Object.entries(view ?? {}).forEach(([key, value]) => { if (value) next.set(key, value); });
     setParams(next);

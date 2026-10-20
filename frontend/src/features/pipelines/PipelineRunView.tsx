@@ -4,13 +4,12 @@ import { getErrorMessage } from "@/lib/errors";
 import type {
   PipelineCatalog,
   PipelineServiceView,
-  PipelineView,
 } from "./contracts";
 import type { PipelineLayout } from "./contracts";
 import { pipelinesApi } from "./api";
 import { PipelineWorkbench, type InspectorPanel } from "./PipelineWorkbench";
 import { PipelineDiagnostics, type PipelineState } from "./PipelineDiagnostics";
-import { executableChanges, nodeOptionLabel } from "./model";
+import { nodeOptionLabel } from "./model";
 import { arrangeGraph } from "./layout";
 import { useRunMetadata } from "./useRunMetadata";
 import { PipelineRunHistory } from "./PipelineRunHistory";
@@ -18,7 +17,6 @@ import "./pipelines.css";
 
 export default function PipelineRunView({
   serviceId,
-  displayName,
   canEdit,
   state,
   replaceable = true,
@@ -38,8 +36,6 @@ export default function PipelineRunView({
   const metadata = useRunMetadata(serviceId, selected, view?.definition);
   const [error, setError] = useState("");
   const [retry, setRetry] = useState(0);
-  const [editing, setEditing] = useState(false);
-  const [design, setDesign] = useState<PipelineView>();
   const [busy, setBusy] = useState(false);
   const [arrangement, setArrangement] = useState<{
     layout?: PipelineLayout;
@@ -67,30 +63,13 @@ export default function PipelineRunView({
     );
     return () => controller.abort();
   }, [serviceId, retry]);
-  const open = (id: string) => {
+  const edit = () => {
     const next = new URLSearchParams(params);
-    next.set("pipeline", id);
+    ["service", "tab", "pipeline", "revision", "activation"].forEach((key) => next.delete(key));
+    next.set("create", "monitoring");
     if (replaceable) next.set("replace", serviceId);
-    else next.delete("replace");
-    next.delete("service");
-    next.delete("tab");
+    else next.set("from", serviceId);
     setParams(next);
-  };
-  const prepareEdit = async () => {
-    setBusy(true);
-    setError("");
-    try {
-      setDesign(
-        view?.run?.pipeline_id
-          ? await pipelinesApi.get(view.run.pipeline_id)
-          : undefined,
-      );
-      setEditing(true);
-    } catch (reason) {
-      setError(getErrorMessage(reason));
-    } finally {
-      setBusy(false);
-    }
   };
   return (
     <section className="pl-run" aria-label="Running pipeline">
@@ -107,15 +86,10 @@ export default function PipelineRunView({
           <div className="pl-header">
             <div>
               <h3>
-                {view.legacy
-                  ? "Existing monitoring configuration"
-                  : "Execution revision"}
+                Monitoring flow
               </h3>
               <p className="pl-help">
-                {view.legacy
-                  ? "Derived from the saved launch configuration."
-                  : `Run ${view.run?.id ?? "unavailable"} · ${view.run?.status ?? "unknown"}`}{" "}
-                · this graph is immutable.
+                Current service configuration. Edit the service to change its readings or processing.
               </p>
             </div>
             {canEdit && catalog.authoring_enabled && (
@@ -123,9 +97,9 @@ export default function PipelineRunView({
                 <button
                   type="button"
                   disabled={busy}
-                  onClick={() => void prepareEdit()}
+                  onClick={edit}
                 >
-                  Edit design
+                  Edit service
                 </button>
                 {view.run && !arranging && (
                   <button type="button" onClick={() => setArranging(true)}>
@@ -210,61 +184,6 @@ export default function PipelineRunView({
                 </button>
               </div>
             </div>
-          )}
-          {editing && (
-            <section className="pl-conflict" aria-label="Choose pipeline draft">
-              <h4>Edit a reusable design</h4>
-              {design ? (
-                <>
-                  <p>
-                    The shared draft for “{design.name}” may differ from this
-                    run. Opening it keeps the running revision active.
-                  </p>
-                  <p>
-                    {
-                      executableChanges(
-                        view.definition,
-                        design.draft,
-                        catalog.components,
-                      ).length
-                    }{" "}
-                    processing changes compared with this run.
-                  </p>
-                  <button type="button" onClick={() => open(design.id)}>
-                    Open shared draft
-                  </button>
-                </>
-              ) : (
-                <p>
-                  Save this configuration as a reusable design before editing.
-                </p>
-              )}
-              <button
-                type="button"
-                disabled={busy}
-                onClick={async () => {
-                  setBusy(true);
-                  try {
-                    const copy = await pipelinesApi.create({
-                      name: `${(displayName ?? "Monitoring").slice(0, 100)} pipeline`,
-                      description: "",
-                      definition: view.definition,
-                      layout: view.layout,
-                    });
-                    open(copy.id);
-                  } catch (reason) {
-                    setError(getErrorMessage(reason));
-                  } finally {
-                    setBusy(false);
-                  }
-                }}
-              >
-                Save as a new design
-              </button>
-              <button type="button" onClick={() => setEditing(false)}>
-                Cancel
-              </button>
-            </section>
           )}
             <PipelineWorkbench
               document={{

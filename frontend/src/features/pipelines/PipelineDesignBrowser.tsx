@@ -68,36 +68,33 @@ export function PipelineDesignBrowser({
     <div className="pl-library-tools">
       <label className="pl-search">
         <Search size={16} />
-        <input type="search" aria-label="Search saved designs" placeholder="Search saved designs…"
+        <input type="search" aria-label="Search templates" placeholder="Search templates…"
           value={query} onChange={(event) => setQuery(event.target.value)} disabled={disabled} />
       </label>
       {!selecting && <label className="pl-check">
         <input type="checkbox" checked={archived}
           onChange={(event) => setArchived(event.target.checked)} />
-        Archived designs
+        Archived templates
       </label>}
     </div>
     {error && <p role="alert" className="pl-error">{error}
-      <button type="button" onClick={() => setRetry((value) => value + 1)}>Retry designs</button>
+      <button type="button" onClick={() => setRetry((value) => value + 1)}>Retry templates</button>
     </p>}
-    {!page ? <p role="status">Loading saved designs…</p> : !page.items.length ? <p className="pl-empty">
-      {query ? "No matching designs." : archived ? "No archived designs."
-        : "No saved designs yet. Start with a monitoring strategy to create one."}
+    {!page ? <p role="status">Loading templates…</p> : !page.items.length ? <p className="pl-empty">
+      {query ? "No matching templates." : archived ? "No archived templates."
+        : "No saved templates yet. Configure a flow and choose Save template to reuse it."}
     </p> : <ul className="pl-library-list">
       {page.items.map((pipeline) => <li key={pipeline.id}>
         <button type="button" disabled={disabled} onClick={() => onSelect(pipeline.id)}
           aria-label={`${selecting ? "Use" : "Open"} ${pipeline.name}`}>
           <strong>{pipeline.name}</strong>
-          <span>{pipeline.description || "Reusable monitoring design"}</span>
+          <span>{pipeline.description || "Reusable monitoring flow"}</span>
           <small>{pipeline.strategy === "adaptive_stream" ? "Adaptive stream" : "Static baseline"}
-            {" · "}{pipeline.revision_count
-              ? selecting ? "Latest published revision" : `${pipeline.revision_count} published ${pipeline.revision_count === 1 ? "revision" : "revisions"}`
-              : "Saved draft"}
           </small>
         </button>
       </li>)}
     </ul>}
     {page?.next_offset != null && <button type="button" disabled={loadingMore || disabled}
-      onClick={() => void loadMore()}>Load more designs</button>}
+      onClick={() => void loadMore()}>Load more templates</button>}
   </div>;
 }

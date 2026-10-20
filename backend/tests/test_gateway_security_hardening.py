@@ -185,7 +185,8 @@ async def test_unknown_and_pending_accounts_pay_the_bcrypt_cost(monkeypatch, sto
 
 
 @pytest.mark.asyncio
-async def test_member_lookups_are_cached_briefly_and_failures_are_not(monkeypatch):
+async def test_member_access_is_checked_on_every_request(monkeypatch):
+    """Removal and deactivation must take effect on the very next request."""
     profile = {
         "id": 17,
         "email": "member@example.com",
@@ -196,13 +197,8 @@ async def test_member_lookups_are_cached_briefly_and_failures_are_not(monkeypatc
     }
     remote = AsyncMock(return_value=profile)
     monkeypatch.setattr(access.tactic, "_make_request", remote)
-    first = await access.current_member("Bearer member")
-    second = await access.current_member("Bearer member")
-    assert first == second and remote.await_count == 1
-    monkeypatch.setattr(access, "MEMBER_CACHE_SECONDS", 0.0)
-    access.clear_member_cache()
+    await access.current_member("Bearer member")
     remote.side_effect = TacticError("Revoked", status=401)
-    for _ in range(2):
-        with pytest.raises(HTTPException):
-            await access.current_member("Bearer revoked")
-    assert remote.await_count == 3
+    with pytest.raises(HTTPException):
+        await access.current_member("Bearer member")
+    assert remote.await_count == 2

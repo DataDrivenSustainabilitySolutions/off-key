@@ -153,6 +153,7 @@ test("loads the saved template, saves an independent copy, and fits desktop and 
     await page.setViewportSize({ width: 390, height: 844 });
     await page.screenshot({ path: testInfo.outputPath("setup-mobile.png"), fullPage: true });
     await workbench.getByRole("button", { name: "Load template", exact: true }).click();
+    await expect(templates.getByRole("button", { name: `Use ${source.name}`, exact: true })).toBeVisible();
     await page.screenshot({ path: testInfo.outputPath("templates-mobile.png"), fullPage: true });
     await templates.press("Escape");
     await expect(workbench.getByRole("button", { name: "Load template", exact: true })).toBeFocused();

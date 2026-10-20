@@ -30,6 +30,8 @@ export type PipelineSetupProps = {
   services: ActiveService[]; byStream: Map<string, Set<string>>; collectionReady: boolean;
   initialTarget?: string; initialReading?: string; initialDesign?: PipelineView;
   initialDocument?: GraphDocument; replaceService?: ActiveService; predecessor?: PipelineServiceView;
+  revisionId?: string;
+  sourceService?: { id: string; replace: boolean };
   activationBlocked?: string; onManage: () => void; onBack: () => void; onStarted: (id: string) => void;
 };
 
@@ -46,6 +48,8 @@ export function PipelineCreate(props: PipelineSetupProps) {
   const { userId } = useAuth();
   const { document: catalogueDocument } = useCatalogue();
   const location = useLocation();
+  const replaceId = props.sourceService?.replace ? props.sourceService.id : replaceService?.id;
+  const sourceId = props.sourceService?.id ?? replaceId;
   const startingId = catalog.templates.find((item) => item.definition.strategy === "adaptive_stream")?.id ?? catalog.templates[0]?.id;
   const initial = useCallback((): CreationDraft => {
     const targetId = initialTarget ?? targets.find((target) => target.inputs.some((input) =>
@@ -58,9 +62,9 @@ export function PipelineCreate(props: PipelineSetupProps) {
       targetId, startingId: initialDesign || initialDocument ? undefined : startingId, document, bindings: suggestBindings(document.definition.input_slots, target,
         Object.fromEntries((predecessor?.run?.execution?.bindings ?? []).map((binding) => [binding.slot_id, binding.reading_id]))) };
   }, [catalog, initialDesign, initialDocument, initialReading, initialTarget, predecessor, replaceService, startingId, targets]);
-  const creationKey = `pipeline-setup:${userId}:${initialDesign?.id ?? "new"}:${replaceService?.id ?? initialTarget ?? ""}:${initialReading ?? ""}`;
+  const creationKey = `pipeline-setup:${userId}:${initialDesign?.id ?? "new"}:${props.revisionId ?? "draft"}:${sourceId ?? initialTarget ?? ""}:${replaceId ? "replace" : "new"}:${initialReading ?? ""}`;
   const { draft, template, save: saveState, session } = useCreationSession(creationKey, initial,
-    !replaceService && initialDesign?.is_template !== false ? initialDesign : undefined);
+    !replaceId && !props.revisionId && initialDesign?.is_template !== false ? initialDesign : undefined);
   const setDraft = session.setDraft;
   const saving = saveState.status === "saving";
   const [loadingTemplate, setLoadingTemplate] = useState(false);
@@ -116,7 +120,7 @@ export function PipelineCreate(props: PipelineSetupProps) {
       const result = await graph.validate((definition, selected) => pipelinesApi.validate(undefined, definition, undefined, selected));
       if (!result?.valid) { setIssuesRequest((value) => value + 1); setError("Resolve the highlighted processing issues before applying."); return; }
       await apply.session.submit({ definition: draft.document.definition, layout: draft.document.layout,
-        bindings, display_name: draft.name.trim(), idempotency_key: crypto.randomUUID(), replace_service_id: replaceService?.id ?? null });
+        bindings, display_name: draft.name.trim(), idempotency_key: crypto.randomUUID(), replace_service_id: replaceId ?? null });
     } catch (reason) { setError(getErrorMessage(reason)); }
     finally { setChecking(false); }
   };
@@ -129,7 +133,7 @@ export function PipelineCreate(props: PipelineSetupProps) {
   return <section className="pl-editor pl-setup" aria-label={initialDesign ? "Pipeline editor" : "Monitoring workbench"}>
     <button type="button" className="mn-back" disabled={busy} onClick={props.onBack}><ArrowLeft size={14} />{initialDesign ? "Back" : "All services"}</button>
     <div className="pl-header pl-setup-header"><div>
-      <h2>{replaceService ? "Update monitoring service" : initialDesign ? initialDesign.name : "Create monitoring service"}</h2>
+      <h2>{replaceId ? "Update monitoring service" : initialDesign ? initialDesign.name : "Create monitoring service"}</h2>
       <p className="pl-help">Choose readings, adjust the flow, and apply. Save a template whenever you want to reuse it.</p>
     </div><div className="pl-actions pl-setup-actions">
       {canAuthor && <>
@@ -141,7 +145,7 @@ export function PipelineCreate(props: PipelineSetupProps) {
           existing={!!template} disabled={busy} saving={saving} error={saveState.message} conflict={saveState.conflict}
           onSave={async (details) => !!await session.save(details)} />
         <button type="button" className="mn-primary" disabled={busy} onClick={() => void start()}>
-          <Play size={15} />{checking ? "Checking…" : replaceService ? "Apply changes" : "Apply monitoring"}</button>
+          <Play size={15} />{checking ? "Checking…" : replaceId ? "Apply changes" : "Apply monitoring"}</button>
       </>}
     </div></div>
     {!canAuthor && <p className="pl-warning" role="status">{initialDesign?.archived ? "This template is archived. Restore it from the template library to edit it."
@@ -176,8 +180,8 @@ export function PipelineCreate(props: PipelineSetupProps) {
         </div>
         {attempted && !ready && <p className="pl-field-error" role="alert">Choose a different, collected reading for each input. Readings already monitored by another service are unavailable.</p>}
         {!props.collectionReady && <p className="pl-help" role="status">Enable collection in Sources and wait for it to connect before applying monitoring.</p>}
-        {props.activationBlocked && <p className="pl-warning" role="status">{props.activationBlocked}</p>}
-        {replaceService && <p className="pl-warning">Applying changes replaces “{replaceService.display_name ?? replaceService.id}”. Monitoring pauses briefly and learning starts again. Its history is kept.</p>}
+        {props.activationBlocked && !locked && <p className="pl-warning" role="status">{props.activationBlocked}</p>}
+        {replaceId && !locked && <p className="pl-warning">Applying changes replaces “{replaceService?.display_name ?? "the selected service"}”. Monitoring pauses briefly and learning starts again. Its history is kept.</p>}
       </div>
       <PipelineWorkbench catalog={catalog} document={draft.document} validation={metadata ?? validation} readOnly={!canAuthor || locked || checking}
         inspectorPanel={inspectorPanel} onInspectorPanelChange={setInspectorPanel} settingsTitle="Learning settings"

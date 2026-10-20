@@ -53,7 +53,7 @@ export function PipelineTemplateMenu({
   };
   return <Popover.Root open={open} onOpenChange={setOpen}>
     <Popover.Trigger disabled={disabled || busy}><Copy size={15} />Load template</Popover.Trigger>
-    <Popover.Portal><Popover.Content className="pl-library pl-template-popover" align="end" sideOffset={8}
+    <Popover.Portal><Popover.Content className="pl-library pl-template-popover" align="end" sideOffset={8} collisionPadding={16}
       aria-label="Monitoring templates" onInteractOutside={(event) => { if (busy) event.preventDefault(); }}
       onEscapeKeyDown={(event) => { if (busy) event.preventDefault(); }}>
       <div className="pl-header"><h3>Load a template</h3>

@@ -85,7 +85,7 @@ export function PipelineWorkbench({
         {!props.readOnly && <Popover.Root open={adding} onOpenChange={setMenu}>
           <Popover.Trigger><Plus size={16} aria-hidden="true" />Add component</Popover.Trigger>
           <Popover.Portal><div className={`pl-component-portal${dragging ? " is-dragging" : ""}`}>
-            <Popover.Content className="pl-library pl-component-menu" align="start" sideOffset={8}
+            <Popover.Content className="pl-library pl-component-menu" align="start" sideOffset={8} collisionPadding={12}
             aria-label="Add component" onCloseAutoFocus={(event) => {
               if (addedFromMenu.current) {
                 event.preventDefault();
@@ -120,7 +120,7 @@ export function PipelineWorkbench({
               ? <><TriangleAlert size={15} aria-hidden="true" />{status.issues.length}{status.issues_truncated ? "+" : ""} {status.issues.length === 1 ? "issue" : "issues"}</>
               : <><CircleCheck size={15} aria-hidden="true" />Valid</>}
           </Popover.Trigger>
-          <Popover.Portal><Popover.Content className="pl-library pl-issue-popover" align="end" sideOffset={8}
+          <Popover.Portal><Popover.Content className="pl-library pl-issue-popover" align="end" sideOffset={8} collisionPadding={12}
             aria-label="Graph validation">
             <div className="pl-component-menu-heading">
               <h3>{status.valid ? "Valid processing graph" : "Validation errors"}</h3>

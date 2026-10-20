@@ -70,7 +70,7 @@
 .pl-template-popover {
   z-index: 70;
   width: min(660px, calc(100vw - 32px));
-  max-height: min(680px, calc(100dvh - 40px));
+  max-height: min(680px, calc(100dvh - 40px), var(--radix-popover-content-available-height));
   overflow: auto;
   padding: 20px;
   border: 1px solid hsl(var(--border));

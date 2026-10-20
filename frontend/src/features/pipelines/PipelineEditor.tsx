@@ -39,7 +39,7 @@ export default function PipelineEditor(props: Props) {
     collectionReady={props.collectionReady} operationId={props.activationId} onOperation={props.onOperation}
     onComplete={props.onStarted} onClose={() => props.onRevision(undefined)} />;
   return <>
-    <PipelineCreate key={pipeline.id} {...props} initialDesign={pipeline}
+    <PipelineCreate key={`${pipeline.id}:${props.revisionId ?? "draft"}:${props.sourceService?.id ?? ""}:${props.sourceService?.replace ? "replace" : "copy"}`} {...props} initialDesign={pipeline}
       initialDocument={revision ? { definition: revision.definition, layout: pipeline.layout } : undefined} />
     {props.canEdit && props.catalog.authoring_enabled && <details className="pl-archive">
       <summary>Template options</summary>

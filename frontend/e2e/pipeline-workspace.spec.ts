@@ -196,6 +196,7 @@ test.describe("visual pipeline real infrastructure", () => {
           });
           await page.getByRole("button", { name: "Apply monitoring", exact: true }).click();
           await expect(page.getByRole("button", { name: "Recover start request", exact: true })).toBeVisible();
+          await expect(page.getByRole("button", { name: "Recover start request", exact: true })).toBeEnabled();
           await page.unroute("**/v1/monitors/pipelines/apply");
           await page.reload();
           await expect(page.getByRole("button", { name: "Recover start request", exact: true })).toBeVisible();
@@ -341,10 +342,21 @@ test.describe("visual pipeline real infrastructure", () => {
         await page
           .getByRole("button", { name: "Arrange automatically", exact: true })
           .click();
+        await expect(page.getByRole("button", { name: "Arrange automatically", exact: true })).toBeEnabled();
         await expectReadablePipeline(page);
         const camera = page
           .getByLabel("Pipeline graph", { exact: true })
           .locator(".react-flow__viewport");
+        // ELK and the subsequent camera fit finish independently. A zoom of 1
+        // alone also matches the previous camera, so sample only a settled view.
+        await expect.poll(() => camera.evaluate(async (element) => {
+          const transform = getComputedStyle(element).transform;
+          for (let frame = 0; frame < 15; frame++) {
+            await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+            if (getComputedStyle(element).transform !== transform) return false;
+          }
+          return true;
+        })).toBe(true);
         const transform = await camera.evaluate(
           (element) => getComputedStyle(element).transform,
         );

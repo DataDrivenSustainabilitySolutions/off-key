@@ -16,13 +16,13 @@ export function PipelineApplyStatus({ apply }: { apply: ReturnType<typeof usePip
   return <section className={`pl-apply-status${failed ? " pl-apply-status--error" : ""}`} aria-label="Monitoring setup progress" aria-live="polite">
     <div className="pl-apply-status-heading">
       {failed ? <TriangleAlert size={18} /> : terminal ? <CircleCheck size={18} /> : <LoaderCircle className="pl-spin" size={18} />}
-      <div><h3>{operation ? phases[operation.phase] : busy ? "Applying monitoring…" : "Confirm the start request"}</h3>
+      <div><h3>{operation ? phases[operation.phase] : busy ? "Applying monitoring…" : request ? "Connection interrupted" : "Check your setup"}</h3>
         <p>{operation?.error ?? error ?? ""}</p>
         {!operation && request && !busy && <p>The response was interrupted. Retry the same request to safely recover its result.</p>}
       </div>
     </div>
     <div className="pl-actions">
-      {!operation && request && <button type="button" disabled={busy} onClick={() => void session.submit()}>Recover start request</button>}
+      {!operation && request && !busy && <button type="button" onClick={() => void session.submit()}>Recover start request</button>}
       {operation && !terminal && <button type="button" disabled={busy || operation.phase === "cancelling"}
         onClick={() => void session.cancel()}>Cancel start</button>}
       {terminal && operation?.phase !== "succeeded" && <button type="button" onClick={session.reset}>Return to setup</button>}

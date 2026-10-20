@@ -33,7 +33,7 @@ export default function PipelineWorkspace({
   const { system } = useCatalogue();
   const [params, setParams] = useSearchParams();
   const [catalog, setCatalog] = useState<PipelineCatalog>();
-  const [source, setSource] = useState<{ id: string; view: PipelineServiceView }>();
+  const [source, setSource] = useState<{ id: string; view?: PipelineServiceView; error?: string }>();
   const [error, setError] = useState("");
   const [retry, setRetry] = useState(0);
   const id = params.get("pipeline");
@@ -43,6 +43,7 @@ export default function PipelineWorkspace({
   const replacementId = params.get("replace");
   const sourceId = replacementId ?? params.get("from");
   const predecessor = source?.id === sourceId ? source.view : undefined;
+  const sourceError = source?.id === sourceId ? source.error : undefined;
   const replacement = services.find((service) => service.id === replacementId);
   useEffect(() => {
     const controller = new AbortController();
@@ -63,7 +64,7 @@ export default function PipelineWorkspace({
     void pipelinesApi
       .service(sourceId, controller.signal)
       .then((view) => { if (!controller.signal.aborted) setSource({ id: sourceId, view }); }, (reason) => {
-        if (!controller.signal.aborted) setError(getErrorMessage(reason));
+        if (!controller.signal.aborted) setSource({ id: sourceId, error: getErrorMessage(reason) });
       });
     return () => controller.abort();
   }, [sourceId, retry]);
@@ -119,21 +120,22 @@ export default function PipelineWorkspace({
         onBack={creating ? create : onBack}
       />
     );
-  if (!id && sourceId && !predecessor && !error) return <p role="status">Loading service configuration…</p>;
+  if (!id && sourceId && !predecessor && !sourceError) return <p role="status">Loading service configuration…</p>;
   if (!id) return <>
-    {error && <p role="alert" className="pl-error">{error}<button onClick={() => setRetry((value) => value + 1)}>Retry</button></p>}
-    <PipelineCreate key={`${initialTarget ?? ""}:${contextReading ?? ""}:${sourceId ?? ""}`} catalog={catalog} canEdit={canEdit} targets={index.targets}
+    {(error || sourceError) && <p role="alert" className="pl-error">{error || sourceError}<button onClick={() => setRetry((value) => value + 1)}>Retry</button></p>}
+    <PipelineCreate key={`${initialTarget ?? ""}:${contextReading ?? ""}:${sourceId ?? ""}:${replacementId ? "replace" : "new"}`} catalog={catalog} canEdit={canEdit} targets={index.targets}
     services={services} byStream={index.byStream} collectionReady={system.snapshot?.runtime.collection?.status === "applied"}
     initialDocument={sourceId ? predecessor && { definition: predecessor.definition, layout: predecessor.layout } : undefined}
     replaceService={replacement} predecessor={sourceId ? predecessor : undefined}
+    sourceService={sourceId ? { id: sourceId, replace: !!replacementId } : undefined}
     activationBlocked={sourceId && (!predecessor || replacementId && !replacement) ? "This service configuration is unavailable. Return to Monitoring and choose an available service." : undefined}
     initialTarget={initialTarget} initialReading={contextReading} onStarted={onStarted} onManage={library} onBack={onBack} />
   </>;
   return (
     <>
-      {error && (
+      {(error || sourceError) && (
         <p role="alert" className="pl-error">
-          {error}
+          {error || sourceError}
         </p>
       )}
       {replacementId && !replacement && (
@@ -172,6 +174,7 @@ export default function PipelineWorkspace({
         revisionId={params.get("revision") ?? undefined}
         activationId={params.get("activation") ?? undefined}
         replaceService={replacement}
+        sourceService={replacementId ? { id: replacementId, replace: true } : undefined}
         predecessor={predecessor}
         activationBlocked={
           replacementId && !replacement

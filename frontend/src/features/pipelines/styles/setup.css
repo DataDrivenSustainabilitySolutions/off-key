@@ -1,5 +1,6 @@
 .pl-setup-header { align-items: center; margin-bottom: 20px; }
 .pl-setup-header .pl-help { margin-bottom: 0; max-width: 58ch; }
+.pl-setup-header > div:first-child { min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
 .pl-setup-actions { gap: 8px; }
 .pl-setup-actions button { min-height: 38px; padding: 9px 13px; }
 .pl-setup-card { padding: 20px; border: 1px solid hsl(var(--border)); border-radius: 12px; background: hsl(var(--card)); }
@@ -9,9 +10,9 @@
 .pl-strategy-summary { display: flex; flex-direction: column; gap: 6px; font-size: 12px; padding-left: 24px; border-left: 1px solid hsl(var(--border)); }
 .pl-strategy-summary > span, .pl-strategy-summary small { color: hsl(var(--muted-foreground)); }
 .pl-strategy-summary strong { font-size: 14px; font-weight: 500; }
-.pl-input-bindings { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr)); gap: 12px 20px; margin-top: 20px; padding-top: 16px; border-top: 1px solid hsl(var(--border)); }
+.pl-input-bindings { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr)); gap: 12px 20px; margin-top: 20px; padding-top: 16px; border-top: 1px solid hsl(var(--border)); max-height: 280px; overflow-y: auto; scrollbar-width: thin; }
 .pl-input-bindings .pl-field { margin: 0; }
-.pl-input-bindings .pl-field > span { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.pl-input-bindings .pl-field > span { display: flex; align-items: center; justify-content: space-between; gap: 8px; overflow-wrap: anywhere; }
 .pl-input-bindings small { color: hsl(var(--muted-foreground)); font-weight: 400; }
 .pl-setup-card-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 16px; flex-wrap: wrap; }
 .pl-setup-card-footer .pl-help { margin: 0; }

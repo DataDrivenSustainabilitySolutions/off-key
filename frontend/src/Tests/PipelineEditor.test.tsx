@@ -1,5 +1,6 @@
 import {
   cleanup,
+  act,
   fireEvent,
   render,
   screen,
@@ -10,6 +11,9 @@ import { MemoryRouter } from "react-router-dom";
 import { SystemLiveTelemetry } from "@/features/catalogue/systemLiveTelemetry";
 import type { MonitoringTarget } from "@/features/monitoring/serviceModel";
 import PipelineEditor from "@/features/pipelines/PipelineEditor";
+import PipelineWorkspace from "@/features/pipelines/PipelineWorkspace";
+import { PipelineCreate } from "@/features/pipelines/PipelineCreate";
+import type { ActiveService } from "@/types/monitoring";
 import {
   normalizeCatalog,
   normalizeDefinition,
@@ -34,7 +38,7 @@ vi.mock("@/features/pipelines/api", () => ({
     create: vi.fn(),
     revision: vi.fn(),
     revisions: vi.fn(),
-    revisionMetadata: vi.fn(), apply: vi.fn(), activation: vi.fn(), cancel: vi.fn(), list: vi.fn(),
+    revisionMetadata: vi.fn(), apply: vi.fn(), activation: vi.fn(), cancel: vi.fn(), list: vi.fn(), catalog: vi.fn(), service: vi.fn(),
   },
 }));
 
@@ -164,6 +168,40 @@ async function settings() { fireEvent.click(await screen.findByRole("button", { 
 async function saveDialog() { fireEvent.click(await screen.findByRole("button", { name: "Save template" })); return screen.findByRole("dialog"); }
 
 describe("simple monitoring setup", () => {
+  it("tracks a replacement after its predecessor disappears from the active service list", async () => {
+    const old: ActiveService = { id: "old", display_name: "Existing health", container_id: "worker", container_name: "worker", mqtt_topics: [], status: true,
+      operational_status: { stage: "operational", is_stale: false, message_count: 10, processed_message_count: 10 } };
+    const callbacks = props();
+    const context = { id: "old", replace: true };
+    const ui = (replaceService?: ActiveService) => <MemoryRouter><PipelineCreate {...callbacks} initialDesign={pipeline()}
+      sourceService={context} replaceService={replaceService} activationBlocked={replaceService ? undefined : "Previous service retired"} /></MemoryRouter>;
+    const view = render(ui(old));
+    fireEvent.click(await screen.findByRole("button", { name: "Apply changes" }));
+    await waitFor(() => expect(pipelinesApi.apply).toHaveBeenCalledOnce());
+    expect(vi.mocked(pipelinesApi.apply).mock.calls[0]![0].replace_service_id).toBe("old");
+    view.rerender(ui());
+    expect((screen.getByRole("textbox", { name: "Service name" }) as HTMLInputElement).disabled).toBe(true);
+    expect(screen.getByRole("region", { name: "Monitoring setup progress" })).toBeTruthy();
+    expect(screen.queryByText("Previous service retired")).toBeNull();
+    vi.mocked(pipelinesApi.activation).mockResolvedValue({ id: "activation", phase: "succeeded", service_id: "service", run_id: "run",
+      predecessor_service_id: "old", error: null, created_at: "2026-10-20T10:00:00Z", updated_at: "2026-10-20T10:00:00Z" });
+    await act(async () => { document.dispatchEvent(new Event("visibilitychange")); });
+    await waitFor(() => expect(callbacks.onStarted).toHaveBeenCalledWith("service"));
+  });
+  it("keeps a failed service load visible when the catalog arrives afterwards", async () => {
+    let finishCatalog!: (value: typeof catalog) => void;
+    vi.mocked(pipelinesApi.catalog).mockImplementation(() => new Promise((resolve) => { finishCatalog = resolve; }));
+    vi.mocked(pipelinesApi.service).mockRejectedValue(new Error("Previous service unavailable"));
+    render(<MemoryRouter initialEntries={["/?create=monitoring&replace=missing"]}>
+      <PipelineWorkspace services={[]} index={{ targets: [], inputs: new Map(), byStream: new Map() }}
+        canEdit onBack={() => {}} onStarted={() => {}} />
+    </MemoryRouter>);
+    await waitFor(() => expect(pipelinesApi.service).toHaveBeenCalled());
+    await act(async () => { finishCatalog(catalog); });
+    expect((await screen.findByRole("alert")).textContent).toContain("Previous service unavailable");
+    expect(screen.queryByText("Loading service configuration…")).toBeNull();
+    expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
+  });
   it("shows service details and applies the edited graph without saving or publishing a template", async () => {
     mount();
     const name = await screen.findByRole("textbox", { name: "Service name" });
@@ -219,6 +257,17 @@ describe("simple monitoring setup", () => {
     first.unmount(); mount();
     expect((await screen.findByRole("textbox", { name: "Service name" }) as HTMLInputElement).value).toBe("Unsaved service");
     await settings(); expect((screen.getByRole("spinbutton", { name: "Calibration observations" }) as HTMLInputElement).value).toBe("123");
+  });
+  it("opens a historical configuration independently of unsaved template edits", async () => {
+    const current = mount();
+    await screen.findByRole("textbox", { name: "Service name" });
+    await settings();
+    fireEvent.change(screen.getByRole("spinbutton", { name: "Calibration observations" }), { target: { value: "123" } });
+    current.unmount();
+    render(<MemoryRouter><PipelineEditor {...props()} revisionId="revision" /></MemoryRouter>);
+    await screen.findByRole("textbox", { name: "Service name" });
+    await settings();
+    expect((screen.getByRole("spinbutton", { name: "Calibration observations" }) as HTMLInputElement).value).toBe("360");
   });
   it("fails closed when a historical revision cannot load", async () => {
     render(<MemoryRouter><PipelineEditor {...props()} revisionId="missing" /></MemoryRouter>);

@@ -35,7 +35,10 @@ async def list_designs(session, query: PipelineListQuery) -> PipelineListPage:
             MonitoringPipeline.draft["strategy"].as_string(), "static_baseline"
         ).label("strategy"),
         revision_count.label("revision_count"),
-    ).where(MonitoringPipeline.archived == query.archived)
+    ).where(
+        MonitoringPipeline.archived == query.archived,
+        MonitoringPipeline.is_template.is_(True),
+    )
     if query.query:
         statement = statement.where(
             or_(

@@ -5,7 +5,7 @@ import { createCreationSession, type CreationDraft } from "@/features/pipelines/
 import { isDraftDirty } from "@/features/pipelines/editorSession";
 import { clearNavigationDrafts, navigationDraft } from "@/lib/navigation-draft";
 
-vi.mock("@/features/pipelines/api", () => ({ pipelinesApi: { create: vi.fn() } }));
+vi.mock("@/features/pipelines/api", () => ({ pipelinesApi: { create: vi.fn(), save: vi.fn() } }));
 
 const initial = (): CreationDraft => ({
   document: { definition: normalizeDefinition({}), layout: normalizeLayout() },
@@ -23,6 +23,14 @@ const saved = () => normalizeView({
 beforeEach(() => { vi.resetAllMocks(); clearNavigationDrafts(); });
 
 describe("account-scoped pipeline creation session", () => {
+  it("restores a reading selection even when the unnamed graph did not change", () => {
+    const session = createCreationSession(initial(), "creation:bindings");
+    session.setDraft((draft) => ({ ...draft, targetId: "other-room", bindings: { value: "other-current" } }));
+    expect(session.isDirty()).toBe(true);
+    const restored = createCreationSession(initial(), "creation:bindings");
+    expect(restored.getSnapshot().draft.targetId).toBe("other-room");
+    expect(restored.getSnapshot().draft.bindings).toEqual({ value: "other-current" });
+  });
   it("retains the dirty baseline across navigation, independently of template provenance", () => {
     const open = () => navigationDraft("creation:1", () => createCreationSession(initial()));
     const first = open();
@@ -58,20 +66,23 @@ describe("account-scoped pipeline creation session", () => {
     expect(session.getSnapshot().save.status).toBe("saved");
     await session.save();
     expect(pipelinesApi.create).toHaveBeenCalledOnce();
-    const result = session.takeSaved(initial());
-    expect(result?.session.base.id).toBe("created-design");
-    expect(result?.session.name).toBe("Edited while away");
-    expect(result?.session.document.layout.nodes.input?.label).toBe("New title");
-    expect(result?.targetId).toBe("room");
-    expect(session.getSnapshot().draft.name).toBe("");
-    expect(session.takeSaved(initial())).toBeUndefined();
+    expect(session.getSnapshot().template?.id).toBe("created-design");
+    expect(session.getSnapshot().draft.name).toBe("Edited while away");
+    expect(session.getSnapshot().draft.document.layout.nodes.input?.label).toBe("New title");
+    expect(session.getSnapshot().draft.targetId).toBe("room");
+    expect(session.isDirty()).toBe(true);
+    session.acknowledge();
+    vi.mocked(pipelinesApi.save).mockResolvedValue({ ...saved(), version: 2 });
+    await session.save();
+    expect(pipelinesApi.create).toHaveBeenCalledOnce();
+    expect(pipelinesApi.save).toHaveBeenCalledWith("created-design", expect.objectContaining({ expected_version: 1 }));
   });
 
   it("shows failed saves after remount and permits a deliberate retry", async () => {
     vi.mocked(pipelinesApi.create).mockRejectedValueOnce(new Error("Service unavailable"));
     const session = createCreationSession({ ...initial(), name: "Machine health" });
     await session.save();
-    expect(session.getSnapshot().save).toEqual({ status: "error", message: "Service unavailable" });
+    expect(session.getSnapshot().save).toEqual({ status: "error", message: "Service unavailable", conflict: false });
     vi.mocked(pipelinesApi.create).mockResolvedValueOnce(saved());
     await session.save();
     expect(session.getSnapshot().save.status).toBe("saved");

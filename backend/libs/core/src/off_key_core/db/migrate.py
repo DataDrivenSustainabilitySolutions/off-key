@@ -73,6 +73,12 @@ def adopted_versions(connection: Connection, migrations: dict[str, str]) -> list
             "config_fingerprint",
             "collection_fingerprint",
         } - columns
+    if "monitoring_pipelines" in existing:
+        columns = {
+            column["name"]
+            for column in inspect(connection).get_columns("monitoring_pipelines")
+        }
+        excluded_columns["monitoring_pipelines"] = {"is_template"} - columns
     if not existing.intersection(application_tables):
         if existing - {LEDGER}:
             raise ValueError("Cannot initialize a database containing unknown tables")

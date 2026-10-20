@@ -14,7 +14,7 @@ export function PipelineTemplateMenu({
   catalog: PipelineCatalog;
   disabled: boolean;
   onBuiltIn: (id: string) => void;
-  onLoad: (document: GraphDocument, name: string, description: string, version: string) => void;
+  onLoad: (document: GraphDocument, name: string, description: string) => void;
   onManage: () => void;
   onLoading: (busy: boolean) => void;
 }) {
@@ -33,20 +33,13 @@ export function PipelineTemplateMenu({
     try {
       const design = await pipelinesApi.get(id, controller.signal);
       if (design.archived) throw new Error("This design has been archived. Choose another saved design.");
-      const latest = design.revisions.reduce<(typeof design.revisions)[number] | undefined>(
-        (selected, revision) => !selected || revision.number > selected.number ? revision : selected, undefined,
-      );
-      const revision = latest ? await pipelinesApi.revision(id, latest.id, controller.signal) : undefined;
-      if (controller.signal.aborted) return;
-      const definition = revision?.definition ?? design.draft;
-      // The saved layout belongs to the current draft; a revision may have other components.
+      const definition = design.draft;
       const placed = definition.nodes.every((node) => design.layout.nodes[node.id]);
       const layout = placed
         ? { ...design.layout, nodes: Object.fromEntries(definition.nodes.map((node) => [node.id, design.layout.nodes[node.id]!])) }
         : await arrangeGraph(definition, design.layout);
       if (controller.signal.aborted) return;
-      onLoad({ definition, layout },
-        design.name, design.description, revision ? `Revision ${revision.number}` : `Saved draft · version ${design.version}`);
+      onLoad({ definition, layout }, design.name, design.description);
       setOpen(false);
     } catch (reason) {
       if (!controller.signal.aborted) setError(getErrorMessage(reason));
@@ -59,13 +52,14 @@ export function PipelineTemplateMenu({
     }
   };
   return <Popover.Root open={open} onOpenChange={setOpen}>
-    <Popover.Trigger disabled={disabled || busy}><Copy size={15} />Templates</Popover.Trigger>
-    <Popover.Portal><Popover.Content className="pl-library pl-template-popover" align="end" sideOffset={8}
+    <Popover.Trigger disabled={disabled || busy}><Copy size={15} />Load template</Popover.Trigger>
+    <Popover.Portal><Popover.Content className="pl-library pl-template-popover" align="end" sideOffset={8} collisionPadding={16}
       aria-label="Monitoring templates" onInteractOutside={(event) => { if (busy) event.preventDefault(); }}
       onEscapeKeyDown={(event) => { if (busy) event.preventDefault(); }}>
-      <div className="pl-header"><h3>Start from a template</h3>
+      <div className="pl-header"><h3>Load a template</h3>
         <Popover.Close disabled={busy} aria-label="Close templates"><X size={15} /></Popover.Close>
       </div>
+      <p className="pl-help">Use a starting flow or a saved template. Changes here leave the original untouched.</p>
       <div className="pl-starting-points" aria-label="Starting flows">
         {catalog.templates.map((template) => <button key={template.id} type="button" disabled={busy}
           aria-label={`Use ${template.name}`} onClick={() => { onBuiltIn(template.id); setOpen(false); }}>
@@ -73,11 +67,11 @@ export function PipelineTemplateMenu({
             ? "Learns incrementally from the stream" : "Fits and freezes preprocessing on a baseline"}</span>
         </button>)}
       </div>
-      <h4>Saved designs</h4>
+      <h4>Your templates</h4>
       <PipelineDesignBrowser selecting disabled={busy} onSelect={(id) => void load(id)} />
       {busy && <p role="status">Loading template…</p>}
       {error && <p className="pl-error" role="alert">{error}</p>}
-      <button type="button" className="pl-manage-designs" disabled={busy} onClick={onManage}>Manage saved designs</button>
+      <button type="button" className="pl-manage-designs" disabled={busy} onClick={() => { setOpen(false); onManage(); }}>Manage templates</button>
     </Popover.Content></Popover.Portal>
   </Popover.Root>;
 }

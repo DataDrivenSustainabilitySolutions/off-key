@@ -1,4 +1,4 @@
-import { getUserIdFromToken, isTokenExpired } from './token';
+import { getUserIdFromToken, isTokenExpired, parseNumericUserId } from './token';
 import { API_CONFIG, getApiUrl } from '@/lib/api-config';
 
 const TOKEN_KEY = 'auth_token';
@@ -40,6 +40,10 @@ export class SessionRequestError extends Error {
 }
 
 export const tokenManager = {
+  getMemberId(): number | null {
+    try { return parseNumericUserId(localStorage.getItem(MEMBER_KEY)); }
+    catch { return null; }
+  },
   getToken(): string | null {
     return this.isRemembered()
       ? rememberedToken

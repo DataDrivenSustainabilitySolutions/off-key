@@ -38,6 +38,34 @@ from sqlalchemy import insert, inspect, select, text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 
+def test_template_migration_preserves_existing_designs(disposable_database):
+    with disposable_database.begin() as connection:
+        apply_migrations(connection)
+        connection.execute(
+            text("ALTER TABLE monitoring_pipelines DROP COLUMN is_template")
+        )
+        connection.execute(
+            text(
+                "DELETE FROM off_key_schema_migrations "
+                "WHERE version='013_pipeline_templates.sql'"
+            )
+        )
+        connection.execute(
+            text(
+                "INSERT INTO monitoring_pipelines "
+                "(id,name,description,archived,version,draft,layout) "
+                "VALUES ('existing','Existing template','',false,1,'{}','{}')"
+            )
+        )
+        assert apply_migrations(connection)["applied"] == ["013_pipeline_templates.sql"]
+        assert (
+            connection.scalar(
+                text("SELECT is_template FROM monitoring_pipelines WHERE id='existing'")
+            )
+            is True
+        )
+
+
 def test_migrations_adopt_verified_baseline_preserve_data_and_repeat(
     disposable_database,
 ):
@@ -82,6 +110,7 @@ def test_migrations_adopt_verified_baseline_preserve_data_and_repeat(
             "010_monitoring_pipelines.sql",
             "011_case_insensitive_emails.sql",
             "012_remembered_session_rotation.sql",
+            "013_pipeline_templates.sql",
         ]
         assert apply_migrations(connection)["applied"] == [
             "003_deployment_maintenance.sql",
@@ -94,6 +123,7 @@ def test_migrations_adopt_verified_baseline_preserve_data_and_repeat(
             "010_monitoring_pipelines.sql",
             "011_case_insensitive_emails.sql",
             "012_remembered_session_rotation.sql",
+            "013_pipeline_templates.sql",
         ]
         assert (
             connection.scalar(text("SELECT count(*) FROM services WHERE id='old'")) == 1
@@ -185,6 +215,7 @@ def test_clean_break_preserves_configuration_and_history_and_runs_once(
             "010_monitoring_pipelines.sql",
             "011_case_insensitive_emails.sql",
             "012_remembered_session_rotation.sql",
+            "013_pipeline_templates.sql",
         ]
         assert apply_migrations(connection)["applied"] == [
             "004_system_catalogue.sql",
@@ -196,6 +227,7 @@ def test_clean_break_preserves_configuration_and_history_and_runs_once(
             "010_monitoring_pipelines.sql",
             "011_case_insensitive_emails.sql",
             "012_remembered_session_rotation.sql",
+            "013_pipeline_templates.sql",
         ]
         assert (
             connection.scalar(

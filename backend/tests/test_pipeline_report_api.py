@@ -11,7 +11,7 @@ from off_key_core.config.auth import get_auth_settings
 from off_key_core.db.base import get_db_async
 from off_key_core.db.models import PipelineRun, User
 from off_key_core.models.pipeline_reports import MAX_PIPELINE_REPORT_BYTES
-from off_key_core.models.pipelines import execution_fingerprint
+from off_key_core.models.pipelines import execution_fingerprint, pipeline_catalog
 from off_key_core.schemas.pipelines import (
     BoundInput,
     PipelineCreate,
@@ -131,6 +131,33 @@ async def test_http_reports_are_bounded_and_member_can_inspect_selected_run(
         async with httpx.AsyncClient(
             transport=transport, base_url="http://fixture"
         ) as client:
+            apply_body = {
+                "definition": pipeline_catalog()
+                .templates[0]
+                .definition.model_dump(mode="json"),
+                "bindings": {"value": "current"},
+                "display_name": "HTTP apply",
+                "idempotency_key": "http-apply",
+            }
+            denied = await client.post(
+                "/api/v1/monitors/pipelines/apply",
+                headers={"Authorization": f"Bearer {member_token}"},
+                json=apply_body,
+            )
+            assert denied.status_code == 403, denied.text[:1000]
+            applied = await client.post(
+                "/api/v1/monitors/pipelines/apply",
+                headers={"Authorization": f"Bearer {admin_token}"},
+                json=apply_body,
+            )
+            assert applied.status_code == 202, applied.text[:1000]
+            retried = await client.post(
+                "/api/v1/monitors/pipelines/apply",
+                headers={"Authorization": f"Bearer {admin_token}"},
+                json=apply_body,
+            )
+            assert retried.status_code == 202
+            assert retried.json()["id"] == applied.json()["id"]
             selected = "p59_" + "x" * 96
             response = await client.post(
                 f"/api/v1/monitors/pipelines/{design.id}/validate",

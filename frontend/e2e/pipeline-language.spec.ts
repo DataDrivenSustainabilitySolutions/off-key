@@ -11,6 +11,7 @@ import { expectClearPipelineRouting } from "./helpers/pipelineRouting";
 import {
   fitPipelineOverview,
   locatePipelineSelection,
+  savePipelineTemplate,
   openPipelineSettings,
   expectReadablePipeline,
 } from "./helpers/pipelineNavigation";
@@ -230,12 +231,7 @@ for (const strategy of ["static_baseline", "adaptive_stream"] as const) {
         path: testInfo.outputPath(`visual-language-${strategy}-light.png`),
         fullPage: true,
       });
-      await editor
-        .getByRole("button", { name: "Save draft", exact: true })
-        .click();
-      await expect(
-        editor.getByText("Draft saved.", { exact: true }),
-      ).toBeVisible();
+      await savePipelineTemplate(page);
       await page.reload();
       await openPipelineSettings(editor, "Component");
       await expect(node("raw")).toContainText("Raw reference");

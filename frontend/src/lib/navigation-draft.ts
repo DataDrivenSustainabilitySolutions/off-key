@@ -1,16 +1,20 @@
 import { useCallback, useState, type SetStateAction } from "react";
 
 const drafts = new Map<string, unknown>();
+let generation = 0;
+export const navigationDraftGeneration = () => generation;
 export function navigationDraft<T>(key: string, initial: () => T): T {
   if (!drafts.has(key)) drafts.set(key, initial());
   return drafts.get(key) as T;
 }
 export function rememberNavigation(key: string, value: unknown) { drafts.set(key, value); }
 export const clearNavigationDrafts = () => {
+  generation++;
   drafts.clear();
   try {
-    for (const key of Object.keys(sessionStorage))
-      if (key.startsWith(STORED_PREFIX)) sessionStorage.removeItem(key);
+    const keys = Array.from({ length: sessionStorage.length }, (_, index) => sessionStorage.key(index));
+    for (const key of keys)
+      if (key?.startsWith(STORED_PREFIX)) sessionStorage.removeItem(key);
   } catch { /* Storage can be unavailable in private or embedded contexts. */ }
 };
 

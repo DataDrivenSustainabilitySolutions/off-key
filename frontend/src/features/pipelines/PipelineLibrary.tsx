@@ -11,14 +11,14 @@ export function PipelineLibrary({
   onOpen: (id: string) => void;
   onBack: () => void;
 }) {
-  return <section className="pl-library" aria-label="Saved designs">
+  return <section className="pl-library" aria-label="Templates">
     <button type="button" className="mn-back" onClick={onBack}>
       <ArrowLeft size={14} />Back
     </button>
     <div className="pl-header">
       <div>
-        <h2>Saved designs</h2>
-        <p className="pl-help">Manage reusable monitoring flows. Existing services keep their current revision.</p>
+        <h2>Templates</h2>
+        <p className="pl-help">Reusable monitoring flows. Open a template to configure a service or update it.</p>
       </div>
       {canEdit && catalog.authoring_enabled && <button type="button" className="mn-primary" onClick={onCreate}>
         <Plus size={15} />Create monitoring service

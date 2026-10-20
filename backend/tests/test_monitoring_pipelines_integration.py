@@ -10,6 +10,7 @@ from off_key_core.db.collection_runtime import read_collection_runtime
 from off_key_core.db.migrate import apply_migrations
 from off_key_core.db.models import (
     DeploymentMaintenance,
+    MonitoringPipeline,
     MonitoringService,
     PipelineActivation,
     PipelineRun,
@@ -20,6 +21,7 @@ from off_key_core.models.pipelines import pipeline_catalog
 from off_key_core.schemas.collection_policy import CollectionPolicy
 from off_key_core.schemas.pipelines import (
     PipelineActivationRequest,
+    PipelineApplyRequest,
     PipelineCreate,
     PipelineDraftSave,
     PipelineExecutionConfig,
@@ -131,6 +133,55 @@ async def published_design(session):
         design.id, PipelinePublish(expected_version=design.version)
     )
     return design, revision
+
+
+@pytest.mark.asyncio
+async def test_direct_apply_is_atomic_idempotent_and_separate_from_templates(
+    pipeline_database,
+):
+    async with pipeline_database() as session:
+        library = PipelineLibrary(session)
+        template = await library.create(
+            PipelineCreate(
+                name="Reusable",
+                definition=pipeline_catalog().templates[0].definition,
+            )
+        )
+        request = PipelineApplyRequest(
+            definition=template.draft,
+            layout=PipelineLayout(nodes={"input": {"x": 32, "y": 48}}),
+            bindings={"value": "current"},
+            display_name="  Current monitor  ",
+            idempotency_key="direct-apply",
+        )
+        activation = await PipelineActivations(session).apply(request)
+        assert (await PipelineActivations(session).apply(request)).id == activation.id
+        assert [item.id for item in (await library.list()).items] == [template.id]
+        assert await library.get(template.id) == template
+        run = await session.get(PipelineRun, activation.run_id)
+        assert run.layout["nodes"]["input"]["x"] == 32
+        assert run.launch_config["display_name"] == "Current monitor"
+        execution = PipelineExecutionConfig.model_validate(run.execution)
+        assert execution.definition == template.draft
+        assert execution.bindings[0].reading_id == "current"
+        with pytest.raises(ConflictError, match="Idempotency"):
+            await PipelineActivations(session).apply(
+                request.model_copy(update={"display_name": "Other"})
+            )
+        await session.rollback()
+        # A failed new apply must not leave behind a configuration or source claim.
+        identifiers = set(await session.scalars(select(MonitoringPipeline.id)))
+        with pytest.raises(ValidationError, match="every named input"):
+            await PipelineActivations(session).apply(
+                request.model_copy(
+                    update={
+                        "idempotency_key": "invalid-apply",
+                        "bindings": {"missing": "temperature"},
+                    }
+                )
+            )
+        await session.rollback()
+        assert set(await session.scalars(select(MonitoringPipeline.id))) == identifiers
 
 
 @pytest.mark.asyncio

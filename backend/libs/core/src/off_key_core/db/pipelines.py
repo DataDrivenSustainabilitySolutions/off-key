@@ -26,6 +26,7 @@ class MonitoringPipeline(Base):
     name = Column(Text, nullable=False)
     description = Column(Text, nullable=False, default="")
     archived = Column(Boolean, nullable=False, default=False)
+    is_template = Column(Boolean, nullable=False, default=True, server_default="true")
     version = Column(Integer, nullable=False, default=1)
     draft = Column(document(), nullable=False)
     layout = Column(document(), nullable=False, default=dict)

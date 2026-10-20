@@ -7,6 +7,7 @@ from off_key_core.schemas.members import MemberProfile
 from off_key_core.schemas.pipelines import (
     PipelineActivationRequest,
     PipelineActivationView,
+    PipelineApplyRequest,
     PipelineCatalog,
     PipelineCreate,
     PipelineDraftSave,
@@ -66,6 +67,12 @@ async def forward(request, method, path, body=None, params=None):
         )
     except TacticError as exc:
         raise_tactic_http_error(exc)
+
+
+@router.post("/pipelines/apply", response_model=PipelineActivationView, status_code=202)
+@write_limit
+async def apply_pipeline(request: Request, change: PipelineApplyRequest):
+    return await forward(request, "POST", "/pipelines/apply", change)
 
 
 @router.get("/workspace", response_model=PipelineWorkspace)

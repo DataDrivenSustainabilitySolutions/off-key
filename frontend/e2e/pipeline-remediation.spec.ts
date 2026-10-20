@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { expect, test } from "@playwright/test";
 import type { PipelineCatalog, PipelineView } from "../src/types/pipelines.generated";
 import { loginPipelineWorkspace } from "./helpers/pipelines";
-import { openPipelineSettings } from "./helpers/pipelineNavigation";
+import { openPipelineSettings, savePipelineTemplate } from "./helpers/pipelineNavigation";
 import { accessToken } from "./helpers/auth";
 
 test("preserves edits made after a real atomic draft save was submitted", async ({ page }) => {
@@ -40,34 +40,37 @@ test("preserves edits made after a real atomic draft save was submitted", async 
     const title = editor.getByRole("textbox", { name: "Node title", exact: true });
     await title.fill("Submitted title");
     await openPipelineSettings(editor, "Service");
-    const name = editor.getByRole("textbox", { name: "Pipeline name", exact: true });
+    const name = editor.getByRole("textbox", { name: "Service name", exact: true });
     await name.fill("Submitted name");
-    await editor.getByRole("button", { name: "Save draft", exact: true }).click();
+    await editor.getByRole("button", { name: "Save template", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "Save monitoring template", exact: true });
+    await dialog.getByRole("textbox", { name: "Template name", exact: true }).fill("Submitted name");
+    await dialog.getByRole("button", { name: "Update template", exact: true }).click();
     await saving;
+    await dialog.getByRole("button", { name: "Close save template", exact: true }).click();
     await openPipelineSettings(editor, "Component");
     await title.fill("New unsaved title");
     await openPipelineSettings(editor, "Service");
     await name.fill("New unsaved name");
     release();
-    await expect(editor.getByText("Draft saved.", { exact: true })).toBeVisible();
+    await expect(page.getByRole("status").filter({ hasText: /Template saved/ })).toBeVisible();
     await openPipelineSettings(editor, "Component");
     await expect(title).toHaveValue("New unsaved title");
     await openPipelineSettings(editor, "Service");
     await expect(name).toHaveValue("New unsaved name");
-    await expect(editor.getByText("Unsaved draft changes", { exact: false })).toBeVisible();
+
     const saved = await page.request.get(endpoint, { headers });
     const first = await saved.json() as PipelineView;
     expect(first.version).toBe(design.version + 1);
     expect(first.name).toBe("Submitted name");
     expect(first.layout.nodes?.input?.label).toBe("Submitted title");
     await page.unroute(routePattern);
-    await editor.getByRole("button", { name: "Save draft", exact: true }).click();
-    await expect(editor.getByText("Saved draft", { exact: false })).toBeVisible();
+    await savePipelineTemplate(page, "Updated template");
     await page.reload();
     await openPipelineSettings(editor, "Component");
     await editor.getByRole("combobox", { name: "Selected component", exact: true }).selectOption("input");
     await expect(title).toHaveValue("New unsaved title");
-    await expect(editor.getByRole("heading", { name: "New unsaved name", exact: true })).toBeVisible();
+    await expect(name).toHaveValue("New unsaved name");
   } finally {
     release();
     await page.unroute(routePattern);

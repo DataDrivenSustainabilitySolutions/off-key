@@ -1,8 +1,25 @@
 import { expect, type Locator, type Page } from "@playwright/test";
+import type { PipelineView } from "../../src/types/pipelines.generated";
 
 export async function openPipelineSettings(scope: Page | Locator, panel: "Service" | "Component") {
-  const button = scope.getByRole("button", { name: `${panel} settings`, exact: true });
+  const button = scope.getByRole("button", { name: panel === "Service" ? "Learning settings" : "Component settings", exact: true });
   if (await button.getAttribute("aria-expanded") !== "true") await button.click();
+}
+
+export async function savePipelineTemplate(page: Page, name?: string, copy = false): Promise<PipelineView> {
+  await page.getByRole("button", { name: "Save template", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Save monitoring template", exact: true });
+  if (name) await dialog.getByRole("textbox", { name: "Template name", exact: true }).fill(name);
+  const saved = page.waitForResponse((response) => {
+    const path = new URL(response.url()).pathname;
+    return response.request().method() === "POST" && path.endsWith("/monitors/pipelines")
+      || response.request().method() === "PUT" && path.endsWith("/draft");
+  });
+  await dialog.getByRole("button", { name: copy ? "Save as new template" : /^(Save|Update) template$/, exact: true }).click();
+  const response = await saved;
+  expect(response.ok(), await response.text()).toBe(true);
+  await expect(dialog).toBeHidden();
+  return response.json() as Promise<PipelineView>;
 }
 
 export async function expectReadablePipeline(page: Page) {

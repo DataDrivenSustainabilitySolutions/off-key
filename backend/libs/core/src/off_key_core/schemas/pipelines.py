@@ -365,6 +365,7 @@ class PipelineView(PipelineModel):
     name: str
     description: str
     archived: bool
+    is_template: bool = True
     version: int
     draft: PipelineDefinition
     layout: PipelineLayout
@@ -382,6 +383,24 @@ class PipelineActivationRequest(PipelineModel):
     display_name: str = Field(min_length=1, max_length=120)
     idempotency_key: str = Field(min_length=1, max_length=128)
     replace_service_id: str | None = None
+
+
+class PipelineApplyRequest(PipelineModel):
+    """Apply the edited configuration without manual library/revision steps."""
+
+    definition: PipelineDefinition
+    layout: PipelineLayout = Field(default_factory=PipelineLayout)
+    bindings: dict[str, str] = Field(min_length=1, max_length=100)
+    display_name: str = Field(min_length=1, max_length=120)
+    idempotency_key: str = Field(min_length=1, max_length=128)
+    replace_service_id: str | None = None
+
+    @field_validator("display_name")
+    @classmethod
+    def nonblank_name(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("Enter a service name")
+        return value.strip()
 
 
 ActivationPhase = Literal[

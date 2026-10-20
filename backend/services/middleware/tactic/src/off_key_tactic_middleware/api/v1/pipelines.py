@@ -10,6 +10,7 @@ from off_key_core.models.pipelines import pipeline_catalog, validate_pipeline
 from off_key_core.schemas.pipelines import (
     PipelineActivationRequest,
     PipelineActivationView,
+    PipelineApplyRequest,
     PipelineCatalog,
     PipelineCreate,
     PipelineDraftSave,
@@ -40,6 +41,18 @@ from ..collection_auth import current_member, require_admin
 from .data_services import _raise_http_from_domain
 
 router = APIRouter(prefix="/monitors", dependencies=[Depends(current_member)])
+
+
+@router.post(
+    "/pipelines/apply",
+    response_model=PipelineActivationView,
+    status_code=202,
+    dependencies=[Depends(require_admin)],
+)
+async def apply_pipeline(
+    change: PipelineApplyRequest, session: AsyncSession = Depends(get_db_async)
+):
+    return await invoke(PipelineActivations(session).apply(change))
 
 
 async def invoke(operation):

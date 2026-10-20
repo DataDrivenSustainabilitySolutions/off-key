@@ -1,3 +1,4 @@
+import { savePipelineTemplate } from "./helpers/pipelineNavigation";
 import { randomUUID } from "node:crypto";
 import { expect, test } from "@playwright/test";
 import type { PipelineCatalog, PipelineView } from "../src/types/pipelines.generated";
@@ -105,8 +106,7 @@ test("reroutes around moved components during native dragging and after reload",
     await move("middle", 360, 100, false);
     await expectClearPipelineRouting(page);
     await expect(graph.getByRole("status")).toHaveCount(0);
-    await page.getByRole("button", { name: "Save draft", exact: true }).click();
-    await expect(page.getByText("Draft saved.", { exact: true })).toBeVisible();
+    await savePipelineTemplate(page);
     const saved = await page.request.get(endpoint, { headers });
     expect(saved.ok()).toBe(true);
     expect((await saved.json() as PipelineView).draft).toEqual(pipeline.draft);

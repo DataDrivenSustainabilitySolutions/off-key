@@ -120,7 +120,10 @@ jobs:
           set -euo pipefail
           docker service update --detach=false --env-add TACTIC_PIPELINE_AUTHORING_ENABLED=true offkey-smoke_tactic > /dev/null
           curl --fail --retry 30 --retry-all-errors --retry-delay 2 http://localhost:8000/health > /dev/null
-          E2E_AUTH_TOKEN="$(node -e "const state=require('./frontend/test-results/.auth/user.json'); const token=state.origins.flatMap(({localStorage=[]})=>localStorage).find(({name})=>name==='auth_token')?.value; if (!token) process.exit(1); process.stdout.write(token)")"
+          # Remembered sessions keep access tokens in memory; mint one from the cookie.
+          E2E_SESSION_COOKIE="$(node -e "const state=require('./frontend/test-results/.auth/user.json'); const cookie=state.cookies.find(({name})=>name==='off_key_remembered_session')?.value; if (!cookie) { console.error('No remembered session cookie in the auth state'); process.exit(1); } process.stdout.write(cookie)")"
+          echo "::add-mask::$E2E_SESSION_COOKIE"
+          E2E_AUTH_TOKEN="$(curl --fail --silent --show-error -X POST -H 'X-Off-Key-Session: 1' -H "Cookie: off_key_remembered_session=$E2E_SESSION_COOKIE" http://localhost:8000/api/v1/auth/refresh | python3 -c 'import json, sys; print(json.load(sys.stdin)["access_token"], end="")')"
           echo "::add-mask::$E2E_AUTH_TOKEN"
           export E2E_AUTH_TOKEN
           export E2E_MQTT_CA_FILE="$OFFKEY_REHEARSAL_DIR/ca.crt"

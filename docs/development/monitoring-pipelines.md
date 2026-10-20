@@ -302,7 +302,7 @@ pipeline-compatible build, then returns to the current build. Each cutover check
 the actual application and worker image digests, fresh graph scoring, bindings,
 layout, retained run history and single-worker ownership with authoring disabled.
 The test-only reference is immutable commit
-`97ccabfda62c97e8643eda0f4f64d369c6bdd5f2`, which includes parameter-sensitive
+`1777f71822d1485a21980eae8c6940dbbff8f7fe`, which includes parameter-sensitive
 readiness constraints and bounded inspection APIs. Its migration ledger, numerical
 catalog and backend lock must match the current source before it can build. This
 fixture is not an eligible production release. Changes to those contracts require review

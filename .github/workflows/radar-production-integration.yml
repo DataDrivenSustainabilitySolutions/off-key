@@ -101,7 +101,9 @@ jobs:
       - name: Test real MQTT, durable recovery, lifecycle and Swarm replacement
         timeout-minutes: 25
         run: |
-          uv run --frozen --project backend python -m pytest -q --tb=short -ra \
+          uv run --frozen --project backend python -u -m pytest -vv --tb=short -ra \
+            --timeout=300 --timeout-method=thread -o faulthandler_timeout=60 \
+            --durations=10 \
             --junitxml="$RUNNER_TEMP/radar-results.xml" \
             backend/tests/test_radar_mqtt_integration.py \
             backend/tests/test_monitor_anomaly_identity_integration.py \
@@ -140,6 +142,15 @@ jobs:
               raise SystemExit("Skipped required RADAR integration tests: " + ", ".join(skipped))
           print(f"Verified {len(cases)} RADAR integration tests with zero skips")
           PY
+
+      - name: Save RADAR integration test results
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: radar-integration-results
+          path: ${{ runner.temp }}/radar-results.xml
+          if-no-files-found: ignore
+          retention-days: 14
 
       - name: Collect owned fixture diagnostics
         if: failure()

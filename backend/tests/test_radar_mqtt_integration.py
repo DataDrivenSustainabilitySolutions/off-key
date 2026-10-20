@@ -2,7 +2,8 @@
 
 import asyncio
 import socket
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
+from threading import Event
 
 import pytest
 from amqtt.broker import Broker
@@ -219,16 +220,43 @@ async def test_real_mqtt_queue_overflow_records_every_locally_discarded_message(
             await publisher.disconnect()
 
 
-async def test_cancelled_initial_connection_stops_processor_and_network_thread():
+@pytest.mark.parametrize("cancel_during_socket_creation", [False, True])
+@pytest.mark.timeout(15)
+async def test_cancelled_initial_connection_stops_processor_and_network_thread(
+    monkeypatch, cancel_during_socket_creation
+):
     accepted = asyncio.Event()
+    socket_created = asyncio.Event()
+    release_socket = Event()
+    writers = set()
+
+    if cancel_during_socket_creation:
+        # Keep the real TCP socket in flight until cancellation retires the
+        # client. This exercises the connect/disconnect race deterministically.
+        from paho.mqtt.client import Client
+
+        create_socket = Client._create_socket
+        loop = asyncio.get_running_loop()
+
+        def pause_socket_creation(client):
+            connection = create_socket(client)
+            loop.call_soon_threadsafe(socket_created.set)
+            if not release_socket.wait(5):
+                connection.close()
+                raise TimeoutError("Test did not release the connected socket")
+            return connection
+
+        monkeypatch.setattr(Client, "_create_socket", pause_socket_creation)
 
     async def withhold_connack(reader, writer):
+        writers.add(writer)
         accepted.set()
         try:
             await reader.read()
         finally:
             writer.close()
             await writer.wait_closed()
+            writers.discard(writer)
 
     server = await asyncio.start_server(withhold_connack, "127.0.0.1", 0)
     async with server:
@@ -240,16 +268,32 @@ async def test_cancelled_initial_connection_stops_processor_and_network_thread()
         try:
             async with asyncio.timeout(5):
                 await accepted.wait()
+                if cancel_during_socket_creation:
+                    await socket_created.wait()
             network_client = client.client
             startup.cancel()
-            with pytest.raises(asyncio.CancelledError):
-                await startup
+            await wait_until(lambda: client.client is None)
+            release_socket.set()
+            async with asyncio.timeout(5):
+                with pytest.raises(asyncio.CancelledError):
+                    await startup
             assert client._shutdown_event.is_set()
             assert client._message_processor_task.done()
             assert client.client is None
             assert network_client._thread is None
+            assert network_client.socket() is None
+            await wait_until(lambda: not writers)
         finally:
+            release_socket.set()
+            startup.cancel()
+            with suppress(asyncio.CancelledError):
+                await startup
             await client.stop()
+            # Even a failed resource assertion must close this fixture's peers
+            # before Server.__aexit__ waits for their transports to disappear.
+            for writer in tuple(writers):
+                writer.close()
+                await writer.wait_closed()
 
 
 async def test_real_broker_acl_rejection_fails_required_subscription_readiness():
@@ -322,5 +366,6 @@ async def test_missing_suback_times_out_and_cleans_up_actual_socket():
                 await startup
             assert client.client is None
             assert network_client._thread is None
+            assert network_client.socket() is None
         finally:
             await client.stop()

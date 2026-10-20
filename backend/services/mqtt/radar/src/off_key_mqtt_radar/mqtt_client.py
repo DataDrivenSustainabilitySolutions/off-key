@@ -232,6 +232,11 @@ class RadarMQTTClient:
                 client.disconnect()
             finally:
                 await asyncio.to_thread(client.loop_stop)
+                # A TCP connect can finish after disconnect() saw no socket.
+                # Once the network thread has joined it cannot create another
+                # socket, and Paho can finish disconnecting synchronously.
+                if client.socket() is not None:
+                    client.disconnect()
 
     def _notify_connection_result(self, error: RuntimeError | None = None) -> None:
         """Resolve the active connection attempt on the asyncio event loop."""

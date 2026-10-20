@@ -129,6 +129,8 @@ docker compose build mqtt-radar
 RADAR owns MQTT reconnection. A failed connection is fully retired before its
 replacement starts, and shutdown joins the owned network thread. The backend
 regression suite exercises repeated connection failures against a real MQTT broker.
+Cancelling startup also retires sockets whose TCP connection completes during
+shutdown. A real-socket regression verifies that the broker sees the connection close.
 
 This builds `off-key-mqtt-radar:latest` without starting the profile-gated
 standalone RADAR container. Rebuild it after RADAR dependencies or source code

@@ -152,6 +152,28 @@ describe("EChart lifecycle", () => {
     expect(echartsMock.init).toHaveBeenCalledTimes(1);
   });
 
+  it("rebuilds axis indices when readings change while retaining the chart and explicit viewport", () => {
+    const build = (ids: string[]): TelemetryChartOption => ({
+      xAxis: ids.map(id => ({ id: `${id}-time`, type: "time" })),
+      yAxis: ids.map(id => ({ id: `${id}-values`, type: "value" })),
+      dataZoom: [{ type: "inside", startValue: 1200, endValue: 1800 }],
+      series: ids.map((id, index) => ({ id, type: "line", xAxisIndex: index, yAxisIndex: index, data: [] })),
+    });
+    const { rerender } = render(<EChart option={build(["a", "b", "c", "score"])} resolvedTheme="light" accessibleDescription="Joint chart" />);
+    const instance = echartsMock.instances[0]!;
+    const reduced = build(["a", "c", "score"]);
+    rerender(<EChart option={reduced} resolvedTheme="light" accessibleDescription="Joint chart" />);
+    expect(instance.setOption).toHaveBeenLastCalledWith(reduced, expect.objectContaining({ notMerge: true }));
+    expect(reduced.dataZoom).toMatchObject([{ startValue: 1200, endValue: 1800 }]);
+    rerender(<EChart option={build(["a", "c", "score"])} resolvedTheme="light" accessibleDescription="Updated samples" />);
+    expect(instance.setOption.mock.lastCall![1]).not.toHaveProperty("notMerge");
+    const restored = build(["a", "b", "c", "score"]);
+    rerender(<EChart option={restored} resolvedTheme="light" accessibleDescription="Joint chart" />);
+    expect(instance.setOption).toHaveBeenLastCalledWith(restored, expect.objectContaining({ notMerge: true }));
+    expect(echartsMock.init).toHaveBeenCalledTimes(1);
+    expect(instance.dispose).not.toHaveBeenCalled();
+  });
+
   it("reports absolute viewport values from data zoom events", () => {
     const onViewportChange = vi.fn();
     render(

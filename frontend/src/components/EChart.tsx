@@ -112,6 +112,7 @@ export function EChart({
   const appliedThemeRef = useRef<ResolvedTheme | undefined>(undefined);
   const initialThemeRef = useRef(resolvedTheme);
   const viewportCallbackRef = useRef(onViewportChange);
+  const axisIdsRef = useRef<string | undefined>(undefined);
 
   useEffect(() => {
     viewportCallbackRef.current = onViewportChange;
@@ -147,6 +148,7 @@ export function EChart({
       chart.dispose();
       chartRef.current = undefined;
       appliedThemeRef.current = undefined;
+      axisIdsRef.current = undefined;
     };
   }, []);
 
@@ -161,10 +163,17 @@ export function EChart({
   }, [resolvedTheme]);
 
   useEffect(() => {
+    const axisIds = JSON.stringify([option.xAxis, option.yAxis].map(axes =>
+      (Array.isArray(axes) ? axes : axes ? [axes] : []).map(axis => axis.id)));
+    // ECharts retains component indices when merging stable axis IDs. Replacing
+    // the axis set must rebuild those indices before series refer to them.
+    const axesChanged = axisIdsRef.current !== undefined && axisIdsRef.current !== axisIds;
     chartRef.current?.setOption(option, {
       lazyUpdate: true,
+      ...(axesChanged ? { notMerge: true } : {}),
       replaceMerge: ["series", "grid", "xAxis", "yAxis", "dataZoom"],
     });
+    axisIdsRef.current = axisIds;
   }, [option]);
 
   return (

@@ -14,6 +14,21 @@
 .pl-input-bindings .pl-field { margin: 0; }
 .pl-input-bindings .pl-field > span { display: flex; align-items: center; justify-content: space-between; gap: 8px; overflow-wrap: anywhere; }
 .pl-input-bindings small { color: hsl(var(--muted-foreground)); font-weight: 400; }
+.pl-reading-binding { display: flex; align-items: flex-end; gap: 8px; }
+.pl-reading-binding .pl-field { flex: 1; min-width: 0; }
+.pl-reading-binding > button { min-height: 36px; font-size: 12px; }
+.pl-reading-picker { min-width: 0; margin: 20px 0 0; padding: 16px 0 0; border: 0; border-top: 1px solid hsl(var(--border)); }
+.pl-reading-picker legend { padding: 0 10px 0 0; font-size: 13px; font-weight: 500; }
+.pl-reading-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.pl-reading-actions .pl-help { flex: 1; min-width: 160px; margin: 0; }
+.pl-reading-actions button { padding: 6px 10px; font-size: 12px; }
+.pl-reading-options { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr)); gap: 8px; max-height: 280px; overflow-y: auto; scrollbar-width: thin; }
+.pl-reading-option { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 10px 12px; border: 1px solid hsl(var(--border)); border-radius: 8px; cursor: pointer; }
+.pl-reading-option:has(:checked) { border-color: hsl(var(--primary) / .5); background: hsl(var(--primary) / .05); }
+.pl-reading-option:has(:disabled) { color: hsl(var(--muted-foreground)); cursor: default; }
+.pl-reading-option input[type="checkbox"] { flex-shrink: 0; width: 16px; height: 16px; min-height: 0; margin: 0; accent-color: hsl(var(--primary)); }
+.pl-reading-option > span { min-width: 0; overflow-wrap: anywhere; font-size: 13px; }
+.pl-reading-option small { display: block; margin-top: 3px; color: hsl(var(--muted-foreground)); font-size: 11px; }
 .pl-setup-card-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 16px; flex-wrap: wrap; }
 .pl-setup-card-footer .pl-help { margin: 0; }
 .pl-setup-card-footer a { font-size: 12px; color: hsl(var(--primary)); text-underline-offset: 3px; }

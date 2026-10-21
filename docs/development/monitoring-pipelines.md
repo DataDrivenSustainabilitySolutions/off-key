@@ -39,8 +39,10 @@ match. Unrelated catalog descriptions or components do not invalidate a revision
 reading bindings and processing graph. Its main actions are **Load template**,
 **Save template** and **Apply monitoring**. Users do not save drafts or publish
 revisions to start a service. Learning settings and component parameters stay in
-the graph inspector. Entity selection includes configured entities even when
-there is no recent traffic; collection and reading ownership still gate Apply.
+the graph inspector. Learning fields appear immediately when its panel opens;
+only advanced input-slot editing is collapsed. Entity selection includes configured
+entities even when there is no recent traffic; collection and reading ownership
+still gate Apply.
 
 Load template reads the latest saved definition and layout, independently of any
 historical published revisions. Loading never changes the source template.

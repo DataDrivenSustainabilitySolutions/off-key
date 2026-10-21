@@ -140,7 +140,10 @@ test("loads the saved template, saves an independent copy, and fits desktop and 
     await expect(templates).toBeHidden();
     await expect(workbench.getByRole("textbox", { name: "Service name", exact: true })).toHaveValue("Machine health");
     await openPipelineSettings(workbench, "Service");
-    await workbench.getByText("Input slots and learning settings", { exact: true }).click();
+    for (const name of ["Detector learning updates before calibration", "Calibration observations", "Default random seed"])
+      await expect(workbench.getByRole("spinbutton", { name, exact: true })).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath("creation-learning-desktop.png"), fullPage: true });
+    await workbench.getByText("Input slots", { exact: true }).click();
     await expect(workbench.getByRole("textbox", { name: "Unit for temperature", exact: true })).toHaveValue("°C");
     await expect(workbench.getByRole("textbox", { name: "Unit for voltage", exact: true })).toHaveCount(0);
     await workbench.getByRole("button", { name: "Close settings", exact: true }).click();
@@ -152,6 +155,11 @@ test("loads the saved template, saves an independent copy, and fits desktop and 
     }
     await page.setViewportSize({ width: 390, height: 844 });
     await page.screenshot({ path: testInfo.outputPath("setup-mobile.png"), fullPage: true });
+    await openPipelineSettings(workbench, "Service");
+    for (const name of ["Detector learning updates before calibration", "Calibration observations", "Default random seed"])
+      await expect(workbench.getByRole("spinbutton", { name, exact: true })).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath("creation-learning-mobile.png"), fullPage: true });
+    await workbench.getByRole("button", { name: "Close settings", exact: true }).click();
     await workbench.getByRole("button", { name: "Load template", exact: true }).click();
     await expect(templates.getByRole("button", { name: `Use ${source.name}`, exact: true })).toBeVisible();
     await page.screenshot({ path: testInfo.outputPath("templates-mobile.png"), fullPage: true });

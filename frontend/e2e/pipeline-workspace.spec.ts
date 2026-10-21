@@ -84,9 +84,6 @@ async function buildBranchedGraph(
   const serviceSettings = page.getByRole("button", { name: "Learning settings", exact: true });
   if (await serviceSettings.count()) await serviceSettings.click();
   await page
-    .getByText("Input slots and learning settings", { exact: true })
-    .click();
-  await page
     .getByRole("spinbutton", {
       name: adaptive
         ? "Detector learning updates before calibration"
@@ -165,10 +162,10 @@ test.describe("visual pipeline real infrastructure", () => {
           await page.getByRole("button", { name: "Load template", exact: true }).click();
           await page.getByRole("button", { name: "Use Static baseline", exact: true }).click();
         }
-        await page.getByText("Input slots and learning settings", { exact: true }).click();
+        await page.getByText("Input slots", { exact: true }).click();
         const slots = Object.fromEntries(await page.getByRole("textbox", { name: /^Label for / }).evaluateAll((inputs) =>
           inputs.map((input) => [(input as HTMLInputElement).value, input.getAttribute("aria-label")!.slice("Label for ".length)])));
-        await page.getByText("Input slots and learning settings", { exact: true }).click();
+        await page.getByText("Input slots", { exact: true }).click();
         await buildBranchedGraph(page, strategy === "adaptive_stream", slots);
         const created = await savePipelineTemplate(page);
         pipelineId = created.id;
@@ -402,7 +399,6 @@ test.describe("visual pipeline real infrastructure", () => {
           await page.getByRole("button", { name: "Edit service", exact: true }).click();
           await expect(page.getByRole("region", { name: "Monitoring workbench", exact: true })).toBeVisible();
           await openPipelineSettings(page, "Service");
-          await page.getByText("Input slots and learning settings", { exact: true }).click();
           await page.getByRole("spinbutton", { name: "Calibration observations", exact: true }).fill("9");
           await expect(page.getByText(/Monitoring pauses briefly and learning starts again/)).toBeVisible();
           for (const name of ["voltage", "current", "temperature"])

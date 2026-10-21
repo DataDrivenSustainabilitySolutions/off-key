@@ -6,9 +6,10 @@ from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock
 
 import pytest
+from off_key_mqtt_radar import state_cache as state_cache_module
 from off_key_mqtt_radar.message_processor import MessageProcessor
 from off_key_mqtt_radar.models import AnomalyResult, MQTTMessage
-from off_key_mqtt_radar.state_cache import AlignmentUpdate
+from off_key_mqtt_radar.state_cache import AlignmentUpdate, SensorStateCache
 
 
 def _build_processor(
@@ -177,6 +178,37 @@ def test_align_features_waiting_for_barrier_returns_none():
     assert features is None
     assert alignment["alignment_status"] == "waiting_for_barrier"
     assert alignment["pending_sensors"] == ["current"]
+
+
+def test_three_sensor_cadence_blocks_stale_vectors_until_the_slow_sensor_recovers(
+    monkeypatch,
+):
+    now = {"value": 100.0}
+    monkeypatch.setattr(state_cache_module.time, "time", lambda: now["value"])
+    sensors = {"s1", "s2", "s3"}
+    processor = _build_processor(
+        required_sensors=sensors,
+        state_cache=SensorStateCache(
+            required_sensors=sensors, max_sensor_age_seconds=5
+        ),
+    )
+    timeline = [
+        (100.0, "s1", 1.0, "waiting_for_all", None),
+        (101.0, "s2", 2.0, "waiting_for_all", None),
+        (102.0, "s3", 3.0, "aligned_emit", {"s1": 1.0, "s2": 2.0, "s3": 3.0}),
+        # s1 arrives late; s2 and s3 are now stale and must be blocked.
+        (110.0, "s1", 1.1, "stale_sensor_block", None),
+        (111.0, "s2", 2.1, "stale_sensor_block", None),
+        # Once the slow sensor recovers, aligned vectors resume.
+        (112.0, "s3", 3.1, "aligned_emit", {"s1": 1.1, "s2": 2.1, "s3": 3.1}),
+    ]
+
+    for at, sensor, value, status, expected in timeline:
+        now["value"] = at
+        features, alignment = processor._align_features(
+            "charger-1", sensor, {sensor: value}
+        )
+        assert (alignment["alignment_status"], features) == (status, expected)
 
 
 def test_align_features_keeps_full_hierarchy_sensor_key():

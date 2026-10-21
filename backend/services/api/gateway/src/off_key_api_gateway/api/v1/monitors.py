@@ -119,6 +119,7 @@ async def get_monitoring_evidence(
 async def get_monitoring_chart_evidence(
     request: Request,
     charger_id: str,
+    service_id: str | None = Query(default=None, min_length=1, max_length=128),
     after_created: datetime | None = None,
     after_timestamp: datetime | None = None,
     after_service_id: str | None = None,
@@ -153,6 +154,7 @@ async def get_monitoring_chart_evidence(
     try:
         return await tactic.get_monitoring_chart_evidence(
             charger_id=charger_id,
+            service_id=service_id,
             after_created=after_created,
             after_timestamp=after_timestamp,
             after_service_id=after_service_id,

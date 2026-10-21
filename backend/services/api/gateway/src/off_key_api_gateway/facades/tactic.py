@@ -505,6 +505,7 @@ class Tactic:
         self,
         *,
         charger_id: str,
+        service_id: str | None = None,
         after_created: datetime | None = None,
         after_timestamp: datetime | None = None,
         after_service_id: str | None = None,
@@ -513,6 +514,8 @@ class Tactic:
     ) -> list[dict[str, Any]]:
         """Get the compact, incrementally pageable chart evidence projection."""
         params: dict[str, Any] = {"limit": limit}
+        if service_id is not None:
+            params["service_id"] = service_id
         if after_created is not None:
             if (
                 after_timestamp is None

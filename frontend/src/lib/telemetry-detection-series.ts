@@ -58,3 +58,25 @@ export const buildDetectionSeriesOption = (
     },
   };
 };
+
+export const buildThresholdSeriesOption = (
+  series: SecondaryChartSeries,
+  paneIndex: number,
+  color: string,
+): LineSeriesOption => ({
+  id: `threshold:${series.id}`,
+  name: "Alarm threshold",
+  type: "line",
+  xAxisIndex: paneIndex,
+  yAxisIndex: paneIndex,
+  data: series.data.map(point => [point.value[0], point.observation?.threshold ?? null]),
+  step: "end",
+  showSymbol: false,
+  connectNulls: false,
+  lineStyle: { color, width: 1.5, type: "dashed" },
+  itemStyle: { color },
+  emphasis: { disabled: true },
+  animation: false,
+  silent: true,
+  tooltip: { show: false },
+});

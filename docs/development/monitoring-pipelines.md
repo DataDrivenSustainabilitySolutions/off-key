@@ -103,6 +103,31 @@ inspector instead of narrowing the graph. Cards use larger titles, stage colors
 and typed ports; descriptions appear in component settings. Opening and arranging
 retain readable text size, while Fit entire graph explicitly requests an overview.
 
+## Monitoring history
+
+The service Evidence tab presents one timeline for its recorded inputs and joint
+detector result. Readings retain independent scales and units; the raw anomaly
+score (or logarithmic static evidence) appears once below them. A dashed line
+shows the threshold, red input lines mark service alarms, and score dots mark
+alarms from the selected detector. The view works with multivariate models such
+as online isolation forest and does not infer per-sensor attribution or a baseline.
+
+Up to six input tracks may be displayed simultaneously. Changing that selection
+only changes the view: results still describe the service's complete input set.
+Shared hover uses each result's original input timestamps to retrieve its exact
+recorded readings. Missing input history is labelled unavailable, never replaced
+with a nearby observation or a synthetic zero. Zoom and keyboard navigation apply
+to every track and remain fixed during inspection as new data arrives.
+
+Telemetry polls per visible reading, while evidence polls once per input entity
+with a service filter applied before database pagination. This optional
+`service_id` filter is propagated through the gateway chart-evidence endpoint;
+existing unfiltered consumers and cursor ordering retain their contract. History
+uses the signed-in workspace's bounded cache (2,000 retained points per displayed
+input and 2,000 result rows). Ordinary reading charts remain independent of a
+monitor; when monitoring is present their alarm markers and results share the
+same service scope.
+
 ## Numerical ownership
 
 Aberrant 1.3 supplies the standalone `aberrant.compose.GraphPipeline` numerical

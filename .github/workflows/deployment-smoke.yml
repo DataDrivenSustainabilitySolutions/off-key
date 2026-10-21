@@ -163,6 +163,7 @@ jobs:
             frontend/test-results/**/visual-language-*.png
             frontend/test-results/**/creation-*.png
             frontend/test-results/**/*-live-pipeline.png
+            frontend/test-results/**/monitoring-history-*.png
             frontend/test-results/**/maximum-graph-dark.png
             frontend/test-results/**/maximum-graph-mobile.png
             frontend/test-results/**/maximum-graph-overview.png

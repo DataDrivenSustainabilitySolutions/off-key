@@ -59,9 +59,11 @@ class MonitoringEvidenceService:
         after_service_id: str | None,
         after_sequence_number: int | None,
         limit: int,
+        service_id: str | None = None,
     ) -> list[dict[str, object]]:
         rows = await self._repository.list_chart_by_charger(
             charger_id=charger_id,
+            service_id=service_id,
             after_created=after_created,
             after_timestamp=after_timestamp,
             after_service_id=after_service_id,

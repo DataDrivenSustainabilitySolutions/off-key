@@ -30,6 +30,8 @@ export interface DetectionObservation {
   alarmActive: boolean;
   logValue: number | null;
   isInfinite: boolean;
+  inputTimestamps?: Readonly<Record<string, string>>;
+  alarmFired?: boolean;
 }
 
 export interface TelemetryChartDetector extends ChartDetector {
@@ -93,11 +95,23 @@ export const collectTelemetryChartDetectors = ({
   telemetryTimes: readonly number[];
 }): TelemetryChartDetector[] => {
   const times = new Set(telemetryTimes);
-  const groups = new Map<string, ChartDetector & { observations: DetectionObservation[] }>();
   const ordered = evidence.map((item) => ({ item, time: getEvidenceTimeForSensor(item, telemetryType) }))
     .filter((entry): entry is { item: MonitoringChartEvidence; time: number } =>
-      entry.time !== undefined && times.has(entry.time) && entry.item.sensor_set.includes(telemetryType))
-    .sort((left, right) => left.time - right.time || left.item.sequence_number - right.item.sequence_number);
+      entry.time !== undefined && times.has(entry.time) && entry.item.sensor_set.includes(telemetryType));
+  return collectChartDetectors(ordered);
+};
+
+/** A multivariate result belongs to the aligned observation, not to any one input. */
+export const collectMonitoringChartDetectors = (evidence: readonly MonitoringChartEvidence[]): TelemetryChartDetector[] =>
+  collectChartDetectors(evidence.map(item => ({ item, time: Date.parse(item.timestamp) }))
+    .filter(({ time }) => Number.isFinite(time)), true);
+
+function collectChartDetectors(
+  rows: Array<{ item: MonitoringChartEvidence; time: number }>,
+  includeInputs = false,
+): TelemetryChartDetector[] {
+  const groups = new Map<string, ChartDetector & { observations: DetectionObservation[] }>();
+  const ordered = rows.sort((left, right) => left.time - right.time || left.item.sequence_number - right.item.sequence_number);
   for (const { item, time } of ordered) {
     if (item.strategy === "adaptive_stream") {
       const id = `adaptive-score:${item.service_id}`;
@@ -105,6 +119,7 @@ export const collectTelemetryChartDetectors = ({
       group.observations.push({
         sequenceNumber: item.sequence_number, timeMs: time, value: finiteOrNull(item.anomaly_score),
         threshold: finiteOrNull(item.threshold), alarmActive: item.alarm, logValue: null, isInfinite: false,
+        ...(includeInputs ? { inputTimestamps: item.input_timestamps, alarmFired: item.alarm } : {}),
       });
       groups.set(id, group);
       continue;
@@ -130,6 +145,8 @@ export const collectTelemetryChartDetectors = ({
         threshold: threshold !== null && threshold > 0 ? threshold : null,
         alarmActive: tracker.alarm_active, logValue: finiteOrNull(tracker.log_statistic_value),
         isInfinite: tracker.statistic_is_infinite,
+        ...(includeInputs ? { inputTimestamps: item.input_timestamps,
+          alarmFired: "alarm_fired" in tracker ? tracker.alarm_fired : item.alarm } : {}),
       });
       groups.set(id, group);
     }
@@ -138,7 +155,7 @@ export const collectTelemetryChartDetectors = ({
   return [...groups.values()]
     .filter((group) => group.observations.some((observation) => isEvaluatedObservation(observation, group.pane)))
     .sort((left, right) => left.id.localeCompare(right.id));
-};
+}
 
 const getOverflowBoundary = (
   observation: DetectionObservation,

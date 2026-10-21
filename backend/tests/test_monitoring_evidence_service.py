@@ -114,6 +114,7 @@ async def test_chart_evidence_service_uses_compact_cursor_projection():
 
     repository.list_chart_by_charger.assert_awaited_once_with(
         charger_id="charger-1",
+        service_id=None,
         after_created=now - timedelta(seconds=1),
         after_timestamp=now - timedelta(seconds=1),
         after_service_id="svc-static",
@@ -158,3 +159,44 @@ def test_chart_evidence_contract_requires_exact_input_timestamps():
 
     with pytest.raises(ValidationError, match="input_timestamps"):
         MonitoringChartEvidenceResponse.model_validate(payload)
+
+
+@pytest.mark.asyncio
+async def test_chart_service_filter_is_applied_before_the_page_limit():
+    session = AsyncMock()
+    result = MagicMock()
+    result.all.return_value = []
+    session.execute.return_value = result
+    await MonitoringEvidenceRepository(session).list_chart_by_charger(
+        charger_id="charger-1",
+        service_id="chosen-monitor",
+        after_created=None,
+        after_timestamp=None,
+        after_service_id=None,
+        after_sequence_number=None,
+        limit=50,
+    )
+    query = session.execute.await_args.args[0]
+    compiled = query.compile()
+    assert "monitoring_evidence.service_id =" in str(compiled)
+    assert "chosen-monitor" in compiled.params.values()
+    assert "charger-1" in compiled.params.values()
+
+
+@pytest.mark.asyncio
+async def test_chart_service_forwards_the_selected_monitor():
+    repository = AsyncMock()
+    repository.list_chart_by_charger.return_value = []
+    await MonitoringEvidenceService(repository).list_chart_evidence(
+        charger_id="charger-1",
+        service_id="chosen-monitor",
+        after_created=None,
+        after_timestamp=None,
+        after_service_id=None,
+        after_sequence_number=None,
+        limit=50,
+    )
+    assert (
+        repository.list_chart_by_charger.await_args.kwargs["service_id"]
+        == "chosen-monitor"
+    )

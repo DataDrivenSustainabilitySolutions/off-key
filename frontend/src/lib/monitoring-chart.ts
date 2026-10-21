@@ -2,6 +2,20 @@ import type {
   MonitoringChartEvidence,
   MonitoringEvidenceCursor,
 } from '@/types/monitoring';
+import type { Anomaly } from '@/types/charger';
+
+/** Keep alarm markers in the same monitor scope as the displayed detector result. */
+export function filterServiceAnomalies(
+  anomalies: readonly Anomaly[],
+  evidence: readonly MonitoringChartEvidence[],
+  serviceId: string | undefined,
+  sensor: string,
+): Anomaly[] {
+  if (!serviceId) return [...anomalies];
+  const times = new Set(evidence.filter(row => row.service_id === serviceId && row.alarm)
+    .flatMap(row => [Date.parse(row.timestamp), getEvidenceTimeForSensor(row, sensor)]));
+  return anomalies.filter(item => item.service_id ? item.service_id === serviceId : times.has(Date.parse(item.timestamp)));
+}
 
 export const getEvidenceTimeForSensor = (
   evidence: MonitoringChartEvidence,

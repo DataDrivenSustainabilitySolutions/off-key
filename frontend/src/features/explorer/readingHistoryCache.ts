@@ -47,6 +47,8 @@ export function useReadingHistorySnapshot(cache: ReadingHistoryCache | undefined
 export class ReadingHistoryCache {
   private entries = new Map<string, ReadingHistoryEntry>();
   private listeners = new Map<string, Set<() => void>>();
+  private revisionNumber = 0;
+  get revision() { return this.revisionNumber; }
   readonly owner: string | number | null;
   constructor(owner: string | number | null = null) { this.owner = owner; }
 
@@ -64,6 +66,7 @@ export class ReadingHistoryCache {
   }
   update(key: string, update: (entry: ReadingHistoryEntry) => ReadingHistoryEntry) {
     const next = update(this.entries.get(key) ?? { data: EMPTY_READING_HISTORY });
+    this.revisionNumber += 1;
     this.entries.delete(key); this.entries.set(key, next);
     let points = [...this.entries.values()].reduce((count, entry) => count + entry.data.telemetry.length + entry.data.evidence.length, 0);
     while (this.entries.size > READING_HISTORY_CACHE_LIMIT || points > READING_HISTORY_POINT_LIMIT) {

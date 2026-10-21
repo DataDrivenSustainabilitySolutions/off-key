@@ -13,11 +13,11 @@ from off_key_tactic_middleware.api.v1.models import (
 )
 
 DEFERRED = "parameters validated; instantiation is deferred to the RADAR runtime"
-INTERNAL_ERRORS = [
-    ValueError("secret validation detail /tmp/internal"),
-    ImportError("secret.module.path"),
-    RuntimeError("stack trace secret"),
-]
+VALIDATION_ERROR = ValueError("secret validation detail /tmp/internal")
+IMPORT_ERROR = ImportError("secret.module.path")
+RUNTIME_ERROR = RuntimeError("stack trace secret")
+VALIDATION_FAILED = "Model validation failed. Check model type and parameters."
+DEPENDENCIES_MISSING = "Model dependencies are not available."
 
 
 def _registry(result=None, error=None):
@@ -72,16 +72,15 @@ async def test_admin_model_test_validates_default_parameters():
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("error", "code", "message"),
-    zip(
-        INTERNAL_ERRORS,
-        ["validation_error", "import_error", "instantiation_error"],
-        [
-            "Model validation failed. Check model type and parameters.",
-            "Model dependencies are not available.",
+    [
+        (VALIDATION_ERROR, "validation_error", VALIDATION_FAILED),
+        (IMPORT_ERROR, "import_error", DEPENDENCIES_MISSING),
+        (
+            RUNTIME_ERROR,
+            "instantiation_error",
             "Model instantiation failed due to an internal error",
-        ],
-        strict=True,
-    ),
+        ),
+    ],
 )
 async def test_admin_model_test_hides_exception_detail(error, code, message):
     registry = _registry(error=error)
@@ -128,16 +127,11 @@ async def test_create_instance_reports_runtime_owner(
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("error", "status_code", "detail"),
-    zip(
-        INTERNAL_ERRORS,
-        [400, 422, 500],
-        [
-            "Model validation failed. Check model type and parameters.",
-            "Model dependencies are not available.",
-            "Model creation failed",
-        ],
-        strict=True,
-    ),
+    [
+        (VALIDATION_ERROR, 400, VALIDATION_FAILED),
+        (IMPORT_ERROR, 422, DEPENDENCIES_MISSING),
+        (RUNTIME_ERROR, 500, "Model creation failed"),
+    ],
 )
 async def test_create_instance_hides_exception_detail(error, status_code, detail):
     with pytest.raises(HTTPException) as exc_info:

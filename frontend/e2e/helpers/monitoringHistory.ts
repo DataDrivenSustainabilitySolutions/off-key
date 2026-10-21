@@ -49,6 +49,11 @@ export async function inspectMonitoringHistory({ page, api, headers, serviceId, 
     });
   })).toEqual([true, true, true]);
   await history.screenshot({ path: testInfo.outputPath(`monitoring-history-${strategy}-desktop.png`) });
+  const chartBounds = await chart.boundingBox();
+  if (!chartBounds) throw new Error("Monitoring chart has no visible bounds");
+  await chart.hover({ position: { x: Math.floor(chartBounds.width * 0.6), y: 28 + 3 * 148 + 50 } });
+  await history.screenshot({ path: testInfo.outputPath(`monitoring-history-${strategy}-hover.png`) });
+  await page.mouse.move(0, 0);
   await history.getByText("Displayed readings · 3 of 3", { exact: true }).click();
   await history.getByRole("checkbox", { name: /^current\b/ }).uncheck();
   await expect(history.getByRole("img", { name: /^2 displayed readings of 3 monitored inputs:/ })).toBeVisible();

@@ -89,6 +89,27 @@ describe("joint monitoring history", () => {
     expect(text).not.toContain("Joint anomaly score: 0.61");
   });
 
+  it("matches a scored sensor by stable series identity when display names repeat", () => {
+    const { model } = build();
+    const readings = model.readings.map(reading => ({ ...reading, name: "Same name" }));
+    const text = formatMonitoringObservationTooltip([
+      { seriesId: "reading:humidity", seriesName: "Same name", value: [Date.parse(second), 55] },
+      { seriesName: "Joint anomaly score", data: model.secondarySeries[0]!.data[0] },
+    ], readings, String, String);
+    expect(text).toContain("Joint anomaly score: 0.61");
+    expect(text).not.toContain("No evaluated result");
+  });
+
+  it("does not attach old results to a hovered pending-score marker", () => {
+    const { model } = build();
+    const text = formatMonitoringObservationTooltip([
+      { seriesId: "pending-reading:temperature", seriesName: "Awaiting anomaly score", value: [Date.parse(later), 999] },
+      { seriesName: "Joint anomaly score", data: model.secondarySeries[0]!.data[0] },
+    ], model.readings, String, String);
+    expect(text).toContain("No evaluated result for this input sample");
+    expect(text).not.toContain("Joint anomaly score: 0.61");
+  });
+
   it("keeps inputs usable without detector evidence and excludes another service's decisions", () => {
     const { model } = build([{ ...row, service_id: "retired", anomaly_score: 100 }]);
     expect(model.readings[0]!.data).toHaveLength(2);

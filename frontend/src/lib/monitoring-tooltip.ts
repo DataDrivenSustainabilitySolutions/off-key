@@ -1,7 +1,7 @@
 import type { MonitoringChartReading } from "./telemetry-chart";
 import type { DetectionObservation } from "./telemetry-detectors";
 
-type Entry = { seriesName?: unknown; value?: unknown; data?: { observation?: DetectionObservation } };
+type Entry = { seriesId?: unknown; seriesName?: unknown; value?: unknown; data?: { observation?: DetectionObservation } };
 
 /** Read the exact recorded inputs for a joint result, rather than nearby samples. */
 export function formatMonitoringObservationTooltip(
@@ -17,7 +17,8 @@ export function formatMonitoringObservationTooltip(
   const observation = evaluated[0]?.data?.observation;
   if (!observation?.inputTimestamps) return undefined;
   const anchor = entries.find(entry => Array.isArray(entry.value) && typeof entry.value[0] === "number");
-  const anchorReading = readings.find(reading => reading.name === anchor?.seriesName);
+  const anchorReading = readings.find(reading => anchor?.seriesId === reading.id || anchor?.seriesId === `pending-${reading.id}`)
+    ?? readings.find(reading => reading.name === anchor?.seriesName);
   const anchorTime = Array.isArray(anchor?.value) ? Number(anchor.value[0]) : undefined;
   if (anchorReading?.inputKey && anchorTime !== undefined
     && Date.parse(observation.inputTimestamps[anchorReading.inputKey] ?? "") !== anchorTime) {

@@ -54,6 +54,8 @@ test("selects only AC1 and AC3 and preserves named template mappings on desktop 
     expect(saved.id).toBe(template.id);
     expect(saved.draft.input_slots?.map((slot) => slot.id)).toEqual(retainedIds);
     await page.reload();
+    await expect(editor.getByRole("combobox", { name: "Reading for AC1", exact: true })).toHaveValue(`${deviceId}:AC1`);
+    await expect(editor.getByRole("combobox", { name: "Reading for AC3", exact: true })).toHaveValue(`${deviceId}:AC3`);
     await expect(editor.getByRole("combobox", { name: "Reading for AC2", exact: true })).toHaveCount(0);
   } finally {
     for (const id of templateIds) {

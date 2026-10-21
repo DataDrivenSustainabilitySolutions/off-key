@@ -67,7 +67,7 @@ export function ExplorerWorkspace() {
     <div className="ex-workspace-heading"><h1>Monitoring</h1>
       <div className="ex-workspace-actions">
         {selected && !creating && !requestedService && <><Link className="ex-collection-action" to={sectionHref("/sources")}>Configure in Sources</Link>
-          {!preview && <button onClick={() => changeView({ inspect: "source" })}><Info size={15} />Inspect source</button>}
+          {!preview && <button className="ex-collection-action" onClick={() => changeView({ inspect: "source" })}><Info size={15} aria-hidden="true" />Inspect source</button>}
           {liveStreamIds.length > 0 && <SystemLiveControls telemetry={telemetry} canStart={system.canEdit} canView={!!system.snapshot} disabled={system.saving} />}
         </>}
         {system.canEdit && !creating && !pipelineView && <button className="mn-primary" disabled={system.saving || !system.document || !monitoring.ready} onClick={createService}>
@@ -78,7 +78,7 @@ export function ExplorerWorkspace() {
     <SourceScope />
     {system.status === "sign-in-required" && <p className="ex-banner">Sign in to load the catalogue. <Link to="/login">Sign in</Link></p>}
     {system.error && <p className="ex-banner ex-error" role="alert">{system.error}<button onClick={() => void system.refresh()}>Retry</button></p>}
-    {loadingCreation ? <p className="ex-muted" role={creationError ? "alert" : "status"}>
+    {loadingCreation ? <p className={creationError ? "ex-banner ex-error" : "ex-muted"} role={creationError ? "alert" : "status"}>
       {creationError || "Opening monitoring setup…"}{creationError && <button onClick={() => void Promise.allSettled([monitoring.reload(), system.refresh()])}>Retry</button>}
     </p> : selectionMissing && !pipelineView ? <p role="alert">{params.has("reading") ? "Reading not found." : params.has("entity") ? "Entity not found." : "Source not found."}</p>
       : pipelineView ? <Suspense fallback={<p className="ex-muted" role="status">Opening pipelines…</p>}><Pipelines services={monitoring.services} index={monitoringIndex} canEdit={system.canEdit}

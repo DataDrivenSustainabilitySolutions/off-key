@@ -6,11 +6,12 @@ import { apiUtils } from "@/lib/api-client";
 import { API_CONFIG } from "@/lib/api-config";
 import { getErrorMessage } from "@/lib/errors";
 import type { ActiveService, JsonValue } from "@/types/monitoring";
+import { Button } from "@/components/ui/button";
 import { InlineName } from "../catalogue/InlineName";
 import { MonitoringHistory } from "./MonitoringHistory";
 import type { ReadingHistoryCache } from "../explorer/readingHistoryCache";
 import type { SystemDocument } from "../catalogue/systemTypes";
-import { formatServiceTime, serviceName, serviceState, strategyName, type MonitoringInput } from "./serviceModel";
+import { formatServiceTime, modelName, serviceName, serviceState, strategyName, type MonitoringInput } from "./serviceModel";
 import type { PipelineState } from "../pipelines/PipelineDiagnostics";
 
 const PipelineRun = lazy(() => import("../pipelines/PipelineRunView"));
@@ -19,6 +20,7 @@ type Configuration = { monitoring: Record<string, JsonValue>; performance_config
 type Props = { service: ActiveService; inputs: MonitoringInput[]; document: SystemDocument; historyCache?: ReadingHistoryCache; canEdit: boolean; favourite: boolean;
   pipelineState?: PipelineState;
   onFavourite: () => void; onRename: (name: string) => Promise<void>; onBack: () => void; onDeleted: () => Promise<void> };
+const formatSetting = (value: JsonValue) => typeof value === "number" ? value.toLocaleString() : String(value);
 const tabs = [{ id: "overview", label: "Overview" }, { id: "evidence", label: "Evidence" }, { id: "pipeline", label: "Pipeline" }, { id: "configuration", label: "Configuration" }];
 
 export default function MonitoringServiceDetail({ service, inputs, document, historyCache, canEdit, favourite, pipelineState, onFavourite, onRename, onBack, onDeleted }: Props) {
@@ -61,7 +63,7 @@ export default function MonitoringServiceDetail({ service, inputs, document, his
   return <section className="mn-detail" aria-label="Monitoring service details">
     <button className="mn-back" onClick={onBack}><ArrowLeft size={14} />Monitoring</button>
     <div className="mn-detail-header"><div><h2><InlineName value={name} editable={canEdit} onSave={onRename} ariaLabel="Rename service" /></h2>
-      <small>{strategyName(service)}{service.model_type ? ` · ${service.model_type.replace(/^aberrant_/, "").replace(/_/g, " ")}` : ""}</small></div>
+      <small>{strategyName(service)}{service.model_type ? ` · ${modelName(service.model_type)}` : ""}</small></div>
       <div className="mn-detail-actions"><button className="mn-favourite ex-icon-button" aria-pressed={favourite} aria-label={favourite ? "Remove service from favourites" : "Add service to favourites"} onClick={onFavourite}><Star size={17} /></button>
         <button className="ex-icon-button" aria-label="Close service" onClick={onBack}><X size={17} /></button></div></div>
     <dl className="mn-summary"><div><dt>State</dt><dd><span className={`mn-state mn-state--${state.tone}`}>{state.label}</span></dd></div>
@@ -102,7 +104,7 @@ export default function MonitoringServiceDetail({ service, inputs, document, his
               <li key={reason}>{reason.replace(/_/g, " ")}: {count.toLocaleString()}</li>)}</ul>}
           </> : <p className="ex-muted">Coverage has not been reported by this workload.</p>}
         </section>
-        <section className={progress ? "mn-section" : undefined}><h3>Monitored readings</h3><ul className="mn-input-list">
+        <section className="mn-section"><h3>Monitored readings</h3><ul className="mn-input-list">
           {inputs.map(input => <li key={input.stream.id}><span>{input.stream.label}<small>{input.path}{input.stream.unit ? ` · ${input.stream.unit}` : ""}</small></span>
             <button onClick={() => chooseTab("evidence", input.stream.id)}>Inspect</button></li>)}
           {!inputs.length && service.mqtt_topics.map(topic => <li key={topic}><span>{topic}</span></li>)}
@@ -113,10 +115,10 @@ export default function MonitoringServiceDetail({ service, inputs, document, his
         initialReading={inputs.some(input => input.stream.id === params.get("stream")) ? params.get("stream")! : undefined} />
         : <p className="ex-muted">These service inputs are not available in the current catalogue.</p>)}
       {tab === "configuration" && <>
-        {error && <p className="ex-preview-error" role="alert">{error}<button onClick={() => setRetry(value => value + 1)}>Retry</button></p>}
-        <dl className="mn-configuration"><div><dt>Strategy</dt><dd>{strategyName(service)}</dd></div><div><dt>Model</dt><dd>{service.model_type ?? "Not recorded"}</dd></div>
-          {configuration?.monitoring.training_window_size !== undefined && <div><dt>Training samples</dt><dd>{String(configuration.monitoring.training_window_size)}</dd></div>}
-          {configuration?.monitoring.calibration_window_size !== undefined && <div><dt>Calibration samples</dt><dd>{String(configuration.monitoring.calibration_window_size)}</dd></div>}
+        {error && <p className="ex-banner ex-error" role="alert">{error}<button onClick={() => setRetry(value => value + 1)}>Retry</button></p>}
+        <dl className="mn-configuration"><div><dt>Strategy</dt><dd>{strategyName(service)}</dd></div><div><dt>Model</dt><dd title={service.model_type}>{service.model_type ? modelName(service.model_type) : "Not recorded"}</dd></div>
+          {configuration?.monitoring.training_window_size !== undefined && <div><dt>Training samples</dt><dd>{formatSetting(configuration.monitoring.training_window_size)}</dd></div>}
+          {configuration?.monitoring.calibration_window_size !== undefined && <div><dt>Calibration samples</dt><dd>{formatSetting(configuration.monitoring.calibration_window_size)}</dd></div>}
           <div><dt>Notifications</dt><dd>Operator managed</dd></div>
         </dl><p className="ex-muted">Email recipients are configured by the deployment.</p>
         {configuration && Object.keys(configuration.monitoring).length > 0 && <details className="mn-section"><summary>Detector configuration</summary><pre className="mn-json">{JSON.stringify(configuration, null, 2)}</pre></details>}
@@ -128,10 +130,10 @@ export default function MonitoringServiceDetail({ service, inputs, document, his
     <Dialog.Root open={confirm} onOpenChange={next => { if (!deleting) setConfirm(next); }}><Dialog.Portal><Dialog.Overlay className="ex-dialog-overlay" />
       <Dialog.Content className="ex-dialog" onEscapeKeyDown={event => { if (deleting) event.preventDefault(); }}>
         <header><Dialog.Title>{service.status ? "Stop and remove service?" : "Remove service?"}</Dialog.Title></header>
-        <Dialog.Description>{name}. Collected history is retained.</Dialog.Description>
+        <Dialog.Description className="ex-muted">{name}. Collected history is retained.</Dialog.Description>
         {deleteError && <p className="ex-preview-error" role="alert">{deleteError}</p>}
-        <div className="mn-section"><button className="mn-danger" disabled={deleting} onClick={() => void remove()}>{deleting ? "Removing…" : "Remove service"}</button>
-          <Dialog.Close disabled={deleting}>Cancel</Dialog.Close></div>
+        <div className="mn-dialog-actions"><Dialog.Close asChild><Button variant="outline" disabled={deleting}>Cancel</Button></Dialog.Close>
+          <Button variant="destructive" disabled={deleting} onClick={() => void remove()}>{deleting ? "Removing…" : "Remove service"}</Button></div>
       </Dialog.Content></Dialog.Portal></Dialog.Root>
   </section>;
 }

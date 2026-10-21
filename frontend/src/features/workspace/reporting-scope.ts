@@ -1,5 +1,5 @@
 import type { Anomaly } from "@/types/charger";
-import type { SystemRuntime } from "../catalogue/systemTypes";
+import type { SystemDocument, SystemRuntime } from "../catalogue/systemTypes";
 
 /** Match recorded identities, independent of catalogue labels and MQTT topic names. */
 export function filterSourceReports(reports: Anomaly[], ids: readonly string[] | undefined, runtime?: SystemRuntime) {
@@ -21,4 +21,23 @@ export function filterSourceReports(reports: Anomaly[], ids: readonly string[] |
     if (report.telemetry_type === "__multivariate__") return entireEntity.get(report.charger_id) === true;
     return keys.has(report.telemetry_type);
   });
+}
+
+/** Resolve recorded identities to catalogue labels, keeping the identity when the catalogue no longer has it. */
+export function reportLabels(document: SystemDocument | undefined, runtime?: SystemRuntime) {
+  const connections = new Map(document?.connections.map(item => [item.id, item.label]));
+  const devices = new Map(document?.devices.map(item => [item.id, item.label]));
+  const entities = new Map<string, string>();
+  const readings = new Map<string, string>();
+  for (const stream of document?.streams ?? []) {
+    const binding = runtime?.bindings?.[stream.id];
+    if (!binding) continue;
+    const entity = (stream.device_id && devices.get(stream.device_id)) || connections.get(stream.connection_id);
+    if (entity && !entities.has(binding.entity_id)) entities.set(binding.entity_id, entity);
+    readings.set(`${binding.entity_id}\u0000${binding.telemetry_key}`, stream.label);
+  }
+  return {
+    entity: (id: string) => entities.get(id) ?? id,
+    reading: (entityId: string, key: string) => readings.get(`${entityId}\u0000${key}`) ?? key,
+  };
 }

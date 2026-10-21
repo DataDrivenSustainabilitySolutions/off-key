@@ -57,7 +57,7 @@ export function CollectionHealth() {
       {snapshot ? (
         <CollectionMeasurements snapshot={snapshot} now={now} />
       ) : !error && (
-        <p role="status">Loading collection status…</p>
+        <p role="status" className="text-sm text-muted-foreground">Loading collection status…</p>
       )}
     </SectionPanel>
   );
@@ -108,10 +108,10 @@ function CollectionMeasurements({ snapshot, now }: { snapshot: CollectionStatus;
         </>
       )}
       <p className="mt-3 text-xs text-muted-foreground">
-        Since worker start: {snapshot.collection.records_written ?? 0} numeric
-        rows written · {snapshot.collection.counters?.overload_dropped ?? 0}{" "}
+        Since worker start: {(snapshot.collection.records_written ?? 0).toLocaleString()} numeric
+        rows written · {(snapshot.collection.counters?.overload_dropped ?? 0).toLocaleString()}{" "}
         observations dropped at queue capacity ·{" "}
-        {snapshot.collection.counters?.invalid ?? 0} invalid observations rejected.
+        {(snapshot.collection.counters?.invalid ?? 0).toLocaleString()} invalid observations rejected.
       </p>
     </>
   );

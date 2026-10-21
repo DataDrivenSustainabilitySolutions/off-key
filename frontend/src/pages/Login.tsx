@@ -193,6 +193,7 @@ const Login: React.FC = () => {
         {/* Fehlermeldung oder Erfolgsnachricht */}
         {message && (
           <p
+            role={message === "Login successful!" ? "status" : "alert"}
             className={`mt-2 text-center text-sm ${
               message === "Login successful!"
                 ? AUTH_SUCCESS_CLASS

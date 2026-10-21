@@ -9,9 +9,9 @@ type Props = {
   disabled: boolean;
 };
 const titles = {
-  idle: "Disconnected",
+  idle: "Live view off",
   connecting: "Connecting",
-  live: "Connected",
+  live: "Live",
   waiting: "Waiting",
   reconnecting: "Reconnecting",
   blocked: "Unavailable",

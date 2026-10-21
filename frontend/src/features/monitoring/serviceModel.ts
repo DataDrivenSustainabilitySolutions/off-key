@@ -85,5 +85,13 @@ export function servicesForScope(services: ActiveService[], index: MonitoringInd
 export function formatServiceTime(value: string | null | undefined): string {
   if (!value) return "Awaiting update";
   const date = new Date(value);
-  return Number.isFinite(date.getTime()) ? date.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "Awaiting update";
+  if (!Number.isFinite(date.getTime())) return "Awaiting update";
+  const time = { hour: "2-digit", minute: "2-digit", second: "2-digit" } as const;
+  // A bare time reads as today, so older updates also name their day.
+  return date.toDateString() === new Date().toDateString() ? date.toLocaleTimeString(undefined, time)
+    : date.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "medium" });
+}
+
+export function modelName(modelType: string): string {
+  return modelType.replace(/^aberrant_/, "").replace(/_/g, " ");
 }

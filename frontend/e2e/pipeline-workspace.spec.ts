@@ -29,6 +29,7 @@ import type {
 } from "../src/types/pipelines.generated";
 import type { PipelineState } from "../src/features/pipelines/diagnostics";
 import { accessToken } from "./helpers/auth";
+import { inspectMonitoringHistory } from "./helpers/monitoringHistory";
 
 const selected = (page: Page) =>
   page.getByRole("combobox", { name: "Selected component", exact: true });
@@ -74,6 +75,7 @@ async function buildBranchedGraph(
   await connect(page, adaptive ? "adaptive_uncentered_pca_1" : "static_pca_1");
   await connect(page, "features_select_2");
   await selected(page).selectOption("detector");
+  if (adaptive) await page.getByRole("combobox", { name: "Detector model", exact: true }).selectOption("aberrant_online_isolation_forest");
   await page
     .getByRole("button", {
       name: "Disconnect input from detector",
@@ -292,6 +294,7 @@ test.describe("visual pipeline real infrastructure", () => {
           body: JSON.stringify(runtime, null, 2),
           contentType: "application/json",
         });
+        await inspectMonitoringHistory({ page, api, headers, serviceId, entityId, strategy, testInfo });
         const raw = runtime.observation?.passes.score.features_select_2;
         expect(raw?.output).toBeTruthy();
         if (raw && typeof raw.output === "object")

@@ -21,7 +21,7 @@ import {
   filterAnomalies,
 } from "@/lib/anomaly-utils";
 import { resolveChartThemeColors } from "@/lib/echarts-theme";
-import { getEvidenceTimeForSensor } from "@/lib/monitoring-chart";
+import { filterServiceAnomalies, getEvidenceTimeForSensor } from "@/lib/monitoring-chart";
 import { normalizeTelemetry } from "@/lib/telemetry-data";
 import { collectTelemetryChartDetectors } from "@/lib/telemetry-detectors";
 import { getChartDomain } from "@/lib/telemetry-thresholds";
@@ -229,8 +229,8 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
     [normalizedTelemetry, activeNavigationState.range.fromMs, activeNavigationState.range.toMs],
   );
   const telemetryAnomalies = useMemo(
-    () => filterAnomalies(anomalies, telemetryData.type, fromDate, toDate),
-    [anomalies, fromDate, telemetryData.type, toDate],
+    () => filterAnomalies(filterServiceAnomalies(anomalies, evidence, monitoringService?.id, telemetryData.type), telemetryData.type, fromDate, toDate),
+    [anomalies, evidence, monitoringService?.id, fromDate, telemetryData.type, toDate],
   );
   const sensorEvidence = useMemo(
     () =>

@@ -8,7 +8,7 @@ import { useTheme } from "@/components/theme-provider";
 import { useDetectorSelection } from "@/hooks/use-detector-selection";
 import { createAnomalyMarkers, filterAnomalies } from "@/lib/anomaly-utils";
 import { resolveChartThemeColors } from "@/lib/echarts-theme";
-import { getEvidenceTimeForSensor } from "@/lib/monitoring-chart";
+import { filterServiceAnomalies, getEvidenceTimeForSensor } from "@/lib/monitoring-chart";
 import { buildSensorClaims } from "@/lib/monitoring-services";
 import { buildTelemetryChartModel, buildTelemetryChartOption, getLocalTimeZone } from "@/lib/telemetry-chart";
 import { normalizeTelemetry } from "@/lib/telemetry-data";
@@ -59,14 +59,8 @@ export function ExplorerHistoryChart({ stream, connection, snapshot, binding, se
   [monitoring.binding, monitoring.services, telemetryType, serviceId]);
   const evidence = useMemo(() => monitoring.evidence.filter((item) => item.sensor_set.includes(telemetryType)
     && (!(serviceId ?? service?.id) || item.service_id === (serviceId ?? service?.id))), [monitoring.evidence, service, telemetryType, serviceId]);
-  const anomalies = useMemo(() => {
-    if (!serviceId) return monitoring.anomalies;
-    // Historical rows need evidence to recover their monitor association. New
-    // rows carry the exact ID, including when different monitors alarm together.
-    const times = new Set(evidence.filter(item => item.alarm).flatMap(item => [Date.parse(item.timestamp), getEvidenceTimeForSensor(item, telemetryType)]));
-    return monitoring.anomalies.filter(item => item.service_id
-      ? item.service_id === serviceId : times.has(Date.parse(item.timestamp)));
-  }, [serviceId, monitoring.anomalies, evidence, telemetryType]);
+  const anomalies = useMemo(() => filterServiceAnomalies(monitoring.anomalies, evidence, serviceId ?? service?.id, telemetryType),
+    [serviceId, service?.id, monitoring.anomalies, evidence, telemetryType]);
   const operational = service?.operational_status.stage === "operational" && !service.operational_status.is_stale;
   const lastScoreTime = evidence.reduce<number | undefined>((latest, item) => {
     const time = getEvidenceTimeForSensor(item, telemetryType);
@@ -151,6 +145,7 @@ export function ExplorerHistoryChart({ stream, connection, snapshot, binding, se
     {service && <p className="ex-history-monitoring" role="status">{operational && lastScoreTime === undefined
       ? "Awaiting first score" : `Monitoring: ${service.operational_status.stage.replace(/_/g, " ")}`}
       {pending.length > 0 && ` · ${pending.length} awaiting score`}</p>}
+    {evidence.some(row => row.sensor_set.length > 1) && <p className="ex-history-monitoring">Detector results describe the joint inputs; they do not attribute an alarm to this reading.</p>}
     {selection.controlCatalog.some((detector) => selection.controlCatalog.filter((item) => item.pane === detector.pane).length > 1)
       && <div className="ex-history-detectors"><TelemetryDetectorControls detectors={selection.controlCatalog} selected={selection.selectedDetectorIds}
         unavailableIds={selection.unavailableIds} onSelect={selection.onSelect} /></div>}

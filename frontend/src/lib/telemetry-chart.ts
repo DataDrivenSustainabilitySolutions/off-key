@@ -8,7 +8,8 @@ import type {
   TooltipComponentOption,
 } from "echarts/components";
 import { color as chartColor, type ComposeOption } from "echarts/core";
-import { buildDetectionSeriesOption } from "@/lib/telemetry-detection-series";
+import { buildDetectionSeriesOption, buildThresholdSeriesOption } from "@/lib/telemetry-detection-series";
+import { formatMonitoringObservationTooltip } from "@/lib/monitoring-tooltip";
 
 import type { AnomalyMarker } from "@/lib/anomaly-utils";
 import type { TimeValue } from "@/lib/telemetry-data";
@@ -70,11 +71,26 @@ export const areChartNavigationStatesEqual = (
       left.viewport.endMs === right.viewport.endMs));
 
 export interface TelemetryChartSeries {
-  id: "telemetry";
+  id: string;
   name: string;
   unit?: string;
   color: string;
   data: TimeValue[];
+}
+
+export interface MonitoringChartReading extends TelemetryChartSeries {
+  inputKey?: string;
+  valueType?: "number" | "boolean";
+  pendingTelemetry: TimeValue[];
+  anomalyMarkers: TelemetryEventGroup[];
+  alarmTimes?: number[];
+}
+
+export interface MonitoringChartModel {
+  readings: MonitoringChartReading[];
+  secondarySeries: SecondaryChartSeries[];
+  range: ChartTimeRange;
+  extent?: [startMs: number, endMs: number];
 }
 
 export interface TelemetryChartModel {
@@ -297,6 +313,19 @@ const axisLabelFormatter = (
 };
 
 export const buildTelemetryChartOption = ({
+  model, valueType = "number", ...options
+}: BuildTelemetryChartOptionInput): TelemetryChartOption => buildMonitoringChartOption({
+  ...options,
+  model: { readings: [{ ...model.telemetry, valueType, pendingTelemetry: model.pendingTelemetry,
+    anomalyMarkers: model.anomalyMarkers }], secondarySeries: model.secondarySeries, range: model.range, extent: model.extent },
+});
+
+type BuildMonitoringChartOptionInput = Omit<BuildTelemetryChartOptionInput, "model" | "valueType" | "layout"> & {
+  model: MonitoringChartModel;
+  layout?: "standard" | "compact" | "monitoring";
+};
+
+export const buildMonitoringChartOption = ({
   model,
   viewport,
   timelineExtent,
@@ -305,13 +334,13 @@ export const buildTelemetryChartOption = ({
   accessibleDescription,
   locale,
   layout = "standard",
-  valueType = "number",
-}: BuildTelemetryChartOptionInput): TelemetryChartOption => {
-  const compact = layout === "compact";
+}: BuildMonitoringChartOptionInput): TelemetryChartOption => {
+  const monitoring = layout === "monitoring";
+  const compact = layout !== "standard";
   const hasStaticPane = model.secondarySeries.some((series) => series.pane === "static");
   const hasAdaptivePane = model.secondarySeries.some((series) => series.pane === "adaptive");
   const panes = [
-    "telemetry",
+    ...model.readings.map(reading => reading.id),
     ...(hasStaticPane ? ["static"] : []),
     ...(hasAdaptivePane ? ["adaptive"] : []),
   ] as const;
@@ -319,13 +348,11 @@ export const buildTelemetryChartOption = ({
   const domain = getChartDomain(timelineExtent ?? model.extent, model.range);
   const boundsByPane = new Map(model.secondarySeries.map((series) => [series.pane, series.bounds]));
   const units = new Map<string, string>();
-  if (model.telemetry.unit) units.set(model.telemetry.name, model.telemetry.unit);
-  const telemetryValueExtent = model.telemetry.data.reduce<[number, number] | undefined>((extent, [, value]) => {
-    if (!Number.isFinite(value)) return extent;
-    return extent ? [Math.min(extent[0], value), Math.max(extent[1], value)] : [value, value];
-  }, undefined);
+  for (const reading of model.readings) if (reading.unit) units.set(reading.name, reading.unit);
 
-  const grid: GridComponentOption[] = compact
+  const grid: GridComponentOption[] = monitoring
+    ? panes.map((_, index) => ({ left: 52, right: 18, top: 28 + index * 148, height: 100 }))
+    : compact
     ? panes.map((_, index) => ({
         left: 44, right: 16,
         top: index === 0 ? 22 : 242 + (index - 1) * 164,
@@ -378,46 +405,52 @@ export const buildTelemetryChartOption = ({
         ? { startValue: domain[0], endValue: domain[1] }
         : { start: 0, end: 100 };
 
-  const telemetrySeries: LineSeriesOption = {
-    id: model.telemetry.id,
-    name: model.telemetry.name,
-    type: "line",
-    xAxisIndex: 0,
-    yAxisIndex: 0,
-    data: model.telemetry.data,
-    smooth: false,
-    step: valueType === "boolean" ? "end" : false,
-    showSymbol: model.telemetry.data.length === 1,
-    symbolSize: 5,
-    ...(valueType === "number" ? { sampling: "lttb" } : {}),
-    connectNulls: false,
-    lineStyle: { color: model.telemetry.color, width: 2.25 },
-    itemStyle: { color: model.telemetry.color },
-    emphasis: { disabled: true },
-    animation: false,
-    markPoint: {
-      symbol: "circle",
-      label: { show: false },
-      data: buildTelemetryEventMarkPoints(model.anomalyMarkers, {
-        timeZone,
-        locale,
-        colors,
-        extent: viewport.mode === "absolute" ? [viewport.startMs, viewport.endMs] : domain,
-        unit: model.telemetry.unit,
-        telemetryValueExtent,
-      }),
-    },
-  };
+  const telemetrySeries: LineSeriesOption[] = model.readings.map((reading, index) => {
+    const valueType = reading.valueType ?? "number";
+    const telemetryValueExtent = reading.data.reduce<[number, number] | undefined>((extent, [, value]) =>
+      extent ? [Math.min(extent[0], value), Math.max(extent[1], value)] : [value, value], undefined);
+    return {
+      id: reading.id,
+      name: reading.name,
+      type: "line",
+      xAxisIndex: index,
+      yAxisIndex: index,
+      data: reading.data,
+      smooth: false,
+      step: valueType === "boolean" ? "end" : false,
+      showSymbol: reading.data.length === 1,
+      symbolSize: 5,
+      ...(valueType === "number" ? { sampling: "lttb" } : {}),
+      connectNulls: false,
+      lineStyle: { color: reading.color, width: 2.25 },
+      itemStyle: { color: reading.color },
+      emphasis: { disabled: true },
+      animation: false,
+      markPoint: {
+        symbol: "circle",
+        label: { show: false },
+        data: buildTelemetryEventMarkPoints(reading.anomalyMarkers, {
+          timeZone, locale, colors,
+          extent: viewport.mode === "absolute" ? [viewport.startMs, viewport.endMs] : domain,
+          unit: reading.unit, telemetryValueExtent,
+        }),
+      },
+      ...(reading.alarmTimes?.length ? { markLine: { silent: true, animation: false,
+        symbol: ["none", "none"], label: { show: false }, lineStyle: { color: colors.alarmBoundary ?? "#dc2626", width: 1, opacity: 0.55 },
+        data: reading.alarmTimes.map(time => ({ xAxis: time })),
+      } } : {}),
+    };
+  });
 
-  const pendingTelemetrySeries: ScatterSeriesOption | undefined =
-    model.pendingTelemetry.length > 0
-      ? {
-          id: "pending-telemetry",
+  const pendingTelemetrySeries: ScatterSeriesOption[] = model.readings.flatMap((reading, index) =>
+    reading.pendingTelemetry.length > 0
+      ? [{
+          id: `pending-${reading.id}`,
           name: "Awaiting anomaly score",
           type: "scatter",
-          xAxisIndex: 0,
-          yAxisIndex: 0,
-          data: model.pendingTelemetry,
+          xAxisIndex: index,
+          yAxisIndex: index,
+          data: reading.pendingTelemetry,
           symbol: "emptyCircle",
           symbolSize: 8,
           itemStyle: {
@@ -428,25 +461,34 @@ export const buildTelemetryChartOption = ({
           emphasis: { disabled: true },
           animation: false,
           z: 5,
-        }
-      : undefined;
+        }]
+      : []);
 
-  const secondarySeries: LineSeriesOption[] = model.secondarySeries.map((series) =>
-    buildDetectionSeriesOption(
+  const secondarySeries: LineSeriesOption[] = model.secondarySeries.flatMap((series) => {
+    const paneIndex = panes.indexOf(series.pane);
+    const line = buildDetectionSeriesOption(
       series,
-      panes.indexOf(series.pane),
+      paneIndex,
       domain,
       colors,
       (time) => formatChartTime(time, timeZone, "tooltip", locale),
       formatNumber,
-    ),
-  );
+    );
+    if (!monitoring) return [line];
+    line.markPoint = { ...line.markPoint, data: [...(line.markPoint?.data ?? []),
+      ...series.data.flatMap(point => point.observation?.alarmFired && point.value[1] !== null ? [{
+        name: "Alarm decision", coord: [point.value[0], point.value[1]], symbol: "circle", symbolSize: 6,
+        itemStyle: { color: colors.alarmBoundary ?? "#dc2626" },
+      }] : []),
+    ] };
+    return [line, buildThresholdSeriesOption(series, paneIndex, colors.alarmBoundary ?? "#dc2626")];
+  });
 
   return {
     backgroundColor: "transparent",
     animation: false,
     aria: { enabled: true, description: accessibleDescription },
-    color: [model.telemetry.color, colors.primary],
+    color: [...model.readings.map(reading => reading.color), colors.primary],
     grid: grid.map((pane) => ({ ...pane, outerBoundsMode: "none" })),
     legend: compact ? { show: false } : {
       id: "telemetry-legend",
@@ -475,27 +517,29 @@ export const buildTelemetryChartOption = ({
       textStyle: { color: colors.popoverForeground, fontSize: 12 },
       axisPointer: { type: "cross" },
       formatter: (params: unknown) =>
-        formatTelemetryTooltip(params, timeZone, units, locale),
+        (monitoring ? formatMonitoringObservationTooltip(params, model.readings,
+          time => formatChartTime(time, timeZone, "tooltip", locale), formatNumber) : undefined)
+          ?? formatTelemetryTooltip(params, timeZone, units, locale),
     },
     xAxis,
     yAxis: [
-      {
-        id: "telemetry-values",
-        type: "value",
+      ...model.readings.map((reading, index) => ({
+        id: `${reading.id}-values`,
+        type: "value" as const,
         scale: true,
-        boundaryGap: ["10%", "10%"],
-        ...(valueType === "boolean" ? { scale: false, min: 0, max: 1, interval: 1 } : {}),
+        boundaryGap: ["10%", "10%"] as [string, string],
+        ...(reading.valueType === "boolean" ? { scale: false, min: 0, max: 1, interval: 1 } : {}),
         ...(compact ? { splitNumber: 4 } : {}),
-        gridIndex: 0,
-        name: compact ? model.telemetry.unit : model.telemetry.unit
-          ? `${model.telemetry.name} (${model.telemetry.unit})`
-          : model.telemetry.name,
-        nameTextStyle: { color: colors.mutedForeground, fontSize: 11, align: "left" as const },
+        gridIndex: index,
+        name: compact && !monitoring ? reading.unit : reading.unit
+          ? `${reading.name} (${reading.unit})` : reading.name,
+        nameTextStyle: { color: monitoring ? reading.color : colors.mutedForeground, fontSize: 11, align: "left" as const,
+          ...(monitoring ? { overflow: "truncate" as const, width: 220 } : {}) },
         axisLabel: { color: colors.mutedForeground, fontSize: 11 },
         axisLine: { show: false },
         axisTick: { show: false },
-        splitLine: { lineStyle: { color: colors.border, type: "dashed" } },
-      },
+        splitLine: { lineStyle: { color: colors.border, type: "dashed" as const } },
+      })),
       ...(hasStaticPane
         ? [
             {
@@ -529,7 +573,7 @@ export const buildTelemetryChartOption = ({
               min: boundsByPane.get("adaptive")?.minimum,
               max: boundsByPane.get("adaptive")?.maximum,
               gridIndex: panes.indexOf("adaptive"),
-              name: "Adaptive anomaly score",
+              name: monitoring ? model.secondarySeries.find(series => series.pane === "adaptive")?.name : "Adaptive anomaly score",
               nameTextStyle: { color: colors.mutedForeground, fontSize: 11, align: "left" as const },
               axisLabel: { color: colors.mutedForeground, fontSize: 11,
                 formatter: (value: number) => formatNumber(Number(value)), hideOverlap: true },
@@ -578,15 +622,15 @@ export const buildTelemetryChartOption = ({
           areaStyle: { color: colors.muted },
         },
         selectedDataBackground: {
-          lineStyle: { color: model.telemetry.color },
-          areaStyle: { color: model.telemetry.color, opacity: 0.15 },
+          lineStyle: { color: model.readings[0]?.color ?? colors.primary },
+          areaStyle: { color: model.readings[0]?.color ?? colors.primary, opacity: 0.15 },
         },
         ...dataZoomRange,
       },
     ],
     series: [
-      telemetrySeries,
-      ...(pendingTelemetrySeries ? [pendingTelemetrySeries] : []),
+      ...telemetrySeries,
+      ...pendingTelemetrySeries,
       ...secondarySeries,
     ],
   };

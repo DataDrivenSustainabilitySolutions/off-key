@@ -98,8 +98,10 @@ export const API_CONFIG = {
           service_id: string;
           sequence_number: number;
         },
+        serviceId?: string,
       ) => {
         const params = new URLSearchParams({ charger_id: chargerId });
+        if (serviceId) params.set('service_id', serviceId);
         if (cursor) {
           params.set('after_created', cursor.created);
           params.set('after_timestamp', cursor.timestamp);

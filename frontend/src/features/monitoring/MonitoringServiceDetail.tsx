@@ -7,7 +7,7 @@ import { API_CONFIG } from "@/lib/api-config";
 import { getErrorMessage } from "@/lib/errors";
 import type { ActiveService, JsonValue } from "@/types/monitoring";
 import { InlineName } from "../catalogue/InlineName";
-import { ExplorerHistoryChart } from "../explorer/ExplorerHistoryChart";
+import { MonitoringHistory } from "./MonitoringHistory";
 import type { ReadingHistoryCache } from "../explorer/readingHistoryCache";
 import type { SystemDocument } from "../catalogue/systemTypes";
 import { formatServiceTime, serviceName, serviceState, strategyName, type MonitoringInput } from "./serviceModel";
@@ -37,7 +37,6 @@ export default function MonitoringServiceDetail({ service, inputs, document, his
   const activity = service.operational_status.activity;
   const inputNames = new Map(inputs.map(input => [input.binding.telemetry_key, input.stream.label]));
   const describeInputs = (sensors: string[]) => sensors.map(sensor => inputNames.get(sensor) ?? sensor).join(", ");
-  const selectedInput = inputs.find(input => input.stream.id === params.get("stream")) ?? inputs[0];
   useEffect(() => {
     const controller = new AbortController();
     void apiUtils.get<{ configuration?: Configuration }>(`${API_CONFIG.ENDPOINTS.MONITORING.DETAILS}?container_name=${encodeURIComponent(service.container_name)}`,
@@ -109,12 +108,10 @@ export default function MonitoringServiceDetail({ service, inputs, document, his
           {!inputs.length && service.mqtt_topics.map(topic => <li key={topic}><span>{topic}</span></li>)}
         </ul></section>
       </>}
-      {tab === "evidence" && (selectedInput ? <><label className="ex-sr-only" htmlFor="service-reading">Reading</label>
-        <select id="service-reading" className="mn-chart-picker" value={selectedInput.stream.id} onChange={event => chooseTab("evidence", event.target.value)}>
-          {inputs.map(input => <option key={input.stream.id} value={input.stream.id}>{input.path} / {input.stream.label}</option>)}</select>
-        <ExplorerHistoryChart key={`${service.id}:${selectedInput.stream.id}`} stream={selectedInput.stream} binding={selectedInput.binding}
-          connection={document.connections.find(connection => connection.id === selectedInput.stream.connection_id)} serviceId={service.id} historyCache={historyCache} />
-      </> : <p className="ex-muted">These service inputs are not available in the current catalogue.</p>)}
+      {tab === "evidence" && (inputs.length ? <MonitoringHistory key={`${service.id}:${params.get("stream") ?? "all"}`}
+        service={service} inputs={inputs} connections={document.connections} historyCache={historyCache}
+        initialReading={inputs.some(input => input.stream.id === params.get("stream")) ? params.get("stream")! : undefined} />
+        : <p className="ex-muted">These service inputs are not available in the current catalogue.</p>)}
       {tab === "configuration" && <>
         {error && <p className="ex-preview-error" role="alert">{error}<button onClick={() => setRetry(value => value + 1)}>Retry</button></p>}
         <dl className="mn-configuration"><div><dt>Strategy</dt><dd>{strategyName(service)}</dd></div><div><dt>Model</dt><dd>{service.model_type ?? "Not recorded"}</dd></div>

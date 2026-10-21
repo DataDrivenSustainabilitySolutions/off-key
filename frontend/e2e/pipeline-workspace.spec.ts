@@ -25,6 +25,7 @@ import type {
   PipelineCatalog,
   PipelineView,
   PipelineWorkspace,
+  PipelineServiceView,
   PipelineValidationReport,
 } from "../src/types/pipelines.generated";
 import type { PipelineState } from "../src/features/pipelines/diagnostics";
@@ -144,6 +145,7 @@ test.describe("visual pipeline real infrastructure", () => {
           "voltage",
           "current",
           "temperature",
+          "unused",
         ]);
         publisher = await connectAsync(
           process.env.MQTT_INGRESS_URL ?? "mqtt://127.0.0.1:1883",
@@ -162,6 +164,7 @@ test.describe("visual pipeline real infrastructure", () => {
           await page.getByRole("button", { name: "Load template", exact: true }).click();
           await page.getByRole("button", { name: "Use Static baseline", exact: true }).click();
         }
+        await page.getByRole("checkbox", { name: "Monitor unused", exact: true }).uncheck();
         await page.getByText("Input slots", { exact: true }).click();
         const slots = Object.fromEntries(await page.getByRole("textbox", { name: /^Label for / }).evaluateAll((inputs) =>
           inputs.map((input) => [(input as HTMLInputElement).value, input.getAttribute("aria-label")!.slice("Label for ".length)])));
@@ -178,7 +181,8 @@ test.describe("visual pipeline real infrastructure", () => {
         await expect(page.getByRole("main", { name: "Sources workspace", exact: true })).toBeVisible();
         await page.getByRole("link", { name: "Return to service setup", exact: true }).click();
         for (const name of ["voltage", "current", "temperature"])
-          await expect(page.getByRole("combobox", { name: `Reading for ${name}`, exact: true })).toHaveValue(`${deviceId}:${name}`);
+          await expect(page.getByRole("checkbox", { name: `Monitor ${name}`, exact: true })).toBeChecked();
+        await expect(page.getByRole("checkbox", { name: "Monitor unused", exact: true })).not.toBeChecked();
         await expect(page.getByRole("button", { name: "Publish revision", exact: true })).toHaveCount(0);
         let committed: PipelineActivationView | undefined;
         if (strategy === "adaptive_stream") {
@@ -229,6 +233,12 @@ test.describe("visual pipeline real infrastructure", () => {
             }),
         ]);
         await publishSamples(publisher, topics, 65);
+        const boundResponse = await api.get(`/api/v1/monitors/${serviceId}/pipeline`, { headers });
+        expect(boundResponse.ok(), await boundResponse.text()).toBe(true);
+        const bound = await boundResponse.json() as PipelineServiceView;
+        expect(bound.run?.execution?.bindings.map((binding) => binding.reading_id).sort())
+          .toEqual(["voltage", "current", "temperature"].map((name) => `${deviceId}:${name}`).sort());
+        expect(bound.definition.input_slots?.map((slot) => slot.label).sort()).toEqual(["current", "temperature", "voltage"]);
         const readState = async () => {
           const result = await api.get(
             `/api/v1/monitors/workspace?selected_service_id=${serviceId}`,
@@ -239,6 +249,9 @@ test.describe("visual pipeline real infrastructure", () => {
         };
         const readHealth = async () => {
           const state = await readState();
+          const service = state.services.find((item) => item.id === serviceId);
+          expect([...(service?.mqtt_topics as string[] ?? [])].sort())
+            .toEqual(bound.run!.execution!.bindings.map((binding) => binding.accepted_topic).sort());
           const status = state.services.find((item) => item.id === serviceId)
             ?.operational_status as OperationalStatus | undefined;
           return {

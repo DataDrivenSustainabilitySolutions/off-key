@@ -15,7 +15,7 @@ import { PipelineDesignSettings } from "@/features/pipelines/PipelineDesignSetti
 import { PipelineToolbox } from "@/features/pipelines/PipelineToolbox";
 import { routeConnections } from "@/features/pipelines/routing";
 import { NODE_SIZE } from "@/features/pipelines/semantics";
-import { sameSlots, targetSlots } from "@/features/pipelines/slots";
+import { addReading, selectReadings, targetInputs } from "@/features/pipelines/slots";
 import { useGraphEditor } from "@/features/pipelines/useGraphEditor";
 import type { MonitoringTarget } from "@/features/monitoring/serviceModel";
 import { clearNavigationDrafts, storeDraft, useNavigationDraft } from "@/lib/navigation-draft";
@@ -161,12 +161,40 @@ describe("service settings", () => {
       { stream: { id: "c", label: "Current", unit: "A" }, binding: { policy: { mode: "always" } } },
       { stream: { id: "x", label: "Off", unit: null }, binding: { policy: { mode: "off" } } },
     ] } as unknown as MonitoringTarget;
-    const slots = targetSlots(target, [{ id: "input_2", label: "Value", unit: null }])!;
-    expect(slots).toEqual([
+    const inputs = targetInputs(target, [{ id: "input_2", label: "Value", unit: null }])!;
+    expect(inputs.slots).toEqual([
       { id: "input_2", label: "Voltage", unit: "V" },
       { id: "input_3", label: "Current", unit: "A" },
     ]);
-    expect(sameSlots(slots, [{ id: "value", label: "Value", unit: null }])).toBe(false);
+    expect(inputs.bindings).toEqual({ input_2: "v", input_3: "c" });
+  });
+
+  it("keeps exact reading identities when labels repeat, and preserves slot IDs through subset changes", () => {
+    const target = { inputs: ["ac1", "ac2", "ac3", "ac4"].map((id) => ({
+      stream: { id, label: "Current", unit: "A" }, binding: { policy: { mode: "original" } },
+    })) } as MonitoringTarget;
+    const all = targetInputs(target, [{ id: "value", label: "Value" }])!;
+    expect(Object.values(all.bindings)).toEqual(["ac1", "ac2", "ac3", "ac4"]);
+    const subset = selectReadings(target, all.slots, all.bindings, ["ac1", "ac3"]);
+    expect(subset.slots).toEqual([all.slots[0], all.slots[2]]);
+    const restored = selectReadings(target, subset.slots, subset.bindings, ["ac1", "ac2", "ac3"]);
+    expect(restored.slots.find((slot) => restored.bindings[slot.id] === "ac2")).toEqual(all.slots[1]);
+    const cleared = selectReadings(target, restored.slots, restored.bindings, []);
+    expect(cleared.slots).toEqual([]);
+    expect(selectReadings(target, cleared.slots, cleared.bindings, ["ac3"]).slots).toEqual([all.slots[2]]);
+    const extra = { ...target.inputs[0]!, stream: { ...target.inputs[0]!.stream, id: "extra" } };
+    const added = addReading(subset.slots, subset.bindings, extra);
+    expect(added.slots[added.slots.length - 1]?.id).not.toBe(all.slots[1]!.id);
+  });
+
+  it("bounds initial and expanded selections to the supported 100 readings", () => {
+    const target = { inputs: Array.from({ length: 101 }, (_, index) => ({
+      stream: { id: `ac${index}`, label: `Current ${index}` }, binding: { policy: { mode: "original" } },
+    })) } as MonitoringTarget;
+    const all = targetInputs(target, [])!;
+    expect(all.slots).toHaveLength(100);
+    expect(addReading(all.slots, all.bindings, target.inputs[100]!).slots).toHaveLength(100);
+    expect(selectReadings(target, [], {}, target.inputs.map((input) => input.stream.id)).slots).toHaveLength(100);
   });
 });
 

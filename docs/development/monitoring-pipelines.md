@@ -44,6 +44,15 @@ only advanced input-slot editing is collapsed. Entity selection includes configu
 entities even when there is no recent traffic; collection and reading ownership
 still gate Apply.
 
+Standard setups show a **Readings to monitor** checklist directly below the
+entity: uncheck unwanted readings to monitor any subset, such as AC1 and AC3.
+Select all available and Clear support larger entities; a service accepts up to
+100 readings. Selection changes the executable slots and bindings together and
+retains input IDs across removal, reselection and undo. Saved/custom templates
+keep explicit named input mappings, with Add reading and Remove on the setup
+page. Removing an input referenced by a processing component still requires
+fixing that component before validation and Apply can succeed.
+
 Load template reads the latest saved definition and layout, independently of any
 historical published revisions. Loading never changes the source template.
 Template names and descriptions are separate from the service name. A template

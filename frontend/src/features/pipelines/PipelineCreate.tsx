@@ -20,10 +20,11 @@ import { PipelineTemplateMenu } from "./PipelineTemplateMenu";
 import { PipelineSaveTemplate } from "./PipelineSaveTemplate";
 import { PipelineWorkbench, type InspectorPanel } from "./PipelineWorkbench";
 import { PipelineInputBindings } from "./PipelineInputBindings";
+import { PipelineReadingPicker } from "./PipelineReadingPicker";
 import { PipelineApplyStatus } from "./PipelineApplyStatus";
 import { usePipelineApply } from "./applySession";
 import { bindingsReady, suggestBindings } from "./bindings";
-import { targetSlots } from "./slots";
+import { selectReadings, targetInputs } from "./slots";
 
 export type PipelineSetupProps = {
   catalog: PipelineCatalog; canEdit: boolean; targets: MonitoringTarget[];
@@ -35,11 +36,12 @@ export type PipelineSetupProps = {
   activationBlocked?: string; onManage: () => void; onBack: () => void; onStarted: (id: string) => void;
 };
 
-function startingDocument(catalog: PipelineCatalog, id?: string, target?: MonitoringTarget, reading?: string): GraphDocument {
+function startingSetup(catalog: PipelineCatalog, id?: string, target?: MonitoringTarget, reading?: string) {
   const template = catalog.templates.find((item) => item.id === id) ?? catalog.templates[0];
-  if (!template) return { definition: normalizeDefinition({}), layout: normalizeLayout() };
-  return { definition: { ...template.definition,
-    input_slots: targetSlots(target, template.definition.input_slots, reading) ?? template.definition.input_slots }, layout: template.layout };
+  const inputs = targetInputs(target, template?.definition.input_slots ?? [], reading);
+  return { document: { definition: template ? { ...template.definition,
+    input_slots: inputs?.slots ?? template.definition.input_slots } : normalizeDefinition({}), layout: template?.layout ?? normalizeLayout() },
+  bindings: inputs?.bindings ?? {} };
 }
 
 /** The same setup surface configures a new service, a template or a replacement. */
@@ -55,12 +57,14 @@ export function PipelineCreate(props: PipelineSetupProps) {
     const targetId = initialTarget ?? targets.find((target) => target.inputs.some((input) =>
       predecessor?.run?.execution?.bindings.some((binding) => binding.reading_id === input.stream.id)))?.id;
     const target = targets.find((item) => item.id === targetId);
+    const starting = startingSetup(catalog, startingId, target, initialReading);
     const document = initialDocument ?? (initialDesign
       ? { definition: initialDesign.draft, layout: initialDesign.layout }
-      : startingDocument(catalog, startingId, target, initialReading));
+      : starting.document);
     return { name: replaceService?.display_name ?? initialDesign?.name ?? "", description: initialDesign?.description ?? "",
-      targetId, startingId: initialDesign || initialDocument ? undefined : startingId, document, bindings: suggestBindings(document.definition.input_slots, target,
-        Object.fromEntries((predecessor?.run?.execution?.bindings ?? []).map((binding) => [binding.slot_id, binding.reading_id]))) };
+      targetId, startingId: initialDesign || initialDocument ? undefined : startingId, document,
+      bindings: initialDesign || initialDocument ? suggestBindings(document.definition.input_slots, target,
+        Object.fromEntries((predecessor?.run?.execution?.bindings ?? []).map((binding) => [binding.slot_id, binding.reading_id]))) : starting.bindings };
   }, [catalog, initialDesign, initialDocument, initialReading, initialTarget, predecessor, replaceService, startingId, targets]);
   const creationKey = `pipeline-setup:${userId}:${initialDesign?.id ?? "new"}:${props.revisionId ?? "draft"}:${sourceId ?? initialTarget ?? ""}:${replaceId ? "replace" : "new"}:${initialReading ?? ""}`;
   const { draft, template, save: saveState, session } = useCreationSession(creationKey, initial,
@@ -102,11 +106,15 @@ export function PipelineCreate(props: PipelineSetupProps) {
     session.acknowledge();
   }, [saveState.status, session]);
 
-  const load = (document: GraphDocument, name: string, description: string) => {
+  const changeInputs = (inputSlots: typeof slots, bindings: Record<string, string>) => {
+    commit({ ...draft.document, definition: { ...draft.document.definition, input_slots: inputSlots } });
+    setDraft((previous) => ({ ...previous, bindings }));
+  };
+  const load = (document: GraphDocument, name: string, description: string, bindings?: Record<string, string>) => {
     commit(document);
     session.detachTemplate();
     setDraft((previous) => ({ ...previous, startingId: undefined, name: previous.name || name, description,
-      bindings: suggestBindings(document.definition.input_slots, target, previous.bindings) }));
+      bindings: bindings ?? suggestBindings(document.definition.input_slots, target, previous.bindings) }));
     select(undefined); graph.requestFit();
     toast.success(`Loaded ${name}. Your changes will not affect the original template.`, { id: "pipeline-template-load" });
   };
@@ -139,7 +147,8 @@ export function PipelineCreate(props: PipelineSetupProps) {
       {canAuthor && <>
         <PipelineTemplateMenu catalog={catalog} disabled={busy} onLoading={setLoadingTemplate} onManage={props.onManage} onLoad={load}
           onBuiltIn={(id) => { const item = catalog.templates.find((item) => item.id === id)!;
-            load(startingDocument(catalog, id, target, initialReading), item.name, "");
+            const setup = startingSetup(catalog, id, target, initialReading);
+            load(setup.document, item.name, "", setup.bindings);
             setDraft((previous) => ({ ...previous, startingId: id })); }} />
         <PipelineSaveTemplate name={template?.name ?? draft.name} description={template?.description ?? draft.description}
           existing={!!template} disabled={busy} saving={saving} error={saveState.message} conflict={saveState.conflict}
@@ -164,21 +173,29 @@ export function PipelineCreate(props: PipelineSetupProps) {
           <div className="pl-field"><span>Readings from</span><MonitoringTargetPicker targets={targets} value={draft.targetId} disabled={!canAuthor || busy} receivingOnly={false}
             onChange={(targetId) => {
               const next = targets.find((item) => item.id === targetId);
-              const matched = draft.startingId ? targetSlots(next, slots, initialReading) : undefined;
-              const document = matched ? { ...draft.document, definition: { ...draft.document.definition, input_slots: matched } } : draft.document;
+              const matched = draft.startingId ? targetInputs(next, slots, initialReading) : undefined;
+              const document = matched ? { ...draft.document, definition: { ...draft.document.definition, input_slots: matched.slots } } : draft.document;
               commit(document);
-              setDraft((previous) => ({ ...previous, targetId, bindings: suggestBindings(document.definition.input_slots, next) }));
+              setDraft((previous) => ({ ...previous, targetId, bindings: matched?.bindings ?? suggestBindings(document.definition.input_slots, next) }));
             }} /></div>
           <div className="pl-strategy-summary"><span>Learning strategy</span><strong>{draft.document.definition.strategy === "adaptive_stream" ? "Adaptive stream" : "Static baseline"}</strong>
             <small>{draft.document.definition.strategy === "adaptive_stream" ? "Learns from live readings" : "Learns a baseline, then monitors"}</small></div>
         </div>
-        <PipelineInputBindings slots={slots} target={target} bindings={bindings} disabled={!canAuthor || locked || checking} owned={owned}
-          onChange={(bindings) => setDraft((previous) => ({ ...previous, bindings }))} />
+        {draft.startingId ? <PipelineReadingPicker target={target} selected={Object.values(bindings)} disabled={!canAuthor || locked || checking} owned={owned}
+          onChange={(selected) => {
+            if (!target) return;
+            const next = selectReadings(target, slots, draft.bindings ?? {}, selected);
+            changeInputs(next.slots, next.bindings);
+          }} />
+          : <PipelineInputBindings slots={slots} target={target} bindings={draft.bindings ?? {}} disabled={!canAuthor || locked || checking} owned={owned}
+            onChange={(bindings) => setDraft((previous) => ({ ...previous, bindings }))} onSlotsChange={changeInputs} />}
         <div className="pl-setup-card-footer">
-          <p className="pl-help">{target ? `${Object.keys(bindings).length} of ${slots.length} readings selected` : "Select an entity to choose its readings."}</p>
+          <p className="pl-help">{target ? draft.startingId ? `${Object.keys(bindings).length} readings selected`
+            : `${Object.keys(bindings).length} of ${slots.length} inputs mapped` : "Select an entity to choose its readings."}</p>
           <Link to={sourceHref(target?.inputs.map((input) => input.stream.id) ?? [], catalogueDocument, `${location.pathname}${location.search}`)}>Configure readings in Sources</Link>
         </div>
-        {attempted && !ready && <p className="pl-field-error" role="alert">Choose a different, collected reading for each input. Readings already monitored by another service are unavailable.</p>}
+        {attempted && !ready && <p className="pl-field-error" role="alert">{draft.startingId ? "Select at least one available reading to monitor."
+          : "Choose a different, collected reading for each input. Readings already monitored by another service are unavailable."}</p>}
         {!props.collectionReady && <p className="pl-help" role="status">Enable collection in Sources and wait for it to connect before applying monitoring.</p>}
         {props.activationBlocked && !locked && <p className="pl-warning" role="status">{props.activationBlocked}</p>}
         {replaceId && !locked && <p className="pl-warning">Applying changes replaces “{replaceService?.display_name ?? "the selected service"}”. Monitoring pauses briefly and learning starts again. Its history is kept.</p>}
@@ -200,7 +217,10 @@ export function PipelineCreate(props: PipelineSetupProps) {
             session.discard(initial()); graph.resetHistory(); select(undefined); graph.requestFit(); setAttempted(false);
           }}><RotateCcw size={15} />Reset</button>}
         </>}
-        settings={<PipelineDesignSettings document={draft.document} readOnly={!canAuthor || locked || checking} onChange={commit} />} />
+        settings={<PipelineDesignSettings document={draft.document} readOnly={!canAuthor || locked || checking} onChange={(document, history) => {
+          commit(document, history);
+          if (document.definition.input_slots !== slots) setDraft((previous) => ({ ...previous, startingId: undefined }));
+        }} />} />
     </>
   </section>;
 }

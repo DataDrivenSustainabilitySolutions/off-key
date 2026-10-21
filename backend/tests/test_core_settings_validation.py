@@ -2,7 +2,8 @@ import pytest
 from off_key_core.config.database import DatabaseSettings
 from off_key_core.config.logging import get_logging_settings
 from off_key_core.config.runtime import get_runtime_settings
-from pydantic import ValidationError
+from off_key_core.config.validation import validate_environment, validate_settings
+from pydantic import BaseModel, ValidationError
 
 
 @pytest.fixture(autouse=True)
@@ -64,3 +65,33 @@ def test_database_settings_reject_invalid_port():
             POSTGRES_PORT=70000,
             POSTGRES_HOST="localhost",
         )
+
+
+def test_environment_names_are_normalized_or_rejected_with_the_allowed_set():
+    assert validate_environment(" Production ") == "production"
+    with pytest.raises(ValueError, match="development, production, staging, test"):
+        validate_environment("prod")
+
+
+def test_settings_validation_reports_every_failing_group_at_once():
+    class Ports(BaseModel):
+        port: int
+
+    def invalid_port():
+        Ports(port="not-a-port")
+
+    def unavailable_secret():
+        raise RuntimeError("secret store unavailable")
+
+    with pytest.raises(RuntimeError) as raised:
+        validate_settings(
+            [("app", dict), ("ports", invalid_port), ("secrets", unavailable_secret)],
+            context="Gateway configuration",
+        )
+
+    assert str(raised.value).splitlines() == [
+        "Gateway configuration validation failed:",
+        "ports: port: Input should be a valid integer, "
+        "unable to parse string as an integer",
+        "secrets: secret store unavailable",
+    ]

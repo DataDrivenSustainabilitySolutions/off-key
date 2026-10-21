@@ -236,8 +236,10 @@
 }
 @media (prefers-reduced-motion: reduce) { .ex-preview,.ex-dialog-overlay,.ex-mobile-sidebar,.ex-list:not(.is-search) { animation: none; } }
 /* Collection controls share the inspector's spacing and semantic palette. */
-.ex-workspace-actions { display: flex; align-items: center; gap: 12px; }
-.ex-collection-action { font-size: 12px; color: hsl(var(--muted-foreground)); }
+.ex-workspace-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px 12px; }
+.ex-shell .ex-collection-action { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 8px; border-radius: 6px; font-size: 12px; color: hsl(var(--muted-foreground)); text-decoration: none; white-space: nowrap; }
+.ex-shell .ex-collection-action:hover { color: hsl(var(--foreground)); background: hsl(var(--accent)); }
+.ex-shell .ex-collection-action:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px; }
 .ex-collection { border-top: 1px solid hsl(var(--border)); padding-top: 24px; margin-top: 24px; }
 .ex-collection .ex-preview-section-heading { margin-bottom: 16px; }
 .ex-collection .ex-preview-section-heading > span { font-size: 12px; }
@@ -258,7 +260,8 @@
 .ex-collection-monitor { display: inline-block; margin-top: 16px; color: hsl(var(--primary)); font-size: 12px; }
 .ex-collection-note { font-size: 11px; margin-top: 12px; }
 @media (max-width: 760px) {
-  .ex-workspace-actions { gap: 8px; }
+  .ex-workspace-actions { gap: 8px; justify-content: flex-start; }
+  .ex-shell .ex-collection-action { min-height: 44px; }
   .ex-collection-controls { grid-template-columns: 1fr; }
   .ex-collection-controls :is(input, select) { min-height: 44px; font-size: 16px; }
   .ex-collection-actions > button { min-height: 44px; }

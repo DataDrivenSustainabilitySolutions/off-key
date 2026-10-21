@@ -165,7 +165,7 @@ test("keeps the catalogue DOM, selection, search and scroll while navigating and
     const lease = await connected;
     expect(lease.ok(), await lease.text()).toBe(true);
     leaseId = (await lease.json() as { lease_id: string }).lease_id;
-    await expect(page.locator(".sp-live-indicator")).toHaveText("Connected");
+    await expect(page.locator(".sp-live-indicator")).toHaveText("Live");
     publisher = await connectAsync(process.env.MQTT_SOURCE_URL ?? "mqtt://127.0.0.1:1884");
     await publisher.publishAsync(fixture.streams[29]!.topic, "42", { qos: 1 });
     await expect(page.locator(".ex-preview-value strong")).toHaveText("42");
@@ -404,7 +404,7 @@ test("filters real recorded reports by entity and reading across the shared navb
     await expect(page.getByRole("cell", { name: names[0], exact: true })).toBeVisible();
     await expect(page.getByRole("cell", { name: names[1], exact: true })).toHaveCount(0);
     await expect(page.getByRole("cell", { name: names[2], exact: true })).toHaveCount(0);
-    await page.getByRole("button", { name: "All sources", exact: true }).click();
+    await page.getByRole("button", { name: "Show all sources", exact: true }).click();
     for (const name of names) await expect(page.getByRole("cell", { name, exact: true })).toBeVisible();
   } finally {
     await publisher?.endAsync();

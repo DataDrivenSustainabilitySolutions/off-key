@@ -78,7 +78,7 @@ describe("application home", () => {
     expect(await screen.findByRole("heading", { name: "System status" })).toBeTruthy();
     expect(router.state.location.pathname).toBe("/system/status");
     fireEvent.keyDown(screen.getByRole("button", { name: "Application menu" }), { key: "Enter" });
-    expect(screen.getByRole("menuitem", { name: "Status" }).getAttribute("aria-current")).toBe("page");
+    expect(screen.getByRole("menuitem", { name: "System status" }).getAttribute("aria-current")).toBe("page");
   });
 
   it("keeps the primary navigation on Reporting and provides a way back to Monitoring", async () => {

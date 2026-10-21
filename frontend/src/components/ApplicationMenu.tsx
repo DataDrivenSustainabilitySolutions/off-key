@@ -22,7 +22,7 @@ export function ApplicationMenu({ trigger }: Props) {
   const openingSettings = useRef(false);
 
   if (!isAuthenticated) {
-    return <Button asChild size="sm"><Link to="/login"><LogIn className="size-4" />Login</Link></Button>;
+    return <Button asChild size="sm"><Link to="/login"><LogIn className="size-4" />Log in</Link></Button>;
   }
 
   return <>
@@ -52,14 +52,14 @@ export function ApplicationMenu({ trigger }: Props) {
         }}><Settings2 className="size-4" />Settings</DropdownMenuItem>
         <DropdownMenuItem asChild className="app-menu-item">
           <Link to={catalogue?.sectionHref("/system/status") ?? "/system/status"} aria-current={location.pathname === "/system/status" ? "page" : undefined}>
-            <Activity className="size-4" />Status
+            <Activity className="size-4" />System status
           </Link>
         </DropdownMenuItem>
         <div role="separator" className="app-menu-separator" />
         <DropdownMenuItem className="app-menu-item" onSelect={() => {
           logout();
           navigate("/login", { replace: true });
-        }}><LogOut className="size-4" />Logout</DropdownMenuItem>
+        }}><LogOut className="size-4" />Log out</DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
     <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} onCloseAutoFocus={event => {

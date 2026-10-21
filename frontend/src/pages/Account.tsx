@@ -74,19 +74,19 @@ export default function AccountPage() {
         </SectionPanel>
         {isAdmin && (
           <SectionPanel title="Members" help="Keep at least one active administrator. Disabling access revokes sessions immediately. Disabled members can be permanently removed; shared organization data is kept.">
-            <form className="mb-6 flex flex-wrap items-end gap-3" onSubmit={(event) => { event.preventDefault(); void invite(email, role); }}>
-              <div className="grid min-w-0 flex-1 gap-2 sm:flex-none">
+            <form className="mb-6 grid gap-3 sm:flex sm:flex-wrap sm:items-end" onSubmit={(event) => { event.preventDefault(); void invite(email, role); }}>
+              <div className="grid min-w-0 gap-2 sm:w-72">
                 <Label htmlFor="member-email">Email</Label>
                 <Input id="member-email" type="email" required value={email} onChange={(event) => setEmail(event.target.value)} />
               </div>
-              <div className="grid gap-2">
+              <div className="grid gap-2 sm:w-44">
                 <Label htmlFor="member-role">Role</Label>
-                <select id="member-role" className="h-10 rounded-md border bg-background px-3 text-sm" value={role} onChange={(event) => setRole(event.target.value as Member["role"])}>
+                <select id="member-role" className="h-11 w-full rounded-md border border-input bg-card px-3 text-base outline-none transition-[color,border-color,box-shadow] focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/20 disabled:cursor-not-allowed disabled:opacity-50 md:h-9 md:text-[13px]" value={role} onChange={(event) => setRole(event.target.value as Member["role"])}>
                   <option value="user">Member</option>
                   <option value="admin">Administrator</option>
                 </select>
               </div>
-              <Button disabled={busy} type="submit">Send invitation</Button>
+              <Button disabled={busy} type="submit" className="sm:h-11 md:h-9">Send invitation</Button>
             </form>
             {error && <p role="alert" className="mb-4 text-sm text-destructive">{error}</p>}
             {notice && <p role="status" className="mb-4 text-sm">{notice}</p>}
@@ -95,10 +95,10 @@ export default function AccountPage() {
                 <li key={target.id} className="flex flex-wrap items-center justify-between gap-3 py-4">
                   <div className="min-w-0">
                     <p className="break-words text-sm font-medium">{target.email}</p>
-                    <p className="text-xs text-muted-foreground">{!target.is_active ? "Disabled" : target.is_verified ? "Active" : "Invitation pending"}</p>
+                    <p className="text-xs text-muted-foreground">{!target.is_active ? "Disabled" : target.is_verified ? "Active" : "Invitation pending"}{target.id === member?.id && " · You"}</p>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
-                    <select aria-label={`Role for ${target.email}`} className="h-9 rounded-md border bg-background px-2 text-sm" value={target.role} disabled={busy || target.id === member?.id} onChange={(event) => void change(target, { role: event.target.value as Member["role"] })}>
+                    <select aria-label={`Role for ${target.email}`} className="h-11 rounded-md border border-input bg-card px-3 text-base outline-none transition-[color,border-color,box-shadow] focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/20 disabled:cursor-not-allowed disabled:opacity-50 sm:h-9 sm:text-[13px]" value={target.role} disabled={busy || target.id === member?.id} onChange={(event) => void change(target, { role: event.target.value as Member["role"] })}>
                       <option value="user">Member</option>
                       <option value="admin">Administrator</option>
                     </select>

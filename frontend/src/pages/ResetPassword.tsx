@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -9,6 +9,7 @@ import {
   AUTH_SUCCESS_CLASS,
 
   AUTH_LABEL_CLASS,
+  AUTH_LINK_CLASS,
   AUTH_SUBMIT_BUTTON_CLASS,
 } from '@/components/AuthLayout';
 import { clientLogger } from "@/lib/logger";
@@ -23,10 +24,11 @@ const ResetPassword: React.FC = () => {
   const [confirmNewPassword, setConfirmNewPassword] = useState('');
   const [message, setMessage] = useState<string>('');
   const [error, setError] = useState<string>('');
-  const displayError = error || (!token ? 'No token found' : '');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
     setMessage('');
     setError('');
 
@@ -41,6 +43,7 @@ const ResetPassword: React.FC = () => {
       return;
     }
 
+    setIsSubmitting(true);
     try {
       const response = await fetch('/api/v1/auth/reset-password', {
         method: 'POST',
@@ -63,18 +66,26 @@ const ResetPassword: React.FC = () => {
         message: "Reset password request failed",
         error: err,
       });
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   return (
     <AuthLayout title="Reset password">
-          {displayError && (
-            <p className={`mb-4 text-center text-sm ${AUTH_ERROR_CLASS}`}>{displayError}</p>
+          {!token && (
+            <div className="space-y-4 text-center text-sm">
+              <p role="alert" className={AUTH_ERROR_CLASS}>This reset link is incomplete. Open the link from your email again, or request a new one.</p>
+              <Link to="/forgot-password" className={AUTH_LINK_CLASS}>Request a new link</Link>
+            </div>
+          )}
+          {token && error && (
+            <p role="alert" className={`mb-4 text-center text-sm ${AUTH_ERROR_CLASS}`}>{error}</p>
           )}
           {message && (
-            <p className={`mb-4 text-center text-sm ${AUTH_SUCCESS_CLASS}`}>{message}</p>
+            <p role="status" className={`mb-4 text-center text-sm ${AUTH_SUCCESS_CLASS}`}>{message}</p>
           )}
-          {!message && (
+          {token && !message && (
             <form onSubmit={handleSubmit} className="space-y-4">
               {/* New password */}
               <div>
@@ -89,7 +100,10 @@ const ResetPassword: React.FC = () => {
                   onChange={(e) => setNewPassword(e.target.value)}
                   required
                   minLength={12}
+                  autoComplete="new-password"
+                  aria-describedby="newPasswordHint"
                 />
+                <p id="newPasswordHint" className="mt-1.5 text-xs text-muted-foreground">Use at least 12 characters.</p>
               </div>
               <div>
                 <Label htmlFor="confirmNewPassword" className={AUTH_LABEL_CLASS}>
@@ -103,6 +117,7 @@ const ResetPassword: React.FC = () => {
                   onChange={(e) => setConfirmNewPassword(e.target.value)}
                   required
                   minLength={12}
+                  autoComplete="new-password"
                 />
               </div>
 
@@ -110,8 +125,10 @@ const ResetPassword: React.FC = () => {
               <Button
                 type="submit"
                 className={AUTH_SUBMIT_BUTTON_CLASS}
+                disabled={isSubmitting}
+                aria-busy={isSubmitting}
               >
-                Reset password
+                {isSubmitting ? 'Resetting…' : 'Reset password'}
               </Button>
             </form>
           )}

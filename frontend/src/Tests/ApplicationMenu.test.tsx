@@ -22,17 +22,17 @@ function mount(path = "/") {
 describe("shared application menu", () => {
   it("logs out and returns to sign-in immediately", async () => {
     mount();
-    fireEvent.click(screen.getByRole("menuitem", { name: "Logout" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Log out" }));
     expect(auth.logout).toHaveBeenCalledOnce();
     expect(await screen.findByText("/login")).toBeTruthy();
   });
 
   it.each(["/", "/sources", "/anomalies", "/details/entity-one"])("offers shared preferences and system status at %s", (path) => {
     mount(path);
-    expect(screen.getAllByRole("menuitem").map(item => item.textContent)).toEqual(["Account", "Settings", "Status", "Logout"]);
+    expect(screen.getAllByRole("menuitem").map(item => item.textContent)).toEqual(["Account", "Settings", "System status", "Log out"]);
   });
 
-  it.each([["/account", "Account"], ["/system/status", "Status"]])("marks the current page at %s", (path, label) => {
+  it.each([["/account", "Account"], ["/system/status", "System status"]])("marks the current page at %s", (path, label) => {
     mount(path);
     expect(screen.getByRole("menuitem", { name: label }).getAttribute("aria-current")).toBe("page");
   });
@@ -40,13 +40,13 @@ describe("shared application menu", () => {
   it("offers sign-in without authenticated application actions", () => {
     auth.isAuthenticated = false;
     render(<MemoryRouter><ApplicationMenu /></MemoryRouter>);
-    expect(screen.getByRole("link", { name: "Login" }).getAttribute("href")).toBe("/login");
+    expect(screen.getByRole("link", { name: "Log in" }).getAttribute("href")).toBe("/login");
     expect(screen.queryByRole("button", { name: "Application menu" })).toBeNull();
   });
 
   it("links directly to system diagnostics", async () => {
     mount();
-    fireEvent.click(screen.getByRole("menuitem", { name: "Status" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "System status" }));
     expect(await screen.findByText("/system/status")).toBeTruthy();
   });
 

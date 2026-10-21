@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo } from "react";
-import { Info, Plus } from "lucide-react";
+import { ArrowLeft, Info, Plus } from "lucide-react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/auth/AuthContext";
 import { rememberNavigation } from "@/lib/navigation-draft";
@@ -66,8 +66,9 @@ export function ExplorerWorkspace() {
   return <main className="ex-main-content" aria-label="Monitoring workspace">
     <div className="ex-workspace-heading"><h1>Monitoring</h1>
       <div className="ex-workspace-actions">
-        {selected && !creating && !requestedService && <><Link className="ex-collection-action" to={sectionHref("/sources")}>Configure in Sources</Link>
-          {!preview && <button onClick={() => changeView({ inspect: "source" })}><Info size={15} />Inspect source</button>}
+        {selected && !creating && !requestedService && <>
+          {!preview && <><Link className="ex-collection-action" to={sectionHref("/sources")}>Configure in Sources</Link>
+            <button className="ex-collection-action" onClick={() => changeView({ inspect: "source" })}><Info size={15} aria-hidden="true" />Inspect source</button></>}
           {liveStreamIds.length > 0 && <SystemLiveControls telemetry={telemetry} canStart={system.canEdit} canView={!!system.snapshot} disabled={system.saving} />}
         </>}
         {system.canEdit && !creating && !pipelineView && <button className="mn-primary" disabled={system.saving || !system.document || !monitoring.ready} onClick={createService}>
@@ -78,7 +79,7 @@ export function ExplorerWorkspace() {
     <SourceScope />
     {system.status === "sign-in-required" && <p className="ex-banner">Sign in to load the catalogue. <Link to="/login">Sign in</Link></p>}
     {system.error && <p className="ex-banner ex-error" role="alert">{system.error}<button onClick={() => void system.refresh()}>Retry</button></p>}
-    {loadingCreation ? <p className="ex-muted" role={creationError ? "alert" : "status"}>
+    {loadingCreation ? <p className={creationError ? "ex-banner ex-error" : "ex-muted"} role={creationError ? "alert" : "status"}>
       {creationError || "Opening monitoring setup…"}{creationError && <button onClick={() => void Promise.allSettled([monitoring.reload(), system.refresh()])}>Retry</button>}
     </p> : selectionMissing && !pipelineView ? <p role="alert">{params.has("reading") ? "Reading not found." : params.has("entity") ? "Entity not found." : "Source not found."}</p>
       : pipelineView ? <Suspense fallback={<p className="ex-muted" role="status">Opening pipelines…</p>}><Pipelines services={monitoring.services} index={monitoringIndex} canEdit={system.canEdit}
@@ -100,7 +101,7 @@ export function ExplorerWorkspace() {
           onDeleted={async () => { monitoring.remove(selectedService.id); closeView(); await monitoring.reload(); }} />
       </Suspense> : monitoring.ready && params.get("tab") === "pipeline" ? <Suspense fallback={<p role="status">Opening retained run…</p>}><RetainedPipeline key={requestedService} serviceId={requestedService} canEdit={system.canEdit} replaceable={false} /></Suspense>
       : <div className="mn-empty"><p>{monitoring.error || (!monitoring.ready ? "Loading service…" : "Service not found.")}</p>
-        <button onClick={closeView}>Monitoring</button>{monitoring.error && <button onClick={() => void monitoring.reload()}>Retry</button>}
+        <button onClick={closeView}><ArrowLeft size={14} aria-hidden="true" />All services</button>{monitoring.error && <button onClick={() => void monitoring.reload()}>Retry</button>}
       </div> : <>
         {preview && <Suspense fallback={<p className="ex-muted" role="status">Opening preview…</p>}><Preview key={selected.key} node={{ ...selected, streamIds: streamIds ?? [] }}
           index={index} document={document} telemetry={telemetry} historyCache={history} canEdit={system.canEdit} saving={system.saving}

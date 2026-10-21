@@ -40,7 +40,7 @@ export default function SystemStatus() {
   return (
     <>
       <PageShell>
-        <PageHeader title="System status" eyebrow="Live collection and storage diagnostics" />
+        <PageHeader title="System status" description="Live collection and storage diagnostics" />
         <CollectionHealth />
         <SectionPanel
           title="Storage and retention"
@@ -60,7 +60,7 @@ export default function SystemStatus() {
           }
         >
           {error ? (
-            <p role="alert">Storage information unavailable: {error}</p>
+            <p role="alert" className="text-sm text-destructive">Storage information unavailable: {error}</p>
           ) : status ? (
             <>
               <div className="grid gap-4 sm:grid-cols-3">
@@ -101,7 +101,7 @@ export default function SystemStatus() {
               </p>
             </>
           ) : (
-            <p role="status">Loading storage information…</p>
+            <p role="status" className="text-sm text-muted-foreground">Loading storage information…</p>
           )}
         </SectionPanel>
       </PageShell>

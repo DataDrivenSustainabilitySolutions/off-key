@@ -56,7 +56,7 @@ export function MonitoringServiceCreate({ targets, services, initialTarget, init
   const props = { draftKey: draftKey && `${draftKey}:${targetId}:${strategy}`, chargerId: target?.id ?? "", sensorTypes: sensors, claimsBySensor: claims, loadingModels: loading || !collectionReady,
     onStarted, displayName, initialReading: target?.inputs.find(input => input.stream.id === initialReading)?.binding.telemetry_key, sensorLabels, sensorTopics };
   return <section className="mn-create" aria-label="Create monitoring service">
-    <button className="mn-back" onClick={onBack}><ArrowLeft size={14} />Monitoring</button>
+    <button className="mn-back" onClick={onBack}><ArrowLeft size={14} aria-hidden="true" />All services</button>
     <div className="mn-detail-header"><div><h2>Create service</h2></div></div>
     <p className="ex-muted">Visual flow editing is disabled for this deployment.</p>
     <div className="mn-create-fields"><label className="mn-field">Name<input aria-label="Service name" maxLength={120} placeholder="e.g. Machine health" value={name} onChange={event => setName(event.target.value)} /></label>

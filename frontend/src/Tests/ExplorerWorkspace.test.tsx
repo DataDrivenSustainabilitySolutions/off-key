@@ -341,7 +341,7 @@ describe("service-centred monitoring workspace", () => {
     await enterReadings();
     fireEvent.click(screen.getByRole("button", { name: "Inspect current item" }));
     expect(screen.queryByRole("link", { name: "Other service" })).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "All sources" }));
+    fireEvent.click(screen.getByRole("button", { name: "Show all sources" }));
     expect(await screen.findByRole("link", { name: "Other service" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "humidity, preview" })).toBeTruthy();
   });
@@ -433,7 +433,7 @@ describe("hierarchical explorer workspace", () => {
     }
     expect(workspaces.getByRole("link", { name: "Monitoring" }).getAttribute("aria-current")).toBe("page");
     fireEvent.keyDown(screen.getByRole("button", { name: "Application menu" }), { key: "Enter" });
-    for (const [label, path] of [["Account", "/account"], ["Status", "/system/status"]]) {
+    for (const [label, path] of [["Account", "/account"], ["System status", "/system/status"]]) {
       expect(screen.getByRole("menuitem", { name: label }).getAttribute("href")).toBe(path);
     }
     expect(screen.getByRole("menuitem", { name: "Settings" }).getAttribute("aria-haspopup")).toBe("dialog");
@@ -457,7 +457,7 @@ describe("hierarchical explorer workspace", () => {
     fireEvent.click(screen.getByRole("button", { name: "Back one level" }));
     expect(screen.getByRole("button", { name: "weather, open" })).toBeTruthy();
     expect(screen.getByRole("region", { name: "Reading preview" })).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "All sources" }));
+    fireEvent.click(screen.getByRole("button", { name: "Show all sources" }));
     expect(screen.queryByRole("region", { name: "Reading preview" })).toBeNull();
     expect(await screen.findByRole("heading", { name: "No monitoring services" })).toBeTruthy();
   });

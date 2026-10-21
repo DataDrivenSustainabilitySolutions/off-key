@@ -4,7 +4,7 @@ import { Link } from "react-router-dom";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Search, Star } from "lucide-react";
 import type { ActiveService } from "@/types/monitoring";
-import { formatServiceTime, serviceName, serviceState, strategyName, type MonitoringIndex } from "./serviceModel";
+import { formatServiceTime, modelName, serviceName, serviceState, strategyName, type MonitoringIndex } from "./serviceModel";
 
 type Props = {
   draftKey?: string; services: ActiveService[]; index: MonitoringIndex; ready: boolean; error: string;
@@ -48,7 +48,7 @@ export function MonitoringServiceList({ draftKey, services, index, ready, error,
         onChange={event => { setQuery(event.target.value); scroll.current?.scrollTo?.(0, 0); }} /></label></div>
       <div role="table" aria-label="Monitoring service list" aria-rowcount={shown.length + 1} aria-colcount={5}>
         <div className="mn-row mn-table-head" role="row"><span role="columnheader">Service</span><span role="columnheader">Inputs</span><span role="columnheader">State</span><span role="columnheader">Last update</span><span role="columnheader" className="ex-sr-only">Favourite</span></div>
-        <div className="mn-table-scroll" ref={scroll} onScroll={event => setOffset(event.currentTarget.scrollTop)} role="rowgroup" style={{ height: `min(${Math.max(1, shown.length) * 76}px, max(320px, calc(100dvh - 260px)))` }}>
+        <div className="mn-table-scroll" ref={scroll} onScroll={event => setOffset(event.currentTarget.scrollTop)} role="rowgroup" style={{ height: `min(${Math.max(76, virtual.getTotalSize())}px, max(320px, calc(100dvh - 260px)))` }}>
           <div className="mn-virtual-rows" style={{ height: virtual.getTotalSize() }}>
             {virtual.getVirtualItems().map(item => {
               const row = shown[item.index]!; const service = row.service; const progress = service.operational_status.progress;
@@ -62,7 +62,7 @@ export function MonitoringServiceList({ draftKey, services, index, ready, error,
                 }} onClick={event => {
                   if (event.button || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
                   event.preventDefault(); onOpen(service.id);
-                }}>{row.name}</Link><small>{strategyName(service)}{service.model_type ? ` · ${service.model_type.replace(/^aberrant_/, "").replace(/_/g, " ")}` : ""}</small>
+                }}>{row.name}</Link><small>{strategyName(service)}{service.model_type ? ` · ${modelName(service.model_type)}` : ""}</small>
                   <small className="mn-mobile-scope" title={row.scope}>{row.scope}</small></div>
                 <div role="cell" className="mn-service-inputs" title={row.scope}><span>{row.scope}</span><small>{service.mqtt_topics.length} {service.mqtt_topics.length === 1 ? "reading" : "readings"}</small></div>
                 <div role="cell" className="mn-service-state"><span className={`mn-state mn-state--${row.state.tone}`}>{row.state.label}</span>

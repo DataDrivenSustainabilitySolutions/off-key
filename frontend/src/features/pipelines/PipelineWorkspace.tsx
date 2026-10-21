@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { ArrowLeft } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
 import { getErrorMessage } from "@/lib/errors";
 import type { ActiveService } from "@/types/monitoring";
@@ -96,7 +97,7 @@ export default function PipelineWorkspace({
     return (
       <section aria-label="Pipelines">
         <button className="mn-back" onClick={onBack}>
-          Monitoring
+          <ArrowLeft size={14} aria-hidden="true" />All services
         </button>
         {error ? (
           <p role="alert" className="pl-error">

@@ -103,7 +103,7 @@ test("shows real system diagnostics on their own page and keeps old links workin
   await page.getByRole("button", { name: "Application menu", exact: true }).click();
   const storageReady = page.waitForResponse(response => new URL(response.url()).pathname === "/api/v1/system/storage");
   const healthReady = page.waitForResponse(response => new URL(response.url()).pathname === "/api/v1/system/health");
-  await page.getByRole("menuitem", { name: "Status", exact: true }).click();
+  await page.getByRole("menuitem", { name: "System status", exact: true }).click();
   await expect(page).toHaveURL(/\/system\/status$/);
   await expect(page.getByRole("heading", { name: "System status", exact: true })).toBeVisible();
   const storageResponse = await storageReady;
@@ -124,7 +124,7 @@ test("shows real system diagnostics on their own page and keeps old links workin
   await page.getByRole("button", { name: "Refresh storage", exact: true }).click();
   expect((await nextStorage).ok()).toBe(true);
   await page.getByRole("button", { name: "Application menu", exact: true }).click();
-  await expect(page.getByRole("menuitem", { name: "Status", exact: true })).toHaveAttribute("aria-current", "page");
+  await expect(page.getByRole("menuitem", { name: "System status", exact: true })).toHaveAttribute("aria-current", "page");
   await page.keyboard.press("Escape");
 
   const dialog = await openSettings(page);

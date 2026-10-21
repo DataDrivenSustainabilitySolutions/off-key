@@ -68,3 +68,4 @@
   .pl-setup .pl-canvas-toolbar { gap: 12px; }
 }
 @media (prefers-reduced-motion: reduce) { .pl-spin { animation: none; } }
+.ex-main-content > .pl-setup { margin-top: 24px; }

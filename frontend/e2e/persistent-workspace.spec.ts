@@ -404,7 +404,7 @@ test("filters real recorded reports by entity and reading across the shared navb
     await expect(page.getByRole("cell", { name: names[0], exact: true })).toBeVisible();
     await expect(page.getByRole("cell", { name: names[1], exact: true })).toHaveCount(0);
     await expect(page.getByRole("cell", { name: names[2], exact: true })).toHaveCount(0);
-    await page.getByRole("button", { name: "All sources", exact: true }).click();
+    await page.getByRole("button", { name: "Show all sources", exact: true }).click();
     for (const name of names) await expect(page.getByRole("cell", { name, exact: true })).toBeVisible();
   } finally {
     await publisher?.endAsync();

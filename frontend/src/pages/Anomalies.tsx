@@ -70,7 +70,7 @@ export default function AnomalyTable() {
     return () => window.clearTimeout(timeoutId);
   }, [fetchAllAnomalies]);
 
-  const columns = isAdmin ? 7 : 6;
+  const columns = isAdmin ? 6 : 5;
   const scopedData = useMemo(() => filterSourceReports(data, streamIds, system.snapshot?.runtime), [data, streamIds, system.snapshot?.runtime]);
   const sortedData = useMemo(
     () =>
@@ -169,7 +169,6 @@ export default function AnomalyTable() {
               <TableRow className="bg-muted/30 hover:bg-muted/30">
                 <TableHead>Entity</TableHead>
                 <TableHead>Timestamp</TableHead>
-                <TableHead>Reading</TableHead>
                 <TableHead>Readings</TableHead>
                 <TableHead>Type</TableHead>
                 <TableHead>Signal</TableHead>
@@ -202,18 +201,23 @@ export default function AnomalyTable() {
                     <TableCell>
                       {formatTime(anomaly.timestamp)}
                     </TableCell>
-                    <TableCell>
-                      <span className="rounded-full bg-sky-100 px-2.5 py-1 text-xs font-medium text-sky-800 dark:bg-sky-950/40 dark:text-sky-200">
-                        {anomaly.telemetry_type === "__multivariate__"
-                          ? "multivariate"
-                          : labels.reading(anomaly.charger_id, anomaly.telemetry_type)}
-                      </span>
-                    </TableCell>
-                    <TableCell
-                      className="max-w-64 truncate text-xs text-muted-foreground"
-                      title={formatAnomalySensorSet(anomaly.sensor_set?.map((key) => labels.reading(anomaly.charger_id, key)))}
-                    >
-                      {formatAnomalySensorSet(anomaly.sensor_set?.map((key) => labels.reading(anomaly.charger_id, key)))}
+                    <TableCell className="max-w-96">
+                      <div className="flex min-w-0 items-center gap-2">
+                        <span className="shrink-0 rounded-full bg-sky-100 px-2.5 py-1 text-xs font-medium text-sky-800 dark:bg-sky-950/40 dark:text-sky-200">
+                          {anomaly.telemetry_type === "__multivariate__"
+                            ? "multivariate"
+                            : labels.reading(anomaly.charger_id, anomaly.telemetry_type)}
+                        </span>
+                        {/* A single reading is already named by its badge. */}
+                        {(anomaly.telemetry_type === "__multivariate__" || (anomaly.sensor_set?.length ?? 0) > 1) && (
+                          <span
+                            className="min-w-0 truncate text-xs text-muted-foreground"
+                            title={formatAnomalySensorSet(anomaly.sensor_set?.map((key) => labels.reading(anomaly.charger_id, key)))}
+                          >
+                            {formatAnomalySensorSet(anomaly.sensor_set?.map((key) => labels.reading(anomaly.charger_id, key)))}
+                          </span>
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell>{anomaly.anomaly_type}</TableCell>
                     <TableCell>

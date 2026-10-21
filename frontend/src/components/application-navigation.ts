@@ -16,6 +16,7 @@ export const workspaceNavItems: ApplicationNavItem[] = [
 
 export function isActiveApplicationPath(pathname: string, href: string) {
   if (href === "/") return pathname === "/" || pathname.startsWith("/monitoring/");
-  if (href === "/sources" && pathname.startsWith("/details/")) return true;
+  // Entity details are opened from Reporting events.
+  if (href === "/anomalies" && pathname.startsWith("/details/")) return true;
   return pathname === href || pathname.startsWith(`${href}/`);
 }

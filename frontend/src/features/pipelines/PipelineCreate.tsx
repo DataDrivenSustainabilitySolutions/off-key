@@ -139,7 +139,7 @@ export function PipelineCreate(props: PipelineSetupProps) {
     finally { setArranging(false); }
   };
   return <section className="pl-editor pl-setup" aria-label={initialDesign ? "Pipeline editor" : "Monitoring workbench"}>
-    <button type="button" className="mn-back" disabled={busy} onClick={props.onBack}><ArrowLeft size={14} />{initialDesign ? "Back" : "All services"}</button>
+    <button type="button" className="mn-back" disabled={busy} onClick={props.onBack}><ArrowLeft size={14} aria-hidden="true" />{initialDesign ? "Back" : "All services"}</button>
     <div className="pl-header pl-setup-header"><div>
       <h2>{replaceId ? "Update monitoring service" : initialDesign ? initialDesign.name : "Create monitoring service"}</h2>
       <p className="pl-help">Choose readings, adjust the flow, and apply. Save a template whenever you want to reuse it.</p>

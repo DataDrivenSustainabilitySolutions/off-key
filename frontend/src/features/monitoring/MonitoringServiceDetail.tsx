@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { useSearchParams } from "react-router-dom";
-import { ArrowLeft, Star, X } from "lucide-react";
+import { ArrowLeft, Star } from "lucide-react";
 import { apiUtils } from "@/lib/api-client";
 import { API_CONFIG } from "@/lib/api-config";
 import { getErrorMessage } from "@/lib/errors";
@@ -61,11 +61,11 @@ export default function MonitoringServiceDetail({ service, inputs, document, his
     finally { setDeleting(false); }
   };
   return <section className="mn-detail" aria-label="Monitoring service details">
-    <button className="mn-back" onClick={onBack}><ArrowLeft size={14} />Monitoring</button>
+    <button className="mn-back" onClick={onBack}><ArrowLeft size={14} aria-hidden="true" />All services</button>
     <div className="mn-detail-header"><div><h2><InlineName value={name} editable={canEdit} onSave={onRename} ariaLabel="Rename service" /></h2>
       <small>{strategyName(service)}{service.model_type ? ` · ${modelName(service.model_type)}` : ""}</small></div>
       <div className="mn-detail-actions"><button className="mn-favourite ex-icon-button" aria-pressed={favourite} aria-label={favourite ? "Remove service from favourites" : "Add service to favourites"} onClick={onFavourite}><Star size={17} /></button>
-        <button className="ex-icon-button" aria-label="Close service" onClick={onBack}><X size={17} /></button></div></div>
+      </div></div>
     <dl className="mn-summary"><div><dt>State</dt><dd><span className={`mn-state mn-state--${state.tone}`}>{state.label}</span></dd></div>
       <div><dt>Inputs</dt><dd>{service.mqtt_topics.length} {service.mqtt_topics.length === 1 ? "reading" : "readings"}</dd></div>
       <div><dt>Processed</dt><dd>{service.operational_status.processed_message_count.toLocaleString()}</dd></div>

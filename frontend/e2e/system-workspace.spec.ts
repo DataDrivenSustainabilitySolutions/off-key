@@ -175,7 +175,13 @@ test("records only an opted-in reading and restores its history in the mobile wo
       return evidence.some(row => row.service_id === serviceId && row.anomaly_score !== null && row.threshold !== null);
     }).toBe(true);
     await page.getByRole("tab", { name: "Evidence", exact: true }).click();
-    await expect(page.getByRole("button", { name: "Full range", exact: true })).toBeVisible();
+    const monitoringHistory = page.getByRole("region", { name: "Monitoring history", exact: true });
+    await expect(monitoringHistory.getByRole("img", { name: /^1 displayed reading of 1 monitored input:/ })).toBeVisible();
+    await expect(monitoringHistory.getByLabel("Latest detector result", { exact: true })).toContainText("Anomaly score:");
+    await monitoringHistory.getByRole("button", { name: "Zoom in", exact: true }).click();
+    await expect(monitoringHistory.getByRole("button", { name: "Return to live", exact: true })).toBeVisible();
+    await monitoringHistory.getByRole("button", { name: "Return to live", exact: true }).click();
+    await expect(monitoringHistory.getByRole("button", { name: "Live", exact: true })).toBeDisabled();
     await setAppearance(page, "Dark");
     await page.screenshot({ path: testInfo.outputPath("monitoring-shared-workspace.png") });
     await page.getByRole("tab", { name: "Configuration", exact: true }).click();

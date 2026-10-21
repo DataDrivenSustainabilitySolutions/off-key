@@ -43,7 +43,7 @@ export function MonitoringHistory({ service, inputs, connections, historyCache, 
     histories, evidence: history.monitoring.evidence, dark: resolvedTheme === "dark", selectedDetectorIds: selection.selectedDetectorIds, operational }),
   [service.id, selectedInputs, inputs, histories, history.monitoring.evidence, resolvedTheme, selection.selectedDetectorIds, operational]);
   const domain = getChartDomain(model.extent);
-  const description = `${selectedInputs.length} displayed readings of ${inputs.length} monitored inputs: ${selectedInputs.map(input => input.stream.label).join(", ")}. `
+  const description = `${selectedInputs.length} displayed ${selectedInputs.length === 1 ? "reading" : "readings"} of ${inputs.length} monitored ${inputs.length === 1 ? "input" : "inputs"}: ${selectedInputs.map(input => input.stream.label).join(", ")}. `
     + `${inputs.length > 1 ? "Joint detector result across all inputs; no per-sensor attribution. " : ""}Independent value scales, shared time, hover and zoom. Times in ${timeZone}.`;
   const option = useMemo(() => buildMonitoringChartOption({ model, colors, timeZone, accessibleDescription: description,
     viewport: inspection ? { mode: "absolute", ...inspection } : { mode: "live" }, layout: "monitoring" }),

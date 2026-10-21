@@ -31,7 +31,7 @@ export function formatMonitoringObservationTooltip(
     const inputTime = timestamp ? Date.parse(timestamp) : undefined;
     const point = inputTime === undefined ? undefined : reading.data.find(([time]) => time === inputTime);
     lines.push(`${reading.name}: ${point ? `${formatValue(point[1])}${reading.unit ? ` ${reading.unit}` : ""}` : "input not loaded"}`);
-    if (inputTime !== undefined && inputTime !== observation.timeMs) lines.push(`  Input time: ${formatTime(inputTime)}`);
+    if (inputTime !== undefined && inputTime !== observation.timeMs) lines.push(`  Input time: ${formatTime(inputTime)} (${inputTime - observation.timeMs} ms)`);
   }
   for (const entry of evaluated) {
     const result = entry.data!.observation!;

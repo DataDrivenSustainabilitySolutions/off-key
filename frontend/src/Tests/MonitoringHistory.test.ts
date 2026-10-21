@@ -63,6 +63,7 @@ describe("joint monitoring history", () => {
     expect(text).toContain("humidity: 55 %");
     expect(text).not.toContain("999");
     expect(text).toContain(`Input time: ${first}`);
+    expect(text).toContain("(-75 ms)");
     expect(text).toContain("Joint result across 2 inputs");
     expect(text).toContain("Alarm: active");
   });

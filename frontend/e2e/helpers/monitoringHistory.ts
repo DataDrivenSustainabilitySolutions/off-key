@@ -63,7 +63,10 @@ export async function inspectMonitoringHistory({ page, api, headers, serviceId, 
   await setAppearance(page, "Dark");
   await expect(chart).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-  await history.screenshot({ path: testInfo.outputPath(`monitoring-history-${strategy}-mobile.png`) });
+  await history.getByRole("heading", { name: "Inputs and detection", exact: true }).scrollIntoViewIfNeeded();
+  await page.screenshot({ path: testInfo.outputPath(`monitoring-history-${strategy}-mobile-inputs.png`) });
+  await latest.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: testInfo.outputPath(`monitoring-history-${strategy}-mobile-result.png`) });
   await page.setViewportSize({ width: 1600, height: 1100 });
   await setAppearance(page, "Light");
 }

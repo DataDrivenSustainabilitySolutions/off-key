@@ -155,6 +155,26 @@ async def running_monitor(sessions, workloads, owned, *, command=None):
     return service_id, workload
 
 
+FAILED_TASK = {"stage": "failed", "detail": "Previous task failed"}
+
+
+async def record_operational_status(sessions, service_id, stage, payload, **values):
+    """Persist a runtime heartbeat the way RADAR does and return its timestamp."""
+    heartbeat = datetime.now(UTC)
+    async with sessions.begin() as session:
+        await session.execute(
+            update(MonitoringService)
+            .where(MonitoringService.id == service_id)
+            .values(
+                operational_stage=stage,
+                operational_status=payload,
+                operational_updated_at=heartbeat,
+                **values,
+            )
+        )
+    return heartbeat
+
+
 @asynccontextmanager
 async def paused_reconciliation(reconciler, sessions, monkeypatch):
     """Hold an actual Docker observation until the concurrent write commits."""
@@ -429,16 +449,9 @@ async def test_reconciliation_docker_latency_does_not_block_or_overwrite_heartbe
     }
     async with paused_reconciliation(reconciler, sessions, monkeypatch) as observations:
         assert observations == {workload.id: workload_state}
-        heartbeat = datetime.now(UTC)
-        async with asyncio.timeout(2), sessions.begin() as writer:
-            await writer.execute(
-                update(MonitoringService)
-                .where(MonitoringService.id == service_id)
-                .values(
-                    operational_stage="operational",
-                    operational_status=payload,
-                    operational_updated_at=heartbeat,
-                )
+        async with asyncio.timeout(2):
+            heartbeat = await record_operational_status(
+                sessions, service_id, "operational", payload
             )
     async with sessions() as session:
         current = await session.get(MonitoringService, service_id)
@@ -463,19 +476,9 @@ async def test_reconciliation_revives_inactive_monitor_only_after_real_swarm_rea
     async with sessions() as session:
         await RadarLifecycleController(session, workloads).complete_creation(service_id)
     await wait_for_workload_state(workloads, workload, "pending")
-    heartbeat = datetime.now(UTC)
-    payload = {"stage": "failed", "detail": "Previous task failed"}
-    async with sessions.begin() as session:
-        await session.execute(
-            update(MonitoringService)
-            .where(MonitoringService.id == service_id)
-            .values(
-                status=False,
-                operational_stage="failed",
-                operational_status=payload,
-                operational_updated_at=heartbeat,
-            )
-        )
+    heartbeat = await record_operational_status(
+        sessions, service_id, "failed", FAILED_TASK, status=False
+    )
     reconciler = RadarStatusReconciliationService(async_docker=workloads.async_docker)
     async with sessions() as session:
         await reconciler._reconcile_with_session(session)
@@ -483,7 +486,7 @@ async def test_reconciliation_revives_inactive_monitor_only_after_real_swarm_rea
         assert current.status is False
         assert current.desired_state == "running"
         assert current.operational_stage == "failed"
-        assert current.operational_status == payload
+        assert current.operational_status == FAILED_TASK
         assert current.operational_updated_at == heartbeat
 
     await workloads.async_docker.run(workload.update, constraints=[])
@@ -504,19 +507,9 @@ async def test_stale_running_observation_cannot_revive_newer_stop_generation(
     sessions = lifecycle_database
     workloads, owned = swarm_workloads
     service_id, workload = await running_monitor(sessions, workloads, owned)
-    heartbeat = datetime.now(UTC)
-    payload = {"stage": "failed", "detail": "Previous task failed"}
-    async with sessions.begin() as session:
-        await session.execute(
-            update(MonitoringService)
-            .where(MonitoringService.id == service_id)
-            .values(
-                status=False,
-                operational_stage="failed",
-                operational_status=payload,
-                operational_updated_at=heartbeat,
-            )
-        )
+    heartbeat = await record_operational_status(
+        sessions, service_id, "failed", FAILED_TASK, status=False
+    )
     reconciler = RadarStatusReconciliationService(async_docker=workloads.async_docker)
     async with paused_reconciliation(reconciler, sessions, monkeypatch) as observations:
         assert observations == {workload.id: "running"}
@@ -538,7 +531,7 @@ async def test_stale_running_observation_cannot_revive_newer_stop_generation(
         assert current.stop_requested_at == stop_requested_at
         assert current.status is False
         assert current.operational_stage == "failed"
-        assert current.operational_status == payload
+        assert current.operational_status == FAILED_TASK
         assert current.operational_updated_at == heartbeat
 
 

@@ -10,42 +10,29 @@ vi.stubGlobal('fetch', fetchMock);
 
 afterAll(() => vi.unstubAllGlobals());
 
+const requestReset = (email: string) => {
+    renderForgotPassword();
+    fireEvent.change(screen.getByLabelText(/Email/i), { target: { value: email } });
+    fireEvent.click(screen.getByRole('button', { name: /Reset Password/i }));
+};
+
 describe('ForgotPassword', () => {
     beforeEach(() => {
         vi.resetAllMocks();
         vi.spyOn(console, 'error').mockImplementation(() => undefined);
     });
 
-    test('zeigt Eingabefeld und Button', () => {
-        renderForgotPassword();
-        expect(screen.getByLabelText(/Email/i)).toBeDefined();
-        expect(screen.getByRole('button', { name: /Reset Password/i })).toBeDefined();
-    });
-
-    test('erlaubt Eingabe in das E-Mail-Feld', () => {
-        renderForgotPassword();
-        const input = screen.getByLabelText(/Email/i);
-        fireEvent.change(input, { target: { value: 'test@example.com' } });
-        expect((input as HTMLInputElement).value).toBe('test@example.com');
-    });
-
-    test('zeigt Erfolgsmeldung nach Submit', async () => {
+    test('sends the address and shows the confirmation', async () => {
         fetchMock.mockResolvedValueOnce(new Response(
-            JSON.stringify({ message: 'Reset link gesendet!' }),
+            JSON.stringify({ message: 'Reset link sent' }),
             { status: 200, headers: { 'Content-Type': 'application/json' } }
         ));
 
-        renderForgotPassword();
-        const input = screen.getByLabelText(/Email/i);
-        const button = screen.getByRole('button', { name: /Reset Password/i });
-
-        fireEvent.change(input, { target: { value: 'test@example.com' } });
-        fireEvent.click(button);
+        requestReset('test@example.com');
 
         await waitFor(() => {
-            expect(screen.getByText(/Reset link gesendet!/i)).toBeDefined();
+            expect(screen.getByText(/Reset link sent/i)).toBeDefined();
         });
-
         expect(fetch).toHaveBeenCalledWith(
             getApiUrl(API_CONFIG.ENDPOINTS.AUTH.FORGOT_PASSWORD),
             expect.objectContaining({
@@ -56,36 +43,23 @@ describe('ForgotPassword', () => {
         );
     });
 
-    test('zeigt Fehlermeldung bei fetch-Fehler', async () => {
-        fetchMock.mockRejectedValueOnce(new Error('Failed'));
+    test.each([
+        ['an unreachable server', () => Promise.reject(new Error('Failed')), /An error occurred while sending the request./i],
+        [
+            'a rejected request',
+            () => Promise.resolve(new Response(
+                JSON.stringify({ detail: 'Request rejected' }),
+                { status: 400, headers: { 'Content-Type': 'application/json' } }
+            )),
+            /Request rejected/i,
+        ],
+    ])('reports %s', async (_, respond, message) => {
+        fetchMock.mockImplementationOnce(respond);
 
-        renderForgotPassword();
-        const input = screen.getByLabelText(/Email/i);
-        const button = screen.getByRole('button', { name: /Reset Password/i });
-
-        fireEvent.change(input, { target: { value: 'fail@example.com' } });
-        fireEvent.click(button);
-
-        await waitFor(() => {
-            expect(screen.getByText(/An error occurred while sending the request./i)).toBeDefined();
-        });
-    });
-
-    test('zeigt Fehlermeldung bei nicht erfolgreicher Antwort', async () => {
-        fetchMock.mockResolvedValueOnce(new Response(
-            JSON.stringify({ detail: 'Request rejected' }),
-            { status: 400, headers: { 'Content-Type': 'application/json' } }
-        ));
-
-        renderForgotPassword();
-        const input = screen.getByLabelText(/Email/i);
-        const button = screen.getByRole('button', { name: /Reset Password/i });
-
-        fireEvent.change(input, { target: { value: 'reject@example.com' } });
-        fireEvent.click(button);
+        requestReset('test@example.com');
 
         await waitFor(() => {
-            expect(screen.getByText(/Request rejected/i)).toBeDefined();
+            expect(screen.getByText(message)).toBeDefined();
         });
     });
 });

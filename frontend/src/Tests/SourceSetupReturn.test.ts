@@ -9,7 +9,8 @@ describe("source setup return destinations", () => {
     ])
       expect(safeServiceReturn(path)).toBe(path);
   });
-  it("rejects external, unrelated, and incomplete destinations", () => {
+  it("rejects missing, external, unrelated, and incomplete destinations", () => {
+    expect(safeServiceReturn(null)).toBe("/");
     for (const path of [
       "https://elsewhere.example/?pipeline=design",
       "//elsewhere.example/?pipeline=design",

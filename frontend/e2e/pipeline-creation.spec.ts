@@ -156,8 +156,13 @@ test("loads the saved template, saves an independent copy, and fits desktop and 
     await page.setViewportSize({ width: 390, height: 844 });
     await page.screenshot({ path: testInfo.outputPath("setup-mobile.png"), fullPage: true });
     await openPipelineSettings(workbench, "Service");
-    for (const name of ["Detector learning updates before calibration", "Calibration observations", "Default random seed"])
-      await expect(workbench.getByRole("spinbutton", { name, exact: true })).toBeVisible();
+    for (const name of ["Detector learning updates before calibration", "Calibration observations", "Default random seed"]) {
+      const field = workbench.getByRole("spinbutton", { name, exact: true });
+      await expect(field).toBeVisible();
+      await field.scrollIntoViewIfNeeded();
+      await expect(field).toBeInViewport({ ratio: 1 });
+    }
+    await workbench.getByRole("spinbutton", { name: "Detector learning updates before calibration", exact: true }).scrollIntoViewIfNeeded();
     await page.screenshot({ path: testInfo.outputPath("creation-learning-mobile.png"), fullPage: true });
     await workbench.getByRole("button", { name: "Close settings", exact: true }).click();
     await workbench.getByRole("button", { name: "Load template", exact: true }).click();

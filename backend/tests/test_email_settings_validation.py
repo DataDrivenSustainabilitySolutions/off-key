@@ -5,18 +5,7 @@ from off_key_core.config.email import get_email_settings
 from off_key_core.utils import mail
 from pydantic import ValidationError
 
-
-def _set_base_email_env(monkeypatch) -> None:
-    monkeypatch.setenv("EMAIL_USERNAME", "sender@example.com")
-    monkeypatch.setenv("EMAIL_PASSWORD", "email-secret")
-    monkeypatch.setenv("EMAIL_FROM", "sender@example.com")
-    monkeypatch.setenv("FRONTEND_BASE_URL", "http://localhost:5173")
-    monkeypatch.setenv("SMTP_SERVER", "localhost")
-    monkeypatch.setenv("SMTP_PORT", "1025")
-    monkeypatch.setenv("MAIL_STARTTLS", "true")
-    monkeypatch.setenv("MAIL_SSL_TLS", "false")
-    monkeypatch.setenv("USE_CREDENTIALS", "true")
-    monkeypatch.setenv("VALIDATE_CERTS", "false")
+from tests.support.env import EMAIL_ENVIRONMENT, set_environment
 
 
 @pytest.fixture(autouse=True)
@@ -29,7 +18,7 @@ def clear_email_settings_cache():
 
 
 def test_email_settings_validate_and_normalize_alert_recipients(monkeypatch):
-    _set_base_email_env(monkeypatch)
+    set_environment(monkeypatch, EMAIL_ENVIRONMENT)
     monkeypatch.setenv(
         "ANOMALY_ALERT_RECIPIENTS",
         " admin@example.com,ops@example.com  ",
@@ -44,7 +33,7 @@ def test_email_settings_validate_and_normalize_alert_recipients(monkeypatch):
 
 
 def test_email_settings_reject_invalid_alert_recipient(monkeypatch):
-    _set_base_email_env(monkeypatch)
+    set_environment(monkeypatch, EMAIL_ENVIRONMENT)
     monkeypatch.setenv("ANOMALY_ALERT_RECIPIENTS", "admin@example.com,not-an-email")
 
     with pytest.raises(ValidationError):
@@ -52,7 +41,7 @@ def test_email_settings_reject_invalid_alert_recipient(monkeypatch):
 
 
 def test_email_settings_reject_empty_alert_recipients(monkeypatch):
-    _set_base_email_env(monkeypatch)
+    set_environment(monkeypatch, EMAIL_ENVIRONMENT)
     monkeypatch.setenv("ANOMALY_ALERT_RECIPIENTS", " , ")
 
     with pytest.raises(ValidationError):
@@ -61,7 +50,7 @@ def test_email_settings_reject_empty_alert_recipients(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_resend_transport_delivers_invitation_and_reset_links(monkeypatch):
-    _set_base_email_env(monkeypatch)
+    set_environment(monkeypatch, EMAIL_ENVIRONMENT)
     for key, value in {
         "EMAIL_USERNAME": "resend",
         "EMAIL_PASSWORD": "re_test_key_not_a_secret",

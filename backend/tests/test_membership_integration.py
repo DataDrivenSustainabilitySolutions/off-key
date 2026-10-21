@@ -33,7 +33,7 @@ from off_key_tactic_middleware.services.remembered_sessions import (
 )
 from sqlalchemy import select, text
 
-from .test_gateway_auth_token_types import _set_auth_env
+from tests.support.env import set_auth_env
 
 PASSWORD = "correct horse battery staple"
 
@@ -319,7 +319,7 @@ async def test_bootstrap_cli_email_delivery_and_recovery(
 async def test_invitation_reset_and_immediate_session_revocation(
     member_database, monkeypatch
 ):
-    _set_auth_env(monkeypatch)
+    set_auth_env(monkeypatch)
     _, sessions = member_database
     admin_id = await bootstrap(sessions)
     async with sessions() as session:
@@ -512,7 +512,7 @@ async def test_membership_migration_preserves_existing_accounts(member_database)
 async def test_reset_between_actor_read_and_self_update_revokes_new_session(
     member_database, monkeypatch
 ):
-    _set_auth_env(monkeypatch)
+    set_auth_env(monkeypatch)
     _, sessions = member_database
     admin_id = await bootstrap(sessions)
     async with sessions() as session:

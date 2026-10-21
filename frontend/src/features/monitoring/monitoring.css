@@ -1,7 +1,9 @@
 .mn-services { margin-top: 28px; min-width: 0; }
 .mn-list-tools { display: flex; align-items: center; justify-content: space-between; gap: 18px; flex-wrap: wrap; margin-bottom: 14px; }
 .mn-filters { display: flex; flex-wrap: wrap; gap: 4px; }
-.ex-shell .mn-filters button { padding: 5px 9px; border-radius: 5px; font-size: 12px; color: var(--ex-muted); }
+.ex-shell .mn-filters button { display: inline-flex; align-items: center; gap: 6px; padding: 5px 9px; border-radius: 5px; font-size: 12px; color: var(--ex-muted); }
+.mn-filter-count { font-size: 11px; color: var(--ex-muted); opacity: .8; font-variant-numeric: tabular-nums; }
+.mn-filter-count.is-alert { color: hsl(var(--destructive)); opacity: 1; font-weight: 600; }
 .ex-shell .mn-filters button:hover { background: var(--ex-hover); }
 .ex-shell .mn-filters button[aria-pressed="true"] { color: var(--ex-ink); background: var(--ex-side); }
 .mn-search { display: flex; align-items: center; gap: 8px; border: 1px solid var(--ex-line); padding: 7px 10px; border-radius: 6px; color: var(--ex-muted); min-width: 180px; max-width: 260px; }
@@ -18,11 +20,6 @@
 .mn-row small { display: block; font-size: 11px; color: var(--ex-muted); margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mn-service-inputs > span { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mn-service-time { font-size: 12px; font-variant-numeric: tabular-nums; }
-.mn-state { display: inline-flex; gap: 7px; align-items: center; font-size: 12px; }
-.mn-state::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--ex-muted); flex-shrink: 0; }
-.mn-state--positive::before { background: var(--ex-accent); }
-.mn-state--danger::before { background: hsl(var(--destructive)); }
-.mn-state--warning::before { background: hsl(var(--warning)); }
 .ex-shell .mn-favourite { color: var(--ex-muted); }
 .ex-shell .mn-favourite[aria-pressed="true"] { color: var(--ex-accent); }
 .mn-favourite[aria-pressed="true"] svg { fill: var(--ex-active); }
@@ -41,6 +38,8 @@
 .mn-detail,.mn-create { margin-top: 24px; min-width: 0; }
 .mn-detail-header { display: flex; gap: 18px; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; }
 .mn-detail-header h2 { font-size: 22px; font-weight: 500; letter-spacing: -.3px; margin: 0; overflow-wrap: anywhere; }
+.mn-detail-header h1 { font-size: 27px; font-weight: 550; line-height: 1.35; letter-spacing: -.035em; margin: 0; overflow-wrap: anywhere; }
+.ex-main-content > :is(.mn-detail,.mn-create,.pl-setup):first-child { margin-top: 0; }
 .mn-detail-header small { display: block; color: var(--ex-muted); margin-top: 6px; font-size: 12px; }
 .mn-detail-actions { display: flex; gap: 5px; flex-shrink: 0; }
 .mn-summary { display: flex; flex-wrap: wrap; gap: 22px 40px; border-bottom: 1px solid var(--ex-line); padding-bottom: 24px; margin: 0; }
@@ -54,7 +53,7 @@
 .mn-detail-panel > :first-child { margin-top: 0; }
 .mn-detail-panel > .ex-banner { margin-bottom: 18px; }
 .mn-detail-panel h3,.mn-create h3 { font-size: 13px; font-weight: 500; margin: 0 0 14px; }
-.mn-input-list { list-style: none; padding: 0; margin: 0; }
+.mn-input-list { list-style: none; padding: 0; margin: 0; max-width: 720px; }
 .mn-input-list li { display: flex; justify-content: space-between; align-items: center; gap: 18px; padding: 12px 0; border-bottom: 1px solid var(--ex-line); min-width: 0; }
 .mn-input-list li > span { min-width: 0; }
 .mn-input-list small { display: block; color: var(--ex-muted); font-size: 11px; overflow-wrap: anywhere; margin-top: 3px; }
@@ -62,13 +61,12 @@
 .mn-section { margin-top: 28px; }
 .mn-progress { max-width: 340px; height: 4px; background: var(--ex-side); border-radius: 4px; margin-top: 12px; overflow: hidden; }
 .mn-progress > div { background: var(--ex-accent); height: 100%; }
-.mn-configuration { display: grid; gap: 12px; margin: 0; }
+.mn-configuration { display: grid; gap: 12px; margin: 0; max-width: 720px; }
 .mn-configuration > div { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 20px; border-bottom: 1px solid var(--ex-line); padding: 10px 0; }
 .mn-configuration dt { color: var(--ex-muted); }
 .mn-configuration dd { margin: 0; overflow-wrap: anywhere; max-width: 100%; }
 .mn-json { background: var(--ex-side); padding: 16px; border-radius: 6px; overflow: auto; font-size: 12px; white-space: pre-wrap; word-break: break-word; }
 .mn-danger { color: hsl(var(--destructive)) !important; padding: 8px 12px; background: color-mix(in srgb,hsl(var(--destructive)) 7%,var(--ex-bg)) !important; border-radius: 6px; }
-.mn-dialog-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-top: 24px; }
 .mn-create-fields { display: grid; gap: 18px; grid-template-columns: 1fr 1fr; margin-bottom: 25px; }
 .mn-field { display: flex; flex-direction: column; gap: 7px; font-size: 12px; color: var(--ex-muted); }
 .mn-field input,.mn-field select { background: var(--ex-bg); border: 1px solid var(--ex-line); border-radius: 6px; padding: 9px 10px; color: var(--ex-ink); font: inherit; min-width: 0; width: 100%; }
@@ -89,7 +87,10 @@
 .mn-history-result > span:first-child { flex-basis: 100%; }
 .mn-history-result strong { color: var(--ex-ink); font-weight: 500; }
 .mn-history-key { color: var(--ex-muted); font-size: 11px; line-height: 1.5; margin: 8px 0 0; }
-.mn-history-empty { padding: 40px 0; font-size: 12px; color: var(--ex-muted); }
+.mn-history-empty { display: flex; flex-direction: column; gap: 4px; padding: 36px 0 28px; font-size: 12px; color: var(--ex-muted); }
+.mn-history-empty strong { color: var(--ex-ink); font-size: 13px; font-weight: 500; }
+.mn-history-empty.is-error strong { color: hsl(var(--destructive)); }
+.mn-history-problem { margin: 8px 0 0; font-size: 11px; color: hsl(var(--destructive)); }
 .ex-shell .mn-target-trigger { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 10px; background: var(--ex-bg); border: 1px solid var(--ex-line); border-radius: 6px; width: 100%; min-width: 0; text-align: left; }
 .mn-target-trigger > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mn-target-trigger svg { flex-shrink: 0; }
@@ -125,6 +126,7 @@
   .mn-search input,.mn-field input,.mn-field select { font-size: 16px; }
   .mn-create-fields { grid-template-columns: 1fr; }
   .mn-detail-header h2 { font-size: 19px; }
+  .mn-detail-header h1 { font-size: 24px; }
   .mn-summary { gap: 20px 24px; }
   .mn-sidebar-favourites { max-height: 145px; }
 }

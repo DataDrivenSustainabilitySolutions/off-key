@@ -10,9 +10,17 @@ import { SourceRecordingInspector } from "./SourceRecordingInspector";
 import { useCatalogue } from "../workspace/catalogue-context";
 import { catalogueSelection } from "../workspace/catalogue-navigation";
 import { SourceScope } from "../workspace/SourceScope";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 import "./sources.css";
 
 const Preview = lazy(() => import("../explorer/ExplorerPreview"));
+
+/** Broker connection states share the dot-and-label indicator used by services. */
+const brokerTone = (state?: string) => state === "connected" ? "positive"
+  : state === "error" || state === "blocked" ? "danger" : state ? "warning" : "neutral";
+const brokerLabel = (state?: string) => state === "connected" ? "Connected"
+  : state === "error" || state === "blocked" ? "Unavailable"
+    : state ? `${state[0]!.toUpperCase()}${state.slice(1)}` : "Not subscribed";
 
 export function SourcesWorkspace() {
   const [params] = useSearchParams();
@@ -29,6 +37,7 @@ export function SourcesWorkspace() {
     return next?.connectionId !== selected?.connectionId || !scopeForNode(next);
   });
   const safeReturn = safeServiceReturn(params.get("returnTo"));
+  useDocumentTitle(selected?.label, "Sources");
   useEffect(() => {
     setEditingLocked(rules.dirty);
     return () => setEditingLocked(false);
@@ -84,7 +93,7 @@ export function SourcesWorkspace() {
           const state = system.snapshot?.runtime.ingress?.sources?.[broker.id]?.state;
           const node = index.nodes.get(index.objectKeys.get(broker.id)![0]!)!;
           return <button key={broker.id} className="source-broker" onClick={() => { selectSource(node); browse(node.key); }}><strong>{broker.label}</strong>
-            <span>{readings.length} readings · {enabled} enabled</span><span>{state === "connected" ? "Connected" : state ?? "Not subscribed"}</span></button>;
+            <span>{readings.length} readings · {enabled} enabled</span><span className={`mn-state mn-state--${brokerTone(state)}`}>{brokerLabel(state)}</span></button>;
         })}
       </section>}
     </main>

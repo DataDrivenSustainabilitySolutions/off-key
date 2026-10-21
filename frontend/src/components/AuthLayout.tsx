@@ -7,6 +7,7 @@ import {
 import { AuthBackdrop } from "@/components/AuthBackdrop";
 import { BrandHome } from "@/components/BrandHome";
 import { cn } from "@/lib/utils";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 
 export const AUTH_LINK_CLASS = "text-primary underline-offset-4 hover:underline";
 export const AUTH_ERROR_CLASS = "text-red-700 dark:text-red-400";
@@ -35,6 +36,7 @@ export function AuthLayout({
   hideTitle = false,
 }: AuthLayoutProps) {
   const { className: titleClassName, ...restTitleProps } = titleProps ?? {};
+  useDocumentTitle(title);
 
   return (
     <AuthBackdrop contentClassName="max-w-sm">

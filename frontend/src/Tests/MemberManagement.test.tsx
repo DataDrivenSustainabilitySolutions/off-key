@@ -37,19 +37,24 @@ it("shows member access without offering administrator controls", async () => {
   expect(screen.queryByRole("button", { name: "Send invitation" })).toBeNull();
   expect(getMembers).not.toHaveBeenCalled();
   expect(screen.getByRole("heading", { name: "Account" }).tagName).toBe("H1");
-  expect(screen.getByRole("heading", { name: "Access control" })).toBeTruthy();
+  // The signed-in identity sits under the title instead of in a one-line panel.
+  expect(screen.getByText(/Signed in as admin@example.com · Member/).textContent).toContain("Members can view organization data");
+  expect(screen.queryByRole("heading", { name: "Members" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Invite member" })).toBeNull();
   expect(screen.queryByRole("button", { name: "Remove" })).toBeNull();
-  fireEvent.click(screen.getByRole("button", { name: "About Access control" }));
-  expect((await screen.findByRole("tooltip")).textContent).toContain("Members can view organization data");
 });
 
 it("invites colleagues and updates their role", async () => {
   render(<MemoryRouter><Account /></MemoryRouter>);
   await screen.findByText(member.email);
+  // The member list comes first; the invitation form opens on request.
+  expect(screen.queryByLabelText("Email")).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Invite member" }));
   fireEvent.change(screen.getByLabelText("Email"), { target: { value: "colleague@example.com" } });
   fireEvent.click(screen.getByRole("button", { name: "Send invitation" }));
   await waitFor(() => expect(inviteMember).toHaveBeenCalledWith("colleague@example.com", "user"));
   await screen.findByRole("status");
+  expect(screen.queryByRole("form", { name: "Invite member" })).toBeNull();
   fireEvent.change(screen.getByLabelText("Role for member@example.com"), { target: { value: "admin" } });
   await waitFor(() => expect(updateMember).toHaveBeenCalledWith(member, { role: "admin" }));
   expect((screen.getByLabelText("Role for admin@example.com") as HTMLSelectElement).disabled).toBe(true);
@@ -57,12 +62,15 @@ it("invites colleagues and updates their role", async () => {
 });
 
 it("disables a member after confirmation and reports API failures", async () => {
-  vi.spyOn(window, "confirm").mockReturnValue(true);
   updateMember.mockRejectedValue(new Error("Keep at least one active administrator"));
   render(<MemoryRouter><Account /></MemoryRouter>);
   await screen.findByText(member.email);
   const enabled = screen.getAllByRole("button", { name: "Disable" }).find((button) => !(button as HTMLButtonElement).disabled);
   fireEvent.click(enabled!);
+  const dialog = await screen.findByRole("dialog", { name: "Disable access?" });
+  expect(dialog.textContent).toContain(member.email);
+  expect(updateMember).not.toHaveBeenCalled();
+  fireEvent.click(within(dialog).getByRole("button", { name: "Disable access" }));
   await waitFor(() => expect(updateMember).toHaveBeenCalledWith(member, { is_active: false }));
   expect((await screen.findByRole("alert")).textContent).toContain("Keep at least one active administrator");
 });

@@ -9,6 +9,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { apiUtils } from "@/lib/api-client";
 import { getErrorMessage } from "@/lib/errors";
+import { RelativeTime } from "@/components/RelativeTime";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 import type { StorageStatus } from "@/types/collection";
 import { CollectionHealth } from "./system-status/CollectionHealth";
 
@@ -16,6 +18,7 @@ export default function SystemStatus() {
   const [status, setStatus] = useState<StorageStatus | null>(null);
   const [error, setError] = useState("");
   const [request, setRequest] = useState(0);
+  useDocumentTitle("System status");
 
   useEffect(() => {
     let active = true;
@@ -97,7 +100,7 @@ export default function SystemStatus() {
                 ))}
               </div>
               <p className="mt-2 text-xs text-muted-foreground">
-                Checked {new Date(status.checked_at).toLocaleString()}.
+                Checked <RelativeTime value={status.checked_at} />.
               </p>
             </>
           ) : (

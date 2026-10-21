@@ -21,7 +21,7 @@ export function serviceState(service: ActiveService): ServiceState {
   if (service.operational_status.activity?.persistence_stalled) return { label: "Persistence delayed", tone: "warning", category: "attention" };
   if (service.operational_status.coverage?.has_gaps) return { label: "Coverage gap", tone: "warning", category: "attention" };
   if (stage === "degraded") return { label: "Degraded", tone: "warning", category: "attention" };
-  if (stage === "operational") return { label: "Monitoring", tone: "positive", category: "monitoring" };
+  if (stage === "operational") return { label: "Active", tone: "positive", category: "monitoring" };
   const labels: Partial<Record<typeof stage, string>> = {
     starting: "Starting", waiting_for_data: "Waiting for data", collecting_training: "Learning",
     collecting_calibration: "Calibrating", training: "Training",
@@ -80,16 +80,6 @@ export function servicesForScope(services: ActiveService[], index: MonitoringInd
   if (!streamIds) return services;
   const ids = new Set(streamIds.flatMap(id => [...(index.byStream.get(id) ?? [])]));
   return services.filter(service => ids.has(service.id));
-}
-
-export function formatServiceTime(value: string | null | undefined): string {
-  if (!value) return "Awaiting update";
-  const date = new Date(value);
-  if (!Number.isFinite(date.getTime())) return "Awaiting update";
-  const time = { hour: "2-digit", minute: "2-digit", second: "2-digit" } as const;
-  // A bare time reads as today, so older updates also name their day.
-  return date.toDateString() === new Date().toDateString() ? date.toLocaleTimeString(undefined, time)
-    : date.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "medium" });
 }
 
 export function modelName(modelType: string): string {

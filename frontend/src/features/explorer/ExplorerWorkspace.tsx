@@ -2,11 +2,12 @@ import { lazy, Suspense, useEffect, useMemo } from "react";
 import { ArrowLeft, Info, Plus } from "lucide-react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/auth/AuthContext";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 import { rememberNavigation } from "@/lib/navigation-draft";
 import { SystemLiveControls } from "../catalogue/SystemLiveControls";
 import { sourceHref } from "../catalogue/collectionRules";
 import { MonitoringServiceList } from "../monitoring/MonitoringServiceList";
-import { buildMonitoringIndex, servicesForScope } from "../monitoring/serviceModel";
+import { buildMonitoringIndex, serviceName, servicesForScope } from "../monitoring/serviceModel";
 import { useMonitoringServices } from "../monitoring/useMonitoringServices";
 import { useCatalogue } from "../workspace/catalogue-context";
 import { SourceScope } from "../workspace/SourceScope";
@@ -40,6 +41,12 @@ export function ExplorerWorkspace() {
   const selectedService = monitoring.services.find(service => service.id === requestedService);
   const favourites = useMemo(() => new Set((preferences.favourites ?? []).filter(item => item.kind === "service").map(item => item.id)), [preferences.favourites]);
   const preview = selected && (selected.entityKind === "stream" || params.has("entity") || params.get("inspect") === "source");
+  // Service detail and setup carry their own breadcrumb and heading.
+  const ownHeading = !loadingCreation && !(selectionMissing && !pipelineView)
+    && (pipelineView || creating && system.canEdit || !!requestedService && !!selectedService);
+  useDocumentTitle(selectedService ? serviceName(selectedService, monitoringIndex.inputs.get(selectedService.id) ?? [])
+    : creating ? "New service" : pipelineView ? "Templates" : selected && (selected.entityKind === "stream"
+      ? document.streams.find(stream => stream.id === selected.objectId)?.label ?? selected.label : selected.label), "Monitoring");
   useEffect(() => {
     rememberNavigation(`monitoring:${userId}:url`, `/${params.size ? `?${params}` : ""}`);
   }, [userId, params]);
@@ -64,7 +71,7 @@ export function ExplorerWorkspace() {
   };
 
   return <main className="ex-main-content" aria-label="Monitoring workspace">
-    <div className="ex-workspace-heading"><h1>Monitoring</h1>
+    {!ownHeading && <><div className="ex-workspace-heading"><h1>Monitoring</h1>
       <div className="ex-workspace-actions">
         {selected && !creating && !requestedService && <>
           {!preview && <><Link className="ex-collection-action" to={sectionHref("/sources")}>Configure in Sources</Link>
@@ -76,7 +83,7 @@ export function ExplorerWorkspace() {
         </button>}
       </div>
     </div>
-    <SourceScope />
+    <SourceScope /></>}
     {system.status === "sign-in-required" && <p className="ex-banner">Sign in to load the catalogue. <Link to="/login">Sign in</Link></p>}
     {system.error && <p className="ex-banner ex-error" role="alert">{system.error}<button onClick={() => void system.refresh()}>Retry</button></p>}
     {loadingCreation ? <p className={creationError ? "ex-banner ex-error" : "ex-muted"} role={creationError ? "alert" : "status"}>
@@ -106,7 +113,7 @@ export function ExplorerWorkspace() {
         {preview && <Suspense fallback={<p className="ex-muted" role="status">Opening preview…</p>}><Preview key={selected.key} node={{ ...selected, streamIds: streamIds ?? [] }}
           index={index} document={document} telemetry={telemetry} historyCache={history} canEdit={system.canEdit} saving={system.saving}
           error={system.error} onRename={rename} onEdit={openEditor} onClose={() => selected.entityKind === "stream" ? selectSource(null) : closeView()}
-          runtime={system.snapshot?.runtime} favourite={(preferences.favourites ?? []).some(item => item.kind === "reading" && item.id === selected.objectId)}
+          runtime={system.snapshot?.runtime} collapseDefinition favourite={(preferences.favourites ?? []).some(item => item.kind === "reading" && item.id === selected.objectId)}
           onFavourite={id => toggleFavourite("reading", id)}
           collectionControls={<p className="ex-muted">Collection: {(streamIds ?? []).filter(id => system.snapshot?.runtime.bindings?.[id]?.policy.mode !== "off").length}
             {" "}of {streamIds?.length ?? 0} enabled · <Link to={sourceHref(streamIds ?? [], document)}>Configure in Sources</Link></p>} />

@@ -9,7 +9,7 @@ const mailpit = process.env.MAILPIT_BASE_URL ?? "http://localhost:8025";
 
 async function accountFixture(page: Page) {
   await page.goto("/account");
-  await expect(page.getByRole("heading", { name: "Access control", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Members", exact: true })).toBeVisible();
   const token = await accessToken(page);
   expect(token).toBeTruthy();
   const headers = { Authorization: `Bearer ${token}` };
@@ -21,6 +21,7 @@ async function accountFixture(page: Page) {
   };
   const row = page.getByRole("list", { name: "Members", exact: true }).getByRole("listitem").filter({ hasText: email });
   const invite = async () => {
+    await page.getByRole("button", { name: "Invite member", exact: true }).click();
     await page.getByLabel("Email", { exact: true }).fill(email);
     await page.getByRole("button", { name: "Send invitation", exact: true }).click();
     await expect(page.getByRole("status")).toContainText("Invitation sent");
@@ -30,8 +31,8 @@ async function accountFixture(page: Page) {
     return member!;
   };
   const disable = async () => {
-    page.once("dialog", dialog => dialog.accept());
     await row.getByRole("button", { name: "Disable", exact: true }).click();
+    await page.getByRole("dialog", { name: "Disable access?", exact: true }).getByRole("button", { name: "Disable access", exact: true }).click();
     await expect(row.getByText("Disabled", { exact: true })).toBeVisible();
   };
   return { email, headers, row, read, invite, disable,
@@ -134,7 +135,7 @@ test("removes a disabled invitation after confirmation and retains shared data",
     await expect(page.getByRole("list", { name: "Members", exact: true })).toBeFocused();
     await expect(page.getByRole("status")).toContainText("has been removed");
     await page.reload();
-    await expect(page.getByRole("heading", { name: "Access control", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Members", exact: true })).toBeVisible();
     await expect(fixture.row).toHaveCount(0);
     const retained = await page.request.get("/api/v1/system", { headers: fixture.headers });
     expect(retained.ok()).toBe(true);
@@ -156,7 +157,8 @@ test("enforces current access during removal and keeps previous sessions invalid
     const oldHeaders = { Authorization: `Bearer ${oldToken}` };
     expect((await memberContext.cookies()).some(cookie => cookie.name === "off_key_remembered_session")).toBe(true);
     await memberPage.goto(new URL("/account", page.url()).href);
-    await expect(memberPage.getByRole("heading", { name: "Access control", exact: true })).toBeVisible();
+    await expect(memberPage.getByRole("heading", { name: "Account", exact: true })).toBeVisible();
+    await expect(memberPage.getByText(/Signed in as .* · Member/)).toBeVisible();
     await expect(memberPage.getByRole("heading", { name: "Members", exact: true })).toHaveCount(0);
     const forbidden = await memberPage.request.delete(new URL(`/api/v1/members/${initial.id}`, page.url()).href, { headers: oldHeaders });
     expect(forbidden.status()).toBe(403);

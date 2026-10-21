@@ -30,6 +30,7 @@ import { apiUtils } from "@/lib/api-client";
 import { getErrorMessage } from "@/lib/errors";
 import { API_CONFIG } from "@/lib/api-config";
 import { cn } from "@/lib/utils";
+import { formatDateTime } from "@/lib/format-time";
 import { parseDeviceTelemetryTopic } from "@/lib/mqtt-topics";
 import {
   getMonitoringStrategyDisplay,
@@ -354,7 +355,7 @@ export default function Services() {
                         </TableCell>
                         <TableCell className="text-sm text-muted-foreground">
                           {service.created_at
-                            ? new Date(service.created_at).toLocaleString()
+                            ? formatDateTime(service.created_at)
                             : "Unknown"}
                         </TableCell>
                         <TableCell className="text-right">

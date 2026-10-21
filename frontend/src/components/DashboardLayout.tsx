@@ -54,7 +54,7 @@ export function PageHeader({
           </p>
         ) : null}
       </div>
-      {actions ? <div className="flex shrink-0 flex-wrap gap-2">{actions}</div> : null}
+      {actions ? <div className="flex max-w-full shrink-0 flex-wrap gap-2">{actions}</div> : null}
     </div>
   );
 }
@@ -93,7 +93,7 @@ export function SectionPanel({
               <div className="mt-1 text-sm text-muted-foreground">{description}</div>
             ) : null}
           </div>
-          {actions ? <div className="flex shrink-0 flex-wrap gap-2">{actions}</div> : null}
+          {actions ? <div className="flex max-w-full shrink-0 flex-wrap gap-2">{actions}</div> : null}
         </div>
       )}
       <CardContent className={cn("p-5 sm:p-6", contentClassName)}>{children}</CardContent>

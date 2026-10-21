@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ArrowLeft } from "lucide-react";
+import { Breadcrumb } from "@/components/Breadcrumb";
 import { useSearchParams } from "react-router-dom";
 import { getErrorMessage } from "@/lib/errors";
 import type { ActiveService } from "@/types/monitoring";
@@ -96,9 +96,7 @@ export default function PipelineWorkspace({
   if (!catalog)
     return (
       <section aria-label="Pipelines">
-        <button className="mn-back" onClick={onBack}>
-          <ArrowLeft size={14} aria-hidden="true" />All services
-        </button>
+        <Breadcrumb steps={[{ label: "Monitoring", onClick: onBack }]} current={creating ? "New service" : "Templates"} />
         {error ? (
           <p role="alert" className="pl-error">
             {error}
@@ -119,6 +117,7 @@ export default function PipelineWorkspace({
         onCreate={create}
         onOpen={open}
         onBack={creating ? create : onBack}
+        backLabel={creating ? "New service" : "Monitoring"}
       />
     );
   if (!id && sourceId && !predecessor && !sourceError) return <p role="status">Loading service configuration…</p>;
@@ -183,6 +182,7 @@ export default function PipelineWorkspace({
             : undefined
         }
         onBack={creating ? onBack : library}
+        backLabel={creating ? "Monitoring" : "Templates"}
         onManage={library}
         onRevision={(revision) => {
           const next = new URLSearchParams(params);

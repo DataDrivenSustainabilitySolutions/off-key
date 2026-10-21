@@ -1,17 +1,21 @@
 import { lazy, Suspense, useEffect, useState } from "react";
-import * as Dialog from "@radix-ui/react-dialog";
 import { useSearchParams } from "react-router-dom";
-import { ArrowLeft, Star } from "lucide-react";
+import { Copy, Star, Trash2 } from "lucide-react";
+import toast from "react-hot-toast";
 import { apiUtils } from "@/lib/api-client";
 import { API_CONFIG } from "@/lib/api-config";
 import { getErrorMessage } from "@/lib/errors";
 import type { ActiveService, JsonValue } from "@/types/monitoring";
-import { Button } from "@/components/ui/button";
+import { ActionMenu } from "@/components/ActionMenu";
+import { Breadcrumb } from "@/components/Breadcrumb";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { RelativeTime } from "@/components/RelativeTime";
+import { formatDateTime } from "@/lib/format-time";
 import { InlineName } from "../catalogue/InlineName";
 import { MonitoringHistory } from "./MonitoringHistory";
 import type { ReadingHistoryCache } from "../explorer/readingHistoryCache";
 import type { SystemDocument } from "../catalogue/systemTypes";
-import { formatServiceTime, modelName, serviceName, serviceState, strategyName, type MonitoringInput } from "./serviceModel";
+import { modelName, serviceName, serviceState, strategyName, type MonitoringInput } from "./serviceModel";
 import type { PipelineState } from "../pipelines/PipelineDiagnostics";
 
 const PipelineRun = lazy(() => import("../pipelines/PipelineRunView"));
@@ -39,6 +43,7 @@ export default function MonitoringServiceDetail({ service, inputs, document, his
   const activity = service.operational_status.activity;
   const inputNames = new Map(inputs.map(input => [input.binding.telemetry_key, input.stream.label]));
   const describeInputs = (sensors: string[]) => sensors.map(sensor => inputNames.get(sensor) ?? sensor).join(", ");
+  const removeLabel = service.status ? "Stop and remove service" : "Remove service";
   useEffect(() => {
     const controller = new AbortController();
     void apiUtils.get<{ configuration?: Configuration }>(`${API_CONFIG.ENDPOINTS.MONITORING.DETAILS}?container_name=${encodeURIComponent(service.container_name)}`,
@@ -60,16 +65,22 @@ export default function MonitoringServiceDetail({ service, inputs, document, his
     } catch (reason) { setDeleteError(getErrorMessage(reason)); }
     finally { setDeleting(false); }
   };
+  const copyId = async () => {
+    try { await navigator.clipboard.writeText(service.id); toast.success("Service ID copied"); }
+    catch { toast.error("The service ID could not be copied."); }
+  };
   return <section className="mn-detail" aria-label="Monitoring service details">
-    <button className="mn-back" onClick={onBack}><ArrowLeft size={14} aria-hidden="true" />All services</button>
-    <div className="mn-detail-header"><div><h2><InlineName value={name} editable={canEdit} onSave={onRename} ariaLabel="Rename service" /></h2>
+    <Breadcrumb steps={[{ label: "Monitoring", onClick: onBack }]} current={name} />
+    <div className="mn-detail-header"><div><h1><InlineName value={name} editable={canEdit} onSave={onRename} ariaLabel="Rename service" /></h1>
       <small>{strategyName(service)}{service.model_type ? ` · ${modelName(service.model_type)}` : ""}</small></div>
       <div className="mn-detail-actions"><button className="mn-favourite ex-icon-button" aria-pressed={favourite} aria-label={favourite ? "Remove service from favourites" : "Add service to favourites"} onClick={onFavourite}><Star size={17} /></button>
+        <ActionMenu label="Service actions" actions={[{ label: "Copy service ID", icon: Copy, onSelect: () => void copyId() },
+          ...(canEdit ? [{ label: removeLabel, icon: Trash2, destructive: true, separated: true, onSelect: () => { setDeleteError(""); setConfirm(true); } }] : [])]} />
       </div></div>
     <dl className="mn-summary"><div><dt>State</dt><dd><span className={`mn-state mn-state--${state.tone}`}>{state.label}</span></dd></div>
       <div><dt>Inputs</dt><dd>{service.mqtt_topics.length} {service.mqtt_topics.length === 1 ? "reading" : "readings"}</dd></div>
       <div><dt>Processed</dt><dd>{service.operational_status.processed_message_count.toLocaleString()}</dd></div>
-      <div><dt>Last update</dt><dd><time dateTime={service.operational_status.updated_at ?? undefined}>{formatServiceTime(service.operational_status.updated_at)}</time></dd></div></dl>
+      <div><dt>Last update</dt><dd><RelativeTime value={service.operational_status.updated_at} fallback="Awaiting update" /></dd></div></dl>
     <div className="mn-tabs" role="tablist" aria-label="Service details">{tabs.map((item, index) => <button key={item.id} id={`monitor-tab-${item.id}`} role="tab"
       aria-selected={tab === item.id} aria-controls={`monitor-panel-${item.id}`} tabIndex={tab === item.id ? 0 : -1} onClick={() => chooseTab(item.id)} onKeyDown={event => {
         if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
@@ -85,9 +96,9 @@ export default function MonitoringServiceDetail({ service, inputs, document, his
         {service.operational_status.error && <p className="ex-preview-error" role="alert">{service.operational_status.error}</p>}
         {service.operational_status.detail && <p className="ex-muted">{service.operational_status.detail}</p>}
         {activity && <section className="mn-section"><h3>Monitoring activity</h3>
-          <dl className="mn-configuration"><div><dt>Last valid input</dt><dd>{formatServiceTime(activity.last_input_at)}</dd></div>
-            <div><dt>Last inference</dt><dd>{formatServiceTime(activity.last_inference_at)}</dd></div>
-            <div><dt>Last evidence saved</dt><dd>{formatServiceTime(activity.last_persisted_at)}</dd></div></dl>
+          <dl className="mn-configuration"><div><dt>Last valid input</dt><dd><RelativeTime value={activity.last_input_at} fallback="Awaiting update" /></dd></div>
+            <div><dt>Last inference</dt><dd><RelativeTime value={activity.last_inference_at} fallback="Awaiting update" /></dd></div>
+            <div><dt>Last evidence saved</dt><dd><RelativeTime value={activity.last_persisted_at} fallback="Awaiting update" /></dd></div></dl>
           {activity.missing_sensors.length > 0 && <p className="ex-muted">Missing inputs: {describeInputs(activity.missing_sensors)}</p>}
           {activity.stale_sensors.length > 0 && <p className="ex-muted">Stale inputs: {describeInputs(activity.stale_sensors)}</p>}
           <p className="ex-muted">Input freshness budget: {activity.freshness_seconds} seconds.</p>
@@ -99,7 +110,7 @@ export default function MonitoringServiceDetail({ service, inputs, document, his
               <div><dt>Dropped observations</dt><dd>{coverage.dropped_message_count.toLocaleString()}</dd></div>
               <div><dt>Possible interruptions</dt><dd>{coverage.possible_gap_count.toLocaleString()}</dd></div></dl>
             {coverage.has_gaps && <p className="ex-preview-error" role="alert">Monitoring coverage has gaps.
-              {coverage.last_gap_at && <> Last gap: {formatServiceTime(coverage.last_gap_at)}.</>}</p>}
+              {coverage.last_gap_at && <> Last gap: <RelativeTime value={coverage.last_gap_at} />.</>}</p>}
             {Object.keys(coverage.dropped_by_reason).length > 0 && <ul>{Object.entries(coverage.dropped_by_reason).map(([reason, count]) =>
               <li key={reason}>{reason.replace(/_/g, " ")}: {count.toLocaleString()}</li>)}</ul>}
           </> : <p className="ex-muted">Coverage has not been reported by this workload.</p>}
@@ -122,18 +133,12 @@ export default function MonitoringServiceDetail({ service, inputs, document, his
           <div><dt>Notifications</dt><dd>Operator managed</dd></div>
         </dl><p className="ex-muted">Email recipients are configured by the deployment.</p>
         {configuration && Object.keys(configuration.monitoring).length > 0 && <details className="mn-section"><summary>Detector configuration</summary><pre className="mn-json">{JSON.stringify(configuration, null, 2)}</pre></details>}
-        <section className="mn-section"><h3>Service</h3><dl className="mn-configuration"><div><dt>Created</dt><dd>{service.created_at ? new Date(service.created_at).toLocaleString() : "Not recorded"}</dd></div>
-          <div><dt>Service ID</dt><dd>{service.id}</dd></div></dl>
-          {canEdit && <div className="mn-section"><button className="mn-danger" onClick={() => { setDeleteError(""); setConfirm(true); }}>{service.status ? "Stop and remove service" : "Remove service"}</button></div>}</section>
+        <section className="mn-section"><h3>Service</h3><dl className="mn-configuration"><div><dt>Created</dt><dd>{formatDateTime(service.created_at ?? "") || "Not recorded"}</dd></div>
+          <div><dt>Service ID</dt><dd>{service.id}</dd></div></dl></section>
       </>}
     </div>
-    <Dialog.Root open={confirm} onOpenChange={next => { if (!deleting) setConfirm(next); }}><Dialog.Portal><Dialog.Overlay className="ex-dialog-overlay" />
-      <Dialog.Content className="ex-dialog" onEscapeKeyDown={event => { if (deleting) event.preventDefault(); }}>
-        <header><Dialog.Title>{service.status ? "Stop and remove service?" : "Remove service?"}</Dialog.Title></header>
-        <Dialog.Description className="ex-muted">{name}. Collected history is retained.</Dialog.Description>
-        {deleteError && <p className="ex-preview-error" role="alert">{deleteError}</p>}
-        <div className="mn-dialog-actions"><Dialog.Close asChild><Button variant="outline" disabled={deleting}>Cancel</Button></Dialog.Close>
-          <Button variant="destructive" disabled={deleting} onClick={() => void remove()}>{deleting ? "Removing…" : "Remove service"}</Button></div>
-      </Dialog.Content></Dialog.Portal></Dialog.Root>
+    <ConfirmDialog open={confirm} title={`${removeLabel}?`} description={`${name}. Collected history is retained.`}
+      confirmLabel="Remove service" busyLabel="Removing…" destructive busy={deleting} error={deleteError}
+      onConfirm={() => void remove()} onCancel={() => setConfirm(false)} />
   </section>;
 }

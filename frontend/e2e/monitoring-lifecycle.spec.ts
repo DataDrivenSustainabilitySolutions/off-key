@@ -116,8 +116,11 @@ test.describe("monitoring lifecycle smoke", () => {
           new URL(response.url()).pathname.includes("/v1/monitors/"),
         { timeout: 240_000 },
       );
-      page.once("dialog", (dialog) => dialog.accept());
       await serviceRow
+        .getByRole("button", { name: /stop and delete service/i })
+        .click();
+      await page
+        .getByRole("dialog")
         .getByRole("button", { name: /stop and delete service/i })
         .click();
 

@@ -19,8 +19,8 @@ export function SettingsDialog({ open, onOpenChange, onCloseAutoFocus }: Props) 
         <Dialog.Overlay className="app-settings-overlay" />
         <Dialog.Content className="app-settings-dialog" onCloseAutoFocus={onCloseAutoFocus}>
           <aside className="app-settings-sidebar">
-            <Dialog.Title className="app-settings-title">Settings</Dialog.Title>
-            <div role="tablist" aria-label="Settings categories" className="app-settings-categories">
+            <Dialog.Title className="app-settings-title">Preferences</Dialog.Title>
+            <div role="tablist" aria-label="Preference categories" className="app-settings-categories">
               <button type="button" role="tab" id={`${id}-appearance-tab`}
                 aria-selected="true" aria-controls={`${id}-appearance-panel`}>
                 <Palette size={17} aria-hidden="true" />Appearance
@@ -35,7 +35,7 @@ export function SettingsDialog({ open, onOpenChange, onCloseAutoFocus }: Props) 
             </div>
             <AppearanceSettings />
           </section>
-          <Dialog.Close className="app-settings-close" aria-label="Close settings" title="Close settings">
+          <Dialog.Close className="app-settings-close" aria-label="Close preferences" title="Close preferences">
             <X size={18} aria-hidden="true" />
           </Dialog.Close>
         </Dialog.Content>

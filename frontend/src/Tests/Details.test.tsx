@@ -3,6 +3,10 @@ import { Link, MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import Details from "../pages/Details";
+import { CatalogueContext, type CatalogueContextValue } from "../features/workspace/catalogue-context";
+import { buildNavigationIndex } from "../features/explorer/navigationIndex";
+import { createEmptySystem } from "../features/catalogue/systemDocument";
+import type { SystemDocument, SystemRuntime } from "../features/catalogue/systemTypes";
 import type { ChartNavigationState } from "../lib/telemetry-chart";
 
 const mockLoadAllTelemetryTypes = vi.fn<
@@ -204,6 +208,32 @@ describe("<Details />", () => {
 
     const link = await screen.findByRole("link", { name: /monitoring/i });
     expect(link.getAttribute("href")).toBe("/monitoring/123");
+  });
+
+  it("is titled by the catalogue entity behind the recorded identity and links to it in Sources", async () => {
+    const document: SystemDocument = { ...createEmptySystem(),
+      connections: [{ id: "broker", label: "Building broker", protocol: "mqtt", host: "broker.test", port: 1883, transport: "tcp", tls: false }],
+      devices: [{ id: "station", label: "Room station", kind: "sensor", connection_id: "broker" }],
+      streams: [{ id: "temperature", label: "Air temperature", connection_id: "broker", device_id: "station", topic: "weather/temperature", value_type: "number", category: "Environment" }],
+    };
+    const runtime = { bindings: { temperature: { connection_id: "broker", entity_id: "123", telemetry_key: "temperature",
+      accepted_topic: "telemetry/123/temperature", policy: { mode: "original", interval_seconds: 10 } } } } as unknown as SystemRuntime;
+    const index = buildNavigationIndex(document);
+    const catalogue = { system: { snapshot: { document, runtime } }, index } as unknown as CatalogueContextValue;
+    render(<CatalogueContext.Provider value={catalogue}>
+      <MemoryRouter initialEntries={["/details/123"]}><Routes><Route path="/details/:chargerId" element={<Details />} /></Routes></MemoryRouter>
+    </CatalogueContext.Provider>);
+    expect(await screen.findByRole("heading", { level: 1, name: "Room station" })).toBeTruthy();
+    // The binding's entity ID differs from the catalogue device ID, so the link names the catalogue node.
+    const station = index.nodes.get(index.objectKeys.get("station")![0]!)!;
+    expect(screen.getByRole("link", { name: "View in Sources" }).getAttribute("href")).toBe(`/sources?source=${encodeURIComponent(station.key)}`);
+    expect(window.document.title).toBe("Room station · Reporting · Aberration");
+  });
+
+  it("falls back to the recorded identity without a catalogue", async () => {
+    renderDetails();
+    expect(await screen.findByRole("heading", { level: 1, name: "Entity 123" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "View in Sources" }).getAttribute("href")).toBe("/sources");
   });
 
   it("preserves chart anomaly references across telemetry refreshes", async () => {

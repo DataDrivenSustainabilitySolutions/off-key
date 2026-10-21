@@ -4,7 +4,8 @@ import { Link } from "react-router-dom";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Search, Star } from "lucide-react";
 import type { ActiveService } from "@/types/monitoring";
-import { formatServiceTime, modelName, serviceName, serviceState, strategyName, type MonitoringIndex } from "./serviceModel";
+import { RelativeTime } from "@/components/RelativeTime";
+import { modelName, serviceName, serviceState, strategyName, type MonitoringIndex } from "./serviceModel";
 
 type Props = {
   draftKey?: string; services: ActiveService[]; index: MonitoringIndex; ready: boolean; error: string;
@@ -24,10 +25,16 @@ export function MonitoringServiceList({ draftKey, services, index, ready, error,
     const name = serviceName(service, inputs);
     const paths = [...new Set(inputs.map(input => input.path))];
     const scope = paths.join(" · ") || `${service.mqtt_topics.length} ${service.mqtt_topics.length === 1 ? "input" : "inputs"}`;
-    return { service, name, scope, state: serviceState(service), search: `${name} ${scope} ${service.model_type ?? ""} ${inputs.map(input => input.stream.label).join(" ")} ${service.mqtt_topics.join(" ")}`.toLocaleLowerCase() };
-  }).sort((a, b) => a.name.localeCompare(b.name) || a.service.id.localeCompare(b.service.id)), [services, index]);
-  const shown = useMemo(() => rows.filter(row => (!deferred || row.search.includes(deferred.toLocaleLowerCase()))
-    && (filter === "all" || (filter === "favourites" ? favourites.has(row.service.id) : row.state.category === filter))), [rows, deferred, filter, favourites]);
+    const state = serviceState(service);
+    // Problems first, then favourites, then everything else by name.
+    const rank = state.category === "attention" ? 0 : favourites.has(service.id) ? 1 : 2;
+    return { service, name, scope, state, rank, search: `${name} ${scope} ${service.model_type ?? ""} ${inputs.map(input => input.stream.label).join(" ")} ${service.mqtt_topics.join(" ")}`.toLocaleLowerCase() };
+  }).sort((a, b) => a.rank - b.rank || a.name.localeCompare(b.name) || a.service.id.localeCompare(b.service.id)), [services, index, favourites]);
+  const matching = useMemo(() => rows.filter(row => !deferred || row.search.includes(deferred.toLocaleLowerCase())), [rows, deferred]);
+  const shown = useMemo(() => matching.filter(row => filter === "all" || (filter === "favourites" ? favourites.has(row.service.id) : row.state.category === filter)),
+    [matching, filter, favourites]);
+  const count = (id: string) => id === "all" ? matching.length
+    : matching.filter(row => id === "favourites" ? favourites.has(row.service.id) : row.state.category === id).length;
   // Keep this imperative viewport adapter outside React Compiler memoization.
   // eslint-disable-next-line react-hooks/incompatible-library
   const virtual = useVirtualizer({ count: shown.length, getScrollElement: () => scroll.current, estimateSize: () => 76,
@@ -35,7 +42,7 @@ export function MonitoringServiceList({ draftKey, services, index, ready, error,
   useEffect(() => {
     if (ready && scroll.current && !restored.current) { scroll.current.scrollTop = offset; restored.current = true; }
   }, [ready, offset]);
-  const filters = [{ id: "all", label: "All" }, { id: "monitoring", label: "Monitoring" }, { id: "preparing", label: "Preparing" }, { id: "stopped", label: "Stopped" },
+  const filters = [{ id: "all", label: "All" }, { id: "monitoring", label: "Active" }, { id: "preparing", label: "Preparing" }, { id: "stopped", label: "Stopped" },
     ...(filter === "attention" || rows.some(row => row.state.category === "attention") ? [{ id: "attention", label: "Attention" }] : []),
     ...(filter === "favourites" || favourites.size ? [{ id: "favourites", label: "Favourites" }] : [])];
   return <section className="mn-services" aria-label="Monitoring services">
@@ -43,7 +50,11 @@ export function MonitoringServiceList({ draftKey, services, index, ready, error,
     {!ready && !error ? <p className="mn-loading" role="status">Loading services…</p> : ready && !services.length ?
       <div className="mn-empty"><h2>No monitoring services</h2><p>Create a service to monitor readings from the catalogue.</p></div> : ready && <>
       <div className="mn-list-tools"><div className="mn-filters" aria-label="Filter services">
-        {filters.map(item => <button key={item.id} aria-pressed={filter === item.id} onClick={() => { setFilter(item.id); scroll.current?.scrollTo?.(0, 0); }}>{item.label}</button>)}
+        {filters.map(item => {
+          const total = count(item.id);
+          return <button key={item.id} aria-pressed={filter === item.id} onClick={() => { setFilter(item.id); scroll.current?.scrollTo?.(0, 0); }}>
+            {item.label} <span className={`mn-filter-count${item.id === "attention" && total > 0 ? " is-alert" : ""}`}>{total.toLocaleString()}</span></button>;
+        })}
       </div><label className="mn-search"><Search size={15} aria-hidden="true" /><input type="search" aria-label="Search monitoring services" placeholder="Find a service…" value={query}
         onChange={event => { setQuery(event.target.value); scroll.current?.scrollTo?.(0, 0); }} /></label></div>
       <div role="table" aria-label="Monitoring service list" aria-rowcount={shown.length + 1} aria-colcount={5}>
@@ -67,7 +78,7 @@ export function MonitoringServiceList({ draftKey, services, index, ready, error,
                 <div role="cell" className="mn-service-inputs" title={row.scope}><span>{row.scope}</span><small>{service.mqtt_topics.length} {service.mqtt_topics.length === 1 ? "reading" : "readings"}</small></div>
                 <div role="cell" className="mn-service-state"><span className={`mn-state mn-state--${row.state.tone}`}>{row.state.label}</span>
                   {progress && <small>{progress.current.toLocaleString()} / {progress.target.toLocaleString()} samples</small>}</div>
-                <div role="cell" className="mn-service-time"><time dateTime={service.operational_status.updated_at ?? undefined}>{formatServiceTime(service.operational_status.updated_at)}</time>
+                <div role="cell" className="mn-service-time"><RelativeTime value={service.operational_status.updated_at} fallback="Awaiting update" />
                   <small>{service.operational_status.processed_message_count.toLocaleString()} processed</small></div>
                 <div role="cell"><button className="mn-favourite ex-icon-button" aria-pressed={favourites.has(service.id)} aria-label={`${favourites.has(service.id) ? "Remove" : "Add"} ${row.name} ${favourites.has(service.id) ? "from" : "to"} favourites`}
                   onClick={() => onFavourite(service.id)}><Star size={15} aria-hidden="true" /></button></div>

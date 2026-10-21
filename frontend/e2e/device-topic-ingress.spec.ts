@@ -80,8 +80,9 @@ test.describe("device topic ingress", () => {
         .toBe(true);
 
       await page.goto(`/details/${chargerId}`);
+      // The page is titled by the catalogue label of the recorded entity.
       await expect(
-        page.getByRole("heading", { name: `Entity ${chargerId}` }),
+        page.getByRole("heading", { name: `Entity ${deviceId}` }),
       ).toBeVisible();
 
       for (const [title] of telemetry) {

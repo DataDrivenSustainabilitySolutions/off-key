@@ -70,7 +70,7 @@
   .app-catalogue-workspace { --catalogue-width: 0px; grid-template-columns: minmax(0, 1fr); }
   .app-catalogue-main { grid-column: 1; }
   .app-catalogue-main :is(.ex-main-content, .app-page-content) { padding-inline: 20px; }
-  .app-catalogue-main :is(.ex-workspace-heading, .app-page-heading) { padding-inline-start: 24px; }
+  .app-catalogue-main :is(.ex-workspace-heading, .app-page-heading, .ex-breadcrumb) { padding-inline-start: 24px; }
   .workspace-source-scope { margin: 18px 0; }
   .workspace-loading { padding: 28px 20px; }
 }
